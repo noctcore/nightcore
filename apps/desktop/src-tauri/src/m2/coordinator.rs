@@ -387,13 +387,15 @@ async fn launch(app: &AppHandle, task_id: &str) {
     );
 
     use crate::m2::provider::Provider;
-    let permission_mode = crate::sidecar::resolve_permission_mode(app);
+    let permission_mode =
+        crate::sidecar::resolve_permission_mode(app, task.permission_mode.as_deref());
     if let Err(e) = orch
         .provider
         .start_session(
             task_id,
             task.prompt(),
             task.model.clone(),
+            task.effort.clone(),
             cwd,
             permission_mode,
             task.kind.as_wire(),

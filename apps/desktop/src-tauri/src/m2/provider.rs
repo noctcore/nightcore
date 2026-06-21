@@ -47,11 +47,17 @@ pub trait Provider: Send + Sync {
     /// Start one run for `task_id`. Writes `start-session` and records the task in
     /// the pending-launch FIFO so the next `session-started` event correlates to
     /// it. The session id arrives asynchronously via an event, not this return.
+    ///
+    /// The parameters mirror the `start-session` wire fields 1:1 (prompt, model,
+    /// effort, cwd, permissionMode, kind); a struct would just re-pack the protocol
+    /// payload, so the flat list is the clearer seam here.
+    #[allow(clippy::too_many_arguments)]
     async fn start_session(
         &self,
         task_id: &str,
         prompt: String,
         model: Option<String>,
+        effort: Option<String>,
         cwd: Option<PathBuf>,
         permission_mode: Option<String>,
         kind: &str,
@@ -269,19 +275,25 @@ impl Provider for SidecarProvider {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn start_session(
         &self,
         task_id: &str,
         prompt: String,
         model: Option<String>,
+        effort: Option<String>,
         cwd: Option<PathBuf>,
         permission_mode: Option<String>,
         kind: &str,
     ) -> Result<(), String> {
+        // M4.7 §E: `effort` is now forwarded; the engine already threads
+        // `command.effort` into the SDK `Options`. A `null` effort lets the model
+        // decide (the engine omits the option), preserving pre-M4.7 behavior.
         let command = serde_json::json!({
             "type": "start-session",
             "prompt": prompt,
             "model": model,
+            "effort": effort,
             "cwd": cwd.map(|p| p.to_string_lossy().to_string()),
             "permissionMode": permission_mode,
             "kind": kind,
