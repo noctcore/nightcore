@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { EffortLevelSchema, PermissionModeSchema } from './config.js';
+import {
+  EffortLevelSchema,
+  PermissionModeSchema,
+  TaskKindSchema,
+} from './config.js';
 import { PermissionDecisionSchema } from './tools.js';
 
 /**
@@ -26,6 +30,10 @@ export const StartSessionCommand = z.object({
   permissionMode: PermissionModeSchema.optional(),
   /** Working directory; defaults to the process cwd. */
   cwd: z.string().optional(),
+  /** The task kind driving this session (M4). Resolves to an agent preset
+   *  (system prompt + tool restrictions + default permission mode). Absent ⇒
+   *  `build` ⇒ identical to pre-M4 behavior. */
+  kind: TaskKindSchema.optional(),
 });
 
 const sessionTarget = {

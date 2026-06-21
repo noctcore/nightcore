@@ -19,6 +19,24 @@ export const PermissionModeSchema = z.enum([
 export type PermissionMode = z.infer<typeof PermissionModeSchema>;
 
 /**
+ * The kind of work a task represents (M4). `build` is the default and reproduces
+ * today's behavior; `review` runs an independent read-only reviewer over a
+ * worktree diff. `research`/`decompose` are reserved (defined, not yet produced).
+ *
+ * This enum is the single thing the Rust core and the engine share: the core owns
+ * each kind's ORCHESTRATION policy (`kind.rs`), the engine owns its AGENT
+ * DEFINITION (`kind-presets.ts`). Snake_case on the wire, matching the Rust
+ * `TaskKind` serde mapping.
+ */
+export const TaskKindSchema = z.enum([
+  'build',
+  'research',
+  'review',
+  'decompose',
+]);
+export type TaskKind = z.infer<typeof TaskKindSchema>;
+
+/**
  * Known Claude model ids. `model` is a free string at the SDK boundary, but the
  * harness offers these as the curated default set. Exact non-Opus ids are
  * confirmed at build time against the models doc (see docs/architecture.md).
