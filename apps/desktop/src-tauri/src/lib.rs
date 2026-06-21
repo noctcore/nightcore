@@ -14,6 +14,7 @@
 
 mod gauntlet;
 mod kind;
+mod logging;
 mod m2;
 mod merge;
 mod plan_approval;
@@ -34,6 +35,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             use tauri::Manager;
+
+            // Stand up logging before anything else so every subsequent line (store
+            // load, reconciliation, the auto-loop) lands in the colored console and
+            // the rolling file sink. The returned guard must outlive the app, so it
+            // is parked in managed state below.
+            let log_guard = logging::init(&app.handle().clone());
 
             // The project registry + settings live in the app config dir (not in
             // any single repo). Resolve it once and load both stores from it.
@@ -67,10 +74,15 @@ pub fn run() {
             app.manage(project_store);
             app.manage(settings_store);
             app.manage(orchestrator);
+            app.manage(log_guard);
 
             // Startup reconciliation: prune orphaned worktrees from the active
             // project whose tasks no longer exist (best-effort, never blocks).
             m2::coordinator::reconcile_worktrees(&app.handle().clone());
+            // Then recover crash-stranded tasks: an `InProgress`/`Verifying` task
+            // whose run died with the process is re-queued (or re-reviewed) so the
+            // auto-loop can pick it up again instead of stranding it forever.
+            m2::coordinator::reconcile_tasks(&app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
