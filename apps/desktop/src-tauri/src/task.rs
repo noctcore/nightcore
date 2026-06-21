@@ -99,6 +99,31 @@ pub struct TaskPatch {
     pub model: Option<String>,
 }
 
+impl TaskPatch {
+    /// Apply the present fields of this patch onto `task`; absent fields are left
+    /// untouched. `updated_at` is bumped by the store on persist, not here.
+    pub fn apply(self, task: &mut Task) {
+        if let Some(title) = self.title {
+            task.title = title;
+        }
+        if let Some(description) = self.description {
+            task.description = description;
+        }
+        if let Some(status) = self.status {
+            task.status = status;
+        }
+        if let Some(dependencies) = self.dependencies {
+            task.dependencies = dependencies;
+        }
+        // `model` is itself `Option`, so serde flattens an absent field and an
+        // explicit `null` to the same `None`. A patch can therefore SET a model
+        // but not clear one; an absent/null `model` is left untouched.
+        if self.model.is_some() {
+            task.model = self.model;
+        }
+    }
+}
+
 /// Current epoch time in milliseconds. Used for `created_at`/`updated_at`; we use
 /// `SystemTime` rather than pulling in `chrono` for one timestamp.
 pub fn now_ms() -> u64 {
@@ -139,24 +164,7 @@ pub fn update_task(
     id: String,
     patch: TaskPatch,
 ) -> Result<Task, String> {
-    let task = store.mutate(&id, |task| {
-        if let Some(title) = patch.title {
-            task.title = title;
-        }
-        if let Some(description) = patch.description {
-            task.description = description;
-        }
-        if let Some(status) = patch.status {
-            task.status = status;
-        }
-        if let Some(dependencies) = patch.dependencies {
-            task.dependencies = dependencies;
-        }
-        // `model` is itself nullable, so a present patch can clear it back to None.
-        if patch.model.is_some() {
-            task.model = patch.model;
-        }
-    })?;
+    let task = store.mutate(&id, |task| patch.apply(task))?;
     let _ = app.emit(TASK_EVENT, &task);
     Ok(task)
 }
@@ -166,4 +174,132 @@ pub fn update_task(
 #[tauri::command]
 pub fn delete_task(store: State<'_, TaskStore>, id: String) -> Result<(), String> {
     store.remove(&id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_serializes_snake_case() {
+        // The TS bridge and on-disk JSON depend on these exact wire strings.
+        assert_eq!(
+            serde_json::to_string(&TaskStatus::InProgress).unwrap(),
+            "\"in_progress\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TaskStatus::WaitingApproval).unwrap(),
+            "\"waiting_approval\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TaskStatus::Backlog).unwrap(),
+            "\"backlog\""
+        );
+    }
+
+    #[test]
+    fn status_round_trips_through_serde() {
+        for status in [
+            TaskStatus::Backlog,
+            TaskStatus::Ready,
+            TaskStatus::InProgress,
+            TaskStatus::WaitingApproval,
+            TaskStatus::Done,
+            TaskStatus::Failed,
+        ] {
+            let json = serde_json::to_string(&status).unwrap();
+            let back: TaskStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(status, back, "status must survive a serde round-trip");
+        }
+    }
+
+    #[test]
+    fn task_serializes_camel_case() {
+        // Field names must be camelCase for the TS bridge / contract.
+        let task = Task::new("t".into(), String::new());
+        let value: serde_json::Value = serde_json::to_value(&task).unwrap();
+        let obj = value.as_object().unwrap();
+        for key in ["createdAt", "updatedAt", "sessionId", "costUsd"] {
+            assert!(obj.contains_key(key), "missing camelCase key {key}");
+        }
+    }
+
+    #[test]
+    fn new_task_defaults_to_backlog() {
+        let task = Task::new("title".into(), "desc".into());
+        assert_eq!(task.status, TaskStatus::Backlog);
+        assert_eq!(task.created_at, task.updated_at);
+        assert!(task.dependencies.is_empty());
+        assert!(task.model.is_none());
+        assert!(task.session_id.is_none());
+    }
+
+    #[test]
+    fn prompt_omits_blank_description() {
+        let task = Task::new("just a title".into(), String::new());
+        assert_eq!(task.prompt(), "just a title");
+    }
+
+    #[test]
+    fn prompt_joins_title_and_description() {
+        let task = Task::new("title".into(), "body".into());
+        assert_eq!(task.prompt(), "title\n\nbody");
+    }
+
+    #[test]
+    fn patch_applies_only_present_fields() {
+        let mut task = Task::new("orig".into(), "orig-desc".into());
+        let patch = TaskPatch {
+            title: Some("new".into()),
+            status: Some(TaskStatus::Ready),
+            ..Default::default()
+        };
+        patch.apply(&mut task);
+
+        assert_eq!(task.title, "new");
+        assert_eq!(task.status, TaskStatus::Ready);
+        // Untouched fields keep their original values.
+        assert_eq!(task.description, "orig-desc");
+        assert!(task.dependencies.is_empty());
+    }
+
+    #[test]
+    fn patch_sets_model_when_present() {
+        let mut task = Task::new("t".into(), String::new());
+        assert!(task.model.is_none());
+        let patch: TaskPatch =
+            serde_json::from_str(r#"{"model":"claude-opus-4-8"}"#).unwrap();
+        patch.apply(&mut task);
+        assert_eq!(task.model.as_deref(), Some("claude-opus-4-8"));
+    }
+
+    #[test]
+    fn patch_leaves_model_untouched_when_absent() {
+        // `Option<String>` flattens an explicit `null` and an absent field to the
+        // same `None`, so a patch can SET a model but cannot distinguish "clear
+        // it" from "don't touch it" — an absent (or null) `model` is a no-op.
+        let mut task = Task::new("t".into(), String::new());
+        task.model = Some("claude-opus-4-8".into());
+
+        let absent: TaskPatch = serde_json::from_str(r#"{"title":"x"}"#).unwrap();
+        absent.apply(&mut task);
+        assert_eq!(task.model.as_deref(), Some("claude-opus-4-8"));
+
+        let explicit_null: TaskPatch = serde_json::from_str(r#"{"model":null}"#).unwrap();
+        explicit_null.apply(&mut task);
+        assert_eq!(
+            task.model.as_deref(),
+            Some("claude-opus-4-8"),
+            "explicit null is indistinguishable from absent; model is unchanged"
+        );
+    }
+
+    #[test]
+    fn patch_deserializes_camel_case_keys() {
+        let patch: TaskPatch =
+            serde_json::from_str(r#"{"status":"in_progress","dependencies":["a"]}"#).unwrap();
+        assert_eq!(patch.status, Some(TaskStatus::InProgress));
+        assert_eq!(patch.dependencies, Some(vec!["a".to_string()]));
+        assert!(patch.title.is_none());
+    }
 }

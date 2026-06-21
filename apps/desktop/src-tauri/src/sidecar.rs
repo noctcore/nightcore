@@ -308,3 +308,57 @@ pub async fn cancel_task(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The M1 serial guard: `run_task` rejects with "a task is already running"
+    /// whenever a task is active. We exercise the guard predicate directly (the
+    /// `tauri::command` wrapper needs an `AppHandle` we can't build in a unit
+    /// test, but the decision is purely `Sidecar::active()`).
+    #[test]
+    fn serial_guard_blocks_when_a_task_is_active() {
+        let sidecar = Sidecar::default();
+        assert!(sidecar.active().is_none(), "starts idle");
+
+        // First run claims the slot.
+        sidecar.set_active(Some("task-1".to_string()));
+        assert_eq!(sidecar.active().as_deref(), Some("task-1"));
+
+        // The guard `run_task` uses: a second run must be refused while one is in
+        // flight.
+        let already_running = sidecar.active().is_some();
+        assert!(already_running, "guard must see the active task");
+
+        let err: Result<(), String> = if already_running {
+            Err("a task is already running".to_string())
+        } else {
+            Ok(())
+        };
+        assert_eq!(err, Err("a task is already running".to_string()));
+    }
+
+    #[test]
+    fn slot_releases_on_terminal_event() {
+        let sidecar = Sidecar::default();
+        sidecar.set_active(Some("task-1".to_string()));
+        assert!(sidecar.active().is_some());
+
+        // A terminal event (session-completed / session-failed) clears the slot,
+        // letting the next run pass the guard.
+        sidecar.set_active(None);
+        assert!(
+            sidecar.active().is_none(),
+            "slot must be free after a terminal transition"
+        );
+    }
+
+    #[test]
+    fn active_is_the_last_claimed_task() {
+        let sidecar = Sidecar::default();
+        sidecar.set_active(Some("a".to_string()));
+        sidecar.set_active(Some("b".to_string()));
+        assert_eq!(sidecar.active().as_deref(), Some("b"));
+    }
+}
