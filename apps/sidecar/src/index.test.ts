@@ -1,0 +1,215 @@
+/// <reference types="bun" />
+import { describe, expect, mock, test } from 'bun:test';
+import type { NightcoreEvent, SurfaceCommand } from '@nightcore/contracts';
+import {
+  CommandLineBuffer,
+  createSidecar,
+  encodeEvent,
+  pumpCommands,
+  type SidecarManager,
+} from './index.js';
+
+/**
+ * No live Claude session is ever created here. We never import or instantiate
+ * `SessionManager`, never call `resolveConfig`, and never load the Claude Agent
+ * SDK — the sidecar drives a hand-written `StubManager` that only records the
+ * commands it receives and replays scripted events. Importing `./index.js` runs
+ * no `main()` because the live entrypoint is guarded by `import.meta.main`, which
+ * is false under the test runner. So: no model spawn, no token use, no cost.
+ */
+class StubManager implements SidecarManager {
+  readonly dispatched: SurfaceCommand[] = [];
+  private listener: ((event: NightcoreEvent) => void) | null = null;
+
+  on(listener: (event: NightcoreEvent) => void): () => void {
+    this.listener = listener;
+    return () => {
+      this.listener = null;
+    };
+  }
+
+  dispatch = mock(async (command: SurfaceCommand): Promise<void> => {
+    this.dispatched.push(command);
+  });
+
+  /** Simulate the engine emitting an event (no real session involved). */
+  emit(event: NightcoreEvent): void {
+    this.listener?.(event);
+  }
+}
+
+function utf8(text: string): Uint8Array {
+  return new TextEncoder().encode(text);
+}
+
+/** Build an async-iterable byte stream from a list of chunks (mimics stdin). */
+async function* streamOf(chunks: Uint8Array[]): AsyncIterable<Uint8Array> {
+  for (const chunk of chunks) yield chunk;
+}
+
+describe('encodeEvent', () => {
+  test('serializes one event to exactly one newline-terminated JSON line', () => {
+    const event: NightcoreEvent = {
+      type: 'assistant-delta',
+      sessionId: 1,
+      text: 'hello',
+      partial: true,
+    };
+    const line = encodeEvent(event);
+    expect(line.endsWith('\n')).toBe(true);
+    // Exactly one line: only the trailing newline, none embedded.
+    expect(line.trimEnd().includes('\n')).toBe(false);
+    expect(JSON.parse(line)).toEqual(event);
+  });
+});
+
+describe('CommandLineBuffer', () => {
+  test('splits multiple commands on newlines', () => {
+    const buffer = new CommandLineBuffer();
+    const lines = buffer.push(utf8('{"a":1}\n{"b":2}\n'));
+    expect(lines).toEqual(['{"a":1}', '{"b":2}']);
+  });
+
+  test('reassembles a command split across chunks', () => {
+    const buffer = new CommandLineBuffer();
+    expect(buffer.push(utf8('{"type":"inter'))).toEqual([]);
+    expect(buffer.push(utf8('rupt","sessionId":3}\n'))).toEqual([
+      '{"type":"interrupt","sessionId":3}',
+    ]);
+  });
+
+  test('skips blank and whitespace-only lines', () => {
+    const buffer = new CommandLineBuffer();
+    expect(buffer.push(utf8('\n  \n{"x":1}\n'))).toEqual(['{"x":1}']);
+  });
+
+  test('holds an unterminated trailing line until its newline arrives', () => {
+    const buffer = new CommandLineBuffer();
+    expect(buffer.push(utf8('{"partial":true}'))).toEqual([]);
+    expect(buffer.push(utf8('\n'))).toEqual(['{"partial":true}']);
+  });
+
+  test('does not corrupt a multibyte char split across chunks', () => {
+    const buffer = new CommandLineBuffer();
+    const bytes = utf8('{"t":"€"}\n'); // € is 3 bytes
+    const splitAt = 5;
+    expect(buffer.push(bytes.slice(0, splitAt))).toEqual([]);
+    const [line] = buffer.push(bytes.slice(splitAt));
+    expect(JSON.parse(line!)).toEqual({ t: '€' });
+  });
+});
+
+describe('createSidecar — event sink', () => {
+  test('every emitted event is framed to one stdout line', () => {
+    const manager = new StubManager();
+    const lines: string[] = [];
+    createSidecar(manager, (line) => lines.push(line));
+
+    const events: NightcoreEvent[] = [
+      { type: 'assistant-delta', sessionId: 1, text: 'hi', partial: true },
+      {
+        type: 'session-completed',
+        sessionId: 1,
+        result: 'done',
+        costUsd: 0.01,
+        numTurns: 1,
+        durationMs: 5,
+        usage: {
+          inputTokens: 1,
+          outputTokens: 1,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+        },
+      },
+    ];
+    for (const event of events) manager.emit(event);
+
+    expect(lines).toHaveLength(2);
+    for (const [i, line] of lines.entries()) {
+      expect(line.endsWith('\n')).toBe(true);
+      expect(line.trimEnd().includes('\n')).toBe(false);
+      expect(JSON.parse(line)).toEqual(events[i]);
+    }
+  });
+
+  test('auto-denies a permission request without human input', () => {
+    const manager = new StubManager();
+    const lines: string[] = [];
+    createSidecar(manager, (line) => lines.push(line));
+
+    manager.emit({
+      type: 'permission-required',
+      sessionId: 7,
+      requestId: 'req-1',
+      toolName: 'shell',
+      input: { command: 'rm -rf /' },
+    });
+
+    // The event is still forwarded to the core...
+    expect(lines).toHaveLength(1);
+    // ...and a deny decision is dispatched straight back, no prompt.
+    expect(manager.dispatched).toEqual([
+      {
+        type: 'approve-permission',
+        sessionId: 7,
+        requestId: 'req-1',
+        decision: { behavior: 'deny', message: expect.any(String) },
+      },
+    ]);
+  });
+});
+
+describe('createSidecar — command dispatch', () => {
+  test('parses a valid NDJSON command and dispatches it', () => {
+    const manager = new StubManager();
+    const { handleLine } = createSidecar(manager, () => {});
+    handleLine('{"type":"start-session","prompt":"build it"}');
+    expect(manager.dispatched).toEqual([
+      { type: 'start-session', prompt: 'build it' },
+    ]);
+  });
+
+  test('a malformed line is reported and never dispatched or thrown', () => {
+    const manager = new StubManager();
+    const errors: string[] = [];
+    const { handleLine } = createSidecar(manager, () => {}, (m) =>
+      errors.push(m),
+    );
+
+    expect(() => handleLine('{ not json')).not.toThrow();
+    expect(manager.dispatched).toEqual([]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('bad command json');
+  });
+
+  test('a bad line does not stop later valid commands', () => {
+    const manager = new StubManager();
+    const { handleLine } = createSidecar(manager, () => {}, () => {});
+    handleLine('garbage');
+    handleLine('{"type":"interrupt","sessionId":2}');
+    expect(manager.dispatched).toEqual([
+      { type: 'interrupt', sessionId: 2 },
+    ]);
+  });
+});
+
+describe('pumpCommands — end-to-end framing over a stdin stream', () => {
+  test('frames commands across chunk boundaries and dispatches each once', async () => {
+    const manager = new StubManager();
+    const { handleLine } = createSidecar(manager, () => {});
+
+    await pumpCommands(
+      streamOf([
+        utf8('{"type":"start-session",'),
+        utf8('"prompt":"a"}\n{"type":"inter'),
+        utf8('rupt","sessionId":1}\n'),
+      ]),
+      handleLine,
+    );
+
+    expect(manager.dispatched).toEqual([
+      { type: 'start-session', prompt: 'a' },
+      { type: 'interrupt', sessionId: 1 },
+    ]);
+  });
+});
