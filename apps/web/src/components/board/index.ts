@@ -1,4 +1,5 @@
 export { Board } from './Board';
+export type { BreakerInfo } from './Board';
 export { Column } from './Column';
 export { TaskCard } from './TaskCard';
 export { TaskDetail } from './TaskDetail';

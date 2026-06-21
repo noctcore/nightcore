@@ -1,14 +1,15 @@
 import {
   AgentsIcon,
+  AlertIcon,
   BoltIcon,
   BranchIcon,
+  CloseIcon,
   Kbd,
   PlusIcon,
   SearchIcon,
 } from '@/components/ui';
-import type { CardStyle } from '../TaskCard';
 import { Column } from '../Column';
-import { useBoardView } from './Board.hooks';
+import { useBoardView, useBreakerBanner } from './Board.hooks';
 import type { BoardProps } from './Board.types';
 
 const EMPTY_TEXT: Record<string, string> = {
@@ -19,21 +20,18 @@ const EMPTY_TEXT: Record<string, string> = {
   failed: 'No failures',
 };
 
-const CARD_STYLES: [value: CardStyle, label: string][] = [
-  ['glow', 'Glow'],
-  ['flat', 'Flat'],
-  ['outline', 'Outline'],
-];
-
 /** The Kanban board: a header (title + count chip, project path/branch subtitle,
- *  search, the M2 concurrency slider + Auto Mode toggle, and the card-style
- *  switcher), over the five columns. Search and card-style live in the board's
- *  view hook; the M2 controls are visible-but-disabled and roadmap-badged. */
+ *  search, the live concurrency slider + Auto Mode toggle) over the five columns,
+ *  plus a circuit-breaker Resume banner when the autonomous loop has paused after
+ *  consecutive failures. Search lives in the board's view hook; the loop state
+ *  and bridge actions are owned by the shell and passed down. */
 export function Board({
   tasks,
   projectPath,
   projectBranch,
   concurrency,
+  autoMode,
+  breaker,
   selectedId,
   logCounts,
   onSelect,
@@ -42,9 +40,12 @@ export function Board({
   onCancel,
   onDelete,
   onClearColumn,
+  onToggleAutoMode,
+  onConcurrencyChange,
+  onResume,
 }: BoardProps) {
-  const { search, setSearch, cardStyle, setCardStyle, columns, blockedIds } =
-    useBoardView(tasks);
+  const { search, setSearch, columns, blockedIds } = useBoardView(tasks);
+  const banner = useBreakerBanner(breaker);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -71,37 +72,47 @@ export function Board({
 
           <div className="ml-auto flex items-center gap-2.5">
             <div
-              title="Max parallel runs (M2)"
-              className="relative flex items-center gap-2.5 rounded-[9px] border border-border bg-white/[0.02] px-3 py-1.5 opacity-60"
+              title="Max parallel runs"
+              className="flex items-center gap-2.5 rounded-[9px] border border-border bg-white/[0.02] px-3 py-1.5"
             >
               <AgentsIcon size={15} className="text-muted-foreground" />
               <input
                 type="range"
+                aria-label="Max concurrency"
                 min={1}
                 max={6}
                 value={concurrency}
-                disabled
-                readOnly
+                onChange={(e) => onConcurrencyChange(Number(e.target.value))}
                 className="w-[84px] accent-primary"
               />
               <span className="w-2.5 font-mono text-xs font-semibold">{concurrency}</span>
-              <span className="absolute -top-1.5 right-2 rounded bg-primary/[0.18] px-1 font-mono text-[8px] tracking-[0.05em] text-primary">
-                M2
-              </span>
             </div>
             <button
               type="button"
-              disabled
-              title="Auto Mode arrives in M2"
-              className="relative flex items-center gap-2.5 rounded-[9px] border border-border bg-white/[0.02] px-3.5 py-1.5 text-[12.5px] font-semibold text-foreground opacity-60"
+              onClick={onToggleAutoMode}
+              aria-pressed={autoMode}
+              title={autoMode ? 'Stop Auto Mode' : 'Start Auto Mode'}
+              className={`flex items-center gap-2.5 rounded-[9px] border px-3.5 py-1.5 text-[12.5px] font-semibold text-foreground transition-colors ${
+                autoMode
+                  ? 'border-primary/55 bg-primary/[0.12]'
+                  : 'border-border bg-white/[0.02] hover:border-white/20'
+              }`}
             >
-              <BoltIcon size={14} className="text-muted-foreground" />
+              <BoltIcon
+                size={14}
+                className={autoMode ? 'text-primary' : 'text-muted-foreground'}
+              />
               <span>Auto Mode</span>
-              <span className="relative h-[17px] w-[30px] rounded-full bg-white/[0.12]">
-                <span className="absolute left-0.5 top-0.5 h-[13px] w-[13px] rounded-full bg-white" />
-              </span>
-              <span className="absolute -top-1.5 right-2 rounded bg-primary/[0.18] px-1 font-mono text-[8px] text-primary">
-                M2
+              <span
+                className={`relative h-[17px] w-[30px] rounded-full transition-colors ${
+                  autoMode ? 'bg-primary' : 'bg-white/[0.12]'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-[13px] w-[13px] rounded-full bg-white transition-transform ${
+                    autoMode ? 'left-[14px]' : 'left-0.5'
+                  }`}
+                />
               </span>
             </button>
             <button
@@ -126,30 +137,33 @@ export function Board({
               className="flex-1 bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground"
             />
           </div>
-          <div className="ml-auto flex items-center gap-2">
-            <span className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-muted-foreground/70">
-              Cards
-            </span>
-            <div className="flex gap-0.5 rounded-[9px] border border-border bg-black/25 p-0.5">
-              {CARD_STYLES.map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setCardStyle(value)}
-                  title={`${label} cards`}
-                  className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-                    cardStyle === value
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
+
+      {banner.visible && breaker !== null && (
+        <div className="flex items-center gap-3 border-b border-destructive/40 bg-destructive/[0.12] px-[22px] py-2.5">
+          <AlertIcon size={15} className="shrink-0 text-destructive" />
+          <span className="text-[12.5px] text-foreground">
+            Auto Mode paused after {breaker.failureThreshold} consecutive failures.
+          </span>
+          <button
+            type="button"
+            onClick={onResume}
+            className="ml-auto flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1 text-[12px] font-semibold text-primary-foreground transition-[filter] hover:brightness-110"
+          >
+            <BoltIcon size={13} />
+            Resume
+          </button>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={banner.dismiss}
+            className="flex items-center justify-center rounded-lg p-1 text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground"
+          >
+            <CloseIcon size={14} />
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-1 gap-3.5 overflow-x-auto overflow-y-hidden px-[22px] py-4">
         {columns.map(({ def, tasks: colTasks }) => (
@@ -161,7 +175,6 @@ export function Board({
             badge={def.badge}
             clearable={def.clearable}
             selectedId={selectedId}
-            cardStyle={cardStyle}
             blockedIds={blockedIds}
             logCounts={logCounts}
             emptyText={search.trim() !== '' ? 'No matches' : EMPTY_TEXT[def.key]}

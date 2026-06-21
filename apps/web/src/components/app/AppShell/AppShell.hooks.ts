@@ -13,19 +13,30 @@ import {
   isTauri,
   listProjects,
   listTasks,
+  onLoopEvent,
   onProjectEvent,
   onSessionEvent,
   onTaskEvent,
+  resumeAutoLoop,
   runTask,
   setActiveProject,
+  setMaxConcurrency,
+  startAutoLoop,
+  stopAutoLoop,
   updateSettings,
+  type LoopEnvelope,
   type Project,
   type Settings,
   type SettingsPatch,
   type Task,
   type TaskStatus,
 } from '@/lib/bridge';
-import { EMPTY_STREAM, foldSession, type SessionStream } from '@/components/board';
+import {
+  EMPTY_STREAM,
+  foldSession,
+  type BreakerInfo,
+  type SessionStream,
+} from '@/components/board';
 import type { AppView } from './AppShell.types';
 
 /** A brief boot splash on first mount, per the design. Skipped outside Tauri so
@@ -138,6 +149,54 @@ function useSettingsData() {
   return { settings, update };
 }
 
+/** Live autonomous-loop state, derived from `nc:loop`. The board's Auto Mode
+ *  toggle and concurrency slider reflect this; the persisted concurrency is the
+ *  first-load fallback until the first loop event arrives. */
+function useAutoLoop(
+  fallbackConcurrency: number,
+  persistConcurrency: (n: number) => void,
+) {
+  const [loop, setLoop] = useState<LoopEnvelope | null>(null);
+
+  useEffect(() => {
+    const unlisten = onLoopEvent(setLoop);
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  const autoMode = loop?.state === 'running';
+  const concurrency = loop?.maxConcurrency ?? fallbackConcurrency;
+  const breaker = useMemo<BreakerInfo | null>(() => {
+    if (loop?.state !== 'paused') return null;
+    if (loop.reason === undefined || !loop.reason.toLowerCase().includes('circuit')) {
+      return null;
+    }
+    return { failureThreshold: loop.failureThreshold };
+  }, [loop]);
+
+  const toggleAutoMode = useCallback(() => {
+    const fn = loop?.state === 'running' ? stopAutoLoop : startAutoLoop;
+    void fn().catch((err) => console.error('auto loop toggle failed', err));
+  }, [loop]);
+
+  const changeConcurrency = useCallback(
+    (n: number) => {
+      void setMaxConcurrency(n).catch((err) =>
+        console.error('set_max_concurrency failed', err),
+      );
+      persistConcurrency(n);
+    },
+    [persistConcurrency],
+  );
+
+  const resume = useCallback(() => {
+    void resumeAutoLoop().catch((err) => console.error('resume_auto_loop failed', err));
+  }, []);
+
+  return { autoMode, concurrency, breaker, toggleAutoMode, changeConcurrency, resume };
+}
+
 /** Git-repo status for the folder chosen in the New Project dialog. */
 type GitState = 'unknown' | 'checking' | 'valid' | 'invalid';
 
@@ -243,6 +302,7 @@ export interface AppShellState {
   routing: ReturnType<typeof useRouting>;
   registry: ReturnType<typeof useProjectRegistry>;
   settings: ReturnType<typeof useSettingsData>;
+  autoLoop: ReturnType<typeof useAutoLoop>;
   newProject: ReturnType<typeof useNewProjectFlow>;
   board: ReturnType<typeof useBoard> & {
     anyRunning: boolean;
@@ -265,6 +325,14 @@ export function useAppShell(): AppShellState {
   const routing = useRouting();
   const registry = useProjectRegistry();
   const settings = useSettingsData();
+  const persistConcurrency = useCallback(
+    (n: number) => settings.update({ maxConcurrency: n }),
+    [settings],
+  );
+  const autoLoop = useAutoLoop(
+    settings.settings?.maxConcurrency ?? 3,
+    persistConcurrency,
+  );
   const newProject = useNewProjectFlow(routing.closeNewProject);
   const board = useBoard();
   const { tasks, setTasks, streams, setStreams, selectedId, setSelectedId } = board;
@@ -343,6 +411,7 @@ export function useAppShell(): AppShellState {
     routing,
     registry,
     settings,
+    autoLoop,
     newProject,
     board: {
       ...board,

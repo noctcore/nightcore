@@ -391,12 +391,11 @@ function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardProps[] {
         {
           icon: <AgentsIcon size={18} />,
           title: 'Parallelism',
-          subtitle: 'How many agents run at the same time. Enforcement lands in M2.',
-          badge: 'M2',
+          subtitle: 'How many agents run at the same time. Resizes the live pool.',
           rows: [
             {
               label: 'Max concurrency',
-              hint: 'Parallel agent runs (persists; not yet enforced)',
+              hint: 'Parallel agent runs',
               control: (
                 <Segmented
                   options={CONCURRENCY}

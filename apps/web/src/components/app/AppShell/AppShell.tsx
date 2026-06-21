@@ -28,7 +28,7 @@ const MODELS = ['Opus 4.8', 'Sonnet 4.8', 'Haiku 4.5'];
  *  and TaskDetail overlays. All state lives in `useAppShell`; this is a thin
  *  presentational host wiring views to the live registry, settings, and board. */
 export function AppShell() {
-  const { routing, registry, settings, newProject, board, showSplash, isTauri } =
+  const { routing, registry, settings, autoLoop, newProject, board, showSplash, isTauri } =
     useAppShell();
   const { view, switcherOpen, collapsed, newProjectOpen } = routing;
   const { projects, active } = registry;
@@ -89,7 +89,9 @@ export function AppShell() {
                   tasks={tasks}
                   projectPath={active.path}
                   projectBranch={active.branch}
-                  concurrency={settings.settings?.maxConcurrency ?? 3}
+                  concurrency={autoLoop.concurrency}
+                  autoMode={autoLoop.autoMode}
+                  breaker={autoLoop.breaker}
                   selectedId={selectedId}
                   logCounts={board.logCounts}
                   onSelect={setSelectedId}
@@ -98,6 +100,9 @@ export function AppShell() {
                   onCancel={board.handleCancel}
                   onDelete={board.handleDelete}
                   onClearColumn={board.handleClearColumn}
+                  onToggleAutoMode={autoLoop.toggleAutoMode}
+                  onConcurrencyChange={autoLoop.changeConcurrency}
+                  onResume={autoLoop.resume}
                 />
               )}
             </div>

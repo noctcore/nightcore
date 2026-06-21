@@ -5,7 +5,8 @@ import * as stories from './Board.stories';
 import { computeBlockedIds, groupTasksByColumn, matchesQuery } from './Board.hooks';
 import { BLOCKED_TASK, TASKS_BY_STATUS } from '../_fixtures';
 
-const { Empty, Populated } = composeStories(stories);
+const { Empty, Populated, AutoModeOn, CircuitBreakerPaused } =
+  composeStories(stories);
 
 test('renders all five board columns, including the Verified label', async () => {
   const screen = render(<Empty />);
@@ -30,6 +31,23 @@ test('renders the project path and branch in the header subtitle', async () => {
   const screen = render(<Populated />);
   await expect.element(screen.getByText('~/dev/nightcore')).toBeInTheDocument();
   await expect.element(screen.getByText('main')).toBeInTheDocument();
+});
+
+test('reflects the live loop state on the Auto Mode toggle', async () => {
+  const screen = render(<AutoModeOn />);
+  await expect
+    .element(screen.getByRole('button', { name: /auto mode/i }))
+    .toHaveAttribute('aria-pressed', 'true');
+});
+
+test('surfaces the circuit-breaker Resume banner when the loop has paused', async () => {
+  const screen = render(<CircuitBreakerPaused />);
+  await expect
+    .element(screen.getByText(/paused after 3 consecutive failures/i))
+    .toBeInTheDocument();
+  await expect
+    .element(screen.getByRole('button', { name: /resume/i }))
+    .toBeInTheDocument();
 });
 
 test('groupTasksByColumn places each task in its status column, newest first', () => {

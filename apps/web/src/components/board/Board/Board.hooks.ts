@@ -1,7 +1,7 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Task } from '@/lib/bridge';
 import { COLUMNS, type ColumnDef } from '../status';
-import type { CardStyle } from '../TaskCard';
+import type { BreakerInfo } from './Board.types';
 
 export interface BoardColumn {
   def: ColumnDef;
@@ -47,17 +47,14 @@ export function matchesQuery(task: Task, query: string): boolean {
 export interface BoardViewState {
   search: string;
   setSearch: (value: string) => void;
-  cardStyle: CardStyle;
-  setCardStyle: (style: CardStyle) => void;
   columns: BoardColumn[];
   blockedIds: Set<string>;
 }
 
-/** Board view state: the search query and card-style toggle, plus the derived
- *  filtered/grouped columns and blocked-task set. */
+/** Board view state: the search query plus the derived filtered/grouped columns
+ *  and blocked-task set. */
 export function useBoardView(tasks: Task[]): BoardViewState {
   const [search, setSearch] = useState('');
-  const [cardStyle, setCardStyle] = useState<CardStyle>('glow');
 
   const blockedIds = useMemo(() => computeBlockedIds(tasks), [tasks]);
   const columns = useMemo(() => {
@@ -68,9 +65,25 @@ export function useBoardView(tasks: Task[]): BoardViewState {
   return {
     search,
     setSearch: useCallback((value: string) => setSearch(value), []),
-    cardStyle,
-    setCardStyle: useCallback((style: CardStyle) => setCardStyle(style), []),
     columns,
     blockedIds,
+  };
+}
+
+/** Whether to show the circuit-breaker banner: visible while a breaker is set
+ *  and not locally dismissed, and re-shown when a fresh breaker arrives. */
+export function useBreakerBanner(breaker: BreakerInfo | null): {
+  visible: boolean;
+  dismiss: () => void;
+} {
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    if (breaker === null) setDismissed(false);
+  }, [breaker]);
+
+  return {
+    visible: breaker !== null && !dismissed,
+    dismiss: useCallback(() => setDismissed(true), []),
   };
 }
