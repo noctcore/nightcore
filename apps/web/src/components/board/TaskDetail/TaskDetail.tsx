@@ -1,24 +1,33 @@
 import {
+  BranchIcon,
   Button,
   CheckIcon,
   CloseIcon,
+  CommitIcon,
   IconButton,
   RefineIcon,
   TerminalIcon,
 } from '@/components/ui';
-import { formatCost, STATUS_LABEL, STATUS_TEXT } from '../status';
+import { formatCost, KIND_LABEL, STATUS_LABEL, STATUS_TEXT } from '../status';
 import { TaskStatusDot } from '../TaskStatusDot';
 import { PermissionPrompt } from '../PermissionPrompt';
-import { deriveTaskDetailView } from './TaskDetail.hooks';
+import { KindPicker } from '../KindPicker';
+import { ReviewPanel } from '../ReviewPanel';
+import { GauntletResults } from '../GauntletResults';
+import { canMerge, deriveTaskDetailView } from './TaskDetail.hooks';
 import type { TaskDetailProps } from './TaskDetail.types';
 
-/** The logs / detail drawer — title, status, plan, parked permission prompts,
- *  transcript, and the per-status run / approval controls. */
+/** The logs / detail drawer — title, status, kind, plan, parked permission
+ *  prompts, the reviewer verdict + verification controls (M4), the readiness
+ *  gauntlet + verified-gated merge, the transcript, and the per-status run /
+ *  approval controls. */
 export function TaskDetail({
   task,
   stream,
   anyRunning,
   prompts = [],
+  gauntlet = null,
+  gauntletRunning = false,
   onClose,
   onRun,
   onCancel,
@@ -27,9 +36,26 @@ export function TaskDetail({
   onApprove,
   onReject,
   onRefine,
+  onChangeKind,
+  onAcceptReview,
+  onRejectReview,
+  onRerunVerification,
+  onRunGauntlet,
+  onMerge,
+  onCommit,
 }: TaskDetailProps) {
-  const { isRunning, cost, error, answer, tools } = deriveTaskDetailView(task, stream);
-  const waiting = task.status === 'waiting_approval';
+  const {
+    isRunning,
+    cost,
+    error,
+    answer,
+    tools,
+    reviewParked,
+    planParked,
+    kindEditable,
+    isVerifiedColumn,
+  } = deriveTaskDetailView(task, stream);
+  const mergeable = canMerge(task, gauntlet);
 
   return (
     <aside className="nc-drawer-enter flex h-full w-[28rem] shrink-0 flex-col border-l border-border bg-popover">
@@ -72,7 +98,24 @@ export function TaskDetail({
           </div>
         )}
 
-        {waiting && task.plan !== null && (
+        <section>
+          <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+            Kind
+          </h3>
+          {kindEditable && onChangeKind !== undefined ? (
+            <KindPicker
+              compact
+              value={task.kind}
+              onChange={(kind) => onChangeKind(task.id, kind)}
+            />
+          ) : (
+            <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+              {KIND_LABEL[task.kind]}
+            </span>
+          )}
+        </section>
+
+        {planParked && task.plan !== null && (
           <section>
             <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
               Proposed plan
@@ -81,6 +124,21 @@ export function TaskDetail({
               {task.plan}
             </pre>
           </section>
+        )}
+
+        <ReviewPanel
+          task={task}
+          onAccept={onAcceptReview}
+          onReject={onRejectReview}
+          onRerun={onRerunVerification}
+        />
+
+        {isVerifiedColumn && onRunGauntlet !== undefined && (
+          <GauntletResults
+            result={gauntlet}
+            running={gauntletRunning}
+            onRun={() => onRunGauntlet(task.id)}
+          />
         )}
 
         {task.description.trim().length > 0 && (
@@ -137,7 +195,7 @@ export function TaskDetail({
       </div>
 
       <footer className="flex items-center gap-2 border-t border-border bg-card px-4 py-3">
-        {waiting ? (
+        {planParked ? (
           <>
             <Button onClick={() => onApprove?.(task.id)}>
               <CheckIcon size={14} />
@@ -152,9 +210,49 @@ export function TaskDetail({
               Reject
             </Button>
           </>
+        ) : reviewParked ? (
+          <>
+            <span className="flex-1 text-xs text-muted-foreground">
+              Resolve the reviewer verdict above.
+            </span>
+            <Button variant="ghost" onClick={() => onDelete(task.id)}>
+              Delete
+            </Button>
+          </>
+        ) : isVerifiedColumn ? (
+          <>
+            {task.merged ? (
+              <Button disabled title="Branch merged into the base">
+                <BranchIcon size={14} />
+                Merged
+              </Button>
+            ) : task.committed ? (
+              <Button
+                onClick={() => onMerge?.(task.id)}
+                disabled={!mergeable}
+                title={
+                  mergeable
+                    ? undefined
+                    : 'Merge needs a verified task and a passing gauntlet — run the checks first'
+                }
+              >
+                <BranchIcon size={14} />
+                Merge
+              </Button>
+            ) : (
+              <Button onClick={() => onCommit?.(task.id)}>
+                <CommitIcon size={14} />
+                Commit
+              </Button>
+            )}
+            <span className="flex-1" />
+            <Button variant="ghost" onClick={() => onDelete(task.id)}>
+              Delete
+            </Button>
+          </>
         ) : (
           <>
-            {isRunning ? (
+            {isRunning || task.status === 'verifying' ? (
               <Button variant="danger" onClick={() => onCancel(task.id)}>
                 Cancel run
               </Button>
@@ -168,7 +266,7 @@ export function TaskDetail({
               </Button>
             )}
             <span className="flex-1" />
-            {!isRunning && (
+            {!isRunning && task.status !== 'verifying' && (
               <Button variant="ghost" onClick={() => onDelete(task.id)}>
                 Delete
               </Button>
