@@ -1,5 +1,6 @@
 import { Button, CloseIcon, IconButton, Kbd } from '@/components/ui';
 import { KindPicker } from '../KindPicker';
+import { WorkModePicker } from '../WorkModePicker';
 import { useNewTaskForm } from './NewTaskForm.hooks';
 import type { NewTaskFormProps } from './NewTaskForm.types';
 
@@ -12,11 +13,13 @@ export function NewTaskForm({ onCreate, onClose }: NewTaskFormProps) {
     title,
     description,
     kind,
+    runMode,
     busy,
     canSubmit,
     setTitle,
     setDescription,
     setKind,
+    setRunMode,
     submit,
     onTitleKeyDown,
     onDescKeyDown,
@@ -65,6 +68,12 @@ export function NewTaskForm({ onCreate, onClose }: NewTaskFormProps) {
               Kind
             </span>
             <KindPicker value={kind} onChange={setKind} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+              Run mode
+            </span>
+            <WorkModePicker value={runMode} onChange={setRunMode} />
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-border bg-black/15 px-5 py-3.5">
