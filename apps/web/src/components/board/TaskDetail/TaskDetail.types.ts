@@ -1,4 +1,4 @@
-import type { GauntletResult, PermissionPrompt, Task, TaskKind } from '@/lib/bridge';
+import type { GauntletResult, PermissionPrompt, RunMode, Task, TaskKind } from '@/lib/bridge';
 import type { SessionStream } from '../session-stream';
 
 export interface TaskDetailProps {
@@ -24,6 +24,8 @@ export interface TaskDetailProps {
   onRefine?: (id: string) => void;
   /** Edit the task's kind (M4) — only when the task hasn't run yet. */
   onChangeKind?: (id: string, kind: TaskKind) => void;
+  /** Edit the task's run mode (M4.6) — only when the task hasn't run yet. */
+  onChangeRunMode?: (id: string, runMode: RunMode) => void;
   /** Verification-approval actions for a review-parked `waiting_approval` (M4). */
   onAcceptReview?: (id: string) => void;
   onRejectReview?: (id: string) => void;

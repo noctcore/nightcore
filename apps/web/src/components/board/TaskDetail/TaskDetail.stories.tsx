@@ -28,6 +28,7 @@ const meta = {
     onReject: fn(),
     onRefine: fn(),
     onChangeKind: fn(),
+    onChangeRunMode: fn(),
     onAcceptReview: fn(),
     onRejectReview: fn(),
     onRerunVerification: fn(),
@@ -77,6 +78,7 @@ export const Done: Story = {
       summary: 'Added the auth middleware and covered it with tests.',
       costUsd: 0.42,
       branch: 'nc/auth-guard',
+      runMode: 'worktree',
       verified: true,
       committed: true,
       review: SAMPLE_REVIEW_PASS,
@@ -94,11 +96,31 @@ export const VerifiedMergeGated: Story = {
       status: 'done',
       title: 'Wire up auth guard',
       branch: 'nc/auth-guard',
+      runMode: 'worktree',
       verified: true,
       committed: true,
       review: SAMPLE_REVIEW_PASS,
     }),
     gauntlet: null,
+    stream: undefined,
+  },
+};
+
+/** A main-mode verified task — it edits the project tree in place, so Merge is
+ *  replaced by a disabled "Committed" state (`merge_task` refuses main mode). */
+export const MainModeCommitted: Story = {
+  args: {
+    task: makeTask({
+      id: 't-main',
+      status: 'done',
+      title: 'Tidy the README',
+      runMode: 'main',
+      branch: null,
+      verified: true,
+      committed: true,
+      review: SAMPLE_REVIEW_PASS,
+    }),
+    gauntlet: GAUNTLET_PASSED,
     stream: undefined,
   },
 };
@@ -154,6 +176,7 @@ export const GauntletFailed: Story = {
       status: 'done',
       title: 'Wire up auth guard',
       branch: 'nc/auth-guard',
+      runMode: 'worktree',
       verified: true,
       committed: true,
       review: SAMPLE_REVIEW_PASS,

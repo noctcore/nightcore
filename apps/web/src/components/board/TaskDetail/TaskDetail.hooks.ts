@@ -44,8 +44,10 @@ export function deriveTaskDetailView(
 }
 
 /** Whether Merge is permitted: the pre-merge gate requires a verified task AND a
- *  passing gauntlet (M4 §D). Until the gauntlet has been run (`null`), Merge stays
- *  disabled — the user must run the checks first. */
+ *  passing gauntlet (M4 §D). A `main`-mode task (M4.6) edits the project tree in
+ *  place with no branch, so it can never merge — `merge_task` refuses it. Until
+ *  the gauntlet has been run (`null`), Merge stays disabled — run the checks first. */
 export function canMerge(task: Task, gauntlet: GauntletResult | null | undefined): boolean {
+  if (task.runMode === 'main') return false;
   return task.verified && gauntlet !== null && gauntlet !== undefined && gauntlet.passed;
 }

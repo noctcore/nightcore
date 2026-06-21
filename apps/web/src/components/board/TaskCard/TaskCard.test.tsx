@@ -3,7 +3,8 @@ import { render } from 'vitest-browser-react';
 import { expect, test, vi } from 'vitest';
 import * as stories from './TaskCard.stories';
 
-const { Failed, Done, Blocked, Running, Verifying } = composeStories(stories);
+const { Failed, Done, Blocked, Running, Verifying, MainMode, MainModeCommitted } =
+  composeStories(stories);
 
 test('shows the reviewing chip and a cancel control while verifying', async () => {
   const screen = render(<Verifying />);
@@ -53,4 +54,17 @@ test('calls onCancel from the running card', async () => {
 test('renders the branch chip from task.branch', async () => {
   const screen = render(<Done />);
   await expect.element(screen.getByText('nc/auth-guard')).toBeInTheDocument();
+});
+
+test('renders a "main" chip for a main-mode task instead of a branch', async () => {
+  const screen = render(<MainMode />);
+  await expect.element(screen.getByText('main')).toBeInTheDocument();
+});
+
+test('suppresses Merge for a committed main-mode task', async () => {
+  const screen = render(<MainModeCommitted />);
+  const committed = screen.getByRole('button', { name: /committed/i });
+  await expect.element(committed).toBeDisabled();
+  expect(screen.container.querySelector('button')).not.toBeNull();
+  await expect.element(screen.getByText('Committed')).toBeInTheDocument();
 });

@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
 import { TaskCard } from './TaskCard';
-import { BLOCKED_TASK, TASKS_BY_STATUS } from '../_fixtures';
+import { BLOCKED_TASK, MAIN_MODE_TASK, TASKS_BY_STATUS } from '../_fixtures';
 
 const meta = {
   title: 'Board/TaskCard',
@@ -89,6 +89,16 @@ export const Merged: Story = {
 /** A verified task whose merge hit a conflict — surfaces the conflict chip. */
 export const MergeConflict: Story = {
   args: { task: { ...TASKS_BY_STATUS.done, committed: true, conflict: true } },
+};
+
+/** A main-mode task — shows the "main" chip and no branch (it edits in place). */
+export const MainMode: Story = {
+  args: { task: { ...MAIN_MODE_TASK, committed: false } },
+};
+
+/** A committed main-mode task — Merge is suppressed for a disabled "Committed". */
+export const MainModeCommitted: Story = {
+  args: { task: MAIN_MODE_TASK },
 };
 
 /** Play test: Approve on a waiting card invokes onApprove(id). */

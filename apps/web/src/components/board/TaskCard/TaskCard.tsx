@@ -1,5 +1,6 @@
 import {
   AlertIcon,
+  BoardIcon,
   BranchIcon,
   CheckIcon,
   ClockIcon,
@@ -76,13 +77,17 @@ export function TaskCard({
   const verifying = task.status === 'verifying';
   const elapsed = useElapsed(task.updatedAt, running || verifying);
   const branch = task.branch;
-  const showBranch =
-    branch !== null &&
-    (running ||
-      verifying ||
-      task.status === 'waiting_approval' ||
-      task.status === 'done' ||
-      task.status === 'failed');
+  const mainMode = task.runMode === 'main';
+  const settled =
+    running ||
+    verifying ||
+    task.status === 'waiting_approval' ||
+    task.status === 'done' ||
+    task.status === 'failed';
+  const showBranch = branch !== null && settled;
+  // A main-mode task edits the project tree in place — surface a "main" chip
+  // (it has no branch) whenever a worktree task would show its branch chip.
+  const showMainChip = mainMode && settled;
 
   const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
   const pulse = needsApproval
@@ -153,6 +158,7 @@ export function TaskCard({
         )}
 
         {(showBranch ||
+          showMainChip ||
           blocked ||
           needsApproval ||
           verifying ||
@@ -163,6 +169,15 @@ export function TaskCard({
               <span className="flex items-center gap-1 rounded-md bg-white/[0.03] px-1.5 py-0.5 font-mono text-[9.5px] text-muted-foreground">
                 <BranchIcon size={11} />
                 {branch}
+              </span>
+            )}
+            {showMainChip && (
+              <span
+                className="flex items-center gap-1 rounded-md bg-white/[0.03] px-1.5 py-0.5 font-mono text-[9.5px] text-muted-foreground"
+                title="Runs on the project directory — no worktree"
+              >
+                <BoardIcon size={11} />
+                main
               </span>
             )}
             {verifying && (
@@ -281,6 +296,16 @@ export function TaskCard({
               >
                 <BranchIcon size={13} />
                 Merged
+              </button>
+            ) : task.committed && mainMode ? (
+              <button
+                type="button"
+                disabled
+                title="Main-mode tasks edit the project directly — nothing to merge"
+                className={`${ACTION_BASE} ${ACTION_DISABLED}`}
+              >
+                <CheckIcon size={13} />
+                Committed
               </button>
             ) : task.committed ? (
               <button

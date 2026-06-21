@@ -20,6 +20,7 @@ const {
   Done,
   VerifiedMergeGated,
   GauntletFailed,
+  MainModeCommitted,
 } = composeStories(stories);
 
 test('shows the plan and Approve / Refine / Reject for a waiting task', async () => {
@@ -105,12 +106,36 @@ test('disables Merge when the gauntlet failed', async () => {
 });
 
 test('canMerge gates on verified + a passing gauntlet', () => {
-  const verified = makeTask({ status: 'done', verified: true, committed: true });
+  const verified = makeTask({
+    status: 'done',
+    verified: true,
+    committed: true,
+    runMode: 'worktree',
+    branch: 'nc/x',
+  });
   expect(canMerge(verified, GAUNTLET_PASSED)).toBe(true);
   expect(canMerge(verified, GAUNTLET_FAILED)).toBe(false);
   expect(canMerge(verified, null)).toBe(false);
-  const unverified = makeTask({ status: 'done', verified: false });
+  const unverified = makeTask({ status: 'done', verified: false, runMode: 'worktree' });
   expect(canMerge(unverified, GAUNTLET_PASSED)).toBe(false);
+});
+
+test('replaces Merge with a disabled Committed state for a main-mode task', async () => {
+  const screen = render(<MainModeCommitted />);
+  const committed = screen.getByRole('button', { name: /committed/i });
+  await expect.element(committed).toBeDisabled();
+  expect(screen.container.querySelector('button[disabled]')).not.toBeNull();
+});
+
+test('canMerge refuses a main-mode task even when verified + passing', () => {
+  const mainTask = makeTask({
+    status: 'done',
+    verified: true,
+    committed: true,
+    runMode: 'main',
+    branch: null,
+  });
+  expect(canMerge(mainTask, GAUNTLET_PASSED)).toBe(false);
 });
 
 test('deriveTaskDetailView splits review-parked from plan-parked on task.review', () => {

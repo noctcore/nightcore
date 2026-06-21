@@ -8,10 +8,11 @@ import {
   RefineIcon,
   TerminalIcon,
 } from '@/components/ui';
-import { formatCost, KIND_LABEL, STATUS_LABEL, STATUS_TEXT } from '../status';
+import { formatCost, KIND_LABEL, RUN_MODE_LABEL, STATUS_LABEL, STATUS_TEXT } from '../status';
 import { TaskStatusDot } from '../TaskStatusDot';
 import { PermissionPrompt } from '../PermissionPrompt';
 import { KindPicker } from '../KindPicker';
+import { WorkModePicker } from '../WorkModePicker';
 import { ReviewPanel } from '../ReviewPanel';
 import { GauntletResults } from '../GauntletResults';
 import { canMerge, deriveTaskDetailView } from './TaskDetail.hooks';
@@ -37,6 +38,7 @@ export function TaskDetail({
   onReject,
   onRefine,
   onChangeKind,
+  onChangeRunMode,
   onAcceptReview,
   onRejectReview,
   onRerunVerification,
@@ -56,6 +58,7 @@ export function TaskDetail({
     isVerifiedColumn,
   } = deriveTaskDetailView(task, stream);
   const mergeable = canMerge(task, gauntlet);
+  const mainMode = task.runMode === 'main';
 
   return (
     <aside className="nc-drawer-enter flex h-full w-[28rem] shrink-0 flex-col border-l border-border bg-popover">
@@ -111,6 +114,22 @@ export function TaskDetail({
           ) : (
             <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
               {KIND_LABEL[task.kind]}
+            </span>
+          )}
+        </section>
+
+        <section>
+          <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+            Run mode
+          </h3>
+          {kindEditable && onChangeRunMode !== undefined ? (
+            <WorkModePicker
+              value={task.runMode}
+              onChange={(runMode) => onChangeRunMode(task.id, runMode)}
+            />
+          ) : (
+            <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+              {RUN_MODE_LABEL[task.runMode]}
             </span>
           )}
         </section>
@@ -225,6 +244,14 @@ export function TaskDetail({
               <Button disabled title="Branch merged into the base">
                 <BranchIcon size={14} />
                 Merged
+              </Button>
+            ) : task.committed && mainMode ? (
+              <Button
+                disabled
+                title="Main-mode tasks edit the project directly — nothing to merge"
+              >
+                <CheckIcon size={14} />
+                Committed
               </Button>
             ) : task.committed ? (
               <Button
