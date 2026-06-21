@@ -125,10 +125,21 @@ export class SessionRunner {
       permissionMode: this.cfg.permissionMode,
       includePartialMessages: true,
       canUseTool: this.permissions.canUseTool,
-      mcpServers: this.registry.mcpServers(),
+      // M4.7 §A2: native SDK tools only. The custom in-process `mcp__nightcore__*`
+      // server is no longer wired into sessions — the agent uses the SDK's native
+      // Read/Write/Edit/Bash/Grep/Glob (the Claude-Code mental model). The
+      // `ToolRegistry` is kept solely for risk metadata via `riskOf` (it still
+      // classifies native read-only tools as `safe`). `@nightcore/tools` /
+      // `@nightcore/mcp` stay in the tree for a later removal pass.
       hooks: this.hooks.hooks(),
       abortController: this.abort,
       ...(this.cfg.effort !== undefined ? { effort: this.cfg.effort } : {}),
+      // M4.7 §A1: the SDK ignores `permissionMode: 'bypassPermissions'` unless this
+      // safety flag is explicitly set. This is config (not a secret) — fine to log
+      // at debug. Bypass is the user's explicit choice for an autonomous studio.
+      ...(this.cfg.permissionMode === 'bypassPermissions'
+        ? { allowDangerouslySkipPermissions: true }
+        : {}),
       // M4 kind preset: an absent field leaves the SDK default in place, so a
       // `build` session (no preset overrides) is byte-identical to pre-M4.
       ...(this.cfg.appendSystemPrompt !== undefined
@@ -229,6 +240,15 @@ export class SessionRunner {
       cwd: this.cfg.cwd,
       executable: 'bun',
       stderr: (data) => this.logger?.debug('[sdk stderr]', data),
+      // M4.7 §A2 (settingSources reassessment): kept config-driven, NOT dropped.
+      // Nightcore's permission policy already governs every run regardless of this
+      // value — the harness `PermissionLayer` (`canUseTool`) plus the SDK
+      // `permissionMode` are what gate tool use; `settingSources` only loads
+      // skills/commands/CLAUDE.md, not permission rules. Dropping `'user'` would
+      // strip the user's own skills/commands (which the config contract wants to
+      // "just work") without strengthening governance, so it stays config-driven.
+      // `nightcoreAgents` is passed via `Options.agents` below, so it survives
+      // even when `settingSources` is `[]` (strict isolation).
       settingSources: this.cfg.settingSources,
       agents: nightcoreAgents,
       // The task/todo feature has no run-`Options` key in the pinned SDK; it is
