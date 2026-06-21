@@ -1,13 +1,20 @@
 import {
   Badge,
+  Button,
   Card,
   ClockIcon,
+  ConfirmDialog,
   DotsIcon,
+  EditIcon,
   FolderIcon,
   IconButton,
   IconTile,
+  Kbd,
+  Menu,
   StatusDot,
+  TrashIcon,
 } from '@/components/ui';
+import { useProjectCard } from './ProjectCard.hooks';
 import type { ProjectCardProps, ProjectSummary } from './ProjectCard.types';
 
 const STAT_TONE: Record<ProjectSummary['stats'][number]['tone'], string> = {
@@ -16,9 +23,16 @@ const STAT_TONE: Record<ProjectSummary['stats'][number]['tone'], string> = {
   warning: 'text-warning',
 };
 
+const INPUT_CLASS =
+  'w-full rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary';
+
 /** A single project card on the Projects view — repo identity, live badge,
- *  stat tiles, and last activity. */
-export function ProjectCard({ project, onOpen, onMenu }: ProjectCardProps) {
+ *  stat tiles, and last activity. The kebab opens a menu (Rename / Remove);
+ *  Remove is guarded by a confirmation that clarifies files on disk are kept. */
+export function ProjectCard({ project, onOpen, onRename, onDelete }: ProjectCardProps) {
+  const card = useProjectCard({ project, onRename, onDelete });
+  const hasMenu = onRename !== undefined || onDelete !== undefined;
+
   return (
     <Card className="p-[18px]">
       <div className="flex items-start gap-3">
@@ -49,10 +63,30 @@ export function ProjectCard({ project, onOpen, onMenu }: ProjectCardProps) {
             </span>
           </span>
         </button>
-        {onMenu !== undefined && (
-          <IconButton label="Project menu" onClick={() => onMenu(project.id)}>
-            <DotsIcon size={16} />
-          </IconButton>
+        {hasMenu && (
+          <Menu
+            label="Project menu"
+            trigger={
+              <IconButton label="Project menu">
+                <DotsIcon size={16} />
+              </IconButton>
+            }
+            items={[
+              ...(onRename !== undefined
+                ? [{ label: 'Rename', icon: <EditIcon size={14} />, onClick: card.openRename }]
+                : []),
+              ...(onDelete !== undefined
+                ? [
+                    {
+                      label: 'Remove',
+                      icon: <TrashIcon size={14} />,
+                      onClick: card.openRemove,
+                      destructive: true,
+                    },
+                  ]
+                : []),
+            ]}
+          />
         )}
       </div>
       <div className="mt-4 flex gap-1.5">
@@ -76,6 +110,92 @@ export function ProjectCard({ project, onOpen, onMenu }: ProjectCardProps) {
         <ClockIcon size={12} />
         <span>{project.activity}</span>
       </div>
+
+      {card.overlay === 'rename' && (
+        <RenameDialog
+          value={card.draftName}
+          canSubmit={card.canRename}
+          onChange={card.setDraftName}
+          onSubmit={card.submitRename}
+          onCancel={card.closeOverlay}
+        />
+      )}
+
+      {card.overlay === 'confirm-remove' && (
+        <ConfirmDialog
+          title="Remove project?"
+          message={
+            <>
+              <span className="font-medium text-foreground">{project.name}</span> will
+              be removed from Nightcore. This does not delete the repository or any
+              files on disk — only its entry here.
+            </>
+          }
+          confirmLabel="Remove"
+          destructive
+          onConfirm={card.confirmRemove}
+          onCancel={card.closeOverlay}
+        />
+      )}
     </Card>
+  );
+}
+
+interface RenameDialogProps {
+  value: string;
+  canSubmit: boolean;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}
+
+/** A small centered dialog to edit a project's display name. Esc / click-outside
+ *  cancel; ⌘↵ or the input's Enter submits. Mirrors the app's dialog chrome. */
+function RenameDialog({ value, canSubmit, onChange, onSubmit, onCancel }: RenameDialogProps) {
+  return (
+    <div
+      role="presentation"
+      className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm"
+      onClick={onCancel}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Rename project"
+        className="w-full max-w-sm overflow-hidden rounded-[14px] border border-border bg-popover shadow-2xl"
+        style={{ animation: 'nc-rise .22s cubic-bezier(.22,1,.36,1)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex flex-col gap-3 px-5 pb-4 pt-5">
+          <h2 className="text-base font-semibold text-foreground">Rename project</h2>
+          <input
+            autoFocus
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') onCancel();
+              if (e.key === 'Enter' && canSubmit) {
+                e.preventDefault();
+                onSubmit();
+              }
+            }}
+            placeholder="Project name"
+            aria-label="Project name"
+            className={INPUT_CLASS}
+          />
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-border bg-black/15 px-5 py-3.5">
+          <span className="mr-auto flex items-center gap-1 text-xs text-muted-foreground">
+            <Kbd>↵</Kbd> to save
+          </span>
+          <Button variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button onClick={onSubmit} disabled={!canSubmit}>
+            Save
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }

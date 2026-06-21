@@ -249,9 +249,10 @@ export interface AppInfo {
   repository: string;
 }
 
-/** `nc:project` payload: a registry change plus the full registry snapshot. */
+/** `nc:project` payload: a registry change plus the full registry snapshot.
+ *  `renamed` carries the updated project (name changed; active pointer unchanged). */
 export interface ProjectEnvelope {
-  type: 'created' | 'deleted' | 'activated';
+  type: 'created' | 'deleted' | 'activated' | 'renamed';
   project: Project | null;
   projects: Project[];
 }
@@ -518,6 +519,12 @@ export async function setActiveProject(id: string): Promise<Project> {
   return invoke<Project>('set_active_project', { id });
 }
 
+/** Rename a project in the registry (the repo on disk is left untouched).
+ *  Returns the updated project; emits `nc:project { type: "renamed" }`. */
+export async function renameProject(id: string, name: string): Promise<Project> {
+  return invoke<Project>('rename_project', { id, name });
+}
+
 /** Whether `path` is a git repository. `true` outside Tauri (preview). */
 export async function isGitRepo(path: string): Promise<boolean> {
   if (!isTauri()) return true;
@@ -620,7 +627,10 @@ function isProjectEnvelope(value: unknown): value is ProjectEnvelope {
   if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
   return (
-    (v.type === 'created' || v.type === 'deleted' || v.type === 'activated') &&
+    (v.type === 'created' ||
+      v.type === 'deleted' ||
+      v.type === 'activated' ||
+      v.type === 'renamed') &&
     Array.isArray(v.projects)
   );
 }

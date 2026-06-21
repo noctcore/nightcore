@@ -13,5 +13,9 @@ export interface ProjectSummary {
 export interface ProjectCardProps {
   project: ProjectSummary;
   onOpen: (id: string) => void;
-  onMenu?: (id: string) => void;
+  /** Rename the project to `name` (registry-only; files on disk untouched). When
+   *  omitted, the kebab menu and its actions are not rendered. */
+  onRename?: (id: string, name: string) => void;
+  /** Remove the project from Nightcore (registry-only; files on disk untouched). */
+  onDelete?: (id: string) => void;
 }

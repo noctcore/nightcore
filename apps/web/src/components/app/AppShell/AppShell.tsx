@@ -152,6 +152,7 @@ export function AppShell() {
               registry.activate(id);
               routing.goto('board');
             }}
+            onRename={registry.rename}
             onDelete={registry.remove}
             onNewProject={routing.openNewProject}
           />
