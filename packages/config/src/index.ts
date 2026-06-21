@@ -52,6 +52,8 @@ function mergeLayers(...layers: ConfigFile[]): ConfigFile {
       out.settingSources = layer.settingSources;
     if (layer.todoFeatureEnabled !== undefined)
       out.todoFeatureEnabled = layer.todoFeatureEnabled;
+    if (layer.maxTurns !== undefined) out.maxTurns = layer.maxTurns;
+    if (layer.maxBudgetUsd !== undefined) out.maxBudgetUsd = layer.maxBudgetUsd;
     if (layer.logLevel !== undefined) out.logLevel = layer.logLevel;
     if (layer.permissions !== undefined) {
       const p = layer.permissions;

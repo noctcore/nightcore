@@ -130,6 +130,14 @@ export const ConfigSchema = z.object({
     .default(['user', 'project', 'local']),
   /** Enable the SDK's task/todo tracking (powers the live task panel). */
   todoFeatureEnabled: z.boolean().default(true),
+  /** Autonomy ceiling: max conversation turns before a session stops (SDK
+   *  `Options.maxTurns`). A finite guard so a wedged bypass-mode task can't burn
+   *  turns forever. A per-task override wins; this is the studio-wide default. */
+  maxTurns: z.number().int().positive().default(200),
+  /** Autonomy ceiling: max spend in USD before a session stops (SDK
+   *  `Options.maxBudgetUsd`). Omitted ⇒ uncapped (the SDK default). A per-task
+   *  override wins; this is the studio-wide default. */
+  maxBudgetUsd: z.number().positive().optional(),
   /** Resolved filesystem paths. */
   paths: ConfigPathsSchema,
   /** Log verbosity. */
@@ -160,6 +168,8 @@ export const ConfigFileSchema = z.object({
     .optional(),
   settingSources: z.array(SettingSourceSchema).optional(),
   todoFeatureEnabled: z.boolean().optional(),
+  maxTurns: z.number().int().positive().optional(),
+  maxBudgetUsd: z.number().positive().optional(),
   logLevel: LogLevelSchema.optional(),
 });
 export type ConfigFile = z.infer<typeof ConfigFileSchema>;

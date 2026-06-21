@@ -167,6 +167,14 @@ export class SessionManager {
     const model = command.model ?? this.config.model;
     const effort = command.effort ?? this.config.effort;
     const cwd = command.cwd ?? process.cwd();
+    // Autonomy ceilings: a per-task override wins, else the `@nightcore/config`
+    // default. `maxTurns` always resolves to a finite guard; `maxBudgetUsd` is
+    // uncapped unless the task or config sets it.
+    const maxTurns = command.maxTurns ?? this.config.maxTurns;
+    const maxBudgetUsd = command.maxBudgetUsd ?? this.config.maxBudgetUsd;
+    // Resume: prefer the explicit command id (the recovery path supplies the
+    // persisted `sdkSessionId`); a cold start omits it entirely.
+    const resumeSessionId = command.resumeSessionId;
 
     // M4: resolve the task kind to its agent preset (system prompt + tool
     // restrictions + a DEFAULT permission mode). Absent kind ⇒ `build` ⇒ an
@@ -201,6 +209,9 @@ export class SessionManager {
         apiKeyFallback: this.apiKeyFallback,
         settingSources: this.config.settingSources,
         todoFeatureEnabled: this.config.todoFeatureEnabled,
+        maxTurns,
+        ...(maxBudgetUsd !== undefined ? { maxBudgetUsd } : {}),
+        ...(resumeSessionId !== undefined ? { resumeSessionId } : {}),
         ...(preset.appendSystemPrompt !== undefined
           ? { appendSystemPrompt: preset.appendSystemPrompt }
           : {}),

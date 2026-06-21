@@ -77,6 +77,7 @@ function makeConfig(): Config {
     permissions: { allow: [], deny: [], mode: 'default' },
     settingSources: ['user', 'project', 'local'],
     todoFeatureEnabled: true,
+    maxTurns: 200,
     paths: { home, sessions: path.join(home, 'sessions') },
     logLevel: 'silent',
   };
@@ -317,5 +318,79 @@ describe('SessionManager task kinds (M4)', () => {
 
     // The review preset defaults to `dontAsk`, but an explicit command mode wins.
     expect(queryOptions.at(-1)!.permissionMode).toBe('plan');
+  });
+});
+
+describe('SessionManager autonomy ceilings (maxTurns/maxBudgetUsd)', () => {
+  test('a session inherits the config maxTurns default and no budget cap', async () => {
+    scripts = [{ kind: 'messages', messages: [initMessage(), successMessage()] }];
+    const manager = new SessionManager(makeConfig());
+    const { done } = collect(manager, (e) => e.type === 'session-completed');
+
+    await manager.dispatch({ type: 'start-session', prompt: 'go' });
+    await done;
+
+    const options = queryOptions.at(-1)!;
+    expect(options.maxTurns).toBe(200);
+    // Uncapped by default — the option is omitted, not set to a number.
+    expect(options.maxBudgetUsd).toBeUndefined();
+  });
+
+  test('a per-task maxTurns/maxBudgetUsd override wins over the config default', async () => {
+    scripts = [{ kind: 'messages', messages: [initMessage(), successMessage()] }];
+    const manager = new SessionManager(makeConfig());
+    const { done } = collect(manager, (e) => e.type === 'session-completed');
+
+    await manager.dispatch({
+      type: 'start-session',
+      prompt: 'bounded run',
+      maxTurns: 5,
+      maxBudgetUsd: 2.5,
+    });
+    await done;
+
+    const options = queryOptions.at(-1)!;
+    expect(options.maxTurns).toBe(5);
+    expect(options.maxBudgetUsd).toBe(2.5);
+  });
+
+  test('a configured maxBudgetUsd default is applied when no override is given', async () => {
+    scripts = [{ kind: 'messages', messages: [initMessage(), successMessage()] }];
+    const config = { ...makeConfig(), maxBudgetUsd: 10 };
+    const manager = new SessionManager(config);
+    const { done } = collect(manager, (e) => e.type === 'session-completed');
+
+    await manager.dispatch({ type: 'start-session', prompt: 'capped' });
+    await done;
+
+    expect(queryOptions.at(-1)!.maxBudgetUsd).toBe(10);
+  });
+});
+
+describe('SessionManager session resume', () => {
+  test('omits resume when no session id is supplied (cold start)', async () => {
+    scripts = [{ kind: 'messages', messages: [initMessage(), successMessage()] }];
+    const manager = new SessionManager(makeConfig());
+    const { done } = collect(manager, (e) => e.type === 'session-completed');
+
+    await manager.dispatch({ type: 'start-session', prompt: 'fresh' });
+    await done;
+
+    expect(queryOptions.at(-1)!.resume).toBeUndefined();
+  });
+
+  test('sets Options.resume when a resumeSessionId is supplied', async () => {
+    scripts = [{ kind: 'messages', messages: [initMessage(), successMessage()] }];
+    const manager = new SessionManager(makeConfig());
+    const { done } = collect(manager, (e) => e.type === 'session-completed');
+
+    await manager.dispatch({
+      type: 'start-session',
+      prompt: 'reattach',
+      resumeSessionId: 'sdk-uuid-prior',
+    });
+    await done;
+
+    expect(queryOptions.at(-1)!.resume).toBe('sdk-uuid-prior');
   });
 });
