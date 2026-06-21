@@ -12,6 +12,7 @@
 //! at a time runs through a single long-lived sidecar, streaming its events to
 //! the board and transitioning to `done`/`failed` on completion.
 
+mod m2;
 mod sidecar;
 mod store;
 mod task;
