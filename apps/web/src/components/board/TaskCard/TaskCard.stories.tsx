@@ -35,9 +35,14 @@ export const Blocked: Story = { args: { task: BLOCKED_TASK, blocked: true } };
 export const Running: Story = {
   args: { task: TASKS_BY_STATUS.in_progress, logCount: 7 },
 };
+/** A task in the post-build verification phase — the "reviewing" pulse + chip. */
+export const Verifying: Story = {
+  args: { task: TASKS_BY_STATUS.verifying, logCount: 3 },
+};
 export const WaitingApproval: Story = {
   args: { task: TASKS_BY_STATUS.waiting_approval },
 };
+/** A verified, passed task — its Verified badge shows beside the title. */
 export const Done: Story = { args: { task: TASKS_BY_STATUS.done } };
 export const Failed: Story = { args: { task: TASKS_BY_STATUS.failed } };
 

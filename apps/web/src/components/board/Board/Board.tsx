@@ -15,6 +15,7 @@ import type { BoardProps } from './Board.types';
 const EMPTY_TEXT: Record<string, string> = {
   backlog: 'Add a task to begin',
   in_progress: 'Nothing running',
+  verifying: 'Nothing under review',
   waiting_approval: 'Nothing awaiting approval',
   done: 'No verified tasks yet',
   failed: 'No failures',

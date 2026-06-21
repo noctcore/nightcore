@@ -1,13 +1,16 @@
 import { useCallback, useState } from 'react';
+import type { TaskKind } from '@/lib/bridge';
 import type { NewTaskFormProps } from './NewTaskForm.types';
 
 export interface NewTaskFormState {
   title: string;
   description: string;
+  kind: TaskKind;
   busy: boolean;
   canSubmit: boolean;
   setTitle: (value: string) => void;
   setDescription: (value: string) => void;
+  setKind: (value: TaskKind) => void;
   submit: () => Promise<void>;
   onTitleKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
   onDescKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
@@ -20,6 +23,7 @@ export function useNewTaskForm({
 }: NewTaskFormProps): NewTaskFormState {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [kind, setKind] = useState<TaskKind>('build');
   const [busy, setBusy] = useState(false);
 
   const canSubmit = title.trim().length > 0 && !busy;
@@ -28,12 +32,12 @@ export function useNewTaskForm({
     if (title.trim().length === 0 || busy) return;
     setBusy(true);
     try {
-      await onCreate(title.trim(), description.trim());
+      await onCreate(title.trim(), description.trim(), kind);
       onClose();
     } finally {
       setBusy(false);
     }
-  }, [title, description, busy, onCreate, onClose]);
+  }, [title, description, kind, busy, onCreate, onClose]);
 
   const onTitleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -56,10 +60,12 @@ export function useNewTaskForm({
   return {
     title,
     description,
+    kind,
     busy,
     canSubmit,
     setTitle,
     setDescription,
+    setKind,
     submit,
     onTitleKeyDown,
     onDescKeyDown,

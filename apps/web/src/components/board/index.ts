@@ -6,6 +6,9 @@ export { TaskDetail } from './TaskDetail';
 export { PermissionPrompt } from './PermissionPrompt';
 export { TaskStatusDot } from './TaskStatusDot';
 export { NewTaskForm } from './NewTaskForm';
+export { KindPicker } from './KindPicker';
+export { ReviewPanel } from './ReviewPanel';
+export { GauntletResults } from './GauntletResults';
 export {
   COLUMNS,
   STATUS_LABEL,
@@ -15,7 +18,14 @@ export {
   isActive,
   modelDisplayName,
   modelDotColor,
+  parseVerdict,
+  KIND_OPTIONS,
+  KIND_LABEL,
+  VERDICT_LABEL,
+  VERDICT_TEXT,
   type ColumnDef,
+  type KindOption,
+  type Verdict,
 } from './status';
 export {
   EMPTY_STREAM,

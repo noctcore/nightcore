@@ -10,8 +10,10 @@ import {
   PlayIcon,
   RefineIcon,
   RetryIcon,
+  SparkIcon,
   StopIcon,
   TrashIcon,
+  VerifiedIcon,
 } from '@/components/ui';
 import { formatCost, modelDisplayName, modelDotColor } from '../status';
 import { useElapsed } from './TaskCard.hooks';
@@ -21,10 +23,14 @@ const CARD_BASE =
   'group relative w-full rounded-xl border bg-card p-3.5 text-left transition-[border-color,box-shadow,background]';
 
 /** Container classes per status, always using the glow treatment (mirrors the
- *  design's `cardVm` glow look). The running-accent glow stays. */
+ *  design's `cardVm` glow look). The running-accent glow stays; a verifying task
+ *  carries the primary-tinted reviewer glow. */
 function containerClass(status: string, running: boolean, selected: boolean): string {
   if (running) {
     return 'border-warning/55 shadow-[0_0_0_1px_oklch(80%_.14_75_/_.3),0_10px_34px_-8px_oklch(80%_.14_75_/_.45)]';
+  }
+  if (status === 'verifying') {
+    return 'border-primary/55 shadow-[0_0_0_1px_oklch(74%_.13_280_/_.3),0_10px_34px_-8px_oklch(74%_.13_280_/_.45)]';
   }
   if (status === 'failed') {
     return 'border-destructive/45 shadow-[0_0_0_1px_oklch(66%_.2_22_/_.2),0_8px_26px_-14px_oklch(66%_.2_22_/_.4)]';
@@ -67,14 +73,23 @@ export function TaskCard({
   onMerge,
 }: TaskCardProps) {
   const running = task.status === 'in_progress';
-  const elapsed = useElapsed(task.updatedAt, running);
+  const verifying = task.status === 'verifying';
+  const elapsed = useElapsed(task.updatedAt, running || verifying);
   const branch = task.branch;
   const showBranch =
     branch !== null &&
-    (running || task.status === 'waiting_approval' || task.status === 'done' || task.status === 'failed');
+    (running ||
+      verifying ||
+      task.status === 'waiting_approval' ||
+      task.status === 'done' ||
+      task.status === 'failed');
 
   const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
-  const pulse = needsApproval ? 'animate-pulse ring-1 ring-warning/60' : '';
+  const pulse = needsApproval
+    ? 'animate-pulse ring-1 ring-warning/60'
+    : verifying
+      ? 'animate-pulse ring-1 ring-primary/50'
+      : '';
 
   return (
     <div
@@ -105,7 +120,22 @@ export function TaskCard({
                 {elapsed}
               </span>
             )}
-            {!running && task.costUsd !== null && (
+            {verifying && (
+              <span className="flex items-center gap-1 font-mono text-[10.5px] font-semibold tabular-nums text-primary">
+                <ClockIcon size={12} />
+                {elapsed}
+              </span>
+            )}
+            {task.verified && (task.status === 'done' || task.status === 'waiting_approval') && (
+              <span
+                aria-label="Verified"
+                className="flex items-center gap-1 font-mono text-[10.5px] font-semibold text-success"
+              >
+                <VerifiedIcon size={12} />
+                verified
+              </span>
+            )}
+            {!running && !verifying && task.costUsd !== null && (
               <span className="font-mono text-[10.5px] tabular-nums text-muted-foreground">
                 {formatCost(task.costUsd)}
               </span>
@@ -122,12 +152,23 @@ export function TaskCard({
           </div>
         )}
 
-        {(showBranch || blocked || needsApproval || task.conflict || task.status === 'failed') && (
+        {(showBranch ||
+          blocked ||
+          needsApproval ||
+          verifying ||
+          task.conflict ||
+          task.status === 'failed') && (
           <div className="mt-2.5 flex flex-wrap gap-1.5">
             {showBranch && (
               <span className="flex items-center gap-1 rounded-md bg-white/[0.03] px-1.5 py-0.5 font-mono text-[9.5px] text-muted-foreground">
                 <BranchIcon size={11} />
                 {branch}
+              </span>
+            )}
+            {verifying && (
+              <span className="flex items-center gap-1 rounded-md bg-primary/[0.14] px-1.5 py-0.5 font-mono text-[9.5px] text-primary">
+                <SparkIcon size={11} />
+                reviewing
               </span>
             )}
             {needsApproval && (
@@ -157,10 +198,12 @@ export function TaskCard({
           </div>
         )}
 
-        {running && (
+        {(running || verifying) && (
           <div className="relative mt-2.5 h-[2.5px] overflow-hidden rounded-full bg-white/[0.06]">
             <div
-              className="absolute inset-y-0 w-[40%] bg-gradient-to-r from-transparent via-warning to-transparent"
+              className={`absolute inset-y-0 w-[40%] bg-gradient-to-r from-transparent to-transparent ${
+                verifying ? 'via-primary' : 'via-warning'
+              }`}
               style={{ animation: 'nc-bar 1.3s ease-in-out infinite' }}
             />
           </div>
@@ -188,7 +231,7 @@ export function TaskCard({
               Edit
             </button>
           </>
-        ) : running ? (
+        ) : running || verifying ? (
           <>
             <button
               type="button"
@@ -242,8 +285,14 @@ export function TaskCard({
             ) : task.committed ? (
               <button
                 type="button"
+                disabled={!task.verified}
+                title={
+                  task.verified
+                    ? undefined
+                    : 'Open the task to run the readiness gauntlet before merging'
+                }
                 onClick={() => onMerge?.(task.id)}
-                className={`${ACTION_BASE} ${ACTION_PRIMARY}`}
+                className={`${ACTION_BASE} ${task.verified ? ACTION_PRIMARY : ACTION_DISABLED}`}
               >
                 <BranchIcon size={13} />
                 Merge

@@ -7,14 +7,24 @@ export function isTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
-/** Lifecycle status of a task. Mirrors the Rust `TaskStatus` enum exactly. */
+/** Lifecycle status of a task. Mirrors the Rust `TaskStatus` enum exactly.
+ *  `verifying` (M4) is the post-build reviewer phase: a reviewer session reads
+ *  the worktree diff between `in_progress` and a terminal state. */
 export type TaskStatus =
   | 'backlog'
   | 'ready'
   | 'in_progress'
+  | 'verifying'
   | 'waiting_approval'
   | 'done'
   | 'failed';
+
+/** The kind preset a task runs under (M4). Mirrors the Rust `TaskKind` enum
+ *  (snake_case on the wire). `build` (default) writes code in its own worktree
+ *  and is verified after; `research`/`review`/`decompose` are reserved variants
+ *  the picker surfaces but the engine only fully drives `build`/`research` this
+ *  milestone (`review`/`decompose` render as "coming soon"). */
+export type TaskKind = 'build' | 'research' | 'review' | 'decompose';
 
 /** The shared task shape. Mirrors the Rust serde struct (camelCase) exactly. */
 export interface Task {
@@ -41,6 +51,18 @@ export interface Task {
   merged: boolean;
   /** True when `merge_task` hit a conflict it refused to force. */
   conflict: boolean;
+  /** The kind preset this task runs under (M4). Defaults to `build`. */
+  kind: TaskKind;
+  /** True only after a reviewer PASS (or a user `accept_review` override). The
+   *  pre-merge gate (`merge_task`) refuses while this is false. Cleared on a
+   *  fresh run. */
+  verified: boolean;
+  /** The reviewer's full verdict text (rationale + the machine-readable
+   *  `VERDICT:` line). `null` until a review runs; cleared on a fresh run. */
+  review: string | null;
+  /** How many bounded auto-fix attempts the verification loop has spent
+   *  (`MAX_FIX_ATTEMPTS = 2`). Reset to 0 on a fresh run. */
+  fixAttempts: number;
 }
 
 /** Partial update sent to `update_task`. All fields optional. */
@@ -50,6 +72,31 @@ export interface TaskPatch {
   status?: TaskStatus;
   dependencies?: string[];
   model?: string | null;
+  /** The task's kind preset (M4) — set from the create/edit picker. */
+  kind?: TaskKind;
+}
+
+/** One step of the pre-merge readiness gauntlet (M4, §C). The detector runs the
+ *  project's real tooling (typecheck → lint → test), stopping at the first
+ *  failure; later steps after a failure are `skipped`. */
+export interface GauntletStep {
+  /** The step's logical name (e.g. `typecheck`, `lint`, `test`). */
+  name: string;
+  /** The exact command run (e.g. `bun run test`), for the UI to surface. */
+  command: string;
+  status: 'passed' | 'failed' | 'skipped';
+  /** The process exit code, when the step actually ran. */
+  exitCode?: number;
+}
+
+/** The structured result of a readiness-gauntlet run (M4, §C). A project with no
+ *  detectable tooling passes trivially (`steps` empty). `merge_task` is gated on
+ *  `passed`; the Verified column surfaces the steps on demand via `run_gauntlet`. */
+export interface GauntletResult {
+  passed: boolean;
+  steps: GauntletStep[];
+  /** The name of the first failing step, when `passed` is false. */
+  failedStep?: string;
 }
 
 /** The subset of the engine's `NightcoreEvent` the board renders. The Rust core
@@ -176,12 +223,14 @@ export async function listTasks(): Promise<Task[]> {
   return invoke<Task[]>('list_tasks');
 }
 
-/** Create a new `backlog` task. No-op (throws) outside Tauri. */
+/** Create a new `backlog` task. The `kind` (M4) defaults to `build` so a
+ *  kind-less create is byte-identical to today. No-op (throws) outside Tauri. */
 export async function createTask(
   title: string,
   description: string,
+  kind: TaskKind = 'build',
 ): Promise<Task> {
-  return invoke<Task>('create_task', { title, description });
+  return invoke<Task>('create_task', { title, description, kind });
 }
 
 /** Apply a partial update to a task. */
@@ -266,9 +315,40 @@ export async function commitTask(id: string): Promise<void> {
 }
 
 /** Merge a verified task's branch into the project base. Rejects (and marks the
- *  task `conflict`) on a merge conflict — never forced. */
+ *  task `conflict`) on a merge conflict — never forced. The backend gates this on
+ *  `verified == true` and a passing gauntlet (M4); an unverified task is refused. */
 export async function mergeTask(id: string): Promise<void> {
   await invoke('merge_task', { id });
+}
+
+// --- Verification gate (M4) -----------------------------------------------
+
+/** Accept a parked verification (CHANGES_REQUESTED budget-exhausted / FAIL /
+ *  inconclusive): the user overrides the reviewer → `verified = true`, `done`.
+ *  The worktree is retained for commit/merge. */
+export async function acceptReview(id: string): Promise<void> {
+  await invoke('accept_review', { id });
+}
+
+/** Reject a parked verification: the task drops back to the backlog (keeping
+ *  `task.review` for context) rather than merging. */
+export async function rejectReview(id: string): Promise<void> {
+  await invoke('reject_review', { id });
+}
+
+/** Re-dispatch a reviewer session against the current worktree without a rebuild
+ *  — a fresh verification pass over the existing diff. */
+export async function rerunVerification(id: string): Promise<void> {
+  await invoke('rerun_verification', { id });
+}
+
+/** Run the deterministic pre-merge readiness gauntlet (typecheck → lint → test,
+ *  stop at first failure) over the task's worktree and return its structured
+ *  result. Drives the Verified column's "Run checks" action; a project with no
+ *  detectable tooling passes trivially. No-op (empty pass) outside Tauri. */
+export async function runGauntlet(id: string): Promise<GauntletResult> {
+  if (!isTauri()) return { passed: true, steps: [] };
+  return invoke<GauntletResult>('run_gauntlet', { id });
 }
 
 // --- Autonomous loop (M2) -------------------------------------------------

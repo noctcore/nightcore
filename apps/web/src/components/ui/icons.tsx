@@ -42,6 +42,11 @@ export {
   MoreVertical as DotsIcon,
   Bug as BugIcon,
   Bell as BellIcon,
+  Microscope as ResearchIcon,
+  ShieldCheck as VerifiedIcon,
+  Hammer as BuildIcon,
+  ListChecks as ChecksIcon,
+  GitFork as DecomposeIcon,
 } from 'lucide-react';
 
 /** The GitHub brand mark — removed from lucide 1.x, so we ship the design's

@@ -1,4 +1,4 @@
-import type { TaskStatus } from '@/lib/bridge';
+import type { TaskKind, TaskStatus } from '@/lib/bridge';
 
 /** A board column: its key, label, the statuses it groups, the design's status
  *  dot color, an optional roadmap badge, and whether it offers a "Clear". */
@@ -14,8 +14,9 @@ export interface ColumnDef {
   clearable?: boolean;
 }
 
-/** The five board columns, in the design's order:
- *  Backlog · In Progress · Waiting Approval (M3) · Verified · Failed. */
+/** The six board columns, in the design's order:
+ *  Backlog · In Progress · Verifying (M4) · Waiting Approval (M3) · Verified ·
+ *  Failed. */
 export const COLUMNS: ColumnDef[] = [
   {
     key: 'backlog',
@@ -28,6 +29,13 @@ export const COLUMNS: ColumnDef[] = [
     title: 'In Progress',
     statuses: ['in_progress'],
     dotColor: 'oklch(80% .14 75)',
+  },
+  {
+    key: 'verifying',
+    title: 'Verifying',
+    statuses: ['verifying'],
+    dotColor: 'oklch(74% .13 280)',
+    badge: 'M4',
   },
   {
     key: 'waiting_approval',
@@ -57,14 +65,16 @@ export const STATUS_LABEL: Record<TaskStatus, string> = {
   backlog: 'Backlog',
   ready: 'Ready',
   in_progress: 'Running',
+  verifying: 'Verifying',
   waiting_approval: 'Waiting Approval',
   done: 'Verified',
   failed: 'Failed',
 };
 
-/** Whether a status represents an actively running task (pulses its dot). */
+/** Whether a status represents an actively running session (pulses its dot). A
+ *  `verifying` task holds a live reviewer session, so it pulses like `in_progress`. */
 export function isActive(status: TaskStatus): boolean {
-  return status === 'in_progress';
+  return status === 'in_progress' || status === 'verifying';
 }
 
 /** Tailwind background class for a status dot — maps onto the design tokens. */
@@ -72,6 +82,7 @@ export const STATUS_DOT_COLOR: Record<TaskStatus, string> = {
   backlog: 'bg-muted',
   ready: 'bg-info',
   in_progress: 'bg-warning',
+  verifying: 'bg-primary',
   waiting_approval: 'bg-info',
   done: 'bg-success',
   failed: 'bg-destructive',
@@ -82,6 +93,7 @@ export const STATUS_TEXT: Record<TaskStatus, string> = {
   backlog: 'text-muted-foreground',
   ready: 'text-info',
   in_progress: 'text-warning',
+  verifying: 'text-primary',
   waiting_approval: 'text-info',
   done: 'text-success',
   failed: 'text-destructive',
@@ -111,3 +123,64 @@ export function modelDotColor(model: string | null): string {
   if (name.startsWith('Haiku')) return 'oklch(76% .15 152)';
   return 'var(--nc-primary)';
 }
+
+// --- Task kinds (M4) ------------------------------------------------------
+
+/** A selectable kind in the create/edit picker. `enabled: false` renders the
+ *  option as "coming soon" / disabled — defined on the wire but not yet driven by
+ *  the engine this milestone (mirrors the contract's reserved variants). */
+export interface KindOption {
+  kind: TaskKind;
+  label: string;
+  /** One-line affordance description shown in the picker. */
+  hint: string;
+  /** Whether the option is selectable; false → disabled "coming soon". */
+  enabled: boolean;
+}
+
+/** The kind picker's options, in display order. `build` (default) and `research`
+ *  are selectable; `review`/`decompose` are reserved → disabled "coming soon". */
+export const KIND_OPTIONS: KindOption[] = [
+  { kind: 'build', label: 'Build', hint: 'Write code in an isolated worktree, then verify', enabled: true },
+  { kind: 'research', label: 'Research', hint: 'Investigate and report — no code changes', enabled: true },
+  { kind: 'review', label: 'Review', hint: 'Read-only diff review', enabled: false },
+  { kind: 'decompose', label: 'Decompose', hint: 'Split into sub-tasks', enabled: false },
+];
+
+/** Human label for a task kind. */
+export const KIND_LABEL: Record<TaskKind, string> = {
+  build: 'Build',
+  research: 'Research',
+  review: 'Review',
+  decompose: 'Decompose',
+};
+
+// --- Verification verdict (M4) --------------------------------------------
+
+/** The parsed reviewer verdict. Mirrors the core's grep over the result text. */
+export type Verdict = 'PASS' | 'CHANGES_REQUESTED' | 'FAIL';
+
+/** Parse the machine-readable verdict from a reviewer's result text, matching the
+ *  core's `VERDICT:\s*(PASS|CHANGES_REQUESTED|FAIL)` grep with last-match-wins.
+ *  Returns `null` when no token is present (the core treats that as FAIL, but the
+ *  UI distinguishes "unparseable" from an explicit FAIL for display). */
+export function parseVerdict(review: string | null): Verdict | null {
+  if (review === null) return null;
+  const matches = [...review.matchAll(/VERDICT:\s*(PASS|CHANGES_REQUESTED|FAIL)/g)];
+  const last = matches.at(-1);
+  return last !== undefined ? (last[1] as Verdict) : null;
+}
+
+/** Tailwind text class for a parsed verdict (design palette). */
+export const VERDICT_TEXT: Record<Verdict, string> = {
+  PASS: 'text-success',
+  CHANGES_REQUESTED: 'text-warning',
+  FAIL: 'text-destructive',
+};
+
+/** Human label for a verdict. */
+export const VERDICT_LABEL: Record<Verdict, string> = {
+  PASS: 'Passed',
+  CHANGES_REQUESTED: 'Changes requested',
+  FAIL: 'Failed',
+};

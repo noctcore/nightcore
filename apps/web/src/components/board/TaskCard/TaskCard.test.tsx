@@ -3,7 +3,20 @@ import { render } from 'vitest-browser-react';
 import { expect, test, vi } from 'vitest';
 import * as stories from './TaskCard.stories';
 
-const { Failed, Done, Blocked, Running } = composeStories(stories);
+const { Failed, Done, Blocked, Running, Verifying } = composeStories(stories);
+
+test('shows the reviewing chip and a cancel control while verifying', async () => {
+  const screen = render(<Verifying />);
+  await expect.element(screen.getByText('reviewing')).toBeInTheDocument();
+  await expect
+    .element(screen.getByRole('button', { name: /cancel run/i }))
+    .toBeInTheDocument();
+});
+
+test('shows the verified badge on a passed task', async () => {
+  const screen = render(<Done />);
+  await expect.element(screen.getByText('verified')).toBeInTheDocument();
+});
 
 test('shows the error line on a failed task', async () => {
   const screen = render(<Failed />);

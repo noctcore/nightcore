@@ -1,8 +1,15 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { fn } from 'storybook/test';
+import { expect, fn, userEvent, within } from 'storybook/test';
 import { TaskDetail } from './TaskDetail';
 import { EMPTY_STREAM } from '../session-stream';
-import { TASKS_BY_STATUS, makeTask } from '../_fixtures';
+import {
+  GAUNTLET_FAILED,
+  GAUNTLET_PASSED,
+  SAMPLE_REVIEW_CHANGES,
+  SAMPLE_REVIEW_PASS,
+  TASKS_BY_STATUS,
+  makeTask,
+} from '../_fixtures';
 
 const meta = {
   title: 'Board/TaskDetail',
@@ -10,6 +17,8 @@ const meta = {
   parameters: { layout: 'fullscreen' },
   args: {
     anyRunning: false,
+    gauntlet: null,
+    gauntletRunning: false,
     onClose: fn(),
     onRun: fn(),
     onCancel: fn(),
@@ -18,6 +27,13 @@ const meta = {
     onApprove: fn(),
     onReject: fn(),
     onRefine: fn(),
+    onChangeKind: fn(),
+    onAcceptReview: fn(),
+    onRejectReview: fn(),
+    onRerunVerification: fn(),
+    onRunGauntlet: fn(),
+    onMerge: fn(),
+    onCommit: fn(),
   },
   decorators: [
     (Story) => (
@@ -51,6 +67,7 @@ export const Running: Story = {
   },
 };
 
+/** A verified, committed task with a passing gauntlet — Merge is enabled. */
 export const Done: Story = {
   args: {
     task: makeTask({
@@ -59,7 +76,29 @@ export const Done: Story = {
       title: 'Wire up auth guard',
       summary: 'Added the auth middleware and covered it with tests.',
       costUsd: 0.42,
+      branch: 'nc/auth-guard',
+      verified: true,
+      committed: true,
+      review: SAMPLE_REVIEW_PASS,
     }),
+    gauntlet: GAUNTLET_PASSED,
+    stream: undefined,
+  },
+};
+
+/** A verified task before the gauntlet has run — Merge stays disabled. */
+export const VerifiedMergeGated: Story = {
+  args: {
+    task: makeTask({
+      id: 't-done',
+      status: 'done',
+      title: 'Wire up auth guard',
+      branch: 'nc/auth-guard',
+      verified: true,
+      committed: true,
+      review: SAMPLE_REVIEW_PASS,
+    }),
+    gauntlet: null,
     stream: undefined,
   },
 };
@@ -74,6 +113,52 @@ export const WaitingApproval: Story = {
       plan: '1. Back up the users table\n2. Add the new column\n3. Backfill from email',
       branch: 'nc/destructive-migration',
     }),
+    stream: undefined,
+  },
+};
+
+/** A reviewer session reading the diff — the verifying phase. */
+export const Verifying: Story = {
+  args: {
+    task: TASKS_BY_STATUS.verifying,
+    anyRunning: true,
+    stream: {
+      ...EMPTY_STREAM,
+      answer: 'Running git diff against the base branch…',
+      tools: [{ id: 1, toolName: 'Bash' }],
+    },
+  },
+};
+
+/** A verification parked for approval (budget exhausted): the verdict + Accept /
+ *  Rerun / Reject controls. */
+export const ReviewParked: Story = {
+  args: {
+    task: makeTask({
+      id: 't-waiting',
+      status: 'waiting_approval',
+      title: 'Apply destructive migration',
+      branch: 'nc/destructive-migration',
+      review: SAMPLE_REVIEW_CHANGES,
+      fixAttempts: 2,
+    }),
+    stream: undefined,
+  },
+};
+
+/** The verified column with a failed gauntlet — Merge stays disabled. */
+export const GauntletFailed: Story = {
+  args: {
+    task: makeTask({
+      id: 't-done',
+      status: 'done',
+      title: 'Wire up auth guard',
+      branch: 'nc/auth-guard',
+      verified: true,
+      committed: true,
+      review: SAMPLE_REVIEW_PASS,
+    }),
+    gauntlet: GAUNTLET_FAILED,
     stream: undefined,
   },
 };
@@ -97,4 +182,24 @@ export const RunningWithPrompt: Story = {
 
 export const Failed: Story = {
   args: { task: TASKS_BY_STATUS.failed, stream: undefined },
+};
+
+/** Play test: Accept on a review-parked task relays the verification override. */
+export const AcceptsReview: Story = {
+  args: { ...ReviewParked.args },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: /accept/i }));
+    await expect(args.onAcceptReview).toHaveBeenCalledWith('t-waiting');
+  },
+};
+
+/** Play test: "Run checks" on a verified task triggers the gauntlet. */
+export const RunsGauntlet: Story = {
+  args: { ...VerifiedMergeGated.args },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: /run checks/i }));
+    await expect(args.onRunGauntlet).toHaveBeenCalledWith('t-done');
+  },
 };

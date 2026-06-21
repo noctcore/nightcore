@@ -41,6 +41,10 @@ const tasks: Task[] = [
     committed: false,
     merged: false,
     conflict: false,
+    kind: 'build',
+    verified: false,
+    review: null,
+    fixAttempts: 0,
   },
   {
     id: 't2',
@@ -60,6 +64,10 @@ const tasks: Task[] = [
     committed: false,
     merged: false,
     conflict: false,
+    kind: 'build',
+    verified: false,
+    review: null,
+    fixAttempts: 0,
   },
 ];
 

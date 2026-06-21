@@ -120,6 +120,8 @@ export function AppShell() {
                 stream={board.streams[selected.id] ?? EMPTY_STREAM}
                 anyRunning={anyRunning}
                 prompts={board.prompts[selected.id] ?? []}
+                gauntlet={board.gauntletResults[selected.id] ?? null}
+                gauntletRunning={board.gauntletRunning.has(selected.id)}
                 onClose={() => setSelectedId(null)}
                 onRun={board.handleRun}
                 onCancel={board.handleCancel}
@@ -128,6 +130,13 @@ export function AppShell() {
                 onApprove={board.handleApprove}
                 onReject={board.handleReject}
                 onRefine={board.handleRefine}
+                onChangeKind={board.handleChangeKind}
+                onAcceptReview={board.handleAcceptReview}
+                onRejectReview={board.handleRejectReview}
+                onRerunVerification={board.handleRerunVerification}
+                onRunGauntlet={board.handleRunGauntlet}
+                onMerge={board.handleMerge}
+                onCommit={board.handleCommit}
               />
             )}
           </div>

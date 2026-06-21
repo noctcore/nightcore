@@ -17,7 +17,8 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
 
-/** Play test: the create button is gated on a title, then fires onCreate. */
+/** Play test: the create button is gated on a title, then fires onCreate with
+ *  the default `build` kind. */
 export const CreatesTask: Story = {
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
@@ -40,7 +41,22 @@ export const CreatesTask: Story = {
       expect(args.onCreate).toHaveBeenCalledWith(
         'Add a settings panel',
         'Build the settings surface.',
+        'build',
       ),
+    );
+  },
+};
+
+/** Play test: picking the Research kind threads it through onCreate. */
+export const CreatesResearchTask: Story = {
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.type(canvas.getByLabelText('Task title'), 'Survey caching options');
+    await userEvent.click(canvas.getByRole('radio', { name: /research/i }));
+    await userEvent.click(canvas.getByRole('button', { name: /create task/i }));
+
+    await waitFor(() =>
+      expect(args.onCreate).toHaveBeenCalledWith('Survey caching options', '', 'research'),
     );
   },
 };
