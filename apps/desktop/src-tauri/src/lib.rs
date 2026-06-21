@@ -117,6 +117,7 @@ pub fn run() {
             m2::coordinator::stop_auto_loop,
             m2::coordinator::resume_auto_loop,
             m2::coordinator::set_max_concurrency_cmd,
+            m2::coordinator::list_worktrees,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Nightcore application");

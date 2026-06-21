@@ -135,13 +135,21 @@ pub fn commit(project_path: &Path, task_id: &str, message: &str) -> Result<bool,
             "no worktree for task {task_id} — run it before committing"
         ));
     }
-    git(&dir, &["add", "-A"])?;
+    commit_in(&dir, message)
+}
+
+/// Stage everything in `dir` and commit it with `message`. The dir-level primitive
+/// behind [`commit`]; also used for `main`-mode tasks (M4.6 §A), which commit in
+/// the project root rather than a per-task worktree. Returns `Ok(true)` when a
+/// commit was created, `Ok(false)` when the tree was clean (nothing to commit).
+pub fn commit_in(dir: &Path, message: &str) -> Result<bool, String> {
+    git(dir, &["add", "-A"])?;
     // `diff --cached --quiet` exits non-zero when there is something staged.
-    let nothing_staged = git_status_success(&dir, &["diff", "--cached", "--quiet"]);
+    let nothing_staged = git_status_success(dir, &["diff", "--cached", "--quiet"]);
     if nothing_staged {
         return Ok(false); // nothing to commit
     }
-    git(&dir, &["commit", "-m", message])?;
+    git(dir, &["commit", "-m", message])?;
     Ok(true)
 }
 
@@ -228,6 +236,66 @@ pub fn list_worktree_task_ids(project_path: &Path) -> Vec<String> {
         }
     }
     ids
+}
+
+/// A live Nightcore worktree's status for the monitoring command (M4.6 §C). One
+/// per `nc/<taskId>` worktree on disk; the web groups these by `branch`.
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeStatus {
+    /// The worktree's branch (`nc/<taskId>`).
+    pub branch: String,
+    /// The absolute worktree path on disk.
+    pub path: String,
+    /// The task ids this worktree belongs to. v1 is one-per-task, so this is the
+    /// single owning task id (a Vec so a later shared-board model fits without a
+    /// contract change).
+    pub task_ids: Vec<String>,
+    /// Whether the worktree has uncommitted changes (`git status --porcelain` is
+    /// non-empty). Tolerant: an unreadable/locked worktree reads as `false`.
+    pub dirty: bool,
+    /// How many commits the worktree's branch is ahead of `base` (`git rev-list
+    /// --count base..HEAD`). Tolerant: unresolvable reads as `0`.
+    pub ahead_of_base: u32,
+}
+
+/// Read the status of one live worktree at `dir` for task `task_id`, diffing its
+/// branch against `base`. Read-only; tolerant of a missing/locked worktree (a
+/// failed git read degrades to `dirty=false` / `ahead_of_base=0` rather than
+/// erroring, so one bad worktree can't break the monitor list).
+pub fn worktree_status(dir: &Path, task_id: &str, base: &str) -> WorktreeStatus {
+    let dirty = git(dir, &["status", "--porcelain"])
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    let range = format!("{base}..HEAD");
+    let ahead_of_base = git(dir, &["rev-list", "--count", &range])
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .unwrap_or(0);
+    WorktreeStatus {
+        branch: branch_name(task_id),
+        path: dir.to_string_lossy().to_string(),
+        task_ids: vec![task_id.to_string()],
+        dirty,
+        ahead_of_base,
+    }
+}
+
+/// The status of every live Nightcore worktree for a project (M4.6 §C). Reads each
+/// worktree dir under the base and reports its branch/dirty/ahead status, diffing
+/// against the project's `base_branch`. Tolerant: a worktree that can't be read is
+/// reported with safe defaults rather than dropped or erroring.
+pub fn list_worktree_statuses(project_path: &Path) -> Vec<WorktreeStatus> {
+    let base = base_branch(project_path);
+    let mut out = Vec::new();
+    for task_id in list_worktree_task_ids(project_path) {
+        let dir = worktree_path(project_path, &task_id);
+        if !dir.exists() {
+            continue;
+        }
+        out.push(worktree_status(&dir, &task_id, &base));
+    }
+    out
 }
 
 /// Startup reconciliation: remove worktrees whose task id is no longer live, then
@@ -392,6 +460,100 @@ mod tests {
 
         // A second commit with no further change reports nothing to commit.
         assert!(!commit(&repo, "task-1", "again").expect("commit"));
+    }
+
+    #[test]
+    fn commit_in_commits_the_project_root_for_main_mode() {
+        // M4.6 §A: a main-mode task commits in place in the project root (no
+        // worktree), via `commit_in`. A clean tree commits nothing.
+        let Some((_tmp, repo)) = temp_repo() else {
+            return;
+        };
+        assert!(!commit_in(&repo, "noop").expect("commit"), "clean tree commits nothing");
+
+        std::fs::write(repo.join("src.txt"), "edit on main").expect("write");
+        assert!(commit_in(&repo, "main mode change").expect("commit"), "a change commits");
+
+        let log = Command::new("git")
+            .args(["log", "-1", "--pretty=%s"])
+            .current_dir(&repo)
+            .output()
+            .expect("git log");
+        assert_eq!(String::from_utf8_lossy(&log.stdout).trim(), "main mode change");
+        assert!(is_worktree_clean(&repo).expect("status"), "after commit the root is clean");
+    }
+
+    #[test]
+    fn commit_before_review_makes_an_uncommitted_edit_diffable() {
+        // The dogfood-bug fix end-to-end at the worktree level: a build wrote an
+        // UNCOMMITTED file into the worktree; before review we commit it, so the
+        // branch HEAD advances and `base..HEAD` is non-empty (the reviewer's range
+        // step now sees the work).
+        let Some((_tmp, repo)) = temp_repo() else {
+            return;
+        };
+        let base = base_branch(&repo);
+        let dir = allocate(&repo, "task-1").expect("allocate");
+
+        // Build writes an uncommitted file. Before the fix, base..HEAD is empty.
+        std::fs::write(dir.join("feature.rs"), "fn added() {}").expect("write");
+        let count_before = Command::new("git")
+            .args(["rev-list", "--count", &format!("{base}..{}", branch_name("task-1"))])
+            .current_dir(&repo)
+            .output()
+            .expect("rev-list");
+        assert_eq!(String::from_utf8_lossy(&count_before.stdout).trim(), "0",
+            "the build leaves HEAD == base (the bug's precondition)");
+
+        // Commit-before-review advances HEAD; now the committed range is non-empty.
+        assert!(commit(&repo, "task-1", "add feature").expect("commit"));
+        let count_after = Command::new("git")
+            .args(["rev-list", "--count", &format!("{base}..{}", branch_name("task-1"))])
+            .current_dir(&repo)
+            .output()
+            .expect("rev-list");
+        assert_eq!(String::from_utf8_lossy(&count_after.stdout).trim(), "1",
+            "after commit-before-review the reviewer's base..HEAD range is non-empty");
+
+        // And the diff itself carries the new file.
+        let diff = Command::new("git")
+            .args(["diff", &format!("{base}...{}", branch_name("task-1")), "--name-only"])
+            .current_dir(&repo)
+            .output()
+            .expect("git diff");
+        assert!(String::from_utf8_lossy(&diff.stdout).contains("feature.rs"),
+            "the committed diff includes the build's file");
+    }
+
+    #[test]
+    fn list_worktree_statuses_reports_branch_dirty_and_ahead() {
+        let Some((_tmp, repo)) = temp_repo() else {
+            return;
+        };
+        // No worktrees yet.
+        assert!(list_worktree_statuses(&repo).is_empty());
+
+        // Allocate one; a fresh worktree is clean and not ahead of base.
+        let dir = allocate(&repo, "task-1").expect("allocate");
+        let statuses = list_worktree_statuses(&repo);
+        assert_eq!(statuses.len(), 1);
+        let s = &statuses[0];
+        assert_eq!(s.branch, "nc/task-1");
+        assert_eq!(s.task_ids, vec!["task-1".to_string()]);
+        assert!(!s.dirty, "a fresh worktree is clean");
+        assert_eq!(s.ahead_of_base, 0, "a fresh worktree is level with base");
+
+        // An uncommitted edit marks it dirty (still not ahead — no commit).
+        std::fs::write(dir.join("wip.txt"), "wip").expect("write");
+        let dirty = list_worktree_statuses(&repo);
+        assert!(dirty[0].dirty, "an uncommitted edit is dirty");
+        assert_eq!(dirty[0].ahead_of_base, 0);
+
+        // Committing it clears dirty and advances ahead-of-base to 1.
+        commit(&repo, "task-1", "wip commit").expect("commit");
+        let committed = list_worktree_statuses(&repo);
+        assert!(!committed[0].dirty, "a committed worktree is clean");
+        assert_eq!(committed[0].ahead_of_base, 1, "one commit ahead of base");
     }
 
     #[test]
