@@ -77,13 +77,6 @@ export function AppShell() {
                   description="Open a project to see its board. Each project keeps its own tasks."
                   action={<Button onClick={() => routing.goto('projects')}>Go to Projects</Button>}
                 />
-              ) : tasks.length === 0 ? (
-                <EmptyState
-                  icon={<BoardIcon size={32} />}
-                  title="No tasks yet"
-                  description="Describe what you want built. Each task becomes a card an agent can pick up and run."
-                  action={<Button onClick={routing.openNewTask}>Create your first task</Button>}
-                />
               ) : (
                 <Board
                   tasks={tasks}
