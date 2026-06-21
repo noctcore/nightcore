@@ -11,7 +11,6 @@ export type SettingsPage =
   | 'worktrees'
   | 'providers'
   | 'hooks'
-  | 'appearance'
   | 'paths'
   | 'about';
 

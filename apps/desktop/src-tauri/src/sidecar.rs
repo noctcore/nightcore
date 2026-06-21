@@ -721,6 +721,36 @@ fn park_for_approval(app: &AppHandle, task_id: &str, session_id: Option<u64>) {
 /// A run reached a terminal state: release its slot, drop the correlation binding,
 /// clean up the worktree (per policy), feed the circuit breaker, and kick the
 /// coordinator so the board drains without waiting a full interval.
+/// Fire a desktop notification for a terminal task outcome, gated on the global
+/// `notify_on_complete` setting (M3 §C). Only the two terminal outcomes the user
+/// asked to be told about — `Done` and `Failed` — notify; aborts (user-cancelled)
+/// and approval parks do not. The body carries only the task title + outcome —
+/// never a token, secret, or summary (M4.5 logging discipline). Best-effort: a
+/// failed notification is logged at debug, never surfaced.
+pub(crate) fn notify_task_complete(app: &AppHandle, task_id: &str, succeeded: bool) {
+    use crate::settings::SettingsStore;
+    if !app.state::<SettingsStore>().get().notify_on_complete {
+        return;
+    }
+    let Some(task) = app.state::<TaskStore>().get(task_id) else {
+        return;
+    };
+    let outcome = if succeeded { "completed" } else { "failed" };
+    let title = format!("Task {outcome}");
+    let body = task.title;
+
+    use tauri_plugin_notification::NotificationExt;
+    if let Err(e) = app
+        .notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show()
+    {
+        tracing::debug!(target: "nightcore", task_id, error = %e, "desktop notification failed");
+    }
+}
+
 fn finish_run(app: &AppHandle, task_id: &str, session_id: Option<u64>, outcome: Outcome) {
     let orch = app.state::<Orchestrator>();
     orch.slots.release(task_id);
@@ -732,6 +762,13 @@ fn finish_run(app: &AppHandle, task_id: &str, session_id: Option<u64>, outcome: 
         orch.provider.forget(sid);
     }
     coordinator::cleanup_worktree(app, task_id, matches!(outcome, Outcome::Succeeded));
+    // M3 §C: tell the user a task reached a terminal state (Done/Failed only),
+    // gated on `notify_on_complete`. Aborts/approval-parks don't notify.
+    match outcome {
+        Outcome::Succeeded => notify_task_complete(app, task_id, true),
+        Outcome::Failed => notify_task_complete(app, task_id, false),
+        Outcome::Aborted | Outcome::NeedsApproval => {}
+    }
     match outcome {
         Outcome::Succeeded => orch.breaker.record_success(),
         // Routed through `park_for_approval`, never here; handled for exhaustiveness.

@@ -212,17 +212,21 @@ export interface SettingsOverride {
   defaultEffort?: string;
   maxConcurrency?: number;
   permissionMode?: string;
+  /** Per-project default run mode (`'main'` | `'worktree'`). */
+  defaultRunMode?: RunMode;
 }
 
-/** Global settings + per-project overrides. Mirrors the Rust `Settings` struct. */
+/** Global settings + per-project overrides. Mirrors the Rust `Settings` struct.
+ *  `defaultModel` holds an SDK long id (e.g. `claude-opus-4-8`). */
 export interface Settings {
   defaultModel: string;
   defaultEffort: string;
   maxConcurrency: number;
   permissionMode: string;
-  theme: string;
   cleanupWorktrees: boolean;
   notifyOnComplete: boolean;
+  /** The default run mode new tasks inherit (`'main'` | `'worktree'`). */
+  defaultRunMode: RunMode;
   projectOverrides: Record<string, SettingsOverride>;
 }
 
@@ -234,9 +238,15 @@ export interface SettingsPatch {
   defaultEffort?: string;
   maxConcurrency?: number;
   permissionMode?: string;
-  theme?: string;
   cleanupWorktrees?: boolean;
   notifyOnComplete?: boolean;
+  defaultRunMode?: RunMode;
+}
+
+/** Read-only application metadata for the About page. Mirrors the Rust `AppInfo`. */
+export interface AppInfo {
+  version: string;
+  repository: string;
 }
 
 /** `nc:project` payload: a registry change plus the full registry snapshot. */
@@ -531,14 +541,20 @@ export async function chooseFolder(): Promise<string | null> {
 
 /** The default settings used outside Tauri (browser preview). */
 const MOCK_SETTINGS: Settings = {
-  defaultModel: 'opus-4.8',
+  defaultModel: 'claude-opus-4-8',
   defaultEffort: 'medium',
   maxConcurrency: 3,
   permissionMode: 'auto-accept',
-  theme: 'cosmic',
   cleanupWorktrees: true,
   notifyOnComplete: false,
+  defaultRunMode: 'main',
   projectOverrides: {},
+};
+
+/** App metadata used outside Tauri (browser preview). */
+const MOCK_APP_INFO: AppInfo = {
+  version: '0.0.0',
+  repository: 'https://github.com/Shironex/nightcore',
 };
 
 /** The current settings. Returns mock defaults outside Tauri. */
@@ -552,6 +568,13 @@ export async function getSettings(): Promise<Settings> {
 export async function updateSettings(patch: SettingsPatch): Promise<Settings> {
   if (!isTauri()) return { ...MOCK_SETTINGS, ...patch };
   return invoke<Settings>('update_settings', { patch });
+}
+
+/** Real app metadata (version + repo URL) for the About page. Returns mock values
+ *  outside Tauri (browser preview). */
+export async function getAppInfo(): Promise<AppInfo> {
+  if (!isTauri()) return MOCK_APP_INFO;
+  return invoke<AppInfo>('app_info');
 }
 
 // --- Events ---------------------------------------------------------------

@@ -34,6 +34,7 @@ use store::{workspace_root, TaskStore};
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             use tauri::Manager;
 
@@ -115,6 +116,7 @@ pub fn run() {
             project::git_init,
             settings::get_settings,
             settings::update_settings,
+            settings::app_info,
             m2::coordinator::start_auto_loop,
             m2::coordinator::stop_auto_loop,
             m2::coordinator::resume_auto_loop,

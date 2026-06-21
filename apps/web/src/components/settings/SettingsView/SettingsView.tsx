@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import {
   AgentsIcon,
   BellIcon,
-  BoardIcon,
   BookIcon,
   BoltIcon,
   BrandMark,
@@ -15,25 +14,27 @@ import {
   SlidersIcon,
   SparkIcon,
 } from '@/components/ui';
+import { EFFORT_OPTIONS, MODEL_OPTIONS } from '@/lib/models';
 import { SettingsCard } from '../SettingsCard';
 import type { SettingsCardProps } from '../SettingsCard';
-import { useSettingsView, type EffectiveSettings } from './SettingsView.hooks';
+import { useAppInfo, useSettingsView, type EffectiveSettings } from './SettingsView.hooks';
 import type {
   SettingsPage,
   SettingsScope,
   SettingsViewProps,
 } from './SettingsView.types';
 
-const MODELS: [value: string, label: string][] = [
-  ['opus-4.8', 'Opus'],
-  ['sonnet-4.8', 'Sonnet'],
-  ['haiku-4.5', 'Haiku'],
-];
-const EFFORTS: [value: string, label: string][] = [
-  ['low', 'Low'],
-  ['medium', 'Med'],
-  ['high', 'High'],
-];
+// The Settings model/effort options reuse the SAME canonical source as the
+// per-task picker (`MODEL_OPTIONS`/`EFFORT_OPTIONS`) so the persisted value is an
+// SDK long id (e.g. `claude-opus-4-8`) — the single source of truth for model ids
+// (P0). The picker label stays friendly; the stored/sent value is the SDK id.
+const MODELS: [value: string, label: string][] = MODEL_OPTIONS.map((m) => [
+  m.id,
+  m.label.split(' ')[0] ?? m.label,
+]);
+const EFFORTS: [value: string, label: string][] = EFFORT_OPTIONS.filter(
+  (e) => e.id !== 'none',
+).map((e) => [e.id, e.label]);
 const CONCURRENCY: [value: string, label: string][] = [
   ['1', '1'],
   ['2', '2'],
@@ -46,6 +47,24 @@ const PERMISSION_MODES: [value: string, label: string][] = [
   ['plan', 'Plan'],
   ['ask', 'Ask'],
 ];
+const RUN_MODES: [value: string, label: string][] = [
+  ['main', 'Main'],
+  ['worktree', 'Worktree'],
+];
+
+/** Which model option a stored value selects. Settings persist SDK long ids that
+ *  match `MODEL_OPTIONS` directly; a legacy short id (`opus-4.8`) is matched by
+ *  family so the segmented control highlights the right chip. Falls back to the
+ *  raw value when unrecognized. */
+function resolveModelValue(model: string): string {
+  if (MODELS.some(([v]) => v === model)) return model;
+  const family = model.toLowerCase();
+  const match = MODEL_OPTIONS.find((o) => {
+    const f = o.label.toLowerCase().split(' ')[0] ?? '';
+    return f.length > 0 && family.includes(f);
+  });
+  return match?.id ?? model;
+}
 
 /** A segmented selector. `disabled` renders it visible-but-inert (roadmap). */
 function Segmented({
@@ -82,17 +101,29 @@ function Segmented({
   );
 }
 
-/** A read-only toggle for roadmap affordances — shows persisted state, inert. */
-function RoadmapToggle({ on }: { on: boolean }): ReactNode {
+/** An editable switch toggle bound to a persisted boolean setting. */
+function Toggle({
+  on,
+  onChange,
+  label,
+}: {
+  on: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+}): ReactNode {
   return (
-    <span
-      aria-hidden
-      className={`inline-flex h-[18px] w-[32px] items-center rounded-full px-0.5 opacity-40 ${on ? 'bg-primary' : 'bg-white/[0.12]'}`}
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      onClick={() => onChange(!on)}
+      className={`inline-flex h-[18px] w-[32px] items-center rounded-full px-0.5 transition-colors ${on ? 'bg-primary' : 'bg-white/[0.12]'}`}
     >
       <span
         className={`h-3.5 w-3.5 rounded-full bg-white transition-transform ${on ? 'translate-x-3.5' : ''}`}
       />
-    </span>
+    </button>
   );
 }
 
@@ -114,35 +145,10 @@ function FieldValue({ children }: { children: ReactNode }): ReactNode {
   );
 }
 
-function Swatches(): ReactNode {
-  const swatches: [name: string, color: string][] = [
-    ['Cosmic', 'oklch(78% .22 290)'],
-    ['Plum', 'oklch(74% .15 355)'],
-    ['Void', 'oklch(72% .28 295)'],
-    ['Ember', 'oklch(70% .19 40)'],
-  ];
-  return (
-    <span className="flex gap-1.5">
-      {swatches.map(([name, color], i) => (
-        <span
-          key={name}
-          title={name}
-          className="h-6 w-6 rounded-[7px]"
-          style={{
-            background: color,
-            boxShadow:
-              i === 0 ? '0 0 0 2px var(--nc-card), 0 0 0 4px var(--nc-primary)' : undefined,
-          }}
-        />
-      ))}
-    </span>
-  );
-}
-
-function RepoLink(): ReactNode {
+function RepoLink({ href }: { href: string }): ReactNode {
   return (
     <a
-      href="https://github.com"
+      href={href}
       target="_blank"
       rel="noreferrer"
       className="flex items-center gap-1.5 text-[12.5px] font-semibold text-primary"
@@ -180,19 +186,15 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'WORKTREES',
     items: [
-      { page: 'worktrees', label: 'Git worktrees', icon: <BranchIcon size={16} />, badge: 'M2' },
+      { page: 'worktrees', label: 'Git worktrees', icon: <BranchIcon size={16} /> },
     ],
   },
   {
     label: 'INTEGRATIONS',
     items: [
       { page: 'providers', label: 'Providers', icon: <BoltIcon size={16} /> },
-      { page: 'hooks', label: 'Hooks & notifications', icon: <BellIcon size={16} />, badge: 'M3' },
+      { page: 'hooks', label: 'Hooks & notifications', icon: <BellIcon size={16} /> },
     ],
-  },
-  {
-    label: 'APPEARANCE',
-    items: [{ page: 'appearance', label: 'Theme & density', icon: <LayersIcon size={16} /> }],
   },
   {
     label: 'SYSTEM',
@@ -213,12 +215,11 @@ interface PageHeader {
 const PAGE_HEADERS: Record<SettingsPage, PageHeader> = {
   models: { title: 'Models & runs', subtitle: 'AGENT DEFAULTS', icon: <SlidersIcon size={26} /> },
   permissions: { title: 'Permissions', subtitle: 'TOOL ACCESS', icon: <LockIcon size={24} />, badge: 'M3' },
-  worktrees: { title: 'Git worktrees', subtitle: 'ISOLATION', icon: <BranchIcon size={24} />, badge: 'M2' },
+  worktrees: { title: 'Git worktrees', subtitle: 'ISOLATION', icon: <BranchIcon size={24} /> },
   providers: { title: 'Providers', subtitle: 'MODEL BACKENDS', icon: <BoltIcon size={24} /> },
-  hooks: { title: 'Hooks & notifications', subtitle: 'EVENTS', icon: <BellIcon size={24} />, badge: 'M3' },
-  appearance: { title: 'Appearance', subtitle: 'THEME & LAYOUT', icon: <LayersIcon size={24} /> },
+  hooks: { title: 'Hooks & notifications', subtitle: 'EVENTS', icon: <BellIcon size={24} /> },
   paths: { title: 'Paths', subtitle: 'STORAGE', icon: <FolderIcon size={24} /> },
-  about: { title: 'About', subtitle: 'NIGHTCORE v0.1.0', icon: <BrandMark size={36} /> },
+  about: { title: 'About', subtitle: 'NIGHTCORE', icon: <BrandMark size={36} /> },
 };
 
 const PAGE_NOTES: Partial<Record<SettingsPage, string>> = {
@@ -245,10 +246,19 @@ export function SettingsView({
     projectScopeEnabled,
     effective,
     patchScoped,
+    patchGlobal,
   } = useSettingsView({ settings, activeProjectId, onUpdate });
 
+  const appInfo = useAppInfo();
   const header = PAGE_HEADERS[page];
-  const cards = buildCards(page, { effective, settings, patchScoped, activeProjectPath });
+  const cards = buildCards(page, {
+    effective,
+    settings,
+    patchScoped,
+    patchGlobal,
+    activeProjectPath,
+    appInfo,
+  });
   const note = PAGE_NOTES[page];
 
   return (
@@ -348,14 +358,16 @@ interface CardContext {
   effective: EffectiveSettings;
   settings: SettingsViewProps['settings'];
   patchScoped: (patch: Parameters<ReturnType<typeof useSettingsView>['patchScoped']>[0]) => void;
+  patchGlobal: (patch: Parameters<ReturnType<typeof useSettingsView>['patchGlobal']>[0]) => void;
   activeProjectPath: string | null;
+  appInfo: import('@/lib/bridge').AppInfo | null;
 }
 
 /** Build the card set for a settings page. The four run-shaping controls (model,
  *  effort, concurrency, permission mode) are live; everything else is
  *  presentational (M2/M3 or a light scaffold). */
 function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardProps[] {
-  const { effective, settings, patchScoped, activeProjectPath } = ctx;
+  const { effective, settings, patchScoped, patchGlobal, activeProjectPath, appInfo } = ctx;
   switch (page) {
     case 'models':
       return [
@@ -370,7 +382,7 @@ function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardProps[] {
               control: (
                 <Segmented
                   options={MODELS}
-                  value={effective.defaultModel}
+                  value={resolveModelValue(effective.defaultModel)}
                   onChange={(v) => patchScoped({ defaultModel: v })}
                 />
               ),
@@ -425,11 +437,6 @@ function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardProps[] {
                 />
               ),
             },
-            {
-              label: 'Interactive approval',
-              hint: 'Approve or deny tool use from the logs panel (today it auto-denies).',
-              control: <RoadmapToggle on={false} />,
-            },
           ],
         },
       ];
@@ -438,19 +445,31 @@ function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardProps[] {
         {
           icon: <BranchIcon size={18} />,
           title: 'Worktree isolation',
-          subtitle: 'Each running task gets its own branch and worktree.',
-          badge: 'M2',
+          subtitle: 'Where new tasks run, and whether their worktree is cleaned up.',
           rows: [
-            { label: 'Worktree base directory', control: <FieldValue>.nightcore/worktrees</FieldValue> },
             {
-              label: 'Files to copy into each worktree',
-              hint: 'Comma-separated globs',
-              control: <FieldValue>.env, .env.local</FieldValue>,
+              label: 'Default run mode',
+              hint: 'Main runs in the project root; Worktree isolates on a branch',
+              control: (
+                <Segmented
+                  options={RUN_MODES}
+                  value={effective.defaultRunMode}
+                  onChange={(v) =>
+                    patchScoped({ defaultRunMode: v as typeof effective.defaultRunMode })
+                  }
+                />
+              ),
             },
             {
               label: 'Delete on complete',
               hint: 'Remove the worktree after a task is merged',
-              control: <RoadmapToggle on={settings.cleanupWorktrees} />,
+              control: (
+                <Toggle
+                  on={settings.cleanupWorktrees}
+                  onChange={(next) => patchGlobal({ cleanupWorktrees: next })}
+                  label="Delete worktree on complete"
+                />
+              ),
             },
           ],
         },
@@ -493,50 +512,16 @@ function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardProps[] {
         {
           icon: <BellIcon size={18} />,
           title: 'Notifications',
-          subtitle: 'React to task_success, task_failed and auto_mode_complete.',
-          badge: 'M3',
+          subtitle: 'A desktop notification when a task finishes or fails.',
           rows: [
             {
               label: 'Native notifications',
-              control: <RoadmapToggle on={settings.notifyOnComplete} />,
-            },
-            {
-              label: 'Webhook URL',
-              hint: 'POST a JSON payload on each event',
-              control: <FieldValue>https://</FieldValue>,
-            },
-          ],
-        },
-      ];
-    case 'appearance':
-      return [
-        {
-          icon: <LayersIcon size={18} />,
-          title: 'Theme',
-          subtitle: 'Accent and surface palette.',
-          rows: [
-            { label: 'Accent', hint: 'Cosmic violet is active', control: <Swatches /> },
-            { label: 'Mode', control: <Pill>Dark</Pill> },
-          ],
-        },
-        {
-          icon: <BoardIcon size={18} />,
-          title: 'Density',
-          subtitle: 'Spacing across boards and cards.',
-          badge: 'M2',
-          rows: [
-            {
-              label: 'Card density',
-              hint: 'Affects the Kanban board',
+              hint: 'Notify on Done and Failed',
               control: (
-                <Segmented
-                  options={[
-                    ['comfortable', 'Comfortable'],
-                    ['compact', 'Compact'],
-                  ]}
-                  value="comfortable"
-                  onChange={() => {}}
-                  disabled
+                <Toggle
+                  on={settings.notifyOnComplete}
+                  onChange={(next) => patchGlobal({ notifyOnComplete: next })}
+                  label="Native notifications on task complete"
                 />
               ),
             },
@@ -561,18 +546,21 @@ function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardProps[] {
           ],
         },
       ];
-    case 'about':
+    case 'about': {
+      const version = appInfo?.version ?? '—';
+      const repo = appInfo?.repository ?? 'https://github.com/Shironex/nightcore';
+      const repoLabel = repo.replace(/^https?:\/\//, '');
       return [
         {
           icon: <BookIcon size={18} />,
           title: 'Nightcore',
           subtitle: 'Autonomous Claude dev studio — a rewrite of AutoMaker.',
           rows: [
-            { label: 'Version', control: <Pill>v0.1.0</Pill> },
-            { label: 'Build', control: <Pill>0042</Pill> },
-            { label: 'Repository', hint: 'github.com/you/nightcore', control: <RepoLink /> },
+            { label: 'Version', control: <Pill>v{version}</Pill> },
+            { label: 'Repository', hint: repoLabel, control: <RepoLink href={repo} /> },
           ],
         },
       ];
+    }
   }
 }

@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from 'react';
-import type { SettingsPatch } from '@/lib/bridge';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { getAppInfo, type AppInfo, type RunMode, type SettingsPatch } from '@/lib/bridge';
 import type {
   SettingsPage,
   SettingsScope,
@@ -14,6 +14,7 @@ export interface EffectiveSettings {
   defaultEffort: string;
   maxConcurrency: number;
   permissionMode: string;
+  defaultRunMode: RunMode;
 }
 
 export interface SettingsViewState {
@@ -28,6 +29,9 @@ export interface SettingsViewState {
   /** Patch the run-shaping fields, routed to the global block or the active
    *  project's override per the current scope. */
   patchScoped: (patch: SettingsPatch) => void;
+  /** Patch a global-only field (e.g. `cleanupWorktrees`, `notifyOnComplete`),
+   *  never scoped to a project — those settings are global by design. */
+  patchGlobal: (patch: SettingsPatch) => void;
 }
 
 export function useSettingsView({
@@ -52,6 +56,7 @@ export function useSettingsView({
       defaultEffort: override?.defaultEffort ?? settings.defaultEffort,
       maxConcurrency: override?.maxConcurrency ?? settings.maxConcurrency,
       permissionMode: override?.permissionMode ?? settings.permissionMode,
+      defaultRunMode: override?.defaultRunMode ?? settings.defaultRunMode,
     };
   }, [scope, activeProjectId, settings]);
 
@@ -66,6 +71,11 @@ export function useSettingsView({
     [scope, activeProjectId, onUpdate],
   );
 
+  const patchGlobal = useCallback(
+    (patch: SettingsPatch) => onUpdate(patch),
+    [onUpdate],
+  );
+
   return {
     page,
     setPage: useCallback((next: SettingsPage) => setPage(next), []),
@@ -74,5 +84,22 @@ export function useSettingsView({
     projectScopeEnabled,
     effective,
     patchScoped,
+    patchGlobal,
   };
+}
+
+/** Load the real app metadata (version + repo URL) for the About page once. Null
+ *  until it resolves; the About card falls back to neutral text meanwhile. */
+export function useAppInfo(): AppInfo | null {
+  const [info, setInfo] = useState<AppInfo | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void getAppInfo().then((loaded) => {
+      if (alive) setInfo(loaded);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return info;
 }

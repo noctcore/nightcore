@@ -309,15 +309,19 @@ pub fn create_task(
     effort: Option<String>,
     permission_mode: Option<String>,
 ) -> Result<Task, String> {
-    let run_mode = run_mode.unwrap_or_else(|| {
-        let project_id = projects.active().map(|p| p.id);
-        settings.default_run_mode(project_id.as_deref())
-    });
+    // Resolve every default once against the active project (per-project override →
+    // global), mirroring how `default_run_mode` is applied — so the Settings
+    // defaults are authoritative for a new task without the web having to seed them.
+    let project_id = projects.active().map(|p| p.id);
+    let pid = project_id.as_deref();
+    let run_mode = run_mode.unwrap_or_else(|| settings.default_run_mode(pid));
     let mut task = Task::new(title, description).with_run_mode(run_mode);
-    // M4.7 §A4/§E: an explicit model/effort/permission-mode at creation; absent ⇒
-    // inherit the resolved defaults at launch.
-    task.model = model;
-    task.effort = effort;
+    // P0: an explicit per-task model/effort wins; absent ⇒ stamp the resolved
+    // Settings default (an SDK long id) so changing "Default model" in Settings
+    // actually affects new runs. `permission_mode` stays lazily resolved at launch
+    // (`resolve_permission_mode`), so `None` here means "inherit".
+    task.model = Some(model.unwrap_or_else(|| settings.default_model(pid)));
+    task.effort = Some(effort.unwrap_or_else(|| settings.default_effort(pid)));
     task.permission_mode = permission_mode;
     store.upsert(&task)?;
     let _ = app.emit(TASK_EVENT, &task);
