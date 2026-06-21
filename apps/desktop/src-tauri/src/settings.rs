@@ -39,6 +39,17 @@ pub struct Settings {
     /// unless the create call passes an explicit one.
     #[serde(default = "default_run_mode_value")]
     pub default_run_mode: String,
+    /// SDK-guardrails: the default max conversation turns new tasks inherit when
+    /// they don't carry an explicit per-task ceiling. `None` ⇒ fall through to the
+    /// engine's `@nightcore/config` default (200). Per-project overridable.
+    /// Serde-additive: a settings file written before this field loads as `None`.
+    #[serde(default)]
+    pub max_turns: Option<u32>,
+    /// SDK-guardrails: the default hard cost ceiling (USD) new tasks inherit.
+    /// `None` ⇒ uncapped (the engine's config default applies). Per-project
+    /// overridable. Serde-additive: legacy settings load this as `None`.
+    #[serde(default)]
+    pub max_budget_usd: Option<f64>,
     /// Per-project overrides keyed by project id.
     pub project_overrides: HashMap<String, SettingsOverride>,
 }
@@ -63,6 +74,11 @@ impl Default for Settings {
             cleanup_worktrees: true,
             notify_on_complete: false,
             default_run_mode: default_run_mode_value(),
+            // SDK-guardrails: no Settings-level ceiling by default — a new task
+            // inherits the engine's `@nightcore/config` default (maxTurns 200,
+            // budget uncapped) until the user sets a knob here.
+            max_turns: None,
+            max_budget_usd: None,
             project_overrides: HashMap::new(),
         }
     }
@@ -79,6 +95,13 @@ pub struct SettingsOverride {
     pub permission_mode: Option<String>,
     /// M4.6: per-project default run mode (`"main"` | `"worktree"`).
     pub default_run_mode: Option<String>,
+    /// SDK-guardrails: per-project default max-turns ceiling (overrides the global
+    /// `max_turns` for this project's new tasks).
+    #[serde(default)]
+    pub max_turns: Option<u32>,
+    /// SDK-guardrails: per-project default max-budget-USD ceiling.
+    #[serde(default)]
+    pub max_budget_usd: Option<f64>,
 }
 
 impl SettingsOverride {
@@ -99,6 +122,12 @@ impl SettingsOverride {
         if patch.default_run_mode.is_some() {
             self.default_run_mode = patch.default_run_mode.clone();
         }
+        if patch.max_turns.is_some() {
+            self.max_turns = patch.max_turns;
+        }
+        if patch.max_budget_usd.is_some() {
+            self.max_budget_usd = patch.max_budget_usd;
+        }
     }
 
     fn is_empty(&self) -> bool {
@@ -107,6 +136,8 @@ impl SettingsOverride {
             && self.max_concurrency.is_none()
             && self.permission_mode.is_none()
             && self.default_run_mode.is_none()
+            && self.max_turns.is_none()
+            && self.max_budget_usd.is_none()
     }
 }
 
@@ -125,6 +156,12 @@ pub struct SettingsPatch {
     /// M4.6: default run mode (`"main"` | `"worktree"`). With a `projectId` it lands
     /// in that project's override; without one, the global default.
     pub default_run_mode: Option<String>,
+    /// SDK-guardrails: default max-turns ceiling. With a `projectId` it lands in
+    /// that project's override; without one, the global default.
+    pub max_turns: Option<u32>,
+    /// SDK-guardrails: default max-budget-USD ceiling. With a `projectId` it lands
+    /// in that project's override; without one, the global default.
+    pub max_budget_usd: Option<f64>,
 }
 
 impl Settings {
@@ -161,6 +198,17 @@ impl Settings {
         }
         if let Some(v) = patch.default_run_mode {
             self.default_run_mode = v;
+        }
+        // SDK-guardrails: a present value sets the global ceiling. Like `model`,
+        // serde flattens absent and explicit-null to the same `None`, so a global
+        // patch can SET a ceiling but not clear it back to inherit — the only
+        // observable behavior the UI relies on (the inputs always send a value or
+        // omit the key entirely).
+        if patch.max_turns.is_some() {
+            self.max_turns = patch.max_turns;
+        }
+        if patch.max_budget_usd.is_some() {
+            self.max_budget_usd = patch.max_budget_usd;
         }
     }
 }
@@ -236,6 +284,30 @@ impl SettingsStore {
             .unwrap_or(settings.default_effort)
     }
 
+    /// The effective default max-turns ceiling for a project (its override, else
+    /// the global). `None` ⇒ no Settings ceiling, so `create_task` leaves the
+    /// task's `max_turns` as `None` and the engine's `@nightcore/config` default
+    /// (200) applies. Mirrors [`default_model`](Self::default_model)'s
+    /// project-override → global resolution.
+    pub fn default_max_turns(&self, project_id: Option<&str>) -> Option<u32> {
+        let settings = self.get();
+        project_id
+            .and_then(|id| settings.project_overrides.get(id))
+            .and_then(|ov| ov.max_turns)
+            .or(settings.max_turns)
+    }
+
+    /// The effective default max-budget-USD ceiling for a project (its override,
+    /// else the global). `None` ⇒ uncapped at the Settings level; the engine's
+    /// config default applies. Mirrors [`default_max_turns`](Self::default_max_turns).
+    pub fn default_max_budget_usd(&self, project_id: Option<&str>) -> Option<f64> {
+        let settings = self.get();
+        project_id
+            .and_then(|id| settings.project_overrides.get(id))
+            .and_then(|ov| ov.max_budget_usd)
+            .or(settings.max_budget_usd)
+    }
+
     /// Apply a patch, persist, and return the merged settings.
     fn update(&self, patch: SettingsPatch) -> Result<Settings, String> {
         let mut guard = self.settings.lock().expect("settings store poisoned");
@@ -243,6 +315,14 @@ impl SettingsStore {
         let snapshot = guard.clone();
         write_settings(&self.config_dir.join("settings.json"), &snapshot)?;
         Ok(snapshot)
+    }
+
+    /// Test-only seam: apply a patch to an in-memory store (used by other modules'
+    /// tests — e.g. `task::build_new_task` — to set up Settings defaults without
+    /// reaching into the private [`update`](Self::update)).
+    #[cfg(test)]
+    pub(crate) fn update_for_test(&self, patch: SettingsPatch) -> Result<Settings, String> {
+        self.update(patch)
     }
 }
 
@@ -563,9 +643,84 @@ mod tests {
             "cleanupWorktrees",
             "notifyOnComplete",
             "defaultRunMode",
+            "maxTurns",
+            "maxBudgetUsd",
             "projectOverrides",
         ] {
             assert!(obj.contains_key(key), "missing camelCase key {key}");
         }
+    }
+
+    #[test]
+    fn guardrail_defaults_are_none_and_serde_additive() {
+        // SDK-guardrails: with no Settings knob set, the resolvers return None so a
+        // new task inherits the engine's `@nightcore/config` default.
+        let s = Settings::default();
+        assert!(s.max_turns.is_none(), "max_turns defaults to None (inherit)");
+        assert!(
+            s.max_budget_usd.is_none(),
+            "max_budget_usd defaults to None (uncapped)"
+        );
+
+        // A settings.json from before the guardrails UI (no `maxTurns`/
+        // `maxBudgetUsd`) still parses, defaulting both to None — the pinning
+        // guarantee, so existing config files aren't broken.
+        let tmp = TempDir::new().expect("temp dir");
+        let dir = tmp.path().join("config");
+        std::fs::create_dir_all(&dir).unwrap();
+        let legacy = r#"{"defaultModel":"claude-opus-4-8","defaultEffort":"medium",
+            "maxConcurrency":3,"permissionMode":"bypass","cleanupWorktrees":true,
+            "notifyOnComplete":false,"defaultRunMode":"main","projectOverrides":{}}"#;
+        std::fs::write(dir.join("settings.json"), legacy).unwrap();
+        let store = SettingsStore::load_from(dir);
+        assert!(store.get().max_turns.is_none());
+        assert!(store.get().max_budget_usd.is_none());
+        assert_eq!(store.default_max_turns(None), None);
+        assert_eq!(store.default_max_budget_usd(None), None);
+    }
+
+    #[test]
+    fn default_max_turns_resolves_project_then_global_then_none() {
+        let (store, _tmp) = temp_store();
+        // No knob set anywhere → None (inherit the config default).
+        assert_eq!(store.default_max_turns(None), None);
+        assert_eq!(store.default_max_budget_usd(None), None);
+
+        // A global ceiling flips it for every project without an own override.
+        store
+            .update(
+                serde_json::from_str(r#"{"maxTurns":150,"maxBudgetUsd":5.0}"#).unwrap(),
+            )
+            .expect("update");
+        assert_eq!(store.default_max_turns(None), Some(150));
+        assert_eq!(store.default_max_turns(Some("any")), Some(150));
+        assert_eq!(store.default_max_budget_usd(Some("any")), Some(5.0));
+
+        // A per-project override wins for that project only.
+        store
+            .update(
+                serde_json::from_str(r#"{"projectId":"p1","maxTurns":50,"maxBudgetUsd":1.0}"#)
+                    .unwrap(),
+            )
+            .expect("update");
+        assert_eq!(store.default_max_turns(Some("p1")), Some(50));
+        assert_eq!(store.default_max_budget_usd(Some("p1")), Some(1.0));
+        // Another project still sees the global ceiling.
+        assert_eq!(store.default_max_turns(Some("other")), Some(150));
+        assert_eq!(store.default_max_budget_usd(Some("other")), Some(5.0));
+    }
+
+    #[test]
+    fn guardrail_project_patch_writes_an_override_not_the_global() {
+        let (store, _tmp) = temp_store();
+        let patch: SettingsPatch =
+            serde_json::from_str(r#"{"projectId":"proj-1","maxTurns":42}"#).unwrap();
+        let merged = store.update(patch).expect("update");
+
+        // The global ceiling is untouched; the override carries the project value.
+        assert!(merged.max_turns.is_none(), "global stays None");
+        let ov = merged.project_overrides.get("proj-1").expect("override exists");
+        assert_eq!(ov.max_turns, Some(42));
+        assert!(ov.max_budget_usd.is_none(), "only the patched field is set");
     }
 }

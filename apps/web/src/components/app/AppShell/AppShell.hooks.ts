@@ -547,6 +547,10 @@ export interface AppShellState {
     handleChangeModel: (id: string, model: string | null) => void;
     /** Edit a not-yet-run task's reasoning-effort override (M4.7). */
     handleChangeEffort: (id: string, effort: string | null) => void;
+    /** Edit a not-yet-run task's max-turns ceiling (SDK guardrail). */
+    handleChangeMaxTurns: (id: string, maxTurns: number | null) => void;
+    /** Edit a not-yet-run task's max-budget-USD ceiling (SDK guardrail). */
+    handleChangeMaxBudget: (id: string, maxBudgetUsd: number | null) => void;
     /** Verification-approval actions for a review-parked task (M4). */
     handleAcceptReview: (id: string) => void;
     handleRejectReview: (id: string) => void;
@@ -739,6 +743,22 @@ export function useAppShell(): AppShellState {
     },
     [setTasks],
   );
+  const handleChangeMaxTurns = useCallback(
+    (id: string, maxTurns: number | null) => {
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, maxTurns } : t)));
+      void updateTask(id, { maxTurns }).catch((err) => console.error('update_task failed', err));
+    },
+    [setTasks],
+  );
+  const handleChangeMaxBudget = useCallback(
+    (id: string, maxBudgetUsd: number | null) => {
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, maxBudgetUsd } : t)));
+      void updateTask(id, { maxBudgetUsd }).catch((err) =>
+        console.error('update_task failed', err),
+      );
+    },
+    [setTasks],
+  );
   const handleAcceptReview = useCallback((id: string) => {
     void acceptReview(id).catch((err) => console.error('accept_review failed', err));
   }, []);
@@ -792,6 +812,8 @@ export function useAppShell(): AppShellState {
       handleChangePermissionMode,
       handleChangeModel,
       handleChangeEffort,
+      handleChangeMaxTurns,
+      handleChangeMaxBudget,
       handleAcceptReview,
       handleRejectReview,
       handleRerunVerification,

@@ -13,6 +13,26 @@ test('updates a global setting with the SDK long id when scope is Global', async
   expect(onUpdate).toHaveBeenCalledWith({ defaultModel: 'claude-sonnet-4-6' });
 });
 
+test('commits a Max-turns ceiling as a global guardrail patch', async () => {
+  const onUpdate = vi.fn();
+  const screen = render(<Global onUpdate={onUpdate} />);
+  const input = screen.getByRole('spinbutton', { name: 'Max turns' });
+  await input.fill('120');
+  // Commit on blur (Enter or focus-out).
+  await screen.getByRole('spinbutton', { name: 'Max budget in USD' }).click();
+  expect(onUpdate).toHaveBeenCalledWith({ maxTurns: 120 });
+});
+
+test('routes a Max-budget ceiling to a project override under the project scope', async () => {
+  const onUpdate = vi.fn();
+  const screen = render(<Global onUpdate={onUpdate} />);
+  await screen.getByRole('button', { name: 'nightcore' }).click();
+  const input = screen.getByRole('spinbutton', { name: 'Max budget in USD' });
+  await input.fill('2.5');
+  await screen.getByRole('spinbutton', { name: 'Max turns' }).click();
+  expect(onUpdate).toHaveBeenCalledWith({ maxBudgetUsd: 2.5, projectId: 'nightcore' });
+});
+
 test('routes the patch to a project override under the project scope', async () => {
   const onUpdate = vi.fn();
   const screen = render(<Global onUpdate={onUpdate} />);

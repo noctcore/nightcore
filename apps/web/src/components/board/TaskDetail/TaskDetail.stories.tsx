@@ -32,6 +32,8 @@ const meta = {
     onChangePermissionMode: fn(),
     onChangeModel: fn(),
     onChangeEffort: fn(),
+    onChangeMaxTurns: fn(),
+    onChangeMaxBudget: fn(),
     onAcceptReview: fn(),
     onRejectReview: fn(),
     onRerunVerification: fn(),
@@ -93,6 +95,12 @@ export const EditablePickers: Story = {
     const modes = within(canvas.getByRole('radiogroup', { name: /permission mode/i }));
     await userEvent.click(modes.getByRole('radio', { name: /^ask$/i }));
     await expect(args.onChangePermissionMode).toHaveBeenCalledWith('t-edit', 'ask');
+
+    // Committing a max-turns ceiling (blur) patches the per-task guardrail.
+    const turns = canvas.getByRole('spinbutton', { name: 'Max turns' });
+    await userEvent.type(turns, '40');
+    await userEvent.tab();
+    await expect(args.onChangeMaxTurns).toHaveBeenCalledWith('t-edit', 40);
   },
 };
 

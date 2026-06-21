@@ -131,6 +131,8 @@ export function AppShell() {
                 onChangePermissionMode={board.handleChangePermissionMode}
                 onChangeModel={board.handleChangeModel}
                 onChangeEffort={board.handleChangeEffort}
+                onChangeMaxTurns={board.handleChangeMaxTurns}
+                onChangeMaxBudget={board.handleChangeMaxBudget}
                 onAcceptReview={board.handleAcceptReview}
                 onRejectReview={board.handleRejectReview}
                 onRerunVerification={board.handleRerunVerification}

@@ -30,6 +30,67 @@ import { GauntletResults } from '../GauntletResults';
 import { canMerge, deriveTaskDetailView } from './TaskDetail.hooks';
 import type { TaskDetailProps } from './TaskDetail.types';
 
+/** An editable numeric ceiling (SDK guardrails). Empty ⇒ inherit the resolved
+ *  default (the placeholder shows it). Commits a parsed value on blur/Enter via
+ *  `onCommit`; a blank/invalid/unchanged value is a no-op — the override can be
+ *  SET but, like model/effort, not cleared back to inherit from here. */
+function LimitField({
+  label,
+  value,
+  placeholder,
+  min,
+  step,
+  prefix,
+  onCommit,
+}: {
+  label: string;
+  value: number | null;
+  placeholder: string;
+  min: number;
+  step: number;
+  prefix?: string;
+  onCommit: (next: number) => void;
+}) {
+  const commit = (raw: string) => {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) return;
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed < min || parsed === value) return;
+    onCommit(parsed);
+  };
+  return (
+    <label className="flex flex-1 flex-col gap-1">
+      <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground">
+        {label}
+      </span>
+      <span className="inline-flex items-center gap-1 rounded-md border border-border bg-black/20 px-2 py-1 focus-within:border-primary">
+        {prefix !== undefined && (
+          <span className="font-mono text-[11px] text-muted-foreground">{prefix}</span>
+        )}
+        <input
+          type="number"
+          inputMode="numeric"
+          min={min}
+          step={step}
+          defaultValue={value ?? ''}
+          key={value ?? 'empty'}
+          placeholder={placeholder}
+          aria-label={label}
+          onBlur={(e) => commit(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              commit((e.target as HTMLInputElement).value);
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+          className="w-full bg-transparent font-mono text-[11.5px] text-foreground outline-none placeholder:text-muted-foreground/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+      </span>
+    </label>
+  );
+}
+
 /** The logs / detail drawer — title, status, kind, plan, parked permission
  *  prompts, the reviewer verdict + verification controls (M4), the readiness
  *  gauntlet + verified-gated merge, the transcript, and the per-status run /
@@ -54,6 +115,8 @@ export function TaskDetail({
   onChangePermissionMode,
   onChangeModel,
   onChangeEffort,
+  onChangeMaxTurns,
+  onChangeMaxBudget,
   onAcceptReview,
   onRejectReview,
   onRerunVerification,
@@ -185,6 +248,42 @@ export function TaskDetail({
               </span>
               <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
                 Effort: {task.effort ?? 'inherit'}
+              </span>
+            </div>
+          )}
+        </section>
+
+        <section>
+          <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+            Limits
+          </h3>
+          {kindEditable && onChangeMaxTurns !== undefined && onChangeMaxBudget !== undefined ? (
+            <div className="flex gap-2.5">
+              <LimitField
+                label="Max turns"
+                value={task.maxTurns}
+                placeholder="Inherit"
+                min={1}
+                step={1}
+                onCommit={(n) => onChangeMaxTurns(task.id, n)}
+              />
+              <LimitField
+                label="Max budget (USD)"
+                value={task.maxBudgetUsd}
+                placeholder="Inherit"
+                min={0}
+                step={0.5}
+                prefix="$"
+                onCommit={(n) => onChangeMaxBudget(task.id, n)}
+              />
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                Turns: {task.maxTurns ?? 'inherit'}
+              </span>
+              <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                Budget: {task.maxBudgetUsd !== null ? `$${task.maxBudgetUsd}` : 'inherit'}
               </span>
             </div>
           )}
