@@ -17,10 +17,12 @@ import { SessionManager } from '@nightcore/engine';
 import type { PermissionMode } from '@nightcore/contracts';
 import { App } from './App.js';
 
-/** The TUI drives the two interactive modes; anything else from config maps to
- *  the safe default (plan = read-only). Shift+Tab flips plan ↔ build at runtime. */
+/** The TUI drives the two interactive modes; build (auto-accept edits) is the
+ *  default daily-driver mode. Only an explicit `plan` in config opts into the
+ *  read-only mode; everything else (including `default`) starts in build.
+ *  Shift+Tab flips plan ↔ build at runtime. */
 function normalizeMode(mode: PermissionMode): PermissionMode {
-  return mode === 'acceptEdits' ? 'acceptEdits' : 'plan';
+  return mode === 'plan' ? 'plan' : 'acceptEdits';
 }
 
 async function main(): Promise<void> {
