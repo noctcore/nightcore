@@ -6,9 +6,9 @@
   "sideEffects": ["**/*.css"],
   "scripts": {
     "dev": "vite --port 5173 --strictPort",
-    "build": "tsc -b && vite build",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",

@@ -1,168 +1,181 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { isTauri, onNcEvent, startPrompt, type NcEvent } from './bridge';
-
-interface ToolLine {
-  id: number;
-  toolName: string;
-}
-
-type Status = 'idle' | 'running' | 'completed' | 'failed';
-
-interface RunState {
-  status: Status;
-  model: string | null;
-  answer: string;
-  tools: ToolLine[];
-  costUsd: number | null;
-  error: string | null;
-}
-
-const INITIAL: RunState = {
-  status: 'idle',
-  model: null,
-  answer: '',
-  tools: [],
-  costUsd: null,
-  error: null,
-};
-
-const STATUS_STYLE: Record<Status, string> = {
-  idle: 'text-zinc-500',
-  running: 'text-sky-400',
-  completed: 'text-emerald-400',
-  failed: 'text-rose-400',
-};
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  cancelTask,
+  createTask,
+  deleteTask,
+  isTauri,
+  listTasks,
+  onSessionEvent,
+  onTaskEvent,
+  runTask,
+  type Task,
+} from './bridge';
+import { EMPTY_STREAM, foldSession, type SessionStream } from './session-stream';
+import { Board } from './components/Board';
+import { NewTaskForm } from './components/NewTaskForm';
+import { TaskDetail } from './components/TaskDetail';
 
 export function App() {
-  const [prompt, setPrompt] = useState('');
-  const [run, setRun] = useState<RunState>(INITIAL);
-  // Whether the active turn streamed partial deltas, so the final whole-message
-  // block (partial: false) can be suppressed — mirrors the engine's own dedup.
-  const streamedPartial = useRef(false);
-  const toolSeq = useRef(0);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [streams, setStreams] = useState<Record<string, SessionStream>>({});
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showNewForm, setShowNewForm] = useState(false);
 
+  // Seed from persisted state.
   useEffect(() => {
-    const unlistenPromise = onNcEvent((event) => setRun((prev) => fold(prev, event)));
+    let active = true;
+    void listTasks().then((seed) => {
+      if (active) setTasks(seed);
+    });
     return () => {
-      void unlistenPromise.then((unlisten) => unlisten());
+      active = false;
     };
   }, []);
 
-  const fold = useCallback((prev: RunState, event: NcEvent): RunState => {
-    switch (event.type) {
-      case 'session-started':
-        streamedPartial.current = false;
-        toolSeq.current = 0;
-        return { ...INITIAL, status: 'running', model: event.model };
-      case 'assistant-delta': {
-        if (event.partial) {
-          streamedPartial.current = true;
-          return { ...prev, answer: prev.answer + event.text };
-        }
-        if (streamedPartial.current) return prev;
-        return { ...prev, answer: prev.answer + event.text };
-      }
-      case 'tool-use-requested':
-        streamedPartial.current = false;
-        toolSeq.current += 1;
-        return {
-          ...prev,
-          tools: [...prev.tools, { id: toolSeq.current, toolName: event.toolName }],
-        };
-      case 'session-completed':
-        return { ...prev, status: 'completed', costUsd: event.costUsd };
-      case 'session-failed':
-        return {
-          ...prev,
-          status: 'failed',
-          error: `${event.reason}: ${event.message}`,
-        };
-      default:
-        return prev;
-    }
+  // Subscribe once to board upserts.
+  useEffect(() => {
+    const unlisten = onTaskEvent((task) => {
+      setTasks((prev) => {
+        const idx = prev.findIndex((t) => t.id === task.id);
+        if (idx === -1) return [...prev, task];
+        const next = prev.slice();
+        next[idx] = task;
+        return next;
+      });
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
   }, []);
 
-  const submit = useCallback(() => {
-    const text = prompt.trim();
-    if (text.length === 0 || run.status === 'running') return;
-    setRun({ ...INITIAL, status: 'running' });
-    streamedPartial.current = false;
-    void startPrompt(text);
-  }, [prompt, run.status]);
+  // Subscribe once to streamed session events; route into per-task buffers.
+  useEffect(() => {
+    const unlisten = onSessionEvent(({ taskId, event }) => {
+      setStreams((prev) => {
+        const current = prev[taskId] ?? EMPTY_STREAM;
+        return { ...prev, [taskId]: foldSession(current, event) };
+      });
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
 
-  const onKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        submit();
-      }
+  const anyRunning = useMemo(
+    () => tasks.some((t) => t.status === 'in_progress'),
+    [tasks],
+  );
+
+  const selected = useMemo(
+    () => tasks.find((t) => t.id === selectedId) ?? null,
+    [tasks, selectedId],
+  );
+
+  const handleCreate = useCallback(async (title: string, description: string) => {
+    const task = await createTask(title, description);
+    // The core also emits nc:task; upsert defensively in case it lands first.
+    setTasks((prev) =>
+      prev.some((t) => t.id === task.id) ? prev : [...prev, task],
+    );
+    setSelectedId(task.id);
+  }, []);
+
+  const handleRun = useCallback((id: string) => {
+    // Fresh stream buffer for this run.
+    setStreams((prev) => ({ ...prev, [id]: { ...EMPTY_STREAM } }));
+    void runTask(id).catch((err) => {
+      console.error('run_task failed', err);
+    });
+  }, []);
+
+  const handleCancel = useCallback((id: string) => {
+    void cancelTask(id).catch((err) => {
+      console.error('cancel_task failed', err);
+    });
+  }, []);
+
+  const handleDelete = useCallback(
+    (id: string) => {
+      void deleteTask(id).catch((err) => {
+        console.error('delete_task failed', err);
+      });
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+      setStreams((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      setSelectedId((cur) => (cur === id ? null : cur));
     },
-    [submit],
+    [],
   );
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-zinc-800 bg-zinc-950/60 px-4 py-2">
+      <header className="flex items-center justify-between border-b border-zinc-800 bg-zinc-950/60 px-4 py-2.5">
         <div className="flex items-baseline gap-2">
           <span className="font-semibold tracking-tight">Nightcore</span>
-          <span className="text-xs text-zinc-500">{run.model ?? 'idle'}</span>
+          <span className="text-xs text-zinc-500">
+            {anyRunning ? 'running' : `${tasks.length} tasks`}
+          </span>
         </div>
-        <div className="flex items-center gap-3 text-xs">
-          <span className={STATUS_STYLE[run.status]}>{run.status}</span>
-          {run.costUsd !== null && (
-            <span className="text-zinc-500">${run.costUsd.toFixed(4)}</span>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={() => setShowNewForm(true)}
+          className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500"
+        >
+          + New task
+        </button>
       </header>
 
-      <main className="flex-1 overflow-auto px-4 py-4">
-        {!isTauri() && (
-          <p className="mb-3 rounded border border-amber-700/40 bg-amber-950/30 px-3 py-2 text-sm text-amber-300">
-            Browser preview — run <code>bun run desktop</code> to drive the
-            sidecar.
-          </p>
-        )}
-        {run.tools.length > 0 && (
-          <ul className="mb-3 space-y-1">
-            {run.tools.map((tool) => (
-              <li key={tool.id} className="text-xs text-sky-400/80">
-                ⚙ {tool.toolName}
-              </li>
-            ))}
-          </ul>
-        )}
-        {run.error !== null ? (
-          <pre className="whitespace-pre-wrap text-sm text-rose-400">
-            {run.error}
-          </pre>
-        ) : (
-          <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-zinc-100">
-            {run.answer ||
-              (run.status === 'running' ? '…' : 'Ask Nightcore anything.')}
-          </pre>
+      {!isTauri() && (
+        <p className="border-b border-amber-700/40 bg-amber-950/30 px-4 py-2 text-sm text-amber-300">
+          Browser preview — run <code>bun run desktop</code> to drive the
+          sidecar. Commands are no-ops here.
+        </p>
+      )}
+
+      <main className="flex min-h-0 flex-1">
+        <div className="min-w-0 flex-1">
+          {tasks.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+              <p className="text-sm text-zinc-500">No tasks yet.</p>
+              <button
+                type="button"
+                onClick={() => setShowNewForm(true)}
+                className="rounded-md border border-zinc-700 px-4 py-1.5 text-sm text-zinc-300 hover:border-zinc-600 hover:text-zinc-100"
+              >
+                Create your first task
+              </button>
+            </div>
+          ) : (
+            <Board
+              tasks={tasks}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+            />
+          )}
+        </div>
+
+        {selected !== null && (
+          <TaskDetail
+            task={selected}
+            stream={streams[selected.id]}
+            anyRunning={anyRunning}
+            onClose={() => setSelectedId(null)}
+            onRun={handleRun}
+            onCancel={handleCancel}
+            onDelete={handleDelete}
+          />
         )}
       </main>
 
-      <footer className="border-t border-zinc-800 bg-zinc-950/60 px-4 py-3">
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={onKeyDown}
-          rows={3}
-          placeholder="Describe a task…  (⌘/Ctrl+Enter to run)"
-          className="w-full resize-none rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-sky-600"
+      {showNewForm && (
+        <NewTaskForm
+          onCreate={handleCreate}
+          onClose={() => setShowNewForm(false)}
         />
-        <div className="mt-2 flex justify-end">
-          <button
-            type="button"
-            onClick={submit}
-            disabled={run.status === 'running' || prompt.trim().length === 0}
-            className="rounded-md bg-sky-600 px-4 py-1.5 text-sm font-medium text-white enabled:hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {run.status === 'running' ? 'Running…' : 'Run'}
-          </button>
-        </div>
-      </footer>
+      )}
     </div>
   );
 }

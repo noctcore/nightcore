@@ -16,9 +16,7 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
-    "composite": true,
-    "noEmit": false,
-    "outDir": "dist-tsc",
+    "noEmit": true,
     "types": ["vite/client"]
   },
   "include": ["src/**/*"]
