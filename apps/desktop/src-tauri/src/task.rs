@@ -26,9 +26,41 @@ pub enum TaskStatus {
     Backlog,
     Ready,
     InProgress,
+    /// M4: a reviewer session is running over the build's worktree diff. The task
+    /// holds its slot and worktree across build → verify → fix; only a true
+    /// terminal (`Done`/`WaitingApproval`/`Failed`) releases the run.
+    Verifying,
     WaitingApproval,
     Done,
     Failed,
+}
+
+/// The kind of work a task represents (M4 §A). The shared contract between the
+/// Rust core (which owns each kind's ORCHESTRATION policy in `kind.rs`) and the
+/// engine (which owns its AGENT DEFINITION). `build` is the default and reproduces
+/// pre-M4 behavior; `research`/`decompose` are reserved (defined, not yet
+/// produced — the M1 `Ready`/`WaitingApproval` pattern).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskKind {
+    #[default]
+    Build,
+    Research,
+    Review,
+    Decompose,
+}
+
+impl TaskKind {
+    /// The snake_case wire string the provider sends in `start-session` and the
+    /// engine resolves to an agent preset.
+    pub fn as_wire(&self) -> &'static str {
+        match self {
+            TaskKind::Build => "build",
+            TaskKind::Research => "research",
+            TaskKind::Review => "review",
+            TaskKind::Decompose => "decompose",
+        }
+    }
 }
 
 /// One unit of orchestrated work. Field names mirror the M1 contract exactly and
@@ -74,6 +106,25 @@ pub struct Task {
     /// the conflict so the user resolves it manually.
     #[serde(default)]
     pub conflict: bool,
+    /// M4: the kind of work this task represents. Default `Build` (pre-M4
+    /// behavior). Drives the orchestration policy (`kind.rs`) and the engine's
+    /// agent preset.
+    #[serde(default)]
+    pub kind: TaskKind,
+    /// M4: true only after an independent reviewer returned `VERDICT: PASS`.
+    /// `merge_task` is gated on it. Cleared on a fresh run.
+    #[serde(default)]
+    pub verified: bool,
+    /// M4: the reviewer's full verdict text (rationale + the `VERDICT:` line, or
+    /// "auto-fix budget exhausted"). `None` until a review runs; cleared on a
+    /// fresh run.
+    #[serde(default)]
+    pub review: Option<String>,
+    /// M4: how many bounded auto-fix attempts the verification gate has spent on a
+    /// `CHANGES_REQUESTED` verdict. Reset to 0 on a fresh run; capped at
+    /// [`crate::sidecar::MAX_FIX_ATTEMPTS`].
+    #[serde(default)]
+    pub fix_attempts: u32,
 }
 
 impl Task {
@@ -98,6 +149,10 @@ impl Task {
             committed: false,
             merged: false,
             conflict: false,
+            kind: TaskKind::default(),
+            verified: false,
+            review: None,
+            fix_attempts: 0,
         }
     }
 
@@ -122,6 +177,8 @@ pub struct TaskPatch {
     pub status: Option<TaskStatus>,
     pub dependencies: Option<Vec<String>>,
     pub model: Option<String>,
+    /// M4: the task kind, set from the create/edit picker.
+    pub kind: Option<TaskKind>,
 }
 
 impl TaskPatch {
@@ -139,6 +196,9 @@ impl TaskPatch {
         }
         if let Some(dependencies) = self.dependencies {
             task.dependencies = dependencies;
+        }
+        if let Some(kind) = self.kind {
+            task.kind = kind;
         }
         // `model` is itself `Option`, so serde flattens an absent field and an
         // explicit `null` to the same `None`. A patch can therefore SET a model
@@ -272,6 +332,11 @@ mod tests {
             serde_json::to_string(&TaskStatus::Backlog).unwrap(),
             "\"backlog\""
         );
+        // M4: the verification phase status.
+        assert_eq!(
+            serde_json::to_string(&TaskStatus::Verifying).unwrap(),
+            "\"verifying\""
+        );
     }
 
     #[test]
@@ -280,6 +345,7 @@ mod tests {
             TaskStatus::Backlog,
             TaskStatus::Ready,
             TaskStatus::InProgress,
+            TaskStatus::Verifying,
             TaskStatus::WaitingApproval,
             TaskStatus::Done,
             TaskStatus::Failed,
@@ -320,6 +386,61 @@ mod tests {
             "sessionId":null,"summary":null,"error":null,"costUsd":null}"#;
         let back: Task = serde_json::from_str(legacy).expect("legacy task deserializes");
         assert!(back.plan.is_none() && !back.committed && !back.merged && !back.conflict);
+    }
+
+    #[test]
+    fn m4_fields_default_and_round_trip() {
+        let task = Task::new("t".into(), String::new());
+        assert_eq!(task.kind, TaskKind::Build, "kind defaults to Build");
+        assert!(!task.verified, "verified defaults false");
+        assert!(task.review.is_none(), "review defaults None");
+        assert_eq!(task.fix_attempts, 0, "fix_attempts defaults 0");
+
+        let value: serde_json::Value = serde_json::to_value(&task).unwrap();
+        let obj = value.as_object().unwrap();
+        for key in ["kind", "verified", "review", "fixAttempts"] {
+            assert!(obj.contains_key(key), "missing camelCase key {key}");
+        }
+        assert_eq!(obj["kind"], serde_json::json!("build"), "kind serializes snake_case");
+
+        // A legacy (pre-M4) task without any of the four new fields still loads,
+        // defaulting each — existing task files aren't broken.
+        let legacy = r#"{"id":"x","title":"t","description":"","status":"backlog",
+            "dependencies":[],"model":null,"branch":null,"createdAt":1,"updatedAt":1,
+            "sessionId":null,"summary":null,"error":null,"costUsd":null,
+            "plan":null,"committed":false,"merged":false,"conflict":false}"#;
+        let back: Task = serde_json::from_str(legacy).expect("legacy task deserializes");
+        assert_eq!(back.kind, TaskKind::Build);
+        assert!(!back.verified && back.review.is_none() && back.fix_attempts == 0);
+    }
+
+    #[test]
+    fn task_kind_round_trips_and_is_snake_case() {
+        for kind in [
+            TaskKind::Build,
+            TaskKind::Research,
+            TaskKind::Review,
+            TaskKind::Decompose,
+        ] {
+            let json = serde_json::to_string(&kind).unwrap();
+            assert_eq!(json, format!("\"{}\"", kind.as_wire()));
+            let back: TaskKind = serde_json::from_str(&json).unwrap();
+            assert_eq!(kind, back, "kind must survive a serde round-trip");
+        }
+    }
+
+    #[test]
+    fn patch_sets_kind_when_present() {
+        let mut task = Task::new("t".into(), String::new());
+        assert_eq!(task.kind, TaskKind::Build);
+        let patch: TaskPatch = serde_json::from_str(r#"{"kind":"research"}"#).unwrap();
+        patch.apply(&mut task);
+        assert_eq!(task.kind, TaskKind::Research);
+    }
+
+    #[test]
+    fn parse_status_accepts_verifying() {
+        assert_eq!(parse_status("verifying").unwrap(), TaskStatus::Verifying);
     }
 
     #[test]
