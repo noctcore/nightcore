@@ -133,6 +133,22 @@ impl ProjectStore {
         Ok(removed)
     }
 
+    /// Rename `id` to `name`, persist the registry, and return the updated
+    /// project. The active pointer is unaffected. Errors if the id is unknown.
+    fn rename(&self, id: &str, name: &str) -> Result<Project, String> {
+        let project = {
+            let mut guard = self.projects.lock().expect("project store poisoned");
+            let project = guard
+                .iter_mut()
+                .find(|p| p.id == id)
+                .ok_or_else(|| format!("no project with id {id}"))?;
+            project.name = name.to_string();
+            project.clone()
+        };
+        self.persist_registry()?;
+        Ok(project)
+    }
+
     /// Mark `id` active, bump its `lastActiveAt`, and persist both files. Returns
     /// the updated project. Errors if the id is unknown.
     fn set_active(&self, id: &str) -> Result<Project, String> {
@@ -352,6 +368,26 @@ pub fn set_active_project(
     Ok(project)
 }
 
+/// Rename a project in the registry. Updates only `name` (the repo on disk and
+/// its tasks dir are unaffected) and persists. Emits `nc:project { type:
+/// "renamed" }` with the updated project so the switcher + Projects view (and
+/// the active label, when it's the active project) re-render.
+#[tauri::command]
+pub fn rename_project(
+    app: AppHandle,
+    store: State<'_, ProjectStore>,
+    id: String,
+    name: String,
+) -> Result<Project, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("project name cannot be empty".to_string());
+    }
+    let project = store.rename(&id, name)?;
+    emit_project_event(&app, &store, "renamed", Some(&project));
+    Ok(project)
+}
+
 /// Whether `path` is a git repository.
 #[tauri::command]
 pub fn is_git_repo(path: String) -> Result<bool, String> {
@@ -408,6 +444,26 @@ mod tests {
         let reloaded2 = ProjectStore::load_from(tmp.path().join("config"));
         assert!(reloaded2.list().is_empty());
         assert!(reloaded2.active().is_none());
+    }
+
+    #[test]
+    fn rename_updates_name_and_round_trips_through_disk() {
+        let (store, tmp) = temp_store();
+        let project = Project::new("old".into(), "/repo/p".into(), None);
+        let id = project.id.clone();
+        store.add(project).expect("add");
+
+        let renamed = store.rename(&id, "new").expect("rename");
+        assert_eq!(renamed.name, "new");
+
+        let reloaded = ProjectStore::load_from(tmp.path().join("config"));
+        assert_eq!(reloaded.list()[0].name, "new", "rename persists to disk");
+    }
+
+    #[test]
+    fn rename_unknown_id_errors() {
+        let (store, _tmp) = temp_store();
+        assert!(store.rename("nope", "x").is_err());
     }
 
     #[test]

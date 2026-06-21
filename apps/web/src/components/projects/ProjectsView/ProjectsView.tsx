@@ -11,6 +11,7 @@ export function ProjectsView({
   activeTasks,
   runningProjectIds,
   onOpen,
+  onRename,
   onDelete,
   onNewProject,
 }: ProjectsViewProps) {
@@ -50,7 +51,8 @@ export function ProjectsView({
               key={project.id}
               project={project}
               onOpen={onOpen}
-              onMenu={onDelete}
+              onRename={onRename}
+              onDelete={onDelete}
             />
           ))}
         </div>

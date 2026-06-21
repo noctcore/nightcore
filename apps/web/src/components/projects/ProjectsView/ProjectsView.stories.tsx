@@ -91,6 +91,7 @@ const meta = {
     activeTasks: tasks,
     runningProjectIds: ['nightcore'],
     onOpen: fn(),
+    onRename: fn(),
     onDelete: fn(),
     onNewProject: fn(),
   },

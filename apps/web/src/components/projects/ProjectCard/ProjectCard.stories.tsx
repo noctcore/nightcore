@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { fn } from 'storybook/test';
+import { expect, fn, userEvent, within } from 'storybook/test';
 import { ProjectCard } from './ProjectCard';
 import type { ProjectSummary } from './ProjectCard.types';
 
@@ -26,13 +26,33 @@ const meta = {
       </div>
     ),
   ],
-  args: { project: base, onOpen: fn(), onMenu: fn() },
+  args: { project: base, onOpen: fn(), onRename: fn(), onDelete: fn() },
 } satisfies Meta<typeof ProjectCard>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Live: Story = {};
+
+/** Play test: the kebab opens a menu with Rename + Remove. */
+export const Menu: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: 'Project menu' }));
+    await expect(canvas.getByRole('menuitem', { name: /rename/i })).toBeInTheDocument();
+    await expect(canvas.getByRole('menuitem', { name: /remove/i })).toBeInTheDocument();
+  },
+};
+
+/** Play test: Remove opens a confirmation that clarifies files are kept. */
+export const ConfirmRemove: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: 'Project menu' }));
+    await userEvent.click(canvas.getByRole('menuitem', { name: /remove/i }));
+    await expect(canvas.getByRole('alertdialog', { name: /remove project/i })).toBeInTheDocument();
+  },
+};
 
 export const Idle: Story = {
   args: {

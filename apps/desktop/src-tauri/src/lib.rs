@@ -112,6 +112,7 @@ pub fn run() {
             project::create_project,
             project::delete_project,
             project::set_active_project,
+            project::rename_project,
             project::is_git_repo,
             project::git_init,
             settings::get_settings,

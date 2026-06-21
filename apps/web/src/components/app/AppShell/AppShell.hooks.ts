@@ -22,6 +22,7 @@ import {
   moveTask,
   readTranscript,
   refineTask,
+  renameProject,
   rejectReview,
   rejectTask,
   rerunVerification,
@@ -133,6 +134,10 @@ function useProjectRegistry() {
       setProjects(next);
       if (type === 'activated' && project !== null) setActive(project);
       if (type === 'deleted') setActive((cur) => next.find((p) => p.id === cur?.id) ?? null);
+      // A rename of the active project must refresh its label (its id is unchanged).
+      if (type === 'renamed' && project !== null) {
+        setActive((cur) => (cur?.id === project.id ? project : cur));
+      }
     });
     return () => {
       void unlisten.then((fn) => fn());
@@ -147,7 +152,11 @@ function useProjectRegistry() {
     void deleteProject(id).catch((err) => console.error('delete_project failed', err));
   }, []);
 
-  return { projects, active, activate, remove };
+  const rename = useCallback((id: string, name: string) => {
+    void renameProject(id, name).catch((err) => console.error('rename_project failed', err));
+  }, []);
+
+  return { projects, active, activate, remove, rename };
 }
 
 /** Live settings, kept in memory and patched through `update_settings`. */

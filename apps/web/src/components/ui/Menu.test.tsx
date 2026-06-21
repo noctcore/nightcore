@@ -1,0 +1,47 @@
+import { render } from 'vitest-browser-react';
+import { expect, test, vi } from 'vitest';
+import { userEvent } from '@vitest/browser/context';
+import { Menu } from './Menu';
+import { IconButton } from './IconButton';
+import { DotsIcon } from './icons';
+
+function setup(onRename = vi.fn(), onRemove = vi.fn()) {
+  return render(
+    <Menu
+      label="Project menu"
+      trigger={
+        <IconButton label="Open menu">
+          <DotsIcon size={16} />
+        </IconButton>
+      }
+      items={[
+        { label: 'Rename', onClick: onRename },
+        { label: 'Remove', onClick: onRemove, destructive: true },
+      ]}
+    />,
+  );
+}
+
+test('is closed until the trigger is clicked', async () => {
+  const screen = setup();
+  expect(screen.container.querySelector('[role="menu"]')).toBeNull();
+  await screen.getByRole('button', { name: 'Open menu' }).click();
+  await expect.element(screen.getByRole('menuitem', { name: 'Rename' })).toBeInTheDocument();
+});
+
+test('selecting an item invokes its handler and closes the menu', async () => {
+  const onRemove = vi.fn();
+  const screen = setup(vi.fn(), onRemove);
+  await screen.getByRole('button', { name: 'Open menu' }).click();
+  await screen.getByRole('menuitem', { name: 'Remove' }).click();
+  expect(onRemove).toHaveBeenCalled();
+  expect(screen.container.querySelector('[role="menu"]')).toBeNull();
+});
+
+test('Escape closes the menu', async () => {
+  const screen = setup();
+  await screen.getByRole('button', { name: 'Open menu' }).click();
+  await expect.element(screen.getByRole('menu')).toBeInTheDocument();
+  await userEvent.keyboard('{Escape}');
+  expect(screen.container.querySelector('[role="menu"]')).toBeNull();
+});
