@@ -240,7 +240,7 @@ pub fn reconcile(project_path: &Path, live_task_ids: &[String]) -> Vec<String> {
         if !live_task_ids.iter().any(|live| live == &id) {
             match remove(project_path, &id) {
                 Ok(()) => pruned.push(id),
-                Err(e) => eprintln!("worktree reconcile: skipping {id}: {e}"),
+                Err(e) => tracing::warn!(target: "nightcore::worktree", task_id = %id, error = %e, "worktree reconcile skipped orphan it could not remove"),
             }
         }
     }
@@ -376,11 +376,11 @@ mod tests {
         let dir = allocate(&repo, "task-1").expect("allocate");
 
         // A clean worktree commits nothing.
-        assert_eq!(commit(&repo, "task-1", "first").expect("commit"), false);
+        assert!(!commit(&repo, "task-1", "first").expect("commit"));
 
         // Add a change in the worktree; commit now creates a commit on nc/task-1.
         std::fs::write(dir.join("file.txt"), "hello").expect("write");
-        assert_eq!(commit(&repo, "task-1", "add file").expect("commit"), true);
+        assert!(commit(&repo, "task-1", "add file").expect("commit"));
 
         // The commit landed on the task branch with our message.
         let log = Command::new("git")
@@ -391,7 +391,7 @@ mod tests {
         assert_eq!(String::from_utf8_lossy(&log.stdout).trim(), "add file");
 
         // A second commit with no further change reports nothing to commit.
-        assert_eq!(commit(&repo, "task-1", "again").expect("commit"), false);
+        assert!(!commit(&repo, "task-1", "again").expect("commit"));
     }
 
     #[test]

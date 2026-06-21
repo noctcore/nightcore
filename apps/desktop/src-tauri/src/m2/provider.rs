@@ -79,6 +79,14 @@ pub trait Provider: Send + Sync {
     ) -> Result<(), String>;
 }
 
+/// The child's piped output streams, handed to `sidecar::ensure_reader` once on
+/// spawn: `stdout` carries the NDJSON event protocol, `stderr` the human/structured
+/// logs that the reader drains into the Rust `tracing` sink.
+pub struct SidecarStreams {
+    pub stdout: tokio::process::ChildStdout,
+    pub stderr: tokio::process::ChildStderr,
+}
+
 /// A surface decision for a parked permission request. Mirrors the contract's
 /// `PermissionDecision` (allow/deny) in core terms so callers don't construct raw
 /// JSON.
@@ -131,10 +139,15 @@ impl SidecarProvider {
         self.stdin.lock().await.is_some()
     }
 
-    /// Spawn the sidecar child, store its stdin writer, and return its stdout for
-    /// the caller to install a reader on. Idempotent: returns `Ok(None)` when the
-    /// child is already running. Holds the stdin lock for the spawn.
-    pub async fn spawn(&self) -> Result<Option<tokio::process::ChildStdout>, String> {
+    /// Spawn the sidecar child, store its stdin writer, and return its stdout +
+    /// stderr for the caller to install readers on. Idempotent: returns `Ok(None)`
+    /// when the child is already running. Holds the stdin lock for the spawn.
+    ///
+    /// **stderr is piped, not inherited** (M4.5 §B4): the sidecar's structured
+    /// leveled lines would otherwise be thrown uncaptured at the host terminal. The
+    /// caller drains stderr into the Rust `tracing` sink. stdout stays the pure
+    /// NDJSON protocol — only stderr carries logs.
+    pub async fn spawn(&self) -> Result<Option<SidecarStreams>, String> {
         let mut guard = self.stdin.lock().await;
         if guard.is_some() {
             return Ok(None);
@@ -146,23 +159,24 @@ impl SidecarProvider {
             .current_dir(&self.cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| format!("failed to spawn sidecar (is `bun` on PATH?): {e}"))?;
 
         let stdin = child.stdin.take().ok_or("sidecar stdin unavailable")?;
         let stdout = child.stdout.take().ok_or("sidecar stdout unavailable")?;
+        let stderr = child.stderr.take().ok_or("sidecar stderr unavailable")?;
         *guard = Some(stdin);
 
         // Keep the child alive for the app's lifetime by detaching it onto a task
-        // that just owns the handle; the reader (installed by the caller on the
-        // returned stdout) is what actually drains it.
+        // that just owns the handle; the readers (installed by the caller on the
+        // returned streams) are what actually drain it.
         tokio::spawn(async move {
             let _child = child;
             std::future::pending::<()>().await;
         });
 
-        Ok(Some(stdout))
+        Ok(Some(SidecarStreams { stdout, stderr }))
     }
 
     /// Record that `task_id` is launching a run. Called under the stdin lock right
