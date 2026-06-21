@@ -3,6 +3,8 @@ import type {
   NightcoreEventOf,
   PermissionMode,
   SessionStatus,
+  TaskStatus,
+  TokenUsage,
 } from '@nightcore/contracts';
 
 /** A single rendered line in the transcript. The reducer appends these as the
@@ -32,6 +34,19 @@ export type SystemLine = {
 /** A permission request awaiting the user's approve/deny decision. */
 export type PendingPermission = NightcoreEventOf<'permission-required'>;
 
+/** A live task/subagent step, folded from `task-updated` events and keyed by
+ *  `taskId` in `SessionView.tasks`. Patch fields merge on each update — a later
+ *  event with only a `status` keeps the description an earlier event set. */
+export interface TaskView {
+  taskId: string;
+  status: TaskStatus;
+  description: string;
+  summary?: string;
+  subagentType?: string;
+  /** Ambient/housekeeping task — may be dimmed in the panel and hidden inline. */
+  ambient: boolean;
+}
+
 /** The whole view state the TUI renders, folded from the event stream. */
 export interface SessionView {
   /** Nightcore session id of the live session, or null before one starts. */
@@ -46,6 +61,20 @@ export interface SessionView {
   /** Running/terminal cost in USD, when the SDK has reported it. */
   costUsd: number | null;
   numTurns: number | null;
+  /** Wall-clock duration of the last completed session, ms; null before one
+   *  completes. */
+  durationMs: number | null;
+  /** Token usage of the last completed session, or null before one completes. */
+  usage: TokenUsage | null;
+  /** SDK-native slash command names for the live session (from `session-ready`),
+   *  folded into the autocomplete palette + `/help` alongside the local registry. */
+  slashCommands: string[];
+  /** Skill names discovered for the live session (from `session-ready`). */
+  skills: string[];
+  /** Live task/subagent steps, keyed by `taskId`. Insertion order = display
+   *  order (a `Map` preserves it); upserted by `task-updated`, reset on
+   *  `session-started`. */
+  tasks: Map<string, TaskView>;
   transcript: TranscriptEntry[];
   /** The oldest unresolved permission request, or null. */
   pendingPermission: PendingPermission | null;

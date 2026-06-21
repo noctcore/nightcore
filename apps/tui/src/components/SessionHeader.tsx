@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { PermissionMode, SessionStatus } from '@nightcore/contracts';
 import type { SessionView } from '../types.js';
+import { formatDuration, formatUsage } from '../format.js';
 
 interface SessionHeaderProps {
   view: SessionView;
@@ -57,6 +58,14 @@ export function SessionHeader({ view }: SessionHeaderProps): ReactNode {
         <span fg={STATUS_COLOR[view.status]}>{STATUS_LABEL[view.status]}</span>
         <span fg="#666666">  cost </span>
         <span fg="#bbbbbb">{cost}</span>
+        {/* Duration + tokens appear once a session completes (the stats the SDK
+            only reports at the end). Kept compact so the header stays uncluttered. */}
+        {view.durationMs !== null && (
+          <span fg="#8a8a8a">{`  ${formatDuration(view.durationMs)}`}</span>
+        )}
+        {view.usage !== null && (
+          <span fg="#8a8a8a">{`  ${formatUsage(view.usage)}`}</span>
+        )}
       </text>
     </box>
   );

@@ -1,12 +1,15 @@
 import type {
   EffortLevel,
   NightcoreEvent,
+  NightcoreEventOf,
   PermissionMode,
 } from '@nightcore/contracts';
+import { formatDuration, formatUsage } from './format.js';
 import type {
   NoticeTone,
   SessionView,
   SystemLine,
+  TaskView,
   TranscriptEntry,
 } from './types.js';
 
@@ -42,6 +45,11 @@ export function initialView(
     status: 'idle',
     costUsd: null,
     numTurns: null,
+    durationMs: null,
+    usage: null,
+    slashCommands: [],
+    skills: [],
+    tasks: new Map(),
     transcript: [],
     pendingPermission: null,
     failure: null,
@@ -72,6 +80,9 @@ function notice(tone: NoticeTone, text: string): TranscriptEntry {
  */
 export function reduce(view: SessionView, event: ViewAction): SessionView {
   switch (event.type) {
+    case 'task-updated':
+      return upsertTask(view, event);
+
     case 'ui-set-mode':
       return { ...view, permissionMode: event.mode };
 
@@ -129,6 +140,10 @@ export function reduce(view: SessionView, event: ViewAction): SessionView {
         status: 'starting',
         costUsd: null,
         numTurns: null,
+        durationMs: null,
+        usage: null,
+        // A fresh session starts with no tasks; drop any from a prior run.
+        tasks: new Map(),
         failure: null,
         transcript: [
           ...view.transcript,
@@ -141,6 +156,10 @@ export function reduce(view: SessionView, event: ViewAction): SessionView {
         ...view,
         model: event.model,
         status: 'running',
+        // Fold the session's own command palette so autocomplete + /help know
+        // the SDK-native commands (and skills) alongside the local registry.
+        slashCommands: event.slashCommands,
+        skills: event.skills,
       };
 
     case 'assistant-delta':
@@ -190,13 +209,12 @@ export function reduce(view: SessionView, event: ViewAction): SessionView {
         status: 'completed',
         costUsd: event.costUsd,
         numTurns: event.numTurns,
+        durationMs: event.durationMs,
+        usage: event.usage ?? null,
         pendingPermission: null,
         transcript: [
           ...view.transcript,
-          notice(
-            'success',
-            `done — ${event.numTurns} turn(s), $${event.costUsd.toFixed(4)}`,
-          ),
+          notice('success', completionSummary(event)),
         ],
       };
 
@@ -262,6 +280,44 @@ function appendAssistant(
     ],
     activeAssistantId: null,
   };
+}
+
+/**
+ * Upsert a task into the view, keyed by `taskId` (never by index). A patch event
+ * may carry only some fields (e.g. a later `status`-only update), so we merge over
+ * the existing entry, preserving an earlier description/subagentType. A first-seen
+ * task defaults to `pending`/empty until the event fills them in.
+ *
+ * Returns a NEW `Map` (and a new `view`) so React sees a referential change.
+ */
+function upsertTask(
+  view: SessionView,
+  event: NightcoreEventOf<'task-updated'>,
+): SessionView {
+  const tasks = new Map(view.tasks);
+  const existing = tasks.get(event.taskId);
+  const merged: TaskView = {
+    taskId: event.taskId,
+    status: event.status ?? existing?.status ?? 'pending',
+    description: event.description ?? existing?.description ?? '',
+    summary: event.summary ?? existing?.summary,
+    subagentType: event.subagentType ?? existing?.subagentType,
+    ambient: event.ambient,
+  };
+  tasks.set(event.taskId, merged);
+  return { ...view, tasks };
+}
+
+/** The completion notice line: turns + cost, plus duration and tokens when the
+ *  SDK reported them. Mirrors the header stats so both read consistently. */
+function completionSummary(event: NightcoreEventOf<'session-completed'>): string {
+  const parts = [
+    `done — ${String(event.numTurns)} turn(s)`,
+    `$${event.costUsd.toFixed(4)}`,
+  ];
+  if (event.durationMs > 0) parts.push(formatDuration(event.durationMs));
+  if (event.usage) parts.push(formatUsage(event.usage));
+  return parts.join(' · ');
 }
 
 function compactJson(input: Record<string, unknown>): string {

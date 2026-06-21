@@ -101,8 +101,9 @@ export function useSession(
       dispatch,
       openModelPicker: surface.openModelPicker,
       quit: surface.quit,
+      forwardPrompt: startOrSend,
     }),
-    [view, config, manager, surface],
+    [view, config, manager, surface, startOrSend],
   );
 
   const submit = useCallback(

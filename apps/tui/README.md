@@ -22,10 +22,13 @@ bun run tui
 | `Enter`       | Submit the prompt (starts a session, sends follow-up, or runs a `/command`) |
 | `Shift+Enter` | Insert a newline (multi-line input)                            |
 | `Shift+Tab`   | Toggle permission mode: **plan** (read-only) ↔ **build** (acceptEdits) |
-| `Esc`         | Interrupt the running session / **deny** a pending permission / close the model picker |
+| `Esc`         | Close the autocomplete / interrupt the running session / **deny** a pending permission / close the model picker |
 | `y`           | Approve the pending permission request                         |
 | `n`           | Deny the pending permission request                            |
 | `↑ ↓` `Enter` | Navigate + confirm inside the `/model` picker                  |
+| `Tab`         | Complete the highlighted command when the slash autocomplete is open |
+| `↑ ↓`         | Move the highlight in the slash autocomplete                   |
+| `Enter`       | Run the highlighted command when the slash autocomplete is open |
 | `Ctrl+C`      | Quit                                                            |
 
 ### Enter vs Shift+Enter
@@ -51,7 +54,51 @@ Commands are surface-only — the engine never sees them.
 | `/doctor` | Diagnostics: Claude CLI present/authed, config + resolved paths, default model/effort/permission mode, SDK version, active session count |
 | `/quit`   | Exit                                                                   |
 
-Unknown `/foo` renders an "unknown command — try /help" notice.
+### Autocomplete
+
+While the buffer is a bare command name — it starts with `/` and has no space
+yet (`/mo`, `/`) — a dropdown floats **above** the input listing matching
+commands: the local registry above, then the live session's SDK-native commands
+(labelled `(session command)`). Once you type a space (args) or the buffer stops
+starting with `/`, the dropdown collapses.
+
+| Key     | Action                                              |
+| ------- | --------------------------------------------------- |
+| `↑ ↓`   | Move the highlight (wraps)                           |
+| `Tab`   | Complete the highlighted command into the buffer (`/name ` — stays open for args) |
+| `Enter` | Run the highlighted command                          |
+| `Esc`   | Dismiss (clears the `/…` buffer)                     |
+
+**How the keys are routed.** OpenTUI's `useKeyboard` taps the raw key stream
+(`renderer.keyInput`) and fires for every key regardless of focus, while the
+focused `<textarea>` separately runs its own `handleKeyPress`. So `App`'s global
+handler always sees `↑/↓/Tab/Enter`. `Tab` is never a `TextareaAction`, so the
+textarea never consumes it. `↑/↓` move the textarea cursor (a no-op in a one-line
+`/command`) **and** move the dropdown highlight. The one key that would conflict
+is `Enter`: by default it's rebound to the textarea's `submit` action, which would
+submit the raw buffer. So while the autocomplete is open the InputBox drops the
+`return`/`kpenter` → `submit` bindings (`suppressNav`); with no matching action the
+textarea returns `false` for `Enter` (it's a control char, not printable text) and
+the key falls through to `App`, which runs the highlighted command. Completion
+writes the buffer via the textarea's `setText` through an imperative
+`InputBoxHandle` ref.
+
+### SDK-command bridge
+
+`session-ready` carries the session's own `slashCommands` (from `.claude/commands`,
+plugins, and builtins) and `skills`. The command runner resolves a `/name` in this
+order:
+
+1. A **local** registry command (`/help`, `/model`, …) → run it (surface-only).
+2. Otherwise, if `name` is one of the session's SDK `slashCommands` — **or** we
+   have no SDK list yet (pre-`session-ready`) — forward the literal `/name args`
+   to the engine as a normal prompt (`start-session` when idle/terminal, else
+   `send-input`). The SDK interprets it.
+3. Only if it is neither local nor SDK-known do we render the
+   "unknown command — try /help" notice.
+
+`/help` lists both groups: local commands, then **session commands (forwarded to
+the engine)**, then any discovered **skills**.
 
 `/model` is two steps: choose a model, then (only if the model
 `supportsEffort`) choose from _its_ `supportedEffortLevels` or `adaptive`. The
@@ -68,16 +115,40 @@ line separates turns so a conversation reads as alternating blocks. A
 `permission-required` whose `risk === 'dangerous'` is badged with a red
 **DANGEROUS** accent.
 
+## Task panel
+
+A `task-updated` event (folded from the SDK's `task_started` / `task_updated` /
+`task_progress` system messages) upserts a `TaskView` into `view.tasks`, keyed by
+`taskId` — **never by index**, so a status-only patch keeps the description an
+earlier event set. The tasks reset on every `session-started`.
+
+`TaskPanel` renders the live set as a compact checklist between the transcript and
+the input, with a status glyph (`pending ○`, `running ◐`, `completed ✓`,
+`failed ✗`, `killed ⊘`, `paused ‖`), the description, a `[subagentType]` badge when
+present, and an optional summary. **Ambient** tasks (`ambient: true`) are dimmed.
+The panel only mounts when there is at least one **non-ambient** task, so an empty
+or all-ambient set leaves the layout clean.
+
+## Session stats
+
+`session-completed` carries `durationMs` and a `usage` token breakdown. The header
+shows them next to cost once a session finishes: duration (`3.2s`, `1m32s`) and
+tokens (`↑12.3k ↓4.5k`, plus `(+Nk cache)` only when cache reads are non-zero). The
+completion notice in the transcript echoes the same compact stats. Formatting lives
+in `src/format.ts` so the header and the notice read identically.
+
 ## Layout
 
 ```
-┌ SessionHeader ─ model · mode · status · cost ┐
-│ StreamView ─ scrollable transcript            │
-│   assistant deltas, tool calls, tool results  │
-│ PermissionPrompt ─ shown when approval needed │
-│ InputBox ─ multi-line prompt                  │
-│ FooterHints ─ keybinding hints                │
-└───────────────────────────────────────────────┘
+┌ SessionHeader ─ model · mode · status · cost · duration · tokens ┐
+│ StreamView ─ scrollable transcript                                │
+│   assistant deltas, tool calls, tool results                      │
+│ TaskPanel ─ live task checklist (when non-ambient tasks exist)    │
+│ PermissionPrompt ─ shown when approval needed                     │
+│ CommandPalette ─ slash autocomplete (above the input)             │
+│ InputBox ─ multi-line prompt                                      │
+│ FooterHints ─ keybinding hints                                    │
+└───────────────────────────────────────────────────────────────────┘
 ```
 
 ## Architecture
@@ -87,8 +158,12 @@ line separates turns so a conversation reads as alternating blocks. A
 - `src/useSession.ts` — the single engine-subscription hook; folds the event
   stream into a view via `session-reducer.ts` and exposes typed command dispatchers.
 - `src/session-reducer.ts` — pure reducer; replicates the CLI's partial-delta dedup.
-- `src/components/` — `SessionHeader`, `StreamView`, `InputBox`, `PermissionPrompt`,
-  `ModelPicker`, `FooterHints`.
+- `src/format.ts` — shared compaction helpers (`formatDuration`, `formatTokens`,
+  `formatUsage`) used by the header stats and the completion notice.
+- `src/components/` — `SessionHeader`, `StreamView`, `TaskPanel`, `CommandPalette`,
+  `InputBox`, `PermissionPrompt`, `ModelPicker`, `FooterHints`.
 - `src/commands/` — the slash-command surface: `parse.ts` (`parseSlash`),
-  `registry.ts` (the typed command table + `runCommand`), `doctor.ts`, `types.ts`
-  (`CommandContext`). Slash handling lives entirely here; the engine is untouched.
+  `registry.ts` (the typed command table + `runCommand` with the SDK-command
+  bridge), `palette.ts` (`buildPalette`/`matchPalette` for autocomplete + `/help`),
+  `doctor.ts`, `types.ts` (`CommandContext`, incl. `forwardPrompt`). Slash handling
+  lives entirely here; the engine is touched only via `forwardPrompt`.

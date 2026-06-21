@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { KeyEvent } from '@opentui/core';
 import { useKeyboard, useRenderer } from '@opentui/react';
@@ -10,9 +10,13 @@ import type {
   PermissionMode,
 } from '@nightcore/contracts';
 import { useSession } from './useSession.js';
+import { matchPalette } from './commands/palette.js';
 import { SessionHeader } from './components/SessionHeader.js';
 import { StreamView } from './components/StreamView.js';
 import { InputBox } from './components/InputBox.js';
+import type { InputBoxHandle } from './components/InputBox.js';
+import { CommandPalette } from './components/CommandPalette.js';
+import { TaskPanel, hasVisibleTasks } from './components/TaskPanel.js';
 import { PermissionPrompt } from './components/PermissionPrompt.js';
 import { ModelPicker } from './components/ModelPicker.js';
 import { FooterHints } from './components/FooterHints.js';
@@ -30,9 +34,18 @@ type Picker =
   | { state: 'loading' }
   | { state: 'open'; models: ModelDescriptor[] };
 
+/** True while the buffer is a bare slash-command name being typed — `/mod`, `/`
+ *  — i.e. starts with `/` and has no whitespace yet (args end autocomplete). */
+function isCommandPrefix(buffer: string): boolean {
+  return buffer.startsWith('/') && !/\s/.test(buffer);
+}
+
 export function App({ manager, config, defaults }: AppProps): ReactNode {
   const renderer = useRenderer();
   const [picker, setPicker] = useState<Picker>({ state: 'closed' });
+  const [buffer, setBuffer] = useState('');
+  const [highlighted, setHighlighted] = useState(0);
+  const inputRef = useRef<InputBoxHandle | null>(null);
 
   const quit = useCallback(() => renderer.destroy(), [renderer]);
 
@@ -58,6 +71,28 @@ export function App({ manager, config, defaults }: AppProps): ReactNode {
   const hasPermission = view.pendingPermission !== null;
   const pickerOpen = picker.state !== 'closed';
 
+  // Autocomplete matches for the current buffer, recomputed on buffer / palette
+  // change. Empty (and so the dropdown hidden) unless the buffer is a bare
+  // `/command` prefix and at least one command matches.
+  const matches = useMemo(
+    () =>
+      isCommandPrefix(buffer)
+        ? matchPalette(view, buffer.slice(1))
+        : [],
+    [buffer, view],
+  );
+  const autocompleteOpen = matches.length > 0;
+
+  // Reset the highlight whenever the match set changes shape so it never points
+  // past the end. Clamp instead of resetting to 0 to keep the user's position
+  // stable as they refine the prefix.
+  const safeHighlight = highlighted < matches.length ? highlighted : 0;
+
+  const onBufferChange = useCallback((text: string) => {
+    setBuffer(text);
+    setHighlighted(0);
+  }, []);
+
   const allow = useCallback(
     () => resolvePermission({ behavior: 'allow' }),
     [resolvePermission],
@@ -76,6 +111,21 @@ export function App({ manager, config, defaults }: AppProps): ReactNode {
     [selectModel],
   );
 
+  /** Tab: write the highlighted command into the buffer (kept open for args). */
+  const completeHighlighted = useCallback(() => {
+    const entry = matches[safeHighlight];
+    if (entry === undefined) return;
+    inputRef.current?.setText(`/${entry.name} `);
+  }, [matches, safeHighlight]);
+
+  /** Enter while the dropdown is open: run the highlighted command and clear. */
+  const runHighlighted = useCallback(() => {
+    const entry = matches[safeHighlight];
+    if (entry === undefined) return;
+    submit(`/${entry.name}`);
+    inputRef.current?.setText('');
+  }, [matches, safeHighlight, submit]);
+
   useKeyboard(
     useCallback(
       (key: KeyEvent) => {
@@ -88,6 +138,36 @@ export function App({ manager, config, defaults }: AppProps): ReactNode {
         if (pickerOpen) {
           if (key.name === 'escape') setPicker({ state: 'closed' });
           return;
+        }
+        // Slash autocomplete owns ↑/↓/Tab/Enter/Esc while it is open. These keys
+        // reach here because (a) `useKeyboard` taps the raw key stream regardless
+        // of focus and (b) InputBox releases the Enter→submit binding via
+        // `suppressNav`, so Enter falls through instead of submitting the buffer.
+        if (autocompleteOpen) {
+          if (key.name === 'tab' && !key.shift) {
+            completeHighlighted();
+            return;
+          }
+          if (key.name === 'up') {
+            setHighlighted(
+              (i) => (i - 1 + matches.length) % matches.length,
+            );
+            return;
+          }
+          if (key.name === 'down') {
+            setHighlighted((i) => (i + 1) % matches.length);
+            return;
+          }
+          if (key.name === 'return' || key.name === 'kpenter') {
+            runHighlighted();
+            return;
+          }
+          if (key.name === 'escape') {
+            // Dismiss the dropdown without touching the buffer: clear it so the
+            // prefix no longer matches (simplest, and mirrors abandoning a /cmd).
+            inputRef.current?.setText('');
+            return;
+          }
         }
         // Shift+Tab flips plan ↔ build at any time.
         if (key.name === 'tab' && key.shift) {
@@ -106,6 +186,10 @@ export function App({ manager, config, defaults }: AppProps): ReactNode {
       [
         renderer,
         pickerOpen,
+        autocompleteOpen,
+        matches.length,
+        completeHighlighted,
+        runHighlighted,
         togglePermissionMode,
         hasPermission,
         allow,
@@ -115,10 +199,13 @@ export function App({ manager, config, defaults }: AppProps): ReactNode {
     ),
   );
 
+  const showTaskPanel = hasVisibleTasks(view.tasks);
+
   return (
     <box style={{ flexDirection: 'column', height: '100%' }}>
       <SessionHeader view={view} />
       <StreamView transcript={view.transcript} />
+      {showTaskPanel && <TaskPanel tasks={view.tasks} />}
       {picker.state === 'loading' && (
         <box
           title="/model"
@@ -137,9 +224,15 @@ export function App({ manager, config, defaults }: AppProps): ReactNode {
       {view.pendingPermission !== null && (
         <PermissionPrompt request={view.pendingPermission} />
       )}
+      {autocompleteOpen && (
+        <CommandPalette entries={matches} highlighted={safeHighlight} />
+      )}
       <InputBox
+        ref={inputRef}
         focused={!hasPermission && !pickerOpen}
         busy={isBusy}
+        suppressNav={autocompleteOpen}
+        onChange={onBufferChange}
         onSubmit={submit}
       />
       <FooterHints busy={isBusy} mode={view.permissionMode} />

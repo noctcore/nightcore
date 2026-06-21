@@ -17,6 +17,24 @@ export const COMMANDS: readonly Command[] = [
       for (const cmd of COMMANDS) {
         lines.push({ text: `  /${cmd.name.padEnd(8)} ${cmd.summary}` });
       }
+      // SDK-native commands for the live session (from `session-ready`), shown
+      // separately so it's clear they're forwarded to the engine, not local.
+      const localNames = new Set(COMMANDS.map((c) => c.name));
+      const sdkCommands = ctx.view.slashCommands.filter(
+        (name) => !localNames.has(name),
+      );
+      if (sdkCommands.length > 0) {
+        lines.push({ text: '', tone: 'muted' });
+        lines.push({ text: 'session commands (forwarded to the engine)', tone: 'muted' });
+        for (const name of sdkCommands) {
+          lines.push({ text: `  /${name}` });
+        }
+      }
+      if (ctx.view.skills.length > 0) {
+        lines.push({ text: '', tone: 'muted' });
+        lines.push({ text: 'skills', tone: 'muted' });
+        lines.push({ text: `  ${ctx.view.skills.join(', ')}` });
+      }
       lines.push({ text: '', tone: 'muted' });
       lines.push({ text: 'keybindings', tone: 'muted' });
       for (const [key, action] of KEYBINDINGS) {
@@ -55,10 +73,12 @@ export const COMMANDS: readonly Command[] = [
 
 /** Keybinding reference, surfaced by `/help`. Kept in lock-step with `App.tsx`. */
 const KEYBINDINGS: ReadonlyArray<readonly [string, string]> = [
-  ['enter', 'submit the prompt'],
+  ['enter', 'submit the prompt / run the highlighted command'],
   ['shift+enter', 'insert a newline'],
+  ['tab', 'complete the highlighted command (autocomplete open)'],
+  ['↑ / ↓', 'move the autocomplete highlight'],
   ['shift+tab', 'toggle plan ↔ build'],
-  ['esc', 'interrupt session / deny permission / close picker'],
+  ['esc', 'close autocomplete / interrupt session / deny permission / close picker'],
   ['y / n', 'approve / deny a pending permission'],
   ['ctrl+c', 'quit'],
 ];
@@ -66,8 +86,12 @@ const KEYBINDINGS: ReadonlyArray<readonly [string, string]> = [
 const BY_NAME = new Map<string, Command>(COMMANDS.map((c) => [c.name, c]));
 
 /**
- * Run a parsed slash command. Unknown names dispatch a notice rather than
- * throwing, mirroring Claude Code's "unknown command" hint.
+ * Run a parsed slash command. Resolution order:
+ *  1. A local registry command → run it (surface-only).
+ *  2. Otherwise, if the name is an SDK-native `slashCommand` for the live session
+ *     (or there's no SDK list yet to contradict it), forward the literal
+ *     `/name args` to the engine as a prompt — the SDK interprets it.
+ *  3. Only if it is neither local nor SDK-known do we show "unknown command".
  */
 export async function runCommand(
   ctx: CommandContext,
@@ -75,13 +99,24 @@ export async function runCommand(
   args: string[],
 ): Promise<void> {
   const command = BY_NAME.get(name);
-  if (command === undefined) {
-    ctx.dispatch({
-      type: 'ui-system-message',
-      title: 'unknown command',
-      lines: [{ text: `/${name} is not a command — try /help`, tone: 'warn' }],
-    });
+  if (command !== undefined) {
+    await command.run(ctx, args);
     return;
   }
-  await command.run(ctx, args);
+
+  // SDK-command bridge: relay session-native commands (and, when we have no SDK
+  // list yet, any unknown `/name`) to the engine verbatim so the SDK can handle
+  // them. Reconstruct the literal text the operator typed.
+  const isSdkCommand = ctx.view.slashCommands.includes(name);
+  const literal = args.length > 0 ? `/${name} ${args.join(' ')}` : `/${name}`;
+  if (isSdkCommand || ctx.view.slashCommands.length === 0) {
+    ctx.forwardPrompt(literal);
+    return;
+  }
+
+  ctx.dispatch({
+    type: 'ui-system-message',
+    title: 'unknown command',
+    lines: [{ text: `/${name} is not a command — try /help`, tone: 'warn' }],
+  });
 }

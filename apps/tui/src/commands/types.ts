@@ -22,6 +22,10 @@ export interface CommandContext {
   openModelPicker: () => void;
   /** Tear down the renderer and exit (`/quit`). */
   quit: () => void;
+  /** Forward literal text to the engine as a prompt (`start-session` when idle/
+   *  terminal, else `send-input`). Used by the SDK-command bridge to relay a
+   *  `/name args` that is not a local command but is an SDK-native one. */
+  forwardPrompt: (text: string) => void;
 }
 
 /** A registered slash command. `run` may be async (e.g. `/model`, `/doctor`). */
