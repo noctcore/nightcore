@@ -1,5 +1,5 @@
-import type { Task } from '../bridge';
-import { COLUMNS } from '../status';
+import type { Task } from '../../bridge';
+import { COLUMNS } from './status';
 import { Column } from './Column';
 
 interface BoardProps {
@@ -10,7 +10,7 @@ interface BoardProps {
 
 export function Board({ tasks, selectedId, onSelect }: BoardProps) {
   return (
-    <div className="grid h-full grid-cols-4 gap-3 p-3">
+    <div className="flex h-full min-h-0 gap-3.5 overflow-x-auto p-4">
       {COLUMNS.map((col) => {
         const colTasks = tasks
           .filter((t) => col.statuses.includes(t.status))

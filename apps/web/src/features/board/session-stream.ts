@@ -1,4 +1,4 @@
-import type { NcEvent } from './bridge';
+import type { NcEvent } from '../../bridge';
 
 export interface ToolLine {
   id: number;

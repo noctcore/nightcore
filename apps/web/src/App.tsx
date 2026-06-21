@@ -10,10 +10,15 @@ import {
   runTask,
   type Task,
 } from './bridge';
-import { EMPTY_STREAM, foldSession, type SessionStream } from './session-stream';
-import { Board } from './components/Board';
-import { NewTaskForm } from './components/NewTaskForm';
-import { TaskDetail } from './components/TaskDetail';
+import {
+  Board,
+  EMPTY_STREAM,
+  foldSession,
+  NewTaskForm,
+  TaskDetail,
+  type SessionStream,
+} from './features/board';
+import { Button, EmptyState } from './shared/ui';
 
 export function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -94,66 +99,55 @@ export function App() {
     });
   }, []);
 
-  const handleDelete = useCallback(
-    (id: string) => {
-      void deleteTask(id).catch((err) => {
-        console.error('delete_task failed', err);
-      });
-      setTasks((prev) => prev.filter((t) => t.id !== id));
-      setStreams((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-      setSelectedId((cur) => (cur === id ? null : cur));
-    },
-    [],
-  );
+  const handleDelete = useCallback((id: string) => {
+    void deleteTask(id).catch((err) => {
+      console.error('delete_task failed', err);
+    });
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+    setStreams((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setSelectedId((cur) => (cur === id ? null : cur));
+  }, []);
 
   return (
-    <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-zinc-800 bg-zinc-950/60 px-4 py-2.5">
+    <div className="flex h-full flex-col bg-background text-foreground">
+      <header className="flex items-center justify-between border-b border-border bg-popover px-5 py-2.5">
         <div className="flex items-baseline gap-2">
-          <span className="font-semibold tracking-tight">Nightcore</span>
-          <span className="text-xs text-zinc-500">
+          <span className="text-lg font-semibold tracking-tight">
+            nightcore<span className="text-primary">.</span>
+          </span>
+          <span className="font-mono text-[11px] text-muted-foreground">
             {anyRunning ? 'running' : `${tasks.length} tasks`}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowNewForm(true)}
-          className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500"
-        >
-          + New task
-        </button>
+        <Button onClick={() => setShowNewForm(true)}>+ New task</Button>
       </header>
 
       {!isTauri() && (
-        <p className="border-b border-amber-700/40 bg-amber-950/30 px-4 py-2 text-sm text-amber-300">
-          Browser preview — run <code>bun run desktop</code> to drive the
-          sidecar. Commands are no-ops here.
+        <p className="border-b border-warning/40 bg-warning/[0.12] px-5 py-2 text-sm text-warning">
+          Browser preview — run <code className="font-mono">bun run desktop</code>{' '}
+          to drive the sidecar. Commands are no-ops here.
         </p>
       )}
 
       <main className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1">
           {tasks.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-              <p className="text-sm text-zinc-500">No tasks yet.</p>
-              <button
-                type="button"
-                onClick={() => setShowNewForm(true)}
-                className="rounded-md border border-zinc-700 px-4 py-1.5 text-sm text-zinc-300 hover:border-zinc-600 hover:text-zinc-100"
-              >
-                Create your first task
-              </button>
-            </div>
-          ) : (
-            <Board
-              tasks={tasks}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
+            <EmptyState
+              icon="📥"
+              title="No tasks yet"
+              description="Describe what you want built. Each task becomes a card an agent can pick up and run."
+              action={
+                <Button onClick={() => setShowNewForm(true)}>
+                  Create your first task
+                </Button>
+              }
             />
+          ) : (
+            <Board tasks={tasks} selectedId={selectedId} onSelect={setSelectedId} />
           )}
         </div>
 
