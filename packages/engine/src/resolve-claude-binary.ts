@@ -7,28 +7,38 @@ import * as fs from 'node:fs';
  *
  * The SDK normally resolves its bundled `claude` binary from `node_modules` at
  * runtime, which works in-repo but breaks a `bun build --compile` distributable
- * (there's no `node_modules` next to the compiled binary). We only override the
- * path when we can name one explicitly:
+ * (there's no `node_modules` next to the compiled binary). We override the path
+ * ONLY when explicitly asked:
  *
- *   1. `NIGHTCORE_CLAUDE_PATH` if set and it exists on disk;
- *   2. else whatever `which claude` resolves to on PATH;
- *   3. else `undefined` — leaving the SDK's in-repo default in place.
+ *   1. `NIGHTCORE_CLAUDE_PATH` if set and it exists on disk; else
+ *   2. if `NIGHTCORE_USE_SYSTEM_CLAUDE` is truthy, whatever `which claude`
+ *      resolves to on PATH; else
+ *   3. `undefined` — leaving the SDK's bundled, version-matched binary in place.
  *
- * Returning `undefined` is the common in-repo case, so the normal dev path is
- * untouched. All probing failures are swallowed (degrade-not-throw).
+ * Crucially, we do NOT auto-probe `which` in the common case: the SDK bundles a
+ * `claude` binary pinned to its own protocol version, and silently swapping in a
+ * different globally-installed CLI risks a version mismatch. Compiled
+ * distributions opt in via one of the two env vars. All probing failures are
+ * swallowed (degrade-not-throw).
  */
 export function resolveClaudeBinary(): string | undefined {
   const fromEnv = process.env.NIGHTCORE_CLAUDE_PATH;
   if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
 
-  try {
-    const found = execFileSync('which', ['claude'], {
-      encoding: 'utf8',
-    }).trim();
-    if (found && fs.existsSync(found)) return found;
-  } catch {
-    // `which` missing / non-zero exit (not on PATH) — fall through to undefined.
+  if (isTruthyEnv(process.env.NIGHTCORE_USE_SYSTEM_CLAUDE)) {
+    try {
+      const found = execFileSync('which', ['claude'], {
+        encoding: 'utf8',
+      }).trim();
+      if (found && fs.existsSync(found)) return found;
+    } catch {
+      // `which` missing / non-zero exit (not on PATH) — fall through.
+    }
   }
 
   return undefined;
+}
+
+function isTruthyEnv(value: string | undefined): boolean {
+  return value !== undefined && value !== '' && value !== '0' && value !== 'false';
 }
