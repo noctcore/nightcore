@@ -46,5 +46,7 @@ export {
   EMPTY_STREAM,
   foldSession,
   type SessionStream,
-  type ToolLine,
+  type TimelineEntry,
+  type TextEntry,
+  type ToolEntry,
 } from './session-stream';

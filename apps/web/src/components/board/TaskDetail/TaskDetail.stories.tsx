@@ -63,16 +63,93 @@ export const Running: Story = {
     anyRunning: true,
     stream: {
       ...EMPTY_STREAM,
-      answer:
-        '## Generating the client\n\nReading `vite.config.ts`, then writing the typed client from the OpenAPI spec.\n\n- Parsed the schema\n- Emitted `api/client.ts`',
-      tools: [
-        { id: 1, toolName: 'Read', input: { file_path: 'apps/web/vite.config.ts' } },
-        { id: 2, toolName: 'Grep', input: { pattern: 'createClient', path: 'src' } },
-        { id: 3, toolName: 'Bash', input: { command: 'bun run codegen:api' } },
-        { id: 4, toolName: 'Edit', input: { file_path: 'src/api/client.ts' } },
+      streamedPartial: true,
+      entries: [
+        {
+          kind: 'text',
+          markdown:
+            '## Generating the client\n\nReading `vite.config.ts`, then writing the typed client from the OpenAPI spec.\n\n- Parsed the schema\n- Emitted `api/client.ts`',
+        },
+        { kind: 'tool', id: 1, toolName: 'Read', input: { file_path: 'apps/web/vite.config.ts' } },
+        { kind: 'tool', id: 2, toolName: 'Grep', input: { pattern: 'createClient', path: 'src' } },
+        { kind: 'tool', id: 3, toolName: 'Bash', input: { command: 'bun run codegen:api' } },
+        { kind: 'tool', id: 4, toolName: 'Edit', input: { file_path: 'src/api/client.ts' } },
       ],
+      toolSeq: 4,
       costUsd: 0.18,
     },
+  },
+};
+
+/** Interleaved timeline: text → tool → text → tool → trailing text. Proves the
+ *  two speaking turns split by a tool call render as visually separated markdown
+ *  blocks, with tool steps boxed inline between them. */
+export const InterleavedTimeline: Story = {
+  args: {
+    task: TASKS_BY_STATUS.in_progress,
+    anyRunning: true,
+    stream: {
+      ...EMPTY_STREAM,
+      streamedPartial: true,
+      entries: [
+        {
+          kind: 'text',
+          markdown:
+            "First I'll find where the client is wired so the new types land in the right module.",
+        },
+        { kind: 'tool', id: 1, toolName: 'Grep', input: { pattern: 'createClient', path: 'src' } },
+        {
+          kind: 'text',
+          markdown:
+            'Found it in `src/api/index.ts`. Now generating the typed client from the OpenAPI spec.',
+        },
+        { kind: 'tool', id: 2, toolName: 'Bash', input: { command: 'bun run codegen:api' } },
+        {
+          kind: 'text',
+          markdown: 'Codegen succeeded — `src/api/client.ts` now exports the typed client.',
+        },
+      ],
+      toolSeq: 2,
+      costUsd: 0.12,
+    },
+  },
+};
+
+/** A fresh backlog task: the Session card opens by default (editable) so the
+ *  per-task pickers surface without a click. */
+export const SessionCardExpanded: Story = {
+  args: { task: TASKS_BY_STATUS.backlog, stream: undefined },
+};
+
+/** A verified (read-only) task: the Session card starts collapsed to its middot
+ *  summary line, demoting config below the content. */
+export const SessionCardCollapsed: Story = {
+  args: {
+    task: makeTask({
+      id: 't-session-collapsed',
+      status: 'done',
+      title: 'Wire up auth guard',
+      summary: 'Added the auth middleware and covered it with tests.',
+      runMode: 'worktree',
+      permissionMode: 'bypass',
+      model: 'claude-opus-4-8',
+      effort: 'high',
+      maxTurns: 40,
+      branch: 'nc/auth-guard',
+      verified: true,
+      committed: true,
+      review: SAMPLE_REVIEW_PASS,
+    }),
+    gauntlet: GAUNTLET_PASSED,
+    stream: undefined,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // Collapsed by default for a read-only task; clicking the summary expands it.
+    const toggle = canvas.getByRole('button', { name: /worktree/i });
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(toggle);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   },
 };
 
@@ -202,8 +279,12 @@ export const Verifying: Story = {
     anyRunning: true,
     stream: {
       ...EMPTY_STREAM,
-      answer: 'Running git diff against the base branch…',
-      tools: [{ id: 1, toolName: 'Bash' }],
+      streamedPartial: true,
+      entries: [
+        { kind: 'text', markdown: 'Running git diff against the base branch…' },
+        { kind: 'tool', id: 1, toolName: 'Bash' },
+      ],
+      toolSeq: 1,
     },
   },
 };

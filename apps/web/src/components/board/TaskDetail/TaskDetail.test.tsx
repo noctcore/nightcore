@@ -42,9 +42,9 @@ test('renders a parked permission prompt and relays the decision', async () => {
   expect(onRespondPermission).toHaveBeenCalledWith('t-running', 'req-1', 'allow');
 });
 
-test('shows the live transcript heading and cancel control while running', async () => {
+test('shows the live activity heading and cancel control while running', async () => {
   const screen = render(<Running />);
-  await expect.element(screen.getByText('Live transcript')).toBeInTheDocument();
+  await expect.element(screen.getByText('Live activity')).toBeInTheDocument();
   await expect
     .element(screen.getByRole('button', { name: /cancel run/i }))
     .toBeInTheDocument();
@@ -62,12 +62,18 @@ test('deriveTaskDetailView prefers the live stream over persisted values', () =>
   const task = makeTask({ status: 'in_progress', costUsd: 0.1, summary: 'old' });
   const view = deriveTaskDetailView(task, {
     ...EMPTY_STREAM,
-    answer: 'live',
+    entries: [{ kind: 'text', markdown: 'live' }],
     costUsd: 0.5,
   });
   expect(view.isRunning).toBe(true);
   expect(view.cost).toBe(0.5);
-  expect(view.answer).toBe('live');
+  expect(view.entries).toEqual([{ kind: 'text', markdown: 'live' }]);
+});
+
+test('deriveTaskDetailView falls back to the stored summary as a single text entry', () => {
+  const task = makeTask({ status: 'done', summary: 'Final summary' });
+  const view = deriveTaskDetailView(task, undefined);
+  expect(view.entries).toEqual([{ kind: 'text', markdown: 'Final summary' }]);
 });
 
 test('shows the reviewer verdict and Accept / Rerun / Reject for a review-parked task', async () => {

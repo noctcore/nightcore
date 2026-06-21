@@ -606,7 +606,7 @@ export function useAppShell(): AppShellState {
   const logCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const [id, stream] of Object.entries(streams)) {
-      counts[id] = stream.tools.length;
+      counts[id] = stream.entries.filter((e) => e.kind === 'tool').length;
     }
     return counts;
   }, [streams]);

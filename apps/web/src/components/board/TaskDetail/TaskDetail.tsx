@@ -1,14 +1,18 @@
 import {
+  BoltIcon,
   BranchIcon,
   Button,
   CheckIcon,
+  ChevronDownIcon,
   CloseIcon,
   CommitIcon,
   IconButton,
+  LogsIcon,
   Markdown,
   RefineIcon,
   TerminalIcon,
 } from '@/components/ui';
+import type { Task } from '@/lib/bridge';
 import { summarizeInput } from '@/lib/summarize';
 import {
   formatCost,
@@ -19,6 +23,7 @@ import {
   STATUS_LABEL,
   STATUS_TEXT,
 } from '../status';
+import type { TimelineEntry } from '../session-stream';
 import { TaskStatusDot } from '../TaskStatusDot';
 import { PermissionPrompt } from '../PermissionPrompt';
 import { KindPicker } from '../KindPicker';
@@ -27,7 +32,12 @@ import { PermissionModePicker } from '../PermissionModePicker';
 import { ModelEffortPicker } from '../ModelEffortPicker';
 import { ReviewPanel } from '../ReviewPanel';
 import { GauntletResults } from '../GauntletResults';
-import { canMerge, deriveTaskDetailView } from './TaskDetail.hooks';
+import {
+  canMerge,
+  deriveTaskDetailView,
+  summarizeSession,
+  useSessionCard,
+} from './TaskDetail.hooks';
 import type { TaskDetailProps } from './TaskDetail.types';
 
 /** An editable numeric ceiling (SDK guardrails). Empty ⇒ inherit the resolved
@@ -91,10 +101,254 @@ function LimitField({
   );
 }
 
-/** The logs / detail drawer — title, status, kind, plan, parked permission
- *  prompts, the reviewer verdict + verification controls (M4), the readiness
- *  gauntlet + verified-gated merge, the transcript, and the per-status run /
- *  approval controls. */
+/** A labeled control row inside the expanded Session card. The two-column
+ *  `[5.5rem_1fr]` grid tightens the five formerly-stacked config sections into a
+ *  compact form while keeping each `<h3>` label token unchanged. */
+function SessionRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-[5.5rem_1fr] items-start gap-x-3 gap-y-1">
+      <h3 className="pt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+        {label}
+      </h3>
+      <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
+/** The collapsible Session card (decision B): collapsed by default to a middot
+ *  summary line, expanding to reveal the EXISTING pickers (editable) or read-only
+ *  pills (post-run). Collapsed by default; opens on mount when the task is still
+ *  editable so a fresh backlog/ready task surfaces its config without a click.
+ *  Reuses every picker + `LimitField` verbatim — no control is re-implemented. */
+function SessionCard({
+  task,
+  kindEditable,
+  onChangeKind,
+  onChangeRunMode,
+  onChangePermissionMode,
+  onChangeModel,
+  onChangeEffort,
+  onChangeMaxTurns,
+  onChangeMaxBudget,
+}: {
+  task: Task;
+  kindEditable: boolean;
+  onChangeKind?: TaskDetailProps['onChangeKind'];
+  onChangeRunMode?: TaskDetailProps['onChangeRunMode'];
+  onChangePermissionMode?: TaskDetailProps['onChangePermissionMode'];
+  onChangeModel?: TaskDetailProps['onChangeModel'];
+  onChangeEffort?: TaskDetailProps['onChangeEffort'];
+  onChangeMaxTurns?: TaskDetailProps['onChangeMaxTurns'];
+  onChangeMaxBudget?: TaskDetailProps['onChangeMaxBudget'];
+}) {
+  const { open, toggle } = useSessionCard(kindEditable);
+
+  return (
+    <section className="rounded-[10px] border border-border bg-white/[0.02]">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls="session-card-body"
+        onClick={toggle}
+        className="flex w-full items-center gap-2 rounded-[10px] px-3 py-2.5 text-left transition-colors hover:bg-white/[0.03] focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      >
+        <BoltIcon size={13} className="shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">
+          {open ? 'Session' : summarizeSession(task)}
+        </span>
+        <ChevronDownIcon
+          size={14}
+          aria-hidden="true"
+          className={`shrink-0 text-muted-foreground transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      <div
+        id="session-card-body"
+        hidden={!open}
+        style={open ? { animation: 'nc-rise .16s cubic-bezier(.22,1,.36,1)' } : undefined}
+      >
+        {open && (
+          <div className="grid gap-3 border-t border-border px-3 pb-3 pt-3">
+            <SessionRow label="Kind">
+              {kindEditable && onChangeKind !== undefined ? (
+                <KindPicker
+                  compact
+                  value={task.kind}
+                  onChange={(kind) => onChangeKind(task.id, kind)}
+                />
+              ) : (
+                <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                  {KIND_LABEL[task.kind]}
+                </span>
+              )}
+            </SessionRow>
+
+            <SessionRow label="Run mode">
+              {kindEditable && onChangeRunMode !== undefined ? (
+                <WorkModePicker
+                  value={task.runMode}
+                  onChange={(runMode) => onChangeRunMode(task.id, runMode)}
+                />
+              ) : (
+                <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                  {RUN_MODE_LABEL[task.runMode]}
+                </span>
+              )}
+            </SessionRow>
+
+            <SessionRow label="Permission">
+              {kindEditable && onChangePermissionMode !== undefined ? (
+                <PermissionModePicker
+                  value={task.permissionMode}
+                  onChange={(mode) => onChangePermissionMode(task.id, mode)}
+                />
+              ) : (
+                <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                  {task.permissionMode !== null
+                    ? PERMISSION_MODE_LABEL[task.permissionMode]
+                    : 'Inherit'}
+                </span>
+              )}
+            </SessionRow>
+
+            <SessionRow label="Model & effort">
+              {kindEditable && onChangeModel !== undefined && onChangeEffort !== undefined ? (
+                <ModelEffortPicker
+                  model={task.model}
+                  effort={task.effort}
+                  onChangeModel={(model) => onChangeModel(task.id, model)}
+                  onChangeEffort={(effort) => onChangeEffort(task.id, effort)}
+                />
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                    {task.model !== null ? modelDisplayName(task.model) : 'Model: inherit'}
+                  </span>
+                  <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                    Effort: {task.effort ?? 'inherit'}
+                  </span>
+                </div>
+              )}
+            </SessionRow>
+
+            <SessionRow label="Limits">
+              {kindEditable &&
+              onChangeMaxTurns !== undefined &&
+              onChangeMaxBudget !== undefined ? (
+                <div className="flex gap-2.5">
+                  <LimitField
+                    label="Max turns"
+                    value={task.maxTurns}
+                    placeholder="Inherit"
+                    min={1}
+                    step={1}
+                    onCommit={(n) => onChangeMaxTurns(task.id, n)}
+                  />
+                  <LimitField
+                    label="Max budget (USD)"
+                    value={task.maxBudgetUsd}
+                    placeholder="Inherit"
+                    min={0}
+                    step={0.5}
+                    prefix="$"
+                    onCommit={(n) => onChangeMaxBudget(task.id, n)}
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                    Turns: {task.maxTurns ?? 'inherit'}
+                  </span>
+                  <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                    Budget: {task.maxBudgetUsd !== null ? `$${task.maxBudgetUsd}` : 'inherit'}
+                  </span>
+                </div>
+              )}
+            </SessionRow>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** The unified activity timeline (decision A): one chronological list that
+ *  interleaves assistant text turns (rendered via `<Markdown>`, each its own
+ *  `<li>` so distinct turns are visually separated) with boxed tool-call lines,
+ *  in arrival order. Replaces the split Tools + Transcript sections. The live
+ *  cursor renders only on a trailing text entry; a terminal error replaces the
+ *  list entirely. */
+function Timeline({
+  entries,
+  error,
+  isRunning,
+}: {
+  entries: TimelineEntry[];
+  error: string | null;
+  isRunning: boolean;
+}) {
+  return (
+    <section aria-label="Activity" className="flex-1">
+      <h3 className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+        <LogsIcon size={11} />
+        {isRunning ? 'Live activity' : 'Activity'}
+      </h3>
+
+      {error !== null ? (
+        <pre className="whitespace-pre-wrap rounded-md border border-destructive/40 bg-destructive/[0.12] px-3 py-2 font-mono text-xs text-destructive">
+          {error}
+        </pre>
+      ) : entries.length > 0 ? (
+        <ol
+          className="space-y-2.5"
+          aria-live={isRunning ? 'polite' : undefined}
+          aria-atomic={isRunning ? 'false' : undefined}
+        >
+          {entries.map((entry, i) =>
+            entry.kind === 'text' ? (
+              <li key={`t${i}`} className="text-foreground">
+                <Markdown>{entry.markdown}</Markdown>
+                {isRunning && i === entries.length - 1 && (
+                  <span
+                    aria-hidden="true"
+                    className="ml-0.5 inline-block w-[2px] animate-[nc-pulse_1s_ease-in-out_infinite] align-text-bottom text-primary"
+                  >
+                    ▌
+                  </span>
+                )}
+              </li>
+            ) : (
+              <li
+                key={`x${entry.id}`}
+                className="flex items-start gap-1.5 rounded-md border border-border bg-white/[0.02] px-2 py-1 font-mono text-xs text-primary/80"
+              >
+                <TerminalIcon size={12} className="mt-0.5 shrink-0" />
+                <span className="min-w-0 break-words">
+                  <span className="font-semibold">{entry.toolName}</span>
+                  {entry.input !== undefined && (
+                    <span className="text-muted-foreground"> · {summarizeInput(entry.input)}</span>
+                  )}
+                </span>
+              </li>
+            ),
+          )}
+        </ol>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          {isRunning
+            ? 'Waiting for first token…'
+            : 'No activity yet — run this task to stream its transcript.'}
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** The logs / detail drawer — title, status, parked permission prompts, the
+ *  reviewer verdict + verification controls (M4), the readiness gauntlet +
+ *  verified-gated merge, the description, the unified activity timeline, the
+ *  collapsible Session config card, and the per-status run / approval controls. */
 export function TaskDetail({
   task,
   stream,
@@ -128,8 +382,7 @@ export function TaskDetail({
     isRunning,
     cost,
     error,
-    answer,
-    tools,
+    entries,
     reviewParked,
     planParked,
     kindEditable,
@@ -183,116 +436,6 @@ export function TaskDetail({
           </div>
         )}
 
-        <section>
-          <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
-            Kind
-          </h3>
-          {kindEditable && onChangeKind !== undefined ? (
-            <KindPicker
-              compact
-              value={task.kind}
-              onChange={(kind) => onChangeKind(task.id, kind)}
-            />
-          ) : (
-            <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-              {KIND_LABEL[task.kind]}
-            </span>
-          )}
-        </section>
-
-        <section>
-          <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
-            Run mode
-          </h3>
-          {kindEditable && onChangeRunMode !== undefined ? (
-            <WorkModePicker
-              value={task.runMode}
-              onChange={(runMode) => onChangeRunMode(task.id, runMode)}
-            />
-          ) : (
-            <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-              {RUN_MODE_LABEL[task.runMode]}
-            </span>
-          )}
-        </section>
-
-        <section>
-          <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
-            Permission mode
-          </h3>
-          {kindEditable && onChangePermissionMode !== undefined ? (
-            <PermissionModePicker
-              value={task.permissionMode}
-              onChange={(mode) => onChangePermissionMode(task.id, mode)}
-            />
-          ) : (
-            <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-              {task.permissionMode !== null
-                ? PERMISSION_MODE_LABEL[task.permissionMode]
-                : 'Inherit'}
-            </span>
-          )}
-        </section>
-
-        <section>
-          <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
-            Model &amp; effort
-          </h3>
-          {kindEditable && onChangeModel !== undefined && onChangeEffort !== undefined ? (
-            <ModelEffortPicker
-              model={task.model}
-              effort={task.effort}
-              onChangeModel={(model) => onChangeModel(task.id, model)}
-              onChangeEffort={(effort) => onChangeEffort(task.id, effort)}
-            />
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-                {task.model !== null ? modelDisplayName(task.model) : 'Model: inherit'}
-              </span>
-              <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-                Effort: {task.effort ?? 'inherit'}
-              </span>
-            </div>
-          )}
-        </section>
-
-        <section>
-          <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
-            Limits
-          </h3>
-          {kindEditable && onChangeMaxTurns !== undefined && onChangeMaxBudget !== undefined ? (
-            <div className="flex gap-2.5">
-              <LimitField
-                label="Max turns"
-                value={task.maxTurns}
-                placeholder="Inherit"
-                min={1}
-                step={1}
-                onCommit={(n) => onChangeMaxTurns(task.id, n)}
-              />
-              <LimitField
-                label="Max budget (USD)"
-                value={task.maxBudgetUsd}
-                placeholder="Inherit"
-                min={0}
-                step={0.5}
-                prefix="$"
-                onCommit={(n) => onChangeMaxBudget(task.id, n)}
-              />
-            </div>
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-                Turns: {task.maxTurns ?? 'inherit'}
-              </span>
-              <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-                Budget: {task.maxBudgetUsd !== null ? `$${task.maxBudgetUsd}` : 'inherit'}
-              </span>
-            </div>
-          )}
-        </section>
-
         {planParked && task.plan !== null && (
           <section>
             <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
@@ -330,51 +473,19 @@ export function TaskDetail({
           </section>
         )}
 
-        {tools.length > 0 && (
-          <section>
-            <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
-              Tools
-            </h3>
-            <ul className="space-y-1">
-              {tools.map((tool) => (
-                <li
-                  key={tool.id}
-                  className="flex items-start gap-1.5 font-mono text-xs text-primary/80"
-                >
-                  <TerminalIcon size={12} className="mt-0.5 shrink-0" />
-                  <span className="min-w-0 break-words">
-                    <span className="font-semibold">{tool.toolName}</span>
-                    {tool.input !== undefined && (
-                      <span className="text-muted-foreground"> · {summarizeInput(tool.input)}</span>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+        <Timeline entries={entries} error={error} isRunning={isRunning} />
 
-        <section className="flex-1">
-          <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
-            {isRunning ? 'Live transcript' : 'Transcript'}
-          </h3>
-          {error !== null ? (
-            <pre className="whitespace-pre-wrap rounded-md border border-destructive/40 bg-destructive/[0.12] px-3 py-2 font-mono text-xs text-destructive">
-              {error}
-            </pre>
-          ) : answer.length > 0 ? (
-            <div className="text-foreground">
-              <Markdown>{answer}</Markdown>
-              {isRunning && <span className="text-muted-foreground">▌</span>}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              {isRunning
-                ? 'Waiting for first token…'
-                : 'No output yet — run this task to stream its transcript.'}
-            </p>
-          )}
-        </section>
+        <SessionCard
+          task={task}
+          kindEditable={kindEditable}
+          onChangeKind={onChangeKind}
+          onChangeRunMode={onChangeRunMode}
+          onChangePermissionMode={onChangePermissionMode}
+          onChangeModel={onChangeModel}
+          onChangeEffort={onChangeEffort}
+          onChangeMaxTurns={onChangeMaxTurns}
+          onChangeMaxBudget={onChangeMaxBudget}
+        />
       </div>
 
       <footer className="flex items-center gap-2 border-t border-border bg-card px-4 py-3">

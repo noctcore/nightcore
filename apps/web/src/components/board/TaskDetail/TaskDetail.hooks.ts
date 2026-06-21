@@ -1,5 +1,12 @@
+import { useState } from 'react';
 import type { GauntletResult, Task } from '@/lib/bridge';
-import type { SessionStream, ToolLine } from '../session-stream';
+import {
+  KIND_LABEL,
+  modelDisplayName,
+  PERMISSION_MODE_LABEL,
+  RUN_MODE_LABEL,
+} from '../status';
+import type { SessionStream, TimelineEntry } from '../session-stream';
 
 export interface TaskDetailView {
   isRunning: boolean;
@@ -7,8 +14,9 @@ export interface TaskDetailView {
   isVerifying: boolean;
   cost: number | null;
   error: string | null;
-  answer: string;
-  tools: ToolLine[];
+  /** The unified activity timeline — assistant text turns interleaved with tool
+   *  calls in arrival order (replaces the split `answer` + `tools`). */
+  entries: TimelineEntry[];
   /** A `waiting_approval` parked on a verification verdict (has `review`). */
   reviewParked: boolean;
   /** A `waiting_approval` parked on a plan (`ExitPlanMode`, no verdict yet). */
@@ -29,18 +37,54 @@ export function deriveTaskDetailView(
 ): TaskDetailView {
   const waiting = task.status === 'waiting_approval';
   const reviewParked = waiting && task.review !== null;
+  // A closed task with no live stream falls back to its stored summary, wrapped as
+  // a single synthetic text entry so the timeline still renders its final output.
+  const fallbackEntries: TimelineEntry[] =
+    task.summary !== null && task.summary.trim().length > 0
+      ? [{ kind: 'text', markdown: task.summary }]
+      : [];
   return {
     isRunning: task.status === 'in_progress',
     isVerifying: task.status === 'verifying',
     cost: stream?.costUsd ?? task.costUsd,
     error: stream?.error ?? task.error,
-    answer: stream?.answer ?? task.summary ?? '',
-    tools: stream?.tools ?? [],
+    entries: stream?.entries ?? fallbackEntries,
     reviewParked,
     planParked: waiting && !reviewParked,
     kindEditable: task.status === 'backlog' || task.status === 'ready',
     isDoneColumn: task.status === 'done',
   };
+}
+
+/** The Session card's collapse state. Collapsed by default; opens once at mount
+ *  when the task is still editable (`kindEditable`) so a fresh backlog/ready task
+ *  surfaces its config without a click. The initializer runs once — toggling is
+ *  never fought by re-renders. */
+export function useSessionCard(kindEditable: boolean): {
+  open: boolean;
+  toggle: () => void;
+} {
+  const [open, setOpen] = useState(kindEditable);
+  return { open, toggle: () => setOpen((v) => !v) };
+}
+
+/** A compact middot-joined one-line summary of a task's session configuration,
+ *  for the collapsed Session card. Reuses the shared label maps so it stays in
+ *  lockstep with the expanded pickers/pills. Pure. */
+export function summarizeSession(task: Task): string {
+  const permission =
+    task.permissionMode !== null ? PERMISSION_MODE_LABEL[task.permissionMode] : 'Inherit';
+  const modelEffort =
+    modelDisplayName(task.model) + (task.effort !== null ? `·${task.effort}` : '');
+  const turns = task.maxTurns !== null ? `${task.maxTurns} turns` : '∞ turns';
+  const limits = task.maxBudgetUsd !== null ? `${turns} · $${task.maxBudgetUsd}` : turns;
+  return [
+    KIND_LABEL[task.kind],
+    RUN_MODE_LABEL[task.runMode],
+    permission,
+    modelEffort,
+    limits,
+  ].join(' · ');
 }
 
 /** Whether Merge is permitted: the pre-merge gate requires a verified task AND a
