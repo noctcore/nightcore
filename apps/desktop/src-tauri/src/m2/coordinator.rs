@@ -334,9 +334,9 @@ async fn launch(app: &AppHandle, task_id: &str) {
         return;
     };
 
-    // Allocate the per-task worktree off the active project (if any). With no
-    // project, run in the workspace root (M1 behavior) — cwd = None.
-    let cwd = match resolve_worktree(app, task_id) {
+    // Resolve the run cwd off the active project (if any), branching on the task's
+    // run mode. With no project, run in the workspace root (M1 behavior) — None.
+    let resolved = match resolve_worktree(app, task_id) {
         Ok(cwd) => cwd,
         Err(e) => {
             fail_task(app, task_id, &format!("worktree setup failed: {e}"));
@@ -354,11 +354,11 @@ async fn launch(app: &AppHandle, task_id: &str) {
         return;
     }
 
-    // When a worktree was allocated (active project), record its branch on the
-    // task so the board's branch chip reflects the real `nc/<taskId>` branch.
-    let branch = cwd
-        .as_ref()
-        .map(|_| worktree::branch_name(task_id));
+    // Only a worktree-mode run carries a `nc/<taskId>` branch chip; a `main`-mode
+    // run edits the project's current branch directly, so it has no chip.
+    let is_worktree = resolved.as_ref().map(|r| r.is_worktree).unwrap_or(false);
+    let cwd = resolved.map(|r| r.path);
+    let branch = is_worktree.then(|| worktree::branch_name(task_id));
 
     // Mark in-progress + persist + emit before dispatch.
     if let Ok(updated) = store.mutate(task_id, |t| {
@@ -369,9 +369,9 @@ async fn launch(app: &AppHandle, task_id: &str) {
         t.verified = false;
         t.review = None;
         t.fix_attempts = 0;
-        if branch.is_some() {
-            t.branch = branch.clone();
-        }
+        // Worktree mode records the `nc/<taskId>` chip; main mode clears any stale
+        // branch from a prior worktree run (it now edits the current branch).
+        t.branch = branch.clone();
     }) {
         let _ = app.emit(TASK_EVENT, &updated);
     }
@@ -381,7 +381,8 @@ async fn launch(app: &AppHandle, task_id: &str) {
         task_id,
         model = task.model.as_deref().unwrap_or("<default>"),
         kind = task.kind.as_wire(),
-        branch = branch.as_deref().unwrap_or("<workspace-root>"),
+        run_mode = ?task.run_mode,
+        branch = branch.as_deref().unwrap_or("<project-root>"),
         "launching task"
     );
 
@@ -405,24 +406,60 @@ async fn launch(app: &AppHandle, task_id: &str) {
     }
 }
 
-/// Resolve the worktree cwd for a run. Returns `Ok(None)` when there is no active
-/// project (run in the workspace root, M1 behavior). Refuses to allocate off a
-/// dirty base tree.
-fn resolve_worktree(app: &AppHandle, task_id: &str) -> Result<Option<PathBuf>, String> {
+/// Resolve the run cwd for a task, branching on its `run_mode` (M4.6 §B). Returns
+/// `Ok(None)` when there is no active project (run in the workspace root, M1
+/// behavior). For `main` mode the cwd is the project ROOT (edits land on the
+/// current branch directly); the dirty-base refusal is intentionally relaxed —
+/// the user chose to work in the project tree. For `worktree` mode a `nc/<taskId>`
+/// worktree is allocated off a CLEAN base (you can't branch cleanly off a dirty
+/// index, so that guard stays here). The returned dir is paired with whether it is
+/// a worktree so the caller only records a branch chip in worktree mode.
+fn resolve_worktree(app: &AppHandle, task_id: &str) -> Result<Option<ResolvedCwd>, String> {
     let projects = app.state::<ProjectStore>();
     let Some(project) = projects.active() else {
         return Ok(None);
     };
     let project_path = PathBuf::from(&project.path);
+
+    let run_mode = app
+        .state::<TaskStore>()
+        .get(task_id)
+        .map(|t| t.run_mode)
+        .unwrap_or_default();
+
+    if !run_mode.is_worktree() {
+        // `main` mode: run in the project root on the current branch. No worktree,
+        // no branch chip, no dirty-base refusal (working in the tree is the point).
+        tracing::info!(target: "nightcore", task_id, root = %project_path.display(), "running in project root (main mode)");
+        return Ok(Some(ResolvedCwd::root(project_path)));
+    }
+
     if !worktree::is_worktree_clean(&project_path).unwrap_or(true) {
         return Err(format!(
-            "base working tree at {} is dirty; commit or stash before running the loop",
+            "base working tree at {} is dirty; commit or stash before running the loop in worktree mode",
             project_path.display()
         ));
     }
     let dir = worktree::allocate(&project_path, task_id)?;
     tracing::info!(target: "nightcore", task_id, worktree = %dir.display(), "allocated worktree");
-    Ok(Some(dir))
+    Ok(Some(ResolvedCwd::worktree(dir)))
+}
+
+/// A resolved run cwd plus whether it is an isolated worktree. `is_worktree`
+/// distinguishes a `main`-mode project-root run (no branch chip, no auto-merge)
+/// from a `worktree`-mode run (`nc/<taskId>` branch).
+pub struct ResolvedCwd {
+    pub path: PathBuf,
+    pub is_worktree: bool,
+}
+
+impl ResolvedCwd {
+    fn root(path: PathBuf) -> Self {
+        Self { path, is_worktree: false }
+    }
+    fn worktree(path: PathBuf) -> Self {
+        Self { path, is_worktree: true }
+    }
 }
 
 /// Mark a task failed with `message`, persist, and emit `nc:task`.
@@ -584,6 +621,19 @@ pub fn resume_auto_loop(app: AppHandle) -> Result<(), String> {
 pub fn set_max_concurrency_cmd(app: AppHandle, n: usize) -> Result<(), String> {
     set_max_concurrency(&app, n);
     Ok(())
+}
+
+/// List the live Nightcore worktrees for the active project (M4.6 §C): each
+/// `nc/<taskId>` worktree on disk with its `{ branch, path, taskIds, dirty,
+/// aheadOfBase }`, driving the web switcher's monitor indicators. Read-only and
+/// cheap; tolerant of a missing/locked worktree (it degrades to safe defaults).
+/// Returns an empty list when there is no active project.
+#[tauri::command]
+pub fn list_worktrees(app: AppHandle) -> Result<Vec<worktree::WorktreeStatus>, String> {
+    let Some(project) = app.state::<ProjectStore>().active() else {
+        return Ok(Vec::new());
+    };
+    Ok(worktree::list_worktree_statuses(&PathBuf::from(&project.path)))
 }
 
 /// Silence the unused-import lint for `Arc`/`Notify` when only `Notify` is used

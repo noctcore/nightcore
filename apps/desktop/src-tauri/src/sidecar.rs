@@ -269,10 +269,10 @@ async fn handle_build_completed(
         return;
     };
     let verify_after = kind::policy(task.kind).verify_after;
-    let worktree_dir = verification_worktree(app, task_id);
+    let review_dir = verification_dir(app, task_id);
 
-    if !verify_after || worktree_dir.is_none() {
-        // M3 behavior: nothing to verify (no policy, or no worktree to diff).
+    if !verify_after || review_dir.is_none() {
+        // M3 behavior: nothing to verify (no policy, or no project to review in).
         tracing::info!(target: "nightcore", task_id, session_id = ?session_id, cost_usd = ?cost, "task done (no verification)");
         apply_and_emit(app, store, task_id, |task| {
             task.status = TaskStatus::Done;
@@ -285,13 +285,31 @@ async fn handle_build_completed(
         return;
     }
 
-    let worktree_dir = worktree_dir.expect("checked is_some above");
+    let review_dir = review_dir.expect("checked is_some above");
+
+    // M4.6 §A: in worktree mode the build leaves its edits UNCOMMITTED in the
+    // worktree, then the reviewer's `base...HEAD` range is empty — the dogfood bug.
+    // Commit the build's work first (message from the task title) so the branch's
+    // HEAD advances and the diff is real. A clean tree commits nothing (a no-op,
+    // distinct from a genuine empty result). Main mode has no branch — the reviewer
+    // judges the working tree vs HEAD in the project root, so no commit here.
+    if review_dir.is_worktree {
+        if let Some(project) = app.state::<ProjectStore>().active() {
+            let message = build_commit_message(&task);
+            match worktree::commit(&PathBuf::from(&project.path), task_id, &message) {
+                Ok(true) => tracing::info!(target: "nightcore", task_id, "committed build work before review"),
+                Ok(false) => tracing::info!(target: "nightcore", task_id, "no build changes to commit before review (clean tree)"),
+                Err(e) => tracing::warn!(target: "nightcore", task_id, error = %e, "commit-before-review failed; reviewing working tree"),
+            }
+        }
+    }
+
     // Keep the slot leased and the worktree intact: only forget the build session
     // (a new reviewer session correlates to the same task via the FIFO).
     if let Some(sid) = session_id {
         app.state::<Orchestrator>().provider.forget(sid);
     }
-    tracing::info!(target: "nightcore", task_id, "build complete; entering verification gate");
+    tracing::info!(target: "nightcore", task_id, worktree = review_dir.is_worktree, "build complete; entering verification gate");
     apply_and_emit(app, store, task_id, |task| {
         task.status = TaskStatus::Verifying;
         task.summary = result.clone();
@@ -299,7 +317,7 @@ async fn handle_build_completed(
         task.error = None;
     });
 
-    if let Err(e) = dispatch_reviewer(app, task_id, &worktree_dir).await {
+    if let Err(e) = dispatch_reviewer(app, task_id, &review_dir.path).await {
         // Couldn't even start the reviewer: verification is inconclusive → park.
         apply_and_emit(app, store, task_id, |task| {
             task.status = TaskStatus::WaitingApproval;
@@ -350,12 +368,13 @@ async fn handle_review_completed(
         Verdict::ChangesRequested => {
             let attempts = store.get(task_id).map(|t| t.fix_attempts).unwrap_or(0);
             if attempts < MAX_FIX_ATTEMPTS {
-                let worktree_dir = verification_worktree(app, task_id);
-                let Some(worktree_dir) = worktree_dir else {
-                    // No worktree to fix in: park.
+                let review_dir = verification_dir(app, task_id);
+                let Some(review_dir) = review_dir else {
+                    // No dir to fix in: park.
                     park_changes_exhausted(app, store, task_id, &review_text);
                     return;
                 };
+                let worktree_dir = review_dir.path;
                 tracing::info!(target: "nightcore", task_id, attempt = attempts + 1, max = MAX_FIX_ATTEMPTS, "changes requested; dispatching auto-fix");
                 apply_and_emit(app, store, task_id, |task| {
                     task.fix_attempts += 1;
@@ -434,12 +453,52 @@ pub fn parse_verdict(text: &str) -> Verdict {
     found.unwrap_or(Verdict::Fail)
 }
 
-/// The task's worktree dir for the verification gate, if there is an active
-/// project and the worktree exists on disk. `None` ⇒ nothing to diff.
-fn verification_worktree(app: &AppHandle, task_id: &str) -> Option<PathBuf> {
+/// The directory the verification gate reviews in, plus whether it is an isolated
+/// worktree (M4.6 §A). `worktree` mode reviews the build's `nc/<taskId>` worktree
+/// (commit-then-diff); `main` mode reviews the project ROOT (working tree vs HEAD).
+/// `None` ⇒ no active project, nothing to review.
+struct ReviewDir {
+    path: PathBuf,
+    is_worktree: bool,
+}
+
+/// Resolve the verification review dir for a task (M4.6 §A). A worktree-mode task
+/// reviews its `nc/<taskId>` worktree when it exists on disk; a main-mode task
+/// reviews the project root (working tree vs HEAD). `None` ⇒ no active project.
+fn verification_dir(app: &AppHandle, task_id: &str) -> Option<ReviewDir> {
     let project = app.state::<ProjectStore>().active()?;
-    let dir = worktree::worktree_path(&PathBuf::from(&project.path), task_id);
-    dir.exists().then_some(dir)
+    let project_path = PathBuf::from(&project.path);
+    let run_mode = app
+        .state::<TaskStore>()
+        .get(task_id)
+        .map(|t| t.run_mode)
+        .unwrap_or_default();
+
+    if run_mode.is_worktree() {
+        let dir = worktree::worktree_path(&project_path, task_id);
+        // No worktree on disk (cleaned up / never allocated) ⇒ nothing to diff.
+        return dir.exists().then_some(ReviewDir {
+            path: dir,
+            is_worktree: true,
+        });
+    }
+    // Main mode: review the project root against its current HEAD.
+    Some(ReviewDir {
+        path: project_path,
+        is_worktree: false,
+    })
+}
+
+/// The commit message for the auto-commit-before-review (M4.6 §A): the task's
+/// title, or a fallback when blank. Kept distinct from `merge::commit_message` so
+/// the auto-loop commit reads naturally in the branch history.
+fn build_commit_message(task: &Task) -> String {
+    let title = task.title.trim();
+    if title.is_empty() {
+        format!("nightcore: task {}", task.id)
+    } else {
+        title.to_string()
+    }
 }
 
 /// Dispatch the read-only reviewer session over the build's worktree (M4 §B). The
@@ -462,9 +521,13 @@ async fn dispatch_reviewer(
     let orch = app.state::<Orchestrator>();
     let store = app.state::<TaskStore>();
     let task = store.get(task_id).ok_or("task vanished before review")?;
+    // A worktree-mode run has a `nc/<taskId>` branch with a real `base...HEAD`
+    // range to supplement the working-tree diff; a main-mode run reviews the
+    // working tree vs HEAD only (no branch to range against).
+    let has_branch = task.run_mode.is_worktree();
     let base = reviewer_base_branch(app);
-    tracing::info!(target: "nightcore", task_id, base = %base, "dispatching reviewer over worktree");
-    let prompt = reviewer_prompt(&task, &base);
+    tracing::info!(target: "nightcore", task_id, base = %base, worktree = has_branch, "dispatching reviewer");
+    let prompt = reviewer_prompt(&task, &base, has_branch);
     // Reviewer model: V4 reviewer-model policy is deferred to M5; use the task's
     // model (None ⇒ core default), so the reviewer is a peer of the builder.
     orch.provider
@@ -519,23 +582,55 @@ fn reviewer_base_branch(app: &AppHandle) -> String {
     }
 }
 
-/// The per-run reviewer prompt (core-owned). Instructs the read-only reviewer to
-/// inspect all worktree changes relative to `base`, judge them against the task,
-/// and end with the single machine-readable `VERDICT:` line the core greps for.
-fn reviewer_prompt(task: &Task, base: &str) -> String {
+/// The per-run reviewer prompt (core-owned). Makes the WORKING TREE authoritative,
+/// not just a committed range (M4.6 §A): the build's edits may be uncommitted, so a
+/// reviewer that judges only `base...HEAD` would see an empty range and wrongly
+/// conclude "not implemented" (the dogfood bug). The reviewer inspects the union of
+/// working-tree + staged + untracked + (when a branch exists) the committed range,
+/// and must never conclude "no changes" from an empty `base...HEAD` alone.
+fn reviewer_prompt(task: &Task, base: &str, has_branch: bool) -> String {
+    // The committed-range step only makes sense when this run has its own branch
+    // (worktree mode). In main mode there is no branch — the working tree vs HEAD
+    // IS the change set.
+    let range_step = if has_branch {
+        format!(
+            "5. `git diff {base}...HEAD` — commits on this branch since `{base}` \
+             (supplementary; may be empty if the work is staged/uncommitted — that \
+             alone NEVER means \"no changes\").\n"
+        )
+    } else {
+        String::new()
+    };
+    let scope = if has_branch {
+        "this worktree branch"
+    } else {
+        "the project working tree"
+    };
+
     format!(
-        "Review the changes in this worktree, which implement the task below.\n\n\
+        "Review the changes in {scope}, which implement the task below.\n\n\
          Task:\n{task_prompt}\n\n\
-         Inspect ALL changes relative to base branch `{base}`: run `git status`, \
-         `git diff {base}...HEAD`, and check untracked files. Judge correctness and \
-         completeness against the task.\n\n\
+         The change may be UNCOMMITTED. Treat the WORKING TREE as authoritative — \
+         inspect the UNION of all of these and judge them together:\n\
+         1. `git status --porcelain` — every staged, unstaged, and untracked path.\n\
+         2. `git diff` — unstaged changes to tracked files.\n\
+         3. `git diff --cached` — staged changes.\n\
+         4. Read the full contents of any UNTRACKED files (they won't show in \
+         `git diff`).\n\
+         {range_step}\n\
+         Judge correctness and completeness against the task over that union. NEVER \
+         conclude \"nothing was implemented\" from an empty `{base}...HEAD` range \
+         alone — the work is often present as uncommitted working-tree edits and/or \
+         untracked files.\n\n\
          End your final message with a single line that is exactly one of:\n\
          VERDICT: PASS\n\
          VERDICT: CHANGES_REQUESTED\n\
          VERDICT: FAIL\n\n\
          Put your rationale above that line. For CHANGES_REQUESTED, include a \
          numbered list of the changes needed.",
+        scope = scope,
         task_prompt = task.prompt(),
+        range_step = range_step,
         base = base,
     )
 }
@@ -682,13 +777,18 @@ pub async fn run_task(
         return Err("no free slot (max concurrency reached)".to_string());
     }
 
-    let cwd = match resolve_worktree(&app, &id) {
+    let resolved = match resolve_worktree(&app, &id) {
         Ok(cwd) => cwd,
         Err(e) => {
             orch.slots.release(&id);
             return Err(e);
         }
     };
+    // Worktree mode carries a `nc/<taskId>` branch chip; main mode runs in the
+    // project root on the current branch (no chip).
+    let is_worktree = resolved.as_ref().map(|r| r.is_worktree).unwrap_or(false);
+    let cwd = resolved.map(|r| r.path);
+    let branch = is_worktree.then(|| worktree::branch_name(&id));
 
     let updated = match store.mutate(&id, |task| {
         task.status = TaskStatus::InProgress;
@@ -698,6 +798,8 @@ pub async fn run_task(
         task.verified = false;
         task.review = None;
         task.fix_attempts = 0;
+        // Worktree mode records the chip; main mode clears any stale prior branch.
+        task.branch = branch.clone();
     }) {
         Ok(task) => task,
         Err(e) => {
@@ -816,29 +918,107 @@ pub async fn cancel_task(
     Ok(())
 }
 
-/// Resolve the worktree cwd for a manual run, mirroring the coordinator's logic so
-/// `run_task` and the loop isolate runs identically. `Ok(None)` = run in the
-/// workspace root (no active project).
-fn resolve_worktree(app: &AppHandle, task_id: &str) -> Result<Option<PathBuf>, String> {
+/// A resolved run cwd plus whether it is an isolated worktree (M4.6 §B). Mirrors
+/// `coordinator::ResolvedCwd` so the manual `run_task` and the auto-loop branch on
+/// run mode identically.
+struct ResolvedCwd {
+    path: PathBuf,
+    is_worktree: bool,
+}
+
+/// Resolve the run cwd for a manual run, branching on the task's `run_mode`,
+/// mirroring the coordinator's logic so `run_task` and the loop run identically.
+/// `Ok(None)` = run in the workspace root (no active project). `main` mode → the
+/// project ROOT with NO dirty-base refusal; `worktree` mode → allocate
+/// `nc/<taskId>` off a clean base (the clean-base guard stays in worktree mode).
+fn resolve_worktree(app: &AppHandle, task_id: &str) -> Result<Option<ResolvedCwd>, String> {
     let projects = app.state::<ProjectStore>();
     let Some(project) = projects.active() else {
         return Ok(None);
     };
     let project_path = PathBuf::from(&project.path);
+
+    let run_mode = app
+        .state::<TaskStore>()
+        .get(task_id)
+        .map(|t| t.run_mode)
+        .unwrap_or_default();
+
+    if !run_mode.is_worktree() {
+        return Ok(Some(ResolvedCwd {
+            path: project_path,
+            is_worktree: false,
+        }));
+    }
+
     if !worktree::is_worktree_clean(&project_path).unwrap_or(true) {
         return Err(format!(
-            "base working tree at {} is dirty; commit or stash before running",
+            "base working tree at {} is dirty; commit or stash before running in worktree mode",
             project_path.display()
         ));
     }
     let dir = worktree::allocate(&project_path, task_id)?;
-    Ok(Some(dir))
+    Ok(Some(ResolvedCwd {
+        path: dir,
+        is_worktree: true,
+    }))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_verdict, Verdict};
+    use super::{build_commit_message, parse_verdict, reviewer_prompt, Verdict};
     use crate::m2::slots::SlotManager;
+    use crate::task::{RunMode, Task};
+
+    #[test]
+    fn reviewer_prompt_is_working_tree_authoritative() {
+        // M4.6 §A: the prompt must make the WORKING TREE authoritative, instruct the
+        // standard four reads, and warn against concluding "no changes" from an
+        // empty base..HEAD range alone (the dogfood bug).
+        let task = Task::new("Add a README line".into(), String::new());
+        let prompt = reviewer_prompt(&task, "main", true);
+
+        assert!(prompt.contains("git status --porcelain"), "lists working-tree status");
+        assert!(prompt.contains("git diff --cached"), "inspects staged changes");
+        assert!(prompt.contains("UNTRACKED"), "reads untracked file contents");
+        assert!(prompt.contains("WORKING TREE"), "frames the working tree as authoritative");
+        assert!(
+            prompt.contains("NEVER") && prompt.contains("main...HEAD"),
+            "warns against concluding from an empty range alone"
+        );
+        // Worktree mode includes the supplementary committed-range step.
+        assert!(prompt.contains("git diff main...HEAD"), "worktree mode adds the range step");
+        assert!(prompt.contains("VERDICT: PASS"), "keeps the machine-readable verdict contract");
+    }
+
+    #[test]
+    fn reviewer_prompt_main_mode_omits_the_committed_range_step() {
+        // A main-mode task has no branch; the prompt diffs the working tree vs HEAD
+        // and must NOT instruct a (meaningless) committed-range diff.
+        let task = Task::new("Edit on main".into(), String::new());
+        let prompt = reviewer_prompt(&task, "main", false);
+
+        assert!(prompt.contains("project working tree"), "scopes to the project tree");
+        assert!(prompt.contains("git status --porcelain"), "still inspects the working tree");
+        assert!(
+            !prompt.contains("git diff main...HEAD"),
+            "main mode omits the committed-range step (no branch to range)"
+        );
+    }
+
+    #[test]
+    fn build_commit_message_uses_title_or_falls_back() {
+        let mut task = Task::new("Implement the parser".into(), String::new());
+        assert_eq!(build_commit_message(&task), "Implement the parser");
+        task.title = "  ".into();
+        assert!(build_commit_message(&task).contains(&task.id), "blank title falls back to id");
+    }
+
+    #[test]
+    fn run_mode_is_worktree_predicate() {
+        assert!(!RunMode::Main.is_worktree());
+        assert!(RunMode::Worktree.is_worktree());
+    }
 
     #[test]
     fn verdict_parses_each_token() {
