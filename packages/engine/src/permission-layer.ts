@@ -13,6 +13,11 @@ export type RiskLookup = (toolName: string) => ToolRisk | undefined;
  */
 interface PendingApproval {
   resolve: (result: PermissionResult) => void;
+  /** Original tool input, echoed back as `updatedInput` when the surface allows
+   *  without rewriting it — the SDK's allow result REQUIRES `updatedInput`
+   *  (omitting it fails control-request validation with a ZodError, which the
+   *  model surfaces as e.g. an "ExitPlanMode internal error"). */
+  input: Record<string, unknown>;
 }
 
 export interface PermissionPromptRequest {
@@ -94,7 +99,7 @@ export class PermissionLayer {
     this.logger?.debug('awaiting interactive approval', { requestId, toolName });
 
     return new Promise<PermissionResult>((resolve) => {
-      this.pending.set(requestId, { resolve });
+      this.pending.set(requestId, { resolve, input });
 
       // If the SDK aborts the query while we're parked, settle as a deny so the
       // promise never dangles (mirrors degrade-not-throw).
@@ -116,7 +121,10 @@ export class PermissionLayer {
     this.pending.delete(requestId);
     entry.resolve(
       decision.behavior === 'allow'
-        ? { behavior: 'allow', updatedInput: decision.updatedInput }
+        ? // Always send `updatedInput`: default to the original input when the
+          // surface approved without rewriting it (the SDK rejects an allow with
+          // no `updatedInput`).
+          { behavior: 'allow', updatedInput: decision.updatedInput ?? entry.input }
         : { behavior: 'deny', message: decision.message },
     );
     return true;

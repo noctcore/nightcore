@@ -100,3 +100,46 @@ describe('PermissionLayer risk gating', () => {
     expect(prompts).toHaveLength(0);
   });
 });
+
+describe('PermissionLayer interactive resolve', () => {
+  test('approving without updatedInput echoes the original input', async () => {
+    // Regression: the SDK rejects an allow result that omits `updatedInput`
+    // (ZodError invalid_union), which surfaced as an "ExitPlanMode internal
+    // error". A bare allow from the surface must echo the original input.
+    const policy: PermissionPolicy = { allow: [], deny: [], mode: 'default' };
+    const { layer, prompts } = makeLayer(policy);
+    const input = { plan: 'create hello.txt', allowedPrompts: [] };
+
+    const controller = new AbortController();
+    const pending = layer.canUseTool(
+      'ExitPlanMode',
+      input,
+      { signal: controller.signal } as Parameters<typeof layer.canUseTool>[2],
+    );
+
+    expect(prompts).toHaveLength(1);
+    const requestId = prompts[0]?.requestId ?? '';
+    expect(layer.resolve(requestId, { behavior: 'allow' })).toBe(true);
+
+    const result = await pending;
+    expect(result.behavior).toBe('allow');
+    expect(result).toMatchObject({ behavior: 'allow', updatedInput: input });
+  });
+
+  test('a surface-supplied updatedInput overrides the original', async () => {
+    const policy: PermissionPolicy = { allow: [], deny: [], mode: 'default' };
+    const { layer, prompts } = makeLayer(policy);
+
+    const controller = new AbortController();
+    const pending = layer.canUseTool(
+      'ExitPlanMode',
+      { plan: 'a' },
+      { signal: controller.signal } as Parameters<typeof layer.canUseTool>[2],
+    );
+    const requestId = prompts[0]?.requestId ?? '';
+    layer.resolve(requestId, { behavior: 'allow', updatedInput: { plan: 'b' } });
+
+    const result = await pending;
+    expect(result).toMatchObject({ behavior: 'allow', updatedInput: { plan: 'b' } });
+  });
+});
