@@ -1,24 +1,43 @@
-import type { NightcoreEvent, PermissionMode } from '@nightcore/contracts';
-import type { NoticeTone, SessionView, TranscriptEntry } from './types.js';
+import type {
+  EffortLevel,
+  NightcoreEvent,
+  PermissionMode,
+} from '@nightcore/contracts';
+import type {
+  NoticeTone,
+  SessionView,
+  SystemLine,
+  TranscriptEntry,
+} from './types.js';
 
 /**
  * Actions the view reducer folds. Most are raw engine events forwarded straight
- * from the `SessionManager` subscription; the two `ui-*` actions cover state the
- * event stream does not mirror (a local permission-mode echo before a session
- * exists, and clearing a request the moment the user answers it).
+ * from the `SessionManager` subscription; the `ui-*` actions cover state the
+ * event stream does not mirror — surface-local concerns the engine never echoes:
+ *  - `ui-set-mode` / `ui-set-model`: defaults chosen before a session exists.
+ *  - `ui-permission-resolved`: clears a request the moment the user answers it.
+ *  - `ui-user-message`: echoes the operator's own prompt into the transcript.
+ *  - `ui-system-message`: a slash-command output block (/help, /doctor, …).
+ *  - `ui-clear`: wipe the transcript (the `/clear` command) keeping session state.
  */
 export type ViewAction =
   | NightcoreEvent
   | { type: 'ui-set-mode'; mode: PermissionMode }
-  | { type: 'ui-permission-resolved' };
+  | { type: 'ui-set-model'; model: string; effort: EffortLevel | null }
+  | { type: 'ui-permission-resolved' }
+  | { type: 'ui-user-message'; text: string }
+  | { type: 'ui-system-message'; title: string; lines: SystemLine[] }
+  | { type: 'ui-clear' };
 
 export function initialView(
   model: string,
   permissionMode: SessionView['permissionMode'],
+  effort: EffortLevel | null = null,
 ): SessionView {
   return {
     sessionId: null,
     model,
+    effort,
     permissionMode,
     status: 'idle',
     costUsd: null,
@@ -55,6 +74,44 @@ export function reduce(view: SessionView, event: ViewAction): SessionView {
   switch (event.type) {
     case 'ui-set-mode':
       return { ...view, permissionMode: event.mode };
+
+    case 'ui-set-model':
+      return { ...view, model: event.model, effort: event.effort };
+
+    case 'ui-user-message':
+      return {
+        ...view,
+        // A new user turn ends any in-flight assistant block so the next
+        // assistant delta starts a fresh entry under this prompt.
+        streamedPartial: false,
+        activeAssistantId: null,
+        transcript: [
+          ...view.transcript,
+          { kind: 'user', id: nextId('user'), text: event.text },
+        ],
+      };
+
+    case 'ui-system-message':
+      return {
+        ...view,
+        transcript: [
+          ...view.transcript,
+          {
+            kind: 'system',
+            id: nextId('system'),
+            title: event.title,
+            lines: event.lines,
+          },
+        ],
+      };
+
+    case 'ui-clear':
+      return {
+        ...view,
+        transcript: [],
+        streamedPartial: false,
+        activeAssistantId: null,
+      };
 
     case 'ui-permission-resolved':
       return {

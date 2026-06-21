@@ -31,6 +31,7 @@ async function main(): Promise<void> {
   createRoot(renderer).render(
     createElement(App, {
       manager,
+      config,
       defaults: {
         model: config.model,
         permissionMode: normalizeMode(config.permissions.mode),
