@@ -151,6 +151,7 @@ export const SessionFailedEvent = z.object({
     'aborted',
     'runner-crash',
     'max-turns',
+    'max-budget',
     'unknown',
   ]),
   message: z.string(),

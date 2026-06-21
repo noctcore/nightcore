@@ -391,6 +391,30 @@ describe('translateMessage — result (terminal)', () => {
     });
   });
 
+  test('maps error_max_budget_usd to a max-budget failure', () => {
+    const result = translateMessage(
+      SID,
+      sdk({
+        type: 'result',
+        subtype: 'error_max_budget_usd',
+        errors: ['budget exceeded'],
+      }),
+    );
+    expect(result.events).toEqual([
+      {
+        type: 'session-failed',
+        sessionId: SID,
+        reason: 'max-budget',
+        message: 'budget exceeded',
+      },
+    ]);
+    expect(result.terminal).toEqual({
+      kind: 'failed',
+      reason: 'max-budget',
+      message: 'budget exceeded',
+    });
+  });
+
   test('maps a generic execution error to an unknown failure', () => {
     const result = translateMessage(
       SID,

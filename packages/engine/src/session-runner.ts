@@ -12,6 +12,8 @@ import {
   type ModelInfo,
   type Options,
   type Query,
+  type RewindFilesResult,
+  type SDKControlGetContextUsageResponse,
   type SDKUserMessage,
 } from './sdk-adapter.js';
 import { PermissionLayer, type ApprovalDecision } from './permission-layer.js';
@@ -66,6 +68,24 @@ export interface SessionRunnerConfig {
   allowedTools?: string[];
   /** Tools to deny (M4 kind preset, SDK `disallowedTools`). */
   disallowedTools?: string[];
+  /** Autonomy ceiling: max conversation turns before the SDK stops the query
+   *  (`Options.maxTurns`, `sdk.d.ts:1587`). A hit ceiling returns an
+   *  `error_max_turns` result → `session-failed { reason: 'max-turns' }`.
+   *  Resolved by the manager (per-task override → config default). */
+  maxTurns?: number;
+  /** Autonomy ceiling: max spend in USD before the SDK stops the query
+   *  (`Options.maxBudgetUsd`, `sdk.d.ts:1591`). A hit ceiling returns an
+   *  `error_max_budget_usd` result → `session-failed { reason: 'max-budget' }`.
+   *  Omitted ⇒ uncapped. Resolved by the manager (per-task override → config). */
+  maxBudgetUsd?: number;
+  /** Resume a prior SDK session by its UUID (`Options.resume`, `sdk.d.ts:1713`).
+   *  Set on the recovery path when a persisted `sdkSessionId` exists. Omitted ⇒
+   *  a cold (fresh) session. */
+  resumeSessionId?: string;
+  /** Enable SDK file checkpointing (`Options.enableFileCheckpointing`,
+   *  `sdk.d.ts:1388`) so the session's file changes can be rewound via
+   *  `rewindFiles()`. Off by default (legacy behavior). */
+  enableFileCheckpointing?: boolean;
 }
 
 /**
@@ -151,7 +171,31 @@ export class SessionRunner {
       ...(this.cfg.disallowedTools !== undefined
         ? { disallowedTools: this.cfg.disallowedTools }
         : {}),
+      // Autonomy ceilings (`sdk.d.ts:1587` maxTurns / `:1591` maxBudgetUsd). An
+      // absent field leaves the SDK default in place; a hit ceiling returns an
+      // `error_max_turns` / `error_max_budget_usd` result the adapter maps to a
+      // distinct `session-failed` reason (never a silent success).
+      ...(this.cfg.maxTurns !== undefined ? { maxTurns: this.cfg.maxTurns } : {}),
+      ...(this.cfg.maxBudgetUsd !== undefined
+        ? { maxBudgetUsd: this.cfg.maxBudgetUsd }
+        : {}),
+      // Session resume (`sdk.d.ts:1713`): when a persisted SDK session id exists,
+      // reattach instead of starting cold. The id is bookkeeping (not a secret),
+      // but is only ever logged at debug — never at info/telemetry.
+      ...(this.cfg.resumeSessionId !== undefined
+        ? { resume: this.cfg.resumeSessionId }
+        : {}),
+      // File checkpointing (`sdk.d.ts:1388`): opt-in backend for `rewindFiles()`.
+      ...(this.cfg.enableFileCheckpointing
+        ? { enableFileCheckpointing: true }
+        : {}),
     };
+
+    if (this.cfg.resumeSessionId !== undefined) {
+      this.logger?.debug('resuming SDK session', {
+        sessionId: this.cfg.sessionId,
+      });
+    }
 
     try {
       this.query = query({ prompt: this.inputStream(), options });
@@ -191,6 +235,30 @@ export class SessionRunner {
 
   async setPermissionMode(mode: PermissionMode): Promise<void> {
     await this.query?.setPermissionMode(mode);
+  }
+
+  /**
+   * STRETCH (engine-side proxy only): live context-window usage for this session
+   * (`Query.getContextUsage()`, `sdk.d.ts:2282`). Returns `undefined` when no
+   * live query is open. The NightcoreEvent + web gauge are a deferred follow-up
+   * (contract §C) — this proxy is the backend hook they will consume.
+   */
+  async contextUsage(): Promise<SDKControlGetContextUsageResponse | undefined> {
+    return this.query?.getContextUsage();
+  }
+
+  /**
+   * STRETCH (engine-side proxy only): rewind this session's tracked file changes
+   * to a prior user message (`Query.rewindFiles()`, `sdk.d.ts:2344`). Requires
+   * the session to have been started with `enableFileCheckpointing`. Returns
+   * `undefined` when no live query is open. The Rust `rewind_task` command + web
+   * UI are a deferred follow-up (contract §C).
+   */
+  async rewindFiles(
+    userMessageId: string,
+    options?: { dryRun?: boolean },
+  ): Promise<RewindFilesResult | undefined> {
+    return this.query?.rewindFiles(userMessageId, options);
   }
 
   /** Resolve a parked interactive permission from a surface command. */

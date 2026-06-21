@@ -34,6 +34,18 @@ export const StartSessionCommand = z.object({
    *  (system prompt + tool restrictions + default permission mode). Absent ⇒
    *  `build` ⇒ identical to pre-M4 behavior. */
   kind: TaskKindSchema.optional(),
+  /** Autonomy ceiling: max conversation turns for this session (SDK
+   *  `Options.maxTurns`). Absent ⇒ inherit the `@nightcore/config` default. */
+  maxTurns: z.number().int().positive().optional(),
+  /** Autonomy ceiling: max spend in USD for this session (SDK
+   *  `Options.maxBudgetUsd`). Absent ⇒ inherit the config default (uncapped
+   *  unless configured). */
+  maxBudgetUsd: z.number().positive().optional(),
+  /** Resume a prior SDK session by its UUID (SDK `Options.resume`). Set on the
+   *  recovery path when a persisted `sdkSessionId` exists so a crashed/HMR-killed
+   *  run continues instead of restarting cold. Absent ⇒ a fresh session. Not a
+   *  secret, but never logged at info/telemetry. */
+  resumeSessionId: z.string().optional(),
 });
 
 const sessionTarget = {
