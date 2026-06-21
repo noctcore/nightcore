@@ -6,12 +6,16 @@ import { storybookTest } from '@storybook/addon-vitest/vitest-plugin';
 
 const alias = { '@': fileURLToPath(new URL('./src', import.meta.url)) };
 
-const chromium = {
+// A FRESH browser config per project. Sharing one object collides: vitest
+// mutates each `instances` entry with the owning project's name, so a shared
+// reference gets registered twice. Each project derives a unique sub-project
+// name ("storybook (chromium)" / "unit (chromium)") from its own object.
+const chromium = () => ({
   enabled: true,
   provider: 'playwright' as const,
   headless: true,
-  instances: [{ browser: 'chromium' }],
-};
+  instances: [{ browser: 'chromium' as const }],
+});
 
 /**
  * Two browser projects share one Playwright/chromium runner:
@@ -37,7 +41,7 @@ export default defineConfig({
         test: {
           name: 'storybook',
           setupFiles: ['./.storybook/vitest.setup.ts'],
-          browser: chromium,
+          browser: chromium(),
         },
       },
       {
@@ -47,7 +51,7 @@ export default defineConfig({
           name: 'unit',
           include: ['src/**/*.test.tsx'],
           setupFiles: ['./.storybook/vitest.setup.ts'],
-          browser: chromium,
+          browser: chromium(),
         },
       },
     ],
