@@ -7,6 +7,7 @@ import {
   BrandMark,
   BranchIcon,
   FolderIcon,
+  GearIcon,
   GithubIcon,
   IconTile,
   LayersIcon,
@@ -124,6 +125,64 @@ function Toggle({
         className={`h-3.5 w-3.5 rounded-full bg-white transition-transform ${on ? 'translate-x-3.5' : ''}`}
       />
     </button>
+  );
+}
+
+/** A numeric input bound to an optional ceiling setting (SDK guardrails). Empty
+ *  ⇒ the field inherits (the placeholder shows the inherited/default value). A
+ *  committed value is sent via `onCommit`; an empty/blank or unchanged value is a
+ *  no-op (the Rust side cannot clear an `Option` ceiling back to inherit, so the
+ *  control only ever SETS a value — matching the model/effort override contract). */
+function NumberField({
+  value,
+  placeholder,
+  onCommit,
+  step,
+  min,
+  ariaLabel,
+  prefix,
+}: {
+  value: number | null;
+  placeholder: string;
+  onCommit: (next: number) => void;
+  step?: string;
+  min?: number;
+  ariaLabel: string;
+  prefix?: string;
+}): ReactNode {
+  const commit = (raw: string) => {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) return;
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed < (min ?? 0)) return;
+    if (parsed === value) return;
+    onCommit(parsed);
+  };
+  return (
+    <div className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-black/20 px-2.5 py-1.5 focus-within:border-primary">
+      {prefix !== undefined && (
+        <span className="font-mono text-[12px] text-muted-foreground">{prefix}</span>
+      )}
+      <input
+        type="number"
+        inputMode="numeric"
+        step={step}
+        min={min}
+        aria-label={ariaLabel}
+        defaultValue={value ?? ''}
+        key={value ?? 'empty'}
+        placeholder={placeholder}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit((e.target as HTMLInputElement).value);
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        className="w-[88px] bg-transparent text-right font-mono text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+      />
+    </div>
   );
 }
 
@@ -413,6 +472,42 @@ function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardProps[] {
                   options={CONCURRENCY}
                   value={String(effective.maxConcurrency)}
                   onChange={(v) => patchScoped({ maxConcurrency: Number(v) })}
+                />
+              ),
+            },
+          ],
+        },
+        {
+          icon: <GearIcon size={18} />,
+          title: 'Limits',
+          subtitle: 'Autonomy ceilings new tasks inherit. A per-task override always wins.',
+          rows: [
+            {
+              label: 'Max turns',
+              hint: 'Conversation turns before a run stops (empty = default 200)',
+              control: (
+                <NumberField
+                  value={effective.maxTurns}
+                  placeholder="200"
+                  min={1}
+                  step="1"
+                  ariaLabel="Max turns"
+                  onCommit={(n) => patchScoped({ maxTurns: n })}
+                />
+              ),
+            },
+            {
+              label: 'Max budget',
+              hint: 'Hard cost ceiling per run in USD (empty = uncapped)',
+              control: (
+                <NumberField
+                  value={effective.maxBudgetUsd}
+                  placeholder="uncapped"
+                  min={0}
+                  step="0.5"
+                  prefix="$"
+                  ariaLabel="Max budget in USD"
+                  onCommit={(n) => patchScoped({ maxBudgetUsd: n })}
                 />
               ),
             },

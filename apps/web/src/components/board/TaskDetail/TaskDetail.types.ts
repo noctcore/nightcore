@@ -39,6 +39,10 @@ export interface TaskDetailProps {
   onChangeModel?: (id: string, model: string | null) => void;
   /** Edit the task's reasoning-effort override (M4.7) — `null` = inherit. Pre-run. */
   onChangeEffort?: (id: string, effort: string | null) => void;
+  /** Edit the task's max-turns ceiling (SDK guardrail) — `null` = inherit. Pre-run. */
+  onChangeMaxTurns?: (id: string, maxTurns: number | null) => void;
+  /** Edit the task's max-budget-USD ceiling (SDK guardrail) — `null` = inherit. Pre-run. */
+  onChangeMaxBudget?: (id: string, maxBudgetUsd: number | null) => void;
   /** Verification-approval actions for a review-parked `waiting_approval` (M4). */
   onAcceptReview?: (id: string) => void;
   onRejectReview?: (id: string) => void;

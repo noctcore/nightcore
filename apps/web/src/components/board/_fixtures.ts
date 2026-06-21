@@ -30,6 +30,8 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     verified: overrides.verified ?? false,
     review: overrides.review ?? null,
     fixAttempts: overrides.fixAttempts ?? 0,
+    maxTurns: overrides.maxTurns ?? null,
+    maxBudgetUsd: overrides.maxBudgetUsd ?? null,
   };
 }
 

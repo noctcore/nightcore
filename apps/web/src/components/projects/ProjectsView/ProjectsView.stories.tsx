@@ -48,6 +48,8 @@ const tasks: Task[] = [
     verified: false,
     review: null,
     fixAttempts: 0,
+    maxTurns: null,
+    maxBudgetUsd: null,
   },
   {
     id: 't2',
@@ -74,6 +76,8 @@ const tasks: Task[] = [
     verified: false,
     review: null,
     fixAttempts: 0,
+    maxTurns: null,
+    maxBudgetUsd: null,
   },
 ];
 

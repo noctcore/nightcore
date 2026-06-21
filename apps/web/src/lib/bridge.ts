@@ -85,6 +85,13 @@ export interface Task {
   /** How many bounded auto-fix attempts the verification loop has spent
    *  (`MAX_FIX_ATTEMPTS = 2`). Reset to 0 on a fresh run. */
   fixAttempts: number;
+  /** SDK guardrail: max conversation turns before the run stops (engine
+   *  `Options.maxTurns`). `null` = inherit the resolved default (Settings →
+   *  config default 200). Stamped at create from the Settings "Limits" knob. */
+  maxTurns: number | null;
+  /** SDK guardrail: hard cost ceiling in USD (engine `Options.maxBudgetUsd`).
+   *  `null` = uncapped at the task level (the config default applies). */
+  maxBudgetUsd: number | null;
 }
 
 /** Partial update sent to `update_task`. All fields optional. */
@@ -104,6 +111,12 @@ export interface TaskPatch {
   kind?: TaskKind;
   /** The task's run mode (M4.6) — editable pre-run from the create/edit form. */
   runMode?: RunMode;
+  /** The task's max-turns ceiling (SDK guardrail) — editable pre-run. `null`
+   *  clears it back to inherit (note: an explicit `null` and an absent field are
+   *  indistinguishable on the Rust side — both leave the value untouched). */
+  maxTurns?: number | null;
+  /** The task's max-budget-USD ceiling (SDK guardrail) — editable pre-run. */
+  maxBudgetUsd?: number | null;
 }
 
 /** One live worktree for the active project (M4.6, §C). Mirrors the Rust
@@ -214,6 +227,10 @@ export interface SettingsOverride {
   permissionMode?: string;
   /** Per-project default run mode (`'main'` | `'worktree'`). */
   defaultRunMode?: RunMode;
+  /** Per-project default max-turns ceiling (SDK guardrail). */
+  maxTurns?: number;
+  /** Per-project default max-budget-USD ceiling (SDK guardrail). */
+  maxBudgetUsd?: number;
 }
 
 /** Global settings + per-project overrides. Mirrors the Rust `Settings` struct.
@@ -227,6 +244,12 @@ export interface Settings {
   notifyOnComplete: boolean;
   /** The default run mode new tasks inherit (`'main'` | `'worktree'`). */
   defaultRunMode: RunMode;
+  /** SDK guardrail: the default max-turns ceiling new tasks inherit. `null` =
+   *  no Settings ceiling, so the engine's config default (200) applies. */
+  maxTurns: number | null;
+  /** SDK guardrail: the default max-budget-USD ceiling new tasks inherit.
+   *  `null` = uncapped at the Settings level. */
+  maxBudgetUsd: number | null;
   projectOverrides: Record<string, SettingsOverride>;
 }
 
@@ -241,6 +264,11 @@ export interface SettingsPatch {
   cleanupWorktrees?: boolean;
   notifyOnComplete?: boolean;
   defaultRunMode?: RunMode;
+  /** The default max-turns ceiling (SDK guardrail). With a `projectId` it lands
+   *  in that project's override; without one, the global default. */
+  maxTurns?: number;
+  /** The default max-budget-USD ceiling (SDK guardrail). */
+  maxBudgetUsd?: number;
 }
 
 /** Read-only application metadata for the About page. Mirrors the Rust `AppInfo`. */
@@ -285,6 +313,11 @@ export interface CreateTaskOptions {
   permissionMode?: PermissionMode | null;
   model?: string | null;
   effort?: string | null;
+  /** SDK-guardrail max-turns override (`null` = inherit the resolved Settings
+   *  default → config default 200). */
+  maxTurns?: number | null;
+  /** SDK-guardrail max-budget-USD override (`null` = inherit). */
+  maxBudgetUsd?: number | null;
 }
 
 /** Create a new `backlog` task. The `kind` (M4) defaults to `build` and the
@@ -306,6 +339,8 @@ export async function createTask(
     permissionMode: options.permissionMode ?? null,
     model: options.model ?? null,
     effort: options.effort ?? null,
+    maxTurns: options.maxTurns ?? null,
+    maxBudgetUsd: options.maxBudgetUsd ?? null,
   });
 }
 
@@ -548,6 +583,8 @@ const MOCK_SETTINGS: Settings = {
   cleanupWorktrees: true,
   notifyOnComplete: false,
   defaultRunMode: 'main',
+  maxTurns: null,
+  maxBudgetUsd: null,
   projectOverrides: {},
 };
 

@@ -11,6 +11,8 @@ const settings: Settings = {
   cleanupWorktrees: true,
   notifyOnComplete: false,
   defaultRunMode: 'main',
+  maxTurns: null,
+  maxBudgetUsd: null,
   projectOverrides: {
     nightcore: { defaultModel: 'claude-haiku-4-5-20251001' },
   },
@@ -48,6 +50,17 @@ export const NavigateToWorktrees: Story = {
     await expect(
       canvas.getByRole('switch', { name: /delete worktree on complete/i }),
     ).toBeInTheDocument();
+  },
+};
+
+/** Play test: committing a Max-turns ceiling patches the global guardrail. */
+export const SetMaxTurns: Story = {
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const input = canvas.getByRole('spinbutton', { name: 'Max turns' });
+    await userEvent.type(input, '120');
+    await userEvent.tab();
+    await expect(args.onUpdate).toHaveBeenCalledWith({ maxTurns: 120 });
   },
 };
 

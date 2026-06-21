@@ -21,5 +21,24 @@ test('gates create on a non-empty title, then fires onCreate', async () => {
     permissionMode: null,
     model: null,
     effort: null,
+    maxTurns: null,
+    maxBudgetUsd: null,
+  });
+});
+
+test('threads an explicit max-turns ceiling through onCreate', async () => {
+  const onCreate = vi.fn(async () => {});
+  const screen = render(<Default onCreate={onCreate} />);
+
+  await userEvent.type(screen.getByLabelText('Task title').element(), 'Bounded run');
+  await userEvent.type(screen.getByLabelText('Max turns').element(), '40');
+  await screen.getByRole('button', { name: /create task/i }).click();
+
+  expect(onCreate).toHaveBeenCalledWith('Bounded run', '', 'build', 'main', {
+    permissionMode: null,
+    model: null,
+    effort: null,
+    maxTurns: 40,
+    maxBudgetUsd: null,
   });
 });

@@ -315,6 +315,56 @@ pub fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
+/// The optional create-time overrides for a new task. Each `None` field falls
+/// back to the resolved Settings default (per-project override → global → the
+/// engine's `@nightcore/config` default).
+#[derive(Debug, Default)]
+struct CreateInputs {
+    run_mode: Option<RunMode>,
+    model: Option<String>,
+    effort: Option<String>,
+    permission_mode: Option<String>,
+    max_turns: Option<u32>,
+    max_budget_usd: Option<f64>,
+}
+
+/// Build a fresh backlog task, stamping the resolved Settings defaults for any
+/// field the create call left unset. Factored out of [`create_task`] so the
+/// default-resolution is unit-testable without an `AppHandle`.
+///
+/// Resolution order per field: explicit create input → Settings (per-project
+/// override → global). `model`/`effort`/`run_mode` always end up concrete (Settings
+/// has a non-optional default for them). The guardrail ceilings stay `None` when
+/// Settings has no value either, so the engine's `@nightcore/config` default
+/// (maxTurns 200, budget uncapped) applies at launch.
+fn build_new_task(
+    settings: &crate::settings::SettingsStore,
+    pid: Option<&str>,
+    title: String,
+    description: String,
+    inputs: CreateInputs,
+) -> Task {
+    let run_mode = inputs.run_mode.unwrap_or_else(|| settings.default_run_mode(pid));
+    let mut task = Task::new(title, description).with_run_mode(run_mode);
+    // P0: an explicit per-task model/effort wins; absent ⇒ stamp the resolved
+    // Settings default (an SDK long id) so changing "Default model" in Settings
+    // actually affects new runs. `permission_mode` stays lazily resolved at launch
+    // (`resolve_permission_mode`), so `None` here means "inherit".
+    task.model = Some(inputs.model.unwrap_or_else(|| settings.default_model(pid)));
+    task.effort = Some(inputs.effort.unwrap_or_else(|| settings.default_effort(pid)));
+    task.permission_mode = inputs.permission_mode;
+    // SDK-guardrails: an explicit per-task ceiling wins; absent ⇒ stamp the
+    // resolved Settings default (per-project override → global), so the Settings
+    // "Limits" knob is authoritative for a new task. When Settings has no ceiling
+    // either, this stays `None` and the engine's `@nightcore/config` default
+    // applies at launch — same resolution shape as `model`/`effort`/`run_mode`.
+    task.max_turns = inputs.max_turns.or_else(|| settings.default_max_turns(pid));
+    task.max_budget_usd = inputs
+        .max_budget_usd
+        .or_else(|| settings.default_max_budget_usd(pid));
+    task
+}
+
 // --- Commands ---------------------------------------------------------------
 
 /// All tasks currently in the registry (unordered; the webview groups by status).
@@ -350,20 +400,20 @@ pub fn create_task(
     // global), mirroring how `default_run_mode` is applied — so the Settings
     // defaults are authoritative for a new task without the web having to seed them.
     let project_id = projects.active().map(|p| p.id);
-    let pid = project_id.as_deref();
-    let run_mode = run_mode.unwrap_or_else(|| settings.default_run_mode(pid));
-    let mut task = Task::new(title, description).with_run_mode(run_mode);
-    // P0: an explicit per-task model/effort wins; absent ⇒ stamp the resolved
-    // Settings default (an SDK long id) so changing "Default model" in Settings
-    // actually affects new runs. `permission_mode` stays lazily resolved at launch
-    // (`resolve_permission_mode`), so `None` here means "inherit".
-    task.model = Some(model.unwrap_or_else(|| settings.default_model(pid)));
-    task.effort = Some(effort.unwrap_or_else(|| settings.default_effort(pid)));
-    task.permission_mode = permission_mode;
-    // SDK-guardrails: explicit per-task autonomy ceilings at creation; absent ⇒
-    // inherit the `@nightcore/config` defaults at launch.
-    task.max_turns = max_turns;
-    task.max_budget_usd = max_budget_usd;
+    let task = build_new_task(
+        &settings,
+        project_id.as_deref(),
+        title,
+        description,
+        CreateInputs {
+            run_mode,
+            model,
+            effort,
+            permission_mode,
+            max_turns,
+            max_budget_usd,
+        },
+    );
     store.upsert(&task)?;
     let _ = app.emit(TASK_EVENT, &task);
     Ok(task)
@@ -792,6 +842,92 @@ mod tests {
         absent.apply(&mut task);
         assert_eq!(task.max_turns, Some(10));
         assert_eq!(task.max_budget_usd, Some(1.5));
+    }
+
+    #[test]
+    fn build_new_task_inherits_guardrails_from_settings_when_unset() {
+        use crate::settings::SettingsStore;
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let settings = SettingsStore::load_from(tmp.path().join("config"));
+        // A global Settings ceiling is set; the project has its own tighter override.
+        settings
+            .update_for_test(serde_json::from_str(r#"{"maxTurns":150,"maxBudgetUsd":9.0}"#).unwrap())
+            .expect("global ceiling");
+        settings
+            .update_for_test(serde_json::from_str(r#"{"projectId":"p1","maxTurns":50}"#).unwrap())
+            .expect("project override");
+
+        // No explicit per-task ceilings → stamp the resolved Settings defaults.
+        let task = build_new_task(
+            &settings,
+            Some("p1"),
+            "t".into(),
+            String::new(),
+            CreateInputs::default(),
+        );
+        assert_eq!(task.max_turns, Some(50), "per-project override wins for max_turns");
+        assert_eq!(
+            task.max_budget_usd,
+            Some(9.0),
+            "max_budget_usd has no project override → global"
+        );
+
+        // Another project with no override falls back to the global ceiling.
+        let other = build_new_task(
+            &settings,
+            Some("other"),
+            "t".into(),
+            String::new(),
+            CreateInputs::default(),
+        );
+        assert_eq!(other.max_turns, Some(150));
+        assert_eq!(other.max_budget_usd, Some(9.0));
+    }
+
+    #[test]
+    fn build_new_task_explicit_ceilings_win_over_settings() {
+        use crate::settings::SettingsStore;
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let settings = SettingsStore::load_from(tmp.path().join("config"));
+        settings
+            .update_for_test(serde_json::from_str(r#"{"maxTurns":150,"maxBudgetUsd":9.0}"#).unwrap())
+            .expect("global ceiling");
+
+        // An explicit per-task value always overrides the Settings default.
+        let task = build_new_task(
+            &settings,
+            None,
+            "t".into(),
+            String::new(),
+            CreateInputs {
+                max_turns: Some(7),
+                max_budget_usd: Some(0.5),
+                ..Default::default()
+            },
+        );
+        assert_eq!(task.max_turns, Some(7));
+        assert_eq!(task.max_budget_usd, Some(0.5));
+    }
+
+    #[test]
+    fn build_new_task_leaves_guardrails_none_when_settings_unset() {
+        use crate::settings::SettingsStore;
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let settings = SettingsStore::load_from(tmp.path().join("config"));
+        // No Settings ceiling and no explicit input → None, so the engine's config
+        // default (maxTurns 200, budget uncapped) applies at launch.
+        let task = build_new_task(
+            &settings,
+            None,
+            "t".into(),
+            String::new(),
+            CreateInputs::default(),
+        );
+        assert!(task.max_turns.is_none());
+        assert!(task.max_budget_usd.is_none());
+        // The P0 model/effort defaults are still stamped concretely.
+        assert_eq!(task.model.as_deref(), Some("claude-opus-4-8"));
+        assert_eq!(task.effort.as_deref(), Some("medium"));
     }
 
     #[test]

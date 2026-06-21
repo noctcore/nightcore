@@ -15,6 +15,11 @@ export interface EffectiveSettings {
   maxConcurrency: number;
   permissionMode: string;
   defaultRunMode: RunMode;
+  /** SDK guardrail: the effective max-turns ceiling for the scope, or `null` when
+   *  neither the scope override nor the global sets one (inherit the config 200). */
+  maxTurns: number | null;
+  /** SDK guardrail: the effective max-budget-USD ceiling, or `null` (uncapped). */
+  maxBudgetUsd: number | null;
 }
 
 export interface SettingsViewState {
@@ -57,6 +62,8 @@ export function useSettingsView({
       maxConcurrency: override?.maxConcurrency ?? settings.maxConcurrency,
       permissionMode: override?.permissionMode ?? settings.permissionMode,
       defaultRunMode: override?.defaultRunMode ?? settings.defaultRunMode,
+      maxTurns: override?.maxTurns ?? settings.maxTurns,
+      maxBudgetUsd: override?.maxBudgetUsd ?? settings.maxBudgetUsd,
     };
   }, [scope, activeProjectId, settings]);
 

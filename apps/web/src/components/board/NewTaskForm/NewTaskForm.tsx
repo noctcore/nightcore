@@ -19,6 +19,8 @@ export function NewTaskForm({ onCreate, onClose }: NewTaskFormProps) {
     permissionMode,
     model,
     effort,
+    maxTurns,
+    maxBudget,
     busy,
     canSubmit,
     setTitle,
@@ -28,6 +30,8 @@ export function NewTaskForm({ onCreate, onClose }: NewTaskFormProps) {
     setPermissionMode,
     setModel,
     setEffort,
+    setMaxTurns,
+    setMaxBudget,
     submit,
     onTitleKeyDown,
     onDescKeyDown,
@@ -95,6 +99,40 @@ export function NewTaskForm({ onCreate, onClose }: NewTaskFormProps) {
             onChangeModel={setModel}
             onChangeEffort={setEffort}
           />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+                Max turns
+              </span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                step={1}
+                value={maxTurns}
+                onChange={(e) => setMaxTurns(e.target.value)}
+                placeholder="Inherit"
+                aria-label="Max turns"
+                className={INPUT_CLASS}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+                Max budget (USD)
+              </span>
+              <input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step={0.5}
+                value={maxBudget}
+                onChange={(e) => setMaxBudget(e.target.value)}
+                placeholder="Inherit"
+                aria-label="Max budget in USD"
+                className={INPUT_CLASS}
+              />
+            </div>
+          </div>
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-border bg-black/15 px-5 py-3.5">
           <span className="mr-auto flex items-center gap-1 text-xs text-muted-foreground">

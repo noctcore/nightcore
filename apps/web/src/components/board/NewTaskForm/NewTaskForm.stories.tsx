@@ -43,7 +43,7 @@ export const CreatesTask: Story = {
         'Build the settings surface.',
         'build',
         'main',
-        { permissionMode: null, model: null, effort: null },
+        { permissionMode: null, model: null, effort: null, maxTurns: null, maxBudgetUsd: null },
       ),
     );
   },
@@ -62,6 +62,8 @@ export const CreatesResearchTask: Story = {
         permissionMode: null,
         model: null,
         effort: null,
+        maxTurns: null,
+        maxBudgetUsd: null,
       }),
     );
   },
@@ -81,7 +83,7 @@ export const CreatesWorktreeTask: Story = {
         '',
         'build',
         'worktree',
-        { permissionMode: null, model: null, effort: null },
+        { permissionMode: null, model: null, effort: null, maxTurns: null, maxBudgetUsd: null },
       ),
     );
   },
@@ -105,6 +107,30 @@ export const CreatesWithOverrides: Story = {
         permissionMode: 'plan',
         model: 'claude-sonnet-4-6',
         effort: 'high',
+        maxTurns: null,
+        maxBudgetUsd: null,
+      }),
+    );
+  },
+};
+
+/** Play test: per-task autonomy ceilings (SDK guardrails) thread through
+ *  onCreate as numeric options; a blank field stays `null` (inherit). */
+export const CreatesWithLimits: Story = {
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.type(canvas.getByLabelText('Task title'), 'Bounded autonomous run');
+    await userEvent.type(canvas.getByLabelText('Max turns'), '40');
+    await userEvent.type(canvas.getByLabelText('Max budget in USD'), '2.5');
+    await userEvent.click(canvas.getByRole('button', { name: /create task/i }));
+
+    await waitFor(() =>
+      expect(args.onCreate).toHaveBeenCalledWith('Bounded autonomous run', '', 'build', 'main', {
+        permissionMode: null,
+        model: null,
+        effort: null,
+        maxTurns: 40,
+        maxBudgetUsd: 2.5,
       }),
     );
   },
