@@ -40,6 +40,10 @@ export default tseslint.config(
       '**/dist-tsc/**',
       '**/target/**',
       '**/node_modules/**',
+      // Transient agent worktrees (.claude/worktrees/**) contain checkout copies
+      // whose nested `scripts/` don't match the top-level `scripts/**` overrides —
+      // linting them produces spurious failures. They are never source.
+      '**/.claude/**',
       '**/*.tsbuildinfo',
       '**/storybook-static/**',
       '**/*.woff2',
