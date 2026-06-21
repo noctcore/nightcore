@@ -8,6 +8,8 @@ export { TaskStatusDot } from './TaskStatusDot';
 export { NewTaskForm } from './NewTaskForm';
 export { KindPicker } from './KindPicker';
 export { WorkModePicker } from './WorkModePicker';
+export { PermissionModePicker } from './PermissionModePicker';
+export { ModelEffortPicker } from './ModelEffortPicker';
 export { WorktreeSwitcher, filterTasksByWorktree } from './WorktreeSwitcher';
 export type { ActiveWorktree, WorktreeTab } from './WorktreeSwitcher';
 export { ReviewPanel } from './ReviewPanel';
@@ -28,10 +30,17 @@ export {
   RUN_MODE_LABEL,
   VERDICT_LABEL,
   VERDICT_TEXT,
+  PERMISSION_MODE_OPTIONS,
+  PERMISSION_MODE_LABEL,
+  MODEL_OPTIONS,
+  EFFORT_OPTIONS,
   type ColumnDef,
   type KindOption,
   type RunModeOption,
   type Verdict,
+  type PermissionModeOption,
+  type ModelOption,
+  type EffortOption,
 } from './status';
 export {
   EMPTY_STREAM,

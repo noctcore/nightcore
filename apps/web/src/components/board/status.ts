@@ -1,4 +1,4 @@
-import type { RunMode, TaskKind, TaskStatus } from '@/lib/bridge';
+import type { PermissionMode, RunMode, TaskKind, TaskStatus } from '@/lib/bridge';
 
 /** A board column: its key, label, the statuses it groups, the design's status
  *  dot color, an optional roadmap badge, and whether it offers a "Clear". */
@@ -215,3 +215,63 @@ export const VERDICT_LABEL: Record<Verdict, string> = {
   CHANGES_REQUESTED: 'Changes requested',
   FAIL: 'Failed',
 };
+
+// --- Permission mode (M4.7 §F) --------------------------------------------
+
+/** A selectable permission-mode override in the per-task picker. The `null`
+ *  (inherit) choice is rendered by the picker itself, not listed here. */
+export interface PermissionModeOption {
+  mode: PermissionMode;
+  label: string;
+  /** One-line explainer shown beneath the selector. */
+  hint: string;
+}
+
+/** The permission-mode picker's options, in escalating-control order. `bypass`
+ *  (the studio default) runs with no prompts; `plan` only proposes. */
+export const PERMISSION_MODE_OPTIONS: PermissionModeOption[] = [
+  { mode: 'bypass', label: 'Bypass', hint: 'Runs autonomously — no approval prompts.' },
+  { mode: 'auto-accept', label: 'Auto-accept', hint: 'Auto-approves edits; prompts on risky tools.' },
+  { mode: 'ask', label: 'Ask', hint: 'Prompts before risky tools (writes, edits, shell).' },
+  { mode: 'plan', label: 'Plan', hint: 'Proposes a plan first — makes no changes until approved.' },
+];
+
+/** Human label for a permission mode (or the inherit fallback). */
+export const PERMISSION_MODE_LABEL: Record<PermissionMode, string> = {
+  bypass: 'Bypass',
+  'auto-accept': 'Auto-accept',
+  ask: 'Ask',
+  plan: 'Plan',
+};
+
+// --- Model + effort (M4.7 §E/§F) ------------------------------------------
+
+/** A selectable model in the per-task picker. The static known-Claude set this
+ *  milestone (dynamic `listModels()` is deferred — contract §G). */
+export interface ModelOption {
+  /** The model id sent on the wire (mirrors the SDK / Rust `Task.model`). */
+  id: string;
+  label: string;
+}
+
+/** The known Claude model ids this milestone (contract §F). */
+export const MODEL_OPTIONS: ModelOption[] = [
+  { id: 'claude-opus-4-8', label: 'Opus 4.8' },
+  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
+  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' },
+];
+
+/** A selectable reasoning-effort level — the SDK effort set (contract §E/§F). */
+export interface EffortOption {
+  /** The effort level sent on the wire (mirrors the SDK / Rust `Task.effort`). */
+  id: string;
+  label: string;
+}
+
+/** The SDK reasoning-effort levels. `none` disables extended thinking. */
+export const EFFORT_OPTIONS: EffortOption[] = [
+  { id: 'low', label: 'Low' },
+  { id: 'medium', label: 'Medium' },
+  { id: 'high', label: 'High' },
+  { id: 'none', label: 'None' },
+];
