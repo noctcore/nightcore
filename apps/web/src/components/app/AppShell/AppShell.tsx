@@ -89,6 +89,9 @@ export function AppShell() {
                   tasks={tasks}
                   projectPath={active.path}
                   projectBranch={active.branch}
+                  worktrees={board.worktrees}
+                  activeWorktree={board.activeWorktree}
+                  onSelectWorktree={board.setActiveWorktree}
                   concurrency={autoLoop.concurrency}
                   autoMode={autoLoop.autoMode}
                   breaker={autoLoop.breaker}
@@ -131,6 +134,7 @@ export function AppShell() {
                 onReject={board.handleReject}
                 onRefine={board.handleRefine}
                 onChangeKind={board.handleChangeKind}
+                onChangeRunMode={board.handleChangeRunMode}
                 onAcceptReview={board.handleAcceptReview}
                 onRejectReview={board.handleRejectReview}
                 onRerunVerification={board.handleRerunVerification}
