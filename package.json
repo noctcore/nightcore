@@ -25,6 +25,8 @@
     "tui": "bun run apps/tui/src/index.ts",
     "new:tool": "bun run tools/codegen/new-tool.ts",
     "test": "bun test",
+    "test:rust": "bun run --filter @nightcore/desktop test",
+    "test:all": "bun test && bun run test:rust",
     "lint": "eslint ."
   },
   "devDependencies": {

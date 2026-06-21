@@ -96,10 +96,26 @@ dependency rules.
 | Command | What |
 |---------|------|
 | `bun run typecheck` | `tsc -b` across the workspace |
+| `bun test` | all Bun tests (engine, contracts, sidecar, …) |
+| `bun run test:rust` | Rust core unit tests (`cargo test` in `apps/desktop/src-tauri`) |
+| `bun run test:all` | both tiers: `bun test` then the Rust tests |
 | `bun run cli "<prompt>"` | run the headless CLI |
 | `bun run tui` | run the TUI stub |
 | `bun run new:tool <name> "<desc>"` | scaffold a new tool |
 | `bun run lint` | eslint (flat config) |
+
+### Testing
+
+Two tiers, both fast and offline (no live Claude session, no token use, no cost):
+
+- **Rust core** (`apps/desktop/src-tauri`): `bun run test:rust` (or `cargo test`
+  there). Covers `TaskStatus` serde, `TaskStore` JSON round-trips on a temp dir,
+  `TaskPatch` application, and the sidecar serial-guard. The M2 seams
+  (`src/m2/`) ship with their own unit tests.
+- **Sidecar** (`apps/sidecar`): `bun test apps/sidecar` — NDJSON framing, command
+  dispatch, event-per-line serialization, and auto-deny. The `SessionManager` is
+  stubbed, so the suite never spawns a model. (The engine's
+  `session-manager.test.ts` stubs the SDK's `query()` the same way.)
 
 ## Status & roadmap
 
