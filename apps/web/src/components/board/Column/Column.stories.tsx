@@ -9,7 +9,6 @@ const meta = {
   args: {
     dotColor: 'oklch(80% .14 75)',
     selectedId: null,
-    cardStyle: 'glow',
     blockedIds: new Set<string>(),
     logCounts: {},
     onSelect: fn(),

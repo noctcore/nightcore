@@ -1,2 +1,2 @@
 export { TaskCard } from './TaskCard';
-export type { CardStyle, TaskCardProps } from './TaskCard.types';
+export type { TaskCardProps } from './TaskCard.types';

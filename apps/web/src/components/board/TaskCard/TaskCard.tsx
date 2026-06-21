@@ -18,43 +18,22 @@ import { useElapsed } from './TaskCard.hooks';
 import type { TaskCardProps } from './TaskCard.types';
 
 const CARD_BASE =
-  'group relative w-full rounded-xl border p-3.5 text-left transition-[border-color,box-shadow,background]';
+  'group relative w-full rounded-xl border bg-card p-3.5 text-left transition-[border-color,box-shadow,background]';
 
-/** Container classes per card look × status (mirrors the design's `cardVm`). */
-function containerClass(
-  style: NonNullable<TaskCardProps['cardStyle']>,
-  status: string,
-  running: boolean,
-  selected: boolean,
-): string {
-  const surface = style === 'outline' ? 'bg-transparent' : 'bg-card';
+/** Container classes per status, always using the glow treatment (mirrors the
+ *  design's `cardVm` glow look). The running-accent glow stays. */
+function containerClass(status: string, running: boolean, selected: boolean): string {
   if (running) {
-    const glow =
-      style === 'glow'
-        ? 'shadow-[0_0_0_1px_oklch(80%_.14_75_/_.3),0_10px_34px_-8px_oklch(80%_.14_75_/_.45)]'
-        : style === 'outline'
-          ? 'bg-warning/[0.04]'
-          : '';
-    return `${surface} border-warning/55 ${glow}`;
+    return 'border-warning/55 shadow-[0_0_0_1px_oklch(80%_.14_75_/_.3),0_10px_34px_-8px_oklch(80%_.14_75_/_.45)]';
   }
   if (status === 'failed') {
-    const glow =
-      style === 'glow'
-        ? 'shadow-[0_0_0_1px_oklch(66%_.2_22_/_.2),0_8px_26px_-14px_oklch(66%_.2_22_/_.4)]'
-        : '';
-    return `${surface} border-destructive/45 ${glow}`;
+    return 'border-destructive/45 shadow-[0_0_0_1px_oklch(66%_.2_22_/_.2),0_8px_26px_-14px_oklch(66%_.2_22_/_.4)]';
   }
   if (status === 'done') {
-    const glow =
-      style === 'glow'
-        ? 'shadow-[0_0_0_1px_oklch(76%_.15_152_/_.16),0_8px_26px_-14px_oklch(76%_.15_152_/_.4)]'
-        : '';
-    const accent = style === 'outline' ? '' : 'border-l-2 border-l-success/50';
-    return `${surface} border-border ${glow} ${accent}`;
+    return 'border-border border-l-2 border-l-success/50 shadow-[0_0_0_1px_oklch(76%_.15_152_/_.16),0_8px_26px_-14px_oklch(76%_.15_152_/_.4)]';
   }
   const base = selected ? 'border-primary/60' : 'border-border hover:border-white/20';
-  const glow = style === 'glow' ? 'shadow-[0_8px_22px_-14px_oklch(0%_0_0_/_.9)]' : '';
-  return `${surface} ${base} ${glow}`;
+  return `${base} shadow-[0_8px_22px_-14px_oklch(0%_0_0_/_.9)]`;
 }
 
 const ACTION_BASE =
@@ -73,7 +52,6 @@ const ACTION_DISABLED = 'flex-1 border border-border bg-white/[0.04] text-muted-
 export function TaskCard({
   task,
   selected,
-  cardStyle = 'glow',
   blocked = false,
   logCount = 0,
   onSelect,
@@ -91,7 +69,7 @@ export function TaskCard({
   const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
 
   return (
-    <div className={`${CARD_BASE} ${containerClass(cardStyle, task.status, running, selected)}`}>
+    <div className={`${CARD_BASE} ${containerClass(task.status, running, selected)}`}>
       <button
         type="button"
         onClick={() => onSelect(task.id)}

@@ -13,7 +13,6 @@ export function Column({
   badge,
   clearable,
   selectedId,
-  cardStyle,
   blockedIds,
   logCounts,
   emptyText = 'Nothing here yet',
@@ -66,7 +65,6 @@ export function Column({
               key={task.id}
               task={task}
               selected={task.id === selectedId}
-              cardStyle={cardStyle}
               blocked={blockedIds.has(task.id)}
               logCount={logCounts[task.id] ?? 0}
               onSelect={onSelect}

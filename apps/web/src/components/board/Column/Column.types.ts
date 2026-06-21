@@ -1,5 +1,4 @@
 import type { Task } from '@/lib/bridge';
-import type { CardStyle } from '../TaskCard';
 
 export interface ColumnProps {
   title: string;
@@ -11,8 +10,6 @@ export interface ColumnProps {
   /** When true and the column is non-empty, render a "Clear" affordance. */
   clearable?: boolean;
   selectedId: string | null;
-  /** The board's current card look. */
-  cardStyle: CardStyle;
   /** Task ids that are blocked on an unfinished dependency. */
   blockedIds: Set<string>;
   /** Streamed log-line counts per task id (for the running card's Logs badge). */

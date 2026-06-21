@@ -8,7 +8,6 @@ const meta = {
   component: TaskCard,
   args: {
     selected: false,
-    cardStyle: 'glow',
     onSelect: fn(),
     onRun: fn(),
     onCancel: fn(),
@@ -40,13 +39,6 @@ export const Failed: Story = { args: { task: TASKS_BY_STATUS.failed } };
 
 export const Selected: Story = {
   args: { task: TASKS_BY_STATUS.in_progress, selected: true },
-};
-
-export const FlatStyle: Story = {
-  args: { task: TASKS_BY_STATUS.in_progress, cardStyle: 'flat' },
-};
-export const OutlineStyle: Story = {
-  args: { task: TASKS_BY_STATUS.done, cardStyle: 'outline' },
 };
 
 /** Play test: clicking the card body selects it via onSelect(id). */
