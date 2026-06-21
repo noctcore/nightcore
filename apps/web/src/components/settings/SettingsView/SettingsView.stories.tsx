@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { fn } from 'storybook/test';
+import { expect, fn, userEvent, within } from 'storybook/test';
 import type { Settings } from '@/lib/bridge';
 import { SettingsView } from './SettingsView';
 
@@ -24,6 +24,7 @@ const meta = {
     settings,
     activeProjectId: 'nightcore',
     activeProjectName: 'nightcore',
+    activeProjectPath: '~/dev/nightcore',
     onUpdate: fn(),
   },
 } satisfies Meta<typeof SettingsView>;
@@ -35,4 +36,13 @@ export const Global: Story = {};
 
 export const NoActiveProject: Story = {
   args: { activeProjectId: null, activeProjectName: null },
+};
+
+/** Play test: the left nav switches to a presentational M2 page. */
+export const NavigateToWorktrees: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: /git worktrees/i }));
+    await expect(canvas.getByText('Worktree isolation')).toBeInTheDocument();
+  },
 };

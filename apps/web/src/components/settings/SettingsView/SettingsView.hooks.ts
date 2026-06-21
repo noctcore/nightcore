@@ -1,6 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { SettingsPatch } from '@/lib/bridge';
-import type { SettingsScope, SettingsViewProps } from './SettingsView.types';
+import type {
+  SettingsPage,
+  SettingsScope,
+  SettingsViewProps,
+} from './SettingsView.types';
 
 /** The run-shaping values currently in effect for the selected scope. Under the
  *  Project scope, a field falls back to the global value when the override is
@@ -13,6 +17,9 @@ export interface EffectiveSettings {
 }
 
 export interface SettingsViewState {
+  /** The selected settings page in the left nav. */
+  page: SettingsPage;
+  setPage: (page: SettingsPage) => void;
   scope: SettingsScope;
   setScope: (scope: SettingsScope) => void;
   /** Project scope is only selectable when a project is active. */
@@ -32,6 +39,7 @@ export function useSettingsView({
   'settings' | 'activeProjectId' | 'onUpdate'
 >): SettingsViewState {
   const projectScopeEnabled = activeProjectId !== null;
+  const [page, setPage] = useState<SettingsPage>('models');
   const [scope, setScope] = useState<SettingsScope>('global');
 
   const effective = useMemo<EffectiveSettings>(() => {
@@ -59,6 +67,8 @@ export function useSettingsView({
   );
 
   return {
+    page,
+    setPage: useCallback((next: SettingsPage) => setPage(next), []),
     scope,
     setScope,
     projectScopeEnabled,
