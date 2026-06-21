@@ -13,6 +13,7 @@
     "@nightcore/contracts": "workspace:*",
     "@nightcore/engine": "workspace:*",
     "@nightcore/config": "workspace:*",
+    "@nightcore/shared": "workspace:*",
     "@opentui/core": "0.4.1",
     "@opentui/react": "0.4.1",
     "react": "^19.2.0",

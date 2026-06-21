@@ -202,7 +202,12 @@ pub fn run(dir: &Path) -> GauntletResult {
         }
 
         tracing::debug!(target: "nightcore::gauntlet", step = %step.name, "running gauntlet step");
-        let output = Command::new(&step.program)
+        // Route the bare program name (`bun`/`npm`/`cargo`) through the platform
+        // resolver so it launches through Windows npm shims like the sidecar spawn
+        // does — `Command::new("bun")` is unspawnable when only `bun.cmd` is on PATH.
+        let prog = crate::platform::resolve_program(&step.program);
+        let output = Command::new(&prog.program)
+            .args(&prog.prefix_args)
             .args(&step.args)
             .current_dir(dir)
             .output();

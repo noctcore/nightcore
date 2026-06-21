@@ -1,12 +1,9 @@
-import { execFile } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
+import { whichSync } from '@nightcore/shared';
 import type { SystemLine } from '../types.js';
 import type { CommandContext } from './types.js';
-
-const run = promisify(execFile);
 
 /**
  * `/doctor` — environment diagnostics rendered into the transcript. Each check is
@@ -17,8 +14,10 @@ const run = promisify(execFile);
 export async function doctor(ctx: CommandContext): Promise<void> {
   const lines: SystemLine[] = [];
 
-  // Claude CLI present on PATH?
-  const cli = await whichClaude();
+  // Claude CLI present on PATH? `whichSync` is cross-platform (`where` on
+  // Windows, `which` elsewhere) and returns null when not found, so `/doctor`
+  // reports honestly on every OS instead of always failing where `which` is absent.
+  const cli = whichSync('claude');
   if (cli !== null) {
     lines.push({ text: `✓ Claude CLI on PATH (${cli})`, tone: 'ok' });
   } else {
@@ -101,16 +100,6 @@ export async function doctor(ctx: CommandContext): Promise<void> {
   });
 
   ctx.dispatch({ type: 'ui-system-message', title: '/doctor', lines });
-}
-
-async function whichClaude(): Promise<string | null> {
-  try {
-    const { stdout } = await run('which', ['claude']);
-    const path = stdout.trim();
-    return path.length > 0 ? path : null;
-  } catch {
-    return null;
-  }
 }
 
 /** The SDK package whose manifest carries the version we report. Assembled from

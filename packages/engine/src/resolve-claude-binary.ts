@@ -1,5 +1,5 @@
-import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
+import { whichSync } from '@nightcore/shared';
 
 /**
  * Resolve a path to the `claude` executable to hand the SDK via
@@ -26,14 +26,10 @@ export function resolveClaudeBinary(): string | undefined {
   if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
 
   if (isTruthyEnv(process.env.NIGHTCORE_USE_SYSTEM_CLAUDE)) {
-    try {
-      const found = execFileSync('which', ['claude'], {
-        encoding: 'utf8',
-      }).trim();
-      if (found && fs.existsSync(found)) return found;
-    } catch {
-      // `which` missing / non-zero exit (not on PATH) — fall through.
-    }
+    // `whichSync` is cross-platform (`where` on Windows, `which` elsewhere) and
+    // returns null on any failure, so a missing tool degrades rather than throws.
+    const found = whichSync('claude');
+    if (found && fs.existsSync(found)) return found;
   }
 
   return undefined;

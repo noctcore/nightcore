@@ -31,49 +31,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::{ChildStdin, Command};
 use tokio::sync::Mutex as AsyncMutex;
 
-/// The resolved program + any prefix args needed to launch Bun. On macOS/Linux
-/// `which::which("bun")` finds the real executable directly. On Windows the npm
-/// shims (`bun.cmd`, `bun.ps1`, an extensionless POSIX script) are on PATH but
-/// Win32 `CreateProcess` cannot launch them — `which` with PATHEXT awareness finds
-/// `bun.exe` when it exists; if it doesn't, we fall back to routing through
-/// `cmd /C bun` so the shim IS usable.
-#[derive(Debug, Clone)]
-pub struct BunProgram {
-    pub program: PathBuf,
-    pub prefix_args: Vec<String>,
-}
-
-/// Resolve a launchable Bun program. Returns an absolute path to `bun.exe` (or
-/// equivalent) when `which` can find it, otherwise a `cmd /C bun` shell-routed
-/// fallback on Windows. On macOS/Linux, `which` resolves the real binary directly
-/// and the fallback is never needed.
-pub fn resolve_bun_program() -> BunProgram {
-    match which::which("bun") {
-        Ok(path) => BunProgram {
-            program: path,
-            prefix_args: vec![],
-        },
-        Err(_) => {
-            // On Windows: route through cmd /C so the .cmd shim is usable when
-            // bun.exe is not on PATH at all.
-            #[cfg(windows)]
-            {
-                BunProgram {
-                    program: PathBuf::from("cmd"),
-                    prefix_args: vec!["/C".to_string(), "bun".to_string()],
-                }
-            }
-            // On non-Windows: fall back to bare "bun" and let the OS error surface.
-            #[cfg(not(windows))]
-            {
-                BunProgram {
-                    program: PathBuf::from("bun"),
-                    prefix_args: vec![],
-                }
-            }
-        }
-    }
-}
+use crate::platform::resolve_bun_program;
 
 /// A driveable agent backend. Today: the Bun Claude sidecar. Later: a Codex
 /// sidecar speaking the same protocol — selected by config, not by branching in
@@ -522,36 +480,5 @@ mod tests {
         assert!(parse_line("   ").is_none());
         assert!(parse_line(r#"{"type":"x"}"#).unwrap().is_ok());
         assert!(parse_line("{not json").unwrap().is_err());
-    }
-
-    /// Regression test for the Windows bun spawn bug: `Command::new("bun")` fails
-    /// with `NotFound` on Windows because only `bun.cmd`/`bun.ps1` shims are on
-    /// PATH, not a launchable `bun.exe`. The resolver must return a program that
-    /// `CreateProcess` can actually spawn.
-    #[test]
-    #[cfg(windows)]
-    fn bun_resolves_to_a_launchable_binary_on_windows() {
-        let resolved = super::resolve_bun_program();
-        assert!(
-            std::process::Command::new(&resolved.program)
-                .args(&resolved.prefix_args)
-                .arg("--version")
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn()
-                .is_ok(),
-            "resolved bun program must be spawnable via CreateProcess: {resolved:?}"
-        );
-    }
-
-    /// Cross-platform smoke test: `resolve_bun_program()` must return a non-empty
-    /// program path (bun is a build prerequisite on all CI hosts).
-    #[test]
-    fn bun_resolver_returns_a_program() {
-        let resolved = super::resolve_bun_program();
-        assert!(
-            !resolved.program.as_os_str().is_empty(),
-            "resolve_bun_program must return a non-empty program"
-        );
     }
 }

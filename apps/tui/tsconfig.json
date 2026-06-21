@@ -12,6 +12,7 @@
   "references": [
     { "path": "../../packages/contracts" },
     { "path": "../../packages/engine" },
-    { "path": "../../packages/config" }
+    { "path": "../../packages/config" },
+    { "path": "../../packages/shared" }
   ]
 }

@@ -17,6 +17,7 @@ mod kind;
 mod logging;
 mod m2;
 mod merge;
+mod platform;
 mod plan_approval;
 mod project;
 mod settings;
