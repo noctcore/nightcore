@@ -6,6 +6,9 @@ dist-tsc/
 # Storybook build output
 storybook-static/
 
+# Vitest browser-mode failure screenshots
+**/__screenshots__/
+
 # Rust / Tauri build output + generated files
 target/
 apps/desktop/src-tauri/gen/
