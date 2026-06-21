@@ -12,6 +12,8 @@
 //! at a time runs through a single long-lived sidecar, streaming its events to
 //! the board and transitioning to `done`/`failed` on completion.
 
+mod gauntlet;
+mod kind;
 mod m2;
 mod merge;
 mod plan_approval;
@@ -86,6 +88,10 @@ pub fn run() {
             plan_approval::refine_task,
             merge::commit_task,
             merge::merge_task,
+            merge::accept_review,
+            merge::reject_review,
+            merge::rerun_verification,
+            gauntlet::run_gauntlet,
             project::list_projects,
             project::active_project,
             project::create_project,
