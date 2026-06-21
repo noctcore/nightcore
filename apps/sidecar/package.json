@@ -1,0 +1,20 @@
+{
+  "name": "@nightcore/sidecar",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Claude provider sidecar — the engine exposed over an NDJSON stdio protocol, driven by the Rust core.",
+  "bin": {
+    "nightcore-sidecar": "./src/index.ts"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "compile": "bun build --compile --outfile ../desktop/src-tauri/binaries/nightcore-sidecar src/index.ts"
+  },
+  "dependencies": {
+    "@nightcore/contracts": "workspace:*",
+    "@nightcore/engine": "workspace:*",
+    "@nightcore/config": "workspace:*",
+    "@nightcore/shared": "workspace:*"
+  }
+}

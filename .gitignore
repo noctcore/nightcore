@@ -1,6 +1,14 @@
 node_modules/
 dist/
+dist-tsc/
 *.tsbuildinfo
+
+# Rust / Tauri build output + generated files
+target/
+apps/desktop/src-tauri/gen/
+# Generated icons are reproducible from icons/source.png via `tauri icon`
+apps/desktop/src-tauri/icons/android/
+apps/desktop/src-tauri/icons/ios/
 
 # Nightcore local state
 .nightcore/

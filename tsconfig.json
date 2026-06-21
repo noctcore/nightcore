@@ -10,6 +10,7 @@
     { "path": "./packages/mcp" },
     { "path": "./packages/engine" },
     { "path": "./apps/cli" },
-    { "path": "./apps/tui" }
+    { "path": "./apps/tui" },
+    { "path": "./apps/sidecar" }
   ]
 }
