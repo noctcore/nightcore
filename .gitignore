@@ -3,6 +3,9 @@ dist/
 dist-tsc/
 *.tsbuildinfo
 
+# Storybook build output
+storybook-static/
+
 # Rust / Tauri build output + generated files
 target/
 apps/desktop/src-tauri/gen/

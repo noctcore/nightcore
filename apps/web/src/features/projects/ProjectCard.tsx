@@ -17,37 +17,39 @@ interface ProjectCardProps {
  *  stat tiles, and last activity. */
 export function ProjectCard({ project, onOpen, onMenu }: ProjectCardProps) {
   return (
-    <Card onClick={() => onOpen(project.id)} className="p-[18px]">
+    <Card className="p-[18px]">
       <div className="flex items-start gap-3">
-        <div className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px] bg-primary/[0.14] text-primary">
-          📁
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <div className="truncate text-[15.5px] font-semibold">
-              {project.name}
-            </div>
-            {project.running && (
-              <Badge tone="primary" className="text-warning">
-                <StatusDot colorClass="bg-warning" pulse />
-                live
-              </Badge>
-            )}
-          </div>
-          <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
-            {project.path}
-          </div>
-        </div>
-        {onMenu !== undefined && (
-          <span
-            onClick={(e) => {
-              e.stopPropagation();
-            }}
-          >
-            <IconButton label="Project menu" onClick={() => onMenu(project.id)}>
-              ⋯
-            </IconButton>
+        {/* The identity block is the open affordance; the menu button is a
+            sibling, never nested inside another button (invalid HTML). */}
+        <button
+          type="button"
+          onClick={() => onOpen(project.id)}
+          className="flex min-w-0 flex-1 items-start gap-3 text-left"
+        >
+          <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px] bg-primary/[0.14] text-primary">
+            📁
           </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2">
+              <span className="truncate text-[15.5px] font-semibold">
+                {project.name}
+              </span>
+              {project.running && (
+                <Badge tone="primary" className="text-warning">
+                  <StatusDot colorClass="bg-warning" pulse />
+                  live
+                </Badge>
+              )}
+            </span>
+            <span className="mt-0.5 block truncate font-mono text-[11px] text-muted-foreground">
+              {project.path}
+            </span>
+          </span>
+        </button>
+        {onMenu !== undefined && (
+          <IconButton label="Project menu" onClick={() => onMenu(project.id)}>
+            ⋯
+          </IconButton>
         )}
       </div>
       <div className="mt-4 flex gap-1.5">
