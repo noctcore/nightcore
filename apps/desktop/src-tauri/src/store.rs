@@ -25,7 +25,7 @@ pub fn workspace_root() -> PathBuf {
 /// aborting. Shared by [`TaskStore::load_from`] and [`TaskStore::retarget`].
 fn read_dir_into_map(dir: &PathBuf) -> HashMap<String, Task> {
     if let Err(e) = std::fs::create_dir_all(dir) {
-        eprintln!("task store: failed to create {}: {e}", dir.display());
+        tracing::warn!(target: "nightcore::store", dir = %dir.display(), error = %e, "failed to create tasks dir");
     }
 
     let mut tasks = HashMap::new();
@@ -41,13 +41,13 @@ fn read_dir_into_map(dir: &PathBuf) -> HashMap<String, Task> {
                         Ok(task) => {
                             tasks.insert(task.id.clone(), task);
                         }
-                        Err(e) => eprintln!("task store: skipping {}: {e}", path.display()),
+                        Err(e) => tracing::warn!(target: "nightcore::store", path = %path.display(), error = %e, "skipping unparsable task file"),
                     },
-                    Err(e) => eprintln!("task store: cannot read {}: {e}", path.display()),
+                    Err(e) => tracing::warn!(target: "nightcore::store", path = %path.display(), error = %e, "cannot read task file"),
                 }
             }
         }
-        Err(e) => eprintln!("task store: cannot list {}: {e}", dir.display()),
+        Err(e) => tracing::warn!(target: "nightcore::store", dir = %dir.display(), error = %e, "cannot list tasks dir"),
     }
     tasks
 }

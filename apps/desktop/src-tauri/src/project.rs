@@ -73,7 +73,7 @@ impl ProjectStore {
     /// `active.json`, creating the dir if missing. Unparsable files start empty.
     pub fn load_from(config_dir: PathBuf) -> Self {
         if let Err(e) = std::fs::create_dir_all(&config_dir) {
-            eprintln!("project store: failed to create {}: {e}", config_dir.display());
+            tracing::warn!(target: "nightcore::project", dir = %config_dir.display(), error = %e, "failed to create project config dir");
         }
         let projects = read_json(&config_dir.join("projects.json")).unwrap_or_default();
         let active: ActiveState = read_json(&config_dir.join("active.json")).unwrap_or_default();
@@ -179,7 +179,7 @@ fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
     match serde_json::from_str(&raw) {
         Ok(value) => Some(value),
         Err(e) => {
-            eprintln!("project store: skipping {}: {e}", path.display());
+            tracing::warn!(target: "nightcore::project", path = %path.display(), error = %e, "skipping unparsable project file");
             None
         }
     }

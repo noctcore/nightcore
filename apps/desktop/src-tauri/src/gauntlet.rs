@@ -201,6 +201,7 @@ pub fn run(dir: &Path) -> GauntletResult {
             continue;
         }
 
+        tracing::debug!(target: "nightcore::gauntlet", step = %step.name, "running gauntlet step");
         let output = Command::new(&step.program)
             .args(&step.args)
             .current_dir(dir)
@@ -208,6 +209,7 @@ pub fn run(dir: &Path) -> GauntletResult {
 
         match output {
             Ok(out) if out.status.success() => {
+                tracing::info!(target: "nightcore::gauntlet", step = %step.name, exit_code = ?out.status.code(), "gauntlet step passed");
                 steps.push(GauntletStep {
                     name: step.name,
                     command,
@@ -217,6 +219,9 @@ pub fn run(dir: &Path) -> GauntletResult {
                 });
             }
             Ok(out) => {
+                // Step NAME + exit code only — never the output body (debug-only via
+                // the UI payload; never to the log).
+                tracing::error!(target: "nightcore::gauntlet", step = %step.name, exit_code = ?out.status.code(), "gauntlet step failed");
                 failed_step = Some(step.name.clone());
                 steps.push(GauntletStep {
                     name: step.name,
@@ -229,6 +234,7 @@ pub fn run(dir: &Path) -> GauntletResult {
             Err(e) => {
                 // The tool couldn't be launched at all (missing from PATH): a real
                 // failure for this step — stop here.
+                tracing::error!(target: "nightcore::gauntlet", step = %step.name, error = %e, "gauntlet step could not launch");
                 failed_step = Some(step.name.clone());
                 steps.push(GauntletStep {
                     name: step.name,
@@ -241,8 +247,10 @@ pub fn run(dir: &Path) -> GauntletResult {
         }
     }
 
+    let passed = failed_step.is_none();
+    tracing::info!(target: "nightcore::gauntlet", passed, failed_step = ?failed_step, steps = steps.len(), "gauntlet finished");
     GauntletResult {
-        passed: failed_step.is_none(),
+        passed,
         steps,
         failed_step,
     }

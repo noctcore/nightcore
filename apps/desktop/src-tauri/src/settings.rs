@@ -151,7 +151,7 @@ impl SettingsStore {
     /// unparsable. Creates the dir if needed.
     pub fn load_from(config_dir: PathBuf) -> Self {
         if let Err(e) = std::fs::create_dir_all(&config_dir) {
-            eprintln!("settings store: failed to create {}: {e}", config_dir.display());
+            tracing::warn!(target: "nightcore::settings", dir = %config_dir.display(), error = %e, "failed to create settings dir");
         }
         let settings = read_settings(&config_dir.join("settings.json")).unwrap_or_default();
         Self {
@@ -207,7 +207,7 @@ fn read_settings(path: &Path) -> Option<Settings> {
     match serde_json::from_str(&raw) {
         Ok(value) => Some(value),
         Err(e) => {
-            eprintln!("settings store: defaulting, cannot parse {}: {e}", path.display());
+            tracing::warn!(target: "nightcore::settings", path = %path.display(), error = %e, "cannot parse settings; using defaults");
             None
         }
     }

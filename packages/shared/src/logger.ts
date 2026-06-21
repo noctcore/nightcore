@@ -21,10 +21,33 @@ export interface Logger {
   child(scope: string): Logger;
 }
 
+/** SGR color codes per level; applied only to the LEVEL token, only on a TTY. */
+const LEVEL_COLOR: Record<Exclude<LogLevel, 'silent'>, string> = {
+  error: '\x1b[31m', // red
+  warn: '\x1b[33m', // yellow
+  info: '\x1b[36m', // cyan
+  debug: '\x1b[2m', // dim
+};
+const RESET = '\x1b[0m';
+
+/**
+ * Whether to colorize: only when stderr is an interactive TTY. When the Rust core
+ * captures our stderr (piped, not a TTY) or it is redirected to a file, output
+ * stays plain so the `<ISO> <LEVEL> [scope] <msg> <json>` shape is parseable.
+ */
+function useColor(): boolean {
+  return process.stderr.isTTY === true;
+}
+
 function format(scope: string, level: LogLevel, msg: string, meta?: unknown): string {
   const ts = new Date().toISOString();
   const tail = meta === undefined ? '' : ` ${safeStringify(meta)}`;
-  return `${ts} ${level.toUpperCase()} [${scope}] ${msg}${tail}`;
+  const levelToken = level.toUpperCase();
+  const level_ =
+    useColor() && level !== 'silent'
+      ? `${LEVEL_COLOR[level]}${levelToken}${RESET}`
+      : levelToken;
+  return `${ts} ${level_} [${scope}] ${msg}${tail}`;
 }
 
 function safeStringify(meta: unknown): string {
