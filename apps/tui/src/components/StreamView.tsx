@@ -1,8 +1,13 @@
 import type { ReactNode } from 'react';
 import type { NoticeTone, SystemLine, TranscriptEntry } from '../types.js';
+import { Markdown } from './Markdown.js';
+import { ToolCall } from './ToolCall.js';
 
 interface StreamViewProps {
   transcript: TranscriptEntry[];
+  /** Id of the assistant entry still streaming, so its markdown renders in
+   *  streaming mode (stable final parse once the turn ends). */
+  activeAssistantId: string | null;
 }
 
 const NOTICE_COLOR: Record<NoticeTone, string> = {
@@ -31,9 +36,11 @@ function isTurnStart(kind: TranscriptEntry['kind']): boolean {
 function Entry({
   entry,
   first,
+  active,
 }: {
   entry: TranscriptEntry;
   first: boolean;
+  active: boolean;
 }): ReactNode {
   // Open each new turn with a blank line of separation (except the very first).
   const marginTop = !first && isTurnStart(entry.kind) ? 1 : 0;
@@ -44,8 +51,15 @@ function Entry({
         <box style={{ flexDirection: 'row', marginTop }}>
           <text fg="#5fafff">▌ </text>
           <box style={{ flexDirection: 'column', flexGrow: 1 }}>
-            <text fg="#9cdcfe">
-              <strong>you</strong>
+            <text>
+              <span fg="#9cdcfe">
+                <strong>you</strong>
+              </span>
+              {/* Session id sits ABOVE the prompt so each turn shows which
+                  session it belongs to (back-filled on the first turn). */}
+              {entry.sessionId !== undefined && (
+                <span fg="#5a6472">{`  session ${String(entry.sessionId)}`}</span>
+              )}
             </text>
             <text fg="#cfd8e3">{entry.text}</text>
           </box>
@@ -56,21 +70,15 @@ function Entry({
       return (
         <box style={{ flexDirection: 'row' }}>
           <text fg="#5f8f5f">▌ </text>
-          <text fg="#e4e4e4" style={{ flexGrow: 1 }}>
-            {entry.text}
-          </text>
+          <box style={{ flexDirection: 'column', flexGrow: 1 }}>
+            <Markdown content={entry.text} streaming={active} />
+          </box>
         </box>
       );
 
     case 'tool-call':
       // Nested under the assistant answer: extra indent past the ▌ gutter.
-      return (
-        <text>
-          <span fg="#444444">  ╰ </span>
-          <span fg="#5fafff">⚙ {entry.toolName}</span>
-          <span fg="#666666"> {entry.input}</span>
-        </text>
-      );
+      return <ToolCall toolName={entry.toolName} input={entry.input} />;
 
     case 'tool-result':
       return (
@@ -113,7 +121,10 @@ function Entry({
 /** Scrollable transcript. The reducer appends entries; `stickyScroll` keeps the
  *  newest output in view as the assistant streams. User and assistant turns get
  *  distinct accent gutters; tool activity nests under the answer. */
-export function StreamView({ transcript }: StreamViewProps): ReactNode {
+export function StreamView({
+  transcript,
+  activeAssistantId,
+}: StreamViewProps): ReactNode {
   return (
     <scrollbox
       focused={false}
@@ -128,7 +139,12 @@ export function StreamView({ transcript }: StreamViewProps): ReactNode {
         </text>
       ) : (
         transcript.map((entry, i) => (
-          <Entry key={entry.id} entry={entry} first={i === 0} />
+          <Entry
+            key={entry.id}
+            entry={entry}
+            first={i === 0}
+            active={entry.id === activeAssistantId}
+          />
         ))
       )}
     </scrollbox>

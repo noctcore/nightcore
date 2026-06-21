@@ -98,7 +98,15 @@ export function reduce(view: SessionView, event: ViewAction): SessionView {
         activeAssistantId: null,
         transcript: [
           ...view.transcript,
-          { kind: 'user', id: nextId('user'), text: event.text },
+          {
+            kind: 'user',
+            id: nextId('user'),
+            text: event.text,
+            // Stamp the live session id when one exists (a follow-up turn). For
+            // the FIRST turn of a new session the id isn't assigned yet — the
+            // `session-started` case below back-fills it onto this same entry.
+            ...(view.sessionId !== null ? { sessionId: view.sessionId } : {}),
+          },
         ],
       };
 
@@ -145,10 +153,9 @@ export function reduce(view: SessionView, event: ViewAction): SessionView {
         // A fresh session starts with no tasks; drop any from a prior run.
         tasks: new Map(),
         failure: null,
-        transcript: [
-          ...view.transcript,
-          notice('info', `session ${event.sessionId} started (${event.model})`),
-        ],
+        // Back-fill the id onto the just-echoed prompt so the session marker
+        // reads ABOVE the user's text — no separate "started" notice needed.
+        transcript: stampLastUser(view.transcript, event.sessionId),
       };
 
     case 'session-ready':
@@ -176,7 +183,9 @@ export function reduce(view: SessionView, event: ViewAction): SessionView {
             kind: 'tool-call',
             id: nextId('tool'),
             toolName: event.toolName,
-            input: compactJson(event.input),
+            // Keep the raw input; `StreamView` formats it per-tool (path, diff,
+            // command, …) rather than dumping JSON.
+            input: event.input,
           },
         ],
       };
@@ -320,9 +329,27 @@ function completionSummary(event: NightcoreEventOf<'session-completed'>): string
   return parts.join(' · ');
 }
 
-function compactJson(input: Record<string, unknown>): string {
-  const json = JSON.stringify(input);
-  return json.length > 120 ? `${json.slice(0, 117)}…` : json;
+/**
+ * Stamp `sessionId` onto the most recent user entry that is still unlabeled.
+ * Used when `session-started` fires right after the operator's prompt was echoed
+ * for a brand-new session: at echo time the id wasn't assigned yet, so we set it
+ * here so the session marker renders above that prompt. Returns a new array only
+ * if a matching entry was found.
+ */
+function stampLastUser(
+  transcript: TranscriptEntry[],
+  sessionId: number,
+): TranscriptEntry[] {
+  for (let i = transcript.length - 1; i >= 0; i -= 1) {
+    const entry = transcript[i];
+    if (entry?.kind === 'user') {
+      if (entry.sessionId !== undefined) return transcript;
+      const next = transcript.slice();
+      next[i] = { ...entry, sessionId };
+      return next;
+    }
+  }
+  return transcript;
 }
 
 function firstLine(content: string): string {

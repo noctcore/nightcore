@@ -204,7 +204,10 @@ export function App({ manager, config, defaults }: AppProps): ReactNode {
   return (
     <box style={{ flexDirection: 'column', height: '100%' }}>
       <SessionHeader view={view} />
-      <StreamView transcript={view.transcript} />
+      <StreamView
+        transcript={view.transcript}
+        activeAssistantId={view.activeAssistantId}
+      />
       {showTaskPanel && <TaskPanel tasks={view.tasks} />}
       {picker.state === 'loading' && (
         <box

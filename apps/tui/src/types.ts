@@ -15,9 +15,15 @@ import type {
  *  carries slash-command output (e.g. `/help`, `/doctor`) — a multi-line block
  *  rendered distinctly from chat turns. */
 export type TranscriptEntry =
-  | { kind: 'user'; id: string; text: string }
+  | { kind: 'user'; id: string; text: string; sessionId?: number }
   | { kind: 'assistant'; id: string; text: string }
-  | { kind: 'tool-call'; id: string; toolName: string; input: string }
+  | {
+      kind: 'tool-call';
+      id: string;
+      toolName: string;
+      /** Raw tool input — formatted per-tool at render time (see `tool-format`). */
+      input: Record<string, unknown>;
+    }
   | { kind: 'tool-result'; id: string; isError: boolean; content: string }
   | { kind: 'notice'; id: string; tone: NoticeTone; text: string }
   | { kind: 'system'; id: string; title: string; lines: SystemLine[] };
