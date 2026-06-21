@@ -540,6 +540,9 @@ async fn dispatch_reviewer(
             task_id,
             prompt,
             task.model.clone(),
+            // The reviewer keeps its own policy (M4.7 §E): it inherits the task's
+            // effort like the builder, a peer of the build run.
+            task.effort.clone(),
             Some(worktree_dir.to_path_buf()),
             // The review preset's `dontAsk` default applies (no explicit override).
             None,
@@ -565,12 +568,13 @@ async fn dispatch_fix(
         task.prompt(),
         review_text
     );
-    let permission_mode = resolve_permission_mode(app);
+    let permission_mode = resolve_permission_mode(app, task.permission_mode.as_deref());
     orch.provider
         .start_session(
             task_id,
             prompt,
             task.model.clone(),
+            task.effort.clone(),
             Some(worktree_dir.to_path_buf()),
             permission_mode,
             TaskKind::Build.as_wire(),
@@ -819,13 +823,14 @@ pub async fn run_task(
         return Err(e);
     }
 
-    let permission_mode = resolve_permission_mode(&app);
+    let permission_mode = resolve_permission_mode(&app, task.permission_mode.as_deref());
     if let Err(e) = orch
         .provider
         .start_session(
             &id,
             task.prompt(),
             task.model.clone(),
+            task.effort.clone(),
             cwd,
             permission_mode,
             task.kind.as_wire(),
@@ -839,11 +844,18 @@ pub async fn run_task(
     Ok(())
 }
 
-/// The SDK permission mode for the next run, resolved from settings (per-project
-/// override, else global) and mapped to the engine's mode. Shared by the manual
-/// `run_task` path and the coordinator's auto-loop launch so both honor the mode.
-pub fn resolve_permission_mode(app: &AppHandle) -> Option<String> {
-    use crate::settings::SettingsStore;
+/// The SDK permission mode for the next run (M4.7 §A4). Precedence:
+///   task override → project override → global default.
+/// `task_override` is the task's own `permission_mode` (a UI string like `bypass`/
+/// `ask`); when present it wins and is mapped through the same
+/// [`crate::settings::sdk_permission_mode`] table so a task can opt OUT of global
+/// bypass. Absent ⇒ fall back to the settings resolution (project, else global).
+/// Shared by the manual `run_task` path and the coordinator's auto-loop launch.
+pub fn resolve_permission_mode(app: &AppHandle, task_override: Option<&str>) -> Option<String> {
+    use crate::settings::{sdk_permission_mode, SettingsStore};
+    if let Some(raw) = task_override {
+        return Some(sdk_permission_mode(raw));
+    }
     let settings = app.state::<SettingsStore>();
     let project_id = app
         .state::<ProjectStore>()
