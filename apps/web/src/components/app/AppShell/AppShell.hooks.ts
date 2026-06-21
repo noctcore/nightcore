@@ -20,6 +20,7 @@ import {
   listWorktrees,
   mergeTask,
   moveTask,
+  readTranscript,
   refineTask,
   rejectReview,
   rejectTask,
@@ -39,8 +40,10 @@ import {
   stopAutoLoop,
   updateTask,
   updateSettings,
+  type CreateTaskOptions,
   type GauntletResult,
   type LoopEnvelope,
+  type PermissionMode,
   type PermissionPrompt,
   type Project,
   type RunMode,
@@ -316,6 +319,26 @@ function useBoard() {
     };
   }, []);
 
+  // Reseed the opened task's transcript from its persisted JSONL (M4.7 §C) so a
+  // reload/HMR no longer blanks it. Skips a task that already has a live stream
+  // (an in-flight run's accumulating events must not be clobbered).
+  useEffect(() => {
+    if (selectedId === null) return;
+    let alive = true;
+    const id = selectedId;
+    void readTranscript(id).then((events) => {
+      if (!alive || events.length === 0) return;
+      setStreams((prev) => {
+        if (prev[id] !== undefined) return prev;
+        const seeded = events.reduce(foldSession, { ...EMPTY_STREAM });
+        return { ...prev, [id]: seeded };
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [selectedId]);
+
   return { tasks, setTasks, streams, setStreams, selectedId, setSelectedId };
 }
 
@@ -497,6 +520,7 @@ export interface AppShellState {
       description: string,
       kind: TaskKind,
       runMode: RunMode,
+      options?: CreateTaskOptions,
     ) => Promise<void>;
     handleRun: (id: string) => void;
     handleCancel: (id: string) => void;
@@ -517,6 +541,12 @@ export interface AppShellState {
     handleChangeKind: (id: string, kind: TaskKind) => void;
     /** Edit a not-yet-run task's run mode (M4.6). */
     handleChangeRunMode: (id: string, runMode: RunMode) => void;
+    /** Edit a not-yet-run task's permission-mode override (M4.7). */
+    handleChangePermissionMode: (id: string, permissionMode: PermissionMode | null) => void;
+    /** Edit a not-yet-run task's model override (M4.7). */
+    handleChangeModel: (id: string, model: string | null) => void;
+    /** Edit a not-yet-run task's reasoning-effort override (M4.7). */
+    handleChangeEffort: (id: string, effort: string | null) => void;
     /** Verification-approval actions for a review-parked task (M4). */
     handleAcceptReview: (id: string) => void;
     handleRejectReview: (id: string) => void;
@@ -569,8 +599,14 @@ export function useAppShell(): AppShellState {
   }, [streams]);
 
   const handleCreate = useCallback(
-    async (title: string, description: string, kind: TaskKind, runMode: RunMode) => {
-      const task = await createTask(title, description, kind, runMode);
+    async (
+      title: string,
+      description: string,
+      kind: TaskKind,
+      runMode: RunMode,
+      options: CreateTaskOptions = {},
+    ) => {
+      const task = await createTask(title, description, kind, runMode, options);
       setTasks((prev) => (prev.some((t) => t.id === task.id) ? prev : [...prev, task]));
       setSelectedId(task.id);
     },
@@ -680,6 +716,29 @@ export function useAppShell(): AppShellState {
     },
     [setTasks],
   );
+  const handleChangePermissionMode = useCallback(
+    (id: string, permissionMode: PermissionMode | null) => {
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, permissionMode } : t)));
+      void updateTask(id, { permissionMode }).catch((err) =>
+        console.error('update_task failed', err),
+      );
+    },
+    [setTasks],
+  );
+  const handleChangeModel = useCallback(
+    (id: string, model: string | null) => {
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, model } : t)));
+      void updateTask(id, { model }).catch((err) => console.error('update_task failed', err));
+    },
+    [setTasks],
+  );
+  const handleChangeEffort = useCallback(
+    (id: string, effort: string | null) => {
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, effort } : t)));
+      void updateTask(id, { effort }).catch((err) => console.error('update_task failed', err));
+    },
+    [setTasks],
+  );
   const handleAcceptReview = useCallback((id: string) => {
     void acceptReview(id).catch((err) => console.error('accept_review failed', err));
   }, []);
@@ -730,6 +789,9 @@ export function useAppShell(): AppShellState {
       handleMerge,
       handleChangeKind,
       handleChangeRunMode,
+      handleChangePermissionMode,
+      handleChangeModel,
+      handleChangeEffort,
       handleAcceptReview,
       handleRejectReview,
       handleRerunVerification,

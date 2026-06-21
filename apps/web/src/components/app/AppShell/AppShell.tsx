@@ -135,6 +135,9 @@ export function AppShell() {
                 onRefine={board.handleRefine}
                 onChangeKind={board.handleChangeKind}
                 onChangeRunMode={board.handleChangeRunMode}
+                onChangePermissionMode={board.handleChangePermissionMode}
+                onChangeModel={board.handleChangeModel}
+                onChangeEffort={board.handleChangeEffort}
                 onAcceptReview={board.handleAcceptReview}
                 onRejectReview={board.handleRejectReview}
                 onRerunVerification={board.handleRerunVerification}

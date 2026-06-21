@@ -43,6 +43,7 @@ export const CreatesTask: Story = {
         'Build the settings surface.',
         'build',
         'main',
+        { permissionMode: null, model: null, effort: null },
       ),
     );
   },
@@ -57,7 +58,11 @@ export const CreatesResearchTask: Story = {
     await userEvent.click(canvas.getByRole('button', { name: /create task/i }));
 
     await waitFor(() =>
-      expect(args.onCreate).toHaveBeenCalledWith('Survey caching options', '', 'research', 'main'),
+      expect(args.onCreate).toHaveBeenCalledWith('Survey caching options', '', 'research', 'main', {
+        permissionMode: null,
+        model: null,
+        effort: null,
+      }),
     );
   },
 };
@@ -76,7 +81,31 @@ export const CreatesWorktreeTask: Story = {
         '',
         'build',
         'worktree',
+        { permissionMode: null, model: null, effort: null },
       ),
+    );
+  },
+};
+
+/** Play test: per-task permission / model / effort overrides (M4.7) thread
+ *  through onCreate as the options object. */
+export const CreatesWithOverrides: Story = {
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.type(canvas.getByLabelText('Task title'), 'Apply a migration');
+    await userEvent.click(canvas.getByRole('radio', { name: /^plan$/i }));
+    const models = within(canvas.getByRole('radiogroup', { name: /model/i }));
+    await userEvent.click(models.getByRole('radio', { name: /sonnet/i }));
+    const efforts = within(canvas.getByRole('radiogroup', { name: /reasoning effort/i }));
+    await userEvent.click(efforts.getByRole('radio', { name: /^high$/i }));
+    await userEvent.click(canvas.getByRole('button', { name: /create task/i }));
+
+    await waitFor(() =>
+      expect(args.onCreate).toHaveBeenCalledWith('Apply a migration', '', 'build', 'main', {
+        permissionMode: 'plan',
+        model: 'claude-sonnet-4-6',
+        effort: 'high',
+      }),
     );
   },
 };

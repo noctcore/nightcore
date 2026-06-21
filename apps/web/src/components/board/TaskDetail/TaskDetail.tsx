@@ -5,14 +5,26 @@ import {
   CloseIcon,
   CommitIcon,
   IconButton,
+  Markdown,
   RefineIcon,
   TerminalIcon,
 } from '@/components/ui';
-import { formatCost, KIND_LABEL, RUN_MODE_LABEL, STATUS_LABEL, STATUS_TEXT } from '../status';
+import { summarizeInput } from '@/lib/summarize';
+import {
+  formatCost,
+  KIND_LABEL,
+  modelDisplayName,
+  PERMISSION_MODE_LABEL,
+  RUN_MODE_LABEL,
+  STATUS_LABEL,
+  STATUS_TEXT,
+} from '../status';
 import { TaskStatusDot } from '../TaskStatusDot';
 import { PermissionPrompt } from '../PermissionPrompt';
 import { KindPicker } from '../KindPicker';
 import { WorkModePicker } from '../WorkModePicker';
+import { PermissionModePicker } from '../PermissionModePicker';
+import { ModelEffortPicker } from '../ModelEffortPicker';
 import { ReviewPanel } from '../ReviewPanel';
 import { GauntletResults } from '../GauntletResults';
 import { canMerge, deriveTaskDetailView } from './TaskDetail.hooks';
@@ -39,6 +51,9 @@ export function TaskDetail({
   onRefine,
   onChangeKind,
   onChangeRunMode,
+  onChangePermissionMode,
+  onChangeModel,
+  onChangeEffort,
   onAcceptReview,
   onRejectReview,
   onRerunVerification,
@@ -134,14 +149,55 @@ export function TaskDetail({
           )}
         </section>
 
+        <section>
+          <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+            Permission mode
+          </h3>
+          {kindEditable && onChangePermissionMode !== undefined ? (
+            <PermissionModePicker
+              value={task.permissionMode}
+              onChange={(mode) => onChangePermissionMode(task.id, mode)}
+            />
+          ) : (
+            <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+              {task.permissionMode !== null
+                ? PERMISSION_MODE_LABEL[task.permissionMode]
+                : 'Inherit'}
+            </span>
+          )}
+        </section>
+
+        <section>
+          <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+            Model &amp; effort
+          </h3>
+          {kindEditable && onChangeModel !== undefined && onChangeEffort !== undefined ? (
+            <ModelEffortPicker
+              model={task.model}
+              effort={task.effort}
+              onChangeModel={(model) => onChangeModel(task.id, model)}
+              onChangeEffort={(effort) => onChangeEffort(task.id, effort)}
+            />
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                {task.model !== null ? modelDisplayName(task.model) : 'Model: inherit'}
+              </span>
+              <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                Effort: {task.effort ?? 'inherit'}
+              </span>
+            </div>
+          )}
+        </section>
+
         {planParked && task.plan !== null && (
           <section>
             <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
               Proposed plan
             </h3>
-            <pre className="whitespace-pre-wrap rounded-md border border-info/40 bg-info/[0.08] px-3 py-2 text-sm leading-relaxed text-foreground/90">
+            <Markdown className="rounded-md border border-info/40 bg-info/[0.08] px-3 py-2">
               {task.plan}
-            </pre>
+            </Markdown>
           </section>
         )}
 
@@ -180,10 +236,15 @@ export function TaskDetail({
               {tools.map((tool) => (
                 <li
                   key={tool.id}
-                  className="flex items-center gap-1.5 font-mono text-xs text-primary/80"
+                  className="flex items-start gap-1.5 font-mono text-xs text-primary/80"
                 >
-                  <TerminalIcon size={12} />
-                  {tool.toolName}
+                  <TerminalIcon size={12} className="mt-0.5 shrink-0" />
+                  <span className="min-w-0 break-words">
+                    <span className="font-semibold">{tool.toolName}</span>
+                    {tool.input !== undefined && (
+                      <span className="text-muted-foreground"> · {summarizeInput(tool.input)}</span>
+                    )}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -199,10 +260,10 @@ export function TaskDetail({
               {error}
             </pre>
           ) : answer.length > 0 ? (
-            <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground">
-              {answer}
+            <div className="text-foreground">
+              <Markdown>{answer}</Markdown>
               {isRunning && <span className="text-muted-foreground">▌</span>}
-            </pre>
+            </div>
           ) : (
             <p className="text-sm text-muted-foreground">
               {isRunning

@@ -29,6 +29,9 @@ const meta = {
     onRefine: fn(),
     onChangeKind: fn(),
     onChangeRunMode: fn(),
+    onChangePermissionMode: fn(),
+    onChangeModel: fn(),
+    onChangeEffort: fn(),
     onAcceptReview: fn(),
     onRejectReview: fn(),
     onRerunVerification: fn(),
@@ -58,13 +61,38 @@ export const Running: Story = {
     anyRunning: true,
     stream: {
       ...EMPTY_STREAM,
-      answer: 'Reading vite.config.ts…\nGenerating the typed client from the OpenAPI spec.',
+      answer:
+        '## Generating the client\n\nReading `vite.config.ts`, then writing the typed client from the OpenAPI spec.\n\n- Parsed the schema\n- Emitted `api/client.ts`',
       tools: [
-        { id: 1, toolName: 'Read' },
-        { id: 2, toolName: 'Edit' },
+        { id: 1, toolName: 'Read', input: { file_path: 'apps/web/vite.config.ts' } },
+        { id: 2, toolName: 'Grep', input: { pattern: 'createClient', path: 'src' } },
+        { id: 3, toolName: 'Bash', input: { command: 'bun run codegen:api' } },
+        { id: 4, toolName: 'Edit', input: { file_path: 'src/api/client.ts' } },
       ],
       costUsd: 0.18,
     },
+  },
+};
+
+/** A not-yet-run task showing the editable per-task pickers (M4.7 §F): kind,
+ *  run mode, permission mode, and model + effort. */
+export const EditablePickers: Story = {
+  args: {
+    task: makeTask({
+      id: 't-edit',
+      status: 'backlog',
+      title: 'Apply a destructive migration',
+      permissionMode: 'plan',
+      model: 'claude-sonnet-4-6',
+      effort: 'high',
+    }),
+    stream: undefined,
+  },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    const modes = within(canvas.getByRole('radiogroup', { name: /permission mode/i }));
+    await userEvent.click(modes.getByRole('radio', { name: /^ask$/i }));
+    await expect(args.onChangePermissionMode).toHaveBeenCalledWith('t-edit', 'ask');
   },
 };
 
