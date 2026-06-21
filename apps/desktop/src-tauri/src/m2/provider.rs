@@ -54,6 +54,7 @@ pub trait Provider: Send + Sync {
         model: Option<String>,
         cwd: Option<PathBuf>,
         permission_mode: Option<String>,
+        kind: &str,
     ) -> Result<(), String>;
 
     /// Best-effort interrupt of a run by session id.
@@ -261,6 +262,7 @@ impl Provider for SidecarProvider {
         model: Option<String>,
         cwd: Option<PathBuf>,
         permission_mode: Option<String>,
+        kind: &str,
     ) -> Result<(), String> {
         let command = serde_json::json!({
             "type": "start-session",
@@ -268,6 +270,7 @@ impl Provider for SidecarProvider {
             "model": model,
             "cwd": cwd.map(|p| p.to_string_lossy().to_string()),
             "permissionMode": permission_mode,
+            "kind": kind,
         });
 
         // Push the pending launch and write the line under the same lock so the

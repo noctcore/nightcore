@@ -362,6 +362,10 @@ async fn launch(app: &AppHandle, task_id: &str) {
         t.status = TaskStatus::InProgress;
         t.summary = None;
         t.error = None;
+        // A fresh run clears the prior verification verdict (M4 §B).
+        t.verified = false;
+        t.review = None;
+        t.fix_attempts = 0;
         if branch.is_some() {
             t.branch = branch.clone();
         }
@@ -373,7 +377,14 @@ async fn launch(app: &AppHandle, task_id: &str) {
     let permission_mode = crate::sidecar::resolve_permission_mode(app);
     if let Err(e) = orch
         .provider
-        .start_session(task_id, task.prompt(), task.model.clone(), cwd, permission_mode)
+        .start_session(
+            task_id,
+            task.prompt(),
+            task.model.clone(),
+            cwd,
+            permission_mode,
+            task.kind.as_wire(),
+        )
         .await
     {
         fail_task(app, task_id, &format!("dispatch failed: {e}"));
