@@ -345,6 +345,9 @@ pub fn set_active_project(
 ) -> Result<Project, String> {
     let project = store.set_active(&id)?;
     retarget_tasks(&app, &store);
+    // Reconcile the newly-active project's worktrees: prune any whose task no
+    // longer exists (the task store has just been retargeted to this project).
+    crate::m2::coordinator::reconcile_worktrees(&app);
     emit_project_event(&app, &store, "activated", Some(&project));
     Ok(project)
 }

@@ -1,20 +1,21 @@
-//! M2 — autonomy + isolation (DESIGN seams, not yet wired).
+//! M2 — autonomy + isolation.
 //!
-//! This module holds the **scaffolded seams** for the M2 layer specified in
-//! `docs/arch/2026-06-21-m2-design.md`: the auto-loop coordinator, slot manager,
-//! worktree isolation, dependency ordering, circuit breaker, and the provider
-//! trait. Only the cheap, pure, fully-testable pieces are implemented here
-//! (`deps`); the rest are signatures/skeletons with `TODO(m2)` markers so the
-//! boundaries are reviewable before the behavior lands.
+//! This module implements the M2 layer specified in
+//! `docs/arch/2026-06-21-m2-design.md`: the auto-loop [`coordinator`] (the single
+//! stateful driver), the [`slots`] manager (lease-based concurrency + abort
+//! handles), git [`worktree`] isolation, [`deps`] dependency ordering, the
+//! failure [`breaker`] (consecutive-failure circuit breaker), and the [`provider`]
+//! trait seam (the sidecar process boundary).
 //!
-//! Deliberately **not** registered in `lib.rs`: M1's command surface and runtime
-//! behavior are untouched. Wiring these into `run()` is the M2 implementation's
-//! job (see the ticket order at the end of the design doc). The module is still
-//! compiled (and its unit tests run under `cargo test`) via the `#[cfg(test)]`
-//! gate below, so the seams are kept honest without affecting the shipped app.
+//! The [`coordinator::Orchestrator`] is registered in `lib.rs` as managed state and
+//! drives the M2 commands (`start_auto_loop` / `stop_auto_loop` /
+//! `resume_auto_loop` / `set_max_concurrency`) and the `nc:loop` event. M1's
+//! command surface and serial single-run behavior are preserved — `run_task` still
+//! routes through the slot manager at the configured concurrency.
 
-#![cfg_attr(not(test), allow(dead_code))]
-
+pub mod breaker;
+pub mod coordinator;
 pub mod deps;
 pub mod provider;
 pub mod slots;
+pub mod worktree;

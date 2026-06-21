@@ -19,10 +19,10 @@ mod sidecar;
 mod store;
 mod task;
 
+use m2::coordinator::Orchestrator;
 use project::ProjectStore;
 use settings::SettingsStore;
-use sidecar::Sidecar;
-use store::TaskStore;
+use store::{workspace_root, TaskStore};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -48,10 +48,25 @@ pub fn run() {
                 .unwrap_or_else(|| config_dir.join("no-active-project/tasks"));
             task_store.retarget(tasks_dir);
 
+            // The M2 orchestrator (slot manager + circuit breaker + provider +
+            // auto-loop) starts at the persisted concurrency. The provider spawns
+            // `bun run apps/sidecar/src/index.ts` in the workspace root on first use.
+            let settings_store = SettingsStore::load_from(config_dir);
+            let max_concurrency = settings_store.get().max_concurrency.max(1) as usize;
+            let orchestrator = Orchestrator::new(
+                workspace_root().join("apps/sidecar/src/index.ts"),
+                workspace_root(),
+                max_concurrency,
+            );
+
             app.manage(task_store);
             app.manage(project_store);
-            app.manage(SettingsStore::load_from(config_dir));
-            app.manage(Sidecar::default());
+            app.manage(settings_store);
+            app.manage(orchestrator);
+
+            // Startup reconciliation: prune orphaned worktrees from the active
+            // project whose tasks no longer exist (best-effort, never blocks).
+            m2::coordinator::reconcile_worktrees(&app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -70,6 +85,10 @@ pub fn run() {
             project::git_init,
             settings::get_settings,
             settings::update_settings,
+            m2::coordinator::start_auto_loop,
+            m2::coordinator::stop_auto_loop,
+            m2::coordinator::resume_auto_loop,
+            m2::coordinator::set_max_concurrency_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Nightcore application");

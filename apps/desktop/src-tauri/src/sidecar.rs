@@ -1,116 +1,60 @@
-//! The persistent Bun provider sidecar and the run/cancel commands.
+//! The persistent provider sidecar reader and the run/cancel commands.
 //!
 //! Protocol (line-delimited JSON over the child's stdio):
 //!   - we WRITE one `SurfaceCommand` JSON object per line to the sidecar's stdin
 //!   - we READ one `NightcoreEvent` JSON object per line from its stdout
 //!   - the sidecar's stderr is human logs; we inherit it
 //!
-//! Unlike M0 (a fresh sidecar per prompt), M1 keeps ONE long-lived sidecar,
-//! spawned lazily on the first `run_task` and kept alive in managed state. Its
-//! `SessionManager` already multiplexes sessions, so M1 correlation is trivial:
-//! execution is serial, so the single active task id tags every `nc:session`
-//! event the reader forwards. On a terminal event (`session-completed` /
-//! `session-failed`) the reader applies the status transition to that task.
+//! M2 generalizes M1's single-task serial path to N concurrent sessions through
+//! ONE persistent sidecar (the engine's `SessionManager` already multiplexes
+//! sessions). The change from M1: the reader correlates each event to a task via
+//! the provider's `sessionId → taskId` map (M1 tagged everything with the single
+//! `active_task`). Concurrency is bounded by the [`SlotManager`]; a run holds a
+//! slot from lease until its terminal event releases it.
+//!
+//! `run_task` stays as the manual single-run path (useful even with the loop):
+//! it leases a slot, allocates a worktree, and dispatches — exactly what the
+//! coordinator's `launch` does, just triggered by a click instead of a tick.
 
 use std::path::PathBuf;
-use std::process::Stdio;
-use std::sync::Mutex;
 
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{ChildStdin, Command};
-use tokio::sync::Mutex as AsyncMutex;
+use tokio::io::{AsyncBufReadExt, BufReader};
 
-use crate::store::{workspace_root, TaskStore};
+use crate::m2::coordinator::{self, Orchestrator};
+use crate::m2::provider::{parse_line, Provider};
+use crate::m2::worktree;
+use crate::project::ProjectStore;
+use crate::store::TaskStore;
 use crate::task::{Task, TaskStatus, TASK_EVENT};
 
-/// The Tauri event carrying one streamed sidecar event for the active task.
+/// The Tauri event carrying one streamed sidecar event for a task.
 /// Payload: `{ taskId: string, event: NightcoreEvent }`.
 pub const SESSION_EVENT: &str = "nc:session";
 
-/// Absolute path to the Bun sidecar entrypoint (dev: TS source in the workspace).
-fn sidecar_entry() -> PathBuf {
-    workspace_root().join("apps/sidecar/src/index.ts")
-}
-
-/// Long-lived sidecar handle in managed state. The stdin writer lives behind an
-/// async mutex (commands are written from async command handlers); the active
-/// task id behind a sync mutex (read/written from both the reader task and the
-/// command handlers).
-#[derive(Default)]
-pub struct Sidecar {
-    /// `Some` once the sidecar has been spawned. Holds the stdin writer.
-    stdin: AsyncMutex<Option<ChildStdin>>,
-    /// Id of the task whose run is currently streaming, if any.
-    active_task: Mutex<Option<String>>,
-}
-
-impl Sidecar {
-    /// Id of the task currently running, if any.
-    pub fn active(&self) -> Option<String> {
-        self.active_task.lock().expect("sidecar poisoned").clone()
-    }
-
-    fn set_active(&self, id: Option<String>) {
-        *self.active_task.lock().expect("sidecar poisoned") = id;
-    }
-}
-
-/// Write one `SurfaceCommand` as an NDJSON line to the sidecar's stdin.
-async fn send_command(stdin: &mut ChildStdin, command: &Value) -> Result<(), String> {
-    let mut line = serde_json::to_string(command).map_err(|e| e.to_string())?;
-    line.push('\n');
-    stdin
-        .write_all(line.as_bytes())
-        .await
-        .map_err(|e| format!("failed to write to sidecar: {e}"))?;
-    stdin.flush().await.map_err(|e| e.to_string())
-}
-
-/// Ensure the persistent sidecar is running, spawning it lazily on first use.
-/// On spawn, installs the stdout reader task. Holds the stdin lock for the call.
-async fn ensure_started(app: &AppHandle, sidecar: &Sidecar) -> Result<(), String> {
-    let mut guard = sidecar.stdin.lock().await;
-    if guard.is_some() {
-        return Ok(());
-    }
-
-    let mut child = Command::new("bun")
-        .arg("run")
-        .arg(sidecar_entry())
-        .current_dir(workspace_root())
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .map_err(|e| format!("failed to spawn sidecar (is `bun` on PATH?): {e}"))?;
-
-    let stdin = child.stdin.take().ok_or("sidecar stdin unavailable")?;
-    let stdout = child.stdout.take().ok_or("sidecar stdout unavailable")?;
-    *guard = Some(stdin);
-    drop(guard);
+/// Ensure the persistent sidecar is running and its stdout reader is installed.
+/// Idempotent: spawns lazily on first use, then a no-op. Shared by `run_task` and
+/// the coordinator's `launch`.
+pub async fn ensure_reader(app: &AppHandle) -> Result<(), String> {
+    let orch = app.state::<Orchestrator>();
+    let Some(stdout) = orch.provider.spawn().await? else {
+        return Ok(()); // already running
+    };
 
     // The reader outlives every individual run: it streams the single persistent
-    // sidecar's stdout for the whole app lifetime, tagging events with whichever
-    // task is active and applying terminal transitions. The child handle is moved
-    // in so it stays alive (and is reaped) with the reader.
+    // sidecar's stdout for the whole app lifetime, correlating each event to its
+    // task and applying terminal transitions + slot release + worktree cleanup.
     let app = app.clone();
     tokio::spawn(async move {
-        let _child = child; // keep the process alive for the reader's lifetime
         let mut lines = BufReader::new(stdout).lines();
         loop {
             match lines.next_line().await {
-                Ok(Some(raw)) => {
-                    let raw = raw.trim();
-                    if raw.is_empty() {
-                        continue;
-                    }
-                    match serde_json::from_str::<Value>(raw) {
-                        Ok(event) => handle_event(&app, event).await,
-                        Err(e) => eprintln!("sidecar emitted non-JSON line ({e}): {raw}"),
-                    }
-                }
+                Ok(Some(raw)) => match parse_line(&raw) {
+                    Some(Ok(event)) => handle_event(&app, event).await,
+                    Some(Err(e)) => eprintln!("{e}"),
+                    None => {}
+                },
                 Ok(None) => break, // stdout closed: sidecar exited
                 Err(e) => {
                     eprintln!("error reading sidecar stdout: {e}");
@@ -123,37 +67,45 @@ async fn ensure_started(app: &AppHandle, sidecar: &Sidecar) -> Result<(), String
     Ok(())
 }
 
-/// Process one parsed sidecar event: forward it as `nc:session` for the active
-/// task, auto-deny permission requests, and apply terminal status transitions.
+/// Process one parsed sidecar event: correlate it to its task, forward it as
+/// `nc:session`, auto-deny permission requests, and apply terminal transitions
+/// (releasing the slot, cleaning up the worktree, feeding the breaker, kicking the
+/// coordinator).
 async fn handle_event(app: &AppHandle, event: Value) {
-    let sidecar = app.state::<Sidecar>();
+    let orch = app.state::<Orchestrator>();
     let store = app.state::<TaskStore>();
 
-    let Some(task_id) = sidecar.active() else {
-        return; // no run in flight; nothing to correlate to (serial in M1)
+    let event_type = event.get("type").and_then(Value::as_str).unwrap_or("");
+    let session_id = event.get("sessionId").and_then(Value::as_u64);
+
+    // Correlate the event to its task. The first sighting of a session id binds it
+    // to the task at the front of the pending-launch FIFO; later events read back
+    // the binding. An uncorrelatable event (no pending launch) is dropped.
+    let Some(task_id) = session_id.and_then(|sid| orch.provider.correlate(sid)) else {
+        return;
     };
 
-    let event_type = event.get("type").and_then(Value::as_str).unwrap_or("");
-
-    // M1 auto-denies any permission request (same as M0). The sidecar also denies
-    // internally, but we mirror M0's behaviour from the core for defence in depth.
+    // M2 auto-denies any permission request (interactive approval is M3). The
+    // sidecar also denies internally; mirroring it here is defence in depth.
     if event_type == "permission-required" {
-        auto_deny(&app.state::<Sidecar>(), &event).await;
+        if let (Some(sid), Some(request_id)) =
+            (session_id, event.get("requestId").and_then(Value::as_str))
+        {
+            let _ = orch.provider.decide_permission(sid, request_id, false).await;
+        }
     }
 
-    // Forward the raw event to the webview tagged with the active task.
+    // Forward the raw event to the webview tagged with its task.
     let _ = app.emit(
         SESSION_EVENT,
         serde_json::json!({ "taskId": task_id, "event": event }),
     );
 
     match event_type {
-        // Capture the sidecar session id as soon as the session starts so
-        // `cancel_task` has a live target to interrupt before the run ends.
         "session-started" | "session-ready" => {
-            if let Some(session_id) = event.get("sessionId").and_then(Value::as_u64) {
+            if let Some(sid) = session_id {
                 apply_and_emit(app, &store, &task_id, |task| {
-                    task.session_id = Some(session_id);
+                    task.session_id = Some(sid);
                 });
             }
         }
@@ -165,50 +117,75 @@ async fn handle_event(app: &AppHandle, event: Value) {
                     .and_then(Value::as_str)
                     .map(|s| s.to_string());
                 task.cost_usd = event.get("costUsd").and_then(Value::as_f64);
-                task.session_id = event.get("sessionId").and_then(Value::as_u64);
+                task.session_id = session_id;
                 task.error = None;
             });
-            sidecar.set_active(None);
+            finish_run(app, &task_id, session_id, Outcome::Succeeded);
         }
         "session-failed" => {
+            // A user-initiated cancel or a circuit-breaker pause interrupts the run
+            // and surfaces as `session-failed { reason: "aborted" }`. An abort is
+            // not a "broken setup" signal, so it must NOT count toward the breaker
+            // (otherwise cancelling a few tasks would trip it).
+            let aborted = event.get("reason").and_then(Value::as_str) == Some("aborted");
             apply_and_emit(app, &store, &task_id, |task| {
                 task.status = TaskStatus::Failed;
                 task.error = event
                     .get("message")
                     .and_then(Value::as_str)
                     .map(|s| s.to_string());
-                task.session_id = event.get("sessionId").and_then(Value::as_u64);
+                task.session_id = session_id;
             });
-            sidecar.set_active(None);
+            let outcome = if aborted {
+                Outcome::Aborted
+            } else {
+                Outcome::Failed
+            };
+            finish_run(app, &task_id, session_id, outcome);
         }
         _ => {}
     }
 }
 
-/// Send an `approve-permission` deny back over stdin for a permission request.
-async fn auto_deny(sidecar: &Sidecar, event: &Value) {
-    let (Some(session_id), Some(request_id)) = (
-        event.get("sessionId").and_then(Value::as_u64),
-        event.get("requestId").and_then(Value::as_str),
-    ) else {
-        return;
-    };
-    let command = serde_json::json!({
-        "type": "approve-permission",
-        "sessionId": session_id,
-        "requestId": request_id,
-        "decision": {
-            "behavior": "deny",
-            "message": "M1 core: interactive approval not wired yet.",
-        },
-    });
-    let mut guard = sidecar.stdin.lock().await;
-    if let Some(stdin) = guard.as_mut() {
-        let _ = send_command(stdin, &command).await;
-    }
+/// How a run ended, for terminal bookkeeping.
+enum Outcome {
+    /// `session-completed`: clean up the worktree (per policy), reset the breaker.
+    Succeeded,
+    /// `session-failed` (genuine): retain the worktree, feed the breaker.
+    Failed,
+    /// `session-failed { reason: "aborted" }` (cancel / circuit-break): retain the
+    /// worktree, but do NOT count toward the breaker.
+    Aborted,
 }
 
-/// Mutate the active task to its terminal state, persist, and emit `nc:task`.
+/// A run reached a terminal state: release its slot, drop the correlation binding,
+/// clean up the worktree (per policy), feed the circuit breaker, and kick the
+/// coordinator so the board drains without waiting a full interval.
+fn finish_run(app: &AppHandle, task_id: &str, session_id: Option<u64>, outcome: Outcome) {
+    let orch = app.state::<Orchestrator>();
+    orch.slots.release(task_id);
+    if let Some(sid) = session_id {
+        orch.provider.forget(sid);
+    }
+    coordinator::cleanup_worktree(app, task_id, matches!(outcome, Outcome::Succeeded));
+    match outcome {
+        Outcome::Succeeded => orch.breaker.record_success(),
+        Outcome::Aborted => {} // user/loop cancellation: not a failure signal
+        Outcome::Failed => {
+            if orch.breaker.record_failure() {
+                // This failure tripped the breaker: interrupt the rest and pause.
+                orch.emit_state(app, "paused", Some("circuit-breaker"));
+                let app = app.clone();
+                tokio::spawn(async move {
+                    app.state::<Orchestrator>().interrupt_all().await;
+                });
+            }
+        }
+    }
+    orch.kick();
+}
+
+/// Mutate a task, persist, and emit `nc:task`.
 fn apply_and_emit<F>(app: &AppHandle, store: &TaskStore, id: &str, f: F)
 where
     F: FnOnce(&mut Task),
@@ -223,28 +200,33 @@ where
 
 // --- Commands ---------------------------------------------------------------
 
-/// Run a task through the sidecar. Serial in M1: errors if any task is already
-/// `in_progress`. Sets the task `in_progress` (persist + `nc:task`), ensures the
-/// sidecar is up, then sends `start-session`. Streaming and the terminal
-/// transition happen on the reader task.
+/// Run a task through the sidecar — the manual single-run path (still useful with
+/// the loop). Leases a slot (the generalization of M1's serial guard: a free slot
+/// must exist at the configured concurrency), allocates a worktree, marks the task
+/// `in_progress`, ensures the sidecar is up, then dispatches `start-session`.
+/// Streaming and the terminal transition happen on the reader task.
 #[tauri::command]
 pub async fn run_task(
     app: AppHandle,
     store: State<'_, TaskStore>,
-    sidecar: State<'_, Sidecar>,
+    orch: State<'_, Orchestrator>,
     id: String,
 ) -> Result<(), String> {
-    if sidecar.active().is_some() {
-        return Err("a task is already running".to_string());
+    let task = store.get(&id).ok_or_else(|| format!("no task with id {id}"))?;
+
+    // Lease a slot. With concurrency 1 this reproduces M1's "a task is already
+    // running" rejection exactly.
+    if !orch.slots.try_lease(&id) {
+        return Err("no free slot (max concurrency reached)".to_string());
     }
 
-    let task = store
-        .get(&id)
-        .ok_or_else(|| format!("no task with id {id}"))?;
-
-    // Claim the active slot before any await so two concurrent runs can't race
-    // past the guard above.
-    sidecar.set_active(Some(id.clone()));
+    let cwd = match resolve_worktree(&app, &id) {
+        Ok(cwd) => cwd,
+        Err(e) => {
+            orch.slots.release(&id);
+            return Err(e);
+        }
+    };
 
     let updated = match store.mutate(&id, |task| {
         task.status = TaskStatus::InProgress;
@@ -253,112 +235,102 @@ pub async fn run_task(
     }) {
         Ok(task) => task,
         Err(e) => {
-            sidecar.set_active(None);
+            orch.slots.release(&id);
             return Err(e);
         }
     };
     let _ = app.emit(TASK_EVENT, &updated);
 
-    if let Err(e) = ensure_started(&app, &sidecar).await {
-        sidecar.set_active(None);
+    if let Err(e) = ensure_reader(&app).await {
+        orch.slots.release(&id);
         return Err(e);
     }
 
-    let command = serde_json::json!({
-        "type": "start-session",
-        "prompt": task.prompt(),
-        "model": task.model,
-    });
-
-    let mut guard = sidecar.stdin.lock().await;
-    let stdin = guard.as_mut().ok_or("sidecar stdin unavailable")?;
-    if let Err(e) = send_command(stdin, &command).await {
-        sidecar.set_active(None);
+    if let Err(e) = orch
+        .provider
+        .start_session(&id, task.prompt(), task.model.clone(), cwd)
+        .await
+    {
+        orch.slots.release(&id);
         return Err(e);
     }
 
     Ok(())
 }
 
-/// Best-effort interrupt of the current run. Sends an `interrupt` command for the
-/// task's session if one is known; the terminal transition still arrives via the
-/// sidecar's `session-failed` (`aborted`) event.
+/// Best-effort interrupt of a task's run. Aborts the slot's driver (if the loop
+/// spawned one) and sends an `interrupt` for the task's session; the terminal
+/// transition still arrives via the sidecar's `session-failed (aborted)` event,
+/// which releases the slot.
 #[tauri::command]
 pub async fn cancel_task(
     store: State<'_, TaskStore>,
-    sidecar: State<'_, Sidecar>,
+    orch: State<'_, Orchestrator>,
     id: String,
 ) -> Result<(), String> {
-    let task = store
-        .get(&id)
-        .ok_or_else(|| format!("no task with id {id}"))?;
+    // Abort the driver task (no-op if none attached) but keep the slot until the
+    // terminal event so the reader's cleanup runs exactly once.
+    orch.slots.abort(&id);
 
-    let Some(session_id) = task.session_id else {
-        return Ok(()); // no live session to interrupt
-    };
-
-    let command = serde_json::json!({
-        "type": "interrupt",
-        "sessionId": session_id,
-    });
-
-    let mut guard = sidecar.stdin.lock().await;
-    if let Some(stdin) = guard.as_mut() {
-        send_command(stdin, &command).await?;
+    // Prefer the live correlation binding (set the moment the run started); fall
+    // back to the persisted session id from a prior run.
+    let session_id = orch
+        .provider
+        .session_for(&id)
+        .or_else(|| store.get(&id).and_then(|t| t.session_id));
+    if let Some(session_id) = session_id {
+        orch.provider.interrupt(session_id).await?;
     }
     Ok(())
+}
+
+/// Resolve the worktree cwd for a manual run, mirroring the coordinator's logic so
+/// `run_task` and the loop isolate runs identically. `Ok(None)` = run in the
+/// workspace root (no active project).
+fn resolve_worktree(app: &AppHandle, task_id: &str) -> Result<Option<PathBuf>, String> {
+    let projects = app.state::<ProjectStore>();
+    let Some(project) = projects.active() else {
+        return Ok(None);
+    };
+    let project_path = PathBuf::from(&project.path);
+    if !worktree::is_worktree_clean(&project_path).unwrap_or(true) {
+        return Err(format!(
+            "base working tree at {} is dirty; commit or stash before running",
+            project_path.display()
+        ));
+    }
+    let dir = worktree::allocate(&project_path, task_id)?;
+    Ok(Some(dir))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::m2::slots::SlotManager;
 
-    /// The M1 serial guard: `run_task` rejects with "a task is already running"
-    /// whenever a task is active. We exercise the guard predicate directly (the
-    /// `tauri::command` wrapper needs an `AppHandle` we can't build in a unit
-    /// test, but the decision is purely `Sidecar::active()`).
+    /// The M1 serial guard, now expressed through the slot manager at max=1:
+    /// `run_task` rejects with no free slot whenever one is held. (The full command
+    /// needs an `AppHandle` we can't build in a unit test; the decision is purely
+    /// `SlotManager::try_lease`.)
     #[test]
-    fn serial_guard_blocks_when_a_task_is_active() {
-        let sidecar = Sidecar::default();
-        assert!(sidecar.active().is_none(), "starts idle");
-
-        // First run claims the slot.
-        sidecar.set_active(Some("task-1".to_string()));
-        assert_eq!(sidecar.active().as_deref(), Some("task-1"));
-
-        // The guard `run_task` uses: a second run must be refused while one is in
-        // flight.
-        let already_running = sidecar.active().is_some();
-        assert!(already_running, "guard must see the active task");
-
-        let err: Result<(), String> = if already_running {
-            Err("a task is already running".to_string())
-        } else {
-            Ok(())
-        };
-        assert_eq!(err, Err("a task is already running".to_string()));
-    }
-
-    #[test]
-    fn slot_releases_on_terminal_event() {
-        let sidecar = Sidecar::default();
-        sidecar.set_active(Some("task-1".to_string()));
-        assert!(sidecar.active().is_some());
-
-        // A terminal event (session-completed / session-failed) clears the slot,
-        // letting the next run pass the guard.
-        sidecar.set_active(None);
+    fn serial_guard_is_max_one_slot() {
+        let slots = SlotManager::new(1);
+        assert!(slots.try_lease("task-1"), "first run claims the slot");
         assert!(
-            sidecar.active().is_none(),
-            "slot must be free after a terminal transition"
+            !slots.try_lease("task-2"),
+            "a second run is refused while one holds the only slot"
         );
+        slots.release("task-1");
+        assert!(slots.try_lease("task-2"), "freed slot admits the next run");
     }
 
+    /// A terminal event releases the slot, letting the next run pass the guard —
+    /// the M2 equivalent of M1's `set_active(None)` on completion.
     #[test]
-    fn active_is_the_last_claimed_task() {
-        let sidecar = Sidecar::default();
-        sidecar.set_active(Some("a".to_string()));
-        sidecar.set_active(Some("b".to_string()));
-        assert_eq!(sidecar.active().as_deref(), Some("b"));
+    fn terminal_event_frees_the_slot() {
+        let slots = SlotManager::new(1);
+        slots.try_lease("task-1");
+        assert_eq!(slots.free_slots(), 0);
+        slots.release("task-1"); // finish_run does this on a terminal event
+        assert_eq!(slots.free_slots(), 1);
     }
 }

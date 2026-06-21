@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{AppHandle, State};
 
 /// Global settings + per-project overrides. Field names mirror the Phase 2
 /// contract and serialize camelCase for the TS bridge and on-disk JSON.
@@ -200,13 +200,22 @@ pub fn get_settings(store: State<'_, SettingsStore>) -> Result<Settings, String>
 }
 
 /// Shallow-merge a patch into the global block, or — when `projectId` is set —
-/// into that project's override. Returns the merged settings.
+/// into that project's override. Returns the merged settings. A global
+/// `maxConcurrency` change is also applied to the live slot pool so the auto-loop
+/// honors it immediately (not just on next launch).
 #[tauri::command]
 pub fn update_settings(
+    app: AppHandle,
     store: State<'_, SettingsStore>,
     patch: SettingsPatch,
 ) -> Result<Settings, String> {
-    store.update(patch)
+    // A global (no projectId) maxConcurrency change resizes the live pool.
+    let resize = patch.project_id.is_none().then_some(patch.max_concurrency).flatten();
+    let merged = store.update(patch)?;
+    if let Some(n) = resize {
+        crate::m2::coordinator::set_max_concurrency(&app, n.max(1) as usize);
+    }
+    Ok(merged)
 }
 
 #[cfg(test)]
