@@ -97,6 +97,16 @@ pub struct Task {
     pub dependencies: Vec<String>,
     /// `None` means "use the core/config default model".
     pub model: Option<String>,
+    /// M4.7 §E: reasoning effort for this task's run (`low`/`medium`/`high`/
+    /// `xhigh`/`max`). `None` ⇒ inherit the core/config default effort. Threaded
+    /// into the `start-session` payload; the engine fixes it at session start.
+    #[serde(default)]
+    pub effort: Option<String>,
+    /// M4.7 §A4: per-task permission-mode override (`bypass`/`auto-accept`/`ask`/
+    /// `plan`). `None` ⇒ inherit the resolved default (project override → global).
+    /// This is what lets a single task opt OUT of global bypass (e.g. `ask`/`plan`).
+    #[serde(default)]
+    pub permission_mode: Option<String>,
     /// The worktree branch (`nc/<taskId>`) for this task's run, set by the M2
     /// coordinator once a worktree is allocated. `None` until then.
     pub branch: Option<String>,
@@ -164,6 +174,8 @@ impl Task {
             status: TaskStatus::Backlog,
             dependencies: Vec::new(),
             model: None,
+            effort: None,
+            permission_mode: None,
             branch: None,
             created_at: now,
             updated_at: now,
@@ -211,6 +223,10 @@ pub struct TaskPatch {
     pub status: Option<TaskStatus>,
     pub dependencies: Option<Vec<String>>,
     pub model: Option<String>,
+    /// M4.7 §E: per-task reasoning effort, set from the create/edit picker.
+    pub effort: Option<String>,
+    /// M4.7 §A4: per-task permission-mode override, set from the create/edit picker.
+    pub permission_mode: Option<String>,
     /// M4: the task kind, set from the create/edit picker.
     pub kind: Option<TaskKind>,
     /// M4.6: the run mode, editable pre-run from the create/edit picker.
@@ -239,11 +255,18 @@ impl TaskPatch {
         if let Some(run_mode) = self.run_mode {
             task.run_mode = run_mode;
         }
-        // `model` is itself `Option`, so serde flattens an absent field and an
-        // explicit `null` to the same `None`. A patch can therefore SET a model
-        // but not clear one; an absent/null `model` is left untouched.
+        // `model`/`effort`/`permission_mode` are themselves `Option`, so serde
+        // flattens an absent field and an explicit `null` to the same `None`. A
+        // patch can therefore SET each but not clear it; an absent/null value is
+        // left untouched (same semantics as `model`).
         if self.model.is_some() {
             task.model = self.model;
+        }
+        if self.effort.is_some() {
+            task.effort = self.effort;
+        }
+        if self.permission_mode.is_some() {
+            task.permission_mode = self.permission_mode;
         }
     }
 }
@@ -269,6 +292,10 @@ pub fn list_tasks(store: State<'_, TaskStore>) -> Result<Vec<Task>, String> {
 /// explicit `run_mode` argument when given, else the project's default (per-project
 /// override → global `default_run_mode` → `main`), so a new task inherits the
 /// configured default unless the create call overrides it (M4.6 §B).
+// A Tauri command: the args are the IPC payload fields (three injected `State`s
+// plus the create inputs), not a refactorable call seam — the flat list is the
+// command surface.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn create_task(
     app: AppHandle,
@@ -278,12 +305,20 @@ pub fn create_task(
     title: String,
     description: String,
     run_mode: Option<RunMode>,
+    model: Option<String>,
+    effort: Option<String>,
+    permission_mode: Option<String>,
 ) -> Result<Task, String> {
     let run_mode = run_mode.unwrap_or_else(|| {
         let project_id = projects.active().map(|p| p.id);
         settings.default_run_mode(project_id.as_deref())
     });
-    let task = Task::new(title, description).with_run_mode(run_mode);
+    let mut task = Task::new(title, description).with_run_mode(run_mode);
+    // M4.7 §A4/§E: an explicit model/effort/permission-mode at creation; absent ⇒
+    // inherit the resolved defaults at launch.
+    task.model = model;
+    task.effort = effort;
+    task.permission_mode = permission_mode;
     store.upsert(&task)?;
     let _ = app.emit(TASK_EVENT, &task);
     Ok(task)
@@ -303,11 +338,14 @@ pub fn update_task(
     Ok(task)
 }
 
-/// Delete a task and remove its JSON file. No-op event; the webview drops the id
-/// on the command's success.
+/// Delete a task and remove its JSON file. Also removes the task's transcript
+/// directory (M4.7 §C) so a deleted task leaves no orphaned transcript. No-op
+/// event; the webview drops the id on the command's success.
 #[tauri::command]
-pub fn delete_task(store: State<'_, TaskStore>, id: String) -> Result<(), String> {
-    store.remove(&id)
+pub fn delete_task(app: AppHandle, store: State<'_, TaskStore>, id: String) -> Result<(), String> {
+    store.remove(&id)?;
+    crate::transcript::remove_transcript(&app, &id);
+    Ok(())
 }
 
 /// Parse a wire status string (snake_case, as the bridge sends it) into a
@@ -605,6 +643,47 @@ mod tests {
         // Untouched fields keep their original values.
         assert_eq!(task.description, "orig-desc");
         assert!(task.dependencies.is_empty());
+    }
+
+    #[test]
+    fn m4_7_fields_default_and_round_trip() {
+        // M4.7 §A4/§E: `effort` + `permission_mode` default to None and are
+        // serde-additive — a legacy task without them still loads.
+        let task = Task::new("t".into(), String::new());
+        assert!(task.effort.is_none(), "effort defaults to None");
+        assert!(task.permission_mode.is_none(), "permission_mode defaults to None");
+
+        let value: serde_json::Value = serde_json::to_value(&task).unwrap();
+        let obj = value.as_object().unwrap();
+        for key in ["effort", "permissionMode"] {
+            assert!(obj.contains_key(key), "missing camelCase key {key}");
+        }
+
+        // A task file from before M4.7 (no `effort`/`permissionMode`) still loads,
+        // defaulting both to None — existing task files aren't broken.
+        let legacy = r#"{"id":"x","title":"t","description":"","status":"backlog",
+            "dependencies":[],"model":null,"branch":null,"createdAt":1,"updatedAt":1,
+            "sessionId":null,"summary":null,"error":null,"costUsd":null,
+            "plan":null,"committed":false,"merged":false,"conflict":false,
+            "kind":"build","runMode":"main","verified":false,"review":null,"fixAttempts":0}"#;
+        let back: Task = serde_json::from_str(legacy).expect("legacy task deserializes");
+        assert!(back.effort.is_none() && back.permission_mode.is_none());
+    }
+
+    #[test]
+    fn patch_sets_effort_and_permission_mode_when_present() {
+        let mut task = Task::new("t".into(), String::new());
+        let patch: TaskPatch =
+            serde_json::from_str(r#"{"effort":"high","permissionMode":"ask"}"#).unwrap();
+        patch.apply(&mut task);
+        assert_eq!(task.effort.as_deref(), Some("high"));
+        assert_eq!(task.permission_mode.as_deref(), Some("ask"));
+
+        // An absent field leaves the prior value untouched (same as `model`).
+        let absent: TaskPatch = serde_json::from_str(r#"{"title":"x"}"#).unwrap();
+        absent.apply(&mut task);
+        assert_eq!(task.effort.as_deref(), Some("high"));
+        assert_eq!(task.permission_mode.as_deref(), Some("ask"));
     }
 
     #[test]

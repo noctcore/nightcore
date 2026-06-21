@@ -11,6 +11,26 @@ import { externalMcpServers } from '@nightcore/mcp';
 import type { ToolDescriptor, ToolRisk } from '@nightcore/contracts';
 
 /**
+ * Risk class for the SDK's NATIVE tools (the Claude-Code surface the model uses
+ * once the custom MCP server is unwired — M4.7 §A2). Without these, `riskOf()`
+ * returns `undefined` for `Read`/`Grep`/`Glob`/`Bash`/`Edit`/… and the
+ * PermissionLayer folds `undefined` into `dangerous`, so even a read auto-denies
+ * under `dontAsk` and prompt-storms under `default` (M4.7 §A3).
+ *
+ * Only the unambiguous READ-ONLY tools are classified `safe` here so they
+ * auto-allow in `ask`/`auto-accept`; writes/edits and shell are deliberately
+ * LEFT OUT (→ `riskOf` undefined → still prompt-worthy), matching the contract's
+ * "writes/edits/shell still prompt" requirement. `Bash` is intentionally not
+ * `safe`: it can mutate or exfiltrate, so it keeps prompting outside bypass.
+ */
+const NATIVE_READONLY_TOOLS: readonly string[] = [
+  'Read',
+  'Grep',
+  'Glob',
+  'LS',
+] as const;
+
+/**
  * Assembles the tool surface handed to the SDK:
  *   - one in-process SDK MCP server (`createSdkMcpServer`) holding every
  *     Nightcore-defined tool from `@nightcore/tools`;
@@ -54,6 +74,11 @@ export class ToolRegistry {
    * treat that as the most-cautious class (`dangerous`).
    */
   riskOf(toolName: string): ToolRisk | undefined {
+    // Native SDK read-only tools (`Read`/`Grep`/`Glob`/`LS`) carry no MCP
+    // descriptor; classify them `safe` directly so they auto-allow in the
+    // non-bypass modes instead of being treated as `dangerous` (M4.7 §A3).
+    if (NATIVE_READONLY_TOOLS.includes(toolName)) return 'safe';
+
     const descriptors = this.descriptors();
     const exact = descriptors.find((d) => d.name === toolName);
     if (exact) return exact.risk;

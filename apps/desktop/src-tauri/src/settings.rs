@@ -25,7 +25,9 @@ pub struct Settings {
     pub default_effort: String,
     /// 1..=6. Persists now; the M2 loop is not yet enforcing it.
     pub max_concurrency: u8,
-    /// "auto-accept" | "plan" | "ask". Persists now; M3 — runtime still auto-denies.
+    /// "bypass" | "auto-accept" | "ask" | "plan" (M4.7 §A1). Maps to the engine's
+    /// SDK `permissionMode` via [`sdk_permission_mode`]. Default is `bypass` (an
+    /// autonomous studio runs without prompts; a per-task override re-enables them).
     pub permission_mode: String,
     /// Accent/theme id.
     pub theme: String,
@@ -54,7 +56,9 @@ impl Default for Settings {
             default_model: "opus-4.8".to_string(),
             default_effort: "medium".to_string(),
             max_concurrency: 3,
-            permission_mode: "auto-accept".to_string(),
+            // M4.7 §A1: bypass by default — new tasks run unattended with no
+            // approval prompts. A per-task override re-enables prompting.
+            permission_mode: "bypass".to_string(),
             theme: "cosmic".to_string(),
             cleanup_worktrees: true,
             notify_on_complete: false,
@@ -190,10 +194,7 @@ impl SettingsStore {
     }
 
     /// The effective permission mode for a project (its override, else the global),
-    /// mapped to the engine's SDK `permissionMode`:
-    ///   `auto-accept` → `acceptEdits`, `ask` → `default`, `plan` → `plan`.
-    /// Fail-closed: an unknown value maps to `default` (prompt), never to
-    /// `bypassPermissions`.
+    /// mapped to the engine's SDK `permissionMode` (see [`sdk_permission_mode`]).
     pub fn sdk_permission_mode(&self, project_id: Option<&str>) -> String {
         let settings = self.get();
         let raw = project_id
@@ -225,15 +226,21 @@ impl SettingsStore {
     }
 }
 
-/// Map a Nightcore permission-mode setting to the engine's SDK `permissionMode`.
-/// Fail-closed: anything unrecognized maps to `default` (the engine then prompts),
-/// never to an auto-allowing mode.
+/// Map a Nightcore permission-mode setting to the engine's SDK `permissionMode`
+/// (M4.7 §A1):
+///   `bypass` → `bypassPermissions` (no prompts; the engine sets
+///   `allowDangerouslySkipPermissions`), `auto-accept` → `acceptEdits`,
+///   `ask` → `default` (prompt on dangerous), `plan` → `plan`.
+/// An unrecognized value resolves to `bypassPermissions` — the studio's default
+/// is unattended operation (the autonomous-studio choice; a task that wants
+/// prompts sets `ask`/`plan` explicitly).
 pub fn sdk_permission_mode(raw: &str) -> String {
     match raw {
+        "bypass" => "bypassPermissions",
         "auto-accept" => "acceptEdits",
         "plan" => "plan",
         "ask" => "default",
-        _ => "default",
+        _ => "bypassPermissions",
     }
     .to_string()
 }
@@ -307,7 +314,8 @@ mod tests {
         let s = Settings::default();
         assert_eq!(s.default_model, "opus-4.8");
         assert_eq!(s.max_concurrency, 3);
-        assert_eq!(s.permission_mode, "auto-accept");
+        // M4.7 §A1: bypass is the studio default.
+        assert_eq!(s.permission_mode, "bypass");
         assert_eq!(s.theme, "cosmic");
         assert!(s.cleanup_worktrees);
         assert!(!s.notify_on_complete);
@@ -323,7 +331,7 @@ mod tests {
         assert_eq!(merged.max_concurrency, 5);
         assert_eq!(merged.default_model, "sonnet-4.6");
         // Untouched fields keep their defaults.
-        assert_eq!(merged.permission_mode, "auto-accept");
+        assert_eq!(merged.permission_mode, "bypass");
 
         // Persisted: a fresh store reloads the merged values.
         let reloaded = SettingsStore::load_from(tmp.path().join("config"));
@@ -346,28 +354,31 @@ mod tests {
     }
 
     #[test]
-    fn maps_permission_modes_to_sdk_and_fails_closed() {
+    fn maps_permission_modes_to_sdk() {
+        // M4.7 §A1: the four UI modes map to their SDK equivalents.
+        assert_eq!(sdk_permission_mode("bypass"), "bypassPermissions");
         assert_eq!(sdk_permission_mode("auto-accept"), "acceptEdits");
         assert_eq!(sdk_permission_mode("plan"), "plan");
         assert_eq!(sdk_permission_mode("ask"), "default");
-        // Fail-closed: anything unrecognized prompts, never bypasses.
-        assert_eq!(sdk_permission_mode("garbage"), "default");
-        assert_eq!(sdk_permission_mode("bypassPermissions"), "default");
+        // An unrecognized value resolves to the studio default (bypass), never a
+        // silent prompt-everything — the autonomous-studio choice.
+        assert_eq!(sdk_permission_mode("garbage"), "bypassPermissions");
     }
 
     #[test]
     fn sdk_permission_mode_prefers_project_override() {
         let (store, _tmp) = temp_store();
-        // Global default is auto-accept → acceptEdits.
-        assert_eq!(store.sdk_permission_mode(None), "acceptEdits");
+        // Global default is bypass → bypassPermissions (M4.7 §A1).
+        assert_eq!(store.sdk_permission_mode(None), "bypassPermissions");
 
-        // A per-project override to `plan` wins for that project only.
+        // A per-project override to `ask` wins for that project only — this is how
+        // a single project opts OUT of global bypass back into prompting.
         let patch: SettingsPatch =
-            serde_json::from_str(r#"{"projectId":"p1","permissionMode":"plan"}"#).unwrap();
+            serde_json::from_str(r#"{"projectId":"p1","permissionMode":"ask"}"#).unwrap();
         store.update(patch).expect("update");
-        assert_eq!(store.sdk_permission_mode(Some("p1")), "plan");
-        assert_eq!(store.sdk_permission_mode(Some("other")), "acceptEdits");
-        assert_eq!(store.sdk_permission_mode(None), "acceptEdits");
+        assert_eq!(store.sdk_permission_mode(Some("p1")), "default");
+        assert_eq!(store.sdk_permission_mode(Some("other")), "bypassPermissions");
+        assert_eq!(store.sdk_permission_mode(None), "bypassPermissions");
     }
 
     #[test]

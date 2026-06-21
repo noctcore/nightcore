@@ -23,6 +23,7 @@ mod settings;
 mod sidecar;
 mod store;
 mod task;
+mod transcript;
 
 use m2::coordinator::Orchestrator;
 use project::ProjectStore;
@@ -95,6 +96,7 @@ pub fn run() {
             sidecar::run_task,
             sidecar::cancel_task,
             sidecar::respond_permission,
+            transcript::read_transcript,
             plan_approval::approve_task,
             plan_approval::reject_task,
             plan_approval::refine_task,

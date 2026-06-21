@@ -100,6 +100,13 @@ impl TaskStore {
             .join(format!("{id}.json"))
     }
 
+    /// The current tasks directory (the active project's `.nightcore/tasks/`). Used
+    /// by the transcript store (M4.7 §C) to locate a task's `<id>/transcript.jsonl`
+    /// alongside its `<id>.json`.
+    pub fn tasks_dir(&self) -> PathBuf {
+        self.dir.lock().expect("task store poisoned").clone()
+    }
+
     /// Snapshot of all tasks (unordered).
     pub fn list(&self) -> Vec<Task> {
         self.tasks
