@@ -52,6 +52,22 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    // Dogfood probe scripts (scripts/**) are standalone Node/Bun programs, not
+    // app code: declare the runtime globals so `no-undef` doesn't flag them on
+    // the plain-JS (.mjs) probes. (TS files already get this from tseslint.)
+    files: ['scripts/**/*.{js,mjs,cjs}'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        setTimeout: 'readonly',
+        URL: 'readonly',
+        TextDecoder: 'readonly',
+        TextEncoder: 'readonly',
+      },
+    },
+  },
+  {
     // Surfaces (apps/*) may not import the SDK directly — only the engine façade.
     files: ['apps/**/*.ts', 'apps/**/*.tsx'],
     rules: {

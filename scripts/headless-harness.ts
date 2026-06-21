@@ -1,0 +1,207 @@
+#!/usr/bin/env bun
+/**
+ * Headless engine harness — drives the REAL sidecar (apps/sidecar) over its
+ * NDJSON stdio protocol, exactly as the Rust core does, against a scratch repo.
+ * Validates the live SDK path end-to-end: build session + native tools + the
+ * maxTurns guardrail + session resume. Uses real Claude (subscription auth via
+ * ~/.claude). Not a committed test — a dogfood probe.
+ */
+import type { NightcoreEvent, SurfaceCommand } from '@nightcore/contracts';
+import { existsSync, rmSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+
+/**
+ * Config (all overridable so this is portable, not pinned to one machine):
+ *   - REPO    : repo root, derived from this script's location.
+ *   - SCRATCH : the throwaway git repo to run the probe against. First CLI arg,
+ *               else $HARNESS_SCRATCH, else a sibling `test-repo`. It WILL be
+ *               mutated (a file is written), so point it at something safe.
+ *   - MODEL   : $HARNESS_MODEL, else sonnet (cheaper than opus for a probe).
+ *
+ * Usage:  bun run scripts/headless-harness.ts [scratchRepoPath]
+ *         HARNESS_MODEL=claude-opus-4-8 bun run scripts/headless-harness.ts
+ */
+const REPO = resolve(import.meta.dir, '..');
+const SCRATCH = resolve(
+  process.argv[2] ?? process.env.HARNESS_SCRATCH ?? join(REPO, '..', 'test-repo'),
+);
+const MODEL = process.env.HARNESS_MODEL ?? 'claude-sonnet-4-6';
+const HELLO = join(SCRATCH, 'NIGHTCORE_HELLO.md');
+
+if (!existsSync(join(SCRATCH, '.git'))) {
+  console.error(`✖ scratch repo not found / not a git repo: ${SCRATCH}`);
+  console.error('  pass a path as the first arg or set $HARNESS_SCRATCH.');
+  process.exit(1);
+}
+
+// clean any prior probe artifact
+if (existsSync(HELLO)) rmSync(HELLO);
+
+const child = Bun.spawn(['bun', 'run', 'apps/sidecar/src/index.ts'], {
+  cwd: REPO,
+  stdin: 'pipe',
+  stdout: 'pipe',
+  stderr: 'pipe',
+});
+
+const enc = new TextEncoder();
+const send = (cmd: SurfaceCommand) => {
+  child.stdin.write(enc.encode(`${JSON.stringify(cmd)}\n`));
+  child.stdin.flush();
+};
+
+// --- event routing: resolve a per-session promise on its terminal event ------
+type Terminal = { kind: 'completed' | 'failed'; event: NightcoreEvent };
+const waiters = new Map<number, (t: Terminal) => void>();
+const sdkSessionIds = new Map<number, string>();
+const labels = new Map<number, string>();
+
+function awaitTerminal(sessionId: number): Promise<Terminal> {
+  return new Promise((res) => waiters.set(sessionId, res));
+}
+
+function onEvent(ev: NightcoreEvent) {
+  const tag = labels.get(ev.sessionId) ?? `s${ev.sessionId}`;
+  switch (ev.type) {
+    case 'session-started':
+      console.log(`  [${tag}] started · model=${ev.model} · perm=${ev.permissionMode}`);
+      break;
+    case 'session-ready':
+      sdkSessionIds.set(ev.sessionId, ev.sdkSessionId);
+      console.log(`  [${tag}] ready · sdkSessionId=${ev.sdkSessionId.slice(0, 8)}… · ${ev.tools.length} tools`);
+      break;
+    case 'tool-use-requested': {
+      const f = (ev.input.file_path ?? ev.input.path ?? ev.input.pattern ?? ev.input.command ?? '') as string;
+      console.log(`  [${tag}] 🔧 ${ev.toolName}${f ? ` ${String(f).replace(SCRATCH, '.')}` : ''}`);
+      break;
+    }
+    case 'permission-required':
+      console.log(`  [${tag}] ⚠ permission-required ${ev.toolName} (UNEXPECTED under bypass)`);
+      break;
+    case 'session-completed':
+      console.log(`  [${tag}] ✅ completed · turns=${ev.numTurns} · $${ev.costUsd.toFixed(4)}`);
+      waiters.get(ev.sessionId)?.({ kind: 'completed', event: ev });
+      break;
+    case 'session-failed':
+      console.log(`  [${tag}] ⛔ failed · reason=${ev.reason} · ${ev.message.slice(0, 80)}`);
+      waiters.get(ev.sessionId)?.({ kind: 'failed', event: ev });
+      break;
+    default:
+      break;
+  }
+}
+
+// --- stdout NDJSON pump -------------------------------------------------------
+(async () => {
+  const dec = new TextDecoder();
+  let buf = '';
+  for await (const chunk of child.stdout as unknown as AsyncIterable<Uint8Array>) {
+    buf += dec.decode(chunk, { stream: true });
+    let nl = buf.indexOf('\n');
+    while (nl >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      nl = buf.indexOf('\n');
+      if (line) {
+        try { onEvent(JSON.parse(line) as NightcoreEvent); } catch { /* ignore */ }
+      }
+    }
+  }
+})();
+// surface sidecar stderr (logs) quietly
+(async () => {
+  const dec = new TextDecoder();
+  for await (const chunk of child.stderr as unknown as AsyncIterable<Uint8Array>) {
+    const s = dec.decode(chunk);
+    if (/error|panic|throw/i.test(s)) process.stderr.write(`  (sidecar) ${s}`);
+  }
+})();
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const results: string[] = [];
+
+// session ids are monotonic from the manager: 1, 2, 3…
+async function run() {
+  // ---- Scenario 1: happy-path write under bypass ----
+  console.log('\n━━ Scenario 1: build session writes a file (bypass, native tools) ━━');
+  labels.set(1, 'S1');
+  send({
+    type: 'start-session',
+    prompt: `Create a file named NIGHTCORE_HELLO.md in the current directory containing exactly one line: "hello from nightcore headless harness". Use the Write tool. Then stop — do not create anything else.`,
+    model: MODEL,
+    permissionMode: 'bypassPermissions',
+    cwd: SCRATCH,
+    kind: 'build',
+    maxTurns: 30,
+  });
+  const t1 = await awaitTerminal(1);
+  const wrote = existsSync(HELLO);
+  results.push(
+    t1.kind === 'completed' && wrote
+      ? '✅ S1 happy-path: session completed AND NIGHTCORE_HELLO.md exists on disk'
+      : `❌ S1 happy-path: terminal=${t1.kind}, fileExists=${wrote}`,
+  );
+
+  // ---- Scenario 2: maxTurns ceiling fires ----
+  console.log('\n━━ Scenario 2: maxTurns=1 forces the guardrail to fire ━━');
+  labels.set(2, 'S2');
+  send({
+    type: 'start-session',
+    prompt: `Carefully explore this repository: list the directory, read package.json, read README if present, then summarize the project in detail. Take your time and use multiple tool calls.`,
+    model: MODEL,
+    permissionMode: 'bypassPermissions',
+    cwd: SCRATCH,
+    kind: 'build',
+    maxTurns: 1,
+  });
+  const t2 = await awaitTerminal(2);
+  results.push(
+    t2.kind === 'failed' && t2.event.type === 'session-failed' && t2.event.reason === 'max-turns'
+      ? '✅ S2 guardrail: session-failed with reason=max-turns (ceiling enforced)'
+      : `❌ S2 guardrail: terminal=${t2.kind}, reason=${t2.event.type === 'session-failed' ? t2.event.reason : 'n/a'} (expected max-turns)`,
+  );
+
+  // ---- Scenario 3: resume the S1 SDK session ----
+  const resumeId = sdkSessionIds.get(1);
+  if (resumeId) {
+    console.log(`\n━━ Scenario 3: resume S1's SDK session (${resumeId.slice(0, 8)}…) ━━`);
+    labels.set(3, 'S3');
+    send({
+      type: 'start-session',
+      prompt: `What is the exact name of the file you created a moment ago? Answer with just the filename.`,
+      model: MODEL,
+      permissionMode: 'bypassPermissions',
+      cwd: SCRATCH,
+      kind: 'build',
+      maxTurns: 5,
+      resumeSessionId: resumeId,
+    });
+    const t3 = await awaitTerminal(3);
+    const recalled =
+      t3.kind === 'completed' &&
+      t3.event.type === 'session-completed' &&
+      /NIGHTCORE_HELLO/i.test(t3.event.result);
+    results.push(
+      recalled
+        ? '✅ S3 resume: resumed session recalled the file it created in S1'
+        : `⚠ S3 resume: terminal=${t3.kind}${t3.event.type === 'session-completed' ? `, result="${t3.event.result.slice(0, 60)}"` : ''} (resume may need verify)`,
+    );
+  } else {
+    results.push('⚠ S3 resume: skipped — no sdkSessionId captured from S1');
+  }
+}
+
+const timeout = sleep(240_000).then(() => { throw new Error('harness timeout (4m)'); });
+try {
+  await Promise.race([run(), timeout]);
+} catch (e) {
+  results.push(`❌ harness error: ${(e as Error).message}`);
+} finally {
+  console.log('\n══════════════ HEADLESS HARNESS RESULTS ══════════════');
+  for (const r of results) console.log(r);
+  console.log('═══════════════════════════════════════════════════════');
+  if (existsSync(HELLO)) rmSync(HELLO); // leave the scratch repo clean
+  child.kill();
+  await sleep(200);
+  process.exit(0);
+}
