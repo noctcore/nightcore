@@ -1,5 +1,6 @@
 import type { Preview } from '@storybook/react-vite';
 import React from 'react';
+import { nightcoreTheme } from './nightcore-theme';
 import '../src/styles.css';
 
 /**
@@ -28,6 +29,9 @@ const preview: Preview = {
   decorators: [withTheme],
   parameters: {
     backgrounds: { disable: true },
+    // Brand the Docs pages with the same cosmic-dark theme as the manager
+    // chrome (see manager.ts) so autodocs match the app surface.
+    docs: { theme: nightcoreTheme },
     controls: {
       matchers: { color: /(background|color)$/i, date: /Date$/i },
     },
