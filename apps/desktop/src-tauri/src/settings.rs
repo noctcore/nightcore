@@ -29,9 +29,8 @@ pub struct Settings {
     /// SDK `permissionMode` via [`sdk_permission_mode`]. Default is `bypass` (an
     /// autonomous studio runs without prompts; a per-task override re-enables them).
     pub permission_mode: String,
-    /// Accent/theme id.
-    pub theme: String,
-    /// M2 toggle; persists only.
+    /// M2 toggle: remove a task's worktree after it merges. Read at
+    /// `merge.rs`/`coordinator.rs`; editable from the Worktrees settings page.
     pub cleanup_worktrees: bool,
     /// M3 toggle; persists only.
     pub notify_on_complete: bool,
@@ -53,13 +52,14 @@ fn default_run_mode_value() -> String {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            default_model: "opus-4.8".to_string(),
+            // SDK long ids (the value sent on the wire); see `canonical_model_id`
+            // for the legacy short-id fallback so old settings files still resolve.
+            default_model: "claude-opus-4-8".to_string(),
             default_effort: "medium".to_string(),
             max_concurrency: 3,
             // M4.7 §A1: bypass by default — new tasks run unattended with no
             // approval prompts. A per-task override re-enables prompting.
             permission_mode: "bypass".to_string(),
-            theme: "cosmic".to_string(),
             cleanup_worktrees: true,
             notify_on_complete: false,
             default_run_mode: default_run_mode_value(),
@@ -120,7 +120,6 @@ pub struct SettingsPatch {
     pub default_effort: Option<String>,
     pub max_concurrency: Option<u8>,
     pub permission_mode: Option<String>,
-    pub theme: Option<String>,
     pub cleanup_worktrees: Option<bool>,
     pub notify_on_complete: Option<bool>,
     /// M4.6: default run mode (`"main"` | `"worktree"`). With a `projectId` it lands
@@ -130,8 +129,9 @@ pub struct SettingsPatch {
 
 impl Settings {
     /// Shallow-merge `patch`. With a `projectId`, the run-shaping fields land in
-    /// that project's override (global-only fields like `theme` are ignored for an
-    /// override target); without one, they merge into the global block.
+    /// that project's override (global-only fields like `cleanup_worktrees` /
+    /// `notify_on_complete` are ignored for an override target); without one, they
+    /// merge into the global block.
     fn merge(&mut self, patch: SettingsPatch) {
         if let Some(project_id) = patch.project_id.clone() {
             let entry = self.project_overrides.entry(project_id.clone()).or_default();
@@ -152,9 +152,6 @@ impl Settings {
         }
         if let Some(v) = patch.permission_mode {
             self.permission_mode = v;
-        }
-        if let Some(v) = patch.theme {
-            self.theme = v;
         }
         if let Some(v) = patch.cleanup_worktrees {
             self.cleanup_worktrees = v;
@@ -216,6 +213,29 @@ impl SettingsStore {
         parse_run_mode(&raw)
     }
 
+    /// The effective default model for a project (its override, else the global),
+    /// canonicalized to an SDK long id (see [`canonical_model_id`]). This is the
+    /// value `create_task` stamps onto a task whose create call omits a model, so
+    /// the Settings default is what a new task actually runs with (P0).
+    pub fn default_model(&self, project_id: Option<&str>) -> String {
+        let settings = self.get();
+        let raw = project_id
+            .and_then(|id| settings.project_overrides.get(id))
+            .and_then(|ov| ov.default_model.clone())
+            .unwrap_or(settings.default_model);
+        canonical_model_id(&raw)
+    }
+
+    /// The effective default reasoning effort for a project (its override, else the
+    /// global). Effort values already match the SDK levels, so no mapping is needed.
+    pub fn default_effort(&self, project_id: Option<&str>) -> String {
+        let settings = self.get();
+        project_id
+            .and_then(|id| settings.project_overrides.get(id))
+            .and_then(|ov| ov.default_effort.clone())
+            .unwrap_or(settings.default_effort)
+    }
+
     /// Apply a patch, persist, and return the merged settings.
     fn update(&self, patch: SettingsPatch) -> Result<Settings, String> {
         let mut guard = self.settings.lock().expect("settings store poisoned");
@@ -241,6 +261,30 @@ pub fn sdk_permission_mode(raw: &str) -> String {
         "plan" => "plan",
         "ask" => "default",
         _ => "bypassPermissions",
+    }
+    .to_string()
+}
+
+/// Canonicalize a stored model id to an SDK long id (the value the engine sends
+/// on the wire). Settings now persist long ids directly, but a settings file
+/// written before P0 holds a SHORT id (`opus-4.8` / `sonnet-4.6` / `haiku-4.5`);
+/// map those by family so legacy config still resolves to a valid SDK model. An
+/// already-canonical or unknown id passes through unchanged (the SDK accepts any
+/// model string; an unrecognized custom id is the user's own choice).
+///
+/// This is the single short→long map on the Rust side; the web stores long ids
+/// via `MODEL_OPTIONS`, so this only fires for pre-P0 persisted settings.
+pub fn canonical_model_id(raw: &str) -> String {
+    let lower = raw.to_ascii_lowercase();
+    if lower.starts_with("claude-") {
+        return raw.to_string();
+    }
+    match () {
+        _ if lower.contains("opus") => "claude-opus-4-8",
+        _ if lower.contains("sonnet") => "claude-sonnet-4-6",
+        _ if lower.contains("haiku") => "claude-haiku-4-5",
+        _ if lower.contains("fable") => "claude-fable-5",
+        _ => return raw.to_string(),
     }
     .to_string()
 }
@@ -271,7 +315,32 @@ fn write_settings(path: &Path, settings: &Settings) -> Result<(), String> {
     std::fs::write(path, json).map_err(|e| format!("failed to write {}: {e}", path.display()))
 }
 
+/// Read-only application metadata for the About page. Sourced from build-time
+/// constants (Cargo package version + a compiled-in repo URL) so the UI shows
+/// real values instead of hardcoded literals.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppInfo {
+    /// The app version (the `[package] version` in `Cargo.toml`).
+    pub version: String,
+    /// The canonical source repository URL.
+    pub repository: String,
+}
+
+/// The repository URL, compiled in (no fake `github.com/you` literal in the UI).
+const REPOSITORY_URL: &str = "https://github.com/Shironex/nightcore";
+
 // --- Commands ---------------------------------------------------------------
+
+/// Real application metadata for the About page (version + repo URL), sourced from
+/// build-time constants rather than UI literals.
+#[tauri::command]
+pub fn app_info() -> AppInfo {
+    AppInfo {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        repository: REPOSITORY_URL.to_string(),
+    }
+}
 
 /// The current settings (global + per-project overrides).
 #[tauri::command]
@@ -312,14 +381,65 @@ mod tests {
     #[test]
     fn defaults_are_the_contract_values() {
         let s = Settings::default();
-        assert_eq!(s.default_model, "opus-4.8");
+        // P0: defaults persist SDK long ids so a new task runs with a valid model.
+        assert_eq!(s.default_model, "claude-opus-4-8");
         assert_eq!(s.max_concurrency, 3);
         // M4.7 §A1: bypass is the studio default.
         assert_eq!(s.permission_mode, "bypass");
-        assert_eq!(s.theme, "cosmic");
         assert!(s.cleanup_worktrees);
         assert!(!s.notify_on_complete);
         assert!(s.project_overrides.is_empty());
+    }
+
+    #[test]
+    fn canonical_model_id_maps_legacy_short_ids() {
+        // P0: a pre-P0 settings file holds short ids; they resolve to SDK long ids.
+        assert_eq!(canonical_model_id("opus-4.8"), "claude-opus-4-8");
+        assert_eq!(canonical_model_id("sonnet-4.6"), "claude-sonnet-4-6");
+        assert_eq!(canonical_model_id("haiku-4.5"), "claude-haiku-4-5");
+        // Already-canonical ids pass through unchanged.
+        assert_eq!(canonical_model_id("claude-opus-4-8"), "claude-opus-4-8");
+        assert_eq!(
+            canonical_model_id("claude-haiku-4-5-20251001"),
+            "claude-haiku-4-5-20251001"
+        );
+        // An unknown custom id is the user's choice — passed through verbatim.
+        assert_eq!(canonical_model_id("my-custom-model"), "my-custom-model");
+    }
+
+    #[test]
+    fn default_model_resolves_project_then_global_as_long_id() {
+        let (store, _tmp) = temp_store();
+        // Global default is already a long id.
+        assert_eq!(store.default_model(None), "claude-opus-4-8");
+        assert_eq!(store.default_effort(None), "medium");
+
+        // A per-project override wins for that project; effort falls back to global.
+        store
+            .update(
+                serde_json::from_str(r#"{"projectId":"p1","defaultModel":"claude-sonnet-4-6"}"#)
+                    .unwrap(),
+            )
+            .expect("update");
+        assert_eq!(store.default_model(Some("p1")), "claude-sonnet-4-6");
+        assert_eq!(store.default_model(Some("other")), "claude-opus-4-8");
+        assert_eq!(store.default_effort(Some("p1")), "medium");
+    }
+
+    #[test]
+    fn default_model_canonicalizes_a_legacy_persisted_short_id() {
+        // A settings file from before P0 stored `opus-4.8`; the resolver still hands
+        // back a valid SDK long id so the legacy default keeps working.
+        let tmp = TempDir::new().expect("temp dir");
+        let dir = tmp.path().join("config");
+        std::fs::create_dir_all(&dir).unwrap();
+        let legacy = r#"{"defaultModel":"opus-4.8","defaultEffort":"medium",
+            "maxConcurrency":3,"permissionMode":"bypass","theme":"cosmic",
+            "cleanupWorktrees":true,"notifyOnComplete":false,"projectOverrides":{}}"#;
+        std::fs::write(dir.join("settings.json"), legacy).unwrap();
+
+        let store = SettingsStore::load_from(dir);
+        assert_eq!(store.default_model(None), "claude-opus-4-8");
     }
 
     #[test]
@@ -347,7 +467,7 @@ mod tests {
         let merged = store.update(patch).expect("update");
 
         // Global default is unchanged; the override carries the project-scoped value.
-        assert_eq!(merged.default_model, "opus-4.8");
+        assert_eq!(merged.default_model, "claude-opus-4-8");
         let ov = merged.project_overrides.get("proj-1").expect("override exists");
         assert_eq!(ov.default_model.as_deref(), Some("haiku-4.5"));
         assert!(ov.default_effort.is_none(), "only the patched field is set");

@@ -473,6 +473,9 @@ fn fail_task(app: &AppHandle, task_id: &str, message: &str) {
         t.error = Some(message.to_string());
     }) {
         let _ = app.emit(TASK_EVENT, &updated);
+        // A launch failure is a genuine terminal Failed that never reaches
+        // `finish_run`; notify the same way (M3 §C, gated on `notify_on_complete`).
+        crate::sidecar::notify_task_complete(app, task_id, false);
     }
 }
 
