@@ -9,7 +9,7 @@ import {
   onTaskEvent,
   runTask,
   type Task,
-} from './bridge';
+} from '@/lib/bridge';
 import {
   Board,
   EMPTY_STREAM,
@@ -17,8 +17,8 @@ import {
   NewTaskForm,
   TaskDetail,
   type SessionStream,
-} from './features/board';
-import { Button, EmptyState } from './shared/ui';
+} from '@/components/board';
+import { Button, EmptyState } from '@/components/ui';
 
 export function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
