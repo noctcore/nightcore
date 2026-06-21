@@ -17,6 +17,7 @@ import {
   isTauri,
   listProjects,
   listTasks,
+  listWorktrees,
   mergeTask,
   moveTask,
   refineTask,
@@ -42,15 +43,18 @@ import {
   type LoopEnvelope,
   type PermissionPrompt,
   type Project,
+  type RunMode,
   type Settings,
   type SettingsPatch,
   type Task,
   type TaskKind,
   type TaskStatus,
+  type WorktreeInfo,
 } from '@/lib/bridge';
 import {
   EMPTY_STREAM,
   foldSession,
+  type ActiveWorktree,
   type BreakerInfo,
   type SessionStream,
 } from '@/components/board';
@@ -338,6 +342,42 @@ function useBlockedIds(): Set<string> {
   return blockedIds;
 }
 
+/** The active project's live worktrees (M4.6) plus the selected worktree tab.
+ *  Worktrees are fetched on mount and refreshed on every `nc:task` (a run can
+ *  allocate/dirty a worktree) and on project activation; the active selection
+ *  resets to Main (`null`) whenever the project changes. */
+function useWorktrees(): {
+  worktrees: WorktreeInfo[];
+  active: ActiveWorktree;
+  setActive: (active: ActiveWorktree) => void;
+} {
+  const [worktrees, setWorktrees] = useState<WorktreeInfo[]>([]);
+  const [active, setActive] = useState<ActiveWorktree>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const refresh = () =>
+      void listWorktrees().then((list) => {
+        if (alive) setWorktrees(list);
+      });
+    refresh();
+    const unlistenTask = onTaskEvent(() => refresh());
+    const unlistenProject = onProjectEvent(({ type }) => {
+      if (type === 'activated' || type === 'deleted') {
+        setActive(null);
+        refresh();
+      }
+    });
+    return () => {
+      alive = false;
+      void unlistenTask.then((fn) => fn());
+      void unlistenProject.then((fn) => fn());
+    };
+  }, []);
+
+  return { worktrees, active, setActive };
+}
+
 /** Parked interactive permission prompts, grouped by task id and kept in sync with
  *  `nc:permission`. Answering removes a prompt optimistically (the backend resolves
  *  the parked request); a terminal `nc:task` for a task drops any stale prompts. */
@@ -446,7 +486,18 @@ export interface AppShellState {
     gauntletResults: Record<string, GauntletResult>;
     /** Task ids with a gauntlet run in flight. */
     gauntletRunning: Set<string>;
-    handleCreate: (title: string, description: string, kind: TaskKind) => Promise<void>;
+    /** The active project's live worktrees (M4.6) for the switcher. */
+    worktrees: WorktreeInfo[];
+    /** The selected worktree tab (`null` = Main); filters the board. */
+    activeWorktree: ActiveWorktree;
+    /** Select a worktree tab (sets the active worktree + filters the board). */
+    setActiveWorktree: (active: ActiveWorktree) => void;
+    handleCreate: (
+      title: string,
+      description: string,
+      kind: TaskKind,
+      runMode: RunMode,
+    ) => Promise<void>;
     handleRun: (id: string) => void;
     handleCancel: (id: string) => void;
     handleDelete: (id: string) => void;
@@ -464,6 +515,8 @@ export interface AppShellState {
     handleMerge: (id: string) => void;
     /** Edit a not-yet-run task's kind (M4). */
     handleChangeKind: (id: string, kind: TaskKind) => void;
+    /** Edit a not-yet-run task's run mode (M4.6). */
+    handleChangeRunMode: (id: string, runMode: RunMode) => void;
     /** Verification-approval actions for a review-parked task (M4). */
     handleAcceptReview: (id: string) => void;
     handleRejectReview: (id: string) => void;
@@ -496,6 +549,7 @@ export function useAppShell(): AppShellState {
   const { tasks, setTasks, streams, setStreams, selectedId, setSelectedId } = board;
   const permissions = usePermissions(tasks);
   const gauntlet = useGauntlet();
+  const worktrees = useWorktrees();
 
   const anyRunning = useMemo(
     () => tasks.some((t) => t.status === 'in_progress' || t.status === 'verifying'),
@@ -515,8 +569,8 @@ export function useAppShell(): AppShellState {
   }, [streams]);
 
   const handleCreate = useCallback(
-    async (title: string, description: string, kind: TaskKind) => {
-      const task = await createTask(title, description, kind);
+    async (title: string, description: string, kind: TaskKind, runMode: RunMode) => {
+      const task = await createTask(title, description, kind, runMode);
       setTasks((prev) => (prev.some((t) => t.id === task.id) ? prev : [...prev, task]));
       setSelectedId(task.id);
     },
@@ -619,6 +673,13 @@ export function useAppShell(): AppShellState {
     },
     [setTasks],
   );
+  const handleChangeRunMode = useCallback(
+    (id: string, runMode: RunMode) => {
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, runMode } : t)));
+      void updateTask(id, { runMode }).catch((err) => console.error('update_task failed', err));
+    },
+    [setTasks],
+  );
   const handleAcceptReview = useCallback((id: string) => {
     void acceptReview(id).catch((err) => console.error('accept_review failed', err));
   }, []);
@@ -652,6 +713,9 @@ export function useAppShell(): AppShellState {
       promptIds,
       gauntletResults: gauntlet.results,
       gauntletRunning: gauntlet.running,
+      worktrees: worktrees.worktrees,
+      activeWorktree: worktrees.active,
+      setActiveWorktree: worktrees.setActive,
       handleCreate,
       handleRun,
       handleCancel,
@@ -665,6 +729,7 @@ export function useAppShell(): AppShellState {
       handleCommit,
       handleMerge,
       handleChangeKind,
+      handleChangeRunMode,
       handleAcceptReview,
       handleRejectReview,
       handleRerunVerification,
