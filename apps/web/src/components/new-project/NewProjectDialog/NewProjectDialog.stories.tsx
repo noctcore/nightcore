@@ -11,7 +11,9 @@ const meta = {
     onChooseFolder: fn(),
     onCreate: fn(),
     onClose: fn(),
+    onInitGit: fn(),
     folder: null,
+    gitState: 'unknown',
   },
 } satisfies Meta<typeof NewProjectDialog>;
 
@@ -21,14 +23,19 @@ type Story = StoryObj<typeof meta>;
 /** No folder chosen yet — create is disabled. */
 export const NoFolder: Story = {};
 
-/** Folder chosen — ready to name and create. */
+/** Folder chosen and a valid git repo — ready to name and create. */
 export const FolderChosen: Story = {
-  args: { folder: '~/dev/my-project' },
+  args: { folder: '~/dev/my-project', gitState: 'valid' },
 };
 
-/** Play test: create stays disabled until a folder + name are present. */
+/** Folder chosen but not a git repo — create is gated, `git init` is offered. */
+export const NotAGitRepo: Story = {
+  args: { folder: '~/dev/not-a-repo', gitState: 'invalid' },
+};
+
+/** Play test: create stays disabled until a folder + name + valid git repo. */
 export const CreatesProject: Story = {
-  args: { folder: '~/dev/my-project' },
+  args: { folder: '~/dev/my-project', gitState: 'valid' },
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
     const create = canvas.getByRole('button', { name: /create project/i });

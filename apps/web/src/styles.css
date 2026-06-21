@@ -213,6 +213,17 @@ body {
     opacity: 1;
   }
 }
+@keyframes nc-glow {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
 
 .nc-drawer-enter {
   animation: nc-slide 0.26s cubic-bezier(0.22, 1, 0.36, 1);

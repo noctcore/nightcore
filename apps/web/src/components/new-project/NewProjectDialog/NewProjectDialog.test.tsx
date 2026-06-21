@@ -4,7 +4,7 @@ import { expect, test, vi } from 'vitest';
 import { userEvent } from '@vitest/browser/context';
 import * as stories from './NewProjectDialog.stories';
 
-const { NoFolder, FolderChosen } = composeStories(stories);
+const { NoFolder, FolderChosen, NotAGitRepo } = composeStories(stories);
 
 test('disables create until a folder is chosen', async () => {
   const screen = render(<NoFolder />);
@@ -26,4 +26,16 @@ test('enables create once a folder and name are present, then emits the draft', 
   expect(onCreate).toHaveBeenCalledWith(
     expect.objectContaining({ folder: '~/dev/my-project', name: 'my-project' }),
   );
+});
+
+test('gates create and offers git init when the folder is not a repo', async () => {
+  const onInitGit = vi.fn();
+  const screen = render(<NotAGitRepo onInitGit={onInitGit} />);
+  await userEvent.type(screen.getByLabelText('Project name').element(), 'my-project');
+  // Even with a name, create stays disabled until the folder is a git repo.
+  await expect
+    .element(screen.getByRole('button', { name: /create project/i }))
+    .toBeDisabled();
+  await screen.getByText('git init').click();
+  expect(onInitGit).toHaveBeenCalled();
 });

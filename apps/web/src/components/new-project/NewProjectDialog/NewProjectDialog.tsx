@@ -9,15 +9,28 @@ const FIELD_INPUT =
 
 /** The "New project" dialog — point Nightcore at a git repo. Concurrency is an
  *  M2 affordance; it's collected here but tagged accordingly. */
+const GIT_ROW: Record<'valid' | 'invalid' | 'checking', string> = {
+  valid: 'text-success',
+  invalid: 'text-warning',
+  checking: 'text-muted-foreground',
+};
+const GIT_TEXT: Record<'valid' | 'invalid' | 'checking', string> = {
+  valid: '✓ Git repository detected.',
+  invalid: 'Not a git repository.',
+  checking: 'Checking…',
+};
+
 export function NewProjectDialog({
   models,
   onChooseFolder,
   onCreate,
   onClose,
   folder = null,
+  gitState = 'unknown',
+  onInitGit,
 }: NewProjectDialogProps) {
   const { name, model, concurrency, canCreate, setName, setModel, setConcurrency, create } =
-    useNewProjectDialog({ models, onCreate, folder });
+    useNewProjectDialog({ models, onCreate, folder, gitState });
 
   return (
     <div
@@ -63,6 +76,27 @@ export function NewProjectDialog({
               </span>
               <span className="text-sm font-semibold text-primary">Choose…</span>
             </button>
+            {folder !== null && gitState !== 'unknown' && gitState !== 'valid' && (
+              <div
+                className={`mt-2.5 flex items-center gap-2 font-mono text-[12px] ${GIT_ROW[gitState]}`}
+              >
+                <span>{GIT_TEXT[gitState]}</span>
+                {gitState === 'invalid' && onInitGit !== undefined && (
+                  <button
+                    type="button"
+                    onClick={() => void onInitGit()}
+                    className="ml-auto font-semibold text-primary"
+                  >
+                    git init
+                  </button>
+                )}
+              </div>
+            )}
+            {folder !== null && gitState === 'valid' && (
+              <div className={`mt-2.5 flex items-center gap-2 font-mono text-[12px] ${GIT_ROW.valid}`}>
+                <span>{GIT_TEXT.valid}</span>
+              </div>
+            )}
           </div>
 
           <div>

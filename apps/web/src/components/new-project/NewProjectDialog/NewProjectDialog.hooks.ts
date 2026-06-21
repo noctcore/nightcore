@@ -14,20 +14,23 @@ export interface NewProjectDialogState {
 
 type UseNewProjectDialogArgs = Pick<
   NewProjectDialogProps,
-  'models' | 'onCreate' | 'folder'
+  'models' | 'onCreate' | 'folder' | 'gitState'
 >;
 
-/** Form state and the create handler for the new-project dialog. */
+/** Form state and the create handler for the new-project dialog. Creation is
+ *  gated on a chosen folder, a non-empty name, and a valid git repo. */
 export function useNewProjectDialog({
   models,
   onCreate,
   folder = null,
+  gitState = 'unknown',
 }: UseNewProjectDialogArgs): NewProjectDialogState {
   const [name, setName] = useState('');
   const [model, setModel] = useState(models[0] ?? '');
   const [concurrency, setConcurrency] = useState(3);
 
-  const canCreate = folder !== null && name.trim().length > 0;
+  const canCreate =
+    folder !== null && name.trim().length > 0 && gitState === 'valid';
 
   const create = useCallback(() => {
     if (!canCreate) return;

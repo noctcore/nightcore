@@ -5,6 +5,9 @@ export interface NewProjectDraft {
   concurrency: number;
 }
 
+/** Git-repo status for the chosen folder. `create_project` requires `valid`. */
+export type NewProjectGitState = 'unknown' | 'checking' | 'valid' | 'invalid';
+
 export interface NewProjectDialogProps {
   models: string[];
   onChooseFolder: () => void | Promise<void>;
@@ -12,4 +15,8 @@ export interface NewProjectDialogProps {
   onClose: () => void;
   /** Pre-selected folder once chosen (drives the create button's enabled state). */
   folder?: string | null;
+  /** Whether the chosen folder is a git repo. Gates Create + offers `git init`. */
+  gitState?: NewProjectGitState;
+  /** Run `git init` in the chosen folder (offered when `gitState === 'invalid'`). */
+  onInitGit?: () => void | Promise<void>;
 }
