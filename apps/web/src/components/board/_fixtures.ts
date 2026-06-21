@@ -12,6 +12,8 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     status: overrides.status ?? 'backlog',
     dependencies: overrides.dependencies ?? [],
     model: overrides.model ?? 'opus-4.8',
+    effort: overrides.effort ?? null,
+    permissionMode: overrides.permissionMode ?? null,
     branch: overrides.branch ?? null,
     createdAt: overrides.createdAt ?? now,
     updatedAt: overrides.updatedAt ?? now,

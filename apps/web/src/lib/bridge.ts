@@ -32,6 +32,12 @@ export type TaskKind = 'build' | 'research' | 'review' | 'decompose';
  *  merge). `worktree` isolates the task on its own `nc/<id>` branch as before. */
 export type RunMode = 'main' | 'worktree';
 
+/** A per-task permission mode override (M4.7 §F). Mirrors the Rust UI modes:
+ *  `bypass` (no prompts — the studio default), `auto-accept` (acceptEdits),
+ *  `ask` (prompt on risky tools), `plan` (plan-only). `null` = inherit the
+ *  resolved project/global default. Settable at create + editable pre-run. */
+export type PermissionMode = 'bypass' | 'auto-accept' | 'ask' | 'plan';
+
 /** The shared task shape. Mirrors the Rust serde struct (camelCase) exactly. */
 export interface Task {
   id: string;
@@ -40,6 +46,12 @@ export interface Task {
   status: TaskStatus;
   dependencies: string[];
   model: string | null;
+  /** Per-task reasoning-effort override (M4.7 §E): one of the SDK effort levels
+   *  (`low`|`medium`|`high`|`none`). `null` = inherit the resolved default. */
+  effort: string | null;
+  /** Per-task permission-mode override (M4.7 §F). `null` = inherit the resolved
+   *  project/global default (which defaults to `bypass`). */
+  permissionMode: PermissionMode | null;
   /** The worktree branch (`nc/<id>`) once the coordinator allocates one; else null. */
   branch: string | null;
   createdAt: number;
@@ -82,6 +94,12 @@ export interface TaskPatch {
   status?: TaskStatus;
   dependencies?: string[];
   model?: string | null;
+  /** The task's reasoning-effort override (M4.7 §E) — set from the model/effort
+   *  picker. `null` clears it back to inherit. */
+  effort?: string | null;
+  /** The task's permission-mode override (M4.7 §F) — set from the permission-mode
+   *  picker. `null` clears it back to inherit. */
+  permissionMode?: PermissionMode | null;
   /** The task's kind preset (M4) — set from the create/edit picker. */
   kind?: TaskKind;
   /** The task's run mode (M4.6) — editable pre-run from the create/edit form. */
@@ -251,16 +269,34 @@ export async function listTasks(): Promise<Task[]> {
   return invoke<Task[]>('list_tasks');
 }
 
+/** Optional per-task launch overrides settable at create time (M4.7 §F). All
+ *  default to `null` = inherit the resolved project/global default. */
+export interface CreateTaskOptions {
+  permissionMode?: PermissionMode | null;
+  model?: string | null;
+  effort?: string | null;
+}
+
 /** Create a new `backlog` task. The `kind` (M4) defaults to `build` and the
  *  `runMode` (M4.6) defaults to `main` so an unqualified create is byte-identical
- *  to today. No-op (throws) outside Tauri. */
+ *  to today. The M4.7 `permissionMode`/`model`/`effort` overrides default to
+ *  `null` (inherit). No-op (throws) outside Tauri. */
 export async function createTask(
   title: string,
   description: string,
   kind: TaskKind = 'build',
   runMode: RunMode = 'main',
+  options: CreateTaskOptions = {},
 ): Promise<Task> {
-  return invoke<Task>('create_task', { title, description, kind, runMode });
+  return invoke<Task>('create_task', {
+    title,
+    description,
+    kind,
+    runMode,
+    permissionMode: options.permissionMode ?? null,
+    model: options.model ?? null,
+    effort: options.effort ?? null,
+  });
 }
 
 /** Apply a partial update to a task. */
@@ -296,6 +332,18 @@ export async function runTask(id: string): Promise<void> {
 /** Best-effort interrupt of the current run. */
 export async function cancelTask(id: string): Promise<void> {
   await invoke('cancel_task', { id });
+}
+
+// --- Transcript persistence (M4.7 §C) -------------------------------------
+
+/** Read a task's persisted session transcript (M4.7 §C) — the same `NcEvent`s
+ *  that streamed over `nc:session`, appended to a per-task JSONL by the core.
+ *  The web reseeds the stream view from this on task open/mount so a reload/HMR
+ *  no longer blanks the transcript. Returns `[]` outside Tauri (browser preview)
+ *  and tolerates a missing/empty transcript. */
+export async function readTranscript(taskId: string): Promise<NcEvent[]> {
+  if (!isTauri()) return [];
+  return invoke<NcEvent[]>('read_transcript', { taskId });
 }
 
 // --- Interactive permissions (M3) -----------------------------------------
