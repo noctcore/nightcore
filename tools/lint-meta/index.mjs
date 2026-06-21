@@ -25,9 +25,13 @@
 
 const WEB = 'apps/web/src';
 
-const TAURI_GROUP = ['@tauri-apps/api', '@tauri-apps/api/*'];
+const TAURI_GROUP = [
+  '@tauri-apps/api',
+  '@tauri-apps/api/*',
+  '@tauri-apps/plugin-*',
+];
 const TAURI_MESSAGE =
-  'Only lib/bridge.ts may import @tauri-apps/api. Route Tauri commands/events through the bridge seam.';
+  'Only lib/bridge.ts may import @tauri-apps/* (api + plugins). Route Tauri commands/events through the bridge seam.';
 
 /**
  * The SDK ban from the base config. Repeated here because `no-restricted-imports`
