@@ -193,8 +193,19 @@ async fn handle_event(app: &AppHandle, event: Value) {
         "session-started" | "session-ready" => {
             if let Some(sid) = session_id {
                 tracing::info!(target: "nightcore", task_id, session_id = sid, "session ready");
+                // SDK-guardrails (resume): persist the SDK session UUID carried by
+                // `session-ready` so a later relaunch can reattach via
+                // `Options.resume`. The UUID is bookkeeping, not a secret — captured
+                // here, threaded on relaunch, but never logged at info/telemetry.
+                let sdk_session_id = event
+                    .get("sdkSessionId")
+                    .and_then(Value::as_str)
+                    .map(|s| s.to_string());
                 apply_and_emit(app, &store, &task_id, |task| {
                     task.session_id = Some(sid);
+                    if let Some(ref sdk_id) = sdk_session_id {
+                        task.sdk_session_id = Some(sdk_id.clone());
+                    }
                 });
             }
         }
@@ -547,6 +558,13 @@ async fn dispatch_reviewer(
             // The review preset's `dontAsk` default applies (no explicit override).
             None,
             TaskKind::Review.as_wire(),
+            // SDK-guardrails: a reviewer is a fresh, peer sub-run — it inherits the
+            // task's ceilings but is NEVER resumed (it has its own prompt/identity).
+            crate::m2::provider::Guardrails {
+                max_turns: task.max_turns,
+                max_budget_usd: task.max_budget_usd,
+                resume_session_id: None,
+            },
         )
         .await
 }
@@ -578,6 +596,13 @@ async fn dispatch_fix(
             Some(worktree_dir.to_path_buf()),
             permission_mode,
             TaskKind::Build.as_wire(),
+            // SDK-guardrails: a fix-build is a fresh sub-run over the same worktree
+            // with a new prompt — inherit the ceilings but never resume.
+            crate::m2::provider::Guardrails {
+                max_turns: task.max_turns,
+                max_budget_usd: task.max_budget_usd,
+                resume_session_id: None,
+            },
         )
         .await
 }
@@ -861,6 +886,9 @@ pub async fn run_task(
     }
 
     let permission_mode = resolve_permission_mode(&app, task.permission_mode.as_deref());
+    // SDK-guardrails: a manual re-run is a build launch — forward the ceilings and
+    // resume the persisted SDK session id when present (recovery path).
+    let guardrails = build_guardrails(&task);
     if let Err(e) = orch
         .provider
         .start_session(
@@ -871,6 +899,7 @@ pub async fn run_task(
             cwd,
             permission_mode,
             task.kind.as_wire(),
+            guardrails,
         )
         .await
     {
@@ -899,6 +928,20 @@ pub fn resolve_permission_mode(app: &AppHandle, task_override: Option<&str>) -> 
         .active()
         .map(|p| p.id);
     Some(settings.sdk_permission_mode(project_id.as_deref()))
+}
+
+/// Build the SDK-guardrail payload for a build run from its task: the per-task
+/// autonomy ceilings (`max_turns`/`max_budget_usd`; `None` ⇒ the engine inherits
+/// the `@nightcore/config` default) and the resume id (the persisted SDK session
+/// UUID → engine `Options.resume`) so a crashed/restarted build reattaches instead
+/// of starting cold. Reviewer/fix sub-runs are fresh prompts and pass
+/// [`Guardrails::default`] (ceilings inherited, never resumed).
+pub fn build_guardrails(task: &Task) -> crate::m2::provider::Guardrails {
+    crate::m2::provider::Guardrails {
+        max_turns: task.max_turns,
+        max_budget_usd: task.max_budget_usd,
+        resume_session_id: task.sdk_session_id.clone(),
+    }
 }
 
 /// Respond to a parked interactive permission request (M3 §B). `decision` is

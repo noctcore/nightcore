@@ -161,6 +161,25 @@ pub struct Task {
     /// [`crate::sidecar::MAX_FIX_ATTEMPTS`].
     #[serde(default)]
     pub fix_attempts: u32,
+    // --- SDK guardrails (autonomy ceilings + resume) ------------------------
+    /// SDK-guardrails: per-task max conversation turns before the run stops
+    /// (engine `Options.maxTurns`). `None` ⇒ inherit the `@nightcore/config`
+    /// default. Threaded into the `start-session` payload as `maxTurns`.
+    #[serde(default)]
+    pub max_turns: Option<u32>,
+    /// SDK-guardrails: per-task hard cost ceiling in USD (engine
+    /// `Options.maxBudgetUsd`). `None` ⇒ inherit the config default (uncapped
+    /// unless configured). Threaded into the payload as `maxBudgetUsd`.
+    #[serde(default)]
+    pub max_budget_usd: Option<f64>,
+    /// SDK-guardrails: the SDK session UUID of the last run, captured from the
+    /// engine's `session-ready` event. Distinct from `session_id` (the numeric
+    /// Nightcore id). On a relaunch (manual re-run or boot reconcile) it is
+    /// threaded back as `resumeSessionId` so a crashed/HMR-killed run reattaches
+    /// instead of restarting cold. `None` until the first run reports it.
+    /// Bookkeeping, not a secret — never logged at info/telemetry.
+    #[serde(default)]
+    pub sdk_session_id: Option<String>,
 }
 
 impl Task {
@@ -192,6 +211,9 @@ impl Task {
             verified: false,
             review: None,
             fix_attempts: 0,
+            max_turns: None,
+            max_budget_usd: None,
+            sdk_session_id: None,
         }
     }
 
@@ -231,6 +253,10 @@ pub struct TaskPatch {
     pub kind: Option<TaskKind>,
     /// M4.6: the run mode, editable pre-run from the create/edit picker.
     pub run_mode: Option<RunMode>,
+    /// SDK-guardrails: per-task max-turns override, editable pre-run.
+    pub max_turns: Option<u32>,
+    /// SDK-guardrails: per-task max-budget-USD override, editable pre-run.
+    pub max_budget_usd: Option<f64>,
 }
 
 impl TaskPatch {
@@ -267,6 +293,15 @@ impl TaskPatch {
         }
         if self.permission_mode.is_some() {
             task.permission_mode = self.permission_mode;
+        }
+        // Autonomy ceilings follow the same `Option`-set-not-clear semantics as
+        // `model`/`effort`: a present value sets the override; absent/null leaves
+        // it untouched (inherit the config default at launch).
+        if self.max_turns.is_some() {
+            task.max_turns = self.max_turns;
+        }
+        if self.max_budget_usd.is_some() {
+            task.max_budget_usd = self.max_budget_usd;
         }
     }
 }
@@ -308,6 +343,8 @@ pub fn create_task(
     model: Option<String>,
     effort: Option<String>,
     permission_mode: Option<String>,
+    max_turns: Option<u32>,
+    max_budget_usd: Option<f64>,
 ) -> Result<Task, String> {
     // Resolve every default once against the active project (per-project override →
     // global), mirroring how `default_run_mode` is applied — so the Settings
@@ -323,6 +360,10 @@ pub fn create_task(
     task.model = Some(model.unwrap_or_else(|| settings.default_model(pid)));
     task.effort = Some(effort.unwrap_or_else(|| settings.default_effort(pid)));
     task.permission_mode = permission_mode;
+    // SDK-guardrails: explicit per-task autonomy ceilings at creation; absent ⇒
+    // inherit the `@nightcore/config` defaults at launch.
+    task.max_turns = max_turns;
+    task.max_budget_usd = max_budget_usd;
     store.upsert(&task)?;
     let _ = app.emit(TASK_EVENT, &task);
     Ok(task)
@@ -688,6 +729,69 @@ mod tests {
         absent.apply(&mut task);
         assert_eq!(task.effort.as_deref(), Some("high"));
         assert_eq!(task.permission_mode.as_deref(), Some("ask"));
+    }
+
+    #[test]
+    fn guardrail_fields_default_and_round_trip() {
+        // SDK-guardrails: `max_turns`/`max_budget_usd`/`sdk_session_id` default to
+        // None and are serde-additive — a legacy task without them still loads.
+        let task = Task::new("t".into(), String::new());
+        assert!(task.max_turns.is_none(), "max_turns defaults to None");
+        assert!(
+            task.max_budget_usd.is_none(),
+            "max_budget_usd defaults to None"
+        );
+        assert!(
+            task.sdk_session_id.is_none(),
+            "sdk_session_id defaults to None"
+        );
+
+        let value: serde_json::Value = serde_json::to_value(&task).unwrap();
+        let obj = value.as_object().unwrap();
+        for key in ["maxTurns", "maxBudgetUsd", "sdkSessionId"] {
+            assert!(obj.contains_key(key), "missing camelCase key {key}");
+        }
+
+        // A task file from before the guardrails work (no `maxTurns`/`maxBudgetUsd`/
+        // `sdkSessionId`) still loads, defaulting each to None — the pinning
+        // guarantee, so existing task files aren't broken.
+        let legacy = r#"{"id":"x","title":"t","description":"","status":"backlog",
+            "dependencies":[],"model":null,"branch":null,"createdAt":1,"updatedAt":1,
+            "sessionId":null,"summary":null,"error":null,"costUsd":null,
+            "plan":null,"committed":false,"merged":false,"conflict":false,
+            "kind":"build","runMode":"main","verified":false,"review":null,"fixAttempts":0,
+            "effort":null,"permissionMode":null}"#;
+        let back: Task = serde_json::from_str(legacy).expect("legacy task deserializes");
+        assert!(back.max_turns.is_none());
+        assert!(back.max_budget_usd.is_none());
+        assert!(back.sdk_session_id.is_none());
+
+        // A full round-trip preserves explicitly-set ceilings + a captured SDK id.
+        let mut bounded = Task::new("t".into(), String::new());
+        bounded.max_turns = Some(42);
+        bounded.max_budget_usd = Some(7.5);
+        bounded.sdk_session_id = Some("sdk-uuid".into());
+        let json = serde_json::to_string(&bounded).unwrap();
+        let restored: Task = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.max_turns, Some(42));
+        assert_eq!(restored.max_budget_usd, Some(7.5));
+        assert_eq!(restored.sdk_session_id.as_deref(), Some("sdk-uuid"));
+    }
+
+    #[test]
+    fn patch_sets_guardrail_ceilings_when_present() {
+        let mut task = Task::new("t".into(), String::new());
+        let patch: TaskPatch =
+            serde_json::from_str(r#"{"maxTurns":10,"maxBudgetUsd":1.5}"#).unwrap();
+        patch.apply(&mut task);
+        assert_eq!(task.max_turns, Some(10));
+        assert_eq!(task.max_budget_usd, Some(1.5));
+
+        // An absent field leaves the prior override untouched (same as `model`).
+        let absent: TaskPatch = serde_json::from_str(r#"{"title":"x"}"#).unwrap();
+        absent.apply(&mut task);
+        assert_eq!(task.max_turns, Some(10));
+        assert_eq!(task.max_budget_usd, Some(1.5));
     }
 
     #[test]

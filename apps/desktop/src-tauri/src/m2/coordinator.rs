@@ -389,6 +389,11 @@ async fn launch(app: &AppHandle, task_id: &str) {
     use crate::m2::provider::Provider;
     let permission_mode =
         crate::sidecar::resolve_permission_mode(app, task.permission_mode.as_deref());
+    // SDK-guardrails: forward the per-task autonomy ceilings and, when a prior SDK
+    // session id is persisted, resume it so a crashed/restarted build reattaches
+    // instead of starting cold (the recovery path). The reviewer/fix sub-runs are
+    // fresh prompts and never resume.
+    let guardrails = crate::sidecar::build_guardrails(&task);
     if let Err(e) = orch
         .provider
         .start_session(
@@ -399,6 +404,7 @@ async fn launch(app: &AppHandle, task_id: &str) {
             cwd,
             permission_mode,
             task.kind.as_wire(),
+            guardrails,
         )
         .await
     {

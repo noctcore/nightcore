@@ -12,6 +12,13 @@ describe('SurfaceCommandSchema round-trips', () => {
       permissionMode: 'acceptEdits',
       cwd: '/work',
     },
+    {
+      type: 'start-session',
+      prompt: 'bounded + resumed',
+      maxTurns: 50,
+      maxBudgetUsd: 3.25,
+      resumeSessionId: 'sdk-uuid-prior',
+    },
     { type: 'send-input', sessionId: 1, text: 'more' },
     { type: 'interrupt', sessionId: 1 },
     { type: 'set-model', sessionId: 1, model: 'claude-haiku-4-5' },

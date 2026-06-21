@@ -49,7 +49,8 @@ pub trait Provider: Send + Sync {
     /// it. The session id arrives asynchronously via an event, not this return.
     ///
     /// The parameters mirror the `start-session` wire fields 1:1 (prompt, model,
-    /// effort, cwd, permissionMode, kind); a struct would just re-pack the protocol
+    /// effort, cwd, permissionMode, kind, plus the SDK-guardrail fields maxTurns/
+    /// maxBudgetUsd/resumeSessionId); a struct would just re-pack the protocol
     /// payload, so the flat list is the clearer seam here.
     #[allow(clippy::too_many_arguments)]
     async fn start_session(
@@ -61,6 +62,7 @@ pub trait Provider: Send + Sync {
         cwd: Option<PathBuf>,
         permission_mode: Option<String>,
         kind: &str,
+        guardrails: Guardrails,
     ) -> Result<(), String>;
 
     /// Best-effort interrupt of a run by session id.
@@ -83,6 +85,19 @@ pub trait Provider: Send + Sync {
         request_id: &str,
         decision: PermissionDecision,
     ) -> Result<(), String>;
+}
+
+/// The SDK-guardrail fields threaded into a `start-session` payload alongside the
+/// core wire fields: the autonomy ceilings (`max_turns`/`max_budget_usd`, engine
+/// `Options.maxTurns`/`maxBudgetUsd`) and the resume id (`resume_session_id`, the
+/// persisted SDK session UUID → engine `Options.resume`). All `None` ⇒ inherit the
+/// `@nightcore/config` defaults and start cold. `resume_session_id` is bookkeeping,
+/// not a secret, but is never logged at info/telemetry.
+#[derive(Debug, Clone, Default)]
+pub struct Guardrails {
+    pub max_turns: Option<u32>,
+    pub max_budget_usd: Option<f64>,
+    pub resume_session_id: Option<String>,
 }
 
 /// The child's piped output streams, handed to `sidecar::ensure_reader` once on
@@ -285,10 +300,15 @@ impl Provider for SidecarProvider {
         cwd: Option<PathBuf>,
         permission_mode: Option<String>,
         kind: &str,
+        guardrails: Guardrails,
     ) -> Result<(), String> {
         // M4.7 §E: `effort` is now forwarded; the engine already threads
         // `command.effort` into the SDK `Options`. A `null` effort lets the model
         // decide (the engine omits the option), preserving pre-M4.7 behavior.
+        //
+        // SDK-guardrails: `maxTurns`/`maxBudgetUsd`/`resumeSessionId` are forwarded
+        // additively. A `null` for any of them lets the engine inherit the
+        // `@nightcore/config` default (and start cold), preserving prior behavior.
         let command = serde_json::json!({
             "type": "start-session",
             "prompt": prompt,
@@ -297,6 +317,9 @@ impl Provider for SidecarProvider {
             "cwd": cwd.map(|p| p.to_string_lossy().to_string()),
             "permissionMode": permission_mode,
             "kind": kind,
+            "maxTurns": guardrails.max_turns,
+            "maxBudgetUsd": guardrails.max_budget_usd,
+            "resumeSessionId": guardrails.resume_session_id,
         });
 
         // Push the pending launch and write the line under the same lock so the
