@@ -33,8 +33,19 @@ pub struct Settings {
     pub cleanup_worktrees: bool,
     /// M3 toggle; persists only.
     pub notify_on_complete: bool,
+    /// M4.6: the default run mode new tasks inherit — `"main"` (default) or
+    /// `"worktree"`. Per-project overridable. A new task's `run_mode` is this value
+    /// unless the create call passes an explicit one.
+    #[serde(default = "default_run_mode_value")]
+    pub default_run_mode: String,
     /// Per-project overrides keyed by project id.
     pub project_overrides: HashMap<String, SettingsOverride>,
+}
+
+/// The serde default for `default_run_mode` (a legacy settings file without the
+/// field loads as `"main"`).
+fn default_run_mode_value() -> String {
+    "main".to_string()
 }
 
 impl Default for Settings {
@@ -47,6 +58,7 @@ impl Default for Settings {
             theme: "cosmic".to_string(),
             cleanup_worktrees: true,
             notify_on_complete: false,
+            default_run_mode: default_run_mode_value(),
             project_overrides: HashMap::new(),
         }
     }
@@ -61,6 +73,8 @@ pub struct SettingsOverride {
     pub default_effort: Option<String>,
     pub max_concurrency: Option<u8>,
     pub permission_mode: Option<String>,
+    /// M4.6: per-project default run mode (`"main"` | `"worktree"`).
+    pub default_run_mode: Option<String>,
 }
 
 impl SettingsOverride {
@@ -78,6 +92,9 @@ impl SettingsOverride {
         if patch.permission_mode.is_some() {
             self.permission_mode = patch.permission_mode.clone();
         }
+        if patch.default_run_mode.is_some() {
+            self.default_run_mode = patch.default_run_mode.clone();
+        }
     }
 
     fn is_empty(&self) -> bool {
@@ -85,6 +102,7 @@ impl SettingsOverride {
             && self.default_effort.is_none()
             && self.max_concurrency.is_none()
             && self.permission_mode.is_none()
+            && self.default_run_mode.is_none()
     }
 }
 
@@ -101,6 +119,9 @@ pub struct SettingsPatch {
     pub theme: Option<String>,
     pub cleanup_worktrees: Option<bool>,
     pub notify_on_complete: Option<bool>,
+    /// M4.6: default run mode (`"main"` | `"worktree"`). With a `projectId` it lands
+    /// in that project's override; without one, the global default.
+    pub default_run_mode: Option<String>,
 }
 
 impl Settings {
@@ -136,6 +157,9 @@ impl Settings {
         }
         if let Some(v) = patch.notify_on_complete {
             self.notify_on_complete = v;
+        }
+        if let Some(v) = patch.default_run_mode {
+            self.default_run_mode = v;
         }
     }
 }
@@ -179,6 +203,18 @@ impl SettingsStore {
         sdk_permission_mode(&raw)
     }
 
+    /// The effective default run mode for a project (its override, else the
+    /// global), parsed to a [`RunMode`]. Fail-safe: an unrecognized value resolves
+    /// to `Main` (worktrees are opt-in, never silently auto-isolated).
+    pub fn default_run_mode(&self, project_id: Option<&str>) -> crate::task::RunMode {
+        let settings = self.get();
+        let raw = project_id
+            .and_then(|id| settings.project_overrides.get(id))
+            .and_then(|ov| ov.default_run_mode.clone())
+            .unwrap_or(settings.default_run_mode);
+        parse_run_mode(&raw)
+    }
+
     /// Apply a patch, persist, and return the merged settings.
     fn update(&self, patch: SettingsPatch) -> Result<Settings, String> {
         let mut guard = self.settings.lock().expect("settings store poisoned");
@@ -200,6 +236,16 @@ pub fn sdk_permission_mode(raw: &str) -> String {
         _ => "default",
     }
     .to_string()
+}
+
+/// Parse a `default_run_mode` setting string into a [`RunMode`]. Fail-safe: an
+/// unrecognized value resolves to `Main` so worktrees are never silently the
+/// default. Reuses the enum's serde mapping so accepted strings can't drift.
+fn parse_run_mode(raw: &str) -> crate::task::RunMode {
+    match raw {
+        "worktree" => crate::task::RunMode::Worktree,
+        _ => crate::task::RunMode::Main,
+    }
 }
 
 fn read_settings(path: &Path) -> Option<Settings> {
@@ -325,6 +371,57 @@ mod tests {
     }
 
     #[test]
+    fn default_run_mode_defaults_to_main_globally_and_per_project() {
+        use crate::task::RunMode;
+        let (store, _tmp) = temp_store();
+        // The global default is `main` (worktrees opt-in).
+        assert_eq!(Settings::default().default_run_mode, "main");
+        assert_eq!(store.default_run_mode(None), RunMode::Main);
+        assert_eq!(store.default_run_mode(Some("any")), RunMode::Main);
+
+        // A global override flips it for every project without an own override.
+        store
+            .update(serde_json::from_str(r#"{"defaultRunMode":"worktree"}"#).unwrap())
+            .expect("update");
+        assert_eq!(store.default_run_mode(None), RunMode::Worktree);
+
+        // A per-project override wins for that project only.
+        store
+            .update(
+                serde_json::from_str(r#"{"projectId":"p1","defaultRunMode":"main"}"#).unwrap(),
+            )
+            .expect("update");
+        assert_eq!(store.default_run_mode(Some("p1")), RunMode::Main);
+        assert_eq!(store.default_run_mode(Some("other")), RunMode::Worktree);
+    }
+
+    #[test]
+    fn default_run_mode_fails_safe_to_main_on_garbage() {
+        use crate::task::RunMode;
+        // An unrecognized stored value resolves to Main, never silently worktree.
+        assert_eq!(parse_run_mode("garbage"), RunMode::Main);
+        assert_eq!(parse_run_mode("main"), RunMode::Main);
+        assert_eq!(parse_run_mode("worktree"), RunMode::Worktree);
+    }
+
+    #[test]
+    fn legacy_settings_without_run_mode_loads_as_main() {
+        // A settings.json from before M4.6 (no `defaultRunMode`) still parses and
+        // defaults the field to "main" — existing config files aren't broken.
+        let tmp = TempDir::new().expect("temp dir");
+        let dir = tmp.path().join("config");
+        std::fs::create_dir_all(&dir).unwrap();
+        let legacy = r#"{"defaultModel":"opus-4.8","defaultEffort":"medium",
+            "maxConcurrency":3,"permissionMode":"auto-accept","theme":"cosmic",
+            "cleanupWorktrees":true,"notifyOnComplete":false,"projectOverrides":{}}"#;
+        std::fs::write(dir.join("settings.json"), legacy).unwrap();
+
+        let store = SettingsStore::load_from(dir);
+        assert_eq!(store.get().default_run_mode, "main");
+        assert_eq!(store.default_run_mode(None), crate::task::RunMode::Main);
+    }
+
+    #[test]
     fn settings_serializes_camel_case() {
         let value = serde_json::to_value(Settings::default()).unwrap();
         let obj = value.as_object().unwrap();
@@ -334,6 +431,7 @@ mod tests {
             "permissionMode",
             "cleanupWorktrees",
             "notifyOnComplete",
+            "defaultRunMode",
             "projectOverrides",
         ] {
             assert!(obj.contains_key(key), "missing camelCase key {key}");

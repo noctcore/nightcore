@@ -21,6 +21,21 @@ fn require_project(app: &AppHandle) -> Result<Project, String> {
         .ok_or_else(|| "no active project".to_string())
 }
 
+/// Whether a task is mergeable at all (M4.6 §A.3): only worktree-mode tasks have a
+/// `nc/<taskId>` branch to integrate. A main-mode task's edits already live on the
+/// project's current branch, so `merge_task` refuses it with this guard. Pure, so
+/// the refusal is unit-testable without a live `AppHandle`.
+fn refuse_main_mode_merge(task: &Task) -> Result<(), String> {
+    if task.run_mode.is_worktree() {
+        return Ok(());
+    }
+    Err(
+        "this task runs on main — its changes are already on the project branch; \
+         there is no worktree branch to merge (commit them instead)"
+            .to_string(),
+    )
+}
+
 /// The commit message for a task: its title, or a fallback when blank.
 fn commit_message(task: &Task) -> String {
     let title = task.title.trim();
@@ -38,9 +53,16 @@ fn commit_message(task: &Task) -> String {
 pub fn commit_task(app: AppHandle, store: State<'_, TaskStore>, id: String) -> Result<(), String> {
     let task = store.get(&id).ok_or_else(|| format!("no task with id {id}"))?;
     let project = require_project(&app)?;
+    let project_path = std::path::PathBuf::from(&project.path);
     let message = commit_message(&task);
 
-    let committed = worktree::commit(&std::path::PathBuf::from(&project.path), &id, &message)?;
+    // Worktree-mode tasks commit their `nc/<taskId>` worktree; main-mode tasks
+    // commit in place in the project root (their edits live on the current branch).
+    let committed = if task.run_mode.is_worktree() {
+        worktree::commit(&project_path, &id, &message)?
+    } else {
+        worktree::commit_in(&project_path, &message)?
+    };
     if !committed {
         return Err("nothing to commit".to_string());
     }
@@ -60,6 +82,11 @@ pub fn merge_task(app: AppHandle, store: State<'_, TaskStore>, id: String) -> Re
     let task = store.get(&id).ok_or_else(|| format!("no task with id {id}"))?;
     let project = require_project(&app)?;
     let project_path = std::path::PathBuf::from(&project.path);
+
+    // M4.6 §A.3: a main-mode task has no `nc/<taskId>` branch to merge — its edits
+    // already live on the project's current branch. Refuse with a clear message
+    // (commit_task may still commit in place); only worktree-mode tasks merge.
+    refuse_main_mode_merge(&task)?;
 
     // M4 §D: merge — the one irreversible action — requires an earned PASS and a
     // passing local gauntlet. No force, ever. A `!verified` task routes through the
@@ -154,12 +181,21 @@ pub async fn rerun_verification(
     orch: State<'_, crate::m2::coordinator::Orchestrator>,
     id: String,
 ) -> Result<(), String> {
-    store.get(&id).ok_or_else(|| format!("no task with id {id}"))?;
+    let task = store.get(&id).ok_or_else(|| format!("no task with id {id}"))?;
     let project = require_project(&app)?;
-    let worktree_dir = worktree::worktree_path(&std::path::PathBuf::from(&project.path), &id);
-    if !worktree_dir.exists() {
-        return Err("no worktree to verify — re-run the task instead".to_string());
-    }
+    let project_path = std::path::PathBuf::from(&project.path);
+    // Worktree-mode tasks re-review their `nc/<taskId>` worktree (it must still
+    // exist on disk); main-mode tasks re-review the project root (working tree vs
+    // HEAD) — there is no worktree to require there (M4.6 §A).
+    let worktree_dir = if task.run_mode.is_worktree() {
+        let dir = worktree::worktree_path(&project_path, &id);
+        if !dir.exists() {
+            return Err("no worktree to verify — re-run the task instead".to_string());
+        }
+        dir
+    } else {
+        project_path
+    };
 
     if !orch.slots.try_lease(&id) {
         return Err("no free slot (max concurrency reached)".to_string());
@@ -199,5 +235,20 @@ mod tests {
 
         task.title = "   ".into();
         assert!(commit_message(&task).contains(&task.id));
+    }
+
+    #[test]
+    fn merge_refused_for_main_mode_allowed_for_worktree() {
+        use crate::task::RunMode;
+        // M4.6 §A.3: a main-mode task (the default) has no branch to merge.
+        let main_task = Task::new("edit on main".into(), String::new());
+        assert_eq!(main_task.run_mode, RunMode::Main);
+        let err = refuse_main_mode_merge(&main_task).expect_err("main mode must be refused");
+        assert!(err.contains("runs on main"), "the message explains the refusal: {err}");
+        assert!(err.contains("commit"), "the message points at commit instead");
+
+        // A worktree-mode task passes the guard (it has a branch to integrate).
+        let wt_task = Task::new("isolated".into(), String::new()).with_run_mode(RunMode::Worktree);
+        assert!(refuse_main_mode_merge(&wt_task).is_ok(), "worktree mode is mergeable");
     }
 }

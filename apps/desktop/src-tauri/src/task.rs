@@ -63,6 +63,27 @@ impl TaskKind {
     }
 }
 
+/// Where a task's run executes (M4.6 §B). `Main` (the default) runs in the
+/// project ROOT — edits land on the project's current branch directly, no
+/// worktree, no auto-merge. `Worktree` allocates an isolated `nc/<taskId>` branch
+/// and runs the full gate → commit → merge flow. A legacy task with no `run_mode`
+/// loads as `Main` (serde default), so worktrees are opt-in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RunMode {
+    #[default]
+    Main,
+    Worktree,
+}
+
+impl RunMode {
+    /// Whether this mode isolates the run in a `nc/<taskId>` worktree (vs. running
+    /// in the project root on the current branch).
+    pub fn is_worktree(&self) -> bool {
+        matches!(self, RunMode::Worktree)
+    }
+}
+
 /// One unit of orchestrated work. Field names mirror the M1 contract exactly and
 /// serialize camelCase for the TS bridge and the on-disk JSON.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -111,6 +132,11 @@ pub struct Task {
     /// agent preset.
     #[serde(default)]
     pub kind: TaskKind,
+    /// M4.6: where this task's run executes — `main` (default, run in the project
+    /// root on the current branch) or `worktree` (isolate on `nc/<taskId>`). Legacy
+    /// tasks load as `main`. Settable at create + editable pre-run.
+    #[serde(default)]
+    pub run_mode: RunMode,
     /// M4: true only after an independent reviewer returned `VERDICT: PASS`.
     /// `merge_task` is gated on it. Cleared on a fresh run.
     #[serde(default)]
@@ -150,10 +176,18 @@ impl Task {
             merged: false,
             conflict: false,
             kind: TaskKind::default(),
+            run_mode: RunMode::default(),
             verified: false,
             review: None,
             fix_attempts: 0,
         }
+    }
+
+    /// Set the run mode (chainable; used by `create_task` to apply the project's
+    /// default or an explicit override at creation).
+    pub fn with_run_mode(mut self, run_mode: RunMode) -> Self {
+        self.run_mode = run_mode;
+        self
     }
 
     /// The prompt sent to the sidecar: title, then the description on a blank line
@@ -179,6 +213,8 @@ pub struct TaskPatch {
     pub model: Option<String>,
     /// M4: the task kind, set from the create/edit picker.
     pub kind: Option<TaskKind>,
+    /// M4.6: the run mode, editable pre-run from the create/edit picker.
+    pub run_mode: Option<RunMode>,
 }
 
 impl TaskPatch {
@@ -199,6 +235,9 @@ impl TaskPatch {
         }
         if let Some(kind) = self.kind {
             task.kind = kind;
+        }
+        if let Some(run_mode) = self.run_mode {
+            task.run_mode = run_mode;
         }
         // `model` is itself `Option`, so serde flattens an absent field and an
         // explicit `null` to the same `None`. A patch can therefore SET a model
@@ -226,15 +265,25 @@ pub fn list_tasks(store: State<'_, TaskStore>) -> Result<Vec<Task>, String> {
     Ok(store.list())
 }
 
-/// Create a new backlog task, persist it, and emit `nc:task`.
+/// Create a new backlog task, persist it, and emit `nc:task`. The run mode is the
+/// explicit `run_mode` argument when given, else the project's default (per-project
+/// override → global `default_run_mode` → `main`), so a new task inherits the
+/// configured default unless the create call overrides it (M4.6 §B).
 #[tauri::command]
 pub fn create_task(
     app: AppHandle,
     store: State<'_, TaskStore>,
+    settings: State<'_, crate::settings::SettingsStore>,
+    projects: State<'_, crate::project::ProjectStore>,
     title: String,
     description: String,
+    run_mode: Option<RunMode>,
 ) -> Result<Task, String> {
-    let task = Task::new(title, description);
+    let run_mode = run_mode.unwrap_or_else(|| {
+        let project_id = projects.active().map(|p| p.id);
+        settings.default_run_mode(project_id.as_deref())
+    });
+    let task = Task::new(title, description).with_run_mode(run_mode);
     store.upsert(&task)?;
     let _ = app.emit(TASK_EVENT, &task);
     Ok(task)
@@ -412,6 +461,60 @@ mod tests {
         let back: Task = serde_json::from_str(legacy).expect("legacy task deserializes");
         assert_eq!(back.kind, TaskKind::Build);
         assert!(!back.verified && back.review.is_none() && back.fix_attempts == 0);
+    }
+
+    #[test]
+    fn run_mode_defaults_to_main_and_is_serde_additive() {
+        // A fresh task and the enum default are `main` (worktrees are opt-in).
+        let task = Task::new("t".into(), String::new());
+        assert_eq!(task.run_mode, RunMode::Main, "run_mode defaults to Main");
+        assert!(!task.run_mode.is_worktree());
+        assert_eq!(RunMode::default(), RunMode::Main);
+
+        // It serializes camelCase + snake_case wire (`runMode: "main"`).
+        let value: serde_json::Value = serde_json::to_value(&task).unwrap();
+        let obj = value.as_object().unwrap();
+        assert!(obj.contains_key("runMode"), "missing camelCase key runMode");
+        assert_eq!(obj["runMode"], serde_json::json!("main"));
+
+        // A legacy task (M4-era, no `run_mode` at all) loads as `main` — serde
+        // default — so existing task files aren't broken (the pinning guarantee).
+        let legacy = r#"{"id":"x","title":"t","description":"","status":"backlog",
+            "dependencies":[],"model":null,"branch":null,"createdAt":1,"updatedAt":1,
+            "sessionId":null,"summary":null,"error":null,"costUsd":null,
+            "plan":null,"committed":false,"merged":false,"conflict":false,
+            "kind":"build","verified":false,"review":null,"fixAttempts":0}"#;
+        let back: Task = serde_json::from_str(legacy).expect("legacy task deserializes");
+        assert_eq!(back.run_mode, RunMode::Main, "a task with no run_mode loads as Main");
+    }
+
+    #[test]
+    fn run_mode_round_trips_and_is_snake_case() {
+        for mode in [RunMode::Main, RunMode::Worktree] {
+            let json = serde_json::to_string(&mode).unwrap();
+            let back: RunMode = serde_json::from_str(&json).unwrap();
+            assert_eq!(mode, back, "run_mode must survive a serde round-trip");
+        }
+        assert_eq!(serde_json::to_string(&RunMode::Main).unwrap(), "\"main\"");
+        assert_eq!(
+            serde_json::to_string(&RunMode::Worktree).unwrap(),
+            "\"worktree\""
+        );
+    }
+
+    #[test]
+    fn patch_sets_run_mode_when_present() {
+        let mut task = Task::new("t".into(), String::new());
+        assert_eq!(task.run_mode, RunMode::Main);
+        let patch: TaskPatch = serde_json::from_str(r#"{"runMode":"worktree"}"#).unwrap();
+        patch.apply(&mut task);
+        assert_eq!(task.run_mode, RunMode::Worktree);
+    }
+
+    #[test]
+    fn with_run_mode_sets_the_mode() {
+        let task = Task::new("t".into(), String::new()).with_run_mode(RunMode::Worktree);
+        assert_eq!(task.run_mode, RunMode::Worktree);
     }
 
     #[test]
