@@ -54,7 +54,7 @@ export const WaitingApproval: Story = {
 
 export const Verified: Story = {
   args: {
-    title: 'Verified',
+    title: 'Done',
     dotColor: 'oklch(76% .15 152)',
     clearable: true,
     tasks: [TASKS_BY_STATUS.done],

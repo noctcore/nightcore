@@ -133,7 +133,7 @@ export function TaskDetail({
     reviewParked,
     planParked,
     kindEditable,
-    isVerifiedColumn,
+    isDoneColumn,
   } = deriveTaskDetailView(task, stream);
   const mergeable = canMerge(task, gauntlet);
   const mainMode = task.runMode === 'main';
@@ -145,9 +145,13 @@ export function TaskDetail({
           <div className="flex items-center gap-2">
             <TaskStatusDot status={task.status} glow />
             <span
-              className={`font-mono text-[11px] font-semibold uppercase tracking-[0.08em] ${STATUS_TEXT[task.status]}`}
+              className={`font-mono text-[11px] font-semibold uppercase tracking-[0.08em] ${
+                task.status === 'done' && !task.verified
+                  ? 'text-muted-foreground'
+                  : STATUS_TEXT[task.status]
+              }`}
             >
-              {STATUS_LABEL[task.status]}
+              {task.status === 'done' && task.verified ? 'Verified' : STATUS_LABEL[task.status]}
             </span>
             {cost !== null && (
               <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
@@ -307,7 +311,7 @@ export function TaskDetail({
           onRerun={onRerunVerification}
         />
 
-        {isVerifiedColumn && onRunGauntlet !== undefined && (
+        {isDoneColumn && onRunGauntlet !== undefined && (
           <GauntletResults
             result={gauntlet}
             running={gauntletRunning}
@@ -398,7 +402,7 @@ export function TaskDetail({
               Delete
             </Button>
           </>
-        ) : isVerifiedColumn ? (
+        ) : isDoneColumn ? (
           <>
             {task.merged ? (
               <Button disabled title="Branch merged into the base">

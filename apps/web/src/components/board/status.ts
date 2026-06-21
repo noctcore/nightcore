@@ -15,7 +15,7 @@ export interface ColumnDef {
 }
 
 /** The six board columns, in the design's order:
- *  Backlog · In Progress · Verifying (M4) · Waiting Approval (M3) · Verified ·
+ *  Backlog · In Progress · Verifying (M4) · Waiting Approval (M3) · Done ·
  *  Failed. */
 export const COLUMNS: ColumnDef[] = [
   {
@@ -46,7 +46,7 @@ export const COLUMNS: ColumnDef[] = [
   },
   {
     key: 'done',
-    title: 'Verified',
+    title: 'Done',
     statuses: ['done'],
     dotColor: 'oklch(76% .15 152)',
     clearable: true,
@@ -67,7 +67,7 @@ export const STATUS_LABEL: Record<TaskStatus, string> = {
   in_progress: 'Running',
   verifying: 'Verifying',
   waiting_approval: 'Waiting Approval',
-  done: 'Verified',
+  done: 'Done',
   failed: 'Failed',
 };
 

@@ -15,8 +15,8 @@ export interface TaskDetailView {
   planParked: boolean;
   /** Whether the kind picker is editable — only before the task has run. */
   kindEditable: boolean;
-  /** Whether the Verified-column gauntlet + merge controls apply (a `done` task). */
-  isVerifiedColumn: boolean;
+  /** Whether the Done-column gauntlet + merge controls apply (a `done` task). */
+  isDoneColumn: boolean;
 }
 
 /** Resolve the drawer's view-model: the live stream wins over the persisted
@@ -39,7 +39,7 @@ export function deriveTaskDetailView(
     reviewParked,
     planParked: waiting && !reviewParked,
     kindEditable: task.status === 'backlog' || task.status === 'ready',
-    isVerifiedColumn: task.status === 'done',
+    isDoneColumn: task.status === 'done',
   };
 }
 

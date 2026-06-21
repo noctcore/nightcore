@@ -8,7 +8,7 @@ import { BLOCKED_TASK, TASKS_BY_STATUS } from '../_fixtures';
 const { Empty, Populated, AutoModeOn, CircuitBreakerPaused } =
   composeStories(stories);
 
-test('renders all five board columns, including the Verified label', async () => {
+test('renders all five board columns, including the Done label', async () => {
   const screen = render(<Empty />);
   await expect
     .element(screen.getByRole('heading', { name: 'Backlog', level: 2 }))
@@ -20,7 +20,7 @@ test('renders all five board columns, including the Verified label', async () =>
     .element(screen.getByRole('heading', { name: 'Waiting Approval', level: 2 }))
     .toBeInTheDocument();
   await expect
-    .element(screen.getByRole('heading', { name: 'Verified', level: 2 }))
+    .element(screen.getByRole('heading', { name: 'Done', level: 2 }))
     .toBeInTheDocument();
   await expect
     .element(screen.getByRole('heading', { name: 'Failed', level: 2 }))

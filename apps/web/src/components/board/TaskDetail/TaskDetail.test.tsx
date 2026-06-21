@@ -21,6 +21,7 @@ const {
   VerifiedMergeGated,
   GauntletFailed,
   MainModeCommitted,
+  ResearchDone,
 } = composeStories(stories);
 
 test('shows the plan and Approve / Refine / Reject for a waiting task', async () => {
@@ -136,6 +137,17 @@ test('canMerge refuses a main-mode task even when verified + passing', () => {
     branch: null,
   });
   expect(canMerge(mainTask, GAUNTLET_PASSED)).toBe(false);
+});
+
+test('a done-but-unverified research task shows neutral "Done" — not green "Verified"', async () => {
+  const screen = render(<ResearchDone />);
+  await expect.element(screen.getByText('Done')).toBeInTheDocument();
+  expect(screen.container.querySelector('.text-success')).toBeNull();
+});
+
+test('a done AND verified task shows the green "Verified" badge', async () => {
+  const screen = render(<Done />);
+  await expect.element(screen.getByText('Verified')).toBeInTheDocument();
 });
 
 test('deriveTaskDetailView splits review-parked from plan-parked on task.review', () => {

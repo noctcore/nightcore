@@ -161,6 +161,26 @@ export const MainModeCommitted: Story = {
   },
 };
 
+/** A research task that finished done but was never reviewed — shows neutral
+ *  "DONE" badge (not green "Verified"), because `verified` is false. */
+export const ResearchDone: Story = {
+  args: {
+    task: makeTask({
+      id: 't-research',
+      status: 'done',
+      kind: 'research',
+      runMode: 'main',
+      branch: null,
+      verified: false,
+      committed: true,
+      costUsd: 1.63,
+      summary: 'Investigated the Rust auto-update system. No code changes were made.',
+    }),
+    gauntlet: null,
+    stream: undefined,
+  },
+};
+
 /** A plan-mode run paused at `ExitPlanMode`: the plan + Approve/Refine/Reject. */
 export const WaitingApproval: Story = {
   args: {
