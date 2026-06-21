@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  acceptReview,
   activeProject,
   approveTask,
   blockedTaskIds,
@@ -19,7 +20,10 @@ import {
   mergeTask,
   moveTask,
   refineTask,
+  rejectReview,
   rejectTask,
+  rerunVerification,
+  runGauntlet,
   onLoopEvent,
   onPermissionEvent,
   onProjectEvent,
@@ -32,13 +36,16 @@ import {
   setMaxConcurrency,
   startAutoLoop,
   stopAutoLoop,
+  updateTask,
   updateSettings,
+  type GauntletResult,
   type LoopEnvelope,
   type PermissionPrompt,
   type Project,
   type Settings,
   type SettingsPatch,
   type Task,
+  type TaskKind,
   type TaskStatus,
 } from '@/lib/bridge';
 import {
@@ -384,6 +391,42 @@ function usePermissions(tasks: Task[]) {
   return { prompts, respond };
 }
 
+/** Per-task readiness-gauntlet results + in-flight state (M4, §C). The Verified
+ *  column runs the gauntlet on demand; the result gates the merge. Results are
+ *  cleared whenever the project is re-activated (the board re-seeds). */
+function useGauntlet() {
+  const [results, setResults] = useState<Record<string, GauntletResult>>({});
+  const [running, setRunning] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const unlisten = onProjectEvent(({ type }) => {
+      if (type === 'activated' || type === 'deleted') {
+        setResults({});
+        setRunning(new Set());
+      }
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  const run = useCallback((id: string) => {
+    setRunning((prev) => new Set(prev).add(id));
+    void runGauntlet(id)
+      .then((result) => setResults((prev) => ({ ...prev, [id]: result })))
+      .catch((err) => console.error('run_gauntlet failed', err))
+      .finally(() =>
+        setRunning((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        }),
+      );
+  }, []);
+
+  return { results, running, run };
+}
+
 export interface AppShellState {
   routing: ReturnType<typeof useRouting>;
   registry: ReturnType<typeof useProjectRegistry>;
@@ -399,7 +442,11 @@ export interface AppShellState {
     prompts: Record<string, PermissionPrompt[]>;
     /** Task ids with at least one parked prompt — drives the card's pulse. */
     promptIds: Set<string>;
-    handleCreate: (title: string, description: string) => Promise<void>;
+    /** Per-task readiness-gauntlet results (M4), keyed by task id. */
+    gauntletResults: Record<string, GauntletResult>;
+    /** Task ids with a gauntlet run in flight. */
+    gauntletRunning: Set<string>;
+    handleCreate: (title: string, description: string, kind: TaskKind) => Promise<void>;
     handleRun: (id: string) => void;
     handleCancel: (id: string) => void;
     handleDelete: (id: string) => void;
@@ -415,6 +462,14 @@ export interface AppShellState {
     handleRefine: (id: string) => void;
     handleCommit: (id: string) => void;
     handleMerge: (id: string) => void;
+    /** Edit a not-yet-run task's kind (M4). */
+    handleChangeKind: (id: string, kind: TaskKind) => void;
+    /** Verification-approval actions for a review-parked task (M4). */
+    handleAcceptReview: (id: string) => void;
+    handleRejectReview: (id: string) => void;
+    handleRerunVerification: (id: string) => void;
+    /** Run the pre-merge readiness gauntlet for a verified task (M4). */
+    handleRunGauntlet: (id: string) => void;
   };
   showSplash: boolean;
   isTauri: boolean;
@@ -440,9 +495,10 @@ export function useAppShell(): AppShellState {
   const blockedIds = useBlockedIds();
   const { tasks, setTasks, streams, setStreams, selectedId, setSelectedId } = board;
   const permissions = usePermissions(tasks);
+  const gauntlet = useGauntlet();
 
   const anyRunning = useMemo(
-    () => tasks.some((t) => t.status === 'in_progress'),
+    () => tasks.some((t) => t.status === 'in_progress' || t.status === 'verifying'),
     [tasks],
   );
   const selected = useMemo(
@@ -459,8 +515,8 @@ export function useAppShell(): AppShellState {
   }, [streams]);
 
   const handleCreate = useCallback(
-    async (title: string, description: string) => {
-      const task = await createTask(title, description);
+    async (title: string, description: string, kind: TaskKind) => {
+      const task = await createTask(title, description, kind);
       setTasks((prev) => (prev.some((t) => t.id === task.id) ? prev : [...prev, task]));
       setSelectedId(task.id);
     },
@@ -553,6 +609,28 @@ export function useAppShell(): AppShellState {
     void mergeTask(id).catch((err) => console.error('merge_task failed', err));
   }, []);
 
+  // M4 verification-gate actions. `change_kind` patches a not-yet-run task;
+  // accept/reject/rerun resolve a review-parked verification; run_gauntlet drives
+  // the pre-merge readiness check. Authoritative status arrives via `nc:task`.
+  const handleChangeKind = useCallback(
+    (id: string, kind: TaskKind) => {
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, kind } : t)));
+      void updateTask(id, { kind }).catch((err) => console.error('update_task failed', err));
+    },
+    [setTasks],
+  );
+  const handleAcceptReview = useCallback((id: string) => {
+    void acceptReview(id).catch((err) => console.error('accept_review failed', err));
+  }, []);
+  const handleRejectReview = useCallback((id: string) => {
+    void rejectReview(id).catch((err) => console.error('reject_review failed', err));
+  }, []);
+  const handleRerunVerification = useCallback((id: string) => {
+    void rerunVerification(id).catch((err) =>
+      console.error('rerun_verification failed', err),
+    );
+  }, []);
+
   const promptIds = useMemo(
     () => new Set(Object.keys(permissions.prompts)),
     [permissions.prompts],
@@ -572,6 +650,8 @@ export function useAppShell(): AppShellState {
       blockedIds,
       prompts: permissions.prompts,
       promptIds,
+      gauntletResults: gauntlet.results,
+      gauntletRunning: gauntlet.running,
       handleCreate,
       handleRun,
       handleCancel,
@@ -584,6 +664,11 @@ export function useAppShell(): AppShellState {
       handleRefine,
       handleCommit,
       handleMerge,
+      handleChangeKind,
+      handleAcceptReview,
+      handleRejectReview,
+      handleRerunVerification,
+      handleRunGauntlet: gauntlet.run,
     },
     showSplash,
     isTauri: isTauri(),
