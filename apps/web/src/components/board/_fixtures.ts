@@ -1,4 +1,4 @@
-import type { GauntletResult, Task, TaskStatus } from '@/lib/bridge';
+import type { GauntletResult, Task, TaskStatus, WorktreeInfo } from '@/lib/bridge';
 
 /** Build a Task fixture for stories/tests. Mirrors the frozen M1 shape. */
 export function makeTask(overrides: Partial<Task> = {}): Task {
@@ -24,6 +24,7 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     merged: overrides.merged ?? false,
     conflict: overrides.conflict ?? false,
     kind: overrides.kind ?? 'build',
+    runMode: overrides.runMode ?? 'main',
     verified: overrides.verified ?? false,
     review: overrides.review ?? null,
     fixAttempts: overrides.fixAttempts ?? 0,
@@ -56,6 +57,7 @@ export const TASKS_BY_STATUS: Record<TaskStatus, Task> = {
     title: 'Generate API client',
     model: 'sonnet-4.6',
     branch: 'nc/api-client',
+    runMode: 'worktree',
     costUsd: 0.18,
   }),
   verifying: makeTask({
@@ -64,6 +66,7 @@ export const TASKS_BY_STATUS: Record<TaskStatus, Task> = {
     title: 'Add rate limiter middleware',
     model: 'sonnet-4.6',
     branch: 'nc/rate-limiter',
+    runMode: 'worktree',
     costUsd: 0.27,
   }),
   waiting_approval: makeTask({
@@ -71,6 +74,7 @@ export const TASKS_BY_STATUS: Record<TaskStatus, Task> = {
     status: 'waiting_approval',
     title: 'Apply destructive migration',
     branch: 'nc/destructive-migration',
+    runMode: 'worktree',
     costUsd: 0.42,
     review: SAMPLE_REVIEW_CHANGES,
     fixAttempts: 2,
@@ -80,6 +84,7 @@ export const TASKS_BY_STATUS: Record<TaskStatus, Task> = {
     status: 'done',
     title: 'Wire up auth guard',
     branch: 'nc/auth-guard',
+    runMode: 'worktree',
     costUsd: 0.42,
     verified: true,
     review: SAMPLE_REVIEW_PASS,
@@ -89,10 +94,46 @@ export const TASKS_BY_STATUS: Record<TaskStatus, Task> = {
     status: 'failed',
     title: 'Webpack → Vite migration',
     branch: 'nc/vite-migrate',
+    runMode: 'worktree',
     error: "cannot resolve 'sass-loader'",
     costUsd: 0.58,
   }),
 };
+
+/** A `main`-mode task — edits the project tree in place, so it has no branch.
+ *  Exercises the card's "main" chip and the suppressed Merge action. */
+export const MAIN_MODE_TASK: Task = makeTask({
+  id: 't-main',
+  status: 'done',
+  title: 'Tidy the README',
+  description: 'Small in-place doc edit on the current branch.',
+  runMode: 'main',
+  branch: null,
+  costUsd: 0.04,
+  verified: true,
+  committed: true,
+  review: SAMPLE_REVIEW_PASS,
+});
+
+/** Live worktrees for the switcher's stories/tests — one dirty + ahead, one
+ *  clean. Mirrors the `list_worktrees` shape; branches match the worktree-mode
+ *  task fixtures above so the switcher groups them. */
+export const WORKTREES: WorktreeInfo[] = [
+  {
+    branch: 'nc/api-client',
+    path: '~/dev/nightcore/.worktrees/nc-api-client',
+    taskIds: ['t-running'],
+    dirty: true,
+    aheadOfBase: 2,
+  },
+  {
+    branch: 'nc/auth-guard',
+    path: '~/dev/nightcore/.worktrees/nc-auth-guard',
+    taskIds: ['t-done'],
+    dirty: false,
+    aheadOfBase: 1,
+  },
+];
 
 /** A passing readiness-gauntlet result (typecheck → lint → test all green). */
 export const GAUNTLET_PASSED: GauntletResult = {

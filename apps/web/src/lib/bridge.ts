@@ -26,6 +26,12 @@ export type TaskStatus =
  *  milestone (`review`/`decompose` render as "coming soon"). */
 export type TaskKind = 'build' | 'research' | 'review' | 'decompose';
 
+/** Where a task's run executes (M4.6). Mirrors the Rust `RunMode` enum
+ *  (snake_case on the wire). `main` (default) edits the project directory in
+ *  place — no worktree, no branch, and `merge_task` refuses it (nothing to
+ *  merge). `worktree` isolates the task on its own `nc/<id>` branch as before. */
+export type RunMode = 'main' | 'worktree';
+
 /** The shared task shape. Mirrors the Rust serde struct (camelCase) exactly. */
 export interface Task {
   id: string;
@@ -53,6 +59,10 @@ export interface Task {
   conflict: boolean;
   /** The kind preset this task runs under (M4). Defaults to `build`. */
   kind: TaskKind;
+  /** Where this task runs (M4.6). Defaults to `main` (edits the project tree in
+   *  place); `worktree` allocates an isolated `nc/<id>` branch. Settable at
+   *  create + editable pre-run. Legacy tasks (no `run_mode`) load as `main`. */
+  runMode: RunMode;
   /** True only after a reviewer PASS (or a user `accept_review` override). The
    *  pre-merge gate (`merge_task`) refuses while this is false. Cleared on a
    *  fresh run. */
@@ -74,6 +84,24 @@ export interface TaskPatch {
   model?: string | null;
   /** The task's kind preset (M4) — set from the create/edit picker. */
   kind?: TaskKind;
+  /** The task's run mode (M4.6) — editable pre-run from the create/edit form. */
+  runMode?: RunMode;
+}
+
+/** One live worktree for the active project (M4.6, §C). Mirrors the Rust
+ *  `list_worktrees` result struct (camelCase). Drives the worktree switcher's
+ *  tabs + per-tab monitor indicators. Read-only git status, kept cheap. */
+export interface WorktreeInfo {
+  /** The worktree's branch (`nc/<taskId>` in the v1 one-worktree-per-task model). */
+  branch: string;
+  /** Absolute path of the worktree on disk. */
+  path: string;
+  /** Ids of the tasks grouped under this worktree's branch. */
+  taskIds: string[];
+  /** Whether the worktree has uncommitted changes (drives the dirty indicator). */
+  dirty: boolean;
+  /** Commits ahead of the project base (drives the "ahead" indicator). */
+  aheadOfBase: number;
 }
 
 /** One step of the pre-merge readiness gauntlet (M4, §C). The detector runs the
@@ -223,14 +251,16 @@ export async function listTasks(): Promise<Task[]> {
   return invoke<Task[]>('list_tasks');
 }
 
-/** Create a new `backlog` task. The `kind` (M4) defaults to `build` so a
- *  kind-less create is byte-identical to today. No-op (throws) outside Tauri. */
+/** Create a new `backlog` task. The `kind` (M4) defaults to `build` and the
+ *  `runMode` (M4.6) defaults to `main` so an unqualified create is byte-identical
+ *  to today. No-op (throws) outside Tauri. */
 export async function createTask(
   title: string,
   description: string,
   kind: TaskKind = 'build',
+  runMode: RunMode = 'main',
 ): Promise<Task> {
-  return invoke<Task>('create_task', { title, description, kind });
+  return invoke<Task>('create_task', { title, description, kind, runMode });
 }
 
 /** Apply a partial update to a task. */
@@ -349,6 +379,18 @@ export async function rerunVerification(id: string): Promise<void> {
 export async function runGauntlet(id: string): Promise<GauntletResult> {
   if (!isTauri()) return { passed: true, steps: [] };
   return invoke<GauntletResult>('run_gauntlet', { id });
+}
+
+// --- Worktrees (M4.6) -----------------------------------------------------
+
+/** The active project's live worktrees (M4.6, §C) — branch, path, grouped task
+ *  ids, dirty flag, and ahead-of-base count — driving the worktree switcher's
+ *  tabs + monitor indicators. Read-only git status; tolerates a missing/locked
+ *  worktree. Returns `[]` outside Tauri (browser preview); the switcher falls
+ *  back to distinct task branches there. */
+export async function listWorktrees(): Promise<WorktreeInfo[]> {
+  if (!isTauri()) return [];
+  return invoke<WorktreeInfo[]>('list_worktrees');
 }
 
 // --- Autonomous loop (M2) -------------------------------------------------

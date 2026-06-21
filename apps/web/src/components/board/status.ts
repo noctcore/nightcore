@@ -1,4 +1,4 @@
-import type { TaskKind, TaskStatus } from '@/lib/bridge';
+import type { RunMode, TaskKind, TaskStatus } from '@/lib/bridge';
 
 /** A board column: its key, label, the statuses it groups, the design's status
  *  dot color, an optional roadmap badge, and whether it offers a "Clear". */
@@ -153,6 +153,37 @@ export const KIND_LABEL: Record<TaskKind, string> = {
   research: 'Research',
   review: 'Review',
   decompose: 'Decompose',
+};
+
+// --- Run modes (M4.6) -----------------------------------------------------
+
+/** A selectable run mode in the create/edit form (M4.6). `main` (default) edits
+ *  the project tree in place; `worktree` isolates the task on its own branch. */
+export interface RunModeOption {
+  mode: RunMode;
+  label: string;
+  /** One-line explainer shown beneath the selector. */
+  hint: string;
+}
+
+/** The run-mode selector's options, in display order — Main first (the default). */
+export const RUN_MODE_OPTIONS: RunModeOption[] = [
+  {
+    mode: 'main',
+    label: 'Main',
+    hint: 'Edits the project directly on the current branch. No isolation.',
+  },
+  {
+    mode: 'worktree',
+    label: 'Worktree',
+    hint: 'Isolates this task on its own branch in a separate worktree.',
+  },
+];
+
+/** Human label for a run mode. */
+export const RUN_MODE_LABEL: Record<RunMode, string> = {
+  main: 'Main',
+  worktree: 'Worktree',
 };
 
 // --- Verification verdict (M4) --------------------------------------------
