@@ -42,6 +42,7 @@ export const CreatesTask: Story = {
         'Add a settings panel',
         'Build the settings surface.',
         'build',
+        'main',
       ),
     );
   },
@@ -56,7 +57,26 @@ export const CreatesResearchTask: Story = {
     await userEvent.click(canvas.getByRole('button', { name: /create task/i }));
 
     await waitFor(() =>
-      expect(args.onCreate).toHaveBeenCalledWith('Survey caching options', '', 'research'),
+      expect(args.onCreate).toHaveBeenCalledWith('Survey caching options', '', 'research', 'main'),
+    );
+  },
+};
+
+/** Play test: choosing the Worktree run mode threads it through onCreate. */
+export const CreatesWorktreeTask: Story = {
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.type(canvas.getByLabelText('Task title'), 'Isolate the risky refactor');
+    await userEvent.click(canvas.getByRole('radio', { name: 'Worktree' }));
+    await userEvent.click(canvas.getByRole('button', { name: /create task/i }));
+
+    await waitFor(() =>
+      expect(args.onCreate).toHaveBeenCalledWith(
+        'Isolate the risky refactor',
+        '',
+        'build',
+        'worktree',
+      ),
     );
   },
 };
