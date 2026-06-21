@@ -266,11 +266,20 @@ async fn launch(app: &AppHandle, task_id: &str) {
         return;
     }
 
+    // When a worktree was allocated (active project), record its branch on the
+    // task so the board's branch chip reflects the real `nc/<taskId>` branch.
+    let branch = cwd
+        .as_ref()
+        .map(|_| worktree::branch_name(task_id));
+
     // Mark in-progress + persist + emit before dispatch.
     if let Ok(updated) = store.mutate(task_id, |t| {
         t.status = TaskStatus::InProgress;
         t.summary = None;
         t.error = None;
+        if branch.is_some() {
+            t.branch = branch.clone();
+        }
     }) {
         let _ = app.emit(TASK_EVENT, &updated);
     }

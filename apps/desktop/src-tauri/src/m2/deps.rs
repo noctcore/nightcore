@@ -58,9 +58,8 @@ where
 /// dependency (so the UI can surface "waiting on deps" vs. "idle"). A vanished or
 /// failed dependency reads as blocked (fail-closed), matching [`deps_satisfied`].
 ///
-/// Backend-ready for the frontend wiring step (the `blocked` badge); not yet called
-/// from a command, hence allowed-dead until the UI consumes it.
-#[allow(dead_code)]
+/// Consumed by the `blocked_task_ids` command to drive the board's `blocked`
+/// badge and locked Run action.
 pub fn is_blocked(task: &Task, by_id: &HashMap<String, &Task>) -> bool {
     is_launchable_status(task.status) && !deps_satisfied(task, by_id)
 }

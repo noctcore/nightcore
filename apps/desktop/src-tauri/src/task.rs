@@ -44,6 +44,9 @@ pub struct Task {
     pub dependencies: Vec<String>,
     /// `None` means "use the core/config default model".
     pub model: Option<String>,
+    /// The worktree branch (`nc/<taskId>`) for this task's run, set by the M2
+    /// coordinator once a worktree is allocated. `None` until then.
+    pub branch: Option<String>,
     pub created_at: u64,
     pub updated_at: u64,
     /// Sidecar session id of the last/current run, set once a run starts.
@@ -67,6 +70,7 @@ impl Task {
             status: TaskStatus::Backlog,
             dependencies: Vec::new(),
             model: None,
+            branch: None,
             created_at: now,
             updated_at: now,
             session_id: None,
@@ -176,6 +180,58 @@ pub fn delete_task(store: State<'_, TaskStore>, id: String) -> Result<(), String
     store.remove(&id)
 }
 
+/// Parse a wire status string (snake_case, as the bridge sends it) into a
+/// [`TaskStatus`], rejecting anything unknown. Reuses the enum's serde mapping so
+/// the accepted strings can never drift from the wire contract.
+fn parse_status(raw: &str) -> Result<TaskStatus, String> {
+    serde_json::from_value(serde_json::Value::String(raw.to_string()))
+        .map_err(|_| format!("unknown task status: {raw}"))
+}
+
+/// The ids of tasks that are launchable in status (`backlog`/`ready`) but whose
+/// dependencies are not all `Done`. Read-only; the board surfaces these as the
+/// "blocked" badge and disables their Run action. Fail-closed: a vanished or
+/// failed dependency reads as blocked (mirrors [`crate::m2::deps::deps_satisfied`]).
+#[tauri::command]
+pub fn blocked_task_ids(store: State<'_, TaskStore>) -> Result<Vec<String>, String> {
+    use crate::m2::deps::{index_by_id, is_blocked};
+    let tasks = store.list();
+    let by_id = index_by_id(&tasks);
+    Ok(tasks
+        .iter()
+        .filter(|t| is_blocked(t, &by_id))
+        .map(|t| t.id.clone())
+        .collect())
+}
+
+/// Manually set a task's status (drag between board columns), persist, and emit
+/// `nc:task`. Pure board bookkeeping — worktrees and slots are untouched.
+///
+/// Guards: the status string is validated against [`TaskStatus`] (unknown values
+/// are rejected), and a move INTO `in_progress` is refused — that transition is
+/// owned by `run_task`/the coordinator, not a manual drag.
+#[tauri::command]
+pub fn move_task(
+    app: AppHandle,
+    store: State<'_, TaskStore>,
+    id: String,
+    status: String,
+) -> Result<Task, String> {
+    let task = move_task_inner(&store, &id, &status)?;
+    let _ = app.emit(TASK_EVENT, &task);
+    Ok(task)
+}
+
+/// The status validation + persistence behind [`move_task`], factored out so the
+/// guards are unit-testable without a live `AppHandle`.
+fn move_task_inner(store: &TaskStore, id: &str, status: &str) -> Result<Task, String> {
+    let status = parse_status(status)?;
+    if status == TaskStatus::InProgress {
+        return Err("cannot move a task into In Progress — run it instead".to_string());
+    }
+    store.mutate(id, |task| task.status = status)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,9 +275,31 @@ mod tests {
         let task = Task::new("t".into(), String::new());
         let value: serde_json::Value = serde_json::to_value(&task).unwrap();
         let obj = value.as_object().unwrap();
-        for key in ["createdAt", "updatedAt", "sessionId", "costUsd"] {
+        for key in ["createdAt", "updatedAt", "sessionId", "costUsd", "branch"] {
             assert!(obj.contains_key(key), "missing camelCase key {key}");
         }
+    }
+
+    #[test]
+    fn branch_defaults_to_none_and_round_trips() {
+        let mut task = Task::new("t".into(), String::new());
+        assert!(task.branch.is_none(), "branch defaults to None");
+
+        task.branch = Some("nc/abc-123".into());
+        let json = serde_json::to_string(&task).unwrap();
+        assert!(json.contains("\"branch\":\"nc/abc-123\""), "branch serializes camelCase");
+        let back: Task = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.branch.as_deref(), Some("nc/abc-123"));
+    }
+
+    #[test]
+    fn parse_status_accepts_wire_strings_and_rejects_unknown() {
+        assert_eq!(parse_status("backlog").unwrap(), TaskStatus::Backlog);
+        assert_eq!(parse_status("ready").unwrap(), TaskStatus::Ready);
+        assert_eq!(parse_status("in_progress").unwrap(), TaskStatus::InProgress);
+        assert_eq!(parse_status("done").unwrap(), TaskStatus::Done);
+        let err = parse_status("nope").expect_err("unknown status must error");
+        assert!(err.contains("nope"), "error names the bad status");
     }
 
     #[test]
@@ -301,5 +379,78 @@ mod tests {
         assert_eq!(patch.status, Some(TaskStatus::InProgress));
         assert_eq!(patch.dependencies, Some(vec!["a".to_string()]));
         assert!(patch.title.is_none());
+    }
+
+    /// A store rooted at a fresh temp dir, for command-logic tests.
+    fn temp_store() -> (TaskStore, tempfile::TempDir) {
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let store = TaskStore::load_from(tmp.path().join("tasks"));
+        (store, tmp)
+    }
+
+    fn seed(store: &TaskStore, status: TaskStatus, deps: &[&str]) -> String {
+        let mut t = Task::new("seed".into(), String::new());
+        t.status = status;
+        t.dependencies = deps.iter().map(|s| s.to_string()).collect();
+        let id = t.id.clone();
+        store.upsert(&t).expect("seed upsert");
+        id
+    }
+
+    #[test]
+    fn move_task_inner_sets_status_and_persists() {
+        let (store, _tmp) = temp_store();
+        let id = seed(&store, TaskStatus::Backlog, &[]);
+
+        let moved = move_task_inner(&store, &id, "ready").expect("move");
+        assert_eq!(moved.status, TaskStatus::Ready);
+        // Persisted, not just returned.
+        assert_eq!(store.get(&id).expect("get").status, TaskStatus::Ready);
+    }
+
+    #[test]
+    fn move_task_inner_rejects_into_in_progress() {
+        let (store, _tmp) = temp_store();
+        let id = seed(&store, TaskStatus::Ready, &[]);
+
+        let err = move_task_inner(&store, &id, "in_progress").expect_err("must reject");
+        assert!(err.contains("In Progress"), "error explains the guard");
+        // The task is untouched.
+        assert_eq!(store.get(&id).expect("get").status, TaskStatus::Ready);
+    }
+
+    #[test]
+    fn move_task_inner_rejects_unknown_status() {
+        let (store, _tmp) = temp_store();
+        let id = seed(&store, TaskStatus::Ready, &[]);
+
+        let err = move_task_inner(&store, &id, "garbage").expect_err("must reject");
+        assert!(err.contains("garbage"), "error names the bad status");
+        assert_eq!(store.get(&id).expect("get").status, TaskStatus::Ready);
+    }
+
+    #[test]
+    fn blocked_ids_includes_blocked_and_excludes_satisfied_and_running() {
+        use crate::m2::deps::{index_by_id, is_blocked};
+        let (store, _tmp) = temp_store();
+
+        let done_dep = seed(&store, TaskStatus::Done, &[]);
+        let blocked = seed(&store, TaskStatus::Ready, &["ghost"]); // dep missing → blocked
+        let satisfied = seed(&store, TaskStatus::Ready, &[&done_dep]); // dep done → not blocked
+        let running = seed(&store, TaskStatus::InProgress, &["ghost"]); // not launchable
+
+        // Mirror the command body (which needs an AppHandle the unit test can't build).
+        let tasks = store.list();
+        let by_id = index_by_id(&tasks);
+        let ids: Vec<String> = tasks
+            .iter()
+            .filter(|t| is_blocked(t, &by_id))
+            .map(|t| t.id.clone())
+            .collect();
+
+        assert!(ids.contains(&blocked), "a ready task with an unmet dep is blocked");
+        assert!(!ids.contains(&satisfied), "a ready task with all deps done is not blocked");
+        assert!(!ids.contains(&running), "an in-progress task is never blocked");
+        assert!(!ids.contains(&done_dep), "a terminal task is never blocked");
     }
 }

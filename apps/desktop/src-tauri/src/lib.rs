@@ -74,6 +74,8 @@ pub fn run() {
             task::create_task,
             task::update_task,
             task::delete_task,
+            task::move_task,
+            task::blocked_task_ids,
             sidecar::run_task,
             sidecar::cancel_task,
             project::list_projects,
