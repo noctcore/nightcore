@@ -303,11 +303,14 @@ pub fn update_task(
     Ok(task)
 }
 
-/// Delete a task and remove its JSON file. No-op event; the webview drops the id
-/// on the command's success.
+/// Delete a task and remove its JSON file. Also removes the task's transcript
+/// directory (M4.7 §C) so a deleted task leaves no orphaned transcript. No-op
+/// event; the webview drops the id on the command's success.
 #[tauri::command]
-pub fn delete_task(store: State<'_, TaskStore>, id: String) -> Result<(), String> {
-    store.remove(&id)
+pub fn delete_task(app: AppHandle, store: State<'_, TaskStore>, id: String) -> Result<(), String> {
+    store.remove(&id)?;
+    crate::transcript::remove_transcript(&app, &id);
+    Ok(())
 }
 
 /// Parse a wire status string (snake_case, as the bridge sends it) into a

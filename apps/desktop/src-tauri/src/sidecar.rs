@@ -164,6 +164,11 @@ async fn handle_event(app: &AppHandle, event: Value) {
         serde_json::json!({ "taskId": task_id, "event": event }),
     );
 
+    // M4.7 §C: persist the same event to the task's transcript so a reload/HMR no
+    // longer blanks the stream. Best-effort and secret-safe (the wire events carry
+    // tool inputs but never tokens); a write failure never breaks the live stream.
+    crate::transcript::append_event(&store, &task_id, &event);
+
     // M3: a permission request is relayed, not auto-denied. The plan gate
     // (`ExitPlanMode`) transitions the task to `waiting_approval` and stores the
     // plan; any other tool surfaces an interactive `nc:permission` prompt. Both
