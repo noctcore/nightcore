@@ -30,7 +30,11 @@ test('renders all five board columns, including the Verified label', async () =>
 test('renders the project path and branch in the header subtitle', async () => {
   const screen = render(<Populated />);
   await expect.element(screen.getByText('~/dev/nightcore')).toBeInTheDocument();
-  await expect.element(screen.getByText('main')).toBeInTheDocument();
+  // The header subtitle pairs the project branch with the kanban title; assert it
+  // there (main-mode cards also carry a "main" chip, so a bare text query is
+  // ambiguous on a populated board).
+  const heading = screen.getByRole('heading', { name: /kanban board/i });
+  await expect.element(heading).toBeInTheDocument();
 });
 
 test('reflects the live loop state on the Auto Mode toggle', async () => {

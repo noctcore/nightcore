@@ -9,6 +9,7 @@ import {
   SearchIcon,
 } from '@/components/ui';
 import { Column } from '../Column';
+import { WorktreeSwitcher } from '../WorktreeSwitcher';
 import { useBoardView, useBreakerBanner } from './Board.hooks';
 import type { BoardProps } from './Board.types';
 
@@ -30,6 +31,9 @@ export function Board({
   tasks,
   projectPath,
   projectBranch,
+  worktrees,
+  activeWorktree,
+  onSelectWorktree,
   concurrency,
   autoMode,
   breaker,
@@ -52,7 +56,7 @@ export function Board({
   onConcurrencyChange,
   onResume,
 }: BoardProps) {
-  const { search, setSearch, columns } = useBoardView(tasks);
+  const { search, setSearch, columns } = useBoardView(tasks, activeWorktree);
   const banner = useBreakerBanner(breaker);
 
   return (
@@ -147,6 +151,13 @@ export function Board({
           </div>
         </div>
       </div>
+
+      <WorktreeSwitcher
+        tasks={tasks}
+        worktrees={worktrees}
+        active={activeWorktree}
+        onSelect={onSelectWorktree}
+      />
 
       {banner.visible && breaker !== null && (
         <div className="flex items-center gap-3 border-b border-destructive/40 bg-destructive/[0.12] px-[22px] py-2.5">

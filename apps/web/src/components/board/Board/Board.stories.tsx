@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fireEvent, fn, userEvent, within } from 'storybook/test';
 import { Board } from './Board';
-import { BLOCKED_TASK, TASKS_BY_STATUS } from '../_fixtures';
+import { BLOCKED_TASK, TASKS_BY_STATUS, WORKTREES } from '../_fixtures';
+import type { Task } from '@/lib/bridge';
 
 const meta = {
   title: 'Board/Board',
@@ -10,6 +11,9 @@ const meta = {
   args: {
     projectPath: '~/dev/nightcore',
     projectBranch: 'main',
+    worktrees: [],
+    activeWorktree: null,
+    onSelectWorktree: fn(),
     concurrency: 3,
     autoMode: false,
     breaker: null,
@@ -44,6 +48,10 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+/** Re-tag a task as main-mode (no worktree branch) so it lives under the Main
+ *  tab — the default board view in these stories. */
+const asMain = (task: Task): Task => ({ ...task, runMode: 'main', branch: null });
+
 const ALL_TASKS = [
   TASKS_BY_STATUS.backlog,
   TASKS_BY_STATUS.ready,
@@ -52,6 +60,12 @@ const ALL_TASKS = [
   TASKS_BY_STATUS.waiting_approval,
   TASKS_BY_STATUS.done,
   TASKS_BY_STATUS.failed,
+].map(asMain);
+
+/** The original worktree-mode fixtures, for the switcher stories below. */
+const WORKTREE_TASKS = [
+  TASKS_BY_STATUS.in_progress,
+  TASKS_BY_STATUS.done,
 ];
 
 export const Empty: Story = {
@@ -161,5 +175,47 @@ export const DragMovesCard: Story = {
     );
 
     await expect(args.onMoveTask).toHaveBeenCalledWith('t-done', 'backlog');
+  },
+};
+
+/** The worktree switcher surfaces a Main tab plus a tab per live worktree above
+ *  the board. With worktree-mode tasks present, the bar appears. */
+export const WithWorktreeSwitcher: Story = {
+  args: {
+    tasks: [...ALL_TASKS, ...WORKTREE_TASKS],
+    worktrees: WORKTREES,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole('tab', { name: /^main/i })).toBeInTheDocument();
+    await expect(canvas.getByRole('tab', { name: /nc\/api-client/i })).toBeInTheDocument();
+  },
+};
+
+/** Selecting a worktree tab filters the board to that branch's tasks: the
+ *  Main-only 'Add dark-mode toggle' card disappears, the worktree card stays. */
+export const FiltersToWorktree: Story = {
+  args: {
+    tasks: [...ALL_TASKS, ...WORKTREE_TASKS],
+    worktrees: WORKTREES,
+    activeWorktree: 'nc/api-client',
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText('Generate API client')).toBeInTheDocument();
+    await expect(canvas.queryByText('Add dark-mode toggle')).not.toBeInTheDocument();
+  },
+};
+
+/** Play test: clicking a worktree tab reports the branch selection upward. */
+export const SelectsWorktreeTab: Story = {
+  args: {
+    tasks: [...ALL_TASKS, ...WORKTREE_TASKS],
+    worktrees: WORKTREES,
+  },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('tab', { name: /nc\/api-client/i }));
+    await expect(args.onSelectWorktree).toHaveBeenCalledWith('nc/api-client');
   },
 };

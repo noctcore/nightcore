@@ -1,4 +1,5 @@
-import type { Task } from '@/lib/bridge';
+import type { Task, WorktreeInfo } from '@/lib/bridge';
+import type { ActiveWorktree } from '../WorktreeSwitcher';
 
 /** A tripped circuit breaker: the autonomous loop paused after consecutive
  *  failures. Drives the board's dismissable Resume banner. */
@@ -12,6 +13,12 @@ export interface BoardProps {
   /** Active project path + branch for the header subtitle. */
   projectPath: string;
   projectBranch: string | null;
+  /** Live worktrees for the switcher (M4.6); empty falls back to task branches. */
+  worktrees: WorktreeInfo[];
+  /** The selected worktree tab (`null` = Main); filters the board. */
+  activeWorktree: ActiveWorktree;
+  /** Select a worktree tab (sets the active worktree + filters the board). */
+  onSelectWorktree: (active: ActiveWorktree) => void;
   /** Live max-concurrency (from `nc:loop`, falling back to persisted settings). */
   concurrency: number;
   /** Whether the autonomous loop is running (reflects `nc:loop`, not local state). */

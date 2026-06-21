@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Task } from '@/lib/bridge';
 import { COLUMNS, type ColumnDef } from '../status';
+import { filterTasksByWorktree, type ActiveWorktree } from '../WorktreeSwitcher';
 import type { BreakerInfo } from './Board.types';
 
 export interface BoardColumn {
@@ -51,15 +52,18 @@ export interface BoardViewState {
 }
 
 /** Board view state: the search query plus the derived filtered/grouped columns.
- *  The blocked-task set is computed by the backend and passed in as a prop (it
- *  depends on the full registry + run state, not just the visible cards). */
-export function useBoardView(tasks: Task[]): BoardViewState {
+ *  Tasks are first scoped to the active worktree (M4.6) — Main shows run-mode-main
+ *  tasks, a worktree tab shows its branch's tasks — then keyword-filtered. The
+ *  blocked-task set is computed by the backend and passed in as a prop (it depends
+ *  on the full registry + run state, not just the visible cards). */
+export function useBoardView(tasks: Task[], activeWorktree: ActiveWorktree): BoardViewState {
   const [search, setSearch] = useState('');
 
   const columns = useMemo(() => {
-    const visible = tasks.filter((task) => matchesQuery(task, search));
+    const scoped = filterTasksByWorktree(tasks, activeWorktree);
+    const visible = scoped.filter((task) => matchesQuery(task, search));
     return groupTasksByColumn(visible);
-  }, [tasks, search]);
+  }, [tasks, activeWorktree, search]);
 
   return {
     search,
