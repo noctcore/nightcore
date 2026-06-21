@@ -6,6 +6,10 @@ research docs (in the sibling `shiranami` repo where the research was run):
 - **Combined findings:** `docs/chain/2026-06-21-nightcore-cli-harness.md`
 - **Detailed architecture:** `docs/arch/2026-06-21-nightcore-harness-architecture.md`
 
+See [`diagrams.md`](./diagrams.md) for rendered Mermaid diagrams of the layered
+architecture, the start-to-end runtime flow, the event/command spine, and the
+permission decision flow.
+
 ## The one-sentence model
 
 **The Claude Agent SDK is thick; Nightcore is thin.** The SDK spawns and drives
