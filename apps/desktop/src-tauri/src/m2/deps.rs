@@ -27,6 +27,44 @@ pub fn index_by_id(tasks: &[Task]) -> HashMap<String, &Task> {
     tasks.iter().map(|t| (t.id.clone(), t)).collect()
 }
 
+/// Whether a task is in a launchable status. The auto-loop pulls `Ready` and
+/// `Backlog` tasks (the design's auto-promote choice — §2 step 3); everything else
+/// (in-progress, waiting-approval, terminal) is skipped.
+pub fn is_launchable_status(status: TaskStatus) -> bool {
+    matches!(status, TaskStatus::Ready | TaskStatus::Backlog)
+}
+
+/// The set of tasks the coordinator may launch this tick: a launchable status,
+/// dependencies all `Done`, and not already holding a slot (`is_leased`). The
+/// result is sorted by `created_at` (then `id`) for deterministic, reproducible
+/// run order. Pure — `is_leased` is injected so this stays unit-testable without a
+/// live `SlotManager`.
+pub fn eligible_tasks<F>(tasks: &[Task], is_leased: F) -> Vec<&Task>
+where
+    F: Fn(&str) -> bool,
+{
+    let index = index_by_id(tasks);
+    let mut eligible: Vec<&Task> = tasks
+        .iter()
+        .filter(|t| is_launchable_status(t.status))
+        .filter(|t| !is_leased(&t.id))
+        .filter(|t| deps_satisfied(t, &index))
+        .collect();
+    eligible.sort_by(|a, b| a.created_at.cmp(&b.created_at).then_with(|| a.id.cmp(&b.id)));
+    eligible
+}
+
+/// Whether a task is `blocked` — launchable in status but with an unsatisfied
+/// dependency (so the UI can surface "waiting on deps" vs. "idle"). A vanished or
+/// failed dependency reads as blocked (fail-closed), matching [`deps_satisfied`].
+///
+/// Backend-ready for the frontend wiring step (the `blocked` badge); not yet called
+/// from a command, hence allowed-dead until the UI consumes it.
+#[allow(dead_code)]
+pub fn is_blocked(task: &Task, by_id: &HashMap<String, &Task>) -> bool {
+    is_launchable_status(task.status) && !deps_satisfied(task, by_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -84,5 +122,78 @@ mod tests {
         let all = vec![dep, task.clone()];
         let index = index_by_id(&all);
         assert!(!deps_satisfied(&task, &index));
+    }
+
+    #[test]
+    fn launchable_statuses_are_ready_and_backlog() {
+        assert!(is_launchable_status(TaskStatus::Ready));
+        assert!(is_launchable_status(TaskStatus::Backlog));
+        for s in [
+            TaskStatus::InProgress,
+            TaskStatus::WaitingApproval,
+            TaskStatus::Done,
+            TaskStatus::Failed,
+        ] {
+            assert!(!is_launchable_status(s), "{s:?} is not launchable");
+        }
+    }
+
+    #[test]
+    fn eligible_skips_running_terminal_blocked_and_leased() {
+        let done_dep = task_with("dep", TaskStatus::Done, &[]);
+        let ready = task_with("ready", TaskStatus::Ready, &["dep"]); // deps ok → eligible
+        let backlog = task_with("backlog", TaskStatus::Backlog, &[]); // eligible
+        let running = task_with("running", TaskStatus::InProgress, &[]); // wrong status
+        let blocked = task_with("blocked", TaskStatus::Ready, &["missing"]); // dep unmet
+        let leased = task_with("leased", TaskStatus::Ready, &[]); // holds a slot
+
+        let all = vec![
+            done_dep,
+            ready.clone(),
+            backlog.clone(),
+            running,
+            blocked,
+            leased,
+        ];
+        let eligible = eligible_tasks(&all, |id| id == "leased");
+        let ids: Vec<&str> = eligible.iter().map(|t| t.id.as_str()).collect();
+        assert!(ids.contains(&"ready"));
+        assert!(ids.contains(&"backlog"));
+        assert!(!ids.contains(&"running"), "in-progress is skipped");
+        assert!(!ids.contains(&"blocked"), "unmet deps are skipped");
+        assert!(!ids.contains(&"leased"), "already-leased is skipped");
+    }
+
+    #[test]
+    fn eligible_is_ordered_by_created_at_then_id() {
+        let mut older = task_with("z-older", TaskStatus::Ready, &[]);
+        older.created_at = 100;
+        let mut newer = task_with("a-newer", TaskStatus::Ready, &[]);
+        newer.created_at = 200;
+        let mut tie_a = task_with("a-tie", TaskStatus::Ready, &[]);
+        tie_a.created_at = 100;
+
+        let all = vec![newer, older, tie_a];
+        let eligible = eligible_tasks(&all, |_| false);
+        let ids: Vec<&str> = eligible.iter().map(|t| t.id.as_str()).collect();
+        // created_at 100 first (id-tie broken alphabetically: a-tie < z-older),
+        // then created_at 200.
+        assert_eq!(ids, vec!["a-tie", "z-older", "a-newer"]);
+    }
+
+    #[test]
+    fn blocked_reflects_unmet_dependencies() {
+        let blocked = task_with("a", TaskStatus::Ready, &["ghost"]);
+        let index = index_by_id(std::slice::from_ref(&blocked));
+        assert!(is_blocked(&blocked, &index), "ready with a missing dep is blocked");
+
+        let idle = task_with("b", TaskStatus::Ready, &[]);
+        let index = index_by_id(std::slice::from_ref(&idle));
+        assert!(!is_blocked(&idle, &index), "ready with no deps is not blocked");
+
+        // A terminal task is never 'blocked' regardless of deps.
+        let done = task_with("c", TaskStatus::Done, &["ghost"]);
+        let index = index_by_id(std::slice::from_ref(&done));
+        assert!(!is_blocked(&done, &index), "done is not a blocked state");
     }
 }
