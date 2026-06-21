@@ -228,3 +228,100 @@ body {
 .nc-drawer-enter {
   animation: nc-slide 0.26s cubic-bezier(0.22, 1, 0.36, 1);
 }
+
+/* --- Markdown prose (the <Markdown> ui primitive, M4.7 §D) ---------------- */
+/* Cosmic-dark prose for sanitized assistant/verdict/plan markdown. Scoped to
+ * `.nc-markdown` so it never leaks into the rest of the app surface. */
+.nc-markdown > :first-child {
+  margin-top: 0;
+}
+.nc-markdown > :last-child {
+  margin-bottom: 0;
+}
+.nc-markdown p {
+  margin: 0.5em 0;
+}
+.nc-markdown h1,
+.nc-markdown h2,
+.nc-markdown h3,
+.nc-markdown h4 {
+  margin: 1em 0 0.4em;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--nc-foreground);
+}
+.nc-markdown h1 {
+  font-size: 1.2em;
+}
+.nc-markdown h2 {
+  font-size: 1.1em;
+}
+.nc-markdown h3,
+.nc-markdown h4 {
+  font-size: 1em;
+}
+.nc-markdown ul,
+.nc-markdown ol {
+  margin: 0.5em 0;
+  padding-left: 1.4em;
+}
+.nc-markdown ul {
+  list-style: disc;
+}
+.nc-markdown ol {
+  list-style: decimal;
+}
+.nc-markdown li {
+  margin: 0.2em 0;
+}
+.nc-markdown a {
+  color: var(--nc-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.nc-markdown code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  border-radius: 4px;
+  background: oklch(100% 0 0 / 0.06);
+  padding: 0.1em 0.35em;
+}
+.nc-markdown pre {
+  margin: 0.6em 0;
+  overflow-x: auto;
+  border: 1px solid var(--nc-border);
+  border-radius: 8px;
+  background: oklch(100% 0 0 / 0.03);
+  padding: 0.7em 0.85em;
+}
+.nc-markdown pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.85em;
+  line-height: 1.55;
+}
+.nc-markdown blockquote {
+  margin: 0.6em 0;
+  border-left: 2px solid var(--nc-border);
+  padding-left: 0.85em;
+  color: var(--nc-muted-foreground);
+}
+.nc-markdown hr {
+  margin: 1em 0;
+  border: 0;
+  border-top: 1px solid var(--nc-border);
+}
+.nc-markdown table {
+  margin: 0.6em 0;
+  border-collapse: collapse;
+}
+.nc-markdown th,
+.nc-markdown td {
+  border: 1px solid var(--nc-border);
+  padding: 0.3em 0.6em;
+  text-align: left;
+}
+.nc-markdown strong {
+  font-weight: 600;
+  color: var(--nc-foreground);
+}

@@ -17,5 +17,9 @@ test('gates create on a non-empty title, then fires onCreate', async () => {
   await expect.element(create).toBeEnabled();
   await create.click();
 
-  expect(onCreate).toHaveBeenCalledWith('Add a panel', '', 'build', 'main');
+  expect(onCreate).toHaveBeenCalledWith('Add a panel', '', 'build', 'main', {
+    permissionMode: null,
+    model: null,
+    effort: null,
+  });
 });

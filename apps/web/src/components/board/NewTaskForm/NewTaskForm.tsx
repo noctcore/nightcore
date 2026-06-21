@@ -1,6 +1,8 @@
 import { Button, CloseIcon, IconButton, Kbd } from '@/components/ui';
 import { KindPicker } from '../KindPicker';
 import { WorkModePicker } from '../WorkModePicker';
+import { PermissionModePicker } from '../PermissionModePicker';
+import { ModelEffortPicker } from '../ModelEffortPicker';
 import { useNewTaskForm } from './NewTaskForm.hooks';
 import type { NewTaskFormProps } from './NewTaskForm.types';
 
@@ -14,12 +16,18 @@ export function NewTaskForm({ onCreate, onClose }: NewTaskFormProps) {
     description,
     kind,
     runMode,
+    permissionMode,
+    model,
+    effort,
     busy,
     canSubmit,
     setTitle,
     setDescription,
     setKind,
     setRunMode,
+    setPermissionMode,
+    setModel,
+    setEffort,
     submit,
     onTitleKeyDown,
     onDescKeyDown,
@@ -30,11 +38,11 @@ export function NewTaskForm({ onCreate, onClose }: NewTaskFormProps) {
       role="dialog"
       aria-modal="true"
       aria-label="New task"
-      className="fixed inset-0 z-20 flex items-start justify-center bg-black/60 px-4 pt-24 backdrop-blur-sm"
+      className="fixed inset-0 z-20 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-16 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-popover shadow-2xl"
+        className="flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-popover shadow-2xl"
         style={{ animation: 'nc-rise .22s cubic-bezier(.22,1,.36,1)' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -44,7 +52,7 @@ export function NewTaskForm({ onCreate, onClose }: NewTaskFormProps) {
             <CloseIcon size={16} />
           </IconButton>
         </div>
-        <div className="flex flex-col gap-3 p-5">
+        <div className="flex min-h-0 flex-col gap-3 overflow-y-auto p-5">
           <input
             autoFocus
             value={title}
@@ -75,6 +83,18 @@ export function NewTaskForm({ onCreate, onClose }: NewTaskFormProps) {
             </span>
             <WorkModePicker value={runMode} onChange={setRunMode} />
           </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+              Permission mode
+            </span>
+            <PermissionModePicker value={permissionMode} onChange={setPermissionMode} />
+          </div>
+          <ModelEffortPicker
+            model={model}
+            effort={effort}
+            onChangeModel={setModel}
+            onChangeEffort={setEffort}
+          />
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-border bg-black/15 px-5 py-3.5">
           <span className="mr-auto flex items-center gap-1 text-xs text-muted-foreground">

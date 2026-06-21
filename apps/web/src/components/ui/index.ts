@@ -6,5 +6,7 @@ export { EmptyState } from './EmptyState';
 export { IconButton } from './IconButton';
 export { IconTile } from './IconTile';
 export { Kbd } from './Kbd';
+export { Markdown, renderMarkdown } from './Markdown';
+export type { MarkdownProps } from './Markdown';
 export { StatusDot } from './StatusDot';
 export * from './icons';

@@ -3,6 +3,10 @@ import type { NcEvent } from '@/lib/bridge';
 export interface ToolLine {
   id: number;
   toolName: string;
+  /** The tool's invocation input (M4.7 §B) — already on the `nc:session` wire.
+   *  Rendered as a concise per-line summary (file path / pattern / command) in
+   *  TaskDetail. Optional so transcript-reseeded lines without input still load. */
+  input?: Record<string, unknown>;
 }
 
 /** Assembled live output for a single task's run, derived from `nc:session`. */
@@ -51,7 +55,10 @@ export function foldSession(prev: SessionStream, event: NcEvent): SessionStream 
         ...prev,
         streamedPartial: false,
         toolSeq: nextSeq,
-        tools: [...prev.tools, { id: nextSeq, toolName: event.toolName }],
+        tools: [
+          ...prev.tools,
+          { id: nextSeq, toolName: event.toolName, input: event.input },
+        ],
       };
     }
     case 'session-completed':

@@ -1,4 +1,4 @@
-import { Button, CheckIcon, RetryIcon, VerifiedIcon } from '@/components/ui';
+import { Button, CheckIcon, Markdown, RetryIcon, VerifiedIcon } from '@/components/ui';
 import { VERDICT_LABEL, VERDICT_TEXT } from '../status';
 import { deriveReviewPanelView, MAX_FIX_ATTEMPTS } from './ReviewPanel.hooks';
 import type { ReviewPanelProps } from './ReviewPanel.types';
@@ -32,9 +32,9 @@ export function ReviewPanel({ task, onAccept, onReject, onRerun }: ReviewPanelPr
         )}
       </div>
 
-      <pre className="whitespace-pre-wrap rounded-md border border-border bg-white/[0.02] px-3 py-2 text-sm leading-relaxed text-foreground/90">
+      <Markdown className="rounded-md border border-border bg-white/[0.02] px-3 py-2">
         {task.review}
-      </pre>
+      </Markdown>
 
       {budgetExhausted && (
         <p className="mt-1.5 font-mono text-[11px] text-warning">
