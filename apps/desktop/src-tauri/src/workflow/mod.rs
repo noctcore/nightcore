@@ -1,0 +1,9 @@
+//! Task-lifecycle command modules: plan approval, merge, the verification
+//! gauntlet, and the per-kind run policy. Grouped here so the crate root holds
+//! only the module tree; the historical `crate::{gauntlet, kind, merge,
+//! plan_approval}` paths are preserved by the facade re-exports in `lib.rs`.
+
+pub(crate) mod gauntlet;
+pub(crate) mod kind;
+pub(crate) mod merge;
+pub(crate) mod plan_approval;

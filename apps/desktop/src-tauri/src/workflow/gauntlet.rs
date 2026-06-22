@@ -295,7 +295,9 @@ pub fn run_gauntlet(
     id: String,
 ) -> Result<GauntletResult, String> {
     use tauri::Manager;
-    store.get(&id).ok_or_else(|| format!("no task with id {id}"))?;
+    store
+        .get(&id)
+        .ok_or_else(|| format!("no task with id {id}"))?;
 
     let Some(project) = app.state::<crate::project::ProjectStore>().active() else {
         return Ok(empty_pass());
@@ -343,7 +345,11 @@ mod tests {
         let tmp = temp_node_project(&[("test", "x"), ("lint", "x"), ("typecheck", "x")]);
         let steps = detect_steps(tmp.path());
         let names: Vec<&str> = steps.iter().map(|s| s.name.as_str()).collect();
-        assert_eq!(names, vec!["typecheck", "lint", "test"], "fixed order regardless of declaration order");
+        assert_eq!(
+            names,
+            vec!["typecheck", "lint", "test"],
+            "fixed order regardless of declaration order"
+        );
     }
 
     #[test]
@@ -491,7 +497,11 @@ mod tests {
         assert_eq!(result.failed_step.as_deref(), Some("typecheck"));
         let lint = result.steps.iter().find(|s| s.name == "lint").unwrap();
         let test = result.steps.iter().find(|s| s.name == "test").unwrap();
-        assert_eq!(lint.status, StepStatus::Skipped, "no step runs after a failure");
+        assert_eq!(
+            lint.status,
+            StepStatus::Skipped,
+            "no step runs after a failure"
+        );
         assert_eq!(test.status, StepStatus::Skipped);
     }
 }

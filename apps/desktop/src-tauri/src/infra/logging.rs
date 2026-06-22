@@ -34,10 +34,7 @@ pub fn init(app: &AppHandle) -> LogGuard {
     // developer can do e.g. `RUST_LOG=nightcore_lib=debug,sidecar=info`.
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
-    let log_dir = app
-        .path()
-        .app_log_dir()
-        .expect("app log dir unavailable");
+    let log_dir = app.path().app_log_dir().expect("app log dir unavailable");
     let _ = std::fs::create_dir_all(&log_dir);
 
     let file_appender = tracing_appender::rolling::daily(&log_dir, "nightcore.log");
@@ -45,10 +42,7 @@ pub fn init(app: &AppHandle) -> LogGuard {
 
     // Console: colored, compact, with target + fields. File: plain (no ANSI) so the
     // captured/persisted form stays grep-clean and parseable.
-    let console_layer = fmt::layer()
-        .with_ansi(true)
-        .with_target(true)
-        .compact();
+    let console_layer = fmt::layer().with_ansi(true).with_target(true).compact();
     let file_layer = fmt::layer()
         .with_ansi(false)
         .with_target(true)

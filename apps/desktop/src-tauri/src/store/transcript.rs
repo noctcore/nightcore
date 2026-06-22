@@ -80,13 +80,19 @@ fn write_line(path: &Path, task_id: &str, line: &str) {
             return;
         }
     }
-    match std::fs::OpenOptions::new().create(true).append(true).open(path) {
+    match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
         Ok(mut file) => {
             if let Err(e) = file.write_all(line.as_bytes()) {
                 tracing::warn!(target: "nightcore::transcript", task_id, error = %e, "cannot append transcript event");
             }
         }
-        Err(e) => tracing::warn!(target: "nightcore::transcript", task_id, error = %e, "cannot open transcript file"),
+        Err(e) => {
+            tracing::warn!(target: "nightcore::transcript", task_id, error = %e, "cannot open transcript file")
+        }
     }
 }
 
@@ -156,10 +162,7 @@ fn read_tail_lines(path: &Path, max_lines: usize) -> Option<Vec<String>> {
 /// `nc:session` stream view from this on mount / when a task is opened, so a reload
 /// no longer blanks the transcript (M4.7 §C).
 #[tauri::command]
-pub fn read_transcript(
-    store: State<'_, TaskStore>,
-    task_id: String,
-) -> Result<Vec<Value>, String> {
+pub fn read_transcript(store: State<'_, TaskStore>, task_id: String) -> Result<Vec<Value>, String> {
     Ok(read_events(&store.tasks_dir(), &task_id))
 }
 
@@ -239,7 +242,10 @@ mod tests {
         let got = read_events(&store.tasks_dir(), &task.id);
         assert_eq!(got.len(), TRANSCRIPT_TAIL, "read is tail-bounded");
         // The last event is the newest; the first 50 were dropped.
-        assert_eq!(got.last().unwrap()["seq"], serde_json::json!(TRANSCRIPT_TAIL + 49));
+        assert_eq!(
+            got.last().unwrap()["seq"],
+            serde_json::json!(TRANSCRIPT_TAIL + 49)
+        );
         assert_eq!(got.first().unwrap()["seq"], serde_json::json!(50));
     }
 
@@ -269,8 +275,16 @@ mod tests {
         assert_eq!(tail.len(), 500, "exactly the requested tail count");
         let first: serde_json::Value = serde_json::from_str(&tail[0]).unwrap();
         let last: serde_json::Value = serde_json::from_str(tail.last().unwrap()).unwrap();
-        assert_eq!(first["seq"], serde_json::json!(1500), "tail starts at line 2000-500");
-        assert_eq!(last["seq"], serde_json::json!(1999), "tail ends at the last line");
+        assert_eq!(
+            first["seq"],
+            serde_json::json!(1500),
+            "tail starts at line 2000-500"
+        );
+        assert_eq!(
+            last["seq"],
+            serde_json::json!(1999),
+            "tail ends at the last line"
+        );
 
         // A tail larger than the file returns every line, none dropped.
         std::fs::write(&path, "a\nb\nc\n").unwrap();
@@ -308,6 +322,10 @@ mod tests {
         )
         .unwrap();
         let got = read_events(&store.tasks_dir(), "t1");
-        assert_eq!(got.len(), 2, "the junk line is skipped, the valid ones survive");
+        assert_eq!(
+            got.len(),
+            2,
+            "the junk line is skipped, the valid ones survive"
+        );
     }
 }

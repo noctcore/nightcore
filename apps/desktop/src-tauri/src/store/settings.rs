@@ -171,7 +171,10 @@ impl Settings {
     /// merge into the global block.
     fn merge(&mut self, patch: SettingsPatch) {
         if let Some(project_id) = patch.project_id.clone() {
-            let entry = self.project_overrides.entry(project_id.clone()).or_default();
+            let entry = self
+                .project_overrides
+                .entry(project_id.clone())
+                .or_default();
             entry.apply_patch(&patch);
             if entry.is_empty() {
                 self.project_overrides.remove(&project_id);
@@ -235,7 +238,10 @@ impl SettingsStore {
 
     /// A snapshot of the current settings.
     pub fn get(&self) -> Settings {
-        self.settings.lock().expect("settings store poisoned").clone()
+        self.settings
+            .lock()
+            .expect("settings store poisoned")
+            .clone()
     }
 
     /// The effective permission mode for a project (its override, else the global),
@@ -455,7 +461,11 @@ pub fn update_settings(
     patch: SettingsPatch,
 ) -> Result<Settings, String> {
     // A global (no projectId) maxConcurrency change resizes the live pool.
-    let resize = patch.project_id.is_none().then_some(patch.max_concurrency).flatten();
+    let resize = patch
+        .project_id
+        .is_none()
+        .then_some(patch.max_concurrency)
+        .flatten();
     let merged = store.update(patch)?;
     if let Some(n) = resize {
         crate::m2::coordinator::set_max_concurrency(&app, n.max(1) as usize);
@@ -564,7 +574,10 @@ mod tests {
 
         // Global default is unchanged; the override carries the project-scoped value.
         assert_eq!(merged.default_model, "claude-opus-4-8");
-        let ov = merged.project_overrides.get("proj-1").expect("override exists");
+        let ov = merged
+            .project_overrides
+            .get("proj-1")
+            .expect("override exists");
         assert_eq!(ov.default_model.as_deref(), Some("haiku-4.5"));
         assert!(ov.default_effort.is_none(), "only the patched field is set");
     }
@@ -618,7 +631,10 @@ mod tests {
             serde_json::from_str(r#"{"projectId":"p1","permissionMode":"ask"}"#).unwrap();
         store.update(patch).expect("update");
         assert_eq!(store.sdk_permission_mode(Some("p1")), "default");
-        assert_eq!(store.sdk_permission_mode(Some("other")), "bypassPermissions");
+        assert_eq!(
+            store.sdk_permission_mode(Some("other")),
+            "bypassPermissions"
+        );
         assert_eq!(store.sdk_permission_mode(None), "bypassPermissions");
     }
 
@@ -639,9 +655,7 @@ mod tests {
 
         // A per-project override wins for that project only.
         store
-            .update(
-                serde_json::from_str(r#"{"projectId":"p1","defaultRunMode":"main"}"#).unwrap(),
-            )
+            .update(serde_json::from_str(r#"{"projectId":"p1","defaultRunMode":"main"}"#).unwrap())
             .expect("update");
         assert_eq!(store.default_run_mode(Some("p1")), RunMode::Main);
         assert_eq!(store.default_run_mode(Some("other")), RunMode::Worktree);
@@ -697,7 +711,10 @@ mod tests {
         // SDK-guardrails: with no Settings knob set, the resolvers return None so a
         // new task inherits the engine's `@nightcore/config` default.
         let s = Settings::default();
-        assert!(s.max_turns.is_none(), "max_turns defaults to None (inherit)");
+        assert!(
+            s.max_turns.is_none(),
+            "max_turns defaults to None (inherit)"
+        );
         assert!(
             s.max_budget_usd.is_none(),
             "max_budget_usd defaults to None (uncapped)"
@@ -729,9 +746,7 @@ mod tests {
 
         // A global ceiling flips it for every project without an own override.
         store
-            .update(
-                serde_json::from_str(r#"{"maxTurns":150,"maxBudgetUsd":5.0}"#).unwrap(),
-            )
+            .update(serde_json::from_str(r#"{"maxTurns":150,"maxBudgetUsd":5.0}"#).unwrap())
             .expect("update");
         assert_eq!(store.default_max_turns(None), Some(150));
         assert_eq!(store.default_max_turns(Some("any")), Some(150));
@@ -760,7 +775,10 @@ mod tests {
 
         // The global ceiling is untouched; the override carries the project value.
         assert!(merged.max_turns.is_none(), "global stays None");
-        let ov = merged.project_overrides.get("proj-1").expect("override exists");
+        let ov = merged
+            .project_overrides
+            .get("proj-1")
+            .expect("override exists");
         assert_eq!(ov.max_turns, Some(42));
         assert!(ov.max_budget_usd.is_none(), "only the patched field is set");
     }

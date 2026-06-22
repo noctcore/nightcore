@@ -51,7 +51,9 @@ fn commit_message(task: &Task) -> String {
 /// error so the UI can show it; marks the task committed on success.
 #[tauri::command]
 pub fn commit_task(app: AppHandle, store: State<'_, TaskStore>, id: String) -> Result<(), String> {
-    let task = store.get(&id).ok_or_else(|| format!("no task with id {id}"))?;
+    let task = store
+        .get(&id)
+        .ok_or_else(|| format!("no task with id {id}"))?;
     let project = require_project(&app)?;
     let project_path = std::path::PathBuf::from(&project.path);
     let message = commit_message(&task);
@@ -80,7 +82,9 @@ pub fn commit_task(app: AppHandle, store: State<'_, TaskStore>, id: String) -> R
 /// task merged; on conflict, mark `conflict` and surface an error (never forced).
 #[tauri::command]
 pub fn merge_task(app: AppHandle, store: State<'_, TaskStore>, id: String) -> Result<(), String> {
-    let task = store.get(&id).ok_or_else(|| format!("no task with id {id}"))?;
+    let task = store
+        .get(&id)
+        .ok_or_else(|| format!("no task with id {id}"))?;
     let project = require_project(&app)?;
     let project_path = std::path::PathBuf::from(&project.path);
 
@@ -151,8 +155,14 @@ pub fn merge_task(app: AppHandle, store: State<'_, TaskStore>, id: String) -> Re
 /// Accept the review on the user's authority (override the reviewer): mark the
 /// task `verified` and `Done`. The worktree is retained for commit/merge.
 #[tauri::command]
-pub fn accept_review(app: AppHandle, store: State<'_, TaskStore>, id: String) -> Result<(), String> {
-    store.get(&id).ok_or_else(|| format!("no task with id {id}"))?;
+pub fn accept_review(
+    app: AppHandle,
+    store: State<'_, TaskStore>,
+    id: String,
+) -> Result<(), String> {
+    store
+        .get(&id)
+        .ok_or_else(|| format!("no task with id {id}"))?;
     let updated = store.mutate(&id, |t| {
         t.verified = true;
         t.status = TaskStatus::Done;
@@ -165,8 +175,14 @@ pub fn accept_review(app: AppHandle, store: State<'_, TaskStore>, id: String) ->
 /// Reject the review: send the task back to `Backlog` (not verified), keeping
 /// `task.review` for context so the user sees why it was rejected.
 #[tauri::command]
-pub fn reject_review(app: AppHandle, store: State<'_, TaskStore>, id: String) -> Result<(), String> {
-    store.get(&id).ok_or_else(|| format!("no task with id {id}"))?;
+pub fn reject_review(
+    app: AppHandle,
+    store: State<'_, TaskStore>,
+    id: String,
+) -> Result<(), String> {
+    store
+        .get(&id)
+        .ok_or_else(|| format!("no task with id {id}"))?;
     let updated = store.mutate(&id, |t| {
         t.verified = false;
         t.status = TaskStatus::Backlog;
@@ -185,7 +201,9 @@ pub async fn rerun_verification(
     orch: State<'_, crate::m2::coordinator::Orchestrator>,
     id: String,
 ) -> Result<(), String> {
-    let task = store.get(&id).ok_or_else(|| format!("no task with id {id}"))?;
+    let task = store
+        .get(&id)
+        .ok_or_else(|| format!("no task with id {id}"))?;
     let project = require_project(&app)?;
     let project_path = std::path::PathBuf::from(&project.path);
     // Worktree-mode tasks re-review their `nc/<taskId>` worktree (it must still
@@ -248,11 +266,20 @@ mod tests {
         let main_task = Task::new("edit on main".into(), String::new());
         assert_eq!(main_task.run_mode, RunMode::Main);
         let err = refuse_main_mode_merge(&main_task).expect_err("main mode must be refused");
-        assert!(err.contains("runs on main"), "the message explains the refusal: {err}");
-        assert!(err.contains("commit"), "the message points at commit instead");
+        assert!(
+            err.contains("runs on main"),
+            "the message explains the refusal: {err}"
+        );
+        assert!(
+            err.contains("commit"),
+            "the message points at commit instead"
+        );
 
         // A worktree-mode task passes the guard (it has a branch to integrate).
         let wt_task = Task::new("isolated".into(), String::new()).with_run_mode(RunMode::Worktree);
-        assert!(refuse_main_mode_merge(&wt_task).is_ok(), "worktree mode is mergeable");
+        assert!(
+            refuse_main_mode_merge(&wt_task).is_ok(),
+            "worktree mode is mergeable"
+        );
     }
 }

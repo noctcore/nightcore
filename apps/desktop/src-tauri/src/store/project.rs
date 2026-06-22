@@ -85,12 +85,19 @@ impl ProjectStore {
 
     /// Snapshot of all known projects (registry order).
     pub fn list(&self) -> Vec<Project> {
-        self.projects.lock().expect("project store poisoned").clone()
+        self.projects
+            .lock()
+            .expect("project store poisoned")
+            .clone()
     }
 
     /// The active project, if one is set and still in the registry.
     pub fn active(&self) -> Option<Project> {
-        let id = self.active_id.lock().expect("project store poisoned").clone()?;
+        let id = self
+            .active_id
+            .lock()
+            .expect("project store poisoned")
+            .clone()?;
         self.projects
             .lock()
             .expect("project store poisoned")
@@ -273,7 +280,12 @@ fn current_branch(path: &str) -> Option<String> {
 }
 
 /// Emit `nc:project` with the registry snapshot and the (optional) subject project.
-fn emit_project_event(app: &AppHandle, store: &ProjectStore, kind: &str, project: Option<&Project>) {
+fn emit_project_event(
+    app: &AppHandle,
+    store: &ProjectStore,
+    kind: &str,
+    project: Option<&Project>,
+) {
     let _ = app.emit(
         PROJECT_EVENT,
         serde_json::json!({
@@ -436,7 +448,11 @@ mod tests {
         let (store, tmp) = temp_store();
         assert!(store.list().is_empty());
 
-        let project = Project::new("nightcore".into(), "/repo/nightcore".into(), Some("main".into()));
+        let project = Project::new(
+            "nightcore".into(),
+            "/repo/nightcore".into(),
+            Some("main".into()),
+        );
         let id = project.id.clone();
         store.add(project).expect("add");
         store.set_active(&id).expect("activate");
@@ -490,7 +506,10 @@ mod tests {
     #[test]
     fn active_tasks_dir_follows_the_active_project() {
         let (store, _tmp) = temp_store();
-        assert!(store.active_tasks_dir().is_none(), "no project, no tasks dir");
+        assert!(
+            store.active_tasks_dir().is_none(),
+            "no project, no tasks dir"
+        );
 
         let project = Project::new("p".into(), "/repo/p".into(), None);
         let id = project.id.clone();

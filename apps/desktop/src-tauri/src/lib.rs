@@ -12,19 +12,19 @@
 //! at a time runs through a single long-lived sidecar, streaming its events to
 //! the board and transitioning to `done`/`failed` on completion.
 
-mod gauntlet;
-mod kind;
-mod logging;
+mod infra;
 mod m2;
-mod merge;
-mod platform;
-mod plan_approval;
-mod project;
-mod settings;
 mod sidecar;
 mod store;
-mod task;
-mod transcript;
+mod workflow;
+
+// Module facade: preserve the historical crate-root paths after the folder
+// regroup so call sites elsewhere keep resolving unchanged. Crate-internal
+// (`pub(crate)`) — these are not part of the lib's public API (only `run` is), so
+// the re-export must not widen doc visibility beyond the original private `mod`s.
+pub(crate) use infra::{logging, platform};
+pub(crate) use store::{project, settings, task, transcript};
+pub(crate) use workflow::{gauntlet, kind, merge, plan_approval};
 
 use m2::coordinator::Orchestrator;
 use project::ProjectStore;

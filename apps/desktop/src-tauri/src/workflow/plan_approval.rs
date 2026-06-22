@@ -57,7 +57,9 @@ pub async fn approve_task(app: AppHandle, id: String) -> Result<(), String> {
     resolve_plan(
         &app,
         &id,
-        PermissionDecision::Allow { updated_input: None },
+        PermissionDecision::Allow {
+            updated_input: None,
+        },
         |task| {
             task.status = TaskStatus::InProgress;
             task.error = None;

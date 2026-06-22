@@ -344,14 +344,20 @@ fn build_new_task(
     description: String,
     inputs: CreateInputs,
 ) -> Task {
-    let run_mode = inputs.run_mode.unwrap_or_else(|| settings.default_run_mode(pid));
+    let run_mode = inputs
+        .run_mode
+        .unwrap_or_else(|| settings.default_run_mode(pid));
     let mut task = Task::new(title, description).with_run_mode(run_mode);
     // P0: an explicit per-task model/effort wins; absent ⇒ stamp the resolved
     // Settings default (an SDK long id) so changing "Default model" in Settings
     // actually affects new runs. `permission_mode` stays lazily resolved at launch
     // (`resolve_permission_mode`), so `None` here means "inherit".
     task.model = Some(inputs.model.unwrap_or_else(|| settings.default_model(pid)));
-    task.effort = Some(inputs.effort.unwrap_or_else(|| settings.default_effort(pid)));
+    task.effort = Some(
+        inputs
+            .effort
+            .unwrap_or_else(|| settings.default_effort(pid)),
+    );
     task.permission_mode = inputs.permission_mode;
     // SDK-guardrails: an explicit per-task ceiling wins; absent ⇒ stamp the
     // resolved Settings default (per-project override → global), so the Settings
@@ -540,9 +546,9 @@ fn move_task_inner(store: &TaskStore, id: &str, status: &str) -> Result<Task, St
     store.mutate_if(
         id,
         |task| match task.status {
-            TaskStatus::InProgress | TaskStatus::Verifying => Err(
-                "cannot move a running task — cancel it first".to_string(),
-            ),
+            TaskStatus::InProgress | TaskStatus::Verifying => {
+                Err("cannot move a running task — cancel it first".to_string())
+            }
             _ => Ok(()),
         },
         |task| task.status = status,
@@ -607,7 +613,10 @@ mod tests {
     fn m3_fields_default_and_round_trip() {
         let task = Task::new("t".into(), String::new());
         assert!(task.plan.is_none(), "plan defaults to None");
-        assert!(!task.committed && !task.merged && !task.conflict, "flags default false");
+        assert!(
+            !task.committed && !task.merged && !task.conflict,
+            "flags default false"
+        );
 
         let value: serde_json::Value = serde_json::to_value(&task).unwrap();
         let obj = value.as_object().unwrap();
@@ -637,7 +646,11 @@ mod tests {
         for key in ["kind", "verified", "review", "fixAttempts"] {
             assert!(obj.contains_key(key), "missing camelCase key {key}");
         }
-        assert_eq!(obj["kind"], serde_json::json!("build"), "kind serializes snake_case");
+        assert_eq!(
+            obj["kind"],
+            serde_json::json!("build"),
+            "kind serializes snake_case"
+        );
 
         // A legacy (pre-M4) task without any of the four new fields still loads,
         // defaulting each — existing task files aren't broken.
@@ -672,7 +685,11 @@ mod tests {
             "plan":null,"committed":false,"merged":false,"conflict":false,
             "kind":"build","verified":false,"review":null,"fixAttempts":0}"#;
         let back: Task = serde_json::from_str(legacy).expect("legacy task deserializes");
-        assert_eq!(back.run_mode, RunMode::Main, "a task with no run_mode loads as Main");
+        assert_eq!(
+            back.run_mode,
+            RunMode::Main,
+            "a task with no run_mode loads as Main"
+        );
     }
 
     #[test]
@@ -740,7 +757,10 @@ mod tests {
 
         task.branch = Some("nc/abc-123".into());
         let json = serde_json::to_string(&task).unwrap();
-        assert!(json.contains("\"branch\":\"nc/abc-123\""), "branch serializes camelCase");
+        assert!(
+            json.contains("\"branch\":\"nc/abc-123\""),
+            "branch serializes camelCase"
+        );
         let back: Task = serde_json::from_str(&json).unwrap();
         assert_eq!(back.branch.as_deref(), Some("nc/abc-123"));
     }
@@ -800,7 +820,10 @@ mod tests {
         // serde-additive — a legacy task without them still loads.
         let task = Task::new("t".into(), String::new());
         assert!(task.effort.is_none(), "effort defaults to None");
-        assert!(task.permission_mode.is_none(), "permission_mode defaults to None");
+        assert!(
+            task.permission_mode.is_none(),
+            "permission_mode defaults to None"
+        );
 
         let value: serde_json::Value = serde_json::to_value(&task).unwrap();
         let obj = value.as_object().unwrap();
@@ -905,7 +928,9 @@ mod tests {
         let settings = SettingsStore::load_from(tmp.path().join("config"));
         // A global Settings ceiling is set; the project has its own tighter override.
         settings
-            .update_for_test(serde_json::from_str(r#"{"maxTurns":150,"maxBudgetUsd":9.0}"#).unwrap())
+            .update_for_test(
+                serde_json::from_str(r#"{"maxTurns":150,"maxBudgetUsd":9.0}"#).unwrap(),
+            )
             .expect("global ceiling");
         settings
             .update_for_test(serde_json::from_str(r#"{"projectId":"p1","maxTurns":50}"#).unwrap())
@@ -919,7 +944,11 @@ mod tests {
             String::new(),
             CreateInputs::default(),
         );
-        assert_eq!(task.max_turns, Some(50), "per-project override wins for max_turns");
+        assert_eq!(
+            task.max_turns,
+            Some(50),
+            "per-project override wins for max_turns"
+        );
         assert_eq!(
             task.max_budget_usd,
             Some(9.0),
@@ -944,7 +973,9 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("temp dir");
         let settings = SettingsStore::load_from(tmp.path().join("config"));
         settings
-            .update_for_test(serde_json::from_str(r#"{"maxTurns":150,"maxBudgetUsd":9.0}"#).unwrap())
+            .update_for_test(
+                serde_json::from_str(r#"{"maxTurns":150,"maxBudgetUsd":9.0}"#).unwrap(),
+            )
             .expect("global ceiling");
 
         // An explicit per-task value always overrides the Settings default.
@@ -988,8 +1019,7 @@ mod tests {
     fn patch_sets_model_when_present() {
         let mut task = Task::new("t".into(), String::new());
         assert!(task.model.is_none());
-        let patch: TaskPatch =
-            serde_json::from_str(r#"{"model":"claude-opus-4-8"}"#).unwrap();
+        let patch: TaskPatch = serde_json::from_str(r#"{"model":"claude-opus-4-8"}"#).unwrap();
         patch.apply(&mut task);
         assert_eq!(task.model.as_deref(), Some("claude-opus-4-8"));
     }
@@ -1070,8 +1100,15 @@ mod tests {
             let (store, _tmp) = temp_store();
             let id = seed(&store, status, &[]);
             let err = move_task_inner(&store, &id, "backlog").expect_err("must reject");
-            assert!(err.contains("running"), "error explains the running-task guard: {err}");
-            assert_eq!(store.get(&id).expect("get").status, status, "task untouched");
+            assert!(
+                err.contains("running"),
+                "error explains the running-task guard: {err}"
+            );
+            assert_eq!(
+                store.get(&id).expect("get").status,
+                status,
+                "task untouched"
+            );
         }
     }
 
@@ -1104,9 +1141,18 @@ mod tests {
             .map(|t| t.id.clone())
             .collect();
 
-        assert!(ids.contains(&blocked), "a ready task with an unmet dep is blocked");
-        assert!(!ids.contains(&satisfied), "a ready task with all deps done is not blocked");
-        assert!(!ids.contains(&running), "an in-progress task is never blocked");
+        assert!(
+            ids.contains(&blocked),
+            "a ready task with an unmet dep is blocked"
+        );
+        assert!(
+            !ids.contains(&satisfied),
+            "a ready task with all deps done is not blocked"
+        );
+        assert!(
+            !ids.contains(&running),
+            "an in-progress task is never blocked"
+        );
         assert!(!ids.contains(&done_dep), "a terminal task is never blocked");
     }
 }

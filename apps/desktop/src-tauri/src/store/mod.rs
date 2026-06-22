@@ -8,6 +8,11 @@
 //!
 //! Held in managed Tauri state; commands take it as `State<'_, TaskStore>`.
 
+pub(crate) mod project;
+pub(crate) mod settings;
+pub(crate) mod task;
+pub(crate) mod transcript;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -53,13 +58,19 @@ fn read_dir_into_map(dir: &PathBuf) -> HashMap<String, Task> {
                         Ok(task) => {
                             tasks.insert(task.id.clone(), task);
                         }
-                        Err(e) => tracing::warn!(target: "nightcore::store", path = %path.display(), error = %e, "skipping unparsable task file"),
+                        Err(e) => {
+                            tracing::warn!(target: "nightcore::store", path = %path.display(), error = %e, "skipping unparsable task file")
+                        }
                     },
-                    Err(e) => tracing::warn!(target: "nightcore::store", path = %path.display(), error = %e, "cannot read task file"),
+                    Err(e) => {
+                        tracing::warn!(target: "nightcore::store", path = %path.display(), error = %e, "cannot read task file")
+                    }
                 }
             }
         }
-        Err(e) => tracing::warn!(target: "nightcore::store", dir = %dir.display(), error = %e, "cannot list tasks dir"),
+        Err(e) => {
+            tracing::warn!(target: "nightcore::store", dir = %dir.display(), error = %e, "cannot list tasks dir")
+        }
     }
     tasks
 }
@@ -230,10 +241,7 @@ impl TaskStore {
 pub(crate) fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     let dir = path.parent().unwrap_or_else(|| std::path::Path::new("."));
-    let file_name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("tmp");
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("tmp");
     // A unique-ish sibling temp name (pid + nanos) so two concurrent writers to
     // different files in the same dir don't collide.
     let nonce = std::time::SystemTime::now()
@@ -373,7 +381,11 @@ mod tests {
             )
             .expect_err("precondition must fail");
         assert_eq!(err, "already backlog");
-        assert_eq!(store.get(&id).unwrap().status, TaskStatus::Backlog, "no write on failed check");
+        assert_eq!(
+            store.get(&id).unwrap().status,
+            TaskStatus::Backlog,
+            "no write on failed check"
+        );
 
         // A passing precondition applies the mutation.
         let updated = store
@@ -399,14 +411,16 @@ mod tests {
         let id1 = id.clone();
         let h1 = std::thread::spawn(move || {
             for i in 0..iterations {
-                s1.mutate(&id1, |t| t.summary = Some(format!("s{i}"))).expect("mutate summary");
+                s1.mutate(&id1, |t| t.summary = Some(format!("s{i}")))
+                    .expect("mutate summary");
             }
         });
         let s2 = store.clone();
         let id2 = id.clone();
         let h2 = std::thread::spawn(move || {
             for i in 0..iterations {
-                s2.mutate(&id2, |t| t.cost_usd = Some(i as f64)).expect("mutate cost");
+                s2.mutate(&id2, |t| t.cost_usd = Some(i as f64))
+                    .expect("mutate cost");
             }
         });
         h1.join().expect("join 1");
@@ -415,8 +429,14 @@ mod tests {
         // Both fields landed: neither thread's last write was clobbered by a stale
         // read-modify-write from the other.
         let final_task = store.get(&id).expect("get");
-        assert!(final_task.summary.is_some(), "summary survived the interleave");
-        assert!(final_task.cost_usd.is_some(), "cost survived the interleave");
+        assert!(
+            final_task.summary.is_some(),
+            "summary survived the interleave"
+        );
+        assert!(
+            final_task.cost_usd.is_some(),
+            "cost survived the interleave"
+        );
     }
 
     #[test]
@@ -441,7 +461,10 @@ mod tests {
             .flatten()
             .filter(|e| e.file_name().to_string_lossy().contains(".tmp"))
             .collect();
-        assert!(leftover.is_empty(), "no .tmp litter remains after an atomic write");
+        assert!(
+            leftover.is_empty(),
+            "no .tmp litter remains after an atomic write"
+        );
     }
 
     #[test]
@@ -523,7 +546,10 @@ mod tests {
         store.retarget(dir_b.clone());
         assert_eq!(store.list().len(), 1, "only b's task is loaded");
         assert!(store.get(&task_b.id).is_some());
-        assert!(store.get(&task_a.id).is_none(), "a's task is no longer in memory");
+        assert!(
+            store.get(&task_a.id).is_none(),
+            "a's task is no longer in memory"
+        );
 
         let task_c = Task::new("also-b".into(), String::new());
         store.upsert(&task_c).expect("upsert c");
