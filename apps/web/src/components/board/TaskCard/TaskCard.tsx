@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import {
   AlertIcon,
   BoardIcon,
@@ -6,8 +7,11 @@ import {
   ClockIcon,
   CommitIcon,
   EditIcon,
+  IconButton,
   LockIcon,
   LogsIcon,
+  Menu,
+  MoveIcon,
   PlayIcon,
   RefineIcon,
   RetryIcon,
@@ -55,16 +59,23 @@ const ACTION_DISABLED = 'flex-1 border border-border bg-white/[0.04] text-muted-
  *  and shimmer progress while running, cost, branch/blocked/error chips, and the
  *  per-column action set (real run/cancel/logs/delete; M3 commit/refine/merge
  *  visible-but-disabled). Pure presentational — selection and bridge actions are
- *  owned by the board. */
-export function TaskCard({
+ *  owned by the board.
+ *
+ *  Memoized (C6): a board-wide `nc:session` delta re-renders the Board → Columns,
+ *  but a card whose own props (its task object + primitive flags) are unchanged
+ *  skips re-rendering. The handler props are stable `useCallback`s and `logCount`
+ *  is a primitive, so only the one card whose stream count changed re-renders. */
+function TaskCardImpl({
   task,
   selected,
   blocked = false,
   needsApproval = false,
   logCount = 0,
   draggable = false,
+  moveTargets,
   onDragStart,
   onSelect,
+  onMoveTask,
   onRun,
   onCancel,
   onDelete,
@@ -361,6 +372,21 @@ export function TaskCard({
             </button>
           </>
         )}
+        {moveTargets !== undefined && moveTargets.length > 0 && onMoveTask !== undefined && (
+          <Menu
+            label="Move task to column"
+            items={moveTargets.map((target) => ({
+              label: target.label,
+              icon: <BoardIcon size={14} />,
+              onClick: () => onMoveTask(task.id, target.status),
+            }))}
+            trigger={
+              <IconButton label="Move to column">
+                <MoveIcon size={13} />
+              </IconButton>
+            }
+          />
+        )}
         <button
           type="button"
           aria-label="Delete task"
@@ -373,3 +399,5 @@ export function TaskCard({
     </div>
   );
 }
+
+export const TaskCard = memo(TaskCardImpl);

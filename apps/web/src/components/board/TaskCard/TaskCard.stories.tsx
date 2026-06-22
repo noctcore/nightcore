@@ -120,3 +120,35 @@ export const CommitVerified: Story = {
     await expect(args.onCommit).toHaveBeenCalledWith('t-done');
   },
 };
+
+/** A card with the keyboard "Move to…" menu — the pointer-free path to the
+ *  board re-tag that drag-and-drop is otherwise the only way to reach (a11y). */
+export const MoveMenu: Story = {
+  args: {
+    task: TASKS_BY_STATUS.backlog,
+    onMoveTask: fn(),
+    moveTargets: [
+      { status: 'done', label: 'Done' },
+      { status: 'failed', label: 'Failed' },
+    ],
+  },
+};
+
+/** Play test: opening the Move menu and choosing a column invokes
+ *  onMoveTask(id, status) — the accessible board move without dragging. */
+export const MoveViaMenu: Story = {
+  args: {
+    task: TASKS_BY_STATUS.backlog,
+    onMoveTask: fn(),
+    moveTargets: [
+      { status: 'done', label: 'Done' },
+      { status: 'failed', label: 'Failed' },
+    ],
+  },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: /move to column/i }));
+    await userEvent.click(canvas.getByRole('menuitem', { name: 'Done' }));
+    await expect(args.onMoveTask).toHaveBeenCalledWith(TASKS_BY_STATUS.backlog.id, 'done');
+  },
+};

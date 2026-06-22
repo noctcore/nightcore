@@ -32,6 +32,8 @@ export interface NewTaskFormState {
   /** Raw text of the optional max-budget-USD ceiling (empty = inherit). */
   maxBudget: string;
   busy: boolean;
+  /** In-dialog error surfaced when `createTask` fails — keeps the dialog open. */
+  error: string | null;
   canSubmit: boolean;
   setTitle: (value: string) => void;
   setDescription: (value: string) => void;
@@ -43,7 +45,7 @@ export interface NewTaskFormState {
   setMaxTurns: (value: string) => void;
   setMaxBudget: (value: string) => void;
   submit: () => Promise<void>;
-  onTitleKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
+  /** ⌘↵ / Ctrl+↵ in the description submits (Esc-to-close lives in the Modal). */
   onDescKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
 }
 
@@ -62,12 +64,14 @@ export function useNewTaskForm({
   const [maxTurns, setMaxTurns] = useState('');
   const [maxBudget, setMaxBudget] = useState('');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const canSubmit = title.trim().length > 0 && !busy;
 
   const submit = useCallback(async () => {
     if (title.trim().length === 0 || busy) return;
     setBusy(true);
+    setError(null);
     try {
       await onCreate(title.trim(), description.trim(), kind, runMode, {
         permissionMode,
@@ -78,6 +82,10 @@ export function useNewTaskForm({
         maxBudgetUsd: parseNonNegativeFloat(maxBudget),
       });
       onClose();
+    } catch (err) {
+      // Keep the dialog open and surface the failure in-dialog so the draft isn't
+      // lost (the shell also raises a toast).
+      setError(err instanceof Error ? err.message : 'Could not create the task.');
     } finally {
       setBusy(false);
     }
@@ -96,22 +104,15 @@ export function useNewTaskForm({
     onClose,
   ]);
 
-  const onTitleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Escape') onClose();
-    },
-    [onClose],
-  );
-
   const onDescKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === 'Escape') onClose();
+      // ⌘↵ / Ctrl+↵ submits; plain Esc-to-close is owned by the shared Modal.
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         void submit();
       }
     },
-    [onClose, submit],
+    [submit],
   );
 
   return {
@@ -125,6 +126,7 @@ export function useNewTaskForm({
     maxTurns,
     maxBudget,
     busy,
+    error,
     canSubmit,
     setTitle,
     setDescription,
@@ -136,7 +138,6 @@ export function useNewTaskForm({
     setMaxTurns,
     setMaxBudget,
     submit,
-    onTitleKeyDown,
     onDescKeyDown,
   };
 }

@@ -7,12 +7,14 @@ import {
   CloseIcon,
   CommitIcon,
   IconButton,
+  LayersIcon,
   LogsIcon,
   Markdown,
   RefineIcon,
   TerminalIcon,
 } from '@/components/ui';
 import type { Task } from '@/lib/bridge';
+import { parseNumericCommit } from '@/lib/numeric-field';
 import { summarizeInput } from '@/lib/summarize';
 import {
   formatCost,
@@ -40,6 +42,9 @@ import {
 } from './TaskDetail.hooks';
 import type { TaskDetailProps } from './TaskDetail.types';
 
+/** The expand animation for the collapsible Session card body. */
+const SESSION_CARD_REVEAL = 'nc-rise .16s cubic-bezier(.22,1,.36,1)';
+
 /** An editable numeric ceiling (SDK guardrails). Empty ⇒ inherit the resolved
  *  default (the placeholder shows it). Commits a parsed value on blur/Enter via
  *  `onCommit`; a blank/invalid/unchanged value is a no-op — the override can be
@@ -62,11 +67,8 @@ function LimitField({
   onCommit: (next: number) => void;
 }) {
   const commit = (raw: string) => {
-    const trimmed = raw.trim();
-    if (trimmed.length === 0) return;
-    const parsed = Number(trimmed);
-    if (!Number.isFinite(parsed) || parsed < min || parsed === value) return;
-    onCommit(parsed);
+    const parsed = parseNumericCommit(raw, value, min);
+    if (parsed !== null) onCommit(parsed);
   };
   return (
     <label className="flex flex-1 flex-col gap-1">
@@ -115,6 +117,125 @@ function SessionRow({ label, children }: { label: string; children: React.ReactN
   );
 }
 
+/** A read-only config value pill — the post-run, un-editable rendering of a
+ *  session setting. Extracted (#11) so the six identical mono pills that the
+ *  readonly Session body used to inline share one styled element. */
+function ConfigPill({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+      {children}
+    </span>
+  );
+}
+
+/** The editable Session body — the live pickers shown while a task is still
+ *  pre-run (backlog/ready). Every control is the existing picker/`LimitField`,
+ *  unchanged; this just isolates the editable arm of the former ternary (#11). */
+function EditableSessionBody({
+  task,
+  onChangeKind,
+  onChangeRunMode,
+  onChangePermissionMode,
+  onChangeModel,
+  onChangeEffort,
+  onChangeMaxTurns,
+  onChangeMaxBudget,
+}: {
+  task: Task;
+  onChangeKind: NonNullable<TaskDetailProps['onChangeKind']>;
+  onChangeRunMode: NonNullable<TaskDetailProps['onChangeRunMode']>;
+  onChangePermissionMode: NonNullable<TaskDetailProps['onChangePermissionMode']>;
+  onChangeModel: NonNullable<TaskDetailProps['onChangeModel']>;
+  onChangeEffort: NonNullable<TaskDetailProps['onChangeEffort']>;
+  onChangeMaxTurns: NonNullable<TaskDetailProps['onChangeMaxTurns']>;
+  onChangeMaxBudget: NonNullable<TaskDetailProps['onChangeMaxBudget']>;
+}) {
+  return (
+    <>
+      <SessionRow label="Kind">
+        <KindPicker compact value={task.kind} onChange={(kind) => onChangeKind(task.id, kind)} />
+      </SessionRow>
+      <SessionRow label="Run mode">
+        <WorkModePicker
+          value={task.runMode}
+          onChange={(runMode) => onChangeRunMode(task.id, runMode)}
+        />
+      </SessionRow>
+      <SessionRow label="Permission">
+        <PermissionModePicker
+          value={task.permissionMode}
+          onChange={(mode) => onChangePermissionMode(task.id, mode)}
+        />
+      </SessionRow>
+      <SessionRow label="Model & effort">
+        <ModelEffortPicker
+          model={task.model}
+          effort={task.effort}
+          onChangeModel={(model) => onChangeModel(task.id, model)}
+          onChangeEffort={(effort) => onChangeEffort(task.id, effort)}
+        />
+      </SessionRow>
+      <SessionRow label="Limits">
+        <div className="flex gap-2.5">
+          <LimitField
+            label="Max turns"
+            value={task.maxTurns}
+            placeholder="Inherit"
+            min={1}
+            step={1}
+            onCommit={(n) => onChangeMaxTurns(task.id, n)}
+          />
+          <LimitField
+            label="Max budget (USD)"
+            value={task.maxBudgetUsd}
+            placeholder="Inherit"
+            min={0}
+            step={0.5}
+            prefix="$"
+            onCommit={(n) => onChangeMaxBudget(task.id, n)}
+          />
+        </div>
+      </SessionRow>
+    </>
+  );
+}
+
+/** The read-only Session body — the post-run rendering of the same five settings
+ *  as static `ConfigPill`s (#11). */
+function ReadonlySessionBody({ task }: { task: Task }) {
+  return (
+    <>
+      <SessionRow label="Kind">
+        <ConfigPill>{KIND_LABEL[task.kind]}</ConfigPill>
+      </SessionRow>
+      <SessionRow label="Run mode">
+        <ConfigPill>{RUN_MODE_LABEL[task.runMode]}</ConfigPill>
+      </SessionRow>
+      <SessionRow label="Permission">
+        <ConfigPill>
+          {task.permissionMode !== null ? PERMISSION_MODE_LABEL[task.permissionMode] : 'Inherit'}
+        </ConfigPill>
+      </SessionRow>
+      <SessionRow label="Model & effort">
+        <div className="flex flex-wrap gap-1.5">
+          <ConfigPill>
+            {task.model !== null ? modelDisplayName(task.model) : 'Model: inherit'}
+          </ConfigPill>
+          <ConfigPill>Effort: {task.effort ?? 'inherit'}</ConfigPill>
+        </div>
+      </SessionRow>
+      <SessionRow label="Limits">
+        <div className="flex flex-wrap gap-1.5">
+          <ConfigPill>Turns: {task.maxTurns ?? 'inherit'}</ConfigPill>
+          <ConfigPill>
+            Budget: {task.maxBudgetUsd !== null ? `$${task.maxBudgetUsd}` : 'inherit'}
+          </ConfigPill>
+        </div>
+      </SessionRow>
+    </>
+  );
+}
+
 /** The collapsible Session card (decision B): collapsed by default to a middot
  *  summary line, expanding to reveal the EXISTING pickers (editable) or read-only
  *  pills (post-run). Collapsed by default; opens on mount when the task is still
@@ -143,6 +264,19 @@ function SessionCard({
 }) {
   const { open, toggle } = useSessionCard(kindEditable);
 
+  // A task is editable here only while still pre-run (`kindEditable`) AND the
+  // shell wired every edit handler (it always passes them together). The split
+  // bodies (#11) replace the former per-row editable/readonly ternary.
+  const editable =
+    kindEditable &&
+    onChangeKind !== undefined &&
+    onChangeRunMode !== undefined &&
+    onChangePermissionMode !== undefined &&
+    onChangeModel !== undefined &&
+    onChangeEffort !== undefined &&
+    onChangeMaxTurns !== undefined &&
+    onChangeMaxBudget !== undefined;
+
   return (
     <section className="rounded-[10px] border border-border bg-white/[0.02]">
       <button
@@ -166,106 +300,24 @@ function SessionCard({
       <div
         id="session-card-body"
         hidden={!open}
-        style={open ? { animation: 'nc-rise .16s cubic-bezier(.22,1,.36,1)' } : undefined}
+        style={open ? { animation: SESSION_CARD_REVEAL } : undefined}
       >
         {open && (
           <div className="grid gap-3 border-t border-border px-3 pb-3 pt-3">
-            <SessionRow label="Kind">
-              {kindEditable && onChangeKind !== undefined ? (
-                <KindPicker
-                  compact
-                  value={task.kind}
-                  onChange={(kind) => onChangeKind(task.id, kind)}
-                />
-              ) : (
-                <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-                  {KIND_LABEL[task.kind]}
-                </span>
-              )}
-            </SessionRow>
-
-            <SessionRow label="Run mode">
-              {kindEditable && onChangeRunMode !== undefined ? (
-                <WorkModePicker
-                  value={task.runMode}
-                  onChange={(runMode) => onChangeRunMode(task.id, runMode)}
-                />
-              ) : (
-                <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-                  {RUN_MODE_LABEL[task.runMode]}
-                </span>
-              )}
-            </SessionRow>
-
-            <SessionRow label="Permission">
-              {kindEditable && onChangePermissionMode !== undefined ? (
-                <PermissionModePicker
-                  value={task.permissionMode}
-                  onChange={(mode) => onChangePermissionMode(task.id, mode)}
-                />
-              ) : (
-                <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-                  {task.permissionMode !== null
-                    ? PERMISSION_MODE_LABEL[task.permissionMode]
-                    : 'Inherit'}
-                </span>
-              )}
-            </SessionRow>
-
-            <SessionRow label="Model & effort">
-              {kindEditable && onChangeModel !== undefined && onChangeEffort !== undefined ? (
-                <ModelEffortPicker
-                  model={task.model}
-                  effort={task.effort}
-                  onChangeModel={(model) => onChangeModel(task.id, model)}
-                  onChangeEffort={(effort) => onChangeEffort(task.id, effort)}
-                />
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-                    {task.model !== null ? modelDisplayName(task.model) : 'Model: inherit'}
-                  </span>
-                  <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-                    Effort: {task.effort ?? 'inherit'}
-                  </span>
-                </div>
-              )}
-            </SessionRow>
-
-            <SessionRow label="Limits">
-              {kindEditable &&
-              onChangeMaxTurns !== undefined &&
-              onChangeMaxBudget !== undefined ? (
-                <div className="flex gap-2.5">
-                  <LimitField
-                    label="Max turns"
-                    value={task.maxTurns}
-                    placeholder="Inherit"
-                    min={1}
-                    step={1}
-                    onCommit={(n) => onChangeMaxTurns(task.id, n)}
-                  />
-                  <LimitField
-                    label="Max budget (USD)"
-                    value={task.maxBudgetUsd}
-                    placeholder="Inherit"
-                    min={0}
-                    step={0.5}
-                    prefix="$"
-                    onCommit={(n) => onChangeMaxBudget(task.id, n)}
-                  />
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-                    Turns: {task.maxTurns ?? 'inherit'}
-                  </span>
-                  <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-                    Budget: {task.maxBudgetUsd !== null ? `$${task.maxBudgetUsd}` : 'inherit'}
-                  </span>
-                </div>
-              )}
-            </SessionRow>
+            {editable ? (
+              <EditableSessionBody
+                task={task}
+                onChangeKind={onChangeKind}
+                onChangeRunMode={onChangeRunMode}
+                onChangePermissionMode={onChangePermissionMode}
+                onChangeModel={onChangeModel}
+                onChangeEffort={onChangeEffort}
+                onChangeMaxTurns={onChangeMaxTurns}
+                onChangeMaxBudget={onChangeMaxBudget}
+              />
+            ) : (
+              <ReadonlySessionBody task={task} />
+            )}
           </div>
         )}
       </div>
@@ -305,20 +357,57 @@ function Timeline({
           aria-live={isRunning ? 'polite' : undefined}
           aria-atomic={isRunning ? 'false' : undefined}
         >
-          {entries.map((entry, i) =>
-            entry.kind === 'text' ? (
-              <li key={`t${i}`} className="text-foreground">
-                <Markdown>{entry.markdown}</Markdown>
-                {isRunning && i === entries.length - 1 && (
-                  <span
-                    aria-hidden="true"
-                    className="ml-0.5 inline-block w-[2px] animate-[nc-pulse_1s_ease-in-out_infinite] align-text-bottom text-primary"
-                  >
-                    ▌
+          {entries.map((entry, i) => {
+            if (entry.kind === 'text') {
+              const isLast = i === entries.length - 1;
+              return (
+                // Stable per-entry key (C6) — `entry.id` keeps a growing turn's
+                // identity so React reconciles it in place instead of remounting.
+                <li key={`t${entry.id}`} className="text-foreground">
+                  {entry.closed ? (
+                    // Closed turn: parse markdown once (the heavy marked+DOMPurify
+                    // pass) — it no longer changes, so no O(n²) reparse.
+                    <Markdown>{entry.markdown}</Markdown>
+                  ) : (
+                    // Open (still-streaming) turn: render as plain text while it
+                    // grows, so each delta is a cheap text update, not a reparse.
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
+                      {entry.markdown}
+                    </p>
+                  )}
+                  {isRunning && isLast && (
+                    <span
+                      aria-hidden="true"
+                      className="ml-0.5 inline-block w-[2px] animate-[nc-pulse_1s_ease-in-out_infinite] align-text-bottom text-primary"
+                    >
+                      ▌
+                    </span>
+                  )}
+                </li>
+              );
+            }
+            if (entry.kind === 'task') {
+              const label = entry.subagentType ?? 'Subagent';
+              const detail = entry.summary ?? entry.description;
+              return (
+                <li
+                  key={`s${entry.id}`}
+                  className="flex items-start gap-1.5 rounded-md border border-info/30 bg-info/[0.06] px-2 py-1 font-mono text-xs text-info"
+                >
+                  <LayersIcon size={12} className="mt-0.5 shrink-0" />
+                  <span className="min-w-0 break-words">
+                    <span className="font-semibold">{label}</span>
+                    {entry.status !== undefined && (
+                      <span className="text-muted-foreground"> · {entry.status}</span>
+                    )}
+                    {detail !== undefined && detail.length > 0 && (
+                      <span className="text-muted-foreground"> · {detail}</span>
+                    )}
                   </span>
-                )}
-              </li>
-            ) : (
+                </li>
+              );
+            }
+            return (
               <li
                 key={`x${entry.id}`}
                 className="flex items-start gap-1.5 rounded-md border border-border bg-white/[0.02] px-2 py-1 font-mono text-xs text-primary/80"
@@ -331,8 +420,8 @@ function Timeline({
                   )}
                 </span>
               </li>
-            ),
-          )}
+            );
+          })}
         </ol>
       ) : (
         <p className="text-sm text-muted-foreground">
@@ -377,6 +466,7 @@ export function TaskDetail({
   onRunGauntlet,
   onMerge,
   onCommit,
+  isActionPending,
 }: TaskDetailProps) {
   const {
     isRunning,
@@ -390,6 +480,9 @@ export function TaskDetail({
   } = deriveTaskDetailView(task, stream);
   const mergeable = canMerge(task, gauntlet);
   const mainMode = task.runMode === 'main';
+  // True while the named action is mid-flight for this task — disables the button
+  // so it can't double-fire before the `nc:task` echo lands.
+  const pending = (action: string): boolean => isActionPending?.(action, task.id) ?? false;
 
   return (
     <aside className="nc-drawer-enter flex h-full w-[28rem] shrink-0 flex-col border-l border-border bg-popover">
@@ -491,17 +584,25 @@ export function TaskDetail({
       <footer className="flex items-center gap-2 border-t border-border bg-card px-4 py-3">
         {planParked ? (
           <>
-            <Button onClick={() => onApprove?.(task.id)}>
+            <Button onClick={() => onApprove?.(task.id)} disabled={pending('approve')}>
               <CheckIcon size={14} />
-              Approve
+              {pending('approve') ? 'Approving…' : 'Approve'}
             </Button>
-            <Button variant="secondary" onClick={() => onRefine?.(task.id)}>
+            <Button
+              variant="secondary"
+              onClick={() => onRefine?.(task.id)}
+              disabled={pending('refine')}
+            >
               <RefineIcon size={14} />
-              Refine
+              {pending('refine') ? 'Refining…' : 'Refine'}
             </Button>
             <span className="flex-1" />
-            <Button variant="danger" onClick={() => onReject?.(task.id)}>
-              Reject
+            <Button
+              variant="danger"
+              onClick={() => onReject?.(task.id)}
+              disabled={pending('reject')}
+            >
+              {pending('reject') ? 'Rejecting…' : 'Reject'}
             </Button>
           </>
         ) : reviewParked ? (
@@ -531,7 +632,7 @@ export function TaskDetail({
             ) : task.committed ? (
               <Button
                 onClick={() => onMerge?.(task.id)}
-                disabled={!mergeable}
+                disabled={!mergeable || pending('merge')}
                 title={
                   mergeable
                     ? undefined
@@ -539,12 +640,12 @@ export function TaskDetail({
                 }
               >
                 <BranchIcon size={14} />
-                Merge
+                {pending('merge') ? 'Merging…' : 'Merge'}
               </Button>
             ) : (
-              <Button onClick={() => onCommit?.(task.id)}>
+              <Button onClick={() => onCommit?.(task.id)} disabled={pending('commit')}>
                 <CommitIcon size={14} />
-                Commit
+                {pending('commit') ? 'Committing…' : 'Commit'}
               </Button>
             )}
             <span className="flex-1" />
@@ -561,10 +662,10 @@ export function TaskDetail({
             ) : (
               <Button
                 onClick={() => onRun(task.id)}
-                disabled={anyRunning}
+                disabled={anyRunning || pending('run')}
                 title={anyRunning ? 'Another task is already running' : undefined}
               >
-                Run
+                {pending('run') ? 'Starting…' : 'Run'}
               </Button>
             )}
             <span className="flex-1" />

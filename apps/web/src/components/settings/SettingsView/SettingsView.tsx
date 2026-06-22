@@ -16,6 +16,7 @@ import {
   SparkIcon,
 } from '@/components/ui';
 import { EFFORT_OPTIONS, MODEL_OPTIONS } from '@/lib/models';
+import { parseNumericCommit } from '@/lib/numeric-field';
 import { SettingsCard } from '../SettingsCard';
 import type { SettingsCardProps } from '../SettingsCard';
 import { useAppInfo, useSettingsView, type EffectiveSettings } from './SettingsView.hooks';
@@ -151,12 +152,8 @@ function NumberField({
   prefix?: string;
 }): ReactNode {
   const commit = (raw: string) => {
-    const trimmed = raw.trim();
-    if (trimmed.length === 0) return;
-    const parsed = Number(trimmed);
-    if (!Number.isFinite(parsed) || parsed < (min ?? 0)) return;
-    if (parsed === value) return;
-    onCommit(parsed);
+    const parsed = parseNumericCommit(raw, value, min ?? 0);
+    if (parsed !== null) onCommit(parsed);
   };
   return (
     <div className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-black/20 px-2.5 py-1.5 focus-within:border-primary">

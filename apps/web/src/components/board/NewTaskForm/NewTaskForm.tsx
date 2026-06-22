@@ -1,4 +1,4 @@
-import { Button, CloseIcon, IconButton, Kbd } from '@/components/ui';
+import { Button, CloseIcon, IconButton, Kbd, Modal } from '@/components/ui';
 import { KindPicker } from '../KindPicker';
 import { WorkModePicker } from '../WorkModePicker';
 import { PermissionModePicker } from '../PermissionModePicker';
@@ -22,6 +22,7 @@ export function NewTaskForm({ onCreate, onClose }: NewTaskFormProps) {
     maxTurns,
     maxBudget,
     busy,
+    error,
     canSubmit,
     setTitle,
     setDescription,
@@ -33,23 +34,18 @@ export function NewTaskForm({ onCreate, onClose }: NewTaskFormProps) {
     setMaxTurns,
     setMaxBudget,
     submit,
-    onTitleKeyDown,
     onDescKeyDown,
   } = useNewTaskForm({ onCreate, onClose });
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="New task"
-      className="fixed inset-0 z-20 flex justify-end bg-black/60 backdrop-blur-sm"
-      onClick={onClose}
+    <Modal
+      label="New task"
+      initialFocus="#nt-title"
+      onClose={onClose}
+      overlayClassName="fixed inset-0 z-20 flex justify-end bg-black/60 backdrop-blur-sm"
+      panelClassName="flex h-full w-full max-w-lg flex-col overflow-hidden border-l border-border bg-popover shadow-2xl"
+      panelStyle={{ animation: 'nc-sheet-in .28s cubic-bezier(.22,1,.36,1)' }}
     >
-      <div
-        className="flex h-full w-full max-w-lg flex-col overflow-hidden border-l border-border bg-popover shadow-2xl"
-        style={{ animation: 'nc-sheet-in .28s cubic-bezier(.22,1,.36,1)' }}
-        onClick={(e) => e.stopPropagation()}
-      >
         <div className="flex items-center gap-3 border-b border-border px-5 py-4">
           <h2 className="flex-1 text-base font-semibold text-foreground">New task</h2>
           <IconButton label="Close dialog" onClick={onClose}>
@@ -58,10 +54,9 @@ export function NewTaskForm({ onCreate, onClose }: NewTaskFormProps) {
         </div>
         <div className="flex min-h-0 flex-col gap-3 overflow-y-auto p-5">
           <input
-            autoFocus
+            id="nt-title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={onTitleKeyDown}
             placeholder="Task title"
             aria-label="Task title"
             className={INPUT_CLASS}
@@ -135,9 +130,15 @@ export function NewTaskForm({ onCreate, onClose }: NewTaskFormProps) {
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-border bg-black/15 px-5 py-3.5">
-          <span className="mr-auto flex items-center gap-1 text-xs text-muted-foreground">
-            <Kbd>⌘↵</Kbd> to create
-          </span>
+          {error !== null ? (
+            <span role="alert" className="mr-auto min-w-0 truncate text-xs text-destructive">
+              {error}
+            </span>
+          ) : (
+            <span className="mr-auto flex items-center gap-1 text-xs text-muted-foreground">
+              <Kbd>⌘↵</Kbd> to create
+            </span>
+          )}
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
@@ -145,7 +146,6 @@ export function NewTaskForm({ onCreate, onClose }: NewTaskFormProps) {
             {busy ? 'Creating…' : 'Create task'}
           </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

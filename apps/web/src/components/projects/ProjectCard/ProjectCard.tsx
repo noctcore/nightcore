@@ -11,6 +11,7 @@ import {
   IconTile,
   Kbd,
   Menu,
+  Modal,
   StatusDot,
   TrashIcon,
 } from '@/components/ui';
@@ -149,53 +150,37 @@ interface RenameDialogProps {
   onCancel: () => void;
 }
 
-/** A small centered dialog to edit a project's display name. Esc / click-outside
- *  cancel; ⌘↵ or the input's Enter submits. Mirrors the app's dialog chrome. */
+/** A small centered dialog to edit a project's display name. Built on the shared
+ *  `<Modal>` primitive (focus trap + restore-to-opener); Esc / click-outside
+ *  cancel; ↵ submits when the name is valid. Mirrors the app's dialog chrome. */
 function RenameDialog({ value, canSubmit, onChange, onSubmit, onCancel }: RenameDialogProps) {
   return (
-    <div
-      role="presentation"
-      className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm"
-      onClick={onCancel}
+    <Modal
+      label="Rename project"
+      onClose={onCancel}
+      onEnter={canSubmit ? onSubmit : undefined}
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Rename project"
-        className="w-full max-w-sm overflow-hidden rounded-[14px] border border-border bg-popover shadow-2xl"
-        style={{ animation: 'nc-rise .22s cubic-bezier(.22,1,.36,1)' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex flex-col gap-3 px-5 pb-4 pt-5">
-          <h2 className="text-base font-semibold text-foreground">Rename project</h2>
-          <input
-            autoFocus
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') onCancel();
-              if (e.key === 'Enter' && canSubmit) {
-                e.preventDefault();
-                onSubmit();
-              }
-            }}
-            placeholder="Project name"
-            aria-label="Project name"
-            className={INPUT_CLASS}
-          />
-        </div>
-        <div className="flex items-center justify-end gap-2 border-t border-border bg-black/15 px-5 py-3.5">
-          <span className="mr-auto flex items-center gap-1 text-xs text-muted-foreground">
-            <Kbd>↵</Kbd> to save
-          </span>
-          <Button variant="ghost" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button onClick={onSubmit} disabled={!canSubmit}>
-            Save
-          </Button>
-        </div>
+      <div className="flex flex-col gap-3 px-5 pb-4 pt-5">
+        <h2 className="text-base font-semibold text-foreground">Rename project</h2>
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Project name"
+          aria-label="Project name"
+          className={INPUT_CLASS}
+        />
       </div>
-    </div>
+      <div className="flex items-center justify-end gap-2 border-t border-border bg-black/15 px-5 py-3.5">
+        <span className="mr-auto flex items-center gap-1 text-xs text-muted-foreground">
+          <Kbd>↵</Kbd> to save
+        </span>
+        <Button variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button onClick={onSubmit} disabled={!canSubmit}>
+          Save
+        </Button>
+      </div>
+    </Modal>
   );
 }

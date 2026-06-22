@@ -67,6 +67,8 @@ export const Running: Story = {
       entries: [
         {
           kind: 'text',
+          id: 1,
+          closed: true,
           markdown:
             '## Generating the client\n\nReading `vite.config.ts`, then writing the typed client from the OpenAPI spec.\n\n- Parsed the schema\n- Emitted `api/client.ts`',
         },
@@ -94,18 +96,24 @@ export const InterleavedTimeline: Story = {
       entries: [
         {
           kind: 'text',
+          id: 1,
+          closed: true,
           markdown:
             "First I'll find where the client is wired so the new types land in the right module.",
         },
         { kind: 'tool', id: 1, toolName: 'Grep', input: { pattern: 'createClient', path: 'src' } },
         {
           kind: 'text',
+          id: 2,
+          closed: true,
           markdown:
             'Found it in `src/api/index.ts`. Now generating the typed client from the OpenAPI spec.',
         },
         { kind: 'tool', id: 2, toolName: 'Bash', input: { command: 'bun run codegen:api' } },
         {
           kind: 'text',
+          id: 3,
+          closed: true,
           markdown: 'Codegen succeeded — `src/api/client.ts` now exports the typed client.',
         },
       ],
@@ -281,7 +289,7 @@ export const Verifying: Story = {
       ...EMPTY_STREAM,
       streamedPartial: true,
       entries: [
-        { kind: 'text', markdown: 'Running git diff against the base branch…' },
+        { kind: 'text', id: 1, closed: true, markdown: 'Running git diff against the base branch…' },
         { kind: 'tool', id: 1, toolName: 'Bash' },
       ],
       toolSeq: 1,

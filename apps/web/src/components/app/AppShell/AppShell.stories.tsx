@@ -1,17 +1,21 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { ToastProvider } from '@/components/ui';
 import { AppShell } from './AppShell';
 
 /** The full app shell. In Storybook the bridge runs in browser mode, so it seeds
- *  from mock data (one project, default settings) and commands no-op. */
+ *  from mock data (one project, default settings) and commands no-op. The shell's
+ *  hooks read the toast channel, so the provider wraps it here too. */
 const meta = {
   title: 'App/AppShell',
   component: AppShell,
   parameters: { layout: 'fullscreen' },
   decorators: [
     (Story) => (
-      <div style={{ height: '100vh' }}>
-        <Story />
-      </div>
+      <ToastProvider>
+        <div style={{ height: '100vh' }}>
+          <Story />
+        </div>
+      </ToastProvider>
     ),
   ],
 } satisfies Meta<typeof AppShell>;

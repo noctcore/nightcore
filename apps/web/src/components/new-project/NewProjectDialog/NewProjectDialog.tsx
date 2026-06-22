@@ -5,6 +5,7 @@ import {
   FolderIcon,
   IconButton,
   IconTile,
+  Modal,
 } from '@/components/ui';
 import { useNewProjectDialog } from './NewProjectDialog.hooks';
 import type { NewProjectDialogProps } from './NewProjectDialog.types';
@@ -36,22 +37,20 @@ export function NewProjectDialog({
   gitState = 'unknown',
   onInitGit,
 }: NewProjectDialogProps) {
-  const { name, model, concurrency, canCreate, setName, setModel, setConcurrency, create } =
+  const { name, model, concurrency, canCreate, busy, setName, setModel, setConcurrency, create } =
     useNewProjectDialog({ models, onCreate, folder, gitState });
 
+  // Esc / click-outside close — but never while a create is in flight (W-A's
+  // double-submit guard). The shared Modal adds the focus trap + restore.
+  const close = busy ? () => {} : onClose;
+
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="New project"
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm"
-      onClick={onClose}
+    <Modal
+      label="New project"
+      onClose={close}
+      overlayClassName="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm"
+      panelClassName="w-[480px] max-w-full overflow-hidden rounded-2xl border border-border bg-popover shadow-2xl"
     >
-      <div
-        className="w-[480px] max-w-full overflow-hidden rounded-2xl border border-border bg-popover shadow-2xl"
-        style={{ animation: 'nc-rise .22s cubic-bezier(.22,1,.36,1)' }}
-        onClick={(e) => e.stopPropagation()}
-      >
         <div className="flex items-center gap-3 border-b border-border px-5 py-4">
           <IconTile size="sm">
             <FolderIcon size={16} />
@@ -69,9 +68,13 @@ export function NewProjectDialog({
 
         <div className="flex flex-col gap-4 p-5">
           <div>
-            <label className={FIELD_LABEL}>Repository folder</label>
+            <label className={FIELD_LABEL} htmlFor="np-folder">
+              Repository folder
+            </label>
             <button
+              id="np-folder"
               type="button"
+              aria-label="Choose repository folder"
               onClick={() => void onChooseFolder()}
               className={`flex w-full items-center gap-2.5 rounded-[10px] border border-dashed bg-white/[0.02] px-3 py-2.5 text-left ${folder !== null ? 'border-border' : 'border-primary/50'}`}
             >
@@ -138,11 +141,15 @@ export function NewProjectDialog({
               </select>
             </div>
             <div className="w-[120px]">
-              <label className="mb-1.5 flex items-center gap-1.5 text-[11.5px] font-semibold text-muted-foreground">
+              <label
+                htmlFor="np-concurrency"
+                className="mb-1.5 flex items-center gap-1.5 text-[11.5px] font-semibold text-muted-foreground"
+              >
                 Concurrency
                 <Badge tone="roadmap">M2</Badge>
               </label>
               <input
+                id="np-concurrency"
                 type="number"
                 min={1}
                 max={6}
@@ -155,14 +162,13 @@ export function NewProjectDialog({
         </div>
 
         <div className="flex justify-end gap-2.5 border-t border-border bg-black/15 px-5 py-3.5">
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
           <Button onClick={create} disabled={!canCreate}>
-            Create project
+            {busy ? 'Creating…' : 'Create project'}
           </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

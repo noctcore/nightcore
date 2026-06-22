@@ -1,6 +1,11 @@
 import { expect, test } from 'vitest';
 import type { NcEvent } from '@/lib/bridge';
-import { EMPTY_STREAM, foldSession, type SessionStream } from './session-stream';
+import {
+  EMPTY_STREAM,
+  foldSession,
+  type SessionStream,
+  type TaskEntry,
+} from './session-stream';
 
 const delta = (text: string, partial: boolean): NcEvent => ({
   type: 'assistant-delta',
@@ -9,9 +14,11 @@ const delta = (text: string, partial: boolean): NcEvent => ({
   partial,
 });
 
+let toolUseSeq = 0;
 const tool = (toolName: string, input: Record<string, unknown> = {}): NcEvent => ({
   type: 'tool-use-requested',
   sessionId: 1,
+  toolUseId: `tu-${++toolUseSeq}`,
   toolName,
   input,
 });
@@ -28,11 +35,25 @@ test('interleaves text → tool → text into [text, tool, text] in arrival orde
   ]);
 
   expect(stream.entries).toEqual([
-    { kind: 'text', markdown: 'Looking around. Found it.' },
+    { kind: 'text', id: 1, markdown: 'Looking around. Found it.', closed: true },
     { kind: 'tool', id: 1, toolName: 'Grep', input: { pattern: 'x' } },
-    { kind: 'text', markdown: 'Now editing.' },
+    { kind: 'text', id: 2, markdown: 'Now editing.', closed: false },
   ]);
   expect(stream.toolSeq).toBe(1);
+});
+
+test('a tool use seals the open text turn and bumps toolCount incrementally', () => {
+  const stream = fold([
+    delta('a', true),
+    tool('Grep'),
+    delta('b', true),
+    tool('Read'),
+  ]);
+  // Closed turns carry `closed: true`; the trailing open turn stays open. The
+  // running toolCount is maintained in the fold (perf #6) rather than re-filtered.
+  expect(stream.toolCount).toBe(2);
+  const texts = stream.entries.filter((e) => e.kind === 'text');
+  expect(texts.map((e) => e.kind === 'text' && e.closed)).toEqual([true, true]);
 });
 
 test('a tool use closes the open text turn so two turns stay distinct', () => {
@@ -53,13 +74,15 @@ test('suppresses the whole-message block when partials already streamed (dedup)'
     // The SDK re-emits the full message as a non-partial block — must be dropped.
     delta('Hello world', false),
   ]);
-  expect(stream.entries).toEqual([{ kind: 'text', markdown: 'Hello world' }]);
+  expect(stream.entries).toEqual([{ kind: 'text', id: 1, markdown: 'Hello world', closed: false }]);
   expect(stream.streamedPartial).toBe(true);
 });
 
 test('a non-partial whole-message block appends when no partials streamed', () => {
   const stream = fold([delta('Whole message only', false)]);
-  expect(stream.entries).toEqual([{ kind: 'text', markdown: 'Whole message only' }]);
+  expect(stream.entries).toEqual([
+    { kind: 'text', id: 1, markdown: 'Whole message only', closed: false },
+  ]);
 });
 
 test('partial flag resets on each tool use so a later whole-message block is kept', () => {
@@ -71,21 +94,34 @@ test('partial flag resets on each tool use so a later whole-message block is kep
     delta('non-streamed turn', false),
   ]);
   expect(stream.entries).toEqual([
-    { kind: 'text', markdown: 'streamed' },
+    { kind: 'text', id: 1, markdown: 'streamed', closed: true },
     { kind: 'tool', id: 1, toolName: 'Read', input: { file_path: 'a.ts' } },
-    { kind: 'text', markdown: 'non-streamed turn' },
+    { kind: 'text', id: 2, markdown: 'non-streamed turn', closed: false },
   ]);
 });
 
 test('reseed parity: reducing a recorded sequence rebuilds the live entries', () => {
   const recorded: NcEvent[] = [
-    { type: 'session-started', sessionId: 1, model: 'opus', permissionMode: 'bypass' },
+    {
+      type: 'session-started',
+      sessionId: 1,
+      prompt: 'do the thing',
+      model: 'opus',
+      permissionMode: 'bypassPermissions',
+    },
     delta('Plan: ', true),
     delta('grep then edit.', true),
     tool('Grep', { pattern: 'createClient' }),
     delta('Editing the client.', true),
     tool('Edit', { file_path: 'src/api/client.ts' }),
-    { type: 'session-completed', sessionId: 1, costUsd: 0.2, numTurns: 3, durationMs: 1200 },
+    {
+      type: 'session-completed',
+      sessionId: 1,
+      result: 'done',
+      costUsd: 0.2,
+      numTurns: 3,
+      durationMs: 1200,
+    },
   ];
 
   // A live fold (incremental) and a reseed fold (replayed in order) are the same
@@ -95,9 +131,9 @@ test('reseed parity: reducing a recorded sequence rebuilds the live entries', ()
 
   expect(reseeded.entries).toEqual(live.entries);
   expect(reseeded.entries).toEqual([
-    { kind: 'text', markdown: 'Plan: grep then edit.' },
+    { kind: 'text', id: 1, markdown: 'Plan: grep then edit.', closed: true },
     { kind: 'tool', id: 1, toolName: 'Grep', input: { pattern: 'createClient' } },
-    { kind: 'text', markdown: 'Editing the client.' },
+    { kind: 'text', id: 2, markdown: 'Editing the client.', closed: true },
     { kind: 'tool', id: 2, toolName: 'Edit', input: { file_path: 'src/api/client.ts' } },
   ]);
   expect(reseeded.costUsd).toBe(0.2);
@@ -107,7 +143,15 @@ test('session-started / session-ready reset the stream to empty', () => {
   const stream = fold([
     delta('stale', true),
     tool('Bash'),
-    { type: 'session-ready', sessionId: 2, sdkSessionId: 'sdk-2', model: 'opus' },
+    {
+      type: 'session-ready',
+      sessionId: 2,
+      sdkSessionId: 'sdk-2',
+      model: 'opus',
+      tools: [],
+      slashCommands: [],
+      skills: [],
+    },
   ]);
   expect(stream).toEqual({ ...EMPTY_STREAM });
 });
@@ -115,8 +159,75 @@ test('session-started / session-ready reset the stream to empty', () => {
 test('session-failed records a formatted error without touching entries', () => {
   const stream = fold([
     delta('partial output', true),
-    { type: 'session-failed', sessionId: 1, reason: 'budget_exhausted', message: 'over budget' },
+    { type: 'session-failed', sessionId: 1, reason: 'max-budget', message: 'over budget' },
   ]);
-  expect(stream.error).toBe('budget_exhausted: over budget');
-  expect(stream.entries).toEqual([{ kind: 'text', markdown: 'partial output' }]);
+  expect(stream.error).toBe('max-budget: over budget');
+  expect(stream.entries).toEqual([
+    { kind: 'text', id: 1, markdown: 'partial output', closed: false },
+  ]);
+});
+
+// --- task-updated (C3): the subagent-step event the board used to drop --------
+
+const taskUpdated = (
+  fields: Partial<Omit<TaskEntry, 'kind' | 'id'>> & { taskId: string; ambient?: boolean },
+): NcEvent => ({
+  type: 'task-updated',
+  sessionId: 1,
+  taskId: fields.taskId,
+  status: fields.status as never,
+  description: fields.description,
+  summary: fields.summary,
+  subagentType: fields.subagentType,
+  ambient: fields.ambient ?? false,
+});
+
+test('task-updated surfaces a subagent step as its own timeline entry', () => {
+  const stream = fold([
+    delta('Spawning a subagent.', true),
+    taskUpdated({ taskId: 'sa-1', subagentType: 'Explore', status: 'running', description: 'searching' }),
+  ]);
+  expect(stream.entries).toEqual([
+    { kind: 'text', id: 1, markdown: 'Spawning a subagent.', closed: true },
+    {
+      kind: 'task',
+      id: 1,
+      taskId: 'sa-1',
+      subagentType: 'Explore',
+      description: 'searching',
+      summary: undefined,
+      status: 'running',
+    },
+  ]);
+});
+
+test('successive task-updated patches for the same taskId merge in place', () => {
+  const stream = fold([
+    taskUpdated({ taskId: 'sa-1', subagentType: 'Explore', status: 'running' }),
+    taskUpdated({ taskId: 'sa-1', status: 'completed', summary: 'found 3 hits' }),
+  ]);
+  const tasks = stream.entries.filter((e): e is TaskEntry => e.kind === 'task');
+  expect(tasks).toHaveLength(1);
+  expect(tasks[0]).toMatchObject({
+    taskId: 'sa-1',
+    subagentType: 'Explore',
+    status: 'completed',
+    summary: 'found 3 hits',
+  });
+});
+
+test('ambient task-updated steps stay out of the inline transcript', () => {
+  const stream = fold([
+    delta('working', true),
+    taskUpdated({ taskId: 'amb-1', ambient: true, description: 'housekeeping' }),
+  ]);
+  expect(stream.entries).toEqual([{ kind: 'text', id: 1, markdown: 'working', closed: false }]);
+});
+
+test('an unknown / again-future event variant is tolerated (no throw, stream unchanged)', () => {
+  const prev = fold([delta('hi', true)]);
+  // Cast through unknown: simulates a variant this build does not yet model.
+  const future = { type: 'something-new', sessionId: 1 } as unknown as NcEvent;
+  expect(() => foldSession(prev, future)).not.toThrow();
+  expect(foldSession(prev, future)).toBe(prev);
 });

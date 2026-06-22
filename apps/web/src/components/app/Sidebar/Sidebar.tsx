@@ -169,7 +169,7 @@ export function Sidebar({
           )
         )}
         <a
-          href="https://github.com"
+          href="https://github.com/Shironex/nightcore"
           target="_blank"
           rel="noreferrer"
           aria-label="View on GitHub"

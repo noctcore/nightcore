@@ -55,7 +55,7 @@ export const SelectsItem: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole('button', { name: 'Open menu' }));
     await userEvent.click(canvas.getByRole('menuitem', { name: /rename/i }));
-    await expect(args.items[0].onClick).toHaveBeenCalled();
+    await expect(args.items[0]?.onClick).toHaveBeenCalled();
     await expect(canvas.queryByRole('menu')).toBeNull();
   },
 };

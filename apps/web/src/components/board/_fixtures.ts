@@ -18,6 +18,7 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     createdAt: overrides.createdAt ?? now,
     updatedAt: overrides.updatedAt ?? now,
     sessionId: overrides.sessionId ?? null,
+    sdkSessionId: overrides.sdkSessionId ?? null,
     summary: overrides.summary ?? null,
     error: overrides.error ?? null,
     costUsd: overrides.costUsd ?? null,

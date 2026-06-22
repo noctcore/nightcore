@@ -53,4 +53,8 @@ export interface TaskDetailProps {
   onMerge?: (id: string) => void;
   /** Commit a verified task's worktree. */
   onCommit?: (id: string) => void;
+  /** True while a guarded action (`run`/`approve`/`refine`/`reject`/`commit`/
+   *  `merge`) is in flight for this task, so the matching footer button disables
+   *  itself between the click and the `nc:task` echo. Defaults to never-pending. */
+  isActionPending?: (action: string, id: string) => boolean;
 }

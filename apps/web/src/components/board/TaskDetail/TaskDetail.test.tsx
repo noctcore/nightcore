@@ -62,18 +62,18 @@ test('deriveTaskDetailView prefers the live stream over persisted values', () =>
   const task = makeTask({ status: 'in_progress', costUsd: 0.1, summary: 'old' });
   const view = deriveTaskDetailView(task, {
     ...EMPTY_STREAM,
-    entries: [{ kind: 'text', markdown: 'live' }],
+    entries: [{ kind: 'text', id: 1, markdown: 'live', closed: false }],
     costUsd: 0.5,
   });
   expect(view.isRunning).toBe(true);
   expect(view.cost).toBe(0.5);
-  expect(view.entries).toEqual([{ kind: 'text', markdown: 'live' }]);
+  expect(view.entries).toEqual([{ kind: 'text', id: 1, markdown: 'live', closed: false }]);
 });
 
 test('deriveTaskDetailView falls back to the stored summary as a single text entry', () => {
   const task = makeTask({ status: 'done', summary: 'Final summary' });
   const view = deriveTaskDetailView(task, undefined);
-  expect(view.entries).toEqual([{ kind: 'text', markdown: 'Final summary' }]);
+  expect(view.entries).toEqual([{ kind: 'text', id: 0, markdown: 'Final summary', closed: true }]);
 });
 
 test('shows the reviewer verdict and Accept / Rerun / Reject for a review-parked task', async () => {

@@ -47,6 +47,7 @@ export {
   Hammer as BuildIcon,
   ListChecks as ChecksIcon,
   GitFork as DecomposeIcon,
+  ArrowRightLeft as MoveIcon,
 } from 'lucide-react';
 
 /** The GitHub brand mark — removed from lucide 1.x, so we ship the design's

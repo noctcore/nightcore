@@ -1,6 +1,5 @@
-import { Board, EMPTY_STREAM, NewTaskForm, TaskDetail } from '@/components/board';
-import { ProjectsView } from '@/components/projects';
-import { SettingsView } from '@/components/settings';
+import { lazy, Suspense } from 'react';
+import { Board, EMPTY_STREAM, NewTaskForm } from '@/components/board';
 import { NewProjectDialog } from '@/components/new-project';
 import {
   BoardIcon,
@@ -14,6 +13,34 @@ import { Sidebar } from '../Sidebar';
 import { Splash } from '../Splash';
 import { useAppShell } from './AppShell.hooks';
 import type { NavItem } from './AppShell.types';
+
+// Off-first-paint route views are code-split (client-bundle): the entry chunk
+// only needs Splash + Sidebar + Board, so the Settings/Projects surfaces and the
+// TaskDetail drawer — which pull in heavier deps (e.g. marked + dompurify via
+// <Markdown>) — load on demand behind a Suspense boundary.
+const TaskDetail = lazy(() =>
+  import('@/components/board').then((m) => ({ default: m.TaskDetail })),
+);
+const ProjectsView = lazy(() =>
+  import('@/components/projects').then((m) => ({ default: m.ProjectsView })),
+);
+const SettingsView = lazy(() =>
+  import('@/components/settings').then((m) => ({ default: m.SettingsView })),
+);
+
+/** A minimal fallback while a lazy route view streams in — a quiet centered
+ *  status line that never flashes chrome of its own. */
+function RouteFallback() {
+  return (
+    <div
+      role="status"
+      aria-busy="true"
+      className="flex h-full w-full items-center justify-center text-sm text-muted-foreground"
+    >
+      Loading…
+    </div>
+  );
+}
 
 const NAV: NavItem[] = [
   { view: 'projects', label: 'Projects', hint: 'P', icon: <LayersIcon size={16} /> },
@@ -111,6 +138,7 @@ export function AppShell() {
             </div>
 
             {selected !== null && (
+              <Suspense fallback={null}>
               <TaskDetail
                 task={selected}
                 stream={board.streams[selected.id] ?? EMPTY_STREAM}
@@ -139,12 +167,15 @@ export function AppShell() {
                 onRunGauntlet={board.handleRunGauntlet}
                 onMerge={board.handleMerge}
                 onCommit={board.handleCommit}
+                isActionPending={board.isActionPending}
               />
+              </Suspense>
             )}
           </div>
         )}
 
         {view === 'projects' && (
+          <Suspense fallback={<RouteFallback />}>
           <ProjectsView
             projects={projects}
             activeId={active?.id ?? null}
@@ -158,9 +189,11 @@ export function AppShell() {
             onDelete={registry.remove}
             onNewProject={routing.openNewProject}
           />
+          </Suspense>
         )}
 
         {view === 'settings' && settings.settings !== null && (
+          <Suspense fallback={<RouteFallback />}>
           <SettingsView
             settings={settings.settings}
             activeProjectId={active?.id ?? null}
@@ -168,6 +201,7 @@ export function AppShell() {
             activeProjectPath={active?.path ?? null}
             onUpdate={settings.update}
           />
+          </Suspense>
         )}
       </main>
 

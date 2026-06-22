@@ -8,7 +8,12 @@ export function Splash({
   version = 'v0.1.0',
 }: SplashProps) {
   return (
-    <div className="fixed inset-0 z-[90] flex flex-col items-center justify-center overflow-hidden bg-background">
+    <div
+      role="status"
+      aria-busy="true"
+      aria-label="Loading Nightcore"
+      className="fixed inset-0 z-[90] flex flex-col items-center justify-center overflow-hidden bg-background"
+    >
       <div
         className="absolute h-[560px] w-[560px] rounded-full bg-primary/[0.14] blur-2xl"
         style={{ animation: 'nc-glow 4s ease-in-out infinite' }}

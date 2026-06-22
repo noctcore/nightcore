@@ -101,9 +101,15 @@ export function useAppInfo(): AppInfo | null {
   const [info, setInfo] = useState<AppInfo | null>(null);
   useEffect(() => {
     let alive = true;
-    void getAppInfo().then((loaded) => {
-      if (alive) setInfo(loaded);
-    });
+    void getAppInfo()
+      .then((loaded) => {
+        if (alive) setInfo(loaded);
+      })
+      .catch((err) => {
+        // Non-fatal: the About card falls back to neutral text. Log so the
+        // rejection doesn't leak as an unhandled promise.
+        console.error('app_info failed', err);
+      });
     return () => {
       alive = false;
     };

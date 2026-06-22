@@ -41,7 +41,7 @@ export function deriveTaskDetailView(
   // a single synthetic text entry so the timeline still renders its final output.
   const fallbackEntries: TimelineEntry[] =
     task.summary !== null && task.summary.trim().length > 0
-      ? [{ kind: 'text', markdown: task.summary }]
+      ? [{ kind: 'text', id: 0, markdown: task.summary, closed: true }]
       : [];
   return {
     isRunning: task.status === 'in_progress',

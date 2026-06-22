@@ -1,5 +1,12 @@
 import type { DragEvent } from 'react';
-import type { Task } from '@/lib/bridge';
+import type { Task, TaskStatus } from '@/lib/bridge';
+
+/** A keyboard-accessible "Move to…" target for the card's move menu — the
+ *  pointer-free path to the drag-and-drop board re-tag (a11y). */
+export interface MoveTarget {
+  status: TaskStatus;
+  label: string;
+}
 
 export interface TaskCardProps {
   task: Task;
@@ -13,10 +20,16 @@ export interface TaskCardProps {
   logCount?: number;
   /** Whether the card can be dragged between columns (HTML5 DnD). */
   draggable?: boolean;
+  /** The columns this card can be moved to via the keyboard "Move to…" menu —
+   *  the accessible alternative to pointer-only drag-and-drop. Empty/absent hides
+   *  the menu (e.g. presentational stories or running cards the board pins). */
+  moveTargets?: MoveTarget[];
   /** Drag-start handler that stamps the task id onto the drag's dataTransfer. */
   onDragStart?: (e: DragEvent) => void;
   /** Open the detail drawer (also the card's click target). */
   onSelect: (id: string) => void;
+  /** Re-tag the card to another column's status (keyboard move path). */
+  onMoveTask?: (id: string, status: TaskStatus) => void;
   /** Real bridge actions. Absent in pure presentational stories. */
   onRun?: (id: string) => void;
   onCancel?: (id: string) => void;

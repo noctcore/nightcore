@@ -1,9 +1,10 @@
 import { composeStories } from '@storybook/react-vite';
 import { render } from 'vitest-browser-react';
 import { expect, test, vi } from 'vitest';
+import { userEvent } from '@vitest/browser/context';
 import * as stories from './TaskCard.stories';
 
-const { Failed, Done, Blocked, Running, Verifying, MainMode, MainModeCommitted } =
+const { Failed, Done, Blocked, Running, Verifying, MainMode, MainModeCommitted, MoveMenu } =
   composeStories(stories);
 
 test('shows the reviewing chip and a cancel control while verifying', async () => {
@@ -67,4 +68,23 @@ test('suppresses Merge for a committed main-mode task', async () => {
   await expect.element(committed).toBeDisabled();
   expect(screen.container.querySelector('button')).not.toBeNull();
   await expect.element(screen.getByText('Committed')).toBeInTheDocument();
+});
+
+test('keyboard "Move to…" menu moves the card without dragging (a11y)', async () => {
+  const onMoveTask = vi.fn();
+  const screen = render(<MoveMenu onMoveTask={onMoveTask} />);
+  // The menu is the pointer-free alternative to drag-and-drop.
+  await screen.getByRole('button', { name: /move to column/i }).click();
+  await screen.getByRole('menuitem', { name: 'Failed' }).click();
+  expect(onMoveTask).toHaveBeenCalledWith('t-backlog', 'failed');
+});
+
+test('Move menu is reachable and dismissable by keyboard (a11y)', async () => {
+  const onMoveTask = vi.fn();
+  const screen = render(<MoveMenu onMoveTask={onMoveTask} />);
+  await screen.getByRole('button', { name: /move to column/i }).click();
+  // The Menu primitive focuses the first item on open and closes on Escape.
+  await expect.element(screen.getByRole('menuitem', { name: 'Done' })).toBeInTheDocument();
+  await userEvent.keyboard('{Escape}');
+  expect(onMoveTask).not.toHaveBeenCalled();
 });

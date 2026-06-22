@@ -5,7 +5,16 @@ import type { NcEvent } from '@/lib/bridge';
  *  markdown stays contiguous and parseable; a tool use closes it. */
 export interface TextEntry {
   kind: 'text';
+  /** Stable per-entry id (C6) — drives the timeline's React key instead of the
+   *  array index, so a growing turn keeps its identity and React reconciles in
+   *  place rather than remounting every `<li>` on each delta. */
+  id: number;
   markdown: string;
+  /** True once the turn is sealed (a tool/subagent step followed, or the session
+   *  ended). The open (growing) turn renders as plain text; only a closed turn is
+   *  parsed through `marked`+`DOMPurify` — once — avoiding the O(n²) reparse the
+   *  audit flagged (C6). */
+  closed: boolean;
 }
 
 /** A single tool invocation streamed mid-turn. */
@@ -19,10 +28,30 @@ export interface ToolEntry {
   input?: Record<string, unknown>;
 }
 
-/** One chronological item in a run's activity timeline: an assistant text turn or
- *  a tool call. Interleaving these in arrival order is what visually separates
- *  speaking turns (fixing the run-on blob) while keeping the stream ordered. */
-export type TimelineEntry = TextEntry | ToolEntry;
+/** A subagent / Task-tool step streamed via `task-updated` (C3). The SDK emits
+ *  these for spawned subagents (`Explore`, etc.); the board used to drop them,
+ *  silently losing subagent activity from the transcript. Rendered as a distinct
+ *  timeline line so a run's subagent work is visible. */
+export interface TaskEntry {
+  kind: 'task';
+  id: number;
+  /** The SDK task id this step belongs to (deduped + merged in-place). */
+  taskId: string;
+  /** Subagent type when the step is a Task-tool subagent (e.g. `Explore`). */
+  subagentType?: string;
+  /** Human description of what the subagent step is doing. */
+  description?: string;
+  /** Short progress/result summary, when the SDK provides one. */
+  summary?: string;
+  /** Latest known status of the step (`running` → `completed`/`failed`/…). */
+  status?: string;
+}
+
+/** One chronological item in a run's activity timeline: an assistant text turn, a
+ *  tool call, or a subagent (`task-updated`) step. Interleaving these in arrival
+ *  order is what visually separates speaking turns (fixing the run-on blob) while
+ *  keeping the stream ordered. */
+export type TimelineEntry = TextEntry | ToolEntry | TaskEntry;
 
 /** Assembled live output for a single task's run, derived from `nc:session`. */
 export interface SessionStream {
@@ -33,6 +62,11 @@ export interface SessionStream {
    *  whole-message block (partial: false) can be suppressed. */
   streamedPartial: boolean;
   toolSeq: number;
+  /** Monotonic id source for text entries (C6 stable keys); never reused. */
+  textSeq: number;
+  /** Running tool-line count, maintained incrementally (perf #6) so the board's
+   *  Logs badge never re-filters every task's entries on each delta. */
+  toolCount: number;
 }
 
 export const EMPTY_STREAM: SessionStream = {
@@ -41,19 +75,17 @@ export const EMPTY_STREAM: SessionStream = {
   error: null,
   streamedPartial: false,
   toolSeq: 0,
+  textSeq: 0,
+  toolCount: 0,
 };
 
-/** Append assistant text to the trailing open text entry, creating a fresh one if
- *  the last entry is a tool (or the list is empty). A tool use thus closes the
- *  current text turn — the next delta opens a new entry, which is exactly what
- *  separates two speaking turns split by a tool call. */
-function appendText(entries: TimelineEntry[], text: string): TimelineEntry[] {
+/** Seal the trailing open text turn, if any (a tool/subagent step or the session
+ *  end follows it). A closed turn is parsed through markdown exactly once. */
+function closeOpenText(entries: TimelineEntry[]): TimelineEntry[] {
   const last = entries[entries.length - 1];
-  if (last !== undefined && last.kind === 'text') {
-    const updated: TextEntry = { kind: 'text', markdown: last.markdown + text };
-    return [...entries.slice(0, -1), updated];
-  }
-  return [...entries, { kind: 'text', markdown: text }];
+  if (last === undefined || last.kind !== 'text' || last.closed) return entries;
+  const sealed: TextEntry = { ...last, closed: true };
+  return [...entries.slice(0, -1), sealed];
 }
 
 /** Fold one engine event into the accumulated stream. Mirrors M0's dedup:
@@ -67,37 +99,91 @@ export function foldSession(prev: SessionStream, event: NcEvent): SessionStream 
     case 'session-ready':
       return { ...EMPTY_STREAM };
     case 'assistant-delta': {
-      if (event.partial) {
-        return {
-          ...prev,
-          streamedPartial: true,
-          entries: appendText(prev.entries, event.text),
-        };
-      }
       // Whole-message block: suppress when partials already streamed this turn
       // (the trailing open text entry already holds the full text).
-      if (prev.streamedPartial) return prev;
-      return { ...prev, entries: appendText(prev.entries, event.text) };
+      if (!event.partial && prev.streamedPartial) return prev;
+      const last = prev.entries[prev.entries.length - 1];
+      // Append to the trailing OPEN text turn; a closed turn (sealed by a prior
+      // tool/subagent step or session end) starts a fresh entry with a new id.
+      if (last !== undefined && last.kind === 'text' && !last.closed) {
+        const updated: TextEntry = { ...last, markdown: last.markdown + event.text };
+        return {
+          ...prev,
+          streamedPartial: event.partial || prev.streamedPartial,
+          entries: [...prev.entries.slice(0, -1), updated],
+        };
+      }
+      const id = prev.textSeq + 1;
+      return {
+        ...prev,
+        streamedPartial: event.partial || prev.streamedPartial,
+        textSeq: id,
+        entries: [...prev.entries, { kind: 'text', id, markdown: event.text, closed: false }],
+      };
     }
     case 'tool-use-requested': {
       const nextSeq = prev.toolSeq + 1;
-      // A tool use CLOSES the current text turn: pushing the tool entry means the
-      // next delta's appendText sees a trailing tool and opens a fresh text entry.
+      // A tool use CLOSES the current text turn: sealing it means the next delta
+      // opens a fresh text entry — which is what separates two speaking turns.
+      return {
+        ...prev,
+        streamedPartial: false,
+        toolSeq: nextSeq,
+        toolCount: prev.toolCount + 1,
+        entries: [
+          ...closeOpenText(prev.entries),
+          { kind: 'tool', id: nextSeq, toolName: event.toolName, input: event.input },
+        ],
+      };
+    }
+    case 'task-updated': {
+      // Ambient/housekeeping steps stay out of the inline transcript.
+      if (event.ambient) return prev;
+      // Merge successive updates for the same SDK task id in place (running →
+      // completed) rather than appending a new line per patch.
+      const idx = prev.entries.findIndex(
+        (e) => e.kind === 'task' && e.taskId === event.taskId,
+      );
+      if (idx !== -1) {
+        const existing = prev.entries[idx] as TaskEntry;
+        const merged: TaskEntry = {
+          ...existing,
+          subagentType: event.subagentType ?? existing.subagentType,
+          description: event.description ?? existing.description,
+          summary: event.summary ?? existing.summary,
+          status: event.status ?? existing.status,
+        };
+        const entries = prev.entries.slice();
+        entries[idx] = merged;
+        return { ...prev, entries };
+      }
+      const nextSeq = prev.toolSeq + 1;
+      // A subagent step also closes the current text turn (like a tool use).
       return {
         ...prev,
         streamedPartial: false,
         toolSeq: nextSeq,
         entries: [
-          ...prev.entries,
-          { kind: 'tool', id: nextSeq, toolName: event.toolName, input: event.input },
+          ...closeOpenText(prev.entries),
+          {
+            kind: 'task',
+            id: nextSeq,
+            taskId: event.taskId,
+            subagentType: event.subagentType,
+            description: event.description,
+            summary: event.summary,
+            status: event.status,
+          },
         ],
       };
     }
     case 'session-completed':
-      return { ...prev, costUsd: event.costUsd };
+      // The run ended — seal the trailing turn so it renders parsed markdown.
+      return { ...prev, costUsd: event.costUsd, entries: closeOpenText(prev.entries) };
     case 'session-failed':
       return { ...prev, error: `${event.reason}: ${event.message}` };
     default:
+      // Unknown / again-future variants are tolerated, never thrown.
       return prev;
   }
 }

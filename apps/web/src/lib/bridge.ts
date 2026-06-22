@@ -1,10 +1,25 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
+import { NightcoreEventSchema, type NightcoreEvent } from '@nightcore/contracts';
+
+export type { SessionStatus } from '@nightcore/contracts';
 
 /** True when running inside the Tauri webview (vs. a plain browser preview). */
 export function isTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
+
+/** Invoke a Tauri command, returning `fallback` (resolved) outside the webview so
+ *  Storybook/browser preview no-ops with mock data instead of rejecting. Folds the
+ *  repeated `if (!isTauri()) return …` guard into one place. */
+function tauriInvoke<T>(
+  command: string,
+  args: Record<string, unknown>,
+  fallback: T,
+): Promise<T> {
+  if (!isTauri()) return Promise.resolve(fallback);
+  return invoke<T>(command, args);
 }
 
 /** Lifecycle status of a task. Mirrors the Rust `TaskStatus` enum exactly.
@@ -57,6 +72,10 @@ export interface Task {
   createdAt: number;
   updatedAt: number;
   sessionId: number | null;
+  /** The SDK's own session UUID, populated once the engine emits its `init`
+   *  message and the core stamps it on the task. `null` until then / for tasks
+   *  that never ran. Mirrors the Rust serde field. */
+  sdkSessionId: string | null;
   summary: string | null;
   error: string | null;
   costUsd: number | null;
@@ -158,34 +177,14 @@ export interface GauntletResult {
   failedStep?: string;
 }
 
-/** The subset of the engine's `NightcoreEvent` the board renders. The Rust core
- *  forwards each event verbatim inside the `nc:session` envelope. */
-export type NcEvent =
-  | {
-      type: 'session-started';
-      sessionId: number;
-      model: string;
-      permissionMode: string;
-    }
-  | { type: 'session-ready'; sessionId: number; sdkSessionId: string; model: string }
-  | { type: 'assistant-delta'; sessionId: number; text: string; partial: boolean }
-  | {
-      type: 'tool-use-requested';
-      sessionId: number;
-      toolName: string;
-      input: Record<string, unknown>;
-    }
-  | { type: 'tool-result'; sessionId: number; isError: boolean; content: string }
-  | { type: 'permission-required'; sessionId: number; toolName: string }
-  | {
-      type: 'session-completed';
-      sessionId: number;
-      costUsd: number;
-      numTurns: number;
-      durationMs: number;
-    }
-  | { type: 'session-failed'; sessionId: number; reason: string; message: string }
-  | { type: 'session-status'; sessionId: number; status: string };
+/** The full engine event union streamed inside the `nc:session` envelope. This is
+ *  the AUTHORITATIVE contract (`@nightcore/contracts` → `NightcoreEventSchema`),
+ *  not a hand-maintained subset — so the board can never silently drift from what
+ *  the engine emits (e.g. the `task-updated` subagent-step event the board used to
+ *  drop). The Rust core forwards each event verbatim; `onSessionEvent` /
+ *  `readTranscript` validate the wire against `NightcoreEventSchema` before use. */
+export type NcEvent = NightcoreEvent;
+export type { NightcoreEvent } from '@nightcore/contracts';
 
 /** `nc:session` payload: a streamed engine event tagged with its task. */
 export interface SessionEnvelope {
@@ -304,8 +303,7 @@ export interface LoopEnvelope {
 
 /** Load all persisted tasks. Returns `[]` outside Tauri (browser preview). */
 export async function listTasks(): Promise<Task[]> {
-  if (!isTauri()) return [];
-  return invoke<Task[]>('list_tasks');
+  return tauriInvoke<Task[]>('list_tasks', {}, []);
 }
 
 /** Optional per-task launch overrides settable at create time (M4.7 §F). All
@@ -358,16 +356,14 @@ export async function deleteTask(id: string): Promise<void> {
 /** Ids of tasks blocked on an unfinished dependency (fail-closed). Drives the
  *  board's blocked badge + locked Run. Returns `[]` outside Tauri (preview). */
 export async function blockedTaskIds(): Promise<string[]> {
-  if (!isTauri()) return [];
-  return invoke<string[]>('blocked_task_ids');
+  return tauriInvoke<string[]>('blocked_task_ids', {}, []);
 }
 
 /** Manually move a task to `status` (drag between columns). The backend rejects a
  *  move into `in_progress` and any unknown status. No-op outside Tauri (preview):
  *  the caller keeps its optimistic update and there is no event to reconcile. */
 export async function moveTask(id: string, status: TaskStatus): Promise<void> {
-  if (!isTauri()) return;
-  await invoke<Task>('move_task', { id, status });
+  await tauriInvoke<Task | null>('move_task', { id, status }, null);
 }
 
 /** Run a task through the sidecar. Rejects if a task is already running. */
@@ -388,8 +384,17 @@ export async function cancelTask(id: string): Promise<void> {
  *  no longer blanks the transcript. Returns `[]` outside Tauri (browser preview)
  *  and tolerates a missing/empty transcript. */
 export async function readTranscript(taskId: string): Promise<NcEvent[]> {
-  if (!isTauri()) return [];
-  return invoke<NcEvent[]>('read_transcript', { taskId });
+  const raw = await tauriInvoke<unknown>('read_transcript', { taskId }, []);
+  if (!Array.isArray(raw)) return [];
+  // Validate each persisted line against the authoritative event contract,
+  // dropping any entry that fails (a partial write / legacy variant) rather than
+  // feeding a malformed event into `foldSession`.
+  const events: NcEvent[] = [];
+  for (const entry of raw) {
+    const parsed = NightcoreEventSchema.safeParse(entry);
+    if (parsed.success) events.push(parsed.data);
+  }
+  return events;
 }
 
 // --- Interactive permissions (M3) -----------------------------------------
@@ -403,14 +408,17 @@ export async function respondPermission(
   decision: PermissionDecision,
   options: { updatedInput?: Record<string, unknown>; message?: string } = {},
 ): Promise<void> {
-  if (!isTauri()) return;
-  await invoke('respond_permission', {
-    taskId,
-    requestId,
-    decision,
-    updatedInput: options.updatedInput ?? null,
-    message: options.message ?? null,
-  });
+  await tauriInvoke<void>(
+    'respond_permission',
+    {
+      taskId,
+      requestId,
+      decision,
+      updatedInput: options.updatedInput ?? null,
+      message: options.message ?? null,
+    },
+    undefined,
+  );
 }
 
 // --- Plan approval (M3) ---------------------------------------------------
@@ -471,8 +479,7 @@ export async function rerunVerification(id: string): Promise<void> {
  *  result. Drives the Verified column's "Run checks" action; a project with no
  *  detectable tooling passes trivially. No-op (empty pass) outside Tauri. */
 export async function runGauntlet(id: string): Promise<GauntletResult> {
-  if (!isTauri()) return { passed: true, steps: [] };
-  return invoke<GauntletResult>('run_gauntlet', { id });
+  return tauriInvoke<GauntletResult>('run_gauntlet', { id }, { passed: true, steps: [] });
 }
 
 // --- Worktrees (M4.6) -----------------------------------------------------
@@ -483,8 +490,7 @@ export async function runGauntlet(id: string): Promise<GauntletResult> {
  *  worktree. Returns `[]` outside Tauri (browser preview); the switcher falls
  *  back to distinct task branches there. */
 export async function listWorktrees(): Promise<WorktreeInfo[]> {
-  if (!isTauri()) return [];
-  return invoke<WorktreeInfo[]>('list_worktrees');
+  return tauriInvoke<WorktreeInfo[]>('list_worktrees', {}, []);
 }
 
 // --- Autonomous loop (M2) -------------------------------------------------
@@ -492,27 +498,23 @@ export async function listWorktrees(): Promise<WorktreeInfo[]> {
 /** Start the autonomous loop: ready tasks are leased and run up to the live
  *  concurrency. No-ops outside Tauri (browser preview). */
 export async function startAutoLoop(): Promise<void> {
-  if (!isTauri()) return;
-  await invoke('start_auto_loop');
+  await tauriInvoke<void>('start_auto_loop', {}, undefined);
 }
 
 /** Stop the autonomous loop. In-flight runs finish; no new tasks are leased. */
 export async function stopAutoLoop(): Promise<void> {
-  if (!isTauri()) return;
-  await invoke('stop_auto_loop');
+  await tauriInvoke<void>('stop_auto_loop', {}, undefined);
 }
 
 /** Resume the loop after a circuit-breaker pause, clearing the failure count. */
 export async function resumeAutoLoop(): Promise<void> {
-  if (!isTauri()) return;
-  await invoke('resume_auto_loop');
+  await tauriInvoke<void>('resume_auto_loop', {}, undefined);
 }
 
 /** Resize the live agent pool. The same value the Settings concurrency control
  *  writes; reading it back from `nc:loop` keeps both controls in sync. */
 export async function setMaxConcurrency(n: number): Promise<void> {
-  if (!isTauri()) return;
-  await invoke('set_max_concurrency', { n });
+  await tauriInvoke<void>('set_max_concurrency_cmd', { n }, undefined);
 }
 
 // --- Projects -------------------------------------------------------------
@@ -529,14 +531,12 @@ const MOCK_PROJECT: Project = {
 
 /** All known projects. Returns a mock outside Tauri (browser preview). */
 export async function listProjects(): Promise<Project[]> {
-  if (!isTauri()) return [MOCK_PROJECT];
-  return invoke<Project[]>('list_projects');
+  return tauriInvoke<Project[]>('list_projects', {}, [MOCK_PROJECT]);
 }
 
 /** The active project, if any. Returns the mock outside Tauri. */
 export async function activeProject(): Promise<Project | null> {
-  if (!isTauri()) return MOCK_PROJECT;
-  return invoke<Project | null>('active_project');
+  return tauriInvoke<Project | null>('active_project', {}, MOCK_PROJECT);
 }
 
 /** Register + activate a project at `path`. Rejects if `path` is not a git repo. */
@@ -562,8 +562,7 @@ export async function renameProject(id: string, name: string): Promise<Project> 
 
 /** Whether `path` is a git repository. `true` outside Tauri (preview). */
 export async function isGitRepo(path: string): Promise<boolean> {
-  if (!isTauri()) return true;
-  return invoke<boolean>('is_git_repo', { path });
+  return tauriInvoke<boolean>('is_git_repo', { path }, true);
 }
 
 /** Initialize a git repository at `path`. */
@@ -603,8 +602,7 @@ const MOCK_APP_INFO: AppInfo = {
 
 /** The current settings. Returns mock defaults outside Tauri. */
 export async function getSettings(): Promise<Settings> {
-  if (!isTauri()) return MOCK_SETTINGS;
-  return invoke<Settings>('get_settings');
+  return tauriInvoke<Settings>('get_settings', {}, MOCK_SETTINGS);
 }
 
 /** Shallow-merge a settings patch (global, or a per-project override when
@@ -617,26 +615,46 @@ export async function updateSettings(patch: SettingsPatch): Promise<Settings> {
 /** Real app metadata (version + repo URL) for the About page. Returns mock values
  *  outside Tauri (browser preview). */
 export async function getAppInfo(): Promise<AppInfo> {
-  if (!isTauri()) return MOCK_APP_INFO;
-  return invoke<AppInfo>('app_info');
+  return tauriInvoke<AppInfo>('app_info', {}, MOCK_APP_INFO);
 }
 
 // --- Events ---------------------------------------------------------------
 
-/** Narrow an unknown payload to a `Task` defensively. */
-function isTask(value: unknown): value is Task {
+/** True when `value` is a non-null object exposing every key in `keys`. The
+ *  shared spine of the defensive narrowers below — narrows `value` to a string
+ *  record so each guard can then check the field *types* it actually reads. */
+function hasKeys<K extends string>(
+  value: unknown,
+  keys: readonly K[],
+): value is Record<K, unknown> {
   if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
-  return typeof v.id === 'string' && typeof v.status === 'string';
+  return keys.every((k) => k in value);
 }
 
-/** Narrow an unknown payload to a `SessionEnvelope` defensively. */
-function isSessionEnvelope(value: unknown): value is SessionEnvelope {
-  if (typeof value !== 'object' || value === null) return false;
+/** Narrow an unknown payload to a `Task` defensively. Checks the fields the board
+ *  reducer + optimistic-move reconciliation actually read (`id`, `status`,
+ *  `createdAt`/`updatedAt` timestamps) rather than trusting the rest blindly. */
+function isTask(value: unknown): value is Task {
+  if (!hasKeys(value, ['id', 'status', 'createdAt', 'updatedAt'])) return false;
+  return (
+    typeof value.id === 'string' &&
+    typeof value.status === 'string' &&
+    typeof value.createdAt === 'number' &&
+    typeof value.updatedAt === 'number'
+  );
+}
+
+/** Parse an unknown `nc:session` payload into a validated `SessionEnvelope`, or
+ *  `null` when the shape or the inner event fails the authoritative contract.
+ *  The inner `event` is validated against `NightcoreEventSchema` (C3): a
+ *  malformed/again-future event is dropped rather than fed to `foldSession`. */
+function parseSessionEnvelope(value: unknown): SessionEnvelope | null {
+  if (typeof value !== 'object' || value === null) return null;
   const v = value as Record<string, unknown>;
-  if (typeof v.taskId !== 'string') return false;
-  const ev = v.event;
-  return typeof ev === 'object' && ev !== null && 'type' in ev;
+  if (typeof v.taskId !== 'string') return null;
+  const parsed = NightcoreEventSchema.safeParse(v.event);
+  if (!parsed.success) return null;
+  return { taskId: v.taskId, event: parsed.data };
 }
 
 /** Subscribe to `nc:task` board upserts. Returns an unlisten function. */
@@ -655,20 +673,24 @@ export async function onSessionEvent(
 ): Promise<UnlistenFn> {
   if (!isTauri()) return () => {};
   return listen<unknown>('nc:session', (event) => {
-    if (isSessionEnvelope(event.payload)) handler(event.payload);
+    const envelope = parseSessionEnvelope(event.payload);
+    if (envelope !== null) handler(envelope);
   });
 }
 
-/** Narrow an unknown payload to a `ProjectEnvelope` defensively. */
+/** Narrow an unknown payload to a `ProjectEnvelope` defensively. The handler reads
+ *  `type`, the full `projects` snapshot, and `project` (for activated/renamed), so
+ *  all three are checked: a valid `type`, an array `projects`, and `project` being
+ *  an object-or-null. */
 function isProjectEnvelope(value: unknown): value is ProjectEnvelope {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
+  if (!hasKeys(value, ['type', 'project', 'projects'])) return false;
   return (
-    (v.type === 'created' ||
-      v.type === 'deleted' ||
-      v.type === 'activated' ||
-      v.type === 'renamed') &&
-    Array.isArray(v.projects)
+    (value.type === 'created' ||
+      value.type === 'deleted' ||
+      value.type === 'activated' ||
+      value.type === 'renamed') &&
+    Array.isArray(value.projects) &&
+    (value.project === null || typeof value.project === 'object')
   );
 }
 
@@ -682,13 +704,17 @@ export async function onProjectEvent(
   });
 }
 
-/** Narrow an unknown payload to a `LoopEnvelope` defensively. */
+/** Narrow an unknown payload to a `LoopEnvelope` defensively. The handler reads
+ *  `state`, `maxConcurrency`, `reason`, and `failureThreshold` (the breaker
+ *  badge), so the numeric fields it depends on are type-checked too. */
 function isLoopEnvelope(value: unknown): value is LoopEnvelope {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
+  if (!hasKeys(value, ['state', 'maxConcurrency', 'failureThreshold'])) return false;
   return (
-    (v.state === 'running' || v.state === 'drained' || v.state === 'paused') &&
-    typeof v.maxConcurrency === 'number'
+    (value.state === 'running' ||
+      value.state === 'drained' ||
+      value.state === 'paused') &&
+    typeof value.maxConcurrency === 'number' &&
+    typeof value.failureThreshold === 'number'
   );
 }
 
@@ -703,14 +729,17 @@ export async function onLoopEvent(
   });
 }
 
-/** Narrow an unknown payload to a `PermissionPrompt` defensively. */
+/** Narrow an unknown payload to a `PermissionPrompt` defensively. The prompt UI
+ *  reads `taskId`, `requestId`, `toolName`, and renders `input`, so all four are
+ *  checked (`input` must be a non-null object — the surface iterates it). */
 function isPermissionPrompt(value: unknown): value is PermissionPrompt {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
+  if (!hasKeys(value, ['taskId', 'requestId', 'toolName', 'input'])) return false;
   return (
-    typeof v.taskId === 'string' &&
-    typeof v.requestId === 'string' &&
-    typeof v.toolName === 'string'
+    typeof value.taskId === 'string' &&
+    typeof value.requestId === 'string' &&
+    typeof value.toolName === 'string' &&
+    typeof value.input === 'object' &&
+    value.input !== null
   );
 }
 

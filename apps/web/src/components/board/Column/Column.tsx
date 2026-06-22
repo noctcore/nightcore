@@ -1,13 +1,21 @@
+import { memo } from 'react';
 import { TrashIcon } from '@/components/ui';
 import { TaskCard } from '../TaskCard';
+import { moveTargetsFor } from '../status';
 import { DRAG_TASK_ID, useColumnDrop } from './Column.hooks';
 import type { ColumnProps } from './Column.types';
 
 /** A board column: a colored status dot + label + count header (with an optional
  *  roadmap badge and a Clear affordance for Verified/Failed), over its task
  *  cards. Width tracks the design (Failed is narrower). Presentational — all
- *  state and bridge actions are owned by the board. */
-export function Column({
+ *  state and bridge actions are owned by the board.
+ *
+ *  Memoized (C6): on a board-wide `nc:session` delta the Board re-renders, but a
+ *  column whose props are referentially stable skips. `logCounts` is a fresh
+ *  object per delta so a column DOES re-render, but its memoized `TaskCard`s read
+ *  a primitive `logCount` and skip unless their own count changed — so the storm
+ *  collapses from "every card" to "only the card whose stream advanced". */
+function ColumnImpl({
   title,
   tasks,
   dotColor,
@@ -84,11 +92,13 @@ export function Column({
               needsApproval={promptIds?.has(task.id) ?? false}
               logCount={logCounts[task.id] ?? 0}
               draggable={onMoveTask !== undefined}
+              moveTargets={onMoveTask !== undefined ? moveTargetsFor(task.status) : undefined}
               onDragStart={(e) => {
                 e.dataTransfer.setData(DRAG_TASK_ID, task.id);
                 e.dataTransfer.effectAllowed = 'move';
               }}
               onSelect={onSelect}
+              onMoveTask={onMoveTask}
               onRun={onRun}
               onCancel={onCancel}
               onDelete={onDelete}
@@ -103,3 +113,5 @@ export function Column({
     </div>
   );
 }
+
+export const Column = memo(ColumnImpl);
