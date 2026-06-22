@@ -1,0 +1,136 @@
+{
+  "commands": {
+    "start-session": {
+      "type": "start-session",
+      "prompt": "do the thing",
+      "model": "claude-opus-4-8",
+      "effort": "high",
+      "permissionMode": "acceptEdits",
+      "cwd": "/tmp/work",
+      "kind": "build",
+      "maxTurns": 200,
+      "maxBudgetUsd": 5,
+      "resumeSessionId": "sdk-uuid-123"
+    },
+    "send-input": {
+      "sessionId": 1,
+      "type": "send-input",
+      "text": "more input"
+    },
+    "interrupt": {
+      "sessionId": 2,
+      "type": "interrupt"
+    },
+    "set-model": {
+      "sessionId": 3,
+      "type": "set-model",
+      "model": "claude-sonnet-4-6"
+    },
+    "set-permission-mode": {
+      "sessionId": 4,
+      "type": "set-permission-mode",
+      "mode": "plan"
+    },
+    "approve-permission": {
+      "sessionId": 5,
+      "type": "approve-permission",
+      "requestId": "req-1",
+      "decision": {
+        "behavior": "allow"
+      }
+    }
+  },
+  "events": {
+    "session-started": {
+      "sessionId": 0,
+      "type": "session-started",
+      "prompt": "hi",
+      "model": "claude-opus-4-8",
+      "permissionMode": "default"
+    },
+    "session-ready": {
+      "sessionId": 0,
+      "type": "session-ready",
+      "sdkSessionId": "sdk-uuid",
+      "model": "claude-opus-4-8",
+      "tools": [
+        "Read",
+        "Bash"
+      ],
+      "slashCommands": [
+        "/init"
+      ],
+      "skills": [
+        "add-feature"
+      ]
+    },
+    "assistant-delta": {
+      "sessionId": 1,
+      "type": "assistant-delta",
+      "text": "hello",
+      "partial": true
+    },
+    "tool-use-requested": {
+      "sessionId": 1,
+      "type": "tool-use-requested",
+      "toolUseId": "tu-1",
+      "toolName": "Bash",
+      "input": {
+        "command": "ls"
+      }
+    },
+    "tool-result": {
+      "sessionId": 1,
+      "type": "tool-result",
+      "toolUseId": "tu-1",
+      "isError": false,
+      "content": "ok"
+    },
+    "permission-required": {
+      "sessionId": 1,
+      "type": "permission-required",
+      "requestId": "req-1",
+      "toolName": "Bash",
+      "input": {
+        "command": "rm -rf x"
+      },
+      "risk": "dangerous",
+      "title": "Run a shell command?"
+    },
+    "task-updated": {
+      "sessionId": 1,
+      "type": "task-updated",
+      "taskId": "agent-1",
+      "status": "running",
+      "description": "exploring",
+      "summary": "found 3 files",
+      "subagentType": "Explore",
+      "ambient": false
+    },
+    "session-completed": {
+      "sessionId": 1,
+      "type": "session-completed",
+      "result": "done",
+      "costUsd": 0.42,
+      "numTurns": 7,
+      "durationMs": 1234,
+      "usage": {
+        "inputTokens": 100,
+        "outputTokens": 50,
+        "cacheReadTokens": 10,
+        "cacheCreationTokens": 5
+      }
+    },
+    "session-failed": {
+      "sessionId": 1,
+      "type": "session-failed",
+      "reason": "rate-limit",
+      "message": "slow down"
+    },
+    "session-status": {
+      "sessionId": 1,
+      "type": "session-status",
+      "status": "running"
+    }
+  }
+}
