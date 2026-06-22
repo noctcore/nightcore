@@ -93,11 +93,7 @@ pub fn allocate(project_path: &Path, task_id: &str) -> Result<PathBuf, String> {
 
     // If the branch already exists (a prior run we kept for inspection), check it
     // out into a fresh worktree instead of creating it.
-    let branch_exists = git(
-        project_path,
-        &["rev-parse", "--verify", "--quiet", &branch],
-    )
-    .is_ok();
+    let branch_exists = git(project_path, &["rev-parse", "--verify", "--quiet", &branch]).is_ok();
 
     let args: Vec<&str> = if branch_exists {
         vec!["worktree", "add", &dir_str, &branch]
@@ -362,7 +358,9 @@ pub fn reconcile(project_path: &Path, live_task_ids: &[String]) -> Vec<String> {
         if !live_task_ids.iter().any(|live| live == &id) {
             match remove(project_path, &id) {
                 Ok(()) => pruned.push(id),
-                Err(e) => tracing::warn!(target: "nightcore::worktree", task_id = %id, error = %e, "worktree reconcile skipped orphan it could not remove"),
+                Err(e) => {
+                    tracing::warn!(target: "nightcore::worktree", task_id = %id, error = %e, "worktree reconcile skipped orphan it could not remove")
+                }
             }
         }
     }
@@ -392,9 +390,18 @@ mod tests {
     #[test]
     fn is_under_guards_the_base() {
         let base = Path::new("/repo/.nightcore/worktrees");
-        assert!(is_under(base, Path::new("/repo/.nightcore/worktrees/task-1")));
-        assert!(!is_under(base, Path::new("/repo")), "parent is not under base");
-        assert!(!is_under(base, base), "the base itself is not strictly under");
+        assert!(is_under(
+            base,
+            Path::new("/repo/.nightcore/worktrees/task-1")
+        ));
+        assert!(
+            !is_under(base, Path::new("/repo")),
+            "parent is not under base"
+        );
+        assert!(
+            !is_under(base, base),
+            "the base itself is not strictly under"
+        );
         assert!(
             !is_under(base, Path::new("/repo/.nightcore/other")),
             "a sibling dir is not under the worktrees base"
@@ -443,7 +450,10 @@ mod tests {
         // Allocate creates the worktree dir + branch.
         let dir = allocate(&repo, "task-1").expect("allocate");
         assert!(dir.is_dir(), "worktree dir exists");
-        assert!(dir.join("README.md").exists(), "worktree has the repo content");
+        assert!(
+            dir.join("README.md").exists(),
+            "worktree has the repo content"
+        );
         assert_eq!(list_worktree_task_ids(&repo), vec!["task-1".to_string()]);
 
         // Allocating again is idempotent (reuses the dir).
@@ -472,7 +482,10 @@ mod tests {
         let Some((_tmp, repo)) = temp_repo() else {
             return;
         };
-        assert!(is_worktree_clean(&repo).expect("status"), "fresh repo is clean");
+        assert!(
+            is_worktree_clean(&repo).expect("status"),
+            "fresh repo is clean"
+        );
         std::fs::write(repo.join("README.md"), "changed").expect("edit");
         assert!(
             !is_worktree_clean(&repo).expect("status"),
@@ -523,18 +536,30 @@ mod tests {
         let Some((_tmp, repo)) = temp_repo() else {
             return;
         };
-        assert!(!commit_in(&repo, "noop").expect("commit"), "clean tree commits nothing");
+        assert!(
+            !commit_in(&repo, "noop").expect("commit"),
+            "clean tree commits nothing"
+        );
 
         std::fs::write(repo.join("src.txt"), "edit on main").expect("write");
-        assert!(commit_in(&repo, "main mode change").expect("commit"), "a change commits");
+        assert!(
+            commit_in(&repo, "main mode change").expect("commit"),
+            "a change commits"
+        );
 
         let log = Command::new("git")
             .args(["log", "-1", "--pretty=%s"])
             .current_dir(&repo)
             .output()
             .expect("git log");
-        assert_eq!(String::from_utf8_lossy(&log.stdout).trim(), "main mode change");
-        assert!(is_worktree_clean(&repo).expect("status"), "after commit the root is clean");
+        assert_eq!(
+            String::from_utf8_lossy(&log.stdout).trim(),
+            "main mode change"
+        );
+        assert!(
+            is_worktree_clean(&repo).expect("status"),
+            "after commit the root is clean"
+        );
     }
 
     #[test]
@@ -552,31 +577,51 @@ mod tests {
         // Build writes an uncommitted file. Before the fix, base..HEAD is empty.
         std::fs::write(dir.join("feature.rs"), "fn added() {}").expect("write");
         let count_before = Command::new("git")
-            .args(["rev-list", "--count", &format!("{base}..{}", branch_name("task-1"))])
+            .args([
+                "rev-list",
+                "--count",
+                &format!("{base}..{}", branch_name("task-1")),
+            ])
             .current_dir(&repo)
             .output()
             .expect("rev-list");
-        assert_eq!(String::from_utf8_lossy(&count_before.stdout).trim(), "0",
-            "the build leaves HEAD == base (the bug's precondition)");
+        assert_eq!(
+            String::from_utf8_lossy(&count_before.stdout).trim(),
+            "0",
+            "the build leaves HEAD == base (the bug's precondition)"
+        );
 
         // Commit-before-review advances HEAD; now the committed range is non-empty.
         assert!(commit(&repo, "task-1", "add feature").expect("commit"));
         let count_after = Command::new("git")
-            .args(["rev-list", "--count", &format!("{base}..{}", branch_name("task-1"))])
+            .args([
+                "rev-list",
+                "--count",
+                &format!("{base}..{}", branch_name("task-1")),
+            ])
             .current_dir(&repo)
             .output()
             .expect("rev-list");
-        assert_eq!(String::from_utf8_lossy(&count_after.stdout).trim(), "1",
-            "after commit-before-review the reviewer's base..HEAD range is non-empty");
+        assert_eq!(
+            String::from_utf8_lossy(&count_after.stdout).trim(),
+            "1",
+            "after commit-before-review the reviewer's base..HEAD range is non-empty"
+        );
 
         // And the diff itself carries the new file.
         let diff = Command::new("git")
-            .args(["diff", &format!("{base}...{}", branch_name("task-1")), "--name-only"])
+            .args([
+                "diff",
+                &format!("{base}...{}", branch_name("task-1")),
+                "--name-only",
+            ])
             .current_dir(&repo)
             .output()
             .expect("git diff");
-        assert!(String::from_utf8_lossy(&diff.stdout).contains("feature.rs"),
-            "the committed diff includes the build's file");
+        assert!(
+            String::from_utf8_lossy(&diff.stdout).contains("feature.rs"),
+            "the committed diff includes the build's file"
+        );
     }
 
     #[test]
@@ -625,7 +670,10 @@ mod tests {
             MergeOutcome::Merged
         );
         // The base branch now contains the feature file.
-        assert!(repo.join("feature.txt").exists(), "merge brought the file into base");
+        assert!(
+            repo.join("feature.txt").exists(),
+            "merge brought the file into base"
+        );
     }
 
     #[test]
@@ -653,7 +701,10 @@ mod tests {
             std::fs::read_to_string(repo.join("README.md")).unwrap(),
             "from-base"
         );
-        assert!(is_worktree_clean(&repo).expect("status"), "aborted merge leaves a clean tree");
+        assert!(
+            is_worktree_clean(&repo).expect("status"),
+            "aborted merge leaves a clean tree"
+        );
     }
 
     #[test]
@@ -667,20 +718,29 @@ mod tests {
         allocate(&repo, "task-1").expect("allocate");
         std::fs::write(worktree_path(&repo, "task-1").join("f.txt"), "x").expect("write");
         commit(&repo, "task-1", "work").expect("commit");
-        assert!(branch_exists(&repo, "task-1"), "the nc/ branch exists after a run");
+        assert!(
+            branch_exists(&repo, "task-1"),
+            "the nc/ branch exists after a run"
+        );
 
         // The cleanup order: remove the worktree (frees its checked-out branch),
         // then delete the branch.
         remove(&repo, "task-1").expect("remove worktree");
         delete_branch(&repo, "task-1").expect("delete branch");
 
-        assert!(list_worktree_task_ids(&repo).is_empty(), "no orphaned worktree dir");
+        assert!(
+            list_worktree_task_ids(&repo).is_empty(),
+            "no orphaned worktree dir"
+        );
         assert!(!branch_exists(&repo, "task-1"), "no orphaned nc/ branch");
     }
 
     /// Whether `nc/<task_id>` exists in the repo (test helper).
     fn branch_exists(repo: &Path, task_id: &str) -> bool {
-        run_in(repo, &["rev-parse", "--verify", "--quiet", &branch_name(task_id)])
+        run_in(
+            repo,
+            &["rev-parse", "--verify", "--quiet", &branch_name(task_id)],
+        )
     }
 
     #[test]

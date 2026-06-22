@@ -123,7 +123,10 @@ mod tests {
         cb.record_success();
         assert!(!cb.record_failure_at(t0 + Duration::from_secs(2)));
         assert!(!cb.record_failure_at(t0 + Duration::from_secs(3)));
-        assert!(!cb.is_paused(), "two post-success failures stay under threshold");
+        assert!(
+            !cb.is_paused(),
+            "two post-success failures stay under threshold"
+        );
     }
 
     #[test]
@@ -158,7 +161,10 @@ mod tests {
     fn only_the_tripping_failure_reports_true() {
         let cb = CircuitBreaker::new(1, Duration::from_secs(60));
         let t0 = Instant::now();
-        assert!(cb.record_failure_at(t0), "threshold 1 trips on first failure");
+        assert!(
+            cb.record_failure_at(t0),
+            "threshold 1 trips on first failure"
+        );
         // Already paused: subsequent failures don't re-report the trip.
         assert!(!cb.record_failure_at(t0 + Duration::from_secs(1)));
     }

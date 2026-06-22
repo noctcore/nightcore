@@ -50,7 +50,11 @@ where
         .filter(|t| !is_leased(&t.id))
         .filter(|t| deps_satisfied(t, &index))
         .collect();
-    eligible.sort_by(|a, b| a.created_at.cmp(&b.created_at).then_with(|| a.id.cmp(&b.id)));
+    eligible.sort_by(|a, b| {
+        a.created_at
+            .cmp(&b.created_at)
+            .then_with(|| a.id.cmp(&b.id))
+    });
     eligible
 }
 
@@ -184,11 +188,17 @@ mod tests {
     fn blocked_reflects_unmet_dependencies() {
         let blocked = task_with("a", TaskStatus::Ready, &["ghost"]);
         let index = index_by_id(std::slice::from_ref(&blocked));
-        assert!(is_blocked(&blocked, &index), "ready with a missing dep is blocked");
+        assert!(
+            is_blocked(&blocked, &index),
+            "ready with a missing dep is blocked"
+        );
 
         let idle = task_with("b", TaskStatus::Ready, &[]);
         let index = index_by_id(std::slice::from_ref(&idle));
-        assert!(!is_blocked(&idle, &index), "ready with no deps is not blocked");
+        assert!(
+            !is_blocked(&idle, &index),
+            "ready with no deps is not blocked"
+        );
 
         // A terminal task is never 'blocked' regardless of deps.
         let done = task_with("c", TaskStatus::Done, &["ghost"]);

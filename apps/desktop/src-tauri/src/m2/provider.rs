@@ -190,10 +190,12 @@ impl SidecarProvider {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| format!(
-                "failed to spawn sidecar (no launchable bun binary found — \
+            .map_err(|e| {
+                format!(
+                    "failed to spawn sidecar (no launchable bun binary found — \
                  on Windows, bun.exe must be on PATH or reachable via the npm shim): {e}"
-            ))?;
+                )
+            })?;
         // Sidecar process lifecycle (#4) + spawn latency (#5). The pid + duration are
         // operational facts — no prompt/env/secret is logged.
         tracing::info!(
@@ -246,7 +248,9 @@ impl SidecarProvider {
         };
         tracing::info!(target: "nightcore", task_id = %task_id, session_id, "bound session to task");
         c.by_session.insert(session_id, task_id.clone());
-        c.started_at.entry(session_id).or_insert_with(std::time::Instant::now);
+        c.started_at
+            .entry(session_id)
+            .or_insert_with(std::time::Instant::now);
         Some(task_id)
     }
 
@@ -446,7 +450,9 @@ impl Provider for SidecarProvider {
         let decision = match decision {
             // The engine echoes the parked input when `updatedInput` is omitted, so
             // a bare allow is valid; include it only when the surface rewrote it.
-            PermissionDecision::Allow { updated_input: None } => {
+            PermissionDecision::Allow {
+                updated_input: None,
+            } => {
                 serde_json::json!({ "behavior": "allow" })
             }
             PermissionDecision::Allow {
@@ -552,7 +558,10 @@ mod tests {
         p.push_pending("task-b");
 
         // task-a is cancelled before any session arrives → evict its pending entry.
-        assert!(p.evict_pending("task-a"), "an uncorrelated launch is evicted");
+        assert!(
+            p.evict_pending("task-a"),
+            "an uncorrelated launch is evicted"
+        );
         // Now the FIFO head is task-b; the next session binds to it (not to task-a).
         assert_eq!(p.correlate(0).as_deref(), Some("task-b"));
         // A second evict of the same task is a no-op (nothing pending left).
@@ -566,7 +575,10 @@ mod tests {
         let p = provider();
         p.push_pending("task-a");
         p.correlate(7);
-        assert!(!p.evict_pending("task-a"), "a correlated launch is not evicted");
+        assert!(
+            !p.evict_pending("task-a"),
+            "a correlated launch is not evicted"
+        );
         assert_eq!(p.task_for(7).as_deref(), Some("task-a"), "binding intact");
     }
 

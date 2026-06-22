@@ -304,7 +304,11 @@ async fn tick(app: &AppHandle) {
     let tasks = store.list();
     let candidates: Vec<String> = {
         let eligible = eligible_tasks(&tasks, |id| orch.slots.is_leased(id));
-        eligible.into_iter().take(free).map(|t| t.id.clone()).collect()
+        eligible
+            .into_iter()
+            .take(free)
+            .map(|t| t.id.clone())
+            .collect()
     };
 
     if candidates.is_empty() {
@@ -431,7 +435,10 @@ fn fail_launch(app: &AppHandle, task_id: &str, message: &str) {
 /// worktree is allocated off a CLEAN base (you can't branch cleanly off a dirty
 /// index, so that guard stays here). The returned dir is paired with whether it is
 /// a worktree so the caller only records a branch chip in worktree mode.
-pub(crate) fn resolve_worktree(app: &AppHandle, task_id: &str) -> Result<Option<ResolvedCwd>, String> {
+pub(crate) fn resolve_worktree(
+    app: &AppHandle,
+    task_id: &str,
+) -> Result<Option<ResolvedCwd>, String> {
     let projects = app.state::<ProjectStore>();
     let Some(project) = projects.active() else {
         return Ok(None);
@@ -472,10 +479,16 @@ pub struct ResolvedCwd {
 
 impl ResolvedCwd {
     fn root(path: PathBuf) -> Self {
-        Self { path, is_worktree: false }
+        Self {
+            path,
+            is_worktree: false,
+        }
     }
     fn worktree(path: PathBuf) -> Self {
-        Self { path, is_worktree: true }
+        Self {
+            path,
+            is_worktree: true,
+        }
     }
 }
 
@@ -538,7 +551,9 @@ pub fn cleanup_worktree(app: &AppHandle, task_id: &str, succeeded: bool) {
     };
     match worktree::remove(&PathBuf::from(&project.path), task_id) {
         Ok(()) => tracing::debug!(target: "nightcore", task_id, "worktree cleaned up"),
-        Err(e) => tracing::warn!(target: "nightcore", task_id, error = %e, "worktree cleanup failed"),
+        Err(e) => {
+            tracing::warn!(target: "nightcore", task_id, error = %e, "worktree cleanup failed")
+        }
     }
 }
 
@@ -679,7 +694,9 @@ pub fn list_worktrees(app: AppHandle) -> Result<Vec<worktree::WorktreeStatus>, S
     let Some(project) = app.state::<ProjectStore>().active() else {
         return Ok(Vec::new());
     };
-    Ok(worktree::list_worktree_statuses(&PathBuf::from(&project.path)))
+    Ok(worktree::list_worktree_statuses(&PathBuf::from(
+        &project.path,
+    )))
 }
 
 /// Silence the unused-import lint for `Arc`/`Notify` when only `Notify` is used
@@ -739,7 +756,11 @@ mod tests {
 
         let free = 2usize;
         let taken: Vec<&str> = eligible.iter().take(free).map(|t| t.id.as_str()).collect();
-        assert_eq!(taken, vec!["a", "b"], "only free-slot many are launched, in order");
+        assert_eq!(
+            taken,
+            vec!["a", "b"],
+            "only free-slot many are launched, in order"
+        );
     }
 
     #[test]
@@ -787,9 +808,16 @@ mod tests {
 
         apply_recovery(&mut t);
 
-        assert_eq!(t.status, TaskStatus::Ready, "reset to Ready so the loop re-picks it");
+        assert_eq!(
+            t.status,
+            TaskStatus::Ready,
+            "reset to Ready so the loop re-picks it"
+        );
         assert!(t.session_id.is_none(), "stale dead-session id is cleared");
-        assert!(!t.verified, "verification verdict is cleared for a fresh run");
+        assert!(
+            !t.verified,
+            "verification verdict is cleared for a fresh run"
+        );
         assert!(t.review.is_none());
         assert_eq!(t.fix_attempts, 0);
         assert_eq!(
@@ -842,8 +870,16 @@ mod tests {
 
         assert_eq!(store.get(&in_progress).unwrap().status, TaskStatus::Ready);
         assert_eq!(store.get(&verifying).unwrap().status, TaskStatus::Ready);
-        assert_eq!(store.get(&done).unwrap().status, TaskStatus::Done, "terminal untouched");
-        assert_eq!(store.get(&backlog).unwrap().status, TaskStatus::Backlog, "backlog untouched");
+        assert_eq!(
+            store.get(&done).unwrap().status,
+            TaskStatus::Done,
+            "terminal untouched"
+        );
+        assert_eq!(
+            store.get(&backlog).unwrap().status,
+            TaskStatus::Backlog,
+            "backlog untouched"
+        );
     }
 
     #[test]
