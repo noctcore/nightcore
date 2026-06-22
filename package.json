@@ -24,6 +24,7 @@
     "cli": "bun run apps/cli/src/index.ts",
     "tui": "bun run apps/tui/src/index.ts",
     "new:tool": "bun run tools/codegen/new-tool.ts",
+    "codegen:contracts": "bun run tools/codegen/gen-rust-contracts.ts",
     "dogfood:ui": "node scripts/dogfood-ui.mjs",
     "dogfood:engine": "bun run scripts/headless-harness.ts",
     "test": "bun run test:node && bun run test:web && bun run test:plugin",
