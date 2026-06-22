@@ -291,7 +291,12 @@ export class SessionRunner {
       return [];
     } finally {
       abort.abort();
-      await transient?.interrupt().catch(() => {});
+      await transient?.interrupt().catch((error: unknown) => {
+        // Teardown best-effort: the abort above already tore the query down, so an
+        // interrupt rejection here is expected and harmless — record it at debug
+        // rather than swallowing it silently.
+        this.logger?.debug('probe teardown interrupt failed', error);
+      });
     }
   }
 

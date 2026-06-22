@@ -182,6 +182,47 @@ describe('createSidecar — command dispatch', () => {
     expect(errors[0]).toContain('bad command json');
   });
 
+  test('valid JSON that is not a valid command is rejected, not dispatched', () => {
+    const manager = new StubManager();
+    const errors: string[] = [];
+    const { handleLine } = createSidecar(manager, () => {}, (m) =>
+      errors.push(m),
+    );
+
+    // Well-formed JSON, but not a member of the SurfaceCommand union (unknown
+    // `type`, and missing the fields the schema requires). Pre-fix this was cast
+    // straight to SurfaceCommand and dispatched, smuggling a junk command into
+    // the engine; it must now be caught by SurfaceCommandSchema and skipped.
+    expect(() =>
+      handleLine('{"type":"definitely-not-a-command","foo":1}'),
+    ).not.toThrow();
+    expect(manager.dispatched).toEqual([]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('invalid command');
+  });
+
+  test('a command with the right type but a wrong field shape is rejected', () => {
+    const manager = new StubManager();
+    const errors: string[] = [];
+    const { handleLine } = createSidecar(manager, () => {}, (m) =>
+      errors.push(m),
+    );
+
+    // `interrupt` requires a numeric sessionId; a string must fail validation.
+    handleLine('{"type":"interrupt","sessionId":"not-a-number"}');
+    expect(manager.dispatched).toEqual([]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('invalid command');
+  });
+
+  test('an invalid command does not stop later valid commands', () => {
+    const manager = new StubManager();
+    const { handleLine } = createSidecar(manager, () => {}, () => {});
+    handleLine('{"type":"definitely-not-a-command"}');
+    handleLine('{"type":"interrupt","sessionId":2}');
+    expect(manager.dispatched).toEqual([{ type: 'interrupt', sessionId: 2 }]);
+  });
+
   test('a bad line does not stop later valid commands', () => {
     const manager = new StubManager();
     const { handleLine } = createSidecar(manager, () => {}, () => {});

@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import type { SessionRecord } from '@nightcore/contracts';
+import type { Logger } from '@nightcore/shared';
 import { SessionStore } from './index.js';
 
 let dir: string;
@@ -64,11 +65,45 @@ describe('SessionStore.save / list / get', () => {
   });
 });
 
+/** A Logger stub that records every warn call, for the read-error tests. */
+function recordingLogger(): { warns: unknown[][]; logger: Logger } {
+  const warns: unknown[][] = [];
+  const logger: Logger = {
+    error: () => {},
+    warn: (...args: unknown[]) => {
+      warns.push(args);
+    },
+    info: () => {},
+    debug: () => {},
+    child: () => logger,
+  };
+  return { warns, logger };
+}
+
 describe('SessionStore resilience', () => {
   test('returns an empty list when no file exists', () => {
     const store = new SessionStore(dir);
     expect(store.list()).toEqual([]);
     expect(store.get(99)).toBeUndefined();
+  });
+
+  test('a missing file is NOT logged as an error (silent cold start)', () => {
+    const { warns, logger } = recordingLogger();
+    const store = new SessionStore(dir, logger);
+    expect(store.list()).toEqual([]);
+    expect(warns).toEqual([]);
+  });
+
+  test('a real read error (not ENOENT) is logged at warn, not swallowed', () => {
+    const { warns, logger } = recordingLogger();
+    const store = new SessionStore(dir, logger);
+    // Force a non-ENOENT failure: put a DIRECTORY where the index file goes, so
+    // readFileSync throws EISDIR. Pre-fix this was indistinguishable from a cold
+    // start and silently returned []; post-fix it must warn.
+    fs.mkdirSync(path.join(dir, 'index.jsonl'), { recursive: true });
+    expect(store.list()).toEqual([]);
+    expect(warns).toHaveLength(1);
+    expect(String(warns[0]?.[0])).toContain('failed to read session store');
   });
 
   test('skips malformed and invalid lines without throwing', () => {

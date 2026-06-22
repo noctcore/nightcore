@@ -51,7 +51,7 @@ interface ManagedSession {
  */
 export class SessionManager {
   private readonly emitter = new EventEmitter();
-  private readonly nextSessionId = createMonotonicCounter();
+  private readonly nextSessionId: () => number;
   private readonly sessions = new Map<number, ManagedSession>();
   private readonly store: SessionStore;
   private readonly apiKeyFallback: boolean;
@@ -62,6 +62,13 @@ export class SessionManager {
   ) {
     this.store = new SessionStore(config.paths.sessions, logger);
     this.apiKeyFallback = Boolean(process.env.ANTHROPIC_API_KEY);
+    // Seed the id counter past the highest persisted id so a restart never
+    // reuses an id and clobbers a prior record (the SessionStore collapses by id,
+    // last-write-wins). Cold start (no records) ⇒ start at 1, keeping 0 as the
+    // "no session" sentinel.
+    const records = this.store.list();
+    const maxId = records.reduce((max, r) => Math.max(max, r.id), 0);
+    this.nextSessionId = createMonotonicCounter(maxId + 1);
   }
 
   /** Subscribe to the typed engine event stream. Returns an unsubscribe fn. */
@@ -230,6 +237,13 @@ export class SessionManager {
     this.sessions.set(id, session);
     this.store.save(record);
 
+    this.logger?.info('session started', {
+      id,
+      model,
+      kind: command.kind ?? 'build',
+      permissionMode,
+    });
+
     this.emit({
       type: 'session-started',
       sessionId: id,
@@ -267,11 +281,22 @@ export class SessionManager {
         session.record.costUsd = event.costUsd;
         session.record.status = 'completed';
         this.store.save(session.record);
+        this.logger?.info('session completed', {
+          id,
+          model: session.record.model,
+          costUsd: event.costUsd,
+          numTurns: event.numTurns,
+        });
         break;
       case 'session-failed':
         session.record.endedAt = Date.now();
         session.record.status = 'failed';
         this.store.save(session.record);
+        this.logger?.warn('session failed', {
+          id,
+          model: session.record.model,
+          reason: event.reason,
+        });
         break;
     }
 

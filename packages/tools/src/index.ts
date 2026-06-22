@@ -36,6 +36,13 @@ export function qualifiedToolName(toolName: string): string {
  * `createSdkMcpServer`. Capability packages export the raw definitions; they
  * never import the engine (dependency inversion).
  */
+// The SDK's own `tools` field is typed `Array<SdkMcpToolDefinition<any>>`
+// (sdk.d.ts) because the generic is invariant in its handler arg: each tool's
+// handler accepts only its own narrow input shape, so a heterogeneous array of
+// concretely-typed tools cannot unify under the default `AnyZodRawShape` (it
+// collapses the arg to `{ [x: string]: never }`). `any` is the SDK-sanctioned
+// erasure here; `ZodTypeAny`/`unknown` do not satisfy the `extends AnyZodRawShape`
+// constraint. Kept eslint-disabled to match the SDK contract.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const nightcoreTools: Array<SdkMcpToolDefinition<any>> = [
   echoTool,
