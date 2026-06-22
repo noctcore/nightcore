@@ -14,7 +14,7 @@ const settings: Settings = {
   maxTurns: null,
   maxBudgetUsd: null,
   projectOverrides: {
-    nightcore: { defaultModel: 'claude-haiku-4-5-20251001' },
+    nightcore: { defaultModel: 'claude-haiku-4-5' },
   },
 };
 
