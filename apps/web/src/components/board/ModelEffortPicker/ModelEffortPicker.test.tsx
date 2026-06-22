@@ -52,6 +52,6 @@ test('activeModelId resolves canonical, legacy, and unknown ids', () => {
   expect(activeModelId(null)).toBeNull();
   expect(activeModelId('claude-opus-4-8')).toBe('claude-opus-4-8');
   expect(activeModelId('sonnet-4.6')).toBe('claude-sonnet-4-6');
-  expect(activeModelId('haiku-4.5')).toBe('claude-haiku-4-5-20251001');
+  expect(activeModelId('haiku-4.5')).toBe('claude-haiku-4-5');
   expect(activeModelId('gpt-9')).toBeNull();
 });

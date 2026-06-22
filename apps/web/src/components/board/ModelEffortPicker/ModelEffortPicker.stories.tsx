@@ -29,7 +29,7 @@ export const OpusHigh: Story = { args: { model: 'claude-opus-4-8', effort: 'high
 
 export const LegacyModelId: Story = { args: { model: 'sonnet-4.6', effort: 'medium' } };
 
-export const Disabled: Story = { args: { model: 'claude-haiku-4-5-20251001', disabled: true } };
+export const Disabled: Story = { args: { model: 'claude-haiku-4-5', disabled: true } };
 
 /** Play test: picking a model fires onChangeModel with the canonical id. */
 export const PicksModel: Story = {

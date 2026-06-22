@@ -5,6 +5,15 @@ import { NightcoreEventSchema, type NightcoreEvent } from '@nightcore/contracts'
 
 export type { SessionStatus } from '@nightcore/contracts';
 
+/** The kind preset a task runs under (M4). Re-exported from the contract spine
+ *  (`TaskKindSchema`) — snake_case on the wire, matching the Rust `TaskKind` serde
+ *  mapping — so the board can't drift from the authoritative enum. `build`
+ *  (default) writes code in its own worktree and is verified after;
+ *  `research`/`review`/`decompose` are reserved variants the picker surfaces but
+ *  the engine only fully drives `build`/`research` this milestone
+ *  (`review`/`decompose` render as "coming soon"). */
+export type { TaskKind } from '@nightcore/contracts';
+
 /** True when running inside the Tauri webview (vs. a plain browser preview). */
 export function isTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -33,13 +42,6 @@ export type TaskStatus =
   | 'waiting_approval'
   | 'done'
   | 'failed';
-
-/** The kind preset a task runs under (M4). Mirrors the Rust `TaskKind` enum
- *  (snake_case on the wire). `build` (default) writes code in its own worktree
- *  and is verified after; `research`/`review`/`decompose` are reserved variants
- *  the picker surfaces but the engine only fully drives `build`/`research` this
- *  milestone (`review`/`decompose` render as "coming soon"). */
-export type TaskKind = 'build' | 'research' | 'review' | 'decompose';
 
 /** Where a task's run executes (M4.6). Mirrors the Rust `RunMode` enum
  *  (snake_case on the wire). `main` (default) edits the project directory in
