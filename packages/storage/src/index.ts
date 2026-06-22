@@ -3,6 +3,12 @@ import * as path from 'node:path';
 import { SessionRecordSchema, type SessionRecord } from '@nightcore/contracts';
 import { sessionsDir, tryCatch, type Logger } from '@nightcore/shared';
 
+/** True when a captured fs error is "file does not exist" (ENOENT) — the normal
+ *  cold-start case, distinct from a real read failure worth logging. */
+function isFileNotFound(error: Error): boolean {
+  return (error as NodeJS.ErrnoException).code === 'ENOENT';
+}
+
 /**
  * Minimal local persistence for Nightcore session metadata. We deliberately do
  * NOT store transcripts — the SDK owns those as resumable JSONL on disk. This
@@ -42,7 +48,15 @@ export class SessionStore {
   /** Read all records, collapsing duplicates by id (last write wins). */
   list(): SessionRecord[] {
     const read = tryCatch(() => fs.readFileSync(this.file, 'utf8'));
-    if (!read.ok) return [];
+    if (!read.ok) {
+      // A missing index file is the normal cold-start case — return [] silently.
+      // Any OTHER read failure (permissions, I/O error, a directory in the way)
+      // is real signal that records may be silently invisible: log it at warn.
+      if (!isFileNotFound(read.error)) {
+        this.logger?.warn('failed to read session store', read.error);
+      }
+      return [];
+    }
 
     const byId = new Map<number, SessionRecord>();
     for (const line of read.value.split('\n')) {

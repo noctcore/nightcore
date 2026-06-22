@@ -367,6 +367,79 @@ describe('SessionManager autonomy ceilings (maxTurns/maxBudgetUsd)', () => {
   });
 });
 
+describe('SessionManager id-counter seeding (restart safety)', () => {
+  /** Write session records straight to the store file the manager will read, to
+   *  simulate a prior process having persisted them before this launch. */
+  function seedStore(records: { id: number; createdAt?: number }[]): void {
+    const sessionsDir = path.join(tmp, 'home', 'sessions');
+    fs.mkdirSync(sessionsDir, { recursive: true });
+    const lines = records
+      .map((r) =>
+        JSON.stringify({
+          id: r.id,
+          prompt: 'prior',
+          model: 'claude-opus-4-8',
+          permissionMode: 'default',
+          cwd: '/work',
+          status: 'completed',
+          createdAt: r.createdAt ?? 1000,
+        }),
+      )
+      .join('\n');
+    fs.writeFileSync(path.join(sessionsDir, 'index.jsonl'), `${lines}\n`, 'utf8');
+  }
+
+  test('seeds the next id past the highest persisted record id on restart', async () => {
+    // Pre-fix the counter always restarted at 1, so this new session would reuse
+    // id 5 and clobber the persisted record. It must instead get id 6.
+    seedStore([{ id: 3 }, { id: 5 }, { id: 2 }]);
+    scripts = [{ kind: 'messages', messages: [initMessage(), successMessage()] }];
+    const manager = new SessionManager(makeConfig());
+    const started: number[] = [];
+    const { done } = collect(manager, (e) => e.type === 'session-completed');
+    manager.on((e) => {
+      if (e.type === 'session-started') started.push(e.sessionId);
+    });
+
+    await manager.dispatch({ type: 'start-session', prompt: 'after restart' });
+    await done;
+
+    expect(started).toEqual([6]);
+  });
+
+  test('cold start (no persisted records) still begins at id 1', async () => {
+    scripts = [{ kind: 'messages', messages: [initMessage(), successMessage()] }];
+    const manager = new SessionManager(makeConfig());
+    const started: number[] = [];
+    const { done } = collect(manager, (e) => e.type === 'session-completed');
+    manager.on((e) => {
+      if (e.type === 'session-started') started.push(e.sessionId);
+    });
+
+    await manager.dispatch({ type: 'start-session', prompt: 'fresh boot' });
+    await done;
+
+    expect(started).toEqual([1]);
+  });
+
+  test('a restart does not overwrite the prior record at the reused id', async () => {
+    // Concrete clobber check: persist id 1, restart, run a session. Post-fix the
+    // new session is id 2 and the original id-1 record survives in the store.
+    seedStore([{ id: 1 }]);
+    scripts = [{ kind: 'messages', messages: [initMessage(), successMessage()] }];
+    const manager = new SessionManager(makeConfig());
+    const { done } = collect(manager, (e) => e.type === 'session-completed');
+    await manager.dispatch({ type: 'start-session', prompt: 'second boot' });
+    await done;
+
+    const indexFile = path.join(tmp, 'home', 'sessions', 'index.jsonl');
+    const contents = fs.readFileSync(indexFile, 'utf8');
+    // The original record (its prompt) is still present — not clobbered.
+    expect(contents).toContain('prior');
+    expect(contents).toContain('second boot');
+  });
+});
+
 describe('SessionManager session resume', () => {
   test('omits resume when no session id is supplied (cold start)', async () => {
     scripts = [{ kind: 'messages', messages: [initMessage(), successMessage()] }];

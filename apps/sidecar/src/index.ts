@@ -25,8 +25,12 @@
  */
 import { resolveConfig } from '@nightcore/config';
 import { SessionManager } from '@nightcore/engine';
-import { createLogger } from '@nightcore/shared';
-import type { NightcoreEvent, SurfaceCommand } from '@nightcore/contracts';
+import { createLogger, type Logger } from '@nightcore/shared';
+import {
+  SurfaceCommandSchema,
+  type NightcoreEvent,
+  type SurfaceCommand,
+} from '@nightcore/contracts';
 
 /** Emits one already-framed `NightcoreEvent` line to the wire. The live sink
  *  writes to stdout; tests inject a collector to assert framing. */
@@ -80,9 +84,13 @@ export class CommandLineBuffer {
  *   deny on cancel/abort) — long waits are fine, the engine settles the parked
  *   request when the decision arrives. The sidecar stays dumb; it answers nothing
  *   on its own.
- * - The returned `handleLine` parses one NDJSON command and dispatches it,
- *   logging (never throwing) on malformed JSON so one bad line can't kill the
- *   stream.
+ * - The returned `handleLine` parses one NDJSON command, validates it against
+ *   `SurfaceCommandSchema`, and dispatches it. It logs (never throws) on either
+ *   malformed JSON OR a command that fails schema validation, so one bad line
+ *   can't kill the stream. A rejected `dispatch` is caught and logged for the
+ *   same reason — the manager degrades-not-throws, but a defensive `.catch`
+ *   keeps an unexpected rejection from becoming an unhandled rejection that
+ *   tears down the process.
  */
 export function createSidecar(
   manager: SidecarManager,
@@ -94,14 +102,21 @@ export function createSidecar(
   });
 
   function handleLine(line: string): void {
-    let command: SurfaceCommand;
+    let parsed: unknown;
     try {
-      command = JSON.parse(line) as SurfaceCommand;
+      parsed = JSON.parse(line) as unknown;
     } catch (error) {
       onError(`sidecar: bad command json: ${String(error)}`);
       return;
     }
-    void manager.dispatch(command);
+    const result = SurfaceCommandSchema.safeParse(parsed);
+    if (!result.success) {
+      onError(`sidecar: invalid command: ${result.error.message}`);
+      return;
+    }
+    void manager.dispatch(result.data).catch((error: unknown) => {
+      onError(`sidecar: dispatch failed: ${String(error)}`);
+    });
   }
 
   return { handleLine };
@@ -121,20 +136,43 @@ export async function pumpCommands(
   }
 }
 
+/** Install last-resort process guards so a stray throw/rejection anywhere in the
+ *  sidecar is logged (never silent) before the process exits. The protocol is
+ *  degrade-not-throw end to end; these are the backstop for the unexpected. */
+function installProcessGuards(logger: Logger): void {
+  process.on('uncaughtException', (error) => {
+    logger.error('uncaught exception', error);
+  });
+  process.on('unhandledRejection', (reason) => {
+    logger.error('unhandled rejection', reason);
+  });
+}
+
 /** The live entrypoint: real config, real `SessionManager`, real stdio. */
 async function main(): Promise<void> {
   const config = resolveConfig();
   const logger = createLogger(config.logLevel, 'sidecar');
+  installProcessGuards(logger);
   const manager = new SessionManager(config, logger);
 
-  const { handleLine } = createSidecar(manager, (line) => {
-    process.stdout.write(line);
-  });
+  const { handleLine } = createSidecar(
+    manager,
+    (line) => {
+      process.stdout.write(line);
+    },
+    (message) => logger.warn(message),
+  );
 
   process.stderr.write('nightcore-sidecar ready\n');
   await pumpCommands(Bun.stdin.stream(), handleLine);
 }
 
 if (import.meta.main) {
-  void main();
+  void main().catch((error: unknown) => {
+    // main() should never reject (pumpCommands runs until stdin closes), but if
+    // it does the loop is dead — log and exit non-zero so the Rust core's child
+    // watcher sees the failure rather than a silent hang.
+    createLogger('error', 'sidecar').error('fatal: sidecar exited', error);
+    process.exitCode = 1;
+  });
 }
