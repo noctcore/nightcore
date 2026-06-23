@@ -69,9 +69,12 @@ package layer model.
 - **[Bun](https://bun.sh) ≥ 1.1** — runtime for the sidecar and the TS
   workspace. Node 22 also works for the libraries.
 - **A Rust toolchain** — to build the Tauri core (`cargo`, stable Rust).
-- **The Claude CLI, installed and logged in.** Nightcore does **not** handle
-  credentials. The Agent SDK's bundled binary inherits your local Claude
-  credentials from `~/.claude`.
+- **The Claude CLI, installed and logged in.** Nightcore does **not** bundle the
+  Claude CLI — install it yourself with
+  `curl -fsSL https://claude.ai/install.sh | bash`
+  (see the [setup docs](https://code.claude.com/docs/en/setup)), then run `claude`
+  once to log in. Nightcore does not handle credentials; the Agent SDK inherits
+  your local Claude login from `~/.claude`.
 
 `@tauri-apps/cli` ships as a workspace dev-dependency, so no global Tauri install
 is needed.
@@ -80,7 +83,8 @@ is needed.
 
 ```bash
 # 1. Install the Claude CLI and authenticate (one-time, your responsibility):
-#    follow https://code.claude.com/docs and run its login.
+#    curl -fsSL https://claude.ai/install.sh | bash   # see https://code.claude.com/docs/en/setup
+#    then run `claude` once to log in.
 
 # 2. Install workspace dependencies:
 bun install

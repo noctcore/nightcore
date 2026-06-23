@@ -41,6 +41,17 @@ async function* emptyInputStream(
   });
 }
 
+/**
+ * Actionable guidance shown when no `claude` resolves at session start. Nightcore
+ * does NOT bundle the Claude CLI — the user installs it themselves. The install
+ * command is the canonical method from the Claude Code setup docs (the install
+ * script; npm global install is deprecated upstream). Static text, no secrets.
+ */
+const CLAUDE_CLI_MISSING_MESSAGE =
+  'Claude CLI not found. Nightcore requires the Claude CLI — install it with ' +
+  '`curl -fsSL https://claude.ai/install.sh | bash` ' +
+  '(see https://code.claude.com/docs/en/setup), then retry.';
+
 export interface SessionRunnerConfig {
   sessionId: number;
   prompt: string;
@@ -137,6 +148,18 @@ export class SessionRunner {
    *  terminal state; never rejects — failures surface as `session-failed`
    *  events and a returned status (degrade, don't throw). */
   async run(): Promise<void> {
+    // Preflight: the Claude CLI is a REQUIRED, user-installed prerequisite —
+    // Nightcore does not bundle it. If `resolveClaudeBinary()` finds nothing on
+    // disk, the SDK would boot and then crash at session init with a cryptic
+    // "Native CLI binary not found" message. Fail fast with actionable guidance
+    // instead, surfaced through the same degrade-not-throw `session-failed`
+    // channel (reuses `reason: 'runner-crash'`, the reason this case already
+    // maps to today) so it reaches the board/transcript like any other failure.
+    if (resolveClaudeBinary() === undefined) {
+      this.emitClaudeCliMissing();
+      return;
+    }
+
     this.enqueueInput(this.cfg.prompt);
 
     const options: Options = {
@@ -376,6 +399,20 @@ export class SessionRunner {
         this.inputWaiter = resolve;
       });
     }
+  }
+
+  /** Emit the friendly preflight failure when no `claude` resolves on disk. Uses
+   *  the same `session-failed` shape and input-close as `handleCrash` so it flows
+   *  through the normal degrade-not-throw channel to the board/transcript. */
+  private emitClaudeCliMissing(): void {
+    this.logger?.warn(CLAUDE_CLI_MISSING_MESSAGE);
+    this.emit({
+      type: 'session-failed',
+      sessionId: this.cfg.sessionId,
+      reason: 'runner-crash',
+      message: CLAUDE_CLI_MISSING_MESSAGE,
+    });
+    this.closeInput();
   }
 
   private handleCrash(error: unknown): void {
