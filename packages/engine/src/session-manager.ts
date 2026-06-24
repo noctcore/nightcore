@@ -3,15 +3,20 @@ import type {
   Config,
   ModelDescriptor,
   NightcoreEvent,
+  NightcoreEventOf,
+  SessionInfo,
+  SessionMessage as WireSessionMessage,
   SessionRecord,
   SessionStatus,
   SurfaceCommand,
+  SurfaceQuery,
 } from '@nightcore/contracts';
 import { SessionStore } from '@nightcore/storage';
 import { createMonotonicCounter, type Logger } from '@nightcore/shared';
 import { SessionRunner } from './session-runner.js';
 import { resolveKindPreset } from './kind-presets.js';
 import type { ModelInfo } from './sdk-adapter.js';
+import { SessionApi, type SDKSessionInfo, type SessionMessage } from './session-api.js';
 
 /**
  * Map an SDK `ModelInfo` to a contract `ModelDescriptor`. Pure so it can be
@@ -25,6 +30,43 @@ export function toModelDescriptor(info: ModelInfo): ModelDescriptor {
     description: info.description,
     supportsEffort: info.supportsEffort ?? false,
     supportedEffortLevels: info.supportedEffortLevels ?? [],
+  };
+}
+
+/** Map the SDK's `SDKSessionInfo` onto the contract `SessionInfo`, renaming
+ *  `sessionId` → `sdkSessionId` (the wire vocabulary) and forwarding the rest
+ *  field-for-field. Pure, so it is unit-testable without a live SDK. Optional
+ *  fields are omitted when absent to match the `.optional()` wire shape. */
+export function toWireSessionInfo(info: SDKSessionInfo): SessionInfo {
+  return {
+    sdkSessionId: info.sessionId,
+    summary: info.summary,
+    lastModified: info.lastModified,
+    ...(info.fileSize !== undefined ? { fileSize: info.fileSize } : {}),
+    ...(info.customTitle !== undefined ? { customTitle: info.customTitle } : {}),
+    ...(info.firstPrompt !== undefined ? { firstPrompt: info.firstPrompt } : {}),
+    ...(info.gitBranch !== undefined ? { gitBranch: info.gitBranch } : {}),
+    ...(info.cwd !== undefined ? { cwd: info.cwd } : {}),
+    ...(info.tag !== undefined ? { tag: info.tag } : {}),
+    ...(info.createdAt !== undefined ? { createdAt: info.createdAt } : {}),
+  };
+}
+
+/** Map the SDK's `SessionMessage` (snake_case, `message: unknown`) onto the
+ *  contract `SessionMessage` (camelCase wire keys, `message` as an object record).
+ *  A non-object `message` is coerced to an empty record so a malformed transcript
+ *  line can't violate the contract. `parent_tool_use_id` is `string | null`. */
+export function toWireSessionMessage(msg: SessionMessage): WireSessionMessage {
+  const message =
+    typeof msg.message === 'object' && msg.message !== null
+      ? (msg.message as Record<string, unknown>)
+      : {};
+  return {
+    type: msg.type,
+    uuid: msg.uuid,
+    sessionId: msg.session_id,
+    message,
+    parentToolUseId: msg.parent_tool_use_id,
   };
 }
 
@@ -55,12 +97,14 @@ export class SessionManager {
   private readonly sessions = new Map<number, ManagedSession>();
   private readonly store: SessionStore;
   private readonly apiKeyFallback: boolean;
+  private readonly sessionApi: SessionApi;
 
   constructor(
     private readonly config: Config,
     private readonly logger?: Logger,
   ) {
     this.store = new SessionStore(config.paths.sessions, logger);
+    this.sessionApi = new SessionApi(logger?.child('session-api'));
     this.apiKeyFallback = Boolean(process.env.ANTHROPIC_API_KEY);
     // Seed the id counter past the highest persisted id so a restart never
     // reuses an id and clobbers a prior record (the SessionStore collapses by id,
@@ -112,6 +156,104 @@ export class SessionManager {
       case 'approve-permission':
         session.runner.approvePermission(command.requestId, command.decision);
         break;
+    }
+  }
+
+  /**
+   * Answer a `SurfaceQuery` against the SDK session store, returning the
+   * correlated `query-result` event (which the sidecar emits through the same
+   * sink). Pure disk reads/writes via the SDK — no session runner involved. The
+   * `SessionApi` degrades-not-throws, so a read returns an empty/`ok: true` result
+   * rather than rejecting; only a mutation that the SDK reported as failed sets
+   * `ok: false`. The SDK return shapes are mapped to the camelCase wire types.
+   */
+  async handleQuery(
+    query: SurfaceQuery,
+  ): Promise<NightcoreEventOf<'query-result'>> {
+    const { requestId } = query;
+    switch (query.type) {
+      case 'list-sessions': {
+        const sessions = await this.sessionApi.listTaskSessions({
+          ...(query.dir !== undefined ? { dir: query.dir } : {}),
+          ...(query.limit !== undefined ? { limit: query.limit } : {}),
+          ...(query.offset !== undefined ? { offset: query.offset } : {}),
+          ...(query.includeWorktrees !== undefined
+            ? { includeWorktrees: query.includeWorktrees }
+            : {}),
+        });
+        return {
+          type: 'query-result',
+          requestId,
+          ok: true,
+          kind: 'sessions',
+          sessions: sessions.map(toWireSessionInfo),
+        };
+      }
+      case 'get-session-info': {
+        const info = await this.sessionApi.getSessionInfoById(
+          query.sdkSessionId,
+          query.dir !== undefined ? { dir: query.dir } : {},
+        );
+        return {
+          type: 'query-result',
+          requestId,
+          ok: true,
+          kind: 'session-info',
+          info: info !== undefined ? toWireSessionInfo(info) : null,
+        };
+      }
+      case 'get-session-messages': {
+        const messages = await this.sessionApi.getTaskSessionMessages(
+          query.sdkSessionId,
+          {
+            ...(query.dir !== undefined ? { dir: query.dir } : {}),
+            ...(query.limit !== undefined ? { limit: query.limit } : {}),
+            ...(query.offset !== undefined ? { offset: query.offset } : {}),
+            ...(query.includeSystemMessages !== undefined
+              ? { includeSystemMessages: query.includeSystemMessages }
+              : {}),
+          },
+        );
+        return {
+          type: 'query-result',
+          requestId,
+          ok: true,
+          kind: 'messages',
+          messages: messages.map(toWireSessionMessage),
+        };
+      }
+      case 'rename-session': {
+        const ok = await this.sessionApi.renameTaskSession(
+          query.sdkSessionId,
+          query.title,
+          query.dir !== undefined ? { dir: query.dir } : {},
+        );
+        return ok
+          ? { type: 'query-result', requestId, ok: true, kind: 'ack' }
+          : {
+              type: 'query-result',
+              requestId,
+              ok: false,
+              kind: 'ack',
+              error: 'rename failed',
+            };
+      }
+      case 'tag-session': {
+        const ok = await this.sessionApi.tagTaskSession(
+          query.sdkSessionId,
+          query.tag,
+          query.dir !== undefined ? { dir: query.dir } : {},
+        );
+        return ok
+          ? { type: 'query-result', requestId, ok: true, kind: 'ack' }
+          : {
+              type: 'query-result',
+              requestId,
+              ok: false,
+              kind: 'ack',
+              error: 'tag failed',
+            };
+      }
     }
   }
 

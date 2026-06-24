@@ -53,12 +53,23 @@ function makeFakeQuery() {
   });
 }
 
+// Controllable stubs for the SDK session-store functions (`handleQuery` reads
+// these), so no real `~/.claude/projects` disk access happens in the test.
+const sessionFnStubs = {
+  listSessions: mock(() => Promise.resolve<unknown[]>([])),
+  getSessionInfo: mock(() => Promise.resolve<unknown>(undefined)),
+  getSessionMessages: mock(() => Promise.resolve<unknown[]>([])),
+  renameSession: mock(() => Promise.resolve<unknown>(undefined)),
+  tagSession: mock(() => Promise.resolve<unknown>(undefined)),
+};
+
 // Spread the real module so all other named exports the engine pulls (`tool`,
-// `createSdkMcpServer`, …) still resolve; override only `query` so no live
-// model is ever spawned.
+// `createSdkMcpServer`, …) still resolve; override `query` (no live model) and the
+// session-store functions (no disk reads) so the test is hermetic.
 const realSdk = await import('@anthropic-ai/claude-agent-sdk');
 mock.module('@anthropic-ai/claude-agent-sdk', () => ({
   ...realSdk,
+  ...sessionFnStubs,
   query: (args: { options?: Record<string, unknown> }) => {
     if (args?.options) queryOptions.push(args.options);
     return makeFakeQuery();
@@ -465,5 +476,146 @@ describe('SessionManager session resume', () => {
     await done;
 
     expect(queryOptions.at(-1)!.resume).toBe('sdk-uuid-prior');
+  });
+});
+
+describe('SessionManager.handleQuery — SDK session store', () => {
+  beforeEach(() => {
+    for (const stub of Object.values(sessionFnStubs)) stub.mockClear();
+  });
+
+  test('list-sessions maps SDK SDKSessionInfo to the wire SessionInfo and echoes requestId', async () => {
+    sessionFnStubs.listSessions.mockImplementationOnce(() =>
+      Promise.resolve([
+        {
+          sessionId: 'sdk-uuid-1',
+          summary: 'A run',
+          lastModified: 123,
+          gitBranch: 'nc/task-1',
+          cwd: '/proj/wt/task-1',
+        },
+      ]),
+    );
+    const manager = new SessionManager(makeConfig());
+    const result = await manager.handleQuery({
+      type: 'list-sessions',
+      requestId: 'q1',
+      dir: '/proj',
+    });
+    expect(result).toEqual({
+      type: 'query-result',
+      requestId: 'q1',
+      ok: true,
+      kind: 'sessions',
+      sessions: [
+        {
+          // The SDK `sessionId` is renamed `sdkSessionId` on the wire.
+          sdkSessionId: 'sdk-uuid-1',
+          summary: 'A run',
+          lastModified: 123,
+          gitBranch: 'nc/task-1',
+          cwd: '/proj/wt/task-1',
+        },
+      ],
+    });
+    // The dir/limit/offset options are forwarded to the SDK.
+    expect(sessionFnStubs.listSessions.mock.calls[0]?.[0]).toEqual({ dir: '/proj' });
+  });
+
+  test('get-session-info returns info, and null when the session is not found', async () => {
+    const manager = new SessionManager(makeConfig());
+    // Not found (stub default resolves undefined) ⇒ info: null.
+    const miss = await manager.handleQuery({
+      type: 'get-session-info',
+      requestId: 'q2',
+      sdkSessionId: 'gone',
+    });
+    expect(miss).toEqual({
+      type: 'query-result',
+      requestId: 'q2',
+      ok: true,
+      kind: 'session-info',
+      info: null,
+    });
+
+    sessionFnStubs.getSessionInfo.mockImplementationOnce(() =>
+      Promise.resolve({ sessionId: 'u', summary: 's', lastModified: 1 }),
+    );
+    const hit = await manager.handleQuery({
+      type: 'get-session-info',
+      requestId: 'q3',
+      sdkSessionId: 'u',
+    });
+    expect(hit.info).toEqual({ sdkSessionId: 'u', summary: 's', lastModified: 1 });
+  });
+
+  test('get-session-messages maps snake_case SDK keys to the camelCase wire shape', async () => {
+    sessionFnStubs.getSessionMessages.mockImplementationOnce(() =>
+      Promise.resolve([
+        {
+          type: 'assistant',
+          uuid: 'm1',
+          session_id: 'u',
+          message: { role: 'assistant', content: 'hi' },
+          parent_tool_use_id: null,
+        },
+      ]),
+    );
+    const manager = new SessionManager(makeConfig());
+    const result = await manager.handleQuery({
+      type: 'get-session-messages',
+      requestId: 'q4',
+      sdkSessionId: 'u',
+    });
+    expect(result).toEqual({
+      type: 'query-result',
+      requestId: 'q4',
+      ok: true,
+      kind: 'messages',
+      messages: [
+        {
+          type: 'assistant',
+          uuid: 'm1',
+          sessionId: 'u',
+          message: { role: 'assistant', content: 'hi' },
+          parentToolUseId: null,
+        },
+      ],
+    });
+  });
+
+  test('rename-session acks on success and reports failure when the SDK throws', async () => {
+    const manager = new SessionManager(makeConfig());
+    const ok = await manager.handleQuery({
+      type: 'rename-session',
+      requestId: 'q5',
+      sdkSessionId: 'u',
+      title: 'New',
+    });
+    expect(ok).toEqual({ type: 'query-result', requestId: 'q5', ok: true, kind: 'ack' });
+
+    sessionFnStubs.renameSession.mockImplementationOnce(() =>
+      Promise.reject(new Error('locked')),
+    );
+    const fail = await manager.handleQuery({
+      type: 'rename-session',
+      requestId: 'q6',
+      sdkSessionId: 'u',
+      title: 'New',
+    });
+    expect(fail.ok).toBe(false);
+    expect(fail.kind).toBe('ack');
+  });
+
+  test('tag-session forwards a null tag to clear it', async () => {
+    const manager = new SessionManager(makeConfig());
+    const result = await manager.handleQuery({
+      type: 'tag-session',
+      requestId: 'q7',
+      sdkSessionId: 'u',
+      tag: null,
+    });
+    expect(result).toEqual({ type: 'query-result', requestId: 'q7', ok: true, kind: 'ack' });
+    expect(sessionFnStubs.tagSession.mock.calls[0]?.slice(0, 2)).toEqual(['u', null]);
   });
 });

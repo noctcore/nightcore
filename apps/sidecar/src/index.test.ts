@@ -1,6 +1,11 @@
 /// <reference types="bun" />
 import { describe, expect, mock, test } from 'bun:test';
-import type { NightcoreEvent, SurfaceCommand } from '@nightcore/contracts';
+import type {
+  NightcoreEvent,
+  NightcoreEventOf,
+  SurfaceCommand,
+  SurfaceQuery,
+} from '@nightcore/contracts';
 import {
   CommandLineBuffer,
   createSidecar,
@@ -19,6 +24,7 @@ import {
  */
 class StubManager implements SidecarManager {
   readonly dispatched: SurfaceCommand[] = [];
+  readonly queried: SurfaceQuery[] = [];
   private listener: ((event: NightcoreEvent) => void) | null = null;
 
   on(listener: (event: NightcoreEvent) => void): () => void {
@@ -31,6 +37,20 @@ class StubManager implements SidecarManager {
   dispatch = mock(async (command: SurfaceCommand): Promise<void> => {
     this.dispatched.push(command);
   });
+
+  /** Echo the query back as a minimal `query-result` (no live SDK / disk read). */
+  handleQuery = mock(
+    async (query: SurfaceQuery): Promise<NightcoreEventOf<'query-result'>> => {
+      this.queried.push(query);
+      return {
+        type: 'query-result',
+        requestId: query.requestId,
+        ok: true,
+        kind: 'sessions',
+        sessions: [],
+      };
+    },
+  );
 
   /** Simulate the engine emitting an event (no real session involved). */
   emit(event: NightcoreEvent): void {
@@ -231,6 +251,55 @@ describe('createSidecar — command dispatch', () => {
     expect(manager.dispatched).toEqual([
       { type: 'interrupt', sessionId: 2 },
     ]);
+  });
+});
+
+describe('createSidecar — query request/reply', () => {
+  test('a query line is routed to handleQuery and its result is emitted with the matching requestId', async () => {
+    const manager = new StubManager();
+    const lines: string[] = [];
+    const { handleLine } = createSidecar(manager, (line) => lines.push(line));
+
+    handleLine('{"type":"list-sessions","requestId":"req-9","dir":"/proj"}');
+    // handleQuery resolves on a microtask; let it settle.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(manager.queried).toEqual([
+      { type: 'list-sessions', requestId: 'req-9', dir: '/proj' },
+    ]);
+    // No command was dispatched — a query is not a command.
+    expect(manager.dispatched).toEqual([]);
+    // The reply is framed back through the sink as a query-result echoing requestId.
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!)).toEqual({
+      type: 'query-result',
+      requestId: 'req-9',
+      ok: true,
+      kind: 'sessions',
+      sessions: [],
+    });
+  });
+
+  test('a line that is neither a command nor a query is reported, not handled', () => {
+    const manager = new StubManager();
+    const errors: string[] = [];
+    const { handleLine } = createSidecar(manager, () => {}, (m) => errors.push(m));
+
+    handleLine('{"type":"list-sessions"}'); // missing requestId → invalid query
+    expect(manager.queried).toEqual([]);
+    expect(manager.dispatched).toEqual([]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('invalid command');
+  });
+
+  test('a query does not stop later commands', () => {
+    const manager = new StubManager();
+    const { handleLine } = createSidecar(manager, () => {});
+    handleLine('{"type":"get-session-info","requestId":"r1","sdkSessionId":"u1"}');
+    handleLine('{"type":"interrupt","sessionId":2}');
+    expect(manager.queried).toHaveLength(1);
+    expect(manager.dispatched).toEqual([{ type: 'interrupt', sessionId: 2 }]);
   });
 });
 

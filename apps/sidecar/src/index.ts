@@ -28,8 +28,11 @@ import { SessionManager } from '@nightcore/engine';
 import { createLogger, type Logger } from '@nightcore/shared';
 import {
   SurfaceCommandSchema,
+  SurfaceQuerySchema,
   type NightcoreEvent,
+  type NightcoreEventOf,
   type SurfaceCommand,
+  type SurfaceQuery,
 } from '@nightcore/contracts';
 
 /** Emits one already-framed `NightcoreEvent` line to the wire. The live sink
@@ -41,6 +44,10 @@ export type EventSink = (line: string) => void;
 export interface SidecarManager {
   on(listener: (event: NightcoreEvent) => void): () => void;
   dispatch(command: SurfaceCommand): Promise<void>;
+  /** Answer a request/reply `SurfaceQuery` against the SDK session store; the
+   *  resolved `query-result` event is emitted through the same sink so the Rust
+   *  core can correlate it by `requestId`. */
+  handleQuery(query: SurfaceQuery): Promise<NightcoreEventOf<'query-result'>>;
 }
 
 /** Serialize one `NightcoreEvent` to its NDJSON wire form (exactly one line). */
@@ -109,14 +116,33 @@ export function createSidecar(
       onError(`sidecar: bad command json: ${String(error)}`);
       return;
     }
-    const result = SurfaceCommandSchema.safeParse(parsed);
-    if (!result.success) {
-      onError(`sidecar: invalid command: ${result.error.message}`);
+    // A line is EITHER a fire-and-forget command OR a request/reply query — the
+    // two unions share no `type` discriminant, so try the command first and fall
+    // back to the query. Both degrade-not-throw: a bad line logs, never kills the
+    // stream.
+    const command = SurfaceCommandSchema.safeParse(parsed);
+    if (command.success) {
+      void manager.dispatch(command.data).catch((error: unknown) => {
+        onError(`sidecar: dispatch failed: ${String(error)}`);
+      });
       return;
     }
-    void manager.dispatch(result.data).catch((error: unknown) => {
-      onError(`sidecar: dispatch failed: ${String(error)}`);
-    });
+    const query = SurfaceQuerySchema.safeParse(parsed);
+    if (query.success) {
+      // The reply is emitted through the SAME event sink as a `query-result`
+      // event; the Rust reader intercepts it by `requestId`. `handleQuery` is
+      // degrade-not-throw, but a defensive `.catch` guards an unexpected rejection.
+      manager
+        .handleQuery(query.data)
+        .then((result) => {
+          sink(encodeEvent(result));
+        })
+        .catch((error: unknown) => {
+          onError(`sidecar: query failed: ${String(error)}`);
+        });
+      return;
+    }
+    onError(`sidecar: invalid command: ${command.error.message}`);
   }
 
   return { handleLine };
