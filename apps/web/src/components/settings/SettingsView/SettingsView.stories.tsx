@@ -13,6 +13,7 @@ const settings: Settings = {
   defaultRunMode: 'main',
   maxTurns: null,
   maxBudgetUsd: null,
+  mcpServers: [],
   projectOverrides: {
     nightcore: { defaultModel: 'claude-haiku-4-5' },
   },

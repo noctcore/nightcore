@@ -62,8 +62,63 @@ pub struct Settings {
     /// overridable. Serde-additive: legacy settings load this as `None`.
     #[serde(default)]
     pub max_budget_usd: Option<f64>,
+    /// User-configured external MCP servers the Rust core injects (enabled entries
+    /// only) on each `start-session`. Per-project overridable (whole-list replace —
+    /// see [`SettingsOverride::mcp_servers`]). Serde-additive: a settings file
+    /// written before this field loads as `[]`. Values in `env`/`headers` may carry
+    /// secrets; persisted plaintext, same trust model as the user's `~/.claude.json`.
+    #[serde(default)]
+    pub mcp_servers: Vec<McpServerEntry>,
     /// Per-project overrides keyed by project id.
     pub project_overrides: HashMap<String, SettingsOverride>,
+}
+
+/// One user-configured external MCP server. Serde-additive; ts-rs exports it for
+/// the Settings MCP form. Serializes to the SAME camelCase wire shape as the
+/// contract [`crate::contracts::McpServerEntry`] (the round-trip the two-aligned-
+/// structs pattern guarantees — like `Settings` itself), so the resolved list can
+/// be handed straight to the `start-session` command.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "McpServerEntry.ts"))]
+pub struct McpServerEntry {
+    pub id: String,
+    pub name: String,
+    pub enabled: bool,
+    pub config: McpServerTransport,
+}
+
+/// Transport-tagged MCP server config (serde internally-tagged by `transport`, to
+/// match the contract union and avoid colliding with the SDK's optional stdio
+/// `type`). `env`/`headers` are string→string maps; the engine translates this to
+/// the SDK `Options.mcpServers` shape (omitting `type` for stdio, setting it for
+/// http/sse).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(TS))]
+#[serde(tag = "transport", rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "McpServerTransport.ts"))]
+pub enum McpServerTransport {
+    #[serde(rename_all = "camelCase")]
+    Stdio {
+        command: String,
+        #[serde(default)]
+        args: Vec<String>,
+        #[serde(default)]
+        env: HashMap<String, String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    Http {
+        url: String,
+        #[serde(default)]
+        headers: HashMap<String, String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    Sse {
+        url: String,
+        #[serde(default)]
+        headers: HashMap<String, String>,
+    },
 }
 
 /// The serde default for `default_run_mode` (a legacy settings file without the
@@ -91,6 +146,9 @@ impl Default for Settings {
             // budget uncapped) until the user sets a knob here.
             max_turns: None,
             max_budget_usd: None,
+            // No MCP servers configured by default — a new task injects none until
+            // the user adds one in the Settings MCP form.
+            mcp_servers: Vec::new(),
             project_overrides: HashMap::new(),
         }
     }
@@ -125,6 +183,13 @@ pub struct SettingsOverride {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub max_budget_usd: Option<f64>,
+    /// Per-project MCP server list. `None` ⇒ inherit the global list; `Some(list)`
+    /// ⇒ REPLACE it wholesale for this project (the same override-wins-else-global
+    /// resolution every other field uses — `default_model` is the template; no
+    /// cross-scope merge). Serde-additive: a legacy override block loads this `None`.
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub mcp_servers: Option<Vec<McpServerEntry>>,
 }
 
 impl SettingsOverride {
@@ -151,6 +216,11 @@ impl SettingsOverride {
         if patch.max_budget_usd.is_some() {
             self.max_budget_usd = patch.max_budget_usd;
         }
+        // Whole-list replace: the UI sends the project's full next list (or `None`
+        // to clear the override back to inheriting the global list).
+        if patch.mcp_servers.is_some() {
+            self.mcp_servers = patch.mcp_servers.clone();
+        }
     }
 
     fn is_empty(&self) -> bool {
@@ -161,6 +231,7 @@ impl SettingsOverride {
             && self.default_run_mode.is_none()
             && self.max_turns.is_none()
             && self.max_budget_usd.is_none()
+            && self.mcp_servers.is_none()
     }
 }
 
@@ -200,6 +271,13 @@ pub struct SettingsPatch {
     /// in that project's override; without one, the global default.
     #[cfg_attr(test, ts(optional))]
     pub max_budget_usd: Option<f64>,
+    /// The full next external MCP server list (whole-list replace). With a
+    /// `projectId` it sets that project's override list; without one, the global
+    /// list. The UI always sends the COMPLETE next list (add/edit/remove/toggle all
+    /// resolve to "here is the new list"), so there is no partial-entry merge.
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub mcp_servers: Option<Vec<McpServerEntry>>,
 }
 
 impl Settings {
@@ -250,6 +328,14 @@ impl Settings {
         }
         if patch.max_budget_usd.is_some() {
             self.max_budget_usd = patch.max_budget_usd;
+        }
+        // MCP servers: a present value REPLACES the global list with the UI's full
+        // next list. Unlike the `Option` ceilings, the empty list is a meaningful
+        // value (clear all servers) — `Some([])` sets an empty global list. Serde
+        // collapses absent and explicit-null to `None`, so a patch that omits the
+        // key leaves the list untouched.
+        if let Some(servers) = patch.mcp_servers {
+            self.mcp_servers = servers;
         }
     }
 }
@@ -350,6 +436,25 @@ impl SettingsStore {
             .and_then(|id| settings.project_overrides.get(id))
             .and_then(|ov| ov.max_budget_usd)
             .or(settings.max_budget_usd)
+    }
+
+    /// The effective enabled MCP server list for a project, ready to inject on
+    /// `start-session`. Resolution mirrors [`default_model`](Self::default_model):
+    /// a project override REPLACES the global list wholesale (`Some(list)` wins),
+    /// else the global list applies; then only `enabled` entries are returned (the
+    /// per-entry toggle gates injection). An empty result ⇒ inject nothing (the
+    /// pre-feature shape).
+    ///
+    /// Whole-list-replace, NOT a cross-scope merge — a project that sets its own
+    /// list owns it entirely, the same semantics every other overridable setting
+    /// uses here (no field/entry-level merge model is introduced).
+    pub fn enabled_mcp_servers(&self, project_id: Option<&str>) -> Vec<McpServerEntry> {
+        let settings = self.get();
+        let resolved = project_id
+            .and_then(|id| settings.project_overrides.get(id))
+            .and_then(|ov| ov.mcp_servers.clone())
+            .unwrap_or(settings.mcp_servers);
+        resolved.into_iter().filter(|s| s.enabled).collect()
     }
 
     /// Apply a patch, persist, and return the merged settings.
@@ -740,10 +845,180 @@ mod tests {
             "defaultRunMode",
             "maxTurns",
             "maxBudgetUsd",
+            "mcpServers",
             "projectOverrides",
         ] {
             assert!(obj.contains_key(key), "missing camelCase key {key}");
         }
+    }
+
+    /// A stdio server entry fixture for the MCP tests.
+    fn stdio_entry(id: &str, name: &str, enabled: bool) -> McpServerEntry {
+        McpServerEntry {
+            id: id.to_string(),
+            name: name.to_string(),
+            enabled,
+            config: McpServerTransport::Stdio {
+                command: "npx".to_string(),
+                args: vec!["-y".to_string(), "pkg".to_string()],
+                env: HashMap::new(),
+            },
+        }
+    }
+
+    #[test]
+    fn mcp_servers_default_to_empty_and_are_serde_additive() {
+        // A fresh Settings has no MCP servers; the resolver returns an empty list.
+        let s = Settings::default();
+        assert!(s.mcp_servers.is_empty());
+
+        // A settings.json from before the MCP UI (no `mcpServers`) still parses,
+        // defaulting the field to `[]` — existing config files aren't broken.
+        let tmp = TempDir::new().expect("temp dir");
+        let dir = tmp.path().join("config");
+        std::fs::create_dir_all(&dir).unwrap();
+        let legacy = r#"{"defaultModel":"claude-opus-4-8","defaultEffort":"medium",
+            "maxConcurrency":3,"permissionMode":"bypass","cleanupWorktrees":true,
+            "notifyOnComplete":false,"defaultRunMode":"main","projectOverrides":{}}"#;
+        std::fs::write(dir.join("settings.json"), legacy).unwrap();
+        let store = SettingsStore::load_from(dir);
+        assert!(store.get().mcp_servers.is_empty());
+        assert!(store.enabled_mcp_servers(None).is_empty());
+    }
+
+    #[test]
+    fn mcp_servers_round_trip_persist_and_reload() {
+        let (store, tmp) = temp_store();
+        let patch: SettingsPatch = serde_json::from_str(
+            r#"{"mcpServers":[
+                {"id":"s1","name":"filesystem","enabled":true,
+                 "config":{"transport":"stdio","command":"npx","args":["-y","pkg"],"env":{"ROOT":"/x"}}},
+                {"id":"s2","name":"github","enabled":false,
+                 "config":{"transport":"http","url":"https://x/mcp","headers":{"Authorization":"Bearer t"}}}
+            ]}"#,
+        )
+        .unwrap();
+        let merged = store.update(patch).expect("update");
+        assert_eq!(merged.mcp_servers.len(), 2);
+
+        // Persisted: a fresh store reloads the exact list (including the http entry's
+        // headers and the disabled flag).
+        let reloaded = SettingsStore::load_from(tmp.path().join("config"));
+        let servers = reloaded.get().mcp_servers;
+        assert_eq!(servers.len(), 2);
+        assert_eq!(servers[0].name, "filesystem");
+        assert!(matches!(
+            &servers[1].config,
+            McpServerTransport::Http { url, headers }
+                if url == "https://x/mcp" && headers.get("Authorization").is_some()
+        ));
+    }
+
+    #[test]
+    fn enabled_mcp_servers_filters_disabled_entries() {
+        let (store, _tmp) = temp_store();
+        store
+            .update(SettingsPatch {
+                mcp_servers: Some(vec![
+                    stdio_entry("a", "alpha", true),
+                    stdio_entry("b", "bravo", false),
+                    stdio_entry("c", "charlie", true),
+                ]),
+                ..Default::default()
+            })
+            .expect("update");
+
+        let enabled = store.enabled_mcp_servers(None);
+        let names: Vec<&str> = enabled.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["alpha", "charlie"], "only enabled entries inject");
+    }
+
+    #[test]
+    fn enabled_mcp_servers_resolves_project_override_then_global() {
+        let (store, _tmp) = temp_store();
+        // Global list: one enabled server.
+        store
+            .update(SettingsPatch {
+                mcp_servers: Some(vec![stdio_entry("g", "global-srv", true)]),
+                ..Default::default()
+            })
+            .expect("global update");
+        // Every project without an own list sees the global one.
+        assert_eq!(
+            store
+                .enabled_mcp_servers(Some("other"))
+                .iter()
+                .map(|s| s.name.clone())
+                .collect::<Vec<_>>(),
+            vec!["global-srv".to_string()]
+        );
+
+        // A project override REPLACES the global list wholesale for that project.
+        store
+            .update(SettingsPatch {
+                project_id: Some("p1".to_string()),
+                mcp_servers: Some(vec![stdio_entry("p", "project-srv", true)]),
+                ..Default::default()
+            })
+            .expect("project update");
+        assert_eq!(
+            store
+                .enabled_mcp_servers(Some("p1"))
+                .iter()
+                .map(|s| s.name.clone())
+                .collect::<Vec<_>>(),
+            vec!["project-srv".to_string()],
+            "the project override wins and replaces the global list"
+        );
+        // The global list and other projects are untouched.
+        assert_eq!(
+            store.enabled_mcp_servers(None),
+            vec![stdio_entry("g", "global-srv", true)]
+        );
+    }
+
+    #[test]
+    fn mcp_servers_project_patch_writes_an_override_not_the_global() {
+        let (store, _tmp) = temp_store();
+        let merged = store
+            .update(SettingsPatch {
+                project_id: Some("proj-1".to_string()),
+                mcp_servers: Some(vec![stdio_entry("x", "x", true)]),
+                ..Default::default()
+            })
+            .expect("update");
+
+        // The global list is untouched; the override carries the project's list.
+        assert!(merged.mcp_servers.is_empty(), "global list stays empty");
+        let ov = merged
+            .project_overrides
+            .get("proj-1")
+            .expect("override exists");
+        assert_eq!(ov.mcp_servers.as_ref().map(|l| l.len()), Some(1));
+
+        // The UI clears a project's list by sending an explicit EMPTY list
+        // (`Some([])`), which replaces it — not by omitting the key. (An omitted
+        // `mcpServers` is a no-op, like the `Option` ceilings: serde maps absent and
+        // null to `None`, so the override list can only be SET/replaced, never
+        // implicitly cleared.) `Some([])` here leaves an empty override list, so the
+        // override block survives (it carries an intentional empty list).
+        store
+            .update(SettingsPatch {
+                project_id: Some("proj-1".to_string()),
+                mcp_servers: Some(vec![]),
+                ..Default::default()
+            })
+            .expect("clear to empty");
+        let ov = store.get();
+        let ov = ov.project_overrides.get("proj-1").expect("override exists");
+        assert_eq!(
+            ov.mcp_servers.as_ref().map(|l| l.len()),
+            Some(0),
+            "an explicit empty list replaces the override list"
+        );
+        // And that project now injects nothing (resolves to the empty override list,
+        // NOT back to the global list).
+        assert!(store.enabled_mcp_servers(Some("proj-1")).is_empty());
     }
 
     #[test]

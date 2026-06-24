@@ -517,6 +517,7 @@ const MOCK_SETTINGS: Settings = {
   defaultRunMode: 'main',
   maxTurns: null,
   maxBudgetUsd: null,
+  mcpServers: [],
   projectOverrides: {},
 };
 
