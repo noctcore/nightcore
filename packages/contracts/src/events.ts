@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PermissionModeSchema } from './config.js';
+import { ProviderConfigSnapshotSchema } from './provider-config.js';
 import { SessionStatusSchema } from './session.js';
 import { ToolRiskSchema } from './tools.js';
 
@@ -227,13 +228,21 @@ export const QueryResultEvent = z.object({
   requestId: z.string(),
   ok: z.boolean(),
   /** Which payload slot the result populates. `ack` is a bare success (rename/tag). */
-  kind: z.enum(['sessions', 'session-info', 'messages', 'ack']),
+  kind: z.enum([
+    'sessions',
+    'session-info',
+    'messages',
+    'ack',
+    'provider-config',
+  ]),
   /** Populated for `kind: 'sessions'`. */
   sessions: z.array(SessionInfoSchema).optional(),
   /** Populated for `kind: 'session-info'`; `null` when the session was not found. */
   info: SessionInfoSchema.nullable().optional(),
   /** Populated for `kind: 'messages'`. */
   messages: z.array(SessionMessageSchema).optional(),
+  /** Populated for `kind: 'provider-config'`: the read-only inspector snapshot. */
+  providerConfig: ProviderConfigSnapshotSchema.optional(),
   /** Set when `ok` is false: a short failure reason. */
   error: z.string().optional(),
 });

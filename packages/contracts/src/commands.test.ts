@@ -144,6 +144,8 @@ describe('SurfaceQuerySchema round-trips', () => {
       sdkSessionId: 'uuid-d',
       tag: null,
     },
+    { type: 'get-provider-config', requestId: 'q10' },
+    { type: 'get-provider-config', requestId: 'q11', dir: '/proj' },
   ];
 
   for (const query of valid) {

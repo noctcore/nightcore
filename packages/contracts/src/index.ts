@@ -4,5 +4,6 @@ export * from './config.js';
 export * from './tools.js';
 export * from './models.js';
 export * from './session.js';
+export * from './provider-config.js';
 export * from './events.js';
 export * from './commands.js';

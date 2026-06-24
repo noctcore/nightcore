@@ -116,6 +116,53 @@ describe('NightcoreEventSchema round-trips', () => {
       kind: 'sessions',
       error: 'session store unavailable',
     },
+    {
+      type: 'query-result',
+      requestId: 'q7',
+      ok: true,
+      kind: 'provider-config',
+      providerConfig: {
+        providerId: 'claude',
+        providerLabel: 'Claude',
+        projectPath: '/proj',
+        mcp: {
+          status: 'supported',
+          mcpServers: [
+            {
+              name: 'github',
+              status: 'connected',
+              scope: 'project',
+              transport: 'stdio',
+              toolCount: 12,
+            },
+          ],
+        },
+        skills: { status: 'supported', skills: [{ name: 'add-feature' }] },
+        subagents: {
+          status: 'supported',
+          subagents: [{ name: 'Explore', description: 'read-only search' }],
+        },
+        model: 'claude-opus-4-8',
+        permissionMode: 'acceptEdits',
+        outputStyle: 'default',
+        extrasStatus: 'supported',
+      },
+    },
+    {
+      type: 'query-result',
+      requestId: 'q8',
+      ok: true,
+      kind: 'provider-config',
+      providerConfig: {
+        providerId: 'codex',
+        providerLabel: 'Codex',
+        projectPath: '/proj',
+        mcp: { status: 'unsupported' },
+        skills: { status: 'unsupported' },
+        subagents: { status: 'unavailable', error: 'probe timed out' },
+        extrasStatus: 'unsupported',
+      },
+    },
   ];
 
   for (const event of valid) {

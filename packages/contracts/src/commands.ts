@@ -163,11 +163,22 @@ export const TagSessionQuery = z.object({
   dir: z.string().optional(),
 });
 
+/** Read the active provider's resolved configuration for a project (the read-only
+ *  inspector). Unlike the session-store queries, this DOES spin a transient SDK
+ *  probe (no model turn) to read scope-aware config via the SDK control methods.
+ *  `dir` is the project root the resolution keys off; omit ⇒ the engine's cwd. */
+export const GetProviderConfigQuery = z.object({
+  ...requestTarget,
+  type: z.literal('get-provider-config'),
+  dir: z.string().optional(),
+});
+
 export const SurfaceQuerySchema = z.discriminatedUnion('type', [
   ListSessionsQuery,
   GetSessionInfoQuery,
   GetSessionMessagesQuery,
   RenameSessionQuery,
   TagSessionQuery,
+  GetProviderConfigQuery,
 ]);
 export type SurfaceQuery = z.infer<typeof SurfaceQuerySchema>;
