@@ -174,12 +174,12 @@ export class SessionRunner {
       permissionMode: this.cfg.permissionMode,
       includePartialMessages: true,
       canUseTool: this.permissions.canUseTool,
-      // M4.7 §A2: native SDK tools only. The custom in-process `mcp__nightcore__*`
-      // server is no longer wired into sessions — the agent uses the SDK's native
-      // Read/Write/Edit/Bash/Grep/Glob (the Claude-Code mental model). The
-      // `ToolRegistry` is kept solely for risk metadata via `riskOf` (it still
-      // classifies native read-only tools as `safe`). `@nightcore/tools` /
-      // `@nightcore/mcp` stay in the tree for a later removal pass.
+      // Native SDK tools only — the agent uses the SDK's native
+      // Read/Write/Edit/Bash/Grep/Glob (the Claude-Code mental model); Nightcore
+      // ships no in-house custom tools and registers no in-process MCP server.
+      // The `ToolRegistry` is kept solely for risk metadata via `riskOf`, which
+      // classifies the native tools so the PermissionLayer auto-allows safe reads
+      // and still prompts on writes/shell.
       hooks: this.hooks.hooks(),
       abortController: this.abort,
       ...(this.cfg.effort !== undefined ? { effort: this.cfg.effort } : {}),

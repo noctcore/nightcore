@@ -6,9 +6,8 @@
  * `nightcoreSkills` to offer subagents/presets.
  *
  * Imports `contracts` only — never the engine (dependency inversion). Tool
- * names use the same `mcp__nightcore__<tool>` namespace `@nightcore/tools`
- * exposes; they are declared as literals here so this package stays SDK-free
- * and dependency-light.
+ * names are declared as `mcp__nightcore__<tool>` literals here so this package
+ * stays SDK-free and dependency-light.
  */
 
 /**

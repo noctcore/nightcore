@@ -2,25 +2,31 @@
 import { describe, expect, test } from 'bun:test';
 import { ToolRegistry } from './tool-registry.js';
 
-describe('ToolRegistry native-tool risk classification (M4.7 §A3)', () => {
+describe('ToolRegistry native-tool risk classification', () => {
   const registry = new ToolRegistry();
 
   test('native read-only tools are classified safe so they auto-allow', () => {
-    for (const tool of ['Read', 'Grep', 'Glob', 'LS']) {
+    for (const tool of ['Read', 'Glob', 'Grep', 'LS', 'TodoWrite']) {
       expect(registry.riskOf(tool)).toBe('safe');
     }
   });
 
-  test('native write/edit/shell tools stay unknown (→ prompt-worthy)', () => {
-    // Deliberately NOT classified safe: undefined folds into `dangerous` at the
-    // PermissionLayer, so they still prompt outside bypass.
-    for (const tool of ['Write', 'Edit', 'MultiEdit', 'Bash', 'NotebookEdit']) {
-      expect(registry.riskOf(tool)).toBeUndefined();
+  test('native write/edit tools are classified mutating', () => {
+    for (const tool of ['Write', 'Edit', 'NotebookEdit']) {
+      expect(registry.riskOf(tool)).toBe('mutating');
     }
   });
 
-  test('the custom MCP descriptor risks still resolve (kept for metadata)', () => {
-    expect(registry.riskOf('mcp__nightcore__read_file')).toBe('safe');
-    expect(registry.riskOf('mcp__nightcore__run_command')).toBe('dangerous');
+  test('shell and network tools are classified dangerous (always prompt)', () => {
+    for (const tool of ['Bash', 'WebFetch', 'WebSearch']) {
+      expect(registry.riskOf(tool)).toBe('dangerous');
+    }
+  });
+
+  test('unknown and external mcp tools resolve to undefined (→ most-cautious)', () => {
+    // undefined folds into `dangerous` at the PermissionLayer, so an unrecognised
+    // or external tool still prompts outside bypass.
+    expect(registry.riskOf('mcp__external__mystery')).toBeUndefined();
+    expect(registry.riskOf('SomeUnknownTool')).toBeUndefined();
   });
 });
