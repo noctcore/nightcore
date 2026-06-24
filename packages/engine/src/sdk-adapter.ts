@@ -6,20 +6,24 @@
  */
 import type {
   AgentDefinition,
+  AgentInfo,
   GetSessionInfoOptions,
   GetSessionMessagesOptions,
   ListSessionsOptions,
+  McpServerStatus,
   ModelInfo,
   Options,
   PermissionMode,
   Query,
   RewindFilesResult,
   SDKControlGetContextUsageResponse,
+  SDKControlInitializeResponse,
   SDKMessage,
   SDKSessionInfo,
   SDKUserMessage,
   SessionMessage,
   SessionMutationOptions,
+  SlashCommand,
 } from '@anthropic-ai/claude-agent-sdk';
 import {
   getSessionInfo,
@@ -33,20 +37,24 @@ import type { NightcoreEvent } from '@nightcore/contracts';
 
 export type {
   AgentDefinition,
+  AgentInfo,
   GetSessionInfoOptions,
   GetSessionMessagesOptions,
   ListSessionsOptions,
+  McpServerStatus,
   ModelInfo,
   Options,
   PermissionMode,
   Query,
   RewindFilesResult,
   SDKControlGetContextUsageResponse,
+  SDKControlInitializeResponse,
   SDKMessage,
   SDKSessionInfo,
   SDKUserMessage,
   SessionMessage,
   SessionMutationOptions,
+  SlashCommand,
 };
 export {
   getSessionInfo,

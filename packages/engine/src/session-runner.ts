@@ -9,12 +9,16 @@ import type { Logger } from '@nightcore/shared';
 import {
   query,
   translateMessage,
+  type AgentInfo,
+  type McpServerStatus,
   type ModelInfo,
   type Options,
   type Query,
   type RewindFilesResult,
   type SDKControlGetContextUsageResponse,
+  type SDKControlInitializeResponse,
   type SDKUserMessage,
+  type SlashCommand,
 } from './sdk-adapter.js';
 import { PermissionLayer, type ApprovalDecision } from './permission-layer.js';
 import { ToolRegistry } from './tool-registry.js';
@@ -303,8 +307,87 @@ export class SessionRunner {
    * leaks. Degrades to `[]` on any error.
    */
   async supportedModels(): Promise<ModelInfo[]> {
-    if (this.query) {
-      return this.query.supportedModels();
+    return this.probeControl((q) => q.supportedModels(), []);
+  }
+
+  /**
+   * Read the SDK's resolved MCP server status (the provider-config inspector). The
+   * SDK applies scope precedence and reports each server's live connection status,
+   * so this is authoritative over hand-parsing `.mcp.json`. Probes transiently
+   * (no model turn) on the `supportedModels()` template; degrades to `[]`.
+   * `cwdOverride` re-roots resolution at a project root other than this runner's.
+   */
+  async mcpServerStatus(cwdOverride?: string): Promise<McpServerStatus[]> {
+    return this.probeControl((q) => q.mcpServerStatus(), [], cwdOverride);
+  }
+
+  /**
+   * Read the SDK's resolved slash commands (skills surface as slash commands) for
+   * the project (the provider-config inspector). Probes transiently; degrades to
+   * `[]`. `cwdOverride` re-roots resolution at a project root.
+   */
+  async supportedCommands(cwdOverride?: string): Promise<SlashCommand[]> {
+    return this.probeControl((q) => q.supportedCommands(), [], cwdOverride);
+  }
+
+  /**
+   * Read the SDK's resolved subagents (invokable via the Task tool) for the
+   * project (the provider-config inspector). Probes transiently; degrades to `[]`.
+   * `cwdOverride` re-roots resolution at a project root.
+   */
+  async supportedAgents(cwdOverride?: string): Promise<AgentInfo[]> {
+    return this.probeControl((q) => q.supportedAgents(), [], cwdOverride);
+  }
+
+  /**
+   * Read the SDK's initialize response — the cheap scalar summary
+   * (model / output style / available styles) that backs the inspector's extras
+   * row. Probes transiently; degrades to `undefined`. `cwdOverride` re-roots
+   * resolution at a project root.
+   */
+  async initializationResult(
+    cwdOverride?: string,
+  ): Promise<SDKControlInitializeResponse | undefined> {
+    return this.probeControl(
+      (q) => q.initializationResult(),
+      undefined,
+      cwdOverride,
+    );
+  }
+
+  /**
+   * Run one SDK control request against a live streaming query, returning
+   * `fallback` on any failure (degrade-not-throw). Reuses this runner's open query
+   * when it has one (and no cwd override is needed); otherwise spins a TRANSIENT
+   * query (a streaming input that sends no user turn), asks, and tears it down via
+   * its abort controller in `finally` so no subprocess leaks — the exact lifecycle
+   * `supportedModels()` proved. `cwdOverride` forces the transient path (the live
+   * query is rooted at this runner's own cwd, which may differ).
+   */
+  private async probeControl<T>(
+    call: (q: Query) => Promise<T>,
+    fallback: T,
+    cwdOverride?: string,
+  ): Promise<T> {
+    return this.withProbe((q) => call(q), fallback, cwdOverride);
+  }
+
+  /**
+   * Open ONE transient probe (or reuse this runner's live query when no cwd
+   * override is needed) and hand it to `body`, returning `fallback` if the probe
+   * itself can't be opened. The single subprocess is shared across every control
+   * method `body` calls — letting the provider-config inspector read MCP / skills /
+   * subagents / init off ONE probe while isolating per-call failures inside `body`
+   * (so one failing section becomes that section's `unavailable`, never a failed
+   * snapshot). The query is torn down via its abort controller in `finally`.
+   */
+  async withProbe<T>(
+    body: (q: Query) => Promise<T>,
+    fallback: T,
+    cwdOverride?: string,
+  ): Promise<T> {
+    if (this.query && cwdOverride === undefined) {
+      return body(this.query);
     }
 
     const abort = new AbortController();
@@ -312,12 +395,16 @@ export class SessionRunner {
     try {
       transient = query({
         prompt: emptyInputStream(abort.signal),
-        options: { ...this.baseOptions(), abortController: abort },
+        options: {
+          ...this.baseOptions(),
+          ...(cwdOverride !== undefined ? { cwd: cwdOverride } : {}),
+          abortController: abort,
+        },
       });
-      return await transient.supportedModels();
+      return await body(transient);
     } catch (error) {
-      this.logger?.debug('supportedModels() transient query failed', error);
-      return [];
+      this.logger?.debug('control probe transient query failed', error);
+      return fallback;
     } finally {
       abort.abort();
       await transient?.interrupt().catch((error: unknown) => {
