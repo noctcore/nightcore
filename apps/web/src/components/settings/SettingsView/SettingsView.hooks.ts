@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { getAppInfo, type AppInfo, type RunMode, type SettingsPatch } from '@/lib/bridge';
+import {
+  getAppInfo,
+  type AppInfo,
+  type McpServerEntry,
+  type RunMode,
+  type SettingsPatch,
+} from '@/lib/bridge';
 import type {
   SettingsPage,
   SettingsScope,
@@ -20,6 +26,10 @@ export interface EffectiveSettings {
   maxTurns: number | null;
   /** SDK guardrail: the effective max-budget-USD ceiling, or `null` (uncapped). */
   maxBudgetUsd: number | null;
+  /** The external MCP server list in effect for the scope: a project override
+   *  REPLACES the global list wholesale (whole-list semantics, same as the Rust
+   *  resolver), else the global list. Editing it sends the full next list. */
+  mcpServers: McpServerEntry[];
 }
 
 export interface SettingsViewState {
@@ -64,6 +74,10 @@ export function useSettingsView({
       defaultRunMode: override?.defaultRunMode ?? settings.defaultRunMode,
       maxTurns: override?.maxTurns ?? settings.maxTurns,
       maxBudgetUsd: override?.maxBudgetUsd ?? settings.maxBudgetUsd,
+      // Whole-list replace: a project override owns its list entirely (mirrors the
+      // Rust `enabled_mcp_servers` resolution); `?? []` keeps a legacy/absent list
+      // empty so the card always renders.
+      mcpServers: override?.mcpServers ?? settings.mcpServers ?? [],
     };
   }, [scope, activeProjectId, settings]);
 

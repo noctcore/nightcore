@@ -1,3 +1,5 @@
+export { McpServersCard } from './McpServersCard';
+export type { McpServersCardProps } from './McpServersCard';
 export { SettingsCard } from './SettingsCard';
 export type { SettingsCardProps, SettingsRow } from './SettingsCard';
 export { SettingsView } from './SettingsView';

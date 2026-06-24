@@ -22,6 +22,8 @@ export type { Project } from './generated/Project';
 export type { Settings } from './generated/Settings';
 export type { SettingsOverride } from './generated/SettingsOverride';
 export type { SettingsPatch } from './generated/SettingsPatch';
+export type { McpServerEntry } from './generated/McpServerEntry';
+export type { McpServerTransport } from './generated/McpServerTransport';
 export type { AppInfo } from './generated/AppInfo';
 export type { WorktreeInfo } from './generated/WorktreeInfo';
 export type { GauntletResult } from './generated/GauntletResult';

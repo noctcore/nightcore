@@ -17,6 +17,7 @@ import {
 } from '@/components/ui';
 import { EFFORT_OPTIONS, MODEL_OPTIONS } from '@/lib/models';
 import { parseNumericCommit } from '@/lib/numeric-field';
+import { McpServersCard } from '../McpServersCard';
 import { SettingsCard } from '../SettingsCard';
 import type { SettingsCardProps } from '../SettingsCard';
 import { useAppInfo, useSettingsView, type EffectiveSettings } from './SettingsView.hooks';
@@ -393,6 +394,18 @@ export function SettingsView({
           {cards.map((card, i) => (
             <SettingsCard key={`${card.title}-${i}`} {...card} />
           ))}
+
+          {/* The MCP servers card lives on the Providers page. It is fully
+              interactive (its own editor modal + remove confirm), so it renders
+              outside the presentational `SettingsCard` set. Edits route through the
+              SAME scoped patch as every other control (global, or the active
+              project's override per the scope tab). */}
+          {page === 'providers' && (
+            <McpServersCard
+              servers={effective.mcpServers}
+              onChange={(next) => patchScoped({ mcpServers: next })}
+            />
+          )}
 
           {note !== undefined && (
             <div className="mt-2 flex items-center gap-2.5 rounded-2xl border border-border bg-white/[0.02] px-[18px] py-3.5">
