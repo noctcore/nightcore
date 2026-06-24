@@ -6,6 +6,7 @@ import {
   ChevronDownIcon,
   CloseIcon,
   CommitIcon,
+  HistoryIcon,
   IconButton,
   LayersIcon,
   LogsIcon,
@@ -34,10 +35,12 @@ import { PermissionModePicker } from '../PermissionModePicker';
 import { ModelEffortPicker } from '../ModelEffortPicker';
 import { ReviewPanel } from '../ReviewPanel';
 import { GauntletResults } from '../GauntletResults';
+import { SessionHistory } from '../SessionHistory';
 import {
   canMerge,
   deriveTaskDetailView,
   summarizeSession,
+  useHistoryCard,
   useSessionCard,
 } from './TaskDetail.hooks';
 import type { TaskDetailProps } from './TaskDetail.types';
@@ -325,6 +328,63 @@ function SessionCard({
   );
 }
 
+/** The collapsible History card: the per-task SDK session history (past runs,
+ *  view transcript, resume, rename, tag). Mirrors `SessionCard`'s collapsible
+ *  chrome but collapsed by default — history is a secondary, on-demand surface.
+ *  Only rendered for a task that has run (`task.sdkSessionId != null`) and only
+ *  when the shell wired the resume/rename/tag handlers. `SessionHistory` owns its
+ *  own fetch lifecycle, so the body mounts (and fetches) only once expanded. */
+function HistoryCard({
+  task,
+  canResume,
+  onResumeSession,
+  onRenameSession,
+  onTagSession,
+}: {
+  task: Task;
+  canResume: boolean;
+  onResumeSession: NonNullable<TaskDetailProps['onResumeSession']>;
+  onRenameSession: NonNullable<TaskDetailProps['onRenameSession']>;
+  onTagSession: NonNullable<TaskDetailProps['onTagSession']>;
+}) {
+  const { open, toggle } = useHistoryCard();
+  return (
+    <section className="rounded-[10px] border border-border bg-white/[0.02]">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls="history-card-body"
+        onClick={toggle}
+        className="flex w-full items-center gap-2 rounded-[10px] px-3 py-2.5 text-left transition-colors hover:bg-white/[0.03] focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      >
+        <HistoryIcon size={13} className="shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">
+          History
+        </span>
+        <ChevronDownIcon
+          size={14}
+          aria-hidden="true"
+          className={`shrink-0 text-muted-foreground transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      <div id="history-card-body" hidden={!open}>
+        {open && (
+          <div className="border-t border-border px-3 pb-3 pt-3">
+            <SessionHistory
+              taskId={task.id}
+              currentSdkSessionId={task.sdkSessionId}
+              canResume={canResume}
+              onResume={onResumeSession}
+              onRename={onRenameSession}
+              onTag={onTagSession}
+            />
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 /** The unified activity timeline (decision A): one chronological list that
  *  interleaves assistant text turns (rendered via `<Markdown>`, each its own
  *  `<li>` so distinct turns are visually separated) with boxed tool-call lines,
@@ -466,6 +526,9 @@ export function TaskDetail({
   onRunGauntlet,
   onMerge,
   onCommit,
+  onResumeSession,
+  onRenameSession,
+  onTagSession,
   isActionPending,
 }: TaskDetailProps) {
   const {
@@ -579,6 +642,21 @@ export function TaskDetail({
           onChangeMaxTurns={onChangeMaxTurns}
           onChangeMaxBudget={onChangeMaxBudget}
         />
+
+        {task.sdkSessionId !== null &&
+          onResumeSession !== undefined &&
+          onRenameSession !== undefined &&
+          onTagSession !== undefined && (
+            <HistoryCard
+              task={task}
+              // Resume requires no run in flight (the run path leases a slot), so
+              // gate it the same way the footer Run button is gated.
+              canResume={!anyRunning && !isRunning && task.status !== 'verifying'}
+              onResumeSession={onResumeSession}
+              onRenameSession={onRenameSession}
+              onTagSession={onTagSession}
+            />
+          )}
       </div>
 
       <footer className="flex items-center gap-2 border-t border-border bg-card px-4 py-3">

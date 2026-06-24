@@ -48,6 +48,8 @@ export {
   ListChecks as ChecksIcon,
   GitFork as DecomposeIcon,
   ArrowRightLeft as MoveIcon,
+  Tag as TagIcon,
+  History as HistoryIcon,
 } from 'lucide-react';
 
 /** The GitHub brand mark — removed from lucide 1.x, so we ship the design's

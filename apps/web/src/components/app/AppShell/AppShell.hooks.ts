@@ -23,6 +23,7 @@ import {
   readTranscript,
   refineTask,
   renameProject,
+  renameSession,
   rejectReview,
   rejectTask,
   rerunVerification,
@@ -33,8 +34,10 @@ import {
   onSessionEvent,
   onTaskEvent,
   resumeAutoLoop,
+  resumeSession,
   respondPermission,
   runTask,
+  tagSession,
   setActiveProject,
   setMaxConcurrency,
   startAutoLoop,
@@ -714,6 +717,12 @@ export interface AppShellState {
     ) => Promise<void>;
     handleRun: (id: string) => void;
     handleCancel: (id: string) => void;
+    /** Resume a chosen historical session (relaunches the task at the UUID). */
+    handleResumeSession: (taskId: string, sdkSessionId: string) => void;
+    /** Rename a past session's title. */
+    handleRenameSession: (sdkSessionId: string, title: string) => void;
+    /** Tag a past session, or clear its tag with `null`. */
+    handleTagSession: (sdkSessionId: string, tag: string | null) => void;
     handleDelete: (id: string) => void;
     handleClearColumn: (statuses: TaskStatus[]) => void;
     handleMoveTask: (id: string, status: TaskStatus) => void;
@@ -842,6 +851,41 @@ export function useAppShell(): AppShellState {
       void cancelTask(id).catch((err) => {
         console.error('cancel_task failed', err);
         toast.error('Could not cancel the run', err);
+      });
+    },
+    [toast],
+  );
+
+  const handleResumeSession = useCallback(
+    (taskId: string, sdkSessionId: string) => {
+      // Optimistically reset the stream (the resumed run streams fresh), guarded
+      // against a double-fire like a normal run.
+      action.guard('run', taskId, () => {
+        setStreams((prev) => ({ ...prev, [taskId]: { ...EMPTY_STREAM } }));
+        return resumeSession(taskId, sdkSessionId).catch((err) => {
+          console.error('resume_session failed', err);
+          toast.error('Could not resume the session', err);
+        });
+      });
+    },
+    [action, setStreams, toast],
+  );
+
+  const handleRenameSession = useCallback(
+    (sdkSessionId: string, title: string) => {
+      void renameSession(sdkSessionId, title).catch((err) => {
+        console.error('rename_session failed', err);
+        toast.error('Could not rename the session', err);
+      });
+    },
+    [toast],
+  );
+
+  const handleTagSession = useCallback(
+    (sdkSessionId: string, tag: string | null) => {
+      void tagSession(sdkSessionId, tag).catch((err) => {
+        console.error('tag_session failed', err);
+        toast.error('Could not tag the session', err);
       });
     },
     [toast],
@@ -1073,6 +1117,9 @@ export function useAppShell(): AppShellState {
       handleCreate,
       handleRun,
       handleCancel,
+      handleResumeSession,
+      handleRenameSession,
+      handleTagSession,
       handleDelete,
       handleClearColumn,
       handleMoveTask,

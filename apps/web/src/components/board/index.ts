@@ -14,6 +14,8 @@ export { WorktreeSwitcher, filterTasksByWorktree } from './WorktreeSwitcher';
 export type { ActiveWorktree, WorktreeTab } from './WorktreeSwitcher';
 export { ReviewPanel } from './ReviewPanel';
 export { GauntletResults } from './GauntletResults';
+export { SessionHistory } from './SessionHistory';
+export type { SessionHistoryProps, SessionHistoryData } from './SessionHistory';
 export {
   COLUMNS,
   STATUS_LABEL,

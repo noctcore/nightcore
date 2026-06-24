@@ -53,6 +53,13 @@ export interface TaskDetailProps {
   onMerge?: (id: string) => void;
   /** Commit a verified task's worktree. */
   onCommit?: (id: string) => void;
+  /** Resume a chosen historical session — relaunches the task pointed at the UUID
+   *  (refused Rust-side for an orphaned session). Enables the History section. */
+  onResumeSession?: (taskId: string, sdkSessionId: string) => void;
+  /** Rename a past session's title. */
+  onRenameSession?: (sdkSessionId: string, title: string) => void;
+  /** Tag a past session, or clear its tag with `null`. */
+  onTagSession?: (sdkSessionId: string, tag: string | null) => void;
   /** True while a guarded action (`run`/`approve`/`refine`/`reject`/`commit`/
    *  `merge`) is in flight for this task, so the matching footer button disables
    *  itself between the click and the `nc:task` echo. Defaults to never-pending. */

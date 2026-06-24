@@ -68,6 +68,13 @@ export function useSessionCard(kindEditable: boolean): {
   return { open, toggle: () => setOpen((v) => !v) };
 }
 
+/** The History card's collapse state. Collapsed by default (unlike the Session
+ *  card) — history is a secondary, on-demand surface. The initializer runs once. */
+export function useHistoryCard(): { open: boolean; toggle: () => void } {
+  const [open, setOpen] = useState(false);
+  return { open, toggle: () => setOpen((v) => !v) };
+}
+
 /** A compact middot-joined one-line summary of a task's session configuration,
  *  for the collapsed Session card. Reuses the shared label maps so it stays in
  *  lockstep with the expanded pickers/pills. Pure. */

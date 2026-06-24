@@ -167,6 +167,9 @@ export function AppShell() {
                 onRunGauntlet={board.handleRunGauntlet}
                 onMerge={board.handleMerge}
                 onCommit={board.handleCommit}
+                onResumeSession={board.handleResumeSession}
+                onRenameSession={board.handleRenameSession}
+                onTagSession={board.handleTagSession}
                 isActionPending={board.isActionPending}
               />
               </Suspense>
