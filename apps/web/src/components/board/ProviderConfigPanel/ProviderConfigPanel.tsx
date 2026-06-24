@@ -167,20 +167,42 @@ function NamedRow({
 }
 
 /** The scalar extras row (model / permission mode / output style), with its own
- *  tri-state. */
+ *  tri-state. `permissionMode` is sourced from Nightcore's own settings resolver
+ *  (not the SDK probe), so it renders independently of `extrasStatus`. */
 function Extras({ snapshot }: { snapshot: ProviderConfigSnapshot }) {
+  // permissionMode is always present when Nightcore can resolve settings; render
+  // it even when the probe-sourced extras (model/outputStyle) are unavailable.
+  const permissionModeRow = (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-[12px] text-muted-foreground">Permission mode</span>
+      {snapshot.permissionMode !== undefined &&
+      snapshot.permissionMode !== null &&
+      snapshot.permissionMode !== '' ? (
+        <Pill>{snapshot.permissionMode}</Pill>
+      ) : (
+        <span className="font-mono text-[11px] text-muted-foreground/60">—</span>
+      )}
+    </div>
+  );
+
   if (snapshot.extrasStatus === 'unsupported') {
     return (
-      <p className="text-[12px] text-muted-foreground">
-        Not available for this provider
-      </p>
+      <div className="flex flex-col gap-2">
+        {permissionModeRow}
+        <p className="text-[12px] text-muted-foreground">
+          Other defaults not available for this provider
+        </p>
+      </div>
     );
   }
   if (snapshot.extrasStatus === 'unavailable') {
     return (
-      <p className="text-[12px] text-destructive">
-        Couldn&apos;t read the provider defaults
-      </p>
+      <div className="flex flex-col gap-2">
+        {permissionModeRow}
+        <p className="text-[12px] text-destructive">
+          Couldn&apos;t read the provider defaults
+        </p>
+      </div>
     );
   }
   const entries: Array<[string, string | null | undefined]> = [

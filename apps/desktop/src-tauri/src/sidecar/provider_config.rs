@@ -179,7 +179,14 @@ pub async fn get_provider_config(
         .ok_or("provider-config reply missing its snapshot")?;
     let snapshot: crate::contracts::ProviderConfigSnapshot =
         serde_json::from_value(snapshot.clone()).map_err(|e| e.to_string())?;
-    Ok(to_view(snapshot))
+    let mut view = to_view(snapshot);
+    // Nightcore owns Options.permissionMode — the value it passes to the SDK is
+    // what the SDK will actually use, so the Settings-resolved value is
+    // authoritative. The engine probe does not surface it (the SDK init response
+    // carries model/outputStyle but not permissionMode), so we populate it
+    // directly from the same resolver that wires each run.
+    view.permission_mode = crate::sidecar::commands::resolve_permission_mode(&app, None);
+    Ok(view)
 }
 
 /// Map one wire MCP summary to its view.
@@ -330,6 +337,40 @@ mod tests {
         assert_eq!(view.subagents.error.as_deref(), Some("probe timed out"));
         assert_eq!(view.extras_status, "supported");
         assert_eq!(view.model.as_deref(), Some("claude-opus-4-8"));
+    }
+
+    /// When the engine probe snapshot has `permission_mode: None` (the probe cannot
+    /// know it — the SDK init response doesn't carry it), `to_view` produces a view
+    /// with `permission_mode: None`. The `get_provider_config` handler then
+    /// overwrites it via `resolve_permission_mode` so the inspector shows the
+    /// Nightcore-resolved value that actually controls each run.
+    #[test]
+    fn permission_mode_is_none_from_engine_snapshot() {
+        let section = ProviderConfigSection {
+            status: ConfigSectionStatus::Unsupported,
+            error: None,
+            mcp_servers: None,
+            skills: None,
+            subagents: None,
+        };
+        let snapshot = ProviderConfigSnapshot {
+            provider_id: "claude".into(),
+            provider_label: "Claude".into(),
+            project_path: "/proj".into(),
+            mcp: section.clone(),
+            skills: section.clone(),
+            subagents: section.clone(),
+            model: None,
+            permission_mode: None, // engine probe never sets this
+            output_style: None,
+            extras_status: ConfigSectionStatus::Unsupported,
+        };
+        let view = to_view(snapshot);
+        assert!(
+            view.permission_mode.is_none(),
+            "to_view forwards the probe's absent permission_mode; the handler \
+             overrides it from resolve_permission_mode post-mapping"
+        );
     }
 
     /// A `SubagentSummary` with a missing/empty optional maps to an omitted view
