@@ -3,9 +3,10 @@
 //! Settings live in Tauri's **app config dir** as `settings.json`: global defaults
 //! plus a `projectOverrides` map keyed by project id. A patch with no `projectId`
 //! shallow-merges into the global block; with a `projectId` it merges into that
-//! project's override. Several fields persist now but aren't enforced until M2/M3
-//! (the auto-loop, worktree cleanup, notifications) — the UI keeps them visible
-//! and roadmap-badged.
+//! project's override. The run-shaping fields are now enforced (the M2 auto-loop
+//! honors `maxConcurrency`/`cleanupWorktrees`, runs apply the guardrails); only the
+//! M3 `notifyOnComplete` toggle still persists without a consumer — the UI keeps it
+//! visible and roadmap-badged.
 //!
 //! Held in managed Tauri state; commands take it as `State<'_, SettingsStore>`.
 
@@ -31,7 +32,8 @@ use ts_rs::TS;
 pub struct Settings {
     pub default_model: String,
     pub default_effort: String,
-    /// 1..=6. Persists now; the M2 loop is not yet enforcing it.
+    /// 1..=6. The M2 auto-loop enforces it as the slot-pool cap (a global change
+    /// resizes the live pool via [`crate::m2::coordinator::set_max_concurrency`]).
     pub max_concurrency: u8,
     /// "bypass" | "auto-accept" | "ask" | "plan" (M4.7 §A1). Maps to the engine's
     /// SDK `permissionMode` via [`sdk_permission_mode`]. Default is `bypass` (an
