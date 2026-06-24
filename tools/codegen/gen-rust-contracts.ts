@@ -250,6 +250,13 @@ const STRUCT_NAMES: Record<string, string> = {
   'createdAt|customTitle|cwd|fileSize|firstPrompt|gitBranch|lastModified|sdkSessionId|summary|tag':
     'SessionInfo',
   'message|parentToolUseId|sessionId|type|uuid': 'SessionMessage',
+  // The read-only provider-config inspector snapshot and its nested summaries.
+  'name|scope|status|toolCount|transport': 'McpServerSummary',
+  'description|name': 'SkillSummary',
+  'description|model|name': 'SubagentSummary',
+  'error|mcpServers|skills|status|subagents': 'ProviderConfigSection',
+  'extrasStatus|mcp|model|outputStyle|permissionMode|projectPath|providerId|providerLabel|skills|subagents':
+    'ProviderConfigSnapshot',
 };
 
 /** Stable Rust enum name for a referenced/inline `z.enum`. Named enums in the
@@ -265,6 +272,7 @@ const ENUM_NAMES: Record<string, string> = {
   'pending|running|completed|failed|killed|paused': 'TaskStatus',
   'authentication|rate-limit|aborted|runner-crash|max-turns|max-budget|unknown':
     'SessionFailedReason',
+  'supported|unsupported|unavailable': 'ConfigSectionStatus',
 };
 
 function registerInlineEnum(
@@ -688,6 +696,11 @@ const QUERY_INPUTS: Record<string, unknown> = {
     tag: 'keep',
     dir: '/proj',
   },
+  'get-provider-config': {
+    type: 'get-provider-config',
+    requestId: 'q-6',
+    dir: '/proj',
+  },
 };
 
 /** A representative raw input per event variant. */
@@ -805,6 +818,32 @@ const EVENT_INPUTS: Record<string, unknown> = {
         parentToolUseId: null,
       },
     ],
+    providerConfig: {
+      providerId: 'claude',
+      providerLabel: 'Claude',
+      projectPath: '/proj',
+      mcp: {
+        status: 'supported',
+        mcpServers: [
+          {
+            name: 'github',
+            status: 'connected',
+            scope: 'project',
+            transport: 'stdio',
+            toolCount: 12,
+          },
+        ],
+      },
+      skills: { status: 'supported', skills: [{ name: 'add-feature' }] },
+      subagents: {
+        status: 'supported',
+        subagents: [{ name: 'Explore', description: 'read-only search' }],
+      },
+      model: 'claude-opus-4-8',
+      permissionMode: 'acceptEdits',
+      outputStyle: 'default',
+      extrasStatus: 'supported',
+    },
     error: 'none',
   },
 };

@@ -107,8 +107,8 @@ mod tests {
             .expect("fixtures.queries is an object");
         assert_eq!(
             queries.len(),
-            5,
-            "all 5 SurfaceQuery variants must have a fixture"
+            6,
+            "all 6 SurfaceQuery variants must have a fixture"
         );
         for (tag, wire) in queries {
             let query: SurfaceQuery = serde_json::from_value(wire.clone())

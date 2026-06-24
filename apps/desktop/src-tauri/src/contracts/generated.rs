@@ -107,6 +107,12 @@ pub enum SurfaceQuery {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         dir: Option<String>,
     },
+    #[serde(rename_all = "camelCase")]
+    GetProviderConfig {
+        request_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dir: Option<String>,
+    },
 }
 
 // === Engine → surface events (Rust DESERIALIZES / forwards these) ===
@@ -212,11 +218,21 @@ pub enum NightcoreEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         messages: Option<Vec<SessionMessage>>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_config: Option<ProviderConfigSnapshot>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
 }
 
 // === Referenced enums and nested structs ===
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ConfigSectionStatus {
+    Supported,
+    Unsupported,
+    Unavailable,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -226,6 +242,19 @@ pub enum EffortLevel {
     High,
     Xhigh,
     Max,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerSummary {
+    pub name: String,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_count: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -251,6 +280,38 @@ pub enum PermissionMode {
     Auto,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderConfigSection {
+    pub status: ConfigSectionStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_servers: Option<Vec<McpServerSummary>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skills: Option<Vec<SkillSummary>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subagents: Option<Vec<SubagentSummary>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderConfigSnapshot {
+    pub provider_id: String,
+    pub provider_label: String,
+    pub project_path: String,
+    pub mcp: ProviderConfigSection,
+    pub skills: ProviderConfigSection,
+    pub subagents: ProviderConfigSection,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_style: Option<String>,
+    pub extras_status: ConfigSectionStatus,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum QueryResultKindEnum {
@@ -258,6 +319,7 @@ pub enum QueryResultKindEnum {
     SessionInfo,
     Messages,
     Ack,
+    ProviderConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -333,6 +395,24 @@ pub enum SessionStatus {
     Completed,
     Failed,
     Interrupted,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillSummary {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubagentSummary {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

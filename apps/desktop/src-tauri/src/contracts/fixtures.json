@@ -77,6 +77,11 @@
       "sdkSessionId": "sdk-uuid-1",
       "tag": "keep",
       "dir": "/proj"
+    },
+    "get-provider-config": {
+      "requestId": "q-6",
+      "type": "get-provider-config",
+      "dir": "/proj"
     }
   },
   "events": {
@@ -207,6 +212,44 @@
           "parentToolUseId": null
         }
       ],
+      "providerConfig": {
+        "providerId": "claude",
+        "providerLabel": "Claude",
+        "projectPath": "/proj",
+        "mcp": {
+          "status": "supported",
+          "mcpServers": [
+            {
+              "name": "github",
+              "status": "connected",
+              "scope": "project",
+              "transport": "stdio",
+              "toolCount": 12
+            }
+          ]
+        },
+        "skills": {
+          "status": "supported",
+          "skills": [
+            {
+              "name": "add-feature"
+            }
+          ]
+        },
+        "subagents": {
+          "status": "supported",
+          "subagents": [
+            {
+              "name": "Explore",
+              "description": "read-only search"
+            }
+          ]
+        },
+        "model": "claude-opus-4-8",
+        "permissionMode": "acceptEdits",
+        "outputStyle": "default",
+        "extrasStatus": "supported"
+      },
       "error": "none"
     }
   }
