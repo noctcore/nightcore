@@ -24,13 +24,7 @@
       "path": "../shared"
     },
     {
-      "path": "../tools"
-    },
-    {
       "path": "../skills"
-    },
-    {
-      "path": "../mcp"
     }
   ],
   "exclude": [

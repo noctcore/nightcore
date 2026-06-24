@@ -121,11 +121,9 @@
       "dependencies": {
         "@anthropic-ai/claude-agent-sdk": "^0.3.185",
         "@nightcore/contracts": "workspace:*",
-        "@nightcore/mcp": "workspace:*",
         "@nightcore/shared": "workspace:*",
         "@nightcore/skills": "workspace:*",
         "@nightcore/storage": "workspace:*",
-        "@nightcore/tools": "workspace:*",
       },
     },
     "packages/eslint-plugin": {
@@ -149,13 +147,6 @@
         "typescript": ">=5.0.0",
       },
     },
-    "packages/mcp": {
-      "name": "@nightcore/mcp",
-      "version": "0.0.0",
-      "dependencies": {
-        "@nightcore/contracts": "workspace:*",
-      },
-    },
     "packages/shared": {
       "name": "@nightcore/shared",
       "version": "0.0.0",
@@ -173,16 +164,6 @@
       "dependencies": {
         "@nightcore/contracts": "workspace:*",
         "@nightcore/shared": "workspace:*",
-      },
-    },
-    "packages/tools": {
-      "name": "@nightcore/tools",
-      "version": "0.0.0",
-      "dependencies": {
-        "@anthropic-ai/claude-agent-sdk": "^0.3.185",
-        "@nightcore/contracts": "workspace:*",
-        "@nightcore/shared": "workspace:*",
-        "zod": "^4.4.3",
       },
     },
   },
@@ -359,8 +340,6 @@
 
     "@nightcore/eslint-plugin": ["@nightcore/eslint-plugin@workspace:packages/eslint-plugin"],
 
-    "@nightcore/mcp": ["@nightcore/mcp@workspace:packages/mcp"],
-
     "@nightcore/shared": ["@nightcore/shared@workspace:packages/shared"],
 
     "@nightcore/sidecar": ["@nightcore/sidecar@workspace:apps/sidecar"],
@@ -368,8 +347,6 @@
     "@nightcore/skills": ["@nightcore/skills@workspace:packages/skills"],
 
     "@nightcore/storage": ["@nightcore/storage@workspace:packages/storage"],
-
-    "@nightcore/tools": ["@nightcore/tools@workspace:packages/tools"],
 
     "@nightcore/tui": ["@nightcore/tui@workspace:apps/tui"],
 
