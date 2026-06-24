@@ -241,6 +241,10 @@ export function reduce(view: SessionView, event: ViewAction): SessionView {
 
     case 'session-status':
       return { ...view, status: event.status };
+
+    // RPC reply correlated by requestId — intercepted before the board, not view state.
+    case 'query-result':
+      return view;
   }
 }
 
