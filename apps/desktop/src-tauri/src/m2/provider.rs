@@ -532,6 +532,9 @@ impl Provider for SidecarProvider {
             max_turns: guardrails.max_turns.map(u64::from),
             max_budget_usd: guardrails.max_budget_usd,
             resume_session_id: guardrails.resume_session_id,
+            // Step 4 threads the enabled MCP servers through `Guardrails`; until then
+            // none are injected (the pre-feature shape — an absent, omitted field).
+            mcp_servers: None,
         };
         let command = serde_json::to_value(&command).map_err(|e| e.to_string())?;
 

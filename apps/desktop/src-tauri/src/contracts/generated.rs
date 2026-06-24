@@ -36,6 +36,8 @@ pub enum SurfaceCommand {
         max_budget_usd: Option<f64>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         resume_session_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mcp_servers: Option<Vec<McpServerEntry>>,
     },
     #[serde(rename_all = "camelCase")]
     SendInput { session_id: u64, text: String },
@@ -250,6 +252,16 @@ pub enum EffortLevel {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct McpServerEntry {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub enabled: bool,
+    pub config: McpServerTransport,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct McpServerSummary {
     pub name: String,
     pub status: String,
@@ -259,6 +271,31 @@ pub struct McpServerSummary {
     pub transport: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_count: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "transport", rename_all = "lowercase")]
+pub enum McpServerTransport {
+    #[serde(rename_all = "camelCase")]
+    Stdio {
+        command: String,
+        #[serde(default)]
+        args: Vec<String>,
+        #[serde(default)]
+        env: serde_json::Map<String, serde_json::Value>,
+    },
+    #[serde(rename_all = "camelCase")]
+    Http {
+        url: String,
+        #[serde(default)]
+        headers: serde_json::Map<String, serde_json::Value>,
+    },
+    #[serde(rename_all = "camelCase")]
+    Sse {
+        url: String,
+        #[serde(default)]
+        headers: serde_json::Map<String, serde_json::Value>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -10,7 +10,48 @@
       "kind": "build",
       "maxTurns": 200,
       "maxBudgetUsd": 5,
-      "resumeSessionId": "sdk-uuid-123"
+      "resumeSessionId": "sdk-uuid-123",
+      "mcpServers": [
+        {
+          "id": "srv-1",
+          "name": "filesystem",
+          "enabled": true,
+          "config": {
+            "transport": "stdio",
+            "command": "npx",
+            "args": [
+              "-y",
+              "@modelcontextprotocol/server-filesystem",
+              "."
+            ],
+            "env": {
+              "ROOT": "/tmp/work"
+            }
+          }
+        },
+        {
+          "id": "srv-2",
+          "name": "github",
+          "enabled": true,
+          "config": {
+            "transport": "http",
+            "url": "https://example.com/mcp",
+            "headers": {
+              "Authorization": "Bearer token"
+            }
+          }
+        },
+        {
+          "id": "srv-3",
+          "name": "legacy",
+          "enabled": false,
+          "config": {
+            "transport": "sse",
+            "url": "https://example.com/sse",
+            "headers": {}
+          }
+        }
+      ]
     },
     "send-input": {
       "sessionId": 1,
