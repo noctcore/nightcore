@@ -90,12 +90,8 @@ export default tseslint.config(
     },
   },
   {
-    // Capability packages (tools/skills/mcp) must never reach up into the engine.
-    files: [
-      'packages/tools/**/*.ts',
-      'packages/skills/**/*.ts',
-      'packages/mcp/**/*.ts',
-    ],
+    // Capability packages (skills) must never reach up into the engine.
+    files: ['packages/skills/**/*.ts'],
     rules: {
       'no-restricted-imports': [
         'error',

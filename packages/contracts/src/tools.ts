@@ -12,10 +12,10 @@ export const ToolRiskSchema = z.enum(['safe', 'mutating', 'dangerous']);
 export type ToolRisk = z.infer<typeof ToolRiskSchema>;
 
 /**
- * Describes a tool the harness can surface to a session. This is Nightcore's own
- * descriptor — the actual executable definition (a zod shape + handler) lives in
- * `@nightcore/tools` and is assembled into an in-process SDK MCP server by the
- * engine's ToolRegistry. The descriptor is the metadata the surface can render.
+ * Describes a tool the harness can surface to a session — the metadata a surface
+ * can render (name, description, source, risk). Nightcore runs the SDK's native
+ * tools (Read/Write/Edit/Bash/Grep/Glob); the engine's ToolRegistry keys risk
+ * off those native tool names so the PermissionLayer can gate them.
  */
 export const ToolDescriptorSchema = z.object({
   /** Fully-qualified tool name as seen by the model (e.g. `mcp__nightcore__echo`). */

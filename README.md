@@ -133,10 +133,8 @@ packages/    the sidecar's "brain" — retained from the harness era
   config/    layered config resolver (defaults → ~/.nightcore → ./.nightcore)
   storage/   local session-metadata store (JSONL; transcripts stay with the SDK)
   engine/    SessionManager, SessionRunner, ToolRegistry, PermissionLayer, HookBus
-  tools/     in-process SDK MCP tools (echo, read_file)
   skills/    subagent presets (placeholder)
-  mcp/       external MCP server configs (placeholder)
-tools/codegen/ `bun run new:tool` scaffolder
+tools/codegen/ TS→Rust contract generator (`bun run codegen:contracts`)
 docs/        architecture summary + design/research docs
 ```
 
@@ -155,7 +153,6 @@ dependency rules.
 | `bun test` | the TS/Bun tests (sidecar, engine, contracts, web, …) |
 | `bun run test:rust` | Rust core unit tests (`cargo test` in `apps/desktop/src-tauri`) |
 | `bun run test:all` | every tier: node → web → plugin → Rust |
-| `bun run new:tool <name> "<desc>"` | scaffold a new tool |
 | `bun run lint` | eslint (flat config) |
 
 ### Testing
