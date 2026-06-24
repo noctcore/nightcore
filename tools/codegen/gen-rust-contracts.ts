@@ -40,6 +40,7 @@ import { z } from 'zod';
 // specifiers to their `.ts` sources, so the relative source entry works as-is.
 import {
   SurfaceCommandSchema,
+  SurfaceQuerySchema,
   NightcoreEventSchema,
 } from '../../packages/contracts/src/index.ts';
 
@@ -71,19 +72,26 @@ function def(schema: AnyZod): any {
   return s?._zod?.def ?? s?._def;
 }
 
-/** Unwrap `z.optional()` / `z.default()` to the inner schema, recording the
- *  modifiers seen so the field emitter can choose `Option<T>` / `#[serde(default)]`. */
+/** Unwrap `z.optional()` / `z.default()` / `z.nullable()` to the inner schema,
+ *  recording the modifiers seen so the field emitter can choose
+ *  `Option<T>` / `#[serde(default)]`. */
 interface Unwrapped {
   inner: AnyZod;
   optional: boolean;
   hasDefault: boolean;
+  /** `z.nullable()` — present on the wire but may be `null`. Distinct from
+   *  `optional` (absent): a nullable field serializes `None` as `null` and is
+   *  never omitted, so it maps to `Option<T>` WITHOUT `skip_serializing_if`. */
+  nullable: boolean;
 }
 
 function unwrap(schema: AnyZod): Unwrapped {
   let cur = schema;
   let optional = false;
   let hasDefault = false;
-  // Optional/default can nest (e.g. `.optional()` over a `.default()`); peel both.
+  let nullable = false;
+  // Optional/default/nullable can nest (e.g. `.optional()` over a `.nullable()`);
+  // peel all three.
   for (;;) {
     const d = def(cur);
     if (d.type === 'optional') {
@@ -92,11 +100,14 @@ function unwrap(schema: AnyZod): Unwrapped {
     } else if (d.type === 'default' || d.type === 'prefault') {
       hasDefault = true;
       cur = d.innerType;
+    } else if (d.type === 'nullable') {
+      nullable = true;
+      cur = d.innerType;
     } else {
       break;
     }
   }
-  return { inner: cur, optional, hasDefault };
+  return { inner: cur, optional, hasDefault, nullable };
 }
 
 /** Map a (already-unwrapped) zod leaf/enum/array/record schema to a Rust type
@@ -184,6 +195,28 @@ function snake(s: string): string {
     .toLowerCase();
 }
 
+/** Rust 2021 strict + reserved keywords that can appear as a snake_case field
+ *  ident (e.g. a `type` wire key). serde strips the `r#` prefix, so a raw-ident
+ *  field still serializes under the container's `rename_all` rule. */
+const RUST_KEYWORDS = new Set([
+  'as', 'break', 'const', 'continue', 'crate', 'dyn', 'else', 'enum', 'extern',
+  'false', 'fn', 'for', 'if', 'impl', 'in', 'let', 'loop', 'match', 'mod', 'move',
+  'mut', 'pub', 'ref', 'return', 'self', 'static', 'struct', 'super', 'trait',
+  'true', 'type', 'unsafe', 'use', 'where', 'while', 'async', 'await',
+]);
+
+/** Escape a snake_case field ident that collides with a Rust keyword to a raw
+ *  identifier (`r#type`). `crate`/`self`/`super`/`Self` can't be raw idents, so a
+ *  trailing underscore is used for those — none appear in the contract today, but
+ *  the guard keeps a future field from emitting invalid Rust. */
+function escapeRustIdent(ident: string): string {
+  if (!RUST_KEYWORDS.has(ident)) return ident;
+  if (ident === 'crate' || ident === 'self' || ident === 'super') {
+    return `${ident}_`;
+  }
+  return `r#${ident}`;
+}
+
 // ---------------------------------------------------------------------------
 // Emit context: collected type declarations, de-duplicated by name.
 // ---------------------------------------------------------------------------
@@ -197,12 +230,26 @@ interface EmitCtx {
   /** Maps a nested union signature (`discriminator:tag|tag`) → its Rust enum name,
    *  so identical nested unions collapse to one type. */
   unionByTags: Map<string, string>;
+  /** Maps a nested struct's field-key signature (`a|b|c`) → its Rust struct name,
+   *  so an identical object referenced from several fields (e.g. `SessionInfo` in
+   *  `sessions[]`, `info`) collapses to ONE struct instead of one per field path. */
+  structByFields: Map<string, string>;
 }
 
 /** Canonical Rust names for nested discriminated unions, keyed by
  *  `discriminator:tag|tag` (verified against the zod source). */
 const UNION_NAMES: Record<string, string> = {
   'behavior:allow|deny': 'PermissionDecision',
+};
+
+/** Canonical Rust names for nested structs, keyed by their sorted field-key
+ *  signature (`a|b|c`). A struct referenced from several fields (e.g. the SDK
+ *  `SessionInfo` in both `sessions[]` and `info`) collapses to one named type
+ *  instead of one anonymous `…Item` struct per field path. */
+const STRUCT_NAMES: Record<string, string> = {
+  'createdAt|customTitle|cwd|fileSize|firstPrompt|gitBranch|lastModified|sdkSessionId|summary|tag':
+    'SessionInfo',
+  'message|parentToolUseId|sessionId|type|uuid': 'SessionMessage',
 };
 
 /** Stable Rust enum name for a referenced/inline `z.enum`. Named enums in the
@@ -289,10 +336,22 @@ function registerInlineStruct(
   fieldPath: string,
   ctx: EmitCtx,
 ): string {
-  const name = pascal(fieldPath.replace(/\[\]/g, 'Item'));
+  // Prefer a canonical name keyed by the struct's field-key signature, so a struct
+  // referenced from several fields (the SDK `SessionInfo` in `sessions[]` and
+  // `info`) collapses to one named type — and dedupes to the same prior emit.
+  const d = def(schema);
+  const shape = typeof d.shape === 'function' ? d.shape() : d.shape;
+  const sig = Object.keys(shape).sort().join('|');
+  const existing = ctx.structByFields.get(sig);
+  if (existing) {
+    return existing;
+  }
+  const name = STRUCT_NAMES[sig] ?? pascal(fieldPath.replace(/\[\]/g, 'Item'));
   if (ctx.decls.has(name)) {
+    ctx.structByFields.set(sig, name);
     return name;
   }
+  ctx.structByFields.set(sig, name);
   // Reserve the name before recursing so a self-reference can't loop.
   ctx.decls.set(name, '');
   const fields = emitObjectFields(schema, `${name}`, ctx, undefined, true);
@@ -330,7 +389,7 @@ function emitObjectFields(
       }
       continue;
     }
-    const { inner, optional, hasDefault } = unwrap(fieldSchema as AnyZod);
+    const { inner, optional, hasDefault, nullable } = unwrap(fieldSchema as AnyZod);
     const fieldPath = `${ownerName}_${wireKey}`;
     const baseType = rustType(inner, fieldPath, ctx);
     const rustField = snake(wireKey);
@@ -347,8 +406,18 @@ function emitObjectFields(
     if (optional) {
       // `z.optional()` → omit when absent (matches the current `json!` output and
       // the zod `.optional()` side, which rejects/differs on an explicit null).
+      // An optional-AND-nullable field is still omitted when absent, and an
+      // explicit `null` deserializes to `None` (serde maps both absent and null
+      // to `None` for `Option<T>`), so the same attrs cover both.
       ty = `Option<${baseType}>`;
       attrs.unshift('skip_serializing_if = "Option::is_none"');
+      attrs.unshift('default');
+    } else if (nullable) {
+      // `z.nullable()` (required, present, may be `null`) → `Option<T>` that is
+      // ALWAYS serialized: `None` → `null`, `Some(v)` → `v`. No
+      // `skip_serializing_if`, so the key is never omitted — matching the wire
+      // shape of a `T | null` field (e.g. `parentToolUseId`, a cleared `tag`).
+      ty = `Option<${baseType}>`;
       attrs.unshift('default');
     } else if (hasDefault) {
       // `z.default(x)` → tolerant on deserialize; the value is guaranteed present
@@ -362,9 +431,11 @@ function emitObjectFields(
       lines.push(`    #[serde(${attrs.join(', ')})]`);
     }
     // Fields inside an enum struct-variant are implicitly public; `pub` there is a
-    // syntax error. Only named `struct` fields carry `pub`.
+    // syntax error. Only named `struct` fields carry `pub`. A keyword ident (e.g.
+    // `type`) is escaped to a raw ident (`r#type`); serde strips `r#`, so the
+    // container `rename_all`/explicit rename still reproduces the wire key.
     const vis = pubFields ? 'pub ' : '';
-    lines.push(`    ${vis}${rustField}: ${ty},`);
+    lines.push(`    ${vis}${escapeRustIdent(rustField)}: ${ty},`);
   }
   return lines.join('\n');
 }
@@ -492,11 +563,13 @@ function emitRust(): string {
     decls: new Map(),
     enumByValues: new Map(),
     unionByTags: new Map(),
+    structByFields: new Map(),
   };
 
-  // Emit the two tagged unions first; field emission populates `ctx.decls` with
+  // Emit the three tagged unions first; field emission populates `ctx.decls` with
   // every referenced enum and nested struct as a side effect.
   const surface = emitTaggedUnion(SurfaceCommandSchema, 'SurfaceCommand', ctx);
+  const query = emitTaggedUnion(SurfaceQuerySchema, 'SurfaceQuery', ctx);
   const event = emitTaggedUnion(NightcoreEventSchema, 'NightcoreEvent', ctx);
 
   // Supporting types (enums + nested structs) declared in a stable order so the
@@ -520,6 +593,11 @@ function emitRust(): string {
     '// === Surface → engine commands (Rust SERIALIZES these) ===',
     '',
     surface,
+    '',
+    '// === Surface → engine queries (Rust SERIALIZES these; replies arrive as the',
+    '//     `query-result` NightcoreEvent the reader correlates by requestId) ===',
+    '',
+    query,
     '',
     '// === Engine → surface events (Rust DESERIALIZES / forwards these) ===',
     '',
@@ -568,6 +646,47 @@ const COMMAND_INPUTS: Record<string, unknown> = {
     sessionId: 5,
     requestId: 'req-1',
     decision: { behavior: 'allow' },
+  },
+};
+
+/** A representative raw input per query variant (the request/reply stream). */
+const QUERY_INPUTS: Record<string, unknown> = {
+  'list-sessions': {
+    type: 'list-sessions',
+    requestId: 'q-1',
+    dir: '/proj',
+    limit: 50,
+    offset: 0,
+    includeWorktrees: true,
+  },
+  'get-session-info': {
+    type: 'get-session-info',
+    requestId: 'q-2',
+    sdkSessionId: 'sdk-uuid-1',
+    dir: '/proj',
+  },
+  'get-session-messages': {
+    type: 'get-session-messages',
+    requestId: 'q-3',
+    sdkSessionId: 'sdk-uuid-1',
+    dir: '/proj',
+    limit: 100,
+    offset: 10,
+    includeSystemMessages: true,
+  },
+  'rename-session': {
+    type: 'rename-session',
+    requestId: 'q-4',
+    sdkSessionId: 'sdk-uuid-1',
+    title: 'Refactor pass',
+    dir: '/proj',
+  },
+  'tag-session': {
+    type: 'tag-session',
+    requestId: 'q-5',
+    sdkSessionId: 'sdk-uuid-1',
+    tag: 'keep',
+    dir: '/proj',
   },
 };
 
@@ -653,10 +772,46 @@ const EVENT_INPUTS: Record<string, unknown> = {
     sessionId: 1,
     status: 'running',
   },
+  'query-result': {
+    type: 'query-result',
+    requestId: 'q-1',
+    ok: true,
+    kind: 'sessions',
+    sessions: [
+      {
+        sdkSessionId: 'sdk-uuid-1',
+        summary: 'Add the resume UX',
+        lastModified: 1718900000000,
+        fileSize: 4096,
+        customTitle: 'Resume UX',
+        firstPrompt: 'Build the session resume UX',
+        gitBranch: 'nc/task-1',
+        cwd: '/proj/.nightcore/worktrees/task-1',
+        tag: 'keep',
+        createdAt: 1718800000000,
+      },
+    ],
+    info: {
+      sdkSessionId: 'sdk-uuid-1',
+      summary: 'Add the resume UX',
+      lastModified: 1718900000000,
+    },
+    messages: [
+      {
+        type: 'assistant',
+        uuid: 'm-1',
+        sessionId: 'sdk-uuid-1',
+        message: { role: 'assistant', content: 'on it' },
+        parentToolUseId: null,
+      },
+    ],
+    error: 'none',
+  },
 };
 
 interface Fixtures {
   commands: Record<string, unknown>;
+  queries: Record<string, unknown>;
   events: Record<string, unknown>;
 }
 
@@ -667,15 +822,20 @@ function buildFixtures(): Fixtures {
     // against the live contract — ties the fixture to the zod source.
     commands[tag] = SurfaceCommandSchema.parse(raw);
   }
+  const queries: Record<string, unknown> = {};
+  for (const [tag, raw] of Object.entries(QUERY_INPUTS)) {
+    queries[tag] = SurfaceQuerySchema.parse(raw);
+  }
   const events: Record<string, unknown> = {};
   for (const [tag, raw] of Object.entries(EVENT_INPUTS)) {
     events[tag] = NightcoreEventSchema.parse(raw);
   }
-  // Coverage guard: a new variant added to either union with no fixture here
-  // fails generation loudly rather than silently shipping an untested variant.
+  // Coverage guard: a new variant added to any union with no fixture here fails
+  // generation loudly rather than silently shipping an untested variant.
   assertFullCoverage('SurfaceCommand', SurfaceCommandSchema, commands);
+  assertFullCoverage('SurfaceQuery', SurfaceQuerySchema, queries);
   assertFullCoverage('NightcoreEvent', NightcoreEventSchema, events);
-  return { commands, events };
+  return { commands, queries, events };
 }
 
 function assertFullCoverage(

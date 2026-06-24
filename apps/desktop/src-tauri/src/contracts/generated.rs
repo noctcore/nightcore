@@ -52,6 +52,63 @@ pub enum SurfaceCommand {
     },
 }
 
+// === Surface → engine queries (Rust SERIALIZES these; replies arrive as the
+//     `query-result` NightcoreEvent the reader correlates by requestId) ===
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "kebab-case")]
+pub enum SurfaceQuery {
+    #[serde(rename_all = "camelCase")]
+    ListSessions {
+        request_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        offset: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        include_worktrees: Option<bool>,
+    },
+    #[serde(rename_all = "camelCase")]
+    GetSessionInfo {
+        request_id: String,
+        sdk_session_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dir: Option<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    GetSessionMessages {
+        request_id: String,
+        sdk_session_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        offset: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        include_system_messages: Option<bool>,
+    },
+    #[serde(rename_all = "camelCase")]
+    RenameSession {
+        request_id: String,
+        sdk_session_id: String,
+        title: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dir: Option<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    TagSession {
+        request_id: String,
+        sdk_session_id: String,
+        #[serde(default)]
+        tag: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dir: Option<String>,
+    },
+}
+
 // === Engine → surface events (Rust DESERIALIZES / forwards these) ===
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -143,6 +200,20 @@ pub enum NightcoreEvent {
         session_id: u64,
         status: SessionStatus,
     },
+    #[serde(rename_all = "camelCase")]
+    QueryResult {
+        request_id: String,
+        ok: bool,
+        kind: QueryResultKindEnum,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sessions: Option<Vec<SessionInfo>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        info: Option<SessionInfo>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        messages: Option<Vec<SessionMessage>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
 }
 
 // === Referenced enums and nested structs ===
@@ -180,6 +251,15 @@ pub enum PermissionMode {
     Auto,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum QueryResultKindEnum {
+    Sessions,
+    SessionInfo,
+    Messages,
+    Ack,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionCompletedUsage {
@@ -201,6 +281,47 @@ pub enum SessionFailedReason {
     MaxTurns,
     MaxBudget,
     Unknown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionInfo {
+    pub sdk_session_id: String,
+    pub summary: String,
+    pub last_modified: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_size: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionMessage {
+    pub r#type: SessionMessageTypeEnum,
+    pub uuid: String,
+    pub session_id: String,
+    pub message: serde_json::Map<String, serde_json::Value>,
+    #[serde(default)]
+    pub parent_tool_use_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SessionMessageTypeEnum {
+    User,
+    Assistant,
+    System,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -40,6 +40,45 @@
       }
     }
   },
+  "queries": {
+    "list-sessions": {
+      "requestId": "q-1",
+      "type": "list-sessions",
+      "dir": "/proj",
+      "limit": 50,
+      "offset": 0,
+      "includeWorktrees": true
+    },
+    "get-session-info": {
+      "requestId": "q-2",
+      "type": "get-session-info",
+      "sdkSessionId": "sdk-uuid-1",
+      "dir": "/proj"
+    },
+    "get-session-messages": {
+      "requestId": "q-3",
+      "type": "get-session-messages",
+      "sdkSessionId": "sdk-uuid-1",
+      "dir": "/proj",
+      "limit": 100,
+      "offset": 10,
+      "includeSystemMessages": true
+    },
+    "rename-session": {
+      "requestId": "q-4",
+      "type": "rename-session",
+      "sdkSessionId": "sdk-uuid-1",
+      "title": "Refactor pass",
+      "dir": "/proj"
+    },
+    "tag-session": {
+      "requestId": "q-5",
+      "type": "tag-session",
+      "sdkSessionId": "sdk-uuid-1",
+      "tag": "keep",
+      "dir": "/proj"
+    }
+  },
   "events": {
     "session-started": {
       "sessionId": 0,
@@ -131,6 +170,44 @@
       "sessionId": 1,
       "type": "session-status",
       "status": "running"
+    },
+    "query-result": {
+      "type": "query-result",
+      "requestId": "q-1",
+      "ok": true,
+      "kind": "sessions",
+      "sessions": [
+        {
+          "sdkSessionId": "sdk-uuid-1",
+          "summary": "Add the resume UX",
+          "lastModified": 1718900000000,
+          "fileSize": 4096,
+          "customTitle": "Resume UX",
+          "firstPrompt": "Build the session resume UX",
+          "gitBranch": "nc/task-1",
+          "cwd": "/proj/.nightcore/worktrees/task-1",
+          "tag": "keep",
+          "createdAt": 1718800000000
+        }
+      ],
+      "info": {
+        "sdkSessionId": "sdk-uuid-1",
+        "summary": "Add the resume UX",
+        "lastModified": 1718900000000
+      },
+      "messages": [
+        {
+          "type": "assistant",
+          "uuid": "m-1",
+          "sessionId": "sdk-uuid-1",
+          "message": {
+            "role": "assistant",
+            "content": "on it"
+          },
+          "parentToolUseId": null
+        }
+      ],
+      "error": "none"
     }
   }
 }

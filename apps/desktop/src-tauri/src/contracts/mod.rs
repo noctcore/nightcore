@@ -94,6 +94,35 @@ mod tests {
         }
     }
 
+    /// Every query fixture must deserialize into the generated `SurfaceQuery` and
+    /// round-trip back to its wire JSON. Queries are the request side of the
+    /// request/reply session protocol the Rust core SERIALIZES; the round-trip pins
+    /// the `requestId`/`sdkSessionId` keys and the `tag: null`-vs-absent shapes.
+    #[test]
+    fn every_query_variant_round_trips() {
+        let queries = fixtures();
+        let queries = queries
+            .get("queries")
+            .and_then(Value::as_object)
+            .expect("fixtures.queries is an object");
+        assert_eq!(
+            queries.len(),
+            5,
+            "all 5 SurfaceQuery variants must have a fixture"
+        );
+        for (tag, wire) in queries {
+            let query: SurfaceQuery = serde_json::from_value(wire.clone())
+                .unwrap_or_else(|e| panic!("query `{tag}` failed to deserialize: {e}"));
+            let reser = serde_json::to_value(&query)
+                .unwrap_or_else(|e| panic!("query `{tag}` failed to serialize: {e}"));
+            assert_eq!(
+                normalize(&reser),
+                normalize(wire),
+                "query `{tag}` did not round-trip to its wire shape"
+            );
+        }
+    }
+
     /// Every event fixture must deserialize into the generated `NightcoreEvent` and
     /// round-trip back to its wire JSON. Events are the deserialize/forward side of
     /// the boundary; the round-trip pins the field set so a renamed/retyped event
@@ -107,8 +136,8 @@ mod tests {
             .expect("fixtures.events is an object");
         assert_eq!(
             events.len(),
-            10,
-            "all 10 NightcoreEvent variants must have a fixture"
+            11,
+            "all 11 NightcoreEvent variants must have a fixture"
         );
         for (tag, wire) in events {
             let event: NightcoreEvent = serde_json::from_value(wire.clone())
