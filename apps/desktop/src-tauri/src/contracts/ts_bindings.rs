@@ -36,7 +36,9 @@ fn export_all_bindings() {
     use crate::m2::coordinator::LoopSnapshot;
     use crate::m2::worktree::WorktreeStatus;
     use crate::project::Project;
-    use crate::settings::{AppInfo, Settings, SettingsOverride, SettingsPatch};
+    use crate::settings::{
+        AppInfo, McpServerEntry, McpServerTransport, Settings, SettingsOverride, SettingsPatch,
+    };
     use crate::sidecar::{ProviderConfigSnapshotView, SessionInfoView, SessionMessageView};
     use crate::task::{PermissionMode, RunMode, Task, TaskKind, TaskPatch, TaskStatus};
 
@@ -63,6 +65,9 @@ fn export_all_bindings() {
         Settings,
         SettingsOverride,
         SettingsPatch,
+        // The MCP server form types (also reached transitively via Settings).
+        McpServerEntry,
+        McpServerTransport,
         AppInfo,
         WorktreeStatus,
         GauntletResult,
@@ -109,6 +114,8 @@ mod tests {
             "Settings.ts",
             "SettingsOverride.ts",
             "SettingsPatch.ts",
+            "McpServerEntry.ts",
+            "McpServerTransport.ts",
             "AppInfo.ts",
             "WorktreeInfo.ts",
             "GauntletResult.ts",
