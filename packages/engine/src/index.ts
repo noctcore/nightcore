@@ -28,6 +28,9 @@ export type {
   GetTaskSessionMessagesOptions,
 } from './session-api.js';
 
+// The read-only provider-config inspector reader (degrade-not-throw per section).
+export { ProviderConfigReader } from './provider-config.js';
+
 // The message-translation boundary is exported for testing only — surfaces
 // should not need it.
 export { translateMessage } from './sdk-adapter.js';

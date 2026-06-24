@@ -17,6 +17,7 @@ import { SessionRunner } from './session-runner.js';
 import { resolveKindPreset } from './kind-presets.js';
 import type { ModelInfo } from './sdk-adapter.js';
 import { SessionApi, type SDKSessionInfo, type SessionMessage } from './session-api.js';
+import { ProviderConfigReader } from './provider-config.js';
 
 /**
  * Map an SDK `ModelInfo` to a contract `ModelDescriptor`. Pure so it can be
@@ -98,6 +99,7 @@ export class SessionManager {
   private readonly store: SessionStore;
   private readonly apiKeyFallback: boolean;
   private readonly sessionApi: SessionApi;
+  private readonly providerConfig: ProviderConfigReader;
 
   constructor(
     private readonly config: Config,
@@ -105,6 +107,9 @@ export class SessionManager {
   ) {
     this.store = new SessionStore(config.paths.sessions, logger);
     this.sessionApi = new SessionApi(logger?.child('session-api'));
+    this.providerConfig = new ProviderConfigReader(
+      logger?.child('provider-config'),
+    );
     this.apiKeyFallback = Boolean(process.env.ANTHROPIC_API_KEY);
     // Seed the id counter past the highest persisted id so a restart never
     // reuses an id and clobbers a prior record (the SessionStore collapses by id,
@@ -253,6 +258,26 @@ export class SessionManager {
               kind: 'ack',
               error: 'tag failed',
             };
+      }
+      case 'get-provider-config': {
+        // The inspector reads RESOLVED, scope-aware config off a transient SDK
+        // probe rooted at the project dir (resolution keys off cwd). Reuse a live
+        // runner when one exists; else spin the input-less probe runner — the
+        // reader shares ONE subprocess and degrades per section, so the snapshot
+        // always resolves (`ok: true`).
+        const projectPath = query.dir ?? process.cwd();
+        const runner = this.firstLiveRunner() ?? this.makeProbeRunner();
+        const providerConfig = await this.providerConfig.read(
+          runner,
+          projectPath,
+        );
+        return {
+          type: 'query-result',
+          requestId,
+          ok: true,
+          kind: 'provider-config',
+          providerConfig,
+        };
       }
     }
   }
