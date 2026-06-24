@@ -127,6 +127,58 @@ fn default_run_mode_value() -> String {
     "main".to_string()
 }
 
+/// Convert a `HashMap<String, String>` into the contract transport's JSON map shape
+/// (`serde_json::Map<String, serde_json::Value>`). The store keeps env/header values
+/// as plain strings; the codegen-emitted contract type uses an opaque JSON object.
+/// Both serialize to the same `{ "k": "v" }` wire shape, so this is a lossless lift.
+fn string_map_to_json(map: HashMap<String, String>) -> serde_json::Map<String, serde_json::Value> {
+    map.into_iter()
+        .map(|(k, v)| (k, serde_json::Value::String(v)))
+        .collect()
+}
+
+/// Lift a store [`McpServerTransport`] into its wire-identical contract twin. The
+/// two structs describe the same JSON (the two-aligned-structs pattern); this is the
+/// single mapping point so the resolved store list can travel on the typed
+/// `start-session` command.
+impl From<McpServerTransport> for crate::contracts::McpServerTransport {
+    fn from(t: McpServerTransport) -> Self {
+        match t {
+            McpServerTransport::Stdio { command, args, env } => {
+                crate::contracts::McpServerTransport::Stdio {
+                    command,
+                    args,
+                    env: string_map_to_json(env),
+                }
+            }
+            McpServerTransport::Http { url, headers } => {
+                crate::contracts::McpServerTransport::Http {
+                    url,
+                    headers: string_map_to_json(headers),
+                }
+            }
+            McpServerTransport::Sse { url, headers } => {
+                crate::contracts::McpServerTransport::Sse {
+                    url,
+                    headers: string_map_to_json(headers),
+                }
+            }
+        }
+    }
+}
+
+/// Lift a store [`McpServerEntry`] into the contract twin carried on `start-session`.
+impl From<McpServerEntry> for crate::contracts::McpServerEntry {
+    fn from(e: McpServerEntry) -> Self {
+        crate::contracts::McpServerEntry {
+            id: e.id,
+            name: e.name,
+            enabled: e.enabled,
+            config: e.config.into(),
+        }
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {

@@ -67,9 +67,10 @@ pub async fn run_task(
     }
 
     let permission_mode = resolve_permission_mode(&app, task.permission_mode.as_deref());
-    // SDK-guardrails: a manual re-run is a build launch — forward the ceilings and
-    // resume the persisted SDK session id when present (recovery path).
-    let guardrails = build_guardrails(&task);
+    // SDK-guardrails: a manual re-run is a build launch — forward the ceilings,
+    // resume the persisted SDK session id when present (recovery path), and inject
+    // the project's enabled MCP servers.
+    let guardrails = build_guardrails(&app, &task);
     if let Err(e) = orch
         .provider
         .start_session(
@@ -108,18 +109,37 @@ pub fn resolve_permission_mode(app: &AppHandle, task_override: Option<&str>) -> 
     Some(settings.sdk_permission_mode(project_id.as_deref()))
 }
 
-/// Build the SDK-guardrail payload for a build run from its task: the per-task
-/// autonomy ceilings (`max_turns`/`max_budget_usd`; `None` ⇒ the engine inherits
-/// the `@nightcore/config` default) and the resume id (the persisted SDK session
-/// UUID → engine `Options.resume`) so a crashed/restarted build reattaches instead
-/// of starting cold. Reviewer/fix sub-runs are fresh prompts and pass
-/// [`Guardrails::default`] (ceilings inherited, never resumed).
-pub fn build_guardrails(task: &Task) -> crate::m2::provider::Guardrails {
+/// Build the per-session `start-session` config for a build run from its task: the
+/// per-task autonomy ceilings (`max_turns`/`max_budget_usd`; `None` ⇒ the engine
+/// inherits the `@nightcore/config` default), the resume id (the persisted SDK
+/// session UUID → engine `Options.resume`) so a crashed/restarted build reattaches
+/// instead of starting cold, and the resolved enabled external MCP servers
+/// (`resolve_mcp_servers`). Reviewer/fix sub-runs build their own [`Guardrails`]
+/// inline (ceilings inherited, never resumed) but resolve the SAME MCP list.
+pub fn build_guardrails(app: &AppHandle, task: &Task) -> crate::m2::provider::Guardrails {
     crate::m2::provider::Guardrails {
         max_turns: task.max_turns,
         max_budget_usd: task.max_budget_usd,
         resume_session_id: task.sdk_session_id.clone(),
+        mcp_servers: resolve_mcp_servers(app),
     }
+}
+
+/// The enabled external MCP servers to inject for a run in the active project,
+/// resolved project-override → global by the settings store (the SAME
+/// project→global precedence `resolve_permission_mode` uses). Only enabled entries
+/// are returned; an empty list ⇒ inject none. Shared by the manual `run_task` path,
+/// the coordinator auto-loop launch, and the reviewer/fix sub-runs so every session
+/// in a project sees the same configured servers.
+pub fn resolve_mcp_servers(app: &AppHandle) -> Vec<crate::contracts::McpServerEntry> {
+    use crate::settings::SettingsStore;
+    let settings = app.state::<SettingsStore>();
+    let project_id = app.state::<ProjectStore>().active().map(|p| p.id);
+    settings
+        .enabled_mcp_servers(project_id.as_deref())
+        .into_iter()
+        .map(Into::into)
+        .collect()
 }
 
 /// Respond to a parked interactive permission request (M3 §B). `decision` is

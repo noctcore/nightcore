@@ -142,17 +142,21 @@ pub trait Provider: Send + Sync {
     fn correlate_reply(&self, request_id: &str, reply: Value);
 }
 
-/// The SDK-guardrail fields threaded into a `start-session` payload alongside the
-/// core wire fields: the autonomy ceilings (`max_turns`/`max_budget_usd`, engine
-/// `Options.maxTurns`/`maxBudgetUsd`) and the resume id (`resume_session_id`, the
-/// persisted SDK session UUID → engine `Options.resume`). All `None` ⇒ inherit the
-/// `@nightcore/config` defaults and start cold. `resume_session_id` is bookkeeping,
-/// not a secret, but is never logged at info/telemetry.
+/// The per-session config threaded into a `start-session` payload alongside the
+/// core wire fields. Carries the SDK autonomy ceilings (`max_turns`/`max_budget_usd`
+/// → engine `Options.maxTurns`/`maxBudgetUsd`), the resume id (`resume_session_id`,
+/// the persisted SDK session UUID → engine `Options.resume`), and the resolved
+/// external MCP servers (`mcp_servers`, enabled entries only → engine
+/// `Options.mcpServers`). All ceilings/resume `None` ⇒ inherit the
+/// `@nightcore/config` defaults and start cold; an empty `mcp_servers` ⇒ inject
+/// none (the pre-feature shape). `resume_session_id` and the MCP `env`/`headers`
+/// values may be sensitive, but are never logged at info/telemetry.
 #[derive(Debug, Clone, Default)]
 pub struct Guardrails {
     pub max_turns: Option<u32>,
     pub max_budget_usd: Option<f64>,
     pub resume_session_id: Option<String>,
+    pub mcp_servers: Vec<crate::contracts::McpServerEntry>,
 }
 
 /// The child's piped output streams, handed to `sidecar::ensure_reader` once on
@@ -532,9 +536,10 @@ impl Provider for SidecarProvider {
             max_turns: guardrails.max_turns.map(u64::from),
             max_budget_usd: guardrails.max_budget_usd,
             resume_session_id: guardrails.resume_session_id,
-            // Step 4 threads the enabled MCP servers through `Guardrails`; until then
-            // none are injected (the pre-feature shape — an absent, omitted field).
-            mcp_servers: None,
+            // Enabled external MCP servers (resolved project→global by the settings
+            // store). An empty list serializes as an OMITTED field — byte-identical
+            // to the pre-feature `start-session` — so injecting none changes nothing.
+            mcp_servers: (!guardrails.mcp_servers.is_empty()).then_some(guardrails.mcp_servers),
         };
         let command = serde_json::to_value(&command).map_err(|e| e.to_string())?;
 

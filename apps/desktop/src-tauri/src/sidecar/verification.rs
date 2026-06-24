@@ -15,7 +15,7 @@ use crate::project::ProjectStore;
 use crate::store::TaskStore;
 use crate::task::{Task, TaskKind, TaskStatus};
 
-use super::commands::resolve_permission_mode;
+use super::commands::{resolve_mcp_servers, resolve_permission_mode};
 use super::{apply_and_emit, finish_run, park_for_approval, Outcome};
 
 /// The bounded auto-fix budget for the verification gate (M4 §B). On a
@@ -321,10 +321,12 @@ async fn dispatch_reviewer(
             TaskKind::Review.as_wire(),
             // SDK-guardrails: a reviewer is a fresh, peer sub-run — it inherits the
             // task's ceilings but is NEVER resumed (it has its own prompt/identity).
+            // It runs in the same project, so it injects the same enabled MCP servers.
             crate::m2::provider::Guardrails {
                 max_turns: task.max_turns,
                 max_budget_usd: task.max_budget_usd,
                 resume_session_id: None,
+                mcp_servers: resolve_mcp_servers(app),
             },
         )
         .await
@@ -358,11 +360,13 @@ async fn dispatch_fix(
             permission_mode,
             TaskKind::Build.as_wire(),
             // SDK-guardrails: a fix-build is a fresh sub-run over the same worktree
-            // with a new prompt — inherit the ceilings but never resume.
+            // with a new prompt — inherit the ceilings but never resume. Injects the
+            // same project's enabled MCP servers.
             crate::m2::provider::Guardrails {
                 max_turns: task.max_turns,
                 max_budget_usd: task.max_budget_usd,
                 resume_session_id: None,
+                mcp_servers: resolve_mcp_servers(app),
             },
         )
         .await
