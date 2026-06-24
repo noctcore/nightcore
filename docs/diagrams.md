@@ -1,135 +1,119 @@
 # Nightcore — Architecture & Flow Diagrams
 
 Visual companion to [`architecture.md`](./architecture.md). These Mermaid
-diagrams describe the project **in its current state**: the CLI surface is
-working, the TUI is a stub, and the `skills` / `mcp` capability packages are
-placeholders. They render natively on GitHub.
+diagrams describe the **live desktop runtime**: the 3-tier path (React board ↔
+Rust core ↔ Bun sidecar ↔ engine ↔ SDK), the run-a-task flow, the event/command
+spine, and the bidirectional codegen contract boundaries. They render natively on
+GitHub. The authoritative, file-level version lives in
+[`arch/2026-06-24-asbuilt-integration-map.md`](./arch/2026-06-24-asbuilt-integration-map.md).
 
-The one-sentence model: **the Claude Agent SDK is thick; Nightcore is thin.**
-The SDK spawns and drives a bundled Claude Code CLI subprocess that owns the
-agent loop, built-in tools, subagents, MCP, hooks, permission modes, and JSONL
-session persistence. Nightcore is a **process supervisor + presentation shell**
-over it — it adds session multiplexing, a permission policy layer, and a typed
-event/command spine.
+The one-sentence model: **the Claude Agent SDK is thick; Nightcore is thin.** The
+SDK drives the user's installed `claude` CLI, which owns the agent loop, native
+tools, subagents, MCP, hooks, permission modes, and session persistence.
+Nightcore is a local-first desktop studio over it — a Rust/Tauri orchestration
+core that multiplexes autonomous runs, behind a React board.
 
 ---
 
-## A — Layered architecture
+## A — The 3-tier architecture
 
-Dependencies point inward. Surfaces talk only to the `engine` façade and
-`contracts`; only `sdk-adapter.ts` ever imports the Claude Agent SDK.
+Every web IPC funnels through `lib/bridge.ts`; only `sdk-adapter.ts` imports the
+SDK runtime. `@nightcore/tools` / `@nightcore/mcp` are dormant (risk-lookup only).
 
 ```mermaid
-graph TD
-    subgraph surfaces["apps/* — surfaces (render events, send commands)"]
-        CLI["apps/cli<br/>(working)"]
-        TUI["apps/tui<br/>(stub · OpenTUI + React)"]
+flowchart TD
+    subgraph web["apps/web — React board (Tauri webview)"]
+        UI["components: app / board / projects / settings"]
+        Bridge["lib/bridge.ts<br/>single IPC boundary"]
+        Gen[["lib/generated/*.ts<br/>(ts-rs OUTPUT — do not edit)"]]
+        UI --> Bridge
+        Bridge -. import type .-> Gen
     end
 
-    subgraph engine["packages/engine — supervisor"]
-        SM["SessionManager"]
-        SR["SessionRunner"]
-        TR["ToolRegistry"]
-        PL["PermissionLayer"]
-        HB["HookBus"]
-        AD["sdk-adapter<br/>(only SDK import)"]
+    subgraph desktop["apps/desktop/src-tauri — RUST CORE"]
+        Lib["lib.rs<br/>35 invoke handlers + setup"]
+        Coord["m2/coordinator.rs<br/>auto-loop: slots · deps · breaker · worktrees"]
+        Prov["m2/provider.rs<br/>spawns sidecar, SERIALIZES commands"]
+        Stores["store/ task · project · settings · transcript"]
+        GenRs[["contracts/generated.rs<br/>(zod OUTPUT)"]]
+        Lib --> Coord & Stores
+        Coord --> Prov
+        Prov -. serializes .-> GenRs
     end
 
-    subgraph capability["capability layer (import contracts/shared only)"]
-        TOOLS["packages/tools<br/>10 in-process MCP tools"]
-        SKILLS["packages/skills<br/>(placeholder)"]
-        MCP["packages/mcp<br/>(placeholder)"]
+    subgraph sidecar["apps/sidecar — Bun bridge (NDJSON, dumb)"]
+        SC["index.ts<br/>validate SurfaceCommandSchema + forward"]
     end
 
-    subgraph foundation["foundation (no app-specific deps)"]
-        CONTRACTS["packages/contracts<br/>(the spine)"]
-        CONFIG["packages/config"]
-        STORAGE["packages/storage"]
-        SHARED["packages/shared"]
+    subgraph engine["@nightcore/engine — the hub"]
+        SM["SessionManager"] --> SR["SessionRunner"]
+        SR --> AD["sdk-adapter.ts<br/>(only SDK runtime import)"]
+        SR --> PL["PermissionLayer"] --> TRk["ToolRegistry.riskOf()<br/>(risk lookup only)"]
+        AD --> SDK[["@anthropic-ai/claude-agent-sdk<br/>→ user-installed claude CLI"]]
     end
 
-    SDK["@anthropic-ai/claude-agent-sdk<br/>→ bundled Claude Code CLI subprocess"]
+    contracts[["@nightcore/contracts<br/>zod spine — SOURCE OF TRUTH"]]
+    tools[["@nightcore/tools + @nightcore/mcp<br/>(DORMANT: riskOf only)"]]
 
-    CLI -->|engine façade + contracts| engine
-    TUI -->|engine façade + contracts| engine
+    Bridge -->|"invoke() / listen('nc:*')"| Lib
+    Prov -->|"spawn + NDJSON stdin/stdout"| SC
+    SC --> SM
+    TRk --> tools
+    engine --> contracts
+    contracts ==>|"codegen: gen-rust-contracts.ts"| GenRs
+    Stores ==>|"codegen: ts-rs (cargo test)"| Gen
 
-    SM --> SR --> AD
-    SR --> TR --> TOOLS
-    SR --> PL
-    SR --> HB
-    AD -->|imports| SDK
-
-    engine --> CONTRACTS
-    engine --> CONFIG
-    engine --> STORAGE
-    engine --> SHARED
-    TR --> SKILLS
-    TR --> MCP
-
-    TOOLS --> CONTRACTS
-    TOOLS --> SHARED
-    CONFIG --> CONTRACTS
-    STORAGE --> CONTRACTS
-    CONFIG --> SHARED
-    STORAGE --> SHARED
+    classDef dormant fill:#fde,stroke:#c39,stroke-width:2px;
+    classDef spine fill:#def,stroke:#39c,stroke-width:2px;
+    classDef codegen fill:#efe,stroke:#3a3,stroke-width:2px;
+    class tools dormant;
+    class contracts spine;
+    class GenRs,Gen codegen;
 ```
 
 ---
 
-## B — Runtime flow, start to end
+## B — Runtime flow: run a task (web → SDK → web)
 
-A single CLI prompt, from argument parsing to process exit. The SDK runs the
-real agent loop in a subprocess; the runner translates each raw `SDKMessage`
-into a typed `NightcoreEvent`.
+A manual `run_task` (the auto-loop drives the same path per tick). One persistent
+sidecar multiplexes sessions; correlation is the pending-launch FIFO.
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor User
-    participant CLI as apps/cli
-    participant SM as SessionManager
-    participant SR as SessionRunner
-    participant SDK as sdk-adapter / SDK
-    participant PL as PermissionLayer
-    participant Tools as Tools (in-process MCP)
-    participant Store as SessionStore (JSONL)
+    participant Web as apps/web (bridge.ts)
+    participant Core as Rust core (m2/*)
+    participant Side as apps/sidecar
+    participant Eng as SessionManager / SessionRunner
+    participant SDK as sdk-adapter / SDK → claude CLI
 
-    User->>CLI: nightcore "prompt" [-m model]
-    CLI->>CLI: parse args + resolveConfig()<br/>(defaults → ~/.nightcore → ./.nightcore)
-    CLI->>SM: dispatch(start-session)
-    SM->>SM: assign monotonic id (never resets)
-    SM->>Store: append SessionRecord
-    SM-->>CLI: session-started event
-    SM->>SR: run() (fire-and-forget, never rejects)
-    SR->>SDK: query({ prompt: AsyncIterable, options })<br/>streaming-input mode
+    User->>Web: click Run
+    Web->>Core: invoke('run_task', { id })
+    Core->>Core: lease slot, resolve worktree, ensure reader
+    Core->>Side: spawn (dev: bun run · release: externalBin)<br/>write SurfaceCommand::StartSession (NDJSON line)
+    Side->>Side: validate SurfaceCommandSchema
+    Side->>Eng: manager.dispatch(start-session)
+    Eng->>Eng: assign monotonic id; launch SessionRunner
+    Eng->>SDK: query({ prompt, options }) streaming-input
 
     loop per SDKMessage until terminal
-        SDK-->>SR: SDKMessage
-        SR->>SR: translateMessage() → NightcoreEvent(s)
-        SR-->>CLI: session-ready / assistant-delta / task-updated
-        CLI->>User: text → stdout, activity → stderr
-
+        SDK-->>Eng: SDKMessage
+        Eng->>Eng: translateMessage() → NightcoreEvent
+        Eng-->>Side: event (NDJSON stdout line)
+        Side-->>Core: reader.rs handle_event() (correlate session→task)
+        Core-->>Web: emit nc:session
+        Web->>Web: re-validate NightcoreEventSchema; fold into board
         opt model requests a tool
             SDK->>PL: canUseTool(name, input)
-            alt deny-list / dangerous & not allow-listed
-                PL-->>CLI: permission-required event
-                Note over CLI: headless CLI auto-denies;<br/>TUI prompts → approve-permission
-                CLI-->>PL: decision (allow / deny)
-            else safe or allow-listed
-                PL-->>SDK: allow
-            end
-            SDK->>Tools: execute (read_file, run_command, …)
-            Tools-->>SDK: tool_result
-            SR-->>CLI: tool-use-requested + tool-result
+            PL-->>Core: permission-required → nc:permission (if gated)
+            Web-->>Core: approve-permission (decision)
         end
     end
 
-    SDK-->>SR: result message
-    SR-->>SM: session-completed | session-failed
-    SM->>Store: update record (status, cost, usage)
-    SM->>SM: retire(id)
-    SM-->>CLI: terminal event
-    CLI->>User: exit 0 (success) / 1 (failure)
+    SDK-->>Eng: result → session-completed | session-failed
+    Core->>Core: route terminal event through verification gate
+    Core-->>Web: nc:task (status, cost, usage)
 ```
 
 ---
@@ -137,31 +121,56 @@ sequenceDiagram
 ## C — The event / command spine (`@nightcore/contracts`)
 
 Two symmetric discriminated unions define the entire engine ↔ surface boundary.
-Surfaces never see a raw `SDKMessage`; the engine is drivable by anything that
-emits a `SurfaceCommand`.
+The sidecar validates inbound `SurfaceCommand`s; the web re-validates inbound
+`NightcoreEvent`s. zod is the source of truth for both codegen directions.
 
 ```mermaid
 graph LR
-    subgraph S["Surface"]
-        direction TB
+    subgraph S["Surface (web → core → sidecar)"]
         SC["SurfaceCommand"]
     end
     subgraph E["Engine"]
-        direction TB
         NE["NightcoreEvent"]
     end
 
     SC -->|"start-session · send-input · interrupt<br/>set-model · set-permission-mode · approve-permission"| E
-    NE -->|"session-started · session-ready · assistant-delta<br/>tool-use-requested · tool-result · permission-required<br/>task-updated · session-completed · session-failed · session-status"| S
+    NE -->|"session-started · session-ready · assistant-delta<br/>tool-use-requested · tool-result · permission-required<br/>session-completed · session-failed · session-status"| S
 ```
 
 ---
 
-## D — Tool risk tiers & permission decision
+## D — The bidirectional codegen contract boundaries
 
-Each Nightcore tool carries a `risk` class that drives the permission tier.
-`PermissionLayer.canUseTool` is consulted for every tool call before the SDK
-executes it.
+Both directions are generated with regenerate-and-diff guards — never
+hand-mirrored.
+
+```mermaid
+flowchart LR
+    Z["packages/contracts/src<br/>zod schemas (SOURCE OF TRUTH)"]
+    Z ==>|"bun run codegen:contracts"| GR["src-tauri/src/contracts/generated.rs<br/>+ fixtures.json"]
+    Z -->|"SurfaceCommandSchema.safeParse"| SCv["sidecar index.ts (runtime validate)"]
+    Z -->|"NightcoreEventSchema (re-validate)"| WB["web bridge.ts"]
+    GR -->|"serde to_string → wire"| PROV["provider.rs (serializes commands)"]
+    GR -. "guard: cargo test conformance + --check diff" .-> Z
+
+    RS["Rust serde structs<br/>task.rs / settings.rs / project.rs / ..."]
+    RS ==>|"ts-rs export (cargo test)"| TS["apps/web/src/lib/generated/*.ts"]
+    TS -->|"import type"| WB
+    RS -. "guard: git diff --exit-code over generated/" .-> RS
+
+    classDef src fill:#def,stroke:#39c;
+    classDef gen fill:#efe,stroke:#3a3;
+    class Z,RS src;
+    class GR,TS gen;
+```
+
+---
+
+## E — Tool risk tiers & permission decision
+
+The agent runs on **native SDK tools** (Read/Write/Edit/Bash/Grep/Glob). Each
+maps to a static `risk` class via `ToolRegistry.riskOf`, which drives the
+CLI-like permission tier checked before the SDK executes a call.
 
 ```mermaid
 flowchart TD
@@ -169,18 +178,18 @@ flowchart TD
     DENY -- yes --> BLOCK["Deny immediately"]
     DENY -- no --> ALLOW{"In allow list?"}
     ALLOW -- yes --> RUN["Allow → execute"]
-    ALLOW -- no --> RISK{"Risk class?"}
+    ALLOW -- no --> RISK{"Risk class (riskOf)?"}
 
-    RISK -- "safe<br/>(echo, read_file, list_dir,<br/>glob, grep, git_status, git_diff)" --> RUN
-    RISK -- "mutating<br/>(write_file, edit_file)" --> GATE{"Permission mode<br/>allows edits?"}
-    RISK -- "dangerous<br/>(run_command)" --> PROMPT["Emit permission-required"]
+    RISK -- "safe<br/>(Read, Grep, Glob, …)" --> RUN
+    RISK -- "mutating<br/>(Write, Edit)" --> GATE{"Permission mode<br/>allows edits?"}
+    RISK -- "dangerous<br/>(Bash)" --> PROMPT["Emit permission-required"]
 
-    GATE -- "acceptEdits / auto" --> RUN
+    GATE -- "acceptEdits / bypassPermissions" --> RUN
     GATE -- "plan / default" --> PROMPT
 
     PROMPT --> SURFACE{"Surface decision"}
-    SURFACE -- "TUI: approve-permission(allow)" --> RUN
-    SURFACE -- "TUI: deny / CLI headless auto-deny" --> BLOCK
+    SURFACE -- "board: approve-permission(allow)" --> RUN
+    SURFACE -- "deny" --> BLOCK
 ```
 
 ---
@@ -189,10 +198,13 @@ flowchart TD
 
 | Concern | Files |
 |---------|-------|
-| CLI / TUI entry | `apps/cli/src/index.ts`, `apps/tui/src/index.ts` |
+| Web IPC boundary | `apps/web/src/lib/bridge.ts` |
+| Rust core / orchestration | `apps/desktop/src-tauri/src/{lib.rs, m2/*, store/*, workflow/*}` |
+| Sidecar bridge | `apps/sidecar/src/index.ts` |
 | Supervisor & runner | `packages/engine/src/{session-manager,session-runner}.ts` |
 | SDK boundary | `packages/engine/src/sdk-adapter.ts` |
-| Permission & tools | `packages/engine/src/{permission-layer,tool-registry}.ts` |
+| Permission & risk | `packages/engine/src/{permission-layer,tool-registry}.ts` |
 | Spine (unions) | `packages/contracts/src/{events,commands,config}.ts` |
-| Tool catalog & risk | `packages/tools/src/index.ts` |
-| Config / storage | `packages/{config,storage}/src/index.ts` |
+| zod → Rust codegen | `tools/codegen/gen-rust-contracts.ts` → `src-tauri/src/contracts/generated.rs` |
+| Rust → web codegen | ts-rs (`cargo test`) → `apps/web/src/lib/generated/` |
+| Alt surfaces (retired v0) | `apps/cli/src/index.ts`, `apps/tui/src/index.ts` (tag `v0-ts-harness`) |
