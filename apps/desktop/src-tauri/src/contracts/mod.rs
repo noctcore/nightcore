@@ -168,6 +168,7 @@ mod tests {
             max_turns: None,
             max_budget_usd: None,
             resume_session_id: None,
+            mcp_servers: None,
         };
         let wire = serde_json::to_value(&cmd).expect("serializes");
         let obj = wire.as_object().expect("an object");
@@ -185,6 +186,7 @@ mod tests {
             "maxTurns",
             "maxBudgetUsd",
             "resumeSessionId",
+            "mcpServers",
         ] {
             assert!(
                 !obj.contains_key(absent),

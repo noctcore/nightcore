@@ -240,6 +240,9 @@ interface EmitCtx {
  *  `discriminator:tag|tag` (verified against the zod source). */
 const UNION_NAMES: Record<string, string> = {
   'behavior:allow|deny': 'PermissionDecision',
+  // The user-configurable external MCP server transport union, tagged by
+  // `transport` (NOT the SDK's optional stdio `type`) — see `McpServerTransportSchema`.
+  'transport:stdio|http|sse': 'McpServerTransport',
 };
 
 /** Canonical Rust names for nested structs, keyed by their sorted field-key
@@ -247,6 +250,8 @@ const UNION_NAMES: Record<string, string> = {
  *  `SessionInfo` in both `sessions[]` and `info`) collapses to one named type
  *  instead of one anonymous `…Item` struct per field path. */
 const STRUCT_NAMES: Record<string, string> = {
+  // One user-configured external MCP server entry (carried on `start-session`).
+  'config|enabled|id|name': 'McpServerEntry',
   'createdAt|customTitle|cwd|fileSize|firstPrompt|gitBranch|lastModified|sdkSessionId|summary|tag':
     'SessionInfo',
   'message|parentToolUseId|sessionId|type|uuid': 'SessionMessage',
@@ -644,6 +649,39 @@ const COMMAND_INPUTS: Record<string, unknown> = {
     maxTurns: 200,
     maxBudgetUsd: 5,
     resumeSessionId: 'sdk-uuid-123',
+    mcpServers: [
+      {
+        id: 'srv-1',
+        name: 'filesystem',
+        enabled: true,
+        config: {
+          transport: 'stdio',
+          command: 'npx',
+          args: ['-y', '@modelcontextprotocol/server-filesystem', '.'],
+          env: { ROOT: '/tmp/work' },
+        },
+      },
+      {
+        id: 'srv-2',
+        name: 'github',
+        enabled: true,
+        config: {
+          transport: 'http',
+          url: 'https://example.com/mcp',
+          headers: { Authorization: 'Bearer token' },
+        },
+      },
+      {
+        id: 'srv-3',
+        name: 'legacy',
+        enabled: false,
+        config: {
+          transport: 'sse',
+          url: 'https://example.com/sse',
+          headers: {},
+        },
+      },
+    ],
   },
   'send-input': { type: 'send-input', sessionId: 1, text: 'more input' },
   interrupt: { type: 'interrupt', sessionId: 2 },

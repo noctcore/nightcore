@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   EffortLevelSchema,
+  McpServerEntrySchema,
   PermissionModeSchema,
   TaskKindSchema,
 } from './config.js';
@@ -46,6 +47,12 @@ export const StartSessionCommand = z.object({
    *  run continues instead of restarting cold. Absent ⇒ a fresh session. Not a
    *  secret, but never logged at info/telemetry. */
   resumeSessionId: z.string().optional(),
+  /** External MCP servers (already filtered to enabled entries by the Rust core)
+   *  to inject for this session. The engine folds these into the SDK
+   *  `Options.mcpServers` by `name`, additively over the user's native
+   *  `.mcp.json`/`~/.claude.json`. Absent ⇒ none injected (the pre-feature shape).
+   *  May carry secrets in `env`/`headers`; never logged at info/telemetry. */
+  mcpServers: z.array(McpServerEntrySchema).optional(),
 });
 
 const sessionTarget = {
