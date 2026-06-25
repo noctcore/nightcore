@@ -3,8 +3,8 @@
 //! Surfaces how the active provider (today: Claude) is RESOLVED for the active
 //! project — its MCP servers, skills, subagents, and scalar extras (model /
 //! permission mode / output style) — over the request/reply NDJSON path. The
-//! command issues [`Provider::provider_config`] (a default trait method over
-//! `query`), so a future provider that declines a section returns `unsupported`
+//! command issues a `get-provider-config` [`SurfaceQuery`] through
+//! [`crate::sidecar::query`], so a future provider that declines a section returns `unsupported`
 //! WITHOUT any inspector code change.
 //!
 //! ## Why a separate command (not an overload of `sessions.rs`)
@@ -22,11 +22,12 @@
 //! DISTINCT; the views forward them verbatim so the web renders each correctly.
 
 use serde_json::Value;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Manager};
 
-use crate::m2::coordinator::Orchestrator;
-use crate::m2::provider::Provider;
+use crate::contracts::SurfaceQuery;
 use crate::project::ProjectStore;
+
+use super::query;
 
 /// One MCP server in the inspector view. Mirrors the wire `McpServerSummary`:
 /// the SDK's resolved, scope-aware set with live connection status. Exported to TS
@@ -161,7 +162,6 @@ fn reply_error(reply: &Value) -> String {
 #[tauri::command]
 pub async fn get_provider_config(
     app: AppHandle,
-    orch: State<'_, Orchestrator>,
     dir: Option<String>,
 ) -> Result<ProviderConfigSnapshotView, String> {
     let dir = dir.or_else(|| active_project_root(&app));
@@ -169,7 +169,14 @@ pub async fn get_provider_config(
         return Err("no active project to inspect".to_string());
     };
 
-    let reply = orch.provider.provider_config(Some(dir)).await?;
+    let reply = query(
+        &app,
+        SurfaceQuery::GetProviderConfig {
+            request_id: String::new(),
+            dir: Some(dir),
+        },
+    )
+    .await?;
     if reply.get("ok").and_then(Value::as_bool) != Some(true) {
         return Err(reply_error(&reply));
     }

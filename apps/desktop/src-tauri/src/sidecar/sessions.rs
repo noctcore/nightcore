@@ -3,7 +3,7 @@
 //! The Claude Agent SDK persists every run as a resumable JSONL under
 //! `~/.claude/projects/<encoded-cwd>/<uuid>.jsonl`. These commands surface that
 //! history to the board over the request/reply NDJSON path: each issues a
-//! `SurfaceQuery` through [`Provider::query`] and maps the correlated reply.
+//! `SurfaceQuery` through [`crate::sidecar::query`] and maps the correlated reply.
 //!
 //! ## The worktree/cwd resume strategy
 //!
@@ -24,14 +24,14 @@
 use std::path::Path;
 
 use serde_json::Value;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::m2::coordinator::Orchestrator;
-use crate::m2::provider::Provider;
 use crate::project::ProjectStore;
 use crate::store::TaskStore;
 
 use super::commands::run_task;
+use super::query;
 
 /// One past SDK session for the board's per-task history view. Mirrors the wire
 /// `SessionInfo` (the SDK's metadata) plus the Rust-computed `orphaned` flag: the
@@ -130,7 +130,6 @@ fn reply_error(reply: &Value) -> String {
 #[tauri::command]
 pub async fn list_task_sessions(
     app: AppHandle,
-    orch: State<'_, Orchestrator>,
     task_id: String,
 ) -> Result<Vec<SessionInfoView>, String> {
     let _ = task_id; // reserved for a future per-task dir scoping; project-root for now
@@ -138,7 +137,7 @@ pub async fn list_task_sessions(
         return Ok(Vec::new());
     };
 
-    let query = crate::contracts::SurfaceQuery::ListSessions {
+    let surface_query = crate::contracts::SurfaceQuery::ListSessions {
         // `requestId` is overwritten by the provider with a fresh uuid.
         request_id: String::new(),
         dir: Some(dir),
@@ -146,7 +145,7 @@ pub async fn list_task_sessions(
         offset: None,
         include_worktrees: Some(true),
     };
-    let reply = orch.provider.query(query).await?;
+    let reply = query(&app, surface_query).await?;
     if reply.get("ok").and_then(Value::as_bool) != Some(true) {
         return Err(reply_error(&reply));
     }
@@ -163,10 +162,10 @@ pub async fn list_task_sessions(
 /// worktree is gone, so an orphaned session's transcript stays viewable.
 #[tauri::command]
 pub async fn get_task_session_messages(
-    orch: State<'_, Orchestrator>,
+    app: AppHandle,
     sdk_session_id: String,
 ) -> Result<Vec<SessionMessageView>, String> {
-    let query = crate::contracts::SurfaceQuery::GetSessionMessages {
+    let surface_query = crate::contracts::SurfaceQuery::GetSessionMessages {
         request_id: String::new(),
         sdk_session_id,
         dir: None,
@@ -174,7 +173,7 @@ pub async fn get_task_session_messages(
         offset: None,
         include_system_messages: None,
     };
-    let reply = orch.provider.query(query).await?;
+    let reply = query(&app, surface_query).await?;
     if reply.get("ok").and_then(Value::as_bool) != Some(true) {
         return Err(reply_error(&reply));
     }
@@ -188,15 +187,15 @@ pub async fn get_task_session_messages(
 /// [`resume_session`] to check the session's cwd before relaunching, and available
 /// for a single-session refresh. Returns `None` when the session is not found.
 async fn fetch_session_info(
-    orch: &Orchestrator,
+    app: &AppHandle,
     sdk_session_id: &str,
 ) -> Result<Option<SessionInfoView>, String> {
-    let query = crate::contracts::SurfaceQuery::GetSessionInfo {
+    let surface_query = crate::contracts::SurfaceQuery::GetSessionInfo {
         request_id: String::new(),
         sdk_session_id: sdk_session_id.to_string(),
         dir: None,
     };
-    let reply = orch.provider.query(query).await?;
+    let reply = query(app, surface_query).await?;
     if reply.get("ok").and_then(Value::as_bool) != Some(true) {
         return Err(reply_error(&reply));
     }
@@ -226,7 +225,7 @@ pub async fn resume_session(
     // Refuse a resume of an orphaned session: its cwd is gone, so the SDK would
     // start a fresh session instead of reattaching. Read the session's metadata
     // (prune-safe, no dir) and check its cwd exists.
-    if let Some(info) = fetch_session_info(&orch, &sdk_session_id).await? {
+    if let Some(info) = fetch_session_info(&app, &sdk_session_id).await? {
         if info.orphaned {
             return Err(
                 "cannot resume an orphaned session — its worktree was pruned, so its history is view-only".to_string(),
@@ -253,17 +252,17 @@ pub async fn resume_session(
 /// history row; the change persists into the session's JSONL via the SDK.
 #[tauri::command]
 pub async fn rename_session(
-    orch: State<'_, Orchestrator>,
+    app: AppHandle,
     sdk_session_id: String,
     title: String,
 ) -> Result<(), String> {
-    let query = crate::contracts::SurfaceQuery::RenameSession {
+    let surface_query = crate::contracts::SurfaceQuery::RenameSession {
         request_id: String::new(),
         sdk_session_id,
         title,
         dir: None,
     };
-    let reply = orch.provider.query(query).await?;
+    let reply = query(&app, surface_query).await?;
     if reply.get("ok").and_then(Value::as_bool) == Some(true) {
         Ok(())
     } else {
@@ -275,17 +274,17 @@ pub async fn rename_session(
 /// tag on a history row.
 #[tauri::command]
 pub async fn tag_session(
-    orch: State<'_, Orchestrator>,
+    app: AppHandle,
     sdk_session_id: String,
     tag: Option<String>,
 ) -> Result<(), String> {
-    let query = crate::contracts::SurfaceQuery::TagSession {
+    let surface_query = crate::contracts::SurfaceQuery::TagSession {
         request_id: String::new(),
         sdk_session_id,
         tag,
         dir: None,
     };
-    let reply = orch.provider.query(query).await?;
+    let reply = query(&app, surface_query).await?;
     if reply.get("ok").and_then(Value::as_bool) == Some(true) {
         Ok(())
     } else {
