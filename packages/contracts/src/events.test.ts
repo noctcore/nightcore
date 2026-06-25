@@ -36,6 +36,27 @@ describe('NightcoreEventSchema round-trips', () => {
       input: { path: '/tmp/x' },
     },
     {
+      type: 'question-required',
+      sessionId: 4,
+      requestId: 'q_req_1',
+      toolUseId: 'tu_aq_1',
+      questions: [
+        {
+          question: 'Which auth method should we use?',
+          header: 'Auth method',
+          options: [
+            {
+              label: 'OAuth',
+              description: 'Delegate to an identity provider.',
+              preview: '```ts\nawait oauth()\n```',
+            },
+            { label: 'JWT', description: 'Self-issued signed tokens.' },
+          ],
+          multiSelect: false,
+        },
+      ],
+    },
+    {
       type: 'task-updated',
       sessionId: 5,
       taskId: 'task_1',

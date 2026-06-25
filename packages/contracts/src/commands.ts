@@ -5,7 +5,7 @@ import {
   PermissionModeSchema,
   TaskKindSchema,
 } from './config.js';
-import { PermissionDecisionSchema } from './tools.js';
+import { PermissionDecisionSchema, QuestionAnswerSchema } from './tools.js';
 
 /**
  * `SurfaceCommand` — the typed stream flowing surface → engine.
@@ -94,6 +94,14 @@ export const ApprovePermissionCommand = z.object({
   decision: PermissionDecisionSchema,
 });
 
+/** Respond to a `question-required` event (the SDK's `AskUserQuestion`). */
+export const AnswerQuestionCommand = z.object({
+  ...sessionTarget,
+  type: z.literal('answer-question'),
+  requestId: z.string(),
+  answer: QuestionAnswerSchema,
+});
+
 export const SurfaceCommandSchema = z.discriminatedUnion('type', [
   StartSessionCommand,
   SendInputCommand,
@@ -101,6 +109,7 @@ export const SurfaceCommandSchema = z.discriminatedUnion('type', [
   SetModelCommand,
   SetPermissionModeCommand,
   ApprovePermissionCommand,
+  AnswerQuestionCommand,
 ]);
 export type SurfaceCommand = z.infer<typeof SurfaceCommandSchema>;
 

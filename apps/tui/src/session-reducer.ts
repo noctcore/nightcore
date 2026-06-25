@@ -212,6 +212,23 @@ export function reduce(view: SessionView, event: ViewAction): SessionView {
         pendingPermission: view.pendingPermission ?? event,
       };
 
+    // The TUI doesn't render the AskUserQuestion picker (the desktop board owns
+    // that surface); show a notice so the run isn't a silent hang and the engine
+    // settles the parked dialog as cancelled on teardown.
+    case 'question-required':
+      return {
+        ...view,
+        transcript: [
+          ...view.transcript,
+          notice(
+            'info',
+            `Claude asked a question (${event.questions
+              .map((q) => q.header)
+              .join(', ')}) — answer it from the desktop board.`,
+          ),
+        ],
+      };
+
     case 'session-completed':
       return {
         ...view,

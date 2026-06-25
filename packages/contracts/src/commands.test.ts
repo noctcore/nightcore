@@ -40,6 +40,21 @@ describe('SurfaceCommandSchema round-trips', () => {
       requestId: 'req_2',
       decision: { behavior: 'deny', message: 'no' },
     },
+    {
+      type: 'answer-question',
+      sessionId: 1,
+      requestId: 'q_req_1',
+      answer: {
+        behavior: 'answer',
+        answers: { 'Which auth method should we use?': 'OAuth' },
+      },
+    },
+    {
+      type: 'answer-question',
+      sessionId: 1,
+      requestId: 'q_req_2',
+      answer: { behavior: 'cancel' },
+    },
   ];
 
   for (const command of valid) {
@@ -94,6 +109,26 @@ describe('SurfaceCommandSchema rejections', () => {
       sessionId: 1,
       requestId: 'req_1',
       decision: { behavior: 'deny' },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test('rejects an answer-question with an unknown answer behavior', () => {
+    const result = SurfaceCommandSchema.safeParse({
+      type: 'answer-question',
+      sessionId: 1,
+      requestId: 'q_req_1',
+      answer: { behavior: 'shrug' },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test('rejects an answer-question whose answers map holds non-string values', () => {
+    const result = SurfaceCommandSchema.safeParse({
+      type: 'answer-question',
+      sessionId: 1,
+      requestId: 'q_req_1',
+      answer: { behavior: 'answer', answers: { q: 3 } },
     });
     expect(result.success).toBe(false);
   });
