@@ -79,6 +79,17 @@
       "decision": {
         "behavior": "allow"
       }
+    },
+    "answer-question": {
+      "sessionId": 5,
+      "type": "answer-question",
+      "requestId": "q-req-1",
+      "answer": {
+        "behavior": "answer",
+        "answers": {
+          "Which auth method should we use?": "OAuth"
+        }
+      }
     }
   },
   "queries": {
@@ -181,6 +192,30 @@
       },
       "risk": "dangerous",
       "title": "Run a shell command?"
+    },
+    "question-required": {
+      "sessionId": 1,
+      "type": "question-required",
+      "requestId": "q-req-1",
+      "toolUseId": "tu-aq-1",
+      "questions": [
+        {
+          "question": "Which auth method should we use?",
+          "header": "Auth method",
+          "options": [
+            {
+              "label": "OAuth",
+              "description": "Delegate to an identity provider.",
+              "preview": "await oauth()"
+            },
+            {
+              "label": "JWT",
+              "description": "Self-issued signed tokens."
+            }
+          ],
+          "multiSelect": false
+        }
+      ]
     },
     "task-updated": {
       "sessionId": 1,

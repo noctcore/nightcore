@@ -56,6 +56,12 @@ pub enum SurfaceCommand {
         request_id: String,
         decision: PermissionDecision,
     },
+    #[serde(rename_all = "camelCase")]
+    AnswerQuestion {
+        session_id: u64,
+        request_id: String,
+        answer: AnswerQuestionAnswerUnion,
+    },
 }
 
 // === Surface → engine queries (Rust SERIALIZES these; replies arrive as the
@@ -176,6 +182,14 @@ pub enum NightcoreEvent {
         title: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
+    QuestionRequired {
+        session_id: u64,
+        request_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tool_use_id: Option<String>,
+        questions: Vec<QuestionRequiredQuestionsItem>,
+    },
+    #[serde(rename_all = "camelCase")]
     TaskUpdated {
         session_id: u64,
         task_id: String,
@@ -231,6 +245,17 @@ pub enum NightcoreEvent {
 }
 
 // === Referenced enums and nested structs ===
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "behavior", rename_all = "lowercase")]
+pub enum AnswerQuestionAnswerUnion {
+    #[serde(rename_all = "camelCase")]
+    Answer {
+        answers: serde_json::Map<String, serde_json::Value>,
+    },
+    #[serde(rename_all = "camelCase")]
+    Cancel {},
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -361,6 +386,25 @@ pub enum QueryResultKindEnum {
     Messages,
     Ack,
     ProviderConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuestionRequiredQuestionsItem {
+    pub question: String,
+    pub header: String,
+    pub options: Vec<QuestionRequiredQuestionsItemOptionsItem>,
+    #[serde(default)]
+    pub multi_select: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuestionRequiredQuestionsItemOptionsItem {
+    pub label: String,
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

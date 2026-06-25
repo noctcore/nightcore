@@ -697,6 +697,15 @@ const COMMAND_INPUTS: Record<string, unknown> = {
     requestId: 'req-1',
     decision: { behavior: 'allow' },
   },
+  'answer-question': {
+    type: 'answer-question',
+    sessionId: 5,
+    requestId: 'q-req-1',
+    answer: {
+      behavior: 'answer',
+      answers: { 'Which auth method should we use?': 'OAuth' },
+    },
+  },
 };
 
 /** A representative raw input per query variant (the request/reply stream). */
@@ -791,6 +800,27 @@ const EVENT_INPUTS: Record<string, unknown> = {
     input: { command: 'rm -rf x' },
     risk: 'dangerous',
     title: 'Run a shell command?',
+  },
+  'question-required': {
+    type: 'question-required',
+    sessionId: 1,
+    requestId: 'q-req-1',
+    toolUseId: 'tu-aq-1',
+    questions: [
+      {
+        question: 'Which auth method should we use?',
+        header: 'Auth method',
+        options: [
+          {
+            label: 'OAuth',
+            description: 'Delegate to an identity provider.',
+            preview: 'await oauth()',
+          },
+          { label: 'JWT', description: 'Self-issued signed tokens.' },
+        ],
+        multiSelect: false,
+      },
+    ],
   },
   'task-updated': {
     type: 'task-updated',

@@ -51,3 +51,26 @@ export const PermissionDecisionSchema = z.discriminatedUnion('behavior', [
   }),
 ]);
 export type PermissionDecision = z.infer<typeof PermissionDecisionSchema>;
+
+/**
+ * A surface's reply to a `question-required` event (the SDK's `AskUserQuestion`).
+ * Parallel to `PermissionDecisionSchema` but for a Q&A dialog rather than a
+ * tool allow/deny:
+ *  - `answer` — the user answered; `answers` maps each question's prompt text to
+ *    the chosen option label OR a free-text custom answer (the engine folds this
+ *    into the SDK dialog reply's `updatedInput.answers`).
+ *  - `cancel` — the user dismissed/skipped; the engine settles the SDK dialog as
+ *    `cancelled`, so the model proceeds without an answer (the SDK default).
+ */
+export const QuestionAnswerSchema = z.discriminatedUnion('behavior', [
+  z.object({
+    behavior: z.literal('answer'),
+    /** Question prompt text → chosen option label or free-text answer. For a
+     *  multiSelect question the value is the selected labels joined with `, `. */
+    answers: z.record(z.string(), z.string()),
+  }),
+  z.object({
+    behavior: z.literal('cancel'),
+  }),
+]);
+export type QuestionAnswer = z.infer<typeof QuestionAnswerSchema>;

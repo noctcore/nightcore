@@ -85,6 +85,12 @@ function render(event: NightcoreEvent): void {
       // approval. (Run with a permissive policy/mode for autonomous use.)
       process.stderr.write(`\n⚠ permission required for ${event.toolName} — denying (headless)\n`);
       break;
+    case 'question-required':
+      // Headless: auto-cancel AskUserQuestion (no TTY to answer it) so the run
+      // never hangs on a parked dialog. The desktop board handles interactive
+      // answers; the SDK applies the dialog default when cancelled.
+      process.stderr.write(`\n❓ question asked — skipping (headless)\n`);
+      break;
     case 'session-completed':
       process.stdout.write('\n');
       process.stderr.write(
@@ -128,6 +134,13 @@ async function main(): Promise<void> {
           sessionId: event.sessionId,
           requestId: event.requestId,
           decision: { behavior: 'deny', message: 'Headless: not pre-approved.' },
+        });
+      } else if (event.type === 'question-required') {
+        void manager.dispatch({
+          type: 'answer-question',
+          sessionId: event.sessionId,
+          requestId: event.requestId,
+          answer: { behavior: 'cancel' },
         });
       }
     });

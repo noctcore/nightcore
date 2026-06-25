@@ -117,6 +117,51 @@ export const PermissionRequiredEvent = z.object({
   title: z.string().optional(),
 });
 
+/** One selectable choice for a question, mirroring the SDK's AskUserQuestion
+ *  option shape (`label` / `description` / optional `preview`). */
+export const QuestionOptionSchema = z.object({
+  /** Short choice text the surface renders as the selectable label. */
+  label: z.string(),
+  /** Longer explanation of what choosing this option means. */
+  description: z.string(),
+  /** Optional preview content (markdown/HTML) for option comparison UIs. */
+  preview: z.string().optional(),
+});
+export type QuestionOption = z.infer<typeof QuestionOptionSchema>;
+
+/** One question in an `AskUserQuestion` call, mirroring the SDK's input shape:
+ *  a prompt, a short `header` chip, 2–4 `options`, and a `multiSelect` flag.
+ *  The surface ALWAYS also offers a free-text answer (the SDK auto-adds an
+ *  "Other" path), so a returned answer is not constrained to an option label. */
+export const QuestionItemSchema = z.object({
+  /** The full question prompt to show the user. */
+  question: z.string(),
+  /** Very short label/chip for the question (the SDK caps it ~12 chars). */
+  header: z.string(),
+  /** The offered choices (the SDK guarantees 2–4). */
+  options: z.array(QuestionOptionSchema),
+  /** True when the user may select more than one option for this question. */
+  multiSelect: z.boolean().default(false),
+});
+export type QuestionItem = z.infer<typeof QuestionItemSchema>;
+
+/** The harness needs an interactive ANSWER to an `AskUserQuestion` tool call.
+ *  Distinct from `permission-required` (allow/deny a tool): the surface picks an
+ *  option or writes a free-text answer per question and replies with an
+ *  `answer-question` command carrying `requestId`. Delivered over the SDK's
+ *  `onUserDialog` channel (dialog kind `permission_ask_user_question`), NOT
+ *  `canUseTool` — so it never auto-denies as a generic tool prompt. */
+export const QuestionRequiredEvent = z.object({
+  ...base,
+  type: z.literal('question-required'),
+  requestId: z.string(),
+  /** SDK `toolUseId` of the originating AskUserQuestion call, when the dialog
+   *  carries one — lets a surface correlate the prompt with its transcript entry. */
+  toolUseId: z.string().optional(),
+  /** The questions to ask (1–4), each with its own options. */
+  questions: z.array(QuestionItemSchema),
+});
+
 /** Token usage for a completed session, distilled from the SDK result message. */
 export const TokenUsageSchema = z.object({
   inputTokens: z.number().int().nonnegative(),
@@ -254,6 +299,7 @@ export const NightcoreEventSchema = z.discriminatedUnion('type', [
   ToolUseRequestedEvent,
   ToolResultEvent,
   PermissionRequiredEvent,
+  QuestionRequiredEvent,
   TaskUpdatedEvent,
   SessionCompletedEvent,
   SessionFailedEvent,
