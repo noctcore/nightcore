@@ -41,11 +41,13 @@ pub(crate) use verification::dispatch_reviewer_for;
 #[allow(unused_imports)]
 pub(crate) use verification::MAX_FIX_ATTEMPTS;
 
+use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
+use crate::contracts::SurfaceQuery;
 use crate::m2::coordinator::{self, Orchestrator};
-use crate::m2::provider::parse_line;
+use crate::m2::provider::{parse_line, Provider};
 use crate::store::TaskStore;
 use crate::task::{Task, TaskStatus, TASK_EVENT};
 
@@ -118,6 +120,16 @@ pub async fn ensure_reader(app: &AppHandle) -> Result<(), String> {
     });
 
     Ok(())
+}
+
+/// Issue a [`SurfaceQuery`] over the sidecar, ensuring the child is spawned and its
+/// stdout reader is installed first. All query-based Tauri commands must route
+/// through here rather than calling [`Provider::query`] directly — the sidecar is
+/// lazily started on first use (a task run or this helper), never at app boot.
+pub async fn query(app: &AppHandle, query: SurfaceQuery) -> Result<Value, String> {
+    ensure_reader(app).await?;
+    let orch = app.state::<Orchestrator>();
+    orch.provider.query(query).await
 }
 
 /// Re-emit one captured sidecar stderr line through the Rust `tracing` sink under
