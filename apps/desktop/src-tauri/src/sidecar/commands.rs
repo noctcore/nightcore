@@ -6,6 +6,7 @@
 use serde_json::Value;
 use tauri::{AppHandle, Manager, State};
 
+use crate::contracts::AnswerQuestionAnswerUnion;
 use crate::m2::coordinator::{self, Orchestrator};
 use crate::m2::provider::{PermissionDecision, Provider};
 use crate::m2::worktree;
@@ -178,6 +179,31 @@ pub async fn respond_permission(
     tracing::debug!(target: "nightcore", task_id, session_id, allow, "permission decision sent");
     orch.provider
         .decide_permission(session_id, &request_id, decision)
+        .await
+}
+
+/// Answer a parked `AskUserQuestion` dialog (the desktop board's reply to an
+/// `nc:question` prompt). `answer` is the wire union — `{behavior:"answer", answers}`
+/// to submit the user's choices, or `{behavior:"cancel"}` to skip. Resolves to the
+/// live session and forwards an `answer-question` SurfaceCommand to the sidecar. The
+/// answer content (user text) is never logged.
+#[tauri::command]
+pub async fn answer_question(
+    store: State<'_, TaskStore>,
+    orch: State<'_, Orchestrator>,
+    task_id: String,
+    request_id: String,
+    answer: AnswerQuestionAnswerUnion,
+) -> Result<(), String> {
+    let session_id = orch
+        .provider
+        .session_for(&task_id)
+        .or_else(|| store.get(&task_id).and_then(|t| t.session_id))
+        .ok_or_else(|| format!("no live session for task {task_id}"))?;
+
+    tracing::debug!(target: "nightcore", task_id, session_id, "ask-user-question answer sent");
+    orch.provider
+        .send_answer(session_id, &request_id, answer)
         .await
 }
 

@@ -1,6 +1,8 @@
-//! Interactive permission relay and the plan-approval gate. A `permission-required`
+//! Interactive prompt relays and the plan-approval gate. A `permission-required`
 //! event for `ExitPlanMode` parks the task as `waiting_approval` with its plan; any
-//! other tool surfaces an `nc:permission` prompt for the webview to answer.
+//! other tool surfaces an `nc:permission` prompt for the webview to answer. A
+//! `question-required` event (the SDK's `AskUserQuestion`) surfaces an `nc:question`
+//! prompt the webview answers via the `answer_question` command.
 
 use serde_json::Value;
 use tauri::{AppHandle, Emitter};
@@ -8,7 +10,7 @@ use tauri::{AppHandle, Emitter};
 use crate::store::TaskStore;
 use crate::task::TaskStatus;
 
-use super::{apply_and_emit, PERMISSION_EVENT};
+use super::{apply_and_emit, PERMISSION_EVENT, QUESTION_EVENT};
 
 /// The tool name the SDK uses when the agent finishes a plan in `plan` mode. It
 /// surfaces as a `permission-required`; the core gates it as plan approval rather
@@ -35,6 +37,30 @@ pub(crate) fn emit_permission_prompt(
             "suggestions": event.get("suggestions").cloned(),
         }),
     );
+}
+
+/// Surface an interactive `AskUserQuestion` prompt to the webview as `nc:question`.
+/// Forwards the question/option text (which the model authored — surfaced to the UI
+/// but never logged) plus the originating `toolUseId` when the dialog carried one,
+/// so the board can correlate the prompt with its transcript entry. The webview
+/// answers via the `answer_question` command.
+pub(crate) fn emit_question_prompt(
+    app: &AppHandle,
+    task_id: &str,
+    request_id: &str,
+    event: &Value,
+) {
+    let mut payload = serde_json::json!({
+        "taskId": task_id,
+        "requestId": request_id,
+        "questions": event.get("questions").cloned().unwrap_or(Value::Null),
+    });
+    // Carry `toolUseId` only when the dialog actually had one, so the web type
+    // stays `string | undefined` rather than receiving an explicit null.
+    if let Some(tool_use_id) = event.get("toolUseId").filter(|v| !v.is_null()) {
+        payload["toolUseId"] = tool_use_id.clone();
+    }
+    let _ = app.emit(QUESTION_EVENT, payload);
 }
 
 /// The plan-approval gate (M3 §C): the agent finished a plan in `plan` mode and

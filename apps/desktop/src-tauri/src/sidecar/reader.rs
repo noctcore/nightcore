@@ -9,7 +9,9 @@ use crate::m2::coordinator::Orchestrator;
 use crate::store::TaskStore;
 use crate::task::TaskStatus;
 
-use super::permission::{emit_permission_prompt, handle_plan_gate, EXIT_PLAN_MODE};
+use super::permission::{
+    emit_permission_prompt, emit_question_prompt, handle_plan_gate, EXIT_PLAN_MODE,
+};
 use super::verification::{handle_build_completed, handle_review_completed};
 use super::{apply_and_emit, finish_run, park_for_approval, Outcome, SESSION_EVENT};
 
@@ -79,6 +81,18 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
             } else {
                 emit_permission_prompt(app, &task_id, request_id, &event);
             }
+        }
+        return;
+    }
+
+    // An `AskUserQuestion` parks the SDK dialog in the engine until an
+    // `answer_question` command resolves it (or session teardown settles it as
+    // cancelled — the engine, not the core, owns that fail-closed path, so there
+    // is no Rust-side registry to drain on cancel). Relay the prompt to the board.
+    if event_type == "question-required" {
+        if let Some(request_id) = event.get("requestId").and_then(Value::as_str) {
+            tracing::info!(target: "nightcore", task_id, "relaying ask-user-question request");
+            emit_question_prompt(app, &task_id, request_id, &event);
         }
         return;
     }

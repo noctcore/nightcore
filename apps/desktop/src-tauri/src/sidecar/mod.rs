@@ -63,6 +63,12 @@ pub(crate) const SESSION_EVENT: &str = "nc:session";
 /// contain paths/commands — they are surfaced to the UI but NEVER logged.
 pub(crate) const PERMISSION_EVENT: &str = "nc:permission";
 
+/// The Tauri event carrying an interactive `AskUserQuestion` prompt for a task.
+/// Payload: `{ taskId, requestId, toolUseId?, questions }`. The webview renders the
+/// question picker and answers via the `answer_question` command. Question prompts
+/// carry the model's question/option text — surfaced to the UI but NEVER logged.
+pub(crate) const QUESTION_EVENT: &str = "nc:question";
+
 /// Ensure the persistent sidecar is running and its stdout reader is installed.
 /// Idempotent: spawns lazily on first use, then a no-op. Shared by `run_task` and
 /// the coordinator's `launch`.
