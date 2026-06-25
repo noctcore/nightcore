@@ -99,6 +99,7 @@ pub fn run() {
             sidecar::run_task,
             sidecar::cancel_task,
             sidecar::respond_permission,
+            sidecar::answer_question,
             sidecar::list_task_sessions,
             sidecar::get_task_session_messages,
             sidecar::resume_session,

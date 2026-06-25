@@ -34,7 +34,7 @@ use tokio::sync::oneshot;
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::contracts::{
-    EffortLevel, PermissionDecision as WirePermissionDecision,
+    AnswerQuestionAnswerUnion, EffortLevel, PermissionDecision as WirePermissionDecision,
     PermissionMode as WirePermissionMode, SurfaceCommand, SurfaceQuery, TaskKind as WireTaskKind,
 };
 use crate::platform::resolve_bun_program;
@@ -108,6 +108,19 @@ pub trait Provider: Send + Sync {
         session_id: u64,
         request_id: &str,
         decision: PermissionDecision,
+    ) -> Result<(), String>;
+
+    /// Answer a parked `AskUserQuestion` dialog for a run by sending an
+    /// `answer-question` SurfaceCommand. The `answer` is the wire union the engine
+    /// folds onto the SDK dialog reply (`answer` → the user's `answers`; `cancel` →
+    /// settle the dialog as cancelled). Unlike `decide_permission`, no fail-closed
+    /// drain on cancel is needed: the engine settles a parked dialog on session
+    /// abort/teardown, so there is no Rust-side question registry.
+    async fn send_answer(
+        &self,
+        session_id: u64,
+        request_id: &str,
+        answer: AnswerQuestionAnswerUnion,
     ) -> Result<(), String>;
 
     /// Issue a request/reply `SurfaceQuery` and await its correlated `query-result`
@@ -622,6 +635,27 @@ impl Provider for SidecarProvider {
             session_id,
             request_id: request_id.to_string(),
             decision: wire_decision,
+        })
+        .map_err(|e| e.to_string())?;
+        let mut guard = self.stdin.lock().await;
+        if let Some(stdin) = guard.as_mut() {
+            Self::write_line(stdin, &command).await?;
+        }
+        Ok(())
+    }
+
+    async fn send_answer(
+        &self,
+        session_id: u64,
+        request_id: &str,
+        answer: AnswerQuestionAnswerUnion,
+    ) -> Result<(), String> {
+        // Pure passthrough: the wire union is already the shape the engine expects,
+        // so (unlike decide_permission) there is no core→wire mapping step.
+        let command = serde_json::to_value(SurfaceCommand::AnswerQuestion {
+            session_id,
+            request_id: request_id.to_string(),
+            answer,
         })
         .map_err(|e| e.to_string())?;
         let mut guard = self.stdin.lock().await;
