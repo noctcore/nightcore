@@ -102,3 +102,11 @@ export const LoadFailed: Story = {
     data: { load: () => Promise.reject(new Error('no active project to inspect')) },
   },
 };
+
+/** The loading state — a `load` that never resolves, so the skeleton sections
+ *  stay visible. Confirms the placeholder mirrors the real section layout. */
+export const Loading: Story = {
+  args: {
+    data: { load: () => new Promise<ProviderConfigSnapshot>(() => {}) },
+  },
+};

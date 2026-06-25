@@ -239,9 +239,29 @@ body {
     transform: scale(1.05);
   }
 }
+@keyframes nc-skeleton {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
 
 .nc-drawer-enter {
   animation: nc-slide 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Skeleton placeholder shimmer — gentle opacity pulse (no scale, so bars hold
+   their layout while loading). Used by the <Skeleton> ui primitive. */
+.nc-skeleton {
+  animation: nc-skeleton 1.5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nc-skeleton {
+    animation: none;
+  }
 }
 
 /* --- Markdown prose (the <Markdown> ui primitive, M4.7 §D) ---------------- */

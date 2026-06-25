@@ -3,7 +3,18 @@ import { render } from 'vitest-browser-react';
 import { expect, test, vi } from 'vitest';
 import * as stories from './ProviderConfigPanel.stories';
 
-const { Default, Unsupported, Empty, LoadFailed } = composeStories(stories);
+const { Default, Unsupported, Empty, LoadFailed, Loading } =
+  composeStories(stories);
+
+test('shows a skeleton loading state while the snapshot is being read', async () => {
+  const screen = render(<Loading />);
+  await expect
+    .element(screen.getByRole('status', { name: 'Reading provider configuration' }))
+    .toBeInTheDocument();
+  await expect
+    .element(screen.getByText('Reading provider configuration…'))
+    .toBeInTheDocument();
+});
 
 test('renders supported MCP servers with scope, transport, and status', async () => {
   const screen = render(<Default />);
