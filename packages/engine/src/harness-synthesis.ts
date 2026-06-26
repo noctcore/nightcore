@@ -39,6 +39,7 @@ import type {
   AnalysisRunnerFactory,
   AnalysisSessionRunner,
 } from './analysis-manager.js';
+import { makeHeartbeat } from './analysis-manager.js';
 
 type StartHarnessScan = Extract<SurfaceCommand, { type: 'start-harness-scan' }>;
 
@@ -58,6 +59,10 @@ export interface SynthesizeHarnessArgs {
   profile: RepoProfile;
   /** The deduped convention findings the artifacts should enforce. */
   findings: ConventionFinding[];
+  /** The deterministic top-level repo map, already built once by the harness
+   *  manager for the lens prompts — threaded through so synthesis reuses it
+   *  instead of re-walking the filesystem. */
+  inventory: string;
   command: StartHarnessScan;
   config: Config;
   apiKeyFallback: boolean;
@@ -102,8 +107,16 @@ export async function synthesizeHarness(
   let result: string | undefined;
   let error: string | undefined;
   let reason: SessionFailedReason | undefined;
+  // Throttled progress so the (serial) synthesis tail shows life in the terminal
+  // instead of running silent — its events never reach the wire.
+  const heartbeat = makeHeartbeat(args.logger, '[harness:synthesis]');
 
-  const prompt = buildSynthesisPrompt(args.profile, args.findings, args.command);
+  const prompt = buildSynthesisPrompt(
+    args.profile,
+    args.findings,
+    args.inventory,
+    args.command,
+  );
   const runner = args.runnerFactory(
     {
       sessionId: -1,
@@ -134,6 +147,8 @@ export async function synthesizeHarness(
       } else if (event.type === 'session-failed') {
         error = event.message;
         reason = event.reason;
+      } else {
+        heartbeat(event);
       }
     },
     args.logger?.child('harness-synthesis'),
@@ -178,10 +193,12 @@ const SYNTHESIS_PERSONA = [
 ].join(' ');
 
 /** Compose the synthesis user prompt: reference + profile summary + findings +
- *  the artifact output contract. */
+ *  the artifact output contract. The `inventory` (deterministic top-level repo map)
+ *  is built once by the harness manager and threaded in to avoid a second fs walk. */
 function buildSynthesisPrompt(
   profile: RepoProfile,
   findings: ConventionFinding[],
+  inventory: string,
   command: StartHarnessScan,
 ): string {
   return [
@@ -192,6 +209,9 @@ function buildSynthesisPrompt(
     'REPO PROFILE (deterministically detected):',
     summarizeProfile(profile),
     '',
+    'REPO MAP (deterministic top-level inventory — start from this, do not re-list the tree):',
+    inventory,
+    '',
     'CONVENTION FINDINGS to enforce (reference these by fingerprint in sourceFindings):',
     summarizeFindings(findings),
     '',
@@ -199,8 +219,9 @@ function buildSynthesisPrompt(
   ].join('\n');
 }
 
-/** A compact, model-readable summary of the repo profile. */
-function summarizeProfile(profile: RepoProfile): string {
+/** A compact, model-readable summary of the repo profile. Exported so the lens
+ *  passes (harness-manager) ground each prompt on the SAME profile summary. */
+export function summarizeProfile(profile: RepoProfile): string {
   const lines = [
     `- monorepo: ${profile.isMonorepo} (workspace tool: ${profile.workspaceTool})`,
     `- packages: ${

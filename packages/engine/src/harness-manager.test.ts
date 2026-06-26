@@ -121,7 +121,7 @@ function cannedFactory(): HarnessRunnerFactory {
 }
 
 describe('HarnessManager — event ordering', () => {
-  test('emits scan-started → profile-ready → category-* → proposals-ready → scan-completed', async () => {
+  test('emits scan-started → profile-ready → category-* → synthesis-started → proposals-ready → scan-completed', async () => {
     const { emit, done } = collect();
     const manager = new HarnessManager({
       config: BASE_CONFIG,
@@ -140,10 +140,14 @@ describe('HarnessManager — event ordering', () => {
 
     const catStarted = types.indexOf('harness-category-started');
     const catCompleted = types.indexOf('harness-category-completed');
+    const synthesisStarted = types.indexOf('harness-synthesis-started');
     const proposals = types.indexOf('harness-proposals-ready');
     expect(catStarted).toBeGreaterThan(1);
     expect(catCompleted).toBeGreaterThan(catStarted);
-    expect(proposals).toBeGreaterThan(catCompleted);
+    // synthesis-started lands after every lens completes and before proposals — it
+    // is what swaps the UI's all-lenses-done dead zone for "Synthesizing harness…".
+    expect(synthesisStarted).toBeGreaterThan(catCompleted);
+    expect(proposals).toBeGreaterThan(synthesisStarted);
     expect(proposals).toBeLessThan(types.length - 1);
 
     const completed = events.find((e) => e.type === 'harness-scan-completed');

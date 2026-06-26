@@ -138,6 +138,53 @@ describe('AnalysisManager — concurrency cap', () => {
     await done;
     expect(peak).toBe(CAP);
   });
+
+  test('defaults to 6-way concurrency when no maxConcurrency override is given', async () => {
+    // WS4: the default was raised 3→6. With 8 categories and no override the pool
+    // saturates at 6 (runPool caps at categories.length, here 8). The gate releases
+    // only once 6 are in flight, so this hangs/fails if the default regresses below 6.
+    let inFlight = 0;
+    let peak = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+
+    const factory: AnalysisRunnerFactory = (_cfg, emit) => ({
+      async run() {
+        inFlight++;
+        peak = Math.max(peak, inFlight);
+        if (peak >= 6) release();
+        await gate;
+        await completing(ONE_FINDING)(emit);
+        inFlight--;
+      },
+      async interrupt() {},
+    });
+
+    const { emit, done } = collect();
+    const manager = new AnalysisManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      runnerFactory: factory,
+    });
+
+    manager.start(
+      startCommand([
+        'architecture',
+        'bugs',
+        'refactor',
+        'performance',
+        'security',
+        'tests',
+        'docs',
+        'ui-ux',
+      ]),
+    );
+    await done;
+    expect(peak).toBe(6);
+  });
 });
 
 describe('AnalysisManager — cancellation', () => {

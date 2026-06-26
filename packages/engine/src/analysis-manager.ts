@@ -7,6 +7,8 @@
  * are INTERNAL: their ordinary session events are consumed here and never reach
  * the main event stream — only `analysis-*` events do.
  */
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import type {
   Config,
   Finding,
@@ -35,9 +37,12 @@ import {
  *  so the engine narrows the union for the type). */
 type StartAnalysis = Extract<SurfaceCommand, { type: 'start-analysis' }>;
 
-/** Default number of category passes to run at once. Bounded so a 9-category run
- *  doesn't open 9 paid Claude subprocesses simultaneously. */
-const DEFAULT_CONCURRENCY = 3;
+/** Default number of category passes to run at once. Raised from 3→6 (WS4): a
+ *  3-wide pool left a 9-category scan running in three slow serial waves; 6 keeps
+ *  the wall-clock down while still bounded so we never open all 9 paid Claude
+ *  subprocesses at once. `runPool` caps this at `categories.length`, so a small run
+ *  is effectively `min(categories.length, 6)`. `command.maxConcurrency` overrides it. */
+const DEFAULT_CONCURRENCY = 6;
 /** Per-category turn ceiling (the model explores then writes findings). */
 const DEFAULT_MAX_TURNS = 40;
 /** Findings cap per category pass. */
@@ -142,18 +147,25 @@ export class AnalysisManager {
     this.active.set(command.runId, run);
     const startedAt = Date.now();
 
+    const model = command.model ?? this.deps.config.model;
     emit({
       type: 'analysis-started',
       runId: command.runId,
       scope: command.scope,
       categories: command.categories,
-      model: command.model ?? this.deps.config.model,
+      model,
     });
+    this.deps.logger?.info(
+      `[insight] scan started — ${command.categories.length} categories · model ${model} · scope ${command.scope}`,
+    );
 
     const all: Finding[] = [];
     const categoriesRun: FindingCategory[] = [];
     let totalCost = 0;
     const totalUsage: TokenUsage = { ...EMPTY_USAGE };
+    // Deterministic top-level map injected into every pass so a lens starts from a
+    // known structure instead of re-discovering the tree (WS4).
+    const inventory = buildRepoInventory(command.projectPath);
 
     try {
       await runPool(
@@ -161,13 +173,20 @@ export class AnalysisManager {
         command.maxConcurrency ?? DEFAULT_CONCURRENCY,
         async (category) => {
           if (run.cancelled) return;
+          const categoryStartedAt = Date.now();
           emit({
             type: 'analysis-category-started',
             runId: command.runId,
             category,
           });
+          this.deps.logger?.info(`[insight] category ${category}: started`);
 
-          const outcome = await this.runCategory(command, category, run);
+          const outcome = await this.runCategory(
+            command,
+            category,
+            run,
+            inventory,
+          );
           if (run.cancelled) return;
 
           const grounded = groundFindings(outcome.findings, command.projectPath);
@@ -185,6 +204,9 @@ export class AnalysisManager {
             costUsd: outcome.costUsd,
             ...(outcome.error !== undefined ? { error: outcome.error } : {}),
           });
+          this.deps.logger?.info(
+            `[insight] category ${category}: completed — ${grounded.length} findings, ${fmtCost(outcome.costUsd)}, ${fmtSecs(Date.now() - categoryStartedAt)}`,
+          );
         },
       );
 
@@ -199,15 +221,19 @@ export class AnalysisManager {
       }
 
       const deduped = dedupeFindings(all);
+      const durationMs = Date.now() - startedAt;
       emit({
         type: 'analysis-completed',
         runId: command.runId,
         findings: deduped,
         categoriesRun,
         costUsd: totalCost,
-        durationMs: Date.now() - startedAt,
+        durationMs,
         usage: totalUsage,
       });
+      this.deps.logger?.info(
+        `[insight] scan completed — ${deduped.length} findings across ${categoriesRun.length} categories, ${fmtCost(totalCost)}, ${fmtElapsed(durationMs)}`,
+      );
     } catch (error) {
       this.deps.logger?.warn('analysis run crashed', error);
       emit({
@@ -226,6 +252,7 @@ export class AnalysisManager {
     command: StartAnalysis,
     category: FindingCategory,
     run: ActiveRun,
+    inventory: string,
   ): Promise<CategoryOutcome> {
     const preset = analysisPreset(category);
     const usage: TokenUsage = { ...EMPTY_USAGE };
@@ -234,7 +261,7 @@ export class AnalysisManager {
     const first = await this.runOneSession(
       command,
       preset,
-      buildCategoryPrompt(command, preset),
+      buildCategoryPrompt(command, preset, inventory),
       run,
     );
     addUsage(usage, first.usage);
@@ -265,7 +292,7 @@ export class AnalysisManager {
       const retry = await this.runOneSession(
         command,
         preset,
-        `${buildCategoryPrompt(command, preset)}\n\nIMPORTANT: your previous answer was not valid JSON. Respond with ONLY the JSON array, nothing else.`,
+        `${buildCategoryPrompt(command, preset, inventory)}\n\nIMPORTANT: your previous answer was not valid JSON. Respond with ONLY the JSON array, nothing else.`,
         run,
       );
       addUsage(usage, retry.usage);
@@ -307,6 +334,9 @@ export class AnalysisManager {
     let costUsd = 0;
     let error: string | undefined;
     let reason: SessionFailedReason | undefined;
+    // Throttled progress so a long pass shows life in the terminal instead of
+    // running silent until it completes (the sub-session's events never hit the wire).
+    const heartbeat = makeHeartbeat(this.deps.logger, `[insight:${preset.category}]`);
 
     const runner = this.runnerFactory(
       {
@@ -338,6 +368,8 @@ export class AnalysisManager {
         } else if (event.type === 'session-failed') {
           error = event.message;
           reason = event.reason;
+        } else {
+          heartbeat(event);
         }
       },
       this.deps.logger?.child(`analysis-${preset.category}`),
@@ -359,10 +391,13 @@ export class AnalysisManager {
   }
 }
 
-/** The per-run user prompt for a category pass. */
+/** The per-run user prompt for a category pass. The deterministic top-level
+ *  `inventory` is injected so the pass targets its reads from a known map instead
+ *  of re-listing the tree (WS4 — cuts redundant exploration turns). */
 function buildCategoryPrompt(
   command: StartAnalysis,
   preset: AnalysisPreset,
+  inventory: string,
 ): string {
   const scopeLine =
     command.scope === 'diff' &&
@@ -371,11 +406,15 @@ function buildCategoryPrompt(
       ? `Focus your analysis ONLY on these recently changed files and the code they directly touch:\n${command.changedFiles
           .map((f) => `- ${f}`)
           .join('\n')}`
-      : 'Analyze the whole repository. Explore the structure first (read the entry points and the most-edited areas), then drill into where issues are most likely.';
+      : 'Analyze the whole repository. Use the repo map above to target the entry points and the most relevant areas, then drill into where issues are most likely — do not spend turns re-listing the tree.';
 
   return [
     `You are analyzing the project at: ${command.projectPath}`,
     `Category: ${preset.label}.`,
+    '',
+    'REPO MAP (deterministic top-level inventory — start here):',
+    inventory,
+    '',
     scopeLine,
     '',
     outputContract(MAX_FINDINGS_PER_CATEGORY),
@@ -411,4 +450,139 @@ async function runPool<T>(
     }
   };
   await Promise.all(Array.from({ length: cap }, () => runNext()));
+}
+
+// ── shared scan observability + grounding helpers (reused by the Harness
+//    orchestrator, which mirrors this one) ────────────────────────────────────
+
+/** Heartbeat throttle: at most one progress line per sub-session this often. A
+ *  16-minute scan used to print two lines then go silent; this surfaces steady
+ *  life without flooding the terminal. */
+const HEARTBEAT_INTERVAL_MS = 3000;
+
+/**
+ * Build a throttled heartbeat sink for an internal sub-session. The lens/synthesis
+ * sub-sessions are consumed locally (never forwarded to the wire), so a long pass
+ * looks frozen from the terminal. This counts `tool-use-requested` events as
+ * "turns" and logs at most once per {@link HEARTBEAT_INTERVAL_MS} via `logger.info`
+ * (info shows by default; debug is filtered) e.g. `[insight:perf] turn 12 · Read
+ * src/app.ts`. Call the returned sink for EVERY sub-session event — it ignores
+ * everything but tool uses. A no-op when there is no logger.
+ */
+export function makeHeartbeat(
+  logger: Logger | undefined,
+  label: string,
+): (event: NightcoreEvent) => void {
+  if (logger === undefined) return () => {};
+  let turn = 0;
+  let lastBeatAt = 0;
+  return (event) => {
+    if (event.type !== 'tool-use-requested') return;
+    turn += 1;
+    const now = Date.now();
+    if (now - lastBeatAt < HEARTBEAT_INTERVAL_MS) return;
+    lastBeatAt = now;
+    logger.info(
+      `${label} turn ${turn} · ${summarizeToolUse(event.toolName, event.input)}`,
+    );
+  };
+}
+
+/** A short, secret-free descriptor of a tool use for the heartbeat line — the
+ *  tool name plus, ONLY for path-like args, its target path (truncated). We never
+ *  surface model-controlled value args (pattern/command/query/prompt) here: they
+ *  can carry secrets/PII and would leak to the persistent terminal + rolling log. */
+function summarizeToolUse(toolName: string, input: unknown): string {
+  const rec =
+    typeof input === 'object' && input !== null
+      ? (input as Record<string, unknown>)
+      : {};
+  const pick = (key: string): string | undefined =>
+    typeof rec[key] === 'string' ? (rec[key] as string) : undefined;
+  const detail = pick('file_path') ?? pick('path') ?? pick('notebook_path');
+  if (detail === undefined) return toolName;
+  const trimmed = detail.replace(/\s+/g, ' ').trim();
+  const short = trimmed.length > 60 ? `${trimmed.slice(0, 57)}…` : trimmed;
+  return `${toolName} ${short}`;
+}
+
+/** Conventional source dirs worth a shallow peek in the repo inventory. */
+const INVENTORY_PEEK_DIRS = [
+  'src',
+  'app',
+  'apps',
+  'packages',
+  'lib',
+  'crates',
+  'server',
+];
+/** Cap per listing so a pathological dir can't flood the prompt. */
+const INVENTORY_MAX_ENTRIES = 60;
+/** Dirs never worth listing (build output / vendored deps / vcs). */
+const INVENTORY_SKIP_DIRS = new Set(['node_modules', 'target', 'dist', '.git']);
+
+/**
+ * A cheap, bounded top-level map of the repo: the root dir/file names plus a
+ * shallow peek into a few conventional source dirs. Injected into each pass's
+ * prompt (WS4) so the model starts from a known structure instead of burning turns
+ * re-discovering the tree on every lens — the dominant source of wasted exploration
+ * in a multi-lens scan. Pure synchronous fs; never throws.
+ */
+export function buildRepoInventory(projectPath: string): string {
+  const root = path.resolve(projectPath);
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return '(repo inventory unavailable)';
+  }
+  const skip = (name: string): boolean =>
+    name.startsWith('.') || INVENTORY_SKIP_DIRS.has(name);
+  const dirs = entries
+    .filter((e) => e.isDirectory() && !skip(e.name))
+    .map((e) => e.name)
+    .sort()
+    .slice(0, INVENTORY_MAX_ENTRIES);
+  const files = entries
+    .filter((e) => e.isFile() && !e.name.startsWith('.'))
+    .map((e) => e.name)
+    .sort()
+    .slice(0, INVENTORY_MAX_ENTRIES);
+  const lines = [
+    `top-level dirs: ${dirs.join(', ') || '(none)'}`,
+    `top-level files: ${files.join(', ') || '(none)'}`,
+  ];
+  for (const dir of INVENTORY_PEEK_DIRS) {
+    if (!dirs.includes(dir)) continue;
+    try {
+      const children = fs
+        .readdirSync(path.join(root, dir), { withFileTypes: true })
+        .filter((e) => !skip(e.name))
+        .map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
+        .sort()
+        .slice(0, INVENTORY_MAX_ENTRIES);
+      if (children.length > 0) lines.push(`${dir}/: ${children.join(', ')}`);
+    } catch {
+      /* unreadable dir — skip it, never throw */
+    }
+  }
+  return lines.join('\n');
+}
+
+/** `$1.20`-style cost for a log line. */
+export function fmtCost(usd: number): string {
+  return `$${usd.toFixed(2)}`;
+}
+
+/** `41.2s`-style short duration for a per-pass log line. */
+export function fmtSecs(ms: number): string {
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+/** `6:12`-style elapsed for a whole-scan log line. */
+export function fmtElapsed(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }

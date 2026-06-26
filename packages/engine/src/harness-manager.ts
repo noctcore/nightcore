@@ -18,6 +18,7 @@ import type {
   ConventionFinding,
   NightcoreEvent,
   ProposedArtifact,
+  RepoProfile,
   SurfaceCommand,
   TokenUsage,
 } from '@nightcore/contracts';
@@ -26,6 +27,13 @@ import { SessionRunner } from './session-runner.js';
 import type {
   AnalysisRunnerFactory,
   AnalysisSessionRunner,
+} from './analysis-manager.js';
+import {
+  buildRepoInventory,
+  fmtCost,
+  fmtElapsed,
+  fmtSecs,
+  makeHeartbeat,
 } from './analysis-manager.js';
 import {
   ANALYSIS_ALLOWED_TOOLS,
@@ -41,7 +49,7 @@ import {
   parseConventionFindings,
 } from './harness-findings.js';
 import { detectRepoProfile } from './repo-profile.js';
-import { synthesizeHarness } from './harness-synthesis.js';
+import { summarizeProfile, synthesizeHarness } from './harness-synthesis.js';
 
 /** The `start-harness-scan` command variant (the zod schema is exported as a value,
  *  so the engine narrows the union for the type). */
@@ -52,8 +60,11 @@ type StartHarnessScan = Extract<SurfaceCommand, { type: 'start-harness-scan' }>;
 export type HarnessRunnerFactory = AnalysisRunnerFactory;
 export type HarnessSessionRunner = AnalysisSessionRunner;
 
-/** Default number of convention passes to run at once. */
-const DEFAULT_CONCURRENCY = 3;
+/** Default number of convention passes to run at once. Raised from 3→6 (WS4) so an
+ *  8-lens scan finishes in fewer serial waves; still bounded so we never open all 8
+ *  paid Claude subprocesses at once. `runPool` caps this at `categories.length`, and
+ *  `command.maxConcurrency` overrides it. */
+const DEFAULT_CONCURRENCY = 6;
 /** Per-lens turn ceiling (the model explores then writes findings). */
 const DEFAULT_MAX_TURNS = 40;
 /** Findings cap per convention pass. */
@@ -139,12 +150,16 @@ export class HarnessManager {
     this.active.set(command.runId, run);
     const startedAt = Date.now();
 
+    const model = command.model ?? this.deps.config.model;
     emit({
       type: 'harness-scan-started',
       runId: command.runId,
       categories: command.categories,
-      model: command.model ?? this.deps.config.model,
+      model,
     });
+    this.deps.logger?.info(
+      `[harness] scan started — ${command.categories.length} lenses · model ${model}`,
+    );
 
     const all: ConventionFinding[] = [];
     const categoriesRun: ConventionCategory[] = [];
@@ -155,19 +170,34 @@ export class HarnessManager {
       // Deterministic profile first — a cheap fs pass, no session.
       const profile = detectRepoProfile(command.projectPath);
       emit({ type: 'harness-profile-ready', runId: command.runId, profile });
+      this.deps.logger?.info(
+        `[harness] profile detected — ${profile.isMonorepo ? `monorepo (${profile.workspaceTool})` : 'single package'} · ${profile.packages.length} packages · ${profile.languages.join('/') || 'unknown'}`,
+      );
+
+      // Deterministic top-level map injected into every lens + the synthesis pass so
+      // each starts from a known structure instead of re-discovering the tree (WS4).
+      const inventory = buildRepoInventory(command.projectPath);
 
       await runPool(
         command.categories,
         command.maxConcurrency ?? DEFAULT_CONCURRENCY,
         async (category) => {
           if (run.cancelled) return;
+          const categoryStartedAt = Date.now();
           emit({
             type: 'harness-category-started',
             runId: command.runId,
             category,
           });
+          this.deps.logger?.info(`[harness] lens ${category}: started`);
 
-          const outcome = await this.runCategory(command, category, run);
+          const outcome = await this.runCategory(
+            command,
+            category,
+            run,
+            profile,
+            inventory,
+          );
           if (run.cancelled) return;
 
           const grounded = groundConventionFindings(
@@ -188,6 +218,9 @@ export class HarnessManager {
             costUsd: outcome.costUsd,
             ...(outcome.error !== undefined ? { error: outcome.error } : {}),
           });
+          this.deps.logger?.info(
+            `[harness] lens ${category}: completed — ${grounded.length} findings, ${fmtCost(outcome.costUsd)}, ${fmtSecs(Date.now() - categoryStartedAt)}`,
+          );
         },
       );
 
@@ -205,10 +238,18 @@ export class HarnessManager {
 
       // Synthesis: one read-only pass that proposes the harness artifacts. A
       // failure degrades to no proposals — a scan with findings is still useful.
+      // Announce the start so the UI swaps the all-lenses-done dead zone for a
+      // "Synthesizing harness…" state and the terminal marks the (serial) tail.
+      emit({ type: 'harness-synthesis-started', runId: command.runId });
+      this.deps.logger?.info(
+        `[harness] synthesis: started — ${deduped.length} findings to enforce`,
+      );
+      const synthesisStartedAt = Date.now();
       let artifacts: ProposedArtifact[] = [];
       const synthesis = await synthesizeHarness({
         profile,
         findings: deduped,
+        inventory,
         command,
         config: this.deps.config,
         apiKeyFallback: this.deps.apiKeyFallback,
@@ -219,6 +260,9 @@ export class HarnessManager {
       });
       totalCost += synthesis.costUsd;
       addUsage(totalUsage, synthesis.usage);
+      this.deps.logger?.info(
+        `[harness] synthesis: completed — ${synthesis.artifacts.length} artifacts, ${fmtCost(synthesis.costUsd)}, ${fmtSecs(Date.now() - synthesisStartedAt)}`,
+      );
       if (synthesis.error !== undefined) {
         this.deps.logger?.warn('harness synthesis produced no proposals', {
           runId: command.runId,
@@ -244,6 +288,7 @@ export class HarnessManager {
         artifacts,
       });
 
+      const durationMs = Date.now() - startedAt;
       emit({
         type: 'harness-scan-completed',
         runId: command.runId,
@@ -252,9 +297,12 @@ export class HarnessManager {
         artifacts,
         categoriesRun,
         costUsd: totalCost,
-        durationMs: Date.now() - startedAt,
+        durationMs,
         usage: totalUsage,
       });
+      this.deps.logger?.info(
+        `[harness] scan completed — ${deduped.length} findings, ${artifacts.length} proposals across ${categoriesRun.length} lenses, ${fmtCost(totalCost)}, ${fmtElapsed(durationMs)}`,
+      );
     } catch (error) {
       this.deps.logger?.warn('harness scan crashed', error);
       emit({
@@ -273,6 +321,8 @@ export class HarnessManager {
     command: StartHarnessScan,
     category: ConventionCategory,
     run: ActiveRun,
+    profile: RepoProfile,
+    inventory: string,
   ): Promise<CategoryOutcome> {
     const preset = harnessPreset(category);
     const usage: TokenUsage = { ...EMPTY_USAGE };
@@ -281,7 +331,7 @@ export class HarnessManager {
     const first = await this.runOneSession(
       command,
       preset,
-      buildCategoryPrompt(command, preset),
+      buildCategoryPrompt(command, preset, profile, inventory),
       run,
     );
     addUsage(usage, first.usage);
@@ -312,7 +362,7 @@ export class HarnessManager {
       const retry = await this.runOneSession(
         command,
         preset,
-        `${buildCategoryPrompt(command, preset)}\n\nIMPORTANT: your previous answer was not valid JSON. Respond with ONLY the JSON array, nothing else.`,
+        `${buildCategoryPrompt(command, preset, profile, inventory)}\n\nIMPORTANT: your previous answer was not valid JSON. Respond with ONLY the JSON array, nothing else.`,
         run,
       );
       addUsage(usage, retry.usage);
@@ -354,6 +404,12 @@ export class HarnessManager {
     let costUsd = 0;
     let error: string | undefined;
     let reason: SessionFailedReason | undefined;
+    // Throttled progress so a long lens shows life in the terminal instead of
+    // running silent until it completes (its events never reach the wire).
+    const heartbeat = makeHeartbeat(
+      this.deps.logger,
+      `[harness:${preset.category}]`,
+    );
 
     const runner = this.runnerFactory(
       {
@@ -385,6 +441,8 @@ export class HarnessManager {
         } else if (event.type === 'session-failed') {
           error = event.message;
           reason = event.reason;
+        } else {
+          heartbeat(event);
         }
       },
       this.deps.logger?.child(`harness-${preset.category}`),
@@ -407,17 +465,28 @@ export class HarnessManager {
 }
 
 /** The per-run user prompt for a convention pass. The whole repo is always scanned
- *  (conventions are repo-wide), so there is no scope branch. */
+ *  (conventions are repo-wide), so there is no scope branch. The deterministic
+ *  profile + top-level inventory are injected so the lens starts from a known map
+ *  instead of re-discovering the same structure on every pass (WS4). */
 function buildCategoryPrompt(
   command: StartHarnessScan,
   preset: HarnessPreset,
+  profile: RepoProfile,
+  inventory: string,
 ): string {
   return [
     `You are auditing the CONVENTIONS of the project at: ${command.projectPath}`,
     `Convention lens: ${preset.label}.`,
-    'Explore the whole repository first (read the config, the entry points, and a ' +
-      'representative sample of files), then identify the de-facto conventions and ' +
-      'the gaps for this lens.',
+    '',
+    'REPO PROFILE (deterministically detected — start from this, do not re-derive it):',
+    summarizeProfile(profile),
+    '',
+    'REPO MAP (deterministic top-level inventory):',
+    inventory,
+    '',
+    'Using the profile + map above, read the config, the entry points, and a ' +
+      'representative sample of files for THIS lens — do not spend turns re-listing ' +
+      'the tree — then identify the de-facto conventions and the gaps for this lens.',
     '',
     conventionOutputContract(MAX_FINDINGS_PER_CATEGORY),
   ].join('\n');
