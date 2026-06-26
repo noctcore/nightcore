@@ -172,6 +172,23 @@ The suites are fast and offline (no live Claude session, no token use, no cost):
   `session-manager.test.ts` stubs the SDK's `query()` the same way.)
 - **Web** (`apps/web`): `bun run test:web` — Vitest + Storybook component tests.
 
+## What it does today
+
+- **Verification gauntlet** — every completed task runs build → commit → independent
+  reviewer before merging; the board shows per-step results. (`docs/arch/`)
+- **Session history and resume** — completed sessions are resumable; the board
+  can rehydrate a prior run from the SDK's on-disk session store.
+  (`docs/research/2026-06-24-agent-sdk-session-resume-ux-build-plan.md`)
+- **Provider-config inspector** — a Settings panel that probes the SDK's runtime
+  control methods to show the resolved, scope-aware config for a project.
+  (`docs/research/2026-06-24-provider-config-inspector.md`)
+- **UI-configurable external MCP servers** — register external MCP servers in
+  Settings; they are injected additively via the SDK's `Options.mcpServers`.
+  (`docs/research/2026-06-24-ui-configurable-external-mcp-servers.md`)
+- **Insight** — Claude-powered codebase analysis that surfaces categorized,
+  grounded findings and lets you convert any finding directly into a board task.
+  (`docs/research/`)
+
 ## Status & roadmap
 
 Following the studio milestones (see the architecture doc):
@@ -179,17 +196,19 @@ Following the studio milestones (see the architecture doc):
 - **M0 — walking skeleton** *(done)*. Tauri + React → spawn Bun sidecar → run one
   prompt in cwd → stream deltas to a panel. Proves core ↔ sidecar ↔ SDK ↔ local
   auth end-to-end.
-- **M1 — task spine + board**. `Task` domain model + JSONL store (Rust), Kanban
-  board UI with the status lifecycle, run a task via the sidecar.
-- **M2 — autonomy + isolation** (the AutoMaker core). Auto-loop coordinator,
+- **M1 — task spine + board** *(done)*. `Task` domain model + JSONL store (Rust),
+  Kanban board UI with the status lifecycle, run a task via the sidecar.
+- **M2 — autonomy + isolation** *(done)*. Auto-loop coordinator,
   concurrency/slot manager, per-task git **worktree** isolation, dependency
   ordering, failure circuit-breaker.
-- **M3 — provider trait + quality gates**. Formalize `AgentProvider`, stub a
-  second provider, plan-approval gate, event hooks/notifications.
+- **M3 — provider trait + quality gates** *(done)*. `AgentProvider` trait,
+  plan-approval gate, event hooks/notifications.
+- **M4 — verification + quality gates** *(done)*. Verification gauntlet
+  (build → commit → independent review → done / auto-fix / park); pre-merge
+  gauntlet detects real tooling (Bun/npm scripts or Cargo) and stops at first
+  failure.
 
-Open threads: sidecar packaging for distribution (`bun build --compile` →
-Tauri `externalBin`), long-lived vs per-prompt sidecar, and the worktree
-subsystem (the highest-risk M2 port).
+Open threads: see `docs/` for current work in progress.
 
 ## License
 

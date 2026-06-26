@@ -1,3 +1,7 @@
+> **RETIRED — legacy TS harness, no longer the product. See
+> [`docs/architecture.md`](../../docs/architecture.md) for the current
+> 3-tier desktop studio.**
+
 # @nightcore/tui
 
 Nightcore's interactive terminal surface — an OpenTUI + React view over the

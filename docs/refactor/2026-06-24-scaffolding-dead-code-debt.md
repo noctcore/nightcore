@@ -21,10 +21,10 @@ What remains is **not** "delete me" — it is **classified scaffolding**: parked
 
 | Item | Evidence (file:line) | Classification | Notes |
 |------|----------------------|----------------|-------|
-| `@nightcore/tools` package (echo/fs/git/search/shell tools) | `packages/tools/src/*`; never reaches live SDK options | **PARKED-INTENTIONAL** | Future custom in-process MCP tools. Per project memory: do NOT delete. |
-| `@nightcore/mcp` package (`externalMcpServers`) | `packages/mcp/src/index.ts:26` (empty registry) | **PARKED-INTENTIONAL** | Future external MCP server configs. Empty by design. |
-| `echoTool` connectivity demo | `packages/tools/src/echo.ts:9` | **PARKED-INTENTIONAL** | "Exists to prove the in-process SDK MCP wiring end-to-end." Lives inside the parked tools pkg. |
-| `ToolRegistry.buildSdkMcpServer()` / `.mcpServers()` / `.descriptors()` | `packages/engine/src/tool-registry.ts:45,54,59` | **PARKED-INTENTIONAL (live-dead)** | These three methods assemble `@nightcore/tools`+`@nightcore/mcp` but are **never called** — the custom MCP server is NOT in `Options` (see `session-runner.ts:177-182`). Only `ToolRegistry.riskOf()` is live (`session-runner.ts:148`). The class is "kept solely for risk metadata." When the parked packages are eventually wired or dropped, these methods are the seam. |
+| `@nightcore/tools` package (echo/fs/git/search/shell tools) | `packages/tools/src/*`; never reaches live SDK options | **TO BE REMOVED** | Slated for removal per the 2026-06-24 decision (native SDK tools + UI-configurable external MCP replaces this). Code still exists; removal not yet executed. |
+| `@nightcore/mcp` package (`externalMcpServers`) | `packages/mcp/src/index.ts:26` (empty registry) | **TO BE REMOVED** | Slated for removal per the 2026-06-24 decision. External MCP is now UI-configurable via `Options.mcpServers` directly. Code still exists; removal not yet executed. |
+| `echoTool` connectivity demo | `packages/tools/src/echo.ts:9` | **TO BE REMOVED** | Lives inside `@nightcore/tools`; goes with the package removal. |
+| `ToolRegistry.buildSdkMcpServer()` / `.mcpServers()` / `.descriptors()` | `packages/engine/src/tool-registry.ts:45,54,59` | **TO BE REMOVED (with packages)** | These three methods assemble `@nightcore/tools`+`@nightcore/mcp` but are **never called** — the custom MCP server is NOT in `Options` (see `session-runner.ts:177-182`). Only `ToolRegistry.riskOf()` is live (`session-runner.ts:148`); **`ToolRegistry` itself is retained** after the packages go because `riskOf` still feeds the permission gate. |
 | `task kind = research` (user-selectable) | UI enabled `status.ts:161`; engine preset `kind-presets.ts:73` returns `{}`; Rust policy `kind.rs:43` groups it with reserved (no worktree/verify) | **STUB-IN-PROGRESS** | Selectable in the picker but functionally an unverified build with NO read-only enforcement and no research-specific prompt. Half-wired: surfaced before its behavior exists. |
 | `task kind = review` (NOT user-selectable) | UI disabled "coming soon" `status.ts:162`; but real agent preset `kind-presets.ts:64`; real orchestration `kind.rs:36`; **live** via `verification.rs:293 dispatch_reviewer` | **STUB-IN-PROGRESS (inverted)** | The reverse of `research`: the picker hides "Review" but the review machinery IS live — it's the verification gate's reviewer. So `review` as a *task kind* is parked, but `review` as a *mechanism* is done. |
 | `task kind = decompose` | reserved everywhere: `status.ts:163`, `kind.rs:43`, `kind-presets.ts:74` | **PARKED-INTENTIONAL** | Defined on the wire, no behavior any tier. Clean reserved seam. |
@@ -43,7 +43,7 @@ What remains is **not** "delete me" — it is **classified scaffolding**: parked
 |------|------|------|
 | (none) | No removable dead code. `cargo check` 0 warnings, `eslint .` 0 unused. | — |
 
-The closest things to "dead" are the `ToolRegistry` MCP-assembly methods (live-dead: defined, never called) — but they are an intentional parked seam, NOT to be removed (project memory is explicit). Leave them; track them.
+The closest things to "dead" are the `ToolRegistry` MCP-assembly methods (live-dead: defined, never called) — these are slated for removal along with `@nightcore/tools` and `@nightcore/mcp` per the 2026-06-24 decision, but the code still exists. `ToolRegistry` itself is retained because `riskOf` still feeds the permission gate.
 
 ## Duplication to Consolidate
 
@@ -109,8 +109,8 @@ The closest things to "dead" are the `ToolRegistry` MCP-assembly methods (live-d
 
 ## What NOT to Refactor (intentional — leave alone)
 
-- **`@nightcore/tools`, `@nightcore/mcp`** — parked roadmap seam (custom tools / external MCP). Project memory + code comments are explicit. Not dead code.
-- **`ToolRegistry.buildSdkMcpServer/mcpServers/descriptors`** — live-dead but the intentional re-wire seam for the above. Retain.
+- **`@nightcore/tools`, `@nightcore/mcp`** — slated for removal per the 2026-06-24 decision, but the code still exists. Do not delete piecemeal; remove as a coordinated pass.
+- **`ToolRegistry.buildSdkMcpServer/mcpServers/descriptors`** — to be removed with the packages above. `ToolRegistry` itself (specifically `riskOf`) must be retained even after the packages go.
 - **Four empty `export {}` `.hooks.ts` files** — REQUIRED by the `component-folder-structure` lint rule. Deleting breaks `eslint`.
 - **`research`/`review`/`decompose` reserved kinds** — wire shape is intentional; `review` machinery is already live via the verification gate. Don't "clean up" the reserved variants.
 - **All `apps/web/src/lib/generated/*` and Rust `contracts/generated.rs`** — codegen output. Edit the source-of-truth (Rust serde / zod), never the generated file.
