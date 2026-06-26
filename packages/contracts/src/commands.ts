@@ -6,6 +6,7 @@ import {
   TaskKindSchema,
 } from './config.js';
 import { PermissionDecisionSchema, QuestionAnswerSchema } from './tools.js';
+import { AnalysisScopeSchema, FindingCategorySchema } from './insight.js';
 
 /**
  * `SurfaceCommand` — the typed stream flowing surface → engine.
@@ -102,6 +103,43 @@ export const AnswerQuestionCommand = z.object({
   answer: QuestionAnswerSchema,
 });
 
+/** Start an Insight analysis run. Unlike `start-session`, this is NOT a single
+ *  Claude turn the surface renders — the engine fans out one read-only category
+ *  pass per `categories` entry (bounded by `maxConcurrency`), grounds + dedups the
+ *  findings, and streams `analysis-*` events keyed by `runId`. The Rust core
+ *  assigns `runId` and owns persistence; the engine stays stateless about history.
+ *  In `diff` scope the Rust core resolves `changedFiles` from git and the passes
+ *  focus on them; in `repo` scope the model explores the whole tree itself. */
+export const StartAnalysisCommand = z.object({
+  type: z.literal('start-analysis'),
+  /** Correlation id (also the persisted run id) assigned by the Rust core. */
+  runId: z.string(),
+  /** Absolute project root the passes run in (read-only). */
+  projectPath: z.string(),
+  scope: AnalysisScopeSchema,
+  /** Repo-relative files to focus on in `diff` scope (resolved by the Rust core).
+   *  Ignored in `repo` scope. */
+  changedFiles: z.array(z.string()).optional(),
+  /** The categories to run (a subset of the 9). */
+  categories: z.array(FindingCategorySchema),
+  /** Model override for the passes; absent ⇒ inherit the resolved config. */
+  model: z.string().optional(),
+  /** Reasoning effort for the passes; absent ⇒ inherit. */
+  effort: EffortLevelSchema.optional(),
+  /** Max category passes to run at once. Absent ⇒ engine default (bounded). */
+  maxConcurrency: z.number().int().positive().optional(),
+  /** Per-category autonomy ceiling (SDK `Options.maxTurns`). */
+  maxTurnsPerCategory: z.number().int().positive().optional(),
+  /** Per-category spend ceiling in USD (SDK `Options.maxBudgetUsd`). */
+  maxBudgetUsdPerCategory: z.number().positive().optional(),
+});
+
+/** Cancel an in-flight Insight analysis run (aborts every category pass). */
+export const CancelAnalysisCommand = z.object({
+  type: z.literal('cancel-analysis'),
+  runId: z.string(),
+});
+
 export const SurfaceCommandSchema = z.discriminatedUnion('type', [
   StartSessionCommand,
   SendInputCommand,
@@ -110,6 +148,8 @@ export const SurfaceCommandSchema = z.discriminatedUnion('type', [
   SetPermissionModeCommand,
   ApprovePermissionCommand,
   AnswerQuestionCommand,
+  StartAnalysisCommand,
+  CancelAnalysisCommand,
 ]);
 export type SurfaceCommand = z.infer<typeof SurfaceCommandSchema>;
 
