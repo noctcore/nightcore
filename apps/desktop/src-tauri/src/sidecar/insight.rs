@@ -433,6 +433,29 @@ pub(crate) async fn handle_analysis_event(app: &AppHandle, event_type: &str, eve
             });
             tracing::info!(target: "nightcore", run_id, reason, "insight analysis ended (failed/aborted)");
         }
+        // Intermediate lifecycle events: forwarded above for the live UI, and logged
+        // here (mirroring reader.rs's session logging) so a long analysis's progress
+        // reaches the terminal instead of going silent between the two endpoints.
+        "analysis-category-started" => {
+            let category = event
+                .get("category")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            tracing::info!(target: "nightcore", run_id, category, "insight category started");
+        }
+        "analysis-category-completed" => {
+            let category = event
+                .get("category")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let findings = event
+                .get("findings")
+                .and_then(Value::as_array)
+                .map(Vec::len)
+                .unwrap_or(0);
+            let cost = event.get("costUsd").and_then(Value::as_f64).unwrap_or(0.0);
+            tracing::info!(target: "nightcore", run_id, category, findings, cost_usd = cost, "insight category completed");
+        }
         _ => {}
     }
 }

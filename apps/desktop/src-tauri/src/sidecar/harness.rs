@@ -576,6 +576,57 @@ pub(crate) async fn handle_harness_event(app: &AppHandle, event_type: &str, even
             });
             tracing::info!(target: "nightcore", run_id, reason, "harness scan ended (failed/aborted)");
         }
+        // Intermediate lifecycle events: forwarded above for the live UI, and logged
+        // here (mirroring reader.rs's session logging) so a long scan's progress reaches
+        // the terminal instead of going silent between the two endpoints.
+        "harness-profile-ready" => {
+            let profile = event.get("profile");
+            let is_monorepo = profile
+                .and_then(|p| p.get("isMonorepo"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let workspace_tool = profile
+                .and_then(|p| p.get("workspaceTool"))
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            let packages = profile
+                .and_then(|p| p.get("packages"))
+                .and_then(Value::as_array)
+                .map(Vec::len)
+                .unwrap_or(0);
+            tracing::info!(target: "nightcore", run_id, is_monorepo, workspace_tool, packages, "harness profile ready");
+        }
+        "harness-category-started" => {
+            let category = event
+                .get("category")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            tracing::info!(target: "nightcore", run_id, category, "harness lens started");
+        }
+        "harness-category-completed" => {
+            let category = event
+                .get("category")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let findings = event
+                .get("findings")
+                .and_then(Value::as_array)
+                .map(Vec::len)
+                .unwrap_or(0);
+            let cost = event.get("costUsd").and_then(Value::as_f64).unwrap_or(0.0);
+            tracing::info!(target: "nightcore", run_id, category, findings, cost_usd = cost, "harness lens completed");
+        }
+        "harness-synthesis-started" => {
+            tracing::info!(target: "nightcore", run_id, "harness synthesis started");
+        }
+        "harness-proposals-ready" => {
+            let artifacts = event
+                .get("artifacts")
+                .and_then(Value::as_array)
+                .map(Vec::len)
+                .unwrap_or(0);
+            tracing::info!(target: "nightcore", run_id, artifacts, "harness proposals ready");
+        }
         _ => {}
     }
 }
