@@ -475,12 +475,13 @@ impl SidecarProvider {
         orphaned
     }
 
-    /// Dispatch an Insight analysis command (`start-analysis` / `cancel-analysis`)
-    /// to the sidecar. Unlike `start_session`, analysis correlates by `runId`
-    /// (carried in the command and echoed on every `analysis-*` event), so there is
-    /// NO pending-launch FIFO push — the line is written directly. The sidecar's
-    /// `SessionManager` owns the fan-out; the core only sees the `analysis-*` stream.
-    pub async fn dispatch_analysis(&self, command: SurfaceCommand) -> Result<(), String> {
+    /// Dispatch a run-scoped command (`start-analysis`/`cancel-analysis` for Insight,
+    /// `start-harness-scan`/`cancel-harness-scan` for Harness) to the sidecar. Unlike
+    /// `start_session`, these correlate by `runId` (carried in the command and echoed on
+    /// every `analysis-*`/`harness-*` event), so there is NO pending-launch FIFO push —
+    /// the line is written directly. The sidecar's `SessionManager` owns the fan-out; the
+    /// core only sees the run-scoped event stream.
+    pub async fn dispatch_command(&self, command: SurfaceCommand) -> Result<(), String> {
         let payload = serde_json::to_value(&command).map_err(|e| e.to_string())?;
         let mut guard = self.stdin.lock().await;
         let stdin = guard.as_mut().ok_or("sidecar stdin unavailable")?;

@@ -139,7 +139,7 @@ pub async fn start_analysis(
         max_budget_usd_per_category: None,
     };
     let orch = app.state::<Orchestrator>();
-    if let Err(e) = orch.provider.dispatch_analysis(command).await {
+    if let Err(e) = orch.provider.dispatch_command(command).await {
         let _ = insight_store.mutate(&run_id, |r| {
             r.status = "failed".to_string();
             r.error = Some(e.clone());
@@ -158,7 +158,7 @@ pub async fn cancel_analysis(app: AppHandle, run_id: String) -> Result<(), Strin
     let command = SurfaceCommand::CancelAnalysis {
         run_id: run_id.clone(),
     };
-    orch.provider.dispatch_analysis(command).await
+    orch.provider.dispatch_command(command).await
 }
 
 /// All analysis runs for the active project (newest first).
