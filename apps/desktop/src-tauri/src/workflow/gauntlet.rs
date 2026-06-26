@@ -20,7 +20,7 @@ use std::path::Path;
 #[cfg(test)]
 use std::process::Command;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 // `ts-rs` is a dev-dependency; the codegen derive is gated to `cfg(test)`.
 #[cfg(test)]
 use ts_rs::TS;
@@ -31,7 +31,9 @@ use ts_rs::TS;
 const TAIL_LIMIT: usize = 4000;
 
 /// The outcome of one gauntlet step.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+// Also `Deserialize` because it travels (via `StructureLockCheck`) inside the
+// persisted `Task` JSON, which round-trips through serde on store load.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(TS))]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(test, ts(export, export_to = "StepStatus.ts"))]
@@ -287,8 +289,9 @@ pub fn run(dir: &Path) -> GauntletResult {
 }
 
 /// Combine stdout+stderr and keep the last [`TAIL_LIMIT`] bytes (the part that
-/// usually names the failure), as UTF-8-lossy text.
-fn tail_output(stdout: &[u8], stderr: &[u8]) -> String {
+/// usually names the failure), as UTF-8-lossy text. Shared with the Structure-Lock
+/// Gauntlet (`gauntlet_project`) so both gates truncate identically.
+pub(crate) fn tail_output(stdout: &[u8], stderr: &[u8]) -> String {
     let mut combined = String::new();
     combined.push_str(&String::from_utf8_lossy(stdout));
     if !stderr.is_empty() {

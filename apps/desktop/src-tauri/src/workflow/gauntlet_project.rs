@@ -1,0 +1,556 @@
+//! The Structure-Lock Gauntlet (feature #3): a per-project, zero-agent-cost gate
+//! that runs the TARGET project's OWN generated harness checks — its custom lint
+//! plugin, an architecture-boundary check (dependency-cruiser / import rules), and
+//! coverage thresholds — as a deterministic gate BEFORE the paid reviewer, and
+//! again at merge. An agent literally cannot merge code that breaks the harness.
+//!
+//! This is the sibling of [`crate::gauntlet`] (the pre-merge readiness gauntlet),
+//! but where that one DETECTS the project's tooling, this one is DRIVEN by an
+//! explicit, opt-in config the lint-plugin generator (feature #2) writes alongside
+//! the plugin: `.nightcore/harness.json`.
+//!
+//! Safety posture (false-positive gates are worse than no gate):
+//!   - **Absent `.nightcore/harness.json` ⇒ skip ALL checks** (trivially passes),
+//!     so existing projects are completely unaffected — every check is opt-in.
+//!   - A malformed file (or a missing `checks` array) ⇒ warn-and-skip everything.
+//!   - A malformed / un-runnable individual entry ⇒ warn-and-skip just that entry.
+//!   - Checks run sequentially, stopping at the first failure (stop-at-first), each
+//!     surfacing the exact command it ran so a human can reproduce it.
+
+use std::path::Path;
+// Only the test module spawns directly; production checks route through
+// `crate::platform::std_command` (Windows-shim aware), like the gauntlet.
+#[cfg(test)]
+use std::process::Command;
+
+use serde::{Deserialize, Serialize};
+// `ts-rs` is a dev-dependency; the codegen derive is gated to `cfg(test)`.
+#[cfg(test)]
+use ts_rs::TS;
+
+// Reuse the gauntlet's step status (`passed`/`failed`/`skipped`) and tail helper so
+// the two gauntlets share one vocabulary and one truncation discipline.
+use crate::gauntlet::{tail_output, StepStatus};
+
+/// The relative path of the per-project structure-lock config, written by the
+/// lint-plugin generator (feature #2) alongside the generated plugin.
+const CONFIG_REL_PATH: &str = ".nightcore/harness.json";
+
+/// The kind of structure-lock check, mirroring the `.nightcore/harness.json`
+/// `kind` vocabulary. Deserialized kebab-case so the on-disk config reads
+/// naturally (`"lint-plugin"`, `"dependency-cruiser"`, `"coverage-threshold"`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum HarnessCheckKind {
+    /// The project's own generated ESLint/Biome plugin.
+    LintPlugin,
+    /// An architecture-boundary check (dependency-cruiser / import rules).
+    DependencyCruiser,
+    /// A coverage-threshold gate.
+    CoverageThreshold,
+}
+
+impl HarnessCheckKind {
+    /// The stable wire string surfaced on a [`StructureLockCheck`] (kept as a free
+    /// string on the result so the UI can render an unknown future kind gracefully).
+    fn as_wire(self) -> &'static str {
+        match self {
+            HarnessCheckKind::LintPlugin => "lint-plugin",
+            HarnessCheckKind::DependencyCruiser => "dependency-cruiser",
+            HarnessCheckKind::CoverageThreshold => "coverage-threshold",
+        }
+    }
+}
+
+/// One check as declared in `.nightcore/harness.json`. Parsed leniently (per-entry
+/// warn-and-skip) so a single malformed entry never sinks the whole gate.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HarnessCheckConfig {
+    name: String,
+    kind: HarnessCheckKind,
+    /// The exact command line to run (e.g. `npx eslint .`). When absent the check
+    /// is warn-and-skipped — there is nothing deterministic to run.
+    #[serde(default)]
+    command: Option<String>,
+    /// An optional config path for the tool. Informational on the result; the
+    /// `command` itself is expected to already reference it.
+    #[serde(default)]
+    config_path: Option<String>,
+    /// Whether this check participates in the gate. Defaults to `true` (a listed
+    /// check is on unless explicitly disabled); the file being ABSENT is the
+    /// opt-OUT for a whole project.
+    #[serde(default = "default_enabled")]
+    enabled: bool,
+}
+
+/// `enabled` defaults to `true`: a check the generator bothered to list is on
+/// unless the user explicitly flips it off.
+fn default_enabled() -> bool {
+    true
+}
+
+/// The outcome of one structure-lock check — parallel to
+/// [`crate::gauntlet::GauntletStep`], but carrying the harness `kind`.
+//
+// `exit_code`/`output` are OMITTED when absent (`skip_serializing_if` + `default`)
+// so the generated TS is `exitCode?: number` / `output?: string`, matching the
+// gauntlet's `GauntletStep` exactly.
+// Also `Deserialize`: this travels inside the persisted `Task` JSON, which
+// round-trips through serde when the store loads from disk.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "StructureLockCheck.ts"))]
+pub struct StructureLockCheck {
+    /// The logical name from the config (e.g. `folder-per-component`).
+    pub name: String,
+    /// The harness kind (`lint-plugin` / `dependency-cruiser` / `coverage-threshold`).
+    pub kind: String,
+    /// The exact command line that was (or would be) run.
+    pub command: String,
+    pub status: StepStatus,
+    /// The process exit code, when the check actually ran.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub exit_code: Option<i32>,
+    /// Tail of combined stdout+stderr for a failing check (truncated; never logged).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub output: Option<String>,
+}
+
+/// The structured structure-lock result surfaced to the UI and stored on the task
+/// — parallel to [`crate::gauntlet::GauntletResult`].
+//
+// `failed_check` is OMITTED when absent so the generated TS is `failedCheck?:
+// string`, matching the gauntlet's `failedStep?`.
+// Also `Deserialize`: stored on the `Task` and round-tripped through serde on load.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "StructureLockResult.ts"))]
+pub struct StructureLockResult {
+    /// True when every enabled check passed (vacuously true when none exist / the
+    /// config is absent).
+    pub passed: bool,
+    pub checks: Vec<StructureLockCheck>,
+    /// The name of the first check that failed, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub failed_check: Option<String>,
+}
+
+/// A planned check: its config metadata plus the resolved program + args to spawn.
+struct PlannedCheck {
+    name: String,
+    kind: HarnessCheckKind,
+    command: String,
+    program: String,
+    args: Vec<String>,
+}
+
+/// Load + plan the enabled checks from `.nightcore/harness.json` in `dir`. Returns
+/// an empty vec for every "skip" path (absent file, malformed JSON, missing
+/// `checks` array, all-disabled), so the gate trivially passes in those cases.
+fn load_checks(dir: &Path) -> Vec<PlannedCheck> {
+    let path = dir.join(CONFIG_REL_PATH);
+    // ABSENT ⇒ skip all (the opt-out for a whole project). A read error other than
+    // "not found" is treated the same way (warn-and-skip), never a hard failure.
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    let value: serde_json::Value = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(target: "nightcore::structure_lock", error = %e, "malformed .nightcore/harness.json; skipping all checks");
+            return Vec::new();
+        }
+    };
+    let Some(entries) = value.get("checks").and_then(|c| c.as_array()) else {
+        tracing::warn!(target: "nightcore::structure_lock", "no `checks` array in .nightcore/harness.json; skipping all checks");
+        return Vec::new();
+    };
+
+    let mut planned = Vec::new();
+    for entry in entries {
+        match serde_json::from_value::<HarnessCheckConfig>(entry.clone()) {
+            Ok(cfg) => {
+                if !cfg.enabled {
+                    continue;
+                }
+                match plan_check(&cfg) {
+                    Some(p) => planned.push(p),
+                    None => {
+                        tracing::warn!(target: "nightcore::structure_lock", name = %cfg.name, "structure-lock check has no runnable command; skipping");
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(target: "nightcore::structure_lock", error = %e, "malformed structure-lock check entry; skipping it");
+            }
+        }
+    }
+    planned
+}
+
+/// Resolve a config entry into a spawnable plan. The `command` is split on
+/// whitespace into a program + args (the bare program is routed through the
+/// platform resolver at spawn time for Windows-shim handling). `None` ⇒ no runnable
+/// command (warn-and-skip).
+fn plan_check(cfg: &HarnessCheckConfig) -> Option<PlannedCheck> {
+    let command = cfg.command.as_ref()?.trim().to_string();
+    if command.is_empty() {
+        return None;
+    }
+    let mut tokens = command.split_whitespace();
+    let program = tokens.next()?.to_string();
+    let args: Vec<String> = tokens.map(|s| s.to_string()).collect();
+    Some(PlannedCheck {
+        name: cfg.name.clone(),
+        kind: cfg.kind,
+        command,
+        program,
+        args,
+    })
+}
+
+/// Run the structure-lock gauntlet over a directory: load the enabled checks from
+/// `.nightcore/harness.json`, run them sequentially, and stop at the first non-zero
+/// exit. A project with no config (or no enabled checks) passes trivially.
+pub fn run(dir: &Path) -> StructureLockResult {
+    let planned = load_checks(dir);
+    let mut checks = Vec::with_capacity(planned.len());
+    let mut failed_check: Option<String> = None;
+
+    for check in planned {
+        let kind = check.kind.as_wire().to_string();
+        if failed_check.is_some() {
+            // An earlier check failed: record the rest as skipped (stop-at-first).
+            checks.push(StructureLockCheck {
+                name: check.name,
+                kind,
+                command: check.command,
+                status: StepStatus::Skipped,
+                exit_code: None,
+                output: None,
+            });
+            continue;
+        }
+
+        tracing::debug!(target: "nightcore::structure_lock", check = %check.name, "running structure-lock check");
+        let output = crate::platform::std_command(&check.program)
+            .args(&check.args)
+            .current_dir(dir)
+            .output();
+
+        match output {
+            Ok(out) if out.status.success() => {
+                tracing::info!(target: "nightcore::structure_lock", check = %check.name, exit_code = ?out.status.code(), "structure-lock check passed");
+                checks.push(StructureLockCheck {
+                    name: check.name,
+                    kind,
+                    command: check.command,
+                    status: StepStatus::Passed,
+                    exit_code: out.status.code(),
+                    output: None,
+                });
+            }
+            Ok(out) => {
+                // Check NAME + exit code only to the log — never the output body
+                // (it ships to the UI payload, never to the tracing sink).
+                tracing::error!(target: "nightcore::structure_lock", check = %check.name, exit_code = ?out.status.code(), "structure-lock check failed");
+                failed_check = Some(check.name.clone());
+                checks.push(StructureLockCheck {
+                    name: check.name,
+                    kind,
+                    command: check.command,
+                    status: StepStatus::Failed,
+                    exit_code: out.status.code(),
+                    output: Some(tail_output(&out.stdout, &out.stderr)),
+                });
+            }
+            Err(e) => {
+                // The tool couldn't be launched at all (missing from PATH): a real
+                // failure for this check — stop here.
+                tracing::error!(target: "nightcore::structure_lock", check = %check.name, error = %e, "structure-lock check could not launch");
+                failed_check = Some(check.name.clone());
+                checks.push(StructureLockCheck {
+                    name: check.name,
+                    kind,
+                    command: check.command,
+                    status: StepStatus::Failed,
+                    exit_code: None,
+                    output: Some(format!("failed to launch: {e}")),
+                });
+            }
+        }
+    }
+
+    let passed = failed_check.is_none();
+    tracing::info!(target: "nightcore::structure_lock", passed, failed_check = ?failed_check, checks = checks.len(), "structure-lock gauntlet finished");
+    StructureLockResult {
+        passed,
+        checks,
+        failed_check,
+    }
+}
+
+/// A trivially-passing result (no config / no enabled checks). Mirrors
+/// [`crate::gauntlet::empty_pass`].
+pub fn empty_pass() -> StructureLockResult {
+    StructureLockResult {
+        passed: true,
+        checks: Vec::new(),
+        failed_check: None,
+    }
+}
+
+/// A human-readable fix instruction for the auto-fix loop, naming the failed check,
+/// its exact command, and the captured output so the agent can self-correct. Pure,
+/// so it's unit-testable without spawning anything.
+pub fn fix_instruction(result: &StructureLockResult) -> String {
+    match result.checks.iter().find(|c| c.status == StepStatus::Failed) {
+        Some(c) => format!(
+            "The Structure-Lock Gauntlet failed: the project's own harness check \
+             `{name}` did not pass. It MUST pass before this work can be verified or \
+             merged. Re-run it locally and fix every violation it reports:\n\n\
+             Command: {command}\n\nOutput:\n{output}",
+            name = c.name,
+            command = c.command,
+            output = c.output.as_deref().unwrap_or("(no output captured)"),
+        ),
+        None => "The Structure-Lock Gauntlet failed. Fix the project's harness \
+                 checks before this work can be verified or merged."
+            .to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Write a `.nightcore/harness.json` with the given raw body into a fresh temp
+    /// dir and return the dir.
+    fn temp_project_with_config(body: &str) -> tempfile::TempDir {
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let nc = tmp.path().join(".nightcore");
+        std::fs::create_dir_all(&nc).expect("mkdir .nightcore");
+        std::fs::write(nc.join("harness.json"), body).expect("write harness.json");
+        tmp
+    }
+
+    #[test]
+    fn absent_config_skips_all_checks_and_passes() {
+        // The pinning guarantee: a project with no .nightcore/harness.json is wholly
+        // unaffected — the gate passes with zero checks.
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let result = run(tmp.path());
+        assert!(result.passed, "absent config ⇒ pass");
+        assert!(result.checks.is_empty());
+        assert!(result.failed_check.is_none());
+    }
+
+    #[test]
+    fn malformed_config_warns_and_skips_all() {
+        let tmp = temp_project_with_config("{ not json");
+        let result = run(tmp.path());
+        assert!(result.passed, "malformed config ⇒ skip all ⇒ pass");
+        assert!(result.checks.is_empty());
+    }
+
+    #[test]
+    fn missing_checks_array_skips_all() {
+        let tmp = temp_project_with_config(r#"{ "other": true }"#);
+        let result = run(tmp.path());
+        assert!(result.passed);
+        assert!(result.checks.is_empty());
+    }
+
+    #[test]
+    fn config_parses_kinds_and_default_enabled() {
+        // Three well-formed entries parse; an entry with no `enabled` defaults on; a
+        // disabled entry is dropped from the plan.
+        let body = r#"{
+            "checks": [
+                { "name": "lint", "kind": "lint-plugin", "command": "sh -c true" },
+                { "name": "arch", "kind": "dependency-cruiser", "command": "sh -c true", "enabled": true },
+                { "name": "cov", "kind": "coverage-threshold", "command": "sh -c true", "enabled": false }
+            ]
+        }"#;
+        let tmp = temp_project_with_config(body);
+        let planned = load_checks(tmp.path());
+        let names: Vec<&str> = planned.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, vec!["lint", "arch"], "the disabled check is dropped");
+        assert_eq!(planned[0].kind.as_wire(), "lint-plugin");
+        assert_eq!(planned[1].kind.as_wire(), "dependency-cruiser");
+    }
+
+    #[test]
+    fn malformed_entry_is_skipped_but_siblings_run() {
+        // The first entry is missing `kind` (malformed) — warn-and-skip it; the
+        // second still plans.
+        let body = r#"{
+            "checks": [
+                { "name": "broken", "command": "sh -c true" },
+                { "name": "ok", "kind": "lint-plugin", "command": "sh -c true" }
+            ]
+        }"#;
+        let tmp = temp_project_with_config(body);
+        let planned = load_checks(tmp.path());
+        let names: Vec<&str> = planned.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, vec!["ok"], "only the well-formed entry survives");
+    }
+
+    #[test]
+    fn an_entry_with_no_command_is_skipped() {
+        let body = r#"{
+            "checks": [
+                { "name": "nocmd", "kind": "lint-plugin" },
+                { "name": "ok", "kind": "lint-plugin", "command": "sh -c true" }
+            ]
+        }"#;
+        let tmp = temp_project_with_config(body);
+        let planned = load_checks(tmp.path());
+        let names: Vec<&str> = planned.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, vec!["ok"], "a command-less check can't run");
+    }
+
+    /// Mirror `run()` over hand-built plans through `sh` directly, so the test does
+    /// not depend on the platform resolver or a real tool being installed. Exercises
+    /// the same sequencing + stop-at-first logic.
+    fn run_planned(planned: Vec<PlannedCheck>, dir: &Path) -> StructureLockResult {
+        let mut checks = Vec::new();
+        let mut failed: Option<String> = None;
+        for check in planned {
+            let kind = check.kind.as_wire().to_string();
+            if failed.is_some() {
+                checks.push(StructureLockCheck {
+                    name: check.name,
+                    kind,
+                    command: check.command,
+                    status: StepStatus::Skipped,
+                    exit_code: None,
+                    output: None,
+                });
+                continue;
+            }
+            let output = Command::new(&check.program)
+                .args(&check.args)
+                .current_dir(dir)
+                .output()
+                .expect("spawn sh");
+            if output.status.success() {
+                checks.push(StructureLockCheck {
+                    name: check.name,
+                    kind,
+                    command: check.command,
+                    status: StepStatus::Passed,
+                    exit_code: output.status.code(),
+                    output: None,
+                });
+            } else {
+                failed = Some(check.name.clone());
+                checks.push(StructureLockCheck {
+                    name: check.name,
+                    kind,
+                    command: check.command,
+                    status: StepStatus::Failed,
+                    exit_code: output.status.code(),
+                    output: Some(tail_output(&output.stdout, &output.stderr)),
+                });
+            }
+        }
+        StructureLockResult {
+            passed: failed.is_none(),
+            checks,
+            failed_check: failed,
+        }
+    }
+
+    fn sh_check(name: &str, kind: HarnessCheckKind, script: &str) -> PlannedCheck {
+        PlannedCheck {
+            name: name.to_string(),
+            kind,
+            command: format!("sh -c {script}"),
+            program: "sh".to_string(),
+            args: vec!["-c".to_string(), script.to_string()],
+        }
+    }
+
+    #[test]
+    fn a_passing_check_set_passes() {
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let result = run_planned(
+            vec![
+                sh_check("lint", HarnessCheckKind::LintPlugin, "exit 0"),
+                sh_check("arch", HarnessCheckKind::DependencyCruiser, "exit 0"),
+            ],
+            tmp.path(),
+        );
+        assert!(result.passed);
+        assert!(result.checks.iter().all(|c| c.status == StepStatus::Passed));
+        assert!(result.failed_check.is_none());
+    }
+
+    #[test]
+    fn a_failing_check_stops_the_run_and_reports_it() {
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let result = run_planned(
+            vec![
+                sh_check("lint", HarnessCheckKind::LintPlugin, "echo boom 1>&2; exit 1"),
+                sh_check("arch", HarnessCheckKind::DependencyCruiser, "exit 0"),
+            ],
+            tmp.path(),
+        );
+        assert!(!result.passed);
+        assert_eq!(result.failed_check.as_deref(), Some("lint"));
+        let lint = result.checks.iter().find(|c| c.name == "lint").unwrap();
+        assert_eq!(lint.status, StepStatus::Failed);
+        assert!(lint.output.as_deref().unwrap().contains("boom"));
+        // Everything after a failure is skipped (stop-at-first).
+        let arch = result.checks.iter().find(|c| c.name == "arch").unwrap();
+        assert_eq!(arch.status, StepStatus::Skipped);
+    }
+
+    #[test]
+    fn fix_instruction_names_the_failed_check_and_command() {
+        let result = StructureLockResult {
+            passed: false,
+            failed_check: Some("folder-per-component".into()),
+            checks: vec![StructureLockCheck {
+                name: "folder-per-component".into(),
+                kind: "lint-plugin".into(),
+                command: "npx eslint .".into(),
+                status: StepStatus::Failed,
+                exit_code: Some(1),
+                output: Some("error: missing index".into()),
+            }],
+        };
+        let text = fix_instruction(&result);
+        assert!(text.contains("folder-per-component"), "names the check");
+        assert!(text.contains("npx eslint ."), "includes the command");
+        assert!(text.contains("missing index"), "includes the output");
+    }
+
+    #[test]
+    fn empty_pass_is_trivially_passing() {
+        let r = empty_pass();
+        assert!(r.passed && r.checks.is_empty() && r.failed_check.is_none());
+    }
+
+    #[test]
+    fn result_serializes_camel_case_and_omits_absent_failed_check() {
+        let r = empty_pass();
+        let value = serde_json::to_value(&r).unwrap();
+        let obj = value.as_object().unwrap();
+        assert!(obj.contains_key("passed"));
+        assert!(obj.contains_key("checks"));
+        // `failed_check` is omitted when None (skip_serializing_if), matching the
+        // gauntlet's `failedStep?` optionality.
+        assert!(
+            !obj.contains_key("failedCheck"),
+            "absent failed_check is omitted, not null"
+        );
+    }
+}

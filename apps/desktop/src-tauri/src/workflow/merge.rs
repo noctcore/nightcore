@@ -8,6 +8,7 @@
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::gauntlet;
+use crate::gauntlet_project;
 use crate::m2::worktree::{self, MergeOutcome};
 use crate::project::{Project, ProjectStore};
 use crate::settings::SettingsStore;
@@ -109,6 +110,17 @@ pub fn merge_task(app: AppHandle, store: State<'_, TaskStore>, id: String) -> Re
             let failed = result.failed_step.clone().unwrap_or_default();
             return Err(format!(
                 "readiness gauntlet failed at `{failed}` — fix the checks before merging"
+            ));
+        }
+        // Structure-Lock Gauntlet (feature #3): re-run the TARGET project's own
+        // generated harness checks at merge too, so a stale worktree can't merge
+        // past the lock the verification gate already enforced. Reject on failure —
+        // never force. Absent `.nightcore/harness.json` ⇒ no checks ⇒ pass.
+        let lock = gauntlet_project::run(&worktree_dir);
+        if !lock.passed {
+            let failed = lock.failed_check.clone().unwrap_or_default();
+            return Err(format!(
+                "structure-lock gauntlet failed at `{failed}` — fix the harness checks before merging"
             ));
         }
     }

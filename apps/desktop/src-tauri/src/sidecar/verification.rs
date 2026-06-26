@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
+use crate::gauntlet_project::StructureLockResult;
 use crate::kind;
 use crate::m2::coordinator::Orchestrator;
 use crate::m2::provider::Provider;
@@ -94,12 +95,75 @@ pub(crate) async fn handle_build_completed(
         task.error = None;
     });
 
+    // Structure-Lock Gauntlet (feature #3): run the TARGET project's own generated
+    // harness checks (custom lint-plugin / dependency-cruiser / coverage) as a
+    // DETERMINISTIC gate BEFORE the paid reviewer — an agent must not be able to
+    // verify (or later merge) code that breaks the locked structure, and a broken
+    // build should never burn a reviewer session. Absent `.nightcore/harness.json`
+    // ⇒ no checks ⇒ pass, so existing projects are unaffected. On failure we either
+    // feed the failing check into the existing bounded auto-fix loop, or park.
+    let lock = crate::gauntlet_project::run(&review_dir.path);
+    apply_and_emit(app, store, task_id, |task| {
+        task.structure_lock_result = Some(lock.clone());
+    });
+    if !lock.passed {
+        gate_structure_lock_failure(app, store, task_id, &lock, &review_dir.path).await;
+        return;
+    }
+
     if let Err(e) = dispatch_reviewer(app, task_id, &review_dir.path).await {
         // Couldn't even start the reviewer: verification is inconclusive → park.
         apply_and_emit(app, store, task_id, |task| {
             task.status = TaskStatus::WaitingApproval;
             task.verified = false;
             task.error = Some(format!("could not start reviewer: {e}"));
+        });
+        park_for_approval(app, task_id, None);
+    }
+}
+
+/// Route a failed Structure-Lock Gauntlet (feature #3) at the verification gate:
+/// when the bounded auto-fix budget (shared with the reviewer's `CHANGES_REQUESTED`
+/// loop, [`MAX_FIX_ATTEMPTS`]) has room, feed the failing harness check into a
+/// fix-build over the same worktree so the agent self-corrects; once the budget is
+/// spent, park the task for human approval (never silently verify). The build
+/// session was already forgotten by the caller and the slot is still leased, so a
+/// dispatched fix correlates to the same task via the FIFO — exactly like the
+/// reviewer's auto-fix path.
+async fn gate_structure_lock_failure(
+    app: &AppHandle,
+    store: &TaskStore,
+    task_id: &str,
+    lock: &StructureLockResult,
+    worktree_dir: &Path,
+) {
+    let failed = lock.failed_check.clone().unwrap_or_default();
+    let attempts = store.get(task_id).map(|t| t.fix_attempts).unwrap_or(0);
+    if attempts < MAX_FIX_ATTEMPTS {
+        tracing::info!(target: "nightcore", task_id, failed_check = %failed, attempt = attempts + 1, max = MAX_FIX_ATTEMPTS, "structure-lock failed; dispatching auto-fix");
+        apply_and_emit(app, store, task_id, |task| {
+            task.fix_attempts += 1;
+            task.status = TaskStatus::InProgress;
+            task.error = None;
+        });
+        let detail = crate::gauntlet_project::fix_instruction(lock);
+        if let Err(e) = dispatch_fix(app, task_id, &detail, worktree_dir).await {
+            apply_and_emit(app, store, task_id, |task| {
+                task.status = TaskStatus::WaitingApproval;
+                task.verified = false;
+                task.error = Some(format!("could not start structure-lock fix run: {e}"));
+            });
+            park_for_approval(app, task_id, None);
+        }
+    } else {
+        tracing::warn!(target: "nightcore", task_id, failed_check = %failed, max = MAX_FIX_ATTEMPTS, "structure-lock failed and auto-fix budget exhausted; parking for approval");
+        apply_and_emit(app, store, task_id, |task| {
+            task.status = TaskStatus::WaitingApproval;
+            task.verified = false;
+            task.error = Some(format!(
+                "structure-lock gauntlet failed at `{failed}` — fix the harness checks \
+                 (auto-fix budget exhausted)"
+            ));
         });
         park_for_approval(app, task_id, None);
     }

@@ -26,7 +26,7 @@ mod workflow;
 // the re-export must not widen doc visibility beyond the original private `mod`s.
 pub(crate) use infra::{logging, platform};
 pub(crate) use store::{project, settings, task, transcript};
-pub(crate) use workflow::{gauntlet, kind, merge, plan_approval};
+pub(crate) use workflow::{gauntlet, gauntlet_project, kind, merge, plan_approval};
 
 use m2::coordinator::Orchestrator;
 use project::ProjectStore;

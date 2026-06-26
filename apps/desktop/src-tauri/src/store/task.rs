@@ -16,6 +16,7 @@ use ts_rs::TS;
 
 use tauri::{AppHandle, Emitter, State};
 
+use crate::gauntlet_project::StructureLockResult;
 use crate::store::TaskStore;
 
 /// The Tauri event carrying a single task to the webview. The UI upserts its
@@ -203,6 +204,14 @@ pub struct Task {
     /// [`crate::sidecar::MAX_FIX_ATTEMPTS`].
     #[serde(default)]
     pub fix_attempts: u32,
+    /// Feature #3 (Structure-Lock Gauntlet): the result of the TARGET project's own
+    /// generated harness checks (custom lint-plugin / dependency-cruiser / coverage
+    /// thresholds), run as a deterministic gate before the paid reviewer and again
+    /// at merge. `None` until the gate runs — and it stays `None` when the project
+    /// has no `.nightcore/harness.json` (every check is opt-in). Serde-additive: a
+    /// legacy task without it loads as `None`, so existing task files aren't broken.
+    #[serde(default)]
+    pub structure_lock_result: Option<StructureLockResult>,
     // --- SDK guardrails (autonomy ceilings + resume) ------------------------
     /// SDK-guardrails: per-task max conversation turns before the run stops
     /// (engine `Options.maxTurns`). `None` ⇒ inherit the `@nightcore/config`
@@ -261,6 +270,7 @@ impl Task {
             verified: false,
             review: None,
             fix_attempts: 0,
+            structure_lock_result: None,
             max_turns: None,
             max_budget_usd: None,
             sdk_session_id: None,
@@ -976,6 +986,44 @@ mod tests {
         assert_eq!(restored.max_turns, Some(42));
         assert_eq!(restored.max_budget_usd, Some(7.5));
         assert_eq!(restored.sdk_session_id.as_deref(), Some("sdk-uuid"));
+    }
+
+    #[test]
+    fn structure_lock_result_defaults_none_and_is_serde_additive() {
+        // Feature #3: the structure-lock result defaults to None and is omitted-safe
+        // — a legacy task without it still loads.
+        let task = Task::new("t".into(), String::new());
+        assert!(
+            task.structure_lock_result.is_none(),
+            "structure_lock_result defaults to None"
+        );
+
+        let value: serde_json::Value = serde_json::to_value(&task).unwrap();
+        let obj = value.as_object().unwrap();
+        assert!(
+            obj.contains_key("structureLockResult"),
+            "serializes the camelCase key"
+        );
+
+        // A task file from before feature #3 (no `structureLockResult`) still loads,
+        // defaulting it to None — the pinning guarantee.
+        let legacy = r#"{"id":"x","title":"t","description":"","status":"backlog",
+            "dependencies":[],"model":null,"branch":null,"createdAt":1,"updatedAt":1,
+            "sessionId":null,"summary":null,"error":null,"costUsd":null,
+            "plan":null,"committed":false,"merged":false,"conflict":false,
+            "kind":"build","runMode":"main","verified":false,"review":null,"fixAttempts":0,
+            "effort":null,"permissionMode":null,"maxTurns":null,"maxBudgetUsd":null,
+            "sdkSessionId":null}"#;
+        let back: Task = serde_json::from_str(legacy).expect("legacy task deserializes");
+        assert!(back.structure_lock_result.is_none());
+
+        // A full round-trip preserves a stored result.
+        let mut gated = Task::new("t".into(), String::new());
+        gated.structure_lock_result = Some(crate::gauntlet_project::empty_pass());
+        let json = serde_json::to_string(&gated).unwrap();
+        let restored: Task = serde_json::from_str(&json).unwrap();
+        assert!(restored.structure_lock_result.is_some());
+        assert!(restored.structure_lock_result.unwrap().passed);
     }
 
     #[test]

@@ -4,6 +4,7 @@
 //! plan_approval}` paths are preserved by the facade re-exports in `lib.rs`.
 
 pub(crate) mod gauntlet;
+pub(crate) mod gauntlet_project;
 pub(crate) mod kind;
 pub(crate) mod merge;
 pub(crate) mod plan_approval;

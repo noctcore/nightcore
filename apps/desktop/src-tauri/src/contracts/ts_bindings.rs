@@ -33,6 +33,7 @@ use ts_rs::TS;
 #[cfg(test)]
 fn export_all_bindings() {
     use crate::gauntlet::{GauntletResult, GauntletStep, StepStatus};
+    use crate::gauntlet_project::{StructureLockCheck, StructureLockResult};
     use crate::m2::coordinator::LoopSnapshot;
     use crate::m2::worktree::WorktreeStatus;
     use crate::project::Project;
@@ -75,6 +76,10 @@ fn export_all_bindings() {
         GauntletResult,
         GauntletStep,
         StepStatus,
+        // Structure-Lock Gauntlet (Verify, feature #3): the per-project harness-gate
+        // result + per-check shapes. Also reached transitively via `Task`.
+        StructureLockResult,
+        StructureLockCheck,
         LoopSnapshot,
         SessionInfoView,
         SessionMessageView,
@@ -135,6 +140,8 @@ mod tests {
             "GauntletResult.ts",
             "GauntletStep.ts",
             "StepStatus.ts",
+            "StructureLockResult.ts",
+            "StructureLockCheck.ts",
             "LoopEnvelope.ts",
             "SessionInfo.ts",
             "SessionMessage.ts",
