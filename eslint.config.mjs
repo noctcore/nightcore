@@ -28,10 +28,13 @@ const FEATURE_ROOT_FILES = 'apps/web/src/components/*/*.ts';
  * must never reach for the SDK or the engine directly.
  *
  * The component-architecture rules (folder-per-component, decoupled features,
- * thin component shells) come from @nightcore/eslint-plugin, scoped to
- * components/** below. The remaining frontend layer enforcement (single Tauri
- * seam, components/ui purity) lives in `tools/lint-meta` and is spread in as
- * `layerRules`.
+ * thin component shells) come from @nightcore/eslint-plugin, scoped below. The
+ * remaining frontend layer enforcement (single Tauri seam, components/ui purity)
+ * lives in `tools/lint-meta` and is spread in as `layerRules`.
+ *
+ * The nightcore plugin is registered ONCE, globally, so every scoped block can
+ * reference `nightcore/*` rules without re-declaring `plugins` (which would trip
+ * flat config's "Cannot redefine plugin" check on overlapping file globs).
  */
 export default tseslint.config(
   {
@@ -55,6 +58,10 @@ export default tseslint.config(
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
+  // Register the nightcore plugin once, globally (no rules enabled here).
+  {
+    plugins: { nightcore },
+  },
   {
     // Dogfood probe scripts (scripts/**) are standalone Node/Bun programs, not
     // app code: declare the runtime globals so `no-undef` doesn't flag them on
@@ -107,15 +114,23 @@ export default tseslint.config(
       ],
     },
   },
+  // Barrel-only cross-package imports: a workspace package is consumed through
+  // its @nightcore/<pkg> barrel, never a deep subpath into its internals. A
+  // custom rule (not no-restricted-imports) so it composes with the SDK/engine
+  // bans above rather than overriding them (flat-config no-restricted-imports
+  // does not merge across blocks).
+  {
+    files: ['apps/**/*.{ts,tsx}', 'packages/**/*.{ts,tsx}'],
+    rules: {
+      'nightcore/no-deep-package-imports': 'error',
+    },
+  },
   // Component-architecture rules (Tier C), scoped to the component folders.
   // Stories and tests are exercised by Storybook/Vitest, not gated as component
   // shells; feature-root data/util .ts files are domain modules, not components.
   {
     files: [`${COMPONENTS_GLOB}/*.{ts,tsx}`],
     ignores: [`${COMPONENTS_GLOB}/*.{stories,test}.{ts,tsx}`, FEATURE_ROOT_FILES],
-    plugins: {
-      nightcore,
-    },
     rules: {
       'nightcore/component-folder-structure': 'error',
       'nightcore/no-state-in-component-body': 'error',

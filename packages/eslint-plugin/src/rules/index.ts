@@ -1,7 +1,9 @@
 import { componentFolderStructureRule } from './component-folder-structure';
 import { maxHooksPerFileRule } from './max-hooks-per-file';
 import { noCrossFeatureImportsRule } from './no-cross-feature-imports';
+import { noDeepPackageImportsRule } from './no-deep-package-imports';
 import { noStateInComponentBodyRule } from './no-state-in-component-body';
+import { zodSchemaNamingRule } from './zod-schema-naming';
 
 export const rules = {
   // Frontend component architecture: folder-per-component convention under
@@ -11,4 +13,8 @@ export const rules = {
   'no-state-in-component-body': noStateInComponentBodyRule,
   'no-cross-feature-imports': noCrossFeatureImportsRule,
   'max-hooks-per-file': maxHooksPerFileRule,
+  // Cross-package layering: consume @nightcore/<pkg> via its barrel only.
+  'no-deep-package-imports': noDeepPackageImportsRule,
+  // Contracts naming: exported zod schema = `*Schema` + sibling inferred type.
+  'zod-schema-naming': zodSchemaNamingRule,
 };
