@@ -272,6 +272,17 @@ export function reduce(view: SessionView, event: ViewAction): SessionView {
     case 'analysis-completed':
     case 'analysis-failed':
       return view;
+
+    // Harness convention-scan events are likewise owned by the desktop board's
+    // Harness view; the TUI ignores them.
+    case 'harness-scan-started':
+    case 'harness-profile-ready':
+    case 'harness-category-started':
+    case 'harness-category-completed':
+    case 'harness-proposals-ready':
+    case 'harness-scan-completed':
+    case 'harness-scan-failed':
+      return view;
   }
 }
 
