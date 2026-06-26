@@ -31,9 +31,10 @@ import {
   type TaskStatus,
   type WorktreeInfo,
 } from '@/lib/bridge';
-import { EMPTY_TRANSCRIPT, type ActiveWorktree } from '@/components/board';
+import { EMPTY_TRANSCRIPT, type ActiveWorktree, type TaskTranscript } from '@/components/board';
 import { useToast } from '@/components/ui';
 import { useActionGuard } from './hooks/useActionGuard.hooks';
+import { useGlobalErrorToast } from './hooks/useGlobalErrorToast.hooks';
 import { useAutoLoop } from './hooks/useAutoLoop.hooks';
 import { useBlockedIds } from './hooks/useBlockedIds.hooks';
 import { useBoard } from './hooks/useBoard.hooks';
@@ -152,6 +153,9 @@ export interface AppShellState {
  *  hook action handlers (which bridge the action guard + board state). */
 export function useAppShell(): AppShellState {
   const toast = useToast();
+  // Last-resort net: surface stray promise rejections (fire-and-forget handlers)
+  // through the toast channel instead of letting them die in the console.
+  useGlobalErrorToast(toast);
   const action = useActionGuard();
   const showSplash = useSplash();
   const routing = useRouting();
@@ -270,42 +274,88 @@ export function useAppShell(): AppShellState {
     [toast],
   );
 
-  const handleDelete = useCallback(
-    (id: string) => {
-      void deleteTask(id).catch((err) => {
-        console.error('delete_task failed', err);
-        toast.error('Could not delete task', err);
+  // Optimistically drop a task from the board (card, stream transcript, and the
+  // selection if it was selected) and return a `rollback` thunk that re-inserts it
+  // at its original position. Mirrors the capture-then-restore discipline of
+  // handleMoveTask/makeFieldUpdater so a backend delete that REJECTS never leaves a
+  // phantom-deleted card (a row gone from the UI but still alive in the store).
+  const removeTaskLocally = useCallback(
+    (id: string): (() => void) => {
+      let removed: { task: Task; index: number } | undefined;
+      let removedStream: TaskTranscript | undefined;
+      let wasSelected = false;
+
+      setTasks((prev) => {
+        const index = prev.findIndex((t) => t.id === id);
+        const task = index === -1 ? undefined : prev[index];
+        if (task === undefined) return prev;
+        removed = { task, index };
+        return prev.filter((t) => t.id !== id);
       });
-      setTasks((prev) => prev.filter((t) => t.id !== id));
       setStreams((prev) => {
+        const stream = prev[id];
+        if (stream === undefined) return prev;
+        removedStream = stream;
         const next = { ...prev };
         delete next[id];
         return next;
       });
-      setSelectedId((cur) => (cur === id ? null : cur));
+      setSelectedId((cur) => {
+        if (cur !== id) return cur;
+        wasSelected = true;
+        return null;
+      });
+
+      return () => {
+        if (removed !== undefined) {
+          const { task, index } = removed;
+          setTasks((prev) =>
+            // A `nc:task` echo may already have re-added it; never duplicate.
+            prev.some((t) => t.id === id)
+              ? prev
+              : [...prev.slice(0, index), task, ...prev.slice(index)],
+          );
+        }
+        if (removedStream !== undefined) {
+          const stream = removedStream;
+          setStreams((prev) => (id in prev ? prev : { ...prev, [id]: stream }));
+        }
+        if (wasSelected) setSelectedId((cur) => (cur === null ? id : cur));
+      };
     },
-    [setTasks, setStreams, setSelectedId, toast],
+    [setTasks, setStreams, setSelectedId],
+  );
+
+  const handleDelete = useCallback(
+    (id: string) => {
+      // Optimistically remove, capturing a rollback so a rejected backend delete
+      // re-inserts the card instead of showing a phantom deletion.
+      const rollback = removeTaskLocally(id);
+      void deleteTask(id).catch((err) => {
+        console.error('delete_task failed', err);
+        toast.error('Could not delete task', err);
+        rollback();
+      });
+    },
+    [removeTaskLocally, toast],
   );
 
   const handleClearColumn = useCallback(
     (statuses: TaskStatus[]) => {
       const targets = tasks.filter((t) => statuses.includes(t.status));
+      // Same optimistic-with-rollback discipline as handleDelete, per task: a
+      // delete that rejects re-inserts just that card, so a partial bulk-clear
+      // failure can't strand phantom-deleted tasks on the board.
       for (const t of targets) {
+        const rollback = removeTaskLocally(t.id);
         void deleteTask(t.id).catch((err) => {
           console.error('delete_task failed', err);
           toast.error('Could not delete task', err);
+          rollback();
         });
       }
-      const ids = new Set(targets.map((t) => t.id));
-      setTasks((prev) => prev.filter((t) => !ids.has(t.id)));
-      setStreams((prev) => {
-        const next = { ...prev };
-        for (const id of ids) delete next[id];
-        return next;
-      });
-      setSelectedId((cur) => (cur !== null && ids.has(cur) ? null : cur));
     },
-    [tasks, setTasks, setStreams, setSelectedId, toast],
+    [tasks, removeTaskLocally, toast],
   );
 
   // Drag-move between columns: optimistically retag the card, then call the

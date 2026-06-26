@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useToast } from '@/components/ui';
 import type {
   MenuItem,
   RunPhase,
@@ -340,6 +341,7 @@ export function useInsightView({
   onGotoBoard,
 }: InsightViewProps): InsightViewModel {
   const hasProject = projectPath !== null;
+  const toast = useToast();
   const insight = useInsight(hasProject);
   const { stream } = insight;
 
@@ -512,14 +514,25 @@ export function useInsightView({
     } could not be converted.`;
   }, [bulkConverting, bulkFailed, bulkTotal]);
 
-  const runAction = useCallback(async (fn: () => Promise<unknown>) => {
-    setPending(true);
-    try {
-      await fn();
-    } finally {
-      setPending(false);
-    }
-  }, []);
+  const runAction = useCallback(
+    async (label: string, fn: () => Promise<unknown>) => {
+      setPending(true);
+      try {
+        await fn();
+      } catch (err) {
+        // Callers fire this as `void runAction(...)`, so without this catch a failed
+        // convert/dismiss/restore would only clear `pending` and vanish — no toast,
+        // no inline error, the card silently unchanged (and the rejection escaping as
+        // an unhandled promise rejection). Surface it through the toast channel that
+        // every routed `invoke` failure already uses.
+        console.error(`${label} finding failed`, err);
+        toast.error(`Could not ${label} finding`, err);
+      } finally {
+        setPending(false);
+      }
+    },
+    [toast],
+  );
 
   return {
     hasProject,
@@ -607,9 +620,9 @@ export function useInsightView({
     bulkStatusMessage,
     bulkError,
     openCount: openCount(stream.findings),
-    onConvert: (id) => void runAction(() => insight.convert(id)),
-    onDismiss: (id) => void runAction(() => insight.dismiss(id)),
-    onRestore: (id) => void runAction(() => insight.restore(id)),
+    onConvert: (id) => void runAction('convert', () => insight.convert(id)),
+    onDismiss: (id) => void runAction('dismiss', () => insight.dismiss(id)),
+    onRestore: (id) => void runAction('restore', () => insight.restore(id)),
     onGotoBoard,
   };
 }
