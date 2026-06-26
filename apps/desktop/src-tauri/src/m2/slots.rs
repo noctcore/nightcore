@@ -59,7 +59,7 @@ impl SlotManager {
     /// attaches one via [`attach_abort`](Self::attach_abort) once it spawns the
     /// run's driver task.
     pub fn try_lease(&self, task_id: &str) -> bool {
-        let mut leased = self.leased.lock().expect("slot manager poisoned");
+        let mut leased = crate::sync::lock_or_recover(&self.leased);
         if leased.len() >= self.max() || leased.contains_key(task_id) {
             return false;
         }
@@ -77,7 +77,7 @@ impl SlotManager {
     /// abort test.
     #[allow(dead_code)]
     pub fn attach_abort(&self, task_id: &str, abort: AbortHandle) {
-        let mut leased = self.leased.lock().expect("slot manager poisoned");
+        let mut leased = crate::sync::lock_or_recover(&self.leased);
         if let Some(lease) = leased.get_mut(task_id) {
             lease.abort = Some(abort);
         }
@@ -85,29 +85,19 @@ impl SlotManager {
 
     /// Whether `task_id` currently holds a slot.
     pub fn is_leased(&self, task_id: &str) -> bool {
-        self.leased
-            .lock()
-            .expect("slot manager poisoned")
-            .contains_key(task_id)
+        crate::sync::lock_or_recover(&self.leased).contains_key(task_id)
     }
 
     /// Release `task_id`'s slot and drop its abort handle. Idempotent.
     pub fn release(&self, task_id: &str) {
-        self.leased
-            .lock()
-            .expect("slot manager poisoned")
-            .remove(task_id);
+        crate::sync::lock_or_recover(&self.leased).remove(task_id);
     }
 
     /// Abort `task_id`'s run (if a handle is attached) and release its slot.
     /// Returns whether a slot was held. The abort cancels the spawned driver task;
     /// the provider interrupt it issues produces the terminal `session-failed`.
     pub fn abort(&self, task_id: &str) -> bool {
-        let lease = self
-            .leased
-            .lock()
-            .expect("slot manager poisoned")
-            .remove(task_id);
+        let lease = crate::sync::lock_or_recover(&self.leased).remove(task_id);
         match lease {
             Some(lease) => {
                 if let Some(handle) = lease.abort {
@@ -122,7 +112,7 @@ impl SlotManager {
     /// Abort every in-flight run and free all slots. Used by `stop_auto_loop` and
     /// the circuit-breaker pause.
     pub fn abort_all(&self) {
-        let mut leased = self.leased.lock().expect("slot manager poisoned");
+        let mut leased = crate::sync::lock_or_recover(&self.leased);
         for (_, lease) in leased.drain() {
             if let Some(handle) = lease.abort {
                 handle.abort();
@@ -133,13 +123,13 @@ impl SlotManager {
     /// Slots currently free: `max - leased`, saturating (a shrunk pool reports 0
     /// rather than underflowing).
     pub fn free_slots(&self) -> usize {
-        let leased = self.leased.lock().expect("slot manager poisoned").len();
+        let leased = crate::sync::lock_or_recover(&self.leased).len();
         self.max().saturating_sub(leased)
     }
 
     /// Number of runs currently holding a slot.
     pub fn leased_count(&self) -> usize {
-        self.leased.lock().expect("slot manager poisoned").len()
+        crate::sync::lock_or_recover(&self.leased).len()
     }
 }
 

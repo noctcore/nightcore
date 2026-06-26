@@ -104,9 +104,7 @@ pub struct PendingPermissions {
 impl PendingPermissions {
     /// Record a parked request for a task.
     pub fn register(&self, task_id: &str, request_id: &str) {
-        self.by_task
-            .lock()
-            .expect("pending permissions poisoned")
+        crate::sync::lock_or_recover(&self.by_task)
             .entry(task_id.to_string())
             .or_default()
             .push(request_id.to_string());
@@ -115,7 +113,7 @@ impl PendingPermissions {
     /// Drop a single resolved request from a task's parked set. Returns true when it
     /// was actually parked (so a stale/duplicate decision is a no-op).
     pub fn resolve(&self, task_id: &str, request_id: &str) -> bool {
-        let mut guard = self.by_task.lock().expect("pending permissions poisoned");
+        let mut guard = crate::sync::lock_or_recover(&self.by_task);
         let Some(reqs) = guard.get_mut(task_id) else {
             return false;
         };
@@ -132,9 +130,7 @@ impl PendingPermissions {
     /// Take and remove every request still parked for a task (its terminal/abort
     /// drain). Returns the request ids to fail-closed-deny.
     pub fn drain_task(&self, task_id: &str) -> Vec<String> {
-        self.by_task
-            .lock()
-            .expect("pending permissions poisoned")
+        crate::sync::lock_or_recover(&self.by_task)
             .remove(task_id)
             .unwrap_or_default()
     }
@@ -363,21 +359,46 @@ async fn tick(app: &AppHandle) {
     orch.emit_state(app, "running", None);
 }
 
-/// Lease a slot, allocate a worktree, mark the task `InProgress`, and dispatch the
-/// run. On any setup failure the slot is released and the task is failed so the
-/// loop doesn't wedge on it.
+/// The auto-loop entry point: lease + dispatch a task, discarding the result.
+/// A lease race (no free slot) is a silent skip — the tick retries next pass — so
+/// only `submit_run`'s setup failures (already handled by `fail_run`, which feeds
+/// the breaker here) matter. `run_task` shares the same [`submit_run`] sequence but
+/// surfaces the error instead and does NOT feed the breaker.
 async fn launch(app: &AppHandle, task_id: &str) {
+    let _ = submit_run(app, task_id, true).await;
+}
+
+/// The shared launch sequence behind the auto-loop [`launch`] and the manual
+/// `run_task` command: lease a slot, resolve the run cwd/worktree, mark the task
+/// `InProgress` (persist+emit), ensure the sidecar reader is up, then dispatch
+/// `start-session`. Mark-in-progress runs BEFORE `ensure_reader` so neither path
+/// can strand a task in a started-but-unmarked state.
+///
+/// The only behavioral knob is `feed_breaker`: a setup failure after the lease is
+/// routed through [`fail_run`] (mark Failed + release the slot), feeding the
+/// circuit breaker only when `feed_breaker` is set (the auto-loop). A lease race
+/// returns `Err` WITHOUT failing the task — nothing was leased, and for the
+/// auto-loop it is a benign retry-next-tick skip. The error is both recorded (via
+/// `fail_run`) and returned, so `run_task` can map it to its `Result` while the
+/// auto-loop discards it.
+pub(crate) async fn submit_run(
+    app: &AppHandle,
+    task_id: &str,
+    feed_breaker: bool,
+) -> Result<(), String> {
     let orch = app.state::<Orchestrator>();
 
-    // Lease the slot first; if it can't be leased (raced to capacity) skip.
+    // Lease the slot first. A lease race (raced to capacity) is not a task failure:
+    // nothing is leased, so there's nothing to release or fail — return the rejection
+    // for the caller to surface (`run_task`) or discard (`launch`).
     if !orch.slots.try_lease(task_id) {
-        return;
+        return Err("no free slot (max concurrency reached)".to_string());
     }
 
     let store = app.state::<TaskStore>();
     let Some(task) = store.get(task_id) else {
         orch.slots.release(task_id);
-        return;
+        return Err(format!("no task with id {task_id}"));
     };
 
     // Resolve the run cwd off the active project (if any), branching on the task's
@@ -385,16 +406,11 @@ async fn launch(app: &AppHandle, task_id: &str) {
     let resolved = match resolve_worktree(app, task_id) {
         Ok(cwd) => cwd,
         Err(e) => {
-            fail_launch(app, task_id, &format!("worktree setup failed: {e}"));
-            return;
+            let msg = format!("worktree setup failed: {e}");
+            fail_run(app, task_id, &msg, feed_breaker);
+            return Err(msg);
         }
     };
-
-    // Ensure the sidecar is up (the reader is installed by `sidecar::ensure_reader`).
-    if let Err(e) = crate::sidecar::ensure_reader(app).await {
-        fail_launch(app, task_id, &format!("sidecar start failed: {e}"));
-        return;
-    }
 
     // Only a worktree-mode run carries a `nc/<taskId>` branch chip; a `main`-mode
     // run edits the project's current branch directly, so it has no chip.
@@ -402,8 +418,19 @@ async fn launch(app: &AppHandle, task_id: &str) {
     let cwd = resolved.map(|r| r.path);
     let branch = is_worktree.then(|| worktree::branch_name(task_id));
 
-    // Mark in-progress + persist + emit before dispatch (shared with `run_task`).
-    let _ = mark_task_in_progress(app, task_id, branch.clone());
+    // Mark in-progress + persist + emit BEFORE ensuring the reader, so a sidecar
+    // start failure can't strand the task started-but-unmarked.
+    if let Err(e) = mark_task_in_progress(app, task_id, branch.clone()) {
+        fail_run(app, task_id, &e, feed_breaker);
+        return Err(e);
+    }
+
+    // Ensure the sidecar is up (the reader is installed by `sidecar::ensure_reader`).
+    if let Err(e) = crate::sidecar::ensure_reader(app).await {
+        let msg = format!("sidecar start failed: {e}");
+        fail_run(app, task_id, &msg, feed_breaker);
+        return Err(msg);
+    }
 
     tracing::info!(
         target: "nightcore",
@@ -438,19 +465,26 @@ async fn launch(app: &AppHandle, task_id: &str) {
         )
         .await
     {
-        fail_launch(app, task_id, &format!("dispatch failed: {e}"));
+        let msg = format!("dispatch failed: {e}");
+        fail_run(app, task_id, &msg, feed_breaker);
+        return Err(msg);
     }
+    Ok(())
 }
 
-/// An auto-loop launch setup failed (worktree/sidecar/dispatch): mark the task
-/// Failed + emit, release its slot, and feed the circuit breaker — logging when
-/// THIS failure tripped it (observability #1). Shared by the three `launch` setup
-/// paths so a launch failure is recorded + observable identically. (The manual
-/// `run_task` path uses `fail_task` directly: it must NOT feed the loop breaker.)
-fn fail_launch(app: &AppHandle, task_id: &str, message: &str) {
+/// A run's setup failed after the slot was leased (worktree/mark/sidecar/dispatch):
+/// mark the task Failed + emit, release its slot, and — only when `feed_breaker` is
+/// set (the auto-loop, never a manual `run_task`) — feed the circuit breaker,
+/// logging when THIS failure tripped it (observability #1). Shared by both dispatch
+/// paths so a setup failure is recorded + observable identically; the breaker guard
+/// is the sole difference between an auto-loop launch and a manual run.
+fn fail_run(app: &AppHandle, task_id: &str, message: &str, feed_breaker: bool) {
     let orch = app.state::<Orchestrator>();
     fail_task(app, task_id, message);
     orch.slots.release(task_id);
+    if !feed_breaker {
+        return;
+    }
     if orch.breaker.record_failure() {
         tracing::warn!(
             target: "nightcore",

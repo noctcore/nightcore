@@ -18,6 +18,9 @@ apps/desktop/src-tauri/icons/ios/
 # Compiled sidecar (Tauri externalBin) — a build artifact, reproduced by
 # `bun run --filter @nightcore/sidecar compile`
 apps/desktop/src-tauri/binaries/
+# Stray ts-rs dump from bare `cargo test` (no TS_RS_EXPORT_DIR). The canonical
+# bindings live in apps/web/src/lib/generated/; this dir is wrong-config (bigint) noise.
+apps/desktop/src-tauri/bindings/
 
 # Nightcore local state
 .nightcore/

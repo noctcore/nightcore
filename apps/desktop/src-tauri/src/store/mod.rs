@@ -16,6 +16,7 @@ pub(crate) mod transcript;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use crate::task::Task;
@@ -76,6 +77,15 @@ fn read_dir_into_map(dir: &PathBuf) -> HashMap<String, Task> {
     tasks
 }
 
+/// The highest [`Task::seq`] across a loaded task map (0 for an empty map or a
+/// map of all-legacy tasks). The store seeds its seq counter from this so a load
+/// or project-switch re-target keeps `seq` strictly increasing above whatever is
+/// already persisted, instead of restarting at 0 and letting a reloaded task
+/// out-rank a freshly-stamped one.
+fn seq_high_water(tasks: &HashMap<String, Task>) -> u64 {
+    tasks.values().map(|t| t.seq).max().unwrap_or(0)
+}
+
 /// In-memory task map plus the directory it persists to.
 ///
 /// The target dir is interior-mutable: Phase 2 makes tasks **project-scoped**, so
@@ -85,6 +95,13 @@ fn read_dir_into_map(dir: &PathBuf) -> HashMap<String, Task> {
 pub struct TaskStore {
     tasks: Mutex<HashMap<String, Task>>,
     dir: Mutex<PathBuf>,
+    /// Monotonic source for the per-snapshot [`Task::seq`]. Bumped on every
+    /// persist (`upsert`/`mutate_if`) so each emitted `nc:task` carries a strictly
+    /// greater `seq` than the prior one — the web orders snapshots by it instead of
+    /// the collision-prone millisecond `updated_at`. Seeded above the highest `seq`
+    /// already on disk (per [`seq_high_water`]) so reloaded tasks never out-rank a
+    /// freshly-stamped one after a load/retarget.
+    seq: AtomicU64,
 }
 
 impl TaskStore {
@@ -100,9 +117,11 @@ impl TaskStore {
     /// at a temp dir instead of the real workspace.
     pub fn load_from(dir: PathBuf) -> Self {
         let tasks = read_dir_into_map(&dir);
+        let seq = AtomicU64::new(seq_high_water(&tasks));
         Self {
             tasks: Mutex::new(tasks),
             dir: Mutex::new(dir),
+            seq,
         }
     }
 
@@ -112,8 +131,19 @@ impl TaskStore {
     /// tasks. Existing files on disk are untouched.
     pub fn retarget(&self, dir: PathBuf) {
         let reloaded = read_dir_into_map(&dir);
-        *self.tasks.lock().expect("task store poisoned") = reloaded;
-        *self.dir.lock().expect("task store poisoned") = dir;
+        // Reseed the seq counter above the new dir's high-water mark so a project
+        // switch keeps `seq` strictly increasing for every subsequent persist.
+        self.seq
+            .store(seq_high_water(&reloaded), Ordering::Relaxed);
+        *crate::sync::lock_or_recover(&self.tasks) = reloaded;
+        *crate::sync::lock_or_recover(&self.dir) = dir;
+    }
+
+    /// The next monotonic [`Task::seq`] value. A pre-increment so the first stamp is
+    /// `1` (a stamped task is always `> 0`, distinguishing it from never-persisted
+    /// or legacy `0`).
+    fn next_seq(&self) -> u64 {
+        self.seq.fetch_add(1, Ordering::Relaxed) + 1
     }
 
     /// Path to a task's JSON file under the current target dir. Rejects an id that
@@ -123,25 +153,19 @@ impl TaskStore {
         if !is_safe_task_id(id) {
             return Err(format!("invalid task id: {id}"));
         }
-        Ok(self
-            .dir
-            .lock()
-            .expect("task store poisoned")
-            .join(format!("{id}.json")))
+        Ok(crate::sync::lock_or_recover(&self.dir).join(format!("{id}.json")))
     }
 
     /// The current tasks directory (the active project's `.nightcore/tasks/`). Used
     /// by the transcript store (M4.7 §C) to locate a task's `<id>/transcript.jsonl`
     /// alongside its `<id>.json`.
     pub fn tasks_dir(&self) -> PathBuf {
-        self.dir.lock().expect("task store poisoned").clone()
+        crate::sync::lock_or_recover(&self.dir).clone()
     }
 
     /// Snapshot of all tasks (unordered).
     pub fn list(&self) -> Vec<Task> {
-        self.tasks
-            .lock()
-            .expect("task store poisoned")
+        crate::sync::lock_or_recover(&self.tasks)
             .values()
             .cloned()
             .collect()
@@ -149,26 +173,30 @@ impl TaskStore {
 
     /// A single task by id, if present.
     pub fn get(&self, id: &str) -> Option<Task> {
-        self.tasks
-            .lock()
-            .expect("task store poisoned")
-            .get(id)
-            .cloned()
+        crate::sync::lock_or_recover(&self.tasks).get(id).cloned()
     }
 
-    /// Insert or replace a task and write its file. Bumping `updated_at` is the
-    /// caller's responsibility (see [`mutate`](Self::mutate)).
+    /// Insert or replace a task and write its file, stamping a fresh monotonic
+    /// [`Task::seq`]; returns the stamped task so the caller emits the snapshot
+    /// that's actually on disk. Bumping `updated_at` is the caller's responsibility
+    /// (see [`mutate`](Self::mutate)).
     ///
     /// Holds the `tasks` mutex across the whole write so that a concurrent
     /// `mutate`/`upsert` on the same id can't interleave its read-modify-write
     /// against this one (C7 / concurrency #2). The in-memory map is only updated
     /// after the disk write succeeds, so a failed persist leaves the prior record
     /// authoritative in memory rather than diverging from disk.
-    pub fn upsert(&self, task: &Task) -> Result<(), String> {
-        let mut guard = self.tasks.lock().expect("task store poisoned");
-        self.write_file(task)?;
-        guard.insert(task.id.clone(), task.clone());
-        Ok(())
+    pub fn upsert(&self, task: &Task) -> Result<Task, String> {
+        let mut guard = crate::sync::lock_or_recover(&self.tasks);
+        // Stamp a fresh monotonic seq on the persisted+stored snapshot so this write
+        // (and the `nc:task` the caller emits from the returned value) orders after
+        // every prior one. The caller MUST emit the returned task, not its input, so
+        // the snapshot on the wire carries the assigned `seq`.
+        let mut stamped = task.clone();
+        stamped.seq = self.next_seq();
+        self.write_file(&stamped)?;
+        guard.insert(stamped.id.clone(), stamped.clone());
+        Ok(stamped)
     }
 
     /// Apply `f` to the current task, bump `updated_at`, then persist and store it
@@ -196,7 +224,7 @@ impl TaskStore {
         C: FnOnce(&Task) -> Result<(), String>,
         F: FnOnce(&mut Task),
     {
-        let mut guard = self.tasks.lock().expect("task store poisoned");
+        let mut guard = crate::sync::lock_or_recover(&self.tasks);
         let mut task = guard
             .get(id)
             .cloned()
@@ -204,6 +232,9 @@ impl TaskStore {
         check(&task)?;
         f(&mut task);
         task.updated_at = crate::task::now_ms();
+        // Stamp the monotonic seq alongside `updated_at` so the returned snapshot
+        // (which the caller emits as `nc:task`) orders strictly after the prior one.
+        task.seq = self.next_seq();
         self.write_file(&task)?;
         guard.insert(task.id.clone(), task.clone());
         Ok(task)
@@ -214,7 +245,7 @@ impl TaskStore {
     /// interleave with a concurrent `upsert`/`mutate` on the same id.
     pub fn remove(&self, id: &str) -> Result<(), String> {
         let path = self.path_for(id)?;
-        let mut guard = self.tasks.lock().expect("task store poisoned");
+        let mut guard = crate::sync::lock_or_recover(&self.tasks);
         guard.remove(id);
         match std::fs::remove_file(&path) {
             Ok(()) => Ok(()),
@@ -277,6 +308,97 @@ mod tests {
         let tmp = TempDir::new().expect("create temp dir");
         let store = TaskStore::load_from(tmp.path().join("tasks"));
         (store, tmp)
+    }
+
+    #[test]
+    fn every_persist_stamps_a_strictly_greater_seq() {
+        let (store, _tmp) = temp_store();
+        let task = Task::new("t".into(), String::new());
+        let id = task.id.clone();
+
+        // First persist stamps seq 1 (pre-increment, so a stamped task is > 0).
+        let a = store.upsert(&task).expect("upsert");
+        assert_eq!(a.seq, 1, "first persist stamps seq 1");
+
+        // Each subsequent persist (a status change, here) is strictly greater.
+        let b = store
+            .mutate(&id, |t| t.status = TaskStatus::Ready)
+            .expect("mutate");
+        assert!(b.seq > a.seq, "a mutate seq advances past the prior");
+
+        let c = store
+            .mutate(&id, |t| t.status = TaskStatus::Done)
+            .expect("mutate");
+        assert!(c.seq > b.seq, "every persist strictly increases seq");
+
+        // The in-memory snapshot reflects the latest stamped seq.
+        assert_eq!(store.get(&id).unwrap().seq, c.seq);
+    }
+
+    #[test]
+    fn seq_resumes_above_the_persisted_high_water_after_reload() {
+        let tmp = TempDir::new().expect("create temp dir");
+        let dir = tmp.path().join("tasks");
+
+        // Persist a few times to push seq up, then drop the store.
+        let last_seq = {
+            let store = TaskStore::load_from(dir.clone());
+            let task = Task::new("t".into(), String::new());
+            let id = task.id.clone();
+            store.upsert(&task).expect("upsert");
+            store.mutate(&id, |t| t.status = TaskStatus::Ready).expect("mutate");
+            let final_task = store
+                .mutate(&id, |t| t.status = TaskStatus::Done)
+                .expect("mutate");
+            final_task.seq
+        };
+        assert!(last_seq >= 3);
+
+        // A fresh load seeds the counter above the on-disk high-water mark, so the
+        // next persist out-ranks every reloaded snapshot rather than restarting at 1.
+        let reloaded = TaskStore::load_from(dir);
+        let any_id = reloaded.list().first().map(|t| t.id.clone()).unwrap();
+        let after = reloaded
+            .mutate(&any_id, |t| t.title = "edited".into())
+            .expect("mutate");
+        assert!(
+            after.seq > last_seq,
+            "seq continues above the persisted high-water mark after reload"
+        );
+    }
+
+    #[test]
+    fn legacy_task_json_without_seq_loads_as_zero() {
+        let tmp = TempDir::new().expect("create temp dir");
+        let dir = tmp.path().join("tasks");
+        std::fs::create_dir_all(&dir).unwrap();
+        // A pre-seq task file: a minimal valid Task JSON with no `seq` key.
+        let legacy = r#"{
+            "id": "legacy-1",
+            "title": "old",
+            "description": "",
+            "status": "backlog",
+            "dependencies": [],
+            "model": null,
+            "branch": null,
+            "createdAt": 1,
+            "updatedAt": 1,
+            "sessionId": null,
+            "summary": null,
+            "error": null,
+            "costUsd": null
+        }"#;
+        std::fs::write(dir.join("legacy-1.json"), legacy).unwrap();
+
+        let store = TaskStore::load_from(dir);
+        let loaded = store.get("legacy-1").expect("legacy task loads");
+        assert_eq!(loaded.seq, 0, "missing seq defaults to 0 (serde-additive)");
+
+        // The next persist re-stamps it above the (zero) high-water mark.
+        let restamped = store
+            .mutate("legacy-1", |t| t.status = TaskStatus::Ready)
+            .expect("mutate");
+        assert!(restamped.seq > 0, "a re-persisted legacy task gets a real seq");
     }
 
     #[test]

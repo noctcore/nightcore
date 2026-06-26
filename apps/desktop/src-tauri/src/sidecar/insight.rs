@@ -236,7 +236,9 @@ pub fn convert_finding_to_task(
     // roll back the duplicate task we just created.
     let mut task = Task::new(finding.title.clone(), task_description(&finding));
     task.kind = category_to_kind(&finding.category);
-    store.upsert(&task)?;
+    // upsert returns the store-stamped task (seq > 0); we MUST emit this snapshot,
+    // not `task`, so the wire carries the assigned seq and is never dropped as stale.
+    let stamped = store.upsert(&task)?;
 
     match insight_store.link_finding_task(&run_id, &finding_id, &task.id) {
         Ok(crate::store::insight::LinkOutcome::Linked) => {}
@@ -265,18 +267,18 @@ pub fn convert_finding_to_task(
         }
     }
 
-    let _ = app.emit(TASK_EVENT, &task);
+    let _ = app.emit(TASK_EVENT, &stamped);
     let _ = app.emit(
         INSIGHT_EVENT,
         json!({
             "type": "finding-converted",
             "runId": run_id,
             "findingId": finding_id,
-            "taskId": task.id,
+            "taskId": stamped.id,
         }),
     );
-    tracing::info!(target: "nightcore", task_id = %task.id, finding_id = %finding_id, "finding converted to task");
-    Ok(task)
+    tracing::info!(target: "nightcore", task_id = %stamped.id, finding_id = %finding_id, "finding converted to task");
+    Ok(stamped)
 }
 
 /// Map a finding category to the task kind a fix belongs to. Insight findings are
@@ -432,5 +434,152 @@ pub(crate) async fn handle_analysis_event(app: &AppHandle, event_type: &str, eve
             tracing::info!(target: "nightcore", run_id, reason, "insight analysis ended (failed/aborted)");
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::contracts::{AnalysisScope, FindingCategory};
+    use crate::store::insight::{FindingLocation, StoredFinding};
+
+    fn minimal_finding() -> StoredFinding {
+        StoredFinding {
+            id: "f1".to_string(),
+            category: "perf".to_string(),
+            severity: "high".to_string(),
+            effort: "low".to_string(),
+            title: "Slow query".to_string(),
+            description: "N+1 query in user list".to_string(),
+            rationale: None,
+            location: None,
+            suggestion: None,
+            code_before: None,
+            code_after: None,
+            affected_files: Vec::new(),
+            tags: Vec::new(),
+            confidence: None,
+            fingerprint: "fp-abc".to_string(),
+            status: "open".to_string(),
+            linked_task_id: None,
+        }
+    }
+
+    #[test]
+    fn category_to_kind_always_returns_build() {
+        // All categories map to Build so findings become actionable work tasks.
+        for cat in &["perf", "security", "ui-ux", "refactor", "test", "arch", "unknown"] {
+            assert_eq!(
+                category_to_kind(cat),
+                TaskKind::Build,
+                "category {cat} should map to Build"
+            );
+        }
+    }
+
+    #[test]
+    fn wire_str_serializes_scope_to_wire_string() {
+        assert_eq!(wire_str(&AnalysisScope::Diff), "diff");
+        assert_eq!(wire_str(&AnalysisScope::Repo), "repo");
+    }
+
+    #[test]
+    fn wire_str_serializes_category_to_wire_string() {
+        // Spot-check a few well-known categories to confirm the mapping.
+        let perf = wire_str(&FindingCategory::Performance);
+        assert!(!perf.is_empty(), "performance category should serialize to a non-empty string");
+        let sec = wire_str(&FindingCategory::Security);
+        assert!(!sec.is_empty(), "security category should serialize to a non-empty string");
+    }
+
+    #[test]
+    fn task_description_contains_required_fields() {
+        let f = minimal_finding();
+        let desc = task_description(&f);
+        assert!(desc.contains("N+1 query in user list"), "should include description");
+        assert!(desc.contains("perf"), "should include category");
+        assert!(desc.contains("high"), "should include severity");
+        assert!(desc.contains("low"), "should include effort");
+        assert!(desc.contains("Insight analysis finding"), "should include provenance footer");
+    }
+
+    #[test]
+    fn task_description_with_location_single_line() {
+        let mut f = minimal_finding();
+        f.location = Some(FindingLocation {
+            file: "src/lib.rs".to_string(),
+            start_line: Some(42),
+            end_line: None,
+            symbol: None,
+        });
+        let desc = task_description(&f);
+        assert!(desc.contains("src/lib.rs:42"), "should format single-line location");
+    }
+
+    #[test]
+    fn task_description_with_location_range() {
+        let mut f = minimal_finding();
+        f.location = Some(FindingLocation {
+            file: "src/main.rs".to_string(),
+            start_line: Some(10),
+            end_line: Some(20),
+            symbol: None,
+        });
+        let desc = task_description(&f);
+        assert!(desc.contains("src/main.rs:10-20"), "should format line range");
+    }
+
+    #[test]
+    fn task_description_with_same_start_and_end_line_omits_range() {
+        let mut f = minimal_finding();
+        f.location = Some(FindingLocation {
+            file: "src/main.rs".to_string(),
+            start_line: Some(5),
+            end_line: Some(5),
+            symbol: None,
+        });
+        let desc = task_description(&f);
+        // Same start/end → should format as `:5` not `:5-5`
+        assert!(desc.contains("src/main.rs:5"), "same start/end shows single line");
+        assert!(!desc.contains(":5-5"), "should not show redundant range");
+    }
+
+    #[test]
+    fn task_description_with_rationale_and_suggestion() {
+        let mut f = minimal_finding();
+        f.rationale = Some("Causes timeouts under load".to_string());
+        f.suggestion = Some("Add an index on user_id".to_string());
+        let desc = task_description(&f);
+        assert!(desc.contains("Causes timeouts under load"), "should include rationale");
+        assert!(desc.contains("Add an index on user_id"), "should include suggestion");
+    }
+
+    #[test]
+    fn task_description_with_code_diff() {
+        let mut f = minimal_finding();
+        f.code_before = Some("SELECT * FROM users".to_string());
+        f.code_after = Some("SELECT id FROM users WHERE id = ?".to_string());
+        let desc = task_description(&f);
+        assert!(desc.contains("// before"), "should include before block marker");
+        assert!(desc.contains("// after"), "should include after block marker");
+        assert!(desc.contains("SELECT * FROM users"), "should include before code");
+        assert!(desc.contains("SELECT id FROM users WHERE id = ?"), "should include after code");
+    }
+
+    #[test]
+    fn task_description_with_affected_files() {
+        let mut f = minimal_finding();
+        f.affected_files = vec!["src/a.rs".to_string(), "src/b.rs".to_string()];
+        let desc = task_description(&f);
+        assert!(desc.contains("src/a.rs"), "should include first affected file");
+        assert!(desc.contains("src/b.rs"), "should include second affected file");
+    }
+
+    #[test]
+    fn task_description_without_optional_fields_does_not_panic() {
+        // All optional fields absent — just verifying no panic and basic structure.
+        let f = minimal_finding();
+        let desc = task_description(&f);
+        assert!(!desc.is_empty());
     }
 }

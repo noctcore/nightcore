@@ -128,10 +128,7 @@ fn location_from_wire(v: &Value) -> Option<FindingLocation> {
         file,
         start_line: v.get("startLine").and_then(Value::as_u64),
         end_line: v.get("endLine").and_then(Value::as_u64),
-        symbol: v
-            .get("symbol")
-            .and_then(Value::as_str)
-            .map(str::to_string),
+        symbol: v.get("symbol").and_then(Value::as_str).map(str::to_string),
     })
 }
 
@@ -238,27 +235,20 @@ impl InsightStore {
     /// files on disk are untouched.
     pub fn retarget(&self, dir: PathBuf) {
         let reloaded = read_runs_into_map(&dir);
-        *self.runs.lock().expect("insight store poisoned") = reloaded;
-        *self.dir.lock().expect("insight store poisoned") = dir;
+        *crate::sync::lock_or_recover(&self.runs) = reloaded;
+        *crate::sync::lock_or_recover(&self.dir) = dir;
     }
 
     fn path_for(&self, id: &str) -> Result<PathBuf, String> {
         if !is_safe_task_id(id) {
             return Err(format!("invalid run id: {id}"));
         }
-        Ok(self
-            .dir
-            .lock()
-            .expect("insight store poisoned")
-            .join(format!("{id}.json")))
+        Ok(crate::sync::lock_or_recover(&self.dir).join(format!("{id}.json")))
     }
 
     /// All runs, newest first (by `created_at`).
     pub fn list(&self) -> Vec<InsightRun> {
-        let mut runs: Vec<InsightRun> = self
-            .runs
-            .lock()
-            .expect("insight store poisoned")
+        let mut runs: Vec<InsightRun> = crate::sync::lock_or_recover(&self.runs)
             .values()
             .cloned()
             .collect();
@@ -268,11 +258,7 @@ impl InsightStore {
 
     /// A single run by id.
     pub fn get(&self, id: &str) -> Option<InsightRun> {
-        self.runs
-            .lock()
-            .expect("insight store poisoned")
-            .get(id)
-            .cloned()
+        crate::sync::lock_or_recover(&self.runs).get(id).cloned()
     }
 
     /// Serialize + atomically write one run to its file. The caller holds the `runs`
@@ -287,7 +273,7 @@ impl InsightStore {
     /// Insert or replace a run and write its file (disk-first, like [`TaskStore`]),
     /// then prune the oldest runs beyond [`MAX_RUNS`].
     pub fn upsert(&self, run: &InsightRun) -> Result<(), String> {
-        let mut guard = self.runs.lock().expect("insight store poisoned");
+        let mut guard = crate::sync::lock_or_recover(&self.runs);
         self.persist(run)?;
         guard.insert(run.id.clone(), run.clone());
         self.prune_locked(&mut guard);
@@ -325,7 +311,7 @@ impl InsightStore {
     /// stops the UI from spinning forever. Call ONLY on boot, never on a project
     /// switch (a cross-project run may still be live in the engine).
     pub fn reap_running(&self) {
-        let mut guard = self.runs.lock().expect("insight store poisoned");
+        let mut guard = crate::sync::lock_or_recover(&self.runs);
         let stale: Vec<String> = guard
             .values()
             .filter(|r| r.status == "running")
@@ -345,7 +331,7 @@ impl InsightStore {
     /// Delete a run from memory and disk. Idempotent on a missing file.
     pub fn remove(&self, id: &str) -> Result<(), String> {
         let path = self.path_for(id)?;
-        let mut guard = self.runs.lock().expect("insight store poisoned");
+        let mut guard = crate::sync::lock_or_recover(&self.runs);
         guard.remove(id);
         match std::fs::remove_file(&path) {
             Ok(()) => Ok(()),
@@ -360,7 +346,7 @@ impl InsightStore {
     where
         F: FnOnce(&mut InsightRun),
     {
-        let mut guard = self.runs.lock().expect("insight store poisoned");
+        let mut guard = crate::sync::lock_or_recover(&self.runs);
         let mut run = guard
             .get(id)
             .cloned()
@@ -377,9 +363,7 @@ impl InsightStore {
 
     /// One finding within a run (cloned), if present.
     pub fn get_finding(&self, run_id: &str, finding_id: &str) -> Option<StoredFinding> {
-        self.runs
-            .lock()
-            .expect("insight store poisoned")
+        crate::sync::lock_or_recover(&self.runs)
             .get(run_id)
             .and_then(|r| r.findings.iter().find(|f| f.id == finding_id).cloned())
     }
@@ -396,7 +380,7 @@ impl InsightStore {
         status: &str,
         linked_task_id: Option<Option<String>>,
     ) -> Result<InsightRun, String> {
-        let mut guard = self.runs.lock().expect("insight store poisoned");
+        let mut guard = crate::sync::lock_or_recover(&self.runs);
         let mut run = guard
             .get(run_id)
             .cloned()
@@ -433,7 +417,7 @@ impl InsightStore {
         finding_id: &str,
         task_id: &str,
     ) -> Result<LinkOutcome, String> {
-        let mut guard = self.runs.lock().expect("insight store poisoned");
+        let mut guard = crate::sync::lock_or_recover(&self.runs);
         let mut run = guard
             .get(run_id)
             .cloned()
@@ -458,7 +442,7 @@ impl InsightStore {
     /// `except_run`). Used to carry dismissed-history forward: a re-discovered
     /// finding whose fingerprint was previously dismissed stays dismissed.
     pub fn dismissed_fingerprints(&self, except_run: Option<&str>) -> HashSet<String> {
-        let guard = self.runs.lock().expect("insight store poisoned");
+        let guard = crate::sync::lock_or_recover(&self.runs);
         let mut set = HashSet::new();
         for run in guard.values() {
             if Some(run.id.as_str()) == except_run {
@@ -528,7 +512,9 @@ mod tests {
     #[test]
     fn upsert_get_list_round_trip() {
         let (store, tmp) = store();
-        store.upsert(&run("r1", vec![finding("f1", "fp1")])).unwrap();
+        store
+            .upsert(&run("r1", vec![finding("f1", "fp1")]))
+            .unwrap();
         assert_eq!(store.get("r1").unwrap().findings.len(), 1);
         assert_eq!(store.list().len(), 1);
         // Reload from disk reconstructs the run.
@@ -552,7 +538,9 @@ mod tests {
     #[test]
     fn set_finding_status_persists() {
         let (store, _tmp) = store();
-        store.upsert(&run("r1", vec![finding("f1", "fp1")])).unwrap();
+        store
+            .upsert(&run("r1", vec![finding("f1", "fp1")]))
+            .unwrap();
         store
             .set_finding_status("r1", "f1", "dismissed", None)
             .unwrap();
@@ -562,7 +550,9 @@ mod tests {
     #[test]
     fn convert_links_task() {
         let (store, _tmp) = store();
-        store.upsert(&run("r1", vec![finding("f1", "fp1")])).unwrap();
+        store
+            .upsert(&run("r1", vec![finding("f1", "fp1")]))
+            .unwrap();
         store
             .set_finding_status("r1", "f1", "converted", Some(Some("task-9".into())))
             .unwrap();
@@ -620,15 +610,23 @@ mod tests {
     fn set_finding_status_errors_on_missing_finding() {
         // A missing finding must NOT report phantom success (else convert mints dups).
         let (store, _tmp) = store();
-        store.upsert(&run("r1", vec![finding("f1", "fp1")])).unwrap();
-        assert!(store.set_finding_status("r1", "ghost", "dismissed", None).is_err());
-        assert!(store.set_finding_status("nope", "f1", "dismissed", None).is_err());
+        store
+            .upsert(&run("r1", vec![finding("f1", "fp1")]))
+            .unwrap();
+        assert!(store
+            .set_finding_status("r1", "ghost", "dismissed", None)
+            .is_err());
+        assert!(store
+            .set_finding_status("nope", "f1", "dismissed", None)
+            .is_err());
     }
 
     #[test]
     fn link_finding_task_is_atomic_and_idempotent() {
         let (store, _tmp) = store();
-        store.upsert(&run("r1", vec![finding("f1", "fp1")])).unwrap();
+        store
+            .upsert(&run("r1", vec![finding("f1", "fp1")]))
+            .unwrap();
 
         // First link succeeds and stamps converted + linked.
         match store.link_finding_task("r1", "f1", "task-1").unwrap() {
@@ -645,7 +643,11 @@ mod tests {
             LinkOutcome::Linked => panic!("second link must be AlreadyLinked"),
         }
         assert_eq!(
-            store.get_finding("r1", "f1").unwrap().linked_task_id.as_deref(),
+            store
+                .get_finding("r1", "f1")
+                .unwrap()
+                .linked_task_id
+                .as_deref(),
             Some("task-1"),
             "the original link is preserved"
         );

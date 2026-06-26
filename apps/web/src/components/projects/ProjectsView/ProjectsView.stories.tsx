@@ -24,6 +24,7 @@ const projects: Project[] = [
 
 const tasks: Task[] = [
   {
+    seq: 0,
     id: 't1',
     title: 'a',
     description: '',
@@ -53,6 +54,7 @@ const tasks: Task[] = [
     maxBudgetUsd: null,
   },
   {
+    seq: 0,
     id: 't2',
     title: 'b',
     description: '',

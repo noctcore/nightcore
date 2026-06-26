@@ -11,6 +11,7 @@ import type {
 export function makeTask(overrides: Partial<Task> = {}): Task {
   const now = 1_718_900_000_000;
   return {
+    seq: overrides.seq ?? 0,
     id: overrides.id ?? 'task-1',
     title: overrides.title ?? 'Webpack → Vite migration',
     description:
