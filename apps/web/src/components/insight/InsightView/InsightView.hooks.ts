@@ -31,7 +31,7 @@ import {
 } from '../insight-stream';
 import type { CategoryTab } from '../CategoryTabs';
 import { useRunConfig } from '../RunControls/RunControls.hooks';
-import type { RunConfigState } from '../RunControls/RunControls.types';
+import type { InsightRunConfig } from '../RunControls/RunControls.types';
 import type { InsightViewProps } from './InsightView.types';
 
 export interface UseInsightResult {
@@ -278,7 +278,7 @@ export interface InsightViewModel {
   /** Which lifecycle screen (CONFIGURE / RUNNING / RESULTS) is active. */
   phase: RunPhase;
   /** The lifted run-config form state, passed straight into RunControls. */
-  config: RunConfigState;
+  config: InsightRunConfig;
   /** The collapsed-config summary string for the shell's summary bar. */
   summary: string;
   isStarting: boolean;

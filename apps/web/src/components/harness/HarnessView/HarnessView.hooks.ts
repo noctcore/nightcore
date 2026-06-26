@@ -6,6 +6,7 @@ import type {
   RunProgressCategory,
 } from '@/components/ui';
 import { EFFORT_OPTIONS, MODEL_OPTIONS } from '@/lib/models';
+import type { RunConfig } from '@/lib/useRunConfig';
 import {
   applyHarnessArtifact,
   cancelHarnessScan,
@@ -35,6 +36,7 @@ import {
   type HarnessStream,
 } from '../harness-stream';
 import type { CategoryTab } from '../CategoryTabs';
+import { useRunConfig } from '../RunControls/RunControls.hooks';
 import type { HarnessViewProps } from './HarnessView.types';
 
 export interface UseHarnessResult {
@@ -331,15 +333,9 @@ export interface HarnessViewModel {
   summary: string;
   /** Return to CONFIGURE ("New run") with the last run's config pre-filled. */
   reconfigure: () => void;
-  /** Lifted CONFIGURE form state (survives phase swaps, pre-fills on a new run). */
-  model: string | null;
-  effort: string | null;
-  selectedLenses: Set<ConventionCategory>;
-  setModel: (model: string | null) => void;
-  setEffort: (effort: string | null) => void;
-  toggleLens: (category: ConventionCategory) => void;
-  selectAllLenses: () => void;
-  selectNoneLenses: () => void;
+  /** Lifted CONFIGURE run config (survives phase swaps, pre-fills on a new run).
+   *  The shared shape Insight uses too. */
+  config: RunConfig<ConventionCategory>;
   /** RUNNING-screen RunProgress inputs (view-agnostic shape). */
   progressCategories: RunProgressCategory[];
   categoryRunState: Record<string, CategoryRunState>;
@@ -426,15 +422,11 @@ export function useHarnessView({
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
 
-  // Lifted CONFIGURE form state. It lives here (not in RunControls) so the config
-  // survives the CONFIGURE → RUNNING → RESULTS phase swaps and pre-fills on a new
-  // run. `reconfiguring` is the explicit "New run" override that returns RESULTS to
-  // CONFIGURE without discarding the persisted run.
-  const [model, setModel] = useState<string | null>(null);
-  const [effort, setEffort] = useState<string | null>(null);
-  const [selectedLenses, setSelectedLenses] = useState<Set<ConventionCategory>>(
-    () => new Set(ALL_CATEGORIES),
-  );
+  // Lifted CONFIGURE run config (the shared shape Insight uses too). It lives here
+  // (not in RunControls) so the config survives the CONFIGURE → RUNNING → RESULTS
+  // phase swaps and pre-fills on a new run. `reconfiguring` is the explicit "New
+  // run" override that returns RESULTS to CONFIGURE without discarding the run.
+  const config = useRunConfig(!hasProject);
   const [reconfiguring, setReconfiguring] = useState(false);
   const [peekCategory, setPeekCategory] = useState<ConventionCategory | null>(null);
 
@@ -448,50 +440,37 @@ export function useHarnessView({
         ? 'configure'
         : 'results';
 
-  const orderedSelected = useMemo(
-    () => ALL_CATEGORIES.filter((c) => selectedLenses.has(c)),
-    [selectedLenses],
-  );
-
-  const toggleLens = useCallback((category: ConventionCategory) => {
-    setSelectedLenses((prev) => {
-      const next = new Set(prev);
-      if (next.has(category)) next.delete(category);
-      else next.add(category);
-      return next;
-    });
-  }, []);
-
   // "New run": pre-fill the form from the last run's model + lenses, then drop back
   // to CONFIGURE. (Effort isn't persisted on a run, so the lifted value carries.)
+  // prefill resets the model even to null (a default-model rerun), so the form
+  // never keeps a stale model — mirrors Insight.
   const reconfigure = useCallback(() => {
-    // Reset even to null (a default-model rerun) so the form never keeps a stale
-    // model from the last run — mirrors Insight's prefill.
-    setModel(stream.model);
-    if (stream.requestedCategories.length > 0) {
-      setSelectedLenses(new Set(stream.requestedCategories));
-    }
+    config.prefill({
+      model: stream.model,
+      categories: stream.requestedCategories,
+    });
     setPeekCategory(null);
     setReconfiguring(true);
-  }, [stream.model, stream.requestedCategories]);
+  }, [config, stream.model, stream.requestedCategories]);
 
   const onScan = useCallback(() => {
     setReconfiguring(false);
     setPeekCategory(null);
-    void harness.start(orderedSelected, model, effort);
-  }, [harness, orderedSelected, model, effort]);
+    void harness.start(config.orderedSelected, config.model, config.effort);
+  }, [harness, config]);
 
   const summary = useMemo(() => {
     const modelLabel =
       MODEL_OPTIONS.find((o) => o.id === stream.model)?.label ??
       stream.model ??
       'Default model';
-    const effortLabel = EFFORT_OPTIONS.find((o) => o.id === effort)?.label ?? null;
+    const effortLabel =
+      EFFORT_OPTIONS.find((o) => o.id === config.effort)?.label ?? null;
     const n = stream.requestedCategories.length;
     return `⌖ ${modelLabel}${effortLabel !== null ? ` · ${effortLabel}` : ''} · ${n} ${
       n === 1 ? 'lens' : 'lenses'
     }`;
-  }, [stream.model, stream.requestedCategories.length, effort]);
+  }, [stream.model, stream.requestedCategories.length, config.effort]);
 
   const progressCategories: RunProgressCategory[] = useMemo(
     () =>
@@ -650,14 +629,7 @@ export function useHarnessView({
     phase,
     summary,
     reconfigure,
-    model,
-    effort,
-    selectedLenses,
-    setModel,
-    setEffort,
-    toggleLens,
-    selectAllLenses: () => setSelectedLenses(new Set(ALL_CATEGORIES)),
-    selectNoneLenses: () => setSelectedLenses(new Set()),
+    config,
     progressCategories,
     categoryRunState: stream.categoryState,
     findingCounts,
