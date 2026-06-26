@@ -266,6 +266,15 @@ const STRUCT_NAMES: Record<string, string> = {
   'endLine|file|startLine|symbol': 'FindingLocation',
   'affectedFiles|category|codeAfter|codeBefore|confidence|description|effort|fingerprint|id|location|rationale|severity|suggestion|tags|title':
     'Finding',
+  // Harness (codebase convention auditor) shapes. `FindingLocation` (above) is
+  // reused for `ConventionFinding.evidence[]`.
+  'category|confidence|description|evidence|fingerprint|id|kind|rationale|severity|suggestion|tags|title':
+    'ConventionFinding',
+  'name|path|role': 'RepoPackage',
+  'existingPlugins|frameworks|hasAgentDocs|hasEslintFlatConfig|hasLintMeta|isMonorepo|languages|packages|workspaceTool':
+    'RepoProfile',
+  'confidence|content|dependsOn|description|fingerprint|group|groupTitle|id|kind|language|rationale|sourceFindings|targetPath|title|writeMode':
+    'ProposedArtifact',
 };
 
 /** Stable Rust enum name for a referenced/inline `z.enum`. Named enums in the
@@ -289,6 +298,17 @@ const ENUM_NAMES: Record<string, string> = {
   'trivial|small|medium|large': 'FindingEffort',
   'repo|diff': 'AnalysisScope',
   'aborted|runner-crash|unknown': 'AnalysisFailedReason',
+  // Harness (codebase convention auditor) enums. `FindingSeverity` (above) is
+  // reused for `ConventionFinding.severity`; `AnalysisFailedReason` for the
+  // `harness-scan-failed` reason.
+  'architecture|folder-structure|naming|imports-boundaries|design-decisions|tooling-lint|testing|agent-context':
+    'ConventionCategory',
+  'convention|gap': 'ConventionKind',
+  'pnpm|bun|yarn|npm|turbo|nx|cargo|single|unknown': 'WorkspaceTool',
+  'app|package|tool|unknown': 'RepoPackageRole',
+  'lint-meta-rule|eslint-rule|eslint-plugin-file|eslint-config|agent-contract':
+    'ArtifactKind',
+  'create|merge-section': 'ArtifactWriteMode',
 };
 
 function registerInlineEnum(
@@ -731,6 +751,18 @@ const COMMAND_INPUTS: Record<string, unknown> = {
     maxBudgetUsdPerCategory: 2,
   },
   'cancel-analysis': { type: 'cancel-analysis', runId: 'run-1' },
+  'start-harness-scan': {
+    type: 'start-harness-scan',
+    runId: 'run-h1',
+    projectPath: '/proj',
+    categories: ['architecture', 'folder-structure', 'imports-boundaries'],
+    model: 'claude-opus-4-8',
+    effort: 'high',
+    maxConcurrency: 3,
+    maxTurnsPerCategory: 40,
+    maxBudgetUsdPerCategory: 2,
+  },
+  'cancel-harness-scan': { type: 'cancel-harness-scan', runId: 'run-h1' },
 };
 
 /** A representative raw input per query variant (the request/reply stream). */
@@ -954,6 +986,158 @@ const EVENT_INPUTS: Record<string, unknown> = {
   'analysis-failed': {
     type: 'analysis-failed',
     runId: 'run-1',
+    reason: 'aborted',
+    message: 'cancelled by user',
+  },
+  'harness-scan-started': {
+    type: 'harness-scan-started',
+    runId: 'run-h1',
+    categories: ['architecture', 'folder-structure', 'imports-boundaries'],
+    model: 'claude-opus-4-8',
+  },
+  'harness-profile-ready': {
+    type: 'harness-profile-ready',
+    runId: 'run-h1',
+    profile: {
+      isMonorepo: true,
+      workspaceTool: 'bun',
+      packages: [
+        { name: '@nightcore/web', path: 'apps/web', role: 'app' },
+        {
+          name: '@nightcore/contracts',
+          path: 'packages/contracts',
+          role: 'package',
+        },
+      ],
+      languages: ['typescript', 'rust'],
+      frameworks: ['react', 'tauri'],
+      hasEslintFlatConfig: true,
+      hasLintMeta: false,
+      hasAgentDocs: true,
+      existingPlugins: ['@nightcore/eslint-plugin'],
+    },
+  },
+  'harness-category-started': {
+    type: 'harness-category-started',
+    runId: 'run-h1',
+    category: 'folder-structure',
+  },
+  'harness-category-completed': {
+    type: 'harness-category-completed',
+    runId: 'run-h1',
+    category: 'folder-structure',
+    findings: [
+      {
+        id: 'cf-1',
+        category: 'folder-structure',
+        kind: 'convention',
+        severity: 'medium',
+        title: 'Components follow strict folder-per-component',
+        description:
+          'Every component under apps/web/src/components is a folder with colocated .tsx/.hooks.ts/.types.ts/index.ts siblings.',
+        rationale:
+          'An agent that adds a bare .tsx file breaks the convention and the @nightcore/eslint-plugin.',
+        evidence: [
+          {
+            file: 'apps/web/src/components/insight/InsightView/InsightView.tsx',
+            startLine: 1,
+          },
+        ],
+        suggestion: 'Codify as an eslint rule requiring the colocated siblings.',
+        tags: ['folder-per-component'],
+        confidence: 0.9,
+        fingerprint: 'folder-structure:folder-per-component',
+      },
+    ],
+    usage: {
+      inputTokens: 1200,
+      outputTokens: 300,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    },
+    costUsd: 0.04,
+  },
+  'harness-proposals-ready': {
+    type: 'harness-proposals-ready',
+    runId: 'run-h1',
+    artifacts: [
+      {
+        id: 'pa-1',
+        kind: 'agent-contract',
+        group: 'agent-docs',
+        groupTitle: 'Agent contract',
+        title: 'Codify folder-per-component in AGENTS.md',
+        description:
+          'Add a managed guardrail section documenting the colocation convention.',
+        rationale: 'Durable agent-facing record so future runs respect it.',
+        targetPath: 'AGENTS.md',
+        writeMode: 'merge-section',
+        content: '## Conventions\n\n- Components are folder-per-component.\n',
+        language: 'markdown',
+        sourceFindings: ['folder-structure:folder-per-component'],
+        dependsOn: [],
+        confidence: 0.8,
+        fingerprint: 'agent-contract:AGENTS.md',
+      },
+    ],
+  },
+  'harness-scan-completed': {
+    type: 'harness-scan-completed',
+    runId: 'run-h1',
+    profile: {
+      isMonorepo: true,
+      workspaceTool: 'bun',
+      packages: [{ name: '@nightcore/web', path: 'apps/web', role: 'app' }],
+      languages: ['typescript', 'rust'],
+      frameworks: ['react', 'tauri'],
+      hasEslintFlatConfig: true,
+      hasLintMeta: false,
+      hasAgentDocs: true,
+      existingPlugins: ['@nightcore/eslint-plugin'],
+    },
+    findings: [
+      {
+        id: 'cf-1',
+        category: 'folder-structure',
+        kind: 'convention',
+        severity: 'medium',
+        title: 'Components follow strict folder-per-component',
+        description:
+          'Every component under apps/web/src/components is a folder with colocated siblings.',
+        evidence: [
+          {
+            file: 'apps/web/src/components/insight/InsightView/InsightView.tsx',
+          },
+        ],
+        tags: ['folder-per-component'],
+        fingerprint: 'folder-structure:folder-per-component',
+      },
+    ],
+    artifacts: [
+      {
+        id: 'pa-1',
+        kind: 'agent-contract',
+        title: 'Codify folder-per-component in AGENTS.md',
+        description: 'Add a managed guardrail section.',
+        targetPath: 'AGENTS.md',
+        writeMode: 'merge-section',
+        content: '## Conventions\n\n- Components are folder-per-component.\n',
+        fingerprint: 'agent-contract:AGENTS.md',
+      },
+    ],
+    categoriesRun: ['architecture', 'folder-structure', 'imports-boundaries'],
+    costUsd: 0.12,
+    durationMs: 45000,
+    usage: {
+      inputTokens: 5000,
+      outputTokens: 1500,
+      cacheReadTokens: 200,
+      cacheCreationTokens: 100,
+    },
+  },
+  'harness-scan-failed': {
+    type: 'harness-scan-failed',
+    runId: 'run-h1',
     reason: 'aborted',
     message: 'cancelled by user',
   },

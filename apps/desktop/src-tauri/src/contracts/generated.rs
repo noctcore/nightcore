@@ -83,6 +83,24 @@ pub enum SurfaceCommand {
     },
     #[serde(rename_all = "camelCase")]
     CancelAnalysis { run_id: String },
+    #[serde(rename_all = "camelCase")]
+    StartHarnessScan {
+        run_id: String,
+        project_path: String,
+        categories: Vec<ConventionCategory>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        effort: Option<EffortLevel>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_concurrency: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_turns_per_category: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_budget_usd_per_category: Option<f64>,
+    },
+    #[serde(rename_all = "camelCase")]
+    CancelHarnessScan { run_id: String },
 }
 
 // === Surface → engine queries (Rust SERIALIZES these; replies arrive as the
@@ -304,6 +322,58 @@ pub enum NightcoreEvent {
         reason: AnalysisFailedReason,
         message: String,
     },
+    #[serde(rename_all = "camelCase")]
+    HarnessScanStarted {
+        run_id: String,
+        categories: Vec<ConventionCategory>,
+        model: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    HarnessProfileReady {
+        run_id: String,
+        profile: RepoProfile,
+    },
+    #[serde(rename_all = "camelCase")]
+    HarnessCategoryStarted {
+        run_id: String,
+        category: ConventionCategory,
+    },
+    #[serde(rename_all = "camelCase")]
+    HarnessCategoryCompleted {
+        run_id: String,
+        category: ConventionCategory,
+        findings: Vec<ConventionFinding>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        usage: Option<SessionCompletedUsage>,
+        #[serde(default)]
+        cost_usd: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    HarnessProposalsReady {
+        run_id: String,
+        artifacts: Vec<ProposedArtifact>,
+    },
+    #[serde(rename_all = "camelCase")]
+    HarnessScanCompleted {
+        run_id: String,
+        profile: RepoProfile,
+        findings: Vec<ConventionFinding>,
+        artifacts: Vec<ProposedArtifact>,
+        categories_run: Vec<ConventionCategory>,
+        cost_usd: f64,
+        #[serde(default)]
+        duration_ms: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        usage: Option<SessionCompletedUsage>,
+    },
+    #[serde(rename_all = "camelCase")]
+    HarnessScanFailed {
+        run_id: String,
+        reason: AnalysisFailedReason,
+        message: String,
+    },
 }
 
 // === Referenced enums and nested structs ===
@@ -335,11 +405,70 @@ pub enum AnswerQuestionAnswerUnion {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ArtifactKind {
+    LintMetaRule,
+    EslintRule,
+    EslintPluginFile,
+    EslintConfig,
+    AgentContract,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ArtifactWriteMode {
+    Create,
+    MergeSection,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ConfigSectionStatus {
     Supported,
     Unsupported,
     Unavailable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConventionCategory {
+    Architecture,
+    FolderStructure,
+    Naming,
+    ImportsBoundaries,
+    DesignDecisions,
+    ToolingLint,
+    Testing,
+    AgentContext,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConventionFinding {
+    pub id: String,
+    pub category: ConventionCategory,
+    pub kind: ConventionKind,
+    pub severity: FindingSeverity,
+    pub title: String,
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rationale: Option<String>,
+    #[serde(default)]
+    pub evidence: Vec<FindingLocation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggestion: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f64>,
+    pub fingerprint: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ConventionKind {
+    Convention,
+    Gap,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -498,6 +627,33 @@ pub enum PermissionMode {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ProposedArtifact {
+    pub id: String,
+    pub kind: ArtifactKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_title: Option<String>,
+    pub title: String,
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rationale: Option<String>,
+    pub target_path: String,
+    pub write_mode: ArtifactWriteMode,
+    pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    #[serde(default)]
+    pub source_findings: Vec<String>,
+    #[serde(default)]
+    pub depends_on: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f64>,
+    pub fingerprint: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProviderConfigSection {
     pub status: ConfigSectionStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -555,6 +711,44 @@ pub struct QuestionRequiredQuestionsItemOptionsItem {
     pub description: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preview: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoPackage {
+    pub name: String,
+    pub path: String,
+    pub role: RepoPackageRole,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RepoPackageRole {
+    App,
+    Package,
+    Tool,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoProfile {
+    pub is_monorepo: bool,
+    pub workspace_tool: WorkspaceTool,
+    #[serde(default)]
+    pub packages: Vec<RepoPackage>,
+    #[serde(default)]
+    pub languages: Vec<String>,
+    #[serde(default)]
+    pub frameworks: Vec<String>,
+    #[serde(default)]
+    pub has_eslint_flat_config: bool,
+    #[serde(default)]
+    pub has_lint_meta: bool,
+    #[serde(default)]
+    pub has_agent_docs: bool,
+    #[serde(default)]
+    pub existing_plugins: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -676,4 +870,18 @@ pub enum ToolRisk {
     Safe,
     Mutating,
     Dangerous,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WorkspaceTool {
+    Pnpm,
+    Bun,
+    Yarn,
+    Npm,
+    Turbo,
+    Nx,
+    Cargo,
+    Single,
+    Unknown,
 }

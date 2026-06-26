@@ -6,5 +6,6 @@ export * from './models.js';
 export * from './session.js';
 export * from './provider-config.js';
 export * from './insight.js';
+export * from './harness.js';
 export * from './events.js';
 export * from './commands.js';
