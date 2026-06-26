@@ -3,7 +3,7 @@ import { expect, fn, userEvent, within } from 'storybook/test';
 import { ModelEffortPicker } from './ModelEffortPicker';
 
 const meta = {
-  title: 'Board/ModelEffortPicker',
+  title: 'UI/ModelEffortPicker',
   component: ModelEffortPicker,
   args: {
     model: null,

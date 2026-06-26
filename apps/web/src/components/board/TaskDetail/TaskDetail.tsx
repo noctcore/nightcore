@@ -12,6 +12,7 @@ import {
   LayersIcon,
   LogsIcon,
   Markdown,
+  ModelEffortPicker,
   RefineIcon,
   TerminalIcon,
 } from '@/components/ui';
@@ -33,7 +34,6 @@ import { InteractionDock } from '../InteractionDock';
 import { KindPicker } from '../KindPicker';
 import { WorkModePicker } from '../WorkModePicker';
 import { PermissionModePicker } from '../PermissionModePicker';
-import { ModelEffortPicker } from '../ModelEffortPicker';
 import { ReviewPanel } from '../ReviewPanel';
 import { GauntletResults } from '../GauntletResults';
 import { SessionHistory } from '../SessionHistory';

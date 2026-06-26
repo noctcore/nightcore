@@ -14,6 +14,8 @@ export { Menu } from './Menu';
 export type { MenuItem, MenuProps } from './Menu';
 export { Modal, useModal } from './Modal';
 export type { ModalProps } from './Modal';
+export { ModelEffortPicker } from './ModelEffortPicker';
+export type { ModelEffortPickerProps } from './ModelEffortPicker/ModelEffortPicker.types';
 export { Skeleton } from './Skeleton';
 export { StatusDot } from './StatusDot';
 export { ToastProvider, useToast } from './Toast';

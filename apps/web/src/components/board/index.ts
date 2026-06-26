@@ -11,7 +11,6 @@ export { NewTaskForm } from './NewTaskForm';
 export { KindPicker } from './KindPicker';
 export { WorkModePicker } from './WorkModePicker';
 export { PermissionModePicker } from './PermissionModePicker';
-export { ModelEffortPicker } from './ModelEffortPicker';
 export { WorktreeSwitcher, filterTasksByWorktree } from './WorktreeSwitcher';
 export type { ActiveWorktree, WorktreeTab } from './WorktreeSwitcher';
 export { ReviewPanel } from './ReviewPanel';

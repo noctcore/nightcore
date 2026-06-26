@@ -42,6 +42,22 @@ export type { ProviderConfigSection } from './generated/ProviderConfigSection';
 export type { McpServerSummary } from './generated/McpServerSummary';
 export type { SkillSummary } from './generated/SkillSummary';
 export type { SubagentSummary } from './generated/SubagentSummary';
+// Insight (codebase analysis) persisted shapes (ts-rs from `store/insight.rs`).
+export type { InsightRun } from './generated/InsightRun';
+export type { StoredFinding } from './generated/StoredFinding';
+export type { FindingLocation } from './generated/FindingLocation';
+export type { InsightUsage } from './generated/InsightUsage';
+// The unified Insight taxonomy comes from the zod contract (the engine's wire
+// shape); the generated `StoredFinding` keeps these as `string`, so the Insight
+// view casts to these unions.
+export type {
+  Finding,
+  FindingCategory,
+  FindingSeverity,
+  FindingEffort,
+  AnalysisScope,
+  EffortLevel,
+} from '@nightcore/contracts';
 
 /** The kind preset a task runs under (M4) and the four UI permission modes are
  *  now generated FROM the Rust enums (`TaskKind` / `PermissionMode` in
@@ -73,6 +89,12 @@ import type { TaskKind } from './generated/TaskKind';
 import type { SessionInfo } from './generated/SessionInfo';
 import type { SessionMessage } from './generated/SessionMessage';
 import type { ProviderConfigSnapshot } from './generated/ProviderConfigSnapshot';
+import type { InsightRun } from './generated/InsightRun';
+import type {
+  AnalysisScope,
+  FindingCategory,
+  EffortLevel,
+} from '@nightcore/contracts';
 
 /** True when running inside the Tauri webview (vs. a plain browser preview). */
 export function isTauri(): boolean {
@@ -737,5 +759,141 @@ export async function onQuestionEvent(
   if (!isTauri()) return () => {};
   return listen<unknown>('nc:question', (event) => {
     if (isQuestionPrompt(event.payload)) handler(event.payload);
+  });
+}
+
+// --- Insight (codebase analysis) ------------------------------------------
+
+/** The Insight analysis event family streamed over `nc:insight`, narrowed from
+ *  the authoritative `NightcoreEvent` union. */
+export type AnalysisEvent = Extract<
+  NcEvent,
+  {
+    type:
+      | 'analysis-started'
+      | 'analysis-category-started'
+      | 'analysis-category-completed'
+      | 'analysis-completed'
+      | 'analysis-failed';
+  }
+>;
+
+/** A non-`NightcoreEvent` notice the Rust core emits on `nc:insight` when a finding
+ *  is converted to a board task, so the open Insight view can update in place. */
+export interface FindingConvertedEvent {
+  type: 'finding-converted';
+  runId: string;
+  findingId: string;
+  taskId: string;
+}
+
+/** Everything that arrives on the `nc:insight` channel. */
+export type InsightEvent = AnalysisEvent | FindingConvertedEvent;
+
+/** Start an Insight analysis run over the active project. Returns the `runId` the
+ *  `analysis-*` events correlate by. Rejects outside Tauri (no active project). */
+export async function startAnalysis(
+  scope: AnalysisScope,
+  categories: FindingCategory[],
+  options: { model?: string | null; effort?: EffortLevel | null } = {},
+): Promise<string> {
+  return invoke<string>('start_analysis', {
+    scope,
+    categories,
+    model: options.model ?? null,
+    effort: options.effort ?? null,
+  });
+}
+
+/** Cancel an in-flight analysis run (aborts every category pass). No-op outside Tauri. */
+export async function cancelAnalysis(runId: string): Promise<void> {
+  await tauriInvoke<void>('cancel_analysis', { runId }, undefined);
+}
+
+/** All analysis runs for the active project, newest first. `[]` outside Tauri. */
+export async function listInsightRuns(): Promise<InsightRun[]> {
+  return tauriInvoke<InsightRun[]>('list_insight_runs', {}, []);
+}
+
+/** One analysis run by id, or `null`. `null` outside Tauri. */
+export async function getInsightRun(runId: string): Promise<InsightRun | null> {
+  return tauriInvoke<InsightRun | null>('get_insight_run', { runId }, null);
+}
+
+/** Mark a finding dismissed (it stays dismissed across future re-runs). Returns
+ *  the updated run. No-op (`null`) outside Tauri. */
+export async function dismissFinding(
+  runId: string,
+  findingId: string,
+): Promise<InsightRun | null> {
+  return tauriInvoke<InsightRun | null>(
+    'dismiss_finding',
+    { runId, findingId },
+    null,
+  );
+}
+
+/** Restore a dismissed finding back to open. Returns the updated run. */
+export async function restoreFinding(
+  runId: string,
+  findingId: string,
+): Promise<InsightRun | null> {
+  return tauriInvoke<InsightRun | null>(
+    'restore_finding',
+    { runId, findingId },
+    null,
+  );
+}
+
+/** Convert a finding into a board task (idempotent). Returns the created task. */
+export async function convertFindingToTask(
+  runId: string,
+  findingId: string,
+): Promise<Task> {
+  return invoke<Task>('convert_finding_to_task', { runId, findingId });
+}
+
+/** Delete an analysis run and its file. No-op outside Tauri. */
+export async function deleteInsightRun(runId: string): Promise<void> {
+  await tauriInvoke<void>('delete_insight_run', { runId }, undefined);
+}
+
+/** Narrow an unknown `nc:insight` payload to an `InsightEvent`. The `analysis-*`
+ *  events are validated against the authoritative `NightcoreEventSchema`; the
+ *  `finding-converted` notice (not a `NightcoreEvent`) is shape-checked. */
+function parseInsightEvent(value: unknown): InsightEvent | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const v = value as Record<string, unknown>;
+  if (v.type === 'finding-converted') {
+    if (
+      typeof v.runId === 'string' &&
+      typeof v.findingId === 'string' &&
+      typeof v.taskId === 'string'
+    ) {
+      return {
+        type: 'finding-converted',
+        runId: v.runId,
+        findingId: v.findingId,
+        taskId: v.taskId,
+      };
+    }
+    return null;
+  }
+  const parsed = NightcoreEventSchema.safeParse(value);
+  if (parsed.success && parsed.data.type.startsWith('analysis-')) {
+    return parsed.data as AnalysisEvent;
+  }
+  return null;
+}
+
+/** Subscribe to `nc:insight` streamed analysis events. Returns an unlisten
+ *  function (a no-op outside Tauri). */
+export async function onInsightEvent(
+  handler: (event: InsightEvent) => void,
+): Promise<UnlistenFn> {
+  if (!isTauri()) return () => {};
+  return listen<unknown>('nc:insight', (event) => {
+    const parsed = parseInsightEvent(event.payload);
+    if (parsed !== null) handler(parsed);
   });
 }
