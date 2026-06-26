@@ -71,16 +71,8 @@ function ConfigureScreen({ view }: { view: HarnessViewModel }) {
         </p>
       )}
       <RunControls
-        model={view.model}
-        effort={view.effort}
-        selected={view.selectedLenses}
+        config={view.config}
         isStarting={view.isStarting}
-        disabled={!view.hasProject}
-        onChangeModel={view.setModel}
-        onChangeEffort={view.setEffort}
-        onToggle={view.toggleLens}
-        onSelectAll={view.selectAllLenses}
-        onSelectNone={view.selectNoneLenses}
         onScan={view.onScan}
       />
     </div>

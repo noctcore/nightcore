@@ -3,30 +3,27 @@ import { render } from 'vitest-browser-react';
 import { expect, test, vi } from 'vitest';
 import * as stories from './RunControls.stories';
 
-const { Default, Empty } = composeStories(stories);
+const { Default } = composeStories(stories);
 
 test('fires onScan when the Scan CTA is pressed with lenses selected', async () => {
   const onScan = vi.fn();
   const screen = render(<Default onScan={onScan} />);
+  // Default hint reflects all eight lenses selected.
+  await expect.element(screen.getByText(/across 8 lenses/i)).toBeInTheDocument();
   await screen.getByRole('button', { name: /^scan$/i }).click();
   expect(onScan).toHaveBeenCalledTimes(1);
 });
 
-test('disables Scan when no lens is selected', async () => {
-  const screen = render(<Empty />);
-  await expect.element(screen.getByRole('button', { name: /^scan$/i })).toBeDisabled();
-});
-
-test('toggling a lens chip fires onToggle with its category', async () => {
-  const onToggle = vi.fn();
-  const screen = render(<Default onToggle={onToggle} />);
-  await screen.getByRole('button', { name: /Architecture/ }).click();
-  expect(onToggle).toHaveBeenCalledWith('architecture');
-});
-
-test('the None shortcut clears the selection via onSelectNone', async () => {
-  const onSelectNone = vi.fn();
-  const screen = render(<Default onSelectNone={onSelectNone} />);
+test('clearing the selection disables Scan', async () => {
+  const screen = render(<Default />);
   await screen.getByRole('button', { name: /^none$/i }).click();
-  expect(onSelectNone).toHaveBeenCalledTimes(1);
+  await expect
+    .element(screen.getByRole('button', { name: /^scan$/i }))
+    .toBeDisabled();
+});
+
+test('toggling a lens off updates the lens count hint', async () => {
+  const screen = render(<Default />);
+  await screen.getByRole('button', { name: /Architecture/ }).click();
+  await expect.element(screen.getByText(/across 7 lenses/i)).toBeInTheDocument();
 });

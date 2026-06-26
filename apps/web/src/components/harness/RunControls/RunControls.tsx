@@ -1,7 +1,6 @@
 import { Button, ModelEffortPicker, VerifiedIcon } from '@/components/ui';
 import { MODEL_OPTIONS } from '@/lib/models';
 import { ALL_CATEGORIES, CATEGORY_META } from '../harness.constants';
-import { useRunControls } from './RunControls.hooks';
 import type { RunControlsProps } from './RunControls.types';
 
 const CHIP =
@@ -22,25 +21,12 @@ function modelLabel(model: string | null): string {
 
 /** The CONFIGURE screen body: the run configuration hero — model/effort, the
  *  convention-lens chip grid, and the primary Scan CTA with a cost hint. Fully
- *  controlled: every value + setter is lifted to the HarnessView hook so the config
+ *  controlled by the shared run-config (lifted to the HarnessView hook) so it
  *  survives phase swaps and pre-fills on a new run. Harness always scans the whole
- *  repo, so there is no scope picker. The live readout + Cancel now live on the
- *  RUNNING screen (RunProgress). */
-export function RunControls(props: RunControlsProps) {
-  const {
-    model,
-    effort,
-    selected,
-    isStarting,
-    onChangeModel,
-    onChangeEffort,
-    onToggle,
-    onSelectAll,
-    onSelectNone,
-    onScan,
-  } = props;
-  const { orderedSelected, canScan } = useRunControls(props);
-  const lensCount = orderedSelected.length;
+ *  repo, so there is no scope picker. The live readout + Cancel live on the RUNNING
+ *  screen (RunProgress). */
+export function RunControls({ config, isStarting, onScan }: RunControlsProps) {
+  const lensCount = config.orderedSelected.length;
 
   return (
     <div className="mx-auto flex w-full max-w-[720px] flex-col gap-7 px-6 py-10">
@@ -50,10 +36,10 @@ export function RunControls(props: RunControlsProps) {
 
       {/* Model + effort (reuses the shared picker for parity) */}
       <ModelEffortPicker
-        model={model}
-        effort={effort}
-        onChangeModel={onChangeModel}
-        onChangeEffort={onChangeEffort}
+        model={config.model}
+        effort={config.effort}
+        onChangeModel={config.setModel}
+        onChangeEffort={config.setEffort}
       />
 
       {/* Convention lenses */}
@@ -65,14 +51,14 @@ export function RunControls(props: RunControlsProps) {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={onSelectAll}
+              onClick={config.selectAll}
               className="text-[11px] font-medium text-muted-foreground hover:text-foreground"
             >
               All
             </button>
             <button
               type="button"
-              onClick={onSelectNone}
+              onClick={config.selectNone}
               className="text-[11px] font-medium text-muted-foreground hover:text-foreground"
             >
               None
@@ -83,13 +69,13 @@ export function RunControls(props: RunControlsProps) {
           {ALL_CATEGORIES.map((c) => {
             const Meta = CATEGORY_META[c];
             const Icon = Meta.icon;
-            const on = selected.has(c);
+            const on = config.selected.has(c);
             return (
               <button
                 key={c}
                 type="button"
                 aria-pressed={on}
-                onClick={() => onToggle(c)}
+                onClick={() => config.toggle(c)}
                 className={`inline-flex items-center gap-1.5 ${chipClass(on)}`}
               >
                 <Icon size={13} />
@@ -103,7 +89,7 @@ export function RunControls(props: RunControlsProps) {
       {/* Primary CTA + hint */}
       <div className="flex flex-col gap-2">
         <Button
-          disabled={!canScan}
+          disabled={!config.canRun || isStarting}
           onClick={onScan}
           className="w-full justify-center py-2.5 text-[13.5px]"
         >
@@ -112,7 +98,7 @@ export function RunControls(props: RunControlsProps) {
         </Button>
         <p className="text-[12px] text-muted-foreground">
           Scans the whole repo across {lensCount} {lensCount === 1 ? 'lens' : 'lenses'}{' '}
-          · ~Claude {modelLabel(model)} · cost depends on repo size.
+          · ~Claude {modelLabel(config.model)} · cost depends on repo size.
         </p>
       </div>
     </div>
