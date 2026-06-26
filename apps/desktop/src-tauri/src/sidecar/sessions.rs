@@ -26,7 +26,6 @@ use std::path::Path;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::m2::coordinator::Orchestrator;
 use crate::project::ProjectStore;
 use crate::store::TaskStore;
 
@@ -218,7 +217,6 @@ async fn fetch_session_info(
 pub async fn resume_session(
     app: AppHandle,
     store: State<'_, TaskStore>,
-    orch: State<'_, Orchestrator>,
     task_id: String,
     sdk_session_id: String,
 ) -> Result<(), String> {
@@ -245,7 +243,7 @@ pub async fn resume_session(
 
     // Reuse the manual run path verbatim: it leases a slot, resolves the worktree,
     // marks the task in-progress, and dispatches `start-session` with the resume id.
-    run_task(app, store, orch, task_id).await
+    run_task(app, task_id).await
 }
 
 /// Rename a past session (sets its custom title). The web edits the title on a

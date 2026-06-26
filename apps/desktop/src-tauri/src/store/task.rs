@@ -222,6 +222,14 @@ pub struct Task {
     /// Bookkeeping, not a secret — never logged at info/telemetry.
     #[serde(default)]
     pub sdk_session_id: Option<String>,
+    /// A strictly-monotonic per-store sequence stamped on every persist+emit, so a
+    /// consumer can order `nc:task` snapshots without relying on millisecond
+    /// `updated_at` (which collides under rapid status changes). Assigned by the
+    /// store from a single atomic counter; each emitted snapshot for a store carries
+    /// a greater `seq` than the prior one. Additive: legacy task JSON with no `seq`
+    /// loads as `0`, and the next persist re-stamps it.
+    #[serde(default)]
+    pub seq: u64,
 }
 
 impl Task {
@@ -256,6 +264,8 @@ impl Task {
             max_turns: None,
             max_budget_usd: None,
             sdk_session_id: None,
+            // Stamped by the store on the first persist; 0 until then.
+            seq: 0,
         }
     }
 
@@ -481,7 +491,9 @@ pub fn create_task(
             max_budget_usd,
         },
     );
-    store.upsert(&task)?;
+    // Persist + stamp the monotonic seq; emit the STORED snapshot so the `nc:task`
+    // on the wire carries the assigned `seq`, not the unstamped local task.
+    let task = store.upsert(&task)?;
     // CRUD observability (#10): id + run-shaping metadata only — never the title or
     // description (those can carry user content; the PII discipline stays clean).
     tracing::info!(

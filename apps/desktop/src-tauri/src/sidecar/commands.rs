@@ -9,88 +9,23 @@ use tauri::{AppHandle, Manager, State};
 use crate::contracts::AnswerQuestionAnswerUnion;
 use crate::m2::coordinator::{self, Orchestrator};
 use crate::m2::provider::{PermissionDecision, Provider};
-use crate::m2::worktree;
 use crate::project::ProjectStore;
 use crate::store::TaskStore;
 use crate::task::Task;
-
-use super::ensure_reader;
 
 /// Run a task through the sidecar — the manual single-run path (still useful with
 /// the loop). Leases a slot (the generalization of M1's serial guard: a free slot
 /// must exist at the configured concurrency), allocates a worktree, marks the task
 /// `in_progress`, ensures the sidecar is up, then dispatches `start-session`.
 /// Streaming and the terminal transition happen on the reader task.
+///
+/// The whole ordered sequence lives in [`coordinator::submit_run`], shared with the
+/// auto-loop `launch`. A manual run feeds NO circuit breaker (`feed_breaker =
+/// false`) and surfaces the setup error to the caller as its `Result`; the
+/// auto-loop launch feeds the breaker and discards the result instead.
 #[tauri::command]
-pub async fn run_task(
-    app: AppHandle,
-    store: State<'_, TaskStore>,
-    orch: State<'_, Orchestrator>,
-    id: String,
-) -> Result<(), String> {
-    let task = store
-        .get(&id)
-        .ok_or_else(|| format!("no task with id {id}"))?;
-
-    // Lease a slot. With concurrency 1 this reproduces M1's "a task is already
-    // running" rejection exactly.
-    if !orch.slots.try_lease(&id) {
-        return Err("no free slot (max concurrency reached)".to_string());
-    }
-
-    // Resolve the run cwd off the active project + run mode (shared with the
-    // auto-loop `launch` so the manual and automatic paths run identically).
-    let resolved = match coordinator::resolve_worktree(&app, &id) {
-        Ok(cwd) => cwd,
-        Err(e) => {
-            orch.slots.release(&id);
-            return Err(e);
-        }
-    };
-    // Worktree mode carries a `nc/<taskId>` branch chip; main mode runs in the
-    // project root on the current branch (no chip).
-    let is_worktree = resolved.as_ref().map(|r| r.is_worktree).unwrap_or(false);
-    let cwd = resolved.map(|r| r.path);
-    let branch = is_worktree.then(|| worktree::branch_name(&id));
-
-    // Mark in-progress + persist + emit before dispatch (shared with `launch`).
-    if let Err(e) = coordinator::mark_task_in_progress(&app, &id, branch.clone()) {
-        orch.slots.release(&id);
-        return Err(e);
-    }
-
-    if let Err(e) = ensure_reader(&app).await {
-        // Reset to Failed so the task doesn't strand in InProgress with no log
-        // (shared `fail_task` marks + emits; a manual run does NOT feed the breaker).
-        coordinator::fail_task(&app, &id, &e);
-        orch.slots.release(&id);
-        return Err(e);
-    }
-
-    let permission_mode = resolve_permission_mode(&app, task.permission_mode.as_deref());
-    // SDK-guardrails: a manual re-run is a build launch — forward the ceilings,
-    // resume the persisted SDK session id when present (recovery path), and inject
-    // the project's enabled MCP servers.
-    let guardrails = build_guardrails(&app, &task);
-    if let Err(e) = orch
-        .provider
-        .start_session(
-            &id,
-            task.prompt(),
-            task.model.clone(),
-            task.effort.clone(),
-            cwd,
-            permission_mode,
-            task.kind.as_wire(),
-            guardrails,
-        )
-        .await
-    {
-        orch.slots.release(&id);
-        return Err(e);
-    }
-
-    Ok(())
+pub async fn run_task(app: AppHandle, id: String) -> Result<(), String> {
+    coordinator::submit_run(&app, &id, false).await
 }
 
 /// The SDK permission mode for the next run (M4.7 §A4). Precedence:

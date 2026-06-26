@@ -15,6 +15,70 @@ use super::permission::{
 use super::verification::{handle_build_completed, handle_review_completed};
 use super::{apply_and_emit, finish_run, park_for_approval, Outcome, SESSION_EVENT};
 
+/// The pure routing decision for one parsed sidecar event, extracted from all
+/// `AppHandle` side-effects so it can be unit-tested with plain JSON fixtures.
+#[derive(Debug, PartialEq)]
+pub(crate) enum EventRoute {
+    /// A `query-result` RPC reply with a known `requestId` — route to the
+    /// provider's pending correlate map (NOT forwarded to the board).
+    QueryResult { request_id: String },
+    /// A `query-result` that is missing its `requestId` — drop it.
+    QueryResultMissingId,
+    /// Any `analysis-*` event — route to the insight channel by `runId`.
+    Analysis,
+    /// A `permission-required` for `ExitPlanMode` — park as `waiting_approval`.
+    PermissionPlanGate,
+    /// A `permission-required` for any other tool — surface an `nc:permission` prompt.
+    PermissionGeneric,
+    /// A `question-required` — surface an `nc:question` prompt.
+    Question,
+    /// The event has a correlatable `sessionId` — apply normal session processing.
+    SessionCorrelated,
+    /// The event cannot be correlated (no `sessionId` and not a special type) — drop.
+    Drop,
+}
+
+/// Classify a raw sidecar event into its routing decision. This function is
+/// PURE: it reads only `event` and returns an `EventRoute`; all `AppHandle`
+/// side-effects live in `handle_event` which matches on the returned value.
+pub(crate) fn classify_event(event: &Value) -> EventRoute {
+    let event_type = event.get("type").and_then(Value::as_str).unwrap_or("");
+
+    if event_type == "query-result" {
+        return match event.get("requestId").and_then(Value::as_str) {
+            Some(id) => EventRoute::QueryResult {
+                request_id: id.to_string(),
+            },
+            None => EventRoute::QueryResultMissingId,
+        };
+    }
+
+    if event_type.starts_with("analysis-") {
+        return EventRoute::Analysis;
+    }
+
+    // Session-correlated events below: all require a sessionId (or a special
+    // sub-type like permission/question that we check AFTER correlation).
+    if event.get("sessionId").and_then(Value::as_u64).is_none() {
+        return EventRoute::Drop;
+    }
+
+    if event_type == "permission-required" {
+        let tool_name = event.get("toolName").and_then(Value::as_str).unwrap_or("");
+        return if tool_name == EXIT_PLAN_MODE {
+            EventRoute::PermissionPlanGate
+        } else {
+            EventRoute::PermissionGeneric
+        };
+    }
+
+    if event_type == "question-required" {
+        return EventRoute::Question;
+    }
+
+    EventRoute::SessionCorrelated
+}
+
 /// Process one parsed sidecar event: correlate it to its task, forward it as
 /// `nc:session`, auto-deny permission requests, and apply terminal transitions
 /// (releasing the slot, cleaning up the worktree, feeding the breaker, kicking the
@@ -195,5 +259,96 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn query_result_without_request_id_drops() {
+        let event = json!({ "type": "query-result", "data": "something" });
+        assert_eq!(classify_event(&event), EventRoute::QueryResultMissingId);
+    }
+
+    #[test]
+    fn query_result_with_request_id_routes_correctly() {
+        let event = json!({ "type": "query-result", "requestId": "req-abc" });
+        assert_eq!(
+            classify_event(&event),
+            EventRoute::QueryResult {
+                request_id: "req-abc".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn analysis_event_routes_before_session_id_correlation() {
+        // An analysis-* event has no sessionId at all; it must route to Analysis,
+        // NOT to Drop (which would happen if session-id correlation ran first).
+        let event = json!({ "type": "analysis-completed", "runId": "run-1" });
+        assert_eq!(classify_event(&event), EventRoute::Analysis);
+
+        let event = json!({ "type": "analysis-category-started", "runId": "run-1" });
+        assert_eq!(classify_event(&event), EventRoute::Analysis);
+    }
+
+    #[test]
+    fn permission_exit_plan_mode_is_plan_gate() {
+        let event = json!({
+            "type": "permission-required",
+            "sessionId": 42,
+            "toolName": "ExitPlanMode",
+            "requestId": "req-1"
+        });
+        assert_eq!(classify_event(&event), EventRoute::PermissionPlanGate);
+    }
+
+    #[test]
+    fn permission_other_tool_is_generic() {
+        let event = json!({
+            "type": "permission-required",
+            "sessionId": 42,
+            "toolName": "Bash",
+            "requestId": "req-2"
+        });
+        assert_eq!(classify_event(&event), EventRoute::PermissionGeneric);
+    }
+
+    #[test]
+    fn question_required_routes_to_question() {
+        let event = json!({
+            "type": "question-required",
+            "sessionId": 99,
+            "requestId": "req-3"
+        });
+        assert_eq!(classify_event(&event), EventRoute::Question);
+    }
+
+    #[test]
+    fn event_with_no_correlatable_id_drops_without_panic() {
+        // No sessionId, not a special type — must drop gracefully.
+        let event = json!({ "type": "session-started", "data": {} });
+        assert_eq!(classify_event(&event), EventRoute::Drop);
+    }
+
+    #[test]
+    fn event_with_session_id_is_session_correlated() {
+        let event = json!({ "type": "session-completed", "sessionId": 7, "result": "success" });
+        assert_eq!(classify_event(&event), EventRoute::SessionCorrelated);
+    }
+
+    #[test]
+    fn unknown_type_with_session_id_is_session_correlated() {
+        let event = json!({ "type": "some-future-event", "sessionId": 1 });
+        assert_eq!(classify_event(&event), EventRoute::SessionCorrelated);
+    }
+
+    #[test]
+    fn missing_type_with_no_session_id_drops() {
+        let event = json!({ "payload": "unknown" });
+        assert_eq!(classify_event(&event), EventRoute::Drop);
     }
 }

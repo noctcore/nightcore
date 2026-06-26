@@ -17,6 +17,7 @@ mod infra;
 mod m2;
 mod sidecar;
 mod store;
+mod sync;
 mod workflow;
 
 // Module facade: preserve the historical crate-root paths after the folder

@@ -159,12 +159,10 @@ impl From<McpServerTransport> for crate::contracts::McpServerTransport {
                     headers: string_map_to_json(headers),
                 }
             }
-            McpServerTransport::Sse { url, headers } => {
-                crate::contracts::McpServerTransport::Sse {
-                    url,
-                    headers: string_map_to_json(headers),
-                }
-            }
+            McpServerTransport::Sse { url, headers } => crate::contracts::McpServerTransport::Sse {
+                url,
+                headers: string_map_to_json(headers),
+            },
         }
     }
 }
@@ -416,10 +414,7 @@ impl SettingsStore {
 
     /// A snapshot of the current settings.
     pub fn get(&self) -> Settings {
-        self.settings
-            .lock()
-            .expect("settings store poisoned")
-            .clone()
+        crate::sync::lock_or_recover(&self.settings).clone()
     }
 
     /// The effective permission mode for a project (its override, else the global),
@@ -513,7 +508,7 @@ impl SettingsStore {
 
     /// Apply a patch, persist, and return the merged settings.
     fn update(&self, patch: SettingsPatch) -> Result<Settings, String> {
-        let mut guard = self.settings.lock().expect("settings store poisoned");
+        let mut guard = crate::sync::lock_or_recover(&self.settings);
         guard.merge(patch);
         let snapshot = guard.clone();
         write_settings(&self.config_dir.join("settings.json"), &snapshot)?;
@@ -525,7 +520,7 @@ impl SettingsStore {
     /// settings file (and silently shape a future project that reuses the id). A
     /// no-op when no override exists for the id.
     pub fn drop_project_override(&self, project_id: &str) -> Result<(), String> {
-        let mut guard = self.settings.lock().expect("settings store poisoned");
+        let mut guard = crate::sync::lock_or_recover(&self.settings);
         if guard.project_overrides.remove(project_id).is_none() {
             return Ok(()); // nothing to drop
         }
@@ -611,7 +606,25 @@ fn write_settings(path: &Path, settings: &Settings) -> Result<(), String> {
     // Atomic temp-file + rename (data-integrity #3): a crash/concurrent reader never
     // sees a half-written settings file.
     crate::store::write_atomic(path, json.as_bytes())
-        .map_err(|e| format!("failed to write {}: {e}", path.display()))
+        .map_err(|e| format!("failed to write {}: {e}", path.display()))?;
+    // settings.json holds plaintext MCP `env`/`headers` secrets, so restrict it to
+    // the owner (0600) — the default umask can otherwise leave it group/world
+    // readable. No-op on Windows (no Unix permission bits).
+    restrict_to_owner(path)
+}
+
+/// Set `path` to owner-only (mode 0600) on Unix so its plaintext secrets aren't
+/// readable by other users on the machine. A no-op on non-Unix targets.
+#[cfg(unix)]
+fn restrict_to_owner(path: &Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+        .map_err(|e| format!("failed to restrict {}: {e}", path.display()))
+}
+
+#[cfg(not(unix))]
+fn restrict_to_owner(_path: &Path) -> Result<(), String> {
+    Ok(())
 }
 
 /// Read-only application metadata for the About page. Sourced from build-time
@@ -681,6 +694,23 @@ mod tests {
         let tmp = TempDir::new().expect("create temp dir");
         let store = SettingsStore::load_from(tmp.path().join("config"));
         (store, tmp)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn settings_file_is_written_owner_only_0600() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = TempDir::new().expect("temp dir");
+        let path = tmp.path().join("settings.json");
+        write_settings(&path, &Settings::default()).expect("write");
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        // settings.json holds plaintext MCP secrets — only the owner may read it.
+        assert_eq!(
+            mode & 0o777,
+            0o600,
+            "settings.json must be owner-only (0600), got {:o}",
+            mode & 0o777
+        );
     }
 
     #[test]
@@ -984,7 +1014,11 @@ mod tests {
 
         let enabled = store.enabled_mcp_servers(None);
         let names: Vec<&str> = enabled.iter().map(|s| s.name.as_str()).collect();
-        assert_eq!(names, vec!["alpha", "charlie"], "only enabled entries inject");
+        assert_eq!(
+            names,
+            vec!["alpha", "charlie"],
+            "only enabled entries inject"
+        );
     }
 
     #[test]

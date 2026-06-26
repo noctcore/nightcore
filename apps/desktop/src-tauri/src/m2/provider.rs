@@ -356,9 +356,7 @@ impl SidecarProvider {
     /// Record that `task_id` is launching a run. Called under the stdin lock right
     /// before the `start-session` write so the FIFO order matches the wire order.
     fn push_pending(&self, task_id: &str) {
-        self.correlation
-            .lock()
-            .expect("correlation poisoned")
+        crate::sync::lock_or_recover(&self.correlation)
             .pending
             .push_back(task_id.to_string());
     }
@@ -367,7 +365,7 @@ impl SidecarProvider {
     /// FIFO. Called by the reader the first time it sees a session id. Returns the
     /// task id it bound, if any pending launch was waiting.
     pub fn correlate(&self, session_id: u64) -> Option<String> {
-        let mut c = self.correlation.lock().expect("correlation poisoned");
+        let mut c = crate::sync::lock_or_recover(&self.correlation);
         if let Some(existing) = c.by_session.get(&session_id) {
             return Some(existing.clone());
         }
@@ -390,9 +388,7 @@ impl SidecarProvider {
     /// it is still tracked. Read on a terminal event to log the run's `duration_ms`
     /// (observability #5). `None` once the session has been forgotten.
     pub fn run_duration_ms(&self, session_id: u64) -> Option<u64> {
-        self.correlation
-            .lock()
-            .expect("correlation poisoned")
+        crate::sync::lock_or_recover(&self.correlation)
             .started_at
             .get(&session_id)
             .map(|t| t.elapsed().as_millis() as u64)
@@ -405,7 +401,7 @@ impl SidecarProvider {
     /// poison the FIFO. A no-op once the launch has correlated (then `forget`
     /// drops the binding instead). Returns whether an entry was removed.
     pub fn evict_pending(&self, task_id: &str) -> bool {
-        let mut c = self.correlation.lock().expect("correlation poisoned");
+        let mut c = crate::sync::lock_or_recover(&self.correlation);
         // Already correlated ⇒ nothing pending to evict (forget handles the binding).
         if c.by_session.values().any(|t| t == task_id) {
             return false;
@@ -424,9 +420,7 @@ impl SidecarProvider {
     /// diagnostics and tests.)
     #[allow(dead_code)]
     pub fn task_for(&self, session_id: u64) -> Option<String> {
-        self.correlation
-            .lock()
-            .expect("correlation poisoned")
+        crate::sync::lock_or_recover(&self.correlation)
             .by_session
             .get(&session_id)
             .cloned()
@@ -435,7 +429,7 @@ impl SidecarProvider {
     /// Forget a session↔task binding once the run reaches a terminal state, so the
     /// map doesn't grow unboundedly across a long session.
     pub fn forget(&self, session_id: u64) {
-        let mut c = self.correlation.lock().expect("correlation poisoned");
+        let mut c = crate::sync::lock_or_recover(&self.correlation);
         c.by_session.remove(&session_id);
         c.started_at.remove(&session_id);
     }
@@ -443,7 +437,7 @@ impl SidecarProvider {
     /// The session id currently bound to `task_id`, if any. Used to interrupt a
     /// specific run by task.
     pub fn session_for(&self, task_id: &str) -> Option<u64> {
-        let c = self.correlation.lock().expect("correlation poisoned");
+        let c = crate::sync::lock_or_recover(&self.correlation);
         c.by_session
             .iter()
             .find(|(_, t)| t.as_str() == task_id)
@@ -453,9 +447,7 @@ impl SidecarProvider {
     /// Every currently-bound session id. Used to interrupt all in-flight runs on a
     /// stop / circuit-breaker pause.
     pub fn live_sessions(&self) -> Vec<u64> {
-        self.correlation
-            .lock()
-            .expect("correlation poisoned")
+        crate::sync::lock_or_recover(&self.correlation)
             .by_session
             .keys()
             .copied()
@@ -474,11 +466,8 @@ impl SidecarProvider {
         // Drop every pending query sender so any awaiting `query` returns an error
         // (a `RecvError`) instead of hanging on a reply that will never arrive from
         // the dead child.
-        self.pending_replies
-            .lock()
-            .expect("pending_replies poisoned")
-            .clear();
-        let mut c = self.correlation.lock().expect("correlation poisoned");
+        crate::sync::lock_or_recover(&self.pending_replies).clear();
+        let mut c = crate::sync::lock_or_recover(&self.correlation);
         let orphaned: Vec<String> = c.by_session.values().cloned().collect();
         c.by_session.clear();
         c.pending.clear();
@@ -576,9 +565,7 @@ impl Provider for SidecarProvider {
         if let Err(e) = Self::write_line(stdin, &command).await {
             // The write failed: undo the pending push we just made so it can't
             // mis-correlate a later session.
-            self.correlation
-                .lock()
-                .expect("correlation poisoned")
+            crate::sync::lock_or_recover(&self.correlation)
                 .pending
                 .pop_back();
             return Err(e);
@@ -693,10 +680,7 @@ impl Provider for SidecarProvider {
         // Register the pending reply BEFORE writing, so a fast reply can't arrive
         // before the sender exists.
         let (tx, rx) = oneshot::channel::<Value>();
-        self.pending_replies
-            .lock()
-            .expect("pending_replies poisoned")
-            .insert(request_id.clone(), tx);
+        crate::sync::lock_or_recover(&self.pending_replies).insert(request_id.clone(), tx);
 
         // Write the query line under the stdin lock. On a write failure, evict the
         // pending entry we just registered so it can't leak.
@@ -708,10 +692,7 @@ impl Provider for SidecarProvider {
             }
         };
         if let Err(e) = write_result {
-            self.pending_replies
-                .lock()
-                .expect("pending_replies poisoned")
-                .remove(&request_id);
+            crate::sync::lock_or_recover(&self.pending_replies).remove(&request_id);
             return Err(e);
         }
 
@@ -724,21 +705,14 @@ impl Provider for SidecarProvider {
                 Err("sidecar closed before the query reply arrived".to_string())
             }
             Err(_elapsed) => {
-                self.pending_replies
-                    .lock()
-                    .expect("pending_replies poisoned")
-                    .remove(&request_id);
+                crate::sync::lock_or_recover(&self.pending_replies).remove(&request_id);
                 Err("timed out waiting for the session query reply".to_string())
             }
         }
     }
 
     fn correlate_reply(&self, request_id: &str, reply: Value) {
-        let sender = self
-            .pending_replies
-            .lock()
-            .expect("pending_replies poisoned")
-            .remove(request_id);
+        let sender = crate::sync::lock_or_recover(&self.pending_replies).remove(request_id);
         match sender {
             Some(tx) => {
                 // The receiver may have already timed out and dropped; a failed send

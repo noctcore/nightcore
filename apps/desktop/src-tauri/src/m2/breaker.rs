@@ -43,14 +43,14 @@ impl CircuitBreaker {
     /// A success clears the failure window: the consecutive-failure count resets,
     /// so an intermittent failure between successes never trips the breaker.
     pub fn record_success(&self) {
-        self.failures.lock().expect("breaker poisoned").clear();
+        crate::sync::lock_or_recover(&self.failures).clear();
     }
 
     /// Record a failure at `now`, evicting entries older than the window. Trips
     /// (`paused = true`) when the live count reaches the threshold. Returns whether
     /// this failure *caused* the trip (false if already paused or below threshold).
     pub fn record_failure_at(&self, now: Instant) -> bool {
-        let mut failures = self.failures.lock().expect("breaker poisoned");
+        let mut failures = crate::sync::lock_or_recover(&self.failures);
         let cutoff = now.checked_sub(self.window);
         if let Some(cutoff) = cutoff {
             while failures.front().is_some_and(|t| *t < cutoff) {
@@ -80,7 +80,7 @@ impl CircuitBreaker {
     /// user has fixed the cause and wants the loop to retry from a clean slate.
     pub fn reset(&self) {
         self.paused.store(false, Ordering::SeqCst);
-        self.failures.lock().expect("breaker poisoned").clear();
+        crate::sync::lock_or_recover(&self.failures).clear();
     }
 
     /// The configured trip threshold (for the `nc:loop` payload / diagnostics).

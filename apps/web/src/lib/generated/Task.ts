@@ -120,4 +120,13 @@ maxBudgetUsd: number | null,
  * instead of restarting cold. `None` until the first run reports it.
  * Bookkeeping, not a secret — never logged at info/telemetry.
  */
-sdkSessionId: string | null, };
+sdkSessionId: string | null, 
+/**
+ * A strictly-monotonic per-store sequence stamped on every persist+emit, so a
+ * consumer can order `nc:task` snapshots without relying on millisecond
+ * `updated_at` (which collides under rapid status changes). Assigned by the
+ * store from a single atomic counter; each emitted snapshot for a store carries
+ * a greater `seq` than the prior one. Additive: legacy task JSON with no `seq`
+ * loads as `0`, and the next persist re-stamps it.
+ */
+seq: number, };

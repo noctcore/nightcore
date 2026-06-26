@@ -90,22 +90,13 @@ impl ProjectStore {
 
     /// Snapshot of all known projects (registry order).
     pub fn list(&self) -> Vec<Project> {
-        self.projects
-            .lock()
-            .expect("project store poisoned")
-            .clone()
+        crate::sync::lock_or_recover(&self.projects).clone()
     }
 
     /// The active project, if one is set and still in the registry.
     pub fn active(&self) -> Option<Project> {
-        let id = self
-            .active_id
-            .lock()
-            .expect("project store poisoned")
-            .clone()?;
-        self.projects
-            .lock()
-            .expect("project store poisoned")
+        let id = crate::sync::lock_or_recover(&self.active_id).clone()?;
+        crate::sync::lock_or_recover(&self.projects)
             .iter()
             .find(|p| p.id == id)
             .cloned()
@@ -124,23 +115,20 @@ impl ProjectStore {
     }
 
     fn add(&self, project: Project) -> Result<(), String> {
-        self.projects
-            .lock()
-            .expect("project store poisoned")
-            .push(project);
+        crate::sync::lock_or_recover(&self.projects).push(project);
         self.persist_registry()
     }
 
     fn remove(&self, id: &str) -> Result<bool, String> {
         let removed = {
-            let mut guard = self.projects.lock().expect("project store poisoned");
+            let mut guard = crate::sync::lock_or_recover(&self.projects);
             let before = guard.len();
             guard.retain(|p| p.id != id);
             guard.len() != before
         };
         if removed {
             // Clear the active pointer if it referenced the removed project.
-            let mut active = self.active_id.lock().expect("project store poisoned");
+            let mut active = crate::sync::lock_or_recover(&self.active_id);
             if active.as_deref() == Some(id) {
                 *active = None;
                 self.persist_active(&active)?;
@@ -154,7 +142,7 @@ impl ProjectStore {
     /// project. The active pointer is unaffected. Errors if the id is unknown.
     fn rename(&self, id: &str, name: &str) -> Result<Project, String> {
         let project = {
-            let mut guard = self.projects.lock().expect("project store poisoned");
+            let mut guard = crate::sync::lock_or_recover(&self.projects);
             let project = guard
                 .iter_mut()
                 .find(|p| p.id == id)
@@ -170,7 +158,7 @@ impl ProjectStore {
     /// the updated project. Errors if the id is unknown.
     fn set_active(&self, id: &str) -> Result<Project, String> {
         let project = {
-            let mut guard = self.projects.lock().expect("project store poisoned");
+            let mut guard = crate::sync::lock_or_recover(&self.projects);
             let project = guard
                 .iter_mut()
                 .find(|p| p.id == id)
@@ -179,7 +167,7 @@ impl ProjectStore {
             project.clone()
         };
         {
-            let mut active = self.active_id.lock().expect("project store poisoned");
+            let mut active = crate::sync::lock_or_recover(&self.active_id);
             *active = Some(id.to_string());
             self.persist_active(&active)?;
         }
@@ -188,7 +176,7 @@ impl ProjectStore {
     }
 
     fn persist_registry(&self) -> Result<(), String> {
-        let projects = self.projects.lock().expect("project store poisoned");
+        let projects = crate::sync::lock_or_recover(&self.projects);
         write_json(&self.config_dir.join("projects.json"), &*projects)
     }
 
