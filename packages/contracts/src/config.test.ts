@@ -4,6 +4,7 @@ import {
   ConfigFileSchema,
   ConfigSchema,
   McpServerEntrySchema,
+  McpServerListSchema,
   McpServerTransportSchema,
   PermissionPolicySchema,
 } from './config.js';
@@ -147,6 +148,68 @@ describe('McpServerEntrySchema', () => {
       name: 'x',
       config: { transport: 'nope' },
     });
+    expect(result.success).toBe(false);
+  });
+
+  test('accepts names with letters, digits, underscores, and hyphens', () => {
+    for (const name of ['filesystem', 'my-server', 'server_1', 'ABC', 'a1-b_2']) {
+      const result = McpServerEntrySchema.safeParse({
+        id: 'srv-1',
+        name,
+        config: { transport: 'stdio', command: 'npx' },
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  test('rejects names with spaces, dots, slashes, or empty string', () => {
+    for (const name of ['my server', 'my.server', 'my/server', 'bad@name', '']) {
+      const result = McpServerEntrySchema.safeParse({
+        id: 'srv-1',
+        name,
+        config: { transport: 'stdio', command: 'npx' },
+      });
+      expect(result.success).toBe(false);
+    }
+  });
+});
+
+describe('McpServerListSchema', () => {
+  const makeEntry = (name: string, id = `srv-${name}`) => ({
+    id,
+    name,
+    config: { transport: 'stdio' as const, command: 'npx' },
+  });
+
+  test('accepts a list with unique names', () => {
+    const result = McpServerListSchema.safeParse([
+      makeEntry('filesystem'),
+      makeEntry('github'),
+    ]);
+    expect(result.success).toBe(true);
+  });
+
+  test('rejects a list with duplicate names', () => {
+    const result = McpServerListSchema.safeParse([
+      makeEntry('filesystem', 'srv-1'),
+      makeEntry('github', 'srv-2'),
+      makeEntry('filesystem', 'srv-3'),
+    ]);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues[0]!;
+      expect(issue.message).toContain('filesystem');
+      expect(issue.path).toEqual([2, 'name']);
+    }
+  });
+
+  test('accepts an empty list', () => {
+    const result = McpServerListSchema.safeParse([]);
+    expect(result.success).toBe(true);
+  });
+
+  test('propagates name charset errors from the entry schema', () => {
+    const result = McpServerListSchema.safeParse([makeEntry('bad name')]);
     expect(result.success).toBe(false);
   });
 });

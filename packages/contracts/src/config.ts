@@ -212,11 +212,45 @@ export type McpServerTransport = z.infer<typeof McpServerTransportSchema>;
  * `name` is the SDK server key — it becomes the `mcpServers` record key and the
  * `mcp__<name>__*` tool prefix, so the UI must enforce a unique, safe charset.
  * `enabled` gates injection: only enabled entries reach `Options.mcpServers`.
+ *
+ * The charset regex rejects names that would produce malformed tool prefixes
+ * (spaces, dots, slashes, etc.). Existing hand-written configs with exotic names
+ * will fail this validation — rename the server in the config to a safe name.
  */
 export const McpServerEntrySchema = z.object({
   id: z.string(),
-  name: z.string(),
+  name: z
+    .string()
+    .regex(
+      /^[a-zA-Z0-9_-]+$/,
+      'MCP server name may only contain letters, digits, underscores, and hyphens',
+    ),
   enabled: z.boolean().default(true),
   config: McpServerTransportSchema,
 });
 export type McpServerEntry = z.infer<typeof McpServerEntrySchema>;
+
+/**
+ * A validated list of MCP server entries with uniqueness enforcement on `name`.
+ * Use this schema at any boundary that accepts a list of servers (e.g. a config
+ * file, a UI save handler) to catch duplicate names before they reach the SDK,
+ * where `servers[entry.name]` would silently shadow an earlier entry.
+ */
+export const McpServerListSchema = z.array(McpServerEntrySchema).superRefine(
+  (entries, ctx) => {
+    const seen = new Map<string, number>();
+    for (let i = 0; i < entries.length; i++) {
+      const name = entries[i]!.name;
+      if (seen.has(name)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Duplicate MCP server name "${name}" at index ${i} (first seen at index ${seen.get(name)})`,
+          path: [i, 'name'],
+        });
+      } else {
+        seen.set(name, i);
+      }
+    }
+  },
+);
+export type McpServerList = z.infer<typeof McpServerListSchema>;
