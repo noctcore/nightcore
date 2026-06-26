@@ -18,6 +18,27 @@ export type { SessionRunnerConfig } from './session-runner.js';
 export { resolveKindPreset, WRITE_TOOLS } from './kind-presets.js';
 export type { KindPreset } from './kind-presets.js';
 
+// The Insight (codebase analysis) orchestrator + its pure parse/ground/dedup
+// helpers. The SDK stays confined to the SessionRunner the manager spins.
+export { AnalysisManager } from './analysis-manager.js';
+export type { AnalysisManagerDeps } from './analysis-manager.js';
+export {
+  parseFindings,
+  groundFindings,
+  dedupeFindings,
+  fingerprintOf,
+  extractJson,
+  severityRank,
+} from './analysis-findings.js';
+export {
+  analysisPreset,
+  outputContract,
+  ANALYZER_PERSONA,
+  ANALYSIS_ALLOWED_TOOLS,
+  ANALYSIS_DISALLOWED_TOOLS,
+} from './analysis-presets.js';
+export type { AnalysisPreset } from './analysis-presets.js';
+
 // The SDK session store surface (list/read/rename/tag of past sessions), behind a
 // thin degrade-not-throw façade. The SDK itself stays confined to `sdk-adapter`.
 export { SessionApi } from './session-api.js';
