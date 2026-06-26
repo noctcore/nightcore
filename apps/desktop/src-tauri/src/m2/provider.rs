@@ -486,6 +486,18 @@ impl SidecarProvider {
         orphaned
     }
 
+    /// Dispatch an Insight analysis command (`start-analysis` / `cancel-analysis`)
+    /// to the sidecar. Unlike `start_session`, analysis correlates by `runId`
+    /// (carried in the command and echoed on every `analysis-*` event), so there is
+    /// NO pending-launch FIFO push — the line is written directly. The sidecar's
+    /// `SessionManager` owns the fan-out; the core only sees the `analysis-*` stream.
+    pub async fn dispatch_analysis(&self, command: SurfaceCommand) -> Result<(), String> {
+        let payload = serde_json::to_value(&command).map_err(|e| e.to_string())?;
+        let mut guard = self.stdin.lock().await;
+        let stdin = guard.as_mut().ok_or("sidecar stdin unavailable")?;
+        Self::write_line(stdin, &payload).await
+    }
+
     /// Write one `SurfaceCommand` as an NDJSON line to the child's stdin.
     async fn write_line(stdin: &mut ChildStdin, command: &Value) -> Result<(), String> {
         let mut line = serde_json::to_string(command).map_err(|e| e.to_string())?;

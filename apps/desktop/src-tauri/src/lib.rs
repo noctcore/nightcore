@@ -63,6 +63,16 @@ pub fn run() {
                 .unwrap_or_else(|| config_dir.join("no-active-project/tasks"));
             task_store.retarget(tasks_dir);
 
+            // Insight analysis runs are project-scoped like tasks: load the active
+            // project's `.nightcore/insights/` (or an empty scratch dir when none).
+            let insights_dir = project_store
+                .active_insights_dir()
+                .unwrap_or_else(|| config_dir.join("no-active-project/insights"));
+            let insight_store = store::insight::InsightStore::load_from(insights_dir);
+            // A run left `running` by a previous process can never complete (the
+            // engine that drove it is gone); reap it on boot so the UI doesn't spin.
+            insight_store.reap_running();
+
             // The M2 orchestrator (slot manager + circuit breaker + provider +
             // auto-loop) starts at the persisted concurrency. The provider spawns
             // `bun run apps/sidecar/src/index.ts` in the workspace root on first use.
@@ -75,6 +85,7 @@ pub fn run() {
             );
 
             app.manage(task_store);
+            app.manage(insight_store);
             app.manage(project_store);
             app.manage(settings_store);
             app.manage(orchestrator);
@@ -106,6 +117,14 @@ pub fn run() {
             sidecar::rename_session,
             sidecar::tag_session,
             sidecar::get_provider_config,
+            sidecar::start_analysis,
+            sidecar::cancel_analysis,
+            sidecar::list_insight_runs,
+            sidecar::get_insight_run,
+            sidecar::dismiss_finding,
+            sidecar::restore_finding,
+            sidecar::convert_finding_to_task,
+            sidecar::delete_insight_run,
             transcript::read_transcript,
             plan_approval::approve_task,
             plan_approval::reject_task,

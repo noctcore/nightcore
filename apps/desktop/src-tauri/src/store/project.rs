@@ -117,6 +117,12 @@ impl ProjectStore {
         self.active().map(|p| tasks_dir_for(&p.path))
     }
 
+    /// The Insight runs dir for the currently-active project, or `None` with no
+    /// active project. The `InsightStore` is retargeted here on activation.
+    pub fn active_insights_dir(&self) -> Option<PathBuf> {
+        self.active().map(|p| insights_dir_for(&p.path))
+    }
+
     fn add(&self, project: Project) -> Result<(), String> {
         self.projects
             .lock()
@@ -197,6 +203,11 @@ impl ProjectStore {
 /// The tasks dir for a project path: `<path>/.nightcore/tasks`.
 fn tasks_dir_for(project_path: &str) -> PathBuf {
     Path::new(project_path).join(".nightcore/tasks")
+}
+
+/// The Insight runs dir for a project path: `<path>/.nightcore/insights`.
+fn insights_dir_for(project_path: &str) -> PathBuf {
+    Path::new(project_path).join(".nightcore/insights")
 }
 
 /// Read + deserialize a JSON file, returning `None` on any error (missing,
@@ -301,14 +312,22 @@ fn emit_project_event(
     );
 }
 
-/// Point the task store at the active project's tasks dir (or an empty scratch
-/// dir under the config dir when no project is active), reloading the board.
+/// Point the task store (and the Insight runs store) at the active project's dirs
+/// (or empty scratch dirs under the config dir when no project is active),
+/// reloading the board and the analysis history.
 fn retarget_tasks(app: &AppHandle, store: &ProjectStore) {
     let tasks = app.state::<TaskStore>();
     let dir = store
         .active_tasks_dir()
         .unwrap_or_else(|| store.config_dir.join("no-active-project/tasks"));
     tasks.retarget(dir);
+
+    // Insight analysis runs are project-scoped too.
+    let insights = app.state::<crate::store::insight::InsightStore>();
+    let insights_dir = store
+        .active_insights_dir()
+        .unwrap_or_else(|| store.config_dir.join("no-active-project/insights"));
+    insights.retarget(insights_dir);
 }
 
 // --- Commands ---------------------------------------------------------------

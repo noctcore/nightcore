@@ -40,6 +40,7 @@ fn export_all_bindings() {
         AppInfo, McpServerEntry, McpServerTransport, Settings, SettingsOverride, SettingsPatch,
     };
     use crate::sidecar::{ProviderConfigSnapshotView, SessionInfoView, SessionMessageView};
+    use crate::store::insight::{FindingLocation, InsightRun, InsightUsage, StoredFinding};
     use crate::task::{PermissionMode, RunMode, Task, TaskKind, TaskPatch, TaskStatus};
 
     // `export_all` writes the type AND all of its `TS` dependencies, so exporting
@@ -78,6 +79,12 @@ fn export_all_bindings() {
         SessionMessageView,
         // `export_all` writes the snapshot AND its nested section/summary views.
         ProviderConfigSnapshotView,
+        // Insight (codebase analysis) persisted shapes. `export_all` on InsightRun
+        // writes its nested StoredFinding / FindingLocation / InsightUsage too.
+        InsightRun,
+        StoredFinding,
+        FindingLocation,
+        InsightUsage,
     );
 }
 
@@ -129,6 +136,10 @@ mod tests {
             "McpServerSummary.ts",
             "SkillSummary.ts",
             "SubagentSummary.ts",
+            "InsightRun.ts",
+            "StoredFinding.ts",
+            "FindingLocation.ts",
+            "InsightUsage.ts",
         ] {
             assert!(
                 dir.join(file).exists(),

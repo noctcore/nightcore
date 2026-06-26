@@ -1,0 +1,436 @@
+//! Insight (codebase analysis) commands + the reader-side handling of the
+//! `analysis-*` event family.
+//!
+//! Commands (web → Rust): `start_analysis` dispatches a `start-analysis`
+//! `SurfaceCommand` to the sidecar (whose `SessionManager` fans out the read-only
+//! category passes) and creates the persisted run; `cancel_analysis` aborts it;
+//! the rest are pure store reads/mutations (list/get/dismiss/restore/delete) plus
+//! `convert_finding_to_task`, which mints a board task from a finding.
+//!
+//! Reader (sidecar → Rust): [`handle_analysis_event`] forwards every `analysis-*`
+//! event to the `nc:insight` channel for the live UI and, on `analysis-completed`,
+//! finalizes the persisted run — applying dismissed-history reconciliation so a
+//! re-discovered, previously-dismissed finding stays dismissed.
+
+use serde::Serialize;
+use serde_json::{json, Value};
+use tauri::{AppHandle, Emitter, Manager, State};
+
+use crate::contracts::{AnalysisScope, EffortLevel, FindingCategory, SurfaceCommand};
+use crate::m2::coordinator::Orchestrator;
+use crate::project::ProjectStore;
+use crate::store::insight::{InsightRun, InsightStore, InsightUsage, StoredFinding};
+use crate::store::TaskStore;
+use crate::task::{now_ms, Task, TaskKind, TASK_EVENT};
+
+use super::{ensure_reader, INSIGHT_EVENT};
+
+/// Serialize a generated wire enum to its wire string (e.g. `AnalysisScope::Diff`
+/// → `"diff"`, `FindingCategory::UiUx` → `"ui-ux"`).
+fn wire_str<T: Serialize>(value: &T) -> String {
+    serde_json::to_value(value)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
+/// Resolve the changed files for `diff` scope: tracked changes vs `HEAD` plus
+/// untracked-but-not-ignored files. Best-effort — a non-repo / git failure yields
+/// an empty list (the passes then fall back to exploring the whole repo).
+fn changed_files(project_path: &str) -> Vec<String> {
+    let mut files: Vec<String> = Vec::new();
+    let collect = |args: &[&str], out: &mut Vec<String>| {
+        if let Ok(o) = crate::platform::std_command("git")
+            .args(args)
+            .current_dir(project_path)
+            .output()
+        {
+            if o.status.success() {
+                for line in String::from_utf8_lossy(&o.stdout).lines() {
+                    let line = line.trim();
+                    if !line.is_empty() {
+                        out.push(line.to_string());
+                    }
+                }
+            }
+        }
+    };
+    collect(&["diff", "--name-only", "HEAD"], &mut files);
+    collect(&["ls-files", "--others", "--exclude-standard"], &mut files);
+    files.sort();
+    files.dedup();
+    files
+}
+
+/// Start an Insight analysis run over the active project. Creates the persisted run
+/// (status `running`), dispatches the `start-analysis` command, and returns the
+/// `runId` the `analysis-*` events correlate by.
+#[tauri::command]
+pub async fn start_analysis(
+    app: AppHandle,
+    projects: State<'_, ProjectStore>,
+    insight_store: State<'_, InsightStore>,
+    scope: AnalysisScope,
+    categories: Vec<FindingCategory>,
+    model: Option<String>,
+    effort: Option<EffortLevel>,
+) -> Result<String, String> {
+    if categories.is_empty() {
+        return Err("select at least one category to analyze".to_string());
+    }
+    let project = projects
+        .active()
+        .ok_or("no active project to analyze")?;
+    let project_path = project.path.clone();
+
+    let run_id = uuid::Uuid::new_v4().to_string();
+    let scope_str = wire_str(&scope);
+    let category_strs: Vec<String> = categories.iter().map(wire_str).collect();
+    let model_str = model.clone().unwrap_or_default();
+    let now = now_ms();
+
+    // Persist the run as `running` up front so it shows immediately in the list.
+    let run = InsightRun {
+        id: run_id.clone(),
+        project_path: project_path.clone(),
+        scope: scope_str,
+        status: "running".to_string(),
+        categories: category_strs,
+        model: model_str,
+        created_at: now,
+        updated_at: now,
+        cost_usd: 0.0,
+        duration_ms: 0,
+        usage: InsightUsage::default(),
+        findings: Vec::new(),
+        error: None,
+    };
+    insight_store.upsert(&run)?;
+
+    // Resolve the changed-file focus for diff scope (Rust owns git; the engine
+    // focuses the passes on these files).
+    let changed = match scope {
+        AnalysisScope::Diff => {
+            let files = changed_files(&project_path);
+            (!files.is_empty()).then_some(files)
+        }
+        AnalysisScope::Repo => None,
+    };
+
+    // Ensure the sidecar is up, then dispatch the analysis command.
+    if let Err(e) = ensure_reader(&app).await {
+        let _ = insight_store.mutate(&run_id, |r| {
+            r.status = "failed".to_string();
+            r.error = Some(e.clone());
+        });
+        return Err(e);
+    }
+
+    let command = SurfaceCommand::StartAnalysis {
+        run_id: run_id.clone(),
+        project_path,
+        scope,
+        changed_files: changed,
+        categories,
+        model,
+        effort,
+        max_concurrency: None,
+        max_turns_per_category: None,
+        max_budget_usd_per_category: None,
+    };
+    let orch = app.state::<Orchestrator>();
+    if let Err(e) = orch.provider.dispatch_analysis(command).await {
+        let _ = insight_store.mutate(&run_id, |r| {
+            r.status = "failed".to_string();
+            r.error = Some(e.clone());
+        });
+        return Err(e);
+    }
+
+    tracing::info!(target: "nightcore", run_id = %run_id, "insight analysis started");
+    Ok(run_id)
+}
+
+/// Cancel an in-flight analysis run (aborts every category pass).
+#[tauri::command]
+pub async fn cancel_analysis(app: AppHandle, run_id: String) -> Result<(), String> {
+    let orch = app.state::<Orchestrator>();
+    let command = SurfaceCommand::CancelAnalysis {
+        run_id: run_id.clone(),
+    };
+    orch.provider.dispatch_analysis(command).await
+}
+
+/// All analysis runs for the active project (newest first).
+#[tauri::command]
+pub fn list_insight_runs(insight_store: State<'_, InsightStore>) -> Result<Vec<InsightRun>, String> {
+    Ok(insight_store.list())
+}
+
+/// One analysis run by id.
+#[tauri::command]
+pub fn get_insight_run(
+    insight_store: State<'_, InsightStore>,
+    run_id: String,
+) -> Result<Option<InsightRun>, String> {
+    Ok(insight_store.get(&run_id))
+}
+
+/// Mark a finding dismissed (it stays dismissed across future re-runs).
+#[tauri::command]
+pub fn dismiss_finding(
+    insight_store: State<'_, InsightStore>,
+    run_id: String,
+    finding_id: String,
+) -> Result<InsightRun, String> {
+    insight_store.set_finding_status(&run_id, &finding_id, "dismissed", None)
+}
+
+/// Restore a dismissed finding back to open.
+#[tauri::command]
+pub fn restore_finding(
+    insight_store: State<'_, InsightStore>,
+    run_id: String,
+    finding_id: String,
+) -> Result<InsightRun, String> {
+    insight_store.set_finding_status(&run_id, &finding_id, "open", None)
+}
+
+/// Delete an analysis run and its file.
+#[tauri::command]
+pub fn delete_insight_run(
+    insight_store: State<'_, InsightStore>,
+    run_id: String,
+) -> Result<(), String> {
+    insight_store.remove(&run_id)
+}
+
+/// Convert a finding into a board task. Idempotent: if the finding already links to
+/// a live task, that task is returned instead of minting a duplicate. Maps the
+/// category to a task kind, builds a markdown description from the finding, persists
+/// the task, marks the finding `converted` + linked, and emits both events.
+#[tauri::command]
+pub fn convert_finding_to_task(
+    app: AppHandle,
+    store: State<'_, TaskStore>,
+    insight_store: State<'_, InsightStore>,
+    run_id: String,
+    finding_id: String,
+) -> Result<Task, String> {
+    let finding = insight_store
+        .get_finding(&run_id, &finding_id)
+        .ok_or_else(|| format!("finding {finding_id} not found in run {run_id}"))?;
+
+    // Fast-path idempotency: a finding already linked to a still-existing task
+    // returns it without minting anything (covers the common re-click).
+    if let Some(existing_id) = finding.linked_task_id.as_deref() {
+        if let Some(task) = store.get(existing_id) {
+            return Ok(task);
+        }
+    }
+
+    // Mint the task FIRST (so a crash before linking leaves an unlinked finding —
+    // retryable — rather than a finding pointing at a non-existent task), then link
+    // ATOMICALLY. The compare-and-set inside `link_finding_task` is the real guard
+    // against two concurrent converts: a losing race gets `AlreadyLinked` and we
+    // roll back the duplicate task we just created.
+    let mut task = Task::new(finding.title.clone(), task_description(&finding));
+    task.kind = category_to_kind(&finding.category);
+    store.upsert(&task)?;
+
+    match insight_store.link_finding_task(&run_id, &finding_id, &task.id) {
+        Ok(crate::store::insight::LinkOutcome::Linked) => {}
+        Ok(crate::store::insight::LinkOutcome::AlreadyLinked(existing_id)) => {
+            // Another convert won the race (or a prior link survived). Discard the
+            // duplicate task we just minted and return the existing one if it lives.
+            let _ = store.remove(&task.id);
+            if let Some(existing) = store.get(&existing_id) {
+                return Ok(existing);
+            }
+            // The linked task was deleted out from under us: re-point the finding at
+            // the task we just (re)created instead of leaving a dangling link.
+            store.upsert(&task)?;
+            insight_store.set_finding_status(
+                &run_id,
+                &finding_id,
+                "converted",
+                Some(Some(task.id.clone())),
+            )?;
+        }
+        Err(e) => {
+            // Linking failed (run/finding vanished): roll back the orphan task so a
+            // retry is clean rather than leaving an unlinked board task behind.
+            let _ = store.remove(&task.id);
+            return Err(e);
+        }
+    }
+
+    let _ = app.emit(TASK_EVENT, &task);
+    let _ = app.emit(
+        INSIGHT_EVENT,
+        json!({
+            "type": "finding-converted",
+            "runId": run_id,
+            "findingId": finding_id,
+            "taskId": task.id,
+        }),
+    );
+    tracing::info!(target: "nightcore", task_id = %task.id, finding_id = %finding_id, "finding converted to task");
+    Ok(task)
+}
+
+/// Map a finding category to the task kind a fix belongs to. Insight findings are
+/// actionable work, so they all become `build` tasks (the kind that actually
+/// edits + verifies); the category is preserved in the task description.
+fn category_to_kind(_category: &str) -> TaskKind {
+    TaskKind::Build
+}
+
+/// Build the markdown task description from a finding's fields + provenance.
+fn task_description(f: &StoredFinding) -> String {
+    let mut out = String::new();
+    out.push_str(&f.description);
+    out.push_str("\n\n");
+    out.push_str(&format!(
+        "**Category:** {} · **Severity:** {} · **Effort:** {}\n",
+        f.category, f.severity, f.effort
+    ));
+    if let Some(loc) = &f.location {
+        let lines = match (loc.start_line, loc.end_line) {
+            (Some(s), Some(e)) if e != s => format!(":{s}-{e}"),
+            (Some(s), _) => format!(":{s}"),
+            _ => String::new(),
+        };
+        out.push_str(&format!("**Location:** `{}{}`\n", loc.file, lines));
+    }
+    if let Some(r) = &f.rationale {
+        out.push_str(&format!("\n**Why it matters:** {r}\n"));
+    }
+    if let Some(s) = &f.suggestion {
+        out.push_str(&format!("\n**Suggested fix:** {s}\n"));
+    }
+    if let (Some(before), Some(after)) = (&f.code_before, &f.code_after) {
+        out.push_str(&format!(
+            "\n```\n// before\n{before}\n```\n```\n// after\n{after}\n```\n"
+        ));
+    }
+    if !f.affected_files.is_empty() {
+        out.push_str(&format!(
+            "\n**Affected files:** {}\n",
+            f.affected_files.join(", ")
+        ));
+    }
+    out.push_str("\n---\n_Created from an Insight analysis finding._\n");
+    out
+}
+
+/// Reader-side: forward an `analysis-*` event to the `nc:insight` channel and, on
+/// the terminal events, finalize/fail the persisted run. The intermediate events
+/// (`started` / `category-*`) are forwarded for the live UI; persistence happens on
+/// `analysis-completed` (authoritative, deduped) and `analysis-failed`.
+pub(crate) async fn handle_analysis_event(app: &AppHandle, event_type: &str, event: &Value) {
+    // Always forward the raw event so the live panel can stream optimistically.
+    let _ = app.emit(INSIGHT_EVENT, event);
+
+    let Some(run_id) = event.get("runId").and_then(Value::as_str) else {
+        return;
+    };
+    let insight_store = app.state::<InsightStore>();
+
+    match event_type {
+        "analysis-completed" => {
+            // Parse the final, cross-category-deduped findings the engine produced.
+            let mut findings: Vec<StoredFinding> = event
+                .get("findings")
+                .and_then(Value::as_array)
+                .map(|arr| arr.iter().filter_map(StoredFinding::from_wire).collect())
+                .unwrap_or_default();
+
+            // Dismissed-history reconciliation: a re-discovered finding whose
+            // fingerprint was previously dismissed stays dismissed.
+            let dismissed = insight_store.dismissed_fingerprints(Some(run_id));
+            for f in &mut findings {
+                if dismissed.contains(&f.fingerprint) {
+                    f.status = "dismissed".to_string();
+                }
+            }
+
+            let cost = event.get("costUsd").and_then(Value::as_f64).unwrap_or(0.0);
+            let duration = event.get("durationMs").and_then(Value::as_u64).unwrap_or(0);
+            let usage = event.get("usage");
+            let input_tokens = usage
+                .and_then(|u| u.get("inputTokens"))
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            let output_tokens = usage
+                .and_then(|u| u.get("outputTokens"))
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+
+            let result = insight_store.mutate(run_id, |run| {
+                // Idempotency: a duplicate `analysis-completed` for an already-
+                // finalized run must not reset the user's lifecycle edits.
+                if run.status == "completed" && !run.findings.is_empty() {
+                    return;
+                }
+                // Carry over IN-RUN lifecycle (a finding the user dismissed/converted
+                // from the live stream during this run) by fingerprint, so the
+                // wholesale `findings` replace below doesn't reset it to `open`. The
+                // cross-run dismissed set was already applied to `findings` above.
+                let prior: std::collections::HashMap<String, (String, Option<String>)> =
+                    run.findings
+                        .iter()
+                        .filter(|f| f.status != "open")
+                        .map(|f| {
+                            (
+                                f.fingerprint.clone(),
+                                (f.status.clone(), f.linked_task_id.clone()),
+                            )
+                        })
+                        .collect();
+                let mut merged = findings.clone();
+                for f in &mut merged {
+                    if let Some((status, link)) = prior.get(&f.fingerprint) {
+                        f.status = status.clone();
+                        f.linked_task_id = link.clone();
+                    }
+                }
+                run.status = "completed".to_string();
+                run.findings = merged;
+                run.cost_usd = cost;
+                run.duration_ms = duration;
+                run.usage = InsightUsage {
+                    input_tokens,
+                    output_tokens,
+                };
+                run.error = None;
+            });
+            if let Err(e) = result {
+                tracing::warn!(target: "nightcore", run_id, error = %e, "failed to finalize insight run");
+            } else {
+                tracing::info!(target: "nightcore", run_id, findings = findings.len(), cost_usd = cost, "insight analysis completed");
+            }
+        }
+        "analysis-failed" => {
+            let reason = event
+                .get("reason")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            let message = event
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let _ = insight_store.mutate(run_id, |run| {
+                run.status = "failed".to_string();
+                run.error = Some(if message.is_empty() {
+                    reason.to_string()
+                } else {
+                    message
+                });
+            });
+            tracing::info!(target: "nightcore", run_id, reason, "insight analysis ended (failed/aborted)");
+        }
+        _ => {}
+    }
+}

@@ -18,6 +18,7 @@
 //! coordinator's `launch` does, just triggered by a click instead of a tick.
 
 mod commands;
+mod insight;
 mod permission;
 mod provider_config;
 mod reader;
@@ -35,6 +36,9 @@ pub(crate) use sessions::*;
 // The read-only provider-config inspector command (glob so the `#[tauri::command]`
 // macro siblings resolve through `sidecar::*` for `generate_handler!`).
 pub(crate) use provider_config::*;
+// The Insight (codebase analysis) commands + the reader-side `analysis-*` handler
+// (glob so the `#[tauri::command]` macro siblings resolve through `sidecar::*`).
+pub(crate) use insight::*;
 pub(crate) use verification::dispatch_reviewer_for;
 // Re-exported only to keep the `crate::sidecar::MAX_FIX_ATTEMPTS` intra-doc link
 // in `task.rs` resolving; no code outside `verification` reads it through here.
@@ -68,6 +72,12 @@ pub(crate) const PERMISSION_EVENT: &str = "nc:permission";
 /// question picker and answers via the `answer_question` command. Question prompts
 /// carry the model's question/option text — surfaced to the UI but NEVER logged.
 pub(crate) const QUESTION_EVENT: &str = "nc:question";
+
+/// The Tauri event carrying one streamed Insight `analysis-*` event. Unlike
+/// `nc:session`, the payload is the raw `NightcoreEvent` (it already carries its
+/// own `runId`); the Insight view folds the stream and reconciles against the
+/// persisted run on completion.
+pub(crate) const INSIGHT_EVENT: &str = "nc:insight";
 
 /// Ensure the persistent sidecar is running and its stdout reader is installed.
 /// Idempotent: spawns lazily on first use, then a no-op. Shared by `run_task` and

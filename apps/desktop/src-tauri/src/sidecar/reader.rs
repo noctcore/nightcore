@@ -45,6 +45,14 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
         return;
     }
 
+    // The Insight `analysis-*` family correlates by `runId` (no `sessionId`) and is
+    // owned by a separate channel + store, so it is routed BEFORE the session-id
+    // correlation below (which would otherwise drop it for lacking a sessionId).
+    if event_type.starts_with("analysis-") {
+        super::insight::handle_analysis_event(app, event_type, &event).await;
+        return;
+    }
+
     let session_id = event.get("sessionId").and_then(Value::as_u64);
 
     // Correlate the event to its task. The first sighting of a session id binds it
