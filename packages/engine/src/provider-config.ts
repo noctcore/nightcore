@@ -32,6 +32,7 @@ import type {
   SDKControlInitializeResponse,
   SlashCommand,
 } from './sdk-adapter.js';
+import { getString } from './field-extract.js';
 
 /** Today's only provider. A second provider supplies its own id/label and may
  *  return `unsupported` sections — the inspector renders them with zero new
@@ -44,12 +45,12 @@ const CLAUDE_PROVIDER_LABEL = 'Claude';
  *  url-based transports and absent (⇒ stdio) on the command-based one. Returns
  *  `undefined` when nothing is derivable, so the field is simply omitted. */
 function mcpTransport(server: McpServerStatus): string | undefined {
-  const config = server.config as { type?: unknown } | undefined;
-  if (config && typeof config.type === 'string') {
-    return config.type;
-  }
-  // A command-based stdio server omits `type`; infer it only when a config exists.
-  if (config && 'command' in (config as Record<string, unknown>)) {
+  const type = getString(server.config, 'type');
+  if (type !== undefined) return type;
+  // A command-based stdio server omits `type`; infer it only when a config exists
+  // that carries a `command` key.
+  const config = server.config as Record<string, unknown> | undefined;
+  if (config && 'command' in config) {
     return 'stdio';
   }
   return undefined;

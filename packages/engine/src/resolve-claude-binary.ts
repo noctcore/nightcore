@@ -107,7 +107,7 @@ function resolvePlatformPackageBinary(): string | undefined {
  * sync with the SDK's internal resolver so we never select a different-version
  * binary than the one it ships.
  */
-function platformPackageSpecifiers(): string[] {
+export function platformPackageSpecifiers(): string[] {
   const { platform, arch } = process;
   const exe = platform === 'win32' ? '.exe' : '';
 
@@ -171,7 +171,7 @@ function nodeModulesRoots(): string[] {
   return roots;
 }
 
-function ancestors(start: string): string[] {
+export function ancestors(start: string): string[] {
   const out: string[] = [];
   let current = path.resolve(start);
   for (;;) {
@@ -230,7 +230,7 @@ function globalInstallCandidates(): string[] {
  * `X_OK` on POSIX; on Windows the access bit is meaningless, so existence as a
  * regular file is sufficient.
  */
-function isRealExecutable(candidate: string): boolean {
+export function isRealExecutable(candidate: string): boolean {
   try {
     const stat = fs.statSync(candidate);
     if (!stat.isFile()) return false;
@@ -265,6 +265,6 @@ function moduleDir(): string | undefined {
   }
 }
 
-function isTruthyEnv(value: string | undefined): boolean {
+export function isTruthyEnv(value: string | undefined): boolean {
   return value !== undefined && value !== '' && value !== '0' && value !== 'false';
 }

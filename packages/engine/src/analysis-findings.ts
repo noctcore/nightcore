@@ -16,6 +16,7 @@ import {
   type FindingCategory,
   type FindingSeverity,
 } from '@nightcore/contracts';
+import { getNumber, getString, getStringArray } from './field-extract.js';
 
 /** Severity ordering for ranking/merge (low → high). */
 const SEVERITY_RANK: Record<FindingSeverity, number> = {
@@ -117,15 +118,20 @@ function coerceFinding(
   if (raw === null || typeof raw !== 'object') return undefined;
   const r = raw as Record<string, unknown>;
 
-  const title = typeof r.title === 'string' ? r.title : undefined;
-  const description =
-    typeof r.description === 'string' ? r.description : undefined;
+  const title = getString(r, 'title');
+  const description = getString(r, 'description');
   if (title === undefined || description === undefined) return undefined;
 
   // location may be a nested object or a "file:line" string.
   const location = coerceLocation(r.location ?? r.file);
   const file = location?.file;
   const fingerprint = fingerprintOf(file, title);
+
+  const rationale = getString(r, 'rationale');
+  const suggestion = getString(r, 'suggestion');
+  const codeBefore = getString(r, 'codeBefore');
+  const codeAfter = getString(r, 'codeAfter');
+  const confidence = getNumber(r, 'confidence');
 
   const candidate: Record<string, unknown> = {
     id: `${category}-${fingerprint}`,
@@ -134,14 +140,14 @@ function coerceFinding(
     effort: coerceEffort(r.effort),
     title,
     description,
-    ...(typeof r.rationale === 'string' ? { rationale: r.rationale } : {}),
+    ...(rationale !== undefined ? { rationale } : {}),
     ...(location !== undefined ? { location } : {}),
-    ...(typeof r.suggestion === 'string' ? { suggestion: r.suggestion } : {}),
-    ...(typeof r.codeBefore === 'string' ? { codeBefore: r.codeBefore } : {}),
-    ...(typeof r.codeAfter === 'string' ? { codeAfter: r.codeAfter } : {}),
-    affectedFiles: coerceStringArray(r.affectedFiles).map(normalizeFile),
-    tags: coerceStringArray(r.tags),
-    ...(typeof r.confidence === 'number' ? { confidence: r.confidence } : {}),
+    ...(suggestion !== undefined ? { suggestion } : {}),
+    ...(codeBefore !== undefined ? { codeBefore } : {}),
+    ...(codeAfter !== undefined ? { codeAfter } : {}),
+    affectedFiles: getStringArray(r, 'affectedFiles').map(normalizeFile),
+    tags: getStringArray(r, 'tags'),
+    ...(confidence !== undefined ? { confidence } : {}),
     fingerprint,
   };
 
@@ -164,17 +170,16 @@ function coerceLocation(raw: unknown): Finding['location'] {
   }
   if (raw !== null && typeof raw === 'object') {
     const o = raw as Record<string, unknown>;
-    const file = typeof o.file === 'string' ? normalizeFile(o.file) : undefined;
-    if (file === undefined) return undefined;
+    const rawFile = getString(o, 'file');
+    if (rawFile === undefined) return undefined;
+    const startLine = getNumber(o, 'startLine') ?? getNumber(o, 'line');
+    const endLine = getNumber(o, 'endLine');
+    const symbol = getString(o, 'symbol');
     return {
-      file,
-      ...(typeof o.startLine === 'number'
-        ? { startLine: o.startLine }
-        : typeof o.line === 'number'
-          ? { startLine: o.line }
-          : {}),
-      ...(typeof o.endLine === 'number' ? { endLine: o.endLine } : {}),
-      ...(typeof o.symbol === 'string' ? { symbol: o.symbol } : {}),
+      file: normalizeFile(rawFile),
+      ...(startLine !== undefined ? { startLine } : {}),
+      ...(endLine !== undefined ? { endLine } : {}),
+      ...(symbol !== undefined ? { symbol } : {}),
     };
   }
   return undefined;
@@ -197,11 +202,6 @@ function coerceEffort(raw: unknown): Finding['effort'] {
   if (v === 'easy' || v === 'quick') return 'small';
   if (v === 'hard' || v === 'complex' || v === 'xl') return 'large';
   return 'medium';
-}
-
-function coerceStringArray(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((x): x is string => typeof x === 'string');
 }
 
 /**
@@ -301,9 +301,12 @@ function clampLocationLines(
   loc: NonNullable<Finding['location']>,
   lines: number,
 ): NonNullable<Finding['location']> {
-  if (lines <= 0) return loc;
+  // Clamp to a floor of 1: an empty or unreadable file (lineCount → 0) still has a
+  // valid line 1 to deep-link to, so out-of-range refs collapse to 1 rather than
+  // surviving past the real file length.
+  const max = Math.max(lines, 1);
   const clamp = (n: number | undefined): number | undefined =>
-    n === undefined ? undefined : Math.min(Math.max(1, n), lines);
+    n === undefined ? undefined : Math.min(Math.max(1, n), max);
   const startLine = clamp(loc.startLine);
   let endLine = clamp(loc.endLine);
   if (startLine !== undefined && endLine !== undefined && endLine < startLine) {

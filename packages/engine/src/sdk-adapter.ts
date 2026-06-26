@@ -35,6 +35,7 @@ import {
   tagSession,
 } from '@anthropic-ai/claude-agent-sdk';
 import type { NightcoreEvent } from '@nightcore/contracts';
+import { getBoolean, getObject, getString } from './field-extract.js';
 
 export type {
   AgentDefinition,
@@ -224,19 +225,16 @@ function translateTask(
   msg: Extract<SDKMessage, { type: 'system' }>,
 ): TaskUpdatedEvent | undefined {
   const m = msg as Record<string, unknown>;
-  const taskId = typeof m.task_id === 'string' ? m.task_id : undefined;
+  const taskId = getString(m, 'task_id');
   if (taskId === undefined) return undefined;
 
-  const subagentType =
-    typeof m.subagent_type === 'string' ? m.subagent_type : undefined;
-  const description =
-    typeof m.description === 'string' ? m.description : undefined;
-  const summary = typeof m.summary === 'string' ? m.summary : undefined;
+  const subagentType = getString(m, 'subagent_type');
+  const description = getString(m, 'description');
+  const summary = getString(m, 'summary');
 
   switch (msg.subtype) {
     case 'task_started': {
-      const ambient =
-        typeof m.skip_transcript === 'boolean' ? m.skip_transcript : false;
+      const ambient = getBoolean(m, 'skip_transcript') ?? false;
       return {
         type: 'task-updated',
         sessionId,
@@ -248,17 +246,10 @@ function translateTask(
       };
     }
     case 'task_updated': {
-      const patch =
-        typeof m.patch === 'object' && m.patch !== null
-          ? (m.patch as Record<string, unknown>)
-          : {};
-      const status = normalizeTaskStatus(
-        typeof patch.status === 'string' ? patch.status : undefined,
-      );
-      const patchDescription =
-        typeof patch.description === 'string' ? patch.description : undefined;
-      const patchError =
-        typeof patch.error === 'string' ? patch.error : undefined;
+      const patch = getObject(m, 'patch') ?? {};
+      const status = normalizeTaskStatus(getString(patch, 'status'));
+      const patchDescription = getString(patch, 'description');
+      const patchError = getString(patch, 'error');
       return {
         type: 'task-updated',
         sessionId,
@@ -283,9 +274,7 @@ function translateTask(
       };
     }
     case 'task_notification': {
-      const status = normalizeTaskStatus(
-        typeof m.status === 'string' ? m.status : undefined,
-      );
+      const status = normalizeTaskStatus(getString(m, 'status'));
       return {
         type: 'task-updated',
         sessionId,

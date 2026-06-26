@@ -1,0 +1,122 @@
+/// <reference types="bun" />
+import { describe, expect, mock, test } from 'bun:test';
+import type { Logger } from '@nightcore/shared';
+import { HookBus } from './hook-bus.js';
+
+function fakeLogger(): Logger {
+  return {
+    debug: mock(() => {}),
+    info: mock(() => {}),
+    warn: mock(() => {}),
+    error: mock(() => {}),
+  } as unknown as Logger;
+}
+
+describe('HookBus — on / unsubscribe', () => {
+  test('registered observer is called when a hook fires', async () => {
+    const bus = new HookBus();
+    const calls: unknown[] = [];
+    bus.on((event, input) => calls.push({ event, input }));
+
+    const matcher = bus.hooks().PreToolUse![0]!;
+    await matcher.hooks[0]!({ tool: 'Bash' });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ event: 'PreToolUse' });
+  });
+
+  test('unsubscribe fn removes the observer — subsequent emit does not call it', async () => {
+    const bus = new HookBus();
+    const calls: unknown[] = [];
+    const unsubscribe = bus.on(() => calls.push(1));
+
+    unsubscribe();
+
+    const matcher = bus.hooks().PreToolUse![0]!;
+    await matcher.hooks[0]!({ tool: 'Bash' });
+
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe('HookBus — emit fan-out and error isolation', () => {
+  test('all observers fire even when one throws', async () => {
+    const logger = fakeLogger();
+    const bus = new HookBus(logger);
+
+    const firstCalls: unknown[] = [];
+    const lastCalls: unknown[] = [];
+
+    bus.on(() => {
+      firstCalls.push(1);
+      throw new Error('observer boom');
+    });
+    bus.on(() => lastCalls.push(2));
+
+    const matcher = bus.hooks().SessionStart![0]!;
+    await matcher.hooks[0]!({});
+
+    expect(firstCalls).toHaveLength(1);
+    expect(lastCalls).toHaveLength(1);
+  });
+
+  test('logger.warn is called when an observer throws', async () => {
+    const logger = fakeLogger();
+    const bus = new HookBus(logger);
+
+    bus.on(() => {
+      throw new Error('boom');
+    });
+
+    const matcher = bus.hooks().PreToolUse![0]!;
+    await matcher.hooks[0]!({});
+
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  test('throwing observer does not suppress the error context passed to warn', async () => {
+    const logger = fakeLogger();
+    const bus = new HookBus(logger);
+    const boom = new Error('kaboom');
+
+    bus.on(() => {
+      throw boom;
+    });
+
+    const matcher = bus.hooks().PreToolUse![0]!;
+    await matcher.hooks[0]!({});
+
+    const [, secondArg] = (logger.warn as ReturnType<typeof mock>).mock.calls[0]!;
+    expect(secondArg).toBe(boom);
+  });
+});
+
+describe('HookBus — hooks() matchers', () => {
+  test('hooks() provides a PreToolUse matcher', () => {
+    const bus = new HookBus();
+    const h = bus.hooks();
+    expect(h.PreToolUse).toBeDefined();
+    expect(h.PreToolUse).toHaveLength(1);
+    expect(typeof h.PreToolUse![0]!.hooks[0]).toBe('function');
+  });
+
+  test('hooks() provides a SessionStart matcher', () => {
+    const bus = new HookBus();
+    const h = bus.hooks();
+    expect(h.SessionStart).toBeDefined();
+    expect(h.SessionStart).toHaveLength(1);
+    expect(typeof h.SessionStart![0]!.hooks[0]).toBe('function');
+  });
+
+  test('PreToolUse callback resolves to { continue: true }', async () => {
+    const bus = new HookBus();
+    const result = await bus.hooks().PreToolUse![0]!.hooks[0]!({});
+    expect(result).toEqual({ continue: true });
+  });
+
+  test('SessionStart callback resolves to { continue: true }', async () => {
+    const bus = new HookBus();
+    const result = await bus.hooks().SessionStart![0]!.hooks[0]!({});
+    expect(result).toEqual({ continue: true });
+  });
+});

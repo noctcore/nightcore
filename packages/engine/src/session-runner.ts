@@ -280,9 +280,22 @@ export class SessionRunner {
       ...(this.cfg.allowedTools !== undefined
         ? { allowedTools: this.cfg.allowedTools }
         : {}),
-      ...(this.cfg.disallowedTools !== undefined
-        ? { disallowedTools: this.cfg.disallowedTools }
-        : {}),
+      // Union the policy deny list into `disallowedTools` so that a configured
+      // `permissions.deny` entry is hard-blocked even under `bypassPermissions`
+      // mode (where `canUseTool` is never called by the SDK). The SDK enforces
+      // `disallowedTools` regardless of permission mode — this is the correct
+      // enforcement seam. Preset-provided entries are preserved (union, not
+      // overwrite). An empty deny list is a no-op: the result collapses back to
+      // the preset value (or is omitted when both are absent/empty).
+      ...((): { disallowedTools?: string[] } => {
+        const preset = this.cfg.disallowedTools ?? [];
+        const denied = this.cfg.permissionPolicy.deny;
+        if (denied.length === 0) {
+          return preset.length > 0 ? { disallowedTools: preset } : {};
+        }
+        const merged = [...new Set([...preset, ...denied])];
+        return { disallowedTools: merged };
+      })(),
       // Autonomy ceilings (`sdk.d.ts:1587` maxTurns / `:1591` maxBudgetUsd). An
       // absent field leaves the SDK default in place; a hit ceiling returns an
       // `error_max_turns` / `error_max_budget_usd` result the adapter maps to a
