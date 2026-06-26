@@ -34,12 +34,24 @@ function setTTY(value: boolean): void {
 const ESC = '\x1b';
 
 describe('createLogger output shape', () => {
-  test('keeps the <ISO> <LEVEL> [scope] <msg> <json> shape', () => {
+  test('captured (non-TTY) shape is <LEVEL> [scope] <msg> <json> — no self-timestamp', () => {
     setTTY(false);
     const [line] = captureStderr(() => {
       createLogger('info', 'core').info('hello', { a: 1 });
     });
-    expect(line).toMatch(
+    // Rust's tracing sink owns the single timestamp when it drains our stderr; we must
+    // NOT self-prepend one (doing so double-stamps every captured line). LEVEL stays first.
+    expect(line).toMatch(/^INFO \[core\] hello \{"a":1\}\n$/);
+  });
+
+  test('interactive (TTY) shape keeps the full pretty <ISO> <LEVEL> [scope] <msg> <json>', () => {
+    setTTY(true);
+    const [line] = captureStderr(() => {
+      createLogger('info', 'core').info('hello', { a: 1 });
+    });
+    // Strip ANSI (the LEVEL token is colorized on a TTY) before matching the shape.
+    const plain = line.split(new RegExp(`${ESC}\\[[0-9;]*m`)).join('');
+    expect(plain).toMatch(
       /^\d{4}-\d{2}-\d{2}T[\d:.]+Z INFO \[core\] hello \{"a":1\}\n$/,
     );
   });
@@ -77,8 +89,8 @@ describe('TTY colorization', () => {
     for (const line of lines) {
       expect(line).not.toContain(ESC);
     }
-    // The LEVEL token is the bare uppercase word.
-    expect(lines[0]).toContain(' ERROR [core] e');
+    // Captured shape: the bare uppercase LEVEL token leads (no timestamp before it).
+    expect(lines[0]).toMatch(/^ERROR \[core\] e\n$/);
   });
 
   test('TTY output colorizes the LEVEL token per level', () => {
@@ -107,5 +119,28 @@ describe('TTY colorization', () => {
     expect(plain).toMatch(
       /^\d{4}-\d{2}-\d{2}T[\d:.]+Z INFO \[core\] msg \{"k":"v"\}\n$/,
     );
+  });
+});
+
+describe('captured-mode wire contract (Rust owns the timestamp + level)', () => {
+  // Pins the doubled-log regression: when the Rust core captures our stderr (non-TTY)
+  // we must NOT self-prepend an ISO timestamp, but MUST keep the LEVEL token first so
+  // the Rust `sidecar_level` parser reads it as field 0. See
+  // apps/desktop/src-tauri/src/sidecar/mod.rs (`sidecar_level` / `strip_level_token`).
+  test('piped output drops the self-timestamp, keeps LEVEL first + child scope', () => {
+    setTTY(false); // captured by the Rust core
+    const [line] = captureStderr(() => {
+      createLogger('info', 'sidecar')
+        .child('harness')
+        .info('[harness:design-decisions] turn 7 · Glob');
+    });
+    // The duplicated half was the leading ISO-8601 timestamp — post-fix it is gone.
+    expect(line).not.toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+    // LEVEL token stays FIRST so the Rust side recovers the level from field 0.
+    expect(line.trimStart()).toMatch(/^INFO\b/);
+    // The child scope (which Rust's flat `target: "sidecar"` loses) is preserved.
+    expect(line).toContain('[sidecar:harness]');
+    // The message body survives intact.
+    expect(line).toContain('[harness:design-decisions] turn 7 · Glob');
   });
 });

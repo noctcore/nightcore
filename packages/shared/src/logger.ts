@@ -31,22 +31,46 @@ const LEVEL_COLOR: Record<Exclude<LogLevel, 'silent'>, string> = {
 const RESET = '\x1b[0m';
 
 /**
- * Whether to colorize: only when stderr is an interactive TTY. When the Rust core
- * captures our stderr (piped, not a TTY) or it is redirected to a file, output
- * stays plain so the `<ISO> <LEVEL> [scope] <msg> <json>` shape is parseable.
+ * Whether stderr is an interactive TTY. Gates BOTH the LEVEL colorization and the
+ * full pretty self-format (the leading ISO timestamp): on a TTY a human running the
+ * CLI directly gets `<ISO> <LEVEL> [scope] <msg> <json>`. When piped/captured — the
+ * Rust core draining our stderr, or a redirect to a file — output drops the self
+ * timestamp so the Rust `tracing` sink can own the single timestamp + level without
+ * double-stamping every line.
  */
 function useColor(): boolean {
   return process.stderr.isTTY === true;
 }
 
+/**
+ * Format one log line in one of two shapes, gated on {@link useColor} (TTY):
+ *
+ * - Interactive TTY: the full pretty self-format `<ISO> <LEVEL> [scope] <msg> <json>`,
+ *   LEVEL colorized.
+ * - Piped/captured (non-TTY, e.g. the Rust core draining our stderr): drop our own ISO
+ *   timestamp and emit `<LEVEL> [scope] <msg> <json>`. Rust's tracing sink stamps the
+ *   single timestamp + level; a self-timestamp here would double-stamp every line. The
+ *   `[scope]` is kept because Rust's flat `target: "sidecar"` does not preserve the
+ *   child scope (`sidecar:harness` vs `sidecar:insight`).
+ *
+ * WIRE CONTRACT — keep in lockstep with the Rust parser (`sidecar_level` /
+ * `strip_level_token` in apps/desktop/src-tauri/src/sidecar/mod.rs): in piped mode the
+ * uppercase LEVEL token MUST be field 0 (first whitespace-delimited field) and plain
+ * (no ANSI), so Rust can recover the tracing level from field 0 and strip it. Moving
+ * the LEVEL token here without moving that parser silently collapses every captured
+ * line to `Info`.
+ */
 function format(scope: string, level: LogLevel, msg: string, meta?: unknown): string {
-  const ts = new Date().toISOString();
   const tail = meta === undefined ? '' : ` ${safeStringify(meta)}`;
   const levelToken = level.toUpperCase();
+  if (!useColor()) {
+    // Captured by Rust (or a file): LEVEL stays first so the Rust side parses + strips
+    // it; the self-timestamp is omitted (Rust stamps the only one), [scope] preserved.
+    return `${levelToken} [${scope}] ${msg}${tail}`;
+  }
+  const ts = new Date().toISOString();
   const level_ =
-    useColor() && level !== 'silent'
-      ? `${LEVEL_COLOR[level]}${levelToken}${RESET}`
-      : levelToken;
+    level === 'silent' ? levelToken : `${LEVEL_COLOR[level]}${levelToken}${RESET}`;
   return `${ts} ${level_} [${scope}] ${msg}${tail}`;
 }
 

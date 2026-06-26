@@ -160,15 +160,25 @@ pub async fn query(app: &AppHandle, query: SurfaceQuery) -> Result<Value, String
 }
 
 /// Re-emit one captured sidecar stderr line through the Rust `tracing` sink under
-/// target `sidecar`, mapping the sidecar's own `LEVEL` token to a tracing level when
-/// it's cheaply parseable (the logger emits `<ISO> <LEVEL> [scope] …`), else `info`.
-/// The whole original line is the message — the sidecar already shaped it.
+/// target `sidecar`. When the line carries our logger's leading `LEVEL` token (piped
+/// mode — see the wire contract below) it maps to the matching tracing level and the
+/// token is stripped, so the `tracing` fmt layer is the SOLE owner of the timestamp +
+/// level + target. Lines without a known leading token (raw stderr, SDK/runtime
+/// output) pass through verbatim at `Info`.
+///
+/// WIRE CONTRACT — keep in lockstep with the sidecar's `format()` in
+/// packages/shared/src/logger.ts: in piped/captured mode the sidecar emits
+/// `<LEVEL> [scope] <msg>` with the uppercase LEVEL token as field 0 and NO self
+/// timestamp (Rust stamps the only one here). [`sidecar_level`] reads that field 0 and
+/// [`strip_level_token`] removes it. If the sidecar moves the token without this parser
+/// moving too, every captured line silently degrades to `Info`.
 fn emit_sidecar_line(line: &str) {
+    let rest = strip_level_token(line);
     match sidecar_level(line) {
-        SidecarLevel::Error => tracing::error!(target: "sidecar", "{line}"),
-        SidecarLevel::Warn => tracing::warn!(target: "sidecar", "{line}"),
-        SidecarLevel::Info => tracing::info!(target: "sidecar", "{line}"),
-        SidecarLevel::Debug => tracing::debug!(target: "sidecar", "{line}"),
+        SidecarLevel::Error => tracing::error!(target: "sidecar", "{rest}"),
+        SidecarLevel::Warn => tracing::warn!(target: "sidecar", "{rest}"),
+        SidecarLevel::Info => tracing::info!(target: "sidecar", "{rest}"),
+        SidecarLevel::Debug => tracing::debug!(target: "sidecar", "{rest}"),
     }
 }
 
@@ -181,15 +191,32 @@ enum SidecarLevel {
     Debug,
 }
 
-/// Parse the sidecar logger's `LEVEL` token (the second whitespace field, after the
-/// ISO timestamp) into a level. Unknown/absent ⇒ `Info`.
+/// Whether `token` is one of the sidecar logger's uppercase `LEVEL` tokens.
+fn is_level_token(token: &str) -> bool {
+    matches!(token, "ERROR" | "WARN" | "INFO" | "DEBUG")
+}
+
+/// Parse the sidecar logger's leading `LEVEL` token (field 0 — in piped mode the
+/// sidecar drops its self-timestamp, so the level is first). Unknown/absent ⇒ `Info`.
 fn sidecar_level(line: &str) -> SidecarLevel {
-    let token = line.split_whitespace().nth(1).unwrap_or("");
-    match token {
+    match line.split_whitespace().next().unwrap_or("") {
         "ERROR" => SidecarLevel::Error,
         "WARN" => SidecarLevel::Warn,
         "DEBUG" => SidecarLevel::Debug,
         _ => SidecarLevel::Info,
+    }
+}
+
+/// Strip the leading `LEVEL` token (and following whitespace) from a captured sidecar
+/// line, but ONLY when field 0 is one of our known level tokens — so the re-emitted
+/// message no longer carries the wire-protocol level word (Rust stamps the level
+/// instead). Lines without a known leading token (raw stderr, SDK output) are returned
+/// unchanged so they still flow through intact at `Info`.
+fn strip_level_token(line: &str) -> &str {
+    let trimmed = line.trim_start();
+    match trimmed.split_once(char::is_whitespace) {
+        Some((token, rest)) if is_level_token(token) => rest.trim_start(),
+        _ => line,
     }
 }
 
@@ -345,5 +372,66 @@ where
         Err(e) => {
             tracing::error!(target: "nightcore", task_id = id, error = %e, "failed to finalize task")
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sidecar_level_parses_the_leading_token() {
+        // Piped-mode shape: the LEVEL token is field 0 (the sidecar drops its own
+        // ISO timestamp when captured), so the parser reads field 0 — not field 1.
+        assert!(matches!(
+            sidecar_level("ERROR [sidecar:harness] boom"),
+            SidecarLevel::Error
+        ));
+        assert!(matches!(
+            sidecar_level("WARN [sidecar] careful"),
+            SidecarLevel::Warn
+        ));
+        assert!(matches!(
+            sidecar_level("INFO [sidecar:harness] [harness:design-decisions] turn 7 · Glob"),
+            SidecarLevel::Info
+        ));
+        assert!(matches!(
+            sidecar_level("DEBUG [sidecar] noisy"),
+            SidecarLevel::Debug
+        ));
+    }
+
+    #[test]
+    fn unknown_or_raw_lines_default_to_info() {
+        // Raw stderr (no logger LEVEL token at field 0) maps to Info.
+        assert!(matches!(
+            sidecar_level("nightcore-sidecar ready"),
+            SidecarLevel::Info
+        ));
+        assert!(matches!(sidecar_level(""), SidecarLevel::Info));
+    }
+
+    #[test]
+    fn strip_level_token_removes_only_a_known_leading_level() {
+        // A logger line: the LEVEL token is consumed; the scope + message survive and
+        // carry NO second timestamp (Rust's fmt layer adds the only one).
+        let rest =
+            strip_level_token("INFO [sidecar:harness] [harness:design-decisions] turn 7 · Glob");
+        assert_eq!(
+            rest,
+            "[sidecar:harness] [harness:design-decisions] turn 7 · Glob"
+        );
+        assert!(!rest.contains("INFO"), "the level token is stripped");
+        // No leading ISO-8601 timestamp remains in the re-emitted message.
+        assert!(!rest.starts_with(|c: char| c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn strip_level_token_leaves_raw_lines_intact() {
+        // No known LEVEL token at field 0 ⇒ pass through unchanged.
+        assert_eq!(
+            strip_level_token("nightcore-sidecar ready"),
+            "nightcore-sidecar ready"
+        );
     }
 }
