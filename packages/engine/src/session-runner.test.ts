@@ -27,10 +27,13 @@ mock.module('./resolve-claude-binary.js', () => ({
  */
 const realSdk = await import('@anthropic-ai/claude-agent-sdk');
 let queryCalls = 0;
+/** The SDK `Options` object from the most recent `query()` call, for assertions. */
+let lastQueryOptions: Record<string, unknown> | undefined;
 mock.module('@anthropic-ai/claude-agent-sdk', () => ({
   ...realSdk,
-  query: () => {
+  query: (args: { options?: Record<string, unknown> }) => {
     queryCalls += 1;
+    lastQueryOptions = args?.options;
     const iterator: AsyncGenerator<unknown> = {
       async next() {
         return { value: undefined, done: true };
@@ -223,5 +226,121 @@ describe('toSdkMcpServers — contract → SDK Options.mcpServers', () => {
     ]);
     expect(Object.keys(servers ?? {})).toEqual(['dup']);
     expect(servers?.['dup']).toEqual({ command: 'npx', args: ['second'] });
+  });
+});
+
+describe('SessionRunner — policy deny list → SDK disallowedTools (sec-22ee938b)', () => {
+  test('a deny entry appears in SDK disallowedTools even under bypassPermissions', async () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    queryCalls = 0;
+    lastQueryOptions = undefined;
+
+    const runner = new SessionRunner(
+      {
+        sessionId: 2,
+        prompt: 'hi',
+        model: 'claude-opus-4-8',
+        permissionMode: 'bypassPermissions',
+        permissionPolicy: { allow: [], deny: ['Bash'], mode: 'bypassPermissions' },
+        cwd: process.cwd(),
+        apiKeyFallback: false,
+        settingSources,
+        todoFeatureEnabled: false,
+      },
+      () => {},
+    );
+
+    await runner.run();
+
+    expect(queryCalls).toBe(1);
+    const disallowed = lastQueryOptions?.disallowedTools as string[] | undefined;
+    expect(disallowed).toBeDefined();
+    expect(disallowed).toContain('Bash');
+  });
+
+  test('deny list unions with preset disallowedTools without duplication', async () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    queryCalls = 0;
+    lastQueryOptions = undefined;
+
+    const runner = new SessionRunner(
+      {
+        sessionId: 3,
+        prompt: 'hi',
+        model: 'claude-opus-4-8',
+        permissionMode: 'bypassPermissions',
+        permissionPolicy: { allow: [], deny: ['Bash', 'Edit'], mode: 'bypassPermissions' },
+        cwd: process.cwd(),
+        apiKeyFallback: false,
+        settingSources,
+        todoFeatureEnabled: false,
+        // Preset already contains Bash — the union must not duplicate it.
+        disallowedTools: ['Bash', 'Write'],
+      },
+      () => {},
+    );
+
+    await runner.run();
+
+    expect(queryCalls).toBe(1);
+    const disallowed = lastQueryOptions?.disallowedTools as string[] | undefined;
+    expect(disallowed).toBeDefined();
+    // All three tools present, no duplicates.
+    expect(disallowed?.sort()).toEqual(['Bash', 'Edit', 'Write']);
+  });
+
+  test('an empty deny list does not affect preset disallowedTools', async () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    queryCalls = 0;
+    lastQueryOptions = undefined;
+
+    const runner = new SessionRunner(
+      {
+        sessionId: 4,
+        prompt: 'hi',
+        model: 'claude-opus-4-8',
+        permissionMode: 'bypassPermissions',
+        permissionPolicy: { allow: [], deny: [], mode: 'bypassPermissions' },
+        cwd: process.cwd(),
+        apiKeyFallback: false,
+        settingSources,
+        todoFeatureEnabled: false,
+        disallowedTools: ['Write'],
+      },
+      () => {},
+    );
+
+    await runner.run();
+
+    expect(queryCalls).toBe(1);
+    const disallowed = lastQueryOptions?.disallowedTools as string[] | undefined;
+    expect(disallowed).toEqual(['Write']);
+  });
+
+  test('empty deny list and no preset omits disallowedTools from SDK options', async () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    queryCalls = 0;
+    lastQueryOptions = undefined;
+
+    const runner = new SessionRunner(
+      {
+        sessionId: 5,
+        prompt: 'hi',
+        model: 'claude-opus-4-8',
+        permissionMode: 'default',
+        permissionPolicy: { allow: [], deny: [], mode: 'default' },
+        cwd: process.cwd(),
+        apiKeyFallback: false,
+        settingSources,
+        todoFeatureEnabled: false,
+      },
+      () => {},
+    );
+
+    await runner.run();
+
+    expect(queryCalls).toBe(1);
+    expect(lastQueryOptions).toBeDefined();
+    expect('disallowedTools' in (lastQueryOptions ?? {})).toBe(false);
   });
 });

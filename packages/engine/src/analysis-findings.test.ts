@@ -131,6 +131,7 @@ describe('groundFindings', () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nc-ground-'));
     fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
     fs.writeFileSync(path.join(dir, 'src', 'real.ts'), 'a\nb\nc\nd\ne\n'); // 6 lines
+    fs.writeFileSync(path.join(dir, 'src', 'empty.ts'), ''); // 0-line file
   });
   afterAll(() => {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -167,6 +168,18 @@ describe('groundFindings', () => {
     expect(out).toHaveLength(1);
     expect(out[0]?.location?.startLine).toBeLessThanOrEqual(6);
     expect(out[0]?.location?.endLine).toBeLessThanOrEqual(6);
+  });
+
+  test('clamps to line 1 for an empty/0-line file (no out-of-range survivors)', () => {
+    // An empty file reads as 0 lines; a finding at line 50 must not survive past
+    // the real file length — it clamps to the floor of 1, not stay at 50.
+    const out = groundFindings(
+      [finding({ location: { file: 'src/empty.ts', startLine: 50, endLine: 50 } })],
+      dir,
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]?.location?.startLine).toBe(1);
+    expect(out[0]?.location?.endLine).toBe(1);
   });
 
   test('keeps a fileless (repo-level) finding and filters bad affectedFiles', () => {

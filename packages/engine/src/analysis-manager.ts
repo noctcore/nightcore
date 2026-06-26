@@ -16,7 +16,7 @@ import type {
   TokenUsage,
 } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
-import { SessionRunner } from './session-runner.js';
+import { SessionRunner, type SessionRunnerConfig } from './session-runner.js';
 import {
   ANALYSIS_ALLOWED_TOOLS,
   ANALYSIS_DISALLOWED_TOOLS,
@@ -50,16 +50,44 @@ const EMPTY_USAGE: TokenUsage = {
   cacheCreationTokens: 0,
 };
 
+/** The stable failure reason carried by a `session-failed` event. */
+type SessionFailedReason = Extract<
+  NightcoreEvent,
+  { type: 'session-failed' }
+>['reason'];
+
+/** The slice of `SessionRunner` the orchestrator drives: run the loop to a
+ *  terminal state, and interrupt it on cancel. A factory returning this lets tests
+ *  inject a fake runner without spawning the SDK. */
+export interface AnalysisSessionRunner {
+  run(): Promise<void>;
+  interrupt(): Promise<void>;
+}
+
+/** Constructs the runner for one category pass. Defaults to the real
+ *  {@link SessionRunner}; overridable in tests. */
+export type AnalysisRunnerFactory = (
+  config: SessionRunnerConfig,
+  emit: (event: NightcoreEvent) => void,
+  logger?: Logger,
+) => AnalysisSessionRunner;
+
+const defaultRunnerFactory: AnalysisRunnerFactory = (config, emit, logger) =>
+  new SessionRunner(config, emit, logger);
+
 export interface AnalysisManagerDeps {
   config: Config;
   apiKeyFallback: boolean;
   emit: (event: NightcoreEvent) => void;
   logger?: Logger;
+  /** Override the per-category runner construction (tests inject a fake). Defaults
+   *  to the real `SessionRunner` so the production call site needs no change. */
+  runnerFactory?: AnalysisRunnerFactory;
 }
 
 interface ActiveRun {
   runId: string;
-  runners: Set<SessionRunner>;
+  runners: Set<AnalysisSessionRunner>;
   cancelled: boolean;
 }
 
@@ -68,12 +96,19 @@ interface CategoryOutcome {
   usage: TokenUsage;
   costUsd: number;
   error?: string;
+  /** The structured `session-failed` reason from the underlying pass, when one
+   *  failed (authentication | rate-limit | aborted | runner-crash | max-turns |
+   *  max-budget | unknown). Distinct from `error` (the human-readable message). */
+  reason?: SessionFailedReason;
 }
 
 export class AnalysisManager {
   private readonly active = new Map<string, ActiveRun>();
+  private readonly runnerFactory: AnalysisRunnerFactory;
 
-  constructor(private readonly deps: AnalysisManagerDeps) {}
+  constructor(private readonly deps: AnalysisManagerDeps) {
+    this.runnerFactory = deps.runnerFactory ?? defaultRunnerFactory;
+  }
 
   /** Start a run. Fire-and-forget: failures surface as an `analysis-failed`
    *  event, never a rejected promise (degrade-not-throw, like the SessionManager). */
@@ -205,12 +240,21 @@ export class AnalysisManager {
     addUsage(usage, first.usage);
     costUsd += first.costUsd;
 
-    if (run.cancelled) return { findings: [], usage, costUsd, error: 'cancelled' };
+    if (run.cancelled) {
+      return { findings: [], usage, costUsd, error: 'cancelled', reason: 'aborted' };
+    }
     if (first.result === undefined) {
-      return { findings: [], usage, costUsd, error: first.error ?? 'no result' };
+      return {
+        findings: [],
+        usage,
+        costUsd,
+        error: first.error ?? 'no result',
+        ...(first.reason !== undefined ? { reason: first.reason } : {}),
+      };
     }
 
     let parsed = parseFindings(first.result, category);
+    let reason = first.reason;
     if (parsed.error !== undefined) {
       // One corrective retry: the pass returned prose, not JSON. Re-ask with a
       // strict reminder (cheap relative to losing the whole category).
@@ -226,8 +270,12 @@ export class AnalysisManager {
       );
       addUsage(usage, retry.usage);
       costUsd += retry.costUsd;
-      if (!run.cancelled && retry.result !== undefined) {
+      if (run.cancelled) reason = 'aborted';
+      else if (retry.result !== undefined) {
         parsed = parseFindings(retry.result, category);
+        reason = retry.reason;
+      } else if (retry.reason !== undefined) {
+        reason = retry.reason;
       }
     }
 
@@ -236,6 +284,7 @@ export class AnalysisManager {
       usage,
       costUsd,
       ...(parsed.error !== undefined ? { error: parsed.error } : {}),
+      ...(reason !== undefined ? { reason } : {}),
     };
   }
 
@@ -251,13 +300,15 @@ export class AnalysisManager {
     usage: TokenUsage;
     costUsd: number;
     error?: string;
+    reason?: SessionFailedReason;
   }> {
     let result: string | undefined;
     let usage: TokenUsage = { ...EMPTY_USAGE };
     let costUsd = 0;
     let error: string | undefined;
+    let reason: SessionFailedReason | undefined;
 
-    const runner = new SessionRunner(
+    const runner = this.runnerFactory(
       {
         sessionId: -1,
         prompt,
@@ -286,6 +337,7 @@ export class AnalysisManager {
           if (event.usage !== undefined) usage = event.usage;
         } else if (event.type === 'session-failed') {
           error = event.message;
+          reason = event.reason;
         }
       },
       this.deps.logger?.child(`analysis-${preset.category}`),
@@ -297,7 +349,13 @@ export class AnalysisManager {
     } finally {
       run.runners.delete(runner);
     }
-    return { result, usage, costUsd, ...(error !== undefined ? { error } : {}) };
+    return {
+      result,
+      usage,
+      costUsd,
+      ...(error !== undefined ? { error } : {}),
+      ...(reason !== undefined ? { reason } : {}),
+    };
   }
 }
 
