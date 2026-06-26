@@ -58,7 +58,25 @@ pub fn build_guardrails(app: &AppHandle, task: &Task) -> crate::m2::provider::Gu
         max_budget_usd: task.max_budget_usd,
         resume_session_id: task.sdk_session_id.clone(),
         mcp_servers: resolve_mcp_servers(app),
+        append_context_pack: resolve_context_pack(app),
     }
+}
+
+/// The Pre-flight Context Pack (Lock, feature #4) to inject for a run in the active
+/// project: the curated `<project>/.nightcore/context.md`, gated on the per-project
+/// `context_pack_enabled` toggle (project-override → global, the SAME precedence
+/// `resolve_permission_mode`/`resolve_mcp_servers` use). `None` when no project is
+/// active, the toggle is off, or no `context.md` exists — each yielding the
+/// pre-feature shape (no pack injected). Shared by the build path, reviewer, and
+/// fix sub-runs so every session in a project starts on the same rails.
+pub fn resolve_context_pack(app: &AppHandle) -> Option<String> {
+    use crate::settings::SettingsStore;
+    let project = app.state::<ProjectStore>().active()?;
+    let settings = app.state::<SettingsStore>();
+    if !settings.context_pack_enabled(Some(&project.id)) {
+        return None;
+    }
+    crate::store::context::read_pack(&project.path)
 }
 
 /// The enabled external MCP servers to inject for a run in the active project,

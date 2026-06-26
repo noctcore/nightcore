@@ -56,6 +56,16 @@ export const StartSessionCommand = z.object({
    *  `.mcp.json`/`~/.claude.json`. Absent ⇒ none injected (the pre-feature shape).
    *  May carry secrets in `env`/`headers`; never logged at info/telemetry. */
   mcpServers: z.array(McpServerEntrySchema).optional(),
+  /** Pre-flight Context Pack (Lock, feature #4): a curated, Nightcore-CONTROLLED
+   *  context pack (the project Constitution from the Harness `CLAUDE.md`/`AGENTS.md`,
+   *  an arch summary, the active convention rules, and `.nightcore/memory/*.md`)
+   *  the Rust core assembles from on-disk sources and passes here. The engine folds
+   *  it into the SDK `appendSystemPrompt` BEFORE the kind-preset persona (project
+   *  rules lead, then the reviewer/build persona), truncated to a token budget so it
+   *  can't crowd out the task. Injected via `appendSystemPrompt`, NOT `settingSources`,
+   *  so it stays TRUSTED Nightcore content (unlike the repo's own auto-loaded
+   *  `CLAUDE.md`). Absent ⇒ no pack injected (the pre-feature shape). */
+  appendContextPack: z.string().optional(),
 });
 
 const sessionTarget = {

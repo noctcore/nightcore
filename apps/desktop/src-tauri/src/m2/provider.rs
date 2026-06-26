@@ -170,6 +170,12 @@ pub struct Guardrails {
     pub max_budget_usd: Option<f64>,
     pub resume_session_id: Option<String>,
     pub mcp_servers: Vec<crate::contracts::McpServerEntry>,
+    /// Pre-flight Context Pack (Lock, feature #4): the curated, Nightcore-controlled
+    /// project Constitution read from `<project>/.nightcore/context.md` → engine
+    /// `appendContextPack` → composed into the SDK `appendSystemPrompt` BEFORE the
+    /// kind-preset persona. `None` ⇒ inject no pack (the pre-feature shape: either no
+    /// `context.md`, or the per-project toggle is off).
+    pub append_context_pack: Option<String>,
 }
 
 /// The child's piped output streams, handed to `sidecar::ensure_reader` once on
@@ -555,6 +561,10 @@ impl Provider for SidecarProvider {
             // store). An empty list serializes as an OMITTED field — byte-identical
             // to the pre-feature `start-session` — so injecting none changes nothing.
             mcp_servers: (!guardrails.mcp_servers.is_empty()).then_some(guardrails.mcp_servers),
+            // Pre-flight Context Pack (Lock, feature #4): the curated Constitution to
+            // compose into the SDK `appendSystemPrompt`. `None` serializes as an
+            // OMITTED field — byte-identical to the pre-feature `start-session`.
+            append_context_pack: guardrails.append_context_pack,
         };
         let command = serde_json::to_value(&command).map_err(|e| e.to_string())?;
 

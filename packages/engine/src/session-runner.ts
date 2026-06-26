@@ -165,6 +165,59 @@ export interface SessionRunnerConfig {
    *  `sdk.d.ts:1388`) so the session's file changes can be rewound via
    *  `rewindFiles()`. Off by default (legacy behavior). */
   enableFileCheckpointing?: boolean;
+  /** Pre-flight Context Pack (Lock, feature #4): a curated, Nightcore-CONTROLLED
+   *  context pack the Rust core assembled from on-disk sources. Composed into the
+   *  final `appendSystemPrompt` BEFORE [`appendSystemPrompt`] (the kind-preset
+   *  persona) so project rules lead, then the persona — and truncated to
+   *  [`CONTEXT_PACK_MAX_CHARS`] so it can't crowd out the task. Absent/empty ⇒ no
+   *  pack folded in (byte-identical to the pre-feature append behavior). */
+  appendContextPack?: string;
+}
+
+/**
+ * A conservative character budget for the injected context pack (Lock, feature #4).
+ * The pack leads the system prompt, so an unbounded pack could crowd out the task
+ * and the model's own reasoning budget. ~12k characters is roughly 3k tokens — a
+ * generous Constitution + arch summary + convention rules + memory excerpts, while
+ * leaving the bulk of the window for the actual run. Truncation is hard-capped here
+ * (not at the Rust source) so the engine is the last line of defence regardless of
+ * what the core hands over.
+ */
+export const CONTEXT_PACK_MAX_CHARS = 12_000;
+
+/** A visible marker appended when the pack is truncated, so a reader (human or
+ *  model) knows the Constitution was clipped rather than silently ending. */
+const CONTEXT_PACK_TRUNCATION_NOTICE =
+  '\n\n…[context pack truncated to fit the pre-flight budget]';
+
+/** Separator between the context pack and the kind-preset persona in the composed
+ *  `appendSystemPrompt`. A blank line keeps the two trusted blocks visually
+ *  distinct in the assembled system prompt. */
+const CONTEXT_PACK_SEPARATOR = '\n\n';
+
+/**
+ * Compose the final `appendSystemPrompt` from the (optional) trusted context pack
+ * and the (optional) kind-preset persona — pack FIRST so project rules lead, then
+ * the reviewer/build persona. The pack is truncated to [`CONTEXT_PACK_MAX_CHARS`]
+ * so it can't crowd out the task. Returns `undefined` when neither is present, so
+ * the caller omits the SDK option entirely (byte-identical to the pre-feature
+ * shape). Pure + exported so the ordering is unit-testable without spinning a query.
+ */
+export function composeAppendSystemPrompt(
+  contextPack: string | undefined,
+  persona: string | undefined,
+): string | undefined {
+  const pack = contextPack?.trim();
+  const boundedPack =
+    pack !== undefined && pack.length > 0
+      ? pack.length > CONTEXT_PACK_MAX_CHARS
+        ? pack.slice(0, CONTEXT_PACK_MAX_CHARS) + CONTEXT_PACK_TRUNCATION_NOTICE
+        : pack
+      : undefined;
+  const parts = [boundedPack, persona].filter(
+    (part): part is string => part !== undefined && part.length > 0,
+  );
+  return parts.length > 0 ? parts.join(CONTEXT_PACK_SEPARATOR) : undefined;
 }
 
 /**
@@ -272,11 +325,19 @@ export class SessionRunner {
       ...(this.cfg.permissionMode === 'bypassPermissions'
         ? { allowDangerouslySkipPermissions: true }
         : {}),
-      // M4 kind preset: an absent field leaves the SDK default in place, so a
-      // `build` session (no preset overrides) is byte-identical to pre-M4.
-      ...(this.cfg.appendSystemPrompt !== undefined
-        ? { appendSystemPrompt: this.cfg.appendSystemPrompt }
-        : {}),
+      // M4 kind preset + Pre-flight Context Pack (Lock, feature #4): compose the
+      // FINAL `appendSystemPrompt` as [trusted context pack → kind-preset persona],
+      // pack first so project rules lead, then the reviewer/build persona. The pack
+      // is truncated to a token budget so it can't crowd out the task. With neither
+      // present the field is omitted, so a `build` session (no preset, no pack) is
+      // byte-identical to pre-M4.
+      ...((): { appendSystemPrompt?: string } => {
+        const composed = composeAppendSystemPrompt(
+          this.cfg.appendContextPack,
+          this.cfg.appendSystemPrompt,
+        );
+        return composed !== undefined ? { appendSystemPrompt: composed } : {};
+      })(),
       ...(this.cfg.allowedTools !== undefined
         ? { allowedTools: this.cfg.allowedTools }
         : {}),

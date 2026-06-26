@@ -16,7 +16,7 @@ use crate::project::ProjectStore;
 use crate::store::TaskStore;
 use crate::task::{Task, TaskKind, TaskStatus};
 
-use super::commands::{resolve_mcp_servers, resolve_permission_mode};
+use super::commands::{resolve_context_pack, resolve_mcp_servers, resolve_permission_mode};
 use super::{apply_and_emit, finish_run, park_for_approval, Outcome};
 
 /// The bounded auto-fix budget for the verification gate (M4 §B). On a
@@ -391,6 +391,9 @@ async fn dispatch_reviewer(
                 max_budget_usd: task.max_budget_usd,
                 resume_session_id: None,
                 mcp_servers: resolve_mcp_servers(app),
+                // Lock (feature #4): the reviewer judges against the project's own
+                // Constitution, so it starts knowing the rules it's enforcing.
+                append_context_pack: resolve_context_pack(app),
             },
         )
         .await
@@ -431,6 +434,9 @@ async fn dispatch_fix(
                 max_budget_usd: task.max_budget_usd,
                 resume_session_id: None,
                 mcp_servers: resolve_mcp_servers(app),
+                // Lock (feature #4): a fix-build still edits the project, so it gets
+                // the same on-rails Constitution as the original build.
+                append_context_pack: resolve_context_pack(app),
             },
         )
         .await

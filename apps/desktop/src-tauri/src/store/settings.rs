@@ -71,6 +71,13 @@ pub struct Settings {
     /// secrets; persisted plaintext, same trust model as the user's `~/.claude.json`.
     #[serde(default)]
     pub mcp_servers: Vec<McpServerEntry>,
+    /// Pre-flight Context Pack (Lock, feature #4): whether the Nightcore-curated
+    /// project Constitution (`.nightcore/context.md`) is injected into agent runs'
+    /// `appendSystemPrompt`. Per-project overridable. Default `true` (a project that
+    /// has authored a context pack gets it on-rails; the toggle opts a project OUT).
+    /// Serde-additive: a settings file written before this field loads as `true`.
+    #[serde(default = "default_true")]
+    pub context_pack_enabled: bool,
     /// Per-project overrides keyed by project id.
     pub project_overrides: HashMap<String, SettingsOverride>,
 }
@@ -127,6 +134,12 @@ pub enum McpServerTransport {
 /// field loads as `"main"`).
 fn default_run_mode_value() -> String {
     "main".to_string()
+}
+
+/// The serde default for `context_pack_enabled` (a legacy settings file without the
+/// field loads as `true` — a project's authored Constitution is injected by default).
+fn default_true() -> bool {
+    true
 }
 
 /// Convert a `HashMap<String, String>` into the contract transport's JSON map shape
@@ -201,6 +214,9 @@ impl Default for Settings {
             // No MCP servers configured by default — a new task injects none until
             // the user adds one in the Settings MCP form.
             mcp_servers: Vec::new(),
+            // Lock (feature #4): the curated Constitution is injected by default; a
+            // project with no `context.md` simply has nothing to inject (a no-op).
+            context_pack_enabled: true,
             project_overrides: HashMap::new(),
         }
     }
@@ -242,6 +258,11 @@ pub struct SettingsOverride {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub mcp_servers: Option<Vec<McpServerEntry>>,
+    /// Lock (feature #4): per-project override of whether the context pack is
+    /// injected. `None` ⇒ inherit the global toggle. Serde-additive.
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub context_pack_enabled: Option<bool>,
 }
 
 impl SettingsOverride {
@@ -273,6 +294,9 @@ impl SettingsOverride {
         if patch.mcp_servers.is_some() {
             self.mcp_servers = patch.mcp_servers.clone();
         }
+        if patch.context_pack_enabled.is_some() {
+            self.context_pack_enabled = patch.context_pack_enabled;
+        }
     }
 
     fn is_empty(&self) -> bool {
@@ -284,6 +308,7 @@ impl SettingsOverride {
             && self.max_turns.is_none()
             && self.max_budget_usd.is_none()
             && self.mcp_servers.is_none()
+            && self.context_pack_enabled.is_none()
     }
 }
 
@@ -330,6 +355,10 @@ pub struct SettingsPatch {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub mcp_servers: Option<Vec<McpServerEntry>>,
+    /// Lock (feature #4): toggle context-pack injection. With a `projectId` it lands
+    /// in that project's override; without one, the global default.
+    #[cfg_attr(test, ts(optional))]
+    pub context_pack_enabled: Option<bool>,
 }
 
 impl Settings {
@@ -388,6 +417,11 @@ impl Settings {
         // key leaves the list untouched.
         if let Some(servers) = patch.mcp_servers {
             self.mcp_servers = servers;
+        }
+        // Lock (feature #4): a present value sets the global toggle. Like the other
+        // booleans, serde maps absent/null to `None`, so an omitted key is a no-op.
+        if let Some(v) = patch.context_pack_enabled {
+            self.context_pack_enabled = v;
         }
     }
 }
@@ -504,6 +538,19 @@ impl SettingsStore {
             .and_then(|ov| ov.mcp_servers.clone())
             .unwrap_or(settings.mcp_servers);
         resolved.into_iter().filter(|s| s.enabled).collect()
+    }
+
+    /// Whether the Pre-flight Context Pack (Lock, feature #4) is injected for a
+    /// project: its override, else the global toggle. The coordinator gates reading
+    /// `.nightcore/context.md` on this — a project with the toggle off runs exactly
+    /// like pre-feature (no pack injected, even if a `context.md` exists). Mirrors
+    /// [`default_model`](Self::default_model)'s project-override → global resolution.
+    pub fn context_pack_enabled(&self, project_id: Option<&str>) -> bool {
+        let settings = self.get();
+        project_id
+            .and_then(|id| settings.project_overrides.get(id))
+            .and_then(|ov| ov.context_pack_enabled)
+            .unwrap_or(settings.context_pack_enabled)
     }
 
     /// Apply a patch, persist, and return the merged settings.
@@ -930,10 +977,66 @@ mod tests {
             "maxTurns",
             "maxBudgetUsd",
             "mcpServers",
+            "contextPackEnabled",
             "projectOverrides",
         ] {
             assert!(obj.contains_key(key), "missing camelCase key {key}");
         }
+    }
+
+    #[test]
+    fn context_pack_enabled_defaults_true_and_is_serde_additive() {
+        // Lock (feature #4): the curated Constitution is injected by default.
+        assert!(Settings::default().context_pack_enabled);
+
+        // A settings.json from before the Context Pack UI (no `contextPackEnabled`)
+        // still parses, defaulting the field to `true` — existing config isn't broken.
+        let tmp = TempDir::new().expect("temp dir");
+        let dir = tmp.path().join("config");
+        std::fs::create_dir_all(&dir).unwrap();
+        let legacy = r#"{"defaultModel":"claude-opus-4-8","defaultEffort":"medium",
+            "maxConcurrency":3,"permissionMode":"bypass","cleanupWorktrees":true,
+            "notifyOnComplete":false,"defaultRunMode":"main","projectOverrides":{}}"#;
+        std::fs::write(dir.join("settings.json"), legacy).unwrap();
+        let store = SettingsStore::load_from(dir);
+        assert!(store.get().context_pack_enabled);
+        assert!(store.context_pack_enabled(None));
+    }
+
+    #[test]
+    fn context_pack_enabled_resolves_project_then_global() {
+        let (store, _tmp) = temp_store();
+        // Global default is on for every project without an own override.
+        assert!(store.context_pack_enabled(None));
+        assert!(store.context_pack_enabled(Some("any")));
+
+        // A per-project override OFF wins for that project only — how a project opts
+        // out of the on-rails Constitution.
+        store
+            .update(
+                serde_json::from_str(r#"{"projectId":"p1","contextPackEnabled":false}"#).unwrap(),
+            )
+            .expect("update");
+        assert!(!store.context_pack_enabled(Some("p1")));
+        assert!(store.context_pack_enabled(Some("other")));
+        assert!(store.context_pack_enabled(None));
+
+        // The override is project-scoped, not global.
+        let merged = store.get();
+        assert!(merged.context_pack_enabled, "global stays on");
+        assert_eq!(
+            merged.project_overrides.get("p1").unwrap().context_pack_enabled,
+            Some(false)
+        );
+
+        // A global toggle OFF flips it for projects without an own override.
+        store
+            .update(serde_json::from_str(r#"{"contextPackEnabled":false}"#).unwrap())
+            .expect("global update");
+        assert!(!store.context_pack_enabled(None));
+        assert!(!store.context_pack_enabled(Some("other")));
+        // The project override still wins (it is explicitly false too here).
+        assert!(!store.context_pack_enabled(Some("p1")));
     }
 
     /// A stdio server entry fixture for the MCP tests.

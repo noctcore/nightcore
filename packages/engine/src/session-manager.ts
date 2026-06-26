@@ -456,6 +456,12 @@ export class SessionManager {
         ...(preset.appendSystemPrompt !== undefined
           ? { appendSystemPrompt: preset.appendSystemPrompt }
           : {}),
+        // Pre-flight Context Pack (Lock, feature #4): the trusted, Nightcore-assembled
+        // pack the Rust core passes on the command. The runner composes it BEFORE the
+        // preset persona (project rules lead). Absent ⇒ no pack (pre-feature shape).
+        ...(command.appendContextPack !== undefined
+          ? { appendContextPack: command.appendContextPack }
+          : {}),
         ...(preset.allowedTools !== undefined
           ? { allowedTools: preset.allowedTools }
           : {}),
