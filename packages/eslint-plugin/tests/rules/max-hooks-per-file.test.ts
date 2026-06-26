@@ -63,6 +63,11 @@ ruleTester.run('max-hooks-per-file', maxHooksPerFileRule, {
       code: fiveHooks,
       filename: 'apps/web/src/components/board/Board/Board.util.ts',
     },
+    // .hooks.tsx is NOT a bucket file — JSX extension is excluded by convention.
+    {
+      code: fiveHooks,
+      filename: 'apps/web/src/components/board/Board/Board.hooks.tsx',
+    },
     // Non-exported helpers do not count.
     {
       code: `function useInternal() { return 0; }\nexport function usePublic() { return 1; }`,

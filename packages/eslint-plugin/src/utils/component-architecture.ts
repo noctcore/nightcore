@@ -101,5 +101,5 @@ export function isIgnoredPath(filename: string, ignorePaths: readonly string[]):
 
 /** True for a feature data file whose hook count `max-hooks-per-file` bounds. */
 export function isHookBucketFile(filename: string): boolean {
-  return /\.(queries|mutations|hooks)\.tsx?$/.test(getBasename(filename));
+  return /\.(queries|mutations|hooks)\.ts$/.test(getBasename(filename));
 }
