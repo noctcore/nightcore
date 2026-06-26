@@ -65,9 +65,11 @@ The agent runs on the SDK's **native tools** (Read/Write/Edit/Bash/Grep/Glob) �
 the Claude-Code mental model. Nightcore does **not** ship in-process MCP tools.
 `ToolRegistry` is retained only as a **risk-classification lookup** (`riskOf`)
 that feeds the CLI-like permission gate (a static native risk map → permission
-tiers). `@nightcore/tools` and `@nightcore/mcp` no longer reach the SDK — they
-are a **dormant, intentional** parked roadmap seam (future custom tools / MCP),
-not dead code.
+tiers). `@nightcore/tools` and `@nightcore/mcp` no longer reach the SDK and are
+**slated for removal** per the 2026-06-24 decision (rely on native SDK tools +
+UI-configurable external MCP instead). The code still exists; `ToolRegistry`
+itself is **retained** even after the packages go, because `riskOf` is still
+needed for permission-tier classification.
 
 External MCP servers are **UI-configurable**: enabled entries from Settings are
 injected additively over the user's native config via the SDK's

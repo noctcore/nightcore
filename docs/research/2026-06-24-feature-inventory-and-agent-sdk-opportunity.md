@@ -50,7 +50,7 @@ messages (`CLAUDE_CODE_ENABLE_TASKS` -> `task-updated` events).
 | Task spine + JSONL store (Rust), create/edit/delete/move, blocked-id derivation | **DONE** | `store/task.rs`; 6 task commands in `lib.rs:93-98` |
 | Project registry (multi-project, switch active, rename/remove, git-init, is-git-repo) | **DONE** | `store/project.rs`; `components/projects/*`, `new-project/*` |
 | Settings (model/effort defaults, run-mode, max-concurrency, cleanup, notify, maxTurns/maxBudget, About) | **DONE** | `store/settings.rs`; `components/settings/*`; commit `bf6e875` "make Settings real" |
-| Live session stream -> transcript (assistant deltas, tool-use, results) persisted per task | **DONE** | `store/transcript.rs`; `sidecar.rs` reader; web `session-stream.ts`, `TaskDetail` |
+| Live session stream -> transcript (assistant deltas, tool-use, results) persisted per task | **DONE** | `store/transcript.rs`; `sidecar/reader.rs`; web `session-stream.ts`, `TaskDetail` |
 | Auto-loop coordinator (scan eligible -> lease slot -> worktree -> dispatch -> re-tick) | **DONE** | `m2/coordinator.rs` (937 LOC); commands `start/stop/resume_auto_loop` |
 | Concurrency / slot manager (cap N, abort handle per run) | **DONE** | `m2/slots.rs` (276 LOC) |
 | Per-task git worktree isolation (add/remove/list/prune + startup reconcile) | **DONE** | `m2/worktree.rs` (776 LOC); safety-invariant guarded |
@@ -69,7 +69,7 @@ messages (`CLAUDE_CODE_ENABLE_TASKS` -> `task-updated` events).
 | Live model list (dynamic `supportedModels()` probe, not hardcoded) | **DONE** | `session-manager.ts:132`; `ModelEffortPicker` |
 | Sidecar packaging for distribution (`externalBin` + compiled binary + release-path resolve) | **DONE (newly closed)** | `tauri.conf.json:33`; `binaries/nightcore-sidecar-aarch64-apple-darwin` exists; `provider.rs release_sidecar_path()` — *the wiring-map's #1 packaging gap is now closed* |
 | Claude-CLI-missing preflight (fail fast, actionable, per-platform install cmd) | **DONE** | `session-runner.ts:164`, `resolve-claude-binary.ts`; commits `acb8ab3`/`33c35fb` |
-| TS<->Rust contract codegen (Rust->TS via ts-rs; zod->Rust generated structs) | **PARTIAL** | `contracts/generated.rs`, `lib/generated/*` exist (commits `888b350`/`7ce0cf8`) BUT the **sidecar NDJSON boundary is still hand-mirrored** (`provider.rs` raw `json!`, `sidecar.rs` `.get("camelCase")`) — drift fails silently. (kirei-arch's lens; noted.) |
+| TS<->Rust contract codegen (Rust->TS via ts-rs; zod->Rust generated structs) | **PARTIAL** | `contracts/generated.rs`, `lib/generated/*` exist (commits `888b350`/`7ce0cf8`). The **outbound command side is now generated**: `m2/provider.rs` constructs the typed `SurfaceCommand` enum and serializes via serde (no more raw `json!` macro). The **inbound event reader `sidecar/reader.rs` is still hand-parsed** via `.get("camelCase")` — drift on the inbound side still fails silently. (kirei-arch's lens; noted.) |
 | Session resume wired but no resume UX | **PARTIAL** | `Options.resume` plumbed (`session-runner.ts:214`) + used on recovery path; no user-facing "resume/continue this task" control or history viewer |
 | File checkpointing / rewind | **PARTIAL** | engine proxies exist (`rewindFiles`, `contextUsage`) but Rust command + web UI are deferred ("STRETCH ... contract C", session-runner.ts:269-291) |
 | Context-window usage gauge | **PARTIAL** | engine `contextUsage()` proxy only; no event/contract/gauge |
@@ -179,9 +179,11 @@ collapse Nightcore's orchestration into SDK subagents.
   Nightcore's worktree-per-task gives each run a distinct cwd, so resume keys
   cleanly per worktree — BUT if a worktree is pruned/moved, its cwd-keyed session
   history is orphaned. Coordinate worktree cleanup with any resume UX.
-- **Sidecar drift seam (kirei-arch's lens):** the NDJSON boundary is hand-mirrored
-  in Rust; adding SDK fields (e.g. structured verdict) means hand-updating
-  `provider.rs`/`sidecar.rs` too, with no compile-time guard.
+- **Inbound sidecar drift seam (kirei-arch's lens):** the outbound command side
+  (`provider.rs`) is now generated via the typed `SurfaceCommand` enum + serde.
+  The **inbound** event reader (`sidecar/reader.rs`) is still hand-parsed via
+  `.get("camelCase")`; adding SDK event fields means hand-updating `reader.rs`
+  with no compile-time guard against drift.
 - **MCP/tools are PARKED, not dead** (per project memory). Don't delete; light them
   up via the SDK transports when needed.
 
