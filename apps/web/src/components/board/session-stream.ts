@@ -1,3 +1,4 @@
+import { decideAssistantDelta } from '@nightcore/session-fold';
 import type { NcEvent } from '@/lib/bridge';
 
 /** A contiguous assistant speaking turn — accumulated markdown for one stretch of
@@ -99,24 +100,37 @@ export function foldSession(prev: SessionStream, event: NcEvent): SessionStream 
     case 'session-ready':
       return { ...EMPTY_STREAM };
     case 'assistant-delta': {
-      // Whole-message block: suppress when partials already streamed this turn
-      // (the trailing open text entry already holds the full text).
-      if (!event.partial && prev.streamedPartial) return prev;
+      // The partial-dedup decision (append / open / suppress) + the
+      // `streamedPartial` flag live in the shared, view-neutral core
+      // (`@nightcore/session-fold`); this adapter just materializes the decision
+      // into the timeline. The web "open turn" is the trailing UNSEALED text
+      // entry (a closed turn was sealed by a prior tool/subagent step or session
+      // end), so a closed turn forces a fresh entry rather than appending.
       const last = prev.entries[prev.entries.length - 1];
-      // Append to the trailing OPEN text turn; a closed turn (sealed by a prior
-      // tool/subagent step or session end) starts a fresh entry with a new id.
-      if (last !== undefined && last.kind === 'text' && !last.closed) {
-        const updated: TextEntry = { ...last, markdown: last.markdown + event.text };
-        return {
-          ...prev,
-          streamedPartial: event.partial || prev.streamedPartial,
-          entries: [...prev.entries.slice(0, -1), updated],
-        };
+      const open = last !== undefined && last.kind === 'text' && !last.closed;
+      const decision = decideAssistantDelta({
+        partial: event.partial,
+        streamedPartial: prev.streamedPartial,
+        hasOpenTurn: open,
+      });
+      if (decision.action === 'suppress') return prev;
+      if (decision.action === 'append' && open) {
+        // Append in place to the open turn (keeping its object identity stable)
+        // rather than re-concatenating the full markdown into a fresh entry and
+        // copying the whole entries array on every delta — that made a long
+        // streamed turn O(m²) in its token count. Mutating the open entry under
+        // a fresh top-level object keeps per-delta work O(1) amortized (V8 ropes
+        // the `+=`), preserves the stable per-entry id the React key relies on,
+        // and still hands React a new stream/array reference so it re-renders.
+        // The turn is sealed (closed) before any markdown parse, so no consumer
+        // ever observes a half-built open entry as immutable.
+        last.markdown += event.text;
+        return { ...prev, streamedPartial: decision.streamedPartial, entries: prev.entries };
       }
       const id = prev.textSeq + 1;
       return {
         ...prev,
-        streamedPartial: event.partial || prev.streamedPartial,
+        streamedPartial: decision.streamedPartial,
         textSeq: id,
         entries: [...prev.entries, { kind: 'text', id, markdown: event.text, closed: false }],
       };

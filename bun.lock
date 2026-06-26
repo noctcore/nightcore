@@ -56,16 +56,17 @@
         "@nightcore/config": "workspace:*",
         "@nightcore/contracts": "workspace:*",
         "@nightcore/engine": "workspace:*",
+        "@nightcore/session-fold": "workspace:*",
         "@nightcore/shared": "workspace:*",
         "@opentui/core": "0.4.1",
         "@opentui/react": "0.4.1",
         "react": "^19.2.0",
-        "react-devtools-core": "^7.0.1",
         "ws": "^8.18.0",
       },
       "devDependencies": {
         "@types/react": "^19.2.0",
         "@types/ws": "^8.18.0",
+        "react-devtools-core": "^7.0.1",
       },
     },
     "apps/web": {
@@ -73,6 +74,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@nightcore/contracts": "workspace:*",
+        "@nightcore/session-fold": "workspace:*",
         "@tauri-apps/api": "^2.11.0",
         "@tauri-apps/plugin-dialog": "^2.4.0",
         "dompurify": "^3.2.4",
@@ -82,16 +84,16 @@
         "react-dom": "^19.2.0",
       },
       "devDependencies": {
-        "@storybook/addon-a11y": "9",
-        "@storybook/addon-vitest": "9",
-        "@storybook/react-vite": "9",
+        "@storybook/addon-a11y": "^9.1.20",
+        "@storybook/addon-vitest": "^9.1.20",
+        "@storybook/react-vite": "^9.1.20",
         "@tailwindcss/vite": "^4.1.0",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "@vitejs/plugin-react": "^5.0.0",
         "@vitest/browser": "^3",
         "playwright": "^1.61.0",
-        "storybook": "9",
+        "storybook": "^9.1.20",
         "tailwindcss": "^4.1.0",
         "typescript": "^5.6.0",
         "vite": "^7.0.0",
@@ -119,7 +121,7 @@
       "name": "@nightcore/engine",
       "version": "0.0.0",
       "dependencies": {
-        "@anthropic-ai/claude-agent-sdk": "^0.3.190",
+        "@anthropic-ai/claude-agent-sdk": "~0.3.190",
         "@nightcore/contracts": "workspace:*",
         "@nightcore/shared": "workspace:*",
         "@nightcore/skills": "workspace:*",
@@ -130,14 +132,14 @@
       "name": "@nightcore/eslint-plugin",
       "version": "0.0.0",
       "dependencies": {
-        "@typescript-eslint/utils": "8.61.1",
+        "@typescript-eslint/utils": "^8.61.1",
         "micromatch": "^4.0.8",
       },
       "devDependencies": {
         "@types/micromatch": "^4.0.9",
         "@types/node": "^22.0.0",
-        "@typescript-eslint/parser": "8.61.1",
-        "@typescript-eslint/rule-tester": "8.61.1",
+        "@typescript-eslint/parser": "^8.61.1",
+        "@typescript-eslint/rule-tester": "^8.61.1",
         "tsup": "^8.5.1",
         "typescript": "^5.6.0",
         "vitest": "^3",
@@ -145,6 +147,13 @@
       "peerDependencies": {
         "eslint": ">=9.0.0",
         "typescript": ">=5.0.0",
+      },
+    },
+    "packages/session-fold": {
+      "name": "@nightcore/session-fold",
+      "version": "0.0.0",
+      "dependencies": {
+        "@nightcore/contracts": "workspace:*",
       },
     },
     "packages/shared": {
@@ -339,6 +348,8 @@
     "@nightcore/engine": ["@nightcore/engine@workspace:packages/engine"],
 
     "@nightcore/eslint-plugin": ["@nightcore/eslint-plugin@workspace:packages/eslint-plugin"],
+
+    "@nightcore/session-fold": ["@nightcore/session-fold@workspace:packages/session-fold"],
 
     "@nightcore/shared": ["@nightcore/shared@workspace:packages/shared"],
 

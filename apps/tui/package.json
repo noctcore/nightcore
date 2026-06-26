@@ -13,15 +13,16 @@
     "@nightcore/contracts": "workspace:*",
     "@nightcore/engine": "workspace:*",
     "@nightcore/config": "workspace:*",
+    "@nightcore/session-fold": "workspace:*",
     "@nightcore/shared": "workspace:*",
     "@opentui/core": "0.4.1",
     "@opentui/react": "0.4.1",
     "react": "^19.2.0",
-    "react-devtools-core": "^7.0.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.0",
-    "@types/ws": "^8.18.0"
+    "@types/ws": "^8.18.0",
+    "react-devtools-core": "^7.0.1"
   }
 }

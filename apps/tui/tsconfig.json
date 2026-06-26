@@ -11,6 +11,7 @@
   "include": ["src/**/*"],
   "references": [
     { "path": "../../packages/contracts" },
+    { "path": "../../packages/session-fold" },
     { "path": "../../packages/engine" },
     { "path": "../../packages/config" },
     { "path": "../../packages/shared" }

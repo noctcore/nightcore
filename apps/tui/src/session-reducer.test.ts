@@ -67,6 +67,33 @@ describe('task-updated fold', () => {
     expect([...view.tasks.keys()]).toEqual(['a', 'b', 'c']);
   });
 
+  test('ambient:true is preserved when a status-only patch carries ambient:false', () => {
+    let view = base();
+    // Establish an ambient task.
+    view = reduce(view, {
+      type: 'task-updated',
+      sessionId: 1,
+      taskId: 'amb1',
+      status: 'running',
+      description: 'background housekeeping',
+      ambient: true,
+    } satisfies NightcoreEvent);
+
+    expect(view.tasks.get('amb1')?.ambient).toBe(true);
+
+    // Status-only patch (as produced by sdk-adapter task_updated/task_progress/task_notification)
+    // hardcodes ambient:false — the merge must not clobber the stored true.
+    view = reduce(view, {
+      type: 'task-updated',
+      sessionId: 1,
+      taskId: 'amb1',
+      status: 'completed',
+      ambient: false,
+    } satisfies NightcoreEvent);
+
+    expect(view.tasks.get('amb1')?.ambient).toBe(true);
+  });
+
   test('session-started resets tasks', () => {
     let view = base();
     view = reduce(view, {

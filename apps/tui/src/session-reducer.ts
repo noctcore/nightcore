@@ -4,6 +4,7 @@ import type {
   NightcoreEventOf,
   PermissionMode,
 } from '@nightcore/contracts';
+import { decideAssistantDelta } from '@nightcore/session-fold';
 import { formatDuration, formatUsage } from './format.js';
 import type {
   NoticeTone,
@@ -279,45 +280,48 @@ function appendAssistant(
   text: string,
   partial: boolean,
 ): SessionView {
-  if (partial) {
+  // The partial-dedup decision (append / open / suppress) + the
+  // `streamedPartial` flag live in the shared, view-neutral core
+  // (`@nightcore/session-fold`); this adapter materializes the decision against
+  // the TUI's transcript + `activeAssistantId`. The TUI "open turn" is the
+  // assistant entry `activeAssistantId` points at; a whole-message block closes
+  // the turn (clears `activeAssistantId`), which is the TUI's own turn policy and
+  // intentionally stays here rather than in the core.
+  const activeId = view.activeAssistantId;
+  const idx =
+    activeId === null
+      ? -1
+      : view.transcript.findIndex(
+          (e) => e.kind === 'assistant' && e.id === activeId,
+        );
+
+  const decision = decideAssistantDelta({
+    partial,
+    streamedPartial: view.streamedPartial,
+    hasOpenTurn: idx !== -1,
+  });
+
+  if (decision.action === 'suppress') return view;
+
+  if (decision.action === 'append') {
     const transcript = view.transcript.slice();
-    const activeId = view.activeAssistantId;
-    const idx =
-      activeId === null
-        ? -1
-        : transcript.findIndex(
-            (e) => e.kind === 'assistant' && e.id === activeId,
-          );
-
-    if (idx === -1) {
-      const id = nextId('assistant');
-      transcript.push({ kind: 'assistant', id, text });
-      return {
-        ...view,
-        transcript,
-        streamedPartial: true,
-        activeAssistantId: id,
-      };
-    }
-
     const existing = transcript[idx] as Extract<
       TranscriptEntry,
       { kind: 'assistant' }
     >;
     transcript[idx] = { ...existing, text: existing.text + text };
-    return { ...view, transcript, streamedPartial: true };
+    return { ...view, transcript, streamedPartial: decision.streamedPartial };
   }
 
-  // Whole-message block: suppress if this turn already streamed partials.
-  if (view.streamedPartial) return view;
-
+  // `open`: start a fresh assistant entry. A streamed (partial) turn stays open
+  // for the next delta (`activeAssistantId` = the new entry); a whole-message
+  // block closes immediately (`activeAssistantId` = null).
+  const id = nextId('assistant');
   return {
     ...view,
-    transcript: [
-      ...view.transcript,
-      { kind: 'assistant', id: nextId('assistant'), text },
-    ],
-    activeAssistantId: null,
+    transcript: [...view.transcript, { kind: 'assistant', id, text }],
+    streamedPartial: decision.streamedPartial,
+    activeAssistantId: partial ? id : null,
   };
 }
 
@@ -341,7 +345,7 @@ function upsertTask(
     description: event.description ?? existing?.description ?? '',
     summary: event.summary ?? existing?.summary,
     subagentType: event.subagentType ?? existing?.subagentType,
-    ambient: event.ambient,
+    ambient: event.ambient || existing?.ambient || false,
   };
   tasks.set(event.taskId, merged);
   return { ...view, tasks };

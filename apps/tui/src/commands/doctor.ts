@@ -131,7 +131,8 @@ function readSdkVersion(): string | null {
           return (parsed as { version: string }).version;
         }
       } catch {
-        return null;
+        // malformed manifest at this level — keep walking up
+        continue;
       }
     }
     const parent = join(dir, '..');

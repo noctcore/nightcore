@@ -27,7 +27,7 @@
     "dogfood:ui": "node scripts/dogfood-ui.mjs",
     "dogfood:engine": "bun run scripts/headless-harness.ts",
     "test": "bun run test:node && bun run test:web && bun run test:plugin",
-    "test:node": "bun test apps/sidecar apps/tui packages/config packages/contracts packages/engine packages/shared packages/storage",
+    "test:node": "bun test apps/cli apps/sidecar apps/tui packages/config packages/contracts packages/engine packages/session-fold packages/shared packages/storage",
     "test:web": "bun run --filter @nightcore/web test",
     "test:plugin": "bun run --filter @nightcore/eslint-plugin test",
     "test:rust": "bun run --filter @nightcore/sidecar compile && bun run --filter @nightcore/desktop test",
