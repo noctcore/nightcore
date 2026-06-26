@@ -26,6 +26,8 @@ pub(crate) enum EventRoute {
     QueryResultMissingId,
     /// Any `analysis-*` event — route to the insight channel by `runId`.
     Analysis,
+    /// Any `harness-*` event — route to the harness channel by `runId`.
+    Harness,
     /// A `permission-required` for `ExitPlanMode` — park as `waiting_approval`.
     PermissionPlanGate,
     /// A `permission-required` for any other tool — surface an `nc:permission` prompt.
@@ -55,6 +57,10 @@ pub(crate) fn classify_event(event: &Value) -> EventRoute {
 
     if event_type.starts_with("analysis-") {
         return EventRoute::Analysis;
+    }
+
+    if event_type.starts_with("harness-") {
+        return EventRoute::Harness;
     }
 
     // Session-correlated events below: all require a sessionId (or a special
@@ -114,6 +120,13 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
     // correlation below (which would otherwise drop it for lacking a sessionId).
     if event_type.starts_with("analysis-") {
         super::insight::handle_analysis_event(app, event_type, &event).await;
+        return;
+    }
+
+    // The Harness `harness-*` family also correlates by `runId` (no `sessionId`) and is
+    // owned by a separate channel + store, so it is routed BEFORE session-id correlation.
+    if event_type.starts_with("harness-") {
+        super::harness::handle_harness_event(app, event_type, &event).await;
         return;
     }
 

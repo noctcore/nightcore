@@ -18,6 +18,7 @@
 //! coordinator's `launch` does, just triggered by a click instead of a tick.
 
 mod commands;
+mod harness;
 mod insight;
 mod permission;
 mod provider_config;
@@ -39,6 +40,9 @@ pub(crate) use provider_config::*;
 // The Insight (codebase analysis) commands + the reader-side `analysis-*` handler
 // (glob so the `#[tauri::command]` macro siblings resolve through `sidecar::*`).
 pub(crate) use insight::*;
+// The Harness (codebase convention auditor) commands + the reader-side `harness-*`
+// handler (glob so the `#[tauri::command]` macro siblings resolve through `sidecar::*`).
+pub(crate) use harness::*;
 pub(crate) use verification::dispatch_reviewer_for;
 // Re-exported only to keep the `crate::sidecar::MAX_FIX_ATTEMPTS` intra-doc link
 // in `task.rs` resolving; no code outside `verification` reads it through here.
@@ -78,6 +82,13 @@ pub(crate) const QUESTION_EVENT: &str = "nc:question";
 /// own `runId`); the Insight view folds the stream and reconciles against the
 /// persisted run on completion.
 pub(crate) const INSIGHT_EVENT: &str = "nc:insight";
+
+/// The Tauri event carrying one streamed Harness `harness-*` event. Like
+/// `nc:insight`, the payload is the raw `NightcoreEvent` (it carries its own
+/// `runId`); the Harness view folds the stream and reconciles against the persisted
+/// run on completion. `apply_harness_artifact` also emits an `artifact-applied`
+/// notice on this channel.
+pub(crate) const HARNESS_EVENT: &str = "nc:harness";
 
 /// Ensure the persistent sidecar is running and its stdout reader is installed.
 /// Idempotent: spawns lazily on first use, then a no-op. Shared by `run_task` and

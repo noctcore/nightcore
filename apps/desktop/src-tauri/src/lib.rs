@@ -74,6 +74,15 @@ pub fn run() {
             // engine that drove it is gone); reap it on boot so the UI doesn't spin.
             insight_store.reap_running();
 
+            // Harness scans are project-scoped like Insight runs: load the active
+            // project's `.nightcore/harness/` (or an empty scratch dir when none).
+            let harness_dir = project_store
+                .active_harness_dir()
+                .unwrap_or_else(|| config_dir.join("no-active-project/harness"));
+            let harness_store = store::harness::HarnessStore::load_from(harness_dir);
+            // Reap scans left `running` by a dead process so the UI doesn't spin.
+            harness_store.reap_running();
+
             // The M2 orchestrator (slot manager + circuit breaker + provider +
             // auto-loop) starts at the persisted concurrency. The provider spawns
             // `bun run apps/sidecar/src/index.ts` in the workspace root on first use.
@@ -87,6 +96,7 @@ pub fn run() {
 
             app.manage(task_store);
             app.manage(insight_store);
+            app.manage(harness_store);
             app.manage(project_store);
             app.manage(settings_store);
             app.manage(orchestrator);
@@ -126,6 +136,16 @@ pub fn run() {
             sidecar::restore_finding,
             sidecar::convert_finding_to_task,
             sidecar::delete_insight_run,
+            sidecar::start_harness_scan,
+            sidecar::cancel_harness_scan,
+            sidecar::list_harness_runs,
+            sidecar::get_harness_run,
+            sidecar::delete_harness_run,
+            sidecar::dismiss_harness_finding,
+            sidecar::restore_harness_finding,
+            sidecar::dismiss_harness_artifact,
+            sidecar::restore_harness_artifact,
+            sidecar::apply_harness_artifact,
             transcript::read_transcript,
             plan_approval::approve_task,
             plan_approval::reject_task,

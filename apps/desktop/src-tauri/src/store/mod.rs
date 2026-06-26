@@ -8,6 +8,7 @@
 //!
 //! Held in managed Tauri state; commands take it as `State<'_, TaskStore>`.
 
+pub(crate) mod harness;
 pub(crate) mod insight;
 pub(crate) mod project;
 pub(crate) mod settings;

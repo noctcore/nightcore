@@ -114,6 +114,12 @@ impl ProjectStore {
         self.active().map(|p| insights_dir_for(&p.path))
     }
 
+    /// The Harness scans dir for the currently-active project, or `None` with no
+    /// active project. The `HarnessStore` is retargeted here on activation.
+    pub fn active_harness_dir(&self) -> Option<PathBuf> {
+        self.active().map(|p| harness_dir_for(&p.path))
+    }
+
     fn add(&self, project: Project) -> Result<(), String> {
         crate::sync::lock_or_recover(&self.projects).push(project);
         self.persist_registry()
@@ -196,6 +202,11 @@ fn tasks_dir_for(project_path: &str) -> PathBuf {
 /// The Insight runs dir for a project path: `<path>/.nightcore/insights`.
 fn insights_dir_for(project_path: &str) -> PathBuf {
     Path::new(project_path).join(".nightcore/insights")
+}
+
+/// The Harness scans dir for a project path: `<path>/.nightcore/harness`.
+fn harness_dir_for(project_path: &str) -> PathBuf {
+    Path::new(project_path).join(".nightcore/harness")
 }
 
 /// Read + deserialize a JSON file, returning `None` on any error (missing,
@@ -316,6 +327,13 @@ fn retarget_tasks(app: &AppHandle, store: &ProjectStore) {
         .active_insights_dir()
         .unwrap_or_else(|| store.config_dir.join("no-active-project/insights"));
     insights.retarget(insights_dir);
+
+    // Harness scans are project-scoped too.
+    let harness = app.state::<crate::store::harness::HarnessStore>();
+    let harness_dir = store
+        .active_harness_dir()
+        .unwrap_or_else(|| store.config_dir.join("no-active-project/harness"));
+    harness.retarget(harness_dir);
 }
 
 // --- Commands ---------------------------------------------------------------
