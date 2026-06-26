@@ -1,0 +1,35 @@
+// @ts-check
+/**
+ * The lint-meta engine enforces what ESLint cannot reach: cross-file contracts,
+ * non-JS files, and config parity across the monorepo. Rules are pure functions
+ * of an `IMetaCtx` and return violations; the CLI exits non-zero when any
+ * `ciCritical` rule reports a violation.
+ */
+
+export interface IMetaCtx {
+  /** Absolute repo root. */
+  readonly root: string;
+  /** Read a repo-relative file, or null if it does not exist. */
+  read(rel: string): string | null;
+  /** Whether a repo-relative path exists. */
+  exists(rel: string): boolean;
+  /** Glob repo-relative paths (Bun glob, cwd = root). */
+  glob(pattern: string): string[];
+  /** Run a shell command at the repo root; never throws. */
+  exec(cmd: string): { code: number; stdout: string; stderr: string };
+}
+
+export interface IViolation {
+  file: string;
+  rule: string;
+  message: string;
+}
+
+export interface IMetaRule {
+  id: string;
+  category: 'config' | 'source-text' | 'supply-chain' | 'ci' | 'testing';
+  description: string;
+  /** When true, a violation fails CI (exit non-zero). */
+  ciCritical?: boolean;
+  run(ctx: IMetaCtx): IViolation[];
+}
