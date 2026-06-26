@@ -62,6 +62,27 @@ pub enum SurfaceCommand {
         request_id: String,
         answer: AnswerQuestionAnswerUnion,
     },
+    #[serde(rename_all = "camelCase")]
+    StartAnalysis {
+        run_id: String,
+        project_path: String,
+        scope: AnalysisScope,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        changed_files: Option<Vec<String>>,
+        categories: Vec<FindingCategory>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        effort: Option<EffortLevel>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_concurrency: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_turns_per_category: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_budget_usd_per_category: Option<f64>,
+    },
+    #[serde(rename_all = "camelCase")]
+    CancelAnalysis { run_id: String },
 }
 
 // === Surface → engine queries (Rust SERIALIZES these; replies arrive as the
@@ -242,9 +263,65 @@ pub enum NightcoreEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
+    #[serde(rename_all = "camelCase")]
+    AnalysisStarted {
+        run_id: String,
+        scope: AnalysisScope,
+        categories: Vec<FindingCategory>,
+        model: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    AnalysisCategoryStarted {
+        run_id: String,
+        category: FindingCategory,
+    },
+    #[serde(rename_all = "camelCase")]
+    AnalysisCategoryCompleted {
+        run_id: String,
+        category: FindingCategory,
+        findings: Vec<Finding>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        usage: Option<SessionCompletedUsage>,
+        #[serde(default)]
+        cost_usd: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    AnalysisCompleted {
+        run_id: String,
+        findings: Vec<Finding>,
+        categories_run: Vec<FindingCategory>,
+        cost_usd: f64,
+        #[serde(default)]
+        duration_ms: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        usage: Option<SessionCompletedUsage>,
+    },
+    #[serde(rename_all = "camelCase")]
+    AnalysisFailed {
+        run_id: String,
+        reason: AnalysisFailedReason,
+        message: String,
+    },
 }
 
 // === Referenced enums and nested structs ===
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AnalysisFailedReason {
+    Aborted,
+    RunnerCrash,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AnalysisScope {
+    Repo,
+    Diff,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "behavior", rename_all = "lowercase")]
@@ -273,6 +350,79 @@ pub enum EffortLevel {
     High,
     Xhigh,
     Max,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Finding {
+    pub id: String,
+    pub category: FindingCategory,
+    pub severity: FindingSeverity,
+    pub effort: FindingEffort,
+    pub title: String,
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rationale: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<FindingLocation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggestion: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code_before: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code_after: Option<String>,
+    #[serde(default)]
+    pub affected_files: Vec<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f64>,
+    pub fingerprint: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FindingCategory {
+    Architecture,
+    Bugs,
+    Refactor,
+    Performance,
+    Security,
+    Tests,
+    Docs,
+    UiUx,
+    Dependencies,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FindingEffort {
+    Trivial,
+    Small,
+    Medium,
+    Large,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FindingLocation {
+    pub file: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_line: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_line: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FindingSeverity {
+    Info,
+    Low,
+    Medium,
+    High,
+    Critical,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

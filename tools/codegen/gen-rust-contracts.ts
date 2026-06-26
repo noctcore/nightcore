@@ -262,6 +262,10 @@ const STRUCT_NAMES: Record<string, string> = {
   'error|mcpServers|skills|status|subagents': 'ProviderConfigSection',
   'extrasStatus|mcp|model|outputStyle|permissionMode|projectPath|providerId|providerLabel|skills|subagents':
     'ProviderConfigSnapshot',
+  // Insight (codebase analysis) shapes.
+  'endLine|file|startLine|symbol': 'FindingLocation',
+  'affectedFiles|category|codeAfter|codeBefore|confidence|description|effort|fingerprint|id|location|rationale|severity|suggestion|tags|title':
+    'Finding',
 };
 
 /** Stable Rust enum name for a referenced/inline `z.enum`. Named enums in the
@@ -278,6 +282,13 @@ const ENUM_NAMES: Record<string, string> = {
   'authentication|rate-limit|aborted|runner-crash|max-turns|max-budget|unknown':
     'SessionFailedReason',
   'supported|unsupported|unavailable': 'ConfigSectionStatus',
+  // Insight (codebase analysis) enums.
+  'architecture|bugs|refactor|performance|security|tests|docs|ui-ux|dependencies':
+    'FindingCategory',
+  'info|low|medium|high|critical': 'FindingSeverity',
+  'trivial|small|medium|large': 'FindingEffort',
+  'repo|diff': 'AnalysisScope',
+  'aborted|runner-crash|unknown': 'AnalysisFailedReason',
 };
 
 function registerInlineEnum(
@@ -706,6 +717,20 @@ const COMMAND_INPUTS: Record<string, unknown> = {
       answers: { 'Which auth method should we use?': 'OAuth' },
     },
   },
+  'start-analysis': {
+    type: 'start-analysis',
+    runId: 'run-1',
+    projectPath: '/proj',
+    scope: 'diff',
+    changedFiles: ['src/handler.ts', 'src/store.ts'],
+    categories: ['architecture', 'bugs', 'security'],
+    model: 'claude-opus-4-8',
+    effort: 'high',
+    maxConcurrency: 3,
+    maxTurnsPerCategory: 40,
+    maxBudgetUsdPerCategory: 2,
+  },
+  'cancel-analysis': { type: 'cancel-analysis', runId: 'run-1' },
 };
 
 /** A representative raw input per query variant (the request/reply stream). */
@@ -856,6 +881,81 @@ const EVENT_INPUTS: Record<string, unknown> = {
     type: 'session-status',
     sessionId: 1,
     status: 'running',
+  },
+  'analysis-started': {
+    type: 'analysis-started',
+    runId: 'run-1',
+    scope: 'repo',
+    categories: ['architecture', 'bugs', 'security'],
+    model: 'claude-opus-4-8',
+  },
+  'analysis-category-started': {
+    type: 'analysis-category-started',
+    runId: 'run-1',
+    category: 'bugs',
+  },
+  'analysis-category-completed': {
+    type: 'analysis-category-completed',
+    runId: 'run-1',
+    category: 'bugs',
+    findings: [
+      {
+        id: 'f-1',
+        category: 'bugs',
+        severity: 'high',
+        effort: 'small',
+        title: 'Unawaited promise drops errors',
+        description:
+          'The handler calls save() without awaiting, so a rejection is lost.',
+        rationale: 'Silent data loss under load.',
+        location: { file: 'src/handler.ts', startLine: 42, endLine: 44 },
+        suggestion: 'await save(), or attach a .catch that reports.',
+        affectedFiles: ['src/handler.ts'],
+        tags: ['async', 'error-handling'],
+        confidence: 0.8,
+        fingerprint: 'bugs:src/handler.ts:unawaited-promise',
+      },
+    ],
+    usage: {
+      inputTokens: 1200,
+      outputTokens: 300,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    },
+    costUsd: 0.04,
+  },
+  'analysis-completed': {
+    type: 'analysis-completed',
+    runId: 'run-1',
+    findings: [
+      {
+        id: 'f-1',
+        category: 'bugs',
+        severity: 'high',
+        effort: 'small',
+        title: 'Unawaited promise drops errors',
+        description:
+          'The handler calls save() without awaiting, so a rejection is lost.',
+        affectedFiles: ['src/handler.ts'],
+        tags: ['async'],
+        fingerprint: 'bugs:src/handler.ts:unawaited-promise',
+      },
+    ],
+    categoriesRun: ['architecture', 'bugs', 'security'],
+    costUsd: 0.12,
+    durationMs: 45000,
+    usage: {
+      inputTokens: 5000,
+      outputTokens: 1500,
+      cacheReadTokens: 200,
+      cacheCreationTokens: 100,
+    },
+  },
+  'analysis-failed': {
+    type: 'analysis-failed',
+    runId: 'run-1',
+    reason: 'aborted',
+    message: 'cancelled by user',
   },
   'query-result': {
     type: 'query-result',

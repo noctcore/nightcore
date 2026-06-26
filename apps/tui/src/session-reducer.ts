@@ -262,6 +262,15 @@ export function reduce(view: SessionView, event: ViewAction): SessionView {
     // RPC reply correlated by requestId — intercepted before the board, not view state.
     case 'query-result':
       return view;
+
+    // Insight analysis events are owned by the desktop board's Insight view; the
+    // TUI is not that surface, so it ignores them.
+    case 'analysis-started':
+    case 'analysis-category-started':
+    case 'analysis-category-completed':
+    case 'analysis-completed':
+    case 'analysis-failed':
+      return view;
   }
 }
 

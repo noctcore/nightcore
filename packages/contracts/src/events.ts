@@ -1,5 +1,10 @@
 import { z } from 'zod';
 import { PermissionModeSchema } from './config.js';
+import {
+  AnalysisScopeSchema,
+  FindingCategorySchema,
+  FindingSchema,
+} from './insight.js';
 import { ProviderConfigSnapshotSchema } from './provider-config.js';
 import { SessionStatusSchema } from './session.js';
 import { ToolRiskSchema } from './tools.js';
@@ -292,6 +297,64 @@ export const QueryResultEvent = z.object({
   error: z.string().optional(),
 });
 
+/**
+ * Insight analysis events. These do NOT carry `sessionId` (the category passes are
+ * internal to the engine's analysis orchestrator and never surface as ordinary
+ * sessions); they correlate by `runId`. The Rust reader routes the whole
+ * `analysis-*` family to the `nc:insight` channel and persists the run on
+ * `analysis-completed`.
+ */
+
+/** A run started. Echoes the resolved categories/scope/model for the UI header. */
+export const AnalysisStartedEvent = z.object({
+  type: z.literal('analysis-started'),
+  runId: z.string(),
+  scope: AnalysisScopeSchema,
+  categories: z.array(FindingCategorySchema),
+  model: z.string(),
+});
+
+/** A category pass began exploring (the UI shows skeleton cards for it). */
+export const AnalysisCategoryStartedEvent = z.object({
+  type: z.literal('analysis-category-started'),
+  runId: z.string(),
+  category: FindingCategorySchema,
+});
+
+/** A category pass finished: its grounded findings stream in as a batch, plus the
+ *  pass's own token usage and cost so the UI can show per-category spend. */
+export const AnalysisCategoryCompletedEvent = z.object({
+  type: z.literal('analysis-category-completed'),
+  runId: z.string(),
+  category: FindingCategorySchema,
+  findings: z.array(FindingSchema),
+  usage: TokenUsageSchema.optional(),
+  costUsd: z.number().default(0),
+  /** Set when the pass itself failed (parse/abort): findings is then empty and the
+   *  UI marks the category errored rather than "0 findings". */
+  error: z.string().optional(),
+});
+
+/** The whole run finished: the final cross-category-deduped findings plus run
+ *  totals. The Rust reader persists from THIS event (authoritative). */
+export const AnalysisCompletedEvent = z.object({
+  type: z.literal('analysis-completed'),
+  runId: z.string(),
+  findings: z.array(FindingSchema),
+  categoriesRun: z.array(FindingCategorySchema),
+  costUsd: z.number(),
+  durationMs: z.number().nonnegative().default(0),
+  usage: TokenUsageSchema.optional(),
+});
+
+/** The run failed before completing (could not start, or aborted). */
+export const AnalysisFailedEvent = z.object({
+  type: z.literal('analysis-failed'),
+  runId: z.string(),
+  reason: z.enum(['aborted', 'runner-crash', 'unknown']),
+  message: z.string(),
+});
+
 export const NightcoreEventSchema = z.discriminatedUnion('type', [
   SessionStartedEvent,
   SessionReadyEvent,
@@ -305,6 +368,11 @@ export const NightcoreEventSchema = z.discriminatedUnion('type', [
   SessionFailedEvent,
   SessionStatusEvent,
   QueryResultEvent,
+  AnalysisStartedEvent,
+  AnalysisCategoryStartedEvent,
+  AnalysisCategoryCompletedEvent,
+  AnalysisCompletedEvent,
+  AnalysisFailedEvent,
 ]);
 export type NightcoreEvent = z.infer<typeof NightcoreEventSchema>;
 
