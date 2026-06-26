@@ -34,6 +34,8 @@ export type { AppInfo } from './generated/AppInfo';
 export type { WorktreeInfo } from './generated/WorktreeInfo';
 export type { GauntletResult } from './generated/GauntletResult';
 export type { GauntletStep } from './generated/GauntletStep';
+export type { StructureLockResult } from './generated/StructureLockResult';
+export type { StructureLockCheck } from './generated/StructureLockCheck';
 export type { LoopEnvelope } from './generated/LoopEnvelope';
 export type { SessionInfo } from './generated/SessionInfo';
 export type { SessionMessage } from './generated/SessionMessage';

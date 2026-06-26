@@ -8,12 +8,37 @@ import type { ReviewPanelProps } from './ReviewPanel.types';
  *  `waiting_approval` — Accept / Reject / Rerun controls. Pure presentational;
  *  the bridge actions are owned by the detail panel. */
 export function ReviewPanel({ task, onAccept, onReject, onRerun }: ReviewPanelProps) {
-  if (task.review === null) return null;
+  const lock = task.structureLockResult;
+  const lockFailed = lock !== null && !lock.passed;
+  // Render even with no reviewer verdict when the Structure-Lock Gauntlet failed —
+  // that failure parks the task before any reviewer runs, so the alert is the only
+  // thing the user sees explaining why it stalled.
+  if (task.review === null && !lockFailed) return null;
   const { verdict, unparseable, budgetExhausted, showActions } = deriveReviewPanelView(task);
 
   return (
     <section>
-      <div className="mb-1.5 flex items-center gap-2">
+      {lockFailed && (
+        <div
+          role="alert"
+          className="mb-2.5 rounded-md border border-destructive/50 bg-destructive/[0.08] px-3 py-2"
+        >
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-destructive">
+            Structure lock failed
+          </p>
+          <p className="mt-1 text-xs text-foreground/90">
+            The project's harness check{' '}
+            <span className="font-mono font-semibold text-destructive">
+              {lock?.failedCheck ?? 'unknown'}
+            </span>{' '}
+            did not pass. This work cannot be verified or merged until it is fixed.
+          </p>
+        </div>
+      )}
+
+      {task.review !== null && (
+        <>
+          <div className="mb-1.5 flex items-center gap-2">
         <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
           Reviewer verdict
         </h3>
@@ -59,6 +84,8 @@ export function ReviewPanel({ task, onAccept, onReject, onRerun }: ReviewPanelPr
             Reject
           </Button>
         </div>
+      )}
+        </>
       )}
     </section>
   );

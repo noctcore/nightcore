@@ -48,7 +48,12 @@ export function TaskDetail({
   const mergeable = canMerge(task, gauntlet);
   // Whether the Result band has anything to show (verdict and/or the Done-column
   // readiness gauntlet) — its label is suppressed otherwise so it never sits empty.
-  const hasResult = task.review !== null || (isDoneColumn && actions.onRunGauntlet !== undefined);
+  const structureLockFailed =
+    task.structureLockResult !== null && !task.structureLockResult.passed;
+  const hasResult =
+    task.review !== null ||
+    structureLockFailed ||
+    (isDoneColumn && actions.onRunGauntlet !== undefined);
   // Interactive permission/question prompts moved to the pinned InteractionDock
   // (so they're never lost above a long activity log); the attention band now
   // only holds the plan-approval gate.
@@ -126,6 +131,7 @@ export function TaskDetail({
                 result={gauntlet}
                 running={gauntletRunning}
                 onRun={() => actions.onRunGauntlet!(task.id)}
+                structureLock={task.structureLockResult}
               />
             )}
           </div>

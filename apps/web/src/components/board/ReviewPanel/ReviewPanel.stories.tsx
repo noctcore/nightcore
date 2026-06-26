@@ -1,7 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
 import { ReviewPanel } from './ReviewPanel';
-import { SAMPLE_REVIEW_CHANGES, SAMPLE_REVIEW_PASS, makeTask } from '../_fixtures';
+import {
+  SAMPLE_REVIEW_CHANGES,
+  SAMPLE_REVIEW_PASS,
+  STRUCTURE_LOCK_FAILED,
+  makeTask,
+} from '../_fixtures';
 
 const meta = {
   title: 'Board/ReviewPanel',
@@ -57,6 +62,20 @@ export const Unparseable: Story = {
       id: 't-unparseable',
       status: 'waiting_approval',
       review: 'The reviewer crashed before emitting a verdict line.',
+    }),
+  },
+};
+
+/** A task parked by a failed Structure-Lock Gauntlet before any reviewer ran — the
+ *  destructive alert names the failed harness check (no reviewer verdict yet). */
+export const StructureLockParked: Story = {
+  args: {
+    task: makeTask({
+      id: 't-locked',
+      status: 'waiting_approval',
+      title: 'Refactor the board feature',
+      review: null,
+      structureLockResult: STRUCTURE_LOCK_FAILED,
     }),
   },
 };
