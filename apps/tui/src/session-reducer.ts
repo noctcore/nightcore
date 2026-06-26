@@ -279,6 +279,7 @@ export function reduce(view: SessionView, event: ViewAction): SessionView {
     case 'harness-profile-ready':
     case 'harness-category-started':
     case 'harness-category-completed':
+    case 'harness-synthesis-started':
     case 'harness-proposals-ready':
     case 'harness-scan-completed':
     case 'harness-scan-failed':
