@@ -1,0 +1,12 @@
+export interface CodeBlockProps {
+  /** The source code to render. */
+  code: string;
+  /**
+   * Language token (`ts`, `tsx`, `js`, `jsx`, `json`, `md`, `bash`, and common
+   * aliases / file extensions). Anything unknown or omitted falls back to plain
+   * text — never throws.
+   */
+  language?: string;
+  /** Extra classes merged onto the container. */
+  className?: string;
+}

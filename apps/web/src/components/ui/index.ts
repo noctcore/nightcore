@@ -2,6 +2,8 @@ export { Badge } from './Badge';
 export { BrandMark } from './BrandMark';
 export { Button } from './Button';
 export { Card } from './Card';
+export { CodeBlock } from './CodeBlock';
+export type { CodeBlockProps } from './CodeBlock';
 export { ConfirmDialog } from './ConfirmDialog';
 export type { ConfirmDialogProps } from './ConfirmDialog';
 export { EmptyState } from './EmptyState';
@@ -16,6 +18,16 @@ export { Modal, useModal } from './Modal';
 export type { ModalProps } from './Modal';
 export { ModelEffortPicker } from './ModelEffortPicker';
 export type { ModelEffortPickerProps } from './ModelEffortPicker/ModelEffortPicker.types';
+export { RunLifecycleShell } from './RunLifecycleShell';
+export type { RunLifecycleShellProps, RunPhase } from './RunLifecycleShell';
+export { RunProgress } from './RunProgress';
+export type {
+  CategoryRunState,
+  RunProgressCategory,
+  RunProgressProps,
+  RunProgressStatus,
+  RunProgressUsage,
+} from './RunProgress';
 export { Skeleton } from './Skeleton';
 export { StatusDot } from './StatusDot';
 export { ToastProvider, useToast } from './Toast';
