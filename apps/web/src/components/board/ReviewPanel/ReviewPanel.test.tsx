@@ -5,7 +5,8 @@ import * as stories from './ReviewPanel.stories';
 import { deriveReviewPanelView } from './ReviewPanel.hooks';
 import { SAMPLE_REVIEW_CHANGES, makeTask } from '../_fixtures';
 
-const { ParkedChangesRequested, Passed, Unparseable } = composeStories(stories);
+const { ParkedChangesRequested, Passed, Unparseable, StructureLockParked } =
+  composeStories(stories);
 
 test('renders the verdict label and reviewer text for changes requested', async () => {
   const screen = render(<ParkedChangesRequested />);
@@ -29,6 +30,12 @@ test('shows no actions for an already-verified passed task', async () => {
 test('treats a missing verdict line as fail-safe', async () => {
   const screen = render(<Unparseable />);
   await expect.element(screen.getByText(/treated as fail/i)).toBeInTheDocument();
+});
+
+test('shows the structure-lock alert naming the failed check even with no review', async () => {
+  const screen = render(<StructureLockParked />);
+  await expect.element(screen.getByText('Structure lock failed')).toBeInTheDocument();
+  await expect.element(screen.getByText('folder-per-component')).toBeInTheDocument();
 });
 
 test('fires onReject when Reject is clicked on a parked verification', async () => {

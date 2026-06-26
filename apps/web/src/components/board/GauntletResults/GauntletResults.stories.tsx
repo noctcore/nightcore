@@ -1,7 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
 import { GauntletResults } from './GauntletResults';
-import { GAUNTLET_FAILED, GAUNTLET_PASSED } from '../_fixtures';
+import {
+  GAUNTLET_FAILED,
+  GAUNTLET_PASSED,
+  STRUCTURE_LOCK_FAILED,
+  STRUCTURE_LOCK_PASSED,
+} from '../_fixtures';
 
 const meta = {
   title: 'Board/GauntletResults',
@@ -30,6 +35,18 @@ export const Running: Story = { args: { running: true } };
 export const Passed: Story = { args: { result: GAUNTLET_PASSED } };
 
 export const Failed: Story = { args: { result: GAUNTLET_FAILED } };
+
+/** Both gates green — the readiness gauntlet and the project's own Structure-Lock
+ *  harness checks all pass. */
+export const StructureLockPassed: Story = {
+  args: { result: GAUNTLET_PASSED, structureLock: STRUCTURE_LOCK_PASSED },
+};
+
+/** The Structure-Lock Gauntlet failed at its generated lint plugin; the later
+ *  boundary check is skipped (stop-at-first). */
+export const StructureLockFailed: Story = {
+  args: { result: GAUNTLET_PASSED, structureLock: STRUCTURE_LOCK_FAILED },
+};
 
 /** Play test: "Run checks" triggers the run handler. */
 export const RunsChecks: Story = {

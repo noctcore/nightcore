@@ -6,7 +6,13 @@ import type { GauntletResultsProps } from './GauntletResults.types';
  *  the detected typecheck → lint → test steps, each with its command and
  *  pass/fail/skip status. Pure presentational — the run + result state is owned
  *  by the detail panel. */
-export function GauntletResults({ result, running, onRun }: GauntletResultsProps) {
+export function GauntletResults({
+  result,
+  running,
+  onRun,
+  structureLock = null,
+}: GauntletResultsProps) {
+  const lockChecks = structureLock?.checks ?? [];
   return (
     <section>
       <div className="mb-1.5 flex items-center gap-2">
@@ -59,6 +65,48 @@ export function GauntletResults({ result, running, onRun }: GauntletResultsProps
             </li>
           ))}
         </ul>
+      )}
+
+      {structureLock !== null && (
+        <div className="mt-3">
+          <div className="mb-1.5 flex items-center gap-2">
+            <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+              Structure lock
+            </h3>
+            <span
+              className={`font-mono text-[10px] font-semibold uppercase tracking-[0.06em] ${
+                structureLock.passed ? 'text-success' : 'text-destructive'
+              }`}
+            >
+              {structureLock.passed
+                ? 'Passed'
+                : `Failed at ${structureLock.failedCheck ?? 'unknown'}`}
+            </span>
+          </div>
+          {lockChecks.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No harness checks configured — the lock passes trivially.
+            </p>
+          ) : (
+            <ul className="space-y-1">
+              {lockChecks.map((check) => (
+                <li
+                  key={check.name}
+                  className="flex items-center gap-2 font-mono text-xs"
+                >
+                  <span className={`w-3 text-center ${STEP_STATUS_TEXT[check.status]}`}>
+                    {STEP_STATUS_GLYPH[check.status]}
+                  </span>
+                  <span className="text-foreground">{check.name}</span>
+                  <span className="truncate text-muted-foreground">{check.command}</span>
+                  {check.exitCode !== undefined && check.status === 'failed' && (
+                    <span className="ml-auto text-destructive">exit {check.exitCode}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </section>
   );
