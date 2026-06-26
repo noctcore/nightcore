@@ -15,4 +15,10 @@ status: string,
 /**
  * The convention lenses requested for this scan (wire strings).
  */
-categories: Array<string>, model: string, createdAt: number, updatedAt: number, costUsd: number, durationMs: number, usage: HarnessUsage, profile: StoredRepoProfile, findings: Array<StoredConventionFinding>, artifacts: Array<StoredProposedArtifact>, error: string | null, };
+categories: Array<string>, model: string, createdAt: number, updatedAt: number, costUsd: number, durationMs: number, usage: HarnessUsage, profile: StoredRepoProfile, findings: Array<StoredConventionFinding>, artifacts: Array<StoredProposedArtifact>, 
+/**
+ * Set while the serial synthesis pass runs (after every lens, before the
+ * terminal event) so a run reloaded mid-synthesis still projects the
+ * "Synthesizing…" state instead of the all-lenses-done dead zone.
+ */
+synthesizing: boolean, error: string | null, };

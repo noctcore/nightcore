@@ -229,17 +229,23 @@ export function streamFromRun(run: HarnessRun): HarnessStream {
     model: run.model || null,
     requestedCategories: categories,
     categoryState: Object.fromEntries(
-      categories.map((c) => [c, status === 'running' ? 'pending' : 'done']),
+      // While synthesizing, every lens has finished — project them all `done` so a
+      // reloaded mid-synthesis run shows the finished stepper + the synthesis row,
+      // not a row of pending lenses. (A still-scanning running run carries no
+      // per-category completion, so it falls back to `pending`.)
+      categories.map((c) => [
+        c,
+        status === 'running' && !run.synthesizing ? 'pending' : 'done',
+      ]),
     ),
     profile: storedToProfile(run.profile),
     findings: run.findings.map(storedToConventionFinding),
     artifacts: run.artifacts.map(storedToArtifact),
-    // The persisted run carries no per-category completion (a zero-finding "done"
-    // lens is indistinguishable from a not-yet-run one), so `synthesizing` can't be
-    // derived on reload — a still-running run reloaded mid-synthesis shows the
-    // all-lenses-done dead zone until the next live event lands (reload-window
-    // limitation; we don't invent backend state).
-    synthesizing: false,
+    // Persisted on the run (set on harness-synthesis-started, cleared on
+    // proposals-ready/terminal), so a run reloaded during the multi-minute serial
+    // synthesis tail still shows the "Synthesizing…" state instead of a frozen
+    // all-lenses-done dead zone.
+    synthesizing: run.synthesizing,
     costUsd: run.costUsd,
     usage: run.usage,
     durationMs: run.durationMs,

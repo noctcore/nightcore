@@ -88,6 +88,7 @@ pub async fn start_harness_scan(
         profile: StoredRepoProfile::default(),
         findings: Vec::new(),
         artifacts: Vec::new(),
+        synthesizing: false,
         error: None,
     };
     harness_store.upsert(&run)?;
@@ -548,6 +549,7 @@ pub(crate) async fn handle_harness_event(app: &AppHandle, event_type: &str, even
                     input_tokens,
                     output_tokens,
                 };
+                run.synthesizing = false;
                 run.error = None;
             });
             if let Err(e) = result {
@@ -568,6 +570,7 @@ pub(crate) async fn handle_harness_event(app: &AppHandle, event_type: &str, even
                 .to_string();
             let _ = harness_store.mutate(run_id, |run| {
                 run.status = "failed".to_string();
+                run.synthesizing = false;
                 run.error = Some(if message.is_empty() {
                     reason.to_string()
                 } else {
@@ -617,6 +620,10 @@ pub(crate) async fn handle_harness_event(app: &AppHandle, event_type: &str, even
             tracing::info!(target: "nightcore", run_id, category, findings, cost_usd = cost, "harness lens completed");
         }
         "harness-synthesis-started" => {
+            // Persist the synthesizing flag so a reload during the (serial,
+            // multi-minute) synthesis tail still projects the "Synthesizing…"
+            // state instead of the all-lenses-done dead zone.
+            let _ = harness_store.mutate(run_id, |run| run.synthesizing = true);
             tracing::info!(target: "nightcore", run_id, "harness synthesis started");
         }
         "harness-proposals-ready" => {
@@ -625,6 +632,8 @@ pub(crate) async fn handle_harness_event(app: &AppHandle, event_type: &str, even
                 .and_then(Value::as_array)
                 .map(Vec::len)
                 .unwrap_or(0);
+            // Synthesis produced its proposals: clear the flag (mirrors the live fold).
+            let _ = harness_store.mutate(run_id, |run| run.synthesizing = false);
             tracing::info!(target: "nightcore", run_id, artifacts, "harness proposals ready");
         }
         _ => {}

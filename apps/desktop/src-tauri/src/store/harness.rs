@@ -301,6 +301,11 @@ pub struct HarnessRun {
     pub findings: Vec<StoredConventionFinding>,
     #[serde(default)]
     pub artifacts: Vec<StoredProposedArtifact>,
+    /// Set while the serial synthesis pass runs (after every lens, before the
+    /// terminal event) so a run reloaded mid-synthesis still projects the
+    /// "Synthesizing…" state instead of the all-lenses-done dead zone.
+    #[serde(default)]
+    pub synthesizing: bool,
     pub error: Option<String>,
 }
 
@@ -724,6 +729,7 @@ mod tests {
             profile: StoredRepoProfile::default(),
             findings: vec![finding("f1", "fp1")],
             artifacts: vec![artifact("a1", "afp1")],
+            synthesizing: false,
             error: None,
         }
     }

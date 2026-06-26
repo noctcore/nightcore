@@ -415,6 +415,7 @@ describe('normalizers', () => {
       },
       findings: [],
       artifacts: [],
+      synthesizing: false,
       error: null,
     };
     const s = streamFromRun(run);
@@ -422,8 +423,45 @@ describe('normalizers', () => {
     expect(s.categoryState['folder-structure']).toBe('done');
     expect(s.profile?.workspaceTool).toBe('bun');
     expect(s.costUsd).toBe(0.5);
-    // The persisted run carries neither the synthesis tail nor the failure reason.
+    // A completed run carries no synthesis tail nor failure reason.
     expect(s.synthesizing).toBe(false);
     expect(s.failureReason).toBeNull();
+  });
+
+  it('streamFromRun projects a running mid-synthesis run as synthesizing + all lenses done', () => {
+    const run: HarnessRun = {
+      id: 'run-2',
+      projectPath: '/proj',
+      status: 'running',
+      categories: ['folder-structure', 'naming'],
+      model: 'm',
+      createdAt: 1,
+      updatedAt: 2,
+      costUsd: 0.5,
+      durationMs: 1000,
+      usage: { inputTokens: 10, outputTokens: 5 },
+      profile: {
+        isMonorepo: true,
+        workspaceTool: 'bun',
+        packages: [],
+        languages: ['typescript'],
+        frameworks: ['react'],
+        hasEslintFlatConfig: true,
+        hasLintMeta: true,
+        hasAgentDocs: true,
+        existingPlugins: [],
+      },
+      findings: [],
+      artifacts: [],
+      synthesizing: true,
+      error: null,
+    };
+    const s = streamFromRun(run);
+    expect(s.status).toBe('running');
+    expect(s.synthesizing).toBe(true);
+    // Every lens reads `done` (synthesis runs only after they all finish), so the
+    // RUNNING screen shows the finished stepper + the synthesis row, not pending rows.
+    expect(s.categoryState['folder-structure']).toBe('done');
+    expect(s.categoryState['naming']).toBe('done');
   });
 });
