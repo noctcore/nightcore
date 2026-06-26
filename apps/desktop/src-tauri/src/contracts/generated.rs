@@ -38,6 +38,8 @@ pub enum SurfaceCommand {
         resume_session_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         mcp_servers: Option<Vec<McpServerEntry>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        append_context_pack: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
     SendInput { session_id: u64, text: String },

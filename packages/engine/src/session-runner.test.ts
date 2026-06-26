@@ -57,7 +57,8 @@ mock.module('@anthropic-ai/claude-agent-sdk', () => ({
 }));
 
 // Imported AFTER the mocks are registered so the runner picks up the stubs.
-const { SessionRunner, toSdkMcpServers } = await import('./session-runner.js');
+const { SessionRunner, toSdkMcpServers, composeAppendSystemPrompt, CONTEXT_PACK_MAX_CHARS } =
+  await import('./session-runner.js');
 
 const policy: PermissionPolicy = { allow: [], deny: [], mode: 'default' };
 const settingSources: SettingSource[] = [];
@@ -342,5 +343,107 @@ describe('SessionRunner — policy deny list → SDK disallowedTools (sec-22ee93
     expect(queryCalls).toBe(1);
     expect(lastQueryOptions).toBeDefined();
     expect('disallowedTools' in (lastQueryOptions ?? {})).toBe(false);
+  });
+});
+
+describe('composeAppendSystemPrompt — Pre-flight Context Pack (Lock, feature #4)', () => {
+  const persona = 'You are an independent code reviewer.';
+  const pack = 'PROJECT CONSTITUTION: never break the folder-per-component rule.';
+
+  test('orders the context pack BEFORE the kind-preset persona', () => {
+    const composed = composeAppendSystemPrompt(pack, persona);
+    expect(composed).toBeDefined();
+    const packAt = composed!.indexOf(pack);
+    const personaAt = composed!.indexOf(persona);
+    expect(packAt).toBe(0);
+    expect(packAt).toBeLessThan(personaAt);
+  });
+
+  test('returns just the pack when there is no persona', () => {
+    expect(composeAppendSystemPrompt(pack, undefined)).toBe(pack);
+  });
+
+  test('returns just the persona when there is no pack', () => {
+    expect(composeAppendSystemPrompt(undefined, persona)).toBe(persona);
+    expect(composeAppendSystemPrompt('   ', persona)).toBe(persona);
+  });
+
+  test('returns undefined when neither is present (omits the SDK option)', () => {
+    expect(composeAppendSystemPrompt(undefined, undefined)).toBeUndefined();
+    expect(composeAppendSystemPrompt('', '')).toBeUndefined();
+  });
+
+  test('truncates an oversized pack to the budget with a notice', () => {
+    const huge = 'x'.repeat(CONTEXT_PACK_MAX_CHARS + 5000);
+    const composed = composeAppendSystemPrompt(huge, persona);
+    expect(composed).toBeDefined();
+    // The bounded pack is at most the budget plus the short truncation notice, and
+    // is far shorter than the raw input — it cannot crowd out the task.
+    expect(composed!.length).toBeLessThan(huge.length);
+    expect(composed).toContain('truncated');
+    // The persona still survives at the end (the pack didn't swallow it).
+    expect(composed!.endsWith(persona)).toBe(true);
+  });
+});
+
+describe('SessionRunner — appendContextPack composes into SDK appendSystemPrompt', () => {
+  test('a context pack leads the persona in the SDK appendSystemPrompt', async () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    queryCalls = 0;
+    lastQueryOptions = undefined;
+
+    const runner = new SessionRunner(
+      {
+        sessionId: 6,
+        prompt: 'build it',
+        model: 'claude-opus-4-8',
+        permissionMode: 'default',
+        permissionPolicy: { allow: [], deny: [], mode: 'default' },
+        cwd: process.cwd(),
+        apiKeyFallback: false,
+        settingSources,
+        todoFeatureEnabled: false,
+        // The trusted pack the Rust core would assemble + the reviewer persona.
+        appendSystemPrompt: 'You are an independent code reviewer.',
+        appendContextPack: 'PROJECT CONSTITUTION: keep tests green.',
+      },
+      () => {},
+    );
+
+    await runner.run();
+
+    expect(queryCalls).toBe(1);
+    const appended = lastQueryOptions?.appendSystemPrompt as string | undefined;
+    expect(appended).toBeDefined();
+    const packAt = appended!.indexOf('PROJECT CONSTITUTION');
+    const personaAt = appended!.indexOf('independent code reviewer');
+    expect(packAt).toBe(0);
+    expect(packAt).toBeLessThan(personaAt);
+  });
+
+  test('no context pack leaves the persona alone (pre-feature shape)', async () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    queryCalls = 0;
+    lastQueryOptions = undefined;
+
+    const runner = new SessionRunner(
+      {
+        sessionId: 7,
+        prompt: 'build it',
+        model: 'claude-opus-4-8',
+        permissionMode: 'default',
+        permissionPolicy: { allow: [], deny: [], mode: 'default' },
+        cwd: process.cwd(),
+        apiKeyFallback: false,
+        settingSources,
+        todoFeatureEnabled: false,
+        appendSystemPrompt: 'PERSONA ONLY',
+      },
+      () => {},
+    );
+
+    await runner.run();
+
+    expect(lastQueryOptions?.appendSystemPrompt).toBe('PERSONA ONLY');
   });
 });
