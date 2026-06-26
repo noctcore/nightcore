@@ -51,6 +51,11 @@ export {
   Tag as TagIcon,
   History as HistoryIcon,
   MessageCircleQuestion as QuestionIcon,
+  Lightbulb as InsightIcon,
+  Wrench as RefactorIcon,
+  Package as DepsIcon,
+  Palette as DesignIcon,
+  Gauge as PerfIcon,
 } from 'lucide-react';
 
 /** The GitHub brand mark — removed from lucide 1.x, so we ship the design's

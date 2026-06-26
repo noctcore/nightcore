@@ -1,4 +1,4 @@
-import { MODEL_OPTIONS } from '../status';
+import { MODEL_OPTIONS } from '@/lib/models';
 
 /** Resolve which model option a stored value selects. The store may hold a
  *  canonical id (`claude-opus-4-8`) or a legacy short id (`opus-4.8`); both match

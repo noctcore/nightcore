@@ -1,8 +1,14 @@
-import { Button, CloseIcon, IconButton, Kbd, Modal } from '@/components/ui';
+import {
+  Button,
+  CloseIcon,
+  IconButton,
+  Kbd,
+  Modal,
+  ModelEffortPicker,
+} from '@/components/ui';
 import { KindPicker } from '../KindPicker';
 import { WorkModePicker } from '../WorkModePicker';
 import { PermissionModePicker } from '../PermissionModePicker';
-import { ModelEffortPicker } from '../ModelEffortPicker';
 import { useNewTaskForm } from './NewTaskForm.hooks';
 import type { NewTaskFormProps } from './NewTaskForm.types';
 

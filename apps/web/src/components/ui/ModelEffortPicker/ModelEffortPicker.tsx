@@ -1,4 +1,4 @@
-import { EFFORT_OPTIONS, MODEL_OPTIONS } from '../status';
+import { EFFORT_OPTIONS, MODEL_OPTIONS } from '@/lib/models';
 import { activeModelId } from './ModelEffortPicker.hooks';
 import type { ModelEffortPickerProps } from './ModelEffortPicker.types';
 

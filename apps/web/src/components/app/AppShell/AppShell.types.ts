@@ -1,6 +1,6 @@
-/** The three top-level surfaces the shell routes between. New Project and the
+/** The top-level surfaces the shell routes between. New Project and the
  *  Logs/TaskDetail drawer are overlays, not routes. */
-export type AppView = 'board' | 'projects' | 'settings';
+export type AppView = 'board' | 'insight' | 'projects' | 'settings';
 
 import type { ReactNode } from 'react';
 
