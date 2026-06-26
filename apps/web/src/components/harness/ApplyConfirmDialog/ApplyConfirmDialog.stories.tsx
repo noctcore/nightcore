@@ -44,8 +44,15 @@ export const Default: Story = {};
 
 export const Applying: Story = { args: { applying: true } };
 
+// A refused `create` over an existing path — the raw Rust error is translated into
+// a friendly, actionable explanation.
 export const WithError: Story = {
-  args: { error: 'file already exists — refusing to overwrite' },
+  args: { error: 'file already exists (os error 17): eslint.config.mjs' },
+};
+
+// A non-"already exists" failure passes through verbatim.
+export const GenericError: Story = {
+  args: { error: 'permission denied (os error 13)' },
 };
 
 export const MergeSection: Story = {

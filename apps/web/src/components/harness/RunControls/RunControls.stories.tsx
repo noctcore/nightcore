@@ -1,33 +1,35 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
-import { EMPTY_HARNESS_STREAM } from '../harness-stream';
+import { ALL_CATEGORIES } from '../harness.constants';
 import { RunControls } from './RunControls';
 
 const meta = {
   title: 'Harness/RunControls',
   component: RunControls,
   args: {
-    stream: EMPTY_HARNESS_STREAM,
+    model: 'claude-opus-4-8',
+    effort: 'high',
+    selected: new Set(ALL_CATEGORIES),
     isStarting: false,
     disabled: false,
+    onChangeModel: fn(),
+    onChangeEffort: fn(),
+    onToggle: fn(),
+    onSelectAll: fn(),
+    onSelectNone: fn(),
     onScan: fn(),
-    onCancel: fn(),
   },
 } satisfies Meta<typeof RunControls>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Idle: Story = {};
+export const Default: Story = {};
 
-export const Running: Story = {
-  args: {
-    stream: {
-      ...EMPTY_HARNESS_STREAM,
-      runId: 'run-1',
-      status: 'running',
-      costUsd: 0.042,
-      usage: { inputTokens: 1200, outputTokens: 800 },
-    },
-  },
+export const Empty: Story = {
+  args: { selected: new Set() },
+};
+
+export const Starting: Story = {
+  args: { isStarting: true },
 };

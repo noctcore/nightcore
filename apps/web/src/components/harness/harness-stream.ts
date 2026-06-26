@@ -33,6 +33,13 @@ import type {
 
 export type { CategoryProgress } from './harness.types';
 
+/** The stable `reason` carried on the terminal `harness-scan-failed` event — lets
+ *  RESULTS tell a user cancel (`aborted`) apart from a real failure. */
+export type HarnessFailureReason = Extract<
+  HarnessScanEvent,
+  { type: 'harness-scan-failed' }
+>['reason'];
+
 export interface HarnessStream {
   runId: string | null;
   status: RunStatus;
@@ -43,10 +50,18 @@ export interface HarnessStream {
   profile: RepoProfileVM | null;
   findings: ConventionFindingVM[];
   artifacts: ProposedArtifactVM[];
+  /** True between `harness-synthesis-started` and the proposals/terminal event —
+   *  the dead-zone after every lens reads "done" but the synthesis tail is still
+   *  running. Drives the RunProgress synthesis row + indeterminate bar shimmer. */
+  synthesizing: boolean;
   costUsd: number;
   usage: { inputTokens: number; outputTokens: number };
   durationMs: number;
   error: string | null;
+  /** The terminal failure `reason` once `harness-scan-failed` lands (else `null`).
+   *  Lets RESULTS render a user `aborted` cancel as a neutral notice rather than a
+   *  red failure banner. Not persisted on the run, so a reloaded cancel is `null`. */
+  failureReason: HarnessFailureReason | null;
 }
 
 export const EMPTY_HARNESS_STREAM: HarnessStream = {
@@ -58,10 +73,12 @@ export const EMPTY_HARNESS_STREAM: HarnessStream = {
   profile: null,
   findings: [],
   artifacts: [],
+  synthesizing: false,
   costUsd: 0,
   usage: { inputTokens: 0, outputTokens: 0 },
   durationMs: 0,
   error: null,
+  failureReason: null,
 };
 
 /** Map a live wire `ConventionFinding` (contract) into the view shape — it is
@@ -217,10 +234,19 @@ export function streamFromRun(run: HarnessRun): HarnessStream {
     profile: storedToProfile(run.profile),
     findings: run.findings.map(storedToConventionFinding),
     artifacts: run.artifacts.map(storedToArtifact),
+    // The persisted run carries no per-category completion (a zero-finding "done"
+    // lens is indistinguishable from a not-yet-run one), so `synthesizing` can't be
+    // derived on reload — a still-running run reloaded mid-synthesis shows the
+    // all-lenses-done dead zone until the next live event lands (reload-window
+    // limitation; we don't invent backend state).
+    synthesizing: false,
     costUsd: run.costUsd,
     usage: run.usage,
     durationMs: run.durationMs,
     error: run.error,
+    // The reason isn't persisted (only the error message), so a reloaded cancel
+    // can't be told apart from a crash — leave it null.
+    failureReason: null,
   };
 }
 
@@ -274,12 +300,22 @@ export function foldHarness(
         usage: addUsage(prev.usage, event.usage),
       };
     }
+    case 'harness-synthesis-started':
+      // Every lens has settled; the serial synthesis tail is now running. Flip
+      // the flag so RunProgress can show the synthesis row instead of a frozen,
+      // all-"done" board.
+      return { ...prev, synthesizing: true };
     case 'harness-proposals-ready':
-      return { ...prev, artifacts: event.artifacts.map(wireToArtifact) };
+      return {
+        ...prev,
+        artifacts: event.artifacts.map(wireToArtifact),
+        synthesizing: false,
+      };
     case 'harness-scan-completed':
       return {
         ...prev,
         status: 'completed',
+        synthesizing: false,
         profile: wireToProfile(event.profile),
         findings: event.findings.map(wireToConventionFinding),
         artifacts: event.artifacts.map(wireToArtifact),
@@ -294,6 +330,12 @@ export function foldHarness(
         ),
       };
     case 'harness-scan-failed':
-      return { ...prev, status: 'failed', error: event.message };
+      return {
+        ...prev,
+        status: 'failed',
+        synthesizing: false,
+        error: event.message,
+        failureReason: event.reason,
+      };
   }
 }

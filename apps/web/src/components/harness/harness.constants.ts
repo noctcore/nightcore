@@ -32,7 +32,9 @@ export const ALL_CATEGORIES: ConventionCategory[] = [
 
 interface CategoryMeta {
   label: string;
-  icon: ComponentType<{ size?: number }>;
+  /** Accepts `className` so it can be tinted at the call site (e.g. RunProgress
+   *  rows render it `text-muted-foreground`). */
+  icon: ComponentType<{ size?: number; className?: string }>;
 }
 
 /** Per-lens label + glyph for tabs and cards. */

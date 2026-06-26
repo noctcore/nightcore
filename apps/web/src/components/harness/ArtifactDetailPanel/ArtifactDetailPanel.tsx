@@ -3,6 +3,7 @@ import {
   Button,
   CheckIcon,
   CloseIcon,
+  CodeBlock,
   IconButton,
   Markdown,
   Modal,
@@ -117,9 +118,7 @@ export function ArtifactDetailPanel({
         )}
 
         <Section title="Content">
-          <pre className="overflow-x-auto rounded-md border border-border bg-black/25 p-3 font-mono text-[11.5px] leading-relaxed text-foreground">
-            {artifact.content}
-          </pre>
+          <CodeBlock code={artifact.content} language={artifact.language ?? undefined} />
         </Section>
       </div>
 

@@ -960,6 +960,7 @@ export type HarnessScanEvent = Extract<
       | 'harness-profile-ready'
       | 'harness-category-started'
       | 'harness-category-completed'
+      | 'harness-synthesis-started'
       | 'harness-proposals-ready'
       | 'harness-scan-completed'
       | 'harness-scan-failed';

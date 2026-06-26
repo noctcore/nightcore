@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { MenuItem } from '@/components/ui';
+import type {
+  CategoryRunState,
+  MenuItem,
+  RunPhase,
+  RunProgressCategory,
+} from '@/components/ui';
+import { EFFORT_OPTIONS, MODEL_OPTIONS } from '@/lib/models';
 import {
   applyHarnessArtifact,
   cancelHarnessScan,
@@ -16,7 +22,7 @@ import {
   type HarnessEvent,
   type HarnessRun,
 } from '@/lib/bridge';
-import { ALL_CATEGORIES, severityRankValue } from '../harness.constants';
+import { ALL_CATEGORIES, CATEGORY_META, severityRankValue } from '../harness.constants';
 import type {
   ConventionFindingVM,
   ProposedArtifactVM,
@@ -78,7 +84,15 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
   const reconcile = useCallback(
     async (runId: string) => {
       const run = await getHarnessRun(runId);
-      if (run !== null) setStream(streamFromRun(run));
+      if (run !== null) {
+        // The persisted run drops the failure `reason`, so keep the live fold's
+        // reason for the same run — otherwise reconciling a user cancel reverts
+        // the neutral "cancelled" notice straight back to a red failure banner.
+        setStream((prev) => ({
+          ...streamFromRun(run),
+          failureReason: prev.runId === run.id ? prev.failureReason : null,
+        }));
+      }
       await refreshRuns();
     },
     [refreshRuns],
@@ -311,6 +325,32 @@ export interface HarnessViewModel {
   stream: HarnessStream;
   isStarting: boolean;
   startError: string | null;
+  /** Which lifecycle screen the shell renders: configure / running / results. */
+  phase: RunPhase;
+  /** Collapsed-config summary text (`⌖ Opus 4.8 · high · 8 lenses`). */
+  summary: string;
+  /** Return to CONFIGURE ("New run") with the last run's config pre-filled. */
+  reconfigure: () => void;
+  /** Lifted CONFIGURE form state (survives phase swaps, pre-fills on a new run). */
+  model: string | null;
+  effort: string | null;
+  selectedLenses: Set<ConventionCategory>;
+  setModel: (model: string | null) => void;
+  setEffort: (effort: string | null) => void;
+  toggleLens: (category: ConventionCategory) => void;
+  selectAllLenses: () => void;
+  selectNoneLenses: () => void;
+  /** RUNNING-screen RunProgress inputs (view-agnostic shape). */
+  progressCategories: RunProgressCategory[];
+  categoryRunState: Record<string, CategoryRunState>;
+  findingCounts: Record<string, number>;
+  synthesizing: boolean;
+  /** Progressive reveal: the finished lens peeked while others run, or `null`. */
+  peekCategory: ConventionCategory | null;
+  peekLabel: string | null;
+  peekFindings: ConventionFindingVM[];
+  openCategory: (key: string) => void;
+  clearPeek: () => void;
   /** Run-history menu entries (newest first), each selecting that run. */
   runHistory: MenuItem[];
   /** Whether to surface the history affordance (≥1 persisted run). */
@@ -350,11 +390,8 @@ export interface HarnessViewModel {
   applying: boolean;
   /** The error returned by the apply write, or `null`. */
   applyError: string | null;
-  onScan: (
-    categories: ConventionCategory[],
-    model: string | null,
-    effort: string | null,
-  ) => void;
+  /** Launch a scan from the lifted CONFIGURE config. */
+  onScan: () => void;
   onCancel: () => void;
   onDismissFinding: (findingId: string) => void;
   onRestoreFinding: (findingId: string) => void;
@@ -388,6 +425,99 @@ export function useHarnessView({
   const [applyTargetId, setApplyTargetId] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
+
+  // Lifted CONFIGURE form state. It lives here (not in RunControls) so the config
+  // survives the CONFIGURE → RUNNING → RESULTS phase swaps and pre-fills on a new
+  // run. `reconfiguring` is the explicit "New run" override that returns RESULTS to
+  // CONFIGURE without discarding the persisted run.
+  const [model, setModel] = useState<string | null>(null);
+  const [effort, setEffort] = useState<string | null>(null);
+  const [selectedLenses, setSelectedLenses] = useState<Set<ConventionCategory>>(
+    () => new Set(ALL_CATEGORIES),
+  );
+  const [reconfiguring, setReconfiguring] = useState(false);
+  const [peekCategory, setPeekCategory] = useState<ConventionCategory | null>(null);
+
+  // `isStarting` folds the launch round-trip into RUNNING: between clicking Scan
+  // and the optimistic running stream landing, `stream.status` is still the prior
+  // run's `completed`, so without this a "New run" would flash the old RESULTS.
+  const phase: RunPhase =
+    stream.status === 'running' || harness.isStarting
+      ? 'running'
+      : reconfiguring || stream.status === 'idle'
+        ? 'configure'
+        : 'results';
+
+  const orderedSelected = useMemo(
+    () => ALL_CATEGORIES.filter((c) => selectedLenses.has(c)),
+    [selectedLenses],
+  );
+
+  const toggleLens = useCallback((category: ConventionCategory) => {
+    setSelectedLenses((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  }, []);
+
+  // "New run": pre-fill the form from the last run's model + lenses, then drop back
+  // to CONFIGURE. (Effort isn't persisted on a run, so the lifted value carries.)
+  const reconfigure = useCallback(() => {
+    // Reset even to null (a default-model rerun) so the form never keeps a stale
+    // model from the last run — mirrors Insight's prefill.
+    setModel(stream.model);
+    if (stream.requestedCategories.length > 0) {
+      setSelectedLenses(new Set(stream.requestedCategories));
+    }
+    setPeekCategory(null);
+    setReconfiguring(true);
+  }, [stream.model, stream.requestedCategories]);
+
+  const onScan = useCallback(() => {
+    setReconfiguring(false);
+    setPeekCategory(null);
+    void harness.start(orderedSelected, model, effort);
+  }, [harness, orderedSelected, model, effort]);
+
+  const summary = useMemo(() => {
+    const modelLabel =
+      MODEL_OPTIONS.find((o) => o.id === stream.model)?.label ??
+      stream.model ??
+      'Default model';
+    const effortLabel = EFFORT_OPTIONS.find((o) => o.id === effort)?.label ?? null;
+    const n = stream.requestedCategories.length;
+    return `⌖ ${modelLabel}${effortLabel !== null ? ` · ${effortLabel}` : ''} · ${n} ${
+      n === 1 ? 'lens' : 'lenses'
+    }`;
+  }, [stream.model, stream.requestedCategories.length, effort]);
+
+  const progressCategories: RunProgressCategory[] = useMemo(
+    () =>
+      stream.requestedCategories.map((c) => ({
+        key: c,
+        label: CATEGORY_META[c].label,
+        icon: CATEGORY_META[c].icon,
+      })),
+    [stream.requestedCategories],
+  );
+
+  const findingCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const f of stream.findings) {
+      counts[f.category] = (counts[f.category] ?? 0) + 1;
+    }
+    return counts;
+  }, [stream.findings]);
+
+  const peekFindings = useMemo(
+    () =>
+      peekCategory === null
+        ? []
+        : sortFindings(stream.findings.filter((f) => f.category === peekCategory)),
+    [peekCategory, stream.findings],
+  );
 
   const visibleCategories = useMemo(() => tabCategories(stream), [stream]);
 
@@ -448,7 +578,12 @@ export function useHarnessView({
     () =>
       harness.runs.map((run) => ({
         label: `${new Date(run.createdAt).toLocaleString()} · ${run.findings.length} conventions`,
-        onClick: () => void harness.selectRun(run.id),
+        onClick: () => {
+          // Selecting a past run lands on its RESULTS — drop any reconfigure/peek.
+          setReconfiguring(false);
+          setPeekCategory(null);
+          void harness.selectRun(run.id);
+        },
       })),
     [harness],
   );
@@ -512,6 +647,26 @@ export function useHarnessView({
     stream,
     isStarting: harness.isStarting,
     startError: harness.startError,
+    phase,
+    summary,
+    reconfigure,
+    model,
+    effort,
+    selectedLenses,
+    setModel,
+    setEffort,
+    toggleLens,
+    selectAllLenses: () => setSelectedLenses(new Set(ALL_CATEGORIES)),
+    selectNoneLenses: () => setSelectedLenses(new Set()),
+    progressCategories,
+    categoryRunState: stream.categoryState,
+    findingCounts,
+    synthesizing: stream.synthesizing,
+    peekCategory,
+    peekLabel: peekCategory === null ? null : CATEGORY_META[peekCategory].label,
+    peekFindings,
+    openCategory: (key: string) => setPeekCategory(key as ConventionCategory),
+    clearPeek: () => setPeekCategory(null),
     runHistory,
     hasHistory: harness.runs.length > 0,
     profileLoading: stream.status === 'running' && stream.profile === null,
@@ -538,8 +693,7 @@ export function useHarnessView({
     applyTarget,
     applying,
     applyError,
-    onScan: (categories, model, effort) =>
-      void harness.start(categories, model, effort),
+    onScan,
     onCancel: () => void harness.cancel(),
     onDismissFinding: (id) => void runAction(() => harness.dismissFinding(id)),
     onRestoreFinding: (id) => void runAction(() => harness.restoreFinding(id)),

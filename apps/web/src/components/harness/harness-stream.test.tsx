@@ -185,9 +185,21 @@ describe('foldHarness', () => {
     expect(s.findings.map((f) => f.id).sort()).toEqual(['fs1', 'n1']);
   });
 
-  it('proposals-ready sets the proposed artifacts', () => {
+  it('synthesis-started flips the synthesizing flag (the post-lens dead-zone)', () => {
     const next = foldHarness(
       { ...EMPTY_HARNESS_STREAM, runId: 'run-1', status: 'running' },
+      {
+        type: 'harness-synthesis-started',
+        runId: 'run-1',
+      } as HarnessScanEvent,
+    );
+    expect(next.synthesizing).toBe(true);
+    expect(next.status).toBe('running');
+  });
+
+  it('proposals-ready sets the proposed artifacts and clears synthesizing', () => {
+    const next = foldHarness(
+      { ...EMPTY_HARNESS_STREAM, runId: 'run-1', status: 'running', synthesizing: true },
       {
         type: 'harness-proposals-ready',
         runId: 'run-1',
@@ -197,6 +209,35 @@ describe('foldHarness', () => {
     expect(next.artifacts).toHaveLength(1);
     expect(next.artifacts[0]?.status).toBe('proposed');
     expect(next.artifacts[0]?.appliedPath).toBeNull();
+    expect(next.synthesizing).toBe(false);
+  });
+
+  it('terminal events clear synthesizing', () => {
+    const base: HarnessStream = {
+      ...EMPTY_HARNESS_STREAM,
+      runId: 'run-1',
+      status: 'running',
+      synthesizing: true,
+    };
+    const completed = foldHarness(base, {
+      type: 'harness-scan-completed',
+      runId: 'run-1',
+      profile: wireProfile(),
+      findings: [],
+      artifacts: [],
+      categoriesRun: [],
+      costUsd: 0,
+      durationMs: 1,
+      usage: USAGE,
+    } as HarnessScanEvent);
+    expect(completed.synthesizing).toBe(false);
+    const failed = foldHarness(base, {
+      type: 'harness-scan-failed',
+      runId: 'run-1',
+      reason: 'aborted',
+      message: 'cancelled',
+    } as HarnessScanEvent);
+    expect(failed.synthesizing).toBe(false);
   });
 
   it('scan-completed sets the final findings, artifacts + totals and marks all done', () => {
@@ -228,7 +269,7 @@ describe('foldHarness', () => {
     expect(next.categoryState['folder-structure']).toBe('done');
   });
 
-  it('scan-failed records the error', () => {
+  it('scan-failed records the error and carries the failure reason', () => {
     const next = foldHarness(
       { ...EMPTY_HARNESS_STREAM, runId: 'run-1', status: 'running' },
       {
@@ -240,6 +281,21 @@ describe('foldHarness', () => {
     );
     expect(next.status).toBe('failed');
     expect(next.error).toBe('cancelled');
+    // The reason lets RESULTS show a neutral "cancelled" notice for a user abort.
+    expect(next.failureReason).toBe('aborted');
+  });
+
+  it('scan-failed carries a non-abort reason for the red failure banner', () => {
+    const next = foldHarness(
+      { ...EMPTY_HARNESS_STREAM, runId: 'run-1', status: 'running' },
+      {
+        type: 'harness-scan-failed',
+        runId: 'run-1',
+        reason: 'runner-crash',
+        message: 'sidecar died',
+      } as HarnessScanEvent,
+    );
+    expect(next.failureReason).toBe('runner-crash');
   });
 });
 
@@ -366,5 +422,8 @@ describe('normalizers', () => {
     expect(s.categoryState['folder-structure']).toBe('done');
     expect(s.profile?.workspaceTool).toBe('bun');
     expect(s.costUsd).toBe(0.5);
+    // The persisted run carries neither the synthesis tail nor the failure reason.
+    expect(s.synthesizing).toBe(false);
+    expect(s.failureReason).toBeNull();
   });
 });

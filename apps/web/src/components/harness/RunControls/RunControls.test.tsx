@@ -3,27 +3,30 @@ import { render } from 'vitest-browser-react';
 import { expect, test, vi } from 'vitest';
 import * as stories from './RunControls.stories';
 
-const { Idle, Running } = composeStories(stories);
+const { Default, Empty } = composeStories(stories);
 
-test('fires onScan with every lens selected by default', async () => {
+test('fires onScan when the Scan CTA is pressed with lenses selected', async () => {
   const onScan = vi.fn();
-  const screen = render(<Idle onScan={onScan} />);
+  const screen = render(<Default onScan={onScan} />);
   await screen.getByRole('button', { name: /^scan$/i }).click();
-  const call = onScan.mock.calls[0];
-  // All eight convention lenses selected by default.
-  expect(call?.[0]).toHaveLength(8);
+  expect(onScan).toHaveBeenCalledTimes(1);
 });
 
-test('clearing the selection disables Scan', async () => {
-  const onScan = vi.fn();
-  const screen = render(<Idle onScan={onScan} />);
-  await screen.getByRole('button', { name: /^none$/i }).click();
+test('disables Scan when no lens is selected', async () => {
+  const screen = render(<Empty />);
   await expect.element(screen.getByRole('button', { name: /^scan$/i })).toBeDisabled();
 });
 
-test('a running stream swaps Scan for a cancel action', async () => {
-  const onCancel = vi.fn();
-  const screen = render(<Running onCancel={onCancel} />);
-  await screen.getByRole('button', { name: /cancel scan/i }).click();
-  expect(onCancel).toHaveBeenCalledTimes(1);
+test('toggling a lens chip fires onToggle with its category', async () => {
+  const onToggle = vi.fn();
+  const screen = render(<Default onToggle={onToggle} />);
+  await screen.getByRole('button', { name: /Architecture/ }).click();
+  expect(onToggle).toHaveBeenCalledWith('architecture');
+});
+
+test('the None shortcut clears the selection via onSelectNone', async () => {
+  const onSelectNone = vi.fn();
+  const screen = render(<Default onSelectNone={onSelectNone} />);
+  await screen.getByRole('button', { name: /^none$/i }).click();
+  expect(onSelectNone).toHaveBeenCalledTimes(1);
 });

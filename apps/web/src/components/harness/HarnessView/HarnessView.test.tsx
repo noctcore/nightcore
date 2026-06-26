@@ -11,17 +11,12 @@ test('renders the Harness header for an active project', async () => {
   await expect.element(screen.getByText('acme')).toBeInTheDocument();
 });
 
-test('offers the Scan control in the idle project view', async () => {
+test('opens on the CONFIGURE screen with the run-config hero and Scan CTA', async () => {
   const screen = render(<Idle />);
+  // Idle (no persisted run) derives the CONFIGURE phase: the run-config hero.
+  await expect.element(screen.getByText(/run config/i)).toBeInTheDocument();
+  await expect.element(screen.getByText(/scans the whole repo across/i)).toBeInTheDocument();
   await expect.element(screen.getByRole('button', { name: /^scan$/i })).toBeInTheDocument();
-});
-
-test('toggles between the conventions and proposed-harness sections', async () => {
-  const screen = render(<Idle />);
-  await screen.getByRole('tab', { name: /proposed harness/i }).click();
-  await expect
-    .element(screen.getByText(/run a scan to synthesize a proposed harness/i))
-    .toBeInTheDocument();
 });
 
 test('shows the empty state when no project is active', async () => {
