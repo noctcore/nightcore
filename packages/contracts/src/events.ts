@@ -5,6 +5,12 @@ import {
   FindingCategorySchema,
   FindingSchema,
 } from './insight.js';
+import {
+  ConventionCategorySchema,
+  ConventionFindingSchema,
+  ProposedArtifactSchema,
+  RepoProfileSchema,
+} from './harness.js';
 import { ProviderConfigSnapshotSchema } from './provider-config.js';
 import { SessionStatusSchema } from './session.js';
 import { ToolRiskSchema } from './tools.js';
@@ -355,6 +361,83 @@ export const AnalysisFailedEvent = z.object({
   message: z.string(),
 });
 
+/**
+ * Harness (codebase convention auditor) events. Like the `analysis-*` family these
+ * carry no `sessionId` and correlate by `runId`; the Rust reader routes the whole
+ * `harness-*` family to the `nc:harness` channel and persists the run on
+ * `harness-scan-completed`. The flow adds two hops over Insight: a `harness-profile-ready`
+ * up front (the deterministic repo profile) and a `harness-proposals-ready` near the
+ * end (the synthesized artifacts), so the UI can render the profile banner and the
+ * proposed-harness panel before the terminal event lands.
+ */
+
+/** A scan started. Echoes the resolved categories/model for the UI header. */
+export const HarnessScanStartedEvent = z.object({
+  type: z.literal('harness-scan-started'),
+  runId: z.string(),
+  categories: z.array(ConventionCategorySchema),
+  model: z.string(),
+});
+
+/** The deterministic repo profile is ready (emitted before any convention pass). */
+export const HarnessProfileReadyEvent = z.object({
+  type: z.literal('harness-profile-ready'),
+  runId: z.string(),
+  profile: RepoProfileSchema,
+});
+
+/** A convention pass began exploring (the UI shows skeleton cards for it). */
+export const HarnessCategoryStartedEvent = z.object({
+  type: z.literal('harness-category-started'),
+  runId: z.string(),
+  category: ConventionCategorySchema,
+});
+
+/** A convention pass finished: its grounded findings stream in as a batch, plus the
+ *  pass's own token usage and cost so the UI can show per-lens spend. */
+export const HarnessCategoryCompletedEvent = z.object({
+  type: z.literal('harness-category-completed'),
+  runId: z.string(),
+  category: ConventionCategorySchema,
+  findings: z.array(ConventionFindingSchema),
+  usage: TokenUsageSchema.optional(),
+  costUsd: z.number().default(0),
+  /** Set when the pass itself failed (parse/abort): findings is then empty and the
+   *  UI marks the lens errored rather than "0 findings". */
+  error: z.string().optional(),
+});
+
+/** The synthesis pass finished: the proposed harness artifacts stream in as a batch.
+ *  Emitted after every convention pass, before the terminal event. */
+export const HarnessProposalsReadyEvent = z.object({
+  type: z.literal('harness-proposals-ready'),
+  runId: z.string(),
+  artifacts: z.array(ProposedArtifactSchema),
+});
+
+/** The whole scan finished: the final profile, deduped convention findings, and
+ *  proposed artifacts plus run totals. The Rust reader persists from THIS event. */
+export const HarnessScanCompletedEvent = z.object({
+  type: z.literal('harness-scan-completed'),
+  runId: z.string(),
+  profile: RepoProfileSchema,
+  findings: z.array(ConventionFindingSchema),
+  artifacts: z.array(ProposedArtifactSchema),
+  categoriesRun: z.array(ConventionCategorySchema),
+  costUsd: z.number(),
+  durationMs: z.number().nonnegative().default(0),
+  usage: TokenUsageSchema.optional(),
+});
+
+/** The scan failed before completing (could not start, or aborted). Reuses the
+ *  same reason set as `analysis-failed` (collapses to one generated Rust enum). */
+export const HarnessScanFailedEvent = z.object({
+  type: z.literal('harness-scan-failed'),
+  runId: z.string(),
+  reason: z.enum(['aborted', 'runner-crash', 'unknown']),
+  message: z.string(),
+});
+
 export const NightcoreEventSchema = z.discriminatedUnion('type', [
   SessionStartedEvent,
   SessionReadyEvent,
@@ -373,6 +456,13 @@ export const NightcoreEventSchema = z.discriminatedUnion('type', [
   AnalysisCategoryCompletedEvent,
   AnalysisCompletedEvent,
   AnalysisFailedEvent,
+  HarnessScanStartedEvent,
+  HarnessProfileReadyEvent,
+  HarnessCategoryStartedEvent,
+  HarnessCategoryCompletedEvent,
+  HarnessProposalsReadyEvent,
+  HarnessScanCompletedEvent,
+  HarnessScanFailedEvent,
 ]);
 export type NightcoreEvent = z.infer<typeof NightcoreEventSchema>;
 

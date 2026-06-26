@@ -7,6 +7,7 @@ import {
 } from './config.js';
 import { PermissionDecisionSchema, QuestionAnswerSchema } from './tools.js';
 import { AnalysisScopeSchema, FindingCategorySchema } from './insight.js';
+import { ConventionCategorySchema } from './harness.js';
 
 /**
  * `SurfaceCommand` — the typed stream flowing surface → engine.
@@ -140,6 +141,40 @@ export const CancelAnalysisCommand = z.object({
   runId: z.string(),
 });
 
+/** Start a Harness scan. Like `start-analysis` this is NOT a single rendered Claude
+ *  turn — the engine first detects a deterministic repo profile, then fans out one
+ *  read-only convention pass per `categories` entry (bounded by `maxConcurrency`),
+ *  grounds + dedups the findings, runs a synthesis pass that proposes harness
+ *  artifacts, and streams `harness-*` events keyed by `runId`. The Rust core assigns
+ *  `runId`, owns persistence, and owns writing applied artifacts to disk; the engine
+ *  stays stateless about history and never writes the target repo itself. The whole
+ *  repo is always scanned (conventions are repo-wide), so there is no scope field. */
+export const StartHarnessScanCommand = z.object({
+  type: z.literal('start-harness-scan'),
+  /** Correlation id (also the persisted run id) assigned by the Rust core. */
+  runId: z.string(),
+  /** Absolute project root the passes run in (read-only). */
+  projectPath: z.string(),
+  /** The convention lenses to run (a subset of the 8). */
+  categories: z.array(ConventionCategorySchema),
+  /** Model override for the passes; absent ⇒ inherit the resolved config. */
+  model: z.string().optional(),
+  /** Reasoning effort for the passes; absent ⇒ inherit. */
+  effort: EffortLevelSchema.optional(),
+  /** Max convention passes to run at once. Absent ⇒ engine default (bounded). */
+  maxConcurrency: z.number().int().positive().optional(),
+  /** Per-pass autonomy ceiling (SDK `Options.maxTurns`). */
+  maxTurnsPerCategory: z.number().int().positive().optional(),
+  /** Per-pass spend ceiling in USD (SDK `Options.maxBudgetUsd`). */
+  maxBudgetUsdPerCategory: z.number().positive().optional(),
+});
+
+/** Cancel an in-flight Harness scan (aborts every convention pass + synthesis). */
+export const CancelHarnessScanCommand = z.object({
+  type: z.literal('cancel-harness-scan'),
+  runId: z.string(),
+});
+
 export const SurfaceCommandSchema = z.discriminatedUnion('type', [
   StartSessionCommand,
   SendInputCommand,
@@ -150,6 +185,8 @@ export const SurfaceCommandSchema = z.discriminatedUnion('type', [
   AnswerQuestionCommand,
   StartAnalysisCommand,
   CancelAnalysisCommand,
+  StartHarnessScanCommand,
+  CancelHarnessScanCommand,
 ]);
 export type SurfaceCommand = z.infer<typeof SurfaceCommandSchema>;
 
