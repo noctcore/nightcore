@@ -73,9 +73,11 @@ struct HarnessCheckConfig {
     /// is warn-and-skipped — there is nothing deterministic to run.
     #[serde(default)]
     command: Option<String>,
-    /// An optional config path for the tool. Informational on the result; the
-    /// `command` itself is expected to already reference it.
+    /// An optional config path for the tool. Informational metadata in the wire
+    /// schema; the `command` itself is expected to already reference it, so it is
+    /// parsed-but-not-read by the runner today.
     #[serde(default)]
+    #[allow(dead_code)]
     config_path: Option<String>,
     /// Whether this check participates in the gate. Defaults to `true` (a listed
     /// check is on unless explicitly disabled); the file being ABSENT is the
@@ -220,6 +222,10 @@ fn plan_check(cfg: &HarnessCheckConfig) -> Option<PlannedCheck> {
 /// exit. A project with no config (or no enabled checks) passes trivially.
 pub fn run(dir: &Path) -> StructureLockResult {
     let planned = load_checks(dir);
+    // No config / no enabled checks: trivially passing (mirrors `gauntlet::empty_pass`).
+    if planned.is_empty() {
+        return empty_pass();
+    }
     let mut checks = Vec::with_capacity(planned.len());
     let mut failed_check: Option<String> = None;
 
