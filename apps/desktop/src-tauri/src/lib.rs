@@ -130,6 +130,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             task::list_tasks,
             task::create_task,
+            task::convert_subtask,
+            task::convert_all_subtasks,
             task::update_task,
             task::delete_task,
             task::add_task_attachments,

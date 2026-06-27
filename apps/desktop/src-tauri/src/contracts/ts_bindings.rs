@@ -43,7 +43,10 @@ fn export_all_bindings() {
     use crate::sidecar::{ProviderConfigSnapshotView, SessionInfoView, SessionMessageView};
     use crate::store::insight::{FindingLocation, InsightRun, InsightUsage, StoredFinding};
     use crate::store::scorecard::{ScorecardEvidence, ScorecardRun, StoredReading};
-    use crate::task::{PermissionMode, RunMode, Task, TaskKind, TaskPatch, TaskStatus};
+    use crate::task::{
+        PermissionMode, ProposedSubtask, RunMode, SubtaskStatus, Task, TaskKind, TaskPatch,
+        TaskStatus,
+    };
 
     // `export_all` writes the type AND all of its `TS` dependencies, so exporting
     // the four aggregates (Task, Settings, GauntletResult, the loop snapshot) plus
@@ -64,6 +67,10 @@ fn export_all_bindings() {
         TaskKind,
         RunMode,
         PermissionMode,
+        // Decompose: the proposed sub-task + its convert lifecycle (also reached
+        // transitively via `Task`).
+        ProposedSubtask,
+        SubtaskStatus,
         Project,
         Settings,
         SettingsOverride,
@@ -129,6 +136,8 @@ mod tests {
             "TaskKind.ts",
             "RunMode.ts",
             "PermissionMode.ts",
+            "ProposedSubtask.ts",
+            "SubtaskStatus.ts",
             "Project.ts",
             "Settings.ts",
             "SettingsOverride.ts",

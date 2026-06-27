@@ -46,8 +46,9 @@ pub enum TaskStatus {
 /// The kind of work a task represents (M4 §A). The shared contract between the
 /// Rust core (which owns each kind's ORCHESTRATION policy in `kind.rs`) and the
 /// engine (which owns its AGENT DEFINITION). `build` is the default and reproduces
-/// pre-M4 behavior; `research`/`decompose` are reserved (defined, not yet
-/// produced — the M1 `Ready`/`WaitingApproval` pattern).
+/// pre-M4 behavior; `tdd` is a build-like test-first variant; `decompose` proposes
+/// sub-tasks; `research` investigates read-only; `review` is the internal
+/// verification reviewer's identity (not user-selectable in the picker).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[cfg_attr(test, derive(TS))]
 #[serde(rename_all = "snake_case")]
@@ -58,6 +59,10 @@ pub enum TaskKind {
     Research,
     Review,
     Decompose,
+    /// Test-first build: the agent writes a failing test, then implements until
+    /// green. Orchestrated identically to `Build` (own worktree + verification);
+    /// only the engine's AGENT DEFINITION (the test-first persona) differs.
+    Tdd,
 }
 
 impl TaskKind {
@@ -69,8 +74,45 @@ impl TaskKind {
             TaskKind::Research => "research",
             TaskKind::Review => "review",
             TaskKind::Decompose => "decompose",
+            TaskKind::Tdd => "tdd",
         }
     }
+}
+
+/// Lifecycle of one [`ProposedSubtask`] (Decompose §B). `open` until the user
+/// converts it into a board task, then `converted` (with `linked_task_id` set).
+/// Mirrors the Insight finding lifecycle so the convert UX is identical.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(test, derive(TS))]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(test, ts(export, export_to = "SubtaskStatus.ts"))]
+pub enum SubtaskStatus {
+    #[default]
+    Open,
+    Converted,
+}
+
+/// A sub-task a `decompose` run proposed (Decompose §B). Parsed from the agent's
+/// final message and stored on the parent [`Task`]; a convert action mints a real
+/// board [`Task`] from it (`kind = Build`, `parent_task_id` = the decompose task).
+/// Modeled on the Insight `StoredFinding` convert lifecycle.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "ProposedSubtask.ts"))]
+pub struct ProposedSubtask {
+    /// Stable id (uuid), assigned when the run's proposal is parsed.
+    pub id: String,
+    /// Short imperative title — becomes the child task's title.
+    pub title: String,
+    /// Self-contained description — becomes the child task's description/prompt.
+    pub prompt: String,
+    /// `open` until converted; `converted` once a board task was minted from it.
+    #[serde(default)]
+    pub status: SubtaskStatus,
+    /// The board task this proposal was converted into, if any.
+    #[serde(default)]
+    pub linked_task_id: Option<String>,
 }
 
 /// Where a task's run executes (M4.6 §B). `Main` (the default) runs in the
@@ -262,6 +304,17 @@ pub struct Task {
     /// empty list.
     #[serde(default)]
     pub attachments: Vec<TaskAttachment>,
+    /// Decompose §B: the parent `decompose` task this one was minted from, if any.
+    /// Set only on children created via `convert_subtask`/`convert_all_subtasks`;
+    /// `None` for every other task. Serde-additive: legacy tasks load as `None`.
+    #[serde(default)]
+    pub parent_task_id: Option<String>,
+    /// Decompose §B: the sub-tasks a `decompose` run proposed (parsed from its final
+    /// message on completion). Empty for every other kind and until a decompose run
+    /// finishes. Each is convertible into a board task. Serde-additive: legacy tasks
+    /// load as an empty list.
+    #[serde(default)]
+    pub proposed_subtasks: Vec<ProposedSubtask>,
 }
 
 impl Task {
@@ -300,6 +353,8 @@ impl Task {
             // Stamped by the store on the first persist; 0 until then.
             seq: 0,
             attachments: Vec::new(),
+            parent_task_id: None,
+            proposed_subtasks: Vec::new(),
         }
     }
 
@@ -555,6 +610,149 @@ pub fn create_task(
     Ok(task)
 }
 
+/// Decompose §B: convert ONE proposed sub-task of a decompose task into a real
+/// board task. Mints a child `Build` task (active-project defaults, with
+/// `parent_task_id` pointing back at the decompose task), marks the proposal
+/// `Converted` + linked, and emits `nc:task` for both the new child and the
+/// updated parent. Returns the updated PARENT task (the panel's source of truth).
+///
+/// Idempotent and race-safe, mirroring `convert_finding_to_task`: a proposal
+/// already converted to a still-existing task mints nothing; a lost compare-and-set
+/// race rolls back the duplicate child it had minted.
+#[tauri::command]
+pub fn convert_subtask(
+    app: AppHandle,
+    store: State<'_, TaskStore>,
+    settings: State<'_, crate::settings::SettingsStore>,
+    projects: State<'_, crate::project::ProjectStore>,
+    parent_id: String,
+    subtask_id: String,
+) -> Result<Task, String> {
+    convert_one(&app, &store, &settings, &projects, &parent_id, &subtask_id)?;
+    store
+        .get(&parent_id)
+        .ok_or_else(|| format!("no decompose task with id {parent_id}"))
+}
+
+/// Decompose §B: convert EVERY still-open proposed sub-task of a decompose task.
+/// One sub-task's failure is logged and skipped so the rest still convert (mirrors
+/// the Insight bulk-convert). Returns the updated PARENT task.
+#[tauri::command]
+pub fn convert_all_subtasks(
+    app: AppHandle,
+    store: State<'_, TaskStore>,
+    settings: State<'_, crate::settings::SettingsStore>,
+    projects: State<'_, crate::project::ProjectStore>,
+    parent_id: String,
+) -> Result<Task, String> {
+    let parent = store
+        .get(&parent_id)
+        .ok_or_else(|| format!("no decompose task with id {parent_id}"))?;
+    let open_ids: Vec<String> = parent
+        .proposed_subtasks
+        .iter()
+        .filter(|s| s.status == SubtaskStatus::Open)
+        .map(|s| s.id.clone())
+        .collect();
+    for id in open_ids {
+        if let Err(e) = convert_one(&app, &store, &settings, &projects, &parent_id, &id) {
+            tracing::error!(target: "nightcore", parent_id = %parent_id, subtask_id = %id, error = %e, "convert sub-task failed; continuing");
+        }
+    }
+    store
+        .get(&parent_id)
+        .ok_or_else(|| format!("no decompose task with id {parent_id}"))
+}
+
+/// Mint one child task from a proposed sub-task and atomically mark the proposal
+/// converted. Shared by [`convert_subtask`] and [`convert_all_subtasks`].
+fn convert_one(
+    app: &AppHandle,
+    store: &TaskStore,
+    settings: &crate::settings::SettingsStore,
+    projects: &crate::project::ProjectStore,
+    parent_id: &str,
+    subtask_id: &str,
+) -> Result<(), String> {
+    let parent = store
+        .get(parent_id)
+        .ok_or_else(|| format!("no decompose task with id {parent_id}"))?;
+    let sub = parent
+        .proposed_subtasks
+        .iter()
+        .find(|s| s.id == subtask_id)
+        .cloned()
+        .ok_or_else(|| format!("no proposed sub-task {subtask_id} on task {parent_id}"))?;
+    // Whether the proposal's existing link still points at a live task. A proposal
+    // is eligible to (re)convert when it is `Open` OR `Converted` but its linked
+    // child was deleted out from under it (`dead_link`) — without the latter, a
+    // deleted child would strand the proposal as a permanent dead "task" badge.
+    let dead_link = sub.status == SubtaskStatus::Converted
+        && match sub.linked_task_id.as_deref() {
+            Some(existing) => store.get(existing).is_none(),
+            None => true,
+        };
+    // Fast-path idempotency: a proposal already linked to a LIVE task converts
+    // nothing (covers the common re-click).
+    if sub.status == SubtaskStatus::Converted && !dead_link {
+        return Ok(());
+    }
+    // Mint the child FIRST (a crash before linking leaves an unlinked proposal —
+    // retryable — rather than a proposal pointing at a non-existent task). The
+    // child is a plain `Build` task scoped to the active project, stamped with the
+    // decompose task as its parent.
+    let project_id = projects.active().map(|p| p.id);
+    let mut child = build_new_task(
+        settings,
+        project_id.as_deref(),
+        sub.title.clone(),
+        sub.prompt.clone(),
+        CreateInputs::default(),
+    );
+    child.kind = TaskKind::Build;
+    child.parent_task_id = Some(parent_id.to_string());
+    let child = store.upsert(&child)?;
+    // Compare-and-set the proposal status under the store lock: flip to `Converted`
+    // and link the new child if the proposal is still eligible (`Open`, or a
+    // dead-linked `Converted` we observed above). `won` tells us whether we, not a
+    // concurrent convert, performed the flip.
+    let mut won = false;
+    let cas = store.mutate(parent_id, |task| {
+        if let Some(s) = task
+            .proposed_subtasks
+            .iter_mut()
+            .find(|s| s.id == subtask_id)
+        {
+            let eligible = s.status == SubtaskStatus::Open
+                || (s.status == SubtaskStatus::Converted && dead_link);
+            if eligible {
+                s.status = SubtaskStatus::Converted;
+                s.linked_task_id = Some(child.id.clone());
+                won = true;
+            }
+        }
+    });
+    let updated_parent = match cas {
+        Ok(parent) => parent,
+        Err(e) => {
+            // The parent vanished or its persist failed: roll back the orphan child
+            // we minted so a retry is clean (mirrors `convert_finding_to_task`).
+            let _ = store.remove(&child.id);
+            return Err(e);
+        }
+    };
+    if !won {
+        // Another convert won the race (or the proposal vanished). Roll back the
+        // duplicate child we minted so a losing race leaves no orphan board task.
+        let _ = store.remove(&child.id);
+        return Ok(());
+    }
+    let _ = app.emit(TASK_EVENT, &child);
+    let _ = app.emit(TASK_EVENT, &updated_parent);
+    tracing::info!(target: "nightcore", parent_id = %parent_id, subtask_id = %subtask_id, child_id = %child.id, "sub-task converted to task");
+    Ok(())
+}
+
 /// Apply a partial update to a task, bump `updated_at`, persist, and emit
 /// `nc:task`. Errors if the id is unknown.
 #[tauri::command]
@@ -797,7 +995,15 @@ mod tests {
         let task = Task::new("t".into(), String::new());
         let value: serde_json::Value = serde_json::to_value(&task).unwrap();
         let obj = value.as_object().unwrap();
-        for key in ["createdAt", "updatedAt", "sessionId", "costUsd", "branch"] {
+        for key in [
+            "createdAt",
+            "updatedAt",
+            "sessionId",
+            "costUsd",
+            "branch",
+            "parentTaskId",
+            "proposedSubtasks",
+        ] {
             assert!(obj.contains_key(key), "missing camelCase key {key}");
         }
     }
@@ -954,12 +1160,58 @@ mod tests {
             TaskKind::Research,
             TaskKind::Review,
             TaskKind::Decompose,
+            TaskKind::Tdd,
         ] {
             let json = serde_json::to_string(&kind).unwrap();
             assert_eq!(json, format!("\"{}\"", kind.as_wire()));
             let back: TaskKind = serde_json::from_str(&json).unwrap();
             assert_eq!(kind, back, "kind must survive a serde round-trip");
         }
+        // The new test-first kind wires as `tdd`.
+        assert_eq!(TaskKind::Tdd.as_wire(), "tdd");
+    }
+
+    #[test]
+    fn decompose_fields_default_and_are_serde_additive() {
+        // A fresh task carries no parent and no proposed sub-tasks.
+        let task = Task::new("t".into(), String::new());
+        assert!(task.parent_task_id.is_none(), "parent_task_id defaults None");
+        assert!(
+            task.proposed_subtasks.is_empty(),
+            "proposed_subtasks defaults empty"
+        );
+
+        // A legacy task JSON written before these fields existed still loads,
+        // defaulting both — existing task files aren't broken.
+        let legacy = r#"{"id":"x","title":"t","description":"","status":"backlog",
+            "dependencies":[],"model":null,"branch":null,"createdAt":1,"updatedAt":1,
+            "sessionId":null,"summary":null,"error":null,"costUsd":null,
+            "plan":null,"committed":false,"merged":false,"conflict":false,
+            "kind":"build","verified":false,"review":null,"fixAttempts":0}"#;
+        let back: Task = serde_json::from_str(legacy).expect("legacy task deserializes");
+        assert!(back.parent_task_id.is_none() && back.proposed_subtasks.is_empty());
+
+        // A populated proposal round-trips field-for-field with camelCase keys.
+        let mut populated = Task::new("d".into(), String::new());
+        populated.kind = TaskKind::Decompose;
+        populated.proposed_subtasks = vec![ProposedSubtask {
+            id: "s-1".into(),
+            title: "Add the widget".into(),
+            prompt: "Build the widget component".into(),
+            status: SubtaskStatus::Converted,
+            linked_task_id: Some("child-9".into()),
+        }];
+        let value = serde_json::to_value(&populated).unwrap();
+        let sub = &value["proposedSubtasks"][0];
+        assert_eq!(sub["id"], serde_json::json!("s-1"));
+        assert_eq!(sub["status"], serde_json::json!("converted"));
+        assert_eq!(sub["linkedTaskId"], serde_json::json!("child-9"));
+        let restored: Task = serde_json::from_value(value).unwrap();
+        assert_eq!(restored.proposed_subtasks[0].status, SubtaskStatus::Converted);
+        assert_eq!(
+            restored.proposed_subtasks[0].linked_task_id.as_deref(),
+            Some("child-9")
+        );
     }
 
     #[test]

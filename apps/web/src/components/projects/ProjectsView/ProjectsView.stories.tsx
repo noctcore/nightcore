@@ -54,6 +54,8 @@ const tasks: Task[] = [
     maxTurns: null,
     maxBudgetUsd: null,
     attachments: [],
+    parentTaskId: null,
+    proposedSubtasks: [],
   },
   {
     seq: 0,
@@ -86,6 +88,8 @@ const tasks: Task[] = [
     maxTurns: null,
     maxBudgetUsd: null,
     attachments: [],
+    parentTaskId: null,
+    proposedSubtasks: [],
   },
 ];
 

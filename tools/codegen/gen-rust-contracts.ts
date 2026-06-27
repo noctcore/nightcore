@@ -286,7 +286,7 @@ const ENUM_NAMES: Record<string, string> = {
   'low|medium|high|xhigh|max': 'EffortLevel',
   'png|jpeg|webp|gif': 'ImageFormat',
   'default|acceptEdits|bypassPermissions|plan|dontAsk|auto': 'PermissionMode',
-  'build|research|review|decompose': 'TaskKind',
+  'build|research|review|decompose|tdd': 'TaskKind',
   'safe|mutating|dangerous': 'ToolRisk',
   'starting|running|awaiting-permission|completed|failed|interrupted':
     'SessionStatus',

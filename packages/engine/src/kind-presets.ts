@@ -55,9 +55,52 @@ const REVIEWER_SYSTEM_PROMPT = [
 ].join(' ');
 
 /**
- * Resolve a task kind to its agent preset. `build` (and the reserved
- * `research`/`decompose`) carry no overrides — they inherit every session
- * default, so M1–M3 runs are unchanged. Only `review` restricts the agent.
+ * The test-first persona for the `tdd` kind. Orchestrated exactly like `build`
+ * (own worktree + verification gate); only this persona differs — it forces the
+ * red→green→refactor discipline so a TDD task can't drift into write-impl-first.
+ */
+const TDD_SYSTEM_PROMPT = [
+  'You practice strict test-driven development.',
+  'For the requested change, ALWAYS work in this order:',
+  '(1) write a failing test that specifies the desired behavior;',
+  '(2) run it and confirm it fails for the right reason;',
+  '(3) write the minimum implementation to make it pass;',
+  '(4) re-run and confirm green; then refactor with the test as a safety net.',
+  'Never write implementation code before the test that requires it.',
+  'Keep the existing test suite green throughout.',
+].join(' ');
+
+/**
+ * The sentinel markers the core (`verification::parse_proposed_subtasks`) scans
+ * for in a decompose run's final message. Kept here next to the persona that
+ * instructs them so the two halves of the contract stay in lock-step.
+ */
+export const SUBTASKS_OPEN = '<<<NIGHTCORE_SUBTASKS';
+export const SUBTASKS_CLOSE = 'NIGHTCORE_SUBTASKS>>>';
+
+/**
+ * The planning persona for the `decompose` kind. It investigates read-only and
+ * proposes sub-tasks; the core parses the sentinel block from its final message
+ * and the user converts each proposal into a board task. Write tools are denied
+ * so a decompose run can never mutate the project.
+ */
+const DECOMPOSE_SYSTEM_PROMPT = [
+  'You are a planning agent that breaks a goal into small, independently-shippable',
+  'sub-tasks. You investigate the codebase but you do NOT write code or edit files.',
+  'When you are done, end your final message with EXACTLY one machine-readable',
+  `block, each marker on its own line:\n${SUBTASKS_OPEN}\n`,
+  '[{"title": "short imperative title", "prompt": "a self-contained task description"}]\n',
+  `${SUBTASKS_CLOSE}\n`,
+  'The block must be a valid JSON array of objects, each with a string "title" and',
+  'a string "prompt". Propose between 2 and 8 sub-tasks ordered so each builds on',
+  'the ones before it. If the goal needs no decomposition, emit an empty array.',
+].join(' ');
+
+/**
+ * Resolve a task kind to its agent preset. `build`/`research` carry no overrides —
+ * they inherit every session default, so their runs are unchanged. `review` is the
+ * internal verification reviewer; `tdd` adds a test-first persona; `decompose`
+ * adds a read-only planning persona that emits the sub-task proposal block.
  */
 export function resolveKindPreset(kind: TaskKind | undefined): KindPreset {
   switch (kind) {
@@ -69,9 +112,17 @@ export function resolveKindPreset(kind: TaskKind | undefined): KindPreset {
         // need a prompt is refused, so the reviewer can't hang the gate.
         permissionMode: 'dontAsk',
       };
+    case 'tdd':
+      // Build-like: writes code, so no tool restriction; only the persona differs.
+      return { appendSystemPrompt: TDD_SYSTEM_PROMPT };
+    case 'decompose':
+      // Read-only analysis: deny writes so it can only propose, never mutate.
+      return {
+        appendSystemPrompt: DECOMPOSE_SYSTEM_PROMPT,
+        disallowedTools: [...WRITE_TOOLS],
+      };
     case 'build':
     case 'research':
-    case 'decompose':
     case undefined:
       return {};
   }

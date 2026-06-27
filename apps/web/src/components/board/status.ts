@@ -156,21 +156,24 @@ export interface KindOption {
   enabled: boolean;
 }
 
-/** The kind picker's options, in display order. `build` (default) and `research`
- *  are selectable; `review`/`decompose` are reserved → disabled "coming soon". */
+/** The kind picker's options, in display order. All four are selectable. `review`
+ *  is intentionally absent — it is the internal verification-reviewer identity (the
+ *  gate dispatches it automatically), not a kind a user creates a task as. */
 export const KIND_OPTIONS: KindOption[] = [
   { kind: 'build', label: 'Build', hint: 'Write code in an isolated worktree, then verify', enabled: true },
   { kind: 'research', label: 'Research', hint: 'Investigate and report — no code changes', enabled: true },
-  { kind: 'review', label: 'Review', hint: 'Read-only diff review', enabled: false },
-  { kind: 'decompose', label: 'Decompose', hint: 'Split into sub-tasks', enabled: false },
+  { kind: 'tdd', label: 'TDD', hint: 'Test-first: write the failing test, then implement', enabled: true },
+  { kind: 'decompose', label: 'Decompose', hint: 'Split a goal into sub-tasks', enabled: true },
 ];
 
-/** Human label for a task kind. */
+/** Human label for a task kind. Covers every `TaskKind` variant (including the
+ *  picker-absent `review`) so the `Record` stays exhaustive. */
 export const KIND_LABEL: Record<TaskKind, string> = {
   build: 'Build',
   research: 'Research',
   review: 'Review',
   decompose: 'Decompose',
+  tdd: 'TDD',
 };
 
 // --- Run modes (M4.6) -----------------------------------------------------

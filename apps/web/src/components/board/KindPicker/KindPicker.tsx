@@ -2,9 +2,11 @@ import { KIND_OPTIONS } from '../status';
 import { kindIcon } from './KindPicker.hooks';
 import type { KindPickerProps } from './KindPicker.types';
 
-/** A segmented kind picker for task create/edit (M4). Build (default) and
- *  Research are selectable; Review/Decompose render disabled "coming soon". Pure
- *  presentational — selection state is owned by the form/detail panel. */
+/** A segmented kind picker for task create/edit (M4). Build (default), Research,
+ *  TDD, and Decompose are all selectable; `review` is the internal verification
+ *  reviewer and is never offered here. The disabled/"soon" path is retained for any
+ *  future reserved kind. Pure presentational — selection state is owned by the
+ *  form/detail panel. */
 export function KindPicker({ value, onChange, compact = false, disabled = false }: KindPickerProps) {
   return (
     <div

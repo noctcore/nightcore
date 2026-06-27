@@ -25,8 +25,12 @@ test('disables every option when the picker is disabled', async () => {
   await expect.element(screen.getByRole('radio', { name: /research/i })).toBeDisabled();
 });
 
-test('renders the reserved Review/Decompose kinds as disabled', async () => {
+test('all four kinds are selectable and Review is not offered', async () => {
   const screen = render(<Build />);
-  await expect.element(screen.getByRole('radio', { name: /review/i })).toBeDisabled();
-  await expect.element(screen.getByRole('radio', { name: /decompose/i })).toBeDisabled();
+  for (const name of [/build/i, /research/i, /tdd/i, /decompose/i]) {
+    await expect.element(screen.getByRole('radio', { name })).not.toBeDisabled();
+  }
+  // Exactly four radios — `review` (the internal verification-reviewer identity) is
+  // never a picker option, so it must not render.
+  expect(screen.container.querySelectorAll('[role="radio"]')).toHaveLength(4);
 });

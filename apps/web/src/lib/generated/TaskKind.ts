@@ -4,7 +4,8 @@
  * The kind of work a task represents (M4 §A). The shared contract between the
  * Rust core (which owns each kind's ORCHESTRATION policy in `kind.rs`) and the
  * engine (which owns its AGENT DEFINITION). `build` is the default and reproduces
- * pre-M4 behavior; `research`/`decompose` are reserved (defined, not yet
- * produced — the M1 `Ready`/`WaitingApproval` pattern).
+ * pre-M4 behavior; `tdd` is a build-like test-first variant; `decompose` proposes
+ * sub-tasks; `research` investigates read-only; `review` is the internal
+ * verification reviewer's identity (not user-selectable in the picker).
  */
-export type TaskKind = "build" | "research" | "review" | "decompose";
+export type TaskKind = "build" | "research" | "review" | "decompose" | "tdd";

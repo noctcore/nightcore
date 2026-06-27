@@ -33,6 +33,7 @@ export const TaskKindSchema = z.enum([
   'research',
   'review',
   'decompose',
+  'tdd',
 ]);
 export type TaskKind = z.infer<typeof TaskKindSchema>;
 

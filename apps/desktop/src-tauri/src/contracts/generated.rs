@@ -990,6 +990,7 @@ pub enum TaskKind {
     Research,
     Review,
     Decompose,
+    Tdd,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

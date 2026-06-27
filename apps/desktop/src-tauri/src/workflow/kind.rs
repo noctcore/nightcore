@@ -33,14 +33,20 @@ pub fn policy(kind: TaskKind) -> KindPolicy {
             verify_after: true,
             writes_code: true,
         },
-        TaskKind::Review => KindPolicy {
-            allocate_worktree: false,
-            verify_after: false,
-            writes_code: false,
+        // TDD is a test-first build: orchestrated exactly like `Build` (own
+        // worktree + verification gate + writes code). Only its AGENT DEFINITION
+        // differs (the engine appends a test-first persona).
+        TaskKind::Tdd => KindPolicy {
+            allocate_worktree: true,
+            verify_after: true,
+            writes_code: true,
         },
-        // Reserved: defined, not yet produced. No worktree, no verification, no
-        // writes — they carry no orchestration weight this milestone.
-        TaskKind::Research | TaskKind::Decompose => KindPolicy {
+        // Read-only kinds. `review` is the internal verification reviewer's
+        // identity; `research` investigates and reports; `decompose` proposes
+        // sub-tasks (parsed from its final message on completion — see
+        // `verification::parse_proposed_subtasks`). None allocate a worktree, none
+        // are themselves verified, none write code.
+        TaskKind::Review | TaskKind::Research | TaskKind::Decompose => KindPolicy {
             allocate_worktree: false,
             verify_after: false,
             writes_code: false,
@@ -66,6 +72,13 @@ mod tests {
         assert!(!p.allocate_worktree, "review reuses the build's worktree");
         assert!(!p.verify_after, "a review is not itself verified");
         assert!(!p.writes_code, "a review is read-only");
+    }
+
+    #[test]
+    fn tdd_is_orchestrated_like_a_build() {
+        // TDD differs from Build only in the engine's agent persona; its
+        // orchestration (worktree + verification + writes) is identical.
+        assert_eq!(policy(TaskKind::Tdd), policy(TaskKind::Build));
     }
 
     #[test]

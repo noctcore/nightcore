@@ -14,7 +14,7 @@ use crate::m2::provider::Provider;
 use crate::m2::worktree;
 use crate::project::ProjectStore;
 use crate::store::TaskStore;
-use crate::task::{Task, TaskKind, TaskStatus};
+use crate::task::{ProposedSubtask, SubtaskStatus, Task, TaskKind, TaskStatus};
 
 use super::commands::{resolve_context_pack, resolve_mcp_servers, resolve_permission_mode};
 use super::{apply_and_emit, finish_run, park_for_approval, Outcome};
@@ -46,12 +46,30 @@ pub(crate) async fn handle_build_completed(
     if !verify_after || review_dir.is_none() {
         // M3 behavior: nothing to verify (no policy, or no project to review in).
         tracing::info!(target: "nightcore", task_id, session_id = ?session_id, cost_usd = ?cost, "task done (no verification)");
+        // Decompose §B: parse the sub-tasks the run proposed from its final message
+        // so the detail view can offer them for conversion. Other kinds leave the
+        // list empty. Parse OUTSIDE the mutation closure so the (potentially large)
+        // text scan doesn't run under the store lock.
+        let proposed = if task.kind == TaskKind::Decompose {
+            let fresh = result.as_deref().map(parse_proposed_subtasks).unwrap_or_default();
+            // Preserve proposals already converted into board tasks across a re-run
+            // (drag Done→Backlog → Run) so we never orphan a converted child or lose
+            // its `linked_task_id`; the fresh proposals are appended after them.
+            let merged = merge_proposed_subtasks(&task.proposed_subtasks, fresh);
+            tracing::info!(target: "nightcore", task_id, count = merged.len(), "decompose proposed sub-tasks");
+            merged
+        } else {
+            Vec::new()
+        };
         apply_and_emit(app, store, task_id, |task| {
             task.status = TaskStatus::Done;
             task.summary = result.clone();
             task.cost_usd = cost;
             task.session_id = session_id;
             task.error = None;
+            if task.kind == TaskKind::Decompose {
+                task.proposed_subtasks = proposed.clone();
+            }
         });
         finish_run(app, task_id, session_id, Outcome::Succeeded);
         return;
@@ -294,6 +312,73 @@ pub fn parse_verdict(text: &str) -> Verdict {
     found.unwrap_or(Verdict::Fail)
 }
 
+/// The sentinel lines that bracket a `decompose` run's machine-readable proposal.
+/// The engine's decompose persona instructs the agent to end its final message
+/// with a JSON array of `{title, prompt}` between these markers.
+const SUBTASKS_OPEN: &str = "<<<NIGHTCORE_SUBTASKS";
+const SUBTASKS_CLOSE: &str = "NIGHTCORE_SUBTASKS>>>";
+
+/// Parse the sub-tasks a `decompose` run proposed from its final message text.
+/// Extracts the LAST `<<<NIGHTCORE_SUBTASKS … NIGHTCORE_SUBTASKS>>>` block (the
+/// final proposal wins, mirroring `parse_verdict`) and JSON-decodes it into
+/// [`ProposedSubtask`]s, stamping a fresh id + `Open` status on each. Fail-safe: a
+/// missing, malformed, or empty block yields an empty list — the task still
+/// completes, just with nothing to convert.
+pub fn parse_proposed_subtasks(text: &str) -> Vec<ProposedSubtask> {
+    // The minimal shape the agent emits; the id + lifecycle are core-owned, never
+    // taken from the model's output.
+    #[derive(serde::Deserialize)]
+    struct Wire {
+        title: String,
+        #[serde(default)]
+        prompt: String,
+    }
+    let Some(open_at) = text.rfind(SUBTASKS_OPEN) else {
+        return Vec::new();
+    };
+    let after = &text[open_at + SUBTASKS_OPEN.len()..];
+    let Some(close_at) = after.find(SUBTASKS_CLOSE) else {
+        return Vec::new();
+    };
+    let json = after[..close_at].trim();
+    let parsed: Vec<Wire> = match serde_json::from_str(json) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(target: "nightcore", error = %e, "decompose: proposed sub-tasks block was not valid JSON");
+            return Vec::new();
+        }
+    };
+    parsed
+        .into_iter()
+        .filter(|w| !w.title.trim().is_empty())
+        .map(|w| ProposedSubtask {
+            id: uuid::Uuid::new_v4().to_string(),
+            title: w.title,
+            prompt: w.prompt,
+            status: SubtaskStatus::Open,
+            linked_task_id: None,
+        })
+        .collect()
+}
+
+/// Merge a decompose re-run's freshly-parsed proposals with the task's existing
+/// ones, PRESERVING any already-`Converted` proposal (and its `linked_task_id`) so a
+/// re-run never orphans a converted child task or loses its bookkeeping. The kept
+/// converted proposals come first (original order), then the fresh proposals. On a
+/// first run `existing` is empty, so the result is just `fresh`.
+pub fn merge_proposed_subtasks(
+    existing: &[ProposedSubtask],
+    fresh: Vec<ProposedSubtask>,
+) -> Vec<ProposedSubtask> {
+    let mut merged: Vec<ProposedSubtask> = existing
+        .iter()
+        .filter(|s| s.status == SubtaskStatus::Converted)
+        .cloned()
+        .collect();
+    merged.extend(fresh);
+    merged
+}
+
 /// The directory the verification gate reviews in, plus whether it is an isolated
 /// worktree (M4.6 §A). `worktree` mode reviews the build's `nc/<taskId>` worktree
 /// (commit-then-diff); `main` mode reviews the project ROOT (working tree vs HEAD).
@@ -512,8 +597,11 @@ fn reviewer_prompt(task: &Task, base: &str, has_branch: bool) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_commit_message, parse_verdict, reviewer_prompt, Verdict};
-    use crate::task::{RunMode, Task};
+    use super::{
+        build_commit_message, merge_proposed_subtasks, parse_proposed_subtasks, parse_verdict,
+        reviewer_prompt, Verdict,
+    };
+    use crate::task::{ProposedSubtask, RunMode, SubtaskStatus, Task};
 
     #[test]
     fn reviewer_prompt_is_working_tree_authoritative() {
@@ -624,5 +712,96 @@ mod tests {
         );
         assert_eq!(parse_verdict(""), Verdict::Fail);
         assert_eq!(parse_verdict("VERDICT: MAYBE"), Verdict::Fail);
+    }
+
+    #[test]
+    fn subtasks_parse_from_the_sentinel_block() {
+        let text = "Here is the plan.\n\n\
+            <<<NIGHTCORE_SUBTASKS\n\
+            [{\"title\":\"Add the schema\",\"prompt\":\"Create the table\"},\
+             {\"title\":\"Wire the UI\",\"prompt\":\"Build the form\"}]\n\
+            NIGHTCORE_SUBTASKS>>>";
+        let subs = parse_proposed_subtasks(text);
+        assert_eq!(subs.len(), 2);
+        assert_eq!(subs[0].title, "Add the schema");
+        assert_eq!(subs[0].prompt, "Create the table");
+        assert_eq!(subs[1].title, "Wire the UI");
+        // The core owns the id + lifecycle, never the model's output.
+        assert!(!subs[0].id.is_empty() && subs[0].id != subs[1].id);
+        assert_eq!(subs[0].status, SubtaskStatus::Open);
+        assert!(subs[0].linked_task_id.is_none());
+    }
+
+    #[test]
+    fn subtasks_last_block_wins_and_skips_blank_titles() {
+        let text = "<<<NIGHTCORE_SUBTASKS\n[{\"title\":\"stale\",\"prompt\":\"x\"}]\nNIGHTCORE_SUBTASKS>>>\n\
+            reconsidered\n\
+            <<<NIGHTCORE_SUBTASKS\n\
+            [{\"title\":\"real\",\"prompt\":\"y\"},{\"title\":\"  \",\"prompt\":\"skip me\"}]\n\
+            NIGHTCORE_SUBTASKS>>>";
+        let subs = parse_proposed_subtasks(text);
+        assert_eq!(subs.len(), 1, "last block wins; blank-title item is dropped");
+        assert_eq!(subs[0].title, "real");
+    }
+
+    #[test]
+    fn merge_preserves_converted_proposals_across_a_rerun() {
+        // A re-run of a decompose task must keep already-converted proposals (so
+        // their children aren't orphaned) and append the freshly-parsed ones.
+        let existing = vec![
+            ProposedSubtask {
+                id: "kept".into(),
+                title: "Already shipped".into(),
+                prompt: "x".into(),
+                status: SubtaskStatus::Converted,
+                linked_task_id: Some("child-1".into()),
+            },
+            ProposedSubtask {
+                id: "stale-open".into(),
+                title: "Not yet converted".into(),
+                prompt: "y".into(),
+                status: SubtaskStatus::Open,
+                linked_task_id: None,
+            },
+        ];
+        let fresh = parse_proposed_subtasks(
+            "<<<NIGHTCORE_SUBTASKS\n[{\"title\":\"new one\",\"prompt\":\"z\"}]\nNIGHTCORE_SUBTASKS>>>",
+        );
+        let merged = merge_proposed_subtasks(&existing, fresh);
+        // The converted proposal survives (with its link); the stale OPEN one is
+        // dropped in favor of the fresh proposal.
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].id, "kept");
+        assert_eq!(merged[0].linked_task_id.as_deref(), Some("child-1"));
+        assert_eq!(merged[1].title, "new one");
+        assert_eq!(merged[1].status, SubtaskStatus::Open);
+    }
+
+    #[test]
+    fn merge_on_a_first_run_is_just_the_fresh_proposals() {
+        let fresh = vec![ProposedSubtask {
+            id: "a".into(),
+            title: "first".into(),
+            prompt: "p".into(),
+            status: SubtaskStatus::Open,
+            linked_task_id: None,
+        }];
+        let merged = merge_proposed_subtasks(&[], fresh.clone());
+        assert_eq!(merged, fresh);
+    }
+
+    #[test]
+    fn subtasks_fail_safe_to_empty() {
+        // No block, an unterminated block, malformed JSON, and an empty array all
+        // yield an empty list — a decompose run still completes cleanly.
+        assert!(parse_proposed_subtasks("no block at all").is_empty());
+        assert!(parse_proposed_subtasks("<<<NIGHTCORE_SUBTASKS\n[]").is_empty());
+        assert!(
+            parse_proposed_subtasks("<<<NIGHTCORE_SUBTASKS\nnot json\nNIGHTCORE_SUBTASKS>>>")
+                .is_empty()
+        );
+        assert!(
+            parse_proposed_subtasks("<<<NIGHTCORE_SUBTASKS\n[]\nNIGHTCORE_SUBTASKS>>>").is_empty()
+        );
     }
 }

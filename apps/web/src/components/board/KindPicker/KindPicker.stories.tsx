@@ -25,6 +25,10 @@ export const Build: Story = {};
 
 export const Research: Story = { args: { value: 'research' } };
 
+export const Tdd: Story = { args: { value: 'tdd' } };
+
+export const Decompose: Story = { args: { value: 'decompose' } };
+
 export const Compact: Story = { args: { compact: true } };
 
 export const Disabled: Story = { args: { disabled: true } };
@@ -38,13 +42,22 @@ export const PicksResearch: Story = {
   },
 };
 
-/** Play test: the reserved Review kind is disabled and never fires onChange. */
-export const ReviewIsComingSoon: Story = {
+/** Play test: picking TDD (newly enabled) threads the `tdd` kind through. */
+export const PicksTdd: Story = {
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
-    const review = canvas.getByRole('radio', { name: /review/i });
-    await expect(review).toBeDisabled();
-    await userEvent.click(review);
-    await expect(args.onChange).not.toHaveBeenCalled();
+    await userEvent.click(canvas.getByRole('radio', { name: /tdd/i }));
+    await expect(args.onChange).toHaveBeenCalledWith('tdd');
+  },
+};
+
+/** Play test: Decompose is now a selectable kind (no longer "coming soon"). */
+export const PicksDecompose: Story = {
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    const decompose = canvas.getByRole('radio', { name: /decompose/i });
+    await expect(decompose).not.toBeDisabled();
+    await userEvent.click(decompose);
+    await expect(args.onChange).toHaveBeenCalledWith('decompose');
   },
 };
