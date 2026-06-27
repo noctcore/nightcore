@@ -1,63 +1,65 @@
-import { useCallback, useState, type DragEvent } from 'react';
-import type { Task } from '@/lib/bridge';
+import { useCallback, useId, useRef } from 'react';
+import { useDroppable } from '@dnd-kit/core';
+import { useVirtualizer, type Virtualizer } from '@tanstack/react-virtual';
+import type { Task, TaskStatus } from '@/lib/bridge';
+import { isDroppableStatus } from '../status';
 
-/** The MIME-ish key a dragged card carries its task id under. */
-export const DRAG_TASK_ID = 'application/x-nc-task-id';
+/** Estimated card height (px) before measurement. Cards are variable-height
+ *  (title + optional description + chips + actions); `measureElement` corrects
+ *  each row to its real size once mounted. */
+const ESTIMATED_CARD_HEIGHT = 140;
 
-export interface ColumnDrop {
-  /** True while a draggable card hovers a droppable column (drop-zone glow). */
+/** Extra rows rendered above/below the viewport so a fast scroll never flashes
+ *  blank — and so a card mid-drag stays mounted a little past the fold. */
+const OVERSCAN = 6;
+
+export interface ColumnView {
+  /** Ref for the column shell — the @dnd-kit drop target. */
+  setDropRef: (element: HTMLElement | null) => void;
+  /** Ref for the inner scroll container — the virtualizer's scroll element. */
+  setScrollRef: (element: HTMLDivElement | null) => void;
+  /** True while a dragged card hovers this (droppable) column — drives the glow. */
   isOver: boolean;
   /** Whether this column accepts drops (In Progress never does). */
   droppable: boolean;
-  /** Spread onto the column's drop container. No-op when not droppable. */
-  dropProps: {
-    onDragOver?: (e: DragEvent) => void;
-    onDragLeave?: () => void;
-    onDrop?: (e: DragEvent) => void;
-  };
+  /** The vertical virtualizer for this column's card list. */
+  virtualizer: Virtualizer<HTMLDivElement, Element>;
 }
 
-/** Drop-target behavior for a board column. A column whose `dropStatus` is
- *  `in_progress` (or unset, or without a handler) is inert — the backend rejects
- *  manual moves into In Progress, so we surface it as not-allowed and never call
- *  `onMoveTask`. Other columns accept a dropped card and move it to their status. */
-export function useColumnDrop(
-  dropStatus: Task['status'] | undefined,
-  onMoveTask: ((id: string, status: Task['status']) => void) | undefined,
-): ColumnDrop {
-  const [isOver, setIsOver] = useState(false);
-  const droppable =
-    dropStatus !== undefined && dropStatus !== 'in_progress' && onMoveTask !== undefined;
+/** Column behavior: a whole-column @dnd-kit drop target (In Progress is inert —
+ *  the backend rejects manual moves into a live run) plus a vertical virtualizer
+ *  so a 50+ card column only mounts the visible rows. The drop target is the
+ *  outer shell and the scroll element is the inner list, so they take separate
+ *  refs (no ref merging). Cross-column moves resolve at the board's `onDragEnd`;
+ *  the column only surfaces the hover glow + drop affordance. */
+export function useColumn(dropStatus: TaskStatus | undefined, tasks: Task[]): ColumnView {
+  const droppable = dropStatus !== undefined && isDroppableStatus(dropStatus);
+  // A presentational column without a status still needs a unique droppable id so
+  // two such columns never collide; fall back to a stable generated id.
+  const fallbackId = useId();
+  const { setNodeRef, isOver } = useDroppable({
+    id: dropStatus ?? fallbackId,
+    disabled: !droppable,
+  });
 
-  const onDragOver = useCallback(
-    (e: DragEvent) => {
-      if (!droppable) {
-        e.dataTransfer.dropEffect = 'none';
-        return;
-      }
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      setIsOver(true);
-    },
-    [droppable],
-  );
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const setScrollRef = useCallback((element: HTMLDivElement | null) => {
+    scrollRef.current = element;
+  }, []);
 
-  const onDragLeave = useCallback(() => setIsOver(false), []);
-
-  const onDrop = useCallback(
-    (e: DragEvent) => {
-      setIsOver(false);
-      if (!droppable || dropStatus === undefined || onMoveTask === undefined) return;
-      e.preventDefault();
-      const id = e.dataTransfer.getData(DRAG_TASK_ID);
-      if (id !== '') onMoveTask(id, dropStatus);
-    },
-    [droppable, dropStatus, onMoveTask],
-  );
+  const virtualizer = useVirtualizer({
+    count: tasks.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ESTIMATED_CARD_HEIGHT,
+    overscan: OVERSCAN,
+    getItemKey: (index) => tasks[index]?.id ?? index,
+  });
 
   return {
-    isOver,
+    setDropRef: setNodeRef,
+    setScrollRef,
+    isOver: isOver && droppable,
     droppable,
-    dropProps: droppable ? { onDragOver, onDragLeave, onDrop } : { onDragOver },
+    virtualizer,
   };
 }

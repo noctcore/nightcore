@@ -10,6 +10,7 @@ import {
   SearchIcon,
   SlidersIcon,
 } from '@/components/ui';
+import { BoardDnd } from '../BoardDnd';
 import { Column } from '../Column';
 import { ProviderConfigPanel } from '../ProviderConfigPanel';
 import { WorktreeSwitcher } from '../WorktreeSwitcher';
@@ -204,34 +205,36 @@ function BoardImpl({
         </div>
       )}
 
-      <div className="flex flex-1 gap-3.5 overflow-x-auto overflow-y-hidden px-[22px] py-4">
-        {columns.map(({ def, tasks: colTasks }) => (
-          <Column
-            key={def.key}
-            title={def.title}
-            tasks={colTasks}
-            dotColor={def.dotColor}
-            badge={def.badge}
-            clearable={def.clearable}
-            selectedId={selectedId}
-            blockedIds={blockedIds}
-            promptIds={promptIds}
-            logCounts={logCounts}
-            dropStatus={def.statuses[0]}
-            emptyText={search.trim() !== '' ? 'No matches' : EMPTY_TEXT[def.key]}
-            onSelect={onSelect}
-            onRun={onRun}
-            onCancel={onCancel}
-            onDelete={onDelete}
-            onMoveTask={onMoveTask}
-            onApprove={onApprove}
-            onRefine={onRefine}
-            onCommit={onCommit}
-            onMerge={onMerge}
-            onClear={() => onClearColumn(def.statuses)}
-          />
-        ))}
-      </div>
+      <BoardDnd tasks={tasks} onMoveTask={onMoveTask}>
+        <div className="flex flex-1 gap-3.5 overflow-x-auto overflow-y-hidden px-[22px] py-4">
+          {columns.map(({ def, tasks: colTasks }) => (
+            <Column
+              key={def.key}
+              title={def.title}
+              tasks={colTasks}
+              dotColor={def.dotColor}
+              badge={def.badge}
+              clearable={def.clearable}
+              selectedId={selectedId}
+              blockedIds={blockedIds}
+              promptIds={promptIds}
+              logCounts={logCounts}
+              dropStatus={def.statuses[0]}
+              emptyText={search.trim() !== '' ? 'No matches' : EMPTY_TEXT[def.key]}
+              onSelect={onSelect}
+              onRun={onRun}
+              onCancel={onCancel}
+              onDelete={onDelete}
+              onMoveTask={onMoveTask}
+              onApprove={onApprove}
+              onRefine={onRefine}
+              onCommit={onCommit}
+              onMerge={onMerge}
+              onClear={() => onClearColumn(def.statuses)}
+            />
+          ))}
+        </div>
+      </BoardDnd>
 
       {inspector.open && (
         <ProviderConfigPanel

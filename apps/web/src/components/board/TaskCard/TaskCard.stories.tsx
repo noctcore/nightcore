@@ -121,34 +121,9 @@ export const CommitVerified: Story = {
   },
 };
 
-/** A card with the keyboard "Move to…" menu — the pointer-free path to the
- *  board re-tag that drag-and-drop is otherwise the only way to reach (a11y). */
-export const MoveMenu: Story = {
-  args: {
-    task: TASKS_BY_STATUS.backlog,
-    onMoveTask: fn(),
-    moveTargets: [
-      { status: 'done', label: 'Done' },
-      { status: 'failed', label: 'Failed' },
-    ],
-  },
-};
-
-/** Play test: opening the Move menu and choosing a column invokes
- *  onMoveTask(id, status) — the accessible board move without dragging. */
-export const MoveViaMenu: Story = {
-  args: {
-    task: TASKS_BY_STATUS.backlog,
-    onMoveTask: fn(),
-    moveTargets: [
-      { status: 'done', label: 'Done' },
-      { status: 'failed', label: 'Failed' },
-    ],
-  },
-  play: async ({ args, canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole('button', { name: /move to column/i }));
-    await userEvent.click(canvas.getByRole('menuitem', { name: 'Done' }));
-    await expect(args.onMoveTask).toHaveBeenCalledWith(TASKS_BY_STATUS.backlog.id, 'done');
-  },
+/** A draggable card — carries the grab affordance and the @dnd-kit keyboard
+ *  attributes (role/tabIndex) that make it pointer-free movable across columns.
+ *  The cross-column move itself is resolved by the board's `<DndContext>`. */
+export const Draggable: Story = {
+  args: { task: TASKS_BY_STATUS.backlog, draggable: true },
 };

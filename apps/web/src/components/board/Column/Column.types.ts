@@ -16,15 +16,17 @@ export interface ColumnProps {
   promptIds?: Set<string>;
   /** Streamed log-line counts per task id (for the running card's Logs badge). */
   logCounts: Record<string, number>;
-  /** The status a card dropped on this column moves to. `in_progress` (the In
-   *  Progress column) is a non-droppable target — dropping there is rejected. */
+  /** The @dnd-kit droppable id for this column — the status a card dropped here
+   *  moves to. `in_progress` (the In Progress column) is a non-droppable target. */
   dropStatus?: Task['status'];
   emptyText?: string;
   onSelect: (id: string) => void;
   onRun?: (id: string) => void;
   onCancel?: (id: string) => void;
   onDelete?: (id: string) => void;
-  /** Move a dropped card to this column's status. Absent in presentational use. */
+  /** Present when the board is interactive — gates whether eligible cards are
+   *  draggable. The cross-column move itself resolves at the board's `onDragEnd`,
+   *  not here. Absent in presentational stories (cards render non-draggable). */
   onMoveTask?: (id: string, status: Task['status']) => void;
   /** Waiting Approval card actions. */
   onApprove?: (id: string) => void;

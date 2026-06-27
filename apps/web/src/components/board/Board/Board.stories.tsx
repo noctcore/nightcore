@@ -152,30 +152,24 @@ export const BlockedFromBackend: Story = {
   },
 };
 
-/** Play test: dropping a card on the Backlog column moves it there. The browser
- *  runner can be flaky with full native drag, so we assert via a fired `drop`
- *  event carrying the task id rather than a pointer-driven drag. */
-export const DragMovesCard: Story = {
+/** Play test: the board wires @dnd-kit drag-and-drop. Eligible cards carry the
+ *  grab handle, the Backlog column advertises itself as a drop target, and the
+ *  running card (which owns a live run) is pinned. A full pointer drag is flaky in
+ *  the browser runner, so the cross-column move itself is covered by BoardDnd's
+ *  `resolveDrop` unit tests. */
+export const CardsAreDraggable: Story = {
   args: { tasks: ALL_TASKS },
-  play: async ({ args, canvasElement }) => {
+  play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // The Verified card to move (the In Progress column rejects drops, so we
-    // drop a done card back onto Backlog).
+    await canvas.findByText('Wire up auth guard');
+    await expect(canvasElement.querySelectorAll('.cursor-grab').length).toBeGreaterThan(0);
+
     const backlogHeading = canvas.getByRole('heading', { name: 'Backlog', level: 2 });
-    const backlogColumn = backlogHeading.closest('div[aria-dropeffect="move"]');
-    const dropZone = backlogColumn?.querySelector('div.overflow-auto');
-    await expect(dropZone).not.toBeNull();
+    await expect(backlogHeading.closest('[aria-dropeffect="move"]')).not.toBeNull();
 
-    // A real DataTransfer carries the dragged task id from dragStart → drop,
-    // exactly as a native HTML5 drag would. We assert via the fired drop event
-    // rather than a pointer-driven native drag, which is flaky in the runner.
-    const dataTransfer = new DataTransfer();
-    dataTransfer.setData('application/x-nc-task-id', 't-done');
-    (dropZone as Element).dispatchEvent(
-      new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer }),
-    );
-
-    await expect(args.onMoveTask).toHaveBeenCalledWith('t-done', 'backlog');
+    // The In Progress card is pinned — its card root never gets the grab handle.
+    const running = canvas.getByText('Generate API client');
+    await expect(running.closest('.cursor-grab')).toBeNull();
   },
 };
 
