@@ -13,4 +13,5 @@ export const recommendedRules: TSESLint.FlatConfig.Rules = {
   'nightcore/max-hooks-per-file': 'off',
   'nightcore/no-deep-package-imports': 'off',
   'nightcore/zod-schema-naming': 'off',
+  'nightcore/wire-message-naming': 'off',
 };

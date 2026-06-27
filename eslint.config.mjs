@@ -158,6 +158,17 @@ export default tseslint.config(
       'nightcore/no-deep-package-imports': 'error',
     },
   },
+  // Wire-message naming: a message-schema const whose name ends Event/Command/
+  // Query and whose zod object declares `type: z.literal(...)` MUST set that
+  // literal to kebab-case(const minus its role suffix). Scoped to the contracts
+  // source — the single source of truth for wire shapes. Ships 'off' in
+  // recommended; wired ON only here (per the plugin's registration convention).
+  {
+    files: ['packages/contracts/src/**/*.ts'],
+    rules: {
+      'nightcore/wire-message-naming': 'error',
+    },
+  },
   // Component-architecture rules (Tier C), scoped to the component folders.
   // Stories and tests are exercised by Storybook/Vitest, not gated as component
   // shells; feature-root data/util .ts files are domain modules, not components.

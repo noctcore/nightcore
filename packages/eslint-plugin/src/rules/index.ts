@@ -3,6 +3,7 @@ import { maxHooksPerFileRule } from './max-hooks-per-file';
 import { noCrossFeatureImportsRule } from './no-cross-feature-imports';
 import { noDeepPackageImportsRule } from './no-deep-package-imports';
 import { noStateInComponentBodyRule } from './no-state-in-component-body';
+import { wireMessageNamingRule } from './wire-message-naming';
 import { zodSchemaNamingRule } from './zod-schema-naming';
 
 export const rules = {
@@ -17,4 +18,6 @@ export const rules = {
   'no-deep-package-imports': noDeepPackageImportsRule,
   // Contracts naming: exported zod schema = `*Schema` + sibling inferred type.
   'zod-schema-naming': zodSchemaNamingRule,
+  // Wire-message naming: `type` discriminant = kebab(const minus role suffix).
+  'wire-message-naming': wireMessageNamingRule,
 };
