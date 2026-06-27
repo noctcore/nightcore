@@ -28,6 +28,7 @@ import { QuestionLayer, ASK_USER_QUESTION_DIALOG } from './question-layer.js';
 import { ToolRegistry } from './tool-registry.js';
 import { HookBus } from './hook-bus.js';
 import { resolveClaudeBinary } from './resolve-claude-binary.js';
+import { buildSubprocessEnv } from './subprocess-env.js';
 import { nightcoreAgents } from './agent-presets.js';
 
 /**
@@ -610,14 +611,17 @@ export class SessionRunner {
       agents: nightcoreAgents,
       // The task/todo feature has no run-`Options` key in the pinned SDK; it is
       // toggled via the `CLAUDE_CODE_ENABLE_TASKS` env var the bundled CLI reads.
-      // `Options.env` REPLACES the subprocess environment wholesale, so spread
-      // `process.env` first to preserve PATH/HOME/ANTHROPIC_API_KEY. When enabled
-      // we also turn on AI progress summaries so `task_progress.summary` is
-      // populated for the live panel.
-      env: {
-        ...process.env,
+      // `Options.env` REPLACES the subprocess environment wholesale. We do NOT
+      // spread `...process.env` (that hands every unrelated secret in the desktop
+      // app's env — AWS keys, GITHUB_TOKEN, DB creds — to an agent that under the
+      // default bypass can exfiltrate them). Instead `buildSubprocessEnv` copies a
+      // curated allowlist: system/runtime essentials (PATH/HOME/temp/locale/proxy/
+      // TLS + Windows system vars) plus the agent's OWN `ANTHROPIC_*`/`CLAUDE_*`
+      // credentials. When tasks are enabled we also turn on AI progress summaries
+      // so `task_progress.summary` is populated for the live panel.
+      env: buildSubprocessEnv(process.env, {
         CLAUDE_CODE_ENABLE_TASKS: this.cfg.todoFeatureEnabled ? '1' : '0',
-      },
+      }),
       ...(this.cfg.todoFeatureEnabled ? { agentProgressSummaries: true } : {}),
       // Skills are filesystem-discovered via settingSources; only enable the
       // skills filter (which auto-adds the `Skill` tool) when at least one

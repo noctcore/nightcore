@@ -346,6 +346,48 @@ describe('SessionRunner — policy deny list → SDK disallowedTools (sec-22ee93
   });
 });
 
+describe('SessionRunner — curated subprocess env (no wholesale process.env)', () => {
+  test('strips unrelated secrets, keeps PATH, applies the tasks toggle', async () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    queryCalls = 0;
+    lastQueryOptions = undefined;
+
+    // A secret that happens to live in the desktop app's env must NOT reach the
+    // agent subprocess; PATH (a runtime essential) must.
+    const prev = process.env.NIGHTCORE_TEST_FAKE_SECRET;
+    process.env.NIGHTCORE_TEST_FAKE_SECRET = 'leak-me';
+    try {
+      const runner = new SessionRunner(
+        {
+          sessionId: 6,
+          prompt: 'hi',
+          model: 'claude-opus-4-8',
+          permissionMode: 'bypassPermissions',
+          permissionPolicy: { allow: [], deny: [], mode: 'bypassPermissions' },
+          cwd: process.cwd(),
+          apiKeyFallback: false,
+          settingSources,
+          todoFeatureEnabled: true,
+        },
+        () => {},
+      );
+
+      await runner.run();
+
+      expect(queryCalls).toBe(1);
+      const env = lastQueryOptions?.env as Record<string, string> | undefined;
+      expect(env).toBeDefined();
+      expect(env?.NIGHTCORE_TEST_FAKE_SECRET).toBeUndefined();
+      expect(env?.PATH).toBe(process.env.PATH);
+      // The tasks toggle is applied as an override.
+      expect(env?.CLAUDE_CODE_ENABLE_TASKS).toBe('1');
+    } finally {
+      if (prev === undefined) delete process.env.NIGHTCORE_TEST_FAKE_SECRET;
+      else process.env.NIGHTCORE_TEST_FAKE_SECRET = prev;
+    }
+  });
+});
+
 describe('composeAppendSystemPrompt — Pre-flight Context Pack (Lock, feature #4)', () => {
   const persona = 'You are an independent code reviewer.';
   const pack = 'PROJECT CONSTITUTION: never break the folder-per-component rule.';

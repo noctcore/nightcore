@@ -120,3 +120,87 @@ describe('HookBus — hooks() matchers', () => {
     expect(result).toEqual({ continue: true });
   });
 });
+
+describe('HookBus — PreToolUse blocking deny gate', () => {
+  /** Fire the PreToolUse hook with a tool_name/tool_input pair. */
+  async function pre(bus: HookBus, toolName: string, toolInput: unknown) {
+    return bus.hooks().PreToolUse![0]!.hooks[0]!({
+      hook_event_name: 'PreToolUse',
+      tool_name: toolName,
+      tool_input: toolInput,
+    });
+  }
+
+  test('denies a destructive Bash command with permissionDecision: deny', async () => {
+    const bus = new HookBus();
+    const result = (await pre(bus, 'Bash', { command: 'rm -rf /' })) as {
+      hookSpecificOutput?: {
+        hookEventName?: string;
+        permissionDecision?: string;
+        permissionDecisionReason?: string;
+      };
+    };
+    expect(result.hookSpecificOutput?.hookEventName).toBe('PreToolUse');
+    expect(result.hookSpecificOutput?.permissionDecision).toBe('deny');
+    expect(result.hookSpecificOutput?.permissionDecisionReason).toContain(
+      'Nightcore safety policy',
+    );
+  });
+
+  test('a denied call does NOT abort the session (no continue:false)', async () => {
+    const bus = new HookBus();
+    const result = (await pre(bus, 'Bash', { command: 'sudo rm x' })) as Record<
+      string,
+      unknown
+    >;
+    expect(result.continue).toBeUndefined();
+  });
+
+  test('allows a benign Bash command (continue:true)', async () => {
+    const bus = new HookBus();
+    const result = await pre(bus, 'Bash', { command: 'bun test' });
+    expect(result).toEqual({ continue: true });
+  });
+
+  test('allows a non-Bash tool call (continue:true)', async () => {
+    const bus = new HookBus();
+    const result = await pre(bus, 'Write', { file_path: '/etc/hosts' });
+    expect(result).toEqual({ continue: true });
+  });
+
+  test('warns when a destructive call is blocked', async () => {
+    const logger = fakeLogger();
+    const bus = new HookBus(logger);
+    await pre(bus, 'Bash', { command: 'git push --force' });
+    expect(logger.warn).toHaveBeenCalled();
+  });
+
+  test('observers still see the PreToolUse event even when the call is denied', async () => {
+    const bus = new HookBus();
+    const seen: unknown[] = [];
+    bus.on((event, input) => seen.push({ event, input }));
+    await pre(bus, 'Bash', { command: 'rm -rf node_modules' });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ event: 'PreToolUse' });
+  });
+
+  test('custom deny rules override the default set', async () => {
+    const bus = new HookBus(undefined, [
+      {
+        id: 'no-echo',
+        reason: 'Nightcore safety policy: no echo in this test.',
+        tools: ['Bash'],
+        matches: (ctx) => ctx.tokens.includes('echo'),
+      },
+    ]);
+    // The default rm-rf rule is replaced, so rm -rf now passes...
+    expect(await pre(bus, 'Bash', { command: 'rm -rf x' })).toEqual({
+      continue: true,
+    });
+    // ...and the custom rule fires instead.
+    const blocked = (await pre(bus, 'Bash', { command: 'echo hi' })) as {
+      hookSpecificOutput?: { permissionDecision?: string };
+    };
+    expect(blocked.hookSpecificOutput?.permissionDecision).toBe('deny');
+  });
+});
