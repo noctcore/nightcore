@@ -8,8 +8,15 @@ const { Default, SwitcherOpen, Running } = composeStories(stories);
 test('navigates when a nav item is clicked', async () => {
   const onNavigate = vi.fn();
   const screen = render(<Default onNavigate={onNavigate} />);
-  await screen.getByText('Projects').click();
-  expect(onNavigate).toHaveBeenCalledWith('projects');
+  await screen.getByText('Kanban Board').click();
+  expect(onNavigate).toHaveBeenCalledWith('board');
+});
+
+test('the brand/logo returns to the full-screen Projects view', async () => {
+  const onGotoProjects = vi.fn();
+  const screen = render(<Default onGotoProjects={onGotoProjects} />);
+  await screen.getByRole('button', { name: /back to projects/i }).click();
+  expect(onGotoProjects).toHaveBeenCalled();
 });
 
 test('lists projects and opens new project from the switcher', async () => {

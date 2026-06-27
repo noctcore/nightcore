@@ -5,7 +5,6 @@ import { Sidebar } from './Sidebar';
 import type { NavItem } from '../AppShell/AppShell.types';
 
 const NAV: NavItem[] = [
-  { view: 'projects', label: 'Projects', hint: 'P', icon: '▤' },
   { view: 'board', label: 'Kanban Board', hint: 'K', icon: '▦' },
   { view: 'settings', label: 'Settings', hint: 'S', icon: '⚙' },
 ];
@@ -52,6 +51,7 @@ const meta = {
     onToggleCollapsed: fn(),
     onToggleSwitcher: fn(),
     onNavigate: fn(),
+    onGotoProjects: fn(),
     onPickProject: fn(),
     onNewProject: fn(),
   },

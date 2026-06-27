@@ -11,21 +11,38 @@ import {
 import type { ToastApi } from '@/components/ui';
 import { useAsyncData } from './useAsyncData.hooks';
 
+/** Cap on the initial registry read. A wedged core could leave the `invoke` pending
+ *  forever; since the boot splash now waits on `loaded`, that would hang the app on
+ *  the splash. On timeout we resolve to an empty registry so the shell lands on the
+ *  (empty) Projects surface instead of an indefinite "loading workspace…". */
+const BOOT_LOAD_TIMEOUT_MS = 6000;
+
 /** The project registry + active project, kept in sync via `nc:project`. */
 export function useProjectRegistry(toast: ToastApi) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [active, setActive] = useState<Project | null>(null);
+  // `loaded` flips true once the initial registry read settles (success OR handled
+  // failure). The shell holds the boot splash until then so the first paint already
+  // knows whether to land on the full-screen Projects view (no active project) or a
+  // restored project's board — no flash of the wrong surface.
+  const [loaded, setLoaded] = useState(false);
 
   useAsyncData(
     () =>
-      Promise.all([listProjects(), activeProject()]).catch((err) => {
-        console.error('load projects failed', err);
-        toast.error('Could not load projects', err);
-        return [[], null] as [Project[], Project | null];
-      }),
+      Promise.race([
+        Promise.all([listProjects(), activeProject()]).catch((err) => {
+          console.error('load projects failed', err);
+          toast.error('Could not load projects', err);
+          return [[], null] as [Project[], Project | null];
+        }),
+        new Promise<[Project[], Project | null]>((resolve) =>
+          setTimeout(() => resolve([[], null]), BOOT_LOAD_TIMEOUT_MS),
+        ),
+      ]),
     ([list, current]) => {
       setProjects(list);
       setActive(current);
+      setLoaded(true);
     },
   );
 
@@ -74,5 +91,5 @@ export function useProjectRegistry(toast: ToastApi) {
     [toast],
   );
 
-  return { projects, active, activate, remove, rename };
+  return { projects, active, loaded, activate, remove, rename };
 }
