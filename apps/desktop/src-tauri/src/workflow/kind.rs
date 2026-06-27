@@ -43,9 +43,9 @@ pub fn policy(kind: TaskKind) -> KindPolicy {
         },
         // Read-only kinds. `review` is the internal verification reviewer's
         // identity; `research` investigates and reports; `decompose` proposes
-        // sub-tasks (parsed from its final message on completion — see
-        // `verification::parse_proposed_subtasks`). None allocate a worktree, none
-        // are themselves verified, none write code.
+        // sub-tasks (the engine emits a validated `proposedSubtasks` array on the
+        // `session-completed` event, consumed in `verification::handle_build_completed`).
+        // None allocate a worktree, none are themselves verified, none write code.
         TaskKind::Review | TaskKind::Research | TaskKind::Decompose => KindPolicy {
             allocate_worktree: false,
             verify_after: false,

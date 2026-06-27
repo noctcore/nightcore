@@ -454,6 +454,12 @@ export class SessionManager {
         ...(command.mcpServers !== undefined
           ? { mcpServers: command.mcpServers }
           : {}),
+        // The raw task kind, threaded so the runner can post-process a `decompose`
+        // session's final result into structured `proposedSubtasks` on the
+        // `session-completed` event (mirrors the Insight findings pipeline). The
+        // PERSONA still comes from the resolved preset below; this is only the
+        // result-parse selector. Absent ⇒ no per-kind result post-processing.
+        ...(command.kind !== undefined ? { kind: command.kind } : {}),
         ...(preset.appendSystemPrompt !== undefined
           ? { appendSystemPrompt: preset.appendSystemPrompt }
           : {}),

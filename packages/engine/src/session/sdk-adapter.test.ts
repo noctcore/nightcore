@@ -376,6 +376,70 @@ describe('translateMessage — result (terminal)', () => {
     });
   });
 
+  test('decompose kind threads parsed proposedSubtasks onto session-completed', () => {
+    const result = translateMessage(
+      SID,
+      sdk({
+        type: 'result',
+        subtype: 'success',
+        result: 'Plan:\n```json\n[{"title":"A","prompt":"do a"}]\n```',
+        total_cost_usd: 0.1,
+        num_turns: 2,
+        duration_ms: 10,
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }),
+      { kind: 'decompose' },
+    );
+    const event = result.events[0] as Extract<
+      NightcoreEvent,
+      { type: 'session-completed' }
+    >;
+    expect(event.type).toBe('session-completed');
+    expect(event.proposedSubtasks).toEqual([{ title: 'A', prompt: 'do a' }]);
+  });
+
+  test('decompose with no parseable array yields an empty proposedSubtasks', () => {
+    const result = translateMessage(
+      SID,
+      sdk({
+        type: 'result',
+        subtype: 'success',
+        result: 'I could not decompose this goal.',
+        total_cost_usd: 0,
+        num_turns: 1,
+        duration_ms: 1,
+        usage: { input_tokens: 0, output_tokens: 0 },
+      }),
+      { kind: 'decompose' },
+    );
+    const event = result.events[0] as Extract<
+      NightcoreEvent,
+      { type: 'session-completed' }
+    >;
+    expect(event.proposedSubtasks).toEqual([]);
+  });
+
+  test('non-decompose kinds omit proposedSubtasks entirely', () => {
+    const result = translateMessage(
+      SID,
+      sdk({
+        type: 'result',
+        subtype: 'success',
+        result: '[{"title":"A","prompt":"do a"}]',
+        total_cost_usd: 0,
+        num_turns: 1,
+        duration_ms: 1,
+        usage: { input_tokens: 0, output_tokens: 0 },
+      }),
+      { kind: 'build' },
+    );
+    const event = result.events[0] as Extract<
+      NightcoreEvent,
+      { type: 'session-completed' }
+    >;
+    expect('proposedSubtasks' in event).toBe(false);
+  });
+
   test('maps error_max_turns to a max-turns failure', () => {
     const result = translateMessage(
       SID,

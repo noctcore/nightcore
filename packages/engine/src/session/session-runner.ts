@@ -6,6 +6,7 @@ import type {
   PermissionPolicy,
   QuestionAnswer,
   SettingSource,
+  TaskKind,
   WireImage,
 } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
@@ -171,6 +172,11 @@ export interface SessionRunnerConfig {
   /** Enable the SDK's task/todo tracking. REQUIRED for the `task_*` system
    *  messages (→ `task-updated` events) to be emitted. */
   todoFeatureEnabled: boolean;
+  /** The session's task kind (M4 preset selector). Threaded into message
+   *  translation so a `decompose` session's final result is parsed into structured
+   *  `proposedSubtasks` on the `session-completed` event. Absent ⇒ no per-kind
+   *  result post-processing (the `build` shape). */
+  kind?: TaskKind;
   /** Appended to the SDK system prompt (M4 kind preset). Omitted = no append. */
   appendSystemPrompt?: string;
   /** Tools to explicitly allow (M4 kind preset, SDK `allowedTools`). */
@@ -427,6 +433,7 @@ export class SessionRunner {
         const { events, terminal } = translateMessage(
           this.cfg.sessionId,
           message,
+          this.cfg.kind !== undefined ? { kind: this.cfg.kind } : {},
         );
         for (const event of events) this.emit(event);
         if (terminal) {

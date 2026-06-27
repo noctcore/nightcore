@@ -1,11 +1,6 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
-import {
-  resolveKindPreset,
-  SUBTASKS_CLOSE,
-  SUBTASKS_OPEN,
-  WRITE_TOOLS,
-} from './kind-presets.js';
+import { resolveKindPreset, WRITE_TOOLS } from './kind-presets.js';
 
 describe('resolveKindPreset', () => {
   test('build and research inherit every session default (no overrides)', () => {
@@ -30,13 +25,13 @@ describe('resolveKindPreset', () => {
     expect(preset.appendSystemPrompt).toMatch(/failing test/i);
   });
 
-  test('decompose is read-only and instructs the sub-task sentinel block', () => {
+  test('decompose is read-only and instructs a JSON {title, prompt} array', () => {
     const preset = resolveKindPreset('decompose');
     // Read-only analysis: write tools denied so it can only propose.
     expect(preset.disallowedTools).toEqual([...WRITE_TOOLS]);
-    // The persona must name the exact sentinels the Rust core parses.
-    expect(preset.appendSystemPrompt).toContain(SUBTASKS_OPEN);
-    expect(preset.appendSystemPrompt).toContain(SUBTASKS_CLOSE);
+    // The persona must instruct a JSON array of {title, prompt} objects — the engine
+    // parses this via extractJson into validated `proposedSubtasks`. No sentinels.
+    expect(preset.appendSystemPrompt).toMatch(/JSON array/i);
     expect(preset.appendSystemPrompt).toMatch(/"title"/);
     expect(preset.appendSystemPrompt).toMatch(/"prompt"/);
   });

@@ -34,8 +34,9 @@ import {
   renameSession,
   tagSession,
 } from '@anthropic-ai/claude-agent-sdk';
-import type { NightcoreEvent } from '@nightcore/contracts';
+import type { NightcoreEvent, TaskKind } from '@nightcore/contracts';
 import { getBoolean, getObject, getString } from '../util/field-extract.js';
+import { parseSubtasks } from './decompose.js';
 
 export type {
   AgentDefinition,
@@ -132,6 +133,7 @@ function isToolUseBlock(block: unknown): block is ToolUseBlock {
 export function translateMessage(
   sessionId: number,
   msg: SDKMessage,
+  options: TranslateOptions = {},
 ): TranslateResult {
   switch (msg.type) {
     case 'system':
@@ -141,12 +143,20 @@ export function translateMessage(
     case 'stream_event':
       return { events: translateStreamEvent(sessionId, msg) };
     case 'result':
-      return translateResult(sessionId, msg);
+      return translateResult(sessionId, msg, options);
     default:
       // Many SDK message subtypes (status, hooks, task progress, etc.) carry no
       // surface-relevant payload for the foundation — ignore them.
       return { events: [] };
   }
+}
+
+/** Per-session context the translator needs beyond the raw SDK message. */
+export interface TranslateOptions {
+  /** The session's task kind. When `'decompose'`, a successful result's final text
+   *  is parsed into `proposedSubtasks` on the emitted `session-completed` event;
+   *  for every other kind (or when absent) that field is omitted. */
+  kind?: TaskKind;
 }
 
 export interface TranslateResult {
@@ -347,6 +357,7 @@ function translateStreamEvent(
 function translateResult(
   sessionId: number,
   msg: Extract<SDKMessage, { type: 'result' }>,
+  options: TranslateOptions,
 ): TranslateResult {
   if (msg.subtype === 'success') {
     return {
@@ -364,6 +375,13 @@ function translateResult(
             cacheReadTokens: msg.usage.cache_read_input_tokens ?? 0,
             cacheCreationTokens: msg.usage.cache_creation_input_tokens ?? 0,
           },
+          // Decompose sessions carry structured sub-task proposals parsed from the
+          // final result text (mirrors the Insight findings pipeline). Always
+          // present for `decompose` (possibly `[]` on empty/malformed output);
+          // omitted entirely for every other kind.
+          ...(options.kind === 'decompose'
+            ? { proposedSubtasks: parseSubtasks(msg.result) }
+            : {}),
         },
       ],
       terminal: {

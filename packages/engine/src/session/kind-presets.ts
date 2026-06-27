@@ -71,36 +71,30 @@ const TDD_SYSTEM_PROMPT = [
 ].join(' ');
 
 /**
- * The sentinel markers the core (`verification::parse_proposed_subtasks`) scans
- * for in a decompose run's final message. Kept here next to the persona that
- * instructs them so the two halves of the contract stay in lock-step.
- */
-export const SUBTASKS_OPEN = '<<<NIGHTCORE_SUBTASKS';
-export const SUBTASKS_CLOSE = 'NIGHTCORE_SUBTASKS>>>';
-
-/**
  * The planning persona for the `decompose` kind. It investigates read-only and
- * proposes sub-tasks; the core parses the sentinel block from its final message
- * and the user converts each proposal into a board task. Write tools are denied
- * so a decompose run can never mutate the project.
+ * proposes sub-tasks; the ENGINE parses a JSON array out of its final message
+ * (via the shared `extractJson` + a `{ title, prompt }` schema → validated
+ * `proposedSubtasks` on the `session-completed` event), and the user converts each
+ * proposal into a board task. Write tools are denied so a decompose run can never
+ * mutate the project.
  */
 const DECOMPOSE_SYSTEM_PROMPT = [
   'You are a planning agent that breaks a goal into small, independently-shippable',
-  'sub-tasks. You investigate the codebase but you do NOT write code or edit files.',
-  'When you are done, end your final message with EXACTLY one machine-readable',
-  `block, each marker on its own line:\n${SUBTASKS_OPEN}\n`,
-  '[{"title": "short imperative title", "prompt": "a self-contained task description"}]\n',
-  `${SUBTASKS_CLOSE}\n`,
-  'The block must be a valid JSON array of objects, each with a string "title" and',
-  'a string "prompt". Propose between 2 and 8 sub-tasks ordered so each builds on',
-  'the ones before it. If the goal needs no decomposition, emit an empty array.',
+  'sub-tasks. You investigate the codebase read-only — you do NOT write code or edit',
+  'files. When your analysis is complete, END your final message with a JSON array of',
+  'sub-task objects, each with a string "title" (a short imperative title) and a string',
+  '"prompt" (a self-contained task description). A fenced ```json block is fine, e.g.:',
+  '\n```json\n[{"title": "...", "prompt": "..."}]\n```\n',
+  'Propose between 2 and 8 sub-tasks ordered so each builds on the ones before it. If',
+  'the goal needs no decomposition, end with an empty array.',
 ].join(' ');
 
 /**
  * Resolve a task kind to its agent preset. `build`/`research` carry no overrides —
  * they inherit every session default, so their runs are unchanged. `review` is the
  * internal verification reviewer; `tdd` adds a test-first persona; `decompose`
- * adds a read-only planning persona that emits the sub-task proposal block.
+ * adds a read-only planning persona that ends with a JSON sub-task array (parsed
+ * by the engine into `proposedSubtasks`).
  */
 export function resolveKindPreset(kind: TaskKind | undefined): KindPreset {
   switch (kind) {

@@ -275,6 +275,8 @@ pub enum NightcoreEvent {
         duration_ms: f64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         usage: Option<SessionCompletedUsage>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        proposed_subtasks: Option<Vec<SessionCompletedProposedSubtasksItem>>,
     },
     #[serde(rename_all = "camelCase")]
     SessionFailed {
@@ -888,6 +890,13 @@ pub enum ScorecardGrade {
     E,
     #[serde(rename = "F")]
     F,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionCompletedProposedSubtasksItem {
+    pub title: String,
+    pub prompt: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

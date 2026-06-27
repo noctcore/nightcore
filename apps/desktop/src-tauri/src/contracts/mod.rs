@@ -243,6 +243,9 @@ mod tests {
                 cache_read_tokens: 3,
                 cache_creation_tokens: 4,
             }),
+            // Absent for non-decompose sessions (skip_serializing_if), so the wire
+            // assertion below is unaffected.
+            proposed_subtasks: None,
         };
         let wire = serde_json::to_value(&event).expect("serializes");
         assert_eq!(

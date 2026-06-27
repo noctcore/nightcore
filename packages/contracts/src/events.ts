@@ -198,6 +198,14 @@ export const SessionCompletedEvent = z.object({
   durationMs: z.number().nonnegative().default(0),
   /** Token usage, when the SDK result reported it. */
   usage: TokenUsageSchema.optional(),
+  /** Sub-task proposals parsed from the agent's final result text. Populated ONLY
+   *  for `decompose`-kind sessions — the engine extracts a JSON array from the
+   *  result and validates each `{ title, prompt }` against this shape (dropping
+   *  blank-title items), mirroring how Insight turns a session into findings.
+   *  Absent for every other kind. */
+  proposedSubtasks: z
+    .array(z.object({ title: z.string(), prompt: z.string() }))
+    .optional(),
 });
 
 /** Session failed or the runner crashed. Degrade-not-throw: the manager always

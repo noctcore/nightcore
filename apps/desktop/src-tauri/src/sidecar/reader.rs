@@ -7,7 +7,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::m2::coordinator::Orchestrator;
 use crate::store::TaskStore;
-use crate::task::TaskStatus;
+use crate::task::{ProposedSubtask, TaskStatus};
 
 use super::permission::{
     emit_permission_prompt, emit_question_prompt, handle_plan_gate, EXIT_PLAN_MODE,
@@ -229,13 +229,33 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
                 .and_then(Value::as_str)
                 .map(|s| s.to_string());
             let cost = event.get("costUsd").and_then(Value::as_f64);
+            // Decompose §B: the engine includes a validated `proposedSubtasks` array
+            // on a `decompose` run's completion (absent for every other kind). Build
+            // the core-owned `ProposedSubtask`s here — `from_wire` MINTS each one's
+            // id/status/link and drops blank-title items — and hand them to the
+            // build-completed path. Absent ⇒ an empty Vec (non-decompose sessions and
+            // fix-build re-entries carry no proposals).
+            let proposed_subtasks: Vec<ProposedSubtask> = event
+                .get("proposedSubtasks")
+                .and_then(Value::as_array)
+                .map(|arr| arr.iter().filter_map(ProposedSubtask::from_wire).collect())
+                .unwrap_or_default();
             // The phase discriminator: a completion while `Verifying` is the
             // reviewer finishing; otherwise it is a build (or fix-build) finishing.
             let status = store.get(&task_id).map(|t| t.status);
             if status == Some(TaskStatus::Verifying) {
                 handle_review_completed(app, &store, &task_id, session_id, result, cost).await;
             } else {
-                handle_build_completed(app, &store, &task_id, session_id, result, cost).await;
+                handle_build_completed(
+                    app,
+                    &store,
+                    &task_id,
+                    session_id,
+                    result,
+                    cost,
+                    proposed_subtasks,
+                )
+                .await;
             }
         }
         "session-failed" => {

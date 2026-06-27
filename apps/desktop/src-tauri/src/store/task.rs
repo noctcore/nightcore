@@ -92,16 +92,17 @@ pub enum SubtaskStatus {
     Converted,
 }
 
-/// A sub-task a `decompose` run proposed (Decompose §B). Parsed from the agent's
-/// final message and stored on the parent [`Task`]; a convert action mints a real
-/// board [`Task`] from it (`kind = Build`, `parent_task_id` = the decompose task).
-/// Modeled on the Insight `StoredFinding` convert lifecycle.
+/// A sub-task a `decompose` run proposed (Decompose §B). Built from the structured
+/// `proposedSubtasks` array the engine emits on the `session-completed` event (see
+/// [`ProposedSubtask::from_wire`]) and stored on the parent [`Task`]; a convert
+/// action mints a real board [`Task`] from it (`kind = Build`, `parent_task_id` =
+/// the decompose task). Modeled on the Insight `StoredFinding` convert lifecycle.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(TS))]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, ts(export, export_to = "ProposedSubtask.ts"))]
 pub struct ProposedSubtask {
-    /// Stable id (uuid), assigned when the run's proposal is parsed.
+    /// Stable id (uuid), minted core-side when the proposal is built from the wire.
     pub id: String,
     /// Short imperative title — becomes the child task's title.
     pub title: String,
@@ -113,6 +114,35 @@ pub struct ProposedSubtask {
     /// The board task this proposal was converted into, if any.
     #[serde(default)]
     pub linked_task_id: Option<String>,
+}
+
+impl ProposedSubtask {
+    /// Build a proposed sub-task from one wire `{title, prompt}` JSON object — an
+    /// element of a `session-completed` event's `proposedSubtasks` array, which the
+    /// engine emits only for `decompose`-kind sessions (Decompose §B). MINTS the
+    /// core-owned fields here, never from the model's output: a fresh uuid `id`,
+    /// `Open` status, and no `linked_task_id`. `title`/`prompt` come from the wire
+    /// (`prompt` defaults to empty when absent). Returns `None` when the title is
+    /// missing or blank, so a `filter_map` over the array drops those items.
+    /// Mirrors the [`crate::store::insight::StoredFinding::from_wire`] convention.
+    pub fn from_wire(v: &serde_json::Value) -> Option<Self> {
+        let title = v.get("title").and_then(serde_json::Value::as_str)?;
+        if title.trim().is_empty() {
+            return None;
+        }
+        let prompt = v
+            .get("prompt")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        Some(Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            title: title.to_string(),
+            prompt,
+            status: SubtaskStatus::Open,
+            linked_task_id: None,
+        })
+    }
 }
 
 /// Where a task's run executes (M4.6 §B). `Main` (the default) runs in the

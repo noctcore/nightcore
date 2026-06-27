@@ -2,14 +2,15 @@
 import type { SubtaskStatus } from "./SubtaskStatus";
 
 /**
- * A sub-task a `decompose` run proposed (Decompose §B). Parsed from the agent's
- * final message and stored on the parent [`Task`]; a convert action mints a real
- * board [`Task`] from it (`kind = Build`, `parent_task_id` = the decompose task).
- * Modeled on the Insight `StoredFinding` convert lifecycle.
+ * A sub-task a `decompose` run proposed (Decompose §B). Built from the structured
+ * `proposedSubtasks` array the engine emits on the `session-completed` event (see
+ * [`ProposedSubtask::from_wire`]) and stored on the parent [`Task`]; a convert
+ * action mints a real board [`Task`] from it (`kind = Build`, `parent_task_id` =
+ * the decompose task). Modeled on the Insight `StoredFinding` convert lifecycle.
  */
 export type ProposedSubtask = { 
 /**
- * Stable id (uuid), assigned when the run's proposal is parsed.
+ * Stable id (uuid), minted core-side when the proposal is built from the wire.
  */
 id: string, 
 /**
