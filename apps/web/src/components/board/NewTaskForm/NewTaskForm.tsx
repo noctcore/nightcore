@@ -5,6 +5,7 @@ import {
   Kbd,
   Modal,
   ModelEffortPicker,
+  Spinner,
 } from '@/components/ui';
 import { KindPicker } from '../KindPicker';
 import { WorkModePicker } from '../WorkModePicker';
@@ -153,7 +154,8 @@ export function NewTaskForm({ onCreate, onClose }: NewTaskFormProps) {
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={() => void submit()} disabled={!canSubmit}>
+          <Button onClick={() => void submit()} disabled={!canSubmit} aria-busy={busy}>
+            {busy ? <Spinner /> : null}
             {busy ? 'Creating…' : 'Create task'}
           </Button>
         </div>

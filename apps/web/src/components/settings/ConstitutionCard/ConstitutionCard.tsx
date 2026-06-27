@@ -1,4 +1,4 @@
-import { BookIcon, Button, CodeBlock, RetryIcon } from '@/components/ui';
+import { BookIcon, Button, CodeBlock, RetryIcon, Spinner } from '@/components/ui';
 import { useConstitutionCard } from './ConstitutionCard.hooks';
 import {
   EMPTY_PACK_PLACEHOLDER,
@@ -118,7 +118,8 @@ export function ConstitutionCard({
           </div>
 
           {loading ? (
-            <div className="rounded-[10px] border border-border bg-white/[0.02] px-3 py-6 text-center text-[12.5px] text-muted-foreground">
+            <div className="flex items-center justify-center gap-2 rounded-[10px] border border-border bg-white/[0.02] px-3 py-6 text-[12.5px] text-muted-foreground">
+              <Spinner />
               Loading…
             </div>
           ) : mode === 'edit' ? (

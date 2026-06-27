@@ -1,4 +1,4 @@
-import { Button, InsightIcon, ModelEffortPicker } from '@/components/ui';
+import { Button, InsightIcon, ModelEffortPicker, Spinner } from '@/components/ui';
 import type { AnalysisScope } from '@/lib/bridge';
 import { ALL_CATEGORIES, CATEGORY_META, SCOPE_META } from '../insight.constants';
 import type { RunControlsProps } from './RunControls.types';
@@ -121,10 +121,11 @@ export function RunControls({ config, isStarting, onAnalyze }: RunControlsProps)
         <div className="flex flex-col gap-2">
           <Button
             disabled={!canAnalyze || isStarting}
+            aria-busy={isStarting}
             onClick={onAnalyze}
             className="w-full sm:w-auto"
           >
-            <InsightIcon size={15} />
+            {isStarting ? <Spinner size={15} /> : <InsightIcon size={15} />}
             {isStarting ? 'Starting…' : 'Analyze'}
           </Button>
           <p className="text-[12px] text-muted-foreground">

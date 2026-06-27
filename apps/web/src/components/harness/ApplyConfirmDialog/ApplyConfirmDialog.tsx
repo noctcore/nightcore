@@ -1,4 +1,4 @@
-import { Button, Kbd, Modal } from '@/components/ui';
+import { Button, Kbd, Modal, Spinner } from '@/components/ui';
 import { ARTIFACT_KIND_META, WRITE_MODE_META } from '../harness.constants';
 import type { ApplyConfirmDialogProps } from './ApplyConfirmDialog.types';
 
@@ -78,7 +78,8 @@ export function ApplyConfirmDialog({
         <Button variant="ghost" disabled={applying} onClick={onCancel}>
           Cancel
         </Button>
-        <Button data-confirm disabled={applying} onClick={onConfirm}>
+        <Button data-confirm disabled={applying} aria-busy={applying} onClick={onConfirm}>
+          {applying ? <Spinner /> : null}
           {applying ? 'Applying…' : 'Apply'}
         </Button>
       </div>

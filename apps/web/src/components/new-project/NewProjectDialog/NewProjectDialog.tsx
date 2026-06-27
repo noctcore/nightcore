@@ -6,6 +6,7 @@ import {
   IconButton,
   IconTile,
   Modal,
+  Spinner,
 } from '@/components/ui';
 import { useNewProjectDialog } from './NewProjectDialog.hooks';
 import type { NewProjectDialogProps } from './NewProjectDialog.types';
@@ -165,7 +166,8 @@ export function NewProjectDialog({
           <Button variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={create} disabled={!canCreate}>
+          <Button onClick={create} disabled={!canCreate} aria-busy={busy}>
+            {busy ? <Spinner /> : null}
             {busy ? 'Creating…' : 'Create project'}
           </Button>
         </div>
