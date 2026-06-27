@@ -12,17 +12,17 @@ name = "nightcore_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2.6", features = [] }
 
 [dependencies]
 tauri = { version = "2.11.2", features = [] }
-tauri-plugin-dialog = "2"
-tauri-plugin-notification = "2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-uuid = { version = "1", features = ["v4"] }
+tauri-plugin-dialog = "2.7"
+tauri-plugin-notification = "2.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.23", features = ["v4"] }
 async-trait = "0.1"
-tokio = { version = "1", features = [
+tokio = { version = "1.52", features = [
     "macros",
     "rt-multi-thread",
     "process",
@@ -33,13 +33,13 @@ tokio = { version = "1", features = [
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["ansi", "env-filter"] }
 tracing-appender = "0.2"
-which = "6"
+which = "6.0"
 
 [dev-dependencies]
-tempfile = "3"
+tempfile = "3.27"
 # Rust→TS contract codegen: `#[derive(TS)]` exports the bindings under
 # `apps/web/src/lib/generated/` during `cargo test` (see `contracts/ts_bindings.rs`),
 # the inverse of the zod→Rust sidecar codegen. The CI drift guard is "regenerate +
 # assert no git diff". Default features include `serde-compat` so serde attrs
 # (rename_all/skip_serializing_if/default) shape the TS exactly like the wire.
-ts-rs = "12"
+ts-rs = "12.0"

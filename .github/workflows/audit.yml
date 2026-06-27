@@ -1,0 +1,48 @@
+name: Dependency Audit
+
+# CVE / advisory gate for both ecosystems (Bun workspace + Rust crate). Runs on
+# every push to main and PR, weekly to catch newly-disclosed advisories against
+# an unchanged lockfile, and on manual dispatch. This is intentionally NOT the
+# full test gate (`bun run test:all`) — it only scans committed lockfiles for
+# known vulnerabilities.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bun-audit:
+    name: bun audit (Bun workspace)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      # --frozen-lockfile doubles as a lockfile-drift guard: it fails if bun.lock
+      # is out of sync with the manifests.
+      - run: bun install --frozen-lockfile
+      # Gate on high + critical. One known low advisory (esbuild
+      # GHSA-g7r4-m6w7-qqqr, a Windows dev-server-only file read) is below the
+      # threshold; run `bun run audit` locally to see every advisory.
+      - run: bun audit --audit-level=high
+
+  cargo-audit:
+    name: cargo audit (Rust crate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Prebuilt cargo-audit binary (cargo is preinstalled on the runner).
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      # Reads ./Cargo.lock and fetches the RustSec advisory DB. Exits non-zero on
+      # any advisory.
+      - run: cargo audit
+        working-directory: apps/desktop/src-tauri

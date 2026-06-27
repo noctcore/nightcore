@@ -1,0 +1,42 @@
+version: 2
+
+# Weekly, grouped update PRs to keep noise low (≈ one PR per ecosystem per week).
+# The Dependency Audit workflow re-runs on each Dependabot PR, so a bump that
+# introduces a CVE is caught before it lands.
+updates:
+  # JS / TS workspace (Bun). Dependabot reads the root + workspace manifests and
+  # bun.lock and updates every package it resolves.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      js-dependencies:
+        patterns: ["*"]
+    ignore:
+      # The Claude Agent SDK is deliberately patch-pinned (~0.3.190) because its
+      # pre-1.0 API drifts. Allow patch (security) bumps; never auto-minor/major.
+      - dependency-name: "@anthropic-ai/claude-agent-sdk"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
+
+  # Rust crate (Tauri desktop core).
+  - package-ecosystem: "cargo"
+    directory: "/apps/desktop/src-tauri"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      cargo-dependencies:
+        patterns: ["*"]
+
+  # The actions used by the Dependency Audit workflow itself.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns: ["*"]
