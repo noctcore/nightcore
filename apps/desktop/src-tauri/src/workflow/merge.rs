@@ -87,36 +87,48 @@ pub async fn commit_task(app: AppHandle, id: String) -> Result<(), String> {
         .map_err(|e| format!("commit task failed to run: {e}"))?
 }
 
-/// Task ids with a `commit_task` in flight. A synchronous `#[tauri::command]` runs
-/// on the main thread, so the old sync `commit_task` was implicitly serialized with
-/// itself; moving the body to the blocking pool (above) removed that. Without a lock,
-/// a double-fire would run two `claude -p` generations and two `git commit`s for one
-/// task — the second hitting an empty index and erroring. This restores single-flight
-/// per task at the backend, independent of (and defence-in-depth behind) the frontend
-/// pending guard.
+/// Per-task single-flight guards for the long, blocking workflow commands. A
+/// synchronous `#[tauri::command]` runs on the main thread and so was implicitly
+/// serialized with itself; moving these bodies to the blocking pool (so they don't
+/// freeze the UI) removed that. Without a lock a double-fire would run the whole body
+/// twice for one task — two `claude -p` generations + two `git commit`s for commit
+/// (the second hitting an empty index), or two gauntlet+merge passes for merge. Each
+/// guard restores single-flight per task at the backend, independent of (and defence-
+/// in-depth behind) the frontend pending guard.
 fn commit_in_flight() -> &'static Mutex<HashSet<String>> {
     static IN_FLIGHT: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
     IN_FLIGHT.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
-/// RAII membership in the in-flight set: inserts on acquire, removes on drop — so an
-/// early `?` return (or a panic) still releases the task. `acquire` yields `None` when
-/// a commit for `id` is already running, so the caller can refuse rather than race.
-struct CommitLease(String);
+fn merge_in_flight() -> &'static Mutex<HashSet<String>> {
+    static IN_FLIGHT: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    IN_FLIGHT.get_or_init(|| Mutex::new(HashSet::new()))
+}
 
-impl CommitLease {
-    fn acquire(id: &str) -> Option<Self> {
-        let mut set = commit_in_flight().lock().unwrap_or_else(|e| e.into_inner());
-        set.insert(id.to_string()).then(|| Self(id.to_string()))
+/// RAII membership in one of the in-flight sets: inserts on acquire, removes on drop —
+/// so an early `?` return (or a panic) still releases the task. `acquire` yields `None`
+/// when that action is already running for `id`, so the caller can refuse rather than race.
+struct TaskLease {
+    id: String,
+    set: &'static Mutex<HashSet<String>>,
+}
+
+impl TaskLease {
+    fn acquire(set: &'static Mutex<HashSet<String>>, id: &str) -> Option<Self> {
+        let mut guard = set.lock().unwrap_or_else(|e| e.into_inner());
+        guard.insert(id.to_string()).then(|| Self {
+            id: id.to_string(),
+            set,
+        })
     }
 }
 
-impl Drop for CommitLease {
+impl Drop for TaskLease {
     fn drop(&mut self) {
-        commit_in_flight()
+        self.set
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .remove(&self.0);
+            .remove(&self.id);
     }
 }
 
@@ -127,7 +139,7 @@ impl Drop for CommitLease {
 fn commit_task_blocking(app: &AppHandle, id: &str) -> Result<(), String> {
     // Single-flight per task: refuse a second concurrent commit instead of racing
     // (held for the whole stage→generate→commit body; released on every exit path).
-    let _lease = CommitLease::acquire(id)
+    let _lease = TaskLease::acquire(commit_in_flight(), id)
         .ok_or_else(|| "a commit for this task is already in progress".to_string())?;
     // `try_state` (not `state`) so an unmanaged store fails the command gracefully,
     // matching the old injected-`State` behavior rather than panicking on the pool.
@@ -166,11 +178,29 @@ fn commit_task_blocking(app: &AppHandle, id: &str) -> Result<(), String> {
 /// honor `cleanupWorktrees` (remove the worktree + delete the branch) and mark the
 /// task merged; on conflict, mark `conflict` and surface an error (never forced).
 #[tauri::command]
-pub fn merge_task(app: AppHandle, store: State<'_, TaskStore>, id: String) -> Result<(), String> {
+pub async fn merge_task(app: AppHandle, id: String) -> Result<(), String> {
+    // Like commit_task: the body runs the readiness + structure-lock gauntlets and a
+    // `git merge` — seconds of blocking work that a synchronous command would run on
+    // the main thread, freezing the WKWebView (so the "Merging…" state can't paint).
+    // Offload to the blocking pool and await.
+    tauri::async_runtime::spawn_blocking(move || merge_task_blocking(&app, &id))
+        .await
+        .map_err(|e| format!("merge task failed to run: {e}"))?
+}
+
+/// The blocking body of `merge_task`, run off the UI thread via `spawn_blocking`
+/// (see `commit_task_blocking` for the state-reacquisition rationale).
+fn merge_task_blocking(app: &AppHandle, id: &str) -> Result<(), String> {
+    // Single-flight per task: merge is the one irreversible action — never race two.
+    let _lease = TaskLease::acquire(merge_in_flight(), id)
+        .ok_or_else(|| "a merge for this task is already in progress".to_string())?;
+    let store = app
+        .try_state::<TaskStore>()
+        .ok_or_else(|| "task store unavailable".to_string())?;
     let task = store
-        .get(&id)
+        .get(id)
         .ok_or_else(|| format!("no task with id {id}"))?;
-    let project = require_project(&app)?;
+    let project = require_project(app)?;
     let project_path = std::path::PathBuf::from(&project.path);
 
     // M4.6 §A.3: a main-mode task has no `nc/<taskId>` branch to merge — its edits
@@ -187,7 +217,7 @@ pub fn merge_task(app: AppHandle, store: State<'_, TaskStore>, id: String) -> Re
                 .to_string(),
         );
     }
-    let worktree_dir = worktree::worktree_path(&project_path, &id);
+    let worktree_dir = worktree::worktree_path(&project_path, id);
     if worktree_dir.exists() {
         let result = gauntlet::run(&worktree_dir);
         if !result.passed {
@@ -211,15 +241,15 @@ pub fn merge_task(app: AppHandle, store: State<'_, TaskStore>, id: String) -> Re
     let base = worktree::base_branch(&project_path);
     tracing::info!(target: "nightcore", task_id = %id, base = %base, "merging task branch into base");
 
-    match worktree::merge(&project_path, &id, &base)? {
+    match worktree::merge(&project_path, id, &base)? {
         MergeOutcome::Merged => {
             let cleanup = app.state::<SettingsStore>().get().cleanup_worktrees;
             if cleanup {
-                let _ = worktree::remove(&project_path, &id);
-                let _ = worktree::delete_branch(&project_path, &id);
+                let _ = worktree::remove(&project_path, id);
+                let _ = worktree::delete_branch(&project_path, id);
             }
             tracing::info!(target: "nightcore", task_id = %id, base = %base, cleaned_up = cleanup, "merge succeeded");
-            let updated = store.mutate(&id, |t| {
+            let updated = store.mutate(id, |t| {
                 t.merged = true;
                 t.conflict = false;
             })?;
@@ -228,7 +258,7 @@ pub fn merge_task(app: AppHandle, store: State<'_, TaskStore>, id: String) -> Re
         }
         MergeOutcome::Conflict => {
             tracing::warn!(target: "nightcore", task_id = %id, base = %base, "merge hit a conflict; left clean (not forced)");
-            let updated = store.mutate(&id, |t| {
+            let updated = store.mutate(id, |t| {
                 t.conflict = true;
                 t.error = Some(format!(
                     "merge conflict integrating {} into {base}",
@@ -380,22 +410,28 @@ mod tests {
     }
 
     #[test]
-    fn commit_lease_is_single_flight_per_task_and_releases_on_drop() {
+    fn task_lease_is_single_flight_per_set_and_releases_on_drop() {
         // Pins the invariant that replaced the main-thread serialization lost when
-        // `commit_task` moved to the blocking pool: at most one commit in flight per id.
-        let first = CommitLease::acquire("task-x").expect("first acquire holds the task");
+        // commit_task / merge_task moved to the blocking pool: at most one in-flight
+        // run per (action, id), with the per-action sets independent.
+        let first =
+            TaskLease::acquire(commit_in_flight(), "task-x").expect("first acquire holds the task");
         assert!(
-            CommitLease::acquire("task-x").is_none(),
+            TaskLease::acquire(commit_in_flight(), "task-x").is_none(),
             "a second concurrent commit on the same task is refused"
         );
         assert!(
-            CommitLease::acquire("task-y").is_some(),
+            TaskLease::acquire(commit_in_flight(), "task-y").is_some(),
             "a different task is unaffected"
+        );
+        assert!(
+            TaskLease::acquire(merge_in_flight(), "task-x").is_some(),
+            "a different action (merge) on the same task is independent"
         );
 
         drop(first);
         assert!(
-            CommitLease::acquire("task-x").is_some(),
+            TaskLease::acquire(commit_in_flight(), "task-x").is_some(),
             "dropping the lease (incl. on an early `?` return) frees the task"
         );
     }
