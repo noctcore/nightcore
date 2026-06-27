@@ -8,6 +8,7 @@ import {
   type QuestionAnswer,
   type QuestionItem,
 } from '@nightcore/contracts';
+import type { NewAttachmentPayload } from './attachments';
 
 export type { SessionStatus } from '@nightcore/contracts';
 
@@ -21,6 +22,7 @@ export type { SessionStatus } from '@nightcore/contracts';
 // mismatch. The runtime invoke/listen wrappers + zod re-validation below are
 // UNCHANGED; only the type DECLARATIONS now come from the generated bindings.
 export type { Task } from './generated/Task';
+export type { TaskAttachment } from './generated/TaskAttachment';
 export type { TaskPatch } from './generated/TaskPatch';
 export type { TaskStatus } from './generated/TaskStatus';
 export type { RunMode } from './generated/RunMode';
@@ -254,6 +256,8 @@ export interface CreateTaskOptions {
   maxTurns?: number | null;
   /** SDK-guardrail max-budget-USD override (`null` = inherit). */
   maxBudgetUsd?: number | null;
+  /** Image attachments to persist with the task (base64 payloads). Defaults to none. */
+  attachments?: NewAttachmentPayload[];
 }
 
 /** Create a new `backlog` task. The `kind` (M4) defaults to `build` and the
@@ -277,6 +281,7 @@ export async function createTask(
     effort: options.effort ?? null,
     maxTurns: options.maxTurns ?? null,
     maxBudgetUsd: options.maxBudgetUsd ?? null,
+    attachments: options.attachments ?? [],
   });
 }
 
@@ -285,9 +290,29 @@ export async function updateTask(id: string, patch: TaskPatch): Promise<Task> {
   return invoke<Task>('update_task', { id, patch });
 }
 
-/** Delete a task. */
+/** Delete a task (its attachment files are removed server-side). */
 export async function deleteTask(id: string): Promise<void> {
   await invoke('delete_task', { id });
+}
+
+/** Persist new image attachments on an existing (pre-run) task, returning the
+ *  updated task. The server enforces the per-task limit + validates each image. */
+export async function addTaskAttachments(
+  id: string,
+  attachments: NewAttachmentPayload[],
+): Promise<Task> {
+  return invoke<Task>('add_task_attachments', { id, attachments });
+}
+
+/** Remove one image attachment by id, returning the updated task. */
+export async function removeTaskAttachment(id: string, attachmentId: string): Promise<Task> {
+  return invoke<Task>('remove_task_attachment', { id, attachmentId });
+}
+
+/** Read one attachment's bytes as base64 (no `data:` prefix) for display. Returns
+ *  `''` outside Tauri (browser preview). */
+export async function readTaskAttachment(id: string, attachmentId: string): Promise<string> {
+  return tauriInvoke<string>('read_task_attachment', { id, attachmentId }, '');
 }
 
 /** Ids of tasks blocked on an unfinished dependency (fail-closed). Drives the

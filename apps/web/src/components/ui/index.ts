@@ -9,6 +9,8 @@ export type { ConfirmDialogProps } from './ConfirmDialog';
 export { EmptyState } from './EmptyState';
 export { IconButton } from './IconButton';
 export { IconTile } from './IconTile';
+export { ImageDropzone } from './ImageDropzone';
+export type { ImageDropzoneItem, ImageDropzoneProps } from './ImageDropzone';
 export { Kbd } from './Kbd';
 export { Markdown, renderMarkdown } from './Markdown';
 export type { MarkdownProps } from './Markdown';

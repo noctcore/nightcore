@@ -15,6 +15,7 @@ import { InteractionDock } from '../InteractionDock';
 import { ReviewPanel } from '../ReviewPanel';
 import { GauntletResults } from '../GauntletResults';
 import { ActivityLog } from '../ActivityLog';
+import { TaskAttachments } from '../TaskAttachments';
 import { GroupLabel, HistoryCard, SessionCard } from '../SessionCard';
 import { canMerge, deriveTaskDetailView } from './TaskDetail.hooks';
 import type { TaskDetailProps } from './TaskDetail.types';
@@ -150,6 +151,9 @@ export function TaskDetail({
                 {task.description}
               </Markdown>
             </section>
+          )}
+          {(task.attachments.length > 0 || kindEditable) && (
+            <TaskAttachments task={task} editable={kindEditable} />
           )}
           <SessionCard task={task} kindEditable={kindEditable} actions={actions} />
         </div>

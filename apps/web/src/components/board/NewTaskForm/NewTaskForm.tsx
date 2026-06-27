@@ -2,11 +2,13 @@ import {
   Button,
   CloseIcon,
   IconButton,
+  ImageDropzone,
   Kbd,
   Modal,
   ModelEffortPicker,
   Spinner,
 } from '@/components/ui';
+import { imageDataUrl, MAX_IMAGES_PER_TASK } from '@/lib/attachments';
 import { KindPicker } from '../KindPicker';
 import { WorkModePicker } from '../WorkModePicker';
 import { PermissionModePicker } from '../PermissionModePicker';
@@ -30,6 +32,8 @@ export function NewTaskForm({ onCreate, onClose }: NewTaskFormProps) {
     effort,
     maxTurns,
     maxBudget,
+    attachments,
+    attachError,
     busy,
     error,
     canSubmit,
@@ -42,8 +46,11 @@ export function NewTaskForm({ onCreate, onClose }: NewTaskFormProps) {
     setEffort,
     setMaxTurns,
     setMaxBudget,
+    addFiles,
+    removeAttachment,
     submit,
     onDescKeyDown,
+    onDescPaste,
   } = useNewTaskForm({ onCreate, onClose });
 
   return (
@@ -83,9 +90,25 @@ export function NewTaskForm({ onCreate, onClose }: NewTaskFormProps) {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               onKeyDown={onDescKeyDown}
+              onPaste={onDescPaste}
               rows={4}
               placeholder="Describe what you want built…"
               className={`resize-none ${INPUT_CLASS}`}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className={LABEL_CLASS}>Images</span>
+            <ImageDropzone
+              items={attachments.map((a) => ({
+                id: a.tempId,
+                filename: a.filename,
+                previewUrl: imageDataUrl(a.format, a.data),
+                size: a.size,
+              }))}
+              onAddFiles={(files) => void addFiles(files)}
+              onRemove={removeAttachment}
+              canAddMore={attachments.length < MAX_IMAGES_PER_TASK}
+              error={attachError}
             />
           </div>
           <div className="flex flex-col gap-1.5">

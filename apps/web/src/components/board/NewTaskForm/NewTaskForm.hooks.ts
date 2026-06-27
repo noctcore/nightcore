@@ -1,5 +1,12 @@
 import { useCallback, useState } from 'react';
 import type { PermissionMode, RunMode, TaskKind } from '@/lib/bridge';
+import {
+  imageFilesFrom,
+  MAX_IMAGES_PER_TASK,
+  readImageFiles,
+  toPayload,
+  type PendingAttachment,
+} from '@/lib/attachments';
 import type { NewTaskFormProps } from './NewTaskForm.types';
 
 /** Parse a positive-integer ceiling from free text; `null` for blank/invalid
@@ -31,6 +38,10 @@ export interface NewTaskFormState {
   maxTurns: string;
   /** Raw text of the optional max-budget-USD ceiling (empty = inherit). */
   maxBudget: string;
+  /** Pending image attachments (in-memory base64 until the task is created). */
+  attachments: PendingAttachment[];
+  /** A validation error from the last add attempt (oversize / wrong type / limit). */
+  attachError: string | null;
   busy: boolean;
   /** In-dialog error surfaced when `createTask` fails — keeps the dialog open. */
   error: string | null;
@@ -44,9 +55,16 @@ export interface NewTaskFormState {
   setEffort: (value: string | null) => void;
   setMaxTurns: (value: string) => void;
   setMaxBudget: (value: string) => void;
+  /** Validate + read image files into pending attachments (drop/paste/picker). */
+  addFiles: (files: File[]) => void;
+  /** Remove a pending attachment by its temp id. */
+  removeAttachment: (tempId: string) => void;
   submit: () => Promise<void>;
   /** ⌘↵ / Ctrl+↵ in the description submits (Esc-to-close lives in the Modal). */
   onDescKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  /** Paste-to-attach: image clipboard items become attachments; non-image paste is
+   *  left alone so pasting text into the description still works. */
+  onDescPaste: (event: React.ClipboardEvent<HTMLTextAreaElement>) => void;
 }
 
 /** State, submit, and keyboard handling for the create-task dialog. */
@@ -63,10 +81,41 @@ export function useNewTaskForm({
   const [effort, setEffort] = useState<string | null>(null);
   const [maxTurns, setMaxTurns] = useState('');
   const [maxBudget, setMaxBudget] = useState('');
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [attachError, setAttachError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const canSubmit = title.trim().length > 0 && !busy;
+
+  const addFiles = useCallback(
+    async (files: File[]) => {
+      setAttachError(null);
+      const { accepted, errors } = await readImageFiles(
+        files,
+        MAX_IMAGES_PER_TASK - attachments.length,
+      );
+      if (accepted.length > 0) setAttachments((prev) => [...prev, ...accepted]);
+      if (errors.length > 0) setAttachError(errors.join(' '));
+    },
+    [attachments],
+  );
+
+  const removeAttachment = useCallback((tempId: string) => {
+    setAttachError(null);
+    setAttachments((prev) => prev.filter((a) => a.tempId !== tempId));
+  }, []);
+
+  const onDescPaste = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const files = imageFilesFrom(e.clipboardData);
+      if (files.length > 0) {
+        e.preventDefault();
+        void addFiles(files);
+      }
+    },
+    [addFiles],
+  );
 
   const submit = useCallback(async () => {
     if (title.trim().length === 0 || busy) return;
@@ -80,6 +129,7 @@ export function useNewTaskForm({
         // Empty/blank/invalid input ⇒ inherit (omit the override → null at the seam).
         maxTurns: parsePositiveInt(maxTurns),
         maxBudgetUsd: parseNonNegativeFloat(maxBudget),
+        attachments: attachments.map(toPayload),
       });
       onClose();
     } catch (err) {
@@ -99,6 +149,7 @@ export function useNewTaskForm({
     effort,
     maxTurns,
     maxBudget,
+    attachments,
     busy,
     onCreate,
     onClose,
@@ -125,6 +176,8 @@ export function useNewTaskForm({
     effort,
     maxTurns,
     maxBudget,
+    attachments,
+    attachError,
     busy,
     error,
     canSubmit,
@@ -137,7 +190,10 @@ export function useNewTaskForm({
     setEffort,
     setMaxTurns,
     setMaxBudget,
+    addFiles,
+    removeAttachment,
     submit,
     onDescKeyDown,
+    onDescPaste,
   };
 }

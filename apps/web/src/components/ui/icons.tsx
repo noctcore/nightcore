@@ -56,6 +56,10 @@ export {
   Package as DepsIcon,
   Palette as DesignIcon,
   Gauge as PerfIcon,
+  Brain as BrainIcon,
+  Image as ImageIcon,
+  Upload as UploadIcon,
+  Paperclip as PaperclipIcon,
 } from 'lucide-react';
 
 /** The GitHub brand mark — removed from lucide 1.x, so we ship the design's
