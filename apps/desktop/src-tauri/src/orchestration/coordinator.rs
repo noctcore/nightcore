@@ -27,11 +27,11 @@ use tokio::sync::Notify;
 #[cfg(test)]
 use ts_rs::TS;
 
-use crate::m2::breaker::CircuitBreaker;
-use crate::m2::deps::eligible_tasks;
-use crate::m2::provider::SidecarProvider;
-use crate::m2::slots::SlotManager;
-use crate::m2::worktree;
+use crate::orchestration::breaker::CircuitBreaker;
+use crate::orchestration::deps::eligible_tasks;
+use crate::orchestration::provider::SidecarProvider;
+use crate::orchestration::slots::SlotManager;
+use crate::orchestration::worktree;
 use crate::project::ProjectStore;
 use crate::settings::SettingsStore;
 use crate::store::TaskStore;
@@ -172,7 +172,7 @@ impl Orchestrator {
     /// then emit `session-failed (aborted)`, which releases their slots via the
     /// reader. Also aborts any attached driver task as bookkeeping.
     pub async fn interrupt_all(&self) {
-        use crate::m2::provider::Provider;
+        use crate::orchestration::provider::Provider;
         for sid in self.provider.live_sessions() {
             // Fail-closed: deny any parked permission request for this run before
             // interrupting, so a session waiting on approval doesn't hang.
@@ -194,7 +194,7 @@ impl Orchestrator {
     /// id is best-effort — once the run is torn down the binding may already be
     /// gone, in which case the engine's own teardown (`failAllPending`) denies it.
     pub async fn deny_parked_permissions(&self, task_id: &str) {
-        use crate::m2::provider::{PermissionDecision, Provider};
+        use crate::orchestration::provider::{PermissionDecision, Provider};
         let request_ids = self.permissions.drain_task(task_id);
         if request_ids.is_empty() {
             return;
@@ -442,7 +442,7 @@ pub(crate) async fn submit_run(
         "launching task"
     );
 
-    use crate::m2::provider::Provider;
+    use crate::orchestration::provider::Provider;
     let permission_mode =
         crate::sidecar::resolve_permission_mode(app, task.permission_mode.as_deref());
     // SDK-guardrails: forward the per-task autonomy ceilings and, when a prior SDK
@@ -786,7 +786,7 @@ type SharedNotify = Arc<Notify>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::m2::deps::eligible_tasks;
+    use crate::orchestration::deps::eligible_tasks;
     use crate::task::Task;
 
     fn ready(id: &str, created_at: u64) -> Task {

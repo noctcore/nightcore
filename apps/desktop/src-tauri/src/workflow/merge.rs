@@ -13,7 +13,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use super::commit_msg;
 use crate::gauntlet;
 use crate::gauntlet_project;
-use crate::m2::worktree::{self, MergeOutcome};
+use crate::orchestration::worktree::{self, MergeOutcome};
 use crate::project::{Project, ProjectStore};
 use crate::settings::SettingsStore;
 use crate::store::TaskStore;
@@ -324,7 +324,7 @@ pub fn reject_review(
 pub async fn rerun_verification(
     app: AppHandle,
     store: State<'_, TaskStore>,
-    orch: State<'_, crate::m2::coordinator::Orchestrator>,
+    orch: State<'_, crate::orchestration::coordinator::Orchestrator>,
     id: String,
 ) -> Result<(), String> {
     let task = store

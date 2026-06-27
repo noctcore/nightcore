@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::contracts::{AnalysisScope, EffortLevel, FindingCategory, SurfaceCommand};
-use crate::m2::coordinator::Orchestrator;
+use crate::orchestration::coordinator::Orchestrator;
 use crate::project::ProjectStore;
 use crate::store::insight::{InsightRun, InsightStore, InsightUsage, StoredFinding};
 use crate::store::TaskStore;

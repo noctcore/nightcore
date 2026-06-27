@@ -14,7 +14,7 @@
 
 mod contracts;
 mod infra;
-mod m2;
+mod orchestration;
 mod sidecar;
 mod store;
 mod sync;
@@ -28,7 +28,7 @@ pub(crate) use infra::{logging, platform};
 pub(crate) use store::{project, settings, task, transcript};
 pub(crate) use workflow::{gauntlet, gauntlet_project, kind, merge, plan_approval};
 
-use m2::coordinator::Orchestrator;
+use orchestration::coordinator::Orchestrator;
 use project::ProjectStore;
 use settings::SettingsStore;
 use store::{workspace_root, TaskStore};
@@ -98,7 +98,7 @@ pub fn run() {
             // Reap runs left `running` by a dead process so the UI doesn't spin.
             scorecard_store.reap_running();
 
-            // The M2 orchestrator (slot manager + circuit breaker + provider +
+            // The orchestrator (slot manager + circuit breaker + provider +
             // auto-loop) starts at the persisted concurrency. The provider spawns
             // `bun run apps/sidecar/src/index.ts` in the workspace root on first use.
             let settings_store = SettingsStore::load_from(config_dir);
@@ -120,11 +120,11 @@ pub fn run() {
 
             // Startup reconciliation: prune orphaned worktrees from the active
             // project whose tasks no longer exist (best-effort, never blocks).
-            m2::coordinator::reconcile_worktrees(&app.handle().clone());
+            orchestration::coordinator::reconcile_worktrees(&app.handle().clone());
             // Then recover crash-stranded tasks: an `InProgress`/`Verifying` task
             // whose run died with the process is re-queued (or re-reviewed) so the
             // auto-loop can pick it up again instead of stranding it forever.
-            m2::coordinator::reconcile_tasks(&app.handle().clone());
+            orchestration::coordinator::reconcile_tasks(&app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -197,11 +197,11 @@ pub fn run() {
             store::context::get_context_pack,
             store::context::set_context_pack,
             store::context::regenerate_context_pack,
-            m2::coordinator::start_auto_loop,
-            m2::coordinator::stop_auto_loop,
-            m2::coordinator::resume_auto_loop,
-            m2::coordinator::set_max_concurrency_cmd,
-            m2::coordinator::list_worktrees,
+            orchestration::coordinator::start_auto_loop,
+            orchestration::coordinator::stop_auto_loop,
+            orchestration::coordinator::resume_auto_loop,
+            orchestration::coordinator::set_max_concurrency_cmd,
+            orchestration::coordinator::list_worktrees,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Nightcore application");

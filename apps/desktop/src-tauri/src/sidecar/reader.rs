@@ -5,7 +5,7 @@
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::m2::coordinator::Orchestrator;
+use crate::orchestration::coordinator::Orchestrator;
 use crate::store::TaskStore;
 use crate::task::{ProposedSubtask, TaskStatus};
 
@@ -105,7 +105,7 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
     // event: it carries a `requestId` (no `sessionId`) and must be routed back to
     // the awaiting `Provider::query` call, NOT forwarded to the board or persisted.
     if event_type == "query-result" {
-        use crate::m2::provider::Provider;
+        use crate::orchestration::provider::Provider;
         // Own the request id before moving `event` into the reply (a borrow can't
         // outlive the move).
         let request_id = event

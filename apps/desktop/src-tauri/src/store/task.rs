@@ -912,10 +912,10 @@ fn cleanup_task_worktree(app: &AppHandle, id: &str, task: Option<&Task>) {
         return;
     };
     let project_path = std::path::PathBuf::from(&project.path);
-    if let Err(e) = crate::m2::worktree::remove(&project_path, id) {
+    if let Err(e) = crate::orchestration::worktree::remove(&project_path, id) {
         tracing::warn!(target: "nightcore", task_id = id, error = %e, "delete: worktree remove failed");
     }
-    if let Err(e) = crate::m2::worktree::delete_branch(&project_path, id) {
+    if let Err(e) = crate::orchestration::worktree::delete_branch(&project_path, id) {
         tracing::warn!(target: "nightcore", task_id = id, error = %e, "delete: branch delete failed");
     }
 }
@@ -931,10 +931,10 @@ fn parse_status(raw: &str) -> Result<TaskStatus, String> {
 /// The ids of tasks that are launchable in status (`backlog`/`ready`) but whose
 /// dependencies are not all `Done`. Read-only; the board surfaces these as the
 /// "blocked" badge and disables their Run action. Fail-closed: a vanished or
-/// failed dependency reads as blocked (mirrors [`crate::m2::deps::deps_satisfied`]).
+/// failed dependency reads as blocked (mirrors [`crate::orchestration::deps::deps_satisfied`]).
 #[tauri::command]
 pub fn blocked_task_ids(store: State<'_, TaskStore>) -> Result<Vec<String>, String> {
-    use crate::m2::deps::{index_by_id, is_blocked};
+    use crate::orchestration::deps::{index_by_id, is_blocked};
     let tasks = store.list();
     let by_id = index_by_id(&tasks);
     Ok(tasks
@@ -1714,7 +1714,7 @@ mod tests {
 
     #[test]
     fn blocked_ids_includes_blocked_and_excludes_satisfied_and_running() {
-        use crate::m2::deps::{index_by_id, is_blocked};
+        use crate::orchestration::deps::{index_by_id, is_blocked};
         let (store, _tmp) = temp_store();
 
         let done_dep = seed(&store, TaskStatus::Done, &[]);

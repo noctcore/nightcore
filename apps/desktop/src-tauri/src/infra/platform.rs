@@ -12,8 +12,8 @@
 //! launch the resolved [`Program`] via
 //! `Command::new(prog.program).args(prog.prefix_args)…`, or via the [`std_command`]
 //! convenience for the synchronous spawn sites. Consumers today: the sidecar `bun`
-//! spawn (`m2/provider.rs`, async tokio), the readiness gauntlet's `bun`/`npm`/`cargo`
-//! steps (`gauntlet.rs`), and the `git` calls in `m2/worktree.rs` + `project.rs`.
+//! spawn (`orchestration/provider.rs`, async tokio), the readiness gauntlet's `bun`/`npm`/`cargo`
+//! steps (`gauntlet.rs`), and the `git` calls in `orchestration/worktree.rs` + `project.rs`.
 
 use std::path::PathBuf;
 

@@ -3,7 +3,7 @@
 //! A task is eligible to run only when every id in its `dependencies` names a
 //! task that is `Done`. This is a pure function — no I/O, no Tauri — so it ships
 //! fully implemented and unit-tested as the cheapest Tier-1 port. The auto-loop
-//! coordinator (see [`crate::m2::coordinator`]) calls `eligible_tasks` per tick to
+//! coordinator (see [`crate::orchestration::coordinator`]) calls `eligible_tasks` per tick to
 //! filter the eligible set; ordered execution falls out naturally as deps complete.
 
 use std::collections::HashMap;

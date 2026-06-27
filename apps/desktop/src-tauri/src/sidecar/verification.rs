@@ -9,9 +9,9 @@ use tauri::{AppHandle, Manager};
 
 use crate::gauntlet_project::StructureLockResult;
 use crate::kind;
-use crate::m2::coordinator::Orchestrator;
-use crate::m2::provider::Provider;
-use crate::m2::worktree;
+use crate::orchestration::coordinator::Orchestrator;
+use crate::orchestration::provider::Provider;
+use crate::orchestration::worktree;
 use crate::project::ProjectStore;
 use crate::store::TaskStore;
 use crate::task::{ProposedSubtask, SubtaskStatus, Task, TaskKind, TaskStatus};
@@ -426,7 +426,7 @@ async fn dispatch_reviewer(
             // SDK-guardrails: a reviewer is a fresh, peer sub-run — it inherits the
             // task's ceilings but is NEVER resumed (it has its own prompt/identity).
             // It runs in the same project, so it injects the same enabled MCP servers.
-            crate::m2::provider::Guardrails {
+            crate::orchestration::provider::Guardrails {
                 max_turns: task.max_turns,
                 max_budget_usd: task.max_budget_usd,
                 resume_session_id: None,
@@ -472,7 +472,7 @@ async fn dispatch_fix(
             // SDK-guardrails: a fix-build is a fresh sub-run over the same worktree
             // with a new prompt — inherit the ceilings but never resume. Injects the
             // same project's enabled MCP servers.
-            crate::m2::provider::Guardrails {
+            crate::orchestration::provider::Guardrails {
                 max_turns: task.max_turns,
                 max_budget_usd: task.max_budget_usd,
                 resume_session_id: None,

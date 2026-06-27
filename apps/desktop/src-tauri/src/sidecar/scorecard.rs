@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::contracts::{EffortLevel, ScorecardDimension, SurfaceCommand};
-use crate::m2::coordinator::Orchestrator;
+use crate::orchestration::coordinator::Orchestrator;
 use crate::project::ProjectStore;
 use crate::store::scorecard::{ScorecardRun, ScorecardStore, StoredReading};
 use crate::store::insight::InsightUsage;

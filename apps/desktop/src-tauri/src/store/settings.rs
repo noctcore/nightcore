@@ -33,7 +33,7 @@ pub struct Settings {
     pub default_model: String,
     pub default_effort: String,
     /// 1..=6. The M2 auto-loop enforces it as the slot-pool cap (a global change
-    /// resizes the live pool via [`crate::m2::coordinator::set_max_concurrency`]).
+    /// resizes the live pool via [`crate::orchestration::coordinator::set_max_concurrency`]).
     pub max_concurrency: u8,
     /// "bypass" | "auto-accept" | "ask" | "plan" (M4.7 §A1). Maps to the engine's
     /// SDK `permissionMode` via [`sdk_permission_mode`]. Default is `bypass` (an
@@ -727,7 +727,7 @@ pub fn update_settings(
         .flatten();
     let merged = store.update(patch)?;
     if let Some(n) = resize {
-        crate::m2::coordinator::set_max_concurrency(&app, n.max(1) as usize);
+        crate::orchestration::coordinator::set_max_concurrency(&app, n.max(1) as usize);
     }
     Ok(merged)
 }

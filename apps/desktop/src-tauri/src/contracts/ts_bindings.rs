@@ -34,8 +34,8 @@ use ts_rs::TS;
 fn export_all_bindings() {
     use crate::gauntlet::{GauntletResult, GauntletStep, StepStatus};
     use crate::gauntlet_project::{StructureLockCheck, StructureLockResult};
-    use crate::m2::coordinator::LoopSnapshot;
-    use crate::m2::worktree::WorktreeStatus;
+    use crate::orchestration::coordinator::LoopSnapshot;
+    use crate::orchestration::worktree::WorktreeStatus;
     use crate::project::Project;
     use crate::settings::{
         AppInfo, McpServerEntry, McpServerTransport, Settings, SettingsOverride, SettingsPatch,

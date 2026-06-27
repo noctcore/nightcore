@@ -329,7 +329,7 @@ pub fn run_gauntlet(
     let Some(project) = app.state::<crate::project::ProjectStore>().active() else {
         return Ok(empty_pass());
     };
-    let dir = crate::m2::worktree::worktree_path(&std::path::PathBuf::from(&project.path), &id);
+    let dir = crate::orchestration::worktree::worktree_path(&std::path::PathBuf::from(&project.path), &id);
     if !dir.exists() {
         return Ok(empty_pass());
     }
