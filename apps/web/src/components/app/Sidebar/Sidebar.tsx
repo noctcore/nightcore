@@ -31,6 +31,7 @@ export function Sidebar({
   onToggleCollapsed,
   onToggleSwitcher,
   onNavigate,
+  onGotoProjects,
   onPickProject,
   onNewProject,
 }: SidebarProps) {
@@ -39,16 +40,24 @@ export function Sidebar({
       className="flex flex-col border-r border-border bg-sidebar transition-[width] duration-150"
       style={{ width: collapsed ? 66 : 244, flex: 'none' }}
     >
-      {/* brand */}
+      {/* brand — clicking the logo returns to the full-screen Projects view */}
       <div
         className={`flex items-center gap-2.5 px-4 py-3.5 ${collapsed ? 'flex-col' : ''}`}
       >
-        <BrandMark size={30} />
-        {!collapsed && (
-          <span className="flex-1 text-lg font-semibold tracking-tight">
-            nightcore<span className="text-primary">.</span>
-          </span>
-        )}
+        <button
+          type="button"
+          onClick={onGotoProjects}
+          title="Projects"
+          aria-label="Back to Projects"
+          className={`flex min-w-0 items-center gap-2.5 rounded-lg text-left transition-opacity hover:opacity-80 ${collapsed ? 'flex-col' : 'flex-1'}`}
+        >
+          <BrandMark size={30} />
+          {!collapsed && (
+            <span className="flex-1 text-lg font-semibold tracking-tight">
+              nightcore<span className="text-primary">.</span>
+            </span>
+          )}
+        </button>
         <IconButton label="Toggle sidebar" onClick={onToggleCollapsed}>
           {collapsed ? <ChevronRightIcon size={16} /> : <ChevronLeftIcon size={16} />}
         </IconButton>

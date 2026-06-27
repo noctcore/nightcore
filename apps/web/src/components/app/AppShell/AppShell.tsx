@@ -9,7 +9,6 @@ import {
   FolderIcon,
   GearIcon,
   InsightIcon,
-  LayersIcon,
   PerfIcon,
   VerifiedIcon,
 } from '@/components/ui';
@@ -55,8 +54,10 @@ function RouteFallback() {
   );
 }
 
+// Projects is no longer a workspace nav item — the sidebar brand/logo is its entry
+// point (and the shell shows it full-screen, without the sidebar). The remaining
+// items route within an open project.
 const NAV: NavItem[] = [
-  { view: 'projects', label: 'Projects', hint: 'P', icon: <LayersIcon size={16} /> },
   { view: 'board', label: 'Kanban Board', hint: 'K', icon: <BoardIcon size={16} /> },
   { view: 'insight', label: 'Insight', hint: 'I', icon: <InsightIcon size={16} /> },
   { view: 'scorecard', label: 'Scorecard', hint: 'R', icon: <PerfIcon size={16} /> },
@@ -79,40 +80,82 @@ export function AppShell() {
 
   const runningProjectIds = anyRunning && active !== null ? [active.id] : [];
 
-  if (showSplash) {
+  // Hold the splash until the registry has loaded — in EVERY environment, not just
+  // Tauri — so the first real paint already knows whether to land on full-screen
+  // Projects or a restored board. Gating only on Tauri let the browser preview paint
+  // with `active` still null, flashing Projects before the board. (useProjectRegistry
+  // caps the load with a timeout so a wedged backend can't hang the splash forever.)
+  if (showSplash || !registry.loaded) {
     return <Splash bootLine="loading workspace…" />;
   }
 
-  return (
-    <div className="flex h-full w-full overflow-hidden bg-background text-foreground">
-      <Sidebar
+  // The Projects surface is full-screen and chrome-free: shown when explicitly
+  // navigated to (the brand/logo) OR whenever there's no active project to frame a
+  // board around. Opening a project (or having one restored) reveals the sidebar.
+  const showProjects = view === 'projects' || active === null;
+
+  const browserPreviewBanner = !isTauri && (
+    <p className="border-b border-warning/40 bg-warning/[0.12] px-5 py-2 text-sm text-warning">
+      Browser preview — run <code className="font-mono">bun run desktop</code> to
+      drive the sidecar. Commands no-op here with mock data.
+    </p>
+  );
+
+  const projectsSurface = (
+    <Suspense fallback={<RouteFallback />}>
+      <ProjectsView
         projects={projects}
-        active={active}
-        view={view}
-        nav={NAV}
-        collapsed={collapsed}
-        switcherOpen={switcherOpen}
-        runningCount={anyRunning ? 1 : 0}
-        version="v0.1.0"
-        onToggleCollapsed={routing.toggleCollapsed}
-        onToggleSwitcher={routing.toggleSwitcher}
-        onNavigate={routing.goto}
-        onPickProject={registry.activate}
+        activeId={active?.id ?? null}
+        activeTasks={tasks}
+        runningProjectIds={runningProjectIds}
+        onOpen={(id) => {
+          registry.activate(id);
+          routing.goto('board');
+        }}
+        onRename={registry.rename}
+        onDelete={registry.remove}
         onNewProject={routing.openNewProject}
       />
+    </Suspense>
+  );
 
-      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        {!isTauri && (
-          <p className="border-b border-warning/40 bg-warning/[0.12] px-5 py-2 text-sm text-warning">
-            Browser preview — run{' '}
-            <code className="font-mono">bun run desktop</code> to drive the sidecar.
-            Commands no-op here with mock data.
-          </p>
-        )}
+  return (
+    <>
+      {showProjects ? (
+        <div className="flex h-full w-full flex-col overflow-hidden bg-background text-foreground">
+          {browserPreviewBanner}
+          <div className="min-h-0 flex-1">{projectsSurface}</div>
+        </div>
+      ) : (
+        <div className="flex h-full w-full overflow-hidden bg-background text-foreground">
+          <Sidebar
+            projects={projects}
+            active={active}
+            view={view}
+            nav={NAV}
+            collapsed={collapsed}
+            switcherOpen={switcherOpen}
+            runningCount={anyRunning ? 1 : 0}
+            version="v0.1.0"
+            onToggleCollapsed={routing.toggleCollapsed}
+            onToggleSwitcher={routing.toggleSwitcher}
+            onNavigate={routing.goto}
+            onGotoProjects={() => routing.goto('projects')}
+            onPickProject={registry.activate}
+            onNewProject={routing.openNewProject}
+          />
 
-        {view === 'board' && (
+          <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+            {browserPreviewBanner}
+
+            {view === 'board' && (
           <div className="flex min-h-0 flex-1">
             <div className="flex min-w-0 flex-1 flex-col">
+              {/* `active === null` is unreachable here — `showProjects` routes the
+                  no-active-project case to the full-screen Projects surface above, so
+                  this branch only renders with a non-null project. It stays as the
+                  type-narrowing guard for `active.name`/`.path`/`.branch` below (and a
+                  defensive fallback), not as a real UX path. */}
               {active === null ? (
                 <EmptyState
                   icon={<FolderIcon size={32} />}
@@ -230,24 +273,6 @@ export function AppShell() {
           </Suspense>
         )}
 
-        {view === 'projects' && (
-          <Suspense fallback={<RouteFallback />}>
-          <ProjectsView
-            projects={projects}
-            activeId={active?.id ?? null}
-            activeTasks={tasks}
-            runningProjectIds={runningProjectIds}
-            onOpen={(id) => {
-              registry.activate(id);
-              routing.goto('board');
-            }}
-            onRename={registry.rename}
-            onDelete={registry.remove}
-            onNewProject={routing.openNewProject}
-          />
-          </Suspense>
-        )}
-
         {view === 'settings' && settings.settings !== null && (
           <Suspense fallback={<RouteFallback />}>
           <SettingsView
@@ -259,7 +284,9 @@ export function AppShell() {
           />
           </Suspense>
         )}
-      </main>
+          </main>
+        </div>
+      )}
 
       {routing.newTaskOpen && (
         <NewTaskForm onCreate={board.handleCreate} onClose={routing.closeNewTask} />
@@ -304,6 +331,6 @@ export function AppShell() {
           onCancel={confirm.cancel}
         />
       )}
-    </div>
+    </>
   );
 }
