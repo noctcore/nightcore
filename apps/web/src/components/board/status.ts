@@ -60,20 +60,22 @@ export const COLUMNS: ColumnDef[] = [
   },
 ];
 
-/** The columns a card can be MOVED to via the keyboard "Move to…" menu (a11y):
- *  every column except In Progress, which the backend rejects as a manual target
- *  (it owns a live run). Mirrors `useColumnDrop`'s droppable rule so the keyboard
- *  path and drag-and-drop agree on legal destinations. Each target carries the
- *  status a dropped/moved card takes (the column's first/primary status). */
-export const MOVE_TARGET_COLUMNS: { status: TaskStatus; label: string }[] = COLUMNS.filter(
-  (c) => c.statuses[0] !== undefined && c.statuses[0] !== 'in_progress',
-).map((c) => ({ status: c.statuses[0] as TaskStatus, label: c.title }));
+/** Whether a column accepts a dragged card. In Progress and Verifying never do —
+ *  both are engine-owned states with a live session, so a manual drop into them
+ *  would strand a card in a running-looking state with no session behind it (and
+ *  Verifying cards can't be dragged back out — see `canDragStatus`). Their
+ *  droppables are inert. Keyed on the column's primary status (the dnd-kit
+ *  droppable id). Mirrors `canDragStatus` so a card can never be dropped into a
+ *  column it could not be dragged out of. */
+export function isDroppableStatus(status: TaskStatus): boolean {
+  return status !== 'in_progress' && status !== 'verifying';
+}
 
-/** The legal "Move to…" targets for a card in `status`, excluding its own
- *  current column so the menu never offers a no-op move. */
-export function moveTargetsFor(status: TaskStatus): { status: TaskStatus; label: string }[] {
-  const own = COLUMNS.find((c) => c.statuses.includes(status));
-  return MOVE_TARGET_COLUMNS.filter((t) => own === undefined || !own.statuses.includes(t.status));
+/** Whether a card may be dragged between columns. A task that owns a live run
+ *  (`in_progress` or `verifying`) is pinned — consistent with In Progress not
+ *  being a drop target — so its card is not draggable. */
+export function canDragStatus(status: TaskStatus): boolean {
+  return status !== 'in_progress' && status !== 'verifying';
 }
 
 /** Human label for a status. */

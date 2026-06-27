@@ -1,8 +1,8 @@
 import { memo } from 'react';
 import { TrashIcon } from '@/components/ui';
 import { TaskCard } from '../TaskCard';
-import { moveTargetsFor } from '../status';
-import { DRAG_TASK_ID, useColumnDrop } from './Column.hooks';
+import { canDragStatus } from '../status';
+import { useColumn } from './Column.hooks';
 import type { ColumnProps } from './Column.types';
 
 /** A board column: a colored status dot + label + count header (with an optional
@@ -10,11 +10,17 @@ import type { ColumnProps } from './Column.types';
  *  cards. Width tracks the design (Failed is narrower). Presentational — all
  *  state and bridge actions are owned by the board.
  *
+ *  Drag-and-drop (@dnd-kit): the whole column shell is a droppable keyed on its
+ *  primary status; the board's `<DndContext>` resolves a cross-column drop to a
+ *  status move. The card list is virtualized (`@tanstack/react-virtual`) so a 50+
+ *  card column only mounts the visible rows — a `<DragOverlay>` (rendered by the
+ *  board) keeps a dragged card visible even after its source row scrolls out.
+ *
  *  Memoized (C6): on a board-wide `nc:session` delta the Board re-renders, but a
  *  column whose props are referentially stable skips. `logCounts` is a fresh
- *  object per delta so a column DOES re-render, but its memoized `TaskCard`s read
- *  a primitive `logCount` and skip unless their own count changed — so the storm
- *  collapses from "every card" to "only the card whose stream advanced". */
+ *  object per delta so a column DOES re-render, but each virtualized row renders
+ *  the memoized `TaskCard` reading a primitive `logCount` and skips unless its own
+ *  count changed — so the storm collapses to "only the card whose stream advanced". */
 function ColumnImpl({
   title,
   tasks,
@@ -39,14 +45,16 @@ function ColumnImpl({
   onClear,
 }: ColumnProps) {
   const showClear = clearable === true && tasks.length > 0;
-  const drop = useColumnDrop(dropStatus, onMoveTask);
+  const interactive = onMoveTask !== undefined;
+  const { setDropRef, setScrollRef, isOver, droppable, virtualizer } = useColumn(dropStatus, tasks);
   return (
     <div
+      ref={setDropRef}
       className={`flex shrink-0 flex-col rounded-[13px] border bg-white/[0.015] transition-colors ${
-        drop.isOver ? 'border-primary/60 bg-primary/[0.04]' : 'border-border'
+        isOver ? 'border-primary/60 bg-primary/[0.04]' : 'border-border'
       }`}
       style={{ width: title === 'Failed' ? 248 : 296 }}
-      aria-dropeffect={drop.droppable ? 'move' : 'none'}
+      aria-dropeffect={droppable ? 'move' : 'none'}
     >
       <div className="flex items-center gap-2 px-3.5 pb-3 pt-3.5">
         <span
@@ -74,40 +82,44 @@ function ColumnImpl({
           </button>
         )}
       </div>
-      <div
-        className="flex flex-1 flex-col gap-2.5 overflow-auto px-3 pb-3"
-        {...drop.dropProps}
-      >
+      <div ref={setScrollRef} className="flex-1 overflow-auto px-3 pb-3">
         {tasks.length === 0 ? (
           <p className="rounded-[11px] border border-dashed border-border px-3.5 py-6 text-center text-xs text-muted-foreground">
             {emptyText}
           </p>
         ) : (
-          tasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              selected={task.id === selectedId}
-              blocked={blockedIds.has(task.id)}
-              needsApproval={promptIds?.has(task.id) ?? false}
-              logCount={logCounts[task.id] ?? 0}
-              draggable={onMoveTask !== undefined}
-              moveTargets={onMoveTask !== undefined ? moveTargetsFor(task.status) : undefined}
-              onDragStart={(e) => {
-                e.dataTransfer.setData(DRAG_TASK_ID, task.id);
-                e.dataTransfer.effectAllowed = 'move';
-              }}
-              onSelect={onSelect}
-              onMoveTask={onMoveTask}
-              onRun={onRun}
-              onCancel={onCancel}
-              onDelete={onDelete}
-              onApprove={onApprove}
-              onRefine={onRefine}
-              onCommit={onCommit}
-              onMerge={onMerge}
-            />
-          ))
+          <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+            {virtualizer.getVirtualItems().map((row) => {
+              const task = tasks[row.index];
+              if (task === undefined) return null;
+              return (
+                <div
+                  key={task.id}
+                  data-index={row.index}
+                  ref={virtualizer.measureElement}
+                  className="absolute left-0 top-0 w-full pb-2.5"
+                  style={{ transform: `translateY(${row.start}px)` }}
+                >
+                  <TaskCard
+                    task={task}
+                    selected={task.id === selectedId}
+                    blocked={blockedIds.has(task.id)}
+                    needsApproval={promptIds?.has(task.id) ?? false}
+                    logCount={logCounts[task.id] ?? 0}
+                    draggable={interactive && canDragStatus(task.status)}
+                    onSelect={onSelect}
+                    onRun={onRun}
+                    onCancel={onCancel}
+                    onDelete={onDelete}
+                    onApprove={onApprove}
+                    onRefine={onRefine}
+                    onCommit={onCommit}
+                    onMerge={onMerge}
+                  />
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>

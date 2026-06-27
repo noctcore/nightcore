@@ -1,0 +1,64 @@
+import { composeStories } from '@storybook/react-vite';
+import { render } from 'vitest-browser-react';
+import { expect, test } from 'vitest';
+import { resolveDrop } from './BoardDnd.hooks';
+import { TASKS_BY_STATUS } from '../_fixtures';
+import * as stories from './BoardDnd.stories';
+
+const { WrapsColumns } = composeStories(stories);
+
+const TASKS = [TASKS_BY_STATUS.backlog, TASKS_BY_STATUS.done, TASKS_BY_STATUS.in_progress];
+
+test('resolveDrop moves a card dropped on a different, droppable column', () => {
+  expect(resolveDrop('t-backlog', 'done', TASKS)).toEqual({ id: 't-backlog', status: 'done' });
+});
+
+test('resolveDrop is a no-op when the column matches the card status', () => {
+  expect(resolveDrop('t-done', 'done', TASKS)).toBeNull();
+});
+
+test('resolveDrop is a no-op for a ready card dropped on its own Backlog column', () => {
+  // The Backlog column groups `backlog`+`ready` under one droppable (primary id
+  // `backlog`); a `ready` card dropped back on it must NOT silently demote to backlog.
+  const ready = { ...TASKS_BY_STATUS.backlog, id: 't-ready', status: 'ready' as const };
+  expect(resolveDrop('t-ready', 'backlog', [...TASKS, ready])).toBeNull();
+});
+
+test('resolveDrop rejects a drop onto In Progress (run-only target)', () => {
+  expect(resolveDrop('t-backlog', 'in_progress', TASKS)).toBeNull();
+});
+
+test('resolveDrop rejects a drop onto Verifying (engine-owned — no manual entry)', () => {
+  // Verifying holds a live reviewer session and pins its cards; it must be an inert
+  // drop target, or a card would strand in a running-looking state with no session.
+  expect(resolveDrop('t-backlog', 'verifying', TASKS)).toBeNull();
+});
+
+test('resolveDrop ignores a pinned (running) card', () => {
+  expect(resolveDrop('t-running', 'backlog', TASKS)).toBeNull();
+});
+
+test('resolveDrop is a no-op for a drop outside any column', () => {
+  expect(resolveDrop('t-backlog', null, TASKS)).toBeNull();
+});
+
+test('resolveDrop ignores an unknown card id', () => {
+  expect(resolveDrop('does-not-exist', 'done', TASKS)).toBeNull();
+});
+
+test('renders the wrapped columns inside the drag context', async () => {
+  const screen = render(<WrapsColumns />);
+  await expect
+    .element(screen.getByRole('heading', { name: 'Backlog', level: 2 }))
+    .toBeInTheDocument();
+  await expect
+    .element(screen.getByRole('heading', { name: 'Done', level: 2 }))
+    .toBeInTheDocument();
+});
+
+test('a draggable card inside the context exposes the grab affordance', async () => {
+  const screen = render(<WrapsColumns />);
+  // Wait for the (virtualized) Done card to mount, then assert the grab handle.
+  await expect.element(screen.getByText('Wire up auth guard')).toBeInTheDocument();
+  expect(screen.container.querySelector('.cursor-grab')).not.toBeNull();
+});

@@ -1,12 +1,4 @@
-import type { DragEvent } from 'react';
-import type { Task, TaskStatus } from '@/lib/bridge';
-
-/** A keyboard-accessible "Move to…" target for the card's move menu — the
- *  pointer-free path to the drag-and-drop board re-tag (a11y). */
-export interface MoveTarget {
-  status: TaskStatus;
-  label: string;
-}
+import type { Task } from '@/lib/bridge';
 
 export interface TaskCardProps {
   task: Task;
@@ -18,18 +10,16 @@ export interface TaskCardProps {
   needsApproval?: boolean;
   /** Number of streamed log lines, shown on the running card's Logs action. */
   logCount?: number;
-  /** Whether the card can be dragged between columns (HTML5 DnD). */
+  /** Whether the card can be dragged between columns (@dnd-kit draggable). The
+   *  board pins running/verifying cards (they own a live run), so it passes
+   *  `false` for them; presentational stories default to `false`. */
   draggable?: boolean;
-  /** The columns this card can be moved to via the keyboard "Move to…" menu —
-   *  the accessible alternative to pointer-only drag-and-drop. Empty/absent hides
-   *  the menu (e.g. presentational stories or running cards the board pins). */
-  moveTargets?: MoveTarget[];
-  /** Drag-start handler that stamps the task id onto the drag's dataTransfer. */
-  onDragStart?: (e: DragEvent) => void;
+  /** Internal: this card is the `<DragOverlay>` preview, so it registers its
+   *  draggable under a distinct id (never the live source's) to avoid clobbering
+   *  the source's @dnd-kit node registration mid-drag. */
+  preview?: boolean;
   /** Open the detail drawer (also the card's click target). */
   onSelect: (id: string) => void;
-  /** Re-tag the card to another column's status (keyboard move path). */
-  onMoveTask?: (id: string, status: TaskStatus) => void;
   /** Real bridge actions. Absent in pure presentational stories. */
   onRun?: (id: string) => void;
   onCancel?: (id: string) => void;

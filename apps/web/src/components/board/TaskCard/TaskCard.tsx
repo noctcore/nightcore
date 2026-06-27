@@ -7,11 +7,8 @@ import {
   ClockIcon,
   CommitIcon,
   EditIcon,
-  IconButton,
   LockIcon,
   LogsIcon,
-  Menu,
-  MoveIcon,
   PlayIcon,
   RefineIcon,
   RetryIcon,
@@ -21,7 +18,7 @@ import {
   VerifiedIcon,
 } from '@/components/ui';
 import { formatCost, modelDisplayName, modelDotColor } from '../status';
-import { useElapsed } from './TaskCard.hooks';
+import { useElapsed, useTaskDraggable } from './TaskCard.hooks';
 import type { TaskCardProps } from './TaskCard.types';
 
 const CARD_BASE =
@@ -72,10 +69,8 @@ function TaskCardImpl({
   needsApproval = false,
   logCount = 0,
   draggable = false,
-  moveTargets,
-  onDragStart,
+  preview = false,
   onSelect,
-  onMoveTask,
   onRun,
   onCancel,
   onDelete,
@@ -87,6 +82,7 @@ function TaskCardImpl({
   const running = task.status === 'in_progress';
   const verifying = task.status === 'verifying';
   const elapsed = useElapsed(task.updatedAt, running || verifying);
+  const drag = useTaskDraggable(task.id, draggable, preview);
   const branch = task.branch;
   const mainMode = task.runMode === 'main';
   const settled =
@@ -109,11 +105,12 @@ function TaskCardImpl({
 
   return (
     <div
+      ref={drag.setNodeRef}
       className={`${CARD_BASE} ${containerClass(task.status, running, selected)} ${pulse} ${
         draggable ? 'cursor-grab active:cursor-grabbing' : ''
-      }`}
-      draggable={draggable}
-      onDragStart={onDragStart}
+      } ${drag.isDragging ? 'opacity-40' : ''}`}
+      {...(draggable ? drag.attributes : {})}
+      {...(draggable ? drag.listeners : {})}
     >
       <button
         type="button"
@@ -372,21 +369,6 @@ function TaskCardImpl({
               Logs
             </button>
           </>
-        )}
-        {moveTargets !== undefined && moveTargets.length > 0 && onMoveTask !== undefined && (
-          <Menu
-            label="Move task to column"
-            items={moveTargets.map((target) => ({
-              label: target.label,
-              icon: <BoardIcon size={14} />,
-              onClick: () => onMoveTask(task.id, target.status),
-            }))}
-            trigger={
-              <IconButton label="Move to column">
-                <MoveIcon size={13} />
-              </IconButton>
-            }
-          />
         )}
         <button
           type="button"
