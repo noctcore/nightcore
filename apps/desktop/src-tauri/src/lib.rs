@@ -35,6 +35,12 @@ use store::{workspace_root, TaskStore};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // First thing, while still single-threaded: a Finder/Dock launch inherits
+    // launchd's minimal PATH, so hydrate it from the login shell before we spawn the
+    // sidecar (and through it the agent's Bash tool + the gauntlet) — otherwise none
+    // of them can find bun/cargo/Homebrew tools. No-op on a terminal/dev launch.
+    platform::hydrate_login_path();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
