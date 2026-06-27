@@ -1,0 +1,230 @@
+//! The managed [`SettingsStore`] (load/save + per-project resolution accessors)
+//! and the `#[tauri::command]` handlers the webview calls.
+
+use std::path::PathBuf;
+use std::sync::Mutex;
+
+use serde::Serialize;
+use tauri::{AppHandle, State};
+#[cfg(test)]
+use ts_rs::TS;
+
+use super::helpers::*;
+use super::model::{McpServerEntry, Settings};
+use super::patch::SettingsPatch;
+
+/// In-memory settings plus the config dir they persist to.
+pub struct SettingsStore {
+    settings: Mutex<Settings>,
+    config_dir: PathBuf,
+}
+
+impl SettingsStore {
+    /// Load `<config_dir>/settings.json`, falling back to defaults when missing or
+    /// unparsable. Creates the dir if needed.
+    pub fn load_from(config_dir: PathBuf) -> Self {
+        if let Err(e) = std::fs::create_dir_all(&config_dir) {
+            tracing::warn!(target: "nightcore::settings", dir = %config_dir.display(), error = %e, "failed to create settings dir");
+        }
+        let settings = read_settings(&config_dir.join("settings.json")).unwrap_or_default();
+        Self {
+            settings: Mutex::new(settings),
+            config_dir,
+        }
+    }
+
+    /// A snapshot of the current settings.
+    pub fn get(&self) -> Settings {
+        crate::sync::lock_or_recover(&self.settings).clone()
+    }
+
+    /// The effective permission mode for a project (its override, else the global),
+    /// mapped to the engine's SDK `permissionMode` (see [`sdk_permission_mode`]).
+    pub fn sdk_permission_mode(&self, project_id: Option<&str>) -> String {
+        let settings = self.get();
+        let raw = project_id
+            .and_then(|id| settings.project_overrides.get(id))
+            .and_then(|ov| ov.permission_mode.clone())
+            .unwrap_or(settings.permission_mode);
+        sdk_permission_mode(&raw)
+    }
+
+    /// The effective default run mode for a project (its override, else the
+    /// global), parsed to a [`RunMode`]. Fail-safe: an unrecognized value resolves
+    /// to `Main` (worktrees are opt-in, never silently auto-isolated).
+    pub fn default_run_mode(&self, project_id: Option<&str>) -> crate::task::RunMode {
+        let settings = self.get();
+        let raw = project_id
+            .and_then(|id| settings.project_overrides.get(id))
+            .and_then(|ov| ov.default_run_mode.clone())
+            .unwrap_or(settings.default_run_mode);
+        parse_run_mode(&raw)
+    }
+
+    /// The effective default model for a project (its override, else the global),
+    /// canonicalized to an SDK long id (see [`canonical_model_id`]). This is the
+    /// value `create_task` stamps onto a task whose create call omits a model, so
+    /// the Settings default is what a new task actually runs with (P0).
+    pub fn default_model(&self, project_id: Option<&str>) -> String {
+        let settings = self.get();
+        let raw = project_id
+            .and_then(|id| settings.project_overrides.get(id))
+            .and_then(|ov| ov.default_model.clone())
+            .unwrap_or(settings.default_model);
+        canonical_model_id(&raw)
+    }
+
+    /// The effective default reasoning effort for a project (its override, else the
+    /// global). Effort values already match the SDK levels, so no mapping is needed.
+    pub fn default_effort(&self, project_id: Option<&str>) -> String {
+        let settings = self.get();
+        project_id
+            .and_then(|id| settings.project_overrides.get(id))
+            .and_then(|ov| ov.default_effort.clone())
+            .unwrap_or(settings.default_effort)
+    }
+
+    /// The effective default max-turns ceiling for a project (its override, else
+    /// the global). `None` ⇒ no Settings ceiling, so `create_task` leaves the
+    /// task's `max_turns` as `None` and the engine's `@nightcore/config` default
+    /// (200) applies. Mirrors [`default_model`](Self::default_model)'s
+    /// project-override → global resolution.
+    pub fn default_max_turns(&self, project_id: Option<&str>) -> Option<u32> {
+        let settings = self.get();
+        project_id
+            .and_then(|id| settings.project_overrides.get(id))
+            .and_then(|ov| ov.max_turns)
+            .or(settings.max_turns)
+    }
+
+    /// The effective default max-budget-USD ceiling for a project (its override,
+    /// else the global). `None` ⇒ uncapped at the Settings level; the engine's
+    /// config default applies. Mirrors [`default_max_turns`](Self::default_max_turns).
+    pub fn default_max_budget_usd(&self, project_id: Option<&str>) -> Option<f64> {
+        let settings = self.get();
+        project_id
+            .and_then(|id| settings.project_overrides.get(id))
+            .and_then(|ov| ov.max_budget_usd)
+            .or(settings.max_budget_usd)
+    }
+
+    /// The effective enabled MCP server list for a project, ready to inject on
+    /// `start-session`. Resolution mirrors [`default_model`](Self::default_model):
+    /// a project override REPLACES the global list wholesale (`Some(list)` wins),
+    /// else the global list applies; then only `enabled` entries are returned (the
+    /// per-entry toggle gates injection). An empty result ⇒ inject nothing (the
+    /// pre-feature shape).
+    ///
+    /// Whole-list-replace, NOT a cross-scope merge — a project that sets its own
+    /// list owns it entirely, the same semantics every other overridable setting
+    /// uses here (no field/entry-level merge model is introduced).
+    pub fn enabled_mcp_servers(&self, project_id: Option<&str>) -> Vec<McpServerEntry> {
+        let settings = self.get();
+        let resolved = project_id
+            .and_then(|id| settings.project_overrides.get(id))
+            .and_then(|ov| ov.mcp_servers.clone())
+            .unwrap_or(settings.mcp_servers);
+        resolved.into_iter().filter(|s| s.enabled).collect()
+    }
+
+    /// Whether the Pre-flight Context Pack (Lock, feature #4) is injected for a
+    /// project: its override, else the global toggle. The coordinator gates reading
+    /// `.nightcore/context.md` on this — a project with the toggle off runs exactly
+    /// like pre-feature (no pack injected, even if a `context.md` exists). Mirrors
+    /// [`default_model`](Self::default_model)'s project-override → global resolution.
+    pub fn context_pack_enabled(&self, project_id: Option<&str>) -> bool {
+        let settings = self.get();
+        project_id
+            .and_then(|id| settings.project_overrides.get(id))
+            .and_then(|ov| ov.context_pack_enabled)
+            .unwrap_or(settings.context_pack_enabled)
+    }
+
+    /// Apply a patch, persist, and return the merged settings.
+    pub(super) fn update(&self, patch: SettingsPatch) -> Result<Settings, String> {
+        let mut guard = crate::sync::lock_or_recover(&self.settings);
+        guard.merge(patch);
+        let snapshot = guard.clone();
+        write_settings(&self.config_dir.join("settings.json"), &snapshot)?;
+        Ok(snapshot)
+    }
+
+    /// Drop a project's override block and persist (data-integrity #4). Called when
+    /// a project is deleted so its `project_overrides[id]` entry can't orphan in the
+    /// settings file (and silently shape a future project that reuses the id). A
+    /// no-op when no override exists for the id.
+    pub fn drop_project_override(&self, project_id: &str) -> Result<(), String> {
+        let mut guard = crate::sync::lock_or_recover(&self.settings);
+        if guard.project_overrides.remove(project_id).is_none() {
+            return Ok(()); // nothing to drop
+        }
+        let snapshot = guard.clone();
+        write_settings(&self.config_dir.join("settings.json"), &snapshot)
+    }
+
+    /// Test-only seam: apply a patch to an in-memory store (used by other modules'
+    /// tests — e.g. `task::build_new_task` — to set up Settings defaults without
+    /// reaching into the private [`update`](Self::update)).
+    #[cfg(test)]
+    pub(crate) fn update_for_test(&self, patch: SettingsPatch) -> Result<Settings, String> {
+        self.update(patch)
+    }
+}
+
+/// Read-only application metadata for the About page. Sourced from build-time
+/// constants (Cargo package version + a compiled-in repo URL) so the UI shows
+/// real values instead of hardcoded literals.
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "AppInfo.ts"))]
+pub struct AppInfo {
+    /// The app version (the `[package] version` in `Cargo.toml`).
+    pub version: String,
+    /// The canonical source repository URL.
+    pub repository: String,
+}
+
+/// The repository URL, compiled in (no fake `github.com/you` literal in the UI).
+const REPOSITORY_URL: &str = "https://github.com/Shironex/nightcore";
+
+// --- Commands ---------------------------------------------------------------
+
+/// Real application metadata for the About page (version + repo URL), sourced from
+/// build-time constants rather than UI literals.
+#[tauri::command]
+pub fn app_info() -> AppInfo {
+    AppInfo {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        repository: REPOSITORY_URL.to_string(),
+    }
+}
+
+/// The current settings (global + per-project overrides).
+#[tauri::command]
+pub fn get_settings(store: State<'_, SettingsStore>) -> Result<Settings, String> {
+    Ok(store.get())
+}
+
+/// Shallow-merge a patch into the global block, or — when `projectId` is set —
+/// into that project's override. Returns the merged settings. A global
+/// `maxConcurrency` change is also applied to the live slot pool so the auto-loop
+/// honors it immediately (not just on next launch).
+#[tauri::command]
+pub fn update_settings(
+    app: AppHandle,
+    store: State<'_, SettingsStore>,
+    patch: SettingsPatch,
+) -> Result<Settings, String> {
+    // A global (no projectId) maxConcurrency change resizes the live pool.
+    let resize = patch
+        .project_id
+        .is_none()
+        .then_some(patch.max_concurrency)
+        .flatten();
+    let merged = store.update(patch)?;
+    if let Some(n) = resize {
+        crate::orchestration::coordinator::set_max_concurrency(&app, n.max(1) as usize);
+    }
+    Ok(merged)
+}
