@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { listen, type EventCallback, type UnlistenFn } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
   NightcoreEventSchema,
@@ -737,12 +737,39 @@ function parseSessionEnvelope(value: unknown): SessionEnvelope | null {
   return { taskId: v.taskId, event: parsed.data };
 }
 
+/** `listen`, but the returned unlisten can NEVER throw or reject — every `nc:*`
+ *  subscription routes through this. React `<StrictMode>` (dev) mounts effects
+ *  twice (mount → unmount → mount), so a hook's fire-and-forget
+ *  `void unlisten.then((fn) => fn())` cleanup can call Tauri's unlisten against an
+ *  event registration whose internal `listeners[eventId]` entry is already gone —
+ *  Tauri's unlisten isn't idempotent and throws
+ *  `undefined is not an object (listeners[eventId].handlerId)`. That throw lands as
+ *  an unhandled promise rejection, which `useGlobalErrorToast` then surfaces as a
+ *  stray "Unexpected error" toast. Swallowing it here keeps teardown idempotent and
+ *  silent (and a failed registration resolves to a no-op unlisten, so the cleanup
+ *  promise never rejects either). */
+async function safeListen<T>(event: string, handler: EventCallback<T>): Promise<UnlistenFn> {
+  try {
+    const unlisten = await listen<T>(event, handler);
+    return () => {
+      try {
+        unlisten();
+      } catch {
+        // Already torn down (StrictMode double-cleanup / rapid remount) — idempotent.
+      }
+    };
+  } catch {
+    // Registration failed (e.g. the Tauri runtime isn't ready) — nothing to undo.
+    return () => {};
+  }
+}
+
 /** Subscribe to `nc:task` board upserts. Returns an unlisten function. */
 export async function onTaskEvent(
   handler: (task: Task) => void,
 ): Promise<UnlistenFn> {
   if (!isTauri()) return () => {};
-  return listen<unknown>('nc:task', (event) => {
+  return safeListen<unknown>('nc:task', (event) => {
     if (isTask(event.payload)) handler(event.payload);
   });
 }
@@ -752,7 +779,7 @@ export async function onSessionEvent(
   handler: (envelope: SessionEnvelope) => void,
 ): Promise<UnlistenFn> {
   if (!isTauri()) return () => {};
-  return listen<unknown>('nc:session', (event) => {
+  return safeListen<unknown>('nc:session', (event) => {
     const envelope = parseSessionEnvelope(event.payload);
     if (envelope !== null) handler(envelope);
   });
@@ -777,7 +804,7 @@ export async function onProjectEvent(
   handler: (envelope: ProjectEnvelope) => void,
 ): Promise<UnlistenFn> {
   if (!isTauri()) return () => {};
-  return listen<unknown>('nc:project', (event) => {
+  return safeListen<unknown>('nc:project', (event) => {
     if (isProjectEnvelope(event.payload)) handler(event.payload);
   });
 }
@@ -802,7 +829,7 @@ export async function onLoopEvent(
   handler: (envelope: LoopEnvelope) => void,
 ): Promise<UnlistenFn> {
   if (!isTauri()) return () => {};
-  return listen<unknown>('nc:loop', (event) => {
+  return safeListen<unknown>('nc:loop', (event) => {
     if (isLoopEnvelope(event.payload)) handler(event.payload);
   });
 }
@@ -827,7 +854,7 @@ export async function onPermissionEvent(
   handler: (prompt: PermissionPrompt) => void,
 ): Promise<UnlistenFn> {
   if (!isTauri()) return () => {};
-  return listen<unknown>('nc:permission', (event) => {
+  return safeListen<unknown>('nc:permission', (event) => {
     if (isPermissionPrompt(event.payload)) handler(event.payload);
   });
 }
@@ -850,7 +877,7 @@ export async function onQuestionEvent(
   handler: (prompt: QuestionPrompt) => void,
 ): Promise<UnlistenFn> {
   if (!isTauri()) return () => {};
-  return listen<unknown>('nc:question', (event) => {
+  return safeListen<unknown>('nc:question', (event) => {
     if (isQuestionPrompt(event.payload)) handler(event.payload);
   });
 }
@@ -985,7 +1012,7 @@ export async function onInsightEvent(
   handler: (event: InsightEvent) => void,
 ): Promise<UnlistenFn> {
   if (!isTauri()) return () => {};
-  return listen<unknown>('nc:insight', (event) => {
+  return safeListen<unknown>('nc:insight', (event) => {
     const parsed = parseInsightEvent(event.payload);
     if (parsed !== null) handler(parsed);
   });
@@ -1095,7 +1122,7 @@ export async function onScorecardEvent(
   handler: (event: ScorecardEvent) => void,
 ): Promise<UnlistenFn> {
   if (!isTauri()) return () => {};
-  return listen<unknown>('nc:scorecard', (event) => {
+  return safeListen<unknown>('nc:scorecard', (event) => {
     const parsed = parseScorecardEvent(event.payload);
     if (parsed !== null) handler(parsed);
   });
@@ -1263,7 +1290,7 @@ export async function onHarnessEvent(
   handler: (event: HarnessEvent) => void,
 ): Promise<UnlistenFn> {
   if (!isTauri()) return () => {};
-  return listen<unknown>('nc:harness', (event) => {
+  return safeListen<unknown>('nc:harness', (event) => {
     const parsed = parseHarnessEvent(event.payload);
     if (parsed !== null) handler(parsed);
   });
