@@ -247,7 +247,7 @@ pub fn start(app: &AppHandle) -> Result<(), String> {
     tracing::info!(target: "nightcore", max_concurrency = orch.slots.max(), "auto-loop armed");
 
     let app = app.clone();
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         run_loop(app, generation).await;
     });
     Ok(())
@@ -266,7 +266,7 @@ pub fn stop(app: &AppHandle) {
 
     // Interrupt in-flight sessions off-thread (the command handler is sync).
     let app = app.clone();
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         app.state::<Orchestrator>().interrupt_all().await;
     });
 }
@@ -968,5 +968,34 @@ mod tests {
         }
         assert_eq!(launched, vec!["a", "b"], "third is refused at capacity");
         assert_eq!(slots.free_slots(), 0);
+    }
+
+    // --- Spawn-mechanism regression tests (guards the tokio::spawn → tauri::async_runtime::spawn fix) ---
+
+    #[test]
+    fn tokio_spawn_panics_off_runtime() {
+        // Regression anchor: bare tokio::spawn panics when no Tokio 1.x runtime is
+        // entered on the calling thread. This was the pre-fix behavior of start() and
+        // stop(), which aborted the process via the WKWebView extern "C" boundary
+        // (SIGABRT, nightcore-2026-06-27-161645.ips). Using catch_unwind so the panic
+        // is caught rather than crashing the test runner.
+        let result = std::panic::catch_unwind(|| {
+            let _ = tokio::spawn(async {});
+        });
+        assert!(
+            result.is_err(),
+            "tokio::spawn must panic when no runtime context is entered — \
+             this is the pre-fix failure mode that aborted the release app"
+        );
+    }
+
+    #[test]
+    fn tauri_async_runtime_spawn_safe_off_runtime() {
+        // The fix: tauri::async_runtime::spawn uses get_or_init(default_runtime),
+        // lazily creating a Tokio runtime on first call. Safe from any thread —
+        // including the WKWebView main-thread sync command path that has no entered
+        // context. start() and stop() use this after the fix.
+        let _h = tauri::async_runtime::spawn(async {});
+        // Reaching here means no panic — the mechanism is correct.
     }
 }
