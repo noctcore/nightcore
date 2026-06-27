@@ -5,6 +5,9 @@
 //! `cleanupWorktrees` setting; on a conflict the merge is aborted and the task is
 //! marked `conflict` for the UI — never forced. Every transition emits `nc:task`.
 
+use std::collections::HashSet;
+use std::sync::{Mutex, OnceLock};
+
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use super::commit_msg;
@@ -73,11 +76,68 @@ fn commit_dir(project_path: &std::path::Path, task: &Task) -> Result<std::path::
 /// project root for main-mode tasks). Surfaces "nothing to commit" as an error so
 /// the UI can show it; marks the task committed on success.
 #[tauri::command]
-pub fn commit_task(app: AppHandle, store: State<'_, TaskStore>, id: String) -> Result<(), String> {
+pub async fn commit_task(app: AppHandle, id: String) -> Result<(), String> {
+    // Generating the message spawns `claude -p` and polls it for ~1–3s (up to a 30s
+    // timeout), bracketed by blocking `git` calls. A synchronous `#[tauri::command]`
+    // runs that on the main thread, freezing the WKWebView until it returns — so the
+    // frontend's "Committing…" pending state can't even paint. Run the whole blocking
+    // body on the blocking thread pool and merely await it, keeping the UI thread free.
+    tauri::async_runtime::spawn_blocking(move || commit_task_blocking(&app, &id))
+        .await
+        .map_err(|e| format!("commit task failed to run: {e}"))?
+}
+
+/// Task ids with a `commit_task` in flight. A synchronous `#[tauri::command]` runs
+/// on the main thread, so the old sync `commit_task` was implicitly serialized with
+/// itself; moving the body to the blocking pool (above) removed that. Without a lock,
+/// a double-fire would run two `claude -p` generations and two `git commit`s for one
+/// task — the second hitting an empty index and erroring. This restores single-flight
+/// per task at the backend, independent of (and defence-in-depth behind) the frontend
+/// pending guard.
+fn commit_in_flight() -> &'static Mutex<HashSet<String>> {
+    static IN_FLIGHT: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    IN_FLIGHT.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+/// RAII membership in the in-flight set: inserts on acquire, removes on drop — so an
+/// early `?` return (or a panic) still releases the task. `acquire` yields `None` when
+/// a commit for `id` is already running, so the caller can refuse rather than race.
+struct CommitLease(String);
+
+impl CommitLease {
+    fn acquire(id: &str) -> Option<Self> {
+        let mut set = commit_in_flight().lock().unwrap_or_else(|e| e.into_inner());
+        set.insert(id.to_string()).then(|| Self(id.to_string()))
+    }
+}
+
+impl Drop for CommitLease {
+    fn drop(&mut self) {
+        commit_in_flight()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&self.0);
+    }
+}
+
+/// The blocking body of `commit_task`, run off the UI thread via `spawn_blocking`.
+/// Managed state is re-acquired from the owned `AppHandle` because a `State<'_, _>`
+/// guard is borrowed from the command invocation and can't cross the thread boundary.
+/// Behavior is otherwise identical to the previous inline (synchronous) command.
+fn commit_task_blocking(app: &AppHandle, id: &str) -> Result<(), String> {
+    // Single-flight per task: refuse a second concurrent commit instead of racing
+    // (held for the whole stage→generate→commit body; released on every exit path).
+    let _lease = CommitLease::acquire(id)
+        .ok_or_else(|| "a commit for this task is already in progress".to_string())?;
+    // `try_state` (not `state`) so an unmanaged store fails the command gracefully,
+    // matching the old injected-`State` behavior rather than panicking on the pool.
+    let store = app
+        .try_state::<TaskStore>()
+        .ok_or_else(|| "task store unavailable".to_string())?;
     let task = store
-        .get(&id)
+        .get(id)
         .ok_or_else(|| format!("no task with id {id}"))?;
-    let project = require_project(&app)?;
+    let project = require_project(app)?;
     let project_path = std::path::PathBuf::from(&project.path);
     let dir = commit_dir(&project_path, &task)?;
 
@@ -89,12 +149,12 @@ pub fn commit_task(app: AppHandle, store: State<'_, TaskStore>, id: String) -> R
 
     // Ask `claude -p` to write a conventional message from the staged diff; on any
     // failure (no CLI, non-zero exit, timeout, empty output) fall back to the title.
-    let message = commit_msg::generate_for(&store, &dir, &task)
-        .unwrap_or_else(|| commit_message(&task));
+    let message =
+        commit_msg::generate_for(&store, &dir, &task).unwrap_or_else(|| commit_message(&task));
 
     worktree::commit_staged(&dir, &message)?;
     tracing::info!(target: "nightcore", task_id = %id, worktree = task.run_mode.is_worktree(), "committed task changes");
-    let updated = store.mutate(&id, |t| {
+    let updated = store.mutate(id, |t| {
         t.committed = true;
         t.conflict = false;
     })?;
@@ -316,6 +376,27 @@ mod tests {
         assert!(
             refuse_main_mode_merge(&wt_task).is_ok(),
             "worktree mode is mergeable"
+        );
+    }
+
+    #[test]
+    fn commit_lease_is_single_flight_per_task_and_releases_on_drop() {
+        // Pins the invariant that replaced the main-thread serialization lost when
+        // `commit_task` moved to the blocking pool: at most one commit in flight per id.
+        let first = CommitLease::acquire("task-x").expect("first acquire holds the task");
+        assert!(
+            CommitLease::acquire("task-x").is_none(),
+            "a second concurrent commit on the same task is refused"
+        );
+        assert!(
+            CommitLease::acquire("task-y").is_some(),
+            "a different task is unaffected"
+        );
+
+        drop(first);
+        assert!(
+            CommitLease::acquire("task-x").is_some(),
+            "dropping the lease (incl. on an early `?` return) frees the task"
         );
     }
 }
