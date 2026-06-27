@@ -48,6 +48,11 @@ export interface TaskDetailActions {
   onRerunVerification?: (id: string) => void;
   /** Run the pre-merge readiness gauntlet (Verified column "Run checks"). */
   onRunGauntlet?: (id: string) => void;
+  /** Decompose §B: convert one proposed sub-task of a decompose task into a board
+   *  task. Enables the per-row Convert button in the Proposed sub-tasks panel. */
+  onConvertSubtask?: (parentId: string, subtaskId: string) => void;
+  /** Decompose §B: convert every still-open proposed sub-task at once. */
+  onConvertAllSubtasks?: (parentId: string) => void;
   /** Merge a verified task's branch (gated on `verified && gauntlet.passed`). */
   onMerge?: (id: string) => void;
   /** Commit a verified task's worktree. */

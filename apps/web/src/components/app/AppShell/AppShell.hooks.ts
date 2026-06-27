@@ -4,6 +4,8 @@ import {
   approveTask,
   cancelTask,
   commitTask,
+  convertAllSubtasks,
+  convertSubtask,
   createTask,
   deleteTask,
   isTauri,
@@ -131,6 +133,10 @@ export interface AppShellState {
     handleRerunVerification: (id: string) => void;
     /** Run the pre-merge readiness gauntlet for a verified task (M4). */
     handleRunGauntlet: (id: string) => void;
+    /** Decompose §B: convert one proposed sub-task into a board task. */
+    handleConvertSubtask: (parentId: string, subtaskId: string) => void;
+    /** Decompose §B: convert every still-open proposed sub-task into board tasks. */
+    handleConvertAllSubtasks: (parentId: string) => void;
     /** True while a guarded task action (`run`/`approve`/`commit`/…) is in flight,
      *  so the matching button can disable itself and not double-fire. */
     isActionPending: (action: string, id: string) => boolean;
@@ -519,6 +525,30 @@ export function useAppShell(): AppShellState {
     [action, toast],
   );
 
+  // Decompose §B: convert a proposed sub-task (or all of them) into board tasks.
+  // The backend emits `nc:task` for both the new child and the updated parent, so
+  // the board + open drawer refresh via the echo — no optimistic local edit needed.
+  const handleConvertSubtask = useCallback(
+    (parentId: string, subtaskId: string) =>
+      action.guard('convertSubtask', parentId, () =>
+        convertSubtask(parentId, subtaskId).catch((err) => {
+          console.error('convert_subtask failed', err);
+          toast.error('Could not convert the sub-task', err);
+        }),
+      ),
+    [action, toast],
+  );
+  const handleConvertAllSubtasks = useCallback(
+    (parentId: string) =>
+      action.guard('convertAllSubtasks', parentId, () =>
+        convertAllSubtasks(parentId).catch((err) => {
+          console.error('convert_all_subtasks failed', err);
+          toast.error('Could not convert the sub-tasks', err);
+        }),
+      ),
+    [action, toast],
+  );
+
   // Route the card trash + column Clear through a shared destructive confirm
   // (the real deletes stay optimistic; only the trigger is gated).
   const confirm = useDestructiveConfirm(tasks, handleDelete, handleClearColumn);
@@ -575,6 +605,8 @@ export function useAppShell(): AppShellState {
       handleRejectReview,
       handleRerunVerification,
       handleRunGauntlet: gauntlet.run,
+      handleConvertSubtask,
+      handleConvertAllSubtasks,
       isActionPending: action.isPending,
       requestDelete: confirm.requestDelete,
       requestClear: confirm.requestClear,

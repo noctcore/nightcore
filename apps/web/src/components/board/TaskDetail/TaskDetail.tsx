@@ -13,6 +13,7 @@ import { formatCost, STATUS_LABEL, STATUS_TEXT } from '../status';
 import { TaskStatusDot } from '../TaskStatusDot';
 import { InteractionDock } from '../InteractionDock';
 import { ReviewPanel } from '../ReviewPanel';
+import { ProposedSubtasksPanel } from '../ProposedSubtasksPanel';
 import { GauntletResults } from '../GauntletResults';
 import { ActivityLog } from '../ActivityLog';
 import { TaskAttachments } from '../TaskAttachments';
@@ -136,6 +137,21 @@ export function TaskDetail({
                 structureLock={task.structureLockResult}
               />
             )}
+          </div>
+        )}
+
+        {/* Proposed sub-tasks — a `decompose` run's output, each convertible into a
+            board task (Decompose §B). Hidden until the run has proposed something. */}
+        {task.kind === 'decompose' && task.proposedSubtasks.length > 0 && (
+          <div className="space-y-3">
+            <GroupLabel>Proposed sub-tasks</GroupLabel>
+            <ProposedSubtasksPanel
+              taskId={task.id}
+              subtasks={task.proposedSubtasks}
+              onConvert={actions.onConvertSubtask}
+              onConvertAll={actions.onConvertAllSubtasks}
+              pending={pending('convertSubtask') || pending('convertAllSubtasks')}
+            />
           </div>
         )}
 

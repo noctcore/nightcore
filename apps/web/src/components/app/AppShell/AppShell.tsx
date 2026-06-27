@@ -231,6 +231,8 @@ export function AppShell() {
                   onRejectReview: board.handleRejectReview,
                   onRerunVerification: board.handleRerunVerification,
                   onRunGauntlet: board.handleRunGauntlet,
+                  onConvertSubtask: board.handleConvertSubtask,
+                  onConvertAllSubtasks: board.handleConvertAllSubtasks,
                   onMerge: board.handleMerge,
                   onCommit: board.handleCommit,
                   onResumeSession: board.handleResumeSession,

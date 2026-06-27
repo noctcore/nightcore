@@ -106,6 +106,10 @@ export type {
  *  `PermissionMode` — it always lived here, never in contracts. */
 export type { TaskKind } from './generated/TaskKind';
 export type { PermissionMode } from './generated/PermissionMode';
+/** Decompose: a proposed sub-task + its convert lifecycle, generated from the Rust
+ *  `ProposedSubtask` / `SubtaskStatus` so the detail panel can't drift from serde. */
+export type { ProposedSubtask } from './generated/ProposedSubtask';
+export type { SubtaskStatus } from './generated/SubtaskStatus';
 
 // Locally-aliased imports of the generated types the command wrappers below
 // reference by value position (return types, fallbacks). Type-only, so they erase
@@ -996,6 +1000,21 @@ export async function convertFindingToTask(
   findingId: string,
 ): Promise<Task> {
   return invoke<Task>('convert_finding_to_task', { runId, findingId });
+}
+
+/** Decompose: convert ONE proposed sub-task of a decompose task into a board task
+ *  (idempotent). Returns the updated PARENT task (its proposal now `converted`). */
+export async function convertSubtask(
+  parentId: string,
+  subtaskId: string,
+): Promise<Task> {
+  return invoke<Task>('convert_subtask', { parentId, subtaskId });
+}
+
+/** Decompose: convert EVERY still-open proposed sub-task of a decompose task.
+ *  Returns the updated PARENT task. */
+export async function convertAllSubtasks(parentId: string): Promise<Task> {
+  return invoke<Task>('convert_all_subtasks', { parentId });
 }
 
 /** Delete an analysis run and its file. No-op outside Tauri. */
