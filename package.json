@@ -18,6 +18,8 @@
     "build": "tsc -b",
     "clean": "tsc -b --clean",
     "desktop": "bun run --filter @nightcore/desktop dev",
+    "desktop:build": "bun run --filter @nightcore/desktop build",
+    "desktop:build:debug": "bun run --filter @nightcore/desktop build -- --debug",
     "web": "bun run --filter @nightcore/web dev",
     "web:build": "bun run --filter @nightcore/web build",
     "sidecar": "bun run apps/sidecar/src/index.ts",
