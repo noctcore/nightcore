@@ -30,4 +30,7 @@ export interface TaskCardProps {
   /** Verified actions (Commit / Merge). */
   onCommit?: (id: string) => void;
   onMerge?: (id: string) => void;
+  /** Whether a named action is in-flight for this card's task (drives disabled
+   *  state on buttons while the backend command is pending). */
+  isActionPending?: (action: string, id: string) => boolean;
 }

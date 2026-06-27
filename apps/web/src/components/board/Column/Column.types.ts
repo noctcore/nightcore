@@ -35,4 +35,5 @@ export interface ColumnProps {
   onCommit?: (id: string) => void;
   onMerge?: (id: string) => void;
   onClear?: () => void;
+  isActionPending?: (action: string, id: string) => boolean;
 }

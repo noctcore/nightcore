@@ -63,6 +63,7 @@ function BoardImpl({
   onRefine,
   onCommit,
   onMerge,
+  isActionPending,
   onToggleAutoMode,
   onConcurrencyChange,
   onResume,
@@ -230,6 +231,7 @@ function BoardImpl({
               onRefine={onRefine}
               onCommit={onCommit}
               onMerge={onMerge}
+              isActionPending={isActionPending}
               onClear={() => onClearColumn(def.statuses)}
             />
           ))}
