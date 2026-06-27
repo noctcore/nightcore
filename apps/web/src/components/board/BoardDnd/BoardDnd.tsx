@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { DndContext, DragOverlay } from '@dnd-kit/core';
+import { DndContext, DragOverlay, closestCorners } from '@dnd-kit/core';
 import { TaskCard } from '../TaskCard';
 import { useBoardDnd } from './BoardDnd.hooks';
 import type { BoardDndProps } from './BoardDnd.types';
@@ -27,6 +27,7 @@ function BoardDndImpl({ tasks, onMoveTask, children }: BoardDndProps) {
   return (
     <DndContext
       sensors={sensors}
+      collisionDetection={closestCorners}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onDragCancel={onDragCancel}

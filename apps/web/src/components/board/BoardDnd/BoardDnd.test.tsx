@@ -1,6 +1,6 @@
 import { composeStories } from '@storybook/react-vite';
 import { render } from 'vitest-browser-react';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { resolveDrop } from './BoardDnd.hooks';
 import { TASKS_BY_STATUS } from '../_fixtures';
 import * as stories from './BoardDnd.stories';
@@ -61,4 +61,38 @@ test('a draggable card inside the context exposes the grab affordance', async ()
   // Wait for the (virtualized) Done card to mount, then assert the grab handle.
   await expect.element(screen.getByText('Wire up auth guard')).toBeInTheDocument();
   expect(screen.container.querySelector('.cursor-grab')).not.toBeNull();
+});
+
+test('dragging a card onto a different column relays onMoveTask (collision detection)', async () => {
+  const onMoveTask = vi.fn();
+  const screen = render(<WrapsColumns onMoveTask={onMoveTask} />);
+  await expect.element(screen.getByText('Wire up auth guard')).toBeInTheDocument();
+
+  const grab = screen.container.querySelector('.cursor-grab') as HTMLElement;
+  const doneColumn = [...screen.container.querySelectorAll('[aria-dropeffect]')].find((c) =>
+    c.textContent?.includes('Done'),
+  ) as HTMLElement;
+
+  const from = grab.getBoundingClientRect();
+  const to = doneColumn.getBoundingClientRect();
+  const fx = from.x + from.width / 2;
+  const fy = from.y + 20;
+  const tx = to.x + to.width / 2;
+  const ty = to.y + to.height / 2;
+  const fire = (type: string, x: number, y: number, target: Element) =>
+    target.dispatchEvent(
+      new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 1, button: 0, isPrimary: true }),
+    );
+
+  fire('pointerdown', fx, fy, grab);
+  fire('pointermove', fx + 4, fy, document.body);
+  fire('pointermove', fx + 12, fy, document.body);
+  fire('pointermove', (fx + tx) / 2, (fy + ty) / 2, document.body);
+  fire('pointermove', tx, ty, document.body);
+  fire('pointermove', tx, ty, document.body);
+  await new Promise((r) => setTimeout(r, 20));
+  fire('pointerup', tx, ty, document.body);
+  await new Promise((r) => setTimeout(r, 20));
+
+  expect(onMoveTask).toHaveBeenCalledWith('t-backlog', 'done');
 });
