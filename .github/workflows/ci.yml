@@ -1,0 +1,74 @@
+name: CI
+
+# The correctness gate the contributor docs promise. Runs on every push to main
+# and every PR so the guardrails stated as fact in docs/architecture.md and
+# packages/contracts/AGENTS.md are enforced, not aspirational:
+#   - `bun run lint` runs lint:meta, whose codegen-drift rule is
+#     `gen-rust-contracts.ts --check` (the zod→Rust drift guard) plus
+#     agent-contract-parity — this is the "tools/lint-meta fails CI" gate.
+#   - the Rust job re-runs the ts-rs codegen via `cargo test` and asserts no
+#     `git diff` — this is the "CI asserts no git diff" guard.
+# Dependency CVE scanning lives separately in audit.yml; this is the build/test
+# correctness gate.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bun-checks:
+    name: lint · typecheck · test (Bun workspace)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      # --frozen-lockfile doubles as a lockfile-drift guard: it fails if bun.lock
+      # is out of sync with the manifests.
+      - run: bun install --frozen-lockfile
+      # `bun run lint` = eslint-plugin build + `eslint .` + `lint:meta`. lint:meta
+      # runs the codegen-drift rule (`gen-rust-contracts.ts --check`, the zod→Rust
+      # guard) and agent-contract-parity. This is the "lint-meta fails CI" gate.
+      - run: bun run lint
+      - run: bun run typecheck
+      # The JS/TS tiers (node + web + plugin). The Rust tier runs in rust-checks.
+      - run: bun run test
+
+  rust-checks:
+    name: cargo test · ts-rs drift (Rust core)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      # Tauri v2 needs the WebKitGTK / GTK system libraries to compile on Linux.
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+      - run: bun install --frozen-lockfile
+      # `bun run test:rust` compiles the sidecar (Tauri externalBin) then runs
+      # `cargo test`, which also re-exports the Rust structs into
+      # apps/web/src/lib/generated/ via ts-rs.
+      - run: bun run test:rust
+      # ts-rs regenerate-and-diff guard. cargo test rewrote the bindings above; if
+      # they differ from what is committed, a Rust struct changed without the
+      # generated TS being regenerated. This makes the "CI asserts no git diff"
+      # claim in docs/architecture.md real.
+      - name: Assert ts-rs bindings are in sync
+        run: git diff --exit-code -- apps/web/src/lib/generated

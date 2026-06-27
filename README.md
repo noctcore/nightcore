@@ -153,7 +153,7 @@ dependency rules.
 | `bun test` | the TS/Bun tests (sidecar, engine, contracts, web, …) |
 | `bun run test:rust` | Rust core unit tests (`cargo test` in `apps/desktop/src-tauri`) |
 | `bun run test:all` | every tier: node → web → plugin → Rust |
-| `bun run lint` | eslint (flat config) |
+| `bun run lint` | eslint (flat config) + `lint:meta` (codegen-drift + agent-contract gate) |
 
 ### Testing
 
@@ -171,6 +171,11 @@ The suites are fast and offline (no live Claude session, no token use, no cost):
   `SessionManager` is stubbed, so the suite never spawns a model. (The engine's
   `session-manager.test.ts` stubs the SDK's `query()` the same way.)
 - **Web** (`apps/web`): `bun run test:web` — Vitest + Storybook component tests.
+
+**CI** (`.github/workflows/ci.yml`): every push to `main` and every PR runs
+`bun run lint`, `bun run typecheck`, and `bun run test:all`, then re-runs the
+ts-rs codegen via `cargo test` and asserts no `git diff` drift. Dependency CVE
+scanning runs separately in `audit.yml` (with `dependabot.yml` for bumps).
 
 ## What it does today
 
