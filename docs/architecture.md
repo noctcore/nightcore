@@ -87,7 +87,8 @@ The boundary types are **generated both ways**, never hand-mirrored:
   + a `cargo test` conformance suite.
 - **Rust serde → web TS** (the Tauri struct boundary): `ts-rs` exports the Rust
   structs (`Task` / `Settings` / `Project` / …) into `apps/web/src/lib/generated/`.
-  Guard: `cargo test` regenerates them; CI asserts no `git diff`.
+  Guard: `cargo test` regenerates them; CI asserts no `git diff`
+  (`.github/workflows/ci.yml`, the `rust-checks` job).
 
 Do **not** hand-edit the generated files — regenerate them (`cargo test` for the
 ts-rs side, `bun run codegen:contracts` for the Rust side).

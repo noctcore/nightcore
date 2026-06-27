@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-21
 **Scope:** Windows + macOS auto-updates, **no OS code signing**, no Linux (for now).
-**Stack today:** Tauri v2 (`tauri 2.11.2`), Rust 1.77.2, Bun sidecar, `apps/desktop/src-tauri`. GitHub repo `Shironex/nightcore`. No updater plugin wired yet; no `.github/` CI.
+**Stack today:** Tauri v2 (`tauri 2.11.2`), Rust 1.77.2, Bun sidecar, `apps/desktop/src-tauri`. GitHub repo `Shironex/nightcore`. No updater plugin wired yet. _(Update 2026-06-27: `.github/` CI now exists — `ci.yml` is the lint/typecheck/test + codegen-drift gate and `audit.yml`/`dependabot.yml` cover CVEs; the release/update automation in §8 below is still unbuilt.)_
 
 ---
 
@@ -154,7 +154,7 @@ if (update) {
 }
 ```
 
-### 8. CI/CD — `.github/workflows/release.yml` (we have **no** `.github/` yet)
+### 8. CI/CD — `.github/workflows/release.yml` (not yet built; `.github/` now has `ci.yml` + `audit.yml`)
 Use **`tauri-apps/tauri-action`**, which builds per-OS on a matrix (macOS runner for `.app`, Windows runner for `.exe`), signs with the env secrets, creates the GitHub Release, and **auto-generates `latest.json`** when `createUpdaterArtifacts` is on.
 - Matrix: `macos-latest` (build `universal-apple-darwin`) + `windows-latest`.
 - Secrets: `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, `GITHUB_TOKEN`.
