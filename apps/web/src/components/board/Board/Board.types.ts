@@ -49,6 +49,7 @@ export interface BoardProps {
   /** Verified card actions. */
   onCommit: (id: string) => void;
   onMerge: (id: string) => void;
+  isActionPending?: (action: string, id: string) => boolean;
   /** Start/stop the autonomous loop (the header Auto Mode toggle). */
   onToggleAutoMode: () => void;
   /** Resize the live agent pool (the header concurrency slider). */

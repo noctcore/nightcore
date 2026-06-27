@@ -43,6 +43,7 @@ function ColumnImpl({
   onCommit,
   onMerge,
   onClear,
+  isActionPending,
 }: ColumnProps) {
   const showClear = clearable === true && tasks.length > 0;
   const interactive = onMoveTask !== undefined;
@@ -115,6 +116,7 @@ function ColumnImpl({
                     onRefine={onRefine}
                     onCommit={onCommit}
                     onMerge={onMerge}
+                    isActionPending={isActionPending}
                   />
                 </div>
               );

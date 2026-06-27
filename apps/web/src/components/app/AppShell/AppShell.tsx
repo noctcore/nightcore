@@ -190,6 +190,7 @@ export function AppShell() {
                   onRefine={board.handleRefine}
                   onCommit={board.handleCommit}
                   onMerge={board.handleMerge}
+                  isActionPending={board.isActionPending}
                   onToggleAutoMode={autoLoop.toggleAutoMode}
                   onConcurrencyChange={autoLoop.changeConcurrency}
                   onResume={autoLoop.resume}

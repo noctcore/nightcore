@@ -78,6 +78,7 @@ function TaskCardImpl({
   onRefine,
   onCommit,
   onMerge,
+  isActionPending,
 }: TaskCardProps) {
   const running = task.status === 'in_progress';
   const verifying = task.status === 'verifying';
@@ -334,11 +335,12 @@ function TaskCardImpl({
             ) : (
               <button
                 type="button"
+                disabled={isActionPending?.('commit', task.id) ?? false}
                 onClick={() => onCommit?.(task.id)}
-                className={`${ACTION_BASE} ${ACTION_PRIMARY}`}
+                className={`${ACTION_BASE} ${isActionPending?.('commit', task.id) ? ACTION_DISABLED : ACTION_PRIMARY}`}
               >
                 <CommitIcon size={13} />
-                Commit
+                {isActionPending?.('commit', task.id) ? 'Committing…' : 'Commit'}
               </button>
             )}
             <button
