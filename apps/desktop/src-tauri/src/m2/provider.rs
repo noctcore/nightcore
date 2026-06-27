@@ -272,18 +272,52 @@ impl SidecarProvider {
         path.exists().then_some(path)
     }
 
+    /// Whether the process is running from inside a packaged app bundle (debug OR
+    /// release) rather than a raw `tauri dev` target binary. A bundled app must spawn
+    /// the sidecar Tauri placed next to the executable; only a genuine `tauri dev`
+    /// run wants `bun run` against the live TypeScript for hot reload.
+    ///
+    /// We can't key this off `cfg!(debug_assertions)` alone: `tauri build --debug`
+    /// produces a *debug* build that is nonetheless a real bundle, and it copies the
+    /// compiled sidecar into the `.app` — so a debug bundle that fell through to the
+    /// dev path would try `bun run` against TypeScript that isn't there (and a GUI
+    /// launch has no `bun` on PATH), failing with `os error 2`. macOS detects the
+    /// `<App>.app/Contents/MacOS/<exe>` layout directly; other platforms fall back to
+    /// the build profile (release ⇒ bundled), preserving prior behavior.
+    fn running_as_bundle() -> bool {
+        #[cfg(target_os = "macos")]
+        {
+            if let Ok(exe) = std::env::current_exe() {
+                if Self::exe_in_app_bundle(&exe) {
+                    return true;
+                }
+            }
+        }
+        !cfg!(debug_assertions)
+    }
+
+    /// Pure classifier for [`running_as_bundle`]: is `exe` inside a macOS `.app`
+    /// bundle? A debug bundle lives under `target/debug/bundle/macos/<App>.app/…`, so
+    /// the target-dir path is NOT a reliable "dev" signal — only an `.app` ancestor
+    /// is. Extracted so the layout logic is unit-testable without a real executable.
+    #[cfg(target_os = "macos")]
+    fn exe_in_app_bundle(exe: &std::path::Path) -> bool {
+        exe.ancestors()
+            .any(|ancestor| ancestor.extension().is_some_and(|ext| ext == "app"))
+    }
+
     /// Build the (unspawned) [`Command`] for the sidecar, with program, args, and
     /// working directory set — but no stdio/spawn, which [`spawn`](Self::spawn)
-    /// owns. The dev/release split is the only thing that varies here:
+    /// owns. The bundled/dev split is the only thing that varies here:
     ///
-    /// - **Debug build (`tauri dev`):** `bun run <entry>` against the TypeScript
-    ///   source — the hot path, unchanged from prior behavior.
-    /// - **Release build:** the compiled binary bundled next to the app executable.
-    ///   If that binary can't be resolved (missing/unbundled), fall back to
-    ///   `bun run <entry>` with a warning so the app degrades instead of failing to
-    ///   start — though a correctly bundled release should never take that branch.
+    /// - **Bundled app (`tauri build`, release OR `--debug`):** the compiled binary
+    ///   Tauri placed next to the app executable. If it can't be resolved
+    ///   (missing/unbundled), fall back to `bun run <entry>` with a warning so the
+    ///   app degrades instead of failing to start.
+    /// - **`tauri dev`:** `bun run <entry>` against the TypeScript source — the hot
+    ///   path, so sidecar edits reload without a recompile.
     fn spawn_command(&self) -> Command {
-        if !cfg!(debug_assertions) {
+        if Self::running_as_bundle() {
             if let Some(bin) = Self::release_sidecar_path() {
                 let mut cmd = Command::new(bin);
                 cmd.current_dir(&self.cwd);
@@ -292,8 +326,8 @@ impl SidecarProvider {
             tracing::warn!(
                 target: "sidecar",
                 entry = %self.entry.display(),
-                "bundled sidecar binary not found next to the app executable; \
-                 falling back to `bun run` against the TypeScript entry"
+                "running as an app bundle but the sidecar binary wasn't found next to \
+                 the app executable; falling back to `bun run` against the TypeScript entry"
             );
         }
         let bun = resolve_bun_program();
@@ -875,6 +909,28 @@ mod tests {
             SidecarProvider::release_sidecar_path().is_none(),
             "no bundled sidecar exists next to the test binary"
         );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn detects_a_macos_app_bundle_exe() {
+        use std::path::Path;
+        // A release bundle and a `tauri build --debug` bundle both put the exe inside
+        // a `.app` — both must be treated as bundled so the sidecar binary is used.
+        assert!(SidecarProvider::exe_in_app_bundle(Path::new(
+            "/Applications/Nightcore.app/Contents/MacOS/nightcore"
+        )));
+        assert!(
+            SidecarProvider::exe_in_app_bundle(Path::new(
+                "/repo/apps/desktop/src-tauri/target/debug/bundle/macos/Nightcore.app/Contents/MacOS/nightcore"
+            )),
+            "a debug bundle under target/debug is still an .app bundle — must use the bundled sidecar"
+        );
+        // `tauri dev` runs the raw target binary — NOT a bundle, so it falls through
+        // to `bun run` for hot reload.
+        assert!(!SidecarProvider::exe_in_app_bundle(Path::new(
+            "/repo/apps/desktop/src-tauri/target/debug/nightcore"
+        )));
     }
 
     #[test]
