@@ -1,4 +1,4 @@
-import { Button, ChecksIcon } from '@/components/ui';
+import { Button, ChecksIcon, Spinner } from '@/components/ui';
 import { STEP_STATUS_GLYPH, STEP_STATUS_TEXT } from './GauntletResults.hooks';
 import type { GauntletResultsProps } from './GauntletResults.types';
 
@@ -32,9 +32,10 @@ export function GauntletResults({
           variant="secondary"
           className="ml-auto"
           disabled={running}
+          aria-busy={running}
           onClick={onRun}
         >
-          <ChecksIcon size={14} />
+          {running ? <Spinner size={14} /> : <ChecksIcon size={14} />}
           {running ? 'Running…' : 'Run checks'}
         </Button>
       </div>

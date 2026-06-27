@@ -1,4 +1,4 @@
-import { Button, ModelEffortPicker, PerfIcon } from '@/components/ui';
+import { Button, ModelEffortPicker, PerfIcon, Spinner } from '@/components/ui';
 import { ALL_DIMENSIONS, DIMENSION_META } from '../scorecard.constants';
 import type { RunControlsProps } from './RunControls.types';
 
@@ -96,10 +96,11 @@ export function RunControls({ config, isStarting, onGrade }: RunControlsProps) {
         <div className="flex flex-col gap-2">
           <Button
             disabled={!canGrade || isStarting}
+            aria-busy={isStarting}
             onClick={onGrade}
             className="w-full sm:w-auto"
           >
-            <PerfIcon size={15} />
+            {isStarting ? <Spinner size={15} /> : <PerfIcon size={15} />}
             {isStarting ? 'Starting…' : 'Grade readiness'}
           </Button>
           <p className="text-[12px] text-muted-foreground">

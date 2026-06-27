@@ -1,4 +1,4 @@
-import { Button, ModelEffortPicker, VerifiedIcon } from '@/components/ui';
+import { Button, ModelEffortPicker, Spinner, VerifiedIcon } from '@/components/ui';
 import { MODEL_OPTIONS } from '@/lib/models';
 import { ALL_CATEGORIES, CATEGORY_META } from '../harness.constants';
 import type { RunControlsProps } from './RunControls.types';
@@ -90,10 +90,11 @@ export function RunControls({ config, isStarting, onScan }: RunControlsProps) {
       <div className="flex flex-col gap-2">
         <Button
           disabled={!config.canRun || isStarting}
+          aria-busy={isStarting}
           onClick={onScan}
           className="w-full justify-center py-2.5 text-[13.5px]"
         >
-          <VerifiedIcon size={16} />
+          {isStarting ? <Spinner size={16} /> : <VerifiedIcon size={16} />}
           {isStarting ? 'Starting…' : 'Scan'}
         </Button>
         <p className="text-[12px] text-muted-foreground">
