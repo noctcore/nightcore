@@ -145,7 +145,9 @@ impl PendingPermissions {
 pub struct Orchestrator {
     pub slots: SlotManager,
     pub breaker: CircuitBreaker,
-    pub provider: SidecarProvider,
+    /// Shared so the sidecar bridge can hold the same provider as managed state
+    /// (`Arc<SidecarProvider>`) without reaching through the `Orchestrator`.
+    pub provider: Arc<SidecarProvider>,
     pub auto: AutoLoop,
     /// Parked interactive permission requests awaiting a surface decision (M3).
     pub permissions: PendingPermissions,
@@ -160,7 +162,7 @@ impl Orchestrator {
         Self {
             slots: SlotManager::new(max_concurrency),
             breaker: CircuitBreaker::default(),
-            provider: SidecarProvider::new(entry, cwd),
+            provider: Arc::new(SidecarProvider::new(entry, cwd)),
             auto: AutoLoop::default(),
             permissions: PendingPermissions::default(),
             kick: Notify::new(),

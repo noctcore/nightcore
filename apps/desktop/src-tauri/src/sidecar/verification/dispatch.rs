@@ -6,8 +6,7 @@ use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
-use crate::orchestration::coordinator::Orchestrator;
-use crate::provider::Provider;
+use crate::provider::{Provider, SidecarProvider};
 use crate::worktree;
 use crate::project::ProjectStore;
 use crate::store::TaskStore;
@@ -37,7 +36,7 @@ pub(crate) async fn dispatch_reviewer(
     task_id: &str,
     worktree_dir: &Path,
 ) -> Result<(), String> {
-    let orch = app.state::<Orchestrator>();
+    let provider = app.state::<std::sync::Arc<SidecarProvider>>();
     let store = app.state::<TaskStore>();
     let task = store.get(task_id).ok_or("task vanished before review")?;
     // A worktree-mode run has a `nc/<taskId>` branch with a real `base...HEAD`
@@ -49,7 +48,7 @@ pub(crate) async fn dispatch_reviewer(
     let prompt = reviewer_prompt(&task, &base, has_branch);
     // Reviewer model: V4 reviewer-model policy is deferred to M5; use the task's
     // model (None ⇒ core default), so the reviewer is a peer of the builder.
-    orch.provider
+    provider
         .start_session(
             task_id,
             prompt,
@@ -89,7 +88,7 @@ pub(crate) async fn dispatch_fix(
     review_text: &str,
     worktree_dir: &Path,
 ) -> Result<(), String> {
-    let orch = app.state::<Orchestrator>();
+    let provider = app.state::<std::sync::Arc<SidecarProvider>>();
     let store = app.state::<TaskStore>();
     let task = store.get(task_id).ok_or("task vanished before fix")?;
     let prompt = format!(
@@ -98,7 +97,7 @@ pub(crate) async fn dispatch_fix(
         review_text
     );
     let permission_mode = resolve_permission_mode(app, task.permission_mode.as_deref());
-    orch.provider
+    provider
         .start_session(
             task_id,
             prompt,

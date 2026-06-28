@@ -2,10 +2,13 @@
 //! forward it to the webview, relay permission prompts, and route terminal events
 //! into the verification gate or the run-finish path.
 
+use std::sync::Arc;
+
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::orchestration::coordinator::Orchestrator;
+use crate::engine_api::EngineApi;
+use crate::provider::SidecarProvider;
 use crate::store::TaskStore;
 use crate::task::{ProposedSubtask, TaskStatus};
 
@@ -96,7 +99,8 @@ pub(crate) fn classify_event(event: &Value) -> EventRoute {
 /// (releasing the slot, cleaning up the worktree, feeding the breaker, kicking the
 /// coordinator).
 pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
-    let orch = app.state::<Orchestrator>();
+    let provider = app.state::<Arc<SidecarProvider>>();
+    let engine = app.state::<Arc<dyn EngineApi>>();
     let store = app.state::<TaskStore>();
 
     let event_type = event.get("type").and_then(Value::as_str).unwrap_or("");
@@ -113,7 +117,7 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
             .and_then(Value::as_str)
             .map(|s| s.to_string());
         match request_id {
-            Some(request_id) => orch.provider.correlate_reply(&request_id, event),
+            Some(request_id) => provider.correlate_reply(&request_id, event),
             None => {
                 tracing::warn!(target: "sidecar", "query-result event missing its requestId; dropping")
             }
@@ -149,7 +153,7 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
     // Correlate the event to its task. The first sighting of a session id binds it
     // to the task at the front of the pending-launch FIFO; later events read back
     // the binding. An uncorrelatable event (no pending launch) is dropped.
-    let Some(task_id) = session_id.and_then(|sid| orch.provider.correlate(sid)) else {
+    let Some(task_id) = session_id.and_then(|sid| provider.correlate(sid)) else {
         return;
     };
 
@@ -174,7 +178,7 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
             let tool_name = event.get("toolName").and_then(Value::as_str).unwrap_or("");
             // Relay by tool NAME only — never the input args (paths/commands/secrets).
             tracing::info!(target: "nightcore", task_id, tool = tool_name, "relaying permission request");
-            orch.permissions.register(&task_id, request_id);
+            engine.permissions_register(app, &task_id, request_id);
             if tool_name == EXIT_PLAN_MODE {
                 handle_plan_gate(app, &store, &task_id, &event);
             } else {
@@ -220,7 +224,7 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
             // Observability #5: log the run's wall-clock duration before the terminal
             // handlers `forget` the session (after which the timer is gone).
             if let Some(sid) = session_id {
-                if let Some(duration_ms) = orch.provider.run_duration_ms(sid) {
+                if let Some(duration_ms) = provider.run_duration_ms(sid) {
                     tracing::info!(target: "nightcore", task_id, session_id = sid, duration_ms, "session completed");
                 }
             }
@@ -266,7 +270,7 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
             let aborted = event.get("reason").and_then(Value::as_str) == Some("aborted");
             // Observability #5: capture the run duration before the terminal forget.
             if let Some(sid) = session_id {
-                if let Some(duration_ms) = orch.provider.run_duration_ms(sid) {
+                if let Some(duration_ms) = provider.run_duration_ms(sid) {
                     tracing::info!(target: "nightcore", task_id, session_id = sid, duration_ms, aborted, "session ended (failed/aborted)");
                 }
             }

@@ -263,4 +263,31 @@ mod tests {
         assert!(joined.is_err(), "the driver task was aborted");
         assert!(joined.unwrap_err().is_cancelled());
     }
+
+    /// The M1 serial guard, now expressed through the slot manager at max=1:
+    /// `run_task` rejects with no free slot whenever one is held. (The full command
+    /// needs an `AppHandle` we can't build in a unit test; the decision is purely
+    /// `SlotManager::try_lease`.)
+    #[test]
+    fn serial_guard_is_max_one_slot() {
+        let slots = SlotManager::new(1);
+        assert!(slots.try_lease("task-1"), "first run claims the slot");
+        assert!(
+            !slots.try_lease("task-2"),
+            "a second run is refused while one holds the only slot"
+        );
+        slots.release("task-1");
+        assert!(slots.try_lease("task-2"), "freed slot admits the next run");
+    }
+
+    /// A terminal event releases the slot, letting the next run pass the guard —
+    /// the M2 equivalent of M1's `set_active(None)` on completion.
+    #[test]
+    fn terminal_event_frees_the_slot() {
+        let slots = SlotManager::new(1);
+        slots.try_lease("task-1");
+        assert_eq!(slots.free_slots(), 0);
+        slots.release("task-1"); // finish_run does this on a terminal event
+        assert_eq!(slots.free_slots(), 1);
+    }
 }

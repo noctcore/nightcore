@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::contracts::{EffortLevel, ScorecardDimension, SurfaceCommand};
-use crate::orchestration::coordinator::Orchestrator;
+use crate::provider::SidecarProvider;
 use crate::project::ProjectStore;
 use crate::store::scorecard::{ScorecardRun, ScorecardStore, StoredReading};
 use crate::store::insight::InsightUsage;
@@ -94,8 +94,8 @@ pub async fn start_scorecard(
         max_turns_per_dimension: None,
         max_budget_usd_per_dimension: None,
     };
-    let orch = app.state::<Orchestrator>();
-    if let Err(e) = orch.provider.dispatch_command(command).await {
+    let provider = app.state::<std::sync::Arc<SidecarProvider>>();
+    if let Err(e) = provider.dispatch_command(command).await {
         let _ = scorecard_store.mutate(&run_id, |r| {
             r.status = "failed".to_string();
             r.error = Some(e.clone());
@@ -110,11 +110,11 @@ pub async fn start_scorecard(
 /// Cancel an in-flight scorecard run (aborts every dimension pass).
 #[tauri::command]
 pub async fn cancel_scorecard(app: AppHandle, run_id: String) -> Result<(), String> {
-    let orch = app.state::<Orchestrator>();
+    let provider = app.state::<std::sync::Arc<SidecarProvider>>();
     let command = SurfaceCommand::CancelScorecard {
         run_id: run_id.clone(),
     };
-    orch.provider.dispatch_command(command).await
+    provider.dispatch_command(command).await
 }
 
 /// All scorecard runs for the active project (newest first).

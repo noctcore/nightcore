@@ -18,3 +18,10 @@ pub mod breaker;
 pub mod coordinator;
 pub mod deps;
 pub mod slots;
+
+mod engine_handle;
+
+// The engine-side adapter for the bridge's `crate::engine_api::EngineApi` seam.
+// Re-exported so `lib.rs` can manage it as `crate::orchestration::EngineHandle`
+// without naming the submodule path.
+pub(crate) use engine_handle::EngineHandle;

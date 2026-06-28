@@ -53,13 +53,15 @@ pub(crate) use verification::dispatch_reviewer_for;
 #[allow(unused_imports)]
 pub(crate) use verification::MAX_FIX_ATTEMPTS;
 
+use std::sync::Arc;
+
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::contracts::SurfaceQuery;
-use crate::orchestration::coordinator::{self, Orchestrator};
-use crate::provider::{parse_line, Provider};
+use crate::engine_api::EngineApi;
+use crate::provider::{parse_line, Provider, SidecarProvider};
 use crate::store::TaskStore;
 use crate::task::{Task, TaskStatus, TASK_EVENT};
 
@@ -105,9 +107,9 @@ pub(crate) const SCORECARD_EVENT: &str = "nc:scorecard";
 /// Idempotent: spawns lazily on first use, then a no-op. Shared by `run_task` and
 /// the coordinator's `launch`.
 pub async fn ensure_reader(app: &AppHandle) -> Result<(), String> {
-    let orch = app.state::<Orchestrator>();
+    let provider = app.state::<Arc<SidecarProvider>>();
     tracing::info!(target: "nightcore", "ensuring sidecar is up");
-    let Some(streams) = orch.provider.spawn().await? else {
+    let Some(streams) = provider.spawn().await? else {
         return Ok(()); // already running
     };
     tracing::info!(target: "sidecar", "sidecar spawned (bun)");
@@ -166,8 +168,8 @@ pub async fn ensure_reader(app: &AppHandle) -> Result<(), String> {
 /// lazily started on first use (a task run or this helper), never at app boot.
 pub async fn query(app: &AppHandle, query: SurfaceQuery) -> Result<Value, String> {
     ensure_reader(app).await?;
-    let orch = app.state::<Orchestrator>();
-    orch.provider.query(query).await
+    let provider = app.state::<Arc<SidecarProvider>>();
+    provider.query(query).await
 }
 
 /// Re-emit one captured sidecar stderr line through the Rust `tracing` sink under
@@ -238,9 +240,10 @@ fn strip_level_token(line: &str) -> &str {
 /// permissions, release its slot, and requeue it to `Ready` so the auto-loop
 /// re-dispatches it against a fresh sidecar instead of wedging on a dead session.
 async fn handle_sidecar_crash(app: &AppHandle) {
-    let orch = app.state::<Orchestrator>();
+    let provider = app.state::<Arc<SidecarProvider>>();
+    let engine = app.state::<Arc<dyn EngineApi>>();
     let store = app.state::<TaskStore>();
-    let orphaned = orch.provider.reset_after_crash().await;
+    let orphaned = provider.reset_after_crash().await;
     if orphaned.is_empty() {
         tracing::warn!(target: "nightcore", "sidecar exited with no in-flight runs to recover");
         return;
@@ -249,8 +252,8 @@ async fn handle_sidecar_crash(app: &AppHandle) {
     for task_id in orphaned {
         // Drain any parked permission registry entries (the engine is dead; nothing
         // to deny on the wire) and free the slot the dead run held.
-        let _ = orch.permissions.drain_task(&task_id);
-        orch.slots.release(&task_id);
+        let _ = engine.permissions_drain_task(app, &task_id);
+        engine.slots_release(app, &task_id);
         // Requeue to Ready (mirrors boot reconciliation) so the loop re-dispatches.
         if let Ok(updated) = store.mutate(&task_id, |t| {
             t.status = TaskStatus::Ready;
@@ -266,7 +269,7 @@ async fn handle_sidecar_crash(app: &AppHandle) {
         }
     }
     // Nudge the loop so it re-dispatches the requeued runs against a fresh sidecar.
-    orch.kick();
+    engine.kick(app);
 }
 
 /// How a run ended, for terminal bookkeeping.
@@ -292,14 +295,15 @@ pub(crate) enum Outcome {
 /// the breaker, then kick the coordinator. Distinct from [`finish_run`], which
 /// would clean the worktree and touch the breaker.
 pub(crate) fn park_for_approval(app: &AppHandle, task_id: &str, session_id: Option<u64>) {
-    let orch = app.state::<Orchestrator>();
-    orch.slots.release(task_id);
-    let _ = orch.permissions.drain_task(task_id);
+    let provider = app.state::<Arc<SidecarProvider>>();
+    let engine = app.state::<Arc<dyn EngineApi>>();
+    engine.slots_release(app, task_id);
+    let _ = engine.permissions_drain_task(app, task_id);
     if let Some(sid) = session_id {
-        orch.provider.forget(sid);
+        provider.forget(sid);
     }
     // Worktree is intentionally retained; the breaker is intentionally untouched.
-    orch.kick();
+    engine.kick(app);
 }
 
 /// A run reached a terminal state: release its slot, drop the correlation binding,
@@ -335,16 +339,17 @@ pub(crate) fn finish_run(
     session_id: Option<u64>,
     outcome: Outcome,
 ) {
-    let orch = app.state::<Orchestrator>();
-    orch.slots.release(task_id);
+    let provider = app.state::<Arc<SidecarProvider>>();
+    let engine = app.state::<Arc<dyn EngineApi>>();
+    engine.slots_release(app, task_id);
     // Any permission request still parked for this run is moot: the session has
     // reached a terminal state and the engine's own teardown denies its SDK control
     // request. Drop our registry entries so they can't leak across reruns.
-    let _ = orch.permissions.drain_task(task_id);
+    let _ = engine.permissions_drain_task(app, task_id);
     if let Some(sid) = session_id {
-        orch.provider.forget(sid);
+        provider.forget(sid);
     }
-    coordinator::cleanup_worktree(app, task_id, matches!(outcome, Outcome::Succeeded));
+    engine.cleanup_worktree(app, task_id, matches!(outcome, Outcome::Succeeded));
     // M3 §C: tell the user a task reached a terminal state (Done/Failed only),
     // gated on `notify_on_complete`. Aborts/approval-parks don't notify.
     match outcome {
@@ -353,22 +358,22 @@ pub(crate) fn finish_run(
         Outcome::Aborted | Outcome::NeedsApproval => {}
     }
     match outcome {
-        Outcome::Succeeded => orch.breaker.record_success(),
+        Outcome::Succeeded => engine.breaker_record_success(app),
         // Routed through `park_for_approval`, never here; handled for exhaustiveness.
         Outcome::Aborted | Outcome::NeedsApproval => {} // not a failure signal
         Outcome::Failed => {
-            if orch.breaker.record_failure() {
+            if engine.breaker_record_failure(app) {
                 // This failure tripped the breaker: interrupt the rest and pause.
-                tracing::warn!(target: "nightcore", task_id, threshold = orch.breaker.threshold(), "circuit breaker tripped; pausing auto-loop");
-                orch.emit_state(app, "paused", Some("circuit-breaker"));
+                tracing::warn!(target: "nightcore", task_id, threshold = engine.breaker_threshold(app), "circuit breaker tripped; pausing auto-loop");
+                engine.emit_state(app, "paused", Some("circuit-breaker"));
                 let app = app.clone();
                 tokio::spawn(async move {
-                    app.state::<Orchestrator>().interrupt_all().await;
+                    app.state::<Arc<dyn EngineApi>>().interrupt_all(&app).await;
                 });
             }
         }
     }
-    orch.kick();
+    engine.kick(app);
 }
 
 /// Mutate a task, persist, and emit `nc:task`.

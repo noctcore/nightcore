@@ -14,6 +14,7 @@
 
 mod commands;
 mod contracts;
+mod engine_api;
 mod infra;
 mod orchestration;
 mod provider;
@@ -118,7 +119,15 @@ pub fn run() {
             app.manage(scorecard_store);
             app.manage(project_store);
             app.manage(settings_store);
+            // Share the provider handle so the sidecar bridge can reach it as its own
+            // managed `Arc<SidecarProvider>` state (instead of through the
+            // Orchestrator), and expose the engine's command surface behind the
+            // `EngineApi` trait — together these break the orchestration↔sidecar cycle.
+            let provider_handle = std::sync::Arc::clone(&orchestrator.provider);
             app.manage(orchestrator);
+            app.manage(provider_handle);
+            app.manage(std::sync::Arc::new(orchestration::EngineHandle)
+                as std::sync::Arc<dyn engine_api::EngineApi>);
             app.manage(log_guard);
 
             // Startup reconciliation: prune orphaned worktrees from the active

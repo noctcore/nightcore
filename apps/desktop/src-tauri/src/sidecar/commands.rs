@@ -3,12 +3,14 @@
 //! command-only helpers (`resolve_permission_mode`, `build_guardrails`) shared with
 //! the coordinator's auto-loop launch.
 
+use std::sync::Arc;
+
 use serde_json::Value;
 use tauri::{AppHandle, Manager, State};
 
 use crate::contracts::AnswerQuestionAnswerUnion;
-use crate::orchestration::coordinator::{self, Orchestrator};
-use crate::provider::{PermissionDecision, Provider};
+use crate::engine_api::EngineApi;
+use crate::provider::{PermissionDecision, Provider, SidecarProvider};
 use crate::project::ProjectStore;
 use crate::store::TaskStore;
 use crate::task::Task;
@@ -19,13 +21,14 @@ use crate::task::Task;
 /// `in_progress`, ensures the sidecar is up, then dispatches `start-session`.
 /// Streaming and the terminal transition happen on the reader task.
 ///
-/// The whole ordered sequence lives in [`coordinator::submit_run`], shared with the
-/// auto-loop `launch`. A manual run feeds NO circuit breaker (`feed_breaker =
-/// false`) and surfaces the setup error to the caller as its `Result`; the
-/// auto-loop launch feeds the breaker and discards the result instead.
+/// The whole ordered sequence lives in the engine's `submit_run` (behind
+/// [`EngineApi`]), shared with the auto-loop `launch`. A manual run feeds NO circuit
+/// breaker (`feed_breaker = false`) and surfaces the setup error to the caller as
+/// its `Result`; the auto-loop launch feeds the breaker and discards the result.
 #[tauri::command]
 pub async fn run_task(app: AppHandle, id: String) -> Result<(), String> {
-    coordinator::submit_run(&app, &id, false).await
+    let engine = app.state::<Arc<dyn EngineApi>>();
+    engine.submit_run(&app, &id, false).await
 }
 
 /// The SDK permission mode for the next run (M4.7 §A4). Precedence:
@@ -104,22 +107,23 @@ pub fn resolve_mcp_servers(app: &AppHandle) -> Vec<crate::contracts::McpServerEn
 /// `decision` is treated as a deny.
 #[tauri::command]
 pub async fn respond_permission(
+    app: AppHandle,
     store: State<'_, TaskStore>,
-    orch: State<'_, Orchestrator>,
+    provider: State<'_, Arc<SidecarProvider>>,
+    engine: State<'_, Arc<dyn EngineApi>>,
     task_id: String,
     request_id: String,
     decision: String,
     updated_input: Option<Value>,
     message: Option<String>,
 ) -> Result<(), String> {
-    let session_id = orch
-        .provider
+    let session_id = provider
         .session_for(&task_id)
         .or_else(|| store.get(&task_id).and_then(|t| t.session_id))
         .ok_or_else(|| format!("no live session for task {task_id}"))?;
 
     // Drop it from the parked set regardless; a stale/duplicate decision is a no-op.
-    orch.permissions.resolve(&task_id, &request_id);
+    engine.permissions_resolve(&app, &task_id, &request_id);
 
     let allow = decision == "allow";
     let decision = match decision.as_str() {
@@ -130,7 +134,7 @@ pub async fn respond_permission(
     };
     // Decision is debug-only (the surface's choice, never the tool input).
     tracing::debug!(target: "nightcore", task_id, session_id, allow, "permission decision sent");
-    orch.provider
+    provider
         .decide_permission(session_id, &request_id, decision)
         .await
 }
@@ -143,19 +147,18 @@ pub async fn respond_permission(
 #[tauri::command]
 pub async fn answer_question(
     store: State<'_, TaskStore>,
-    orch: State<'_, Orchestrator>,
+    provider: State<'_, Arc<SidecarProvider>>,
     task_id: String,
     request_id: String,
     answer: AnswerQuestionAnswerUnion,
 ) -> Result<(), String> {
-    let session_id = orch
-        .provider
+    let session_id = provider
         .session_for(&task_id)
         .or_else(|| store.get(&task_id).and_then(|t| t.session_id))
         .ok_or_else(|| format!("no live session for task {task_id}"))?;
 
     tracing::debug!(target: "nightcore", task_id, session_id, "ask-user-question answer sent");
-    orch.provider
+    provider
         .send_answer(session_id, &request_id, answer)
         .await
 }
@@ -166,63 +169,32 @@ pub async fn answer_question(
 /// which releases the slot.
 #[tauri::command]
 pub async fn cancel_task(
+    app: AppHandle,
     store: State<'_, TaskStore>,
-    orch: State<'_, Orchestrator>,
+    provider: State<'_, Arc<SidecarProvider>>,
+    engine: State<'_, Arc<dyn EngineApi>>,
     id: String,
 ) -> Result<(), String> {
     // Abort the driver task (no-op if none attached) but keep the slot until the
     // terminal event so the reader's cleanup runs exactly once.
-    orch.slots.abort(&id);
+    engine.slots_abort(&app, &id);
 
     // Fail-closed: deny any permission request parked for this task before the
     // interrupt, so a session waiting on an approval can't hang.
-    orch.deny_parked_permissions(&id).await;
+    engine.deny_parked_permissions(&app, &id).await;
 
     // Prefer the live correlation binding (set the moment the run started); fall
     // back to the persisted session id from a prior run.
-    let session_id = orch
-        .provider
+    let session_id = provider
         .session_for(&id)
         .or_else(|| store.get(&id).and_then(|t| t.session_id));
     if let Some(session_id) = session_id {
-        orch.provider.interrupt(session_id).await?;
+        provider.interrupt(session_id).await?;
     } else {
         // No correlated session yet: the launch may be pending its first
         // `session-started`. Evict that pending entry (concurrency #5) so a later,
         // unrelated session can't mis-bind to this cancelled launch.
-        orch.provider.evict_pending(&id);
+        provider.evict_pending(&id);
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::orchestration::slots::SlotManager;
-
-    /// The M1 serial guard, now expressed through the slot manager at max=1:
-    /// `run_task` rejects with no free slot whenever one is held. (The full command
-    /// needs an `AppHandle` we can't build in a unit test; the decision is purely
-    /// `SlotManager::try_lease`.)
-    #[test]
-    fn serial_guard_is_max_one_slot() {
-        let slots = SlotManager::new(1);
-        assert!(slots.try_lease("task-1"), "first run claims the slot");
-        assert!(
-            !slots.try_lease("task-2"),
-            "a second run is refused while one holds the only slot"
-        );
-        slots.release("task-1");
-        assert!(slots.try_lease("task-2"), "freed slot admits the next run");
-    }
-
-    /// A terminal event releases the slot, letting the next run pass the guard —
-    /// the M2 equivalent of M1's `set_active(None)` on completion.
-    #[test]
-    fn terminal_event_frees_the_slot() {
-        let slots = SlotManager::new(1);
-        slots.try_lease("task-1");
-        assert_eq!(slots.free_slots(), 0);
-        slots.release("task-1"); // finish_run does this on a terminal event
-        assert_eq!(slots.free_slots(), 1);
-    }
 }

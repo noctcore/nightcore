@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::contracts::{AnalysisScope, EffortLevel, FindingCategory, SurfaceCommand};
-use crate::orchestration::coordinator::Orchestrator;
+use crate::provider::SidecarProvider;
 use crate::project::ProjectStore;
 use crate::store::insight::{InsightRun, InsightStore, InsightUsage, StoredFinding};
 use crate::store::TaskStore;
@@ -138,8 +138,8 @@ pub async fn start_analysis(
         max_turns_per_category: None,
         max_budget_usd_per_category: None,
     };
-    let orch = app.state::<Orchestrator>();
-    if let Err(e) = orch.provider.dispatch_command(command).await {
+    let provider = app.state::<std::sync::Arc<SidecarProvider>>();
+    if let Err(e) = provider.dispatch_command(command).await {
         let _ = insight_store.mutate(&run_id, |r| {
             r.status = "failed".to_string();
             r.error = Some(e.clone());
@@ -154,11 +154,11 @@ pub async fn start_analysis(
 /// Cancel an in-flight analysis run (aborts every category pass).
 #[tauri::command]
 pub async fn cancel_analysis(app: AppHandle, run_id: String) -> Result<(), String> {
-    let orch = app.state::<Orchestrator>();
+    let provider = app.state::<std::sync::Arc<SidecarProvider>>();
     let command = SurfaceCommand::CancelAnalysis {
         run_id: run_id.clone(),
     };
-    orch.provider.dispatch_command(command).await
+    provider.dispatch_command(command).await
 }
 
 /// All analysis runs for the active project (newest first).

@@ -17,7 +17,7 @@ use std::path::Path;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::contracts::{ConventionCategory, EffortLevel, SurfaceCommand};
-use crate::orchestration::coordinator::Orchestrator;
+use crate::provider::SidecarProvider;
 use crate::project::ProjectStore;
 use crate::sidecar::{ensure_reader, HARNESS_EVENT};
 use crate::store::harness::{
@@ -98,8 +98,8 @@ pub async fn start_harness_scan(
         max_turns_per_category: None,
         max_budget_usd_per_category: None,
     };
-    let orch = app.state::<Orchestrator>();
-    if let Err(e) = orch.provider.dispatch_command(command).await {
+    let provider = app.state::<std::sync::Arc<SidecarProvider>>();
+    if let Err(e) = provider.dispatch_command(command).await {
         let _ = harness_store.mutate(&run_id, |r| {
             r.status = "failed".to_string();
             r.error = Some(e.clone());
@@ -114,11 +114,11 @@ pub async fn start_harness_scan(
 /// Cancel an in-flight scan (aborts every convention pass + synthesis).
 #[tauri::command]
 pub async fn cancel_harness_scan(app: AppHandle, run_id: String) -> Result<(), String> {
-    let orch = app.state::<Orchestrator>();
+    let provider = app.state::<std::sync::Arc<SidecarProvider>>();
     let command = SurfaceCommand::CancelHarnessScan {
         run_id: run_id.clone(),
     };
-    orch.provider.dispatch_command(command).await
+    provider.dispatch_command(command).await
 }
 
 /// All harness scans for the active project (newest first).

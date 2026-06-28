@@ -8,7 +8,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::store::types::StructureLockResult;
 use crate::kind;
-use crate::orchestration::coordinator::Orchestrator;
+use crate::provider::SidecarProvider;
 use crate::worktree;
 use crate::project::ProjectStore;
 use crate::store::TaskStore;
@@ -99,7 +99,7 @@ pub(crate) async fn handle_build_completed(
     // Keep the slot leased and the worktree intact: only forget the build session
     // (a new reviewer session correlates to the same task via the FIFO).
     if let Some(sid) = session_id {
-        app.state::<Orchestrator>().provider.forget(sid);
+        app.state::<std::sync::Arc<SidecarProvider>>().forget(sid);
     }
     tracing::info!(target: "nightcore", task_id, worktree = review_dir.is_worktree, "build complete; entering verification gate");
     apply_and_emit(app, store, task_id, |task| {
@@ -201,7 +201,7 @@ pub(crate) async fn handle_review_completed(
     // The reviewer session is done regardless of verdict; forget it (the slot and
     // worktree stay with the task until a true terminal).
     if let Some(sid) = session_id {
-        app.state::<Orchestrator>().provider.forget(sid);
+        app.state::<std::sync::Arc<SidecarProvider>>().forget(sid);
     }
 
     match verdict {
