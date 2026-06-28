@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::orchestration::worktree;
+use crate::worktree;
 use crate::project::ProjectStore;
 use crate::settings::SettingsStore;
 use crate::store::TaskStore;

@@ -35,7 +35,7 @@ fn export_all_bindings() {
     use crate::gauntlet::{GauntletResult, GauntletStep};
     use crate::store::types::{StepStatus, StructureLockCheck, StructureLockResult};
     use crate::orchestration::coordinator::LoopSnapshot;
-    use crate::orchestration::worktree::WorktreeStatus;
+    use crate::worktree::WorktreeStatus;
     use crate::project::Project;
     use crate::settings::{
         AppInfo, McpServerEntry, McpServerTransport, Settings, SettingsOverride, SettingsPatch,

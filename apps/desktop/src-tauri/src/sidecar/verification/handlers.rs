@@ -9,7 +9,7 @@ use tauri::{AppHandle, Manager};
 use crate::store::types::StructureLockResult;
 use crate::kind;
 use crate::orchestration::coordinator::Orchestrator;
-use crate::orchestration::worktree;
+use crate::worktree;
 use crate::project::ProjectStore;
 use crate::store::TaskStore;
 use crate::task::{ProposedSubtask, Task, TaskKind, TaskStatus};

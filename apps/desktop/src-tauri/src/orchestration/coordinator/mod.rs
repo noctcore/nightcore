@@ -44,7 +44,7 @@ use ts_rs::TS;
 use crate::orchestration::breaker::CircuitBreaker;
 use crate::provider::SidecarProvider;
 use crate::orchestration::slots::SlotManager;
-use crate::orchestration::worktree;
+use crate::worktree;
 use crate::project::ProjectStore;
 
 /// The Tauri event reflecting auto-loop state. Payload:

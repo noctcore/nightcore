@@ -6,7 +6,7 @@
 
 use tauri::{AppHandle, Manager};
 
-use crate::orchestration::worktree;
+use crate::worktree;
 use crate::store::TaskStore;
 
 use super::{fail_task, mark_task_in_progress, resolve_worktree, Orchestrator};

@@ -21,6 +21,7 @@ mod sidecar;
 mod store;
 mod sync;
 mod workflow;
+mod worktree;
 
 // Module facade: preserve the historical crate-root paths after the folder
 // regroup so call sites elsewhere keep resolving unchanged. Crate-internal

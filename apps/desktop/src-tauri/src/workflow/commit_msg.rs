@@ -55,7 +55,7 @@ explanation, or quotes around the message.";
 /// the task's title/description and a digest of its transcript as context. Returns
 /// `None` on any failure so the caller can fall back to the title-based message.
 pub fn generate_for(store: &TaskStore, dir: &Path, task: &Task) -> Option<String> {
-    let diff = crate::orchestration::worktree::staged_diff(dir).ok()?;
+    let diff = crate::worktree::staged_diff(dir).ok()?;
     if diff.trim().is_empty() {
         return None;
     }

@@ -13,7 +13,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use super::commit_msg;
 use crate::gauntlet;
 use crate::gauntlet_project;
-use crate::orchestration::worktree::{self, MergeOutcome};
+use crate::worktree::{self, MergeOutcome};
 use crate::project::{Project, ProjectStore};
 use crate::settings::SettingsStore;
 use crate::store::TaskStore;

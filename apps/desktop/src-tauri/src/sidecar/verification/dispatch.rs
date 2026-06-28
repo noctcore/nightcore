@@ -8,7 +8,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::orchestration::coordinator::Orchestrator;
 use crate::provider::Provider;
-use crate::orchestration::worktree;
+use crate::worktree;
 use crate::project::ProjectStore;
 use crate::store::TaskStore;
 use crate::task::{Task, TaskKind};

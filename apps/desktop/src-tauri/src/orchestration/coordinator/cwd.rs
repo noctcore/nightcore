@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use tauri::{AppHandle, Manager};
 
-use crate::orchestration::worktree;
+use crate::worktree;
 use crate::project::ProjectStore;
 use crate::store::TaskStore;
 

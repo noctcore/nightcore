@@ -272,10 +272,10 @@ fn cleanup_task_worktree(app: &AppHandle, id: &str, task: Option<&Task>) {
         return;
     };
     let project_path = std::path::PathBuf::from(&project.path);
-    if let Err(e) = crate::orchestration::worktree::remove(&project_path, id) {
+    if let Err(e) = crate::worktree::remove(&project_path, id) {
         tracing::warn!(target: "nightcore", task_id = id, error = %e, "delete: worktree remove failed");
     }
-    if let Err(e) = crate::orchestration::worktree::delete_branch(&project_path, id) {
+    if let Err(e) = crate::worktree::delete_branch(&project_path, id) {
         tracing::warn!(target: "nightcore", task_id = id, error = %e, "delete: branch delete failed");
     }
 }
