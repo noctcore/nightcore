@@ -1,11 +1,12 @@
-//! The managed [`SettingsStore`] (load/save + per-project resolution accessors)
-//! and the `#[tauri::command]` handlers the webview calls.
+//! The managed [`SettingsStore`]: load/save + per-project resolution accessors,
+//! plus the `AppInfo` metadata type. The settings command handlers the webview
+//! calls now live in `commands/settings.rs` (they up-call orchestration, so they
+//! sit above this persistence leaf).
 
 use std::path::PathBuf;
 use std::sync::Mutex;
 
 use serde::Serialize;
-use tauri::{AppHandle, State};
 #[cfg(test)]
 use ts_rs::TS;
 
@@ -141,7 +142,7 @@ impl SettingsStore {
     }
 
     /// Apply a patch, persist, and return the merged settings.
-    pub(super) fn update(&self, patch: SettingsPatch) -> Result<Settings, String> {
+    pub(crate) fn update(&self, patch: SettingsPatch) -> Result<Settings, String> {
         let mut guard = crate::sync::lock_or_recover(&self.settings);
         guard.merge(patch);
         let snapshot = guard.clone();
@@ -186,45 +187,4 @@ pub struct AppInfo {
 }
 
 /// The repository URL, compiled in (no fake `github.com/you` literal in the UI).
-const REPOSITORY_URL: &str = "https://github.com/Shironex/nightcore";
-
-// --- Commands ---------------------------------------------------------------
-
-/// Real application metadata for the About page (version + repo URL), sourced from
-/// build-time constants rather than UI literals.
-#[tauri::command]
-pub fn app_info() -> AppInfo {
-    AppInfo {
-        version: env!("CARGO_PKG_VERSION").to_string(),
-        repository: REPOSITORY_URL.to_string(),
-    }
-}
-
-/// The current settings (global + per-project overrides).
-#[tauri::command]
-pub fn get_settings(store: State<'_, SettingsStore>) -> Result<Settings, String> {
-    Ok(store.get())
-}
-
-/// Shallow-merge a patch into the global block, or — when `projectId` is set —
-/// into that project's override. Returns the merged settings. A global
-/// `maxConcurrency` change is also applied to the live slot pool so the auto-loop
-/// honors it immediately (not just on next launch).
-#[tauri::command]
-pub fn update_settings(
-    app: AppHandle,
-    store: State<'_, SettingsStore>,
-    patch: SettingsPatch,
-) -> Result<Settings, String> {
-    // A global (no projectId) maxConcurrency change resizes the live pool.
-    let resize = patch
-        .project_id
-        .is_none()
-        .then_some(patch.max_concurrency)
-        .flatten();
-    let merged = store.update(patch)?;
-    if let Some(n) = resize {
-        crate::orchestration::coordinator::set_max_concurrency(&app, n.max(1) as usize);
-    }
-    Ok(merged)
-}
+pub(crate) const REPOSITORY_URL: &str = "https://github.com/Shironex/nightcore";

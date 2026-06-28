@@ -22,8 +22,8 @@ use super::patch::SettingsOverride;
 pub struct Settings {
     pub default_model: String,
     pub default_effort: String,
-    /// 1..=6. The M2 auto-loop enforces it as the slot-pool cap (a global change
-    /// resizes the live pool via [`crate::orchestration::coordinator::set_max_concurrency`]).
+    /// 1..=6. The auto-loop enforces it as the slot-pool cap; a global change
+    /// resizes the live pool to match.
     pub max_concurrency: u8,
     /// "bypass" | "auto-accept" | "ask" | "plan" (M4.7 §A1). Maps to the engine's
     /// SDK `permissionMode` via [`sdk_permission_mode`]. Default is `bypass` (an

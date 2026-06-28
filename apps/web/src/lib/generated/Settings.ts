@@ -9,8 +9,8 @@ import type { SettingsOverride } from "./SettingsOverride";
  */
 export type Settings = { defaultModel: string, defaultEffort: string, 
 /**
- * 1..=6. The M2 auto-loop enforces it as the slot-pool cap (a global change
- * resizes the live pool via [`crate::orchestration::coordinator::set_max_concurrency`]).
+ * 1..=6. The auto-loop enforces it as the slot-pool cap; a global change
+ * resizes the live pool to match.
  */
 maxConcurrency: number, 
 /**
