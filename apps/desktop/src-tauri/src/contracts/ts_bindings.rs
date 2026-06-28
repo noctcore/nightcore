@@ -32,8 +32,8 @@ use ts_rs::TS;
 /// codegen fails the test rather than silently skipping a type.
 #[cfg(test)]
 fn export_all_bindings() {
-    use crate::gauntlet::{GauntletResult, GauntletStep, StepStatus};
-    use crate::gauntlet_project::{StructureLockCheck, StructureLockResult};
+    use crate::gauntlet::{GauntletResult, GauntletStep};
+    use crate::store::types::{StepStatus, StructureLockCheck, StructureLockResult};
     use crate::orchestration::coordinator::LoopSnapshot;
     use crate::orchestration::worktree::WorktreeStatus;
     use crate::project::Project;

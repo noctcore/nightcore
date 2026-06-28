@@ -15,7 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(test)]
 use ts_rs::TS;
 
-use crate::gauntlet_project::StructureLockResult;
+use crate::store::types::StructureLockResult;
 
 /// Where a task sits in its lifecycle. `ready` and `waiting_approval` are
 /// reserved in M1 (defined, not yet produced): the auto-loop and interactive
@@ -1015,7 +1015,7 @@ mod tests {
 
         // A full round-trip preserves a stored result.
         let mut gated = Task::new("t".into(), String::new());
-        gated.structure_lock_result = Some(crate::gauntlet_project::empty_pass());
+        gated.structure_lock_result = Some(StructureLockResult::empty_pass());
         let json = serde_json::to_string(&gated).unwrap();
         let restored: Task = serde_json::from_str(&json).unwrap();
         assert!(restored.structure_lock_result.is_some());

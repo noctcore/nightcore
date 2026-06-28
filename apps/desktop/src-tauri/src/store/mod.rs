@@ -17,6 +17,7 @@ pub(crate) mod scorecard;
 pub(crate) mod settings;
 pub(crate) mod task;
 pub(crate) mod transcript;
+pub mod types;
 
 use std::collections::HashMap;
 use std::path::PathBuf;

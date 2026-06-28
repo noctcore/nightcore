@@ -20,29 +20,20 @@ use std::path::Path;
 #[cfg(test)]
 use std::process::Command;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 // `ts-rs` is a dev-dependency; the codegen derive is gated to `cfg(test)`.
 #[cfg(test)]
 use ts_rs::TS;
+
+// `StepStatus` is the persisted step-outcome enum; it now lives in the leaf
+// `store::types` module (it travels inside the stored `Task` via `StructureLockCheck`),
+// and `GauntletStep` reads it back down from there.
+use crate::store::types::StepStatus;
 
 /// How much of a failing step's output to retain for the UI. Bounded so a noisy
 /// failure can't bloat the event payload; truncated from the tail (the part that
 /// usually names the failure).
 const TAIL_LIMIT: usize = 4000;
-
-/// The outcome of one gauntlet step.
-// Also `Deserialize` because it travels (via `StructureLockCheck`) inside the
-// persisted `Task` JSON, which round-trips through serde on store load.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(TS))]
-#[serde(rename_all = "snake_case")]
-#[cfg_attr(test, ts(export, export_to = "StepStatus.ts"))]
-pub enum StepStatus {
-    Passed,
-    Failed,
-    /// Detected but not run because an earlier step already failed (stop-at-first).
-    Skipped,
-}
 
 /// One detected check and how it went.
 // `exit_code`/`output` are OMITTED when absent (`skip_serializing_if` + `default`),

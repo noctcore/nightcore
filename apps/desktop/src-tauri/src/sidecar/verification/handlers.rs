@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
-use crate::gauntlet_project::StructureLockResult;
+use crate::store::types::StructureLockResult;
 use crate::kind;
 use crate::orchestration::coordinator::Orchestrator;
 use crate::orchestration::worktree;
