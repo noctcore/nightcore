@@ -1,3 +1,6 @@
+/** Pulsing placeholder block for loading states. */
+
+/** Props for {@link Skeleton}. */
 interface SkeletonProps {
   /** Width/height/shape overrides (e.g. `h-3 w-24 rounded-md`). */
   className?: string;

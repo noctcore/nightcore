@@ -1,5 +1,8 @@
+/** Props for the KindPicker component. */
 import type { TaskKind } from '@/lib/bridge';
 
+/** Props for the task-kind picker: the selected kind, the change handler, and
+ *  compact/disabled layout flags. */
 export interface KindPickerProps {
   /** The currently selected kind. */
   value: TaskKind;

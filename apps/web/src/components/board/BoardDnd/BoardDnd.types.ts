@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Task } from '@/lib/bridge';
 
+/** Props for {@link BoardDnd}. */
 export interface BoardDndProps {
   /** All in-scope tasks — used to resolve a dragged card's current status and to
    *  render the drag overlay preview by id. */

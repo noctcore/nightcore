@@ -1,11 +1,11 @@
 /**
- * The Nightcore icon set. Every glyph in the design maps 1:1 to a lucide-react
- * icon; this module is the single import surface for them so feature code never
- * reaches into `lucide-react` directly (and the one brand glyph lucide 1.x
- * dropped — GitHub — is provided here with the design's exact path).
+ * The Nightcore icon set. Each glyph re-exports a lucide-react icon under a
+ * Nightcore name; this module is the single import surface for them so feature
+ * code never reaches into `lucide-react` directly (and the one brand glyph
+ * lucide 1.x dropped — GitHub — is provided here).
  *
  * Icons inherit `currentColor`; tint them with a text color at the call site
- * (`text-primary`, `text-muted-foreground`, …) exactly as the design does.
+ * (`text-primary`, `text-muted-foreground`, …).
  */
 import type { SVGProps } from 'react';
 
@@ -62,9 +62,8 @@ export {
   Paperclip as PaperclipIcon,
 } from 'lucide-react';
 
-/** The GitHub brand mark — removed from lucide 1.x, so we ship the design's
- *  exact path. Shares the lucide stroke conventions so it sits inline with the
- *  rest of the set. */
+/** The GitHub brand mark — removed from lucide 1.x, so it ships here. Shares the
+ *  lucide stroke conventions so it sits inline with the rest of the set. */
 export function GithubIcon({ size = 16, ...props }: SVGProps<SVGSVGElement> & { size?: number }) {
   return (
     <svg

@@ -22,7 +22,7 @@ afterEach(() => {
   delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
 });
 
-// --- C1: the Settings concurrency slider was invoking an unregistered command --
+// --- The Settings concurrency slider invokes the registered backend command ----
 
 test('setMaxConcurrency invokes the registered set_max_concurrency_cmd command', async () => {
   invoke.mockResolvedValue(undefined);
@@ -30,7 +30,7 @@ test('setMaxConcurrency invokes the registered set_max_concurrency_cmd command',
   expect(invoke).toHaveBeenCalledWith('set_max_concurrency_cmd', { n: 4 });
 });
 
-// --- C3: transcript entries are validated against the contracts schema ---------
+// --- Transcript entries are validated against the contracts schema -------------
 
 test('readTranscript drops entries that fail the event contract, keeping valid ones', async () => {
   invoke.mockResolvedValue([
@@ -60,7 +60,7 @@ test('readTranscript tolerates a non-array result (returns empty)', async () => 
   expect(await bridge.readTranscript('task-1')).toEqual([]);
 });
 
-// --- C3: the nc:session listener validates the inner event before dispatching ---
+// --- The nc:session listener validates the inner event before dispatching ------
 
 test('onSessionEvent forwards a valid envelope and drops a malformed event', async () => {
   // Capture the listener registered with `listen('nc:session', cb)`.

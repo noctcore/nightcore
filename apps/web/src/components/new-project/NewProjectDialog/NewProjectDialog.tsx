@@ -1,3 +1,4 @@
+/** "New project" dialog: pick a git repo folder, name it, and create a project. */
 import {
   Badge,
   Button,
@@ -16,19 +17,26 @@ const FIELD_LABEL =
 const FIELD_INPUT =
   'w-full rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary';
 
-/** The "New project" dialog — point Nightcore at a git repo. Concurrency is an
- *  M2 affordance; it's collected here but tagged accordingly. */
+/** Text colour class per git-detection state, applied to the status row. */
 const GIT_ROW: Record<'valid' | 'invalid' | 'checking', string> = {
   valid: 'text-success',
   invalid: 'text-warning',
   checking: 'text-muted-foreground',
 };
+/** Status message shown for each git-detection state of the chosen folder. */
 const GIT_TEXT: Record<'valid' | 'invalid' | 'checking', string> = {
   valid: '✓ Git repository detected.',
   invalid: 'Not a git repository.',
   checking: 'Checking…',
 };
 
+/**
+ * Modal for creating a project from a git repository. Lets the user choose a
+ * folder, name the project, pick a default model, and set concurrency. Create is
+ * gated until a folder is chosen, a name is entered, and the folder is a valid
+ * git repo; when it isn't, a `git init` action is offered. Concurrency is
+ * collected here but badged as a not-yet-built affordance.
+ */
 export function NewProjectDialog({
   models,
   onChooseFolder,
@@ -41,8 +49,8 @@ export function NewProjectDialog({
   const { name, model, concurrency, canCreate, busy, setName, setModel, setConcurrency, create } =
     useNewProjectDialog({ models, onCreate, folder, gitState });
 
-  // Esc / click-outside close — but never while a create is in flight (W-A's
-  // double-submit guard). The shared Modal adds the focus trap + restore.
+  // Esc / click-outside close — but never while a create is in flight, to guard
+  // against double-submit. The shared Modal adds the focus trap + restore.
   const close = busy ? () => {} : onClose;
 
   return (

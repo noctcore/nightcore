@@ -1,3 +1,4 @@
+/** Props for the ApplyConfirmDialog pre-write confirmation modal. */
 import type { ProposedArtifactVM } from '../harness.types';
 
 export interface ApplyConfirmDialogProps {

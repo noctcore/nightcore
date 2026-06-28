@@ -1,3 +1,4 @@
+/** The ConventionDetailPanel sheet for a single convention finding. */
 import type { ReactNode } from 'react';
 import {
   Button,

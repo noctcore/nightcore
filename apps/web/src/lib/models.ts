@@ -1,4 +1,4 @@
-// Shared model + effort option sets (M4.7 §E/§F). These live in `@/lib` rather
+// Shared model + effort option sets. These live in `@/lib` rather
 // than a feature folder because both the board's per-task picker and the Settings
 // model/effort defaults consume them — the single source of truth for the SDK
 // model ids and effort levels sent on the wire.
@@ -10,11 +10,10 @@
 //
 // The per-model `supportsEffort` / `supportedEfforts` / `adaptive` fields mirror
 // the contract `ModelDescriptor` (packages/contracts/src/models.ts) that the
-// engine's `listModels()` already returns and the TUI already consumes. The web
-// can't reach `listModels()` yet (it isn't exposed over the Tauri/IPC seam — §G
-// dynamic listing is deferred), so this is a curated static stand-in shaped like
-// the descriptor: when the seam opens, the picker can swap to live descriptors
-// without a component change.
+// engine's `listModels()` already returns. The web can't reach `listModels()`
+// yet (it isn't exposed over the Tauri/IPC seam), so this is a curated static
+// stand-in shaped like the descriptor: when the seam opens, the picker can swap
+// to live descriptors without a component change.
 
 import { KnownModelSchema, type EffortLevel, type KnownModel } from '@nightcore/contracts';
 
@@ -93,8 +92,7 @@ const MODEL_META: Record<KnownModel, ModelMeta> = {
 
 /** The known Claude models the picker surfaces, in display order. The web offers a
  *  curated subset of the contract enum; a contract model not listed here is
- *  intentionally not offered this milestone (dynamic `listModels()` is deferred —
- *  §G). */
+ *  intentionally not offered (dynamic `listModels()` is not yet wired). */
 const WEB_MODELS: readonly KnownModel[] = [
   'claude-opus-4-8',
   'claude-sonnet-4-6',
@@ -108,7 +106,7 @@ export const MODEL_OPTIONS: ModelOption[] = WEB_MODELS.map((id) => ({
   ...MODEL_META[id],
 }));
 
-/** A selectable reasoning-effort level — the SDK effort set (contract §E/§F). */
+/** A selectable reasoning-effort level — the SDK effort set. */
 export interface EffortOption {
   /** The effort level sent on the wire. The real levels mirror the contract
    *  `EffortLevelSchema`; `none` is a web-only sentinel that disables extended

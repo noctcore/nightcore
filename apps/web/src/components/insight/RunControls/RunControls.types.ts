@@ -1,3 +1,4 @@
+/** Types for the Insight run-config (lifted form state) and the RunControls props. */
 import type { AnalysisScope, FindingCategory } from '@/lib/bridge';
 import type { RunConfig, RunConfigPrefill } from '@/lib/useRunConfig';
 
@@ -22,6 +23,7 @@ export interface InsightRunConfig
   prefill: (opts: InsightRunConfigPrefill) => void;
 }
 
+/** Props for the RunControls form. */
 export interface RunControlsProps {
   /** The lifted form state, owned by the InsightView hook. */
   config: InsightRunConfig;

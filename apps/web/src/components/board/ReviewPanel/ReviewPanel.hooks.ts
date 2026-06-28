@@ -1,6 +1,8 @@
+/** View-model derivation for the ReviewPanel from a task's verification fields. */
 import type { Task } from '@/lib/bridge';
 import { parseVerdict, type Verdict } from '../status';
 
+/** The derived view-model the ReviewPanel renders from a task. */
 export interface ReviewPanelView {
   /** The parsed reviewer verdict, or null when none/unparseable. */
   verdict: Verdict | null;

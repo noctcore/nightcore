@@ -90,7 +90,7 @@ export const CreatesWorktreeTask: Story = {
   },
 };
 
-/** Play test: per-task permission / model / effort overrides (M4.7) thread
+/** Play test: per-task permission / model / effort overrides thread
  *  through onCreate as the options object. */
 export const CreatesWithOverrides: Story = {
   play: async ({ args, canvasElement }) => {

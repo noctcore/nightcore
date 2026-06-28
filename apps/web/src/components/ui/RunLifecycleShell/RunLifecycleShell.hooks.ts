@@ -1,3 +1,4 @@
+/** Phase cross-fade and focus-management hooks for RunLifecycleShell. */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import type { RunPhase } from './RunLifecycleShell.types';

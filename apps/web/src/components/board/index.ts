@@ -1,3 +1,5 @@
+/** Public surface of the board feature: components, the status vocabulary, and
+ *  the session-stream folding helpers. */
 export { Board } from './Board';
 export type { BreakerInfo } from './Board';
 export { BoardDnd } from './BoardDnd';

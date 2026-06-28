@@ -1,3 +1,4 @@
+/** Lazy Shiki highlighter singleton and the hook that drives CodeBlock. */
 import { useEffect, useState } from 'react';
 import { createHighlighterCore, type HighlighterCore } from 'shiki/core';
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
@@ -47,6 +48,8 @@ const LANG_ALIASES: Record<string, string> = {
   zsh: 'bash',
 };
 
+/** Resolve a language token or file extension to a loaded grammar id, falling
+ *  back to `text` for anything unknown or omitted. */
 export function resolveLang(language: string | undefined): string {
   if (language === undefined) return 'text';
   const key = language.toLowerCase().replace(/^\./, '').trim();

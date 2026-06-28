@@ -1,3 +1,4 @@
+/** Root component: error boundary + toast provider wrapping the app shell. */
 import { AppShell, ErrorBoundary } from '@/components/app';
 import { ToastProvider } from '@/components/ui';
 

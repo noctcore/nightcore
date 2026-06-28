@@ -1,3 +1,4 @@
+/** Live elapsed-time ticker hook for the RunProgress panel. */
 import { useEffect, useRef, useState } from 'react';
 
 /**

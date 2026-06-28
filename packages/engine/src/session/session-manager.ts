@@ -1,3 +1,9 @@
+/**
+ * The session supervisor: owns live `SessionRunner`s keyed by monotonic id,
+ * dispatches surface commands and queries, persists session records, and forwards
+ * the typed engine event stream. Also routes the analysis/harness/scorecard scan
+ * command families to their dedicated managers, and exposes SDK→wire mappers.
+ */
 import { EventEmitter } from 'node:events';
 import type {
   Config,
@@ -84,16 +90,12 @@ interface ManagedSession {
  * The supervisor. Owns a map of `sessionId → SessionRunner`, hands out monotonic
  * ids that never reset (so a late event from a torn-down runner is dropped), and
  * degrades-not-throws on crash — a runner failure surfaces as a `session-failed`
- * event, never a rejected promise.
+ * event, never a rejected promise. Supports N concurrent sessions and a rich
+ * typed event stream.
  *
- * Generalized from shiranami's `analysis-host.ts`: same id discipline and
- * graceful-degradation semantics, but N concurrent sessions and a rich typed
- * event stream instead of a single `{ id, result }` reply.
- *
- * SPIKE: runners are in-process for now (the SDK already spawns its own CLI
- * subprocess, so an extra worker_thread per session is likely redundant
- * double-subprocessing). Whether sessions need a real OS-level worker boundary
- * for crash isolation is a deferred week-1 decision — see docs/architecture.md.
+ * Runners are in-process: the SDK already spawns its own CLI subprocess per
+ * session, so an extra worker_thread per session would be redundant
+ * double-subprocessing.
  */
 export class SessionManager {
   private readonly emitter = new EventEmitter();
@@ -411,9 +413,9 @@ export class SessionManager {
     // persisted `sdkSessionId`); a cold start omits it entirely.
     const resumeSessionId = command.resumeSessionId;
 
-    // M4: resolve the task kind to its agent preset (system prompt + tool
+    // Resolve the task kind to its agent preset (system prompt + tool
     // restrictions + a DEFAULT permission mode). Absent kind ⇒ `build` ⇒ an
-    // empty preset, so the session is identical to pre-M4.
+    // empty preset, so the session keeps its default behavior.
     const preset = resolveKindPreset(command.kind);
     // Permission-mode precedence: an explicit command mode wins, then the kind's
     // default, then the configured session default.
@@ -463,8 +465,8 @@ export class SessionManager {
         ...(preset.appendSystemPrompt !== undefined
           ? { appendSystemPrompt: preset.appendSystemPrompt }
           : {}),
-        // Pre-flight Context Pack (Lock, feature #4): the trusted, Nightcore-assembled
-        // pack the Rust core passes on the command. The runner composes it BEFORE the
+        // Pre-flight context pack: the trusted, Nightcore-assembled pack the Rust
+        // core passes on the command. The runner composes it BEFORE the
         // preset persona (project rules lead). Absent ⇒ no pack (pre-feature shape).
         ...(command.appendContextPack !== undefined
           ? { appendContextPack: command.appendContextPack }

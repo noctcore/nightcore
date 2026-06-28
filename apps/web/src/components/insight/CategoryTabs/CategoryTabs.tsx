@@ -1,3 +1,4 @@
+/** The category tab strip for the Insight results view. */
 import { CATEGORY_META } from '../insight.constants';
 import type { CategoryTabsProps } from './CategoryTabs.types';
 

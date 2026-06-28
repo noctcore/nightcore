@@ -1,3 +1,5 @@
+/** State, validation, submit, and keyboard/paste handling for the create-task
+ *  dialog. */
 import { useCallback, useState } from 'react';
 import type { PermissionMode, RunMode, TaskKind } from '@/lib/bridge';
 import {
@@ -26,6 +28,8 @@ function parseNonNegativeFloat(raw: string): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+/** The create-task form's full state plus its field setters and action
+ *  handlers, returned by {@link useNewTaskForm}. */
 export interface NewTaskFormState {
   title: string;
   description: string;

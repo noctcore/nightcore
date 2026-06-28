@@ -1,3 +1,4 @@
+/** Data seam and load lifecycle for the ProviderConfigPanel snapshot. */
 import { useCallback, useEffect, useState } from 'react';
 import {
   getProviderConfig as bridgeGetProviderConfig,

@@ -1,8 +1,9 @@
+/** A presentational grouped settings card: header plus label/hint/control rows. */
 import { Badge } from '@/components/ui';
 import type { SettingsCardProps } from './SettingsCard.types';
 
-/** A grouped settings card: header (icon + title + optional roadmap badge)
- *  followed by label/hint/control rows. */
+/** A grouped settings card: header (icon + title + optional badge) followed by
+ *  label/hint/control rows. The badge marks a not-yet-built/future affordance. */
 export function SettingsCard({
   icon,
   title,

@@ -1,3 +1,4 @@
+/** Prop and tab types for the WorktreeSwitcher component. */
 import type { Task, WorktreeInfo } from '@/lib/bridge';
 
 /** The active worktree selection: a branch name, or `null` for the Main tab. */
@@ -19,6 +20,8 @@ export interface WorktreeTab {
   aheadOfBase: number;
 }
 
+/** Props for the worktree switcher: the project's tasks, live worktrees, the
+ *  active selection, and the select handler. */
 export interface WorktreeSwitcherProps {
   /** All tasks for the active project (used for grouping + the Main count). */
   tasks: Task[];

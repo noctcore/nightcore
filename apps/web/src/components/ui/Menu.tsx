@@ -1,3 +1,4 @@
+/** Accessible dropdown menu anchored to a trigger element. */
 import {
   cloneElement,
   isValidElement,
@@ -9,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 
+/** A single selectable row in a {@link Menu}. */
 export interface MenuItem {
   label: string;
   icon?: ReactNode;
@@ -17,6 +19,7 @@ export interface MenuItem {
   destructive?: boolean;
 }
 
+/** Props for {@link Menu}. */
 export interface MenuProps {
   /** The trigger — a single interactive element (typically an IconButton). The
    *  Menu injects the open/close `onClick` onto it. */

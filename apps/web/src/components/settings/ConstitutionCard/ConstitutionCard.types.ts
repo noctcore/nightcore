@@ -1,4 +1,6 @@
-/** Props for the Constitution editor card (Pre-flight Context Pack, Lock #4). */
+/** Props and view-mode type for the Constitution editor card. */
+
+/** Props for the Constitution editor card. */
 export interface ConstitutionCardProps {
   /** Whether the context pack is injected for the selected scope (effective value:
    *  the project override, else the global toggle). */

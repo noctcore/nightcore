@@ -1,3 +1,5 @@
+/** The collapsible Session and History cards plus the GroupLabel divider used in
+ *  the task-detail drawer. */
 import type { ReactNode } from 'react';
 import {
   BoltIcon,
@@ -83,8 +85,8 @@ function LimitField({
 }
 
 /** A labeled control row inside the expanded Session card. The two-column
- *  `[5.5rem_1fr]` grid tightens the five formerly-stacked config sections into a
- *  compact form while keeping each `<h3>` label token unchanged. */
+ *  `[5.5rem_1fr]` grid keeps the config sections in a compact aligned form, each
+ *  with an `<h3>` label. */
 function SessionRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="grid grid-cols-[5.5rem_1fr] items-start gap-x-3 gap-y-1">
@@ -97,8 +99,7 @@ function SessionRow({ label, children }: { label: string; children: React.ReactN
 }
 
 /** A read-only config value pill — the post-run, un-editable rendering of a
- *  session setting. Extracted (#11) so the six identical mono pills that the
- *  readonly Session body used to inline share one styled element. */
+ *  session setting. Shared by the readonly Session body's identical mono pills. */
 function ConfigPill({ children }: { children: React.ReactNode }) {
   return (
     <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
@@ -108,8 +109,8 @@ function ConfigPill({ children }: { children: React.ReactNode }) {
 }
 
 /** The editable Session body — the live pickers shown while a task is still
- *  pre-run (backlog/ready). Every control is the existing picker/`LimitField`,
- *  unchanged; this just isolates the editable arm of the former ternary (#11). */
+ *  pre-run (backlog/ready). Renders the kind/run-mode/permission/model-effort
+ *  pickers and the limit fields. */
 function EditableSessionBody({
   task,
   onChangeKind,
@@ -180,7 +181,7 @@ function EditableSessionBody({
 }
 
 /** The read-only Session body — the post-run rendering of the same five settings
- *  as static `ConfigPill`s (#11). */
+ *  as static `ConfigPill`s. */
 function ReadonlySessionBody({ task }: { task: Task }) {
   return (
     <>
@@ -215,11 +216,10 @@ function ReadonlySessionBody({ task }: { task: Task }) {
   );
 }
 
-/** The collapsible Session card (decision B): collapsed by default to a middot
- *  summary line, expanding to reveal the EXISTING pickers (editable) or read-only
- *  pills (post-run). Collapsed by default; opens on mount when the task is still
- *  editable so a fresh backlog/ready task surfaces its config without a click.
- *  Reuses every picker + `LimitField` verbatim — no control is re-implemented. */
+/** The collapsible Session card: a middot summary line that expands to reveal the
+ *  config pickers (editable) or read-only pills (post-run). Opens on mount when the
+ *  task is still editable so a fresh backlog/ready task surfaces its config without
+ *  a click; otherwise collapsed. */
 export function SessionCard({ task, kindEditable, actions }: SessionCardProps) {
   const { open, toggle } = useSessionCard(kindEditable);
   const {
@@ -233,8 +233,7 @@ export function SessionCard({ task, kindEditable, actions }: SessionCardProps) {
   } = actions;
 
   // A task is editable here only while still pre-run (`kindEditable`) AND the
-  // shell wired every edit handler (it always passes them together). The split
-  // bodies (#11) replace the former per-row editable/readonly ternary.
+  // shell wired every edit handler (it always passes them together).
   const editable =
     kindEditable &&
     onChangeKind !== undefined &&

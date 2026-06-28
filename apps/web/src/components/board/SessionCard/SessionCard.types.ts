@@ -1,6 +1,8 @@
+/** Prop types for the Session and History cards. */
 import type { Task } from '@/lib/bridge';
 import type { TaskDetailActions } from '../TaskDetail';
 
+/** Props for the collapsible Session card. */
 export interface SessionCardProps {
   task: Task;
   /** Whether the per-task config is still editable (pre-run). Also opens the card
@@ -12,6 +14,7 @@ export interface SessionCardProps {
   actions: TaskDetailActions;
 }
 
+/** Props for the collapsible History card. */
 export interface HistoryCardProps {
   task: Task;
   /** Whether resume is permitted (no run in flight). */

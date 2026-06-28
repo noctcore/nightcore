@@ -1,3 +1,4 @@
+/** The Insight finding detail sheet and its presentational helpers. */
 import type { ReactNode } from 'react';
 import {
   Button,

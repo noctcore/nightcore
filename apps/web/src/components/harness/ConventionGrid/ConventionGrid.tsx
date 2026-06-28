@@ -1,3 +1,4 @@
+/** The ConventionGrid of convention finding cards with streaming skeletons. */
 import { Card, Skeleton } from '@/components/ui';
 import { CATEGORY_META, KIND_META, SEVERITY_META } from '../harness.constants';
 import type { ConventionFindingVM } from '../harness.types';

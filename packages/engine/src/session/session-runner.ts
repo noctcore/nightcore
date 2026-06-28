@@ -1,3 +1,10 @@
+/**
+ * Drives a single Claude Agent SDK `query()` loop for one Nightcore session:
+ * builds the SDK `Options` (auth, env allowlist, kind preset, context pack,
+ * autonomy ceilings, MCP servers), translates each `SDKMessage` into
+ * `NightcoreEvent`s, proxies control requests (interrupt/setModel/permissions),
+ * and degrades crashes into `session-failed` events rather than throwing.
+ */
 import type {
   EffortLevel,
   McpServerEntry,
@@ -147,6 +154,9 @@ export function buildUserMessageContent(text: string, images: WireImage[] = []) 
   ];
 }
 
+/** Everything a [`SessionRunner`] needs to construct and drive one SDK query:
+ *  the prompt + optional images, model/effort, permission policy, cwd, and the
+ *  optional kind-preset / autonomy-ceiling / resume / MCP / context-pack inputs. */
 export interface SessionRunnerConfig {
   sessionId: number;
   prompt: string;
@@ -172,54 +182,51 @@ export interface SessionRunnerConfig {
   /** Enable the SDK's task/todo tracking. REQUIRED for the `task_*` system
    *  messages (→ `task-updated` events) to be emitted. */
   todoFeatureEnabled: boolean;
-  /** The session's task kind (M4 preset selector). Threaded into message
+  /** The session's task kind (preset selector). Threaded into message
    *  translation so a `decompose` session's final result is parsed into structured
    *  `proposedSubtasks` on the `session-completed` event. Absent ⇒ no per-kind
    *  result post-processing (the `build` shape). */
   kind?: TaskKind;
-  /** Appended to the SDK system prompt (M4 kind preset). Omitted = no append. */
+  /** Appended to the SDK system prompt (kind preset). Omitted = no append. */
   appendSystemPrompt?: string;
-  /** Tools to explicitly allow (M4 kind preset, SDK `allowedTools`). */
+  /** Tools to explicitly allow (kind preset, SDK `allowedTools`). */
   allowedTools?: string[];
-  /** Tools to deny (M4 kind preset, SDK `disallowedTools`). */
+  /** Tools to deny (kind preset, SDK `disallowedTools`). */
   disallowedTools?: string[];
   /** Autonomy ceiling: max conversation turns before the SDK stops the query
-   *  (`Options.maxTurns`, `sdk.d.ts:1587`). A hit ceiling returns an
-   *  `error_max_turns` result → `session-failed { reason: 'max-turns' }`.
-   *  Resolved by the manager (per-task override → config default). */
+   *  (`Options.maxTurns`). A hit ceiling returns an `error_max_turns` result →
+   *  `session-failed { reason: 'max-turns' }`. Resolved by the manager (per-task
+   *  override → config default). */
   maxTurns?: number;
   /** Autonomy ceiling: max spend in USD before the SDK stops the query
-   *  (`Options.maxBudgetUsd`, `sdk.d.ts:1591`). A hit ceiling returns an
-   *  `error_max_budget_usd` result → `session-failed { reason: 'max-budget' }`.
-   *  Omitted ⇒ uncapped. Resolved by the manager (per-task override → config). */
+   *  (`Options.maxBudgetUsd`). A hit ceiling returns an `error_max_budget_usd`
+   *  result → `session-failed { reason: 'max-budget' }`. Omitted ⇒ uncapped.
+   *  Resolved by the manager (per-task override → config). */
   maxBudgetUsd?: number;
-  /** Resume a prior SDK session by its UUID (`Options.resume`, `sdk.d.ts:1713`).
-   *  Set on the recovery path when a persisted `sdkSessionId` exists. Omitted ⇒
-   *  a cold (fresh) session. */
+  /** Resume a prior SDK session by its UUID (`Options.resume`). Set on the
+   *  recovery path when a persisted `sdkSessionId` exists. Omitted ⇒ a cold
+   *  (fresh) session. */
   resumeSessionId?: string;
-  /** External MCP servers to inject for this session (`Options.mcpServers`,
-   *  `sdk.d.ts:1620`). Folded into the SDK options by `name`, ADDITIVELY over the
-   *  user's native `.mcp.json`/`~/.claude.json` (we never set `strictMcpConfig`).
-   *  The Rust core already filters to `enabled` entries, but `toSdkMcpServers`
-   *  re-filters defensively. Absent/empty ⇒ no `mcpServers` key is set (the
-   *  pre-feature shape). Values in `env`/`headers` may carry secrets — never logged
-   *  at info/telemetry. */
+  /** External MCP servers to inject for this session (`Options.mcpServers`).
+   *  Folded into the SDK options by `name`, ADDITIVELY over the user's native
+   *  `.mcp.json`/`~/.claude.json` (we never set `strictMcpConfig`). The Rust core
+   *  already filters to `enabled` entries, but `toSdkMcpServers` re-filters
+   *  defensively. Absent/empty ⇒ no `mcpServers` key is set. Values in
+   *  `env`/`headers` may carry secrets — never logged at info/telemetry. */
   mcpServers?: McpServerEntry[];
-  /** Enable SDK file checkpointing (`Options.enableFileCheckpointing`,
-   *  `sdk.d.ts:1388`) so the session's file changes can be rewound via
-   *  `rewindFiles()`. Off by default (legacy behavior). */
+  /** Enable SDK file checkpointing (`Options.enableFileCheckpointing`) so the
+   *  session's file changes can be rewound via `rewindFiles()`. Off by default. */
   enableFileCheckpointing?: boolean;
-  /** Pre-flight Context Pack (Lock, feature #4): a curated, Nightcore-CONTROLLED
-   *  context pack the Rust core assembled from on-disk sources. Composed into the
-   *  final `appendSystemPrompt` BEFORE [`appendSystemPrompt`] (the kind-preset
-   *  persona) so project rules lead, then the persona — and truncated to
-   *  [`CONTEXT_PACK_MAX_CHARS`] so it can't crowd out the task. Absent/empty ⇒ no
-   *  pack folded in (byte-identical to the pre-feature append behavior). */
+  /** A curated, Nightcore-CONTROLLED pre-flight context pack the Rust core
+   *  assembled from on-disk sources. Composed into the final `appendSystemPrompt`
+   *  BEFORE [`appendSystemPrompt`] (the kind-preset persona) so project rules lead,
+   *  then the persona — and truncated to [`CONTEXT_PACK_MAX_CHARS`] so it can't
+   *  crowd out the task. Absent/empty ⇒ no pack folded in. */
   appendContextPack?: string;
 }
 
 /**
- * A conservative character budget for the injected context pack (Lock, feature #4).
+ * A conservative character budget for the injected context pack.
  * The pack leads the system prompt, so an unbounded pack could crowd out the task
  * and the model's own reasoning budget. ~12k characters is roughly 3k tokens — a
  * generous Constitution + arch summary + convention rules + memory excerpts, while
@@ -244,8 +251,8 @@ const CONTEXT_PACK_SEPARATOR = '\n\n';
  * and the (optional) kind-preset persona — pack FIRST so project rules lead, then
  * the reviewer/build persona. The pack is truncated to [`CONTEXT_PACK_MAX_CHARS`]
  * so it can't crowd out the task. Returns `undefined` when neither is present, so
- * the caller omits the SDK option entirely (byte-identical to the pre-feature
- * shape). Pure + exported so the ordering is unit-testable without spinning a query.
+ * the caller omits the SDK option entirely. Pure + exported so the ordering is
+ * unit-testable without spinning a query.
  */
 export function composeAppendSystemPrompt(
   contextPack: string | undefined,
@@ -363,18 +370,17 @@ export class SessionRunner {
       hooks: this.hooks.hooks(),
       abortController: this.abort,
       ...(this.cfg.effort !== undefined ? { effort: this.cfg.effort } : {}),
-      // M4.7 §A1: the SDK ignores `permissionMode: 'bypassPermissions'` unless this
-      // safety flag is explicitly set. This is config (not a secret) — fine to log
+      // The SDK ignores `permissionMode: 'bypassPermissions'` unless this safety
+      // flag is explicitly set. This is config (not a secret) — fine to log
       // at debug. Bypass is the user's explicit choice for an autonomous studio.
       ...(this.cfg.permissionMode === 'bypassPermissions'
         ? { allowDangerouslySkipPermissions: true }
         : {}),
-      // M4 kind preset + Pre-flight Context Pack (Lock, feature #4): compose the
-      // FINAL `appendSystemPrompt` as [trusted context pack → kind-preset persona],
-      // pack first so project rules lead, then the reviewer/build persona. The pack
-      // is truncated to a token budget so it can't crowd out the task. With neither
-      // present the field is omitted, so a `build` session (no preset, no pack) is
-      // byte-identical to pre-M4.
+      // Compose the FINAL `appendSystemPrompt` as [trusted context pack →
+      // kind-preset persona], pack first so project rules lead, then the
+      // reviewer/build persona. The pack is truncated to a token budget so it can't
+      // crowd out the task. With neither present the field is omitted, so a `build`
+      // session (no preset, no pack) keeps its default system prompt.
       ...((): { appendSystemPrompt?: string } => {
         const composed = composeAppendSystemPrompt(
           this.cfg.appendContextPack,
@@ -401,21 +407,21 @@ export class SessionRunner {
         const merged = [...new Set([...preset, ...denied])];
         return { disallowedTools: merged };
       })(),
-      // Autonomy ceilings (`sdk.d.ts:1587` maxTurns / `:1591` maxBudgetUsd). An
-      // absent field leaves the SDK default in place; a hit ceiling returns an
+      // Autonomy ceilings (maxTurns / maxBudgetUsd). An absent field leaves the
+      // SDK default in place; a hit ceiling returns an
       // `error_max_turns` / `error_max_budget_usd` result the adapter maps to a
       // distinct `session-failed` reason (never a silent success).
       ...(this.cfg.maxTurns !== undefined ? { maxTurns: this.cfg.maxTurns } : {}),
       ...(this.cfg.maxBudgetUsd !== undefined
         ? { maxBudgetUsd: this.cfg.maxBudgetUsd }
         : {}),
-      // Session resume (`sdk.d.ts:1713`): when a persisted SDK session id exists,
-      // reattach instead of starting cold. The id is bookkeeping (not a secret),
+      // Session resume: when a persisted SDK session id exists, reattach instead
+      // of starting cold. The id is bookkeeping (not a secret),
       // but is only ever logged at debug — never at info/telemetry.
       ...(this.cfg.resumeSessionId !== undefined
         ? { resume: this.cfg.resumeSessionId }
         : {}),
-      // File checkpointing (`sdk.d.ts:1388`): opt-in backend for `rewindFiles()`.
+      // File checkpointing: opt-in backend for `rewindFiles()`.
       ...(this.cfg.enableFileCheckpointing
         ? { enableFileCheckpointing: true }
         : {}),
@@ -470,21 +476,19 @@ export class SessionRunner {
   }
 
   /**
-   * STRETCH (engine-side proxy only): live context-window usage for this session
-   * (`Query.getContextUsage()`, `sdk.d.ts:2282`). Returns `undefined` when no
-   * live query is open. The NightcoreEvent + web gauge are a deferred follow-up
-   * (contract §C) — this proxy is the backend hook they will consume.
+   * Live context-window usage for this session (`Query.getContextUsage()`).
+   * Returns `undefined` when no live query is open. This is the engine-side proxy
+   * a future surface gauge can consume.
    */
   async contextUsage(): Promise<SDKControlGetContextUsageResponse | undefined> {
     return this.query?.getContextUsage();
   }
 
   /**
-   * STRETCH (engine-side proxy only): rewind this session's tracked file changes
-   * to a prior user message (`Query.rewindFiles()`, `sdk.d.ts:2344`). Requires
-   * the session to have been started with `enableFileCheckpointing`. Returns
-   * `undefined` when no live query is open. The Rust `rewind_task` command + web
-   * UI are a deferred follow-up (contract §C).
+   * Rewind this session's tracked file changes to a prior user message
+   * (`Query.rewindFiles()`). Requires the session to have been started with
+   * `enableFileCheckpointing`. Returns `undefined` when no live query is open.
+   * This is the engine-side proxy a future rewind command + UI can consume.
    */
   async rewindFiles(
     userMessageId: string,
@@ -642,7 +646,7 @@ export class SessionRunner {
       cwd: this.cfg.cwd,
       executable: 'bun',
       stderr: (data) => this.logger?.debug('[sdk stderr]', data),
-      // M4.7 §A2 (settingSources reassessment): kept config-driven, NOT dropped.
+      // settingSources is kept config-driven, NOT dropped.
       // Nightcore's permission policy already governs every run regardless of this
       // value — the harness `PermissionLayer` (`canUseTool`) plus the SDK
       // `permissionMode` are what gate tool use; `settingSources` only loads

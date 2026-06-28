@@ -8,7 +8,7 @@ import type {
   WorktreeInfo,
 } from '@/lib/bridge';
 
-/** Build a Task fixture for stories/tests. Mirrors the frozen M1 shape. */
+/** Build a Task fixture for stories/tests. Mirrors the canonical Task shape. */
 export function makeTask(overrides: Partial<Task> = {}): Task {
   const now = 1_718_900_000_000;
   return {

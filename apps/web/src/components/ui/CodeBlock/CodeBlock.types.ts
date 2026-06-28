@@ -1,3 +1,6 @@
+/** Public types for the CodeBlock component. */
+
+/** Props for the CodeBlock component. */
 export interface CodeBlockProps {
   /** The source code to render. */
   code: string;

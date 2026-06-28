@@ -1,3 +1,4 @@
+/** The Insight finding grid plus its module-local card and skeleton. */
 import { Card, Skeleton } from '@/components/ui';
 import {
   CATEGORY_META,

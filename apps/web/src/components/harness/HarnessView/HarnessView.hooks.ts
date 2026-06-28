@@ -1,3 +1,5 @@
+/** Data + UI-state hooks for the Harness surface: `useHarness` drives the live/
+ *  persisted run and lifecycle actions, `useHarnessView` resolves the full view model. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   CategoryRunState,
@@ -39,6 +41,8 @@ import type { CategoryTab } from '../CategoryTabs';
 import { useRunConfig } from '../RunControls/RunControls.hooks';
 import type { HarnessViewProps } from './HarnessView.types';
 
+/** The data layer `useHarness` exposes: the current stream, run history, start
+ *  state, and the scan + finding/artifact lifecycle actions. */
 export interface UseHarnessResult {
   stream: HarnessStream;
   runs: HarnessRun[];

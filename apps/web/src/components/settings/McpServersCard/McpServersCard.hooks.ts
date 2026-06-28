@@ -1,3 +1,4 @@
+/** Draft state, secret masking, validation, and CRUD for the MCP servers card. */
 import { useCallback, useMemo, useState } from 'react';
 import type { McpServerEntry, McpServerTransport } from '@/lib/bridge';
 import type {
@@ -199,6 +200,7 @@ function newId(): string {
   return `mcp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/** The state and CRUD actions the MCP servers card binds to. */
 export interface McpServersCardState {
   /** The draft currently open in the editor modal, or `null` when closed. */
   draft: McpServerDraft | null;

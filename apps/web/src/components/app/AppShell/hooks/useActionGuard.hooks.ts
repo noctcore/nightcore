@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 
+/** The in-flight-action tracker returned by {@link useActionGuard}. */
 export interface ActionGuard {
   /** Run a guarded action: no-op if already in flight; clears the key when the
    *  underlying command settles. Returns immediately for callers that don't await. */

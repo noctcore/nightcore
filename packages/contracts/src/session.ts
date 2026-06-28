@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { PermissionModeSchema } from './config.js';
 
+/** Session identity, status, and persisted-record shapes for a Nightcore session. */
+
 /**
  * The session id space is owned by Nightcore's SessionManager (a monotonic
  * counter that never resets — see the supervisor pattern in
@@ -10,6 +12,7 @@ import { PermissionModeSchema } from './config.js';
 export const NightcoreSessionId = z.number().int().nonnegative().brand('NightcoreSessionId');
 export type NightcoreSessionId = z.infer<typeof NightcoreSessionId>;
 
+/** The lifecycle state of a Nightcore session. */
 export const SessionStatusSchema = z.enum([
   'starting',
   'running',

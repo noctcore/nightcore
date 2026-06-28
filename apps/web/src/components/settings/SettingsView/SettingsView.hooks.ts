@@ -1,3 +1,4 @@
+/** State for the Settings view: scope/page selection, effective values, and scoped patching. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   getAppInfo,
@@ -30,11 +31,12 @@ export interface EffectiveSettings {
    *  REPLACES the global list wholesale (whole-list semantics, same as the Rust
    *  resolver), else the global list. Editing it sends the full next list. */
   mcpServers: McpServerEntry[];
-  /** Pre-flight Context Pack (Lock #4): whether the curated Constitution is injected
-   *  for the scope (project override, else the global toggle; defaults on). */
+  /** Whether the curated Constitution context pack is injected for the scope
+   *  (project override, else the global toggle; defaults on). */
   contextPackEnabled: boolean;
 }
 
+/** The state and actions the Settings view binds to. */
 export interface SettingsViewState {
   /** The selected settings page in the left nav. */
   page: SettingsPage;
@@ -52,6 +54,11 @@ export interface SettingsViewState {
   patchGlobal: (patch: SettingsPatch) => void;
 }
 
+/**
+ * Owns the Settings view's local UI state (selected page and scope) and derives
+ * the effective values for the scope, falling back from a project override to the
+ * global value per field. Patches are routed global or per-project via `patchScoped`.
+ */
 export function useSettingsView({
   settings,
   activeProjectId,
@@ -81,8 +88,8 @@ export function useSettingsView({
       // Rust `enabled_mcp_servers` resolution); `?? []` keeps a legacy/absent list
       // empty so the card always renders.
       mcpServers: override?.mcpServers ?? settings.mcpServers ?? [],
-      // Lock #4: project override wins, else the global toggle (defaults on). `??`
-      // chains so a `false` override is honored (only `null`/`undefined` falls back).
+      // Project override wins, else the global toggle (defaults on). `??` chains so
+      // a `false` override is honored (only `null`/`undefined` falls back).
       contextPackEnabled:
         override?.contextPackEnabled ?? settings.contextPackEnabled ?? true,
     };

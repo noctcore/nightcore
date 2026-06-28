@@ -1,3 +1,5 @@
+/** Shared view-model types for the Insight surface: the normalized finding shape
+ *  the UI renders and the run-status union that drives the header chrome. */
 import type {
   FindingCategory,
   FindingEffort,

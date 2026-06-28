@@ -213,7 +213,7 @@ export const SessionCardCollapsed: Story = {
   },
 };
 
-/** A not-yet-run task showing the editable per-task pickers (M4.7 §F): kind,
+/** A not-yet-run task showing the editable per-task pickers: kind,
  *  run mode, permission mode, and model + effort. */
 export const EditablePickers: Story = {
   args: {

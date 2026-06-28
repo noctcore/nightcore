@@ -1,11 +1,12 @@
+/** Readiness-gauntlet and structure-lock results panel for a task. */
 import { Button, ChecksIcon, Spinner } from '@/components/ui';
 import { STEP_STATUS_GLYPH, STEP_STATUS_TEXT } from './GauntletResults.hooks';
 import type { GauntletResultsProps } from './GauntletResults.types';
 
-/** The pre-merge readiness gauntlet panel (M4, §C): a "Run checks" trigger over
- *  the detected typecheck → lint → test steps, each with its command and
- *  pass/fail/skip status. Pure presentational — the run + result state is owned
- *  by the detail panel. */
+/** The pre-merge readiness gauntlet panel: a "Run checks" trigger over the
+ *  detected typecheck → lint → test steps, each with its command and
+ *  pass/fail/skip status, plus the optional Structure-Lock harness checks. Pure
+ *  presentational — the run + result state is owned by the detail panel. */
 export function GauntletResults({
   result,
   running,

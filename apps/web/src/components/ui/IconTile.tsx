@@ -1,10 +1,13 @@
+/** Rounded-square accent tile that frames an icon. */
 import type { ReactNode } from 'react';
 
+/** Size of an {@link IconTile}. */
 type IconTileSize = 'sm' | 'md' | 'lg';
 
+/** Props for {@link IconTile}. */
 interface IconTileProps {
   children: ReactNode;
-  /** sm ≈ switcher/dialog (22–34px), md ≈ settings card header (42px), lg ≈ page header (54px). */
+  /** sm ≈ switcher/dialog (34px), md ≈ settings card header (42px), lg ≈ page header (54px). */
   size?: IconTileSize;
   className?: string;
 }
@@ -15,9 +18,9 @@ const SIZES: Record<IconTileSize, string> = {
   lg: 'h-[54px] w-[54px] rounded-[15px]',
 };
 
-/** A rounded-square icon tile — `bg-primary/15 text-primary` holding a lucide
- *  icon. The design's treatment for settings card headers, the project icon, and
- *  dialog headers. The icon inside inherits `currentColor` (primary). */
+/** A rounded-square accent tile (`bg-primary/15 text-primary`) holding an icon,
+ *  used for settings card headers, the project icon, and dialog headers. The
+ *  icon inside inherits `currentColor` (primary). */
 export function IconTile({ children, size = 'md', className }: IconTileProps) {
   return (
     <span

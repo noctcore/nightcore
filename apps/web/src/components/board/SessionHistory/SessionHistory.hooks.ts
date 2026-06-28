@@ -1,3 +1,5 @@
+/** Data seam, load lifecycle, transcript/rename state, and pure formatting helpers
+ *  for the session-history list. */
 import { useCallback, useEffect, useState } from 'react';
 import {
   getTaskSessionMessages as bridgeLoadMessages,

@@ -1,3 +1,4 @@
+/** Layered Nightcore config resolution: defaults → user home → project, merged and validated. */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
@@ -68,6 +69,7 @@ function mergeLayers(...layers: ConfigFile[]): ConfigFile {
   return out;
 }
 
+/** Options controlling how {@link resolveConfig} locates config layers. */
 export interface ResolveConfigOptions {
   /** Project root to look for `./.nightcore/config.json`. Defaults to cwd. */
   cwd?: string;

@@ -1,3 +1,5 @@
+/** Folds the `nc:session` engine event stream into a renderable activity
+ *  timeline — per-session (`foldSession`) and grouped per task (`foldTranscript`). */
 import { decideAssistantDelta } from '@nightcore/session-fold';
 import type { NcEvent } from '@/lib/bridge';
 
@@ -6,15 +8,14 @@ import type { NcEvent } from '@/lib/bridge';
  *  markdown stays contiguous and parseable; a tool use closes it. */
 export interface TextEntry {
   kind: 'text';
-  /** Stable per-entry id (C6) — drives the timeline's React key instead of the
+  /** Stable per-entry id — drives the timeline's React key instead of the
    *  array index, so a growing turn keeps its identity and React reconciles in
    *  place rather than remounting every `<li>` on each delta. */
   id: number;
   markdown: string;
   /** True once the turn is sealed (a tool/subagent step followed, or the session
    *  ended). The open (growing) turn renders as plain text; only a closed turn is
-   *  parsed through `marked`+`DOMPurify` — once — avoiding the O(n²) reparse the
-   *  audit flagged (C6). */
+   *  parsed through `marked`+`DOMPurify` — once — avoiding an O(n²) reparse. */
   closed: boolean;
 }
 
@@ -23,15 +24,14 @@ export interface ToolEntry {
   kind: 'tool';
   id: number;
   toolName: string;
-  /** The tool's invocation input (M4.7 §B) — already on the `nc:session` wire.
+  /** The tool's invocation input — already on the `nc:session` wire.
    *  Rendered as a concise per-line summary (file path / pattern / command) in
    *  TaskDetail. Optional so transcript-reseeded lines without input still load. */
   input?: Record<string, unknown>;
 }
 
-/** A subagent / Task-tool step streamed via `task-updated` (C3). The SDK emits
- *  these for spawned subagents (`Explore`, etc.); the board used to drop them,
- *  silently losing subagent activity from the transcript. Rendered as a distinct
+/** A subagent / Task-tool step streamed via `task-updated`. The SDK emits
+ *  these for spawned subagents (`Explore`, etc.), rendered as a distinct
  *  timeline line so a run's subagent work is visible. */
 export interface TaskEntry {
   kind: 'task';
@@ -63,9 +63,9 @@ export interface SessionStream {
    *  whole-message block (partial: false) can be suppressed. */
   streamedPartial: boolean;
   toolSeq: number;
-  /** Monotonic id source for text entries (C6 stable keys); never reused. */
+  /** Monotonic id source for text entries (stable keys); never reused. */
   textSeq: number;
-  /** Running tool-line count, maintained incrementally (perf #6) so the board's
+  /** Running tool-line count, maintained incrementally so the board's
    *  Logs badge never re-filters every task's entries on each delta. */
   toolCount: number;
 }
@@ -89,8 +89,8 @@ function closeOpenText(entries: TimelineEntry[]): TimelineEntry[] {
   return [...entries.slice(0, -1), sealed];
 }
 
-/** Fold one engine event into the accumulated stream. Mirrors M0's dedup:
- *  append partial deltas to the trailing open text entry, suppress the final
+/** Fold one engine event into the accumulated stream. Mirrors the CLI dedup
+ *  behavior: append partial deltas to the trailing open text entry, suppress the final
  *  whole-message block when partials streamed, and close the text turn (so the
  *  next delta opens a fresh entry) on each tool use. Replaying a recorded event
  *  sequence in order rebuilds the identical timeline (reseed parity). */
@@ -118,7 +118,7 @@ export function foldSession(prev: SessionStream, event: NcEvent): SessionStream 
         // Append in place to the open turn (keeping its object identity stable)
         // rather than re-concatenating the full markdown into a fresh entry and
         // copying the whole entries array on every delta — that made a long
-        // streamed turn O(m²) in its token count. Mutating the open entry under
+        // streamed turn O(n²) in its token count. Mutating the open entry under
         // a fresh top-level object keeps per-delta work O(1) amortized (V8 ropes
         // the `+=`), preserves the stable per-entry id the React key relies on,
         // and still hands React a new stream/array reference so it re-renders.

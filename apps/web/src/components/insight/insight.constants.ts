@@ -1,3 +1,5 @@
+/** Static display metadata for the Insight surface: category/severity/effort/scope
+ *  labels and glyphs, plus the helpers that order and project these enums. */
 import type { ComponentType } from 'react';
 import {
   BookIcon,
@@ -59,6 +61,7 @@ export const SEVERITY_ORDER: FindingSeverity[] = [
   'info',
 ];
 
+/** A numeric rank for a severity (higher = more severe), for descending sorts. */
 export function severityRankValue(s: FindingSeverity): number {
   return SEVERITY_ORDER.length - SEVERITY_ORDER.indexOf(s);
 }
@@ -71,6 +74,7 @@ interface SeverityMeta {
   chip: string;
 }
 
+/** Per-severity label + Tailwind tones for badges and chips. */
 export const SEVERITY_META: Record<FindingSeverity, SeverityMeta> = {
   critical: {
     label: 'Critical',
@@ -99,6 +103,7 @@ export const SEVERITY_META: Record<FindingSeverity, SeverityMeta> = {
   },
 };
 
+/** Per-effort display label. */
 export const EFFORT_META: Record<FindingEffort, { label: string }> = {
   trivial: { label: 'Trivial' },
   small: { label: 'Small' },
@@ -106,6 +111,7 @@ export const EFFORT_META: Record<FindingEffort, { label: string }> = {
   large: { label: 'Large' },
 };
 
+/** Per-scope label + hint for the scope selector. */
 export const SCOPE_META: Record<AnalysisScope, { label: string; hint: string }> = {
   repo: { label: 'Whole repo', hint: 'Analyze the entire codebase' },
   diff: { label: 'Changes', hint: 'Only files changed since the last commit' },

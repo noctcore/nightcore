@@ -33,7 +33,7 @@ function ErrorFallback({ message }: { message: string }) {
   );
 }
 
-/** Top-level React error boundary (C4). A render/runtime throw anywhere in the
+/** Top-level React error boundary. A render/runtime throw anywhere in the
  *  tree would otherwise blank the entire WKWebView with no recovery path; this
  *  catches it, logs it, and shows a recoverable fallback with a reload action so
  *  the user is never stranded on a blank window. Class component because

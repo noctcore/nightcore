@@ -22,7 +22,7 @@ import { canMerge, deriveTaskDetailView } from './TaskDetail.hooks';
 import type { TaskDetailProps } from './TaskDetail.types';
 
 /** The logs / detail drawer — title, status, parked permission prompts, the
- *  reviewer verdict + verification controls (M4), the readiness gauntlet +
+ *  reviewer verdict + verification controls, the readiness gauntlet +
  *  verified-gated merge, the description, the unified activity timeline, the
  *  collapsible Session config card, and the per-status run / approval controls.
  *  A thin layout coordinator: every section is its own sibling component, and the
@@ -141,7 +141,7 @@ export function TaskDetail({
         )}
 
         {/* Proposed sub-tasks — a `decompose` run's output, each convertible into a
-            board task (Decompose §B). Hidden until the run has proposed something. */}
+            board task. Hidden until the run has proposed something. */}
         {task.kind === 'decompose' && task.proposedSubtasks.length > 0 && (
           <div className="space-y-3">
             <GroupLabel>Proposed sub-tasks</GroupLabel>

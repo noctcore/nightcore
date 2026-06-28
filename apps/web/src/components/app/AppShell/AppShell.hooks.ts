@@ -51,6 +51,9 @@ import { useSplash } from './hooks/useSplash.hooks';
 import { useStableLogCounts } from './hooks/useStableLogCounts.hooks';
 import { useWorktrees } from './hooks/useWorktrees.hooks';
 
+/** Everything the shell renders from: the per-domain hook results (routing,
+ *  registry, settings, auto-loop, New Project flow) plus the board controller
+ *  augmented with the cross-hook action handlers and derived board state. */
 export interface AppShellState {
   routing: ReturnType<typeof useRouting>;
   registry: ReturnType<typeof useProjectRegistry>;
@@ -69,11 +72,11 @@ export interface AppShellState {
     /** Task ids with at least one parked prompt OR question — drives the card's
      *  pulse and the "needs input" affordance. */
     promptIds: Set<string>;
-    /** Per-task readiness-gauntlet results (M4), keyed by task id. */
+    /** Per-task readiness-gauntlet results, keyed by task id. */
     gauntletResults: Record<string, GauntletResult>;
     /** Task ids with a gauntlet run in flight. */
     gauntletRunning: Set<string>;
-    /** The active project's live worktrees (M4.6) for the switcher. */
+    /** The active project's live worktrees for the switcher. */
     worktrees: WorktreeInfo[];
     /** The selected worktree tab (`null` = Main); filters the board. */
     activeWorktree: ActiveWorktree;
@@ -113,29 +116,29 @@ export interface AppShellState {
     handleRefine: (id: string) => void;
     handleCommit: (id: string) => void;
     handleMerge: (id: string) => void;
-    /** Edit a not-yet-run task's kind (M4). */
+    /** Edit a not-yet-run task's kind. */
     handleChangeKind: (id: string, kind: TaskKind) => void;
-    /** Edit a not-yet-run task's run mode (M4.6). */
+    /** Edit a not-yet-run task's run mode. */
     handleChangeRunMode: (id: string, runMode: RunMode) => void;
-    /** Edit a not-yet-run task's permission-mode override (M4.7). */
+    /** Edit a not-yet-run task's permission-mode override. */
     handleChangePermissionMode: (id: string, permissionMode: PermissionMode | null) => void;
-    /** Edit a not-yet-run task's model override (M4.7). */
+    /** Edit a not-yet-run task's model override. */
     handleChangeModel: (id: string, model: string | null) => void;
-    /** Edit a not-yet-run task's reasoning-effort override (M4.7). */
+    /** Edit a not-yet-run task's reasoning-effort override. */
     handleChangeEffort: (id: string, effort: string | null) => void;
     /** Edit a not-yet-run task's max-turns ceiling (SDK guardrail). */
     handleChangeMaxTurns: (id: string, maxTurns: number | null) => void;
     /** Edit a not-yet-run task's max-budget-USD ceiling (SDK guardrail). */
     handleChangeMaxBudget: (id: string, maxBudgetUsd: number | null) => void;
-    /** Verification-approval actions for a review-parked task (M4). */
+    /** Verification-approval actions for a review-parked task. */
     handleAcceptReview: (id: string) => void;
     handleRejectReview: (id: string) => void;
     handleRerunVerification: (id: string) => void;
-    /** Run the pre-merge readiness gauntlet for a verified task (M4). */
+    /** Run the pre-merge readiness gauntlet for a verified task. */
     handleRunGauntlet: (id: string) => void;
-    /** Decompose §B: convert one proposed sub-task into a board task. */
+    /** Convert one proposed sub-task into a board task. */
     handleConvertSubtask: (parentId: string, subtaskId: string) => void;
-    /** Decompose §B: convert every still-open proposed sub-task into board tasks. */
+    /** Convert every still-open proposed sub-task into board tasks. */
     handleConvertAllSubtasks: (parentId: string) => void;
     /** True while a guarded task action (`run`/`approve`/`commit`/…) is in flight,
      *  so the matching button can disable itself and not double-fire. */
@@ -367,7 +370,7 @@ export function useAppShell(): AppShellState {
   // Drag-move between columns: optimistically retag the card, then call the
   // backend. The `nc:task` echo reconciles the authoritative status; on failure
   // we roll back to the previous status so the board never lies. We skip the
-  // optimistic retag for an in-flight task (#6) — a concurrent run's `nc:task`
+  // optimistic retag for an in-flight task — a concurrent run's `nc:task`
   // stream owns its status and the move would race it; let the backend decide.
   const handleMoveTask = useCallback(
     (id: string, status: TaskStatus) => {
@@ -451,7 +454,7 @@ export function useAppShell(): AppShellState {
     [action, toast],
   );
 
-  // M4 not-yet-run field edits collapse into one factory (#4): each optimistically
+  // Not-yet-run field edits collapse into one factory: each optimistically
   // patches the field, persists via `update_task`, and ROLLS BACK to the prior
   // value on failure (mirroring handleMoveTask) so a rejected edit can't leave the
   // board lying. `makeFieldUpdater<K>` keeps the seven edits byte-identical.
@@ -525,7 +528,7 @@ export function useAppShell(): AppShellState {
     [action, toast],
   );
 
-  // Decompose §B: convert a proposed sub-task (or all of them) into board tasks.
+  // Convert a proposed sub-task (or all of them) into board tasks.
   // The backend emits `nc:task` for both the new child and the updated parent, so
   // the board + open drawer refresh via the echo — no optimistic local edit needed.
   const handleConvertSubtask = useCallback(

@@ -1,3 +1,4 @@
+/** Syntax-highlighted code block with a raw-text fallback. */
 import { useHighlightedHtml } from './CodeBlock.hooks';
 import type { CodeBlockProps } from './CodeBlock.types';
 

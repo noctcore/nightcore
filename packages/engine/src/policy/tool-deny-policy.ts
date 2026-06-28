@@ -11,8 +11,8 @@
  * renamed binaries). The goal here is to stop the *obvious, irreversible*
  * footguns — `rm -rf`, `sudo`, `curl | sh`, force-push, hard-reset, disk wipes —
  * that account for the worst accidental blast radius, NOT to be a complete
- * containment boundary. Real containment is the workspace-trust gate + OS sandbox
- * (roadmap Later/XL). Keep the rule set tight and well-tested: every false
+ * containment boundary. Real containment is the workspace-trust gate + OS sandbox.
+ * Keep the rule set tight and well-tested: every false
  * positive blocks legitimate agent work, so we deny only forms that are
  * essentially never the right call inside an autonomous coding run.
  */

@@ -1,5 +1,7 @@
+/** Square icon-only button with a required accessible name. */
 import type { ReactNode } from 'react';
 
+/** Props for {@link IconButton}. */
 interface IconButtonProps {
   children: ReactNode;
   onClick?: () => void;

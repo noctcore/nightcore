@@ -1,5 +1,5 @@
 /**
- * Per-kind agent presets (M4 §A, engine half).
+ * Per-kind agent presets (the engine half of task-kind behavior).
  *
  * `@nightcore/contracts` owns the `TaskKind` enum; the Rust core owns each kind's
  * ORCHESTRATION policy (whether it gets a worktree, whether it is verified after).
@@ -25,7 +25,7 @@ export const WRITE_TOOLS: readonly string[] = [
 /**
  * The agent-definition half of a task kind. Every field is optional: an absent
  * field means "inherit the session default", so the `build` preset (all absent)
- * reproduces pre-M4 behavior byte-for-byte.
+ * leaves a session at its default behavior.
  */
 export interface KindPreset {
   /** Appended to the session's system prompt (SDK `appendSystemPrompt`). */

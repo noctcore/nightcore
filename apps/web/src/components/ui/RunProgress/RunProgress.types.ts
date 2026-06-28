@@ -1,3 +1,4 @@
+/** Public types for the RunProgress component. */
 import type { ComponentType } from 'react';
 
 /** The run's lifecycle status (mirrors `stream.status`). */
@@ -6,6 +7,7 @@ export type RunProgressStatus = 'idle' | 'running' | 'completed' | 'failed';
 /** Per-category run state within a single run. */
 export type CategoryRunState = 'pending' | 'running' | 'done' | 'error';
 
+/** A single scannable category shown as a row in the progress panel. */
 export interface RunProgressCategory {
   /** Stable key used to index every `Record` prop and passed to `onOpenCategory`. */
   key: string;
@@ -16,11 +18,13 @@ export interface RunProgressCategory {
   icon: ComponentType<{ size?: number; className?: string }>;
 }
 
+/** Cumulative token usage for a run. */
 export interface RunProgressUsage {
   inputTokens: number;
   outputTokens: number;
 }
 
+/** Props for the RunProgress component. */
 export interface RunProgressProps {
   /** The run's lifecycle status; drives the live-elapsed ticker and the header dot. */
   status: RunProgressStatus;

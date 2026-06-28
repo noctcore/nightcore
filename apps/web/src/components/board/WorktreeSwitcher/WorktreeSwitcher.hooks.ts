@@ -1,3 +1,4 @@
+/** WorktreeSwitcher derivation: per-worktree task filtering and tab building. */
 import { useMemo } from 'react';
 import type { Task, WorktreeInfo } from '@/lib/bridge';
 import type { ActiveWorktree, WorktreeTab } from './WorktreeSwitcher.types';
@@ -7,7 +8,7 @@ function isRunning(task: Task): boolean {
   return task.status === 'in_progress' || task.status === 'verifying';
 }
 
-/** Filter the board to the active worktree (M4.6, §D.3): the Main tab shows
+/** Filter the board to the active worktree: the Main tab shows
  *  `run_mode === 'main'` tasks; a worktree tab shows tasks whose branch matches.
  *  Exported so the board's view hook and the switcher derive identical sets. */
 export function filterTasksByWorktree(tasks: Task[], active: ActiveWorktree): Task[] {

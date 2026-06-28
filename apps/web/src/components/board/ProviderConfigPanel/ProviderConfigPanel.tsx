@@ -1,3 +1,4 @@
+/** Read-only inspector sheet for the active provider's resolved configuration. */
 import type { ReactNode } from 'react';
 import {
   AgentsIcon,

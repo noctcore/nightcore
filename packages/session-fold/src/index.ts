@@ -49,7 +49,7 @@ export interface AssistantDeltaInput {
 }
 
 /**
- * Decide how to fold one `assistant-delta`, mirroring M0/CLI dedup:
+ * Decide how to fold one `assistant-delta`, mirroring the CLI dedup behavior:
  *  - A `partial` delta extends the turn — append to the open turn, or open a new
  *    one — and marks the turn as having streamed partials.
  *  - A whole-message block (`partial: false`) is SUPPRESSED once partials have

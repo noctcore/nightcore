@@ -12,6 +12,7 @@ export interface DimensionRow {
   reading: ScorecardReadingView | null;
 }
 
+/** Props for the DimensionGrid: the rows to render, an idle empty message, and an open handler. */
 export interface DimensionGridProps {
   rows: DimensionRow[];
   /** Shown when there are no rows at all (idle). */

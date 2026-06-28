@@ -1,3 +1,4 @@
+/** Status-to-style lookups for gauntlet/structure-lock step rows. */
 import type { GauntletStep } from '@/lib/bridge';
 
 /** Tailwind text class for a gauntlet step status (design palette). */

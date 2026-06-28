@@ -1,12 +1,13 @@
+/** Toast provider and render surface for transient notifications. */
 import type { ReactNode } from 'react';
 import { AlertIcon, CheckIcon, CloseIcon } from '../icons';
 import { IconButton } from '../IconButton';
 import { ToastContext, useToast, useToastState } from './Toast.hooks';
 import type { ToastTone } from './Toast.types';
 
-/** Provider + render surface for the app's transient error/notification channel
- *  (C5). Wraps the app so any descendant can `useToast()` to surface a failure
- *  the user can actually see, instead of a silent `console.error`. */
+/** Provider + render surface for the app's transient error/notification channel.
+ *  Wraps the app so any descendant can `useToast()` to surface a failure the user
+ *  can actually see, instead of a silent `console.error`. */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const api = useToastState();
   return (
@@ -23,6 +24,7 @@ const TONE_STYLE: Record<ToastTone, string> = {
   success: 'border-success/50 bg-success/[0.12] text-success',
 };
 
+/** Leading icon for a toast: a check for success, an alert otherwise. */
 function ToneIcon({ tone }: { tone: ToastTone }) {
   if (tone === 'success') return <CheckIcon size={14} className="mt-0.5 shrink-0" />;
   return <AlertIcon size={14} className="mt-0.5 shrink-0" />;

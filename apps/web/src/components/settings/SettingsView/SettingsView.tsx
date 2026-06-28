@@ -1,3 +1,4 @@
+/** The Settings surface: grouped left nav, per-page cards, and a global/project scope toggle. */
 import type { ReactNode } from 'react';
 import {
   AgentsIcon,
@@ -35,8 +36,8 @@ import type {
 
 // The Settings model/effort options reuse the SAME canonical source as the
 // per-task picker (`MODEL_OPTIONS`/`EFFORT_OPTIONS`) so the persisted value is an
-// SDK long id (e.g. `claude-opus-4-8`) — the single source of truth for model ids
-// (P0). The picker label stays friendly; the stored/sent value is the SDK id.
+// SDK long id (e.g. `claude-opus-4-8`) — the single source of truth for model ids.
+// The picker label stays friendly; the stored/sent value is the SDK id.
 const MODELS: [value: string, label: string][] = MODEL_OPTIONS.map((m) => [
   m.id,
   m.label.split(' ')[0] ?? m.label,
@@ -57,6 +58,7 @@ function highestEffortFor(model: string): string {
   const choices = effortChoices(model);
   return choices.at(-1)?.[0] ?? 'high';
 }
+/** Selectable max-concurrency values as `[value, label]` pairs. */
 const CONCURRENCY: [value: string, label: string][] = [
   ['1', '1'],
   ['2', '2'],
@@ -64,11 +66,13 @@ const CONCURRENCY: [value: string, label: string][] = [
   ['4', '4'],
   ['6', '6'],
 ];
+/** Selectable permission modes as `[value, label]` pairs. */
 const PERMISSION_MODES: [value: string, label: string][] = [
   ['auto-accept', 'Auto'],
   ['plan', 'Plan'],
   ['ask', 'Ask'],
 ];
+/** Selectable default run modes as `[value, label]` pairs. */
 const RUN_MODES: [value: string, label: string][] = [
   ['main', 'Main'],
   ['worktree', 'Worktree'],
@@ -82,7 +86,8 @@ function resolveModelValue(model: string): string {
   return modelOptionFor(model)?.id ?? model;
 }
 
-/** A segmented selector. `disabled` renders it visible-but-inert (roadmap). */
+/** A segmented selector. `disabled` renders it visible-but-inert (e.g. for a
+ *  not-yet-built control). */
 function Segmented({
   options,
   value,
@@ -206,7 +211,7 @@ function Pill({ children }: { children: ReactNode }): ReactNode {
   );
 }
 
-/** A read-only mono field — the presentational stand-in for M2/M3 text inputs. */
+/** A read-only mono field — a presentational stand-in for text inputs. */
 function FieldValue({ children }: { children: ReactNode }): ReactNode {
   return (
     <span className="block w-full rounded-lg border border-border bg-black/20 px-3 py-2.5 font-mono text-[12.5px] text-foreground">
@@ -215,6 +220,7 @@ function FieldValue({ children }: { children: ReactNode }): ReactNode {
   );
 }
 
+/** A link that opens the project's repository in a new tab. */
 function RepoLink({ href }: { href: string }): ReactNode {
   return (
     <a
@@ -229,22 +235,26 @@ function RepoLink({ href }: { href: string }): ReactNode {
   );
 }
 
+/** The scope toggle tabs as `[value, label]` pairs. */
 const SCOPE_TABS: [value: SettingsScope, label: string][] = [
   ['global', 'Global'],
   ['project', 'This project'],
 ];
 
+/** A single entry in the left nav. */
 interface NavItem {
   page: SettingsPage;
   label: string;
   icon: ReactNode;
   badge?: string;
 }
+/** A labelled group of nav entries. */
 interface NavGroup {
   label: string;
   items: NavItem[];
 }
 
+/** The left-nav structure: groups of pages with icons and optional badges. */
 const NAV_GROUPS: NavGroup[] = [
   {
     label: 'AGENTS',
@@ -276,6 +286,7 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+/** The header (title, subtitle, icon, optional badge) shown atop each page. */
 interface PageHeader {
   title: string;
   subtitle: string;
@@ -283,6 +294,7 @@ interface PageHeader {
   badge?: string;
 }
 
+/** The header content per settings page. */
 const PAGE_HEADERS: Record<SettingsPage, PageHeader> = {
   models: { title: 'Models & runs', subtitle: 'AGENT DEFAULTS', icon: <SlidersIcon size={26} /> },
   permissions: { title: 'Permissions', subtitle: 'TOOL ACCESS', icon: <LockIcon size={24} />, badge: 'M3' },
@@ -294,15 +306,16 @@ const PAGE_HEADERS: Record<SettingsPage, PageHeader> = {
   about: { title: 'About', subtitle: 'NIGHTCORE', icon: <BrandMark size={36} /> },
 };
 
+/** An optional footer note shown beneath the cards for certain pages. */
 const PAGE_NOTES: Partial<Record<SettingsPage, string>> = {
   models: 'Changes apply to new runs. Active agents keep their current model.',
   about: 'Some changes require restarting the app. Your tasks and history are safe.',
 };
 
 /** The Settings surface: a grouped left nav, a page header with a scope toggle,
- *  and icon-tile cards per page. The four run-shaping controls persist (global
- *  or per-project per the scope tab); the M2/M3 pages are presentational and
- *  roadmap-badged. */
+ *  and icon-tile cards per page. The run-shaping controls persist (global or
+ *  per-project per the scope tab); the not-yet-built pages are presentational and
+ *  badged. */
 export function SettingsView({
   settings,
   activeProjectId,
@@ -422,10 +435,10 @@ export function SettingsView({
             />
           )}
 
-          {/* The Constitution editor (Pre-flight Context Pack, Lock #4). The pack
-              content is inherently per-project (one `context.md` per repo, edited via
-              the bridge against the ACTIVE project); the on/off toggle follows the
-              standard scope model (global or this project's override). */}
+          {/* The Constitution editor. The pack content is inherently per-project
+              (one `context.md` per repo, edited via the bridge against the ACTIVE
+              project); the on/off toggle follows the standard scope model (global or
+              this project's override). */}
           {page === 'constitution' && (
             <ConstitutionCard
               enabled={effective.contextPackEnabled}
@@ -450,6 +463,7 @@ export function SettingsView({
   );
 }
 
+/** The data and patch callbacks `buildCards` needs to assemble each page's cards. */
 interface CardContext {
   effective: EffectiveSettings;
   settings: SettingsViewProps['settings'];
@@ -459,9 +473,9 @@ interface CardContext {
   appInfo: import('@/lib/bridge').AppInfo | null;
 }
 
-/** Build the card set for a settings page. The four run-shaping controls (model,
+/** Build the card set for a settings page. The run-shaping controls (model,
  *  effort, concurrency, permission mode) are live; everything else is
- *  presentational (M2/M3 or a light scaffold). */
+ *  presentational (a not-yet-built page or a light scaffold). */
 function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardProps[] {
   const { effective, settings, patchScoped, patchGlobal, activeProjectPath, appInfo } = ctx;
   switch (page) {

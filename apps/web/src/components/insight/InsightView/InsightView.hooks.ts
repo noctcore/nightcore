@@ -1,3 +1,5 @@
+/** Hooks that resolve the Insight surface into a single view model: the live and
+ *  persisted run stream, the lifted run-config, and every screen's derived state. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '@/components/ui';
 import type {

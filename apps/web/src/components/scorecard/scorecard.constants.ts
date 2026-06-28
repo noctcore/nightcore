@@ -1,3 +1,5 @@
+/** Static Scorecard lookup tables: the dimension list + per-dimension and
+ *  per-grade display metadata, plus grade-ranking and run-status helpers. */
 import type { ComponentType } from 'react';
 import {
   AlertIcon,

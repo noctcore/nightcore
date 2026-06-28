@@ -2,9 +2,8 @@ import { RUN_MODE_OPTIONS } from '../status';
 import { runModeIcon } from './WorkModePicker.hooks';
 import type { WorkModePickerProps } from './WorkModePicker.types';
 
-/** A segmented Main-vs-Worktree run-mode picker for task create/edit (M4.6).
- *  Adapts AutoMaker's `work-mode-selector` UX shape — a card-per-mode toggle with
- *  a one-line explainer beneath — into Nightcore's segmented-radio conventions.
+/** A segmented Main-vs-Worktree run-mode picker for task create/edit — a
+ *  card-per-mode radio toggle with a one-line explainer beneath the selection.
  *  Pure presentational: selection state is owned by the form/detail panel. */
 export function WorkModePicker({ value, onChange, disabled = false }: WorkModePickerProps) {
   const selectedHint = RUN_MODE_OPTIONS.find((option) => option.mode === value)?.hint;

@@ -1,5 +1,8 @@
+/** Props for the TaskCard component. */
 import type { Task } from '@/lib/bridge';
 
+/** Props for a single task card: the task, its presentational flags, and the
+ *  optional bridge action handlers wired by the board. */
 export interface TaskCardProps {
   task: Task;
   selected: boolean;

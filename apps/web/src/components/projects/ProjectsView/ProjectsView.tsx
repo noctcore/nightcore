@@ -1,3 +1,4 @@
+/** @file ProjectsView — the Projects landing surface (grid of project cards). */
 import { Button, EmptyState, FolderIcon, PlusIcon } from '@/components/ui';
 import { ProjectCard } from '../ProjectCard';
 import { useProjectSummaries } from './ProjectsView.hooks';

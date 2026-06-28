@@ -1,3 +1,4 @@
+/** Selection-resolution helper for the ModelEffortPicker. */
 import { modelOptionFor } from '@/lib/models';
 
 /** Resolve which model option a stored value selects. The store may hold a

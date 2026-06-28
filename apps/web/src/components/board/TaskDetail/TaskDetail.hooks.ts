@@ -1,6 +1,10 @@
+/** TaskDetail derivation helpers: build the drawer's view-model from the task +
+ *  live transcript, and decide whether Merge is permitted. */
 import type { GauntletResult, Task } from '@/lib/bridge';
 import { EMPTY_STREAM, type SessionGroup, type TaskTranscript } from '../session-stream';
 
+/** The drawer's derived view-model: live run flags, aggregated cost/error, the
+ *  per-session timeline, and which control bands apply for this task's status. */
 export interface TaskDetailView {
   isRunning: boolean;
   /** True while a reviewer session reads the diff (`verifying`). */
@@ -23,7 +27,7 @@ export interface TaskDetailView {
 }
 
 /** Resolve the drawer's view-model: the live stream wins over the persisted
- *  task while a run is in flight; otherwise the stored values are shown. The M4
+ *  task while a run is in flight; otherwise the stored values are shown. The
  *  `waiting_approval` split keys on `task.review` — a parked verification carries
  *  the reviewer verdict, a parked plan does not. */
 export function deriveTaskDetailView(
@@ -82,7 +86,7 @@ export function deriveTaskDetailView(
 }
 
 /** Whether Merge is permitted: the pre-merge gate requires a verified task AND a
- *  passing gauntlet (M4 §D). A `main`-mode task (M4.6) edits the project tree in
+ *  passing gauntlet. A `main`-mode task edits the project tree in
  *  place with no branch, so it can never merge — `merge_task` refuses it. Until
  *  the gauntlet has been run (`null`), Merge stays disabled — run the checks first. */
 export function canMerge(task: Task, gauntlet: GauntletResult | null | undefined): boolean {

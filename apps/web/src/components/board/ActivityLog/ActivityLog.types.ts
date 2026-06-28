@@ -1,5 +1,6 @@
 import type { SessionGroup } from '../session-stream';
 
+/** Props for {@link ActivityLog}. */
 export interface ActivityLogProps {
   /** Every session in the task's transcript, in order — one collapsible block
    *  each so the in-progress build run stays visible alongside a later

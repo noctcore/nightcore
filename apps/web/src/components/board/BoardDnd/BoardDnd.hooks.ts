@@ -1,3 +1,4 @@
+/** Drag-and-drop state, sensors, and drop resolution for the board's columns. */
 import { useCallback, useMemo, useState } from 'react';
 import {
   KeyboardSensor,
@@ -15,6 +16,7 @@ import { COLUMNS, canDragStatus, isDroppableStatus } from '../status';
  *  drag. This is what lets the whole card double as the drag handle. */
 const ACTIVATION_DISTANCE = 6;
 
+/** A resolved drag-end move: the card id and the destination status. */
 export interface DropResolution {
   id: string;
   status: TaskStatus;
@@ -47,6 +49,7 @@ export function resolveDrop(
   return { id: activeId, status: overStatus as TaskStatus };
 }
 
+/** The drag state and handlers returned by {@link useBoardDnd}. */
 export interface BoardDndState {
   sensors: ReturnType<typeof useSensors>;
   /** The task being dragged, for the `<DragOverlay>` preview (`null` when idle). */

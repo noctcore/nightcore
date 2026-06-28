@@ -1,9 +1,10 @@
+/** Reviewer-verdict and structure-lock panel for a verified/parked task. */
 import { Button, CheckIcon, Markdown, RetryIcon, VerifiedIcon } from '@/components/ui';
 import { VERDICT_LABEL, VERDICT_TEXT } from '../status';
 import { deriveReviewPanelView, MAX_FIX_ATTEMPTS } from './ReviewPanel.hooks';
 import type { ReviewPanelProps } from './ReviewPanel.types';
 
-/** The verification review panel (M4): renders the reviewer's verdict text with
+/** The verification review panel: renders the reviewer's verdict text with
  *  its parsed verdict, the auto-fix budget note, and — for a parked verification
  *  `waiting_approval` — Accept / Reject / Rerun controls. Pure presentational;
  *  the bridge actions are owned by the detail panel. */

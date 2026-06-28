@@ -1,3 +1,4 @@
+/** Append-only JSONL persistence for Nightcore session metadata. */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { SessionRecordSchema, type SessionRecord } from '@nightcore/contracts';

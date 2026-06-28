@@ -1,5 +1,7 @@
+/** Prop types for the TaskAttachments section. */
 import type { Task } from '@/lib/bridge';
 
+/** Props for the TaskAttachments Images section. */
 export interface TaskAttachmentsProps {
   task: Task;
   /** Whether the task is pre-run — when true, images can be added/removed; when

@@ -1,3 +1,5 @@
+/** TaskCard hooks: the live elapsed-time ticker and the @dnd-kit draggable
+ *  wiring (with button-safe drag ARIA). */
 import { useEffect, useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import type { DraggableSyntheticListeners } from '@dnd-kit/core';

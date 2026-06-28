@@ -1,3 +1,5 @@
+/** Collapse-state hooks and the collapsed-summary helper for the Session/History
+ *  cards. */
 import { useState } from 'react';
 import type { Task } from '@/lib/bridge';
 import { KIND_LABEL, modelDisplayName, PERMISSION_MODE_LABEL, RUN_MODE_LABEL } from '../status';

@@ -140,8 +140,8 @@ describe('AnalysisManager — concurrency cap', () => {
   });
 
   test('defaults to 6-way concurrency when no maxConcurrency override is given', async () => {
-    // WS4: the default was raised 3→6. With 8 categories and no override the pool
-    // saturates at 6 (runPool caps at categories.length, here 8). The gate releases
+    // With 8 categories and no override the pool saturates at the default of 6
+    // (runPool caps at categories.length, here 8). The gate releases
     // only once 6 are in flight, so this hangs/fails if the default regresses below 6.
     let inFlight = 0;
     let peak = 0;

@@ -1,4 +1,4 @@
-/** Concise one-line summaries of a tool's `input` for the UI (M4.7 §B). Shared by
+/** Concise one-line summaries of a tool's `input` for the UI. Shared by
  *  the interactive permission prompt and the TaskDetail tool list so both render
  *  the telling argument (a path/pattern/command) instead of just the tool name.
  *  Pure — never logs the input (it may carry paths/commands surfaced only to the

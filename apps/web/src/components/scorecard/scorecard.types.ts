@@ -1,3 +1,5 @@
+/** View-model types for the Scorecard surface: the normalized reading/evidence
+ *  shapes the UI renders and the narrowed run/reading status unions. */
 import type { ScorecardDimension, ScorecardGrade } from '@/lib/bridge';
 
 /** Reading lifecycle, narrowed from the persisted `string`. UNLIKE Insight there is
