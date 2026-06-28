@@ -1,3 +1,4 @@
+/** Grouped, per-session activity log for a task's run transcript. */
 import {
   ChevronDownIcon,
   LayersIcon,
@@ -150,7 +151,7 @@ function TimelineBody({
             if (entry.kind === 'text') {
               const isLast = i === entries.length - 1;
               return (
-                // Stable per-entry key (C6) — `entry.id` keeps a growing turn's
+                // Stable per-entry key — `entry.id` keeps a growing turn's
                 // identity so React reconciles it in place instead of remounting.
                 <li key={`t${entry.id}`} className="text-foreground">
                   {entry.closed ? (

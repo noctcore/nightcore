@@ -24,9 +24,9 @@ import type { TaskCardProps } from './TaskCard.types';
 const CARD_BASE =
   'group relative w-full rounded-xl border bg-card p-3.5 text-left transition-[border-color,box-shadow,background]';
 
-/** Container classes per status, always using the glow treatment (mirrors the
- *  design's `cardVm` glow look). The running-accent glow stays; a verifying task
- *  carries the primary-tinted reviewer glow. */
+/** Container classes per status, always using the glow treatment. The
+ *  running-accent glow stays; a verifying task carries the primary-tinted
+ *  reviewer glow. */
 function containerClass(status: string, running: boolean, selected: boolean): string {
   if (running) {
     return 'border-warning/55 shadow-[0_0_0_1px_oklch(80%_.14_75_/_.3),0_10px_34px_-8px_oklch(80%_.14_75_/_.45)]';
@@ -52,13 +52,13 @@ const ACTION_DANGER =
   'bg-destructive/[0.14] text-destructive border border-destructive/30 hover:brightness-110';
 const ACTION_DISABLED = 'flex-1 border border-border bg-white/[0.04] text-muted-foreground';
 
-/** A task card with the design's full anatomy: model badge + dot, elapsed timer
+/** A task card showing its full anatomy: model badge + dot, elapsed timer
  *  and shimmer progress while running, cost, branch/blocked/error chips, and the
- *  per-column action set (real run/cancel/logs/delete; M3 commit/refine/merge
- *  visible-but-disabled). Pure presentational — selection and bridge actions are
+ *  per-column action set (run/cancel/logs/delete, plus commit/refine/merge per
+ *  status). Pure presentational — selection and bridge actions are
  *  owned by the board.
  *
- *  Memoized (C6): a board-wide `nc:session` delta re-renders the Board → Columns,
+ *  Memoized: a board-wide `nc:session` delta re-renders the Board → Columns,
  *  but a card whose own props (its task object + primitive flags) are unchanged
  *  skips re-rendering. The handler props are stable `useCallback`s and `logCount`
  *  is a primitive, so only the one card whose stream count changed re-renders. */

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+/** Tool-risk classification, descriptors, and permission/question reply shapes. */
+
 /**
  * How risky a tool is, which drives how tightly the PermissionLayer gates it:
  *  - `safe`      — read-only; may be auto-allowed.

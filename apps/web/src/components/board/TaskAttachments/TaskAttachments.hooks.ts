@@ -1,3 +1,5 @@
+/** State hook for the task-detail Images section: thumbnail loading plus add/remove
+ *  via the attachment IPC commands. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ImageDropzoneItem } from '@/components/ui';
 import {
@@ -8,6 +10,7 @@ import {
 } from '@/lib/bridge';
 import { imageDataUrl, MAX_IMAGES_PER_TASK, readImageFiles, toPayload } from '@/lib/attachments';
 
+/** The state and actions returned by `useTaskAttachments` for the Images section. */
 export interface TaskAttachmentsState {
   items: ImageDropzoneItem[];
   canAddMore: boolean;

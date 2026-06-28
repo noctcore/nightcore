@@ -1,3 +1,4 @@
+/** Resolvers for Nightcore's on-disk locations (home, sessions, per-project). */
 import * as os from 'node:os';
 import * as path from 'node:path';
 

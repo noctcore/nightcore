@@ -1,3 +1,5 @@
+/** The HarnessView component shell and its per-phase screens (CONFIGURE / RUNNING
+ *  / RESULTS), rendered purely from the `useHarnessView` view model. */
 import {
   Button,
   ChevronLeftIcon,

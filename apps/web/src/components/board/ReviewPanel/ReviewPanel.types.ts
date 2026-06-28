@@ -1,6 +1,9 @@
+/** Prop types for the ReviewPanel component. */
 import type { Task } from '@/lib/bridge';
 
+/** Props for `ReviewPanel`. */
 export interface ReviewPanelProps {
+  /** The task whose verification verdict and structure-lock result are rendered. */
   task: Task;
   /** Accept the parked verification (user overrides the reviewer → verified). */
   onAccept?: (id: string) => void;

@@ -1,9 +1,12 @@
+/** Board-local derivation and view hooks: dependency-blocking, column grouping,
+ *  keyword search, the provider inspector toggle, and the breaker banner. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Task } from '@/lib/bridge';
 import { COLUMNS, type ColumnDef } from '../status';
 import { filterTasksByWorktree, type ActiveWorktree } from '../WorktreeSwitcher';
 import type { BreakerInfo } from './Board.types';
 
+/** A board column paired with the tasks currently grouped into it. */
 export interface BoardColumn {
   def: ColumnDef;
   tasks: Task[];
@@ -45,6 +48,8 @@ export function matchesQuery(task: Task, query: string): boolean {
   return `${task.title} ${task.description}`.toLowerCase().includes(q);
 }
 
+/** The Board view hook's result: the search query, its setter, and the
+ *  worktree-scoped, keyword-filtered, grouped columns. */
 export interface BoardViewState {
   search: string;
   setSearch: (value: string) => void;
@@ -52,7 +57,7 @@ export interface BoardViewState {
 }
 
 /** Board view state: the search query plus the derived filtered/grouped columns.
- *  Tasks are first scoped to the active worktree (M4.6) — Main shows run-mode-main
+ *  Tasks are first scoped to the active worktree — Main shows run-mode-main
  *  tasks, a worktree tab shows its branch's tasks — then keyword-filtered. The
  *  blocked-task set is computed by the backend and passed in as a prop (it depends
  *  on the full registry + run state, not just the visible cards). */

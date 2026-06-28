@@ -1,3 +1,4 @@
+/** The CategoryTabs convention-lens tab strip. */
 import { CATEGORY_META } from '../harness.constants';
 import type { CategoryTabsProps } from './CategoryTabs.types';
 

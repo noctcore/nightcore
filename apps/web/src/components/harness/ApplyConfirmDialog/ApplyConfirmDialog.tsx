@@ -2,16 +2,6 @@ import { Button, Kbd, Modal, Spinner } from '@/components/ui';
 import { ARTIFACT_KIND_META, WRITE_MODE_META } from '../harness.constants';
 import type { ApplyConfirmDialogProps } from './ApplyConfirmDialog.types';
 
-/** The pre-write confirmation for applying a harness artifact to disk. Built on
- *  the shared `<Modal>` and matched to the `ConfirmDialog` sibling convention: Esc
- *  / click-outside cancel, Enter confirms (the Apply button takes initial focus via
- *  `[data-confirm]`), and the `↵ to confirm` Kbd hint sits at the footer's left.
- *
- *  Beyond ConfirmDialog it adds the write-specific chrome: the confirm is disabled
- *  while the write is in flight (so it can't double-fire), and any error the Rust
- *  `apply_harness_artifact` returns (e.g. "file already exists — refusing to
- *  overwrite") is surfaced inline rather than swallowed. Enter is inert while
- *  applying so a held key can't re-trigger the write. */
 /** Friendly, actionable explanation for the one apply failure users will actually
  *  hit: a `create` artifact whose target already exists. The Rust apply opens with
  *  `O_EXCL` and refuses (never overwrites), surfacing an "already exists" error —
@@ -23,6 +13,16 @@ function explainApplyError(error: string): string {
   return error;
 }
 
+/** The pre-write confirmation for applying a harness artifact to disk. Built on
+ *  the shared `<Modal>` and matched to the `ConfirmDialog` sibling convention: Esc
+ *  / click-outside cancel, Enter confirms (the Apply button takes initial focus via
+ *  `[data-confirm]`), and the `↵ to confirm` Kbd hint sits at the footer's left.
+ *
+ *  Beyond ConfirmDialog it adds the write-specific chrome: the confirm is disabled
+ *  while the write is in flight (so it can't double-fire), and any error the Rust
+ *  `apply_harness_artifact` returns (e.g. "file already exists — refusing to
+ *  overwrite") is surfaced inline rather than swallowed. Enter is inert while
+ *  applying so a held key can't re-trigger the write. */
 export function ApplyConfirmDialog({
   artifact,
   applying,

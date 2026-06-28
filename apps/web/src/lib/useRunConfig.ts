@@ -1,3 +1,5 @@
+/** Shared run-configuration form state (model/effort + category lens set) for the
+ *  Insight and Harness views. */
 import { useMemo, useState } from 'react';
 
 /** Values used to pre-fill the form on "New run" (from the last/loaded run). */

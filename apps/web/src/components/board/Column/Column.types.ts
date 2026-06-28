@@ -1,11 +1,14 @@
+/** Props for the Column component. */
 import type { Task } from '@/lib/bridge';
 
+/** Props for a single board column: its header chrome, the tasks it renders, the
+ *  drop target status, and the card action handlers it forwards. */
 export interface ColumnProps {
   title: string;
   tasks: Task[];
-  /** The column's status dot color (oklch), from the design palette. */
+  /** The column's status dot color (oklch). */
   dotColor: string;
-  /** Roadmap tag rendered beside the column title (e.g. Waiting Approval → M3). */
+  /** Tag rendered beside the column title (a not-yet-built/future affordance). */
   badge?: string;
   /** When true and the column is non-empty, render a "Clear" affordance. */
   clearable?: boolean;

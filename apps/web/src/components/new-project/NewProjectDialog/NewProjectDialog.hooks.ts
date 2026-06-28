@@ -1,6 +1,8 @@
+/** Form state and create logic for the new-project dialog. */
 import { useCallback, useState } from 'react';
 import type { NewProjectDialogProps } from './NewProjectDialog.types';
 
+/** Form values, derived flags, and setters returned by `useNewProjectDialog`. */
 export interface NewProjectDialogState {
   name: string;
   model: string;
@@ -32,9 +34,9 @@ export function useNewProjectDialog({
   const [concurrency, setConcurrency] = useState(3);
   const [busy, setBusy] = useState(false);
 
-  // Esc / click-outside (suppressed while busy) and the focus trap now live in
-  // the shared `<Modal>` the dialog renders through — W-A's double-submit guard
-  // is preserved by passing a no-op close while a create is in flight.
+  // Esc / click-outside (suppressed while busy) and the focus trap live in the
+  // shared `<Modal>` the dialog renders through — the double-submit guard is
+  // preserved by passing a no-op close while a create is in flight.
   const canCreate =
     folder !== null && name.trim().length > 0 && gitState === 'valid' && !busy;
 

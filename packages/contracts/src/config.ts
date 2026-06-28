@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+/** Core configuration, permission, model, and MCP-server contract shapes. */
+
 /**
  * Permission modes mirror the Claude Agent SDK's `PermissionMode` union exactly.
  * We re-declare it here (rather than importing the SDK) so that the contracts
@@ -19,9 +21,9 @@ export const PermissionModeSchema = z.enum([
 export type PermissionMode = z.infer<typeof PermissionModeSchema>;
 
 /**
- * The kind of work a task represents (M4). `build` is the default and reproduces
- * today's behavior; `review` runs an independent read-only reviewer over a
- * worktree diff. `research`/`decompose` are reserved (defined, not yet produced).
+ * The kind of work a task represents. `build` is the default; `review` runs an
+ * independent read-only reviewer over a worktree diff; `research`, `decompose`,
+ * and `tdd` drive their own agent presets.
  *
  * This enum is the single thing the Rust core and the engine share: the core owns
  * each kind's ORCHESTRATION policy (`kind.rs`), the engine owns its AGENT
@@ -39,8 +41,7 @@ export type TaskKind = z.infer<typeof TaskKindSchema>;
 
 /**
  * Known Claude model ids. `model` is a free string at the SDK boundary, but the
- * harness offers these as the curated default set. Exact non-Opus ids are
- * confirmed at build time against the models doc (see docs/architecture.md).
+ * harness offers these as the curated default set.
  */
 export const KnownModelSchema = z.enum([
   'claude-opus-4-8',
@@ -103,10 +104,7 @@ export const ConfigPathsSchema = z.object({
 });
 export type ConfigPaths = z.infer<typeof ConfigPathsSchema>;
 
-/**
- * The layered Nightcore configuration. Built by merging:
- * defaults → `~/.nightcore/config.json` → `./.nightcore/config.json`.
- */
+/** Log verbosity levels, ordered most-quiet to most-verbose. */
 export const LogLevelSchema = z.enum([
   'silent',
   'error',
@@ -116,6 +114,10 @@ export const LogLevelSchema = z.enum([
 ]);
 export type LogLevel = z.infer<typeof LogLevelSchema>;
 
+/**
+ * The resolved, layered Nightcore configuration. Built by merging:
+ * defaults → `~/.nightcore/config.json` → `./.nightcore/config.json`.
+ */
 export const ConfigSchema = z.object({
   /** Default model for new sessions. Free string to allow any SDK-supported id. */
   model: z.string().default('claude-opus-4-8'),

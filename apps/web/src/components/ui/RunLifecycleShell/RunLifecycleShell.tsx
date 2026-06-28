@@ -1,3 +1,4 @@
+/** Shared frame for the configure/running/results lifecycle screens. */
 import { usePhaseFade, usePhaseFocus } from './RunLifecycleShell.hooks';
 import type { RunLifecycleShellProps, RunPhase } from './RunLifecycleShell.types';
 

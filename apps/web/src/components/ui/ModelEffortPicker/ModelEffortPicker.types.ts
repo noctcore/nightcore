@@ -1,3 +1,6 @@
+/** Public types for the ModelEffortPicker component. */
+
+/** Props for the ModelEffortPicker component. */
 export interface ModelEffortPickerProps {
   /** The current model id override, or `null` to inherit the default. */
   model: string | null;

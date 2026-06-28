@@ -1,3 +1,4 @@
+/** Constants for the Constitution editor card: preview language and tab/placeholder copy. */
 import type { ConstitutionMode } from './ConstitutionCard.types';
 
 /** The language CodeBlock highlights the pack as (it falls back to plain text for

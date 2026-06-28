@@ -17,6 +17,7 @@ export interface ScorecardRunConfig
   canGrade: boolean;
 }
 
+/** Props for the RunControls CONFIGURE form: the lifted config, a starting flag, and the Grade action. */
 export interface RunControlsProps {
   /** The lifted form state, owned by the ScorecardView hook. */
   config: ScorecardRunConfig;

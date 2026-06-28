@@ -1,3 +1,9 @@
+/**
+ * The web↔Rust bridge: typed wrappers over every Tauri `invoke` command and
+ * `nc:*` event subscription the board uses, plus the defensive narrowers that
+ * validate event payloads against the authoritative contracts before use. All
+ * commands degrade to mock/no-op data outside the Tauri webview (browser preview).
+ */
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type EventCallback, type UnlistenFn } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -96,8 +102,8 @@ export type {
   ProposedArtifact,
 } from '@nightcore/contracts';
 
-/** The kind preset a task runs under (M4) and the four UI permission modes are
- *  now generated FROM the Rust enums (`TaskKind` / `PermissionMode` in
+/** The kind preset a task runs under and the four UI permission modes are
+ *  generated FROM the Rust enums (`TaskKind` / `PermissionMode` in
  *  `store/task.rs`) rather than re-declared, so the board's pickers can't drift
  *  from the authoritative serde mapping. The generated `TaskKind` is byte-identical
  *  to the contracts `TaskKindSchema` enum (same snake_case wire union); the
@@ -249,7 +255,7 @@ export async function listTasks(): Promise<Task[]> {
   return tauriInvoke<Task[]>('list_tasks', {}, []);
 }
 
-/** Optional per-task launch overrides settable at create time (M4.7 §F). All
+/** Optional per-task launch overrides settable at create time. All
  *  default to `null` = inherit the resolved project/global default. */
 export interface CreateTaskOptions {
   permissionMode?: PermissionMode | null;
@@ -264,9 +270,8 @@ export interface CreateTaskOptions {
   attachments?: NewAttachmentPayload[];
 }
 
-/** Create a new `backlog` task. The `kind` (M4) defaults to `build` and the
- *  `runMode` (M4.6) defaults to `main` so an unqualified create is byte-identical
- *  to today. The M4.7 `permissionMode`/`model`/`effort` overrides default to
+/** Create a new `backlog` task. The `kind` defaults to `build` and the `runMode`
+ *  defaults to `main`. The `permissionMode`/`model`/`effort` overrides default to
  *  `null` (inherit). No-op (throws) outside Tauri. */
 export async function createTask(
   title: string,
@@ -342,9 +347,9 @@ export async function cancelTask(id: string): Promise<void> {
   await invoke('cancel_task', { id });
 }
 
-// --- Transcript persistence (M4.7 §C) -------------------------------------
+// --- Transcript persistence -----------------------------------------------
 
-/** Read a task's persisted session transcript (M4.7 §C) — the same `NcEvent`s
+/** Read a task's persisted session transcript — the same `NcEvent`s
  *  that streamed over `nc:session`, appended to a per-task JSONL by the core.
  *  The web reseeds the stream view from this on task open/mount so a reload/HMR
  *  no longer blanks the transcript. Returns `[]` outside Tauri (browser preview)
@@ -460,7 +465,7 @@ export async function getProviderConfig(
   );
 }
 
-// --- Interactive permissions (M3) -----------------------------------------
+// --- Interactive permissions ----------------------------------------------
 
 /** Answer a parked permission prompt (`nc:permission`). An allow may rewrite the
  *  tool input via `updatedInput`; a deny may carry a short `message` reason.
@@ -499,7 +504,7 @@ export async function answerQuestion(
   );
 }
 
-// --- Plan approval (M3) ---------------------------------------------------
+// --- Plan approval --------------------------------------------------------
 
 /** Approve a waiting plan: the same session switches to building it. */
 export async function approveTask(id: string): Promise<void> {
@@ -516,7 +521,7 @@ export async function refineTask(id: string): Promise<void> {
   await invoke('refine_task', { id });
 }
 
-// --- Commit / merge (M3) --------------------------------------------------
+// --- Commit / merge -------------------------------------------------------
 
 /** Commit a verified task's worktree (git add -A + commit from its title).
  *  Rejects with "nothing to commit" when the tree is clean. */
@@ -526,12 +531,12 @@ export async function commitTask(id: string): Promise<void> {
 
 /** Merge a verified task's branch into the project base. Rejects (and marks the
  *  task `conflict`) on a merge conflict — never forced. The backend gates this on
- *  `verified == true` and a passing gauntlet (M4); an unverified task is refused. */
+ *  `verified == true` and a passing gauntlet; an unverified task is refused. */
 export async function mergeTask(id: string): Promise<void> {
   await invoke('merge_task', { id });
 }
 
-// --- Verification gate (M4) -----------------------------------------------
+// --- Verification gate ----------------------------------------------------
 
 /** Accept a parked verification (CHANGES_REQUESTED budget-exhausted / FAIL /
  *  inconclusive): the user overrides the reviewer → `verified = true`, `done`.
@@ -560,9 +565,9 @@ export async function runGauntlet(id: string): Promise<GauntletResult> {
   return tauriInvoke<GauntletResult>('run_gauntlet', { id }, { passed: true, steps: [] });
 }
 
-// --- Worktrees (M4.6) -----------------------------------------------------
+// --- Worktrees ------------------------------------------------------------
 
-/** The active project's live worktrees (M4.6, §C) — branch, path, grouped task
+/** The active project's live worktrees — branch, path, grouped task
  *  ids, dirty flag, and ahead-of-base count — driving the worktree switcher's
  *  tabs + monitor indicators. Read-only git status; tolerates a missing/locked
  *  worktree. Returns `[]` outside Tauri (browser preview); the switcher falls
@@ -571,7 +576,7 @@ export async function listWorktrees(): Promise<WorktreeInfo[]> {
   return tauriInvoke<WorktreeInfo[]>('list_worktrees', {}, []);
 }
 
-// --- Autonomous loop (M2) -------------------------------------------------
+// --- Autonomous loop ------------------------------------------------------
 
 /** Start the autonomous loop: ready tasks are leased and run up to the live
  *  concurrency. No-ops outside Tauri (browser preview). */
@@ -698,7 +703,7 @@ export async function getAppInfo(): Promise<AppInfo> {
   return tauriInvoke<AppInfo>('app_info', {}, MOCK_APP_INFO);
 }
 
-// --- Pre-flight Context Pack (Lock, feature #4) ----------------------------
+// --- Pre-flight Context Pack ----------------------------------------------
 
 /** The mock Constitution shown outside Tauri (browser preview). */
 const MOCK_CONTEXT_PACK =
@@ -755,8 +760,8 @@ function isTask(value: unknown): value is Task {
 
 /** Parse an unknown `nc:session` payload into a validated `SessionEnvelope`, or
  *  `null` when the shape or the inner event fails the authoritative contract.
- *  The inner `event` is validated against `NightcoreEventSchema` (C3): a
- *  malformed/again-future event is dropped rather than fed to `foldSession`. */
+ *  The inner `event` is validated against `NightcoreEventSchema`: a
+ *  malformed/future event is dropped rather than fed to `foldSession`. */
 function parseSessionEnvelope(value: unknown): SessionEnvelope | null {
   if (typeof value !== 'object' || value === null) return null;
   const v = value as Record<string, unknown>;

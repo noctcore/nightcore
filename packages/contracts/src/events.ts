@@ -518,6 +518,7 @@ export const ScorecardFailedEvent = z.object({
   message: z.string(),
 });
 
+/** The discriminated union of every engine → surface event, keyed by `type`. */
 export const NightcoreEventSchema = z.discriminatedUnion('type', [
   SessionStartedEvent,
   SessionReadyEvent,

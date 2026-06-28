@@ -1,8 +1,10 @@
+/** Props, editor-draft shape, and validation result for the MCP servers card. */
 import type { McpServerEntry, McpServerTransport } from '@/lib/bridge';
 
 /** The transport tag the form draft is currently editing. */
 export type McpTransport = McpServerTransport['transport'];
 
+/** Props for the MCP servers card. */
 export interface McpServersCardProps {
   /** The MCP server list in effect for the current scope (global, or a project
    *  override). The card edits a COPY and emits the whole next list. */

@@ -1,3 +1,4 @@
+/** Event wiring (drag/drop/paste/picker) for the ImageDropzone. */
 import { useCallback, useRef, useState } from 'react';
 import type { ChangeEvent, ClipboardEvent, DragEvent } from 'react';
 import { imageFilesFrom } from '@/lib/attachments';

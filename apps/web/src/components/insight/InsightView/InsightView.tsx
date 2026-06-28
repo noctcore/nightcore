@@ -1,3 +1,5 @@
+/** Top-level Insight component: renders the CONFIGURE / RUNNING / RESULTS
+ *  lifecycle and the finding detail panel from the `useInsightView` model. */
 import {
   Button,
   ChevronLeftIcon,

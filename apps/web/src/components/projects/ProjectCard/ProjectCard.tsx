@@ -1,3 +1,4 @@
+/** @file ProjectCard — a single project card plus its inline rename dialog. */
 import {
   Badge,
   Button,

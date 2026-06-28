@@ -1,3 +1,6 @@
+/** Public types for the ImageDropzone component. */
+
+/** A single image shown in the dropzone thumbnail grid. */
 export interface ImageDropzoneItem {
   /** Stable id for keying + removal: a tempId for a pending (create-time) image, or
    *  the persisted attachment id once the task exists. */
@@ -10,6 +13,7 @@ export interface ImageDropzoneItem {
   size?: number;
 }
 
+/** Props for the ImageDropzone component. */
 export interface ImageDropzoneProps {
   /** The images to show in the thumbnail grid. */
   items: ImageDropzoneItem[];

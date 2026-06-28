@@ -1,3 +1,4 @@
+/** Live per-category progress panel for the running screen. */
 import { StatusDot } from '../StatusDot';
 import { CheckIcon, ChevronRightIcon } from '../icons';
 import { useElapsedMs } from './RunProgress.hooks';
@@ -20,16 +21,19 @@ function isFinished(state: CategoryRunState): boolean {
   return state === 'done' || state === 'error';
 }
 
+/** Format a USD amount as `$0.00`. */
 function formatCostUsd(usd: number): string {
   return `$${usd.toFixed(2)}`;
 }
 
+/** Format a token count compactly (e.g. `1.2k`, `34k`). */
 function formatTokens(n: number): string {
   if (n >= 10000) return `${Math.round(n / 1000)}k`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);
 }
 
+/** Format an elapsed duration in ms as `m:ss`. */
 function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   const minutes = Math.floor(total / 60);

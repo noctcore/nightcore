@@ -9,7 +9,7 @@ import { useDebouncedRefetch } from './useDebouncedRefetch.hooks';
 export function useBlockedIds(): Set<string> {
   const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
 
-  // Monotonic request id (#7): every refetch stamps a request, so an older,
+  // Monotonic request id: every refetch stamps a request, so an older,
   // slower response can't clobber a newer one. Refs so the fetch closure stays
   // stable across renders (the debounce reads the latest).
   const alive = useRef(true);

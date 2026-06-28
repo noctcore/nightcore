@@ -6,8 +6,8 @@ import { useColumn } from './Column.hooks';
 import type { ColumnProps } from './Column.types';
 
 /** A board column: a colored status dot + label + count header (with an optional
- *  roadmap badge and a Clear affordance for Verified/Failed), over its task
- *  cards. Width tracks the design (Failed is narrower). Presentational — all
+ *  tag badge and a Clear affordance for Verified/Failed), over its task
+ *  cards. Failed renders narrower than the rest. Presentational — all
  *  state and bridge actions are owned by the board.
  *
  *  Drag-and-drop (@dnd-kit): the whole column shell is a droppable keyed on its
@@ -16,7 +16,7 @@ import type { ColumnProps } from './Column.types';
  *  card column only mounts the visible rows — a `<DragOverlay>` (rendered by the
  *  board) keeps a dragged card visible even after its source row scrolls out.
  *
- *  Memoized (C6): on a board-wide `nc:session` delta the Board re-renders, but a
+ *  Memoized: on a board-wide `nc:session` delta the Board re-renders, but a
  *  column whose props are referentially stable skips. `logCounts` is a fresh
  *  object per delta so a column DOES re-render, but each virtualized row renders
  *  the memoized `TaskCard` reading a primitive `logCount` and skips unless its own

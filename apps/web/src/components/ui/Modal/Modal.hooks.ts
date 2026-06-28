@@ -1,3 +1,4 @@
+/** Focus-trap, escape-to-close, and focus-restore behavior for Modal. */
 import { useEffect, useRef } from 'react';
 
 /** Focusable descendants a focus trap cycles through (Tab / Shift+Tab). Matches
@@ -6,8 +7,7 @@ import { useEffect, useRef } from 'react';
 const FOCUSABLE =
   'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
-/** Shared modal-dialog behavior (a11y), extracted from the proven `ConfirmDialog`
- *  logic and hardened with a focus trap + focus restore:
+/** Shared modal-dialog behavior (a11y) with a focus trap + focus restore:
  *  - moves focus INTO the dialog on mount (the element matching `initialFocus`,
  *    else the first focusable, else the dialog container);
  *  - traps Tab / Shift+Tab so focus can't escape to the inert background;

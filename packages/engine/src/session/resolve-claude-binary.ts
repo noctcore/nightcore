@@ -1,3 +1,8 @@
+/**
+ * Resolve a real, on-disk `claude` executable to hand the SDK, working around the
+ * `bun build --compile` `$bunfs` bundling that breaks the SDK's own binary
+ * self-resolution. Exposes the resolver plus a few helpers it composes.
+ */
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -171,6 +176,8 @@ function nodeModulesRoots(): string[] {
   return roots;
 }
 
+/** Every directory from `start` up to the filesystem root, inclusive, nearest
+ *  first. Used to find a hoisted `node_modules` regardless of nesting depth. */
 export function ancestors(start: string): string[] {
   const out: string[] = [];
   let current = path.resolve(start);
@@ -265,6 +272,8 @@ function moduleDir(): string | undefined {
   }
 }
 
+/** Treat an env-var value as truthy unless it is unset, empty, `'0'`, or
+ *  `'false'`. */
 export function isTruthyEnv(value: string | undefined): boolean {
   return value !== undefined && value !== '' && value !== '0' && value !== 'false';
 }

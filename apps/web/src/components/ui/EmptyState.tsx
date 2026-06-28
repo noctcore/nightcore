@@ -1,5 +1,7 @@
+/** Centered placeholder for empty or failed data states. */
 import type { ReactNode } from 'react';
 
+/** Props for {@link EmptyState}. */
 interface EmptyStateProps {
   icon?: ReactNode;
   title: string;

@@ -1,3 +1,4 @@
+/** Scope, page, and props types for the Settings view. */
 import type { Settings, SettingsPatch } from '@/lib/bridge';
 
 /** Which scope settings edits target: the global defaults or the active project's
@@ -15,6 +16,7 @@ export type SettingsPage =
   | 'paths'
   | 'about';
 
+/** Props for the Settings view. */
 export interface SettingsViewProps {
   settings: Settings;
   /** The active project id, or null when none is active (disables Project scope). */

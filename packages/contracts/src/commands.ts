@@ -57,9 +57,9 @@ export const StartSessionCommand = z.object({
   permissionMode: PermissionModeSchema.optional(),
   /** Working directory; defaults to the process cwd. */
   cwd: z.string().optional(),
-  /** The task kind driving this session (M4). Resolves to an agent preset
+  /** The task kind driving this session. Resolves to an agent preset
    *  (system prompt + tool restrictions + default permission mode). Absent ⇒
-   *  `build` ⇒ identical to pre-M4 behavior. */
+   *  `build` (the default behavior). */
   kind: TaskKindSchema.optional(),
   /** Autonomy ceiling: max conversation turns for this session (SDK
    *  `Options.maxTurns`). Absent ⇒ inherit the `@nightcore/config` default. */
@@ -76,10 +76,10 @@ export const StartSessionCommand = z.object({
   /** External MCP servers (already filtered to enabled entries by the Rust core)
    *  to inject for this session. The engine folds these into the SDK
    *  `Options.mcpServers` by `name`, additively over the user's native
-   *  `.mcp.json`/`~/.claude.json`. Absent ⇒ none injected (the pre-feature shape).
+   *  `.mcp.json`/`~/.claude.json`. Absent ⇒ none injected.
    *  May carry secrets in `env`/`headers`; never logged at info/telemetry. */
   mcpServers: z.array(McpServerEntrySchema).optional(),
-  /** Pre-flight Context Pack (Lock, feature #4): a curated, Nightcore-CONTROLLED
+  /** Pre-flight Context Pack: a curated, Nightcore-CONTROLLED
    *  context pack (the project Constitution from the Harness `CLAUDE.md`/`AGENTS.md`,
    *  an arch summary, the active convention rules, and `.nightcore/memory/*.md`)
    *  the Rust core assembles from on-disk sources and passes here. The engine folds
@@ -87,11 +87,11 @@ export const StartSessionCommand = z.object({
    *  rules lead, then the reviewer/build persona), truncated to a token budget so it
    *  can't crowd out the task. Injected via `appendSystemPrompt`, NOT `settingSources`,
    *  so it stays TRUSTED Nightcore content (unlike the repo's own auto-loaded
-   *  `CLAUDE.md`). Absent ⇒ no pack injected (the pre-feature shape). */
+   *  `CLAUDE.md`). Absent ⇒ no pack injected. */
   appendContextPack: z.string().optional(),
   /** Image attachments to include on the user message as SDK image content blocks.
    *  The Rust core loads these from the task's persisted app-data files at launch.
-   *  Absent/empty ⇒ a text-only message (byte-identical to the pre-feature shape).
+   *  Absent/empty ⇒ a text-only message.
    *  Carries user-content bytes — never logged at info/telemetry. */
   images: z.array(WireImageSchema).optional(),
 });
@@ -247,6 +247,7 @@ export const CancelScorecardCommand = z.object({
   runId: z.string(),
 });
 
+/** The discriminated union of every surface → engine command, keyed by `type`. */
 export const SurfaceCommandSchema = z.discriminatedUnion('type', [
   StartSessionCommand,
   SendInputCommand,
@@ -340,6 +341,7 @@ export const GetProviderConfigQuery = z.object({
   dir: z.string().optional(),
 });
 
+/** The discriminated union of every request/reply surface → engine query, keyed by `type`. */
 export const SurfaceQuerySchema = z.discriminatedUnion('type', [
   ListSessionsQuery,
   GetSessionInfoQuery,

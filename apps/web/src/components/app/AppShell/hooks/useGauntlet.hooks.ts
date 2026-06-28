@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { onProjectEvent, runGauntlet, type GauntletResult } from '@/lib/bridge';
 import type { ToastApi } from '@/components/ui';
 
-/** Per-task readiness-gauntlet results + in-flight state (M4, §C). The Verified
+/** Per-task readiness-gauntlet results + in-flight state. The Verified
  *  column runs the gauntlet on demand; the result gates the merge. Results are
  *  cleared whenever the project is re-activated (the board re-seeds). */
 export function useGauntlet(toast: ToastApi) {

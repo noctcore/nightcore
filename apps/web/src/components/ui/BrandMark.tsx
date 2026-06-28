@@ -1,14 +1,16 @@
+/** The Nightcore brand mark SVG. */
 import { useId } from 'react';
 
+/** Props for {@link BrandMark}. */
 interface BrandMarkProps {
-  /** Rendered width/height in px. The design uses ~30 in the sidebar, ~96 on the splash. */
+  /** Rendered width/height in px (typically ~30 in the sidebar, ~96 on the splash). */
   size?: number;
   className?: string;
 }
 
-/** The Nightcore brand mark: a gradient crescent moon with a glow, reproduced
- *  exactly from the approved design's `mark()` (viewBox 0 0 64 64). Each instance
- *  mints a unique gradient id so multiple marks on one page never clash. */
+/** The Nightcore brand mark: a gradient crescent moon with a glow (viewBox
+ *  0 0 64 64). Each instance mints a unique gradient id so multiple marks on one
+ *  page never clash. */
 export function BrandMark({ size = 30, className }: BrandMarkProps) {
   const gradientId = useId();
   return (

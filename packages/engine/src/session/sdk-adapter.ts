@@ -394,8 +394,8 @@ function translateResult(
   }
 
   // An autonomy-ceiling stop is a terminal, needs-attention outcome — not a
-  // silent success. The SDK result subtype carries which ceiling was hit
-  // (`sdk.d.ts:3839`): `error_max_turns` (turn guard) / `error_max_budget_usd`
+  // silent success. The SDK result subtype carries which ceiling was hit:
+  // `error_max_turns` (turn guard) / `error_max_budget_usd`
   // (cost guard). Both surface as a distinct `session-failed` reason the web can
   // park on rather than treating as a verified pass.
   const reason: NightcoreEventOfReason =

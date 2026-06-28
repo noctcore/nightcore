@@ -284,8 +284,8 @@ describe('SessionManager task kinds (M4)', () => {
     await done;
 
     const options = queryOptions.at(-1)!;
-    // The build preset adds no append and no tool restriction: byte-identical to
-    // pre-M4. permissionMode falls back to the session default.
+    // The build preset adds no append and no tool restriction. permissionMode
+    // falls back to the session default.
     expect(options.appendSystemPrompt).toBeUndefined();
     expect(options.allowedTools).toBeUndefined();
     expect(options.disallowedTools).toBeUndefined();

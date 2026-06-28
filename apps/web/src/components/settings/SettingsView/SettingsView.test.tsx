@@ -9,7 +9,7 @@ test('updates a global setting with the SDK long id when scope is Global', async
   const onUpdate = vi.fn();
   const screen = render(<Global onUpdate={onUpdate} />);
   await screen.getByRole('button', { name: 'Sonnet' }).click();
-  // P0: the persisted value is the SDK long id, not the short label.
+  // The persisted value is the SDK long id, not the short label.
   expect(onUpdate).toHaveBeenCalledWith({ defaultModel: 'claude-sonnet-4-6' });
 });
 

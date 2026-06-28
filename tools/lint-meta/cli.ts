@@ -1,4 +1,9 @@
 // @ts-check
+/**
+ * lint-meta CLI entry point. Builds the filesystem/exec context rooted at the
+ * repo, runs every registered meta rule, prints each violation, and exits
+ * non-zero when any `ciCritical` rule reports one (or a rule throws).
+ */
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';

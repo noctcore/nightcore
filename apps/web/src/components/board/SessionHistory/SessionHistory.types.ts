@@ -1,3 +1,4 @@
+/** Prop and data-seam types for the session-history list. */
 import type { SessionInfo, SessionMessage } from '@/lib/bridge';
 
 /** The injectable data seam — defaults to the real bridge in the live hook, but
@@ -7,6 +8,7 @@ export interface SessionHistoryData {
   loadMessages: (taskId: string, sdkSessionId: string) => Promise<SessionMessage[]>;
 }
 
+/** Props for the SessionHistory list. */
 export interface SessionHistoryProps {
   /** The task whose SDK session history is shown. */
   taskId: string;

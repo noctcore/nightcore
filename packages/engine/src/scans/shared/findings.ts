@@ -27,6 +27,7 @@ const SEVERITY_RANK: Record<FindingSeverity, number> = {
   critical: 4,
 };
 
+/** Numeric rank for a severity (info=0 … critical=4), for ordering and merge. */
 export function severityRank(s: FindingSeverity): number {
   return SEVERITY_RANK[s];
 }

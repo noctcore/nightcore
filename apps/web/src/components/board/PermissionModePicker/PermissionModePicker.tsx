@@ -5,7 +5,7 @@ import type { PermissionModePickerProps } from './PermissionModePicker.types';
 const CHIP =
   'rounded-[10px] border px-3 py-2.5 text-left text-[13px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50';
 
-/** A per-task permission-mode picker (M4.7 §F): Inherit (default) plus the four
+/** A per-task permission-mode picker: Inherit (default) plus the four
  *  UI modes (bypass / auto-accept / ask / plan). A sibling of KindPicker —
  *  segmented radios with a one-line explainer beneath. Pure presentational;
  *  selection state is owned by the form/detail panel. */

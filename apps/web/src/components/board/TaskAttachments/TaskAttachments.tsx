@@ -1,3 +1,5 @@
+/** The task-detail Images section: an editable dropzone or a read-only thumbnail
+ *  grid for a task's image attachments. */
 import { ImageDropzone } from '@/components/ui';
 import { useTaskAttachments } from './TaskAttachments.hooks';
 import type { TaskAttachmentsProps } from './TaskAttachments.types';

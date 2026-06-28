@@ -1,3 +1,6 @@
+/** Indeterminate loading spinner for in-flight actions. */
+
+/** Props for {@link Spinner}. */
 interface SpinnerProps {
   /** Diameter in px. Defaults to 14 so it sits inline with a button's icon. */
   size?: number;
@@ -5,10 +8,9 @@ interface SpinnerProps {
   className?: string;
 }
 
-/** An indeterminate loading spinner for in-flight actions. A 3/4 ring in the
- *  current text color, spun with the design system's `nc-spin` keyframe (applied
- *  the same way <StatusDot> applies its pulse). The global prefers-reduced-motion
- *  rule freezes the rotation, leaving a static ring. */
+/** An indeterminate loading spinner for in-flight actions: a 3/4 ring in the
+ *  current text color, spun with the `nc-spin` keyframe. The global
+ *  prefers-reduced-motion rule freezes the rotation, leaving a static ring. */
 export function Spinner({ size = 14, className }: SpinnerProps) {
   return (
     <span

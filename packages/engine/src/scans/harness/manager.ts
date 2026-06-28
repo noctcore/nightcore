@@ -60,8 +60,8 @@ type StartHarnessScan = Extract<SurfaceCommand, { type: 'start-harness-scan' }>;
 export type HarnessRunnerFactory = AnalysisRunnerFactory;
 export type HarnessSessionRunner = AnalysisSessionRunner;
 
-/** Default number of convention passes to run at once. Raised from 3→6 (WS4) so an
- *  8-lens scan finishes in fewer serial waves; still bounded so we never open all 8
+/** Default number of convention passes to run at once. A 6-wide pool finishes a
+ *  multi-lens scan in fewer serial waves; still bounded so we never open all lenses'
  *  paid Claude subprocesses at once. `runPool` caps this at `categories.length`, and
  *  `command.maxConcurrency` overrides it. */
 const DEFAULT_CONCURRENCY = 6;
@@ -175,7 +175,7 @@ export class HarnessManager {
       );
 
       // Deterministic top-level map injected into every lens + the synthesis pass so
-      // each starts from a known structure instead of re-discovering the tree (WS4).
+      // each starts from a known structure instead of re-discovering the tree.
       const inventory = buildRepoInventory(command.projectPath);
 
       await runPool(
@@ -467,7 +467,7 @@ export class HarnessManager {
 /** The per-run user prompt for a convention pass. The whole repo is always scanned
  *  (conventions are repo-wide), so there is no scope branch. The deterministic
  *  profile + top-level inventory are injected so the lens starts from a known map
- *  instead of re-discovering the same structure on every pass (WS4). */
+ *  instead of re-discovering the same structure on every pass. */
 function buildCategoryPrompt(
   command: StartHarnessScan,
   preset: HarnessPreset,

@@ -3,7 +3,7 @@ import { listWorktrees, onProjectEvent, onTaskEvent, type WorktreeInfo } from '@
 import type { ActiveWorktree } from '@/components/board';
 import { useDebouncedRefetch } from './useDebouncedRefetch.hooks';
 
-/** The active project's live worktrees (M4.6) plus the selected worktree tab.
+/** The active project's live worktrees plus the selected worktree tab.
  *  Worktrees are fetched on mount, refreshed (trailing-debounced) on `nc:task`
  *  (a run can allocate/dirty a worktree — and a refetch spawns git subprocesses,
  *  so a burst collapses to one), and refreshed immediately on project activation;
@@ -16,7 +16,7 @@ export function useWorktrees(): {
   const [worktrees, setWorktrees] = useState<WorktreeInfo[]>([]);
   const [active, setActive] = useState<ActiveWorktree>(null);
 
-  // Monotonic request id (#7): like useBlockedIds, drop a stale response that
+  // Monotonic request id: like useBlockedIds, drop a stale response that
   // resolves after a newer refetch so the switcher never shows older data.
   const alive = useRef(true);
   const seq = useRef(0);

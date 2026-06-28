@@ -1,3 +1,4 @@
+/** Keyboard-hint chip primitive. */
 import type { ReactNode } from 'react';
 
 /** A keyboard-hint chip (e.g. ⌘↵, Esc, N). Mono, bordered, muted. */

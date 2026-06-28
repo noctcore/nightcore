@@ -1,7 +1,10 @@
+/** The shared action button primitive. */
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
+/** Visual style of a {@link Button}. */
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
+/** Props for {@link Button}; extends native button attributes. */
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode;
   variant?: ButtonVariant;
@@ -16,8 +19,8 @@ const VARIANTS: Record<ButtonVariant, string> = {
   danger: 'bg-destructive text-destructive-foreground enabled:hover:brightness-110',
 };
 
-/** The primary action button. Shares the mock's pill geometry and the
- *  disabled/active affordances across every surface. */
+/** The primary action button with shared pill geometry and consistent
+ *  disabled/active affordances across every surface. Defaults to `type="button"`. */
 export function Button({
   children,
   variant = 'primary',

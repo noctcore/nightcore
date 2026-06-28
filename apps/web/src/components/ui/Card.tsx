@@ -1,5 +1,7 @@
+/** Glassy bordered container surface. */
 import type { ReactNode } from 'react';
 
+/** Props for {@link Card}. */
 interface CardProps {
   children: ReactNode;
   className?: string;

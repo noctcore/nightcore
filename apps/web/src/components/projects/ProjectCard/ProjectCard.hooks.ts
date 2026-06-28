@@ -1,9 +1,11 @@
+/** @file Local overlay state hook for a ProjectCard. */
 import { useCallback, useState } from 'react';
 import type { ProjectCardProps } from './ProjectCard.types';
 
 /** Which transient overlay (if any) the card has open. */
 type Overlay = 'none' | 'rename' | 'confirm-remove';
 
+/** State and actions returned by {@link useProjectCard}. */
 export interface ProjectCardState {
   overlay: Overlay;
   /** The draft name bound to the rename input. */

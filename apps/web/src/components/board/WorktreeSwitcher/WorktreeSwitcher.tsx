@@ -3,12 +3,11 @@ import { useWorktreeTabs } from './WorktreeSwitcher.hooks';
 import { WorktreeTabButton } from './WorktreeSwitcher.parts';
 import type { WorktreeSwitcherProps } from './WorktreeSwitcher.types';
 
-/** The worktree switcher (M4.6, §D.3): a segment bar above the board with a Main
+/** The worktree switcher: a segment bar above the board with a Main
  *  tab plus one tab per live worktree. Selecting a tab sets the active worktree
- *  (lifted to the shell) and filters the board to that worktree's tasks. Adapts
- *  AutoMaker's `worktree-panel` UX shape into Nightcore's presentational
- *  conventions — the tab list is derived in `useWorktreeTabs`, selection is owned
- *  by the caller. Renders nothing when only the Main tab exists. */
+ *  (lifted to the shell) and filters the board to that worktree's tasks. The tab
+ *  list is derived in `useWorktreeTabs`, selection is owned by the caller.
+ *  Renders nothing when only the Main tab exists. */
 export function WorktreeSwitcher({ tasks, worktrees, active, onSelect }: WorktreeSwitcherProps) {
   const tabs = useWorktreeTabs(tasks, worktrees);
 

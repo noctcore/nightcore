@@ -1,9 +1,12 @@
+/** Small color-driven status indicator dot. */
+
+/** Props for {@link StatusDot}. */
 interface StatusDotProps {
   /** Tailwind background class for the dot (e.g. `bg-primary`). */
   colorClass: string;
   /** Pulse for active/streaming states. */
   pulse?: boolean;
-  /** Add the design's soft glow ring around the dot. */
+  /** Add a soft glow ring around the dot. */
   glow?: boolean;
 }
 

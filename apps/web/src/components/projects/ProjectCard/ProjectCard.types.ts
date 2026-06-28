@@ -1,6 +1,6 @@
-/** A project view-model for the Projects surface. Projects are an M2 concept
- *  (multi-repo, worktree isolation); this shape backs the design's project
- *  cards ahead of the Rust-side registry landing. */
+/** A project view-model for the Projects surface (multi-repo, worktree
+ *  isolation). This shape backs the project cards: repo identity, running
+ *  state, stat tiles, and a relative last-activity label. */
 export interface ProjectSummary {
   id: string;
   name: string;
@@ -10,8 +10,10 @@ export interface ProjectSummary {
   activity: string;
 }
 
+/** Props for {@link ProjectCard}. */
 export interface ProjectCardProps {
   project: ProjectSummary;
+  /** Open the project, invoked with its id from the card's identity affordance. */
   onOpen: (id: string) => void;
   /** Rename the project to `name` (registry-only; files on disk untouched). When
    *  omitted, the kebab menu and its actions are not rendered. */

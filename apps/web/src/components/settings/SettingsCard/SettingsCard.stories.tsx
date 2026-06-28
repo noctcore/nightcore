@@ -42,7 +42,7 @@ export const Models: Story = {
   },
 };
 
-/** A card carrying a roadmap (M2) affordance — kept visible, visually tagged. */
+/** A card carrying a badged not-yet-built affordance — kept visible, visually tagged. */
 export const WithRoadmapBadge: Story = {
   args: {
     icon: '⚡',

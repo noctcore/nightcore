@@ -1,5 +1,8 @@
+/** Props for the WorkModePicker component. */
 import type { RunMode } from '@/lib/bridge';
 
+/** Props for the run-mode picker: the selected mode, the change handler, and a
+ *  disabled flag for mid-run tasks. */
 export interface WorkModePickerProps {
   /** The currently selected run mode. */
   value: RunMode;

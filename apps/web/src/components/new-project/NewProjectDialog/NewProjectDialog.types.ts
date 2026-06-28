@@ -1,3 +1,6 @@
+/** Shared types for the new-project dialog. */
+
+/** Values collected by the dialog and passed to `onCreate`. */
 export interface NewProjectDraft {
   folder: string | null;
   name: string;
@@ -8,6 +11,7 @@ export interface NewProjectDraft {
 /** Git-repo status for the chosen folder. `create_project` requires `valid`. */
 export type NewProjectGitState = 'unknown' | 'checking' | 'valid' | 'invalid';
 
+/** Props for `NewProjectDialog`. */
 export interface NewProjectDialogProps {
   models: string[];
   onChooseFolder: () => void | Promise<void>;

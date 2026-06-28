@@ -1,8 +1,10 @@
+/** Public types for the RunLifecycleShell component. */
 import type { ReactNode } from 'react';
 
 /** The lifecycle screen a run view is currently showing. */
 export type RunPhase = 'configure' | 'running' | 'results';
 
+/** Props for the RunLifecycleShell component. */
 export interface RunLifecycleShellProps {
   /** Left-aligned title (e.g. "Harness", "Insight"). */
   title: ReactNode;

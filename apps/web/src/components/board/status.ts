@@ -1,22 +1,23 @@
+/** Board status vocabulary: column definitions, status/kind/run-mode/verdict
+ *  labels and colors, drag-eligibility rules, and model/cost formatters. */
 import type { PermissionMode, RunMode, TaskKind, TaskStatus } from '@/lib/bridge';
 
-/** A board column: its key, label, the statuses it groups, the design's status
- *  dot color, an optional roadmap badge, and whether it offers a "Clear". */
+/** A board column: its key, label, the statuses it groups, its status
+ *  dot color, an optional tag badge, and whether it offers a "Clear". */
 export interface ColumnDef {
   key: string;
   title: string;
   statuses: TaskStatus[];
-  /** oklch color for the column's status dot (and glow), from the design. */
+  /** oklch color for the column's status dot (and glow). */
   dotColor: string;
-  /** Roadmap tag carried from the design (e.g. the waiting column is M3). */
+  /** Tag rendered beside the column title (a not-yet-built/future affordance). */
   badge?: string;
   /** Verified/Failed columns offer a "Clear" affordance when non-empty. */
   clearable?: boolean;
 }
 
-/** The six board columns, in the design's order:
- *  Backlog · In Progress · Verifying (M4) · Waiting Approval (M3) · Done ·
- *  Failed. */
+/** The six board columns, in display order:
+ *  Backlog · In Progress · Verifying · Waiting Approval · Done · Failed. */
 export const COLUMNS: ColumnDef[] = [
   {
     key: 'backlog',
@@ -95,7 +96,7 @@ export function isActive(status: TaskStatus): boolean {
   return status === 'in_progress' || status === 'verifying';
 }
 
-/** Tailwind background class for a status dot — maps onto the design tokens. */
+/** Tailwind background class for a status dot. */
 export const STATUS_DOT_COLOR: Record<TaskStatus, string> = {
   backlog: 'bg-muted',
   ready: 'bg-info',
@@ -117,14 +118,15 @@ export const STATUS_TEXT: Record<TaskStatus, string> = {
   failed: 'text-destructive',
 };
 
+/** Format a USD cost as a two-decimal dollar amount (e.g. `$0.42`). */
 export function formatCost(costUsd: number): string {
   return `$${costUsd.toFixed(2)}`;
 }
 
 /** Map a stored model id (or already-display name) to its display name. The
  *  store may hold ids like `opus-4.8` / `sonnet-4.6` / `haiku-4.5`, or the
- *  design's display names directly; both resolve to the canonical label.
- *  Never returns a literal "default model" — falls back to the design default. */
+ *  display names directly; both resolve to the canonical label.
+ *  Never returns a literal "default model" — falls back to Opus 4.8. */
 export function modelDisplayName(model: string | null): string {
   const id = (model ?? '').toLowerCase();
   if (id.includes('opus')) return 'Opus 4.8';
@@ -133,7 +135,7 @@ export function modelDisplayName(model: string | null): string {
   return 'Opus 4.8';
 }
 
-/** The colored dot beside a model badge, keyed on model family (design palette):
+/** The colored dot beside a model badge, keyed on model family:
  *  Opus → primary, Sonnet → blue, Haiku → green. */
 export function modelDotColor(model: string | null): string {
   const name = modelDisplayName(model);
@@ -142,11 +144,11 @@ export function modelDotColor(model: string | null): string {
   return 'var(--nc-primary)';
 }
 
-// --- Task kinds (M4) ------------------------------------------------------
+// --- Task kinds -----------------------------------------------------------
 
 /** A selectable kind in the create/edit picker. `enabled: false` renders the
  *  option as "coming soon" / disabled — defined on the wire but not yet driven by
- *  the engine this milestone (mirrors the contract's reserved variants). */
+ *  the engine (mirrors the contract's reserved variants). */
 export interface KindOption {
   kind: TaskKind;
   label: string;
@@ -176,9 +178,9 @@ export const KIND_LABEL: Record<TaskKind, string> = {
   tdd: 'TDD',
 };
 
-// --- Run modes (M4.6) -----------------------------------------------------
+// --- Run modes ------------------------------------------------------------
 
-/** A selectable run mode in the create/edit form (M4.6). `main` (default) edits
+/** A selectable run mode in the create/edit form. `main` (default) edits
  *  the project tree in place; `worktree` isolates the task on its own branch. */
 export interface RunModeOption {
   mode: RunMode;
@@ -207,7 +209,7 @@ export const RUN_MODE_LABEL: Record<RunMode, string> = {
   worktree: 'Worktree',
 };
 
-// --- Verification verdict (M4) --------------------------------------------
+// --- Verification verdict -------------------------------------------------
 
 /** The parsed reviewer verdict. Mirrors the core's grep over the result text. */
 export type Verdict = 'PASS' | 'CHANGES_REQUESTED' | 'FAIL';
@@ -223,7 +225,7 @@ export function parseVerdict(review: string | null): Verdict | null {
   return last !== undefined ? (last[1] as Verdict) : null;
 }
 
-/** Tailwind text class for a parsed verdict (design palette). */
+/** Tailwind text class for a parsed verdict. */
 export const VERDICT_TEXT: Record<Verdict, string> = {
   PASS: 'text-success',
   CHANGES_REQUESTED: 'text-warning',
@@ -237,7 +239,7 @@ export const VERDICT_LABEL: Record<Verdict, string> = {
   FAIL: 'Failed',
 };
 
-// --- Permission mode (M4.7 §F) --------------------------------------------
+// --- Permission mode ------------------------------------------------------
 
 /** A selectable permission-mode override in the per-task picker. The `null`
  *  (inherit) choice is rendered by the picker itself, not listed here. */
@@ -265,7 +267,7 @@ export const PERMISSION_MODE_LABEL: Record<PermissionMode, string> = {
   plan: 'Plan',
 };
 
-// --- Model + effort (M4.7 §E/§F) ------------------------------------------
+// --- Model + effort -------------------------------------------------------
 
 // The option sets live in `@/lib/models` (shared with Settings); re-exported here
 // so existing `../status` imports keep working.

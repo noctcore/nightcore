@@ -32,6 +32,8 @@ export type ScorecardFailureReason = Extract<
   { type: 'scorecard-failed' }
 >['reason'];
 
+/** The folded Scorecard view model: run identity/status, per-dimension progress,
+ *  the normalized readings, and accrued cost/usage/duration. */
 export interface ScorecardStream {
   runId: string | null;
   status: RunStatus;
@@ -46,6 +48,7 @@ export interface ScorecardStream {
   failureReason: ScorecardFailureReason | null;
 }
 
+/** The initial idle stream; the reset target for `scorecard-started`. */
 export const EMPTY_SCORECARD_STREAM: ScorecardStream = {
   runId: null,
   status: 'idle',

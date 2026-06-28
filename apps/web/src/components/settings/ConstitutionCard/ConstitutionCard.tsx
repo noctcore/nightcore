@@ -1,3 +1,4 @@
+/** The Constitution editor card: view/edit and regenerate the project's injected context pack. */
 import { BookIcon, Button, CodeBlock, RetryIcon, Spinner } from '@/components/ui';
 import { useConstitutionCard } from './ConstitutionCard.hooks';
 import {
@@ -34,10 +35,10 @@ function RowToggle({
 }
 
 /**
- * The Constitution editor (Pre-flight Context Pack, Lock #4): view/edit the curated
- * `.nightcore/context.md` Nightcore injects into every agent run, with a
- * regenerate-from-sources action and a per-project on/off toggle. Reuses `CodeBlock`
- * for the preview and the Settings card chrome for the shell.
+ * The Constitution editor: view/edit the curated `.nightcore/context.md` Nightcore
+ * injects into every agent run, with a regenerate-from-sources action and a
+ * per-project on/off toggle. Reuses `CodeBlock` for the preview and the Settings
+ * card chrome for the shell.
  */
 export function ConstitutionCard({
   enabled,

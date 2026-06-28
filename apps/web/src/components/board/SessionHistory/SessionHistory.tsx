@@ -1,3 +1,5 @@
+/** The per-task SDK session-history list: past runs, transcripts, and the
+ *  resume/rename/tag affordances. */
 import {
   AlertIcon,
   BranchIcon,

@@ -1,14 +1,12 @@
 /**
- * Decompose result parsing — the production answer to the old text-sentinel block.
+ * Decompose result parsing.
  *
  * A `decompose`-kind session investigates read-only and ends its final message with
- * a JSON array of sub-task proposals. Instead of the Rust core scanning for
- * `<<<NIGHTCORE_SUBTASKS …>>>` markers (brittle, easy for the model to mangle), the
- * ENGINE parses that array here and emits validated `proposedSubtasks` on the
- * `session-completed` event. This mirrors EXACTLY how the Insight pipeline turns a
- * category pass's free text into validated findings (`parseFindings`): reuse the
- * shared `extractJson` extractor, coerce to an array, validate each element against
- * a strict contract schema, and drop anything that can't satisfy it.
+ * a JSON array of sub-task proposals. The engine parses that array here and emits
+ * validated `proposedSubtasks` on the `session-completed` event. This mirrors how
+ * the Insight pipeline turns a category pass's free text into validated findings:
+ * reuse the shared `extractJson` extractor, coerce to an array, validate each
+ * element against a strict contract schema, and drop anything that can't satisfy it.
  *
  * Kept pure (only zod + the shared extractor) and tolerant by design — malformed or
  * empty input yields `[]`, never throws — so a decompose run can never crash the

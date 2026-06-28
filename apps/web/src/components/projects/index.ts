@@ -1,3 +1,4 @@
+/** @file Public exports for the projects components (ProjectCard, ProjectsView). */
 export { ProjectCard } from './ProjectCard';
 export type { ProjectCardProps, ProjectSummary } from './ProjectCard';
 export { ProjectsView } from './ProjectsView';

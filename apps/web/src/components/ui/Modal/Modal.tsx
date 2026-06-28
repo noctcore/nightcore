@@ -1,6 +1,8 @@
+/** Shared focus-trapped modal dialog primitive. */
 import type { ReactNode } from 'react';
 import { useModal } from './Modal.hooks';
 
+/** Props for {@link Modal}. */
 export interface ModalProps {
   /** Accessible name for the dialog. */
   label: string;
@@ -33,9 +35,8 @@ const DEFAULT_ANIM: React.CSSProperties = {
 };
 
 /** The shared modal primitive (a11y): an inert-background overlay over a focus-
- *  trapped dialog panel. Extracted from `ConfirmDialog`'s proven Esc + initial-
- *  focus logic, then hardened with a Tab/Shift+Tab focus trap and focus restore
- *  to the opener on close (the parts the per-dialog copies were missing).
+ *  trapped dialog panel, with a Tab/Shift+Tab focus trap and focus restore to the
+ *  opener on close.
  *
  *  Esc and click-outside close; Enter (when `onEnter` is set) confirms, except
  *  inside a textarea where Enter inserts a newline. Click-outside is suppressed

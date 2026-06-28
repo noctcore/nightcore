@@ -1,8 +1,11 @@
+/** Public types for the Toast notification system. */
+
 /** A transient user-facing notification. The error tone is the primary use
  *  (surfacing `invoke` rejections that used to dead-end in `console.error`);
  *  `info`/`success` round out the palette for non-failure feedback. */
 export type ToastTone = 'error' | 'info' | 'success';
 
+/** A single active toast in the stack. */
 export interface Toast {
   id: number;
   tone: ToastTone;

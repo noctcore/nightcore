@@ -1,3 +1,4 @@
+/** Prop and supporting types for the Board component. */
 import type { Task, WorktreeInfo } from '@/lib/bridge';
 import type { ActiveWorktree } from '../WorktreeSwitcher';
 
@@ -8,13 +9,15 @@ export interface BreakerInfo {
   failureThreshold: number;
 }
 
+/** Props for the Board: the tasks, project/worktree context, loop state, and the
+ *  full set of card/header action handlers (owned by the shell). */
 export interface BoardProps {
   tasks: Task[];
   /** Active project name + path + branch for the header (and the inspector). */
   projectName: string;
   projectPath: string;
   projectBranch: string | null;
-  /** Live worktrees for the switcher (M4.6); empty falls back to task branches. */
+  /** Live worktrees for the switcher; empty falls back to task branches. */
   worktrees: WorktreeInfo[];
   /** The selected worktree tab (`null` = Main); filters the board. */
   activeWorktree: ActiveWorktree;

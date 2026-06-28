@@ -1,13 +1,15 @@
+/** Presentational sub-parts for the WorktreeSwitcher: the per-tab button. */
 import { BoardIcon, BranchIcon } from '@/components/ui';
 import type { WorktreeTab } from './WorktreeSwitcher.types';
 
+/** Props for a single worktree tab button. */
 interface WorktreeTabButtonProps {
   tab: WorktreeTab;
   selected: boolean;
   onSelect: () => void;
 }
 
-/** A single switcher tab (adapts AutoMaker's `worktree-tab`): the Main or branch
+/** A single switcher tab: the Main or branch
  *  label with a task-count chip and a monitor cluster — a pulsing running dot, a
  *  dirty marker, and an ahead-of-base count. */
 export function WorktreeTabButton({ tab, selected, onSelect }: WorktreeTabButtonProps) {

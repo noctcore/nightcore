@@ -1,3 +1,4 @@
+/** State and handlers backing the QuestionPrompt's option/free-text answering. */
 import { useState } from 'react';
 import type { QuestionAnswer, QuestionItem, QuestionPrompt } from '@/lib/bridge';
 
@@ -28,6 +29,8 @@ function answerFor(
   return picked.length > 0 ? picked.join(', ') : undefined;
 }
 
+/** Manage the per-question answer state (option selections and free text) for a
+ *  `QuestionPrompt`, returning the controller the prompt UI binds to. */
 export function useQuestionAnswers(prompt: QuestionPrompt): QuestionAnswersController {
   // Both maps are keyed by the question's prompt text (the SDK's own answer key).
   const [selections, setSelections] = useState<Record<string, string[]>>({});

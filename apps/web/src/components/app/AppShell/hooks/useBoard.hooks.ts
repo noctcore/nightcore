@@ -123,7 +123,7 @@ export function useBoard(toast: ToastApi) {
     };
   }, [flush]);
 
-  // Reseed the opened task's transcript from its persisted JSONL (M4.7 §C) so a
+  // Reseed the opened task's transcript from its persisted JSONL so a
   // reload/HMR no longer blanks it. Skips a task that already has a live stream
   // (an in-flight run's accumulating events must not be clobbered).
   useEffect(() => {

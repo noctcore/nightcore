@@ -1,3 +1,4 @@
+/** The Settings card for user-configured external MCP servers: list, editor modal, and remove. */
 import {
   Button,
   CloseIcon,
@@ -17,12 +18,14 @@ import type {
   McpTransport,
 } from './McpServersCard.types';
 
+/** The selectable transports, as `[value, label]` pairs for the segmented control. */
 const TRANSPORTS: [value: McpTransport, label: string][] = [
   ['stdio', 'stdio'],
   ['http', 'HTTP'],
   ['sse', 'SSE'],
 ];
 
+/** Shared Tailwind classes for the editor's labels and inputs/textareas. */
 const FIELD_LABEL = 'mb-1.5 block text-[11.5px] font-semibold text-muted-foreground';
 const FIELD_INPUT =
   'w-full rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary';

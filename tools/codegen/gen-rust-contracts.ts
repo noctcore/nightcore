@@ -153,8 +153,8 @@ function rustType(schema: AnyZod, fieldPath: string, ctx: EmitCtx): string {
   }
 }
 
-/** Pick the Rust numeric type from a `z.number()`'s checks (see the codegen
- *  contract): a safe-int with a `>=0` / `>0` bound → `u64` (the reader uses
+/** Pick the Rust numeric type from a `z.number()`'s checks: a safe-int with a
+ *  `>=0` / `>0` bound → `u64` (the reader uses
  *  `as_u64`); a safe-int without a non-negative bound → `i64`; a plain number
  *  (no int format) → `f64`. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

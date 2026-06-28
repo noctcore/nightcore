@@ -1,3 +1,4 @@
+/** Props for the top-level InsightView component. */
 export interface InsightViewProps {
   /** The active project's absolute path (null when no project is active). */
   projectPath: string | null;

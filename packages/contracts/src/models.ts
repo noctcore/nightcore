@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { EffortLevelSchema } from './config.js';
 
+/** The model-picker descriptor surfaced by the engine's `listModels()`. */
+
 /**
  * A model the harness can switch to, as surfaced by the engine's `listModels()`.
  * Mirrors the Claude Agent SDK's `ModelInfo`, restated here so surfaces can

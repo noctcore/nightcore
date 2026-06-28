@@ -1,3 +1,4 @@
+/** Per-task model and reasoning-effort selection control. */
 import type { ComponentType } from 'react';
 import {
   effortOptionsForModel,
@@ -21,6 +22,7 @@ const TIER_ICON: Record<ModelTier, ComponentType<{ size?: number; className?: st
   Speed: BoltIcon,
 };
 
+/** Class string for a model chip in its selected/unselected state. */
 function modelChipClass(selected: boolean): string {
   return `flex items-center gap-2 rounded-[10px] border px-3 py-2 text-left text-[12.5px] transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
     selected
@@ -29,6 +31,7 @@ function modelChipClass(selected: boolean): string {
   }`;
 }
 
+/** Class string for an effort chip in its selected/unselected state. */
 function effortChipClass(selected: boolean): string {
   return `rounded-[9px] border px-2.5 py-1.5 text-[12px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
     selected
@@ -37,13 +40,14 @@ function effortChipClass(selected: boolean): string {
   }`;
 }
 
+/** Class string for the per-model tier badge. */
 function tierBadgeClass(tier: ModelTier): string {
   return `rounded px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide ${
     tier === 'Premium' ? 'bg-primary/[0.16] text-primary' : 'bg-white/[0.06] text-muted-foreground'
   }`;
 }
 
-/** A per-task model + reasoning-effort picker (M4.7 §E/§F). The model row is a
+/** A per-task model + reasoning-effort picker. The model row is a
  *  vertical radio list of the known Claude models with a tier badge + one-line
  *  capability description; the reasoning row is model-aware — it surfaces only the
  *  effort levels the selected model supports (the premium tier unlocks the higher

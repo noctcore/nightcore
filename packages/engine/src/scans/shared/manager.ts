@@ -37,11 +37,11 @@ import {
  *  so the engine narrows the union for the type). */
 type StartAnalysis = Extract<SurfaceCommand, { type: 'start-analysis' }>;
 
-/** Default number of category passes to run at once. Raised from 3→6 (WS4): a
- *  3-wide pool left a 9-category scan running in three slow serial waves; 6 keeps
- *  the wall-clock down while still bounded so we never open all 9 paid Claude
- *  subprocesses at once. `runPool` caps this at `categories.length`, so a small run
- *  is effectively `min(categories.length, 6)`. `command.maxConcurrency` overrides it. */
+/** Default number of category passes to run at once. A 6-wide pool keeps the
+ *  wall-clock down while staying bounded so we never open all categories' paid
+ *  Claude subprocesses at once. `runPool` caps this at `categories.length`, so a
+ *  small run is effectively `min(categories.length, 6)`. `command.maxConcurrency`
+ *  overrides it. */
 const DEFAULT_CONCURRENCY = 6;
 /** Per-category turn ceiling (the model explores then writes findings). */
 const DEFAULT_MAX_TURNS = 40;
@@ -164,7 +164,7 @@ export class AnalysisManager {
     let totalCost = 0;
     const totalUsage: TokenUsage = { ...EMPTY_USAGE };
     // Deterministic top-level map injected into every pass so a lens starts from a
-    // known structure instead of re-discovering the tree (WS4).
+    // known structure instead of re-discovering the tree.
     const inventory = buildRepoInventory(command.projectPath);
 
     try {
@@ -393,7 +393,7 @@ export class AnalysisManager {
 
 /** The per-run user prompt for a category pass. The deterministic top-level
  *  `inventory` is injected so the pass targets its reads from a known map instead
- *  of re-listing the tree (WS4 — cuts redundant exploration turns). */
+ *  of re-listing the tree (cuts redundant exploration turns). */
 function buildCategoryPrompt(
   command: StartAnalysis,
   preset: AnalysisPreset,
@@ -524,7 +524,7 @@ const INVENTORY_SKIP_DIRS = new Set(['node_modules', 'target', 'dist', '.git']);
 /**
  * A cheap, bounded top-level map of the repo: the root dir/file names plus a
  * shallow peek into a few conventional source dirs. Injected into each pass's
- * prompt (WS4) so the model starts from a known structure instead of burning turns
+ * prompt so the model starts from a known structure instead of burning turns
  * re-discovering the tree on every lens — the dominant source of wasted exploration
  * in a multi-lens scan. Pure synchronous fs; never throws.
  */

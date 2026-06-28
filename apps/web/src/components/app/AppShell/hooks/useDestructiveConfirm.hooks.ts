@@ -10,6 +10,7 @@ export interface PendingClear {
   count: number;
 }
 
+/** The confirmation state + triggers returned by {@link useDestructiveConfirm}. */
 export interface DestructiveConfirmState {
   /** Task id awaiting a single-delete confirmation, or `null`. */
   pendingDelete: string | null;

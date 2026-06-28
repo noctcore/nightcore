@@ -1,3 +1,4 @@
+/** Prop and grouped-action types for the TaskDetail drawer. */
 import type {
   GauntletResult,
   PermissionMode,
@@ -28,30 +29,30 @@ export interface TaskDetailActions {
   onApprove?: (id: string) => void;
   onReject?: (id: string) => void;
   onRefine?: (id: string) => void;
-  /** Edit the task's kind (M4) — only when the task hasn't run yet. */
+  /** Edit the task's kind — only when the task hasn't run yet. */
   onChangeKind?: (id: string, kind: TaskKind) => void;
-  /** Edit the task's run mode (M4.6) — only when the task hasn't run yet. */
+  /** Edit the task's run mode — only when the task hasn't run yet. */
   onChangeRunMode?: (id: string, runMode: RunMode) => void;
-  /** Edit the task's permission-mode override (M4.7) — `null` = inherit. Pre-run. */
+  /** Edit the task's permission-mode override — `null` = inherit. Pre-run. */
   onChangePermissionMode?: (id: string, permissionMode: PermissionMode | null) => void;
-  /** Edit the task's model override (M4.7) — `null` = inherit. Pre-run. */
+  /** Edit the task's model override — `null` = inherit. Pre-run. */
   onChangeModel?: (id: string, model: string | null) => void;
-  /** Edit the task's reasoning-effort override (M4.7) — `null` = inherit. Pre-run. */
+  /** Edit the task's reasoning-effort override — `null` = inherit. Pre-run. */
   onChangeEffort?: (id: string, effort: string | null) => void;
   /** Edit the task's max-turns ceiling (SDK guardrail) — `null` = inherit. Pre-run. */
   onChangeMaxTurns?: (id: string, maxTurns: number | null) => void;
   /** Edit the task's max-budget-USD ceiling (SDK guardrail) — `null` = inherit. Pre-run. */
   onChangeMaxBudget?: (id: string, maxBudgetUsd: number | null) => void;
-  /** Verification-approval actions for a review-parked `waiting_approval` (M4). */
+  /** Verification-approval actions for a review-parked `waiting_approval`. */
   onAcceptReview?: (id: string) => void;
   onRejectReview?: (id: string) => void;
   onRerunVerification?: (id: string) => void;
   /** Run the pre-merge readiness gauntlet (Verified column "Run checks"). */
   onRunGauntlet?: (id: string) => void;
-  /** Decompose §B: convert one proposed sub-task of a decompose task into a board
+  /** Convert one proposed sub-task of a decompose task into a board
    *  task. Enables the per-row Convert button in the Proposed sub-tasks panel. */
   onConvertSubtask?: (parentId: string, subtaskId: string) => void;
-  /** Decompose §B: convert every still-open proposed sub-task at once. */
+  /** Convert every still-open proposed sub-task at once. */
   onConvertAllSubtasks?: (parentId: string) => void;
   /** Merge a verified task's branch (gated on `verified && gauntlet.passed`). */
   onMerge?: (id: string) => void;
@@ -66,6 +67,8 @@ export interface TaskDetailActions {
   onTagSession?: (sdkSessionId: string, tag: string | null) => void;
 }
 
+/** Props for the TaskDetail drawer: the task, its live transcript, parked
+ *  prompts, gauntlet state, and the grouped action callbacks. */
 export interface TaskDetailProps {
   task: Task;
   stream: TaskTranscript | undefined;
