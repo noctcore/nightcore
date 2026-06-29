@@ -200,6 +200,22 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
         return;
     }
 
+    // Concurrency: drop a STALE terminal. A `session-completed`/`session-failed` can
+    // arrive for a run that has since been superseded — e.g. a cancel is followed by an
+    // immediate re-run that binds a new session before this one's terminal lands. Acting
+    // on it would clobber the live run's state and, via `finish_run`, release the NEW
+    // run's slot (launching past `max_concurrency`). Only the session the task is
+    // currently bound to may settle it; forget the stale binding and bail.
+    if matches!(event_type, "session-completed" | "session-failed")
+        && is_stale_terminal(session_id, store.get(&task_id).and_then(|t| t.session_id))
+    {
+        if let Some(sid) = session_id {
+            tracing::warn!(target: "nightcore", task_id, stale_session = sid, "dropping terminal for a superseded session");
+            provider.forget(sid);
+        }
+        return;
+    }
+
     match event_type {
         "session-started" | "session-ready" => {
             if let Some(sid) = session_id {
@@ -313,10 +329,32 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
     }
 }
 
+/// A terminal event is STALE when the task is currently bound to a *different*
+/// session than the one the event carries — i.e. a newer run has superseded the one
+/// this terminal belongs to. Only fires when both ids are known and differ; an
+/// unknown current binding (`None`) is treated as fresh so a run whose
+/// `session-started` was skipped still settles normally.
+fn is_stale_terminal(event_session: Option<u64>, current_session: Option<u64>) -> bool {
+    matches!((event_session, current_session), (Some(e), Some(c)) if e != c)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn stale_terminal_only_when_bindings_differ() {
+        // Same session → fresh (the live run settling itself).
+        assert!(!is_stale_terminal(Some(10), Some(10)));
+        // Different session → stale (a re-run superseded this one).
+        assert!(is_stale_terminal(Some(10), Some(11)));
+        // Unknown current binding → fresh (don't drop a run that never set session_id).
+        assert!(!is_stale_terminal(Some(10), None));
+        // No event session id → nothing to compare → fresh.
+        assert!(!is_stale_terminal(None, Some(11)));
+        assert!(!is_stale_terminal(None, None));
+    }
 
     #[test]
     fn query_result_without_request_id_drops() {

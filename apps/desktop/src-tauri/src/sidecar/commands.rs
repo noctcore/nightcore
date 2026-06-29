@@ -175,10 +175,6 @@ pub async fn cancel_task(
     engine: State<'_, Arc<dyn EngineApi>>,
     id: String,
 ) -> Result<(), String> {
-    // Abort the driver task (no-op if none attached) but keep the slot until the
-    // terminal event so the reader's cleanup runs exactly once.
-    engine.slots_abort(&app, &id);
-
     // Fail-closed: deny any permission request parked for this task before the
     // interrupt, so a session waiting on an approval can't hang.
     engine.deny_parked_permissions(&app, &id).await;
@@ -189,11 +185,19 @@ pub async fn cancel_task(
         .session_for(&id)
         .or_else(|| store.get(&id).and_then(|t| t.session_id));
     if let Some(session_id) = session_id {
+        // KEEP the slot leased. The interrupt produces a terminal
+        // `session-failed { reason: "aborted" }`, whose `finish_run` releases the slot
+        // exactly once. Freeing it here (the old `slots_abort`) instead let an immediate
+        // re-run lease the slot before this run's terminal arrived — after which the
+        // stale terminal clobbered the new run's state and released ITS slot, launching
+        // past `max_concurrency`. Holding the lease until the terminal serializes
+        // cancel → re-run so the re-run is simply refused until this run settles.
         provider.interrupt(session_id).await?;
     } else {
-        // No correlated session yet: the launch may be pending its first
-        // `session-started`. Evict that pending entry (concurrency #5) so a later,
+        // No correlated session yet: no terminal will ever arrive to release the slot,
+        // so free it here. Evict the pending launch (concurrency #5) so a later,
         // unrelated session can't mis-bind to this cancelled launch.
+        engine.slots_release(&app, &id);
         provider.evict_pending(&id);
     }
     Ok(())

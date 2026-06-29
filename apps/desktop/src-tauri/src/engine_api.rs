@@ -19,7 +19,12 @@ use tauri::AppHandle;
 /// `Orchestrator`.
 #[async_trait::async_trait]
 pub trait EngineApi: Send + Sync {
-    /// Abort a task's run driver (if attached) and release its slot.
+    /// Abort a task's run driver (if attached) and release its slot. Preserved seam:
+    /// `cancel_task` now KEEPS the slot leased until the run's terminal event releases
+    /// it (so a cancel→re-run can't cross-wire a stale terminal onto the new run), so
+    /// this is unused today — kept for a future provider whose run is a local driver
+    /// task that cancel must abort (paired with `SlotManager::attach_abort`).
+    #[allow(dead_code)]
     fn slots_abort(&self, app: &AppHandle, task_id: &str);
     /// Release a task's concurrency slot. Idempotent.
     fn slots_release(&self, app: &AppHandle, task_id: &str);
