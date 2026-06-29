@@ -1,5 +1,5 @@
 /** Reviewer-verdict and structure-lock panel for a verified/parked task. */
-import { Button, CheckIcon, Markdown, RetryIcon, VerifiedIcon } from '@/components/ui';
+import { Button, CheckIcon, Markdown, RetryIcon, Spinner, VerifiedIcon } from '@/components/ui';
 import { VERDICT_LABEL, VERDICT_TEXT } from '../status';
 import { deriveReviewPanelView, MAX_FIX_ATTEMPTS } from './ReviewPanel.hooks';
 import type { ReviewPanelProps } from './ReviewPanel.types';
@@ -8,7 +8,8 @@ import type { ReviewPanelProps } from './ReviewPanel.types';
  *  its parsed verdict, the auto-fix budget note, and — for a parked verification
  *  `waiting_approval` — Accept / Reject / Rerun controls. Pure presentational;
  *  the bridge actions are owned by the detail panel. */
-export function ReviewPanel({ task, onAccept, onReject, onRerun }: ReviewPanelProps) {
+export function ReviewPanel({ task, onAccept, onReject, onRerun, pending }: ReviewPanelProps) {
+  const busy = (action: string): boolean => pending?.(action) ?? false;
   const lock = task.structureLockResult;
   const lockFailed = lock !== null && !lock.passed;
   // Render even with no reviewer verdict when the Structure-Lock Gauntlet failed —
@@ -70,19 +71,34 @@ export function ReviewPanel({ task, onAccept, onReject, onRerun }: ReviewPanelPr
 
       {showActions && (
         <div className="mt-2.5 flex items-center gap-2">
-          <Button onClick={() => onAccept?.(task.id)}>
-            <CheckIcon size={14} />
-            Accept
+          <Button
+            onClick={() => onAccept?.(task.id)}
+            disabled={busy('acceptReview')}
+            aria-busy={busy('acceptReview')}
+          >
+            {busy('acceptReview') ? <Spinner /> : <CheckIcon size={14} />}
+            {busy('acceptReview') ? 'Accepting…' : 'Accept'}
           </Button>
           {onRerun !== undefined && (
-            <Button variant="secondary" onClick={() => onRerun(task.id)}>
-              <RetryIcon size={14} />
-              Rerun
+            <Button
+              variant="secondary"
+              onClick={() => onRerun(task.id)}
+              disabled={busy('rerunVerification')}
+              aria-busy={busy('rerunVerification')}
+            >
+              {busy('rerunVerification') ? <Spinner /> : <RetryIcon size={14} />}
+              {busy('rerunVerification') ? 'Rerunning…' : 'Rerun'}
             </Button>
           )}
           <span className="flex-1" />
-          <Button variant="danger" onClick={() => onReject?.(task.id)}>
-            Reject
+          <Button
+            variant="danger"
+            onClick={() => onReject?.(task.id)}
+            disabled={busy('rejectReview')}
+            aria-busy={busy('rejectReview')}
+          >
+            {busy('rejectReview') ? <Spinner /> : null}
+            {busy('rejectReview') ? 'Rejecting…' : 'Reject'}
           </Button>
         </div>
       )}

@@ -128,6 +128,7 @@ export function TaskDetail({
               onAccept={actions.onAcceptReview}
               onReject={actions.onRejectReview}
               onRerun={actions.onRerunVerification}
+              pending={pending}
             />
             {isDoneColumn && actions.onRunGauntlet !== undefined && (
               <GauntletResults

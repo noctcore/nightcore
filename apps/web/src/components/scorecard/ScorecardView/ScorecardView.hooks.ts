@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useToast } from '@/components/ui';
 import type {
   MenuItem,
   RunPhase,
@@ -338,14 +339,23 @@ export function useScorecardView({
     return 'No dimensions graded.';
   }, [stream.status, stream.error, stream.failureReason]);
 
-  const runAction = useCallback(async (fn: () => Promise<unknown>) => {
-    setPending(true);
-    try {
-      await fn();
-    } finally {
-      setPending(false);
-    }
-  }, []);
+  const toast = useToast();
+  const runAction = useCallback(
+    async (label: string, fn: () => Promise<unknown>) => {
+      setPending(true);
+      try {
+        await fn();
+      } catch (err) {
+        // Fired as `void runAction(...)`: surface a labeled toast instead of letting
+        // the rejection fall through to the generic global handler (Insight parity).
+        console.error(`${label} failed`, err);
+        toast.error(`Could not ${label}`, err);
+      } finally {
+        setPending(false);
+      }
+    },
+    [toast],
+  );
 
   return {
     hasProject,
@@ -378,7 +388,7 @@ export function useScorecardView({
       });
       setReconfiguring(true);
     },
-    onHarden: (id) => void runAction(() => scorecard.harden(id)),
+    onHarden: (id) => void runAction('harden dimension', () => scorecard.harden(id)),
     onGotoBoard,
   };
 }

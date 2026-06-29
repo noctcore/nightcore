@@ -1,10 +1,20 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { ToastProvider } from '@/components/ui';
 import { HarnessView } from './HarnessView';
 
 const meta = {
   title: 'Harness/HarnessView',
   component: HarnessView,
   parameters: { layout: 'fullscreen' },
+  // The view's hooks surface convention/artifact-action failures through the toast
+  // channel, so the provider wraps it here just as it does in the app.
+  decorators: [
+    (Story) => (
+      <ToastProvider>
+        <Story />
+      </ToastProvider>
+    ),
+  ],
   args: {
     projectPath: '/Users/dev/acme',
     projectName: 'acme',

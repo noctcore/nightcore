@@ -50,6 +50,7 @@ export function ConstitutionCard({
     onContentChange,
     loading,
     busy,
+    busyAction,
     dirty,
     mode,
     setMode,
@@ -108,12 +109,18 @@ export function ConstitutionCard({
               </span>
             )}
             <div className="ml-auto flex items-center gap-2">
-              <Button variant="secondary" onClick={regenerate} disabled={busy}>
-                <RetryIcon size={14} />
-                Regenerate
+              <Button
+                variant="secondary"
+                onClick={regenerate}
+                disabled={busy}
+                aria-busy={busyAction === 'regenerate'}
+              >
+                {busyAction === 'regenerate' ? <Spinner /> : <RetryIcon size={14} />}
+                {busyAction === 'regenerate' ? 'Regenerating…' : 'Regenerate'}
               </Button>
-              <Button onClick={save} disabled={busy || !dirty}>
-                Save
+              <Button onClick={save} disabled={busy || !dirty} aria-busy={busyAction === 'save'}>
+                {busyAction === 'save' ? <Spinner /> : null}
+                {busyAction === 'save' ? 'Saving…' : 'Save'}
               </Button>
             </div>
           </div>

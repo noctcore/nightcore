@@ -1,6 +1,7 @@
 /** Data + UI-state hooks for the Harness surface: `useHarness` drives the live/
  *  persisted run and lifecycle actions, `useHarnessView` resolves the full view model. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useToast } from '@/components/ui';
 import type {
   CategoryRunState,
   MenuItem,
@@ -592,14 +593,24 @@ export function useHarnessView({
     return 'No harness artifacts proposed for this scan.';
   }, [stream.status, stream.error]);
 
-  const runAction = useCallback(async (fn: () => Promise<unknown>) => {
-    setPending(true);
-    try {
-      await fn();
-    } finally {
-      setPending(false);
-    }
-  }, []);
+  const toast = useToast();
+  const runAction = useCallback(
+    async (label: string, fn: () => Promise<unknown>) => {
+      setPending(true);
+      try {
+        await fn();
+      } catch (err) {
+        // Fired as `void runAction(...)`, so without this catch a failed action would
+        // only clear `pending` and vanish into the generic global toast. Mirror the
+        // Insight sibling: log + a labeled toast through the routed-failure channel.
+        console.error(`${label} failed`, err);
+        toast.error(`Could not ${label}`, err);
+      } finally {
+        setPending(false);
+      }
+    },
+    [toast],
+  );
 
   const confirmApply = useCallback(() => {
     if (applyTargetId === null) return;
@@ -671,10 +682,10 @@ export function useHarnessView({
     applyError,
     onScan,
     onCancel: () => void harness.cancel(),
-    onDismissFinding: (id) => void runAction(() => harness.dismissFinding(id)),
-    onRestoreFinding: (id) => void runAction(() => harness.restoreFinding(id)),
-    onDismissArtifact: (id) => void runAction(() => harness.dismissArtifact(id)),
-    onRestoreArtifact: (id) => void runAction(() => harness.restoreArtifact(id)),
+    onDismissFinding: (id) => void runAction('dismiss convention', () => harness.dismissFinding(id)),
+    onRestoreFinding: (id) => void runAction('restore convention', () => harness.restoreFinding(id)),
+    onDismissArtifact: (id) => void runAction('dismiss artifact', () => harness.dismissArtifact(id)),
+    onRestoreArtifact: (id) => void runAction('restore artifact', () => harness.restoreArtifact(id)),
     requestApply: (id) => {
       setApplyError(null);
       setApplyTargetId(id);

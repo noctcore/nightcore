@@ -40,7 +40,9 @@ export function useConstitutionCard(projectActive: boolean): ConstitutionCardSta
   const [content, setContent] = useState('');
   const [saved, setSaved] = useState('');
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  // Which action is in flight (drives per-button spinner/label); `busy` is derived.
+  const [busyAction, setBusyAction] = useState<'save' | 'regenerate' | null>(null);
+  const busy = busyAction !== null;
   const [mode, setMode] = useState<ConstitutionMode>('preview');
   const [error, setError] = useState<string | null>(null);
 
@@ -71,7 +73,7 @@ export function useConstitutionCard(projectActive: boolean): ConstitutionCardSta
   }, [projectActive]);
 
   const save = useCallback(() => {
-    setBusy(true);
+    setBusyAction('save');
     void setContextPack(content)
       .then(() => {
         setSaved(content);
@@ -80,11 +82,11 @@ export function useConstitutionCard(projectActive: boolean): ConstitutionCardSta
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : String(err));
       })
-      .finally(() => setBusy(false));
+      .finally(() => setBusyAction(null));
   }, [content]);
 
   const regenerate = useCallback(() => {
-    setBusy(true);
+    setBusyAction('regenerate');
     void regenerateContextPack()
       .then((next) => {
         setContent(next);
@@ -95,7 +97,7 @@ export function useConstitutionCard(projectActive: boolean): ConstitutionCardSta
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : String(err));
       })
-      .finally(() => setBusy(false));
+      .finally(() => setBusyAction(null));
   }, []);
 
   return {
@@ -103,6 +105,7 @@ export function useConstitutionCard(projectActive: boolean): ConstitutionCardSta
     onContentChange: setContent,
     loading,
     busy,
+    busyAction,
     dirty: content !== saved,
     mode,
     setMode,

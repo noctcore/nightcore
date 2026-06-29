@@ -24,18 +24,25 @@ export function useBoard(toast: ToastApi) {
   const [streams, setStreams] = useState<Record<string, TaskTranscript>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Seed from the active project's store, and reseed on every activation.
+  // Seed from the active project's store, and reseed on every activation. A
+  // monotonic generation drops out-of-order responses: switching project A→B fires
+  // two `listTasks()` calls, and if A's resolves last it would otherwise show A's
+  // tasks under B. Only the newest reseed (and a still-mounted view) may apply.
+  const reseedGen = useRef(0);
   useEffect(() => {
     let alive = true;
-    const reseed = () =>
+    const reseed = () => {
+      const myGen = ++reseedGen.current;
       void listTasks()
         .then((seed) => {
-          if (alive) setTasks(seed);
+          if (alive && myGen === reseedGen.current) setTasks(seed);
         })
         .catch((err) => {
+          if (!alive || myGen !== reseedGen.current) return;
           console.error('list_tasks failed', err);
           toast.error('Could not load tasks', err);
         });
+    };
     reseed();
     const unlisten = onProjectEvent(({ type }) => {
       if (type === 'activated' || type === 'deleted') {
