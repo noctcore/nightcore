@@ -6,7 +6,6 @@
  * {@link extractJson} + {@link fingerprintOf} VERBATIM (imported, not re-declared)
  * so the JSON extraction and fingerprint key can never diverge from Insight's.
  */
-import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
   ScorecardReadingSchema,
@@ -15,17 +14,19 @@ import {
   type ScorecardGrade,
   type ScorecardReading,
 } from '@nightcore/contracts';
-import { extractJson, fingerprintOf } from '../shared/findings.js';
+import {
+  clampLocationLines,
+  coerceLocation,
+  extractJson,
+  fileExists,
+  fingerprintOf,
+  lineCount,
+  normalizeFile,
+} from '../shared/findings.js';
 import { getNumber, getString, getStringArray } from '../../util/field-extract.js';
 
 /** The valid grade letters, for coercion. */
 const GRADES: readonly ScorecardGrade[] = ['A', 'B', 'C', 'D', 'E', 'F'];
-
-/** Normalize a repo-relative path (strip leading `./`, backslashes → `/`). */
-function normalizeFile(file: string | undefined): string {
-  if (file === undefined) return '';
-  return file.replace(/\\/g, '/').replace(/^\.\//, '').trim();
-}
 
 /** Coerce a raw grade value to a valid letter, defaulting to `C` (the neutral
  *  "adequate but gaps" midpoint) when the model returns something off-scale — a
@@ -33,37 +34,6 @@ function normalizeFile(file: string | undefined): string {
 function coerceGrade(raw: unknown): ScorecardGrade {
   const v = String(raw).trim().toUpperCase();
   return (GRADES as readonly string[]).includes(v) ? (v as ScorecardGrade) : 'C';
-}
-
-/** Coerce a raw `location` (nested object or "file:line" string) to the contract
- *  shape, mirroring `analysis-findings.ts`'s `coerceLocation`. */
-function coerceLocation(raw: unknown): ScorecardReading['location'] {
-  if (typeof raw === 'string') {
-    const m = /^(.+?):(\d+)(?:-(\d+))?$/.exec(raw.trim());
-    if (m) {
-      return {
-        file: normalizeFile(m[1]),
-        startLine: Number(m[2]),
-        ...(m[3] !== undefined ? { endLine: Number(m[3]) } : {}),
-      };
-    }
-    return raw.trim().length > 0 ? { file: normalizeFile(raw) } : undefined;
-  }
-  if (raw !== null && typeof raw === 'object') {
-    const o = raw as Record<string, unknown>;
-    const rawFile = getString(o, 'file');
-    if (rawFile === undefined) return undefined;
-    const startLine = getNumber(o, 'startLine') ?? getNumber(o, 'line');
-    const endLine = getNumber(o, 'endLine');
-    const symbol = getString(o, 'symbol');
-    return {
-      file: normalizeFile(rawFile),
-      ...(startLine !== undefined ? { startLine } : {}),
-      ...(endLine !== undefined ? { endLine } : {}),
-      ...(symbol !== undefined ? { symbol } : {}),
-    };
-  }
-  return undefined;
 }
 
 /** Coerce one raw evidence item into a contract {@link ScorecardEvidence}. Returns
@@ -143,54 +113,17 @@ export function parseReading(
   return result.success ? { reading: result.data } : { error: 'reading failed schema validation' };
 }
 
-/** Count lines in a file, cheaply. Returns 0 when unreadable. */
-function lineCount(absPath: string): number {
-  try {
-    const content = fs.readFileSync(absPath, 'utf8');
-    if (content.length === 0) return 0;
-    let n = 1;
-    for (let i = 0; i < content.length; i++) {
-      if (content.charCodeAt(i) === 10) n++;
-    }
-    return n;
-  } catch {
-    return 0;
-  }
-}
-
-/** Whether a repo-relative path exists as a file under the project root (no `../`
- *  escape). Mirrors `analysis-findings.ts`. */
-function fileExists(projectPath: string, rel: string): boolean {
-  if (rel.length === 0) return false;
-  const abs = path.resolve(projectPath, rel);
-  const root = path.resolve(projectPath);
-  if (abs !== root && !abs.startsWith(root + path.sep)) return false;
-  try {
-    return fs.statSync(abs).isFile();
-  } catch {
-    return false;
-  }
-}
-
+/** Ground + clamp a reading/evidence location: drop it when the file does not exist
+ *  (or escapes the root), otherwise clamp its line range to the real file length via
+ *  the shared {@link clampLocationLines}. Unlike Insight's `groundFindings`, a missing
+ *  file strips the location rather than dropping the whole reading. */
 function clampLocation(
   projectPath: string,
   loc: NonNullable<ScorecardReading['location']>,
 ): NonNullable<ScorecardReading['location']> | undefined {
   if (!fileExists(projectPath, loc.file)) return undefined;
-  const max = Math.max(lineCount(path.resolve(projectPath, loc.file)), 1);
-  const clamp = (n: number | undefined): number | undefined =>
-    n === undefined ? undefined : Math.min(Math.max(1, n), max);
-  const startLine = clamp(loc.startLine);
-  let endLine = clamp(loc.endLine);
-  if (startLine !== undefined && endLine !== undefined && endLine < startLine) {
-    endLine = startLine;
-  }
-  return {
-    file: loc.file,
-    ...(startLine !== undefined ? { startLine } : {}),
-    ...(endLine !== undefined ? { endLine } : {}),
-    ...(loc.symbol !== undefined ? { symbol: loc.symbol } : {}),
-  };
+  const lines = lineCount(path.resolve(projectPath, loc.file));
+  return clampLocationLines(loc, lines);
 }
 
 /**

@@ -434,9 +434,10 @@ function addUsage(into: TokenUsage, add: TokenUsage | undefined): void {
  * Run `worker` over `items` with at most `concurrency` in flight. Resolves when
  * all are done. A worker that throws propagates (the orchestrator wraps the whole
  * pool in try/catch). Order of completion is not guaranteed; effects are emitted
- * as each finishes (streaming UX).
+ * as each finishes (streaming UX). Shared by the Insight / Scorecard / Harness
+ * orchestrators so a concurrency fix lands in one place.
  */
-async function runPool<T>(
+export async function runPool<T>(
   items: readonly T[],
   concurrency: number,
   worker: (item: T) => Promise<void>,

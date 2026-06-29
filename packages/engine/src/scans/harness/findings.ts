@@ -13,7 +13,6 @@
  * in isolation.
  */
 import { createHash } from 'node:crypto';
-import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
   ConventionFindingSchema,
@@ -23,7 +22,13 @@ import {
   type FindingLocation,
   type FindingSeverity,
 } from '@nightcore/contracts';
-import { extractJson } from '../shared/findings.js';
+import {
+  clampLocationLines,
+  coerceLocation,
+  extractJson,
+  fileExists,
+  lineCount,
+} from '../shared/findings.js';
 import { getNumber, getString, getStringArray } from '../../util/field-extract.js';
 
 /** Severity ordering for ranking/merge (low → high). */
@@ -38,12 +43,6 @@ const SEVERITY_RANK: Record<FindingSeverity, number> = {
 /** Normalize a title for fingerprinting/dedup: lowercase, collapse whitespace. */
 function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/\s+/g, ' ').trim();
-}
-
-/** Normalize a repo-relative path (strip leading `./`, backslashes → `/`). */
-function normalizeFile(file: string | undefined): string {
-  if (file === undefined) return '';
-  return file.replace(/\\/g, '/').replace(/^\.\//, '').trim();
 }
 
 /**
@@ -127,37 +126,6 @@ function coerceEvidence(r: Record<string, unknown>): FindingLocation[] {
   return out;
 }
 
-/** Coerce one anchor — a `"file:line"` (or `"file:line-line"`) string, or a
- *  `{ file, startLine?, endLine?, symbol? }` object — into a {@link FindingLocation}. */
-function coerceLocation(raw: unknown): FindingLocation | undefined {
-  if (typeof raw === 'string') {
-    const m = /^(.+?):(\d+)(?:-(\d+))?$/.exec(raw.trim());
-    if (m) {
-      return {
-        file: normalizeFile(m[1]),
-        startLine: Number(m[2]),
-        ...(m[3] !== undefined ? { endLine: Number(m[3]) } : {}),
-      };
-    }
-    return raw.trim().length > 0 ? { file: normalizeFile(raw) } : undefined;
-  }
-  if (raw !== null && typeof raw === 'object') {
-    const o = raw as Record<string, unknown>;
-    const rawFile = getString(o, 'file');
-    if (rawFile === undefined) return undefined;
-    const startLine = getNumber(o, 'startLine') ?? getNumber(o, 'line');
-    const endLine = getNumber(o, 'endLine');
-    const symbol = getString(o, 'symbol');
-    return {
-      file: normalizeFile(rawFile),
-      ...(startLine !== undefined ? { startLine } : {}),
-      ...(endLine !== undefined ? { endLine } : {}),
-      ...(symbol !== undefined ? { symbol } : {}),
-    };
-  }
-  return undefined;
-}
-
 /** A convention records an observed rule (`convention`) or a missing best
  *  practice (`gap`). Default to `gap` unless the model explicitly says otherwise. */
 function coerceKind(raw: unknown): ConventionKind {
@@ -196,35 +164,6 @@ export function parseConventionFindings(
   return { findings };
 }
 
-/** Count lines in a file, cheaply. Returns 0 when unreadable. */
-function lineCount(absPath: string): number {
-  try {
-    const content = fs.readFileSync(absPath, 'utf8');
-    if (content.length === 0) return 0;
-    let n = 1;
-    for (let i = 0; i < content.length; i++) {
-      if (content.charCodeAt(i) === 10) n++;
-    }
-    return n;
-  } catch {
-    return 0;
-  }
-}
-
-/** Whether a repo-relative path exists as a file under the project root, and is
- *  contained within it (no `../` escape). */
-function fileExists(projectPath: string, rel: string): boolean {
-  if (rel.length === 0) return false;
-  const abs = path.resolve(projectPath, rel);
-  const root = path.resolve(projectPath);
-  if (abs !== root && !abs.startsWith(root + path.sep)) return false;
-  try {
-    return fs.statSync(abs).isFile();
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Ground convention findings against the real tree. Each finding's `evidence` is
  * filtered to anchors whose file exists & is contained under the project root, and
@@ -249,25 +188,6 @@ export function groundConventionFindings(
     grounded.push({ ...finding, evidence });
   }
   return grounded;
-}
-
-function clampLocationLines(loc: FindingLocation, lines: number): FindingLocation {
-  // Clamp to a floor of 1: an empty or unreadable file (lineCount → 0) still has a
-  // valid line 1 to deep-link to, so out-of-range refs collapse to 1 rather than
-  // surviving past the real file length.
-  const max = Math.max(lines, 1);
-  const clamp = (n: number | undefined): number | undefined =>
-    n === undefined ? undefined : Math.min(Math.max(1, n), max);
-  const startLine = clamp(loc.startLine);
-  let endLine = clamp(loc.endLine);
-  if (startLine !== undefined && endLine !== undefined && endLine < startLine) {
-    endLine = startLine;
-  }
-  return {
-    ...loc,
-    ...(startLine !== undefined ? { startLine } : {}),
-    ...(endLine !== undefined ? { endLine } : {}),
-  };
 }
 
 /**

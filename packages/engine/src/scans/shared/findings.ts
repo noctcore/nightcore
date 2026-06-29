@@ -14,6 +14,7 @@ import {
   FindingSchema,
   type Finding,
   type FindingCategory,
+  type FindingLocation,
   type FindingSeverity,
 } from '@nightcore/contracts';
 import { getNumber, getString, getStringArray } from '../../util/field-extract.js';
@@ -37,8 +38,10 @@ function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
-/** Normalize a repo-relative path (strip leading `./`, backslashes → `/`). */
-function normalizeFile(file: string | undefined): string {
+/** Normalize a repo-relative path (strip leading `./`, backslashes → `/`).
+ *  Shared by every scan pipeline (Insight / Scorecard / Harness) so a path-handling
+ *  fix lands once. */
+export function normalizeFile(file: string | undefined): string {
   if (file === undefined) return '';
   return file.replace(/\\/g, '/').replace(/^\.\//, '').trim();
 }
@@ -156,7 +159,10 @@ function coerceFinding(
   return result.success ? result.data : undefined;
 }
 
-function coerceLocation(raw: unknown): Finding['location'] {
+/** Coerce a raw `location` (a `"file:line"` / `"file:line-line"` string, or a
+ *  `{ file, startLine?, endLine?, symbol? }` object) into a {@link FindingLocation}.
+ *  Shared verbatim by the Scorecard + Harness pipelines so the three never diverge. */
+export function coerceLocation(raw: unknown): FindingLocation | undefined {
   if (typeof raw === 'string') {
     // "src/foo.ts:42" or "src/foo.ts:42-50"
     const m = /^(.+?):(\d+)(?:-(\d+))?$/.exec(raw.trim());
@@ -228,8 +234,9 @@ export function parseFindings(
   return { findings };
 }
 
-/** Count lines in a file, cheaply. Returns 0 when unreadable. */
-function lineCount(absPath: string): number {
+/** Count lines in a file, cheaply. Returns 0 when unreadable. Shared by every scan
+ *  pipeline's grounding step. */
+export function lineCount(absPath: string): number {
   try {
     const content = fs.readFileSync(absPath, 'utf8');
     if (content.length === 0) return 0;
@@ -244,8 +251,9 @@ function lineCount(absPath: string): number {
 }
 
 /** Whether a repo-relative path exists as a file under the project root, and is
- *  contained within it (no `../` escape). */
-function fileExists(projectPath: string, rel: string): boolean {
+ *  contained within it (no `../` escape). Shared by every scan pipeline's grounding
+ *  step — the containment check is security-relevant, so it lives in one place. */
+export function fileExists(projectPath: string, rel: string): boolean {
   if (rel.length === 0) return false;
   const abs = path.resolve(projectPath, rel);
   const root = path.resolve(projectPath);
@@ -298,10 +306,12 @@ export function groundFindings(
   return grounded;
 }
 
-function clampLocationLines(
-  loc: NonNullable<Finding['location']>,
+/** Clamp a location's line range to `[1, lines]` (floor 1 so an empty/unreadable
+ *  file still deep-links to line 1). Shared by the Insight + Harness grounding steps. */
+export function clampLocationLines(
+  loc: FindingLocation,
   lines: number,
-): NonNullable<Finding['location']> {
+): FindingLocation {
   // Clamp to a floor of 1: an empty or unreadable file (lineCount → 0) still has a
   // valid line 1 to deep-link to, so out-of-range refs collapse to 1 rather than
   // surviving past the real file length.
