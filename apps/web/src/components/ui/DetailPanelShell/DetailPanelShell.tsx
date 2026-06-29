@@ -1,0 +1,81 @@
+/** The shared right-edge detail sheet shell for a single finding/convention/
+ *  reading: a focus-trapped {@link Modal} with the standard slide-in panel, a
+ *  header (optional lead + badge column + close), a scrollable body, and a footer
+ *  action row. Features compose their own badges, body sections, and footer. */
+import type { ReactNode } from 'react';
+
+import { IconButton } from '../IconButton';
+import { Modal } from '../Modal';
+import { CloseIcon } from '../icons';
+import type { DetailPanelShellProps } from './DetailPanelShell.types';
+
+export function DetailPanelShell({
+  label,
+  onClose,
+  headerLead,
+  badges,
+  title,
+  children,
+  footer,
+}: DetailPanelShellProps) {
+  return (
+    <Modal
+      label={label}
+      onClose={onClose}
+      overlayClassName="fixed inset-0 z-20 flex justify-end bg-black/60 backdrop-blur-sm"
+      panelClassName="flex h-full w-full max-w-lg flex-col overflow-hidden border-l border-border bg-popover shadow-2xl"
+      panelStyle={{ animation: 'nc-sheet-in .28s cubic-bezier(.22,1,.36,1)' }}
+    >
+      {/* Header */}
+      <div className="flex items-start gap-3 border-b border-border px-5 py-4">
+        {headerLead}
+        <div className="flex flex-1 flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">{badges}</div>
+          <h2 className="text-[15px] font-semibold leading-snug text-foreground">
+            {title}
+          </h2>
+        </div>
+        <IconButton label="Close" onClick={onClose}>
+          <CloseIcon size={16} />
+        </IconButton>
+      </div>
+
+      {/* Body */}
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-5">
+        {children}
+      </div>
+
+      {/* Footer actions */}
+      <div className="flex items-center gap-2 border-t border-border px-5 py-4">
+        {footer}
+      </div>
+    </Modal>
+  );
+}
+
+/** A titled section inside a {@link DetailPanelShell} body. */
+export function DetailSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-1.5">
+      <h4 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+        {title}
+      </h4>
+      {children}
+    </section>
+  );
+}
+
+/** A grounded `file:line` location rendered as a bordered code chip. */
+export function DetailLocation({ children }: { children: ReactNode }) {
+  return (
+    <code className="break-all rounded-md border border-border bg-white/[0.03] px-2 py-1 font-mono text-[11.5px] text-foreground">
+      {children}
+    </code>
+  );
+}
