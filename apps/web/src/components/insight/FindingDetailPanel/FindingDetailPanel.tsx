@@ -1,16 +1,16 @@
-/** The Insight finding detail sheet and its presentational helpers. */
-import type { ReactNode } from 'react';
+/** The Insight finding detail sheet, composed from the shared DetailPanelShell. */
 import {
   Button,
-  CloseIcon,
   CodeBlock,
-  IconButton,
+  DetailLocation,
+  DetailPanelShell,
+  DetailSection,
   Markdown,
-  Modal,
   MoveIcon,
   RetryIcon,
   TrashIcon,
 } from '@/components/ui';
+import { formatLocation } from '@/lib/formatters';
 import {
   CATEGORY_META,
   EFFORT_META,
@@ -19,36 +19,12 @@ import {
 import type { InsightFinding } from '../insight.types';
 import type { FindingDetailPanelProps } from './FindingDetailPanel.types';
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="flex flex-col gap-1.5">
-      <h4 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
-        {title}
-      </h4>
-      {children}
-    </section>
-  );
-}
-
 /** Infer a syntax-highlight language from the finding's grounded file extension,
  *  defaulting to `ts`. CodeBlock maps anything it doesn't know to plain text. */
 function inferLanguage(finding: InsightFinding): string {
   const file = finding.location?.file;
   const ext = file?.split('.').pop()?.toLowerCase();
   return ext !== undefined && ext.length > 0 ? ext : 'ts';
-}
-
-function locationLabel(finding: InsightFinding): string | null {
-  const loc = finding.location;
-  if (loc === null) return null;
-  if (loc.startLine !== null) {
-    const range =
-      loc.endLine !== null && loc.endLine !== loc.startLine
-        ? `${loc.startLine}-${loc.endLine}`
-        : String(loc.startLine);
-    return `${loc.file}:${range}${loc.symbol !== null ? ` · ${loc.symbol}` : ''}`;
-  }
-  return loc.file;
 }
 
 /** The finding detail sheet: full description, rationale, grounded location,
@@ -65,158 +41,141 @@ export function FindingDetailPanel({
   const sev = SEVERITY_META[finding.severity];
   const Meta = CATEGORY_META[finding.category];
   const Icon = Meta.icon;
-  const loc = locationLabel(finding);
+  const loc = formatLocation(finding.location, { withSymbol: true });
   const lang = inferLanguage(finding);
 
   return (
-    <Modal
+    <DetailPanelShell
       label={finding.title}
       onClose={onClose}
-      overlayClassName="fixed inset-0 z-20 flex justify-end bg-black/60 backdrop-blur-sm"
-      panelClassName="flex h-full w-full max-w-lg flex-col overflow-hidden border-l border-border bg-popover shadow-2xl"
-      panelStyle={{ animation: 'nc-sheet-in .28s cubic-bezier(.22,1,.36,1)' }}
-    >
-      {/* Header */}
-      <div className="flex items-start gap-3 border-b border-border px-5 py-4">
-        <div className="flex flex-1 flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-semibold ${sev.chip} ${sev.tone}`}
-            >
-              {sev.label}
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-              <Icon size={11} />
-              {Meta.label}
-            </span>
+      title={finding.title}
+      badges={
+        <>
+          <span
+            className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-semibold ${sev.chip} ${sev.tone}`}
+          >
+            {sev.label}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+            <Icon size={11} />
+            {Meta.label}
+          </span>
+          <span className="font-mono text-[10px] text-muted-foreground">
+            {EFFORT_META[finding.effort].label} effort
+          </span>
+          {finding.confidence !== null && (
             <span className="font-mono text-[10px] text-muted-foreground">
-              {EFFORT_META[finding.effort].label} effort
+              {Math.round(finding.confidence * 100)}% confidence
             </span>
-            {finding.confidence !== null && (
-              <span className="font-mono text-[10px] text-muted-foreground">
-                {Math.round(finding.confidence * 100)}% confidence
-              </span>
-            )}
-          </div>
-          <h2 className="text-[15px] font-semibold leading-snug text-foreground">
-            {finding.title}
-          </h2>
-        </div>
-        <IconButton label="Close" onClick={onClose}>
-          <CloseIcon size={16} />
-        </IconButton>
-      </div>
+          )}
+        </>
+      }
+      footer={
+        <>
+          {finding.status === 'converted' ? (
+            <Button variant="secondary" disabled={pending} onClick={onGotoBoard}>
+              <MoveIcon size={15} />
+              Go to task
+            </Button>
+          ) : (
+            <Button
+              disabled={pending || finding.status === 'dismissed'}
+              onClick={() => onConvert(finding.id)}
+            >
+              <MoveIcon size={15} />
+              Convert to task
+            </Button>
+          )}
 
-      {/* Body */}
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-5">
-        <Section title="What">
-          <Markdown>{finding.description}</Markdown>
-        </Section>
-
-        {loc !== null && (
-          <Section title="Location">
-            <code className="break-all rounded-md border border-border bg-white/[0.03] px-2 py-1 font-mono text-[11.5px] text-foreground">
-              {loc}
-            </code>
-          </Section>
-        )}
-
-        {finding.rationale !== null && (
-          <Section title="Why it matters">
-            <Markdown>{finding.rationale}</Markdown>
-          </Section>
-        )}
-
-        {finding.suggestion !== null && (
-          <Section title="Suggested fix">
-            <Markdown>{finding.suggestion}</Markdown>
-          </Section>
-        )}
-
-        {finding.codeBefore !== null && (
-          <Section title="Before">
-            <CodeBlock code={finding.codeBefore} language={lang} />
-          </Section>
-        )}
-        {finding.codeAfter !== null && (
-          <Section title="After">
-            <CodeBlock
-              code={finding.codeAfter}
-              language={lang}
-              className="border-success/30 bg-success/[0.06]"
-            />
-          </Section>
-        )}
-
-        {finding.affectedFiles.length > 0 && (
-          <Section title="Affected files">
-            <ul className="flex flex-col gap-1">
-              {finding.affectedFiles.map((f) => (
-                <li key={f}>
-                  <code className="font-mono text-[11.5px] text-muted-foreground">
-                    {f}
-                  </code>
-                </li>
-              ))}
-            </ul>
-          </Section>
-        )}
-
-        {finding.tags.length > 0 && (
-          <Section title="Tags">
-            <div className="flex flex-wrap gap-1.5">
-              {finding.tags.map((t) => (
-                <span
-                  key={t}
-                  className="rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
-                >
-                  {t}
-                </span>
-              ))}
-            </div>
-          </Section>
-        )}
-      </div>
-
-      {/* Footer actions */}
-      <div className="flex items-center gap-2 border-t border-border px-5 py-4">
-        {finding.status === 'converted' ? (
-          <Button variant="secondary" disabled={pending} onClick={onGotoBoard}>
-            <MoveIcon size={15} />
-            Go to task
-          </Button>
-        ) : (
-          <Button
-            disabled={pending || finding.status === 'dismissed'}
-            onClick={() => onConvert(finding.id)}
-          >
-            <MoveIcon size={15} />
-            Convert to task
-          </Button>
-        )}
-
-        {finding.status === 'dismissed' ? (
-          <Button
-            variant="ghost"
-            disabled={pending}
-            onClick={() => onRestore(finding.id)}
-          >
-            <RetryIcon size={15} />
-            Restore
-          </Button>
-        ) : (
-          finding.status !== 'converted' && (
+          {finding.status === 'dismissed' ? (
             <Button
               variant="ghost"
               disabled={pending}
-              onClick={() => onDismiss(finding.id)}
+              onClick={() => onRestore(finding.id)}
             >
-              <TrashIcon size={15} />
-              Dismiss
+              <RetryIcon size={15} />
+              Restore
             </Button>
-          )
-        )}
-      </div>
-    </Modal>
+          ) : (
+            finding.status !== 'converted' && (
+              <Button
+                variant="ghost"
+                disabled={pending}
+                onClick={() => onDismiss(finding.id)}
+              >
+                <TrashIcon size={15} />
+                Dismiss
+              </Button>
+            )
+          )}
+        </>
+      }
+    >
+      <DetailSection title="What">
+        <Markdown>{finding.description}</Markdown>
+      </DetailSection>
+
+      {loc !== null && (
+        <DetailSection title="Location">
+          <DetailLocation>{loc}</DetailLocation>
+        </DetailSection>
+      )}
+
+      {finding.rationale !== null && (
+        <DetailSection title="Why it matters">
+          <Markdown>{finding.rationale}</Markdown>
+        </DetailSection>
+      )}
+
+      {finding.suggestion !== null && (
+        <DetailSection title="Suggested fix">
+          <Markdown>{finding.suggestion}</Markdown>
+        </DetailSection>
+      )}
+
+      {finding.codeBefore !== null && (
+        <DetailSection title="Before">
+          <CodeBlock code={finding.codeBefore} language={lang} />
+        </DetailSection>
+      )}
+      {finding.codeAfter !== null && (
+        <DetailSection title="After">
+          <CodeBlock
+            code={finding.codeAfter}
+            language={lang}
+            className="border-success/30 bg-success/[0.06]"
+          />
+        </DetailSection>
+      )}
+
+      {finding.affectedFiles.length > 0 && (
+        <DetailSection title="Affected files">
+          <ul className="flex flex-col gap-1">
+            {finding.affectedFiles.map((f) => (
+              <li key={f}>
+                <code className="font-mono text-[11.5px] text-muted-foreground">
+                  {f}
+                </code>
+              </li>
+            ))}
+          </ul>
+        </DetailSection>
+      )}
+
+      {finding.tags.length > 0 && (
+        <DetailSection title="Tags">
+          <div className="flex flex-wrap gap-1.5">
+            {finding.tags.map((t) => (
+              <span
+                key={t}
+                className="rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+        </DetailSection>
+      )}
+    </DetailPanelShell>
   );
 }

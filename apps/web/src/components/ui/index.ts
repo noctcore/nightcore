@@ -3,10 +3,19 @@ export { Badge } from './Badge';
 export { BrandMark } from './BrandMark';
 export { Button } from './Button';
 export { Card } from './Card';
+export { CategoryTabsShell } from './CategoryTabsShell';
+export type {
+  CategoryTabDescriptor,
+  CategoryTabsShellProps,
+} from './CategoryTabsShell';
 export { CodeBlock } from './CodeBlock';
 export type { CodeBlockProps } from './CodeBlock';
 export { ConfirmDialog } from './ConfirmDialog';
 export type { ConfirmDialogProps } from './ConfirmDialog';
+export { DetailCard, DetailCardGrid } from './DetailCardGrid';
+export type { DetailCardGridProps, DetailCardProps } from './DetailCardGrid';
+export { DetailLocation, DetailPanelShell, DetailSection } from './DetailPanelShell';
+export type { DetailPanelShellProps } from './DetailPanelShell';
 export { EmptyState } from './EmptyState';
 export { IconButton } from './IconButton';
 export { IconTile } from './IconTile';
