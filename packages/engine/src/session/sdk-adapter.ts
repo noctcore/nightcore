@@ -97,12 +97,13 @@ interface TextBlock {
   type: 'text';
   text: string;
 }
-/** A minimal tool_use content block. */
+/** A minimal tool_use content block. `input` is left `unknown` because the guard
+ *  cannot soundly assert its shape; the consumer normalizes it to a record. */
 interface ToolUseBlock {
   type: 'tool_use';
   id: string;
   name: string;
-  input: Record<string, unknown>;
+  input?: unknown;
 }
 
 function isTextBlock(block: unknown): block is TextBlock {
@@ -115,11 +116,12 @@ function isTextBlock(block: unknown): block is TextBlock {
 }
 
 function isToolUseBlock(block: unknown): block is ToolUseBlock {
-  return (
-    typeof block === 'object' &&
-    block !== null &&
-    (block as { type?: unknown }).type === 'tool_use'
-  );
+  if (typeof block !== 'object' || block === null) return false;
+  const b = block as { type?: unknown; id?: unknown; name?: unknown };
+  // The `tool-use-requested` contract requires string `toolUseId`/`toolName`; the
+  // old guard only checked `type`, so a block missing id/name produced an invalid
+  // event. Verify both so the `block is ToolUseBlock` assertion is sound.
+  return b.type === 'tool_use' && typeof b.id === 'string' && typeof b.name === 'string';
 }
 
 /**
@@ -321,7 +323,11 @@ function translateAssistant(
         sessionId,
         toolUseId: block.id,
         toolName: block.name,
-        input: block.input ?? {},
+        // Normalize a non-object/absent input to {} (the guard no longer asserts it).
+        input:
+          typeof block.input === 'object' && block.input !== null
+            ? (block.input as Record<string, unknown>)
+            : {},
       });
     }
   }

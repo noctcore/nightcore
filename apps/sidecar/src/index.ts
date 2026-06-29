@@ -27,6 +27,7 @@ import { resolveConfig } from '@nightcore/config';
 import { SessionManager } from '@nightcore/engine';
 import { createLogger, type Logger } from '@nightcore/shared';
 import {
+  NightcoreEventSchema,
   SurfaceCommandSchema,
   SurfaceQuerySchema,
   type NightcoreEvent,
@@ -105,6 +106,15 @@ export function createSidecar(
   onError: (message: string) => void = (m) => process.stderr.write(`${m}\n`),
 ): { handleLine: (line: string) => void } {
   manager.on((event) => {
+    // Validate OUTBOUND too (the inbound command path already does): the engine
+    // constructs events from SDK output, so an upstream gap could emit a
+    // contract-invalid event that the Rust core / web then decode differently.
+    // Drop-and-log on mismatch rather than shipping a malformed line.
+    const valid = NightcoreEventSchema.safeParse(event);
+    if (!valid.success) {
+      onError(`sidecar: dropping malformed outbound event (${event.type}): ${valid.error.message}`);
+      return;
+    }
     sink(encodeEvent(event));
   });
 

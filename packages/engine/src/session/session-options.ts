@@ -94,7 +94,22 @@ const WIRE_IMAGE_MEDIA_TYPE: Record<
  *  attachments it becomes a content-block array — a text block followed by one
  *  base64 image block per attachment. `MessageParam.content` accepts both shapes.
  *  Exported for unit testing the block assembly. */
-export function buildUserMessageContent(text: string, images: WireImage[] = []) {
+export function buildUserMessageContent(
+  text: string,
+  images: WireImage[] = [],
+):
+  | string
+  | Array<
+      | { type: 'text'; text: string }
+      | {
+          type: 'image';
+          source: {
+            type: 'base64';
+            media_type: (typeof WIRE_IMAGE_MEDIA_TYPE)[WireImage['format']];
+            data: string;
+          };
+        }
+    > {
   if (images.length === 0) return text;
   return [
     { type: 'text' as const, text },
