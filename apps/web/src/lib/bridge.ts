@@ -18,6 +18,11 @@ import type { NewAttachmentPayload } from './attachments';
 
 export type { SessionStatus } from '@nightcore/contracts';
 
+/** Canonical fallbacks shared by the browser-preview mocks and UI fallbacks, so
+ *  the default model id and repo URL live in exactly one place. */
+const DEFAULT_MODEL_ID = 'claude-opus-4-8';
+export const DEFAULT_REPO_URL = 'https://github.com/Shironex/nightcore';
+
 // --- Generated IPC types (Rust→TS codegen) --------------------------------
 //
 // These types are GENERATED from the Rust serde structs by `ts-rs` (run via
@@ -443,7 +448,7 @@ const MOCK_PROVIDER_CONFIG: ProviderConfigSnapshot = {
     status: 'unavailable',
     error: 'probe timed out',
   },
-  model: 'claude-opus-4-8',
+  model: DEFAULT_MODEL_ID,
   permissionMode: 'acceptEdits',
   outputStyle: 'default',
   extrasStatus: 'supported',
@@ -665,7 +670,7 @@ export async function chooseFolder(): Promise<string | null> {
 
 /** The default settings used outside Tauri (browser preview). */
 const MOCK_SETTINGS: Settings = {
-  defaultModel: 'claude-opus-4-8',
+  defaultModel: DEFAULT_MODEL_ID,
   defaultEffort: 'medium',
   maxConcurrency: 3,
   permissionMode: 'auto-accept',
@@ -682,7 +687,7 @@ const MOCK_SETTINGS: Settings = {
 /** App metadata used outside Tauri (browser preview). */
 const MOCK_APP_INFO: AppInfo = {
   version: '0.0.0',
-  repository: 'https://github.com/Shironex/nightcore',
+  repository: DEFAULT_REPO_URL,
 };
 
 /** The current settings. Returns mock defaults outside Tauri. */
@@ -798,25 +803,34 @@ async function safeListen<T>(event: string, handler: EventCallback<T>): Promise<
   }
 }
 
+/** The shared `nc:*` subscription skeleton: no-op outside Tauri, otherwise
+ *  `safeListen` on `channel` and dispatch only payloads that `narrow` accepts
+ *  (returns the typed value, or `null` to drop). Collapses the nine per-channel
+ *  subscribers into a single shape. */
+function subscribeChannel<T>(
+  channel: string,
+  narrow: (value: unknown) => T | null,
+  handler: (value: T) => void,
+): Promise<UnlistenFn> {
+  if (!isTauri()) return Promise.resolve(() => {});
+  return safeListen<unknown>(channel, (event) => {
+    const value = narrow(event.payload);
+    if (value !== null) handler(value);
+  });
+}
+
 /** Subscribe to `nc:task` board upserts. Returns an unlisten function. */
 export async function onTaskEvent(
   handler: (task: Task) => void,
 ): Promise<UnlistenFn> {
-  if (!isTauri()) return () => {};
-  return safeListen<unknown>('nc:task', (event) => {
-    if (isTask(event.payload)) handler(event.payload);
-  });
+  return subscribeChannel('nc:task', (v) => (isTask(v) ? v : null), handler);
 }
 
 /** Subscribe to `nc:session` streamed events. Returns an unlisten function. */
 export async function onSessionEvent(
   handler: (envelope: SessionEnvelope) => void,
 ): Promise<UnlistenFn> {
-  if (!isTauri()) return () => {};
-  return safeListen<unknown>('nc:session', (event) => {
-    const envelope = parseSessionEnvelope(event.payload);
-    if (envelope !== null) handler(envelope);
-  });
+  return subscribeChannel('nc:session', parseSessionEnvelope, handler);
 }
 
 /** Narrow an unknown payload to a `ProjectEnvelope` defensively. The handler reads
@@ -837,10 +851,7 @@ function isProjectEnvelope(value: unknown): value is ProjectEnvelope {
 export async function onProjectEvent(
   handler: (envelope: ProjectEnvelope) => void,
 ): Promise<UnlistenFn> {
-  if (!isTauri()) return () => {};
-  return safeListen<unknown>('nc:project', (event) => {
-    if (isProjectEnvelope(event.payload)) handler(event.payload);
-  });
+  return subscribeChannel('nc:project', (v) => (isProjectEnvelope(v) ? v : null), handler);
 }
 
 /** Narrow an unknown payload to a `LoopEnvelope` defensively. The handler reads
@@ -862,10 +873,7 @@ function isLoopEnvelope(value: unknown): value is LoopEnvelope {
 export async function onLoopEvent(
   handler: (envelope: LoopEnvelope) => void,
 ): Promise<UnlistenFn> {
-  if (!isTauri()) return () => {};
-  return safeListen<unknown>('nc:loop', (event) => {
-    if (isLoopEnvelope(event.payload)) handler(event.payload);
-  });
+  return subscribeChannel('nc:loop', (v) => (isLoopEnvelope(v) ? v : null), handler);
 }
 
 /** Narrow an unknown payload to a `PermissionPrompt` defensively. The prompt UI
@@ -887,10 +895,7 @@ function isPermissionPrompt(value: unknown): value is PermissionPrompt {
 export async function onPermissionEvent(
   handler: (prompt: PermissionPrompt) => void,
 ): Promise<UnlistenFn> {
-  if (!isTauri()) return () => {};
-  return safeListen<unknown>('nc:permission', (event) => {
-    if (isPermissionPrompt(event.payload)) handler(event.payload);
-  });
+  return subscribeChannel('nc:permission', (v) => (isPermissionPrompt(v) ? v : null), handler);
 }
 
 /** Narrow an unknown payload to a `QuestionPrompt` defensively. The dock reads
@@ -910,10 +915,7 @@ function isQuestionPrompt(value: unknown): value is QuestionPrompt {
 export async function onQuestionEvent(
   handler: (prompt: QuestionPrompt) => void,
 ): Promise<UnlistenFn> {
-  if (!isTauri()) return () => {};
-  return safeListen<unknown>('nc:question', (event) => {
-    if (isQuestionPrompt(event.payload)) handler(event.payload);
-  });
+  return subscribeChannel('nc:question', (v) => (isQuestionPrompt(v) ? v : null), handler);
 }
 
 // --- Insight (codebase analysis) ------------------------------------------
@@ -1030,29 +1032,42 @@ export async function deleteInsightRun(runId: string): Promise<void> {
 /** Narrow an unknown `nc:insight` payload to an `InsightEvent`. The `analysis-*`
  *  events are validated against the authoritative `NightcoreEventSchema`; the
  *  `finding-converted` notice (not a `NightcoreEvent`) is shape-checked. */
-function parseInsightEvent(value: unknown): InsightEvent | null {
+/**
+ * Generic narrower for the three scan channels (insight/scorecard/harness). Each
+ * carries the authoritative `NightcoreEvent` family for its surface (matched by
+ * `wirePrefix` and validated against `NightcoreEventSchema`) PLUS one
+ * non-`NightcoreEvent` "notice" the Rust core emits in place (convert/apply), whose
+ * `noticeFields` are shape-checked as strings. Returns the typed notice, the
+ * validated wire event, or `null`.
+ */
+function parseChannelEvent<TNotice extends { type: string }, TWire>(
+  value: unknown,
+  noticeType: TNotice['type'],
+  noticeFields: readonly string[],
+  wirePrefix: string,
+): TNotice | TWire | null {
   if (typeof value !== 'object' || value === null) return null;
   const v = value as Record<string, unknown>;
-  if (v.type === 'finding-converted') {
-    if (
-      typeof v.runId === 'string' &&
-      typeof v.findingId === 'string' &&
-      typeof v.taskId === 'string'
-    ) {
-      return {
-        type: 'finding-converted',
-        runId: v.runId,
-        findingId: v.findingId,
-        taskId: v.taskId,
-      };
-    }
-    return null;
+  if (v.type === noticeType) {
+    if (!noticeFields.every((f) => typeof v[f] === 'string')) return null;
+    const notice: Record<string, string> = { type: noticeType };
+    for (const f of noticeFields) notice[f] = v[f] as string;
+    return notice as TNotice;
   }
   const parsed = NightcoreEventSchema.safeParse(value);
-  if (parsed.success && parsed.data.type.startsWith('analysis-')) {
-    return parsed.data as AnalysisEvent;
+  if (parsed.success && parsed.data.type.startsWith(wirePrefix)) {
+    return parsed.data as TWire;
   }
   return null;
+}
+
+function parseInsightEvent(value: unknown): InsightEvent | null {
+  return parseChannelEvent<FindingConvertedEvent, AnalysisEvent>(
+    value,
+    'finding-converted',
+    ['runId', 'findingId', 'taskId'],
+    'analysis-',
+  );
 }
 
 /** Subscribe to `nc:insight` streamed analysis events. Returns an unlisten
@@ -1060,11 +1075,7 @@ function parseInsightEvent(value: unknown): InsightEvent | null {
 export async function onInsightEvent(
   handler: (event: InsightEvent) => void,
 ): Promise<UnlistenFn> {
-  if (!isTauri()) return () => {};
-  return safeListen<unknown>('nc:insight', (event) => {
-    const parsed = parseInsightEvent(event.payload);
-    if (parsed !== null) handler(parsed);
-  });
+  return subscribeChannel('nc:insight', parseInsightEvent, handler);
 }
 
 // --- Readiness Scorecard (Profile) ----------------------------------------
@@ -1141,28 +1152,12 @@ export async function deleteScorecardRun(runId: string): Promise<void> {
  *  events are validated against the authoritative `NightcoreEventSchema`; the
  *  `reading-converted` notice (not a `NightcoreEvent`) is shape-checked. */
 function parseScorecardEvent(value: unknown): ScorecardEvent | null {
-  if (typeof value !== 'object' || value === null) return null;
-  const v = value as Record<string, unknown>;
-  if (v.type === 'reading-converted') {
-    if (
-      typeof v.runId === 'string' &&
-      typeof v.readingId === 'string' &&
-      typeof v.taskId === 'string'
-    ) {
-      return {
-        type: 'reading-converted',
-        runId: v.runId,
-        readingId: v.readingId,
-        taskId: v.taskId,
-      };
-    }
-    return null;
-  }
-  const parsed = NightcoreEventSchema.safeParse(value);
-  if (parsed.success && parsed.data.type.startsWith('scorecard-')) {
-    return parsed.data as ScorecardWireEvent;
-  }
-  return null;
+  return parseChannelEvent<ReadingConvertedEvent, ScorecardWireEvent>(
+    value,
+    'reading-converted',
+    ['runId', 'readingId', 'taskId'],
+    'scorecard-',
+  );
 }
 
 /** Subscribe to `nc:scorecard` streamed events. Returns an unlisten function (a
@@ -1170,11 +1165,7 @@ function parseScorecardEvent(value: unknown): ScorecardEvent | null {
 export async function onScorecardEvent(
   handler: (event: ScorecardEvent) => void,
 ): Promise<UnlistenFn> {
-  if (!isTauri()) return () => {};
-  return safeListen<unknown>('nc:scorecard', (event) => {
-    const parsed = parseScorecardEvent(event.payload);
-    if (parsed !== null) handler(parsed);
-  });
+  return subscribeChannel('nc:scorecard', parseScorecardEvent, handler);
 }
 
 // --- Harness (codebase convention auditor) --------------------------------
@@ -1309,28 +1300,12 @@ export async function applyHarnessArtifact(
  *  events are validated against the authoritative `NightcoreEventSchema`; the
  *  `artifact-applied` notice (not a `NightcoreEvent`) is shape-checked. */
 function parseHarnessEvent(value: unknown): HarnessEvent | null {
-  if (typeof value !== 'object' || value === null) return null;
-  const v = value as Record<string, unknown>;
-  if (v.type === 'artifact-applied') {
-    if (
-      typeof v.runId === 'string' &&
-      typeof v.artifactId === 'string' &&
-      typeof v.path === 'string'
-    ) {
-      return {
-        type: 'artifact-applied',
-        runId: v.runId,
-        artifactId: v.artifactId,
-        path: v.path,
-      };
-    }
-    return null;
-  }
-  const parsed = NightcoreEventSchema.safeParse(value);
-  if (parsed.success && parsed.data.type.startsWith('harness-')) {
-    return parsed.data as HarnessScanEvent;
-  }
-  return null;
+  return parseChannelEvent<ArtifactAppliedEvent, HarnessScanEvent>(
+    value,
+    'artifact-applied',
+    ['runId', 'artifactId', 'path'],
+    'harness-',
+  );
 }
 
 /** Subscribe to `nc:harness` streamed scan events. Returns an unlisten function
@@ -1338,9 +1313,5 @@ function parseHarnessEvent(value: unknown): HarnessEvent | null {
 export async function onHarnessEvent(
   handler: (event: HarnessEvent) => void,
 ): Promise<UnlistenFn> {
-  if (!isTauri()) return () => {};
-  return safeListen<unknown>('nc:harness', (event) => {
-    const parsed = parseHarnessEvent(event.payload);
-    if (parsed !== null) handler(parsed);
-  });
+  return subscribeChannel('nc:harness', parseHarnessEvent, handler);
 }

@@ -22,6 +22,7 @@ import {
   modelOptionFor,
   MODEL_OPTIONS,
 } from '@/lib/models';
+import { DEFAULT_REPO_URL } from '@/lib/bridge';
 import { parseNumericCommit } from '@/lib/numeric-field';
 import { ConstitutionCard } from '../ConstitutionCard';
 import { McpServersCard } from '../McpServersCard';
@@ -707,7 +708,7 @@ function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardProps[] {
       ];
     case 'about': {
       const version = appInfo?.version ?? '—';
-      const repo = appInfo?.repository ?? 'https://github.com/Shironex/nightcore';
+      const repo = appInfo?.repository ?? DEFAULT_REPO_URL;
       const repoLabel = repo.replace(/^https?:\/\//, '');
       return [
         {
