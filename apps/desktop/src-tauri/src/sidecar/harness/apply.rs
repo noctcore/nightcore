@@ -18,6 +18,24 @@ use std::path::{Component, Path, PathBuf};
 const SECTION_START: &str = "<!-- nightcore:harness:start -->";
 const SECTION_END: &str = "<!-- nightcore:harness:end -->";
 
+/// In-repo execution sinks: directories whose contents run AUTOMATICALLY (CI
+/// pipelines, git hooks). Containing a write to the repo root is not enough — the
+/// harness synthesis pass reads (possibly untrusted) target-repo content, so a
+/// prompt-injected proposal could land a brand-new `.github/workflows/*.yml` (a
+/// YAML file needs no execute bit) or a git hook that the user one-click-applies
+/// and that then executes on the next push/commit. These are NEVER legitimate
+/// harness artifacts (which are docs + lint config), so any target inside one is
+/// rejected. Matched case-INSENSITIVELY: a case-insensitive filesystem (the macOS
+/// default) would otherwise let `.GitHub/workflows/…` resolve to the real path.
+const DENIED_TARGET_PREFIXES: &[&str] = &[
+    ".git/",              // all git internals, incl. .git/hooks/
+    ".github/workflows/", // GitHub Actions
+    ".husky/",            // Husky-managed git hooks
+    ".circleci/",         // CircleCI
+];
+/// Single-file execution sinks (no trailing-slash prefix to match).
+const DENIED_TARGET_FILES: &[&str] = &[".gitlab-ci.yml", ".gitlab-ci.yaml"];
+
 /// Resolve a repo-relative artifact path against `root`, rejecting anything that could
 /// escape the project. Defence in layers:
 ///  1. lexical: reject empty / absolute / any `..` or root/prefix component, so the join
@@ -42,6 +60,32 @@ pub(super) fn safe_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
                 return Err(format!("artifact path must be repo-relative, not absolute: {rel}"))
             }
         }
+    }
+
+    // Execution-sink denylist: reject targets inside CI / git-hook directories even
+    // though they are repo-relative and non-symlinked, because their contents run
+    // automatically once applied. Normalize to a lowercase `/`-joined string from the
+    // NORMAL components only (drops `./`), so `./.GitHub/Workflows/x.yml` is caught.
+    let normalized = rel_path
+        .components()
+        .filter_map(|c| match c {
+            Component::Normal(s) => Some(s.to_string_lossy().to_lowercase()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/");
+    if let Some(prefix) = DENIED_TARGET_PREFIXES
+        .iter()
+        .find(|p| normalized.starts_with(**p))
+    {
+        return Err(format!(
+            "artifact path targets a protected execution sink ({prefix}): {rel}"
+        ));
+    }
+    if DENIED_TARGET_FILES.contains(&normalized.as_str()) {
+        return Err(format!(
+            "artifact path targets a protected CI configuration file: {rel}"
+        ));
     }
 
     let root_canon = root
@@ -258,6 +302,45 @@ mod tests {
             "fn main() {}",
             "the symlink target file is untouched"
         );
+    }
+
+    #[test]
+    fn safe_join_rejects_execution_sinks() {
+        let tmp = TempDir::new().unwrap();
+        for bad in [
+            ".github/workflows/evil.yml",
+            ".git/hooks/pre-commit",
+            ".git/config",
+            ".husky/pre-commit",
+            ".circleci/config.yml",
+            ".gitlab-ci.yml",
+            // case-insensitive-filesystem bypass attempt must also be rejected
+            ".GitHub/Workflows/evil.yml",
+            "./.github/workflows/evil.yml",
+        ] {
+            assert!(
+                safe_join(tmp.path(), bad).is_err(),
+                "must reject execution sink {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn safe_join_allows_non_sink_paths_that_merely_resemble_sinks() {
+        // Precision guard: the denylist must NOT over-block legitimate source dirs
+        // (a React `hooks/` dir) or non-executable `.github/` content (issue templates).
+        let tmp = TempDir::new().unwrap();
+        for ok in [
+            "apps/web/src/hooks/useThing.ts",
+            ".github/ISSUE_TEMPLATE/bug.md",
+            ".github/CODEOWNERS",
+            "packages/eslint-plugin/src/index.ts",
+        ] {
+            assert!(
+                safe_join(tmp.path(), ok).is_ok(),
+                "must allow non-sink path {ok:?}"
+            );
+        }
     }
 
     #[test]
