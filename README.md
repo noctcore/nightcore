@@ -127,7 +127,8 @@ packages/    shared TS packages used by the sidecar and the core
   config/    layered config resolver (defaults → ~/.nightcore → ./.nightcore)
   storage/   local session-metadata store (JSONL; transcripts stay with the SDK)
   engine/    SessionManager, SessionRunner, ToolRegistry, PermissionLayer, HookBus
-  skills/    subagent presets (placeholder)
+  session-fold/ event→state fold logic for session lifecycle
+  eslint-plugin/ the nightcore/* lint rules and validator
 tools/codegen/ TS→Rust contract generator (`bun run codegen:contracts`)
 docs/        architecture summary + design/research docs
 ```
