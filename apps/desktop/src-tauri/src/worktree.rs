@@ -376,9 +376,30 @@ pub fn list_worktree_statuses(project_path: &Path) -> Vec<WorktreeStatus> {
             .iter()
             .map(|(task_id, dir)| scope.spawn(move || worktree_status(dir, task_id, base)))
             .collect();
-        handles
-            .into_iter()
-            .map(|h| h.join().expect("worktree status thread panicked"))
+        // Recombine in the original order. A panicked worker (unexpected git output,
+        // an internal unwrap, allocation failure) must degrade to safe defaults for
+        // that one entry rather than abort the whole monitor list — same tolerance
+        // the git reads already give. Preserve the entry's identity (branch/path/
+        // task ids) so the web's branch grouping still works; only the git-derived
+        // fields fall back to their unresolved defaults.
+        dirs.iter()
+            .zip(handles)
+            .map(|((task_id, dir), handle)| {
+                handle.join().unwrap_or_else(|_| {
+                    tracing::warn!(
+                        target: "nightcore::worktree",
+                        task_id = %task_id,
+                        "worktree status thread panicked; degrading to safe defaults for this entry"
+                    );
+                    WorktreeStatus {
+                        branch: branch_name(task_id),
+                        path: dir.to_string_lossy().to_string(),
+                        task_ids: vec![task_id.to_string()],
+                        dirty: false,
+                        ahead_of_base: 0,
+                    }
+                })
+            })
             .collect()
     })
 }
