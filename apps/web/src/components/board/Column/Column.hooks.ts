@@ -52,7 +52,19 @@ export function useColumn(dropStatus: TaskStatus | undefined, tasks: Task[]): Co
     getScrollElement: () => scrollRef.current,
     estimateSize: () => ESTIMATED_CARD_HEIGHT,
     overscan: OVERSCAN,
-    getItemKey: (index) => tasks[index]?.id ?? index,
+    // Stable, unique keys are a hard requirement for correct reconciliation under
+    // reorder (drag-and-drop) + virtualization: an unstable key lets React/TanStack
+    // reuse the wrong DOM node and component state for a row. `Task.id` is a
+    // non-optional string by contract and `count` is synced to `tasks.length`, so
+    // this never fires — but assert the invariant loudly rather than silently
+    // substituting a numeric index that would map to different tasks across reorders.
+    getItemKey: (index) => {
+      const id = tasks[index]?.id;
+      if (id === undefined) {
+        throw new Error(`Column virtualizer: task at index ${index} has no id (count=${tasks.length})`);
+      }
+      return id;
+    },
   });
 
   return {
