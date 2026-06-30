@@ -155,6 +155,20 @@ body {
   outline-offset: 2px;
 }
 
+/* Composite inputs (an icon + a real <input> inside a bordered wrapper, e.g.
+ * BranchPicker) host the focus ring on the WRAPPER so the control reads as one
+ * field. Without this, the global ring above lands on the inset inner <input>
+ * and reads as a doubled border (the wrapper border + the inner ring). These
+ * rules are intentionally unlayered so they outrank Tailwind's layered
+ * `outline-none` utility — a layered utility cannot override an unlayered rule. */
+.nc-focus-ring-host:focus-within {
+  outline: 2px solid var(--nc-ring);
+  outline-offset: 2px;
+}
+.nc-focus-ring-host > input:focus-visible {
+  outline: none;
+}
+
 ::selection {
   background: oklch(78% 0.22 290 / 0.3);
 }
