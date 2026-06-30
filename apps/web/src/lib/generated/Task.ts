@@ -33,10 +33,17 @@ effort: string | null,
  */
 permissionMode: PermissionMode | null, 
 /**
- * The worktree branch (`nc/<taskId>`) for this task's run, set by the M2
- * coordinator once a worktree is allocated. `None` until then.
+ * The worktree branch (`nc/<taskId>` by default, or a name chosen in the create
+ * dialog's branch picker) for this task's run. Set at create when the picker
+ * supplied one, else by the coordinator at submit. `None` until then.
  */
-branch: string | null, createdAt: number, updatedAt: number, 
+branch: string | null, 
+/**
+ * The base branch this task's worktree branches off / merges into, chosen in
+ * the create dialog's branch picker (worktree mode). `None` ⇒ the project's
+ * current branch (`worktree::base_branch`). Serde-additive (legacy ⇒ `None`).
+ */
+baseBranch?: string, createdAt: number, updatedAt: number, 
 /**
  * Sidecar session id of the last/current run, set once a run starts.
  */

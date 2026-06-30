@@ -238,15 +238,24 @@ fn merge_task_blocking(app: &AppHandle, id: &str) -> Result<(), String> {
             ));
         }
     }
-    let base = worktree::base_branch(&project_path);
-    tracing::info!(target: "nightcore", task_id = %id, base = %base, "merging task branch into base");
+    // Base + branch honor the create dialog's branch picker, defaulting to the
+    // project's current branch and `nc/<taskId>` respectively.
+    let base = task
+        .base_branch
+        .clone()
+        .unwrap_or_else(|| worktree::base_branch(&project_path));
+    let branch = task
+        .branch
+        .clone()
+        .unwrap_or_else(|| worktree::branch_name(id));
+    tracing::info!(target: "nightcore", task_id = %id, branch = %branch, base = %base, "merging task branch into base");
 
-    match worktree::merge(&project_path, id, &base)? {
+    match worktree::merge_branch(&project_path, &branch, &base)? {
         MergeOutcome::Merged => {
             let cleanup = app.state::<SettingsStore>().get().cleanup_worktrees;
             if cleanup {
                 let _ = worktree::remove(&project_path, id);
-                let _ = worktree::delete_branch(&project_path, id);
+                let _ = worktree::delete_branch_named(&project_path, &branch);
             }
             tracing::info!(target: "nightcore", task_id = %id, base = %base, cleaned_up = cleanup, "merge succeeded");
             let updated = store.mutate(id, |t| {

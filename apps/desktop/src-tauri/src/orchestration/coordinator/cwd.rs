@@ -28,11 +28,8 @@ pub(crate) fn resolve_worktree(
     };
     let project_path = PathBuf::from(&project.path);
 
-    let run_mode = app
-        .state::<TaskStore>()
-        .get(task_id)
-        .map(|t| t.run_mode)
-        .unwrap_or_default();
+    let task = app.state::<TaskStore>().get(task_id);
+    let run_mode = task.as_ref().map(|t| t.run_mode).unwrap_or_default();
 
     if !run_mode.is_worktree() {
         // `main` mode: run in the project root on the current branch. No worktree,
@@ -47,7 +44,23 @@ pub(crate) fn resolve_worktree(
             project_path.display()
         ));
     }
-    let dir = worktree::allocate(&project_path, task_id)?;
+    // A branch-picker selection (custom branch and/or base) routes through the
+    // branch/base-aware allocate; the default path is unchanged (`nc/<taskId>` off
+    // the current branch).
+    let dir = match task.as_ref() {
+        Some(t) if t.branch.is_some() || t.base_branch.is_some() => {
+            let branch = t
+                .branch
+                .clone()
+                .unwrap_or_else(|| worktree::branch_name(task_id));
+            let base = t
+                .base_branch
+                .clone()
+                .unwrap_or_else(|| worktree::base_branch(&project_path));
+            worktree::allocate_branch(&project_path, task_id, &branch, &base)?
+        }
+        _ => worktree::allocate(&project_path, task_id)?,
+    };
     tracing::info!(target: "nightcore", task_id, worktree = %dir.display(), "allocated worktree");
     Ok(Some(ResolvedCwd::worktree(dir)))
 }

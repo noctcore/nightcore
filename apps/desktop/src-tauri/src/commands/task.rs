@@ -48,6 +48,8 @@ pub fn create_task(
     permission_mode: Option<String>,
     max_turns: Option<u32>,
     max_budget_usd: Option<f64>,
+    branch: Option<String>,
+    base_branch: Option<String>,
     attachments: Vec<crate::store::attachments::NewAttachment>,
 ) -> Result<Task, String> {
     // Resolve every default once against the active project (per-project override →
@@ -67,6 +69,8 @@ pub fn create_task(
             permission_mode,
             max_turns,
             max_budget_usd,
+            branch,
+            base_branch,
         },
     );
     // Persist any attached images to app-data under the freshly-minted task id BEFORE
@@ -294,7 +298,13 @@ fn cleanup_task_worktree(app: &AppHandle, id: &str, task: Option<&Task>) {
     if let Err(e) = crate::worktree::remove(&project_path, id) {
         tracing::warn!(target: "nightcore", task_id = id, error = %e, "delete: worktree remove failed");
     }
-    if let Err(e) = crate::worktree::delete_branch(&project_path, id) {
+    // Delete the task's actual branch (a picker-chosen name, else `nc/<id>`); guarded
+    // so it can never delete the project's base branch.
+    let branch = task
+        .branch
+        .clone()
+        .unwrap_or_else(|| crate::worktree::branch_name(id));
+    if let Err(e) = crate::worktree::delete_branch_named(&project_path, &branch) {
         tracing::warn!(target: "nightcore", task_id = id, error = %e, "delete: branch delete failed");
     }
 }

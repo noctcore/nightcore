@@ -68,7 +68,10 @@ pub(crate) async fn submit_run(
     // run edits the project's current branch directly, so it has no chip.
     let is_worktree = resolved.as_ref().map(|r| r.is_worktree).unwrap_or(false);
     let cwd = resolved.map(|r| r.path);
-    let branch = is_worktree.then(|| worktree::branch_name(task_id));
+    // The chip is the picker-chosen branch (stored at create) or the default
+    // `nc/<taskId>`; `cwd.rs` allocated the worktree on the same branch.
+    let branch =
+        is_worktree.then(|| task.branch.clone().unwrap_or_else(|| worktree::branch_name(task_id)));
 
     // Mark in-progress + persist + emit BEFORE ensuring the reader, so a sidecar
     // start failure can't strand the task started-but-unmarked.

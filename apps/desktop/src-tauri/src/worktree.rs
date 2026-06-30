@@ -109,6 +109,36 @@ pub fn allocate(project_path: &Path, task_id: &str) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+/// Create a worktree for `task_id` checked out on `branch`, branching off `base`
+/// when `branch` doesn't exist yet (else the existing branch is resumed and `base`
+/// is ignored). The branch/base-aware variant of [`allocate`], used when the create
+/// dialog's branch picker supplied a custom branch and/or base. Idempotent: an
+/// existing worktree dir is reused.
+pub fn allocate_branch(
+    project_path: &Path,
+    task_id: &str,
+    branch: &str,
+    base: &str,
+) -> Result<PathBuf, String> {
+    let dir = worktree_path(project_path, task_id);
+    if dir.exists() {
+        return Ok(dir); // already allocated (crash recovery / re-run)
+    }
+    std::fs::create_dir_all(worktrees_base(project_path))
+        .map_err(|e| format!("failed to create worktrees base: {e}"))?;
+    let dir_str = dir.to_string_lossy().to_string();
+    let branch_exists = git(project_path, &["rev-parse", "--verify", "--quiet", branch]).is_ok();
+    let args: Vec<&str> = if branch_exists {
+        // Resume an existing branch in a fresh worktree (base is irrelevant).
+        vec!["worktree", "add", &dir_str, branch]
+    } else {
+        // Create `branch` off `base`.
+        vec!["worktree", "add", &dir_str, "-b", branch, base]
+    };
+    git_worktree_add_retrying(project_path, &args)?;
+    Ok(dir)
+}
+
 /// Run `git worktree add` with a small bounded retry on git's transient
 /// worktree-lock contention (concurrency #3). A non-lock error fails immediately
 /// (only lock contention is retried); the dir is disjoint per task, so a retry can
@@ -260,15 +290,26 @@ pub fn merge(
     task_id: &str,
     base_branch: &str,
 ) -> Result<MergeOutcome, String> {
-    let branch = branch_name(task_id);
+    merge_branch(project_path, &branch_name(task_id), base_branch)
+}
+
+/// Merge `branch` into `base` in the project's main checkout — only via `git merge`
+/// (never `--force`/reset). Refuses a dirty base; on any merge failure runs `merge
+/// --abort` and returns `Conflict`, leaving a clean tree. The branch-explicit
+/// variant of [`merge`], used for picker-chosen branch names.
+pub fn merge_branch(
+    project_path: &Path,
+    branch: &str,
+    base: &str,
+) -> Result<MergeOutcome, String> {
     // The base branch must be checked out to receive the merge. Refuse if the main
     // tree is dirty so we never merge over uncommitted work.
     if !is_worktree_clean(project_path)? {
         return Err("base working tree is dirty; commit or stash before merging".to_string());
     }
-    git(project_path, &["checkout", base_branch])?;
+    git(project_path, &["checkout", base])?;
 
-    if git_status_success(project_path, &["merge", "--no-edit", &branch]) {
+    if git_status_success(project_path, &["merge", "--no-edit", branch]) {
         return Ok(MergeOutcome::Merged);
     }
     // Conflict (or any merge failure): abort so the tree is left clean, never forced.
@@ -1420,5 +1461,34 @@ mod tests {
             diff.files
         );
         assert!(diff.additions >= 2, "added.txt has 2 lines: {}", diff.summary);
+    }
+
+    #[test]
+    fn allocate_branch_creates_named_branch_off_base_then_merges() {
+        let Some((_tmp, repo)) = temp_repo() else {
+            return;
+        };
+        let base = base_branch(&repo);
+        // Allocate a worktree on a picker-chosen branch name off the base.
+        let dir = allocate_branch(&repo, "task-1", "feature/foo", &base).expect("allocate_branch");
+        assert!(dir.is_dir());
+        let head = Command::new("git")
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+            .current_dir(&dir)
+            .output()
+            .expect("head");
+        assert_eq!(
+            String::from_utf8_lossy(&head.stdout).trim(),
+            "feature/foo",
+            "the worktree is checked out on the chosen branch"
+        );
+        // A commit on that branch merges cleanly back into base via merge_branch.
+        std::fs::write(dir.join("f.txt"), "x").expect("write");
+        commit(&repo, "task-1", "work").expect("commit");
+        assert_eq!(
+            merge_branch(&repo, "feature/foo", &base).expect("merge"),
+            MergeOutcome::Merged
+        );
+        assert!(repo.join("f.txt").exists(), "merge integrated the file");
     }
 }

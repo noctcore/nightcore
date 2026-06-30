@@ -233,9 +233,16 @@ pub struct Task {
     #[serde(default)]
     #[cfg_attr(test, ts(as = "Option<PermissionMode>"))]
     pub permission_mode: Option<String>,
-    /// The worktree branch (`nc/<taskId>`) for this task's run, set by the M2
-    /// coordinator once a worktree is allocated. `None` until then.
+    /// The worktree branch (`nc/<taskId>` by default, or a name chosen in the create
+    /// dialog's branch picker) for this task's run. Set at create when the picker
+    /// supplied one, else by the coordinator at submit. `None` until then.
     pub branch: Option<String>,
+    /// The base branch this task's worktree branches off / merges into, chosen in
+    /// the create dialog's branch picker (worktree mode). `None` ⇒ the project's
+    /// current branch (`worktree::base_branch`). Serde-additive (legacy ⇒ `None`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub base_branch: Option<String>,
     pub created_at: u64,
     pub updated_at: u64,
     /// Sidecar session id of the last/current run, set once a run starts.
@@ -355,6 +362,7 @@ impl Task {
             effort: None,
             permission_mode: None,
             branch: None,
+            base_branch: None,
             created_at: now,
             updated_at: now,
             session_id: None,
@@ -513,6 +521,12 @@ pub(crate) struct CreateInputs {
     pub(crate) permission_mode: Option<String>,
     pub(crate) max_turns: Option<u32>,
     pub(crate) max_budget_usd: Option<f64>,
+    /// Worktree branch name chosen in the branch picker (worktree mode). `None` ⇒
+    /// the coordinator names it `nc/<taskId>` at submit.
+    pub(crate) branch: Option<String>,
+    /// Base branch chosen in the branch picker (worktree mode). `None` ⇒ the
+    /// project's current branch at allocate/merge time.
+    pub(crate) base_branch: Option<String>,
 }
 
 /// Build a fresh backlog task, stamping the resolved Settings defaults for any
@@ -539,6 +553,14 @@ pub(crate) fn build_new_task(
     // Decompose/Research/TDD selection in the dialog survives create — without this,
     // every new task fell back to `TaskKind::default()` regardless of the picker.
     task.kind = inputs.kind.unwrap_or_default();
+    // Branch picker (worktree mode only): a chosen branch name / base branch survive
+    // create so the coordinator allocates the worktree off the right base under the
+    // chosen name. Blank entries fall back to the defaults (`nc/<taskId>` off the
+    // project's current branch). Main-mode tasks never carry a worktree branch.
+    if run_mode.is_worktree() {
+        task.branch = inputs.branch.filter(|b| !b.trim().is_empty());
+        task.base_branch = inputs.base_branch.filter(|b| !b.trim().is_empty());
+    }
     // P0: an explicit per-task model/effort wins; absent ⇒ stamp the resolved
     // Settings default (an SDK long id) so changing "Default model" in Settings
     // actually affects new runs. `permission_mode` stays lazily resolved at launch
