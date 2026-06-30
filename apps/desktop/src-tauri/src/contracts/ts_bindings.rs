@@ -35,7 +35,10 @@ fn export_all_bindings() {
     use crate::gauntlet::{GauntletResult, GauntletStep};
     use crate::store::types::{StepStatus, StructureLockCheck, StructureLockResult};
     use crate::orchestration::coordinator::LoopSnapshot;
-    use crate::worktree::WorktreeStatus;
+    use crate::worktree::{
+        BranchInfo, DiffFileStat, DiffStatus, MergePreview, MergePreviewStatus, WorktreeDiff,
+        WorktreeDiffFile, WorktreeStatus,
+    };
     use crate::project::Project;
     use crate::settings::{
         AppInfo, McpServerEntry, McpServerTransport, Settings, SettingsOverride, SettingsPatch,
@@ -80,6 +83,15 @@ fn export_all_bindings() {
         McpServerTransport,
         AppInfo,
         WorktreeStatus,
+        // Worktree overhaul: branch picker + merge-preview + worktree-diff shapes.
+        // `export_all` on the aggregates also writes their nested enums/stats.
+        BranchInfo,
+        MergePreview,
+        MergePreviewStatus,
+        DiffFileStat,
+        WorktreeDiff,
+        WorktreeDiffFile,
+        DiffStatus,
         GauntletResult,
         GauntletStep,
         StepStatus,
@@ -146,6 +158,13 @@ mod tests {
             "McpServerTransport.ts",
             "AppInfo.ts",
             "WorktreeInfo.ts",
+            "BranchInfo.ts",
+            "MergePreview.ts",
+            "MergePreviewStatus.ts",
+            "DiffFileStat.ts",
+            "WorktreeDiff.ts",
+            "WorktreeDiffFile.ts",
+            "DiffStatus.ts",
             "GauntletResult.ts",
             "GauntletStep.ts",
             "StepStatus.ts",

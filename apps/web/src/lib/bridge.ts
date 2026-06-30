@@ -45,6 +45,13 @@ export type { McpServerEntry } from './generated/McpServerEntry';
 export type { McpServerTransport } from './generated/McpServerTransport';
 export type { AppInfo } from './generated/AppInfo';
 export type { WorktreeInfo } from './generated/WorktreeInfo';
+export type { BranchInfo } from './generated/BranchInfo';
+export type { MergePreview } from './generated/MergePreview';
+export type { MergePreviewStatus } from './generated/MergePreviewStatus';
+export type { DiffFileStat } from './generated/DiffFileStat';
+export type { WorktreeDiff } from './generated/WorktreeDiff';
+export type { WorktreeDiffFile } from './generated/WorktreeDiffFile';
+export type { DiffStatus } from './generated/DiffStatus';
 export type { GauntletResult } from './generated/GauntletResult';
 export type { GauntletStep } from './generated/GauntletStep';
 export type { StructureLockResult } from './generated/StructureLockResult';
@@ -134,6 +141,9 @@ import type { Settings } from './generated/Settings';
 import type { SettingsPatch } from './generated/SettingsPatch';
 import type { AppInfo } from './generated/AppInfo';
 import type { WorktreeInfo } from './generated/WorktreeInfo';
+import type { BranchInfo } from './generated/BranchInfo';
+import type { MergePreview } from './generated/MergePreview';
+import type { WorktreeDiff } from './generated/WorktreeDiff';
 import type { GauntletResult } from './generated/GauntletResult';
 import type { LoopEnvelope } from './generated/LoopEnvelope';
 import type { PermissionMode } from './generated/PermissionMode';
@@ -579,6 +589,53 @@ export async function runGauntlet(id: string): Promise<GauntletResult> {
  *  back to distinct task branches there. */
 export async function listWorktrees(): Promise<WorktreeInfo[]> {
   return tauriInvoke<WorktreeInfo[]>('list_worktrees', {}, []);
+}
+
+/** The active project's branches (local + remote-tracking) for the branch picker:
+ *  name, remote flag, current flag, upstream, ahead/behind. Returns `[]` outside
+ *  Tauri (browser preview) so the picker degrades to free-form entry. */
+export async function listBranches(): Promise<BranchInfo[]> {
+  return tauriInvoke<BranchInfo[]>('list_branches', {}, []);
+}
+
+/** Read-only preview of merging a task's worktree branch into `base` (defaults to
+ *  the project base): ready / conflicts / diverged / up-to-date, the conflicting
+ *  files, changed-file stats, and ahead/behind. Never touches the working tree.
+ *  Returns an empty up-to-date preview outside Tauri. */
+export async function mergePreview(id: string, base?: string): Promise<MergePreview> {
+  return tauriInvoke<MergePreview>(
+    'merge_preview',
+    { id, base },
+    {
+      status: 'upToDate',
+      branch: '',
+      base: base ?? '',
+      conflictFiles: [],
+      files: [],
+      additions: 0,
+      deletions: 0,
+      ahead: 0,
+      behind: 0,
+    },
+  );
+}
+
+/** The changed files in a task's worktree vs base — committed + uncommitted +
+ *  untracked — for the diff view. Returns an empty diff outside Tauri. */
+export async function worktreeDiff(id: string): Promise<WorktreeDiff> {
+  return tauriInvoke<WorktreeDiff>('worktree_diff', { id }, {
+    files: [],
+    summary: 'No changes',
+    additions: 0,
+    deletions: 0,
+  });
+}
+
+/** Discard a task's worktree and its branch (safe cleanup, distinct from deleting
+ *  the task). Rejects on a real failure (e.g. the task is still running) so the
+ *  caller can surface it; uses raw `invoke` (no silent fallback). */
+export async function discardWorktree(id: string): Promise<void> {
+  await invoke('discard_worktree', { id });
 }
 
 // --- Autonomous loop ------------------------------------------------------

@@ -511,6 +511,379 @@ pub fn reconcile(project_path: &Path, live_task_ids: &[String]) -> Vec<String> {
     pruned
 }
 
+// ─── Branch listing (branch picker) ────────────────────────────────────────────
+
+/// One branch for the branch picker. Local branches carry upstream + ahead/behind
+/// tracking; remote-tracking branches carry name only.
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "BranchInfo.ts"))]
+pub struct BranchInfo {
+    /// Short branch name (`main`, `nc/abc`, or `origin/main` for a remote).
+    pub name: String,
+    /// Whether this is a remote-tracking branch (`refs/remotes/*`).
+    pub is_remote: bool,
+    /// Whether this is the currently checked-out branch in the project's main tree.
+    pub is_current: bool,
+    /// The upstream this local branch tracks (`origin/main`), if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub upstream: Option<String>,
+    /// Commits ahead of upstream (local branches with an upstream only).
+    pub ahead: u32,
+    /// Commits behind upstream.
+    pub behind: u32,
+}
+
+/// List the project's branches — local (`refs/heads`) with upstream + ahead/behind,
+/// then remote-tracking (`refs/remotes`, name only) — for the branch picker. Uses a
+/// stable `for-each-ref` format under `LC_ALL=C`. Tolerant: a failed read yields an
+/// empty list so the picker degrades to free-form branch entry.
+pub fn list_branches(project_path: &Path) -> Vec<BranchInfo> {
+    let mut branches = Vec::new();
+    if let Ok(out) = git(
+        project_path,
+        &[
+            "for-each-ref",
+            "--format=%(refname:short)\t%(HEAD)\t%(upstream:short)\t%(upstream:track,nobracket)",
+            "refs/heads",
+        ],
+    ) {
+        for line in out.lines() {
+            let mut f = line.split('\t');
+            let name = f.next().unwrap_or("").to_string();
+            if name.is_empty() {
+                continue;
+            }
+            let is_current = f.next().map(|h| h.trim() == "*").unwrap_or(false);
+            let upstream = f.next().filter(|s| !s.is_empty()).map(str::to_string);
+            let (ahead, behind) = parse_track(f.next().unwrap_or(""));
+            branches.push(BranchInfo {
+                name,
+                is_remote: false,
+                is_current,
+                upstream,
+                ahead,
+                behind,
+            });
+        }
+    }
+    if let Ok(out) = git(
+        project_path,
+        &["for-each-ref", "--format=%(refname:short)", "refs/remotes"],
+    ) {
+        for line in out.lines() {
+            let name = line.trim().to_string();
+            // Skip the symbolic `origin/HEAD` pointer — it is not a real branch.
+            if name.is_empty() || name.ends_with("/HEAD") {
+                continue;
+            }
+            branches.push(BranchInfo {
+                name,
+                is_remote: true,
+                is_current: false,
+                upstream: None,
+                ahead: 0,
+                behind: 0,
+            });
+        }
+    }
+    branches
+}
+
+/// Parse `git for-each-ref %(upstream:track,nobracket)` text (`"ahead 2, behind 1"`,
+/// `"ahead 3"`, `"behind 4"`, `"gone"`, or empty) into `(ahead, behind)`.
+fn parse_track(s: &str) -> (u32, u32) {
+    let mut ahead = 0;
+    let mut behind = 0;
+    for part in s.split(',') {
+        let p = part.trim();
+        if let Some(n) = p.strip_prefix("ahead ") {
+            ahead = n.trim().parse().unwrap_or(0);
+        } else if let Some(n) = p.strip_prefix("behind ") {
+            behind = n.trim().parse().unwrap_or(0);
+        }
+    }
+    (ahead, behind)
+}
+
+// ─── Diff stats (merge preview + worktree diff) ────────────────────────────────
+
+/// Per-file line-change counts for a diff range (`git diff --numstat`).
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "DiffFileStat.ts"))]
+pub struct DiffFileStat {
+    pub path: String,
+    pub additions: u32,
+    pub deletions: u32,
+}
+
+/// Parse `git diff --numstat <range>` into per-file stats + totals. Binary files
+/// (`-\t-\tpath`) contribute `0/0`.
+fn diff_numstat(repo: &Path, range: &str) -> (Vec<DiffFileStat>, u32, u32) {
+    let out = git(repo, &["diff", "--numstat", range]).unwrap_or_default();
+    let mut files = Vec::new();
+    let mut add_total = 0;
+    let mut del_total = 0;
+    for line in out.lines() {
+        let mut f = line.splitn(3, '\t');
+        let add = f.next().unwrap_or("0").parse::<u32>().unwrap_or(0);
+        let del = f.next().unwrap_or("0").parse::<u32>().unwrap_or(0);
+        let Some(path) = f.next().map(str::to_string).filter(|p| !p.is_empty()) else {
+            continue;
+        };
+        add_total += add;
+        del_total += del;
+        files.push(DiffFileStat {
+            path,
+            additions: add,
+            deletions: del,
+        });
+    }
+    (files, add_total, del_total)
+}
+
+// ─── Merge preview (read-only) ─────────────────────────────────────────────────
+
+/// The outcome of a read-only merge preview.
+#[derive(Debug, Clone, Copy, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "MergePreviewStatus.ts"))]
+pub enum MergePreviewStatus {
+    /// Branch is level with base — nothing to merge.
+    UpToDate,
+    /// Branch is ahead of base and merges cleanly.
+    Ready,
+    /// Branch and base diverged but still merge cleanly.
+    Diverged,
+    /// Merging would conflict (the merge is NOT performed — preview only).
+    Conflicts,
+}
+
+/// A read-only preview of merging `branch` into `base`: status, the files that would
+/// conflict, the changed-file stats, and ahead/behind counts. Computed without
+/// touching the working tree (`git merge-tree --write-tree`), so it is safe to call
+/// freely (Aperant's merge-preview, automaker's multi-layer conflict detection).
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "MergePreview.ts"))]
+pub struct MergePreview {
+    /// The merge status (up-to-date / ready / diverged / conflicts).
+    pub status: MergePreviewStatus,
+    /// The branch being previewed.
+    pub branch: String,
+    /// The base branch the merge would target.
+    pub base: String,
+    /// Files that would conflict. Empty when none; also empty in the rare "unknown"
+    /// case (the `status` carries the conflict signal regardless).
+    pub conflict_files: Vec<String>,
+    /// Per-file change stats of `base...branch`.
+    pub files: Vec<DiffFileStat>,
+    /// Total added lines across `files`.
+    pub additions: u32,
+    /// Total deleted lines across `files`.
+    pub deletions: u32,
+    /// Commits the branch is ahead of base.
+    pub ahead: u32,
+    /// Commits the branch is behind base.
+    pub behind: u32,
+}
+
+/// Preview merging `branch` into `base` — READ-ONLY (never mutates the working tree).
+pub fn merge_preview(project_path: &Path, branch: &str, base: &str) -> MergePreview {
+    let range = format!("{base}...{branch}");
+    let (behind, ahead) = git(project_path, &["rev-list", "--left-right", "--count", &range])
+        .ok()
+        .and_then(|s| parse_left_right_count(&s))
+        .unwrap_or((0, 0));
+    let (files, additions, deletions) = diff_numstat(project_path, &range);
+    let (status, conflict_files) = match detect_merge_conflicts(project_path, base, branch) {
+        ConflictDetection::Conflicts(f) => (MergePreviewStatus::Conflicts, f),
+        _ => {
+            let status = if ahead == 0 {
+                MergePreviewStatus::UpToDate
+            } else if behind > 0 {
+                MergePreviewStatus::Diverged
+            } else {
+                MergePreviewStatus::Ready
+            };
+            (status, Vec::new())
+        }
+    };
+    MergePreview {
+        status,
+        branch: branch.to_string(),
+        base: base.to_string(),
+        conflict_files,
+        files,
+        additions,
+        deletions,
+        ahead,
+        behind,
+    }
+}
+
+/// Read-only conflict detection result.
+enum ConflictDetection {
+    /// The merge applies cleanly.
+    Clean,
+    /// The merge conflicts; the named files are unmergeable.
+    Conflicts(Vec<String>),
+    /// Could not be determined (old git without `--write-tree`, or a bad ref).
+    Unknown,
+}
+
+/// Detect whether merging `branch` into `base` conflicts, WITHOUT touching the tree,
+/// via `git merge-tree --write-tree --name-only` (git ≥ 2.38). Exit 0 = clean, exit
+/// 1 = conflicts (stdout lists the files after the tree OID), anything else (or an
+/// old git lacking the flag) = unknown.
+fn detect_merge_conflicts(project_path: &Path, base: &str, branch: &str) -> ConflictDetection {
+    let Ok(out) = crate::platform::git_command(project_path)
+        .args(["merge-tree", "--write-tree", "--name-only", base, branch])
+        .output()
+    else {
+        return ConflictDetection::Unknown;
+    };
+    if out.status.success() {
+        return ConflictDetection::Clean;
+    }
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if stderr.contains("usage:") || stderr.contains("unknown option") || stderr.contains("error:") {
+        return ConflictDetection::Unknown;
+    }
+    if out.status.code() == Some(1) {
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        // `<tree-oid>\n<conflicted file>…\n\n<informational messages>`: take the
+        // file-name section up to the first blank line.
+        let files: Vec<String> = stdout
+            .lines()
+            .skip(1)
+            .take_while(|l| !l.trim().is_empty())
+            .map(|l| l.trim().to_string())
+            .collect();
+        return ConflictDetection::Conflicts(files);
+    }
+    ConflictDetection::Unknown
+}
+
+// ─── Worktree diff (working-tree inclusive) ────────────────────────────────────
+
+/// The change kind of a file in a worktree diff.
+#[derive(Debug, Clone, Copy, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "DiffStatus.ts"))]
+pub enum DiffStatus {
+    Added,
+    Modified,
+    Deleted,
+    Renamed,
+    Untracked,
+}
+
+/// One changed file in a worktree diff vs base.
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "WorktreeDiffFile.ts"))]
+pub struct WorktreeDiffFile {
+    pub path: String,
+    pub status: DiffStatus,
+    pub additions: u32,
+    pub deletions: u32,
+}
+
+/// The changed files in a worktree vs its base branch — committed AND uncommitted,
+/// plus untracked — so the reviewer/UI sees the real state (an empty `base..HEAD`
+/// does not mean "no changes"; uncommitted edits exist). Tolerant: failed reads
+/// degrade to fewer entries rather than erroring.
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "WorktreeDiff.ts"))]
+pub struct WorktreeDiff {
+    pub files: Vec<WorktreeDiffFile>,
+    pub summary: String,
+    pub additions: u32,
+    pub deletions: u32,
+}
+
+/// Compute the worktree's changed files vs `base` (committed + uncommitted tracked
+/// changes via `git diff <base>`, plus untracked files).
+pub fn worktree_diff(dir: &Path, base: &str) -> WorktreeDiff {
+    use std::collections::HashMap;
+    refresh_index(dir);
+    let mut stats: HashMap<String, (u32, u32)> = HashMap::new();
+    if let Ok(numstat) = git(dir, &["diff", "--numstat", base]) {
+        for line in numstat.lines() {
+            let mut f = line.splitn(3, '\t');
+            let add = f.next().unwrap_or("0").parse::<u32>().unwrap_or(0);
+            let del = f.next().unwrap_or("0").parse::<u32>().unwrap_or(0);
+            if let Some(path) = f.next() {
+                if !path.is_empty() {
+                    stats.insert(path.to_string(), (add, del));
+                }
+            }
+        }
+    }
+    let mut files = Vec::new();
+    let mut add_total = 0;
+    let mut del_total = 0;
+    if let Ok(name_status) = git(dir, &["diff", "--name-status", base]) {
+        for line in name_status.lines() {
+            let mut f = line.splitn(2, '\t');
+            let code = f.next().unwrap_or("");
+            let Some(path) = f.next().map(str::to_string).filter(|p| !p.is_empty()) else {
+                continue;
+            };
+            let status = match code.chars().next() {
+                Some('A') => DiffStatus::Added,
+                Some('D') => DiffStatus::Deleted,
+                Some('R') => DiffStatus::Renamed,
+                _ => DiffStatus::Modified,
+            };
+            let (a, d) = stats.get(&path).copied().unwrap_or((0, 0));
+            add_total += a;
+            del_total += d;
+            files.push(WorktreeDiffFile {
+                path,
+                status,
+                additions: a,
+                deletions: d,
+            });
+        }
+    }
+    if let Ok(untracked) = git(dir, &["ls-files", "--others", "--exclude-standard"]) {
+        for path in untracked.lines() {
+            let path = path.trim();
+            if !path.is_empty() {
+                files.push(WorktreeDiffFile {
+                    path: path.to_string(),
+                    status: DiffStatus::Untracked,
+                    additions: 0,
+                    deletions: 0,
+                });
+            }
+        }
+    }
+    let summary = format!(
+        "{} file{} changed, +{add_total} -{del_total}",
+        files.len(),
+        if files.len() == 1 { "" } else { "s" }
+    );
+    WorktreeDiff {
+        files,
+        summary,
+        additions: add_total,
+        deletions: del_total,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -953,5 +1326,99 @@ mod tests {
         // we assert the guard directly on a crafted path.
         let base = worktrees_base(Path::new("/repo"));
         assert!(!is_under(&base, Path::new("/repo/.git")));
+    }
+
+    #[test]
+    fn list_branches_includes_the_current_branch() {
+        let Some((_tmp, repo)) = temp_repo() else {
+            return;
+        };
+        let branches = list_branches(&repo);
+        let current = branches
+            .iter()
+            .find(|b| b.is_current)
+            .expect("a current branch");
+        assert!(!current.is_remote, "the checked-out branch is local");
+        assert_eq!(current.name, base_branch(&repo));
+    }
+
+    #[test]
+    fn merge_preview_reports_ready_then_conflict() {
+        let Some((_tmp, repo)) = temp_repo() else {
+            return;
+        };
+        let base = base_branch(&repo);
+        let dir = allocate(&repo, "task-1").expect("allocate");
+        std::fs::write(dir.join("feature.txt"), "feature\n").expect("write");
+        commit(&repo, "task-1", "add feature").expect("commit");
+
+        let preview = merge_preview(&repo, &branch_name("task-1"), &base);
+        assert_eq!(preview.status, MergePreviewStatus::Ready);
+        assert!(preview.conflict_files.is_empty());
+        assert_eq!(preview.ahead, 1);
+        assert_eq!(preview.behind, 0);
+        assert!(preview.files.iter().any(|f| f.path == "feature.txt"));
+
+        // Diverge base on a line the branch also edits → conflict preview.
+        let dir2 = allocate(&repo, "task-2").expect("allocate 2");
+        std::fs::write(dir2.join("README.md"), "from-branch\n").expect("write");
+        commit(&repo, "task-2", "branch edit").expect("commit");
+        run_in(&repo, &["checkout", &base]);
+        std::fs::write(repo.join("README.md"), "from-base\n").expect("write");
+        run_in(&repo, &["commit", "-am", "base edit"]);
+
+        let conflict = merge_preview(&repo, &branch_name("task-2"), &base);
+        // Modern git (≥2.38) detects the conflict precisely; older git can only see
+        // the divergence — accept either, and verify the file list when conflicting.
+        assert!(
+            matches!(
+                conflict.status,
+                MergePreviewStatus::Conflicts | MergePreviewStatus::Diverged
+            ),
+            "expected conflicts-or-diverged, got {:?}",
+            conflict.status
+        );
+        if matches!(conflict.status, MergePreviewStatus::Conflicts) {
+            assert!(
+                conflict.conflict_files.iter().any(|f| f == "README.md"),
+                "conflict files should name README.md: {:?}",
+                conflict.conflict_files
+            );
+        }
+        // The preview is read-only: the base tree is untouched.
+        assert!(
+            is_worktree_clean(&repo).expect("status"),
+            "merge_preview must not mutate the working tree"
+        );
+    }
+
+    #[test]
+    fn worktree_diff_lists_committed_and_untracked() {
+        let Some((_tmp, repo)) = temp_repo() else {
+            return;
+        };
+        let base = base_branch(&repo);
+        let dir = allocate(&repo, "task-1").expect("allocate");
+        std::fs::write(dir.join("added.txt"), "a\nb\n").expect("write");
+        commit(&repo, "task-1", "add file").expect("commit");
+        // An uncommitted untracked file is also part of the worktree's diff.
+        std::fs::write(dir.join("scratch.txt"), "wip\n").expect("write");
+
+        let diff = worktree_diff(&dir, &base);
+        assert!(
+            diff.files
+                .iter()
+                .any(|f| f.path == "added.txt" && matches!(f.status, DiffStatus::Added)),
+            "committed add should appear: {:?}",
+            diff.files
+        );
+        assert!(
+            diff.files
+                .iter()
+                .any(|f| f.path == "scratch.txt" && matches!(f.status, DiffStatus::Untracked)),
+            "untracked file should appear: {:?}",
+            diff.files
+        );
+        assert!(diff.additions >= 2, "added.txt has 2 lines: {}", diff.summary);
     }
 }
