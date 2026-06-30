@@ -17,6 +17,8 @@ export interface ConstitutionCardState {
   loading: boolean;
   /** True while a save/regenerate is in flight (disables the actions). */
   busy: boolean;
+  /** Which action is in flight (drives the per-button spinner/label), or null. */
+  busyAction: 'save' | 'regenerate' | null;
   /** True when the editor has unsaved edits vs. what is persisted on disk. */
   dirty: boolean;
   /** The active editor view. */
