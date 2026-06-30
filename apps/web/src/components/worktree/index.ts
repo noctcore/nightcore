@@ -1,4 +1,6 @@
-/** Barrel for the worktree feature: the standalone manager + its review dialogs. */
+/** Barrel for the worktree feature: the standalone manager view + its dialogs. */
+export { WorktreeView } from './WorktreeView';
+export type { WorktreeViewProps } from './WorktreeView/WorktreeView.types';
 export { WorktreeManager } from './WorktreeManager';
 export type { WorktreeManagerProps } from './WorktreeManager/WorktreeManager.types';
 export { MergePreviewDialog } from './MergePreviewDialog';

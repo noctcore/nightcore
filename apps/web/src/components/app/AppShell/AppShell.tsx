@@ -3,6 +3,7 @@ import { Board, EMPTY_TRANSCRIPT, NewTaskForm } from '@/components/board';
 import { NewProjectDialog } from '@/components/new-project';
 import {
   BoardIcon,
+  BranchIcon,
   Button,
   ConfirmDialog,
   EmptyState,
@@ -39,6 +40,9 @@ const ScorecardView = lazy(() =>
 const HarnessView = lazy(() =>
   import('@/components/harness').then((m) => ({ default: m.HarnessView })),
 );
+const WorktreeView = lazy(() =>
+  import('@/components/worktree').then((m) => ({ default: m.WorktreeView })),
+);
 
 /** A minimal fallback while a lazy route view streams in — a quiet centered
  *  status line that never flashes chrome of its own. */
@@ -59,6 +63,7 @@ function RouteFallback() {
 // items route within an open project.
 const NAV: NavItem[] = [
   { view: 'board', label: 'Kanban Board', hint: 'K', icon: <BoardIcon size={16} /> },
+  { view: 'worktrees', label: 'Worktrees', hint: 'W', icon: <BranchIcon size={16} /> },
   { view: 'insight', label: 'Insight', hint: 'I', icon: <InsightIcon size={16} /> },
   { view: 'scorecard', label: 'Scorecard', hint: 'R', icon: <PerfIcon size={16} /> },
   { view: 'harness', label: 'Harness', hint: 'H', icon: <VerifiedIcon size={16} /> },
@@ -245,6 +250,12 @@ export function AppShell() {
               </Suspense>
             )}
           </div>
+        )}
+
+        {view === 'worktrees' && (
+          <Suspense fallback={<RouteFallback />}>
+            <WorktreeView worktrees={board.worktrees} tasks={tasks} />
+          </Suspense>
         )}
 
         {view === 'insight' && (

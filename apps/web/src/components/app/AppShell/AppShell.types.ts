@@ -2,6 +2,7 @@
  *  Logs/TaskDetail drawer are overlays, not routes. */
 export type AppView =
   | 'board'
+  | 'worktrees'
   | 'insight'
   | 'scorecard'
   | 'harness'
