@@ -1,0 +1,89 @@
+/** Presentational sub-parts for WorktreeManager: a tinted status chip and a
+ *  worktree row with its badge cluster + per-row actions. */
+import { BranchIcon, Button, LogsIcon, MoveIcon, TrashIcon } from '@/components/ui';
+import type { WorktreeChip, WorktreeChipTone, WorktreeRowView } from './WorktreeManager.types';
+
+/** Tinted classes per chip tone, mirroring the codebase's semantic status
+ *  tokens (amber `warning`, emerald `success`, red `destructive`). */
+const CHIP_TONES: Record<WorktreeChipTone, string> = {
+  warning: 'border-warning/40 bg-warning/[0.12] text-warning',
+  success: 'border-success/40 bg-success/[0.12] text-success',
+  danger: 'border-destructive/40 bg-destructive/[0.12] text-destructive',
+};
+
+/** A small tinted status chip — changed / ahead / behind / diverged. */
+function StatusChip({ chip }: { chip: WorktreeChip }) {
+  return (
+    <span
+      aria-label={chip.ariaLabel}
+      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-medium tabular-nums ${CHIP_TONES[chip.tone]}`}
+    >
+      {chip.dot === true && <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />}
+      {chip.label}
+    </span>
+  );
+}
+
+/** Props for a single worktree row. */
+interface WorktreeRowProps {
+  view: WorktreeRowView;
+  onViewDiff: (taskId: string) => void;
+  onPreviewMerge: (taskId: string) => void;
+  onDiscard: (taskId: string) => void;
+}
+
+/** One worktree: the branch (monospace) + optional task title, a status-badge
+ *  cluster, and View diff / Merge / Discard actions keyed on the primary task.
+ *  Actions disable when the worktree owns no task (`primaryTaskId === null`). */
+export function WorktreeRow({ view, onViewDiff, onPreviewMerge, onDiscard }: WorktreeRowProps) {
+  const taskId = view.primaryTaskId;
+  const disabled = taskId === null;
+
+  return (
+    <li className="flex items-start gap-3 rounded-[10px] border border-border bg-white/[0.02] px-3 py-2.5">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <BranchIcon size={13} className="shrink-0 text-muted-foreground" />
+          <span className="truncate font-mono text-[12px] text-foreground">{view.branch}</span>
+        </div>
+        {view.title !== undefined && (
+          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{view.title}</p>
+        )}
+        {view.chips.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            {view.chips.map((chip) => (
+              <StatusChip key={chip.key} chip={chip} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1.5">
+        <Button
+          variant="secondary"
+          disabled={disabled}
+          onClick={() => taskId !== null && onViewDiff(taskId)}
+        >
+          <LogsIcon size={13} />
+          Diff
+        </Button>
+        <Button
+          variant="secondary"
+          disabled={disabled}
+          onClick={() => taskId !== null && onPreviewMerge(taskId)}
+        >
+          <MoveIcon size={13} />
+          Merge
+        </Button>
+        <Button
+          variant="danger"
+          disabled={disabled}
+          onClick={() => taskId !== null && onDiscard(taskId)}
+        >
+          <TrashIcon size={13} />
+          Discard
+        </Button>
+      </div>
+    </li>
+  );
+}

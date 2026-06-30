@@ -1,5 +1,7 @@
 /** Barrel module re-exporting every shared UI primitive and its public types. */
 export { Badge } from './Badge';
+export { BranchPicker } from './BranchPicker';
+export type { BranchPickerProps } from './BranchPicker/BranchPicker.types';
 export { BrandMark } from './BrandMark';
 export { Button } from './Button';
 export { Card } from './Card';
