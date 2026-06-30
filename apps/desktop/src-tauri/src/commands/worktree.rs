@@ -65,7 +65,11 @@ fn merge_preview_blocking(
     let task = store.get(id).ok_or_else(|| format!("no task with id {id}"))?;
     let project = active_project_path(app)?;
     let branch = task_branch(&task);
-    let base = base.unwrap_or_else(|| worktree::base_branch(&project));
+    // Preview against the task's chosen base (matching what `merge_task` will target),
+    // an explicit override, else the project's current branch.
+    let base = base
+        .or_else(|| task.base_branch.clone())
+        .unwrap_or_else(|| worktree::base_branch(&project));
     Ok(worktree::merge_preview(&project, &branch, &base))
 }
 
@@ -81,15 +85,18 @@ fn worktree_diff_blocking(app: &AppHandle, id: &str) -> Result<WorktreeDiff, Str
     let store = app
         .try_state::<TaskStore>()
         .ok_or_else(|| "task store unavailable".to_string())?;
-    if store.get(id).is_none() {
-        return Err(format!("no task with id {id}"));
-    }
+    let task = store.get(id).ok_or_else(|| format!("no task with id {id}"))?;
     let project = active_project_path(app)?;
     let dir = worktree::worktree_path(&project, id);
     if !dir.exists() {
         return Err(format!("no worktree for task {id} — run it first"));
     }
-    let base = worktree::base_branch(&project);
+    // Diff against the task's chosen base (matching the merge target), else the
+    // project's current branch.
+    let base = task
+        .base_branch
+        .clone()
+        .unwrap_or_else(|| worktree::base_branch(&project));
     Ok(worktree::worktree_diff(&dir, &base))
 }
 

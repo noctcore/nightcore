@@ -77,8 +77,10 @@ export function useWorktreeView(tasks: Task[], worktrees: WorktreeInfo[]): Workt
           setPreview((p) => (p && p.taskId === taskId ? { ...p, data, loading: false } : p)),
         )
         .catch((err) => {
-          setPreview(null);
           reportError(err);
+          // Only close if this request is still the open one — a late rejection of a
+          // dismissed request must not close a newer preview.
+          setPreview((p) => (p && p.taskId === taskId ? null : p));
         });
     },
     [reportError],
@@ -92,8 +94,8 @@ export function useWorktreeView(tasks: Task[], worktrees: WorktreeInfo[]): Workt
           setDiff((d) => (d && d.taskId === taskId ? { ...d, data, loading: false } : d)),
         )
         .catch((err) => {
-          setDiff(null);
           reportError(err);
+          setDiff((d) => (d && d.taskId === taskId ? null : d));
         });
     },
     [reportError],
@@ -137,14 +139,23 @@ export function useWorktreeView(tasks: Task[], worktrees: WorktreeInfo[]): Workt
         setDiscard(null);
       })
       .catch((err) => {
-        // Keep the dialog open and surface the error inline (drives the retry state).
+        // Keep the dialog open and surface the error inline (drives the retry state),
+        // but only if this discard is still the open one (guard a cancel-then-reopen).
         const { detail } = parseGitError(err);
-        setDiscard((d) => (d ? { ...d, discarding: false, error: detail } : d));
+        setDiscard((d) =>
+          d && d.taskId === taskId ? { ...d, discarding: false, error: detail } : d,
+        );
       });
   }, [discard, toast]);
 
   const onPreviewViewDiff = useCallback(() => {
-    if (preview !== null) openDiff(preview.taskId);
+    if (preview === null) return;
+    // Close the preview before opening the diff — the Modal primitive is not built
+    // to stack (two focus traps + Esc listeners would fight), so the dialogs must be
+    // mutually exclusive.
+    const { taskId } = preview;
+    setPreview(null);
+    openDiff(taskId);
   }, [preview, openDiff]);
 
   const closePreview = useCallback(() => setPreview(null), []);

@@ -280,23 +280,11 @@ pub fn commit_staged(dir: &Path, message: &str) -> Result<(), String> {
     git(dir, &["commit", "-m", message]).map(|_| ())
 }
 
-/// Merge a task's `nc/<taskId>` branch into the project's base branch. Operates on
-/// the project's main checkout but ONLY via `git merge` (never `--force`, never a
-/// reset). On a merge conflict the merge is aborted and `Ok(MergeOutcome::Conflict)`
-/// is returned so the UI surfaces it — the working tree is left clean, not forced.
-/// `base_branch` is the branch the merge targets (resolved by the caller).
-pub fn merge(
-    project_path: &Path,
-    task_id: &str,
-    base_branch: &str,
-) -> Result<MergeOutcome, String> {
-    merge_branch(project_path, &branch_name(task_id), base_branch)
-}
-
-/// Merge `branch` into `base` in the project's main checkout — only via `git merge`
+/// Merge `branch` into `base` in the project's main checkout — ONLY via `git merge`
 /// (never `--force`/reset). Refuses a dirty base; on any merge failure runs `merge
-/// --abort` and returns `Conflict`, leaving a clean tree. The branch-explicit
-/// variant of [`merge`], used for picker-chosen branch names.
+/// --abort` and returns `Ok(MergeOutcome::Conflict)`, leaving the tree clean (the UI
+/// surfaces the conflict). `branch`/`base` are resolved by the caller (the task's
+/// stored branch / base, defaulting to `nc/<taskId>` off the project's current branch).
 pub fn merge_branch(
     project_path: &Path,
     branch: &str,
@@ -334,12 +322,6 @@ pub fn base_branch(project_path: &Path) -> String {
         .ok()
         .filter(|b| !b.is_empty() && b != "HEAD")
         .unwrap_or_else(|| DEFAULT_BASE_BRANCH.to_string())
-}
-
-/// Delete a task's `nc/<taskId>` branch (used after a successful merge when policy
-/// removes the worktree). Best-effort: a missing branch is not an error.
-pub fn delete_branch(project_path: &Path, task_id: &str) -> Result<(), String> {
-    delete_branch_named(project_path, &branch_name(task_id))
 }
 
 /// Delete a specific `branch` (best-effort). Refuses to delete the project's current
@@ -444,6 +426,15 @@ pub fn worktree_status(dir: &Path, task_id: &str, base: &str) -> WorktreeStatus 
     // Clear git's stale stat cache first so a `stat`-touched-but-unchanged file
     // doesn't read as a false-positive dirty (best-effort; never fails the read).
     refresh_index(dir);
+    // Read the worktree's ACTUAL checked-out branch — it may be a picker-chosen name
+    // (e.g. `feature/foo`), not `nc/<taskId>`. The web groups tasks by exact
+    // `task.branch === worktree.branch`, so reporting the real branch keeps a
+    // custom-branch task's worktree tab labelled + grouped correctly. Falls back to
+    // the deterministic `nc/<taskId>` when HEAD can't be resolved (detached/locked).
+    let branch = git(dir, &["rev-parse", "--abbrev-ref", "HEAD"])
+        .ok()
+        .filter(|b| !b.is_empty() && b != "HEAD")
+        .unwrap_or_else(|| branch_name(task_id));
     let porcelain = git(dir, &["status", "--porcelain"]).unwrap_or_default();
     let dirty = !porcelain.is_empty();
     let changed_files = if porcelain.is_empty() {
@@ -457,7 +448,7 @@ pub fn worktree_status(dir: &Path, task_id: &str, base: &str) -> WorktreeStatus 
         .and_then(|s| parse_left_right_count(&s))
         .unwrap_or((0, 0));
     WorktreeStatus {
-        branch: branch_name(task_id),
+        branch,
         path: dir.to_string_lossy().to_string(),
         task_ids: vec![task_id.to_string()],
         dirty,
@@ -665,7 +656,9 @@ pub struct DiffFileStat {
 /// Parse `git diff --numstat <range>` into per-file stats + totals. Binary files
 /// (`-\t-\tpath`) contribute `0/0`.
 fn diff_numstat(repo: &Path, range: &str) -> (Vec<DiffFileStat>, u32, u32) {
-    let out = git(repo, &["diff", "--numstat", range]).unwrap_or_default();
+    // `--no-renames` so a rename is a clean Delete+Add pair (one path per row) rather
+    // than git's `old => new` form, which would not key cleanly.
+    let out = git(repo, &["diff", "--numstat", "--no-renames", range]).unwrap_or_default();
     let mut files = Vec::new();
     let mut add_total = 0;
     let mut del_total = 0;
@@ -859,8 +852,10 @@ pub struct WorktreeDiff {
 pub fn worktree_diff(dir: &Path, base: &str) -> WorktreeDiff {
     use std::collections::HashMap;
     refresh_index(dir);
+    // `--no-renames` keeps numstat ⇄ name-status keyed on a single path per row (a
+    // rename becomes a Delete+Add pair) so per-file stats join correctly.
     let mut stats: HashMap<String, (u32, u32)> = HashMap::new();
-    if let Ok(numstat) = git(dir, &["diff", "--numstat", base]) {
+    if let Ok(numstat) = git(dir, &["diff", "--numstat", "--no-renames", base]) {
         for line in numstat.lines() {
             let mut f = line.splitn(3, '\t');
             let add = f.next().unwrap_or("0").parse::<u32>().unwrap_or(0);
@@ -875,7 +870,7 @@ pub fn worktree_diff(dir: &Path, base: &str) -> WorktreeDiff {
     let mut files = Vec::new();
     let mut add_total = 0;
     let mut del_total = 0;
-    if let Ok(name_status) = git(dir, &["diff", "--name-status", base]) {
+    if let Ok(name_status) = git(dir, &["diff", "--name-status", "--no-renames", base]) {
         for line in name_status.lines() {
             let mut f = line.splitn(2, '\t');
             let code = f.next().unwrap_or("");
@@ -1269,7 +1264,7 @@ mod tests {
         commit(&repo, "task-1", "add feature").expect("commit");
 
         assert_eq!(
-            merge(&repo, "task-1", &base).expect("merge"),
+            merge_branch(&repo, &branch_name("task-1"), &base).expect("merge"),
             MergeOutcome::Merged
         );
         // The base branch now contains the feature file.
@@ -1295,7 +1290,7 @@ mod tests {
         run_in(&repo, &["commit", "-am", "base edit"]);
 
         assert_eq!(
-            merge(&repo, "task-1", &base).expect("merge"),
+            merge_branch(&repo, &branch_name("task-1"), &base).expect("merge"),
             MergeOutcome::Conflict
         );
         // The merge was aborted, not forced: the base content is intact and the tree
@@ -1329,7 +1324,7 @@ mod tests {
         // The cleanup order: remove the worktree (frees its checked-out branch),
         // then delete the branch.
         remove(&repo, "task-1").expect("remove worktree");
-        delete_branch(&repo, "task-1").expect("delete branch");
+        delete_branch_named(&repo, &branch_name("task-1")).expect("delete branch");
 
         assert!(
             list_worktree_task_ids(&repo).is_empty(),
@@ -1355,9 +1350,9 @@ mod tests {
         // The branch is checked out in the worktree; removing the worktree first
         // frees it for deletion (mirrors the merge cleanup order).
         remove(&repo, "task-1").expect("remove");
-        delete_branch(&repo, "task-1").expect("delete");
+        delete_branch_named(&repo, &branch_name("task-1")).expect("delete");
         // Deleting a now-missing branch is a no-op.
-        delete_branch(&repo, "task-1").expect("idempotent delete");
+        delete_branch_named(&repo, &branch_name("task-1")).expect("idempotent delete");
     }
 
     #[test]
@@ -1481,6 +1476,13 @@ mod tests {
             String::from_utf8_lossy(&head.stdout).trim(),
             "feature/foo",
             "the worktree is checked out on the chosen branch"
+        );
+        // worktree_status reports the REAL checked-out branch (so the web groups the
+        // task by its actual branch), not the derived `nc/<id>`.
+        assert_eq!(
+            worktree_status(&dir, "task-1", &base).branch,
+            "feature/foo",
+            "worktree_status reports the actual branch, not nc/<taskId>"
         );
         // A commit on that branch merges cleanly back into base via merge_branch.
         std::fs::write(dir.join("f.txt"), "x").expect("write");
