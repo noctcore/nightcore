@@ -214,6 +214,10 @@ pub fn run() {
             orchestration::coordinator::resume_auto_loop,
             orchestration::coordinator::set_max_concurrency_cmd,
             orchestration::coordinator::list_worktrees,
+            commands::worktree::list_branches,
+            commands::worktree::merge_preview,
+            commands::worktree::worktree_diff,
+            commands::worktree::discard_worktree,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Nightcore application");
