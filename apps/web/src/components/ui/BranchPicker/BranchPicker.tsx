@@ -28,7 +28,7 @@ export function BranchPicker({
   return (
     <div className="relative" onBlur={v.onContainerBlur}>
       <div
-        className={`flex items-center gap-2 rounded-[10px] border bg-black/20 px-3 transition-colors focus-within:border-primary ${
+        className={`nc-focus-ring-host flex items-center gap-2 rounded-[10px] border bg-black/20 px-3 transition-colors focus-within:border-primary ${
           disabled ? 'border-border opacity-60' : 'border-border'
         }`}
       >
