@@ -34,6 +34,70 @@ use crate::task::now_ms;
 
 use super::ensure_reader;
 
+/// Generate the four store-agnostic lifecycle `#[tauri::command]`s every scan feature
+/// (Insight / Scorecard / Harness) exposes identically: `list` (all runs, newest
+/// first), `get` (one by id), `delete` (drop a run + its file), and `cancel` (dispatch
+/// the feature's cancel `SurfaceCommand`). Tauri commands can't be generic (the
+/// `generate_handler!` macro needs concrete fns), so this macro stamps the four
+/// concrete fns from one declaration instead of hand-copying them per feature —
+/// collapsing the previously-triplicated boilerplate into a single scan-kind surface.
+///
+/// The feature's `start_*` and its convert/apply commands stay hand-written: their
+/// bodies genuinely diverge (per-feature run struct, dispatch payload, and
+/// convert-to-task / write-artifact logic), and `start_*` already routes its shared
+/// slice through [`begin_scan_run`] / [`dispatch_scan_command`].
+///
+/// Invoke ONE per feature at module scope; the caller supplies the exact command
+/// names so `generate_handler!` (via the `sidecar::*` glob re-export) still resolves
+/// them by their historical paths. The store is reached as managed [`tauri::State`]
+/// (resolved by type, so its binding name is irrelevant) and must expose the
+/// [`RunStore`](crate::store::run_store::RunStore) `list`/`get`/`remove` surface.
+macro_rules! scan_lifecycle_commands {
+    (
+        store: $Store:ty,
+        run: $Run:ty,
+        list: $list:ident,
+        get: $get:ident,
+        delete: $delete:ident,
+        cancel: $cancel:ident,
+        cancel_command: $cancel_variant:ident,
+        item: $item:literal $(,)?
+    ) => {
+        #[doc = concat!("All ", $item, " runs for the active project (newest first).")]
+        #[tauri::command]
+        pub fn $list(store: tauri::State<'_, $Store>) -> Result<Vec<$Run>, String> {
+            Ok(store.list())
+        }
+
+        #[doc = concat!("One ", $item, " run by id.")]
+        #[tauri::command]
+        pub fn $get(
+            store: tauri::State<'_, $Store>,
+            run_id: String,
+        ) -> Result<Option<$Run>, String> {
+            Ok(store.get(&run_id))
+        }
+
+        #[doc = concat!("Delete a ", $item, " run and its file.")]
+        #[tauri::command]
+        pub fn $delete(store: tauri::State<'_, $Store>, run_id: String) -> Result<(), String> {
+            store.remove(&run_id)
+        }
+
+        #[doc = concat!("Cancel an in-flight ", $item, " run (aborts every pass).")]
+        #[tauri::command]
+        pub async fn $cancel(app: tauri::AppHandle, run_id: String) -> Result<(), String> {
+            use tauri::Manager;
+            let provider = app.state::<std::sync::Arc<crate::provider::SidecarProvider>>();
+            let command = crate::contracts::SurfaceCommand::$cancel_variant {
+                run_id: run_id.clone(),
+            };
+            provider.dispatch_command(command).await
+        }
+    };
+}
+pub(crate) use scan_lifecycle_commands;
+
 /// Serialize a generated wire enum to its wire string (e.g. `AnalysisScope::Diff`
 /// → `"diff"`, `ScorecardDimension::ErrorHandling` → `"error-handling"`,
 /// `ConventionCategory::FolderStructure` → `"folder-structure"`). A value that

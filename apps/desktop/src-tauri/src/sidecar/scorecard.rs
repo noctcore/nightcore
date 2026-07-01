@@ -16,7 +16,6 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::contracts::{EffortLevel, ScorecardDimension, SurfaceCommand};
-use crate::provider::SidecarProvider;
 use crate::project::ProjectStore;
 use crate::store::scorecard::{ScorecardRun, ScorecardStore, StoredReading};
 use crate::store::insight::InsightUsage;
@@ -24,10 +23,23 @@ use crate::store::TaskStore;
 use crate::task::{Task, TaskKind, TASK_EVENT};
 
 use super::scan::{
-    begin_scan_run, dispatch_scan_command, failure_reason, finalize_completed, wire_str,
-    ScanRunInit, ScanTelemetry,
+    begin_scan_run, dispatch_scan_command, failure_reason, finalize_completed,
+    scan_lifecycle_commands, wire_str, ScanRunInit, ScanTelemetry,
 };
 use super::SCORECARD_EVENT;
+
+// The four store-agnostic lifecycle commands (list / get / delete / cancel), stamped
+// from the shared scan macro instead of hand-copied per feature.
+scan_lifecycle_commands! {
+    store: ScorecardStore,
+    run: ScorecardRun,
+    list: list_scorecard_runs,
+    get: get_scorecard_run,
+    delete: delete_scorecard_run,
+    cancel: cancel_scorecard,
+    cancel_command: CancelScorecard,
+    item: "scorecard",
+}
 
 /// Start a Readiness Scorecard run over the active project. Creates the persisted
 /// run (status `running`), dispatches the `start-scorecard` command, and returns the
@@ -96,42 +108,6 @@ pub async fn start_scorecard(
 
     tracing::info!(target: "nightcore", run_id = %run_id, "scorecard grading started");
     Ok(run_id)
-}
-
-/// Cancel an in-flight scorecard run (aborts every dimension pass).
-#[tauri::command]
-pub async fn cancel_scorecard(app: AppHandle, run_id: String) -> Result<(), String> {
-    let provider = app.state::<std::sync::Arc<SidecarProvider>>();
-    let command = SurfaceCommand::CancelScorecard {
-        run_id: run_id.clone(),
-    };
-    provider.dispatch_command(command).await
-}
-
-/// All scorecard runs for the active project (newest first).
-#[tauri::command]
-pub fn list_scorecard_runs(
-    scorecard_store: State<'_, ScorecardStore>,
-) -> Result<Vec<ScorecardRun>, String> {
-    Ok(scorecard_store.list())
-}
-
-/// One scorecard run by id.
-#[tauri::command]
-pub fn get_scorecard_run(
-    scorecard_store: State<'_, ScorecardStore>,
-    run_id: String,
-) -> Result<Option<ScorecardRun>, String> {
-    Ok(scorecard_store.get(&run_id))
-}
-
-/// Delete a scorecard run and its file.
-#[tauri::command]
-pub fn delete_scorecard_run(
-    scorecard_store: State<'_, ScorecardStore>,
-    run_id: String,
-) -> Result<(), String> {
-    scorecard_store.remove(&run_id)
 }
 
 /// Map a dimension wire string to the harden slash-command the "Harden this" button

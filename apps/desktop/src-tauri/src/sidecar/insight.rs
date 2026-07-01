@@ -16,17 +16,29 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::contracts::{AnalysisScope, EffortLevel, FindingCategory, SurfaceCommand};
-use crate::provider::SidecarProvider;
 use crate::project::ProjectStore;
 use crate::store::insight::{InsightRun, InsightStore, InsightUsage, StoredFinding};
 use crate::store::TaskStore;
 use crate::task::{Task, TaskKind, TASK_EVENT};
 
 use super::scan::{
-    begin_scan_run, dispatch_scan_command, failure_reason, finalize_completed, wire_str,
-    ScanRunInit, ScanTelemetry,
+    begin_scan_run, dispatch_scan_command, failure_reason, finalize_completed,
+    scan_lifecycle_commands, wire_str, ScanRunInit, ScanTelemetry,
 };
 use super::INSIGHT_EVENT;
+
+// The four store-agnostic lifecycle commands (list / get / delete / cancel), stamped
+// from the shared scan macro instead of hand-copied per feature.
+scan_lifecycle_commands! {
+    store: InsightStore,
+    run: InsightRun,
+    list: list_insight_runs,
+    get: get_insight_run,
+    delete: delete_insight_run,
+    cancel: cancel_analysis,
+    cancel_command: CancelAnalysis,
+    item: "insight",
+}
 
 /// Resolve the changed files for `diff` scope: tracked changes vs `HEAD` plus
 /// untracked-but-not-ignored files. Best-effort — a non-repo / git failure yields
@@ -140,31 +152,6 @@ pub async fn start_analysis(
     Ok(run_id)
 }
 
-/// Cancel an in-flight analysis run (aborts every category pass).
-#[tauri::command]
-pub async fn cancel_analysis(app: AppHandle, run_id: String) -> Result<(), String> {
-    let provider = app.state::<std::sync::Arc<SidecarProvider>>();
-    let command = SurfaceCommand::CancelAnalysis {
-        run_id: run_id.clone(),
-    };
-    provider.dispatch_command(command).await
-}
-
-/// All analysis runs for the active project (newest first).
-#[tauri::command]
-pub fn list_insight_runs(insight_store: State<'_, InsightStore>) -> Result<Vec<InsightRun>, String> {
-    Ok(insight_store.list())
-}
-
-/// One analysis run by id.
-#[tauri::command]
-pub fn get_insight_run(
-    insight_store: State<'_, InsightStore>,
-    run_id: String,
-) -> Result<Option<InsightRun>, String> {
-    Ok(insight_store.get(&run_id))
-}
-
 /// Mark a finding dismissed (it stays dismissed across future re-runs).
 #[tauri::command]
 pub fn dismiss_finding(
@@ -183,15 +170,6 @@ pub fn restore_finding(
     finding_id: String,
 ) -> Result<InsightRun, String> {
     insight_store.set_finding_status(&run_id, &finding_id, "open", None)
-}
-
-/// Delete an analysis run and its file.
-#[tauri::command]
-pub fn delete_insight_run(
-    insight_store: State<'_, InsightStore>,
-    run_id: String,
-) -> Result<(), String> {
-    insight_store.remove(&run_id)
 }
 
 /// Convert a finding into a board task. Idempotent: if the finding already links to
