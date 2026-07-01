@@ -33,10 +33,17 @@ describe('parseReading', () => {
     expect(r.fingerprint.length).toBeGreaterThan(0);
   });
 
-  test('coerces an off-scale grade to the neutral C, never dropping the reading', () => {
-    const raw = JSON.stringify({ grade: 'great', title: 't', summary: 's' });
-    const { reading } = parseReading(raw, 'security');
-    expect(reading?.grade).toBe('C');
+  test('rejects an off-scale grade as a parse error (never fakes a neutral C)', () => {
+    // "great"/"B+"/"PASS"/"N/A" must NOT be silently coerced to 'C' — that fabricates
+    // a grade the model never gave. It errors so the pass's corrective retry re-asks.
+    for (const bad of ['great', 'B+', 'PASS', 'N/A']) {
+      const { reading, error } = parseReading(
+        JSON.stringify({ grade: bad, title: 't', summary: 's' }),
+        'security',
+      );
+      expect(reading, `off-scale grade ${bad} must not yield a reading`).toBeUndefined();
+      expect(error).toBeDefined();
+    }
   });
 
   test('uppercases a lowercase grade letter', () => {

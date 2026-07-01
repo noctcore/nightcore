@@ -25,15 +25,19 @@ import {
 } from '../shared/findings.js';
 import { getNumber, getString, getStringArray } from '../../util/field-extract.js';
 
-/** The valid grade letters, for coercion. */
+/** The valid grade letters. */
 const GRADES: readonly ScorecardGrade[] = ['A', 'B', 'C', 'D', 'E', 'F'];
 
-/** Coerce a raw grade value to a valid letter, defaulting to `C` (the neutral
- *  "adequate but gaps" midpoint) when the model returns something off-scale — a
- *  reading must always carry a letter, so an unknown value degrades, never drops. */
-function coerceGrade(raw: unknown): ScorecardGrade {
-  const v = String(raw).trim().toUpperCase();
-  return (GRADES as readonly string[]).includes(v) ? (v as ScorecardGrade) : 'C';
+/** Validate a raw grade to a canonical letter, or `undefined` when the model returns
+ *  something off-scale (`"B+"`, `"PASS"`, `"N/A"`, `"great"`). We deliberately do NOT
+ *  coerce an unknown value to a neutral `C`: that fabricates a grade the model never
+ *  gave and silently inflates/deflates the headline. The caller treats `undefined` as
+ *  a parse error so the pass's corrective retry re-asks; a dimension still ungradeable
+ *  after the retry is surfaced errored, not faked. Case/whitespace are tolerated. */
+function validGrade(raw: unknown): ScorecardGrade | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const v = raw.trim().toUpperCase();
+  return (GRADES as readonly string[]).includes(v) ? (v as ScorecardGrade) : undefined;
 }
 
 /** Coerce one raw evidence item into a contract {@link ScorecardEvidence}. Returns
@@ -81,6 +85,13 @@ export function parseReading(
     return { error: 'reading missing title/summary' };
   }
 
+  // A grade the model returns off-scale must NOT be silently coerced to a neutral 'C'
+  // — that manufactures a grade it never gave. Error out so the corrective retry fires.
+  const grade = validGrade(r.grade);
+  if (grade === undefined) {
+    return { error: `reading has no valid grade (got ${JSON.stringify(r.grade)})` };
+  }
+
   const fingerprint = fingerprintOf(dimension, title);
   const location = coerceLocation(r.location ?? r.file);
   const findings: ScorecardEvidence[] = [];
@@ -96,7 +107,7 @@ export function parseReading(
   const candidate: Record<string, unknown> = {
     id: `${dimension}-${fingerprint}`,
     dimension,
-    grade: coerceGrade(r.grade),
+    grade,
     title,
     summary,
     ...(rationale !== undefined ? { rationale } : {}),
