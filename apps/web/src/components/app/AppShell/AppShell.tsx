@@ -191,6 +191,7 @@ export function AppShell() {
                   onSelectWorktree={board.setActiveWorktree}
                   concurrency={autoLoop.concurrency}
                   autoMode={autoLoop.autoMode}
+                  autoCommitOnVerified={settings.settings?.autoCommitOnVerified ?? false}
                   breaker={autoLoop.breaker}
                   selectedId={selectedId}
                   logCounts={board.logCounts}
@@ -209,6 +210,9 @@ export function AppShell() {
                   onMerge={board.handleMerge}
                   isActionPending={board.isActionPending}
                   onToggleAutoMode={autoLoop.toggleAutoMode}
+                  onAutoCommitChange={(next) =>
+                    settings.update({ autoCommitOnVerified: next })
+                  }
                   onConcurrencyChange={autoLoop.changeConcurrency}
                   onResume={autoLoop.resume}
                 />

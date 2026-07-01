@@ -40,7 +40,7 @@ test('renders the project path and branch in the header subtitle', async () => {
 test('reflects the live loop state on the Auto Mode toggle', async () => {
   const screen = render(<AutoModeOn />);
   await expect
-    .element(screen.getByRole('button', { name: /auto mode/i }))
+    .element(screen.getByRole('button', { name: 'Auto Mode', exact: true }))
     .toHaveAttribute('aria-pressed', 'true');
 });
 

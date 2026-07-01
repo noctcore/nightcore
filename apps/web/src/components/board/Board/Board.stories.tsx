@@ -23,6 +23,7 @@ const meta = {
     onSelectWorktree: fn(),
     concurrency: 3,
     autoMode: false,
+    autoCommitOnVerified: false,
     breaker: null,
     selectedId: null,
     logCounts: { 't-running': 7 },
@@ -40,6 +41,7 @@ const meta = {
     onCommit: fn(),
     onMerge: fn(),
     onToggleAutoMode: fn(),
+    onAutoCommitChange: fn(),
     onConcurrencyChange: fn(),
     onResume: fn(),
   },
@@ -118,7 +120,7 @@ export const TogglesAutoMode: Story = {
   args: { tasks: ALL_TASKS },
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole('button', { name: /auto mode/i }));
+    await userEvent.click(canvas.getByRole('button', { name: 'Auto Mode' }));
     await expect(args.onToggleAutoMode).toHaveBeenCalled();
   },
 };
