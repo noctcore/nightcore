@@ -4,7 +4,9 @@
 //! [`RunStore`]; only the artifact getter here and the finding/artifact lifecycle
 //! mutators in the sibling `status` module are Harness-specific.
 
-use super::wire::{HarnessRun, StoredConventionFinding, StoredProposedArtifact};
+use super::wire::{
+    HarnessRun, StoredConventionFinding, StoredHarnessProposal, StoredProposedArtifact,
+};
 use crate::store::run_store::{PersistedRun, RunStore};
 
 /// The Harness scan store. See the module docs — the run-level CRUD and its
@@ -52,6 +54,19 @@ impl HarnessStore {
         self.read(|runs| {
             runs.get(run_id)
                 .and_then(|r| r.findings.iter().find(|f| f.id == finding_id).cloned())
+        })
+    }
+
+    /// One task-shaped proposal within a scan (cloned), if present. The convert-to-task
+    /// command reads it to build the minted task's title/description/verify command.
+    pub fn get_proposal(
+        &self,
+        run_id: &str,
+        proposal_id: &str,
+    ) -> Option<StoredHarnessProposal> {
+        self.read(|runs| {
+            runs.get(run_id)
+                .and_then(|r| r.proposals.iter().find(|p| p.id == proposal_id).cloned())
         })
     }
 

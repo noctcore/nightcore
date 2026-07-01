@@ -184,6 +184,44 @@ mod tests {
     }
 
     #[test]
+    fn link_proposal_task_converts_then_is_idempotent() {
+        let (store, _tmp) = store();
+        store.upsert(&run("r1")).unwrap();
+
+        match store.link_proposal_task("r1", "p1", "task-4").unwrap() {
+            LinkOutcome::Linked => {}
+            LinkOutcome::AlreadyLinked(_) => panic!("first link should be Linked"),
+        }
+        let p = store.get_proposal("r1", "p1").unwrap();
+        assert_eq!(p.status, "converted");
+        assert_eq!(p.linked_task_id.as_deref(), Some("task-4"));
+
+        // A second link (the losing race) returns the FIRST task id, no re-stamp.
+        match store.link_proposal_task("r1", "p1", "task-44").unwrap() {
+            LinkOutcome::AlreadyLinked(existing) => assert_eq!(existing, "task-4"),
+            LinkOutcome::Linked => panic!("second link must be AlreadyLinked"),
+        }
+    }
+
+    #[test]
+    fn set_proposal_status_errors_on_missing() {
+        let (store, _tmp) = store();
+        store.upsert(&run("r1")).unwrap();
+        assert!(store.set_proposal_status("r1", "ghost", "dismissed", None).is_err());
+        assert!(store.set_proposal_status("nope", "p1", "dismissed", None).is_err());
+    }
+
+    #[test]
+    fn dismiss_then_restore_proposal() {
+        let (store, _tmp) = store();
+        store.upsert(&run("r1")).unwrap();
+        store.set_proposal_status("r1", "p1", "dismissed", None).unwrap();
+        assert_eq!(store.get_proposal("r1", "p1").unwrap().status, "dismissed");
+        store.set_proposal_status("r1", "p1", "proposed", None).unwrap();
+        assert_eq!(store.get_proposal("r1", "p1").unwrap().status, "proposed");
+    }
+
+    #[test]
     fn from_wire_parses_a_proposal_with_a_suggested_check() {
         let pv = serde_json::json!({
             "id": "agent-task-abc",
