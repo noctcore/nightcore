@@ -186,20 +186,38 @@ describe('SessionOptionsBuilder.run() — full query options', () => {
     expect(options).not.toHaveProperty('disallowedTools');
   });
 
-  test('composes the context pack BEFORE the persona in appendSystemPrompt', () => {
+  test('leads with the working-root directive, then the context pack, then the persona', () => {
     resolvedClaudePath = '/usr/local/bin/claude';
     const options = new SessionOptionsBuilder(
       makeConfig({
+        cwd: '/repo/.nightcore/worktrees/task-1',
         appendSystemPrompt: 'You are an independent code reviewer.',
         appendContextPack: 'PROJECT CONSTITUTION: keep tests green.',
       }),
     ).run(makeRuntime());
 
     const appended = options.appendSystemPrompt as string;
-    expect(appended.indexOf('PROJECT CONSTITUTION')).toBe(0);
+    // The authoritative working-directory directive LEADS, naming the run cwd.
+    expect(appended.startsWith('# Working directory (authoritative)')).toBe(true);
+    expect(appended).toContain('/repo/.nightcore/worktrees/task-1');
+    // …then the context pack, then the persona.
+    expect(appended.indexOf('Working directory (authoritative)')).toBeLessThan(
+      appended.indexOf('PROJECT CONSTITUTION'),
+    );
     expect(appended.indexOf('PROJECT CONSTITUTION')).toBeLessThan(
       appended.indexOf('independent code reviewer'),
     );
+  });
+
+  test('always carries the working-root directive — even a bare build run (no pack, no persona)', () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    const options = new SessionOptionsBuilder(
+      makeConfig({ cwd: '/repo/.nightcore/worktrees/task-9' }),
+    ).run(makeRuntime());
+
+    const appended = options.appendSystemPrompt as string;
+    expect(appended).toContain('Working directory (authoritative)');
+    expect(appended).toContain('/repo/.nightcore/worktrees/task-9');
   });
 
   test('carries autonomy ceilings, resume id, and checkpointing only when set', () => {

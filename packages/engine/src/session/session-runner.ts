@@ -110,7 +110,9 @@ export class SessionRunner {
     private readonly logger?: Logger,
   ) {
     this.optionsBuilder = new SessionOptionsBuilder(cfg, logger);
-    this.hooks = new HookBus(logger);
+    // Confine file mutations to the run cwd (worktree isolation) — the PreToolUse
+    // gate enforces it even under `bypassPermissions`.
+    this.hooks = new HookBus(logger, { cwd: cfg.cwd });
     this.permissions = new PermissionLayer(
       cfg.permissionPolicy,
       (req) =>
