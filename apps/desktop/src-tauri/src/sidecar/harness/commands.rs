@@ -23,7 +23,7 @@ use crate::sidecar::scan::{
 };
 use crate::sidecar::HARNESS_EVENT;
 use crate::store::harness::{
-    ApplyOutcome, HarnessRun, HarnessStore, HarnessUsage, LinkOutcome, StoredConventionFinding,
+    ApplyOutcome, HarnessRun, HarnessStore, HarnessUsage, StoredConventionFinding,
     StoredHarnessProposal, StoredRepoProfile,
 };
 use crate::store::TaskStore;
@@ -164,51 +164,28 @@ pub fn convert_harness_finding_to_task(
         .get_finding(&run_id, &finding_id)
         .ok_or_else(|| format!("finding {finding_id} not found in run {run_id}"))?;
 
-    // Fast-path idempotency: a finding already linked to a still-existing task returns
-    // it without minting anything (covers the common re-click).
-    if let Some(existing_id) = finding.linked_task_id.as_deref() {
-        if let Some(task) = store.get(existing_id) {
-            return Ok(task);
-        }
-    }
-
-    // Mint the task FIRST (so a crash before linking leaves an unlinked finding —
-    // retryable — rather than a finding pointing at a non-existent task), then link
-    // ATOMICALLY. The compare-and-set inside `link_finding_task` is the real guard
-    // against two concurrent converts: a losing race gets `AlreadyLinked` and we roll
-    // back the duplicate task we just created.
+    // Build the task, then run the shared mint-first / atomic-CAS / rollback convert
+    // protocol (see [`crate::sidecar::convert`]). Every finding becomes a Build task; its
+    // model-derived text is fenced as untrusted inside `convention_task_description`.
     let mut task = Task::new(finding.title.clone(), convention_task_description(&finding));
     task.kind = TaskKind::Build;
-    // upsert returns the store-stamped task (seq > 0); we MUST emit this snapshot, not
-    // `task`, so the wire carries the assigned seq and is never dropped as stale.
-    let stamped = store.upsert(&task)?;
 
-    match harness_store.link_finding_task(&run_id, &finding_id, &task.id) {
-        Ok(LinkOutcome::Linked) => {}
-        Ok(LinkOutcome::AlreadyLinked(existing_id)) => {
-            // Another convert won the race (or a prior link survived). Discard the
-            // duplicate task we just minted and return the existing one if it lives.
-            let _ = store.remove(&task.id);
-            if let Some(existing) = store.get(&existing_id) {
-                return Ok(existing);
-            }
-            // The linked task was deleted out from under us: re-point the finding at the
-            // task we just (re)created instead of leaving a dangling link.
-            store.upsert(&task)?;
-            harness_store.set_finding_status(
-                &run_id,
-                &finding_id,
-                "converted",
-                Some(Some(task.id.clone())),
-            )?;
-        }
-        Err(e) => {
-            // Linking failed (run/finding vanished): roll back the orphan task so a retry
-            // is clean rather than leaving an unlinked board task behind.
-            let _ = store.remove(&task.id);
-            return Err(e);
-        }
-    }
+    let stamped = crate::sidecar::convert::convert_to_task(
+        &store,
+        finding.linked_task_id.as_deref(),
+        task,
+        |task_id| harness_store.link_finding_task(&run_id, &finding_id, task_id),
+        |task_id| {
+            harness_store
+                .set_finding_status(
+                    &run_id,
+                    &finding_id,
+                    "converted",
+                    Some(Some(task_id.to_string())),
+                )
+                .map(|_| ())
+        },
+    )?;
 
     let _ = app.emit(TASK_EVENT, &stamped);
     let _ = app.emit(
@@ -306,16 +283,8 @@ pub fn convert_harness_proposal(
         .get_proposal(&run_id, &proposal_id)
         .ok_or_else(|| format!("proposal {proposal_id} not found in run {run_id}"))?;
 
-    // Fast-path idempotency: a proposal already linked to a still-existing task returns it.
-    if let Some(existing_id) = proposal.linked_task_id.as_deref() {
-        if let Some(task) = store.get(existing_id) {
-            return Ok(task);
-        }
-    }
-
-    // Mint FIRST (a crash before linking leaves a retryable unlinked proposal), then link
-    // ATOMICALLY — the CAS in `link_proposal_task` is the real guard against two concurrent
-    // converts minting two tasks.
+    // Build the task, then run the shared mint-first / atomic-CAS / rollback convert
+    // protocol (see [`crate::sidecar::convert`]).
     let mut task = Task::new(proposal.title.clone(), proposal_task_description(&proposal));
     task.kind = TaskKind::Build;
     // An agent-task proposal carries a machine-checkable done-command → the task's
@@ -327,29 +296,23 @@ pub fn convert_harness_proposal(
         .map(str::trim)
         .filter(|c| !c.is_empty())
         .map(str::to_string);
-    let stamped = store.upsert(&task)?;
 
-    match harness_store.link_proposal_task(&run_id, &proposal_id, &task.id) {
-        Ok(LinkOutcome::Linked) => {}
-        Ok(LinkOutcome::AlreadyLinked(existing_id)) => {
-            let _ = store.remove(&task.id);
-            if let Some(existing) = store.get(&existing_id) {
-                return Ok(existing);
-            }
-            // The linked task was deleted out from under us: re-point at the one we minted.
-            store.upsert(&task)?;
-            harness_store.set_proposal_status(
-                &run_id,
-                &proposal_id,
-                "converted",
-                Some(Some(task.id.clone())),
-            )?;
-        }
-        Err(e) => {
-            let _ = store.remove(&task.id);
-            return Err(e);
-        }
-    }
+    let stamped = crate::sidecar::convert::convert_to_task(
+        &store,
+        proposal.linked_task_id.as_deref(),
+        task,
+        |task_id| harness_store.link_proposal_task(&run_id, &proposal_id, task_id),
+        |task_id| {
+            harness_store
+                .set_proposal_status(
+                    &run_id,
+                    &proposal_id,
+                    "converted",
+                    Some(Some(task_id.to_string())),
+                )
+                .map(|_| ())
+        },
+    )?;
 
     let _ = app.emit(TASK_EVENT, &stamped);
     let _ = app.emit(

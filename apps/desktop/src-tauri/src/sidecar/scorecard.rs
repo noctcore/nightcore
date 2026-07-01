@@ -151,55 +151,29 @@ pub fn convert_reading_to_task(
         .get_reading(&run_id, &reading_id)
         .ok_or_else(|| format!("reading {reading_id} not found in run {run_id}"))?;
 
-    // Fast-path idempotency: a reading already linked to a still-existing task
-    // returns it without minting anything (covers the common re-click).
-    if let Some(existing_id) = reading.linked_task_id.as_deref() {
-        if let Some(task) = store.get(existing_id) {
-            return Ok(task);
-        }
-    }
-
-    // The prompt MUST lead with the slash-command so the SDK runs the dimension's
-    // harden skill; the title is that command so `Task::prompt()` (title\n\ndesc)
-    // begins with it.
+    // The prompt MUST lead with the slash-command so the SDK runs the dimension's harden
+    // skill; the title is that command so `Task::prompt()` (title\n\ndesc) begins with it.
+    // The shared convert protocol (see [`crate::sidecar::convert`]) then mints + links.
     let skill = harden_skill_for(&reading.dimension);
     let mut task = Task::new(skill.to_string(), task_description(&reading, skill));
     task.kind = TaskKind::Build;
-    // upsert returns the store-stamped task (seq > 0); we MUST emit this snapshot,
-    // not `task`, so the wire carries the assigned seq and is never dropped as stale.
-    let stamped = store.upsert(&task)?;
 
-    match scorecard_store.link_reading_task(&run_id, &reading_id, &task.id) {
-        Ok(crate::store::scorecard::LinkOutcome::Linked) => {}
-        Ok(crate::store::scorecard::LinkOutcome::AlreadyLinked(existing_id)) => {
-            // Another convert won the race (or a prior link survived). Discard the
-            // duplicate task we just minted and return the existing one if it lives.
-            let _ = store.remove(&task.id);
-            if let Some(existing) = store.get(&existing_id) {
-                return Ok(existing);
-            }
-            // The linked task was deleted out from under us: re-point the reading at
-            // the task we just (re)created instead of leaving a dangling link. We must
-            // use `set_reading_status` (an UNCONDITIONAL overwrite), NOT
-            // `link_reading_task` — the latter is a compare-and-set that early-returns
-            // `AlreadyLinked` whenever a link already exists, which is precisely this
-            // case (the reading still points at the dead task id), so it would never
-            // heal the dangling link.
-            store.upsert(&task)?;
-            scorecard_store.set_reading_status(
-                &run_id,
-                &reading_id,
-                "converted",
-                Some(Some(task.id.clone())),
-            )?;
-        }
-        Err(e) => {
-            // Linking failed (run/reading vanished): roll back the orphan task so a
-            // retry is clean rather than leaving an unlinked board task behind.
-            let _ = store.remove(&task.id);
-            return Err(e);
-        }
-    }
+    let stamped = super::convert::convert_to_task(
+        &store,
+        reading.linked_task_id.as_deref(),
+        task,
+        |task_id| scorecard_store.link_reading_task(&run_id, &reading_id, task_id),
+        |task_id| {
+            scorecard_store
+                .set_reading_status(
+                    &run_id,
+                    &reading_id,
+                    "converted",
+                    Some(Some(task_id.to_string())),
+                )
+                .map(|_| ())
+        },
+    )?;
 
     let _ = app.emit(TASK_EVENT, &stamped);
     let _ = app.emit(

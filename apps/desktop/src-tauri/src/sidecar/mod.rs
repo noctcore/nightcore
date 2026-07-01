@@ -18,6 +18,7 @@
 //! coordinator's `launch` does, just triggered by a click instead of a tick.
 
 mod commands;
+mod convert;
 mod harness;
 mod insight;
 mod permission;
