@@ -8,6 +8,8 @@ import {
   isRealExecutable,
   isTruthyEnv,
   platformPackageSpecifiers,
+  resetClaudeBinaryCacheForTest,
+  resolveClaudeBinary,
 } from './resolve-claude-binary.js';
 
 // ---------------------------------------------------------------------------
@@ -114,6 +116,68 @@ describe('isRealExecutable', () => {
   test('returns false for a $bunfs-style virtual path', () => {
     // $bunfs paths are non-existent on the real filesystem; statSync rejects them.
     expect(isRealExecutable('/$bunfs/root/packages/engine/dist/index.js')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveClaudeBinary (memoization)
+// ---------------------------------------------------------------------------
+
+describe('resolveClaudeBinary memoization', () => {
+  let tmpDir: string;
+  const origEnv = process.env.NIGHTCORE_CLAUDE_PATH;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nightcore-claude-'));
+    resetClaudeBinaryCacheForTest();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    if (origEnv === undefined) delete process.env.NIGHTCORE_CLAUDE_PATH;
+    else process.env.NIGHTCORE_CLAUDE_PATH = origEnv;
+    resetClaudeBinaryCacheForTest();
+  });
+
+  function makeExec(name: string): string {
+    const p = path.join(tmpDir, name);
+    fs.writeFileSync(p, '#!/bin/sh\necho hi\n');
+    fs.chmodSync(p, 0o755);
+    return p;
+  }
+
+  test('caches the first resolution and ignores later env changes', () => {
+    const first = makeExec('claude-a');
+    process.env.NIGHTCORE_CLAUDE_PATH = first;
+    expect(resolveClaudeBinary()).toBe(first);
+
+    // Point the override at a different real executable; the cache must win.
+    const second = makeExec('claude-b');
+    process.env.NIGHTCORE_CLAUDE_PATH = second;
+    expect(resolveClaudeBinary()).toBe(first);
+  });
+
+  test('resetClaudeBinaryCacheForTest forces recomputation', () => {
+    const first = makeExec('claude-a');
+    process.env.NIGHTCORE_CLAUDE_PATH = first;
+    expect(resolveClaudeBinary()).toBe(first);
+
+    const second = makeExec('claude-b');
+    process.env.NIGHTCORE_CLAUDE_PATH = second;
+    resetClaudeBinaryCacheForTest();
+    expect(resolveClaudeBinary()).toBe(second);
+  });
+
+  test('caches an undefined resolution without re-sweeping', () => {
+    // A non-existent override forces the resolver past the env branch. Whatever
+    // it resolves to (a real on-disk claude or undefined) must be stable across
+    // calls and survive a later env change until the cache is reset.
+    process.env.NIGHTCORE_CLAUDE_PATH = path.join(tmpDir, 'does-not-exist');
+    const resolved = resolveClaudeBinary();
+
+    const real = makeExec('claude-late');
+    process.env.NIGHTCORE_CLAUDE_PATH = real;
+    expect(resolveClaudeBinary()).toBe(resolved);
   });
 });
 
