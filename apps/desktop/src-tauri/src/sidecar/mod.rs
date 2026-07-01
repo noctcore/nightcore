@@ -349,7 +349,13 @@ pub(crate) fn finish_run(
     if let Some(sid) = session_id {
         provider.forget(sid);
     }
-    engine.cleanup_worktree(app, task_id, matches!(outcome, Outcome::Succeeded));
+    // Worktree cleanup is deliberately NOT done here. A finished task — even a
+    // verified/Done one — keeps its worktree so the user can still review, merge, or
+    // discard it. The worktree is removed only when the user merges the branch
+    // (`workflow::merge`, which honors `cleanupWorktrees` and also deletes the
+    // `nc/<id>` branch) or explicitly discards it. Removing it on the terminal event
+    // tore the worktree down before the user could merge — see the setting's own
+    // copy ("after a task is merged") — leaving an orphaned branch.
     // M3 §C: tell the user a task reached a terminal state (Done/Failed only),
     // gated on `notify_on_complete`. Aborts/approval-parks don't notify.
     match outcome {

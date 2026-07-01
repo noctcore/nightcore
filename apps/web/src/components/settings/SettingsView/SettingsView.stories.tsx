@@ -50,7 +50,7 @@ export const NavigateToWorktrees: Story = {
     await userEvent.click(canvas.getByRole('button', { name: /git worktrees/i }));
     await expect(canvas.getByText('Worktree isolation')).toBeInTheDocument();
     await expect(
-      canvas.getByRole('switch', { name: /delete worktree on complete/i }),
+      canvas.getByRole('switch', { name: /delete worktree on merge/i }),
     ).toBeInTheDocument();
   },
 };

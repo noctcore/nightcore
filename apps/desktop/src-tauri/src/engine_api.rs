@@ -53,6 +53,4 @@ pub trait EngineApi: Send + Sync {
     /// command. `feed_breaker` feeds the circuit breaker only for the auto-loop.
     async fn submit_run(&self, app: &AppHandle, task_id: &str, feed_breaker: bool)
         -> Result<(), String>;
-    /// Remove a finished run's worktree (per the `cleanupWorktrees` policy).
-    fn cleanup_worktree(&self, app: &AppHandle, task_id: &str, succeeded: bool);
 }

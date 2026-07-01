@@ -49,7 +49,7 @@ test('makes the worktree cleanup toggle editable and global-only', async () => {
   const onUpdate = vi.fn();
   const screen = render(<Global onUpdate={onUpdate} />);
   await screen.getByRole('button', { name: /git worktrees/i }).click();
-  await screen.getByRole('switch', { name: /delete worktree on complete/i }).click();
+  await screen.getByRole('switch', { name: /delete worktree on merge/i }).click();
   // cleanupWorktrees is global by design — no projectId even from a default story
   // that has an active project.
   expect(onUpdate).toHaveBeenCalledWith({ cleanupWorktrees: false });

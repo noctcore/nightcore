@@ -80,8 +80,4 @@ impl EngineApi for EngineHandle {
     ) -> Result<(), String> {
         coordinator::submit_run(app, task_id, feed_breaker).await
     }
-
-    fn cleanup_worktree(&self, app: &AppHandle, task_id: &str, succeeded: bool) {
-        coordinator::cleanup_worktree(app, task_id, succeeded)
-    }
 }

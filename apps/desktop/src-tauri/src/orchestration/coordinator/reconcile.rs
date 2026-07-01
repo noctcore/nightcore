@@ -1,10 +1,10 @@
-//! Task-state marking, worktree cleanup, and boot/crash reconciliation.
+//! Task-state marking, startup worktree pruning, and boot/crash reconciliation.
 //!
 //! The marking helpers ([`mark_task_in_progress`], [`fail_task`]) are shared by the
-//! launch sequence; [`cleanup_worktree`] is the per-terminal worktree teardown the
-//! reader calls. The reconcilers ([`reconcile_worktrees`], [`reconcile_tasks`]) run
+//! launch sequence. The reconcilers ([`reconcile_worktrees`], [`reconcile_tasks`]) run
 //! synchronously in the Tauri setup hook to prune orphaned worktrees and recover
-//! tasks a crash stranded mid-run.
+//! tasks a crash stranded mid-run. A finished task's worktree is NOT torn down here —
+//! it is kept for review and removed only on merge (`workflow::merge`) or discard.
 
 use std::path::PathBuf;
 
@@ -12,7 +12,6 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::worktree;
 use crate::project::ProjectStore;
-use crate::settings::SettingsStore;
 use crate::store::TaskStore;
 use crate::task::{TaskStatus, TASK_EVENT};
 
@@ -54,30 +53,6 @@ pub(crate) fn fail_task(app: &AppHandle, task_id: &str, message: &str) {
         // A launch failure is a genuine terminal Failed that never reaches
         // `finish_run`; notify the same way (M3 §C, gated on `notify_on_complete`).
         crate::sidecar::notify_task_complete(app, task_id, false);
-    }
-}
-
-/// Clean up a finished task's worktree per the `cleanupWorktrees` setting. `Done`
-/// with cleanup-on removes the worktree (the `nc/<id>` branch is kept for review);
-/// `Failed`/cancelled always retain it for debuggability. Called by the reader on
-/// terminal events.
-pub fn cleanup_worktree(app: &AppHandle, task_id: &str, succeeded: bool) {
-    if !succeeded {
-        return; // retain failed/cancelled worktrees for inspection
-    }
-    let settings = app.state::<SettingsStore>();
-    if !settings.get().cleanup_worktrees {
-        return;
-    }
-    let projects = app.state::<ProjectStore>();
-    let Some(project) = projects.active() else {
-        return;
-    };
-    match worktree::remove(&PathBuf::from(&project.path), task_id) {
-        Ok(()) => tracing::debug!(target: "nightcore", task_id, "worktree cleaned up"),
-        Err(e) => {
-            tracing::warn!(target: "nightcore", task_id, error = %e, "worktree cleanup failed")
-        }
     }
 }
 

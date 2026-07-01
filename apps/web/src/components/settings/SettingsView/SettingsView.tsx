@@ -621,13 +621,13 @@ function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardProps[] {
               ),
             },
             {
-              label: 'Delete on complete',
-              hint: 'Remove the worktree after a task is merged',
+              label: 'Delete on merge',
+              hint: 'Remove the worktree (and its branch) after the task is merged',
               control: (
                 <Toggle
                   on={settings.cleanupWorktrees}
                   onChange={(next) => patchGlobal({ cleanupWorktrees: next })}
-                  label="Delete worktree on complete"
+                  label="Delete worktree on merge"
                 />
               ),
             },
