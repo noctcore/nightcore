@@ -23,7 +23,7 @@ use crate::task::{Task, TaskKind, TaskStatus, TASK_EVENT};
 
 use super::scan::{
     begin_scan_run, dispatch_scan_command, failure_reason, finalize_completed,
-    scan_lifecycle_commands, wire_str, ScanRunInit, ScanTelemetry,
+    scan_lifecycle_commands, untrusted_block, wire_str, ScanRunInit, ScanTelemetry,
 };
 use super::INSIGHT_EVENT;
 
@@ -255,12 +255,15 @@ fn category_to_kind(_category: &str) -> TaskKind {
     TaskKind::Build
 }
 
-/// Build the markdown task description from a finding's fields + provenance.
+/// Build the markdown task description from a finding's fields + provenance. The
+/// model-derived body is wrapped in an [`untrusted_block`] so the write-capable Build
+/// agent treats it as data, not instructions (prompt-injection mitigation); only the
+/// trusted provenance footer sits outside the fence.
 fn task_description(f: &StoredFinding) -> String {
-    let mut out = String::new();
-    out.push_str(&f.description);
-    out.push_str("\n\n");
-    out.push_str(&format!(
+    let mut body = String::new();
+    body.push_str(&f.description);
+    body.push_str("\n\n");
+    body.push_str(&format!(
         "**Category:** {} · **Severity:** {} · **Effort:** {}\n",
         f.category, f.severity, f.effort
     ));
@@ -270,25 +273,26 @@ fn task_description(f: &StoredFinding) -> String {
             (Some(s), _) => format!(":{s}"),
             _ => String::new(),
         };
-        out.push_str(&format!("**Location:** `{}{}`\n", loc.file, lines));
+        body.push_str(&format!("**Location:** `{}{}`\n", loc.file, lines));
     }
     if let Some(r) = &f.rationale {
-        out.push_str(&format!("\n**Why it matters:** {r}\n"));
+        body.push_str(&format!("\n**Why it matters:** {r}\n"));
     }
     if let Some(s) = &f.suggestion {
-        out.push_str(&format!("\n**Suggested fix:** {s}\n"));
+        body.push_str(&format!("\n**Suggested fix:** {s}\n"));
     }
     if let (Some(before), Some(after)) = (&f.code_before, &f.code_after) {
-        out.push_str(&format!(
+        body.push_str(&format!(
             "\n```\n// before\n{before}\n```\n```\n// after\n{after}\n```\n"
         ));
     }
     if !f.affected_files.is_empty() {
-        out.push_str(&format!(
+        body.push_str(&format!(
             "\n**Affected files:** {}\n",
             f.affected_files.join(", ")
         ));
     }
+    let mut out = untrusted_block(&body);
     out.push_str("\n---\n_Created from an Insight analysis finding._\n");
     out
 }
@@ -501,6 +505,20 @@ mod tests {
         assert!(desc.contains("high"), "should include severity");
         assert!(desc.contains("low"), "should include effort");
         assert!(desc.contains("Insight analysis finding"), "should include provenance footer");
+    }
+
+    #[test]
+    fn task_description_fences_untrusted_finding_body() {
+        let f = minimal_finding();
+        let desc = task_description(&f);
+        assert!(
+            desc.contains("<analysis-finding>"),
+            "the model-derived body is fenced as untrusted data"
+        );
+        assert!(
+            desc.contains("Insight analysis finding"),
+            "the trusted provenance footer stays outside the fence"
+        );
     }
 
     #[test]

@@ -24,7 +24,7 @@ use crate::task::{Task, TaskKind, TASK_EVENT};
 
 use super::scan::{
     begin_scan_run, dispatch_scan_command, failure_reason, finalize_completed,
-    scan_lifecycle_commands, wire_str, ScanRunInit, ScanTelemetry,
+    scan_lifecycle_commands, untrusted_block, wire_str, ScanRunInit, ScanTelemetry,
 };
 use super::SCORECARD_EVENT;
 
@@ -214,46 +214,52 @@ pub fn convert_reading_to_task(
 /// Build the markdown task description from a reading's fields + provenance. The
 /// `skill` is restated so the body documents which audit the task runs.
 fn task_description(r: &StoredReading, skill: &str) -> String {
+    // Trusted framing (our dimension/grade/skill instruction) leads; the model-derived
+    // evidence is fenced as untrusted so it can't redirect the write-capable agent.
     let mut out = String::new();
     out.push_str(&format!(
         "Harden the **{}** dimension (currently graded **{}**).\n\n",
         r.dimension, r.grade
     ));
     out.push_str(&format!("Run `{skill}` to drive the hardening pass.\n\n"));
-    out.push_str(&r.summary);
-    out.push('\n');
+
+    let mut body = String::new();
+    body.push_str(&r.summary);
+    body.push('\n');
     if let Some(loc) = &r.location {
         let lines = match (loc.start_line, loc.end_line) {
             (Some(s), Some(e)) if e != s => format!(":{s}-{e}"),
             (Some(s), _) => format!(":{s}"),
             _ => String::new(),
         };
-        out.push_str(&format!("\n**Location:** `{}{}`\n", loc.file, lines));
+        body.push_str(&format!("\n**Location:** `{}{}`\n", loc.file, lines));
     }
     if let Some(rationale) = &r.rationale {
-        out.push_str(&format!("\n**To raise the grade:** {rationale}\n"));
+        body.push_str(&format!("\n**To raise the grade:** {rationale}\n"));
     }
     if let Some(s) = &r.suggestion {
-        out.push_str(&format!("\n**Suggested action:** {s}\n"));
+        body.push_str(&format!("\n**Suggested action:** {s}\n"));
     }
     if !r.findings.is_empty() {
-        out.push_str("\n**Evidence:**\n");
+        body.push_str("\n**Evidence:**\n");
         for ev in &r.findings {
             match &ev.location {
                 Some(loc) => {
                     let line = loc.start_line.map(|s| format!(":{s}")).unwrap_or_default();
-                    out.push_str(&format!("- {} (`{}{}`)\n", ev.detail, loc.file, line));
+                    body.push_str(&format!("- {} (`{}{}`)\n", ev.detail, loc.file, line));
                 }
-                None => out.push_str(&format!("- {}\n", ev.detail)),
+                None => body.push_str(&format!("- {}\n", ev.detail)),
             }
         }
     }
     if !r.affected_files.is_empty() {
-        out.push_str(&format!(
+        body.push_str(&format!(
             "\n**Affected files:** {}\n",
             r.affected_files.join(", ")
         ));
     }
+
+    out.push_str(&untrusted_block(&body));
     out.push_str("\n---\n_Created from a Readiness Scorecard reading._\n");
     out
 }
