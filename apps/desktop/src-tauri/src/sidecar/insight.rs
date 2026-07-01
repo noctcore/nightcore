@@ -19,7 +19,7 @@ use crate::contracts::{AnalysisScope, EffortLevel, FindingCategory, SurfaceComma
 use crate::project::ProjectStore;
 use crate::store::insight::{InsightRun, InsightStore, InsightUsage, StoredFinding};
 use crate::store::TaskStore;
-use crate::task::{Task, TaskKind, TASK_EVENT};
+use crate::task::{Task, TaskKind, TaskStatus, TASK_EVENT};
 
 use super::scan::{
     begin_scan_run, dispatch_scan_command, failure_reason, finalize_completed,
@@ -321,6 +321,29 @@ pub(crate) async fn handle_analysis_event(app: &AppHandle, event_type: &str, eve
             for f in &mut findings {
                 if dismissed.contains(&f.fingerprint) {
                     f.status = "dismissed".to_string();
+                }
+            }
+
+            // Convert-history reconciliation: a re-discovered finding whose fingerprint
+            // was already converted in a prior run stays `converted` + linked when its
+            // task still exists and isn't Done — so a re-scan doesn't re-surface it
+            // `open` and re-mint a duplicate task via convert-all. A finished (Done) or
+            // deleted task lets the finding re-surface `open` for re-verification.
+            let converted = insight_store.converted_fingerprints(Some(run_id));
+            if !converted.is_empty() {
+                let task_store = app.state::<TaskStore>();
+                for f in &mut findings {
+                    if f.status != "open" {
+                        continue;
+                    }
+                    if let Some(task_id) = converted.get(&f.fingerprint) {
+                        if let Some(task) = task_store.get(task_id) {
+                            if task.status != TaskStatus::Done {
+                                f.status = "converted".to_string();
+                                f.linked_task_id = Some(task_id.clone());
+                            }
+                        }
+                    }
                 }
             }
 

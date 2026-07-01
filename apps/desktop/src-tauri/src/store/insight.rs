@@ -320,6 +320,31 @@ impl InsightStore {
         .map(|_| ())
     }
 
+    /// Every fingerprint a user has CONVERTED to a task across all runs (optionally
+    /// excluding `except_run`), mapped to the task id it was linked to. Used to carry
+    /// convert-history forward: a re-discovered finding whose fingerprint was already
+    /// converted stays `converted` + linked (when its task still lives, unfinished)
+    /// instead of re-surfacing `open` and being re-minted by convert-all on every
+    /// re-scan. The caller checks task liveness/status; this only gathers the map.
+    pub fn converted_fingerprints(&self, except_run: Option<&str>) -> HashMap<String, String> {
+        self.read(|runs| {
+            let mut map = HashMap::new();
+            for run in runs.values() {
+                if Some(run.id.as_str()) == except_run {
+                    continue;
+                }
+                for f in &run.findings {
+                    if f.status == "converted" {
+                        if let Some(task_id) = &f.linked_task_id {
+                            map.insert(f.fingerprint.clone(), task_id.clone());
+                        }
+                    }
+                }
+            }
+            map
+        })
+    }
+
     /// Every fingerprint a user has DISMISSED across all runs (optionally excluding
     /// `except_run`). Used to carry dismissed-history forward: a re-discovered
     /// finding whose fingerprint was previously dismissed stays dismissed.
@@ -443,6 +468,22 @@ mod tests {
         let f = store.get_finding("r1", "f1").unwrap();
         assert_eq!(f.status, "converted");
         assert_eq!(f.linked_task_id.as_deref(), Some("task-9"));
+    }
+
+    #[test]
+    fn converted_fingerprints_maps_fingerprint_to_task_across_runs() {
+        let (store, _tmp) = store();
+        let mut old = run("old", vec![finding("f1", "shared-fp")]);
+        old.findings[0].status = "converted".into();
+        old.findings[0].linked_task_id = Some("task-7".into());
+        store.upsert(&old).unwrap();
+        store
+            .upsert(&run("new", vec![finding("f2", "other-fp")]))
+            .unwrap();
+
+        let converted = store.converted_fingerprints(Some("new"));
+        assert_eq!(converted.get("shared-fp").map(String::as_str), Some("task-7"));
+        assert!(!converted.contains_key("other-fp"), "open findings are not carried");
     }
 
     #[test]
