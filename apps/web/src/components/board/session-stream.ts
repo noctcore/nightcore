@@ -124,6 +124,10 @@ export function foldSession(prev: SessionStream, event: NcEvent): SessionStream 
         // and still hands React a new stream/array reference so it re-renders.
         // The turn is sealed (closed) before any markdown parse, so no consumer
         // ever observes a half-built open entry as immutable.
+        // NOTE: because this mutates in place (stable object identity), the
+        // ActivityLog timeline memoizes rows on a `markdown` STRING SNAPSHOT, not
+        // on `entry` identity — identity never changes as the turn grows. Keep
+        // that snapshot prop if this in-place append stays.
         last.markdown += event.text;
         return { ...prev, streamedPartial: decision.streamedPartial, entries: prev.entries };
       }

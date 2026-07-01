@@ -2,9 +2,18 @@ import { composeStories } from '@storybook/react-vite';
 import { render } from 'vitest-browser-react';
 import { expect, test } from 'vitest';
 import * as stories from './ActivityLog.stories';
+import { ActivityLog } from './ActivityLog';
+import { EMPTY_STREAM, type SessionGroup, type TimelineEntry } from '../session-stream';
 
 const { Empty, WaitingForToken, SingleSession, MultiSession, WithError } =
   composeStories(stories);
+
+/** Wrap a timeline in a single build session (rendered inline, no chrome). */
+function oneSession(entries: TimelineEntry[]): SessionGroup[] {
+  return [
+    { index: 1, sdkSessionId: null, model: null, prompt: null, phase: 'build', stream: { ...EMPTY_STREAM, entries } },
+  ];
+}
 
 test('renders the run-this-task prompt when there is no activity', async () => {
   const screen = render(<Empty />);
@@ -48,4 +57,29 @@ test('renders a terminal session error in place of the timeline', async () => {
   await expect
     .element(screen.getByText("cannot resolve 'sass-loader'"))
     .toBeInTheDocument();
+});
+
+test('a streaming turn mutated in place still updates on screen', async () => {
+  // Reproduces foldSession's in-place append: the open text entry keeps its
+  // object identity while its markdown grows. The memoized row must track the
+  // markdown SNAPSHOT prop, not `entry` identity — otherwise a memo on identity
+  // alone would freeze the live turn on screen as it streams.
+  const open: TimelineEntry = { kind: 'text', id: 2, markdown: 'Investigating', closed: false };
+  const entries: TimelineEntry[] = [
+    { kind: 'text', id: 1, markdown: 'Sealed intro turn.', closed: true },
+    { kind: 'tool', id: 1, toolName: 'Grep' },
+    open,
+  ];
+  const screen = render(<ActivityLog sessions={oneSession(entries)} isRunning />);
+  await expect.element(screen.getByText('Investigating')).toBeInTheDocument();
+
+  // Grow the open turn in place (same object ref, new markdown) and hand React a
+  // fresh sessions object — exactly what foldTranscript returns on each flush.
+  open.markdown += ' the auth token refresh path';
+  screen.rerender(<ActivityLog sessions={oneSession(entries)} isRunning />);
+  await expect
+    .element(screen.getByText(/Investigating the auth token refresh path/))
+    .toBeInTheDocument();
+  // The sealed turn above is untouched by the trailing-row update.
+  await expect.element(screen.getByText('Sealed intro turn.')).toBeInTheDocument();
 });
