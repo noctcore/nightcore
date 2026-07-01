@@ -12,9 +12,7 @@
 //! this store stamps status + `linkedTaskId` and carries dismissed-history across
 //! re-runs by fingerprint (the production fix over Aperant's wipe-and-rerun).
 
-use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
-use std::sync::Mutex;
+use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -22,12 +20,7 @@ use serde_json::Value;
 #[cfg(test)]
 use ts_rs::TS;
 
-use crate::store::{is_safe_task_id, write_atomic};
-
-/// Keep at most this many runs per project on disk + in memory; `upsert` prunes the
-/// oldest beyond it so analysis history (and its resident `Vec<StoredFinding>`s)
-/// can't grow unbounded across daily re-runs.
-const MAX_RUNS: usize = 50;
+use crate::store::run_store::{Edit, PersistedRun, RunStore};
 
 /// The result of an atomic convert-to-task link (see [`InsightStore::link_finding_task`]).
 pub enum LinkOutcome {
@@ -180,192 +173,43 @@ pub struct InsightRun {
     pub error: Option<String>,
 }
 
-/// The in-memory run map plus the directory it persists to (interior-mutable so it
-/// can be retargeted on project switch, exactly like [`TaskStore`]).
-pub struct InsightStore {
-    runs: Mutex<HashMap<String, InsightRun>>,
-    dir: Mutex<PathBuf>,
-}
+/// The Insight run store: a [`RunStore`] over [`InsightRun`]. The generic run-level
+/// CRUD (load/retarget/list/get/upsert/prune/reap/remove/mutate) lives on `RunStore`;
+/// only the finding-lifecycle mutators below are Insight-specific.
+pub type InsightStore = RunStore<InsightRun>;
 
-fn read_runs_into_map(dir: &PathBuf) -> HashMap<String, InsightRun> {
-    if let Err(e) = std::fs::create_dir_all(dir) {
-        tracing::warn!(target: "nightcore::store", dir = %dir.display(), error = %e, "failed to create insights dir");
+impl PersistedRun for InsightRun {
+    const RUN_LABEL: &'static str = "insight run";
+    const DIR_LABEL: &'static str = "insights";
+    const INTERRUPTED_ERROR: &'static str = "interrupted (app restarted mid-analysis)";
+
+    fn id(&self) -> &str {
+        &self.id
     }
-    let mut runs = HashMap::new();
-    match std::fs::read_dir(dir) {
-        Ok(entries) => {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) != Some("json") {
-                    continue;
-                }
-                match std::fs::read_to_string(&path) {
-                    Ok(raw) => match serde_json::from_str::<InsightRun>(&raw) {
-                        Ok(run) => {
-                            runs.insert(run.id.clone(), run);
-                        }
-                        Err(e) => {
-                            tracing::warn!(target: "nightcore::store", path = %path.display(), error = %e, "skipping unparsable insight run")
-                        }
-                    },
-                    Err(e) => {
-                        tracing::warn!(target: "nightcore::store", path = %path.display(), error = %e, "cannot read insight run file")
-                    }
-                }
-            }
-        }
-        Err(e) => {
-            tracing::warn!(target: "nightcore::store", dir = %dir.display(), error = %e, "cannot list insights dir")
-        }
+    fn created_at(&self) -> u64 {
+        self.created_at
     }
-    runs
+    fn status(&self) -> &str {
+        &self.status
+    }
+    fn set_status(&mut self, status: &str) {
+        self.status = status.to_string();
+    }
+    fn set_error(&mut self, error: Option<String>) {
+        self.error = error;
+    }
+    fn set_updated_at(&mut self, updated_at: u64) {
+        self.updated_at = updated_at;
+    }
 }
 
 impl InsightStore {
-    /// Load every run file under `dir` into memory, creating the dir if missing.
-    pub fn load_from(dir: PathBuf) -> Self {
-        let runs = read_runs_into_map(&dir);
-        Self {
-            runs: Mutex::new(runs),
-            dir: Mutex::new(dir),
-        }
-    }
-
-    /// Re-point the store at `dir` (project switch), clearing + reloading. Existing
-    /// files on disk are untouched.
-    pub fn retarget(&self, dir: PathBuf) {
-        let reloaded = read_runs_into_map(&dir);
-        *crate::sync::lock_or_recover(&self.runs) = reloaded;
-        *crate::sync::lock_or_recover(&self.dir) = dir;
-    }
-
-    fn path_for(&self, id: &str) -> Result<PathBuf, String> {
-        if !is_safe_task_id(id) {
-            return Err(format!("invalid run id: {id}"));
-        }
-        Ok(crate::sync::lock_or_recover(&self.dir).join(format!("{id}.json")))
-    }
-
-    /// All runs, newest first (by `created_at`).
-    pub fn list(&self) -> Vec<InsightRun> {
-        let mut runs: Vec<InsightRun> = crate::sync::lock_or_recover(&self.runs)
-            .values()
-            .cloned()
-            .collect();
-        runs.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-        runs
-    }
-
-    /// A single run by id.
-    pub fn get(&self, id: &str) -> Option<InsightRun> {
-        crate::sync::lock_or_recover(&self.runs).get(id).cloned()
-    }
-
-    /// Serialize + atomically write one run to its file. The caller holds the `runs`
-    /// lock; this only touches the (separate) `dir` lock via `path_for`.
-    fn persist(&self, run: &InsightRun) -> Result<(), String> {
-        let path = self.path_for(&run.id)?;
-        let json = serde_json::to_string_pretty(run).map_err(|e| e.to_string())?;
-        write_atomic(&path, json.as_bytes())
-            .map_err(|e| format!("failed to persist insight run {}: {e}", run.id))
-    }
-
-    /// Insert or replace a run and write its file (disk-first, like [`TaskStore`]),
-    /// then prune the oldest runs beyond [`MAX_RUNS`].
-    pub fn upsert(&self, run: &InsightRun) -> Result<(), String> {
-        let mut guard = crate::sync::lock_or_recover(&self.runs);
-        self.persist(run)?;
-        guard.insert(run.id.clone(), run.clone());
-        self.prune_locked(&mut guard);
-        Ok(())
-    }
-
-    /// Drop the oldest runs (by `created_at`) beyond [`MAX_RUNS`], deleting their
-    /// files. Called under the `runs` lock from `upsert`. Best-effort on the file
-    /// delete (a failed unlink is logged, not fatal — the in-memory cap still holds).
-    fn prune_locked(&self, guard: &mut std::sync::MutexGuard<'_, HashMap<String, InsightRun>>) {
-        if guard.len() <= MAX_RUNS {
-            return;
-        }
-        let mut by_age: Vec<(String, u64)> = guard
-            .values()
-            .map(|r| (r.id.clone(), r.created_at))
-            .collect();
-        by_age.sort_by_key(|(_, created)| *created);
-        let to_remove = guard.len().saturating_sub(MAX_RUNS);
-        for (id, _) in by_age.into_iter().take(to_remove) {
-            guard.remove(&id);
-            if let Ok(path) = self.path_for(&id) {
-                if let Err(e) = std::fs::remove_file(&path) {
-                    if e.kind() != std::io::ErrorKind::NotFound {
-                        tracing::warn!(target: "nightcore::store", run_id = %id, error = %e, "failed to prune old insight run file");
-                    }
-                }
-            }
-        }
-    }
-
-    /// Mark every run still in `running` as `failed("interrupted")` and persist. A
-    /// `running` run at BOOT means the analysis died with the previous process (the
-    /// engine/sidecar that drove it is gone), so it can never complete — reaping it
-    /// stops the UI from spinning forever. Call ONLY on boot, never on a project
-    /// switch (a cross-project run may still be live in the engine).
-    pub fn reap_running(&self) {
-        let mut guard = crate::sync::lock_or_recover(&self.runs);
-        let stale: Vec<String> = guard
-            .values()
-            .filter(|r| r.status == "running")
-            .map(|r| r.id.clone())
-            .collect();
-        for id in stale {
-            if let Some(run) = guard.get_mut(&id) {
-                run.status = "failed".to_string();
-                run.error = Some("interrupted (app restarted mid-analysis)".to_string());
-                run.updated_at = crate::task::now_ms();
-                let snapshot = run.clone();
-                let _ = self.persist(&snapshot);
-            }
-        }
-    }
-
-    /// Delete a run from memory and disk. Idempotent on a missing file.
-    pub fn remove(&self, id: &str) -> Result<(), String> {
-        let path = self.path_for(id)?;
-        let mut guard = crate::sync::lock_or_recover(&self.runs);
-        guard.remove(id);
-        match std::fs::remove_file(&path) {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(format!("failed to delete {}: {e}", path.display())),
-        }
-    }
-
-    /// Apply `f` to a run, bump `updated_at`, persist, and return it — all under one
-    /// lock (so a concurrent finalize/dismiss can't interleave a stale read-write).
-    pub fn mutate<F>(&self, id: &str, f: F) -> Result<InsightRun, String>
-    where
-        F: FnOnce(&mut InsightRun),
-    {
-        let mut guard = crate::sync::lock_or_recover(&self.runs);
-        let mut run = guard
-            .get(id)
-            .cloned()
-            .ok_or_else(|| format!("no insight run with id {id}"))?;
-        f(&mut run);
-        run.updated_at = crate::task::now_ms();
-        let path = self.path_for(&run.id)?;
-        let json = serde_json::to_string_pretty(&run).map_err(|e| e.to_string())?;
-        write_atomic(&path, json.as_bytes())
-            .map_err(|e| format!("failed to persist insight run {}: {e}", run.id))?;
-        guard.insert(run.id.clone(), run.clone());
-        Ok(run)
-    }
-
     /// One finding within a run (cloned), if present.
     pub fn get_finding(&self, run_id: &str, finding_id: &str) -> Option<StoredFinding> {
-        crate::sync::lock_or_recover(&self.runs)
-            .get(run_id)
-            .and_then(|r| r.findings.iter().find(|f| f.id == finding_id).cloned())
+        self.read(|runs| {
+            runs.get(run_id)
+                .and_then(|r| r.findings.iter().find(|f| f.id == finding_id).cloned())
+        })
     }
 
     /// Set a finding's status (and optionally its linked task), persisting the run.
@@ -380,27 +224,18 @@ impl InsightStore {
         status: &str,
         linked_task_id: Option<Option<String>>,
     ) -> Result<InsightRun, String> {
-        let mut guard = crate::sync::lock_or_recover(&self.runs);
-        let mut run = guard
-            .get(run_id)
-            .cloned()
-            .ok_or_else(|| format!("no insight run with id {run_id}"))?;
-        let found = match run.findings.iter_mut().find(|f| f.id == finding_id) {
-            Some(f) => {
-                f.status = status.to_string();
-                if let Some(link) = linked_task_id {
-                    f.linked_task_id = link;
-                }
-                true
+        let (_, run) = self.edit_run(run_id, |run| {
+            let finding = run
+                .findings
+                .iter_mut()
+                .find(|f| f.id == finding_id)
+                .ok_or_else(|| format!("no finding {finding_id} in run {run_id}"))?;
+            finding.status = status.to_string();
+            if let Some(link) = linked_task_id {
+                finding.linked_task_id = link;
             }
-            None => false,
-        };
-        if !found {
-            return Err(format!("no finding {finding_id} in run {run_id}"));
-        }
-        run.updated_at = crate::task::now_ms();
-        self.persist(&run)?;
-        guard.insert(run.id.clone(), run.clone());
+            Ok(Edit::Commit(()))
+        })?;
         Ok(run)
     }
 
@@ -417,50 +252,47 @@ impl InsightStore {
         finding_id: &str,
         task_id: &str,
     ) -> Result<LinkOutcome, String> {
-        let mut guard = crate::sync::lock_or_recover(&self.runs);
-        let mut run = guard
-            .get(run_id)
-            .cloned()
-            .ok_or_else(|| format!("no insight run with id {run_id}"))?;
-        let finding = run
-            .findings
-            .iter_mut()
-            .find(|f| f.id == finding_id)
-            .ok_or_else(|| format!("no finding {finding_id} in run {run_id}"))?;
-        if let Some(existing) = &finding.linked_task_id {
-            return Ok(LinkOutcome::AlreadyLinked(existing.clone()));
-        }
-        finding.status = "converted".to_string();
-        finding.linked_task_id = Some(task_id.to_string());
-        run.updated_at = crate::task::now_ms();
-        self.persist(&run)?;
-        guard.insert(run.id.clone(), run.clone());
-        Ok(LinkOutcome::Linked)
+        let (outcome, _) = self.edit_run(run_id, |run| {
+            let finding = run
+                .findings
+                .iter_mut()
+                .find(|f| f.id == finding_id)
+                .ok_or_else(|| format!("no finding {finding_id} in run {run_id}"))?;
+            if let Some(existing) = &finding.linked_task_id {
+                return Ok(Edit::Skip(LinkOutcome::AlreadyLinked(existing.clone())));
+            }
+            finding.status = "converted".to_string();
+            finding.linked_task_id = Some(task_id.to_string());
+            Ok(Edit::Commit(LinkOutcome::Linked))
+        })?;
+        Ok(outcome)
     }
 
     /// Every fingerprint a user has DISMISSED across all runs (optionally excluding
     /// `except_run`). Used to carry dismissed-history forward: a re-discovered
     /// finding whose fingerprint was previously dismissed stays dismissed.
     pub fn dismissed_fingerprints(&self, except_run: Option<&str>) -> HashSet<String> {
-        let guard = crate::sync::lock_or_recover(&self.runs);
-        let mut set = HashSet::new();
-        for run in guard.values() {
-            if Some(run.id.as_str()) == except_run {
-                continue;
-            }
-            for f in &run.findings {
-                if f.status == "dismissed" {
-                    set.insert(f.fingerprint.clone());
+        self.read(|runs| {
+            let mut set = HashSet::new();
+            for run in runs.values() {
+                if Some(run.id.as_str()) == except_run {
+                    continue;
+                }
+                for f in &run.findings {
+                    if f.status == "dismissed" {
+                        set.insert(f.fingerprint.clone());
+                    }
                 }
             }
-        }
-        set
+            set
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::store::run_store::MAX_RUNS;
     use tempfile::TempDir;
 
     fn store() -> (InsightStore, TempDir) {

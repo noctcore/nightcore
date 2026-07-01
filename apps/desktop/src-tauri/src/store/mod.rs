@@ -14,6 +14,7 @@ pub(crate) mod context;
 pub(crate) mod harness;
 pub(crate) mod insight;
 pub(crate) mod project;
+pub(crate) mod run_store;
 pub(crate) mod scorecard;
 pub(crate) mod settings;
 pub(crate) mod task;

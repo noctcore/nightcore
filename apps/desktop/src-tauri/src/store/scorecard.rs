@@ -12,10 +12,6 @@
 //! store stamps status + `linkedTaskId`. UNLIKE Insight there is NO `dismissed`
 //! state and NO cross-run dedup — every scorecard run is a fresh snapshot grade.
 
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Mutex;
-
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 // `ts-rs` is a dev-dependency; the codegen derive is gated to `cfg(test)`.
@@ -23,11 +19,7 @@ use serde_json::Value;
 use ts_rs::TS;
 
 use crate::store::insight::{FindingLocation, InsightUsage};
-use crate::store::{is_safe_task_id, write_atomic};
-
-/// Keep at most this many runs per project on disk + in memory; `upsert` prunes the
-/// oldest beyond it so scorecard history can't grow unbounded across re-runs.
-const MAX_RUNS: usize = 50;
+use crate::store::run_store::{Edit, PersistedRun, RunStore};
 
 /// The result of an atomic convert-to-task link (see [`ScorecardStore::link_reading_task`]).
 pub enum LinkOutcome {
@@ -177,187 +169,43 @@ pub struct ScorecardRun {
     pub error: Option<String>,
 }
 
-/// The in-memory run map plus the directory it persists to (interior-mutable so it
-/// can be retargeted on project switch, exactly like [`crate::store::insight::InsightStore`]).
-pub struct ScorecardStore {
-    runs: Mutex<HashMap<String, ScorecardRun>>,
-    dir: Mutex<PathBuf>,
-}
+/// The Readiness Scorecard run store: a [`RunStore`] over [`ScorecardRun`]. The generic
+/// run-level CRUD lives on `RunStore`; only the reading-lifecycle mutators below are
+/// Scorecard-specific.
+pub type ScorecardStore = RunStore<ScorecardRun>;
 
-fn read_runs_into_map(dir: &PathBuf) -> HashMap<String, ScorecardRun> {
-    if let Err(e) = std::fs::create_dir_all(dir) {
-        tracing::warn!(target: "nightcore::store", dir = %dir.display(), error = %e, "failed to create scorecards dir");
+impl PersistedRun for ScorecardRun {
+    const RUN_LABEL: &'static str = "scorecard run";
+    const DIR_LABEL: &'static str = "scorecards";
+    const INTERRUPTED_ERROR: &'static str = "interrupted (app restarted mid-scorecard)";
+
+    fn id(&self) -> &str {
+        &self.id
     }
-    let mut runs = HashMap::new();
-    match std::fs::read_dir(dir) {
-        Ok(entries) => {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) != Some("json") {
-                    continue;
-                }
-                match std::fs::read_to_string(&path) {
-                    Ok(raw) => match serde_json::from_str::<ScorecardRun>(&raw) {
-                        Ok(run) => {
-                            runs.insert(run.id.clone(), run);
-                        }
-                        Err(e) => {
-                            tracing::warn!(target: "nightcore::store", path = %path.display(), error = %e, "skipping unparsable scorecard run")
-                        }
-                    },
-                    Err(e) => {
-                        tracing::warn!(target: "nightcore::store", path = %path.display(), error = %e, "cannot read scorecard run file")
-                    }
-                }
-            }
-        }
-        Err(e) => {
-            tracing::warn!(target: "nightcore::store", dir = %dir.display(), error = %e, "cannot list scorecards dir")
-        }
+    fn created_at(&self) -> u64 {
+        self.created_at
     }
-    runs
+    fn status(&self) -> &str {
+        &self.status
+    }
+    fn set_status(&mut self, status: &str) {
+        self.status = status.to_string();
+    }
+    fn set_error(&mut self, error: Option<String>) {
+        self.error = error;
+    }
+    fn set_updated_at(&mut self, updated_at: u64) {
+        self.updated_at = updated_at;
+    }
 }
 
 impl ScorecardStore {
-    /// Load every run file under `dir` into memory, creating the dir if missing.
-    pub fn load_from(dir: PathBuf) -> Self {
-        let runs = read_runs_into_map(&dir);
-        Self {
-            runs: Mutex::new(runs),
-            dir: Mutex::new(dir),
-        }
-    }
-
-    /// Re-point the store at `dir` (project switch), clearing + reloading.
-    pub fn retarget(&self, dir: PathBuf) {
-        let reloaded = read_runs_into_map(&dir);
-        *crate::sync::lock_or_recover(&self.runs) = reloaded;
-        *crate::sync::lock_or_recover(&self.dir) = dir;
-    }
-
-    fn path_for(&self, id: &str) -> Result<PathBuf, String> {
-        if !is_safe_task_id(id) {
-            return Err(format!("invalid run id: {id}"));
-        }
-        Ok(crate::sync::lock_or_recover(&self.dir).join(format!("{id}.json")))
-    }
-
-    /// All runs, newest first (by `created_at`).
-    pub fn list(&self) -> Vec<ScorecardRun> {
-        let mut runs: Vec<ScorecardRun> = crate::sync::lock_or_recover(&self.runs)
-            .values()
-            .cloned()
-            .collect();
-        runs.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-        runs
-    }
-
-    /// A single run by id.
-    pub fn get(&self, id: &str) -> Option<ScorecardRun> {
-        crate::sync::lock_or_recover(&self.runs).get(id).cloned()
-    }
-
-    fn persist(&self, run: &ScorecardRun) -> Result<(), String> {
-        let path = self.path_for(&run.id)?;
-        let json = serde_json::to_string_pretty(run).map_err(|e| e.to_string())?;
-        write_atomic(&path, json.as_bytes())
-            .map_err(|e| format!("failed to persist scorecard run {}: {e}", run.id))
-    }
-
-    /// Insert or replace a run and write its file (disk-first), then prune the oldest
-    /// runs beyond [`MAX_RUNS`].
-    pub fn upsert(&self, run: &ScorecardRun) -> Result<(), String> {
-        let mut guard = crate::sync::lock_or_recover(&self.runs);
-        self.persist(run)?;
-        guard.insert(run.id.clone(), run.clone());
-        self.prune_locked(&mut guard);
-        Ok(())
-    }
-
-    /// Drop the oldest runs (by `created_at`) beyond [`MAX_RUNS`], deleting their
-    /// files. Best-effort on the file delete (a failed unlink is logged, not fatal).
-    fn prune_locked(&self, guard: &mut std::sync::MutexGuard<'_, HashMap<String, ScorecardRun>>) {
-        if guard.len() <= MAX_RUNS {
-            return;
-        }
-        let mut by_age: Vec<(String, u64)> = guard
-            .values()
-            .map(|r| (r.id.clone(), r.created_at))
-            .collect();
-        by_age.sort_by_key(|(_, created)| *created);
-        let to_remove = guard.len().saturating_sub(MAX_RUNS);
-        for (id, _) in by_age.into_iter().take(to_remove) {
-            guard.remove(&id);
-            if let Ok(path) = self.path_for(&id) {
-                if let Err(e) = std::fs::remove_file(&path) {
-                    if e.kind() != std::io::ErrorKind::NotFound {
-                        tracing::warn!(target: "nightcore::store", run_id = %id, error = %e, "failed to prune old scorecard run file");
-                    }
-                }
-            }
-        }
-    }
-
-    /// Mark every run still in `running` as `failed("interrupted")` and persist. A
-    /// `running` run at BOOT means the grading died with the previous process, so it
-    /// can never complete — reaping it stops the UI from spinning forever. Call ONLY
-    /// on boot, never on a project switch.
-    pub fn reap_running(&self) {
-        let mut guard = crate::sync::lock_or_recover(&self.runs);
-        let stale: Vec<String> = guard
-            .values()
-            .filter(|r| r.status == "running")
-            .map(|r| r.id.clone())
-            .collect();
-        for id in stale {
-            if let Some(run) = guard.get_mut(&id) {
-                run.status = "failed".to_string();
-                run.error = Some("interrupted (app restarted mid-scorecard)".to_string());
-                run.updated_at = crate::task::now_ms();
-                let snapshot = run.clone();
-                let _ = self.persist(&snapshot);
-            }
-        }
-    }
-
-    /// Delete a run from memory and disk. Idempotent on a missing file.
-    pub fn remove(&self, id: &str) -> Result<(), String> {
-        let path = self.path_for(id)?;
-        let mut guard = crate::sync::lock_or_recover(&self.runs);
-        guard.remove(id);
-        match std::fs::remove_file(&path) {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(format!("failed to delete {}: {e}", path.display())),
-        }
-    }
-
-    /// Apply `f` to a run, bump `updated_at`, persist, and return it — all under one
-    /// lock (so a concurrent finalize can't interleave a stale read-write).
-    pub fn mutate<F>(&self, id: &str, f: F) -> Result<ScorecardRun, String>
-    where
-        F: FnOnce(&mut ScorecardRun),
-    {
-        let mut guard = crate::sync::lock_or_recover(&self.runs);
-        let mut run = guard
-            .get(id)
-            .cloned()
-            .ok_or_else(|| format!("no scorecard run with id {id}"))?;
-        f(&mut run);
-        run.updated_at = crate::task::now_ms();
-        let path = self.path_for(&run.id)?;
-        let json = serde_json::to_string_pretty(&run).map_err(|e| e.to_string())?;
-        write_atomic(&path, json.as_bytes())
-            .map_err(|e| format!("failed to persist scorecard run {}: {e}", run.id))?;
-        guard.insert(run.id.clone(), run.clone());
-        Ok(run)
-    }
-
     /// One reading within a run (cloned), if present.
     pub fn get_reading(&self, run_id: &str, reading_id: &str) -> Option<StoredReading> {
-        crate::sync::lock_or_recover(&self.runs)
-            .get(run_id)
-            .and_then(|r| r.readings.iter().find(|f| f.id == reading_id).cloned())
+        self.read(|runs| {
+            runs.get(run_id)
+                .and_then(|r| r.readings.iter().find(|f| f.id == reading_id).cloned())
+        })
     }
 
     /// Set a reading's status (and optionally its linked task), persisting the run.
@@ -373,27 +221,18 @@ impl ScorecardStore {
         status: &str,
         linked_task_id: Option<Option<String>>,
     ) -> Result<ScorecardRun, String> {
-        let mut guard = crate::sync::lock_or_recover(&self.runs);
-        let mut run = guard
-            .get(run_id)
-            .cloned()
-            .ok_or_else(|| format!("no scorecard run with id {run_id}"))?;
-        let found = match run.readings.iter_mut().find(|r| r.id == reading_id) {
-            Some(r) => {
-                r.status = status.to_string();
-                if let Some(link) = linked_task_id {
-                    r.linked_task_id = link;
-                }
-                true
+        let (_, run) = self.edit_run(run_id, |run| {
+            let reading = run
+                .readings
+                .iter_mut()
+                .find(|r| r.id == reading_id)
+                .ok_or_else(|| format!("no reading {reading_id} in run {run_id}"))?;
+            reading.status = status.to_string();
+            if let Some(link) = linked_task_id {
+                reading.linked_task_id = link;
             }
-            None => false,
-        };
-        if !found {
-            return Err(format!("no reading {reading_id} in run {run_id}"));
-        }
-        run.updated_at = crate::task::now_ms();
-        self.persist(&run)?;
-        guard.insert(run.id.clone(), run.clone());
+            Ok(Edit::Commit(()))
+        })?;
         Ok(run)
     }
 
@@ -410,31 +249,27 @@ impl ScorecardStore {
         reading_id: &str,
         task_id: &str,
     ) -> Result<LinkOutcome, String> {
-        let mut guard = crate::sync::lock_or_recover(&self.runs);
-        let mut run = guard
-            .get(run_id)
-            .cloned()
-            .ok_or_else(|| format!("no scorecard run with id {run_id}"))?;
-        let reading = run
-            .readings
-            .iter_mut()
-            .find(|f| f.id == reading_id)
-            .ok_or_else(|| format!("no reading {reading_id} in run {run_id}"))?;
-        if let Some(existing) = &reading.linked_task_id {
-            return Ok(LinkOutcome::AlreadyLinked(existing.clone()));
-        }
-        reading.status = "converted".to_string();
-        reading.linked_task_id = Some(task_id.to_string());
-        run.updated_at = crate::task::now_ms();
-        self.persist(&run)?;
-        guard.insert(run.id.clone(), run.clone());
-        Ok(LinkOutcome::Linked)
+        let (outcome, _) = self.edit_run(run_id, |run| {
+            let reading = run
+                .readings
+                .iter_mut()
+                .find(|f| f.id == reading_id)
+                .ok_or_else(|| format!("no reading {reading_id} in run {run_id}"))?;
+            if let Some(existing) = &reading.linked_task_id {
+                return Ok(Edit::Skip(LinkOutcome::AlreadyLinked(existing.clone())));
+            }
+            reading.status = "converted".to_string();
+            reading.linked_task_id = Some(task_id.to_string());
+            Ok(Edit::Commit(LinkOutcome::Linked))
+        })?;
+        Ok(outcome)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::store::run_store::MAX_RUNS;
     use tempfile::TempDir;
 
     fn store() -> (ScorecardStore, TempDir) {
@@ -483,7 +318,9 @@ mod tests {
     #[test]
     fn upsert_get_list_round_trip() {
         let (store, tmp) = store();
-        store.upsert(&run("r1", vec![reading("f1", "fp1")])).unwrap();
+        store
+            .upsert(&run("r1", vec![reading("f1", "fp1")]))
+            .unwrap();
         assert_eq!(store.get("r1").unwrap().readings.len(), 1);
         assert_eq!(store.list().len(), 1);
         let reloaded = ScorecardStore::load_from(tmp.path().join("scorecards"));
@@ -523,7 +360,10 @@ mod tests {
         assert_eq!(r.grade, "C");
         assert_eq!(r.location.unwrap().start_line, Some(10));
         assert_eq!(r.findings.len(), 1);
-        assert_eq!(r.findings[0].location.as_ref().unwrap().start_line, Some(14));
+        assert_eq!(
+            r.findings[0].location.as_ref().unwrap().start_line,
+            Some(14)
+        );
         assert_eq!(r.status, "open");
     }
 
@@ -539,7 +379,9 @@ mod tests {
     #[test]
     fn link_reading_task_is_atomic_and_idempotent() {
         let (store, _tmp) = store();
-        store.upsert(&run("r1", vec![reading("f1", "fp1")])).unwrap();
+        store
+            .upsert(&run("r1", vec![reading("f1", "fp1")]))
+            .unwrap();
 
         match store.link_reading_task("r1", "f1", "task-1").unwrap() {
             LinkOutcome::Linked => {}
@@ -554,7 +396,11 @@ mod tests {
             LinkOutcome::Linked => panic!("second link must be AlreadyLinked"),
         }
         assert_eq!(
-            store.get_reading("r1", "f1").unwrap().linked_task_id.as_deref(),
+            store
+                .get_reading("r1", "f1")
+                .unwrap()
+                .linked_task_id
+                .as_deref(),
             Some("task-1"),
             "the original link is preserved"
         );
@@ -563,7 +409,9 @@ mod tests {
     #[test]
     fn set_reading_status_persists_and_links() {
         let (store, _tmp) = store();
-        store.upsert(&run("r1", vec![reading("f1", "fp1")])).unwrap();
+        store
+            .upsert(&run("r1", vec![reading("f1", "fp1")]))
+            .unwrap();
         store
             .set_reading_status("r1", "f1", "converted", Some(Some("task-9".into())))
             .unwrap();
@@ -577,14 +425,20 @@ mod tests {
         // The dead-task recovery contract: a reading already linked to a (now-deleted)
         // task must be re-pointable, UNLIKE the compare-and-set `link_reading_task`.
         let (store, _tmp) = store();
-        store.upsert(&run("r1", vec![reading("f1", "fp1")])).unwrap();
+        store
+            .upsert(&run("r1", vec![reading("f1", "fp1")]))
+            .unwrap();
         store.link_reading_task("r1", "f1", "dead-task").unwrap();
 
         store
             .set_reading_status("r1", "f1", "converted", Some(Some("fresh-task".into())))
             .unwrap();
         assert_eq!(
-            store.get_reading("r1", "f1").unwrap().linked_task_id.as_deref(),
+            store
+                .get_reading("r1", "f1")
+                .unwrap()
+                .linked_task_id
+                .as_deref(),
             Some("fresh-task"),
             "set_reading_status must overwrite an existing link (heals the dangling link)"
         );
@@ -594,7 +448,9 @@ mod tests {
     fn set_reading_status_errors_on_missing_reading() {
         // A missing reading must NOT report phantom success (else convert mints dups).
         let (store, _tmp) = store();
-        store.upsert(&run("r1", vec![reading("f1", "fp1")])).unwrap();
+        store
+            .upsert(&run("r1", vec![reading("f1", "fp1")]))
+            .unwrap();
         assert!(store
             .set_reading_status("r1", "ghost", "converted", None)
             .is_err());
@@ -627,6 +483,9 @@ mod tests {
         }
         assert_eq!(store.list().len(), MAX_RUNS, "capped at MAX_RUNS");
         assert!(store.get("r0").is_none(), "oldest run pruned");
-        assert!(store.get(&format!("r{}", MAX_RUNS + 4)).is_some(), "newest kept");
+        assert!(
+            store.get(&format!("r{}", MAX_RUNS + 4)).is_some(),
+            "newest kept"
+        );
     }
 }
