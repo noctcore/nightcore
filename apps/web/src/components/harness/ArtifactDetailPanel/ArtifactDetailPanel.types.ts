@@ -14,4 +14,7 @@ export interface ArtifactDetailPanelProps {
   onDismiss: (artifactId: string) => void;
   /** Restore a previously dismissed artifact. */
   onRestore: (artifactId: string) => void;
+  /** Request to arm an APPLIED eslint-class artifact as a Structure-Lock gauntlet check
+   *  — opens the arm-confirm dialog upstream. Absent ⇒ no arm affordance. */
+  onArm?: (artifactId: string) => void;
 }

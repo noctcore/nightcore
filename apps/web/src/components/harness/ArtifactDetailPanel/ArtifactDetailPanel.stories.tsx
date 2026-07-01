@@ -39,6 +39,7 @@ const meta = {
     onApply: fn(),
     onDismiss: fn(),
     onRestore: fn(),
+    onArm: fn(),
   },
 } satisfies Meta<typeof ArtifactDetailPanel>;
 

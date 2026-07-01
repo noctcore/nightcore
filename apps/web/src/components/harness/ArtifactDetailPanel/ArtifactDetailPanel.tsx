@@ -5,13 +5,18 @@ import {
   CloseIcon,
   CodeBlock,
   IconButton,
+  LockIcon,
   Markdown,
   Modal,
   PlusIcon,
   RetryIcon,
   TrashIcon,
 } from '@/components/ui';
-import { ARTIFACT_KIND_META, WRITE_MODE_META } from '../harness.constants';
+import {
+  ARTIFACT_KIND_META,
+  isEslintArmableKind,
+  WRITE_MODE_META,
+} from '../harness.constants';
 import type { ArtifactDetailPanelProps } from './ArtifactDetailPanel.types';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -36,9 +41,14 @@ export function ArtifactDetailPanel({
   onApply,
   onDismiss,
   onRestore,
+  onArm,
 }: ArtifactDetailPanelProps) {
   const mode = WRITE_MODE_META[artifact.writeMode];
   const applied = artifact.status === 'applied';
+  // An applied ESLint-class artifact can be armed as a project gauntlet check so it
+  // actually runs (an applied plugin is otherwise inert — never loaded by the repo's
+  // own eslint config). Docs/lint-meta artifacts aren't eslint-runnable ⇒ no arm.
+  const canArm = applied && onArm !== undefined && isEslintArmableKind(artifact.kind);
 
   return (
     <Modal
@@ -136,6 +146,17 @@ export function ArtifactDetailPanel({
           >
             <PlusIcon size={15} />
             Apply
+          </Button>
+        )}
+
+        {canArm && (
+          <Button
+            variant="secondary"
+            disabled={pending}
+            onClick={() => onArm?.(artifact.id)}
+          >
+            <LockIcon size={15} />
+            Arm gauntlet check
           </Button>
         )}
 

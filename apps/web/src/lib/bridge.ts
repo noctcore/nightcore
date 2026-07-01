@@ -1330,11 +1330,24 @@ export interface HarnessFindingConvertedEvent {
   taskId: string;
 }
 
+/** A non-`NightcoreEvent` notice the Rust core emits on `nc:harness` when a
+ *  Structure-Lock check is armed into `.nightcore/harness.json`, so the open Harness
+ *  view can confirm the gauntlet is now wired. */
+export interface HarnessCheckArmedEvent {
+  type: 'check-armed';
+  runId: string;
+  /** The check name written to the manifest. */
+  name: string;
+  /** The check kind (`lint-plugin` | `dependency-cruiser` | `coverage-threshold`). */
+  kind: string;
+}
+
 /** Everything that arrives on the `nc:harness` channel. */
 export type HarnessEvent =
   | HarnessScanEvent
   | ArtifactAppliedEvent
-  | HarnessFindingConvertedEvent;
+  | HarnessFindingConvertedEvent
+  | HarnessCheckArmedEvent;
 
 /** Start a Harness scan over the active project. Returns the `runId` the
  *  `harness-*` events correlate by. Rejects outside Tauri (no active project). */
@@ -1439,6 +1452,19 @@ export async function applyHarnessArtifact(
   return invoke<HarnessRun>('apply_harness_artifact', { runId, artifactId });
 }
 
+/** Arm a Structure-Lock check into the scanned project's `.nightcore/harness.json` so
+ *  the zero-cost gauntlet runs it before every future reviewer + at merge. The `command`
+ *  is what the user reviewed and confirmed (the human gate) — never model-derived. Uses
+ *  raw `invoke` (throws outside Tauri) so a failed write surfaces to the caller. */
+export async function armHarnessGauntletCheck(
+  runId: string,
+  name: string,
+  kind: string,
+  command: string,
+): Promise<void> {
+  await invoke<void>('arm_harness_gauntlet_check', { runId, name, kind, command });
+}
+
 /** Narrow an unknown `nc:harness` payload to a `HarnessEvent`. The channel carries TWO
  *  non-`NightcoreEvent` notices — `finding-converted` and `artifact-applied` — plus the
  *  `harness-*` wire family. `parseChannelEvent` handles one notice + the wire events, so
@@ -1458,6 +1484,16 @@ function parseHarnessEvent(value: unknown): HarnessEvent | null {
           findingId: v.findingId,
           taskId: v.taskId,
         };
+      }
+      return null;
+    }
+    if (v.type === 'check-armed') {
+      if (
+        typeof v.runId === 'string' &&
+        typeof v.name === 'string' &&
+        typeof v.kind === 'string'
+      ) {
+        return { type: 'check-armed', runId: v.runId, name: v.name, kind: v.kind };
       }
       return null;
     }

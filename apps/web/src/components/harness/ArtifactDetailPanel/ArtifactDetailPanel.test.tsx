@@ -22,6 +22,13 @@ test('an applied artifact shows the applied state and no Apply action', async ()
   await expect.element(screen.getByRole('button', { name: /applied/i })).toBeDisabled();
 });
 
+test('an applied eslint-class artifact offers arming it as a gauntlet check', async () => {
+  const onArm = vi.fn();
+  const screen = render(<Applied onArm={onArm} />);
+  await screen.getByRole('button', { name: /arm gauntlet check/i }).click();
+  expect(onArm).toHaveBeenCalledWith('a1');
+});
+
 test('a dismissed artifact offers a restore action', async () => {
   const onRestore = vi.fn();
   const screen = render(<Dismissed onRestore={onRestore} />);

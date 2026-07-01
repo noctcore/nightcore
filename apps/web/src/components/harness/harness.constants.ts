@@ -134,6 +134,23 @@ export const ARTIFACT_KIND_META: Record<ArtifactKind, { label: string }> = {
   'custom-lint-plugin': { label: 'Custom lint plugin' },
 };
 
+/** eslint-runnable artifact kinds. Arming one wires the project's Structure-Lock
+ *  gauntlet to actually execute the generated plugin — otherwise an applied plugin sits
+ *  inert (never loaded by the user's own eslint config). Docs and lint-meta rules are
+ *  not eslint-runnable, so they're excluded. */
+const ESLINT_ARMABLE_KINDS: ReadonlySet<ArtifactKind> = new Set<ArtifactKind>([
+  'eslint-rule',
+  'eslint-plugin-file',
+  'eslint-config',
+  'custom-lint-plugin',
+]);
+
+/** Whether an artifact's kind can be armed as an ESLint gauntlet check (module #2 /
+ *  inert-plugin fix). Combine with an `applied` status check at the call site. */
+export function isEslintArmableKind(kind: ArtifactKind): boolean {
+  return ESLINT_ARMABLE_KINDS.has(kind);
+}
+
 /** How `apply` writes the artifact, as the confirm dialog states it. */
 export const WRITE_MODE_META: Record<string, { label: string; hint: string }> = {
   create: {

@@ -3,6 +3,7 @@
 import {
   Button,
   ChevronLeftIcon,
+  ConfirmDialog,
   EmptyState,
   FolderIcon,
   HistoryIcon,
@@ -301,6 +302,7 @@ export function HarnessView(props: HarnessViewProps) {
           onApply={view.requestApply}
           onDismiss={view.onDismissArtifact}
           onRestore={view.onRestoreArtifact}
+          onArm={view.requestArm}
         />
       )}
 
@@ -311,6 +313,28 @@ export function HarnessView(props: HarnessViewProps) {
           error={view.applyError}
           onConfirm={view.confirmApply}
           onCancel={view.cancelApply}
+        />
+      )}
+
+      {view.armTarget !== null && (
+        <ConfirmDialog
+          title="Arm this as a gauntlet check?"
+          confirmLabel="Arm check"
+          message={
+            <>
+              Add a Structure-Lock check to{' '}
+              <code className="rounded border border-border bg-white/[0.04] px-1 py-0.5 font-mono text-[12px] text-foreground">
+                .nightcore/harness.json
+              </code>{' '}
+              that runs before every task in this project (and again at merge). It will
+              run:
+              <code className="mt-2 block break-all rounded border border-border bg-white/[0.04] px-2 py-1 font-mono text-[12px] text-foreground">
+                {view.armCommand}
+              </code>
+            </>
+          }
+          onConfirm={view.confirmArm}
+          onCancel={view.cancelArm}
         />
       )}
     </div>

@@ -12,6 +12,7 @@ import { EFFORT_OPTIONS, MODEL_OPTIONS } from '@/lib/models';
 import type { RunConfig } from '@/lib/useRunConfig';
 import {
   applyHarnessArtifact,
+  armHarnessGauntletCheck,
   cancelHarnessScan,
   convertHarnessFindingToTask,
   dismissHarnessArtifact,
@@ -67,6 +68,9 @@ export interface UseHarnessResult {
   /** Apply an artifact to disk. Resolves on success; REJECTS with the write error
    *  (surfaced inline by the confirm dialog) so a refused overwrite isn't swallowed. */
   applyArtifact: (artifactId: string) => Promise<void>;
+  /** Arm a Structure-Lock check into the project's `.nightcore/harness.json` so the
+   *  gauntlet enforces it on every future task. Command is user-confirmed, not derived. */
+  armCheck: (name: string, kind: string, command: string) => Promise<void>;
 }
 
 /** Drive the Harness data layer: live `harness-*` fold for the active run,
@@ -163,6 +167,11 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
               : prev,
           );
           void refreshRuns();
+          return;
+        }
+        if (event.type === 'check-armed') {
+          // Arming writes only to the project's harness.json (no run/stream change);
+          // the arm action surfaces its own success toast, so this notice is a no-op.
           return;
         }
         // harness-* events only apply to the run currently displayed/driven.
@@ -318,6 +327,16 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
     [stream.runId, refreshRuns],
   );
 
+  const armCheck = useCallback(
+    async (name: string, kind: string, command: string) => {
+      if (stream.runId === null) return;
+      // Writes only to the project's harness.json; the `check-armed` notice is a
+      // no-op for the stream, so nothing to reconcile here.
+      await armHarnessGauntletCheck(stream.runId, name, kind, command);
+    },
+    [stream.runId],
+  );
+
   return {
     stream,
     runs,
@@ -332,10 +351,16 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
     dismissArtifact,
     restoreArtifact,
     applyArtifact,
+    armCheck,
   };
 }
 
 const RUNNING: CategoryProgress = 'running';
+
+/** The Rust check kind + suggested command shown (verbatim) when arming an eslint-class
+ *  artifact as a gauntlet check. `lint-plugin` is the gauntlet's kind for an ESLint gate;
+ *  `npx eslint .` is the conventional whole-repo lint the user reviews + confirms. */
+const ARM_SUGGESTION = { kind: 'lint-plugin', command: 'npx eslint .' } as const;
 
 /** Order findings for display: open before dismissed, then severity (high→low). */
 function sortFindings(findings: ConventionFindingVM[]): ConventionFindingVM[] {
@@ -451,6 +476,16 @@ export interface HarnessViewModel {
   confirmApply: () => void;
   /** Dismiss the apply confirmation. */
   cancelApply: () => void;
+  /** The applied artifact awaiting arm confirmation, or `null` (drives the arm dialog). */
+  armTarget: ProposedArtifactVM | null;
+  /** The command that arming will write to the manifest (shown verbatim — the gate). */
+  armCommand: string;
+  /** Open the arm confirmation for an applied artifact. */
+  requestArm: (artifactId: string) => void;
+  /** Confirm arming (writes the check into `.nightcore/harness.json`). */
+  confirmArm: () => void;
+  /** Dismiss the arm confirmation. */
+  cancelArm: () => void;
 }
 
 /** Resolve the entire Harness surface into a single view model: the live/persisted
@@ -474,6 +509,7 @@ export function useHarnessView({
   const [applyTargetId, setApplyTargetId] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
+  const [armTargetId, setArmTargetId] = useState<string | null>(null);
 
   // Lifted CONFIGURE run config (the shared shape Insight uses too). It lives here
   // (not in RunControls) so the config survives the CONFIGURE → RUNNING → RESULTS
@@ -605,6 +641,10 @@ export function useHarnessView({
     () => stream.artifacts.find((a) => a.id === applyTargetId) ?? null,
     [stream.artifacts, applyTargetId],
   );
+  const armTarget = useMemo(
+    () => stream.artifacts.find((a) => a.id === armTargetId) ?? null,
+    [stream.artifacts, armTargetId],
+  );
 
   const runHistory: MenuItem[] = useMemo(
     () =>
@@ -683,6 +723,23 @@ export function useHarnessView({
     setApplyError(null);
   }, [applying]);
 
+  const confirmArm = useCallback(() => {
+    const target = stream.artifacts.find((a) => a.id === armTargetId) ?? null;
+    if (target === null) return;
+    const name = target.groupTitle ?? target.title;
+    setArmTargetId(null);
+    void runAction('arm gauntlet check', async () => {
+      await harness.armCheck(name, ARM_SUGGESTION.kind, ARM_SUGGESTION.command);
+      toast.push({
+        tone: 'success',
+        title: 'Structure-Lock check armed',
+        description: `${name} now runs before every task in this project.`,
+      });
+    });
+  }, [stream.artifacts, armTargetId, runAction, harness, toast]);
+
+  const cancelArm = useCallback(() => setArmTargetId(null), []);
+
   return {
     hasProject,
     projectName,
@@ -742,5 +799,10 @@ export function useHarnessView({
     },
     confirmApply,
     cancelApply,
+    armTarget,
+    armCommand: ARM_SUGGESTION.command,
+    requestArm: (id) => setArmTargetId(id),
+    confirmArm,
+    cancelArm,
   };
 }
