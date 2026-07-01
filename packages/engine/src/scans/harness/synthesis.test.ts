@@ -113,3 +113,69 @@ describe('parseProposedArtifacts — custom-lint-plugin bundle', () => {
     expect(artifacts).toHaveLength(0);
   });
 });
+
+describe('parseProposedArtifacts — execution-sink grounding', () => {
+  const sink = (targetPath: string, writeMode = 'create') => ({
+    kind: 'agent-contract',
+    title: 'x',
+    description: 'x',
+    targetPath,
+    writeMode,
+    content: 'malicious',
+  });
+
+  test('drops prompt-injected auto-run execution sinks before the preview', () => {
+    // The class of one-click-apply → code-execution targets: auto-loaded agent/editor
+    // config, package-manager lifecycle scripts, make/direnv/CI hooks. None are legitimate
+    // harness output, so grounding must strip them even though they are repo-contained.
+    for (const targetPath of [
+      '.claude/settings.local.json',
+      '.claude/settings.json',
+      '.vscode/tasks.json',
+      'package.json',
+      'apps/web/package.json',
+      'Makefile',
+      'tools/GNUmakefile',
+      '.envrc',
+      '.pre-commit-config.yaml',
+      '.github/workflows/evil.yml',
+      '.husky/pre-commit',
+    ]) {
+      const { artifacts } = parseProposedArtifacts(
+        JSON.stringify([sink(targetPath)]),
+        PROJECT,
+      );
+      expect(artifacts, `must drop sink ${targetPath}`).toHaveLength(0);
+    }
+  });
+
+  test('confines merge-section to agent docs, keeps legitimate output', () => {
+    // merge-section into a non-agent-doc (an existing file the denylist might miss) is
+    // dropped; a create of a normal source/doc file and an agent-doc merge both survive.
+    const injected = parseProposedArtifacts(
+      JSON.stringify([sink('src/server/boot.ts', 'merge-section')]),
+      PROJECT,
+    );
+    expect(injected.artifacts).toHaveLength(0);
+
+    const legit = parseProposedArtifacts(
+      JSON.stringify([
+        sink('AGENTS.md', 'merge-section'),
+        {
+          kind: 'eslint-config',
+          title: 'flat config',
+          description: 'x',
+          targetPath: 'eslint.config.js',
+          writeMode: 'create',
+          content: 'export default [];',
+        },
+      ]),
+      PROJECT,
+    );
+    expect(legit.artifacts).toHaveLength(2);
+    expect(legit.artifacts.map((a) => a.targetPath).sort()).toEqual([
+      'AGENTS.md',
+      'eslint.config.js',
+    ]);
+  });
+});

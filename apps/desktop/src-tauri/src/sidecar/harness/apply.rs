@@ -19,22 +19,49 @@ const SECTION_START: &str = "<!-- nightcore:harness:start -->";
 const SECTION_END: &str = "<!-- nightcore:harness:end -->";
 
 /// In-repo execution sinks: directories whose contents run AUTOMATICALLY (CI
-/// pipelines, git hooks). Containing a write to the repo root is not enough — the
-/// harness synthesis pass reads (possibly untrusted) target-repo content, so a
-/// prompt-injected proposal could land a brand-new `.github/workflows/*.yml` (a
-/// YAML file needs no execute bit) or a git hook that the user one-click-applies
-/// and that then executes on the next push/commit. These are NEVER legitimate
-/// harness artifacts (which are docs + lint config), so any target inside one is
-/// rejected. Matched case-INSENSITIVELY: a case-insensitive filesystem (the macOS
-/// default) would otherwise let `.GitHub/workflows/…` resolve to the real path.
+/// pipelines, git hooks, editor/agent config). Containing a write to the repo root
+/// is not enough — the harness synthesis pass reads (possibly untrusted) target-repo
+/// content, so a prompt-injected proposal could land a brand-new `.github/workflows/*.yml`
+/// (a YAML file needs no execute bit), a `.claude/settings.local.json` whose hooks run
+/// arbitrary shell on the very next agent run, or a `.vscode/tasks.json` that auto-runs
+/// on folder open — each one-click-applied and then executed with NO further click.
+/// These are NEVER legitimate harness artifacts (which are docs + lint config), so any
+/// target inside one is rejected. Matched case-INSENSITIVELY: a case-insensitive
+/// filesystem (the macOS default) would otherwise let `.GitHub/workflows/…` resolve to
+/// the real path.
 const DENIED_TARGET_PREFIXES: &[&str] = &[
     ".git/",              // all git internals, incl. .git/hooks/
     ".github/workflows/", // GitHub Actions
     ".husky/",            // Husky-managed git hooks
     ".circleci/",         // CircleCI
+    ".claude/",           // Claude Code settings/hooks — run arbitrary shell; loaded on the next agent run
+    ".vscode/",           // VS Code tasks.json / launch.json — auto-run on folder open / debug
 ];
-/// Single-file execution sinks (no trailing-slash prefix to match).
-const DENIED_TARGET_FILES: &[&str] = &[".gitlab-ci.yml", ".gitlab-ci.yaml"];
+/// Execution-sink FILE BASENAMES: rejected wherever they sit in the tree (matched on the
+/// last path component, not just the repo root), because their trigger is the file name —
+/// a nested `package.json` still fires npm/bun lifecycle scripts, `make`/direnv/pre-commit
+/// read by basename anywhere. A denylist can never be exhaustive, so `merge-section` (the
+/// only mode that touches a PRE-EXISTING file) is additionally allowlisted to agent docs
+/// below; for `create`, this basename set covers the highest-value auto-exec sinks. Lower
+/// case (matched case-insensitively).
+const DENIED_TARGET_BASENAMES: &[&str] = &[
+    "package.json",           // npm/bun/yarn preinstall/postinstall/prepare lifecycle scripts
+    "makefile",               // `make` recipe bodies
+    "gnumakefile",            // GNU make's higher-priority makefile name
+    ".envrc",                 // direnv — auto-exec on cd into the dir
+    ".pre-commit-config.yaml", // pre-commit — runs hook commands on every commit
+    ".gitlab-ci.yml",         // GitLab CI
+    ".gitlab-ci.yaml",
+];
+
+/// Basenames a `merge-section` write may target. `merge-section` is the ONLY write mode
+/// that reads and rewrites a pre-existing file, so its blast radius is any file the user
+/// already has — a prompt-injected `agent-contract` pointed at an existing shell script or
+/// dotfile would otherwise be merged in place. It exists solely to manage the agent-contract
+/// docs, so restrict it to those (matched case-insensitively). `create` cannot reach these
+/// existing-file sinks (it never clobbers) and is bounded by the denylists above instead.
+const MERGE_SECTION_ALLOWED_BASENAMES: &[&str] =
+    &["claude.md", "agents.md", "agent_contract.md"];
 
 /// Resolve a repo-relative artifact path against `root`, rejecting anything that could
 /// escape the project. Defence in layers:
@@ -82,9 +109,11 @@ pub(super) fn safe_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
             "artifact path targets a protected execution sink ({prefix}): {rel}"
         ));
     }
-    if DENIED_TARGET_FILES.contains(&normalized.as_str()) {
+    // Basename match: reject the sink wherever it sits in the tree, not only at the root.
+    let basename = normalized.rsplit('/').next().unwrap_or("");
+    if DENIED_TARGET_BASENAMES.contains(&basename) {
         return Err(format!(
-            "artifact path targets a protected CI configuration file: {rel}"
+            "artifact path targets a protected execution sink ({basename}): {rel}"
         ));
     }
 
@@ -173,6 +202,20 @@ pub(super) fn write_create(dest: &Path, content: &str) -> Result<(), String> {
 /// second guard atop `safe_join`'s symlink rejection), and a crash mid-write can never
 /// truncate the user's hand-written CLAUDE.md/AGENTS.md.
 pub(super) fn write_merge_section(dest: &Path, body: &str) -> Result<(), String> {
+    // Allowlist the target: merge-section rewrites a pre-existing file, so it is confined
+    // to the agent-contract docs it exists to manage. This is the positive counterpart to
+    // the execution-sink denylist in `safe_join` — a denylist can miss a sink, but this
+    // mode can ONLY ever legitimately write CLAUDE.md / AGENTS.md / AGENT_CONTRACT.md.
+    let basename = dest
+        .file_name()
+        .map(|n| n.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    if !MERGE_SECTION_ALLOWED_BASENAMES.contains(&basename.as_str()) {
+        return Err(format!(
+            "merge-section may only target an agent-contract doc (CLAUDE.md / AGENTS.md / AGENT_CONTRACT.md), not {}",
+            dest.display()
+        ));
+    }
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
@@ -317,6 +360,24 @@ mod tests {
             // case-insensitive-filesystem bypass attempt must also be rejected
             ".GitHub/Workflows/evil.yml",
             "./.github/workflows/evil.yml",
+            // Auto-loaded editor/agent config sinks (one-click apply → code execution
+            // on the next agent run / folder open, no execute bit needed).
+            ".claude/settings.json",
+            ".claude/settings.local.json",
+            ".vscode/tasks.json",
+            ".vscode/launch.json",
+            "./.Claude/Settings.local.json", // case-insensitive bypass attempt
+            // Basename sinks are rejected wherever they sit in the tree, not only at root.
+            "package.json",
+            "apps/web/package.json",
+            "deeply/nested/pkg/package.json",
+            "Makefile",
+            "tools/Makefile",
+            "GNUmakefile",
+            ".envrc",
+            "sub/.envrc",
+            ".pre-commit-config.yaml",
+            ".GitLab-CI.yml", // case-insensitive basename bypass attempt
         ] {
             assert!(
                 safe_join(tmp.path(), bad).is_err(),
@@ -328,17 +389,55 @@ mod tests {
     #[test]
     fn safe_join_allows_non_sink_paths_that_merely_resemble_sinks() {
         // Precision guard: the denylist must NOT over-block legitimate source dirs
-        // (a React `hooks/` dir) or non-executable `.github/` content (issue templates).
+        // (a React `hooks/` dir) or non-executable `.github/` content (issue templates),
+        // nor a source dir/file whose NAME merely contains a sink substring.
         let tmp = TempDir::new().unwrap();
         for ok in [
             "apps/web/src/hooks/useThing.ts",
             ".github/ISSUE_TEMPLATE/bug.md",
             ".github/CODEOWNERS",
             "packages/eslint-plugin/src/index.ts",
+            // Legitimate harness output the fix must keep allowing.
+            "CLAUDE.md",
+            "AGENTS.md",
+            "eslint.config.js",
+            "packages/eslint-plugin/rules/no-cross-feature-imports.js",
+            "packages/eslint-plugin/README.md",
+            // Names that merely resemble a sink but aren't one.
+            "packages/vscode-extension/src/index.ts", // dir contains "vscode", not `.vscode/`
+            "packages/claude-helpers/index.ts",       // dir contains "claude", not `.claude/`
+            "docs/package-json-guide.md",             // basename is NOT `package.json`
+            "src/makefile-parser.ts",                 // basename is NOT `makefile`
         ] {
             assert!(
                 safe_join(tmp.path(), ok).is_ok(),
                 "must allow non-sink path {ok:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn write_merge_section_confined_to_agent_docs() {
+        // merge-section rewrites a pre-existing file, so it is allowlisted to the agent
+        // docs it manages — a prompt-injected merge into any other existing file (an
+        // execution sink the denylist might miss) is rejected outright.
+        let tmp = TempDir::new().unwrap();
+        for ok in ["CLAUDE.md", "AGENTS.md", "AGENT_CONTRACT.md", "docs/agents.md"] {
+            let dest = tmp.path().join(ok);
+            assert!(
+                write_merge_section(&dest, "## Conventions\n- x").is_ok(),
+                "must allow merge into agent doc {ok:?}"
+            );
+        }
+        for bad in ["README.md", "src/index.ts", "deploy.sh", "config.json"] {
+            let dest = tmp.path().join(bad);
+            assert!(
+                write_merge_section(&dest, "malicious body").is_err(),
+                "must reject merge into non-agent-doc {bad:?}"
+            );
+            assert!(
+                !dest.exists(),
+                "a rejected merge must not create {bad:?}"
             );
         }
     }
