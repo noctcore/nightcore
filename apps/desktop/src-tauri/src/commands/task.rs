@@ -9,6 +9,8 @@
 //! which is why they live in this command layer rather than in the `store/task`
 //! persistence leaf.
 
+use std::sync::Arc;
+
 use tauri::{AppHandle, Emitter, State};
 
 use crate::store::TaskStore;
@@ -20,8 +22,12 @@ use crate::task::{
 // --- Commands ---------------------------------------------------------------
 
 /// All tasks currently in the registry (unordered; the webview groups by status).
+///
+/// Returns `Arc<Task>`: the store shares its board pointers, and `Arc<Task>`
+/// serializes over the IPC wire identically to `Task`, so the webview payload is
+/// unchanged while the snapshot avoids a deep clone per task.
 #[tauri::command]
-pub fn list_tasks(store: State<'_, TaskStore>) -> Result<Vec<Task>, String> {
+pub fn list_tasks(store: State<'_, TaskStore>) -> Result<Vec<Arc<Task>>, String> {
     Ok(store.list())
 }
 

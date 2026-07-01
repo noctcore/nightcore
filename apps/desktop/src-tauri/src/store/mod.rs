@@ -49,7 +49,7 @@ pub fn workspace_root() -> PathBuf {
 /// Load every `*.json` task file under `dir` into a map keyed by id, creating the
 /// directory if missing. Unparsable files are skipped with a log rather than
 /// aborting. Shared by [`TaskStore::load_from`] and [`TaskStore::retarget`].
-fn read_dir_into_map(dir: &PathBuf) -> HashMap<String, Task> {
+fn read_dir_into_map(dir: &PathBuf) -> HashMap<String, Arc<Task>> {
     if let Err(e) = std::fs::create_dir_all(dir) {
         tracing::warn!(target: "nightcore::store", dir = %dir.display(), error = %e, "failed to create tasks dir");
     }
@@ -65,7 +65,7 @@ fn read_dir_into_map(dir: &PathBuf) -> HashMap<String, Task> {
                 match std::fs::read_to_string(&path) {
                     Ok(raw) => match serde_json::from_str::<Task>(&raw) {
                         Ok(task) => {
-                            tasks.insert(task.id.clone(), task);
+                            tasks.insert(task.id.clone(), Arc::new(task));
                         }
                         Err(e) => {
                             tracing::warn!(target: "nightcore::store", path = %path.display(), error = %e, "skipping unparsable task file")
@@ -89,7 +89,7 @@ fn read_dir_into_map(dir: &PathBuf) -> HashMap<String, Task> {
 /// or project-switch re-target keeps `seq` strictly increasing above whatever is
 /// already persisted, instead of restarting at 0 and letting a reloaded task
 /// out-rank a freshly-stamped one.
-fn seq_high_water(tasks: &HashMap<String, Task>) -> u64 {
+fn seq_high_water(tasks: &HashMap<String, Arc<Task>>) -> u64 {
     tasks.values().map(|t| t.seq).max().unwrap_or(0)
 }
 
@@ -100,7 +100,14 @@ fn seq_high_water(tasks: &HashMap<String, Task>) -> u64 {
 /// project's `.nightcore/tasks/` and reloads. With no active project the store is
 /// targeted at an empty dir and the board is empty.
 pub struct TaskStore {
-    tasks: Mutex<HashMap<String, Task>>,
+    /// The in-memory board, keyed by id. Values are `Arc<Task>` so a read snapshot
+    /// (`list`) clones one pointer per task instead of the whole struct — the
+    /// auto-loop tick and the `reconcile_*` reconcilers snapshot the entire board
+    /// every 750ms, and a deep clone per `Task` (Vec deps/attachments/subtasks, the
+    /// `StructureLockResult`, and the plan/review/error/summary strings) generated
+    /// O(tasks × task-size) garbage per tick regardless of activity. A write does a
+    /// single copy-on-write clone of the one task it mutates before re-`Arc`-ing it.
+    tasks: Mutex<HashMap<String, Arc<Task>>>,
     dir: Mutex<PathBuf>,
     /// Per-task write-serialization locks, keyed by task id.
     ///
@@ -206,16 +213,25 @@ impl TaskStore {
     }
 
     /// Snapshot of all tasks (unordered).
-    pub fn list(&self) -> Vec<Task> {
+    ///
+    /// Returns `Arc<Task>` so a full-board snapshot is O(tasks) pointer clones, not a
+    /// deep clone of every `Task`. This is the hot read: the coordinator tick and the
+    /// `reconcile_*`/`blocked_task_ids` scans call it on a 750ms interval. The pure
+    /// dependency helpers (`eligible_tasks`/`index_by_id`) are generic over
+    /// `Borrow<Task>`, so the returned `Vec<Arc<Task>>` feeds them without a re-clone.
+    pub fn list(&self) -> Vec<Arc<Task>> {
         crate::sync::lock_or_recover(&self.tasks)
             .values()
             .cloned()
             .collect()
     }
 
-    /// A single task by id, if present.
+    /// A single task by id, if present. Clones the one task (O(1) in the board size),
+    /// so callers keep an owned `Task`; the full-board hot path is [`list`](Self::list).
     pub fn get(&self, id: &str) -> Option<Task> {
-        crate::sync::lock_or_recover(&self.tasks).get(id).cloned()
+        crate::sync::lock_or_recover(&self.tasks)
+            .get(id)
+            .map(|t| t.as_ref().clone())
     }
 
     /// Insert or replace a task and write its file, stamping a fresh monotonic
@@ -250,8 +266,10 @@ impl TaskStore {
         // NOT held, so a concurrent read or a different task's write never waits.
         self.write_file(&stamped)?;
         // Publish to memory only after the disk write succeeds — the map lock is held
-        // for this O(1) insert alone.
-        crate::sync::lock_or_recover(&self.tasks).insert(stamped.id.clone(), stamped.clone());
+        // for this O(1) insert alone. Stored behind an `Arc` so reads snapshot a
+        // pointer; the returned owned `Task` is the caller's to emit.
+        crate::sync::lock_or_recover(&self.tasks)
+            .insert(stamped.id.clone(), Arc::new(stamped.clone()));
         Ok(stamped)
     }
 
@@ -293,7 +311,7 @@ impl TaskStore {
 
         let mut task = crate::sync::lock_or_recover(&self.tasks)
             .get(id)
-            .cloned()
+            .map(|t| t.as_ref().clone())
             .ok_or_else(|| format!("no task with id {id}"))?;
         check(&task)?;
         f(&mut task);
@@ -304,7 +322,9 @@ impl TaskStore {
         // Persist (fsync) holding only the per-id write lock; the map lock is not held.
         self.write_file(&task)?;
         // Publish to memory after the write succeeds — memory never runs ahead of disk.
-        crate::sync::lock_or_recover(&self.tasks).insert(task.id.clone(), task.clone());
+        // Re-`Arc` the mutated task so the map keeps sharing a pointer with readers.
+        crate::sync::lock_or_recover(&self.tasks)
+            .insert(task.id.clone(), Arc::new(task.clone()));
         Ok(task)
     }
 

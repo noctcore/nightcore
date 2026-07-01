@@ -6,6 +6,7 @@
 //! coordinator (see [`crate::orchestration::coordinator`]) calls `eligible_tasks` per tick to
 //! filter the eligible set; ordered execution falls out naturally as deps complete.
 
+use std::borrow::Borrow;
 use std::collections::HashMap;
 
 use crate::task::{Task, TaskStatus};
@@ -22,9 +23,17 @@ pub fn deps_satisfied(task: &Task, by_id: &HashMap<String, &Task>) -> bool {
         .all(|dep| matches!(by_id.get(dep).map(|t| t.status), Some(TaskStatus::Done)))
 }
 
-/// Index a task slice by id for repeated [`deps_satisfied`] lookups.
-pub fn index_by_id(tasks: &[Task]) -> HashMap<String, &Task> {
-    tasks.iter().map(|t| (t.id.clone(), t)).collect()
+/// Index a task slice by id for repeated [`deps_satisfied`] lookups. Generic over
+/// `Borrow<Task>` so it indexes either an owned `&[Task]` (tests) or the store's
+/// `&[Arc<Task>]` snapshot (the tick / reconcilers) without a re-clone.
+pub fn index_by_id<T: Borrow<Task>>(tasks: &[T]) -> HashMap<String, &Task> {
+    tasks
+        .iter()
+        .map(|t| {
+            let t = t.borrow();
+            (t.id.clone(), t)
+        })
+        .collect()
 }
 
 /// Whether a task is in a launchable status. The auto-loop pulls `Ready` and
@@ -39,13 +48,15 @@ pub fn is_launchable_status(status: TaskStatus) -> bool {
 /// result is sorted by `created_at` (then `id`) for deterministic, reproducible
 /// run order. Pure — `is_leased` is injected so this stays unit-testable without a
 /// live `SlotManager`.
-pub fn eligible_tasks<F>(tasks: &[Task], is_leased: F) -> Vec<&Task>
+pub fn eligible_tasks<T, F>(tasks: &[T], is_leased: F) -> Vec<&Task>
 where
+    T: Borrow<Task>,
     F: Fn(&str) -> bool,
 {
     let index = index_by_id(tasks);
     let mut eligible: Vec<&Task> = tasks
         .iter()
+        .map(|t| t.borrow())
         .filter(|t| is_launchable_status(t.status))
         .filter(|t| !is_leased(&t.id))
         .filter(|t| deps_satisfied(t, &index))

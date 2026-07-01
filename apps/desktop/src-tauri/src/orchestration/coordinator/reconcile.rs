@@ -64,7 +64,7 @@ pub fn reconcile_worktrees(app: &AppHandle) {
         return;
     };
     let store = app.state::<TaskStore>();
-    let live: Vec<String> = store.list().into_iter().map(|t| t.id).collect();
+    let live: Vec<String> = store.list().into_iter().map(|t| t.id.clone()).collect();
     let pruned = worktree::reconcile(&PathBuf::from(&project.path), &live);
     if !pruned.is_empty() {
         tracing::info!(target: "nightcore", pruned = pruned.len(), "worktree reconcile pruned orphans");
