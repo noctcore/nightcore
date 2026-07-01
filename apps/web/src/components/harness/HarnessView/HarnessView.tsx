@@ -22,11 +22,12 @@ import { ConventionGrid } from '../ConventionGrid';
 import { HarnessProposalList } from '../HarnessProposalList';
 import { ProfileBanner } from '../ProfileBanner';
 import { RunControls } from '../RunControls';
+import { TaskProposalList } from '../TaskProposalList';
 import { useHarnessView } from './HarnessView.hooks';
 import type { HarnessSection, HarnessViewModel } from './HarnessView.hooks';
 import type { HarnessViewProps } from './HarnessView.types';
 
-/** One section-toggle tab: "Conventions" / "Proposed harness", with a live count. */
+/** One section-toggle tab: "Conventions" / "Proposals" / "Artifacts", with a live count. */
 function SectionTab({
   label,
   count,
@@ -177,14 +178,20 @@ function ResultsScreen({
           onClick={() => setSection('conventions')}
         />
         <SectionTab
-          label="Proposed harness"
+          label="Proposals"
           count={view.proposalCount}
           active={view.section === 'proposals'}
           onClick={() => setSection('proposals')}
         />
+        <SectionTab
+          label="Artifacts"
+          count={view.artifactCount}
+          active={view.section === 'artifacts'}
+          onClick={() => setSection('artifacts')}
+        />
       </div>
 
-      {view.section === 'conventions' ? (
+      {view.section === 'conventions' && (
         <>
           <CategoryTabs tabs={view.tabs} active={view.activeTab} onSelect={view.setActiveTab} />
           <ConventionGrid
@@ -194,11 +201,19 @@ function ResultsScreen({
             onOpen={view.openFinding}
           />
         </>
-      ) : (
-        <HarnessProposalList
-          artifacts={view.artifacts}
+      )}
+      {view.section === 'proposals' && (
+        <TaskProposalList
+          proposals={view.proposals}
           loading={view.proposalsLoading}
           emptyMessage={view.proposalsEmptyMessage}
+        />
+      )}
+      {view.section === 'artifacts' && (
+        <HarnessProposalList
+          artifacts={view.artifacts}
+          loading={view.artifactsLoading}
+          emptyMessage={view.artifactsEmptyMessage}
           onOpen={view.openArtifact}
         />
       )}

@@ -100,6 +100,8 @@ export type {
 export type { HarnessRun } from './generated/HarnessRun';
 export type { StoredConventionFinding } from './generated/StoredConventionFinding';
 export type { StoredProposedArtifact } from './generated/StoredProposedArtifact';
+export type { StoredHarnessProposal } from './generated/StoredHarnessProposal';
+export type { StoredHarnessCheck } from './generated/StoredHarnessCheck';
 export type { StoredRepoProfile } from './generated/StoredRepoProfile';
 export type { StoredRepoPackage } from './generated/StoredRepoPackage';
 export type { HarnessUsage } from './generated/HarnessUsage';
@@ -116,6 +118,9 @@ export type {
   ArtifactKind,
   ArtifactWriteMode,
   ProposedArtifact,
+  HarnessProposal,
+  HarnessProposalKind,
+  HarnessCheck,
 } from '@nightcore/contracts';
 
 /** The kind preset a task runs under and the four UI permission modes are

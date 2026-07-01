@@ -14,6 +14,7 @@ import type {
   ConventionCategory,
   ConventionKind,
   FindingSeverity,
+  HarnessProposalKind,
   HarnessRun,
 } from '@/lib/bridge';
 import type { RunStatus } from './harness.types';
@@ -150,6 +151,23 @@ const ESLINT_ARMABLE_KINDS: ReadonlySet<ArtifactKind> = new Set<ArtifactKind>([
 export function isEslintArmableKind(kind: ArtifactKind): boolean {
   return ESLINT_ARMABLE_KINDS.has(kind);
 }
+
+/** Per-proposal-kind label + one-line hint for the task-proposal list. `apply-artifacts`
+ *  bundles safe file writes onto the hardened apply.rs path; `agent-task` becomes a
+ *  worktree Build task an agent performs and a human reviews as a diff. */
+export const PROPOSAL_KIND_META: Record<
+  HarnessProposalKind,
+  { label: string; hint: string }
+> = {
+  'apply-artifacts': {
+    label: 'Apply artifacts',
+    hint: 'writes the bundled files to disk',
+  },
+  'agent-task': {
+    label: 'Agent task',
+    hint: 'a worktree Build task, reviewed as a diff',
+  },
+};
 
 /** How `apply` writes the artifact, as the confirm dialog states it. */
 export const WRITE_MODE_META: Record<string, { label: string; hint: string }> = {
