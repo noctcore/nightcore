@@ -44,10 +44,13 @@ export default tseslint.config(
       '**/dist-tsc/**',
       '**/target/**',
       '**/node_modules/**',
-      // Transient agent worktrees (.claude/worktrees/**) contain checkout copies
-      // whose nested `scripts/` don't match the top-level `scripts/**` overrides —
-      // linting them produces spurious failures. They are never source.
+      // Transient agent worktrees (.claude/worktrees/** and Nightcore's own
+      // .nightcore/worktrees/**) contain checkout copies whose nested `scripts/`
+      // don't match the top-level `scripts/**` overrides — linting them produces
+      // spurious failures against a second copy of the tree. They are never source
+      // (both dirs are git-ignored). `.nightcore/` also holds task/session state.
       '**/.claude/**',
+      '**/.nightcore/**',
       '**/*.tsbuildinfo',
       '**/storybook-static/**',
       '**/*.woff2',
