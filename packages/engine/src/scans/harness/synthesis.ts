@@ -372,11 +372,19 @@ function coerceArtifact(
 
   const targetPath = normalizeTargetPath(rawTarget);
   if (!isContainedPath(projectPath, targetPath)) return undefined;
+  // Drop auto-run execution-sink targets (`.claude`/`.vscode` config, package.json
+  // lifecycle, make, direnv, git-hook/CI dirs) so an injected proposal never reaches the
+  // one-click preview. The authoritative gate is the Rust apply path (harness/apply.rs);
+  // this mirror is defense-in-depth + UX — we never show an artifact that would be rejected.
+  if (targetsExecutionSink(targetPath)) return undefined;
 
   const fingerprint = artifactFingerprint(kind, targetPath);
   const writeMode = ArtifactWriteModeSchema.safeParse(r.writeMode).success
     ? (r.writeMode as ProposedArtifact['writeMode'])
     : 'create';
+  // merge-section rewrites a pre-existing file, so it is confined to the agent docs it
+  // manages (matches the Rust `write_merge_section` allowlist).
+  if (writeMode === 'merge-section' && !isAgentDocBasename(targetPath)) return undefined;
 
   const group = getString(r, 'group');
   const groupTitle = getString(r, 'groupTitle');
@@ -404,6 +412,46 @@ function coerceArtifact(
 
   const result = ProposedArtifactSchema.safeParse(candidate);
   return result.success ? result.data : undefined;
+}
+
+/** Auto-run execution-sink directory prefixes + file basenames the Rust apply boundary
+ *  rejects. Kept in lockstep with `DENIED_TARGET_PREFIXES` / `DENIED_TARGET_BASENAMES` in
+ *  `apps/desktop/src-tauri/src/sidecar/harness/apply.rs` — the Rust core is authoritative;
+ *  this list only spares the user a preview of an artifact that would be rejected on apply. */
+const EXECUTION_SINK_PREFIXES = [
+  '.git/',
+  '.github/workflows/',
+  '.husky/',
+  '.circleci/',
+  '.claude/',
+  '.vscode/',
+];
+const EXECUTION_SINK_BASENAMES = new Set([
+  'package.json',
+  'makefile',
+  'gnumakefile',
+  '.envrc',
+  '.pre-commit-config.yaml',
+  '.gitlab-ci.yml',
+  '.gitlab-ci.yaml',
+]);
+/** Basenames a `merge-section` write may target (agent-contract docs only). */
+const MERGE_SECTION_ALLOWED_BASENAMES = new Set([
+  'claude.md',
+  'agents.md',
+  'agent_contract.md',
+]);
+
+/** Whether a normalized repo-relative path targets an auto-run execution sink. */
+function targetsExecutionSink(rel: string): boolean {
+  const lower = rel.toLowerCase();
+  if (EXECUTION_SINK_PREFIXES.some((p) => lower.startsWith(p))) return true;
+  return EXECUTION_SINK_BASENAMES.has(lower.split('/').pop() ?? '');
+}
+
+/** Whether a normalized path's basename is an agent-contract doc. */
+function isAgentDocBasename(rel: string): boolean {
+  return MERGE_SECTION_ALLOWED_BASENAMES.has((rel.split('/').pop() ?? '').toLowerCase());
 }
 
 /** Whether a repo-relative path stays inside the project root (no absolute, no

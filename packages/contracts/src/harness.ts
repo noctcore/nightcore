@@ -180,7 +180,14 @@ export const ProposedArtifactSchema = z.object({
   description: z.string(),
   /** Why this artifact, tied to the conventions it enforces. */
   rationale: z.string().optional(),
-  /** Repo-relative destination path (validated for containment by the Rust core). */
+  /** Repo-relative destination path. The Rust core is the trust boundary and validates
+   *  it on apply: containment (no `..` / absolute / symlink escape) AND rejection of
+   *  auto-run execution sinks — `.claude/` & `.vscode/` config, `package.json` lifecycle
+   *  scripts, `Makefile`, `.envrc`, git-hook / CI dirs — so a prompt-injected proposal
+   *  can't land a one-click code-execution file. `merge-section` writes are further
+   *  allowlisted to agent docs (CLAUDE.md / AGENTS.md / AGENT_CONTRACT.md). Kept a bare
+   *  string here because the string alone is untrusted synthesis output; enforcement
+   *  lives at the Rust write path, not in this schema. */
   targetPath: z.string(),
   writeMode: ArtifactWriteModeSchema,
   /** Full file content (for `create`) or the managed-section body (`merge-section`). */
