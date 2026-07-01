@@ -185,14 +185,16 @@ describe('HookBus — PreToolUse blocking deny gate', () => {
   });
 
   test('custom deny rules override the default set', async () => {
-    const bus = new HookBus(undefined, [
-      {
-        id: 'no-echo',
-        reason: 'Nightcore safety policy: no echo in this test.',
-        tools: ['Bash'],
-        matches: (ctx) => ctx.tokens.includes('echo'),
-      },
-    ]);
+    const bus = new HookBus(undefined, {
+      denyRules: [
+        {
+          id: 'no-echo',
+          reason: 'Nightcore safety policy: no echo in this test.',
+          tools: ['Bash'],
+          matches: (ctx) => ctx.tokens.includes('echo'),
+        },
+      ],
+    });
     // The default rm-rf rule is replaced, so rm -rf now passes...
     expect(await pre(bus, 'Bash', { command: 'rm -rf x' })).toEqual({
       continue: true,
@@ -202,5 +204,55 @@ describe('HookBus — PreToolUse blocking deny gate', () => {
       hookSpecificOutput?: { permissionDecision?: string };
     };
     expect(blocked.hookSpecificOutput?.permissionDecision).toBe('deny');
+  });
+});
+
+describe('HookBus — workspace confinement gate (worktree isolation)', () => {
+  async function pre(bus: HookBus, toolName: string, toolInput: unknown) {
+    return bus.hooks().PreToolUse![0]!.hooks[0]!({
+      hook_event_name: 'PreToolUse',
+      tool_name: toolName,
+      tool_input: toolInput,
+    });
+  }
+  const decision = (r: unknown) =>
+    (r as { hookSpecificOutput?: { permissionDecision?: string } })
+      .hookSpecificOutput?.permissionDecision;
+
+  // The exact shape of the reported bug: cwd is the task worktree, but the agent
+  // edits an absolute path in the PARENT (main) checkout.
+  const WORKTREE = '/repo/.nightcore/worktrees/task-1';
+
+  test('denies an Edit whose absolute path escapes the run cwd (the main-repo write)', async () => {
+    const bus = new HookBus(undefined, { cwd: WORKTREE });
+    const r = await pre(bus, 'Edit', {
+      file_path: '/repo/apps/web/src/components/board/status.ts',
+    });
+    expect(decision(r)).toBe('deny');
+  });
+
+  test('allows an Edit inside the run cwd (absolute and relative)', async () => {
+    const bus = new HookBus(undefined, { cwd: WORKTREE });
+    expect(
+      await pre(bus, 'Edit', { file_path: `${WORKTREE}/apps/web/x.ts` }),
+    ).toEqual({ continue: true });
+    expect(
+      await pre(bus, 'Write', { file_path: 'apps/web/y.ts' }),
+    ).toEqual({ continue: true });
+  });
+
+  test('denies a Bash `cd` to an absolute path outside the run cwd', async () => {
+    const bus = new HookBus(undefined, { cwd: WORKTREE });
+    const r = await pre(bus, 'Bash', {
+      command: 'cd /repo && bun run typecheck',
+    });
+    expect(decision(r)).toBe('deny');
+  });
+
+  test('with no cwd configured the confinement gate is OFF (back-compat)', async () => {
+    const bus = new HookBus(undefined, {});
+    expect(
+      await pre(bus, 'Edit', { file_path: '/somewhere/else/x.ts' }),
+    ).toEqual({ continue: true });
   });
 });

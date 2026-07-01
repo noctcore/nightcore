@@ -284,9 +284,10 @@ describe('SessionManager task kinds (M4)', () => {
     await done;
 
     const options = queryOptions.at(-1)!;
-    // The build preset adds no append and no tool restriction. permissionMode
-    // falls back to the session default.
-    expect(options.appendSystemPrompt).toBeUndefined();
+    // The build preset adds no PERSONA and no tool restriction. permissionMode
+    // falls back to the session default. `appendSystemPrompt` still carries the
+    // always-present working-root directive (worktree isolation) and nothing else.
+    expect(options.appendSystemPrompt).toContain('Working directory (authoritative)');
     expect(options.allowedTools).toBeUndefined();
     expect(options.disallowedTools).toBeUndefined();
     expect(options.permissionMode).toBe('default');

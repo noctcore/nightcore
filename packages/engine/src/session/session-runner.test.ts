@@ -411,8 +411,18 @@ describe('composeAppendSystemPrompt — Pre-flight Context Pack (Lock, feature #
   const persona = 'You are an independent code reviewer.';
   const pack = 'PROJECT CONSTITUTION: never break the folder-per-component rule.';
 
-  test('orders the context pack BEFORE the kind-preset persona', () => {
-    const composed = composeAppendSystemPrompt(pack, persona);
+  const root = '# Working directory (authoritative)\n\n  /repo/wt';
+
+  test('orders the working root BEFORE the pack, and the pack BEFORE the persona', () => {
+    const composed = composeAppendSystemPrompt(root, pack, persona);
+    expect(composed).toBeDefined();
+    expect(composed!.indexOf(root)).toBe(0);
+    expect(composed!.indexOf(root)).toBeLessThan(composed!.indexOf(pack));
+    expect(composed!.indexOf(pack)).toBeLessThan(composed!.indexOf(persona));
+  });
+
+  test('orders the context pack BEFORE the kind-preset persona (no working root)', () => {
+    const composed = composeAppendSystemPrompt(undefined, pack, persona);
     expect(composed).toBeDefined();
     const packAt = composed!.indexOf(pack);
     const personaAt = composed!.indexOf(persona);
@@ -420,23 +430,23 @@ describe('composeAppendSystemPrompt — Pre-flight Context Pack (Lock, feature #
     expect(packAt).toBeLessThan(personaAt);
   });
 
-  test('returns just the pack when there is no persona', () => {
-    expect(composeAppendSystemPrompt(pack, undefined)).toBe(pack);
+  test('returns just the pack when there is no working root or persona', () => {
+    expect(composeAppendSystemPrompt(undefined, pack, undefined)).toBe(pack);
   });
 
-  test('returns just the persona when there is no pack', () => {
-    expect(composeAppendSystemPrompt(undefined, persona)).toBe(persona);
-    expect(composeAppendSystemPrompt('   ', persona)).toBe(persona);
+  test('returns just the persona when there is no working root or pack', () => {
+    expect(composeAppendSystemPrompt(undefined, undefined, persona)).toBe(persona);
+    expect(composeAppendSystemPrompt(undefined, '   ', persona)).toBe(persona);
   });
 
-  test('returns undefined when neither is present (omits the SDK option)', () => {
-    expect(composeAppendSystemPrompt(undefined, undefined)).toBeUndefined();
-    expect(composeAppendSystemPrompt('', '')).toBeUndefined();
+  test('returns undefined when every part is absent (omits the SDK option)', () => {
+    expect(composeAppendSystemPrompt(undefined, undefined, undefined)).toBeUndefined();
+    expect(composeAppendSystemPrompt('', '', '')).toBeUndefined();
   });
 
   test('truncates an oversized pack to the budget with a notice', () => {
     const huge = 'x'.repeat(CONTEXT_PACK_MAX_CHARS + 5000);
-    const composed = composeAppendSystemPrompt(huge, persona);
+    const composed = composeAppendSystemPrompt(undefined, huge, persona);
     expect(composed).toBeDefined();
     // The bounded pack is at most the budget plus the short truncation notice, and
     // is far shorter than the raw input — it cannot crowd out the task.
@@ -448,7 +458,7 @@ describe('composeAppendSystemPrompt — Pre-flight Context Pack (Lock, feature #
 });
 
 describe('SessionRunner — appendContextPack composes into SDK appendSystemPrompt', () => {
-  test('a context pack leads the persona in the SDK appendSystemPrompt', async () => {
+  test('the working root leads, then the context pack, then the persona', async () => {
     resolvedClaudePath = '/usr/local/bin/claude';
     queryCalls = 0;
     lastQueryOptions = undefined;
@@ -476,13 +486,17 @@ describe('SessionRunner — appendContextPack composes into SDK appendSystemProm
     expect(queryCalls).toBe(1);
     const appended = lastQueryOptions?.appendSystemPrompt as string | undefined;
     expect(appended).toBeDefined();
+    // The authoritative working-directory directive leads and names the run cwd.
+    expect(appended!.startsWith('# Working directory (authoritative)')).toBe(true);
+    expect(appended).toContain(process.cwd());
+    const directiveAt = appended!.indexOf('Working directory (authoritative)');
     const packAt = appended!.indexOf('PROJECT CONSTITUTION');
     const personaAt = appended!.indexOf('independent code reviewer');
-    expect(packAt).toBe(0);
+    expect(directiveAt).toBeLessThan(packAt);
     expect(packAt).toBeLessThan(personaAt);
   });
 
-  test('no context pack leaves the persona alone (pre-feature shape)', async () => {
+  test('with no pack, the working-root directive still leads the persona', async () => {
     resolvedClaudePath = '/usr/local/bin/claude';
     queryCalls = 0;
     lastQueryOptions = undefined;
@@ -505,6 +519,8 @@ describe('SessionRunner — appendContextPack composes into SDK appendSystemProm
 
     await runner.run();
 
-    expect(lastQueryOptions?.appendSystemPrompt).toBe('PERSONA ONLY');
+    const appended = lastQueryOptions?.appendSystemPrompt as string | undefined;
+    expect(appended!.startsWith('# Working directory (authoritative)')).toBe(true);
+    expect(appended!.endsWith('PERSONA ONLY')).toBe(true);
   });
 });

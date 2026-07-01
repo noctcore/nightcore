@@ -211,20 +211,44 @@ export const CONTEXT_PACK_MAX_CHARS = 12_000;
 const CONTEXT_PACK_TRUNCATION_NOTICE =
   '\n\n…[context pack truncated to fit the pre-flight budget]';
 
-/** Separator between the context pack and the kind-preset persona in the composed
- *  `appendSystemPrompt`. A blank line keeps the two trusted blocks visually
- *  distinct in the assembled system prompt. */
+/** Separator between the working-root directive, the context pack, and the
+ *  kind-preset persona in the composed `appendSystemPrompt`. A blank line keeps
+ *  the trusted blocks visually distinct in the assembled system prompt. */
 const CONTEXT_PACK_SEPARATOR = '\n\n';
 
 /**
- * Compose the final `appendSystemPrompt` from the (optional) trusted context pack
- * and the (optional) kind-preset persona — pack FIRST so project rules lead, then
+ * The authoritative working-directory directive that LEADS every run's system
+ * prompt. Nightcore worktrees live nested inside the main checkout
+ * (`<repo>/.nightcore/worktrees/<taskId>`), so a model that sees the worktree cwd
+ * can trivially resolve "up" to the main repo root and edit the wrong tree
+ * (observed 2026-07-01). This states plainly that the run cwd IS the repository
+ * for the task and out-of-cwd writes are blocked — the prevent half of the pair
+ * whose enforce half is `evaluateWorkspaceConfinement` (the PreToolUse gate).
+ */
+export function workingRootDirective(cwd: string): string {
+  return (
+    `# Working directory (authoritative)\n\n` +
+    `Your working directory for this task is:\n  ${cwd}\n\n` +
+    `Treat THIS directory as the repository root for the task. Make every file ` +
+    `read, write, and edit inside it, and prefer paths relative to it. Do NOT ` +
+    `operate on any other copy of the repository — do not \`cd\` to a parent ` +
+    `directory, and do not use an absolute path that points outside this ` +
+    `directory. Writes outside this directory are blocked and will fail.`
+  );
+}
+
+/**
+ * Compose the final `appendSystemPrompt` from the working-root directive, the
+ * (optional) trusted context pack, and the (optional) kind-preset persona — in
+ * that order, so the authoritative working root leads, then project rules, then
  * the reviewer/build persona. The pack is truncated to [`CONTEXT_PACK_MAX_CHARS`]
- * so it can't crowd out the task. Returns `undefined` when neither is present, so
- * the caller omits the SDK option entirely. Pure + exported so the ordering is
+ * so it can't crowd out the task. Returns `undefined` only when every part is
+ * absent (the working-root directive is always present for a real run, so the
+ * option is effectively always set). Pure + exported so the ordering is
  * unit-testable without spinning a query.
  */
 export function composeAppendSystemPrompt(
+  workingRoot: string | undefined,
   contextPack: string | undefined,
   persona: string | undefined,
 ): string | undefined {
@@ -235,7 +259,7 @@ export function composeAppendSystemPrompt(
         ? pack.slice(0, CONTEXT_PACK_MAX_CHARS) + CONTEXT_PACK_TRUNCATION_NOTICE
         : pack
       : undefined;
-  const parts = [boundedPack, persona].filter(
+  const parts = [workingRoot?.trim() || undefined, boundedPack, persona].filter(
     (part): part is string => part !== undefined && part.length > 0,
   );
   return parts.length > 0 ? parts.join(CONTEXT_PACK_SEPARATOR) : undefined;
@@ -375,13 +399,16 @@ export class SessionOptionsBuilder {
       ...(this.cfg.permissionMode === 'bypassPermissions'
         ? { allowDangerouslySkipPermissions: true }
         : {}),
-      // Compose the FINAL `appendSystemPrompt` as [trusted context pack →
-      // kind-preset persona], pack first so project rules lead, then the
-      // reviewer/build persona. The pack is truncated to a token budget so it can't
-      // crowd out the task. With neither present the field is omitted, so a `build`
-      // session (no preset, no pack) keeps its default system prompt.
+      // Compose the FINAL `appendSystemPrompt` as [working-root directive →
+      // trusted context pack → kind-preset persona]: the authoritative run cwd
+      // leads (worktree isolation — the prevent half of the confinement gate),
+      // then project rules, then the reviewer/build persona. The pack is truncated
+      // to a token budget so it can't crowd out the task. The directive is always
+      // present, so `appendSystemPrompt` is effectively always set — even a `build`
+      // session (no preset, no pack) now carries the working-root directive.
       ...((): { appendSystemPrompt?: string } => {
         const composed = composeAppendSystemPrompt(
+          workingRootDirective(this.cfg.cwd),
           this.cfg.appendContextPack,
           this.cfg.appendSystemPrompt,
         );
