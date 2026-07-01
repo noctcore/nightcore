@@ -9,9 +9,10 @@
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::sidecar::scan::{failure_reason, finalize_completed, ScanTelemetry};
 use crate::sidecar::HARNESS_EVENT;
 use crate::store::harness::{
-    HarnessStore, HarnessUsage, StoredConventionFinding, StoredProposedArtifact, StoredRepoProfile,
+    HarnessStore, StoredConventionFinding, StoredProposedArtifact, StoredRepoProfile,
 };
 
 /// Reader-side: forward a `harness-*` event to the `nc:harness` channel and, on the
@@ -70,102 +71,66 @@ pub(crate) async fn handle_harness_event(app: &AppHandle, event_type: &str, even
                 }
             }
 
-            let cost = event.get("costUsd").and_then(Value::as_f64).unwrap_or(0.0);
-            let duration = event.get("durationMs").and_then(Value::as_u64).unwrap_or(0);
-            let usage = event.get("usage");
-            let input_tokens = usage
-                .and_then(|u| u.get("inputTokens"))
-                .and_then(Value::as_u64)
-                .unwrap_or(0);
-            let output_tokens = usage
-                .and_then(|u| u.get("outputTokens"))
-                .and_then(Value::as_u64)
-                .unwrap_or(0);
+            let tel = ScanTelemetry::from_event(event);
+            let (finding_count, artifact_count) = (findings.len(), artifacts.len());
 
-            let result = harness_store.mutate(run_id, |run| {
-                // Idempotency: a duplicate completion for an already-finalized run must
-                // not reset the user's lifecycle edits. A clean repo can finalize with
-                // zero findings but proposed artifacts (synthesis runs regardless), so
-                // the guard checks BOTH collections — findings-only would miss that case.
-                if run.status == "completed"
-                    && (!run.findings.is_empty() || !run.artifacts.is_empty())
-                {
-                    return;
-                }
-                // Carry IN-RUN finding lifecycle (dismissed live during this scan).
-                let prior_findings: std::collections::HashMap<String, String> = run
-                    .findings
-                    .iter()
-                    .filter(|f| f.status != "open")
-                    .map(|f| (f.fingerprint.clone(), f.status.clone()))
-                    .collect();
-                let mut merged_findings = findings.clone();
-                for f in &mut merged_findings {
-                    if let Some(status) = prior_findings.get(&f.fingerprint) {
-                        f.status = status.clone();
+            // The shared finalizer owns the idempotency guard + status/telemetry stamp; we
+            // inject the harness-specific merge: in-run finding/artifact lifecycle
+            // carry-forward plus the profile + cleared synthesizing flag.
+            let finalized =
+                finalize_completed(harness_store.inner(), "harness", run_id, &tel, move |run| {
+                    // Carry IN-RUN finding lifecycle (dismissed live during this scan).
+                    let prior_findings: std::collections::HashMap<String, String> = run
+                        .findings
+                        .iter()
+                        .filter(|f| f.status != "open")
+                        .map(|f| (f.fingerprint.clone(), f.status.clone()))
+                        .collect();
+                    let mut merged_findings = findings;
+                    for f in &mut merged_findings {
+                        if let Some(status) = prior_findings.get(&f.fingerprint) {
+                            f.status = status.clone();
+                        }
                     }
-                }
-                // Carry IN-RUN artifact lifecycle (applied/dismissed live during this scan),
-                // preserving applied_path AND applied_at so a re-finalize never nulls the
-                // apply timestamp.
-                type InRun = (String, Option<String>, Option<u64>);
-                let prior_in_run: std::collections::HashMap<String, InRun> = run
-                    .artifacts
-                    .iter()
-                    .filter(|a| a.status != "proposed")
-                    .map(|a| {
-                        (
-                            a.fingerprint.clone(),
-                            (a.status.clone(), a.applied_path.clone(), a.applied_at),
-                        )
-                    })
-                    .collect();
-                let mut merged_artifacts = artifacts.clone();
-                for a in &mut merged_artifacts {
-                    if let Some((status, path, at)) = prior_in_run.get(&a.fingerprint) {
-                        a.status = status.clone();
-                        a.applied_path = path.clone();
-                        a.applied_at = *at;
+                    // Carry IN-RUN artifact lifecycle (applied/dismissed live during this
+                    // scan), preserving applied_path AND applied_at so a re-finalize never
+                    // nulls the apply timestamp.
+                    type InRun = (String, Option<String>, Option<u64>);
+                    let prior_in_run: std::collections::HashMap<String, InRun> = run
+                        .artifacts
+                        .iter()
+                        .filter(|a| a.status != "proposed")
+                        .map(|a| {
+                            (
+                                a.fingerprint.clone(),
+                                (a.status.clone(), a.applied_path.clone(), a.applied_at),
+                            )
+                        })
+                        .collect();
+                    let mut merged_artifacts = artifacts;
+                    for a in &mut merged_artifacts {
+                        if let Some((status, path, at)) = prior_in_run.get(&a.fingerprint) {
+                            a.status = status.clone();
+                            a.applied_path = path.clone();
+                            a.applied_at = *at;
+                        }
                     }
-                }
 
-                run.status = "completed".to_string();
-                run.profile = profile.clone();
-                run.findings = merged_findings;
-                run.artifacts = merged_artifacts;
-                run.cost_usd = cost;
-                run.duration_ms = duration;
-                run.usage = HarnessUsage {
-                    input_tokens,
-                    output_tokens,
-                };
-                run.synthesizing = false;
-                run.error = None;
-            });
-            if let Err(e) = result {
-                tracing::warn!(target: "nightcore", run_id, error = %e, "failed to finalize harness run");
-            } else {
-                tracing::info!(target: "nightcore", run_id, findings = findings.len(), artifacts = artifacts.len(), cost_usd = cost, "harness scan completed");
+                    run.profile = profile;
+                    run.findings = merged_findings;
+                    run.artifacts = merged_artifacts;
+                    run.synthesizing = false;
+                });
+            if finalized {
+                tracing::info!(target: "nightcore", run_id, findings = finding_count, artifacts = artifact_count, cost_usd = tel.cost_usd, "harness scan completed");
             }
         }
         "harness-scan-failed" => {
-            let reason = event
-                .get("reason")
-                .and_then(Value::as_str)
-                .unwrap_or("unknown");
-            let message = event
-                .get("message")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
+            let reason = failure_reason(event);
             let _ = harness_store.mutate(run_id, |run| {
                 run.status = "failed".to_string();
                 run.synthesizing = false;
-                run.error = Some(if message.is_empty() {
-                    reason.to_string()
-                } else {
-                    message
-                });
+                run.error = Some(reason.clone());
             });
             tracing::info!(target: "nightcore", run_id, reason, "harness scan ended (failed/aborted)");
         }

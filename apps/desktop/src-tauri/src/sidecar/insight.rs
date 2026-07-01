@@ -12,7 +12,6 @@
 //! finalizes the persisted run — applying dismissed-history reconciliation so a
 //! re-discovered, previously-dismissed finding stays dismissed.
 
-use serde::Serialize;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -21,18 +20,13 @@ use crate::provider::SidecarProvider;
 use crate::project::ProjectStore;
 use crate::store::insight::{InsightRun, InsightStore, InsightUsage, StoredFinding};
 use crate::store::TaskStore;
-use crate::task::{now_ms, Task, TaskKind, TASK_EVENT};
+use crate::task::{Task, TaskKind, TASK_EVENT};
 
-use super::{ensure_reader, INSIGHT_EVENT};
-
-/// Serialize a generated wire enum to its wire string (e.g. `AnalysisScope::Diff`
-/// → `"diff"`, `FindingCategory::UiUx` → `"ui-ux"`).
-fn wire_str<T: Serialize>(value: &T) -> String {
-    serde_json::to_value(value)
-        .ok()
-        .and_then(|v| v.as_str().map(str::to_string))
-        .unwrap_or_default()
-}
+use super::scan::{
+    begin_scan_run, dispatch_scan_command, failure_reason, finalize_completed, wire_str,
+    ScanRunInit, ScanTelemetry,
+};
+use super::INSIGHT_EVENT;
 
 /// Resolve the changed files for `diff` scope: tracked changes vs `HEAD` plus
 /// untracked-but-not-ignored files. Best-effort — a non-repo / git failure yields
@@ -75,19 +69,20 @@ pub async fn start_analysis(
     model: Option<String>,
     effort: Option<EffortLevel>,
 ) -> Result<String, String> {
-    if categories.is_empty() {
-        return Err("select at least one category to analyze".to_string());
-    }
-    let project = projects
-        .active()
-        .ok_or("no active project to analyze")?;
-    let project_path = project.path.clone();
-
-    let run_id = uuid::Uuid::new_v4().to_string();
+    let ScanRunInit {
+        project_path,
+        run_id,
+        model: model_str,
+        now,
+    } = begin_scan_run(
+        projects.active(),
+        categories.is_empty(),
+        "select at least one category to analyze",
+        "no active project to analyze",
+        model.as_deref(),
+    )?;
     let scope_str = wire_str(&scope);
     let category_strs: Vec<String> = categories.iter().map(wire_str).collect();
-    let model_str = model.clone().unwrap_or_default();
-    let now = now_ms();
 
     // Persist the run as `running` up front so it shows immediately in the list.
     let run = InsightRun {
@@ -117,22 +112,8 @@ pub async fn start_analysis(
         AnalysisScope::Repo => None,
     };
 
-    // Ensure the sidecar is up, then dispatch the analysis command.
-    if let Err(e) = ensure_reader(&app).await {
-        if let Err(persist_err) = insight_store.mutate(&run_id, |r| {
-            r.status = "failed".to_string();
-            r.error = Some(e.clone());
-        }) {
-            tracing::warn!(
-                target: "nightcore",
-                run_id = %run_id,
-                error = %persist_err,
-                "failed to persist insight run failed-state (run may look stuck on reload)"
-            );
-        }
-        return Err(e);
-    }
-
+    // Ensure the sidecar is up, then dispatch the analysis command; on failure the
+    // shared helper persists the run's failed-state (so it doesn't look stuck).
     let command = SurfaceCommand::StartAnalysis {
         run_id: run_id.clone(),
         project_path,
@@ -145,21 +126,15 @@ pub async fn start_analysis(
         max_turns_per_category: None,
         max_budget_usd_per_category: None,
     };
-    let provider = app.state::<std::sync::Arc<SidecarProvider>>();
-    if let Err(e) = provider.dispatch_command(command).await {
-        if let Err(persist_err) = insight_store.mutate(&run_id, |r| {
-            r.status = "failed".to_string();
-            r.error = Some(e.clone());
-        }) {
-            tracing::warn!(
-                target: "nightcore",
-                run_id = %run_id,
-                error = %persist_err,
-                "failed to persist insight run failed-state (run may look stuck on reload)"
-            );
-        }
-        return Err(e);
-    }
+    dispatch_scan_command(&app, "insight", &run_id, command, |msg| {
+        insight_store
+            .mutate(&run_id, |r| {
+                r.status = "failed".to_string();
+                r.error = Some(msg.to_string());
+            })
+            .map(|_| ())
+    })
+    .await?;
 
     tracing::info!(target: "nightcore", run_id = %run_id, "insight analysis started");
     Ok(run_id)
@@ -371,79 +346,45 @@ pub(crate) async fn handle_analysis_event(app: &AppHandle, event_type: &str, eve
                 }
             }
 
-            let cost = event.get("costUsd").and_then(Value::as_f64).unwrap_or(0.0);
-            let duration = event.get("durationMs").and_then(Value::as_u64).unwrap_or(0);
-            let usage = event.get("usage");
-            let input_tokens = usage
-                .and_then(|u| u.get("inputTokens"))
-                .and_then(Value::as_u64)
-                .unwrap_or(0);
-            let output_tokens = usage
-                .and_then(|u| u.get("outputTokens"))
-                .and_then(Value::as_u64)
-                .unwrap_or(0);
+            let tel = ScanTelemetry::from_event(event);
+            let count = findings.len();
 
-            let result = insight_store.mutate(run_id, |run| {
-                // Idempotency: a duplicate `analysis-completed` for an already-
-                // finalized run must not reset the user's lifecycle edits.
-                if run.status == "completed" && !run.findings.is_empty() {
-                    return;
-                }
-                // Carry over IN-RUN lifecycle (a finding the user dismissed/converted
-                // from the live stream during this run) by fingerprint, so the
-                // wholesale `findings` replace below doesn't reset it to `open`. The
-                // cross-run dismissed set was already applied to `findings` above.
-                let prior: std::collections::HashMap<String, (String, Option<String>)> =
-                    run.findings
-                        .iter()
-                        .filter(|f| f.status != "open")
-                        .map(|f| {
-                            (
-                                f.fingerprint.clone(),
-                                (f.status.clone(), f.linked_task_id.clone()),
-                            )
-                        })
-                        .collect();
-                let mut merged = findings.clone();
-                for f in &mut merged {
-                    if let Some((status, link)) = prior.get(&f.fingerprint) {
-                        f.status = status.clone();
-                        f.linked_task_id = link.clone();
+            // The shared finalizer owns the idempotency guard + status/telemetry stamp; we
+            // inject only the in-run lifecycle carry-forward (a finding the user
+            // dismissed/converted from the live stream during this run), by fingerprint, so
+            // the wholesale `findings` replace doesn't reset it to `open`. The cross-run
+            // dismissed set was already applied to `findings` above.
+            let finalized =
+                finalize_completed(insight_store.inner(), "insight", run_id, &tel, move |run| {
+                    let prior: std::collections::HashMap<String, (String, Option<String>)> =
+                        run.findings
+                            .iter()
+                            .filter(|f| f.status != "open")
+                            .map(|f| {
+                                (
+                                    f.fingerprint.clone(),
+                                    (f.status.clone(), f.linked_task_id.clone()),
+                                )
+                            })
+                            .collect();
+                    let mut merged = findings;
+                    for f in &mut merged {
+                        if let Some((status, link)) = prior.get(&f.fingerprint) {
+                            f.status = status.clone();
+                            f.linked_task_id = link.clone();
+                        }
                     }
-                }
-                run.status = "completed".to_string();
-                run.findings = merged;
-                run.cost_usd = cost;
-                run.duration_ms = duration;
-                run.usage = InsightUsage {
-                    input_tokens,
-                    output_tokens,
-                };
-                run.error = None;
-            });
-            if let Err(e) = result {
-                tracing::warn!(target: "nightcore", run_id, error = %e, "failed to finalize insight run");
-            } else {
-                tracing::info!(target: "nightcore", run_id, findings = findings.len(), cost_usd = cost, "insight analysis completed");
+                    run.findings = merged;
+                });
+            if finalized {
+                tracing::info!(target: "nightcore", run_id, findings = count, cost_usd = tel.cost_usd, "insight analysis completed");
             }
         }
         "analysis-failed" => {
-            let reason = event
-                .get("reason")
-                .and_then(Value::as_str)
-                .unwrap_or("unknown");
-            let message = event
-                .get("message")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
+            let reason = failure_reason(event);
             let _ = insight_store.mutate(run_id, |run| {
                 run.status = "failed".to_string();
-                run.error = Some(if message.is_empty() {
-                    reason.to_string()
-                } else {
-                    message
-                });
+                run.error = Some(reason.clone());
             });
             tracing::info!(target: "nightcore", run_id, reason, "insight analysis ended (failed/aborted)");
         }

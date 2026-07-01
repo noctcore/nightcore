@@ -21,6 +21,7 @@ mod commands;
 mod harness;
 mod insight;
 mod permission;
+mod scan;
 mod scorecard;
 mod provider_config;
 mod reader;

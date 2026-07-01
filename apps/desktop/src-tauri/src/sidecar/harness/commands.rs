@@ -10,7 +10,6 @@
 //! inside the project root, `create` never clobbers an existing file, and doc artifacts
 //! merge into a delimited managed block.
 
-use serde::Serialize;
 use serde_json::json;
 use std::path::Path;
 
@@ -19,22 +18,13 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use crate::contracts::{ConventionCategory, EffortLevel, SurfaceCommand};
 use crate::provider::SidecarProvider;
 use crate::project::ProjectStore;
-use crate::sidecar::{ensure_reader, HARNESS_EVENT};
+use crate::sidecar::scan::{begin_scan_run, dispatch_scan_command, wire_str, ScanRunInit};
+use crate::sidecar::HARNESS_EVENT;
 use crate::store::harness::{
     ApplyOutcome, HarnessRun, HarnessStore, HarnessUsage, StoredRepoProfile,
 };
-use crate::task::now_ms;
 
 use super::apply::{safe_join, write_create, write_merge_section};
-
-/// Serialize a generated wire enum to its wire string (e.g. `ConventionCategory::FolderStructure`
-/// → `"folder-structure"`).
-fn wire_str<T: Serialize>(value: &T) -> String {
-    serde_json::to_value(value)
-        .ok()
-        .and_then(|v| v.as_str().map(str::to_string))
-        .unwrap_or_default()
-}
 
 /// Start a Harness scan over the active project. Creates the persisted run (status
 /// `running`), dispatches the `start-harness-scan` command, and returns the `runId` the
@@ -48,16 +38,19 @@ pub async fn start_harness_scan(
     model: Option<String>,
     effort: Option<EffortLevel>,
 ) -> Result<String, String> {
-    if categories.is_empty() {
-        return Err("select at least one convention lens to scan".to_string());
-    }
-    let project = projects.active().ok_or("no active project to scan")?;
-    let project_path = project.path.clone();
-
-    let run_id = uuid::Uuid::new_v4().to_string();
+    let ScanRunInit {
+        project_path,
+        run_id,
+        model: model_str,
+        now,
+    } = begin_scan_run(
+        projects.active(),
+        categories.is_empty(),
+        "select at least one convention lens to scan",
+        "no active project to scan",
+        model.as_deref(),
+    )?;
     let category_strs: Vec<String> = categories.iter().map(wire_str).collect();
-    let model_str = model.clone().unwrap_or_default();
-    let now = now_ms();
 
     // Persist the run as `running` up front so it shows immediately in the list.
     let run = HarnessRun {
@@ -79,22 +72,8 @@ pub async fn start_harness_scan(
     };
     harness_store.upsert(&run)?;
 
-    // Ensure the sidecar is up, then dispatch the scan command.
-    if let Err(e) = ensure_reader(&app).await {
-        if let Err(persist_err) = harness_store.mutate(&run_id, |r| {
-            r.status = "failed".to_string();
-            r.error = Some(e.clone());
-        }) {
-            tracing::warn!(
-                target: "nightcore",
-                run_id = %run_id,
-                error = %persist_err,
-                "failed to persist harness run failed-state (run may look stuck on reload)"
-            );
-        }
-        return Err(e);
-    }
-
+    // Ensure the sidecar is up, then dispatch the scan command; on failure the
+    // shared helper persists the run's failed-state (so it doesn't look stuck).
     let command = SurfaceCommand::StartHarnessScan {
         run_id: run_id.clone(),
         project_path,
@@ -105,21 +84,15 @@ pub async fn start_harness_scan(
         max_turns_per_category: None,
         max_budget_usd_per_category: None,
     };
-    let provider = app.state::<std::sync::Arc<SidecarProvider>>();
-    if let Err(e) = provider.dispatch_command(command).await {
-        if let Err(persist_err) = harness_store.mutate(&run_id, |r| {
-            r.status = "failed".to_string();
-            r.error = Some(e.clone());
-        }) {
-            tracing::warn!(
-                target: "nightcore",
-                run_id = %run_id,
-                error = %persist_err,
-                "failed to persist harness run failed-state (run may look stuck on reload)"
-            );
-        }
-        return Err(e);
-    }
+    dispatch_scan_command(&app, "harness", &run_id, command, |msg| {
+        harness_store
+            .mutate(&run_id, |r| {
+                r.status = "failed".to_string();
+                r.error = Some(msg.to_string());
+            })
+            .map(|_| ())
+    })
+    .await?;
 
     tracing::info!(target: "nightcore", run_id = %run_id, "harness scan started");
     Ok(run_id)

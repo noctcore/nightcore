@@ -12,7 +12,6 @@
 //! finalizes the persisted run. UNLIKE Insight there is no dismissed-history
 //! reconciliation — every scorecard run is a fresh snapshot grade.
 
-use serde::Serialize;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -22,18 +21,13 @@ use crate::project::ProjectStore;
 use crate::store::scorecard::{ScorecardRun, ScorecardStore, StoredReading};
 use crate::store::insight::InsightUsage;
 use crate::store::TaskStore;
-use crate::task::{now_ms, Task, TaskKind, TASK_EVENT};
+use crate::task::{Task, TaskKind, TASK_EVENT};
 
-use super::{ensure_reader, SCORECARD_EVENT};
-
-/// Serialize a generated wire enum to its wire string (e.g.
-/// `ScorecardDimension::ErrorHandling` → `"error-handling"`).
-fn wire_str<T: Serialize>(value: &T) -> String {
-    serde_json::to_value(value)
-        .ok()
-        .and_then(|v| v.as_str().map(str::to_string))
-        .unwrap_or_default()
-}
+use super::scan::{
+    begin_scan_run, dispatch_scan_command, failure_reason, finalize_completed, wire_str,
+    ScanRunInit, ScanTelemetry,
+};
+use super::SCORECARD_EVENT;
 
 /// Start a Readiness Scorecard run over the active project. Creates the persisted
 /// run (status `running`), dispatches the `start-scorecard` command, and returns the
@@ -47,16 +41,19 @@ pub async fn start_scorecard(
     model: Option<String>,
     effort: Option<EffortLevel>,
 ) -> Result<String, String> {
-    if dimensions.is_empty() {
-        return Err("select at least one dimension to grade".to_string());
-    }
-    let project = projects.active().ok_or("no active project to grade")?;
-    let project_path = project.path.clone();
-
-    let run_id = uuid::Uuid::new_v4().to_string();
+    let ScanRunInit {
+        project_path,
+        run_id,
+        model: model_str,
+        now,
+    } = begin_scan_run(
+        projects.active(),
+        dimensions.is_empty(),
+        "select at least one dimension to grade",
+        "no active project to grade",
+        model.as_deref(),
+    )?;
     let dimension_strs: Vec<String> = dimensions.iter().map(wire_str).collect();
-    let model_str = model.clone().unwrap_or_default();
-    let now = now_ms();
 
     // Persist the run as `running` up front so it shows immediately in the list.
     let run = ScorecardRun {
@@ -75,22 +72,8 @@ pub async fn start_scorecard(
     };
     scorecard_store.upsert(&run)?;
 
-    // Ensure the sidecar is up, then dispatch the scorecard command.
-    if let Err(e) = ensure_reader(&app).await {
-        if let Err(persist_err) = scorecard_store.mutate(&run_id, |r| {
-            r.status = "failed".to_string();
-            r.error = Some(e.clone());
-        }) {
-            tracing::warn!(
-                target: "nightcore",
-                run_id = %run_id,
-                error = %persist_err,
-                "failed to persist scorecard run failed-state (run may look stuck on reload)"
-            );
-        }
-        return Err(e);
-    }
-
+    // Ensure the sidecar is up, then dispatch the scorecard command; on failure the
+    // shared helper persists the run's failed-state (so it doesn't look stuck).
     let command = SurfaceCommand::StartScorecard {
         run_id: run_id.clone(),
         project_path,
@@ -101,21 +84,15 @@ pub async fn start_scorecard(
         max_turns_per_dimension: None,
         max_budget_usd_per_dimension: None,
     };
-    let provider = app.state::<std::sync::Arc<SidecarProvider>>();
-    if let Err(e) = provider.dispatch_command(command).await {
-        if let Err(persist_err) = scorecard_store.mutate(&run_id, |r| {
-            r.status = "failed".to_string();
-            r.error = Some(e.clone());
-        }) {
-            tracing::warn!(
-                target: "nightcore",
-                run_id = %run_id,
-                error = %persist_err,
-                "failed to persist scorecard run failed-state (run may look stuck on reload)"
-            );
-        }
-        return Err(e);
-    }
+    dispatch_scan_command(&app, "scorecard", &run_id, command, |msg| {
+        scorecard_store
+            .mutate(&run_id, |r| {
+                r.status = "failed".to_string();
+                r.error = Some(msg.to_string());
+            })
+            .map(|_| ())
+    })
+    .await?;
 
     tracing::info!(target: "nightcore", run_id = %run_id, "scorecard grading started");
     Ok(run_id)
@@ -326,78 +303,50 @@ pub(crate) async fn handle_scorecard_event(app: &AppHandle, event_type: &str, ev
                 .map(|arr| arr.iter().filter_map(StoredReading::from_wire).collect())
                 .unwrap_or_default();
 
-            let cost = event.get("costUsd").and_then(Value::as_f64).unwrap_or(0.0);
-            let duration = event.get("durationMs").and_then(Value::as_u64).unwrap_or(0);
-            let usage = event.get("usage");
-            let input_tokens = usage
-                .and_then(|u| u.get("inputTokens"))
-                .and_then(Value::as_u64)
-                .unwrap_or(0);
-            let output_tokens = usage
-                .and_then(|u| u.get("outputTokens"))
-                .and_then(Value::as_u64)
-                .unwrap_or(0);
+            let tel = ScanTelemetry::from_event(event);
+            let count = readings.len();
 
-            let result = scorecard_store.mutate(run_id, |run| {
-                // Idempotency: a duplicate `scorecard-completed` for an already-
-                // finalized run must not reset the user's lifecycle edits.
-                if run.status == "completed" && !run.readings.is_empty() {
-                    return;
-                }
-                // Carry over IN-RUN lifecycle (a reading the user hardened from the
-                // live stream during this run) by fingerprint, so the wholesale
-                // `readings` replace below doesn't reset it to `open`.
-                let prior: std::collections::HashMap<String, (String, Option<String>)> =
-                    run.readings
-                        .iter()
-                        .filter(|r| r.status != "open")
-                        .map(|r| {
-                            (
-                                r.fingerprint.clone(),
-                                (r.status.clone(), r.linked_task_id.clone()),
-                            )
-                        })
-                        .collect();
-                let mut merged = readings.clone();
-                for r in &mut merged {
-                    if let Some((status, link)) = prior.get(&r.fingerprint) {
-                        r.status = status.clone();
-                        r.linked_task_id = link.clone();
+            // The shared finalizer owns the idempotency guard + status/telemetry stamp; we
+            // inject only the in-run lifecycle carry-forward (a reading the user hardened
+            // from the live stream during this run), by fingerprint, so the wholesale
+            // `readings` replace doesn't reset it to `open`. UNLIKE Insight there is no
+            // cross-run dismissed reconciliation — every scorecard run is a fresh grade.
+            let finalized = finalize_completed(
+                scorecard_store.inner(),
+                "scorecard",
+                run_id,
+                &tel,
+                move |run| {
+                    let prior: std::collections::HashMap<String, (String, Option<String>)> =
+                        run.readings
+                            .iter()
+                            .filter(|r| r.status != "open")
+                            .map(|r| {
+                                (
+                                    r.fingerprint.clone(),
+                                    (r.status.clone(), r.linked_task_id.clone()),
+                                )
+                            })
+                            .collect();
+                    let mut merged = readings;
+                    for r in &mut merged {
+                        if let Some((status, link)) = prior.get(&r.fingerprint) {
+                            r.status = status.clone();
+                            r.linked_task_id = link.clone();
+                        }
                     }
-                }
-                run.status = "completed".to_string();
-                run.readings = merged;
-                run.cost_usd = cost;
-                run.duration_ms = duration;
-                run.usage = InsightUsage {
-                    input_tokens,
-                    output_tokens,
-                };
-                run.error = None;
-            });
-            if let Err(e) = result {
-                tracing::warn!(target: "nightcore", run_id, error = %e, "failed to finalize scorecard run");
-            } else {
-                tracing::info!(target: "nightcore", run_id, readings = readings.len(), cost_usd = cost, "scorecard grading completed");
+                    run.readings = merged;
+                },
+            );
+            if finalized {
+                tracing::info!(target: "nightcore", run_id, readings = count, cost_usd = tel.cost_usd, "scorecard grading completed");
             }
         }
         "scorecard-failed" => {
-            let reason = event
-                .get("reason")
-                .and_then(Value::as_str)
-                .unwrap_or("unknown");
-            let message = event
-                .get("message")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
+            let reason = failure_reason(event);
             let _ = scorecard_store.mutate(run_id, |run| {
                 run.status = "failed".to_string();
-                run.error = Some(if message.is_empty() {
-                    reason.to_string()
-                } else {
-                    message
-                });
+                run.error = Some(reason.clone());
             });
             tracing::info!(target: "nightcore", run_id, reason, "scorecard grading ended (failed/aborted)");
         }
