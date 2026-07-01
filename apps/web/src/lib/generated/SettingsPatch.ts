@@ -9,6 +9,12 @@ import type { RunMode } from "./RunMode";
  */
 export type SettingsPatch = { projectId?: string, defaultModel?: string, defaultEffort?: string, maxConcurrency?: number, permissionMode?: string, cleanupWorktrees?: boolean, notifyOnComplete?: boolean, 
 /**
+ * Auto Mode option: toggle auto-commit-on-verified. Global-only (like
+ * `cleanup_worktrees`/`notify_on_complete` — ignored for a per-project override
+ * target). See [`super::model::Settings::auto_commit_on_verified`].
+ */
+autoCommitOnVerified?: boolean, 
+/**
  * M4.6: default run mode (`"main"` | `"worktree"`). With a `projectId` it lands
  * in that project's override; without one, the global default.
  */

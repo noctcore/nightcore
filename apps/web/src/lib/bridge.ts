@@ -750,6 +750,7 @@ const MOCK_SETTINGS: Settings = {
   maxBudgetUsd: null,
   mcpServers: [],
   contextPackEnabled: true,
+  autoCommitOnVerified: false,
   projectOverrides: {},
 };
 

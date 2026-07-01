@@ -149,6 +149,11 @@ pub struct SettingsPatch {
     pub cleanup_worktrees: Option<bool>,
     #[cfg_attr(test, ts(optional))]
     pub notify_on_complete: Option<bool>,
+    /// Auto Mode option: toggle auto-commit-on-verified. Global-only (like
+    /// `cleanup_worktrees`/`notify_on_complete` — ignored for a per-project override
+    /// target). See [`super::model::Settings::auto_commit_on_verified`].
+    #[cfg_attr(test, ts(optional))]
+    pub auto_commit_on_verified: Option<bool>,
     /// M4.6: default run mode (`"main"` | `"worktree"`). With a `projectId` it lands
     /// in that project's override; without one, the global default.
     #[cfg_attr(test, ts(optional, as = "Option<RunMode>"))]
@@ -215,6 +220,11 @@ impl Settings {
         }
         if let Some(v) = patch.notify_on_complete {
             self.notify_on_complete = v;
+        }
+        // Auto Mode option: global-only toggle (no per-project override), so it lives
+        // in the global block alongside `cleanup_worktrees`/`notify_on_complete`.
+        if let Some(v) = patch.auto_commit_on_verified {
+            self.auto_commit_on_verified = v;
         }
         if let Some(v) = patch.default_run_mode {
             self.default_run_mode = v;

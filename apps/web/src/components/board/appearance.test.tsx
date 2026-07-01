@@ -22,6 +22,7 @@ function settingsWith(projectId: string, appearance: BoardAppearance): Settings 
     maxBudgetUsd: null,
     mcpServers: [],
     contextPackEnabled: true,
+    autoCommitOnVerified: false,
     projectOverrides: { [projectId]: { boardAppearance: appearance } },
   };
 }
