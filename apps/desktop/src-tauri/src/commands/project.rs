@@ -73,26 +73,18 @@ fn retarget_tasks(app: &AppHandle, store: &ProjectStore) {
         .unwrap_or_else(|| store.config_dir.join("no-active-project/tasks"));
     tasks.retarget(dir);
 
-    // Insight analysis runs are project-scoped too.
-    let insights = app.state::<crate::store::insight::InsightStore>();
-    let insights_dir = store
-        .active_insights_dir()
-        .unwrap_or_else(|| store.config_dir.join("no-active-project/insights"));
-    insights.retarget(insights_dir);
-
-    // Harness scans are project-scoped too.
-    let harness = app.state::<crate::store::harness::HarnessStore>();
-    let harness_dir = store
-        .active_harness_dir()
-        .unwrap_or_else(|| store.config_dir.join("no-active-project/harness"));
-    harness.retarget(harness_dir);
-
-    // Readiness Scorecard runs are project-scoped too.
-    let scorecards = app.state::<crate::store::scorecard::ScorecardStore>();
-    let scorecards_dir = store
-        .active_scorecards_dir()
-        .unwrap_or_else(|| store.config_dir.join("no-active-project/scorecards"));
-    scorecards.retarget(scorecards_dir);
+    // Every run-based scan store is project-scoped too. Retarget each from the ONE
+    // `scan_kinds!` registry so a new scan kind needs no parallel edit here.
+    macro_rules! retarget_scan {
+        ($Run:ty, $slug:literal) => {{
+            let scan_store = app.state::<crate::store::run_store::RunStore<$Run>>();
+            let scan_dir = store
+                .active_scan_dir($slug)
+                .unwrap_or_else(|| store.config_dir.join("no-active-project").join($slug));
+            scan_store.retarget(scan_dir);
+        }};
+    }
+    crate::store::run_store::scan_kinds!(retarget_scan);
 }
 
 // --- Commands ---------------------------------------------------------------

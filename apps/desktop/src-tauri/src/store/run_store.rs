@@ -271,3 +271,25 @@ impl<R: PersistedRun> RunStore<R> {
         f(&crate::sync::lock_or_recover(&self.runs))
     }
 }
+
+/// The single registry of run-based "scan" store kinds — one `($Run:ty, $slug:literal)`
+/// row per kind, where `$slug` is both the on-disk dir name (`.nightcore/<slug>`) and
+/// the no-active-project scratch name. Every place that must touch each kind in
+/// parallel — the boot path (`lib.rs`: resolve dir → `load_from` → `reap_running` →
+/// `app.manage`) and the project-switch retarget ([`crate::commands::project`]) —
+/// iterates THIS list through a per-kind callback macro, so adding a scan kind is a
+/// single line here instead of a scatter of parallel edits.
+///
+/// Invoke as `scan_kinds!(cb)` where `cb` is a `macro_rules!` accepting
+/// `($Run:ty, $slug:literal)`; it is expanded once per registered kind. (Tauri's
+/// `generate_handler!` still needs each command path spelled out explicitly — that
+/// one list is the only per-kind wiring this table can't absorb, since a proc-macro
+/// won't expand a nested macro in its input.)
+macro_rules! scan_kinds {
+    ($cb:ident) => {
+        $cb!(crate::store::insight::InsightRun, "insights");
+        $cb!(crate::store::harness::HarnessRun, "harness");
+        $cb!(crate::store::scorecard::ScorecardRun, "scorecards");
+    };
+}
+pub(crate) use scan_kinds;

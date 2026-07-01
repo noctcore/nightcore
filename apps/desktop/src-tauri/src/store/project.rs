@@ -100,22 +100,14 @@ impl ProjectStore {
         self.active().map(|p| tasks_dir_for(&p.path))
     }
 
-    /// The Insight runs dir for the currently-active project, or `None` with no
-    /// active project. The `InsightStore` is retargeted here on activation.
-    pub fn active_insights_dir(&self) -> Option<PathBuf> {
-        self.active().map(|p| insights_dir_for(&p.path))
-    }
-
-    /// The Harness scans dir for the currently-active project, or `None` with no
-    /// active project. The `HarnessStore` is retargeted here on activation.
-    pub fn active_harness_dir(&self) -> Option<PathBuf> {
-        self.active().map(|p| harness_dir_for(&p.path))
-    }
-
-    /// The Scorecard runs dir for the currently-active project, or `None` with no
-    /// active project. The `ScorecardStore` is retargeted here on activation.
-    pub fn active_scorecards_dir(&self) -> Option<PathBuf> {
-        self.active().map(|p| scorecards_dir_for(&p.path))
+    /// The runs dir (`<project>/.nightcore/<slug>`) for the active project's given
+    /// scan kind, or `None` with no active project. The matching `RunStore` is
+    /// retargeted here on activation. `slug` is the kind's dir name (`insights` /
+    /// `harness` / `scorecards`), driven off the single `scan_kinds!` registry so a
+    /// new scan kind needs no new accessor here.
+    pub fn active_scan_dir(&self, slug: &str) -> Option<PathBuf> {
+        self.active()
+            .map(|p| Path::new(&p.path).join(".nightcore").join(slug))
     }
 
     pub(crate) fn add(&self, project: Project) -> Result<(), String> {
@@ -195,21 +187,6 @@ impl ProjectStore {
 /// The tasks dir for a project path: `<path>/.nightcore/tasks`.
 fn tasks_dir_for(project_path: &str) -> PathBuf {
     Path::new(project_path).join(".nightcore/tasks")
-}
-
-/// The Insight runs dir for a project path: `<path>/.nightcore/insights`.
-fn insights_dir_for(project_path: &str) -> PathBuf {
-    Path::new(project_path).join(".nightcore/insights")
-}
-
-/// The Harness scans dir for a project path: `<path>/.nightcore/harness`.
-fn harness_dir_for(project_path: &str) -> PathBuf {
-    Path::new(project_path).join(".nightcore/harness")
-}
-
-/// The Scorecard runs dir for a project path: `<path>/.nightcore/scorecards`.
-fn scorecards_dir_for(project_path: &str) -> PathBuf {
-    Path::new(project_path).join(".nightcore/scorecards")
 }
 
 /// Read + deserialize a JSON file, returning `None` on any error (missing,

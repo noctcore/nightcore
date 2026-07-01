@@ -74,33 +74,24 @@ pub fn run() {
                 .unwrap_or_else(|| config_dir.join("no-active-project/tasks"));
             task_store.retarget(tasks_dir);
 
-            // Insight analysis runs are project-scoped like tasks: load the active
-            // project's `.nightcore/insights/` (or an empty scratch dir when none).
-            let insights_dir = project_store
-                .active_insights_dir()
-                .unwrap_or_else(|| config_dir.join("no-active-project/insights"));
-            let insight_store = store::insight::InsightStore::load_from(insights_dir);
-            // A run left `running` by a previous process can never complete (the
-            // engine that drove it is gone); reap it on boot so the UI doesn't spin.
-            insight_store.reap_running();
-
-            // Harness scans are project-scoped like Insight runs: load the active
-            // project's `.nightcore/harness/` (or an empty scratch dir when none).
-            let harness_dir = project_store
-                .active_harness_dir()
-                .unwrap_or_else(|| config_dir.join("no-active-project/harness"));
-            let harness_store = store::harness::HarnessStore::load_from(harness_dir);
-            // Reap scans left `running` by a dead process so the UI doesn't spin.
-            harness_store.reap_running();
-
-            // Readiness Scorecard runs are project-scoped like Insight/Harness: load
-            // the active project's `.nightcore/scorecards/` (or an empty scratch dir).
-            let scorecards_dir = project_store
-                .active_scorecards_dir()
-                .unwrap_or_else(|| config_dir.join("no-active-project/scorecards"));
-            let scorecard_store = store::scorecard::ScorecardStore::load_from(scorecards_dir);
-            // Reap runs left `running` by a dead process so the UI doesn't spin.
-            scorecard_store.reap_running();
+            // Every run-based scan store (Insight / Harness / Scorecard) is
+            // project-scoped like tasks. Boot each from the ONE `scan_kinds!` registry:
+            // resolve the active project's `.nightcore/<slug>/` (or an empty scratch dir
+            // when none), load it, reap any run left `running` by a dead process (that
+            // work can never complete, so reaping stops the UI spinning forever), and
+            // hand it to managed state. Adding a scan kind is one row in the registry —
+            // no parallel edit here.
+            macro_rules! boot_scan_store {
+                ($Run:ty, $slug:literal) => {{
+                    let dir = project_store
+                        .active_scan_dir($slug)
+                        .unwrap_or_else(|| config_dir.join("no-active-project").join($slug));
+                    let scan_store = store::run_store::RunStore::<$Run>::load_from(dir);
+                    scan_store.reap_running();
+                    app.manage(scan_store);
+                }};
+            }
+            store::run_store::scan_kinds!(boot_scan_store);
 
             // The orchestrator (slot manager + circuit breaker + provider +
             // auto-loop) starts at the persisted concurrency. The provider spawns
@@ -113,10 +104,9 @@ pub fn run() {
                 max_concurrency,
             );
 
+            // The scan stores were already handed to managed state by `boot_scan_store`
+            // above; task/project/settings are managed here.
             app.manage(task_store);
-            app.manage(insight_store);
-            app.manage(harness_store);
-            app.manage(scorecard_store);
             app.manage(project_store);
             app.manage(settings_store);
             // Share the provider handle so the sidecar bridge can reach it as its own
@@ -161,6 +151,12 @@ pub fn run() {
             sidecar::rename_session,
             sidecar::tag_session,
             sidecar::get_provider_config,
+            // The run-based scan commands (Insight / Harness / Scorecard). The store
+            // boot + retarget wiring is driven off the single `scan_kinds!` registry;
+            // these command paths must still be listed explicitly because Tauri's
+            // `generate_handler!` is a proc-macro that won't expand a nested macro in
+            // its input. The lifecycle four per feature (list/get/delete/cancel) are
+            // stamped by `scan_lifecycle_commands!`; the rest are hand-written.
             sidecar::start_analysis,
             sidecar::cancel_analysis,
             sidecar::list_insight_runs,
