@@ -281,10 +281,14 @@ pub fn commit_staged(dir: &Path, message: &str) -> Result<(), String> {
 }
 
 /// Merge `branch` into `base` in the project's main checkout — ONLY via `git merge`
-/// (never `--force`/reset). Refuses a dirty base; on any merge failure runs `merge
-/// --abort` and returns `Ok(MergeOutcome::Conflict)`, leaving the tree clean (the UI
-/// surfaces the conflict). `branch`/`base` are resolved by the caller (the task's
-/// stored branch / base, defaulting to `nc/<taskId>` off the project's current branch).
+/// (never `--force`/reset). Refuses a dirty base. A genuine conflict (the merge left
+/// unmerged paths in the index) is aborted via `merge --abort` and reported as
+/// `Ok(MergeOutcome::Conflict)` with a clean tree — but if the abort itself fails the
+/// tree is stuck mid-merge, so we return `Err` rather than falsely claiming a clean
+/// conflict. Any OTHER merge failure (nonexistent branch, unrelated histories, …)
+/// starts no merge and is surfaced as `Err`, never mislabeled a conflict.
+/// `branch`/`base` are resolved by the caller (the task's stored branch / base,
+/// defaulting to `nc/<taskId>` off the project's current branch).
 pub fn merge_branch(
     project_path: &Path,
     branch: &str,
@@ -297,12 +301,40 @@ pub fn merge_branch(
     }
     git(project_path, &["checkout", base])?;
 
-    if git_status_success(project_path, &["merge", "--no-edit", branch]) {
-        return Ok(MergeOutcome::Merged);
+    match git(project_path, &["merge", "--no-edit", branch]) {
+        Ok(_) => Ok(MergeOutcome::Merged),
+        Err(merge_err) => {
+            // A merge failure is only a *conflict* when it left unmerged paths in the
+            // index. Anything else (nonexistent branch, unrelated histories, …)
+            // started no merge — surface it as an error, not a misleading "conflict".
+            if !has_unmerged_paths(project_path) {
+                return Err(format!(
+                    "git merge {branch} into {base} failed: {merge_err}"
+                ));
+            }
+            // A real conflict: abort so the base tree is left clean, never forced. If
+            // the abort itself fails the tree is stuck mid-merge (dirty) — do NOT
+            // report a clean conflict; return the error so the caller/UI knows the
+            // base needs manual recovery.
+            git(project_path, &["merge", "--abort"]).map_err(|abort_err| {
+                format!(
+                    "merge conflict integrating {branch} into {base}, and `git merge --abort` \
+                     failed — the base tree is left mid-merge: {abort_err}"
+                )
+            })?;
+            Ok(MergeOutcome::Conflict)
+        }
     }
-    // Conflict (or any merge failure): abort so the tree is left clean, never forced.
-    let _ = git(project_path, &["merge", "--abort"]);
-    Ok(MergeOutcome::Conflict)
+}
+
+/// Whether the repo index currently holds unmerged (conflicted) paths — the signal
+/// that a failed `git merge` is a genuine content conflict rather than a hard error
+/// (nonexistent branch, unrelated histories, …). `git ls-files --unmerged` lists a
+/// stage entry per conflicted path, so empty output means no conflict is in flight.
+fn has_unmerged_paths(repo: &Path) -> bool {
+    git(repo, &["ls-files", "--unmerged"])
+        .map(|out| !out.is_empty())
+        .unwrap_or(false)
 }
 
 /// The result of a [`merge`] attempt.
@@ -1302,6 +1334,27 @@ mod tests {
         assert!(
             is_worktree_clean(&repo).expect("status"),
             "aborted merge leaves a clean tree"
+        );
+    }
+
+    #[test]
+    fn merge_of_nonexistent_branch_errors_not_conflict() {
+        let Some((_tmp, repo)) = temp_repo() else {
+            return;
+        };
+        let base = base_branch(&repo);
+        // A branch that doesn't exist is a hard merge failure — git starts no merge —
+        // so the caller must see an `Err`, NOT a `Conflict` (the UI would otherwise
+        // tell the user "conflict" for a failure that isn't one).
+        let outcome = merge_branch(&repo, &branch_name("does-not-exist"), &base);
+        assert!(
+            outcome.is_err(),
+            "a nonexistent branch is an error, not a conflict: {outcome:?}"
+        );
+        // No merge was started, so the base tree is left clean (not mid-merge).
+        assert!(
+            is_worktree_clean(&repo).expect("status"),
+            "a merge that never started leaves the tree clean"
         );
     }
 
