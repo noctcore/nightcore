@@ -1,5 +1,10 @@
-//! The `Task` data model: the wire enums, the `Task` struct + `TaskPatch`, and the
-//! create-input plumbing.
+//! The `Task` data model: the wire enums and the `Task` struct itself.
+//!
+//! The partial-update `TaskPatch` (+ `apply`) lives in [`super::patch`] and the
+//! create-input plumbing (`CreateInputs` + `build_new_task`) in [`super::create`],
+//! mirroring the existing `settings/{model,patch,store}` split. The `Task` struct
+//! stays monolithic here on purpose — splitting it would fragment the Rust→TS
+//! codegen.
 //!
 //! These are the central data types the studio orchestrates and the SHARED wire
 //! contract with the webview. `Task` and its enums carry `ts-rs` derives, so the
@@ -408,96 +413,6 @@ impl Task {
     }
 }
 
-/// A partial update to a task — every field optional so the webview can patch
-/// just what changed. Absent fields are left untouched.
-// The web CONSTRUCTS this patch and only ever sends the keys it changed, so every
-// field is an OPTIONAL key in TS (`field?`), not a required `field: T | null`.
-// `#[ts(optional)]` ⇒ `field?: T`; `#[ts(optional = nullable)]` ⇒ `field?: T | null`
-// (matching the prior hand-mirror exactly, including the `model`/`effort` etc.
-// fields the bridge declared as nullable-optional). ts-rs derives `TS` without a
-// `Serialize` impl, so deserialize-only patch types still export.
-#[derive(Debug, Default, Deserialize)]
-#[cfg_attr(test, derive(TS))]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, ts(export, export_to = "TaskPatch.ts"))]
-pub struct TaskPatch {
-    #[cfg_attr(test, ts(optional))]
-    pub title: Option<String>,
-    #[cfg_attr(test, ts(optional))]
-    pub description: Option<String>,
-    #[cfg_attr(test, ts(optional))]
-    pub status: Option<TaskStatus>,
-    #[cfg_attr(test, ts(optional))]
-    pub dependencies: Option<Vec<String>>,
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub model: Option<String>,
-    /// M4.7 §E: per-task reasoning effort, set from the create/edit picker.
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub effort: Option<String>,
-    /// M4.7 §A4: per-task permission-mode override, set from the create/edit picker.
-    #[cfg_attr(test, ts(optional = nullable, as = "Option<PermissionMode>"))]
-    pub permission_mode: Option<String>,
-    /// M4: the task kind, set from the create/edit picker.
-    #[cfg_attr(test, ts(optional))]
-    pub kind: Option<TaskKind>,
-    /// M4.6: the run mode, editable pre-run from the create/edit picker.
-    #[cfg_attr(test, ts(optional))]
-    pub run_mode: Option<RunMode>,
-    /// SDK-guardrails: per-task max-turns override, editable pre-run.
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub max_turns: Option<u32>,
-    /// SDK-guardrails: per-task max-budget-USD override, editable pre-run.
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub max_budget_usd: Option<f64>,
-}
-
-impl TaskPatch {
-    /// Apply the present fields of this patch onto `task`; absent fields are left
-    /// untouched. `updated_at` is bumped by the store on persist, not here.
-    pub fn apply(self, task: &mut Task) {
-        if let Some(title) = self.title {
-            task.title = title;
-        }
-        if let Some(description) = self.description {
-            task.description = description;
-        }
-        if let Some(status) = self.status {
-            task.status = status;
-        }
-        if let Some(dependencies) = self.dependencies {
-            task.dependencies = dependencies;
-        }
-        if let Some(kind) = self.kind {
-            task.kind = kind;
-        }
-        if let Some(run_mode) = self.run_mode {
-            task.run_mode = run_mode;
-        }
-        // `model`/`effort`/`permission_mode` are themselves `Option`, so serde
-        // flattens an absent field and an explicit `null` to the same `None`. A
-        // patch can therefore SET each but not clear it; an absent/null value is
-        // left untouched (same semantics as `model`).
-        if self.model.is_some() {
-            task.model = self.model;
-        }
-        if self.effort.is_some() {
-            task.effort = self.effort;
-        }
-        if self.permission_mode.is_some() {
-            task.permission_mode = self.permission_mode;
-        }
-        // Autonomy ceilings follow the same `Option`-set-not-clear semantics as
-        // `model`/`effort`: a present value sets the override; absent/null leaves
-        // it untouched (inherit the config default at launch).
-        if self.max_turns.is_some() {
-            task.max_turns = self.max_turns;
-        }
-        if self.max_budget_usd.is_some() {
-            task.max_budget_usd = self.max_budget_usd;
-        }
-    }
-}
-
 /// Current epoch time in milliseconds. Used for `created_at`/`updated_at`; we use
 /// `SystemTime` rather than pulling in `chrono` for one timestamp.
 pub fn now_ms() -> u64 {
@@ -505,94 +420,6 @@ pub fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
-}
-
-/// The optional create-time overrides for a new task. Each `None` field falls
-/// back to the resolved Settings default (per-project override → global → the
-/// engine's `@nightcore/config` default).
-#[derive(Debug, Default)]
-pub(crate) struct CreateInputs {
-    /// M4: the kind picked in the create dialog. `None` ⇒ the `Build` default
-    /// (`TaskKind::default()`), preserving the pre-M4 create shape.
-    pub(crate) kind: Option<TaskKind>,
-    pub(crate) run_mode: Option<RunMode>,
-    pub(crate) model: Option<String>,
-    pub(crate) effort: Option<String>,
-    pub(crate) permission_mode: Option<String>,
-    pub(crate) max_turns: Option<u32>,
-    pub(crate) max_budget_usd: Option<f64>,
-    /// Worktree branch name chosen in the branch picker (worktree mode). `None` ⇒
-    /// the coordinator names it `nc/<taskId>` at submit.
-    pub(crate) branch: Option<String>,
-    /// Base branch chosen in the branch picker (worktree mode). `None` ⇒ the
-    /// project's current branch at allocate/merge time.
-    pub(crate) base_branch: Option<String>,
-}
-
-/// Build a fresh backlog task, stamping the resolved Settings defaults for any
-/// field the create call left unset. Factored out of [`create_task`] so the
-/// default-resolution is unit-testable without an `AppHandle`.
-///
-/// Resolution order per field: explicit create input → Settings (per-project
-/// override → global). `model`/`effort`/`run_mode` always end up concrete (Settings
-/// has a non-optional default for them). The guardrail ceilings stay `None` when
-/// Settings has no value either, so the engine's `@nightcore/config` default
-/// (maxTurns 200, budget uncapped) applies at launch.
-pub(crate) fn build_new_task(
-    settings: &crate::settings::SettingsStore,
-    pid: Option<&str>,
-    title: String,
-    description: String,
-    inputs: CreateInputs,
-) -> Task {
-    let run_mode = inputs
-        .run_mode
-        .unwrap_or_else(|| settings.default_run_mode(pid));
-    let mut task = Task::new(title, description).with_run_mode(run_mode);
-    // M4: stamp the picked kind (Build default when the create call omits it) so a
-    // Decompose/Research/TDD selection in the dialog survives create — without this,
-    // every new task fell back to `TaskKind::default()` regardless of the picker.
-    task.kind = inputs.kind.unwrap_or_default();
-    // Branch picker (worktree mode only): a chosen branch name / base branch survive
-    // create so the coordinator allocates the worktree off the right base under the
-    // chosen name. Blank entries fall back to the defaults (`nc/<taskId>` off the
-    // project's current branch). Main-mode tasks never carry a worktree branch.
-    if run_mode.is_worktree() {
-        // A blank picker entry falls back to the default naming; so does one that
-        // isn't a legal git ref (e.g. a name git would parse as an OPTION), so a
-        // hostile/typo'd branch can never be stored and later spliced into a git
-        // argument list. `worktree::allocate_branch`/`merge_branch` re-validate at the
-        // call boundary, so this is the ingestion half of a defence-in-depth pair.
-        task.branch = inputs
-            .branch
-            .filter(|b| !b.trim().is_empty())
-            .filter(|b| crate::worktree::validate_ref(b).is_ok());
-        task.base_branch = inputs
-            .base_branch
-            .filter(|b| !b.trim().is_empty())
-            .filter(|b| crate::worktree::validate_ref(b).is_ok());
-    }
-    // P0: an explicit per-task model/effort wins; absent ⇒ stamp the resolved
-    // Settings default (an SDK long id) so changing "Default model" in Settings
-    // actually affects new runs. `permission_mode` stays lazily resolved at launch
-    // (`resolve_permission_mode`), so `None` here means "inherit".
-    task.model = Some(inputs.model.unwrap_or_else(|| settings.default_model(pid)));
-    task.effort = Some(
-        inputs
-            .effort
-            .unwrap_or_else(|| settings.default_effort(pid)),
-    );
-    task.permission_mode = inputs.permission_mode;
-    // SDK-guardrails: an explicit per-task ceiling wins; absent ⇒ stamp the
-    // resolved Settings default (per-project override → global), so the Settings
-    // "Limits" knob is authoritative for a new task. When Settings has no ceiling
-    // either, this stays `None` and the engine's `@nightcore/config` default
-    // applies at launch — same resolution shape as `model`/`effort`/`run_mode`.
-    task.max_turns = inputs.max_turns.or_else(|| settings.default_max_turns(pid));
-    task.max_budget_usd = inputs
-        .max_budget_usd
-        .or_else(|| settings.default_max_budget_usd(pid));
-    task
 }
 
 #[cfg(test)]
@@ -788,15 +615,6 @@ mod tests {
     }
 
     #[test]
-    fn patch_sets_run_mode_when_present() {
-        let mut task = Task::new("t".into(), String::new());
-        assert_eq!(task.run_mode, RunMode::Main);
-        let patch: TaskPatch = serde_json::from_str(r#"{"runMode":"worktree"}"#).unwrap();
-        patch.apply(&mut task);
-        assert_eq!(task.run_mode, RunMode::Worktree);
-    }
-
-    #[test]
     fn with_run_mode_sets_the_mode() {
         let task = Task::new("t".into(), String::new()).with_run_mode(RunMode::Worktree);
         assert_eq!(task.run_mode, RunMode::Worktree);
@@ -864,15 +682,6 @@ mod tests {
     }
 
     #[test]
-    fn patch_sets_kind_when_present() {
-        let mut task = Task::new("t".into(), String::new());
-        assert_eq!(task.kind, TaskKind::Build);
-        let patch: TaskPatch = serde_json::from_str(r#"{"kind":"research"}"#).unwrap();
-        patch.apply(&mut task);
-        assert_eq!(task.kind, TaskKind::Research);
-    }
-
-    #[test]
     fn branch_defaults_to_none_and_round_trips() {
         let mut task = Task::new("t".into(), String::new());
         assert!(task.branch.is_none(), "branch defaults to None");
@@ -910,23 +719,6 @@ mod tests {
     }
 
     #[test]
-    fn patch_applies_only_present_fields() {
-        let mut task = Task::new("orig".into(), "orig-desc".into());
-        let patch = TaskPatch {
-            title: Some("new".into()),
-            status: Some(TaskStatus::Ready),
-            ..Default::default()
-        };
-        patch.apply(&mut task);
-
-        assert_eq!(task.title, "new");
-        assert_eq!(task.status, TaskStatus::Ready);
-        // Untouched fields keep their original values.
-        assert_eq!(task.description, "orig-desc");
-        assert!(task.dependencies.is_empty());
-    }
-
-    #[test]
     fn m4_7_fields_default_and_round_trip() {
         // M4.7 §A4/§E: `effort` + `permission_mode` default to None and are
         // serde-additive — a legacy task without them still loads.
@@ -952,22 +744,6 @@ mod tests {
             "kind":"build","runMode":"main","verified":false,"review":null,"fixAttempts":0}"#;
         let back: Task = serde_json::from_str(legacy).expect("legacy task deserializes");
         assert!(back.effort.is_none() && back.permission_mode.is_none());
-    }
-
-    #[test]
-    fn patch_sets_effort_and_permission_mode_when_present() {
-        let mut task = Task::new("t".into(), String::new());
-        let patch: TaskPatch =
-            serde_json::from_str(r#"{"effort":"high","permissionMode":"ask"}"#).unwrap();
-        patch.apply(&mut task);
-        assert_eq!(task.effort.as_deref(), Some("high"));
-        assert_eq!(task.permission_mode.as_deref(), Some("ask"));
-
-        // An absent field leaves the prior value untouched (same as `model`).
-        let absent: TaskPatch = serde_json::from_str(r#"{"title":"x"}"#).unwrap();
-        absent.apply(&mut task);
-        assert_eq!(task.effort.as_deref(), Some("high"));
-        assert_eq!(task.permission_mode.as_deref(), Some("ask"));
     }
 
     #[test]
@@ -1055,231 +831,4 @@ mod tests {
         assert!(restored.structure_lock_result.unwrap().passed);
     }
 
-    #[test]
-    fn patch_sets_guardrail_ceilings_when_present() {
-        let mut task = Task::new("t".into(), String::new());
-        let patch: TaskPatch =
-            serde_json::from_str(r#"{"maxTurns":10,"maxBudgetUsd":1.5}"#).unwrap();
-        patch.apply(&mut task);
-        assert_eq!(task.max_turns, Some(10));
-        assert_eq!(task.max_budget_usd, Some(1.5));
-
-        // An absent field leaves the prior override untouched (same as `model`).
-        let absent: TaskPatch = serde_json::from_str(r#"{"title":"x"}"#).unwrap();
-        absent.apply(&mut task);
-        assert_eq!(task.max_turns, Some(10));
-        assert_eq!(task.max_budget_usd, Some(1.5));
-    }
-
-    #[test]
-    fn build_new_task_inherits_guardrails_from_settings_when_unset() {
-        use crate::settings::SettingsStore;
-        let tmp = tempfile::TempDir::new().expect("temp dir");
-        let settings = SettingsStore::load_from(tmp.path().join("config"));
-        // A global Settings ceiling is set; the project has its own tighter override.
-        settings
-            .update_for_test(
-                serde_json::from_str(r#"{"maxTurns":150,"maxBudgetUsd":9.0}"#).unwrap(),
-            )
-            .expect("global ceiling");
-        settings
-            .update_for_test(serde_json::from_str(r#"{"projectId":"p1","maxTurns":50}"#).unwrap())
-            .expect("project override");
-
-        // No explicit per-task ceilings → stamp the resolved Settings defaults.
-        let task = build_new_task(
-            &settings,
-            Some("p1"),
-            "t".into(),
-            String::new(),
-            CreateInputs::default(),
-        );
-        assert_eq!(
-            task.max_turns,
-            Some(50),
-            "per-project override wins for max_turns"
-        );
-        assert_eq!(
-            task.max_budget_usd,
-            Some(9.0),
-            "max_budget_usd has no project override → global"
-        );
-
-        // Another project with no override falls back to the global ceiling.
-        let other = build_new_task(
-            &settings,
-            Some("other"),
-            "t".into(),
-            String::new(),
-            CreateInputs::default(),
-        );
-        assert_eq!(other.max_turns, Some(150));
-        assert_eq!(other.max_budget_usd, Some(9.0));
-    }
-
-    #[test]
-    fn build_new_task_explicit_ceilings_win_over_settings() {
-        use crate::settings::SettingsStore;
-        let tmp = tempfile::TempDir::new().expect("temp dir");
-        let settings = SettingsStore::load_from(tmp.path().join("config"));
-        settings
-            .update_for_test(
-                serde_json::from_str(r#"{"maxTurns":150,"maxBudgetUsd":9.0}"#).unwrap(),
-            )
-            .expect("global ceiling");
-
-        // An explicit per-task value always overrides the Settings default.
-        let task = build_new_task(
-            &settings,
-            None,
-            "t".into(),
-            String::new(),
-            CreateInputs {
-                max_turns: Some(7),
-                max_budget_usd: Some(0.5),
-                ..Default::default()
-            },
-        );
-        assert_eq!(task.max_turns, Some(7));
-        assert_eq!(task.max_budget_usd, Some(0.5));
-    }
-
-    #[test]
-    fn build_new_task_stamps_the_picked_kind() {
-        use crate::settings::SettingsStore;
-        let tmp = tempfile::TempDir::new().expect("temp dir");
-        let settings = SettingsStore::load_from(tmp.path().join("config"));
-
-        // An explicit kind from the create dialog survives — this is the bug the
-        // create path had: `kind` was never threaded, so every new task became Build.
-        let task = build_new_task(
-            &settings,
-            None,
-            "t".into(),
-            String::new(),
-            CreateInputs {
-                kind: Some(TaskKind::Decompose),
-                ..Default::default()
-            },
-        );
-        assert_eq!(task.kind, TaskKind::Decompose, "the picked kind is stamped");
-
-        // Omitted kind falls back to the Build default (pre-M4 create shape).
-        let defaulted = build_new_task(
-            &settings,
-            None,
-            "t".into(),
-            String::new(),
-            CreateInputs::default(),
-        );
-        assert_eq!(
-            defaulted.kind,
-            TaskKind::Build,
-            "an omitted kind defaults to Build"
-        );
-    }
-
-    #[test]
-    fn build_new_task_drops_an_invalid_picker_branch_at_ingestion() {
-        use crate::settings::SettingsStore;
-        let tmp = tempfile::TempDir::new().expect("temp dir");
-        let settings = SettingsStore::load_from(tmp.path().join("config"));
-
-        // A picker value git would parse as an OPTION (or is otherwise not a legal
-        // ref) is never stored — it falls back to the default naming, so a hostile /
-        // typo'd branch can't be persisted and later spliced into a git call.
-        let hostile = build_new_task(
-            &settings,
-            None,
-            "t".into(),
-            String::new(),
-            CreateInputs {
-                run_mode: Some(RunMode::Worktree),
-                branch: Some("-D".into()),
-                base_branch: Some("a b".into()),
-                ..Default::default()
-            },
-        );
-        assert!(hostile.branch.is_none(), "an option-like branch is dropped");
-        assert!(
-            hostile.base_branch.is_none(),
-            "a malformed base is dropped"
-        );
-
-        // A legal picker branch/base survives ingestion unchanged.
-        let ok = build_new_task(
-            &settings,
-            None,
-            "t".into(),
-            String::new(),
-            CreateInputs {
-                run_mode: Some(RunMode::Worktree),
-                branch: Some("feature/foo".into()),
-                base_branch: Some("main".into()),
-                ..Default::default()
-            },
-        );
-        assert_eq!(ok.branch.as_deref(), Some("feature/foo"));
-        assert_eq!(ok.base_branch.as_deref(), Some("main"));
-    }
-
-    #[test]
-    fn build_new_task_leaves_guardrails_none_when_settings_unset() {
-        use crate::settings::SettingsStore;
-        let tmp = tempfile::TempDir::new().expect("temp dir");
-        let settings = SettingsStore::load_from(tmp.path().join("config"));
-        // No Settings ceiling and no explicit input → None, so the engine's config
-        // default (maxTurns 200, budget uncapped) applies at launch.
-        let task = build_new_task(
-            &settings,
-            None,
-            "t".into(),
-            String::new(),
-            CreateInputs::default(),
-        );
-        assert!(task.max_turns.is_none());
-        assert!(task.max_budget_usd.is_none());
-        // The P0 model/effort defaults are still stamped concretely.
-        assert_eq!(task.model.as_deref(), Some("claude-opus-4-8"));
-        assert_eq!(task.effort.as_deref(), Some("medium"));
-    }
-
-    #[test]
-    fn patch_sets_model_when_present() {
-        let mut task = Task::new("t".into(), String::new());
-        assert!(task.model.is_none());
-        let patch: TaskPatch = serde_json::from_str(r#"{"model":"claude-opus-4-8"}"#).unwrap();
-        patch.apply(&mut task);
-        assert_eq!(task.model.as_deref(), Some("claude-opus-4-8"));
-    }
-
-    #[test]
-    fn patch_leaves_model_untouched_when_absent() {
-        // `Option<String>` flattens an explicit `null` and an absent field to the
-        // same `None`, so a patch can SET a model but cannot distinguish "clear
-        // it" from "don't touch it" — an absent (or null) `model` is a no-op.
-        let mut task = Task::new("t".into(), String::new());
-        task.model = Some("claude-opus-4-8".into());
-
-        let absent: TaskPatch = serde_json::from_str(r#"{"title":"x"}"#).unwrap();
-        absent.apply(&mut task);
-        assert_eq!(task.model.as_deref(), Some("claude-opus-4-8"));
-
-        let explicit_null: TaskPatch = serde_json::from_str(r#"{"model":null}"#).unwrap();
-        explicit_null.apply(&mut task);
-        assert_eq!(
-            task.model.as_deref(),
-            Some("claude-opus-4-8"),
-            "explicit null is indistinguishable from absent; model is unchanged"
-        );
-    }
-
-    #[test]
-    fn patch_deserializes_camel_case_keys() {
-        let patch: TaskPatch =
-            serde_json::from_str(r#"{"status":"in_progress","dependencies":["a"]}"#).unwrap();
-        assert_eq!(patch.status, Some(TaskStatus::InProgress));
-        assert_eq!(patch.dependencies, Some(vec!["a".to_string()]));
-        assert!(patch.title.is_none());
-    }
 }
