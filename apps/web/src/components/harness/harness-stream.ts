@@ -13,11 +13,13 @@
 import type {
   ConventionCategory,
   ConventionFinding,
+  HarnessProposal,
   HarnessRun,
   HarnessScanEvent,
   ProposedArtifact,
   RepoProfile,
   StoredConventionFinding,
+  StoredHarnessProposal,
   StoredProposedArtifact,
   StoredRepoProfile,
 } from '@/lib/bridge';
@@ -26,6 +28,8 @@ import type {
   CategoryProgress,
   ConventionFindingVM,
   FindingStatus,
+  HarnessProposalVM,
+  ProposalStatus,
   ProposedArtifactVM,
   RepoProfileVM,
   RunStatus,
@@ -50,6 +54,8 @@ export interface HarnessStream {
   profile: RepoProfileVM | null;
   findings: ConventionFindingVM[];
   artifacts: ProposedArtifactVM[];
+  /** The task-shaped proposals synthesis produced (the convert-to-task units). */
+  proposals: HarnessProposalVM[];
   /** True between `harness-synthesis-started` and the proposals/terminal event —
    *  the dead-zone after every lens reads "done" but the synthesis tail is still
    *  running. Drives the RunProgress synthesis row + indeterminate bar shimmer. */
@@ -73,6 +79,7 @@ export const EMPTY_HARNESS_STREAM: HarnessStream = {
   profile: null,
   findings: [],
   artifacts: [],
+  proposals: [],
   synthesizing: false,
   costUsd: 0,
   usage: { inputTokens: 0, outputTokens: 0 },
@@ -181,6 +188,46 @@ export function storedToArtifact(a: StoredProposedArtifact): ProposedArtifactVM 
   };
 }
 
+/** Map a live wire `HarnessProposal` (contract) into the view shape — always
+ *  `proposed` (unconverted) when it streams in (lifecycle is applied on persist). */
+export function wireToProposal(p: HarnessProposal): HarnessProposalVM {
+  return {
+    id: p.id,
+    kind: p.kind,
+    title: p.title,
+    description: p.description,
+    rationale: p.rationale ?? null,
+    artifactIds: p.artifactIds ?? [],
+    prompt: p.prompt ?? null,
+    verifyCommand: p.verifyCommand ?? null,
+    harnessCheck: p.harnessCheck ?? null,
+    confidence: p.confidence ?? null,
+    fingerprint: p.fingerprint,
+    status: 'proposed',
+    linkedTaskId: null,
+  };
+}
+
+/** Map a persisted `StoredHarnessProposal` (string-typed) into the view shape,
+ *  narrowing the wire strings to their unions and carrying the convert lifecycle. */
+export function storedToProposal(p: StoredHarnessProposal): HarnessProposalVM {
+  return {
+    id: p.id,
+    kind: p.kind as HarnessProposalVM['kind'],
+    title: p.title,
+    description: p.description,
+    rationale: p.rationale,
+    artifactIds: p.artifactIds,
+    prompt: p.prompt,
+    verifyCommand: p.verifyCommand,
+    harnessCheck: p.harnessCheck,
+    confidence: p.confidence,
+    fingerprint: p.fingerprint,
+    status: p.status as ProposalStatus,
+    linkedTaskId: p.linkedTaskId,
+  };
+}
+
 /** Map a live wire `RepoProfile` (contract) into the ProfileBanner view shape. */
 export function wireToProfile(p: RepoProfile): RepoProfileVM {
   return {
@@ -243,6 +290,7 @@ export function streamFromRun(run: HarnessRun): HarnessStream {
     profile: storedToProfile(run.profile),
     findings: run.findings.map(storedToConventionFinding),
     artifacts: run.artifacts.map(storedToArtifact),
+    proposals: run.proposals.map(storedToProposal),
     // Persisted on the run (set on harness-synthesis-started, cleared on
     // proposals-ready/terminal), so a run reloaded during the multi-minute serial
     // synthesis tail still shows the "Synthesizing…" state instead of a frozen
@@ -317,6 +365,7 @@ export function foldHarness(
       return {
         ...prev,
         artifacts: event.artifacts.map(wireToArtifact),
+        proposals: event.proposals.map(wireToProposal),
         synthesizing: false,
       };
     case 'harness-scan-completed':
@@ -327,6 +376,7 @@ export function foldHarness(
         profile: wireToProfile(event.profile),
         findings: event.findings.map(wireToConventionFinding),
         artifacts: event.artifacts.map(wireToArtifact),
+        proposals: event.proposals.map(wireToProposal),
         costUsd: event.costUsd,
         usage: event.usage ?? prev.usage,
         durationMs: event.durationMs,

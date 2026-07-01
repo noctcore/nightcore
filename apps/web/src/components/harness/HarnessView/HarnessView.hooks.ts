@@ -32,6 +32,7 @@ import {
 import { ALL_CATEGORIES, CATEGORY_META, severityRankValue } from '../harness.constants';
 import type {
   ConventionFindingVM,
+  HarnessProposalVM,
   ProposedArtifactVM,
 } from '../harness.types';
 import {
@@ -390,8 +391,9 @@ function openCount(
   ).length;
 }
 
-/** Which body section is showing: the convention grid or the proposed harness. */
-export type HarnessSection = 'conventions' | 'proposals';
+/** Which body section is showing: the convention grid, the task-shaped proposals, or
+ *  the file-level artifacts. */
+export type HarnessSection = 'conventions' | 'proposals' | 'artifacts';
 
 /** Everything the HarnessView shell renders. `hasProject === false` is the only
  *  early-return branch; every other field is meaningful in the project view. */
@@ -430,9 +432,10 @@ export interface HarnessViewModel {
   /** Which body section is active, and the toggle. */
   section: HarnessSection;
   setSection: (section: HarnessSection) => void;
-  /** Open-finding count + proposed-artifact count for the section toggle badges. */
+  /** Section-toggle badge counts: open findings, open proposals, proposed artifacts. */
   conventionCount: number;
   proposalCount: number;
+  artifactCount: number;
   /** Convention-lens tabs + active tab. */
   tabs: CategoryTab[];
   activeTab: 'all' | ConventionCategory;
@@ -440,10 +443,14 @@ export interface HarnessViewModel {
   gridFindings: ConventionFindingVM[];
   skeletonCount: number;
   emptyMessage: string;
-  /** Proposed-harness panel inputs. */
-  artifacts: ProposedArtifactVM[];
+  /** Task-shaped proposals panel inputs (the convert-to-task units). */
+  proposals: HarnessProposalVM[];
   proposalsLoading: boolean;
   proposalsEmptyMessage: string;
+  /** File-level artifacts panel inputs. */
+  artifacts: ProposedArtifactVM[];
+  artifactsLoading: boolean;
+  artifactsEmptyMessage: string;
   /** The finding open in the detail panel, or `null`. */
   selectedFinding: ConventionFindingVM | null;
   openFinding: (finding: ConventionFindingVM) => void;
@@ -673,6 +680,16 @@ export function useHarnessView({
 
   const proposalsEmptyMessage = useMemo(() => {
     if (stream.status === 'idle') {
+      return 'Run a scan to synthesize task-shaped proposals from your conventions.';
+    }
+    if (stream.status === 'failed') {
+      return `Scan failed${stream.error !== null ? `: ${stream.error}` : ''}.`;
+    }
+    return 'No proposals synthesized for this scan.';
+  }, [stream.status, stream.error]);
+
+  const artifactsEmptyMessage = useMemo(() => {
+    if (stream.status === 'idle') {
       return 'Run a scan to synthesize a proposed harness from your conventions.';
     }
     if (stream.status === 'failed') {
@@ -765,16 +782,20 @@ export function useHarnessView({
     section,
     setSection,
     conventionCount: openCount(stream.findings),
-    proposalCount: stream.artifacts.filter((a) => a.status === 'proposed').length,
+    proposalCount: stream.proposals.filter((p) => p.status === 'proposed').length,
+    artifactCount: stream.artifacts.filter((a) => a.status === 'proposed').length,
     tabs,
     activeTab,
     setActiveTab,
     gridFindings,
     skeletonCount,
     emptyMessage,
-    artifacts: stream.artifacts,
-    proposalsLoading: stream.status === 'running' && stream.artifacts.length === 0,
+    proposals: stream.proposals,
+    proposalsLoading: stream.status === 'running' && stream.proposals.length === 0,
     proposalsEmptyMessage,
+    artifacts: stream.artifacts,
+    artifactsLoading: stream.status === 'running' && stream.artifacts.length === 0,
+    artifactsEmptyMessage,
     selectedFinding,
     openFinding: (finding: ConventionFindingVM) => setSelectedFindingId(finding.id),
     closeFinding: () => setSelectedFindingId(null),

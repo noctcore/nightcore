@@ -4,6 +4,7 @@ import type {
   ConventionCategory,
   ConventionKind,
   FindingSeverity,
+  HarnessProposalKind,
   RepoPackage,
   WorkspaceTool,
 } from '@/lib/bridge';
@@ -13,6 +14,10 @@ export type FindingStatus = 'open' | 'dismissed' | 'converted';
 
 /** Proposed-artifact lifecycle, narrowed from the persisted `string`. */
 export type ArtifactStatus = 'proposed' | 'applied' | 'dismissed';
+
+/** Task-shaped-proposal lifecycle, narrowed from the persisted `string`. Mirrors the
+ *  convention-finding lifecycle (a proposal converts to a board task). */
+export type ProposalStatus = 'proposed' | 'dismissed' | 'converted';
 
 /** A convention finding as the view renders it: the unified, union-typed shape
  *  both the live wire `ConventionFinding` (contract) and the persisted
@@ -68,6 +73,38 @@ export interface ProposedArtifactVM {
   /** The repo-relative path the artifact was written to, once `applied`. */
   appliedPath: string | null;
   appliedAt: number | null;
+}
+
+/** A suggested Structure-Lock check carried on a proposal, as the view renders it. */
+export interface HarnessCheckVM {
+  name: string;
+  kind: string;
+  command: string;
+}
+
+/** A task-shaped harness proposal as the view renders it: the unified shape both the
+ *  live wire `HarnessProposal` (contract) and the persisted `StoredHarnessProposal`
+ *  (ts-rs) normalize into. The unit the user converts into a board task. */
+export interface HarnessProposalVM {
+  id: string;
+  /** `apply-artifacts` (bundle → apply.rs) | `agent-task` (worktree Build task). */
+  kind: HarnessProposalKind;
+  title: string;
+  description: string;
+  rationale: string | null;
+  /** `apply-artifacts`: the artifact ids this proposal bundles. */
+  artifactIds: string[];
+  /** `agent-task`: the Build-task prompt. */
+  prompt: string | null;
+  /** `agent-task`: the machine-checkable done-command (→ the task's `verify_command`). */
+  verifyCommand: string | null;
+  /** The gauntlet check this proposal suggests arming once its work lands. */
+  harnessCheck: HarnessCheckVM | null;
+  confidence: number | null;
+  fingerprint: string;
+  status: ProposalStatus;
+  /** The board task this proposal was converted into, if any (`converted` status). */
+  linkedTaskId: string | null;
 }
 
 /** The deterministically-detected repo profile as the ProfileBanner renders it. */
