@@ -47,8 +47,38 @@ import { whichSync } from '@nightcore/shared';
  * candidate is verified to be a real, executable file before being returned. If
  * nothing resolves we return `undefined` and let the SDK try, rather than passing
  * a broken path that would fail differently.
+ *
+ * MEMOIZED: the resolved path is immutable for the process lifetime (the binary,
+ * env, and filesystem do not move under us mid-run), but `resolveClaudeBinary()`
+ * is called once per `SessionRunner.run()` AND once per `SessionOptionsBuilder.base()`
+ * — the latter on every options build and every transient probe. A single
+ * Insight/Harness/Scorecard scan fans out ~6 category passes plus retries and
+ * synthesis, so an unmemoized resolver repeats the same full-ancestor `node_modules`
+ * fs sweep (tens of syscalls) dozens of times for one immutable answer — worst
+ * exactly on the shipped compiled binary, where the `require.resolve` fast path
+ * always throws and every call falls through to the slow scan. We compute once and
+ * cache; `resetForTest()` clears the cache for tests that vary env/filesystem.
  */
+const UNRESOLVED = Symbol('nightcore.claudeBinary.unresolved');
+let cachedClaudeBinary: string | undefined | typeof UNRESOLVED = UNRESOLVED;
+
 export function resolveClaudeBinary(): string | undefined {
+  if (cachedClaudeBinary !== UNRESOLVED) return cachedClaudeBinary;
+  cachedClaudeBinary = computeClaudeBinary();
+  return cachedClaudeBinary;
+}
+
+/**
+ * Clear the memoized resolution so the next `resolveClaudeBinary()` recomputes.
+ * Intended for tests that mutate the env vars or on-disk layout the resolver reads;
+ * has no effect on production behavior (the path never changes at runtime).
+ */
+export function resetClaudeBinaryCacheForTest(): void {
+  cachedClaudeBinary = UNRESOLVED;
+}
+
+/** The uncached resolution logic; see `resolveClaudeBinary` for the contract. */
+function computeClaudeBinary(): string | undefined {
   const fromEnv = process.env.NIGHTCORE_CLAUDE_PATH;
   if (fromEnv && isRealExecutable(fromEnv)) return fromEnv;
 
