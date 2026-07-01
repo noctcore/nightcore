@@ -10,7 +10,8 @@ use tauri::{AppHandle, Emitter};
 
 use crate::store::TaskStore;
 
-use super::model::{build_new_task, CreateInputs, SubtaskStatus, Task, TaskKind, TaskStatus};
+use super::create::{build_new_task, CreateInputs};
+use super::model::{SubtaskStatus, Task, TaskKind, TaskStatus};
 use super::TASK_EVENT;
 
 /// Mint one child task from a proposed sub-task and atomically mark the proposal
