@@ -318,7 +318,10 @@ pub(crate) fn park_for_approval(app: &AppHandle, task_id: &str, session_id: Opti
 /// failed notification is logged at debug, never surfaced.
 pub(crate) fn notify_task_complete(app: &AppHandle, task_id: &str, succeeded: bool) {
     use crate::settings::SettingsStore;
-    if !app.state::<SettingsStore>().get().notify_on_complete {
+    if !app
+        .state::<SettingsStore>()
+        .with_settings(|s| s.notify_on_complete)
+    {
         return;
     }
     let Some(task) = app.state::<TaskStore>().get(task_id) else {
