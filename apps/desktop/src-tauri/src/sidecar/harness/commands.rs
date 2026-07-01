@@ -29,7 +29,12 @@ use crate::store::harness::{
 use crate::store::TaskStore;
 use crate::task::{Task, TaskKind, TASK_EVENT};
 
-use super::apply::{safe_join, write_create, write_merge_section};
+use super::apply::{safe_join, write_create, write_merge_manifest, write_merge_section};
+
+/// The check kinds the Structure-Lock gauntlet knows how to run (mirrors
+/// `workflow::gauntlet_project::HarnessCheckKind`). Arming is restricted to these so a
+/// stray kind can't land an entry the gauntlet will only warn-and-skip.
+const ARMABLE_CHECK_KINDS: &[&str] = &["lint-plugin", "dependency-cruiser", "coverage-threshold"];
 
 // The four store-agnostic lifecycle commands (list / get / delete / cancel), stamped
 // from the shared scan macro instead of hand-copied per feature.
@@ -360,4 +365,66 @@ pub fn apply_harness_artifact(
     );
     tracing::info!(target: "nightcore", run_id = %run_id, artifact_id = %artifact_id, path = %artifact.target_path, "harness artifact applied");
     Ok(updated)
+}
+
+/// Arm (or re-arm) a Structure-Lock gauntlet check in the scanned project's
+/// `.nightcore/harness.json`. THIS is the writer that closes the spec's Harden→Lock arrow:
+/// until now the gauntlet ([`crate::workflow::gauntlet_project`]) had consumers but no
+/// producer, so it ran zero checks for every real user. The check `command` is supplied
+/// by the trusted UI on an explicit user action — the human gate the redesign calls for —
+/// never derived from synthesis output (a guessed command would either be a false-positive
+/// gate or, worse, injected code the gauntlet would then execute under every reviewer). The
+/// destination is hard-pinned to `.nightcore/harness.json` in [`write_merge_manifest`] and
+/// merged by check `name` (idempotent + re-armable), so hand-authored checks are preserved.
+#[tauri::command]
+pub fn arm_harness_gauntlet_check(
+    app: AppHandle,
+    harness_store: State<'_, HarnessStore>,
+    run_id: String,
+    name: String,
+    kind: String,
+    command: String,
+) -> Result<(), String> {
+    let name = name.trim();
+    let command = command.trim();
+    if name.is_empty() {
+        return Err("a gauntlet check needs a name".to_string());
+    }
+    if command.is_empty() {
+        return Err("a gauntlet check needs a command to run".to_string());
+    }
+    if !ARMABLE_CHECK_KINDS.contains(&kind.as_str()) {
+        return Err(format!(
+            "unknown check kind `{kind}` — expected one of: {}",
+            ARMABLE_CHECK_KINDS.join(", ")
+        ));
+    }
+    let run = harness_store
+        .get(&run_id)
+        .ok_or_else(|| format!("no harness run with id {run_id}"))?;
+
+    // The entry is built HERE, in Rust, from validated inputs — the manifest is never
+    // handed a model-authored object. `enabled: true` so a freshly-armed check is live.
+    let entry = json!({
+        "name": name,
+        "kind": kind,
+        "command": command,
+        "enabled": true,
+    });
+    let dest = write_merge_manifest(Path::new(&run.project_path), &entry).map_err(|e| {
+        tracing::warn!(target: "nightcore", run_id = %run_id, name = %name, error = %e, "arming gauntlet check failed");
+        e
+    })?;
+
+    let _ = app.emit(
+        HARNESS_EVENT,
+        json!({
+            "type": "check-armed",
+            "runId": run_id,
+            "name": name,
+            "kind": kind,
+        }),
+    );
+    tracing::info!(target: "nightcore", run_id = %run_id, name = %name, kind = %kind, path = %dest.display(), "structure-lock check armed in harness.json");
+    Ok(())
 }
