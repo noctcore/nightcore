@@ -12,7 +12,7 @@ export interface ColumnDef {
   dotColor: string;
   /** Tag rendered beside the column title (a not-yet-built/future affordance). */
   badge?: string;
-  /** Verified/Failed columns offer a "Clear" affordance when non-empty. */
+  /** Backlog/Done/Failed columns offer a "Clear" affordance when non-empty. */
   clearable?: boolean;
 }
 
@@ -24,6 +24,7 @@ export const COLUMNS: ColumnDef[] = [
     title: 'Backlog',
     statuses: ['backlog', 'ready'],
     dotColor: 'oklch(62% .02 290)',
+    clearable: true,
   },
   {
     key: 'in_progress',

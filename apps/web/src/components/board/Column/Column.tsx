@@ -6,7 +6,7 @@ import { useColumn } from './Column.hooks';
 import type { ColumnProps } from './Column.types';
 
 /** A board column: a colored status dot + label + count header (with an optional
- *  tag badge and a Clear affordance for Verified/Failed), over its task
+ *  tag badge and a Clear affordance for Backlog/Done/Failed), over its task
  *  cards. Failed renders narrower than the rest. Presentational — all
  *  state and bridge actions are owned by the board.
  *
