@@ -1,0 +1,553 @@
+//! Integration tests for the worktree module.
+//!
+//! These build a real temp git repo (skipping when `git` is unavailable so the
+//! suite stays green in minimal envs) and exercise the full lifecycle across the
+//! submodules through the re-exported facade. The pure path/guard unit tests live
+//! next to their code in `path.rs`.
+
+use super::*;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+/// Build a real git repo with one commit. Returns `None` (skipping the test)
+/// when `git` isn't available, so the suite stays green in minimal envs.
+fn temp_repo() -> Option<(tempfile::TempDir, PathBuf)> {
+    let tmp = tempfile::TempDir::new().ok()?;
+    let path = tmp.path().to_path_buf();
+    let run = |args: &[&str]| {
+        Command::new("git")
+            .args(args)
+            .current_dir(&path)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    };
+    if !run(&["init", "-q"]) {
+        return None;
+    }
+    run(&["config", "user.email", "t@t.t"]);
+    run(&["config", "user.name", "t"]);
+    // Mirror production: the worktrees base is gitignored, so an allocated
+    // worktree never dirties the main checkout.
+    std::fs::write(path.join(".gitignore"), ".nightcore/\n").ok()?;
+    std::fs::write(path.join("README.md"), "hi").ok()?;
+    run(&["add", "."]);
+    if !run(&["commit", "-q", "-m", "init"]) {
+        return None;
+    }
+    Some((tmp, path))
+}
+
+#[test]
+fn allocate_remove_and_reconcile_round_trip() {
+    let Some((_tmp, repo)) = temp_repo() else {
+        return; // git unavailable; pure-logic tests above still cover the rest
+    };
+
+    // Allocate creates the worktree dir + branch.
+    let dir = allocate(&repo, "task-1").expect("allocate");
+    assert!(dir.is_dir(), "worktree dir exists");
+    assert!(
+        dir.join("README.md").exists(),
+        "worktree has the repo content"
+    );
+    assert_eq!(list_worktree_task_ids(&repo), vec!["task-1".to_string()]);
+
+    // Allocating again is idempotent (reuses the dir).
+    let again = allocate(&repo, "task-1").expect("re-allocate");
+    assert_eq!(again, dir);
+
+    // A second task gets its own disjoint worktree.
+    allocate(&repo, "task-2").expect("allocate 2");
+    let mut ids = list_worktree_task_ids(&repo);
+    ids.sort();
+    assert_eq!(ids, vec!["task-1".to_string(), "task-2".to_string()]);
+
+    // Reconcile prunes the worktree whose task is no longer live (task-2 gone).
+    let pruned = reconcile(&repo, &["task-1".to_string()]);
+    assert_eq!(pruned, vec!["task-2".to_string()]);
+    assert_eq!(list_worktree_task_ids(&repo), vec!["task-1".to_string()]);
+
+    // Explicit remove clears the last one; idempotent on a second call.
+    remove(&repo, "task-1").expect("remove");
+    assert!(list_worktree_task_ids(&repo).is_empty());
+    remove(&repo, "task-1").expect("remove is idempotent");
+}
+
+#[test]
+fn clean_then_dirty_worktree_detection() {
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    assert!(
+        is_worktree_clean(&repo).expect("status"),
+        "fresh repo is clean"
+    );
+    std::fs::write(repo.join("README.md"), "changed").expect("edit");
+    assert!(
+        !is_worktree_clean(&repo).expect("status"),
+        "an uncommitted edit makes the tree dirty"
+    );
+}
+
+#[test]
+fn stage_diff_commit_split_helpers_round_trip() {
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    // A clean tree stages nothing.
+    stage_all(&repo).expect("stage");
+    assert!(!has_staged_changes(&repo), "clean tree has nothing staged");
+
+    // Introduce a change, stage it, and see it through the diff helpers — this is
+    // the window the commit-message generator reads between staging and committing.
+    std::fs::write(repo.join("feature.txt"), "new feature\n").expect("write");
+    stage_all(&repo).expect("stage");
+    assert!(has_staged_changes(&repo), "the new file is staged");
+    let diff = staged_diff(&repo).expect("diff");
+    assert!(
+        diff.contains("feature.txt"),
+        "the staged diff names the file: {diff}"
+    );
+
+    // Commit the already-staged change; the tree goes clean and the message lands.
+    commit_staged(&repo, "feat: add feature").expect("commit");
+    assert!(!has_staged_changes(&repo), "post-commit tree is clean");
+    let log = Command::new("git")
+        .args(["log", "-1", "--pretty=%s"])
+        .current_dir(&repo)
+        .output()
+        .expect("git log");
+    assert_eq!(
+        String::from_utf8_lossy(&log.stdout).trim(),
+        "feat: add feature"
+    );
+}
+
+/// Run a git command in a worktree for tests, returning success.
+fn run_in(dir: &Path, args: &[&str]) -> bool {
+    Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+#[test]
+fn commit_creates_a_commit_on_the_branch_and_reports_nothing_to_commit() {
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    let dir = allocate(&repo, "task-1").expect("allocate");
+
+    // A clean worktree commits nothing.
+    assert!(!commit(&repo, "task-1", "first").expect("commit"));
+
+    // Add a change in the worktree; commit now creates a commit on nc/task-1.
+    std::fs::write(dir.join("file.txt"), "hello").expect("write");
+    assert!(commit(&repo, "task-1", "add file").expect("commit"));
+
+    // The commit landed on the task branch with our message.
+    let log = Command::new("git")
+        .args(["log", "-1", "--pretty=%s", &branch_name("task-1")])
+        .current_dir(&repo)
+        .output()
+        .expect("git log");
+    assert_eq!(String::from_utf8_lossy(&log.stdout).trim(), "add file");
+
+    // A second commit with no further change reports nothing to commit.
+    assert!(!commit(&repo, "task-1", "again").expect("commit"));
+}
+
+#[test]
+fn commit_in_commits_the_project_root_for_main_mode() {
+    // M4.6 §A: a main-mode task commits in place in the project root (no
+    // worktree), via `commit_in`. A clean tree commits nothing.
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    assert!(
+        !commit_in(&repo, "noop").expect("commit"),
+        "clean tree commits nothing"
+    );
+
+    std::fs::write(repo.join("src.txt"), "edit on main").expect("write");
+    assert!(
+        commit_in(&repo, "main mode change").expect("commit"),
+        "a change commits"
+    );
+
+    let log = Command::new("git")
+        .args(["log", "-1", "--pretty=%s"])
+        .current_dir(&repo)
+        .output()
+        .expect("git log");
+    assert_eq!(
+        String::from_utf8_lossy(&log.stdout).trim(),
+        "main mode change"
+    );
+    assert!(
+        is_worktree_clean(&repo).expect("status"),
+        "after commit the root is clean"
+    );
+}
+
+#[test]
+fn commit_before_review_makes_an_uncommitted_edit_diffable() {
+    // The dogfood-bug fix end-to-end at the worktree level: a build wrote an
+    // UNCOMMITTED file into the worktree; before review we commit it, so the
+    // branch HEAD advances and `base..HEAD` is non-empty (the reviewer's range
+    // step now sees the work).
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    let base = base_branch(&repo);
+    let dir = allocate(&repo, "task-1").expect("allocate");
+
+    // Build writes an uncommitted file. Before the fix, base..HEAD is empty.
+    std::fs::write(dir.join("feature.rs"), "fn added() {}").expect("write");
+    let count_before = Command::new("git")
+        .args([
+            "rev-list",
+            "--count",
+            &format!("{base}..{}", branch_name("task-1")),
+        ])
+        .current_dir(&repo)
+        .output()
+        .expect("rev-list");
+    assert_eq!(
+        String::from_utf8_lossy(&count_before.stdout).trim(),
+        "0",
+        "the build leaves HEAD == base (the bug's precondition)"
+    );
+
+    // Commit-before-review advances HEAD; now the committed range is non-empty.
+    assert!(commit(&repo, "task-1", "add feature").expect("commit"));
+    let count_after = Command::new("git")
+        .args([
+            "rev-list",
+            "--count",
+            &format!("{base}..{}", branch_name("task-1")),
+        ])
+        .current_dir(&repo)
+        .output()
+        .expect("rev-list");
+    assert_eq!(
+        String::from_utf8_lossy(&count_after.stdout).trim(),
+        "1",
+        "after commit-before-review the reviewer's base..HEAD range is non-empty"
+    );
+
+    // And the diff itself carries the new file.
+    let diff = Command::new("git")
+        .args([
+            "diff",
+            &format!("{base}...{}", branch_name("task-1")),
+            "--name-only",
+        ])
+        .current_dir(&repo)
+        .output()
+        .expect("git diff");
+    assert!(
+        String::from_utf8_lossy(&diff.stdout).contains("feature.rs"),
+        "the committed diff includes the build's file"
+    );
+}
+
+#[test]
+fn list_worktree_statuses_reports_branch_dirty_and_ahead() {
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    // No worktrees yet.
+    assert!(list_worktree_statuses(&repo).is_empty());
+
+    // Allocate one; a fresh worktree is clean and not ahead of base.
+    let dir = allocate(&repo, "task-1").expect("allocate");
+    let statuses = list_worktree_statuses(&repo);
+    assert_eq!(statuses.len(), 1);
+    let s = &statuses[0];
+    assert_eq!(s.branch, "nc/task-1");
+    assert_eq!(s.task_ids, vec!["task-1".to_string()]);
+    assert!(!s.dirty, "a fresh worktree is clean");
+    assert_eq!(s.ahead_of_base, 0, "a fresh worktree is level with base");
+    assert_eq!(s.behind_of_base, 0, "a fresh worktree is not behind base");
+    assert_eq!(s.changed_files, 0, "a fresh worktree has no changed files");
+
+    // An uncommitted edit marks it dirty with one changed file (still not ahead).
+    std::fs::write(dir.join("wip.txt"), "wip").expect("write");
+    let dirty = list_worktree_statuses(&repo);
+    assert!(dirty[0].dirty, "an uncommitted edit is dirty");
+    assert_eq!(dirty[0].ahead_of_base, 0);
+    assert_eq!(dirty[0].changed_files, 1, "one uncommitted file");
+
+    // Committing it clears dirty and advances ahead-of-base to 1, not behind.
+    commit(&repo, "task-1", "wip commit").expect("commit");
+    let committed = list_worktree_statuses(&repo);
+    assert!(!committed[0].dirty, "a committed worktree is clean");
+    assert_eq!(committed[0].ahead_of_base, 1, "one commit ahead of base");
+    assert_eq!(committed[0].behind_of_base, 0, "not behind base");
+    assert_eq!(committed[0].changed_files, 0, "no changed files after commit");
+}
+
+#[test]
+fn parse_left_right_count_reads_behind_then_ahead() {
+    assert_eq!(parse_left_right_count("3\t5"), Some((3, 5)));
+    assert_eq!(parse_left_right_count("0 0"), Some((0, 0)));
+    assert_eq!(parse_left_right_count(""), None);
+    assert_eq!(parse_left_right_count("nope"), None);
+}
+
+#[test]
+fn merge_integrates_the_branch_into_base() {
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    let base = base_branch(&repo);
+    let dir = allocate(&repo, "task-1").expect("allocate");
+    std::fs::write(dir.join("feature.txt"), "feature").expect("write");
+    commit(&repo, "task-1", "add feature").expect("commit");
+
+    assert_eq!(
+        merge_branch(&repo, &branch_name("task-1"), &base).expect("merge"),
+        MergeOutcome::Merged
+    );
+    // The base branch now contains the feature file.
+    assert!(
+        repo.join("feature.txt").exists(),
+        "merge brought the file into base"
+    );
+}
+
+#[test]
+fn merge_reports_conflict_and_does_not_force() {
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    let base = base_branch(&repo);
+    // Diverge: the task branch edits README, then base edits the same line.
+    let dir = allocate(&repo, "task-1").expect("allocate");
+    std::fs::write(dir.join("README.md"), "from-branch").expect("write");
+    commit(&repo, "task-1", "branch edit").expect("commit");
+
+    run_in(&repo, &["checkout", &base]);
+    std::fs::write(repo.join("README.md"), "from-base").expect("write");
+    run_in(&repo, &["commit", "-am", "base edit"]);
+
+    assert_eq!(
+        merge_branch(&repo, &branch_name("task-1"), &base).expect("merge"),
+        MergeOutcome::Conflict
+    );
+    // The merge was aborted, not forced: the base content is intact and the tree
+    // is clean (no conflict markers left staged).
+    assert_eq!(
+        std::fs::read_to_string(repo.join("README.md")).unwrap(),
+        "from-base"
+    );
+    assert!(
+        is_worktree_clean(&repo).expect("status"),
+        "aborted merge leaves a clean tree"
+    );
+}
+
+#[test]
+fn merge_of_nonexistent_branch_errors_not_conflict() {
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    let base = base_branch(&repo);
+    // A branch that doesn't exist is a hard merge failure — git starts no merge —
+    // so the caller must see an `Err`, NOT a `Conflict` (the UI would otherwise
+    // tell the user "conflict" for a failure that isn't one).
+    let outcome = merge_branch(&repo, &branch_name("does-not-exist"), &base);
+    assert!(
+        outcome.is_err(),
+        "a nonexistent branch is an error, not a conflict: {outcome:?}"
+    );
+    // No merge was started, so the base tree is left clean (not mid-merge).
+    assert!(
+        is_worktree_clean(&repo).expect("status"),
+        "a merge that never started leaves the tree clean"
+    );
+}
+
+#[test]
+fn task_delete_cleanup_removes_worktree_and_branch() {
+    // C8: deleting a worktree-mode task must leave no orphaned worktree dir or
+    // `nc/<id>` branch. This exercises the remove-then-delete-branch sequence
+    // `delete_task`'s cleanup runs (the AppHandle-gated wrapper is thin glue).
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    allocate(&repo, "task-1").expect("allocate");
+    std::fs::write(worktree_path(&repo, "task-1").join("f.txt"), "x").expect("write");
+    commit(&repo, "task-1", "work").expect("commit");
+    assert!(
+        branch_exists(&repo, "task-1"),
+        "the nc/ branch exists after a run"
+    );
+
+    // The cleanup order: remove the worktree (frees its checked-out branch),
+    // then delete the branch.
+    remove(&repo, "task-1").expect("remove worktree");
+    delete_branch_named(&repo, &branch_name("task-1")).expect("delete branch");
+
+    assert!(
+        list_worktree_task_ids(&repo).is_empty(),
+        "no orphaned worktree dir"
+    );
+    assert!(!branch_exists(&repo, "task-1"), "no orphaned nc/ branch");
+}
+
+/// Whether `nc/<task_id>` exists in the repo (test helper).
+fn branch_exists(repo: &Path, task_id: &str) -> bool {
+    run_in(
+        repo,
+        &["rev-parse", "--verify", "--quiet", &branch_name(task_id)],
+    )
+}
+
+#[test]
+fn delete_branch_is_best_effort() {
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    allocate(&repo, "task-1").expect("allocate");
+    // The branch is checked out in the worktree; removing the worktree first
+    // frees it for deletion (mirrors the merge cleanup order).
+    remove(&repo, "task-1").expect("remove");
+    delete_branch_named(&repo, &branch_name("task-1")).expect("delete");
+    // Deleting a now-missing branch is a no-op.
+    delete_branch_named(&repo, &branch_name("task-1")).expect("idempotent delete");
+}
+
+#[test]
+fn list_branches_includes_the_current_branch() {
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    let branches = list_branches(&repo);
+    let current = branches
+        .iter()
+        .find(|b| b.is_current)
+        .expect("a current branch");
+    assert!(!current.is_remote, "the checked-out branch is local");
+    assert_eq!(current.name, base_branch(&repo));
+}
+
+#[test]
+fn merge_preview_reports_ready_then_conflict() {
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    let base = base_branch(&repo);
+    let dir = allocate(&repo, "task-1").expect("allocate");
+    std::fs::write(dir.join("feature.txt"), "feature\n").expect("write");
+    commit(&repo, "task-1", "add feature").expect("commit");
+
+    let preview = merge_preview(&repo, &branch_name("task-1"), &base);
+    assert_eq!(preview.status, MergePreviewStatus::Ready);
+    assert!(preview.conflict_files.is_empty());
+    assert_eq!(preview.ahead, 1);
+    assert_eq!(preview.behind, 0);
+    assert!(preview.files.iter().any(|f| f.path == "feature.txt"));
+
+    // Diverge base on a line the branch also edits → conflict preview.
+    let dir2 = allocate(&repo, "task-2").expect("allocate 2");
+    std::fs::write(dir2.join("README.md"), "from-branch\n").expect("write");
+    commit(&repo, "task-2", "branch edit").expect("commit");
+    run_in(&repo, &["checkout", &base]);
+    std::fs::write(repo.join("README.md"), "from-base\n").expect("write");
+    run_in(&repo, &["commit", "-am", "base edit"]);
+
+    let conflict = merge_preview(&repo, &branch_name("task-2"), &base);
+    // Modern git (≥2.38) detects the conflict precisely; older git can only see
+    // the divergence — accept either, and verify the file list when conflicting.
+    assert!(
+        matches!(
+            conflict.status,
+            MergePreviewStatus::Conflicts | MergePreviewStatus::Diverged
+        ),
+        "expected conflicts-or-diverged, got {:?}",
+        conflict.status
+    );
+    if matches!(conflict.status, MergePreviewStatus::Conflicts) {
+        assert!(
+            conflict.conflict_files.iter().any(|f| f == "README.md"),
+            "conflict files should name README.md: {:?}",
+            conflict.conflict_files
+        );
+    }
+    // The preview is read-only: the base tree is untouched.
+    assert!(
+        is_worktree_clean(&repo).expect("status"),
+        "merge_preview must not mutate the working tree"
+    );
+}
+
+#[test]
+fn worktree_diff_lists_committed_and_untracked() {
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    let base = base_branch(&repo);
+    let dir = allocate(&repo, "task-1").expect("allocate");
+    std::fs::write(dir.join("added.txt"), "a\nb\n").expect("write");
+    commit(&repo, "task-1", "add file").expect("commit");
+    // An uncommitted untracked file is also part of the worktree's diff.
+    std::fs::write(dir.join("scratch.txt"), "wip\n").expect("write");
+
+    let diff = worktree_diff(&dir, &base);
+    assert!(
+        diff.files
+            .iter()
+            .any(|f| f.path == "added.txt" && matches!(f.status, DiffStatus::Added)),
+        "committed add should appear: {:?}",
+        diff.files
+    );
+    assert!(
+        diff.files
+            .iter()
+            .any(|f| f.path == "scratch.txt" && matches!(f.status, DiffStatus::Untracked)),
+        "untracked file should appear: {:?}",
+        diff.files
+    );
+    assert!(diff.additions >= 2, "added.txt has 2 lines: {}", diff.summary);
+}
+
+#[test]
+fn allocate_branch_creates_named_branch_off_base_then_merges() {
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    let base = base_branch(&repo);
+    // Allocate a worktree on a picker-chosen branch name off the base.
+    let dir = allocate_branch(&repo, "task-1", "feature/foo", &base).expect("allocate_branch");
+    assert!(dir.is_dir());
+    let head = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(&dir)
+        .output()
+        .expect("head");
+    assert_eq!(
+        String::from_utf8_lossy(&head.stdout).trim(),
+        "feature/foo",
+        "the worktree is checked out on the chosen branch"
+    );
+    // worktree_status reports the REAL checked-out branch (so the web groups the
+    // task by its actual branch), not the derived `nc/<id>`.
+    assert_eq!(
+        worktree_status(&dir, "task-1", &base).branch,
+        "feature/foo",
+        "worktree_status reports the actual branch, not nc/<taskId>"
+    );
+    // A commit on that branch merges cleanly back into base via merge_branch.
+    std::fs::write(dir.join("f.txt"), "x").expect("write");
+    commit(&repo, "task-1", "work").expect("commit");
+    assert_eq!(
+        merge_branch(&repo, "feature/foo", &base).expect("merge"),
+        MergeOutcome::Merged
+    );
+    assert!(repo.join("f.txt").exists(), "merge integrated the file");
+}
