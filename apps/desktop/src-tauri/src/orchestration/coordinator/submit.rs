@@ -6,6 +6,7 @@
 
 use tauri::{AppHandle, Manager};
 
+use crate::orchestration::breaker::CircuitBreaker;
 use crate::worktree;
 use crate::store::TaskStore;
 
@@ -143,10 +144,7 @@ fn fail_run(app: &AppHandle, task_id: &str, message: &str, feed_breaker: bool) {
     let orch = app.state::<Orchestrator>();
     fail_task(app, task_id, message);
     orch.slots.release(task_id);
-    if !feed_breaker {
-        return;
-    }
-    if orch.breaker.record_failure() {
+    if feed_breaker_on_failure(&orch.breaker, feed_breaker) {
         tracing::warn!(
             target: "nightcore",
             task_id,
@@ -158,5 +156,86 @@ fn fail_run(app: &AppHandle, task_id: &str, message: &str, feed_breaker: bool) {
         tokio::spawn(async move {
             app.state::<Orchestrator>().interrupt_all().await;
         });
+    }
+}
+
+/// The pure breaker-feed decision behind [`fail_run`]: a post-lease setup failure
+/// feeds the circuit breaker **only** on the auto-loop path (`feed_breaker`), never
+/// a manual `run_task` (a manual run must not trip the loop's breaker). Returns
+/// whether THIS failure tripped the breaker, so the caller pauses + interrupts.
+///
+/// `&&` short-circuits so `record_failure` — which has the side effect of pushing a
+/// timestamp into the sliding window — is NOT called on the manual path; that keeps
+/// manual-run failures from silently advancing the auto-loop's failure count.
+/// Factored out of the `AppHandle` IO so the auto-loop-vs-manual guard (a documented
+/// race area) is unit-testable against a real `CircuitBreaker`.
+fn feed_breaker_on_failure(breaker: &CircuitBreaker, feed_breaker: bool) -> bool {
+    feed_breaker && breaker.record_failure()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn manual_run_never_feeds_the_breaker() {
+        // A manual `run_task` passes feed_breaker=false: a setup failure must NOT
+        // record against the loop's breaker, no matter how many times it fails.
+        let breaker = CircuitBreaker::new(1, Duration::from_secs(60));
+        for _ in 0..5 {
+            assert!(
+                !feed_breaker_on_failure(&breaker, false),
+                "a manual run must never trip the auto-loop breaker"
+            );
+        }
+        assert!(
+            !breaker.is_paused(),
+            "the breaker stayed untouched by manual-run failures"
+        );
+    }
+
+    #[test]
+    fn auto_loop_failures_feed_and_eventually_trip_the_breaker() {
+        // The auto-loop path (feed_breaker=true) records each setup failure; the
+        // threshold-th one trips and reports true so fail_run pauses + interrupts.
+        let breaker = CircuitBreaker::new(3, Duration::from_secs(60));
+        assert!(
+            !feed_breaker_on_failure(&breaker, true),
+            "1st failure: below threshold"
+        );
+        assert!(
+            !feed_breaker_on_failure(&breaker, true),
+            "2nd failure: below threshold"
+        );
+        assert!(
+            feed_breaker_on_failure(&breaker, true),
+            "3rd failure trips the breaker → pause the loop"
+        );
+        assert!(breaker.is_paused());
+        // Once tripped, further failures don't re-report the trip.
+        assert!(
+            !feed_breaker_on_failure(&breaker, true),
+            "an already-paused breaker doesn't re-report the trip"
+        );
+    }
+
+    #[test]
+    fn manual_failures_do_not_advance_the_auto_loop_window() {
+        // Interleaving proves the guard is the ONLY difference between the two
+        // dispatch paths: manual failures must not count toward the threshold, so it
+        // still takes a full `threshold` auto-loop failures to trip afterward.
+        let breaker = CircuitBreaker::new(2, Duration::from_secs(60));
+        for _ in 0..3 {
+            assert!(!feed_breaker_on_failure(&breaker, false));
+        }
+        assert!(
+            !feed_breaker_on_failure(&breaker, true),
+            "1st auto-loop failure: below threshold (manual ones never counted)"
+        );
+        assert!(
+            feed_breaker_on_failure(&breaker, true),
+            "2nd auto-loop failure trips — only auto-loop failures advanced the window"
+        );
     }
 }

@@ -227,93 +227,9 @@ mod tests {
         SidecarProvider::new(PathBuf::from("/tmp/entry.ts"), PathBuf::from("/tmp"))
     }
 
-    #[test]
-    fn correlation_binds_in_fifo_order() {
-        let p = provider();
-        // Two launches queued in order; the engine assigns ids 0 then 1.
-        p.push_pending("task-a");
-        p.push_pending("task-b");
-
-        assert_eq!(p.correlate(0).as_deref(), Some("task-a"));
-        assert_eq!(p.correlate(1).as_deref(), Some("task-b"));
-        // Re-seeing a bound id returns the same task (idempotent).
-        assert_eq!(p.correlate(0).as_deref(), Some("task-a"));
-    }
-
-    #[test]
-    fn correlate_with_no_pending_launch_is_none() {
-        let p = provider();
-        assert!(
-            p.correlate(7).is_none(),
-            "an event with no pending launch can't be correlated"
-        );
-    }
-
-    #[test]
-    fn task_for_reads_back_a_binding() {
-        let p = provider();
-        p.push_pending("task-x");
-        assert!(p.task_for(3).is_none(), "unseen id is unbound");
-        p.correlate(3);
-        assert_eq!(p.task_for(3).as_deref(), Some("task-x"));
-    }
-
-    #[test]
-    fn forget_drops_a_binding() {
-        let p = provider();
-        p.push_pending("t");
-        p.correlate(5);
-        assert_eq!(p.task_for(5).as_deref(), Some("t"));
-        p.forget(5);
-        assert!(p.task_for(5).is_none(), "binding cleared on terminal");
-    }
-
-    #[test]
-    fn concurrent_launches_keep_their_own_sessions() {
-        // Three tasks launched before any session-started arrives (true M2
-        // concurrency); ids come back interleaved-but-ordered.
-        let p = provider();
-        for id in ["a", "b", "c"] {
-            p.push_pending(id);
-        }
-        assert_eq!(p.correlate(10).as_deref(), Some("a"));
-        assert_eq!(p.correlate(11).as_deref(), Some("b"));
-        assert_eq!(p.correlate(12).as_deref(), Some("c"));
-        assert_eq!(p.task_for(11).as_deref(), Some("b"));
-    }
-
-    #[test]
-    fn evict_pending_removes_an_uncorrelated_launch() {
-        // concurrency #5: a launch cancelled before its session-started must be
-        // evicted so the FIFO doesn't mis-bind a later session to the dead launch.
-        let p = provider();
-        p.push_pending("task-a");
-        p.push_pending("task-b");
-
-        // task-a is cancelled before any session arrives → evict its pending entry.
-        assert!(
-            p.evict_pending("task-a"),
-            "an uncorrelated launch is evicted"
-        );
-        // Now the FIFO head is task-b; the next session binds to it (not to task-a).
-        assert_eq!(p.correlate(0).as_deref(), Some("task-b"));
-        // A second evict of the same task is a no-op (nothing pending left).
-        assert!(!p.evict_pending("task-a"));
-    }
-
-    #[test]
-    fn evict_pending_is_a_noop_once_correlated() {
-        // Once a launch has correlated to a session, evict_pending must NOT touch it
-        // (the binding is dropped by `forget` on terminal, not by eviction).
-        let p = provider();
-        p.push_pending("task-a");
-        p.correlate(7);
-        assert!(
-            !p.evict_pending("task-a"),
-            "a correlated launch is not evicted"
-        );
-        assert_eq!(p.task_for(7).as_deref(), Some("task-a"), "binding intact");
-    }
+    // Session↔task correlation behaviors are unit-tested co-located with their code
+    // in `correlation.rs`; the tests below cover the spawn resolver (`spawn.rs`) and
+    // the line parser / query-reply plumbing (`imp.rs`).
 
     #[test]
     fn dev_build_spawns_bun_run_against_the_entry() {
