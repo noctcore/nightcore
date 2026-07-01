@@ -21,6 +21,7 @@ function finding(over: Partial<ConventionFindingVM> = {}): ConventionFindingVM {
     confidence: 0.9,
     fingerprint: 'fp1',
     status: 'open',
+    linkedTaskId: null,
     ...over,
   };
 }
@@ -33,8 +34,10 @@ const meta = {
     finding: finding(),
     pending: false,
     onClose: fn(),
+    onConvert: fn(),
     onDismiss: fn(),
     onRestore: fn(),
+    onGotoBoard: fn(),
   },
 } satisfies Meta<typeof ConventionDetailPanel>;
 
@@ -49,4 +52,8 @@ export const Gap: Story = {
 
 export const Dismissed: Story = {
   args: { finding: finding({ status: 'dismissed' }) },
+};
+
+export const Converted: Story = {
+  args: { finding: finding({ status: 'converted', linkedTaskId: 'task-1' }) },
 };

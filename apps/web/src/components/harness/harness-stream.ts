@@ -103,6 +103,7 @@ export function wireToConventionFinding(f: ConventionFinding): ConventionFinding
     confidence: f.confidence ?? null,
     fingerprint: f.fingerprint,
     status: 'open',
+    linkedTaskId: null,
   };
 }
 
@@ -126,6 +127,7 @@ export function storedToConventionFinding(
     confidence: f.confidence,
     fingerprint: f.fingerprint,
     status: f.status as FindingStatus,
+    linkedTaskId: f.linkedTaskId,
   };
 }
 

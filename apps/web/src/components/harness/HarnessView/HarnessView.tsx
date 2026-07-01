@@ -286,8 +286,10 @@ export function HarnessView(props: HarnessViewProps) {
           finding={view.selectedFinding}
           pending={view.pending}
           onClose={view.closeFinding}
+          onConvert={view.onConvertFinding}
           onDismiss={view.onDismissFinding}
           onRestore={view.onRestoreFinding}
+          onGotoBoard={view.onGotoBoard}
         />
       )}
 

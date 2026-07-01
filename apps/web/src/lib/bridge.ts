@@ -1320,8 +1320,21 @@ export interface ArtifactAppliedEvent {
   path: string;
 }
 
+/** A non-`NightcoreEvent` notice the Rust core emits on `nc:harness` when a convention
+ *  finding is converted to a board task, so the open Harness view can update in place.
+ *  The Harness twin of {@link FindingConvertedEvent}. */
+export interface HarnessFindingConvertedEvent {
+  type: 'finding-converted';
+  runId: string;
+  findingId: string;
+  taskId: string;
+}
+
 /** Everything that arrives on the `nc:harness` channel. */
-export type HarnessEvent = HarnessScanEvent | ArtifactAppliedEvent;
+export type HarnessEvent =
+  | HarnessScanEvent
+  | ArtifactAppliedEvent
+  | HarnessFindingConvertedEvent;
 
 /** Start a Harness scan over the active project. Returns the `runId` the
  *  `harness-*` events correlate by. Rejects outside Tauri (no active project). */
@@ -1381,6 +1394,15 @@ export async function restoreHarnessFinding(
   );
 }
 
+/** Convert a convention finding into a board task (idempotent). Returns the created
+ *  task. Uses raw `invoke` (throws outside Tauri), mirroring `convertFindingToTask`. */
+export async function convertHarnessFindingToTask(
+  runId: string,
+  findingId: string,
+): Promise<Task> {
+  return invoke<Task>('convert_harness_finding_to_task', { runId, findingId });
+}
+
 /** Mark a proposed artifact dismissed (it stays dismissed across future
  *  re-scans). Returns the updated run. No-op (`null`) outside Tauri. */
 export async function dismissHarnessArtifact(
@@ -1417,10 +1439,29 @@ export async function applyHarnessArtifact(
   return invoke<HarnessRun>('apply_harness_artifact', { runId, artifactId });
 }
 
-/** Narrow an unknown `nc:harness` payload to a `HarnessEvent`. The `harness-*`
- *  events are validated against the authoritative `NightcoreEventSchema`; the
- *  `artifact-applied` notice (not a `NightcoreEvent`) is shape-checked. */
+/** Narrow an unknown `nc:harness` payload to a `HarnessEvent`. The channel carries TWO
+ *  non-`NightcoreEvent` notices — `finding-converted` and `artifact-applied` — plus the
+ *  `harness-*` wire family. `parseChannelEvent` handles one notice + the wire events, so
+ *  the convert notice is shape-checked here first, then the rest is delegated. */
 function parseHarnessEvent(value: unknown): HarnessEvent | null {
+  if (typeof value === 'object' && value !== null) {
+    const v = value as Record<string, unknown>;
+    if (v.type === 'finding-converted') {
+      if (
+        typeof v.runId === 'string' &&
+        typeof v.findingId === 'string' &&
+        typeof v.taskId === 'string'
+      ) {
+        return {
+          type: 'finding-converted',
+          runId: v.runId,
+          findingId: v.findingId,
+          taskId: v.taskId,
+        };
+      }
+      return null;
+    }
+  }
   return parseChannelEvent<ArtifactAppliedEvent, HarnessScanEvent>(
     value,
     'artifact-applied',

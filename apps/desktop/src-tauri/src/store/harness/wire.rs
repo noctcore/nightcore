@@ -39,8 +39,12 @@ pub struct StoredConventionFinding {
     pub tags: Vec<String>,
     pub confidence: Option<f64>,
     pub fingerprint: String,
-    /// Lifecycle: `open` | `dismissed`.
+    /// Lifecycle: `open` | `dismissed` | `converted`.
     pub status: String,
+    /// The board task this finding was converted into, if any. Additive
+    /// (`#[serde(default)]`) so pre-convert on-disk scans still deserialize.
+    #[serde(default)]
+    pub linked_task_id: Option<String>,
 }
 
 impl StoredConventionFinding {
@@ -62,6 +66,7 @@ impl StoredConventionFinding {
             confidence: v.get("confidence").and_then(Value::as_f64),
             fingerprint: s("fingerprint")?,
             status: "open".to_string(),
+            linked_task_id: None,
         })
     }
 }

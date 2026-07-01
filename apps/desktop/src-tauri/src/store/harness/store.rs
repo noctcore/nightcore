@@ -46,6 +46,15 @@ impl HarnessStore {
         })
     }
 
+    /// One convention finding within a scan (cloned), if present. The convert-to-task
+    /// command reads it to build the minted task's title/description.
+    pub fn get_finding(&self, run_id: &str, finding_id: &str) -> Option<StoredConventionFinding> {
+        self.read(|runs| {
+            runs.get(run_id)
+                .and_then(|r| r.findings.iter().find(|f| f.id == finding_id).cloned())
+        })
+    }
+
     /// Merge one lens pass's findings into a still-`running` scan so a cancel or crash
     /// keeps the partial findings already paid for. A no-op once the scan leaves
     /// `running`: the terminal `harness-scan-completed` event is authoritative. A
@@ -66,18 +75,27 @@ impl HarnessStore {
             if run.status != "running" {
                 return;
             }
-            let prior: std::collections::HashMap<String, String> = run
+            // Carry BOTH the status AND any linked task id forward, so a fingerprint
+            // converted earlier this scan doesn't lose its link when a later lens
+            // re-delivers it (mirrors `InsightStore::accumulate_findings`).
+            let prior: std::collections::HashMap<String, (String, Option<String>)> = run
                 .findings
                 .iter()
                 .filter(|f| f.status != "open")
-                .map(|f| (f.fingerprint.clone(), f.status.clone()))
+                .map(|f| {
+                    (
+                        f.fingerprint.clone(),
+                        (f.status.clone(), f.linked_task_id.clone()),
+                    )
+                })
                 .collect();
             for mut f in findings {
                 if run.findings.iter().any(|e| e.id == f.id) {
                     continue;
                 }
-                if let Some(status) = prior.get(&f.fingerprint) {
+                if let Some((status, link)) = prior.get(&f.fingerprint) {
                     f.status = status.clone();
+                    f.linked_task_id = link.clone();
                 } else if dismissed.contains(&f.fingerprint) {
                     f.status = "dismissed".to_string();
                 }

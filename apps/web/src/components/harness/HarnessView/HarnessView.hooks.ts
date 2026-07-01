@@ -13,6 +13,7 @@ import type { RunConfig } from '@/lib/useRunConfig';
 import {
   applyHarnessArtifact,
   cancelHarnessScan,
+  convertHarnessFindingToTask,
   dismissHarnessArtifact,
   dismissHarnessFinding,
   getHarnessRun,
@@ -25,6 +26,7 @@ import {
   type EffortLevel,
   type HarnessEvent,
   type HarnessRun,
+  type Task,
 } from '@/lib/bridge';
 import { ALL_CATEGORIES, CATEGORY_META, severityRankValue } from '../harness.constants';
 import type {
@@ -58,6 +60,8 @@ export interface UseHarnessResult {
   selectRun: (runId: string) => Promise<void>;
   dismissFinding: (findingId: string) => Promise<void>;
   restoreFinding: (findingId: string) => Promise<void>;
+  /** Convert a convention finding into a board task (idempotent). Returns the task. */
+  convertFinding: (findingId: string) => Promise<Task | null>;
   dismissArtifact: (artifactId: string) => Promise<void>;
   restoreArtifact: (artifactId: string) => Promise<void>;
   /** Apply an artifact to disk. Resolves on success; REJECTS with the write error
@@ -136,6 +140,24 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
                     a.id === event.artifactId
                       ? { ...a, status: 'applied', appliedPath: event.path }
                       : a,
+                  ),
+                }
+              : prev,
+          );
+          void refreshRuns();
+          return;
+        }
+        if (event.type === 'finding-converted') {
+          // Matches on stream.runId (NOT the activeRunId gate below) so a convert against
+          // a displayed-but-not-live run still updates in place — mirrors Insight.
+          setStream((prev) =>
+            prev.runId === event.runId
+              ? {
+                  ...prev,
+                  findings: prev.findings.map((f) =>
+                    f.id === event.findingId
+                      ? { ...f, status: 'converted', linkedTaskId: event.taskId }
+                      : f,
                   ),
                 }
               : prev,
@@ -236,6 +258,27 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
     [stream.runId, refreshRuns],
   );
 
+  const convertFinding = useCallback(
+    async (findingId: string): Promise<Task | null> => {
+      if (stream.runId === null) return null;
+      const task = await convertHarnessFindingToTask(stream.runId, findingId);
+      // Optimistic flip from the returned task id (the command returns a Task, not the
+      // updated run); refreshRuns reconciles history. The `finding-converted` notice
+      // above idempotently applies the same flip for any other open view.
+      setStream((prev) => ({
+        ...prev,
+        findings: prev.findings.map((f) =>
+          f.id === findingId
+            ? { ...f, status: 'converted', linkedTaskId: task.id }
+            : f,
+        ),
+      }));
+      await refreshRuns();
+      return task;
+    },
+    [stream.runId, refreshRuns],
+  );
+
   const dismissArtifact = useCallback(
     async (artifactId: string) => {
       if (stream.runId === null) return;
@@ -285,6 +328,7 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
     selectRun,
     dismissFinding,
     restoreFinding,
+    convertFinding,
     dismissArtifact,
     restoreArtifact,
     applyArtifact,
@@ -394,8 +438,11 @@ export interface HarnessViewModel {
   /** Launch a scan from the lifted CONFIGURE config. */
   onScan: () => void;
   onCancel: () => void;
+  onConvertFinding: (findingId: string) => void;
   onDismissFinding: (findingId: string) => void;
   onRestoreFinding: (findingId: string) => void;
+  /** Navigate to the board (after convert-to-task / for a converted finding). */
+  onGotoBoard?: () => void;
   onDismissArtifact: (artifactId: string) => void;
   onRestoreArtifact: (artifactId: string) => void;
   /** Open the apply confirmation for an artifact. */
@@ -413,6 +460,7 @@ export interface HarnessViewModel {
 export function useHarnessView({
   projectPath,
   projectName,
+  onGotoBoard,
 }: HarnessViewProps): HarnessViewModel {
   const hasProject = projectPath !== null;
   const harness = useHarness(hasProject);
@@ -682,8 +730,10 @@ export function useHarnessView({
     applyError,
     onScan,
     onCancel: () => void harness.cancel(),
+    onConvertFinding: (id) => void runAction('convert convention', () => harness.convertFinding(id)),
     onDismissFinding: (id) => void runAction('dismiss convention', () => harness.dismissFinding(id)),
     onRestoreFinding: (id) => void runAction('restore convention', () => harness.restoreFinding(id)),
+    onGotoBoard,
     onDismissArtifact: (id) => void runAction('dismiss artifact', () => harness.dismissArtifact(id)),
     onRestoreArtifact: (id) => void runAction('restore artifact', () => harness.restoreArtifact(id)),
     requestApply: (id) => {

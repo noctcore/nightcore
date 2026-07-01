@@ -5,6 +5,7 @@ import {
   DetailPanelShell,
   DetailSection,
   Markdown,
+  MoveIcon,
   RetryIcon,
   TrashIcon,
 } from '@/components/ui';
@@ -18,8 +19,10 @@ export function ConventionDetailPanel({
   finding,
   pending,
   onClose,
+  onConvert,
   onDismiss,
   onRestore,
+  onGotoBoard,
 }: ConventionDetailPanelProps) {
   const sev = SEVERITY_META[finding.severity];
   const kind = KIND_META[finding.kind];
@@ -55,25 +58,44 @@ export function ConventionDetailPanel({
         </>
       }
       footer={
-        finding.status === 'dismissed' ? (
-          <Button
-            variant="ghost"
-            disabled={pending}
-            onClick={() => onRestore(finding.id)}
-          >
-            <RetryIcon size={15} />
-            Restore
-          </Button>
-        ) : (
-          <Button
-            variant="ghost"
-            disabled={pending}
-            onClick={() => onDismiss(finding.id)}
-          >
-            <TrashIcon size={15} />
-            Dismiss
-          </Button>
-        )
+        <>
+          {finding.status === 'converted' ? (
+            <Button variant="secondary" disabled={pending} onClick={onGotoBoard}>
+              <MoveIcon size={15} />
+              Go to task
+            </Button>
+          ) : (
+            <Button
+              disabled={pending || finding.status === 'dismissed'}
+              onClick={() => onConvert(finding.id)}
+            >
+              <MoveIcon size={15} />
+              Convert to task
+            </Button>
+          )}
+
+          {finding.status === 'dismissed' ? (
+            <Button
+              variant="ghost"
+              disabled={pending}
+              onClick={() => onRestore(finding.id)}
+            >
+              <RetryIcon size={15} />
+              Restore
+            </Button>
+          ) : (
+            finding.status !== 'converted' && (
+              <Button
+                variant="ghost"
+                disabled={pending}
+                onClick={() => onDismiss(finding.id)}
+              >
+                <TrashIcon size={15} />
+                Dismiss
+              </Button>
+            )
+          )}
+        </>
       }
     >
       <DetailSection title="What">

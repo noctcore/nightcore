@@ -13,6 +13,11 @@ export type StoredConventionFinding = { id: string, category: string,
  */
 kind: string, severity: string, title: string, description: string, rationale: string | null, evidence: Array<FindingLocation>, suggestion: string | null, tags: Array<string>, confidence: number | null, fingerprint: string, 
 /**
- * Lifecycle: `open` | `dismissed`.
+ * Lifecycle: `open` | `dismissed` | `converted`.
  */
-status: string, };
+status: string, 
+/**
+ * The board task this finding was converted into, if any. Additive
+ * (`#[serde(default)]`) so pre-convert on-disk scans still deserialize.
+ */
+linkedTaskId: string | null, };

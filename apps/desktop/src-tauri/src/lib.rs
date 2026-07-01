@@ -173,6 +173,7 @@ pub fn run() {
             sidecar::delete_harness_run,
             sidecar::dismiss_harness_finding,
             sidecar::restore_harness_finding,
+            sidecar::convert_harness_finding_to_task,
             sidecar::dismiss_harness_artifact,
             sidecar::restore_harness_artifact,
             sidecar::apply_harness_artifact,

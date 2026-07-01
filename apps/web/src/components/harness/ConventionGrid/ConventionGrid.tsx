@@ -37,7 +37,13 @@ function ConventionCard({
     <DetailCard
       onClick={() => onOpen(finding)}
       dimmed={dimmed}
-      hoverTitle={dimmed ? 'Dismissed' : undefined}
+      hoverTitle={
+        dimmed
+          ? finding.status === 'converted'
+            ? 'Converted to task'
+            : 'Dismissed'
+          : undefined
+      }
       title={finding.title}
       location={evidenceLabel(finding)}
       description={finding.description}
@@ -57,6 +63,11 @@ function ConventionCard({
             <Icon size={11} />
             {Meta.label}
           </span>
+          {finding.status === 'converted' && (
+            <span className="ml-auto rounded-md bg-success/[0.12] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-success">
+              task
+            </span>
+          )}
           {finding.status === 'dismissed' && (
             <span className="ml-auto rounded-md bg-white/[0.05] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground">
               dismissed

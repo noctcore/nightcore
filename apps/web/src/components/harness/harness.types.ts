@@ -9,7 +9,7 @@ import type {
 } from '@/lib/bridge';
 
 /** Convention-finding lifecycle, narrowed from the persisted `string`. */
-export type FindingStatus = 'open' | 'dismissed';
+export type FindingStatus = 'open' | 'dismissed' | 'converted';
 
 /** Proposed-artifact lifecycle, narrowed from the persisted `string`. */
 export type ArtifactStatus = 'proposed' | 'applied' | 'dismissed';
@@ -38,6 +38,8 @@ export interface ConventionFindingVM {
   confidence: number | null;
   fingerprint: string;
   status: FindingStatus;
+  /** The board task this finding was converted into, if any (`converted` status). */
+  linkedTaskId: string | null;
 }
 
 /** A proposed harness artifact as the view renders it: the unified shape both the

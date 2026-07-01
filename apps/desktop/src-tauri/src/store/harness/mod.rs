@@ -7,7 +7,8 @@
 //! [`retarget`](HarnessStore::retarget)s the store at that project's `.nightcore/harness/`.
 //!
 //! Two lifecycles are owned here, not by the engine:
-//! - convention findings: `open` | `dismissed` (carried across re-runs by fingerprint),
+//! - convention findings: `open` | `dismissed` | `converted` (carried across re-runs by
+//!   fingerprint; `converted` links the finding to the board task it was minted into),
 //! - proposed artifacts: `proposed` | `applied` | `dismissed`. `applied` records the
 //!   repo-relative path the artifact was written to and when. The actual file write
 //!   lives in the sidecar command; this store only records the lifecycle transition,
@@ -52,6 +53,7 @@ mod tests {
             confidence: None,
             fingerprint: fp.to_string(),
             status: "open".into(),
+            linked_task_id: None,
         }
     }
 
@@ -113,7 +115,7 @@ mod tests {
     fn dismiss_finding_persists() {
         let (store, _tmp) = store();
         store.upsert(&run("r1")).unwrap();
-        store.set_finding_status("r1", "f1", "dismissed").unwrap();
+        store.set_finding_status("r1", "f1", "dismissed", None).unwrap();
         assert_eq!(
             store.get("r1").unwrap().findings[0].status,
             "dismissed".to_string()
@@ -124,8 +126,55 @@ mod tests {
     fn set_finding_status_errors_on_missing() {
         let (store, _tmp) = store();
         store.upsert(&run("r1")).unwrap();
-        assert!(store.set_finding_status("r1", "ghost", "dismissed").is_err());
-        assert!(store.set_finding_status("nope", "f1", "dismissed").is_err());
+        assert!(store.set_finding_status("r1", "ghost", "dismissed", None).is_err());
+        assert!(store.set_finding_status("nope", "f1", "dismissed", None).is_err());
+    }
+
+    #[test]
+    fn link_finding_task_converts_then_is_idempotent() {
+        let (store, _tmp) = store();
+        store.upsert(&run("r1")).unwrap();
+
+        match store.link_finding_task("r1", "f1", "task-9").unwrap() {
+            LinkOutcome::Linked => {}
+            LinkOutcome::AlreadyLinked(_) => panic!("first link should be Linked"),
+        }
+        let f = store.get_finding("r1", "f1").unwrap();
+        assert_eq!(f.status, "converted");
+        assert_eq!(f.linked_task_id.as_deref(), Some("task-9"));
+
+        // A second link (the losing race) returns the FIRST task id, no re-stamp.
+        match store.link_finding_task("r1", "f1", "task-99").unwrap() {
+            LinkOutcome::AlreadyLinked(existing) => assert_eq!(existing, "task-9"),
+            LinkOutcome::Linked => panic!("second link must be AlreadyLinked"),
+        }
+        assert_eq!(
+            store.get_finding("r1", "f1").unwrap().linked_task_id.as_deref(),
+            Some("task-9")
+        );
+    }
+
+    #[test]
+    fn link_finding_task_errors_on_missing() {
+        let (store, _tmp) = store();
+        store.upsert(&run("r1")).unwrap();
+        assert!(store.link_finding_task("r1", "ghost", "t").is_err());
+        assert!(store.link_finding_task("nope", "f1", "t").is_err());
+    }
+
+    #[test]
+    fn converted_finding_fingerprints_maps_fingerprint_to_task_across_runs() {
+        let (store, _tmp) = store();
+        let mut old = run("old");
+        old.findings[0].status = "converted".into();
+        old.findings[0].linked_task_id = Some("task-7".into());
+        old.findings[0].fingerprint = "shared-fp".into();
+        store.upsert(&old).unwrap();
+        store.upsert(&run("new")).unwrap();
+
+        let converted = store.converted_finding_fingerprints(Some("new"));
+        assert_eq!(converted.get("shared-fp").map(String::as_str), Some("task-7"));
+        assert!(!converted.contains_key("fp1"), "open findings are not carried");
     }
 
     #[test]

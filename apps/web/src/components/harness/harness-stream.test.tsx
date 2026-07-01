@@ -329,11 +329,34 @@ describe('normalizers', () => {
       confidence: null,
       fingerprint: 'fp',
       status: 'dismissed',
+      linkedTaskId: null,
     };
     const f = storedToConventionFinding(stored);
     expect(f.category).toBe('imports-boundaries');
     expect(f.kind).toBe('gap');
     expect(f.status).toBe('dismissed');
+  });
+
+  it('storedToConventionFinding carries a converted finding + its linked task', () => {
+    const stored: StoredConventionFinding = {
+      id: 'c2',
+      category: 'folder-structure',
+      kind: 'convention',
+      severity: 'medium',
+      title: 't',
+      description: 'd',
+      rationale: null,
+      evidence: [],
+      suggestion: null,
+      tags: [],
+      confidence: null,
+      fingerprint: 'fp2',
+      status: 'converted',
+      linkedTaskId: 'task-9',
+    };
+    const f = storedToConventionFinding(stored);
+    expect(f.status).toBe('converted');
+    expect(f.linkedTaskId).toBe('task-9');
   });
 
   it('wireToArtifact maps a contract artifact to the proposed view shape', () => {

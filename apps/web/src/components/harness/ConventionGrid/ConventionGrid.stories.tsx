@@ -22,6 +22,7 @@ function finding(over: Partial<ConventionFindingVM> = {}): ConventionFindingVM {
     confidence: null,
     fingerprint: 'fp1',
     status: 'open',
+    linkedTaskId: null,
     ...over,
   };
 }

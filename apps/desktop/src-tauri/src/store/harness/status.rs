@@ -6,6 +6,10 @@ use std::collections::{HashMap, HashSet};
 
 use super::store::HarnessStore;
 use super::wire::HarnessRun;
+// Reuse Insight's convert-to-task outcome enum rather than duplicating it — the same
+// precedent as `FindingLocation`, so both features share ONE `LinkOutcome`. Re-exported
+// (`pub use`) so it flows through the `harness::*` facade for `commands.rs` + tests.
+pub use crate::store::insight::LinkOutcome;
 use crate::store::run_store::Edit;
 
 /// The result of an atomic artifact-apply transition (see [`HarnessStore::mark_artifact_applied`]).
@@ -18,14 +22,18 @@ pub enum ApplyOutcome {
 }
 
 impl HarnessStore {
-    /// Set a convention finding's status (`open` | `dismissed`), persisting the scan.
+    /// Set a convention finding's status (`open` | `dismissed` | `converted`),
+    /// persisting the scan. `linked_task_id` is `Some(link)` to also (re)set the linked
+    /// task (outer `None` leaves it untouched, so dismiss/restore never disturb a link).
     /// Errors if the run OR the finding is unknown — a missing finding must not report
-    /// phantom success.
+    /// phantom success (a silent no-op here would let the convert path believe a finding
+    /// was linked when it wasn't, minting a duplicate task on the next click).
     pub fn set_finding_status(
         &self,
         run_id: &str,
         finding_id: &str,
         status: &str,
+        linked_task_id: Option<Option<String>>,
     ) -> Result<HarnessRun, String> {
         let (_, run) = self.edit_run(run_id, |run| {
             let finding = run
@@ -34,9 +42,40 @@ impl HarnessStore {
                 .find(|f| f.id == finding_id)
                 .ok_or_else(|| format!("no finding {finding_id} in run {run_id}"))?;
             finding.status = status.to_string();
+            if let Some(link) = linked_task_id {
+                finding.linked_task_id = link;
+            }
             Ok(Edit::Commit(()))
         })?;
         Ok(run)
+    }
+
+    /// Atomically link a convention finding to a task: under ONE lock, if the finding is
+    /// already linked return [`LinkOutcome::AlreadyLinked`] (the caller discards its
+    /// freshly-minted task and returns the existing one); otherwise stamp it `converted`
+    /// + linked and return [`LinkOutcome::Linked`]. Cloned from `InsightStore` — the same
+    /// convert-to-task TOCTOU applies: two concurrent sync Tauri commands would both see
+    /// `linked_task_id == None` and mint two tasks if the check-and-set were split.
+    pub fn link_finding_task(
+        &self,
+        run_id: &str,
+        finding_id: &str,
+        task_id: &str,
+    ) -> Result<LinkOutcome, String> {
+        let (outcome, _) = self.edit_run(run_id, |run| {
+            let finding = run
+                .findings
+                .iter_mut()
+                .find(|f| f.id == finding_id)
+                .ok_or_else(|| format!("no finding {finding_id} in run {run_id}"))?;
+            if let Some(existing) = &finding.linked_task_id {
+                return Ok(Edit::Skip(LinkOutcome::AlreadyLinked(existing.clone())));
+            }
+            finding.status = "converted".to_string();
+            finding.linked_task_id = Some(task_id.to_string());
+            Ok(Edit::Commit(LinkOutcome::Linked))
+        })?;
+        Ok(outcome)
     }
 
     /// Set an artifact's status to `proposed` or `dismissed`, persisting the scan. Used by
@@ -115,6 +154,31 @@ impl HarnessStore {
                 }
             }
             set
+        })
+    }
+
+    /// Every fingerprint a user has CONVERTED to a task across all scans (optionally
+    /// excluding `except_run`), mapped to the task id it was linked to. Carries
+    /// convert-history forward so a re-discovered finding whose fingerprint was already
+    /// converted stays `converted` + linked (when its task still lives, unfinished)
+    /// instead of re-surfacing `open` and being re-minted on every re-scan. The caller
+    /// checks task liveness/status; this only gathers the map. Mirrors `InsightStore`.
+    pub fn converted_finding_fingerprints(&self, except_run: Option<&str>) -> HashMap<String, String> {
+        self.read(|runs| {
+            let mut map = HashMap::new();
+            for run in runs.values() {
+                if Some(run.id.as_str()) == except_run {
+                    continue;
+                }
+                for f in &run.findings {
+                    if f.status == "converted" {
+                        if let Some(task_id) = &f.linked_task_id {
+                            map.insert(f.fingerprint.clone(), task_id.clone());
+                        }
+                    }
+                }
+            }
+            map
         })
     }
 

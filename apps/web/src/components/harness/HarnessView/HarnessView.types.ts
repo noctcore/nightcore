@@ -6,4 +6,6 @@ export interface HarnessViewProps {
   projectPath: string | null;
   /** The active project's display name. */
   projectName: string | null;
+  /** Navigate to the board (used after convert-to-task). */
+  onGotoBoard?: () => void;
 }

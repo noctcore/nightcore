@@ -280,6 +280,7 @@ export function AppShell() {
             <HarnessView
               projectPath={active?.path ?? null}
               projectName={active?.name ?? null}
+              onGotoBoard={() => routing.goto('board')}
             />
           </Suspense>
         )}
