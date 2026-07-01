@@ -12,7 +12,8 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::sidecar::scan::{failure_reason, finalize_completed, ScanTelemetry};
 use crate::sidecar::HARNESS_EVENT;
 use crate::store::harness::{
-    HarnessStore, StoredConventionFinding, StoredProposedArtifact, StoredRepoProfile,
+    HarnessStore, StoredConventionFinding, StoredHarnessProposal, StoredProposedArtifact,
+    StoredRepoProfile,
 };
 use crate::store::TaskStore;
 use crate::task::TaskStatus;
@@ -96,6 +97,38 @@ pub(crate) async fn handle_harness_event(app: &AppHandle, event_type: &str, even
                 }
             }
 
+            let mut proposals: Vec<StoredHarnessProposal> = event
+                .get("proposals")
+                .and_then(Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(StoredHarnessProposal::from_wire)
+                        .collect()
+                })
+                .unwrap_or_default();
+            // Carry converted/dismissed proposals forward by fingerprint so a re-scan
+            // keeps the user's convert/dismiss edits (a converted proposal whose task
+            // still lives, unfinished, stays converted; a finished/deleted task lets it
+            // re-surface). Mirrors the finding reconciliation above.
+            let converted_props = harness_store.converted_proposal_fingerprints(Some(run_id));
+            let dismissed_props = harness_store.dismissed_proposal_fingerprints(Some(run_id));
+            if !converted_props.is_empty() || !dismissed_props.is_empty() {
+                let task_store = app.state::<TaskStore>();
+                for p in &mut proposals {
+                    if dismissed_props.contains(&p.fingerprint) {
+                        p.status = "dismissed".to_string();
+                    }
+                    if let Some(task_id) = converted_props.get(&p.fingerprint) {
+                        if let Some(task) = task_store.get(task_id) {
+                            if task.status != TaskStatus::Done {
+                                p.status = "converted".to_string();
+                                p.linked_task_id = Some(task_id.clone());
+                            }
+                        }
+                    }
+                }
+            }
+
             let tel = ScanTelemetry::from_event(event);
             let (finding_count, artifact_count) = (findings.len(), artifacts.len());
 
@@ -149,9 +182,31 @@ pub(crate) async fn handle_harness_event(app: &AppHandle, event_type: &str, even
                         }
                     }
 
+                    // Carry IN-RUN proposal lifecycle (converted/dismissed live during
+                    // this scan), preserving the linked task id — mirrors findings.
+                    let prior_props: std::collections::HashMap<String, (String, Option<String>)> =
+                        run.proposals
+                            .iter()
+                            .filter(|p| p.status != "proposed")
+                            .map(|p| {
+                                (
+                                    p.fingerprint.clone(),
+                                    (p.status.clone(), p.linked_task_id.clone()),
+                                )
+                            })
+                            .collect();
+                    let mut merged_proposals = proposals;
+                    for p in &mut merged_proposals {
+                        if let Some((status, link)) = prior_props.get(&p.fingerprint) {
+                            p.status = status.clone();
+                            p.linked_task_id = link.clone();
+                        }
+                    }
+
                     run.profile = profile;
                     run.findings = merged_findings;
                     run.artifacts = merged_artifacts;
+                    run.proposals = merged_proposals;
                     run.synthesizing = false;
                 });
             if finalized {

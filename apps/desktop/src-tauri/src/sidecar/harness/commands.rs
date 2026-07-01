@@ -90,6 +90,7 @@ pub async fn start_harness_scan(
         profile: StoredRepoProfile::default(),
         findings: Vec::new(),
         artifacts: Vec::new(),
+        proposals: Vec::new(),
         synthesizing: false,
         error: None,
     };

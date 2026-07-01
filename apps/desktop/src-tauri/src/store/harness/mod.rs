@@ -95,8 +95,27 @@ mod tests {
             profile: StoredRepoProfile::default(),
             findings: vec![finding("f1", "fp1")],
             artifacts: vec![artifact("a1", "afp1")],
+            proposals: vec![proposal("p1", "pfp1")],
             synthesizing: false,
             error: None,
+        }
+    }
+
+    fn proposal(id: &str, fp: &str) -> StoredHarnessProposal {
+        StoredHarnessProposal {
+            id: id.to_string(),
+            kind: "apply-artifacts".into(),
+            title: "t".into(),
+            description: "d".into(),
+            rationale: None,
+            artifact_ids: vec!["a1".into()],
+            prompt: None,
+            verify_command: None,
+            harness_check: None,
+            confidence: None,
+            fingerprint: fp.to_string(),
+            status: "proposed".into(),
+            linked_task_id: None,
         }
     }
 
@@ -106,9 +125,83 @@ mod tests {
         store.upsert(&run("r1")).unwrap();
         assert_eq!(store.get("r1").unwrap().findings.len(), 1);
         assert_eq!(store.get("r1").unwrap().artifacts.len(), 1);
+        assert_eq!(store.get("r1").unwrap().proposals.len(), 1);
         assert_eq!(store.list().len(), 1);
         let reloaded = HarnessStore::load_from(tmp.path().join("harness"));
         assert_eq!(reloaded.get("r1").unwrap().artifacts[0].fingerprint, "afp1");
+        assert_eq!(reloaded.get("r1").unwrap().proposals[0].fingerprint, "pfp1");
+    }
+
+    #[test]
+    fn a_pre_proposals_scan_on_disk_loads_with_an_empty_proposals_set() {
+        // A HarnessRun JSON written before the `proposals` field existed must still
+        // deserialize (serde default), proving the additive migration is zero-risk.
+        let (_store, tmp) = store();
+        let dir = tmp.path().join("harness");
+        std::fs::create_dir_all(&dir).unwrap();
+        let legacy = serde_json::json!({
+            "id": "old",
+            "projectPath": "/proj",
+            "status": "completed",
+            "categories": ["folder-structure"],
+            "model": "claude-opus-4-8",
+            "createdAt": 1,
+            "updatedAt": 1,
+            "findings": [],
+            "artifacts": []
+            // no `proposals` key
+        });
+        std::fs::write(
+            dir.join("old.json"),
+            serde_json::to_string_pretty(&legacy).unwrap(),
+        )
+        .unwrap();
+        let reloaded = HarnessStore::load_from(dir);
+        assert_eq!(reloaded.get("old").unwrap().proposals.len(), 0);
+    }
+
+    #[test]
+    fn proposal_fingerprint_carry_forward_maps_across_runs() {
+        let (store, _tmp) = store();
+        let mut old = run("old");
+        old.proposals[0].status = "converted".into();
+        old.proposals[0].linked_task_id = Some("task-3".into());
+        old.proposals[0].fingerprint = "shared-pfp".into();
+        let mut old2 = run("old2");
+        old2.proposals[0].status = "dismissed".into();
+        old2.proposals[0].fingerprint = "gone-pfp".into();
+        store.upsert(&old).unwrap();
+        store.upsert(&old2).unwrap();
+        store.upsert(&run("new")).unwrap();
+
+        let converted = store.converted_proposal_fingerprints(Some("new"));
+        assert_eq!(converted.get("shared-pfp").map(String::as_str), Some("task-3"));
+        assert!(!converted.contains_key("pfp1"), "proposed proposals are not carried");
+
+        let dismissed = store.dismissed_proposal_fingerprints(Some("new"));
+        assert!(dismissed.contains("gone-pfp"));
+        assert!(!dismissed.contains("pfp1"));
+    }
+
+    #[test]
+    fn from_wire_parses_a_proposal_with_a_suggested_check() {
+        let pv = serde_json::json!({
+            "id": "agent-task-abc",
+            "kind": "agent-task",
+            "title": "Wire the plugin",
+            "description": "register + enable",
+            "prompt": "add to eslint.config.ts",
+            "verifyCommand": "npx eslint .",
+            "harnessCheck": { "name": "folder", "kind": "lint-plugin", "command": "npx eslint ." },
+            "artifactIds": [],
+            "fingerprint": "pfp"
+        });
+        let p = StoredHarnessProposal::from_wire(&pv).expect("parse proposal");
+        assert_eq!(p.kind, "agent-task");
+        assert_eq!(p.verify_command.as_deref(), Some("npx eslint ."));
+        assert_eq!(p.harness_check.unwrap().command, "npx eslint .");
+        assert_eq!(p.status, "proposed");
+        assert!(p.linked_task_id.is_none());
     }
 
     #[test]

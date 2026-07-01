@@ -133,6 +133,87 @@ impl StoredProposedArtifact {
     }
 }
 
+/// A suggested Structure-Lock check carried on a persisted proposal. Data only — arming
+/// stays human-gated through `arm_harness_gauntlet_check`. `kind` is a wire string (the
+/// contract keeps it un-enumerated so a future gauntlet kind never breaks deserialize).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "StoredHarnessCheck.ts"))]
+pub struct StoredHarnessCheck {
+    pub name: String,
+    pub kind: String,
+    pub command: String,
+}
+
+impl StoredHarnessCheck {
+    fn from_wire(v: &Value) -> Option<Self> {
+        let s = |k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
+        Some(Self {
+            name: s("name")?,
+            kind: s("kind")?,
+            command: s("command")?,
+        })
+    }
+}
+
+/// A persisted task-shaped harness proposal: the engine's stateless proposal plus the
+/// Rust-owned `status` + `linked_task_id` (set when converted to a board task). Enum-ish
+/// fields (`kind`/`status`) are stored as wire strings (the web casts them to its unions).
+/// The convert lifecycle mirrors `StoredConventionFinding` so both share one convert path.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "StoredHarnessProposal.ts"))]
+pub struct StoredHarnessProposal {
+    pub id: String,
+    /// `apply-artifacts` | `agent-task`.
+    pub kind: String,
+    pub title: String,
+    pub description: String,
+    pub rationale: Option<String>,
+    /// `apply-artifacts`: the artifact ids this proposal bundles.
+    #[serde(default)]
+    pub artifact_ids: Vec<String>,
+    /// `agent-task`: the Build-task prompt.
+    pub prompt: Option<String>,
+    /// `agent-task`: the machine-checkable done-command (→ the converted task's `verify_command`).
+    pub verify_command: Option<String>,
+    /// The gauntlet check to suggest arming once this proposal's work lands.
+    pub harness_check: Option<StoredHarnessCheck>,
+    pub confidence: Option<f64>,
+    pub fingerprint: String,
+    /// Lifecycle: `proposed` | `dismissed` | `converted`.
+    pub status: String,
+    /// The board task this proposal was converted into, if any. Additive so pre-convert
+    /// on-disk scans still deserialize.
+    #[serde(default)]
+    pub linked_task_id: Option<String>,
+}
+
+impl StoredHarnessProposal {
+    /// Build a stored proposal from one wire `HarnessProposal` JSON object, stamping it
+    /// `proposed` and unlinked.
+    pub fn from_wire(v: &Value) -> Option<Self> {
+        let s = |k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
+        Some(Self {
+            id: s("id")?,
+            kind: s("kind")?,
+            title: s("title")?,
+            description: s("description")?,
+            rationale: s("rationale"),
+            artifact_ids: string_array(v.get("artifactIds")),
+            prompt: s("prompt"),
+            verify_command: s("verifyCommand"),
+            harness_check: v.get("harnessCheck").and_then(StoredHarnessCheck::from_wire),
+            confidence: v.get("confidence").and_then(Value::as_f64),
+            fingerprint: s("fingerprint")?,
+            status: "proposed".to_string(),
+            linked_task_id: None,
+        })
+    }
+}
+
 fn locations_from_wire(v: Option<&Value>) -> Vec<FindingLocation> {
     v.and_then(Value::as_array)
         .map(|a| a.iter().filter_map(location_from_wire).collect())
@@ -279,6 +360,11 @@ pub struct HarnessRun {
     pub findings: Vec<StoredConventionFinding>,
     #[serde(default)]
     pub artifacts: Vec<StoredProposedArtifact>,
+    /// The task-shaped proposals synthesis produced (the unit the user converts to a
+    /// board task). Additive (`#[serde(default)]`) so a pre-proposals on-disk scan loads
+    /// with an empty set.
+    #[serde(default)]
+    pub proposals: Vec<StoredHarnessProposal>,
     /// Set while the serial synthesis pass runs (after every lens, before the
     /// terminal event) so a run reloaded mid-synthesis still projects the
     /// "Synthesizing…" state instead of the all-lenses-done dead zone.

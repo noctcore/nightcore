@@ -182,6 +182,53 @@ impl HarnessStore {
         })
     }
 
+    /// Every fingerprint a user has DISMISSED a PROPOSAL under across all scans
+    /// (optionally excluding `except_run`). Carries dismissed-history forward for
+    /// task-shaped proposals — the proposal twin of [`dismissed_finding_fingerprints`].
+    pub fn dismissed_proposal_fingerprints(&self, except_run: Option<&str>) -> HashSet<String> {
+        self.read(|runs| {
+            let mut set = HashSet::new();
+            for run in runs.values() {
+                if Some(run.id.as_str()) == except_run {
+                    continue;
+                }
+                for p in &run.proposals {
+                    if p.status == "dismissed" {
+                        set.insert(p.fingerprint.clone());
+                    }
+                }
+            }
+            set
+        })
+    }
+
+    /// Every fingerprint a user has CONVERTED a PROPOSAL to a task under across all scans
+    /// (optionally excluding `except_run`), mapped to the task id. Carries convert-history
+    /// forward so a re-discovered proposal whose fingerprint was already converted stays
+    /// `converted` + linked (when its task still lives, unfinished) instead of re-surfacing
+    /// and being re-minted. The proposal twin of [`converted_finding_fingerprints`].
+    pub fn converted_proposal_fingerprints(
+        &self,
+        except_run: Option<&str>,
+    ) -> HashMap<String, String> {
+        self.read(|runs| {
+            let mut map = HashMap::new();
+            for run in runs.values() {
+                if Some(run.id.as_str()) == except_run {
+                    continue;
+                }
+                for p in &run.proposals {
+                    if p.status == "converted" {
+                        if let Some(task_id) = &p.linked_task_id {
+                            map.insert(p.fingerprint.clone(), task_id.clone());
+                        }
+                    }
+                }
+            }
+            map
+        })
+    }
+
     /// Prior artifact lifecycle states by fingerprint across all scans (optionally
     /// excluding `except_run`), so a re-scan carries `applied`/`dismissed` forward
     /// instead of re-proposing a harness piece the user already acted on. A fingerprint

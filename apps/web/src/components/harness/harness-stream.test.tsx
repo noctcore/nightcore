@@ -204,6 +204,7 @@ describe('foldHarness', () => {
         type: 'harness-proposals-ready',
         runId: 'run-1',
         artifacts: [wireArtifact()],
+        proposals: [],
       } as HarnessScanEvent,
     );
     expect(next.artifacts).toHaveLength(1);
@@ -225,6 +226,7 @@ describe('foldHarness', () => {
       profile: wireProfile(),
       findings: [],
       artifacts: [],
+      proposals: [],
       categoriesRun: [],
       costUsd: 0,
       durationMs: 1,
@@ -254,6 +256,7 @@ describe('foldHarness', () => {
       profile: wireProfile(),
       findings: [wireFinding()],
       artifacts: [wireArtifact()],
+      proposals: [],
       categoriesRun: ['folder-structure', 'naming'],
       costUsd: 0.12,
       durationMs: 45000,
@@ -438,6 +441,7 @@ describe('normalizers', () => {
       },
       findings: [],
       artifacts: [],
+      proposals: [],
       synthesizing: false,
       error: null,
     };
@@ -476,6 +480,7 @@ describe('normalizers', () => {
       },
       findings: [],
       artifacts: [],
+      proposals: [],
       synthesizing: true,
       error: null,
     };
