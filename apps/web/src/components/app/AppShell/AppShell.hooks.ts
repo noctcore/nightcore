@@ -36,7 +36,6 @@ import {
 import { EMPTY_TRANSCRIPT, type ActiveWorktree, type TaskTranscript } from '@/components/board';
 import { useToast } from '@/components/ui';
 import { useActionGuard } from './hooks/useActionGuard.hooks';
-import { useAutoCommit } from './hooks/useAutoCommit.hooks';
 import { useGlobalErrorToast } from './hooks/useGlobalErrorToast.hooks';
 import { useAutoLoop } from './hooks/useAutoLoop.hooks';
 import { useBlockedIds } from './hooks/useBlockedIds.hooks';
@@ -188,16 +187,6 @@ export function useAppShell(): AppShellState {
   const questions = useQuestions(tasks, toast);
   const gauntlet = useGauntlet(toast);
   const worktrees = useWorktrees();
-
-  // Auto Mode option: while the loop runs and the option is enabled, commit each
-  // task as it reaches the verified state (reuses the manual Commit path + guard).
-  useAutoCommit({
-    tasks,
-    enabled: settings.settings?.autoCommitOnVerified ?? false,
-    autoMode: autoLoop.autoMode,
-    action,
-    toast,
-  });
 
   const anyRunning = useMemo(
     () => tasks.some((t) => t.status === 'in_progress' || t.status === 'verifying'),

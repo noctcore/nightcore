@@ -136,7 +136,7 @@ impl Drop for TaskLease {
 /// Managed state is re-acquired from the owned `AppHandle` because a `State<'_, _>`
 /// guard is borrowed from the command invocation and can't cross the thread boundary.
 /// Behavior is otherwise identical to the previous inline (synchronous) command.
-fn commit_task_blocking(app: &AppHandle, id: &str) -> Result<(), String> {
+pub(crate) fn commit_task_blocking(app: &AppHandle, id: &str) -> Result<(), String> {
     // Single-flight per task: refuse a second concurrent commit instead of racing
     // (held for the whole stage→generate→commit body; released on every exit path).
     let _lease = TaskLease::acquire(commit_in_flight(), id)

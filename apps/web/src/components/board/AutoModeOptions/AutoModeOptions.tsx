@@ -49,9 +49,9 @@ export function AutoModeOptions({
                 Auto-commit on verified
               </span>
               <span className="mt-0.5 block text-[11.5px] leading-snug text-muted-foreground">
-                While Auto Mode runs, commit each verified task automatically, then
-                move on to the next. In a shared (main) checkout it waits for other
-                runs to finish first, so commits never mix tasks.
+                While Auto Mode runs, each task is committed automatically the moment
+                it's verified — before the next one starts. In a shared (main)
+                checkout, run one task at a time so per-task commits stay clean.
               </span>
             </span>
             <span
