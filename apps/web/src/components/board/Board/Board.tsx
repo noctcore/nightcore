@@ -11,6 +11,7 @@ import {
   SearchIcon,
   SlidersIcon,
 } from '@/components/ui';
+import { AutoModeOptions } from '../AutoModeOptions';
 import { BoardBackgroundPanel } from '../BoardBackgroundPanel';
 import { BoardDnd } from '../BoardDnd';
 import { Column } from '../Column';
@@ -56,6 +57,7 @@ function BoardImpl({
   onSelectWorktree,
   concurrency,
   autoMode,
+  autoCommitOnVerified,
   breaker,
   selectedId,
   logCounts,
@@ -74,6 +76,7 @@ function BoardImpl({
   onMerge,
   isActionPending,
   onToggleAutoMode,
+  onAutoCommitChange,
   onConcurrencyChange,
   onResume,
 }: BoardProps) {
@@ -163,6 +166,10 @@ function BoardImpl({
                 />
               </span>
             </button>
+            <AutoModeOptions
+              autoCommitOnVerified={autoCommitOnVerified}
+              onAutoCommitChange={onAutoCommitChange}
+            />
             <button
               type="button"
               onClick={bgPanel.show}

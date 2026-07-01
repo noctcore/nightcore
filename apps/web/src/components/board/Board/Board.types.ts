@@ -42,6 +42,8 @@ export interface BoardProps {
   concurrency: number;
   /** Whether the autonomous loop is running (reflects `nc:loop`, not local state). */
   autoMode: boolean;
+  /** Auto Mode option: auto-commit each task once it's verified (persisted). */
+  autoCommitOnVerified: boolean;
   /** Set when the circuit breaker tripped; drives the Resume banner. */
   breaker: BreakerInfo | null;
   selectedId: string | null;
@@ -70,6 +72,8 @@ export interface BoardProps {
   isActionPending?: (action: string, id: string) => boolean;
   /** Start/stop the autonomous loop (the header Auto Mode toggle). */
   onToggleAutoMode: () => void;
+  /** Persist the auto-commit-on-verified Auto Mode option (the gear popover). */
+  onAutoCommitChange: (next: boolean) => void;
   /** Resize the live agent pool (the header concurrency slider). */
   onConcurrencyChange: (n: number) => void;
   /** Resume the loop after a circuit-breaker pause. */

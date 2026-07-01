@@ -2,6 +2,8 @@
  *  the session-stream folding helpers. */
 export { Board } from './Board';
 export type { BreakerInfo } from './Board';
+export { AutoModeOptions } from './AutoModeOptions';
+export type { AutoModeOptionsProps } from './AutoModeOptions';
 export { BoardDnd } from './BoardDnd';
 export { Column } from './Column';
 export { TaskCard } from './TaskCard';
