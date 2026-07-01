@@ -14,7 +14,16 @@ const chromium = () => ({
   enabled: true,
   provider: 'playwright' as const,
   headless: true,
-  instances: [{ browser: 'chromium' as const }],
+  // Emulate `prefers-reduced-motion: reduce` in the test browser. The app's
+  // reduced-motion rule collapses every animation to ~0ms (styles.css), so the
+  // slide-in detail sheets (`nc-sheet-in`) settle instantly instead of moving
+  // ~100px through their 280ms enter — otherwise a `.click()` can race the
+  // animation and land off a button that's still sliding, a latent flake in the
+  // shared DetailPanelShell click tests (Insight/Scorecard/Harness) that only
+  // surfaces in isolated runs. This makes those tests deterministic.
+  instances: [
+    { browser: 'chromium' as const, context: { reducedMotion: 'reduce' as const } },
+  ],
 });
 
 /**
