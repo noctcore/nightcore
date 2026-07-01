@@ -9,11 +9,9 @@
  *
  * All the run mechanics (active-run registry, bounded pool, per-item corrective
  * retry, `runOneSession`, usage accumulation, cancel/crash handling) live once in
- * {@link ScanManager}; this class injects only the Insight-specific pieces below.
- *
- * This module also stays the `scans/shared/manager.js` barrel: it re-exports the
- * shared pool/observability/inventory helpers and the runner types the Scorecard /
- * Harness managers + the synthesis pass import from here.
+ * {@link ScanManager} under `../shared/scan-manager.js`; this class injects only the
+ * Insight-specific pieces below — a sibling of the Harness / Scorecard managers, each
+ * of which lives in its own feature folder.
  */
 import type {
   Finding,
@@ -24,7 +22,7 @@ import {
   dedupeFindings,
   groundFindings,
   parseFindings,
-} from './findings.js';
+} from '../shared/findings.js';
 import {
   ANALYSIS_ALLOWED_TOOLS,
   ANALYSIS_DISALLOWED_TOOLS,
@@ -32,7 +30,7 @@ import {
   analysisPreset,
   outputContract,
   type AnalysisPreset,
-} from './presets.js';
+} from '../shared/presets.js';
 import {
   DEFAULT_MAX_TURNS,
   fmtCost,
@@ -46,18 +44,7 @@ import {
   type ScanRunnerFactory,
   type ScanSessionRunner,
   type SessionConfigParts,
-} from './scan-manager.js';
-
-// Re-export the shared scan mechanics through this barrel so the Scorecard / Harness
-// managers and the synthesis pass keep importing them from `../shared/manager.js`.
-export {
-  buildRepoInventory,
-  fmtCost,
-  fmtElapsed,
-  fmtSecs,
-  makeHeartbeat,
-  runPool,
-} from './scan-manager.js';
+} from '../shared/scan-manager.js';
 
 /** The `start-analysis` command variant (the zod schema is exported as a value, so
  *  the engine narrows the union for the type). */
@@ -66,9 +53,10 @@ type StartAnalysis = Extract<SurfaceCommand, { type: 'start-analysis' }>;
 /** Findings cap per category pass. */
 const MAX_FINDINGS_PER_CATEGORY = 8;
 
-/** The runner factory + slice the orchestrator drives. Kept as named aliases so the
- *  Scorecard / Harness managers, the synthesis pass, and the tests keep the exact
- *  types they imported from here before the generic refactor. */
+/** The runner factory + slice the orchestrator drives, re-exported under Insight-facing
+ *  names: `AnalysisManagerDeps` is part of the package's public API (see `index.ts`)
+ *  and the aliases keep the Insight test reading in this feature's vocabulary. Harness /
+ *  Scorecard import the generic names straight from `../shared/scan-manager.js`. */
 export type AnalysisSessionRunner = ScanSessionRunner;
 export type AnalysisRunnerFactory = ScanRunnerFactory;
 export type AnalysisManagerDeps = ScanManagerDeps;

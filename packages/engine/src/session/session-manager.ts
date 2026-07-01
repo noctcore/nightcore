@@ -20,7 +20,7 @@ import type {
 import { SessionStore } from '@nightcore/storage';
 import { createMonotonicCounter, type Logger } from '@nightcore/shared';
 import { SessionRunner } from './session-runner.js';
-import { AnalysisManager } from '../scans/shared/manager.js';
+import { AnalysisManager } from '../scans/insight/manager.js';
 import { HarnessManager } from '../scans/harness/manager.js';
 import { ScorecardManager } from '../scans/scorecard/manager.js';
 import { resolveKindPreset } from './kind-presets.js';

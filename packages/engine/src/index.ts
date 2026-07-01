@@ -28,8 +28,8 @@ export type { ProposedSubtask } from './session/decompose.js';
 
 // The Insight (codebase analysis) orchestrator + its pure parse/ground/dedup
 // helpers. The SDK stays confined to the SessionRunner the manager spins.
-export { AnalysisManager } from './scans/shared/manager.js';
-export type { AnalysisManagerDeps } from './scans/shared/manager.js';
+export { AnalysisManager } from './scans/insight/manager.js';
+export type { AnalysisManagerDeps } from './scans/insight/manager.js';
 export {
   parseFindings,
   groundFindings,

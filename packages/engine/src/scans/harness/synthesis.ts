@@ -6,7 +6,7 @@
  * inspects the repo to write ACCURATE rules but NEVER writes to disk; it returns the
  * proposed file CONTENT as JSON, and the Rust core owns the actual write.
  *
- * Like {@link AnalysisManager}, it accepts an injectable `runnerFactory` so tests can
+ * Like a {@link ScanManager} pass, it accepts an injectable `runnerFactory` so tests can
  * drive it with a fake runner (no SDK, no subprocess), and an optional `runners`
  * set + `isCancelled` probe so the orchestrator can interrupt it mid-flight.
  */
@@ -35,11 +35,11 @@ import {
   ANALYZER_PERSONA,
 } from './presets.js';
 import { HARNESS_REFERENCE } from './reference.js';
-import type {
-  AnalysisRunnerFactory,
-  AnalysisSessionRunner,
-} from '../shared/manager.js';
-import { makeHeartbeat } from '../shared/manager.js';
+import {
+  makeHeartbeat,
+  type ScanRunnerFactory,
+  type ScanSessionRunner,
+} from '../shared/scan-manager.js';
 
 type StartHarnessScan = Extract<SurfaceCommand, { type: 'start-harness-scan' }>;
 
@@ -69,10 +69,10 @@ export interface SynthesizeHarnessArgs {
   logger?: Logger;
   /** Constructs the synthesis runner (the orchestrator passes its resolved factory;
    *  tests inject a fake). */
-  runnerFactory: AnalysisRunnerFactory;
+  runnerFactory: ScanRunnerFactory;
   /** Live-runner registry the orchestrator shares so `cancel()` can interrupt the
    *  synthesis session too. Absent in isolated tests. */
-  runners?: Set<AnalysisSessionRunner>;
+  runners?: Set<ScanSessionRunner>;
   /** Returns true once the run was cancelled (skip work / mark aborted). */
   isCancelled?: () => boolean;
 }
