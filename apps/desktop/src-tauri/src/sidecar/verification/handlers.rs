@@ -216,6 +216,11 @@ pub(crate) async fn handle_review_completed(
                 }
                 task.error = None;
             });
+            // Auto Mode option: commit this task's work HERE — before `finish_run`
+            // kicks the next task — so a main-mode `git add -A` on the shared project
+            // root captures only this task's changes (the next task hasn't launched
+            // yet, and a prior task at concurrency 1 was already committed).
+            maybe_auto_commit_on_verified(app, store, task_id).await;
             // NOW it is a true terminal: release slot, clean worktree per policy,
             // record breaker success.
             finish_run(app, task_id, None, Outcome::Succeeded);
@@ -258,6 +263,50 @@ pub(crate) async fn handle_review_completed(
             });
             park_for_approval(app, task_id, None);
         }
+    }
+}
+
+/// Auto Mode option (`auto_commit_on_verified`): commit a just-verified task's work
+/// right after it passes review and BEFORE `finish_run` kicks the next task, so its
+/// changes land in their own commit (reusing the manual `commit_task` path — a
+/// `claude -p` conventional message, the `TaskLease` single-flight, the `committed`
+/// flag + `nc:task` emit). Best-effort: any failure (including a benign "nothing to
+/// commit") is logged and never blocks the terminal path.
+///
+/// Safety: a main-mode task commits the SHARED project root via `git add -A`, which
+/// only yields a clean per-task commit when the loop runs one task at a time — with
+/// concurrent runs the root also holds sibling tasks' uncommitted edits that can't
+/// be separated, so it's gated on `max_concurrency == 1`. A worktree-mode task
+/// already committed its work to `nc/<id>` pre-review (its finalize action is merge,
+/// not commit), so there is nothing to auto-commit and it is skipped.
+async fn maybe_auto_commit_on_verified(app: &AppHandle, store: &TaskStore, task_id: &str) {
+    use crate::settings::SettingsStore;
+    let settings = app.state::<SettingsStore>().get();
+    if !settings.auto_commit_on_verified {
+        return;
+    }
+    let Some(task) = store.get(task_id) else {
+        return;
+    };
+    if task.run_mode.is_worktree() {
+        return;
+    }
+    if settings.max_concurrency > 1 {
+        tracing::info!(target: "nightcore", task_id, max_concurrency = settings.max_concurrency, "auto-commit on verified skipped: main mode needs concurrency 1");
+        return;
+    }
+    // Runs the blocking git + `claude -p` body off the async reader task; awaited so
+    // the commit lands before `finish_run` launches the next task.
+    let app_c = app.clone();
+    let id_c = task_id.to_string();
+    match tauri::async_runtime::spawn_blocking(move || {
+        crate::workflow::merge::commit_task_blocking(&app_c, &id_c)
+    })
+    .await
+    {
+        Ok(Ok(())) => tracing::info!(target: "nightcore", task_id, "auto-committed task on verified"),
+        Ok(Err(e)) => tracing::info!(target: "nightcore", task_id, reason = %e, "auto-commit on verified skipped"),
+        Err(e) => tracing::warn!(target: "nightcore", task_id, error = %e, "auto-commit on verified failed to run"),
     }
 }
 
