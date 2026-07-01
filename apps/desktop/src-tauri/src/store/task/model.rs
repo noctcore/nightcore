@@ -307,6 +307,17 @@ pub struct Task {
     /// legacy task without it loads as `None`, so existing task files aren't broken.
     #[serde(default)]
     pub structure_lock_result: Option<StructureLockResult>,
+    /// The verify-command contract (hardening-catalog module #1): ONE fast,
+    /// machine-checkable "done" command (e.g. `npm run verify`, `npx eslint .`) run
+    /// in the task's review dir as a deterministic Structure-Lock check BEFORE the
+    /// paid reviewer — a failing verify command feeds the existing bounded auto-fix
+    /// loop, so an agent literally cannot verify work that doesn't pass its own gate.
+    /// Distinct from the project-wide `.nightcore/harness.json` checks: this one
+    /// travels WITH the task (e.g. a Harness convert-to-task that wires an ESLint
+    /// plugin carries `npx eslint .` as its proof). `None` ⇒ no per-task gate.
+    /// Serde-additive: a legacy task without it loads as `None`.
+    #[serde(default)]
+    pub verify_command: Option<String>,
     // --- SDK guardrails (autonomy ceilings + resume) ------------------------
     /// SDK-guardrails: per-task max conversation turns before the run stops
     /// (engine `Options.maxTurns`). `None` ⇒ inherit the `@nightcore/config`
@@ -384,6 +395,7 @@ impl Task {
             review: None,
             fix_attempts: 0,
             structure_lock_result: None,
+            verify_command: None,
             max_turns: None,
             max_budget_usd: None,
             sdk_session_id: None,

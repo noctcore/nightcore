@@ -116,7 +116,17 @@ pub(crate) async fn handle_build_completed(
     // build should never burn a reviewer session. Absent `.nightcore/harness.json`
     // ⇒ no checks ⇒ pass, so existing projects are unaffected. On failure we either
     // feed the failing check into the existing bounded auto-fix loop, or park.
-    let lock = crate::gauntlet_project::run(&review_dir.path);
+    let mut lock = crate::gauntlet_project::run(&review_dir.path);
+    // The verify-command contract (hardening module #1): if the project checks passed and
+    // THIS task carries its own machine-checkable done-command, run it in the same review
+    // dir as a final deterministic check. A converted Harness task that wires an ESLint
+    // plugin, for example, carries `npx eslint .` — proving the wiring actually holds
+    // before a paid reviewer ever sees it. A failure folds into the same gate below.
+    if lock.passed {
+        if let Some(command) = task.verify_command.as_deref() {
+            crate::gauntlet_project::append_task_verify_command(&mut lock, command, &review_dir.path);
+        }
+    }
     apply_and_emit(app, store, task_id, |task| {
         task.structure_lock_result = Some(lock.clone());
     });

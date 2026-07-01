@@ -120,6 +120,18 @@ fixAttempts: number,
  */
 structureLockResult: StructureLockResult | null, 
 /**
+ * The verify-command contract (hardening-catalog module #1): ONE fast,
+ * machine-checkable "done" command (e.g. `npm run verify`, `npx eslint .`) run
+ * in the task's review dir as a deterministic Structure-Lock check BEFORE the
+ * paid reviewer — a failing verify command feeds the existing bounded auto-fix
+ * loop, so an agent literally cannot verify work that doesn't pass its own gate.
+ * Distinct from the project-wide `.nightcore/harness.json` checks: this one
+ * travels WITH the task (e.g. a Harness convert-to-task that wires an ESLint
+ * plugin carries `npx eslint .` as its proof). `None` ⇒ no per-task gate.
+ * Serde-additive: a legacy task without it loads as `None`.
+ */
+verifyCommand: string | null, 
+/**
  * SDK-guardrails: per-task max conversation turns before the run stops
  * (engine `Options.maxTurns`). `None` ⇒ inherit the `@nightcore/config`
  * default. Threaded into the `start-session` payload as `maxTurns`.

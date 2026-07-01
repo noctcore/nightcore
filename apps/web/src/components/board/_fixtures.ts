@@ -41,6 +41,7 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     review: overrides.review ?? null,
     fixAttempts: overrides.fixAttempts ?? 0,
     structureLockResult: overrides.structureLockResult ?? null,
+    verifyCommand: overrides.verifyCommand ?? null,
     maxTurns: overrides.maxTurns ?? null,
     maxBudgetUsd: overrides.maxBudgetUsd ?? null,
     attachments: overrides.attachments ?? [],

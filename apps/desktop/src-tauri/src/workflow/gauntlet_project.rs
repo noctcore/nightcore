@@ -258,6 +258,77 @@ pub fn empty_pass() -> StructureLockResult {
     StructureLockResult::empty_pass()
 }
 
+/// The stable check name + wire kind for a task's own verify-command gate. Kept a free
+/// string on the result (like every other check kind) so the UI renders it uniformly.
+const VERIFY_COMMAND_CHECK: &str = "verify-command";
+
+/// Run a task's per-task verify command ([`crate::task::Task::verify_command`], hardening
+/// module #1) as an ADDITIONAL Structure-Lock check, folding its outcome into `result`.
+/// Called AFTER the project's `.nightcore/harness.json` checks pass, so the task's own gate
+/// runs last (stop-at-first already halted the project checks on any earlier failure). A
+/// failing command flips `result.passed`/`failed_check`, routing into the exact same
+/// bounded auto-fix / park machinery the project checks use — no new failure path. An
+/// empty/blank command is a no-op (nothing deterministic to run). Split on whitespace like
+/// [`plan_check`], routed through the platform resolver (Windows-shim aware).
+pub fn append_task_verify_command(result: &mut StructureLockResult, command: &str, dir: &Path) {
+    let command = command.trim();
+    if command.is_empty() {
+        return;
+    }
+    let mut tokens = command.split_whitespace();
+    let Some(program) = tokens.next() else {
+        return;
+    };
+    let args: Vec<String> = tokens.map(str::to_string).collect();
+
+    tracing::debug!(target: "nightcore::structure_lock", command = %command, "running task verify command");
+    let output = crate::platform::std_command(program)
+        .args(&args)
+        .current_dir(dir)
+        .output();
+
+    let check = match output {
+        Ok(out) if out.status.success() => {
+            tracing::info!(target: "nightcore::structure_lock", command = %command, exit_code = ?out.status.code(), "task verify command passed");
+            StructureLockCheck {
+                name: VERIFY_COMMAND_CHECK.to_string(),
+                kind: VERIFY_COMMAND_CHECK.to_string(),
+                command: command.to_string(),
+                status: StepStatus::Passed,
+                exit_code: out.status.code(),
+                output: None,
+            }
+        }
+        Ok(out) => {
+            tracing::error!(target: "nightcore::structure_lock", command = %command, exit_code = ?out.status.code(), "task verify command failed");
+            result.passed = false;
+            result.failed_check = Some(VERIFY_COMMAND_CHECK.to_string());
+            StructureLockCheck {
+                name: VERIFY_COMMAND_CHECK.to_string(),
+                kind: VERIFY_COMMAND_CHECK.to_string(),
+                command: command.to_string(),
+                status: StepStatus::Failed,
+                exit_code: out.status.code(),
+                output: Some(tail_output(&out.stdout, &out.stderr)),
+            }
+        }
+        Err(e) => {
+            tracing::error!(target: "nightcore::structure_lock", command = %command, error = %e, "task verify command could not launch");
+            result.passed = false;
+            result.failed_check = Some(VERIFY_COMMAND_CHECK.to_string());
+            StructureLockCheck {
+                name: VERIFY_COMMAND_CHECK.to_string(),
+                kind: VERIFY_COMMAND_CHECK.to_string(),
+                command: command.to_string(),
+                status: StepStatus::Failed,
+                exit_code: None,
+                output: Some(format!("failed to launch: {e}")),
+            }
+        }
+    };
+    result.checks.push(check);
+}
+
 /// A human-readable fix instruction for the auto-fix loop, naming the failed check,
 /// its exact command, and the captured output so the agent can self-correct. Pure,
 /// so it's unit-testable without spawning anything.
@@ -489,6 +560,47 @@ mod tests {
     fn empty_pass_is_trivially_passing() {
         let r = empty_pass();
         assert!(r.passed && r.checks.is_empty() && r.failed_check.is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn task_verify_command_appends_a_passing_check() {
+        // A whitespace-split command (like `npx eslint .` in production) — no shell
+        // quoting, matching `plan_check`. `sh -c true` runs the `true` builtin → exit 0.
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let mut result = empty_pass();
+        append_task_verify_command(&mut result, "sh -c true", tmp.path());
+        assert!(result.passed, "a passing verify command keeps the gate green");
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.checks[0].name, VERIFY_COMMAND_CHECK);
+        assert_eq!(result.checks[0].kind, VERIFY_COMMAND_CHECK);
+        assert_eq!(result.checks[0].status, StepStatus::Passed);
+        assert!(result.failed_check.is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn task_verify_command_failure_flips_the_gate_and_captures_output() {
+        // `ls <missing>` fails with stderr and a non-zero exit — whitespace-safe, no shell.
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let mut result = empty_pass();
+        append_task_verify_command(&mut result, "ls /no-such-path-nc-xyz", tmp.path());
+        assert!(!result.passed, "a failing verify command fails the gate");
+        assert_eq!(result.failed_check.as_deref(), Some(VERIFY_COMMAND_CHECK));
+        let check = &result.checks[0];
+        assert_eq!(check.status, StepStatus::Failed);
+        assert!(check.output.as_deref().unwrap().contains("no-such-path-nc-xyz"), "captures output for the fix loop");
+        // The fix instruction the auto-fix loop feeds back names it + its command.
+        let fix = fix_instruction(&result);
+        assert!(fix.contains(VERIFY_COMMAND_CHECK) && fix.contains("ls /no-such-path-nc-xyz"));
+    }
+
+    #[test]
+    fn task_verify_command_blank_is_a_noop() {
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let mut result = empty_pass();
+        append_task_verify_command(&mut result, "   ", tmp.path());
+        assert!(result.passed && result.checks.is_empty(), "a blank command adds nothing");
     }
 
     #[test]

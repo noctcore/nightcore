@@ -32,4 +32,10 @@ maxTurns?: number | null,
 /**
  * SDK-guardrails: per-task max-budget-USD override, editable pre-run.
  */
-maxBudgetUsd?: number | null, };
+maxBudgetUsd?: number | null, 
+/**
+ * The verify-command contract: a machine-checkable done-command run as a
+ * Structure-Lock check before the reviewer. Editable pre-run from the create/edit
+ * picker (and set by a Harness proposal-convert that wires enforcement).
+ */
+verifyCommand?: string | null, };

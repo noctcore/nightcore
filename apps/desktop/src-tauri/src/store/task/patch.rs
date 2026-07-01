@@ -62,6 +62,11 @@ pub struct TaskPatch {
     /// SDK-guardrails: per-task max-budget-USD override, editable pre-run.
     #[cfg_attr(test, ts(optional = nullable))]
     pub max_budget_usd: Option<f64>,
+    /// The verify-command contract: a machine-checkable done-command run as a
+    /// Structure-Lock check before the reviewer. Editable pre-run from the create/edit
+    /// picker (and set by a Harness proposal-convert that wires enforcement).
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub verify_command: Option<String>,
 }
 
 impl TaskPatch {
@@ -107,6 +112,9 @@ impl TaskPatch {
         }
         if self.max_budget_usd.is_some() {
             task.max_budget_usd = self.max_budget_usd;
+        }
+        if self.verify_command.is_some() {
+            task.verify_command = self.verify_command;
         }
     }
 }
@@ -180,6 +188,20 @@ mod tests {
         absent.apply(&mut task);
         assert_eq!(task.max_turns, Some(10));
         assert_eq!(task.max_budget_usd, Some(1.5));
+    }
+
+    #[test]
+    fn patch_sets_verify_command_when_present() {
+        let mut task = Task::new("t".into(), String::new());
+        assert!(task.verify_command.is_none());
+        let patch: TaskPatch = serde_json::from_str(r#"{"verifyCommand":"npx eslint ."}"#).unwrap();
+        patch.apply(&mut task);
+        assert_eq!(task.verify_command.as_deref(), Some("npx eslint ."));
+
+        // An absent field leaves the prior value untouched (same set-not-clear as `model`).
+        let absent: TaskPatch = serde_json::from_str(r#"{"title":"x"}"#).unwrap();
+        absent.apply(&mut task);
+        assert_eq!(task.verify_command.as_deref(), Some("npx eslint ."));
     }
 
     #[test]
