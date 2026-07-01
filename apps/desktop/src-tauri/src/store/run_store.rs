@@ -165,6 +165,24 @@ impl<R: PersistedRun> RunStore<R> {
         Ok(())
     }
 
+    /// Insert a fresh run ONLY if no other run is currently `running` — the single-flight
+    /// guard that stops a second concurrent (paid) scan from launching for this project
+    /// (e.g. picking "New run" or a history entry while a scan streams). Atomic: the
+    /// running-check and the insert happen under ONE `runs` lock, so two racing `start_*`
+    /// commands (Tauri runs them on a thread pool) can't both pass. Returns `Err(busy_msg)`
+    /// when a run is already active. A run stuck `running` from a crashed process is cleared
+    /// by [`reap_running`] at the next boot.
+    pub fn upsert_if_idle(&self, run: &R, busy_msg: &str) -> Result<(), String> {
+        let mut guard = crate::sync::lock_or_recover(&self.runs);
+        if guard.values().any(|r| r.status() == "running") {
+            return Err(busy_msg.to_string());
+        }
+        self.persist(run)?;
+        guard.insert(run.id().to_string(), run.clone());
+        self.prune_locked(&mut guard);
+        Ok(())
+    }
+
     /// Drop the oldest runs (by `created_at`) beyond [`MAX_RUNS`], deleting their files.
     /// Called under the `runs` lock from `upsert`. Best-effort on the file delete (a
     /// failed unlink is logged, not fatal — the in-memory cap still holds).

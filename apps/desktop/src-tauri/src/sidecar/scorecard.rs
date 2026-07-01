@@ -82,7 +82,11 @@ pub async fn start_scorecard(
         readings: Vec::new(),
         error: None,
     };
-    scorecard_store.upsert(&run)?;
+    // Single-flight: reject a second concurrent grading run for this project.
+    scorecard_store.upsert_if_idle(
+        &run,
+        "a scorecard is already running for this project — wait for it to finish or cancel it first",
+    )?;
 
     // Ensure the sidecar is up, then dispatch the scorecard command; on failure the
     // shared helper persists the run's failed-state (so it doesn't look stuck).

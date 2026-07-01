@@ -112,7 +112,12 @@ pub async fn start_analysis(
         findings: Vec::new(),
         error: None,
     };
-    insight_store.upsert(&run)?;
+    // Single-flight: reject a second concurrent analysis for this project (a stray
+    // History/"New run" click mid-run) instead of launching another paid scan.
+    insight_store.upsert_if_idle(
+        &run,
+        "an analysis is already running for this project — wait for it to finish or cancel it first",
+    )?;
 
     // Resolve the changed-file focus for diff scope (Rust owns git; the engine
     // focuses the passes on these files).

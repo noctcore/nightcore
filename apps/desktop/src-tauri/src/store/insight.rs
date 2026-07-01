@@ -637,6 +637,26 @@ mod tests {
     }
 
     #[test]
+    fn upsert_if_idle_rejects_a_second_running_run() {
+        let (store, _tmp) = store();
+        let mut first = run("r1", vec![]);
+        first.status = "running".into();
+        // No run active yet ⇒ the first start is admitted.
+        store.upsert_if_idle(&first, "busy").unwrap();
+
+        // A second start while the first is `running` is rejected (single-flight).
+        let mut second = run("r2", vec![]);
+        second.status = "running".into();
+        assert_eq!(store.upsert_if_idle(&second, "busy").unwrap_err(), "busy");
+        assert!(store.get("r2").is_none(), "the rejected run is not persisted");
+
+        // Once the first is no longer running, a new run is admitted again.
+        store.mutate("r1", |r| r.status = "completed".into()).unwrap();
+        store.upsert_if_idle(&second, "busy").unwrap();
+        assert!(store.get("r2").is_some());
+    }
+
+    #[test]
     fn reap_running_marks_running_failed() {
         let (store, _tmp) = store();
         let mut r = run("r1", vec![]);

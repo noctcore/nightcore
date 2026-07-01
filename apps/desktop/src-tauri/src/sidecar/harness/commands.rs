@@ -84,7 +84,11 @@ pub async fn start_harness_scan(
         synthesizing: false,
         error: None,
     };
-    harness_store.upsert(&run)?;
+    // Single-flight: reject a second concurrent scan for this project.
+    harness_store.upsert_if_idle(
+        &run,
+        "a harness scan is already running for this project — wait for it to finish or cancel it first",
+    )?;
 
     // Ensure the sidecar is up, then dispatch the scan command; on failure the
     // shared helper persists the run's failed-state (so it doesn't look stuck).
