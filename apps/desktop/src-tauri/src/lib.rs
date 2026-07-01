@@ -97,7 +97,8 @@ pub fn run() {
             // auto-loop) starts at the persisted concurrency. The provider spawns
             // `bun run apps/sidecar/src/index.ts` in the workspace root on first use.
             let settings_store = SettingsStore::load_from(config_dir);
-            let max_concurrency = settings_store.get().max_concurrency.max(1) as usize;
+            let max_concurrency =
+                settings_store.with_settings(|s| s.max_concurrency).max(1) as usize;
             let orchestrator = Orchestrator::new(
                 workspace_root().join("apps/sidecar/src/index.ts"),
                 workspace_root(),

@@ -252,7 +252,9 @@ fn merge_task_blocking(app: &AppHandle, id: &str) -> Result<(), String> {
 
     match worktree::merge_branch(&project_path, &branch, &base)? {
         MergeOutcome::Merged => {
-            let cleanup = app.state::<SettingsStore>().get().cleanup_worktrees;
+            let cleanup = app
+                .state::<SettingsStore>()
+                .with_settings(|s| s.cleanup_worktrees);
             if cleanup {
                 let _ = worktree::remove(&project_path, id);
                 let _ = worktree::delete_branch_named(&project_path, &branch);

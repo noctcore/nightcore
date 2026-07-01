@@ -281,8 +281,10 @@ pub(crate) async fn handle_review_completed(
 /// not commit), so there is nothing to auto-commit and it is skipped.
 async fn maybe_auto_commit_on_verified(app: &AppHandle, store: &TaskStore, task_id: &str) {
     use crate::settings::SettingsStore;
-    let settings = app.state::<SettingsStore>().get();
-    if !settings.auto_commit_on_verified {
+    let (auto_commit_on_verified, max_concurrency) = app
+        .state::<SettingsStore>()
+        .with_settings(|s| (s.auto_commit_on_verified, s.max_concurrency));
+    if !auto_commit_on_verified {
         return;
     }
     let Some(task) = store.get(task_id) else {
@@ -291,8 +293,8 @@ async fn maybe_auto_commit_on_verified(app: &AppHandle, store: &TaskStore, task_
     if task.run_mode.is_worktree() {
         return;
     }
-    if settings.max_concurrency > 1 {
-        tracing::info!(target: "nightcore", task_id, max_concurrency = settings.max_concurrency, "auto-commit on verified skipped: main mode needs concurrency 1");
+    if max_concurrency > 1 {
+        tracing::info!(target: "nightcore", task_id, max_concurrency, "auto-commit on verified skipped: main mode needs concurrency 1");
         return;
     }
     // Runs the blocking git + `claude -p` body off the async reader task; awaited so
