@@ -155,6 +155,12 @@ pub fn delete_project(
     {
         tracing::warn!(target: "nightcore::project", project_id = %id, error = %e, "failed to drop project settings override on delete");
     }
+    // Custom Background: remove the deleted project's on-disk background bytes too
+    // (its settings ref went with the override above). Best-effort — a leftover image
+    // is harmless and must not undo the delete.
+    if let Err(e) = crate::store::board_background::remove(&app, &id) {
+        tracing::warn!(target: "nightcore::project", project_id = %id, error = %e, "failed to remove project board background on delete");
+    }
     // Deleting the active project clears the board.
     if was_active {
         retarget_tasks(&app, &store);

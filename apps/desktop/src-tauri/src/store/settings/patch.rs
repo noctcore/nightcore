@@ -9,7 +9,7 @@ use crate::task::RunMode;
 #[cfg(test)]
 use ts_rs::TS;
 
-use super::model::{McpServerEntry, Settings};
+use super::model::{BoardAppearance, BoardBackgroundRef, McpServerEntry, Settings};
 
 /// A per-project override: any subset of the run-shaping fields. Absent fields
 /// fall back to the global value.
@@ -52,6 +52,21 @@ pub struct SettingsOverride {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub context_pack_enabled: Option<bool>,
+    /// Custom Background: this project's board-appearance knobs. `None` ⇒ the
+    /// project uses the default (pre-feature) appearance; board appearance is
+    /// per-project-independent (no global counterpart), so there is no cross-scope
+    /// fallback — the web resolves `override.boardAppearance ?? DEFAULTS`.
+    /// Serde-additive: a legacy override block loads this `None`.
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub board_appearance: Option<BoardAppearance>,
+    /// Custom Background: this project's stored background image ref (`None` ⇒ no
+    /// custom background). Set ONLY by the `set_board_background` /
+    /// `clear_board_background` commands — never by a settings patch — so it can't be
+    /// clobbered by a concurrent knob change. Serde-additive.
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub board_background: Option<BoardBackgroundRef>,
 }
 
 impl SettingsOverride {
@@ -86,9 +101,16 @@ impl SettingsOverride {
         if patch.context_pack_enabled.is_some() {
             self.context_pack_enabled = patch.context_pack_enabled;
         }
+        // Whole-object replace: the panel always sends the project's COMPLETE next
+        // appearance (every knob), so there is no per-knob merge. The image ref
+        // (`board_background`) is intentionally NOT in the patch — it's owned by the
+        // dedicated image commands — so a knob change can never clobber it.
+        if patch.board_appearance.is_some() {
+            self.board_appearance = patch.board_appearance.clone();
+        }
     }
 
-    fn is_empty(&self) -> bool {
+    pub(super) fn is_empty(&self) -> bool {
         self.default_model.is_none()
             && self.default_effort.is_none()
             && self.max_concurrency.is_none()
@@ -98,6 +120,8 @@ impl SettingsOverride {
             && self.max_budget_usd.is_none()
             && self.mcp_servers.is_none()
             && self.context_pack_enabled.is_none()
+            && self.board_appearance.is_none()
+            && self.board_background.is_none()
     }
 }
 
@@ -148,6 +172,13 @@ pub struct SettingsPatch {
     /// in that project's override; without one, the global default.
     #[cfg_attr(test, ts(optional))]
     pub context_pack_enabled: Option<bool>,
+    /// Custom Background: the project's COMPLETE next board-appearance knob set.
+    /// Requires a `projectId` (board appearance is per-project only — a patch with no
+    /// `projectId` ignores this field). The panel always sends the full object, so
+    /// this replaces the project's appearance wholesale (no per-knob merge).
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub board_appearance: Option<BoardAppearance>,
 }
 
 impl Settings {

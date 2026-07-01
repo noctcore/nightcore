@@ -11,7 +11,7 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use super::helpers::*;
-use super::model::{McpServerEntry, Settings};
+use super::model::{BoardBackgroundRef, McpServerEntry, Settings};
 use super::patch::SettingsPatch;
 
 /// In-memory settings plus the config dir they persist to.
@@ -145,6 +145,69 @@ impl SettingsStore {
     pub(crate) fn update(&self, patch: SettingsPatch) -> Result<Settings, String> {
         let mut guard = crate::sync::lock_or_recover(&self.settings);
         guard.merge(patch);
+        let snapshot = guard.clone();
+        write_settings(&self.config_dir.join("settings.json"), &snapshot)?;
+        Ok(snapshot)
+    }
+
+    /// The project's stored board-background ref (Custom Background), if any. Read
+    /// by the `read_board_background` command to locate the on-disk bytes and by
+    /// cleanup to know a project had a background. Board appearance is per-project
+    /// only, so there is no global fallback — an absent override ⇒ `None`.
+    pub fn board_background(&self, project_id: &str) -> Option<BoardBackgroundRef> {
+        self.get()
+            .project_overrides
+            .get(project_id)
+            .and_then(|ov| ov.board_background.clone())
+    }
+
+    /// Set (or replace) a project's board-background ref, bumping its `version` so
+    /// the web re-reads the bytes even when a replacement keeps the same `format`.
+    /// Persists and returns the merged settings. The bytes themselves are written to
+    /// disk by [`crate::store::board_background::persist`] BEFORE this call; this only
+    /// records the reference. (Custom Background — the image ref lives in the
+    /// per-project override, never in the global block.)
+    pub(crate) fn set_board_background(
+        &self,
+        project_id: &str,
+        format: String,
+    ) -> Result<Settings, String> {
+        let mut guard = crate::sync::lock_or_recover(&self.settings);
+        let entry = guard
+            .project_overrides
+            .entry(project_id.to_string())
+            .or_default();
+        // Monotonic replace counter: previous + 1 (first set ⇒ 1) so a same-format
+        // replacement still changes the ref, letting the web cache-bust its image.
+        let next_version = entry
+            .board_background
+            .as_ref()
+            .map(|b| b.version.saturating_add(1))
+            .unwrap_or(1);
+        entry.board_background = Some(BoardBackgroundRef {
+            format,
+            version: next_version,
+        });
+        let snapshot = guard.clone();
+        write_settings(&self.config_dir.join("settings.json"), &snapshot)?;
+        Ok(snapshot)
+    }
+
+    /// Clear a project's board-background ref and persist, pruning the override block
+    /// if it becomes empty (mirrors [`drop_project_override`](Self::drop_project_override)'s
+    /// no-orphan discipline). A no-op when the project has no background. The on-disk
+    /// bytes are removed by the `clear_board_background` command separately.
+    pub(crate) fn clear_board_background(&self, project_id: &str) -> Result<Settings, String> {
+        let mut guard = crate::sync::lock_or_recover(&self.settings);
+        if let Some(entry) = guard.project_overrides.get_mut(project_id) {
+            if entry.board_background.is_none() {
+                return Ok(guard.clone()); // nothing to clear
+            }
+            entry.board_background = None;
+            if entry.is_empty() {
+                guard.project_overrides.remove(project_id);
+            }
+        }
         let snapshot = guard.clone();
         write_settings(&self.config_dir.join("settings.json"), &snapshot)?;
         Ok(snapshot)

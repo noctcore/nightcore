@@ -1,5 +1,6 @@
 /** Board-local derivation and view hooks: dependency-blocking, column grouping,
- *  keyword search, the provider inspector toggle, and the breaker banner. */
+ *  keyword search, the provider inspector toggle, and the breaker banner. The
+ *  board-appearance / background-panel hooks live in `Board.appearance.hooks.ts`. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Task } from '@/lib/bridge';
 import { COLUMNS, type ColumnDef } from '../status';
@@ -77,19 +78,22 @@ export function useBoardView(tasks: Task[], activeWorktree: ActiveWorktree): Boa
   };
 }
 
-/** Open/close state for the read-only provider-config inspector (the header
- *  entry point owns its own toggle; the panel is a self-contained sheet). */
-export function useInspector(): {
-  open: boolean;
-  show: () => void;
-  hide: () => void;
-} {
+/** Generic open/hide disclosure state for a self-contained header-triggered sheet.
+ *  Shared by the inspector here and the background panel in
+ *  `Board.appearance.hooks.ts`. */
+export function useDisclosure(): { open: boolean; show: () => void; hide: () => void } {
   const [open, setOpen] = useState(false);
   return {
     open,
     show: useCallback(() => setOpen(true), []),
     hide: useCallback(() => setOpen(false), []),
   };
+}
+
+/** Open/close state for the read-only provider-config inspector (the header
+ *  entry point owns its own toggle; the panel is a self-contained sheet). */
+export function useInspector(): { open: boolean; show: () => void; hide: () => void } {
+  return useDisclosure();
 }
 
 /** Whether to show the circuit-breaker banner: visible while a breaker is set

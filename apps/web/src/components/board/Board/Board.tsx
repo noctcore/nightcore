@@ -5,15 +5,18 @@ import {
   BoltIcon,
   BranchIcon,
   CloseIcon,
+  ImageIcon,
   Kbd,
   PlusIcon,
   SearchIcon,
   SlidersIcon,
 } from '@/components/ui';
+import { BoardBackgroundPanel } from '../BoardBackgroundPanel';
 import { BoardDnd } from '../BoardDnd';
 import { Column } from '../Column';
 import { ProviderConfigPanel } from '../ProviderConfigPanel';
 import { WorktreeSwitcher } from '../WorktreeSwitcher';
+import { useBoardAppearance, useBoardBackgroundPanel } from './Board.appearance.hooks';
 import { useBoardView, useBreakerBanner, useInspector } from './Board.hooks';
 import type { BoardProps } from './Board.types';
 
@@ -39,9 +42,15 @@ const EMPTY_TEXT: Record<string, string> = {
  *  loop state actually change, not on every stream delta. */
 function BoardImpl({
   tasks,
+  projectId,
   projectName,
   projectPath,
   projectBranch,
+  appearanceOverride,
+  backgroundVersion,
+  onChangeAppearance,
+  onPickBackground,
+  onClearBackground,
   worktrees,
   activeWorktree,
   onSelectWorktree,
@@ -71,9 +80,23 @@ function BoardImpl({
   const { search, setSearch, columns } = useBoardView(tasks, activeWorktree);
   const banner = useBreakerBanner(breaker);
   const inspector = useInspector();
+  const bgPanel = useBoardBackgroundPanel();
+  const appearance = useBoardAppearance(projectId, appearanceOverride, backgroundVersion);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <>
+    <div
+      className="nc-board-appearance flex h-full min-h-0 flex-col"
+      style={appearance.view.style}
+      {...appearance.view.dataAttrs}
+    >
+      {appearance.backgroundUrl !== null && (
+        <div
+          aria-hidden
+          className="nc-board-appearance__bg"
+          style={{ backgroundImage: `url("${appearance.backgroundUrl}")` }}
+        />
+      )}
       <div className="flex flex-col gap-3.5 border-b border-border px-[22px] pb-3.5 pt-[18px]">
         <div className="flex flex-wrap items-start gap-x-5 gap-y-4">
           <div className="min-w-0">
@@ -139,6 +162,15 @@ function BoardImpl({
                   }`}
                 />
               </span>
+            </button>
+            <button
+              type="button"
+              onClick={bgPanel.show}
+              title="Customize the board background"
+              aria-label="Board background settings"
+              className="flex items-center justify-center rounded-[9px] border border-border bg-white/[0.02] p-2 text-foreground transition-colors hover:border-white/20"
+            >
+              <ImageIcon size={15} className="text-muted-foreground" />
             </button>
             <button
               type="button"
@@ -208,7 +240,7 @@ function BoardImpl({
       )}
 
       <BoardDnd tasks={tasks} onMoveTask={onMoveTask}>
-        <div className="flex flex-1 gap-3.5 overflow-x-auto overflow-y-hidden px-[22px] py-4">
+        <div className="nc-board-columns flex flex-1 gap-3.5 overflow-x-auto overflow-y-hidden px-[22px] py-4">
           {columns.map(({ def, tasks: colTasks }) => (
             <Column
               key={def.key}
@@ -238,6 +270,7 @@ function BoardImpl({
           ))}
         </div>
       </BoardDnd>
+    </div>
 
       {inspector.open && (
         <ProviderConfigPanel
@@ -246,7 +279,18 @@ function BoardImpl({
           onClose={inspector.hide}
         />
       )}
-    </div>
+
+      {bgPanel.open && (
+        <BoardBackgroundPanel
+          appearance={appearance.appearance}
+          backgroundUrl={appearance.backgroundUrl}
+          onChangeAppearance={onChangeAppearance}
+          onPickImage={onPickBackground}
+          onClearImage={onClearBackground}
+          onClose={bgPanel.hide}
+        />
+      )}
+    </>
   );
 }
 

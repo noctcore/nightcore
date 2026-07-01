@@ -132,6 +132,94 @@ fn default_true() -> bool {
     true
 }
 
+/// The serde default for the board-appearance opacity knobs: fully opaque (`1.0`).
+/// A settings file written before a given knob existed — or a `BoardAppearance`
+/// object missing it — loads that knob at `1.0`, so the board renders exactly like
+/// the pre-feature look (the whole feature is opt-in; nothing changes until the user
+/// dials a knob down).
+fn default_opacity() -> f64 {
+    1.0
+}
+
+/// Per-project **board appearance** knobs (Custom Background feature): the card /
+/// column translucency, border visibility + opacity, card glassmorphism blur, and
+/// board-scrollbar hiding that let a project's Kanban board read over a custom
+/// background image. Serde-additive and defaulted so an absent field (legacy file
+/// or a forward-compat partial object) loads at the value that reproduces the
+/// pre-feature look — the controls only visibly change the board once the user
+/// adjusts them (or sets a background image). Knobs only; the image reference lives
+/// in the sibling [`BoardBackgroundRef`] (managed by the dedicated image commands),
+/// so a knob patch and an image change can never clobber each other.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "BoardAppearance.ts"))]
+pub struct BoardAppearance {
+    /// Card background opacity `0.0..=1.0`. `1.0` (default) ⇒ solid card (current
+    /// look); lower values let the background image show through the card.
+    #[serde(default = "default_opacity")]
+    pub card_opacity: f64,
+    /// Column panel opacity `0.0..=1.0`. `1.0` (default) ⇒ solid column panel.
+    #[serde(default = "default_opacity")]
+    pub column_opacity: f64,
+    /// Whether column borders are drawn. `true` (default) ⇒ borders shown.
+    #[serde(default = "default_true")]
+    pub show_column_borders: bool,
+    /// Whether card borders are drawn. `true` (default) ⇒ borders shown (status
+    /// glow shadows are unaffected either way, so run/verify state stays legible).
+    #[serde(default = "default_true")]
+    pub show_card_borders: bool,
+    /// Card glassmorphism (backdrop blur behind the card). `false` (default) ⇒ no
+    /// blur (blur is a per-card render cost, so it's opt-in).
+    #[serde(default)]
+    pub card_glassmorphism: bool,
+    /// Card border opacity `0.0..=1.0` when borders are shown. `1.0` (default) ⇒
+    /// full-strength neutral border.
+    #[serde(default = "default_opacity")]
+    pub card_border_opacity: f64,
+    /// Whether the horizontal board scrollbar is hidden. `false` (default) ⇒ shown.
+    #[serde(default)]
+    pub hide_board_scrollbar: bool,
+}
+
+impl Default for BoardAppearance {
+    fn default() -> Self {
+        // The identity appearance: every knob at the value that reproduces the
+        // pre-feature board look. `BoardAppearance::default() == ` a project that
+        // never touched the panel.
+        Self {
+            card_opacity: default_opacity(),
+            column_opacity: default_opacity(),
+            show_column_borders: true,
+            show_card_borders: true,
+            card_glassmorphism: false,
+            card_border_opacity: default_opacity(),
+            hide_board_scrollbar: false,
+        }
+    }
+}
+
+/// Per-project reference to a stored **board background image**. The bytes live on
+/// disk under the OS app-data dir (`board-backgrounds/<project-id>/background.<ext>`,
+/// see [`crate::store::board_background`]) — NOT inline in `settings.json` — so a
+/// multi-MB gif never bloats the shared settings file. `format` names the file
+/// extension + mime; `version` is bumped on every replace so the web can cache-bust
+/// its `<img>`/CSS `background-image` when the bytes change under the same format.
+/// Managed ONLY by the `set_board_background` / `clear_board_background` commands
+/// (never by a settings patch), keeping it independent of the knob struct.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "BoardBackgroundRef.ts"))]
+pub struct BoardBackgroundRef {
+    /// Image format token (`png` | `jpeg` | `webp` | `gif`) — the on-disk file
+    /// extension and the `data:` URL mime the web builds from it.
+    pub format: String,
+    /// Monotonic replace counter (starts at 1). Bumped on every set so the web
+    /// re-reads the bytes even when a replacement keeps the same `format`.
+    pub version: u64,
+}
+
 /// Convert a `HashMap<String, String>` into the contract transport's JSON map shape
 /// (`serde_json::Map<String, serde_json::Value>`). The store keeps env/header values
 /// as plain strings; the codegen-emitted contract type uses an opaque JSON object.
