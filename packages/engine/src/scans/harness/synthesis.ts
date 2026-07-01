@@ -90,10 +90,26 @@ type SessionFailedReason = Extract<
   { type: 'session-failed' }
 >['reason'];
 
+/** The strict-JSON reminder appended to the ONE corrective synthesis retry — the
+ *  synthesis analog of the per-lens `retryReminderSuffix`. */
+const SYNTHESIS_RETRY_REMINDER =
+  '\n\nIMPORTANT: your previous answer was not valid JSON. Respond with ONLY the JSON array of artifacts, nothing else.';
+
+/** The terminal outcome of one synthesis session spin. */
+interface SynthesisSessionOutcome {
+  result?: string;
+  error?: string;
+  reason?: SessionFailedReason;
+}
+
 /**
- * Run the single synthesis session and return the grounded proposed artifacts. A
- * synthesis crash/parse-failure degrades to `{ artifacts: [], error }` — a scan
- * with findings but no proposals is still useful, so this never throws.
+ * Run the synthesis session and return the grounded proposed artifacts. Mirrors the
+ * per-lens corrective retry the base {@link ScanManager} does: on an unparseable first
+ * result it re-asks ONCE with a strict-JSON reminder rather than silently degrading to
+ * zero proposals — synthesis is the single most expensive output in the scan (paid for
+ * by every lens pass), so losing it to a formatting slip is not acceptable. A session
+ * failure (no result) or a second unparseable result still degrades to
+ * `{ artifacts: [], error }` — a scan with findings is useful — so this never throws.
  */
 export async function synthesizeHarness(
   args: SynthesizeHarnessArgs,
@@ -104,76 +120,100 @@ export async function synthesizeHarness(
 
   const usage: TokenUsage = { ...EMPTY_USAGE };
   let costUsd = 0;
-  let result: string | undefined;
-  let error: string | undefined;
-  let reason: SessionFailedReason | undefined;
   // Throttled progress so the (serial) synthesis tail shows life in the terminal
   // instead of running silent — its events never reach the wire.
   const heartbeat = makeHeartbeat(args.logger, '[harness:synthesis]');
 
-  const prompt = buildSynthesisPrompt(
+  const basePrompt = buildSynthesisPrompt(
     args.profile,
     args.findings,
     args.inventory,
     args.command,
   );
-  const runner = args.runnerFactory(
-    {
-      sessionId: -1,
-      prompt,
-      model: args.command.model ?? args.config.model,
-      ...(args.command.effort ?? args.config.effort
-        ? { effort: args.command.effort ?? args.config.effort }
-        : {}),
-      permissionMode: 'dontAsk',
-      permissionPolicy: args.config.permissions,
-      cwd: args.command.projectPath,
-      apiKeyFallback: args.apiKeyFallback,
-      settingSources: args.config.settingSources,
-      todoFeatureEnabled: false,
-      appendSystemPrompt: SYNTHESIS_PERSONA,
-      allowedTools: [...ANALYSIS_ALLOWED_TOOLS],
-      disallowedTools: [...ANALYSIS_DISALLOWED_TOOLS],
-      maxTurns: args.command.maxTurnsPerCategory ?? DEFAULT_MAX_TURNS,
-      ...(args.command.maxBudgetUsdPerCategory !== undefined
-        ? { maxBudgetUsd: args.command.maxBudgetUsdPerCategory }
-        : {}),
-    },
-    (event) => {
-      if (event.type === 'session-completed') {
-        result = event.result;
-        costUsd = event.costUsd;
-        if (event.usage !== undefined) addUsage(usage, event.usage);
-      } else if (event.type === 'session-failed') {
-        error = event.message;
-        reason = event.reason;
-      } else {
-        heartbeat(event);
-      }
-    },
-    args.logger?.child('harness-synthesis'),
-  );
 
-  args.runners?.add(runner);
-  try {
-    await runner.run();
-  } finally {
-    args.runners?.delete(runner);
-  }
+  // Spin one synthesis session for `prompt`, accumulating usage/cost into the shared
+  // totals. Factored out so the corrective retry re-uses the exact runner config.
+  const runSession = async (prompt: string): Promise<SynthesisSessionOutcome> => {
+    let result: string | undefined;
+    let error: string | undefined;
+    let reason: SessionFailedReason | undefined;
+    const runner = args.runnerFactory(
+      {
+        sessionId: -1,
+        prompt,
+        model: args.command.model ?? args.config.model,
+        ...(args.command.effort ?? args.config.effort
+          ? { effort: args.command.effort ?? args.config.effort }
+          : {}),
+        permissionMode: 'dontAsk',
+        permissionPolicy: args.config.permissions,
+        cwd: args.command.projectPath,
+        apiKeyFallback: args.apiKeyFallback,
+        settingSources: args.config.settingSources,
+        todoFeatureEnabled: false,
+        appendSystemPrompt: SYNTHESIS_PERSONA,
+        allowedTools: [...ANALYSIS_ALLOWED_TOOLS],
+        disallowedTools: [...ANALYSIS_DISALLOWED_TOOLS],
+        maxTurns: args.command.maxTurnsPerCategory ?? DEFAULT_MAX_TURNS,
+        ...(args.command.maxBudgetUsdPerCategory !== undefined
+          ? { maxBudgetUsd: args.command.maxBudgetUsdPerCategory }
+          : {}),
+      },
+      (event) => {
+        if (event.type === 'session-completed') {
+          result = event.result;
+          costUsd += event.costUsd;
+          if (event.usage !== undefined) addUsage(usage, event.usage);
+        } else if (event.type === 'session-failed') {
+          error = event.message;
+          reason = event.reason;
+        } else {
+          heartbeat(event);
+        }
+      },
+      args.logger?.child('harness-synthesis'),
+    );
 
+    args.runners?.add(runner);
+    try {
+      await runner.run();
+    } finally {
+      args.runners?.delete(runner);
+    }
+    return { result, error, reason };
+  };
+
+  const first = await runSession(basePrompt);
   if (args.isCancelled?.()) {
     return { artifacts: [], usage, costUsd, error: 'cancelled' };
   }
-  if (result === undefined) {
+  if (first.result === undefined) {
     return {
       artifacts: [],
       usage,
       costUsd,
-      error: error ?? (reason !== undefined ? `synthesis ${reason}` : 'no result'),
+      error:
+        first.error ??
+        (first.reason !== undefined ? `synthesis ${first.reason}` : 'no result'),
     };
   }
 
-  const parsed = parseProposedArtifacts(result, args.command.projectPath);
+  let parsed = parseProposedArtifacts(first.result, args.command.projectPath);
+  if (parsed.error !== undefined) {
+    // One corrective retry with the strict-JSON reminder (mirrors the lens passes).
+    args.logger?.debug('harness synthesis produced no JSON; retrying', {
+      runId: args.command.runId,
+    });
+    const retry = await runSession(`${basePrompt}${SYNTHESIS_RETRY_REMINDER}`);
+    if (args.isCancelled?.()) {
+      return { artifacts: [], usage, costUsd, error: 'cancelled' };
+    }
+    if (retry.result !== undefined) {
+      parsed = parseProposedArtifacts(retry.result, args.command.projectPath);
+    }
+    // A retry that also failed keeps the first parse error (degrade to no proposals).
+  }
+
   return {
     artifacts: parsed.artifacts,
     usage,
