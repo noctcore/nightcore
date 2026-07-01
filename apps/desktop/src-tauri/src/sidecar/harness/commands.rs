@@ -13,18 +13,32 @@
 use serde_json::json;
 use std::path::Path;
 
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::contracts::{ConventionCategory, EffortLevel, SurfaceCommand};
-use crate::provider::SidecarProvider;
 use crate::project::ProjectStore;
-use crate::sidecar::scan::{begin_scan_run, dispatch_scan_command, wire_str, ScanRunInit};
+use crate::sidecar::scan::{
+    begin_scan_run, dispatch_scan_command, scan_lifecycle_commands, wire_str, ScanRunInit,
+};
 use crate::sidecar::HARNESS_EVENT;
 use crate::store::harness::{
     ApplyOutcome, HarnessRun, HarnessStore, HarnessUsage, StoredRepoProfile,
 };
 
 use super::apply::{safe_join, write_create, write_merge_section};
+
+// The four store-agnostic lifecycle commands (list / get / delete / cancel), stamped
+// from the shared scan macro instead of hand-copied per feature.
+scan_lifecycle_commands! {
+    store: HarnessStore,
+    run: HarnessRun,
+    list: list_harness_runs,
+    get: get_harness_run,
+    delete: delete_harness_run,
+    cancel: cancel_harness_scan,
+    cancel_command: CancelHarnessScan,
+    item: "harness",
+}
 
 /// Start a Harness scan over the active project. Creates the persisted run (status
 /// `running`), dispatches the `start-harness-scan` command, and returns the `runId` the
@@ -96,40 +110,6 @@ pub async fn start_harness_scan(
 
     tracing::info!(target: "nightcore", run_id = %run_id, "harness scan started");
     Ok(run_id)
-}
-
-/// Cancel an in-flight scan (aborts every convention pass + synthesis).
-#[tauri::command]
-pub async fn cancel_harness_scan(app: AppHandle, run_id: String) -> Result<(), String> {
-    let provider = app.state::<std::sync::Arc<SidecarProvider>>();
-    let command = SurfaceCommand::CancelHarnessScan {
-        run_id: run_id.clone(),
-    };
-    provider.dispatch_command(command).await
-}
-
-/// All harness scans for the active project (newest first).
-#[tauri::command]
-pub fn list_harness_runs(harness_store: State<'_, HarnessStore>) -> Result<Vec<HarnessRun>, String> {
-    Ok(harness_store.list())
-}
-
-/// One harness scan by id.
-#[tauri::command]
-pub fn get_harness_run(
-    harness_store: State<'_, HarnessStore>,
-    run_id: String,
-) -> Result<Option<HarnessRun>, String> {
-    Ok(harness_store.get(&run_id))
-}
-
-/// Delete a harness scan and its file.
-#[tauri::command]
-pub fn delete_harness_run(
-    harness_store: State<'_, HarnessStore>,
-    run_id: String,
-) -> Result<(), String> {
-    harness_store.remove(&run_id)
 }
 
 /// Dismiss a convention finding (it stays dismissed across future re-scans).
