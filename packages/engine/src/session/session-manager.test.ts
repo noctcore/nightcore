@@ -284,12 +284,13 @@ describe('SessionManager task kinds (M4)', () => {
     await done;
 
     const options = queryOptions.at(-1)!;
-    // The build preset adds no PERSONA and no tool restriction. permissionMode
+    // The build preset adds no PERSONA and no allow restriction, and permissionMode
     // falls back to the session default. `appendSystemPrompt` still carries the
-    // always-present working-root directive (worktree isolation) and nothing else.
+    // always-present working-root directive (worktree isolation). It DOES deny web
+    // egress (WebFetch/WebSearch) by default so a bypass run can't exfil via a GET.
     expect(options.appendSystemPrompt).toContain('Working directory (authoritative)');
     expect(options.allowedTools).toBeUndefined();
-    expect(options.disallowedTools).toBeUndefined();
+    expect(options.disallowedTools).toEqual(['WebFetch', 'WebSearch']);
     expect(options.permissionMode).toBe('default');
   });
 

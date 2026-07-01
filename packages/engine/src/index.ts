@@ -15,7 +15,11 @@ export type {
 export { HookBus } from './policy/hook-bus.js';
 export { SessionRunner } from './session/session-runner.js';
 export type { SessionRunnerConfig } from './session/session-runner.js';
-export { resolveKindPreset, WRITE_TOOLS } from './session/kind-presets.js';
+export {
+  resolveKindPreset,
+  WRITE_TOOLS,
+  NETWORK_EGRESS_TOOLS,
+} from './session/kind-presets.js';
 export type { KindPreset } from './session/kind-presets.js';
 // Decompose result parsing: turns a `decompose` session's final text into the
 // validated `proposedSubtasks` carried on `session-completed` (mirrors `parseFindings`).

@@ -47,6 +47,34 @@
  * confinement stays strict to cwd. The whole gate rests on the SDK invoking
  * PreToolUse under `bypassPermissions` (the same assumption the destructive deny
  * policy makes) — keep that covered by a dogfood/integration assertion.
+ *
+ * READ GUARD — secret exfiltration, NOT blanket read confinement. The finding
+ * this gate answers pairs "no read-confinement" with "no egress control": under
+ * bypass a prompt-injected task can `Read ~/.aws/credentials` / `~/.claude.json` /
+ * another project's `.env` and ship it out. The egress half is closed elsewhere
+ * (the Bash `network-exfiltration` deny rule + `WebFetch`/`WebSearch` denied by
+ * kind preset for every non-`research` kind). This gate closes the highest-value
+ * READ: it refuses a `Read` tool call whose resolved target is a known credential
+ * store (`~/.aws`, `~/.ssh`, `~/.gnupg`, `~/.azure`, `~/.kube`, gcloud/gh config,
+ * `~/.docker/config.json`, `~/.netrc`, `~/.npmrc`, `~/.git-credentials`,
+ * `~/.claude.json`, …) OR a portable secret file (`.env`/`.env.<env>` — but not an
+ * `.env.example`/`.sample`/`.template` — or an SSH private key `id_rsa`/`id_ed25519`
+ * …) that sits OUTSIDE the run roots (so the task's OWN in-cwd `.env` still reads).
+ *
+ * WHY A TARGETED DENYLIST, NOT "confine Read to cwd + roots" (a deliberate,
+ * documented decision — do not silently "fix" it to a blanket allowlist). Blanket
+ * cwd-confinement of reads has an unacceptable false-positive rate for a coding
+ * agent: in worktree mode the run cwd is `<repo>/.nightcore/worktrees/<id>` while
+ * the hoisted `node_modules` lives at the MAIN repo root (outside cwd), and agents
+ * legitimately read toolchain/system files and sibling packages — a strict
+ * allowlist would block all of that. So we allow-by-default and deny only the
+ * known secret targets, which kills the exact exfil path the finding names with
+ * near-zero collateral. This is defense-in-depth, not a sandbox — a determined
+ * read via `Bash` (`cat ~/.aws/credentials`), `Grep`, an MCP reader, a symlink
+ * (resolution is LEXICAL here, as on the mutation side), or a secret store not on
+ * the list is NOT caught; the real boundary is the OS sandbox, and the primary
+ * containment is that the egress channels above are already shut. Full read
+ * confinement is deferred to that OS sandbox (the tiered-sandbox roadmap).
  */
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -63,6 +91,16 @@ const FILE_MUTATION_TARGET_KEY: Record<string, 'file_path' | 'notebook_path'> = 
 /** Stable id surfaced in logs/telemetry when the confinement gate denies. */
 export const WORKSPACE_CONFINEMENT_RULE_ID = 'workspace-confinement';
 
+/** Stable id surfaced when the READ guard refuses a credential/secret read (kept
+ *  distinct from `workspace-confinement` so telemetry can tell "escaped a write"
+ *  apart from "tried to read a secret"). */
+export const SENSITIVE_READ_RULE_ID = 'sensitive-read';
+
+/** The native read tool whose target path the read guard inspects → its input
+ *  key. Only `Read` is covered; `Grep`/`Glob`/`Bash`-based reads are out of scope
+ *  (see the module header). */
+const FILE_READ_TARGET_KEY: Record<string, 'file_path'> = { Read: 'file_path' };
+
 /** The reason the agent sees on denial — names the working dir AND the offending
  *  target so the model can adapt (retry with a path inside the working dir). */
 function confinementReason(target: string, cwd: string): string {
@@ -71,6 +109,18 @@ function confinementReason(target: string, cwd: string): string {
     `but the tool targets ${target}, which is OUTSIDE it. Operate only inside the working ` +
     `directory (relative paths are resolved against it). Writing outside it would corrupt ` +
     `another checkout of the repository.`
+  );
+}
+
+/** The reason the agent sees when the READ guard refuses a secret read — names the
+ *  target and the working dir so the model understands it must stay in-cwd. */
+function sensitiveReadReason(target: string, cwd: string): string {
+  return (
+    `Blocked by Nightcore secret-exfiltration guard: reading ${target} is refused ` +
+    `because it is a credential/secret store outside this task's working directory ` +
+    `(${cwd}). Read only files inside the working directory; SSH/cloud keys, registry ` +
+    `tokens, and other projects' .env files are off-limits so a compromised task ` +
+    `cannot exfiltrate them.`
   );
 }
 
@@ -112,6 +162,81 @@ function targetUnderKey(toolInput: unknown, key: string): string | undefined {
   if (toolInput === null || typeof toolInput !== 'object') return undefined;
   const value = (toolInput as Record<string, unknown>)[key];
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+/** The user's home directory, resolved once. Empty when it can't be determined —
+ *  the home-relative credential-store checks are then skipped (the filename-pattern
+ *  checks, which don't need home, still apply). */
+const HOME_DIR: string = ((): string => {
+  try {
+    const home = os.homedir();
+    return home.length > 0 ? path.resolve(home) : '';
+  } catch {
+    return '';
+  }
+})();
+
+/** Home-relative credential stores a task must never read (dirs match their whole
+ *  subtree; files match exactly). These hold the portable, high-value secrets a
+ *  prompt-injected task would exfiltrate — cloud/SSH keys, registry tokens, the
+ *  Claude credential file. */
+const SENSITIVE_HOME_RELATIVE: readonly string[] = [
+  '.aws',
+  '.ssh',
+  '.gnupg',
+  '.azure',
+  '.kube',
+  '.config/gcloud',
+  '.config/gh',
+  '.docker/config.json',
+  '.netrc',
+  '.npmrc',
+  '.pypirc',
+  '.git-credentials',
+  '.claude.json',
+  '.claude/.credentials.json',
+] as const;
+
+/** SSH/host private-key basenames — secrets regardless of directory, so they are
+ *  matched by filename anywhere outside the run roots (a key copied into a repo, a
+ *  sibling project's key, etc.). Public `.pub` counterparts are NOT secret. */
+const PRIVATE_KEY_BASENAMES: ReadonlySet<string> = new Set([
+  'id_rsa',
+  'id_dsa',
+  'id_ecdsa',
+  'id_ed25519',
+]);
+
+/** `.env.<suffix>` suffixes that denote a NON-secret template checked into VCS —
+ *  reading these is always fine, so they are excluded from the `.env` secret match. */
+const ENV_TEMPLATE_SUFFIXES: ReadonlySet<string> = new Set([
+  'example',
+  'sample',
+  'template',
+  'dist',
+  'defaults',
+]);
+
+/** True for a dotenv secret filename: `.env` or `.env.<env>` (e.g. `.env.local`,
+ *  `.env.production`), EXCLUDING the non-secret templates (`.env.example`, …). */
+function isDotEnvSecret(base: string): boolean {
+  if (base === '.env') return true;
+  if (!base.startsWith('.env.')) return false;
+  return !ENV_TEMPLATE_SUFFIXES.has(base.slice('.env.'.length));
+}
+
+/** True when a resolved read target is a known credential store or a portable
+ *  secret file — the READ guard's denylist. Callers apply this ONLY to targets
+ *  already known to sit outside the run roots (so an in-cwd `.env` still reads). */
+function isSensitiveReadTarget(resolved: string): boolean {
+  if (
+    HOME_DIR.length > 0 &&
+    SENSITIVE_HOME_RELATIVE.some((rel) => isWithin(resolved, path.join(HOME_DIR, rel)))
+  ) {
+    return true;
+  }
+  const base = path.basename(resolved);
+  return isDotEnvSecret(base) || PRIVATE_KEY_BASENAMES.has(base);
 }
 
 /** The first ABSOLUTE `cd`/`pushd` target in a bash line that escapes the allowed
@@ -173,6 +298,27 @@ export function evaluateWorkspaceConfinement(
         denied: true,
         ruleId: WORKSPACE_CONFINEMENT_RULE_ID,
         reason: confinementReason(resolved, resolvedCwd),
+      };
+    }
+    return { denied: false };
+  }
+
+  // A read tool → refuse only a KNOWN credential/secret target outside the run
+  // roots (a targeted denylist, NOT blanket read confinement — see the header).
+  // FAIL-OPEN by design: an unreadable/absent target degrades to today's behavior
+  // (allow), since the guard only ever denies targets it positively recognizes as
+  // secret. The task's own in-cwd files (incl. its `.env`) are allowed first.
+  const readKey = FILE_READ_TARGET_KEY[toolName];
+  if (readKey !== undefined) {
+    const target = targetUnderKey(toolInput, readKey);
+    if (target === undefined) return { denied: false };
+    const resolved = resolveAgainst(cwd, target);
+    if (isAllowedTarget(resolved, roots)) return { denied: false };
+    if (isSensitiveReadTarget(resolved)) {
+      return {
+        denied: true,
+        ruleId: SENSITIVE_READ_RULE_ID,
+        reason: sensitiveReadReason(resolved, resolvedCwd),
       };
     }
     return { denied: false };
