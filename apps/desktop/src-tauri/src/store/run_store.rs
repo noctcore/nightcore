@@ -1,0 +1,273 @@
+//! The generic JSON-file-backed run store shared by the three "scan" features
+//! (Insight, Readiness Scorecard, Harness).
+//!
+//! Each feature's `*Store` is a [`RunStore<TheirRun>`] type alias; this module owns
+//! the correctness-sensitive run-level CRUD in exactly ONE audited place:
+//!   - disk-first `upsert` ordering (persist, then insert, then prune),
+//!   - the prune-by-age cap ([`MAX_RUNS`]),
+//!   - the boot-only `reap_running` interrupt-marking,
+//!   - and the load → mutate → persist → reinsert lock discipline (`edit_run`).
+//!
+//! Feature-specific per-item lifecycle mutators (finding / reading / artifact status,
+//! convert-to-task links, cross-run fingerprint carry-forward) live in each feature
+//! module and reach the run map through the two `pub(crate)` seams
+//! [`RunStore::edit_run`] (mutating) and [`RunStore::read`] (read-only), so the
+//! atomic-write and lock-ordering invariants are never re-implemented per feature.
+//!
+//! NB: the sibling `crate::sidecar::scan` module owns a *different* `ScanRun` / `ScanStore`
+//! pair — the terminal-event finalizer over already-loaded runs. This module is the
+//! store-layer refactor that module's docs anticipated ("the store-trait refactor is a
+//! separate finding"); the two abstractions are intentionally distinct and non-colliding.
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::{Mutex, MutexGuard};
+
+use serde::de::DeserializeOwned;
+use serde::Serialize;
+
+use crate::store::{is_safe_task_id, write_atomic};
+
+/// Keep at most this many runs per project on disk + in memory; [`RunStore::upsert`]
+/// prunes the oldest beyond it so run history (and its resident item `Vec`s) can't
+/// grow unbounded across re-runs.
+pub(crate) const MAX_RUNS: usize = 50;
+
+/// A run persisted by [`RunStore`]: the minimal shape the generic CRUD needs — a stable
+/// id, a creation timestamp for age-ordering, and mutable status/error/updated_at for the
+/// boot reaper and the mutate path. The associated consts carry the per-feature log and
+/// error nouns so the (previously triplicated) message text is preserved without any
+/// per-feature code.
+pub trait PersistedRun: Clone + Serialize + DeserializeOwned {
+    /// Singular run noun for error/log strings, e.g. `"insight run"`.
+    const RUN_LABEL: &'static str;
+    /// Directory noun for dir-level log lines, e.g. `"insights"` (harness uses `"harness"`).
+    const DIR_LABEL: &'static str;
+    /// Error stamped on a run reaped at boot, e.g. `"interrupted (app restarted mid-analysis)"`.
+    const INTERRUPTED_ERROR: &'static str;
+
+    fn id(&self) -> &str;
+    fn created_at(&self) -> u64;
+    fn status(&self) -> &str;
+    fn set_status(&mut self, status: &str);
+    fn set_error(&mut self, error: Option<String>);
+    fn set_updated_at(&mut self, updated_at: u64);
+}
+
+/// The disposition an [`RunStore::edit_run`] closure returns. `Commit` bumps
+/// `updated_at` and writes the run through to disk; `Skip` is an idempotent no-op that
+/// persists nothing (the `AlreadyLinked` / `AlreadyApplied` short-circuits). Both carry
+/// the caller's own return value back out.
+pub enum Edit<T> {
+    Commit(T),
+    Skip(T),
+}
+
+/// The in-memory run map plus the directory it persists to (interior-mutable so it can
+/// be retargeted on project switch). The `dir` lives behind its own `Mutex` so
+/// `path_for` can be taken without holding the `runs` lock.
+pub struct RunStore<R: PersistedRun> {
+    runs: Mutex<HashMap<String, R>>,
+    dir: Mutex<PathBuf>,
+}
+
+fn read_runs_into_map<R: PersistedRun>(dir: &PathBuf) -> HashMap<String, R> {
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        tracing::warn!(target: "nightcore::store", dir = %dir.display(), error = %e, "failed to create {} dir", R::DIR_LABEL);
+    }
+    let mut runs = HashMap::new();
+    match std::fs::read_dir(dir) {
+        Ok(entries) => {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                    continue;
+                }
+                match std::fs::read_to_string(&path) {
+                    Ok(raw) => match serde_json::from_str::<R>(&raw) {
+                        Ok(run) => {
+                            runs.insert(run.id().to_string(), run);
+                        }
+                        Err(e) => {
+                            tracing::warn!(target: "nightcore::store", path = %path.display(), error = %e, "skipping unparsable {}", R::RUN_LABEL)
+                        }
+                    },
+                    Err(e) => {
+                        tracing::warn!(target: "nightcore::store", path = %path.display(), error = %e, "cannot read {} file", R::RUN_LABEL)
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!(target: "nightcore::store", dir = %dir.display(), error = %e, "cannot list {} dir", R::DIR_LABEL)
+        }
+    }
+    runs
+}
+
+impl<R: PersistedRun> RunStore<R> {
+    /// Load every run file under `dir` into memory, creating the dir if missing.
+    pub fn load_from(dir: PathBuf) -> Self {
+        let runs = read_runs_into_map::<R>(&dir);
+        Self {
+            runs: Mutex::new(runs),
+            dir: Mutex::new(dir),
+        }
+    }
+
+    /// Re-point the store at `dir` (project switch), clearing + reloading. Existing
+    /// files on disk are untouched.
+    pub fn retarget(&self, dir: PathBuf) {
+        let reloaded = read_runs_into_map::<R>(&dir);
+        *crate::sync::lock_or_recover(&self.runs) = reloaded;
+        *crate::sync::lock_or_recover(&self.dir) = dir;
+    }
+
+    fn path_for(&self, id: &str) -> Result<PathBuf, String> {
+        if !is_safe_task_id(id) {
+            return Err(format!("invalid run id: {id}"));
+        }
+        Ok(crate::sync::lock_or_recover(&self.dir).join(format!("{id}.json")))
+    }
+
+    /// All runs, newest first (by `created_at`).
+    pub fn list(&self) -> Vec<R> {
+        let mut runs: Vec<R> = crate::sync::lock_or_recover(&self.runs)
+            .values()
+            .cloned()
+            .collect();
+        // Newest first (descending `created_at`).
+        runs.sort_by_key(|r| std::cmp::Reverse(r.created_at()));
+        runs
+    }
+
+    /// A single run by id.
+    pub fn get(&self, id: &str) -> Option<R> {
+        crate::sync::lock_or_recover(&self.runs).get(id).cloned()
+    }
+
+    /// Serialize + atomically write one run to its file. The caller holds the `runs`
+    /// lock; this only touches the (separate) `dir` lock via `path_for`.
+    fn persist(&self, run: &R) -> Result<(), String> {
+        let path = self.path_for(run.id())?;
+        let json = serde_json::to_string_pretty(run).map_err(|e| e.to_string())?;
+        write_atomic(&path, json.as_bytes())
+            .map_err(|e| format!("failed to persist {} {}: {e}", R::RUN_LABEL, run.id()))
+    }
+
+    /// Insert or replace a run and write its file (disk-first), then prune the oldest
+    /// runs beyond [`MAX_RUNS`].
+    pub fn upsert(&self, run: &R) -> Result<(), String> {
+        let mut guard = crate::sync::lock_or_recover(&self.runs);
+        self.persist(run)?;
+        guard.insert(run.id().to_string(), run.clone());
+        self.prune_locked(&mut guard);
+        Ok(())
+    }
+
+    /// Drop the oldest runs (by `created_at`) beyond [`MAX_RUNS`], deleting their files.
+    /// Called under the `runs` lock from `upsert`. Best-effort on the file delete (a
+    /// failed unlink is logged, not fatal — the in-memory cap still holds).
+    fn prune_locked(&self, guard: &mut MutexGuard<'_, HashMap<String, R>>) {
+        if guard.len() <= MAX_RUNS {
+            return;
+        }
+        let mut by_age: Vec<(String, u64)> = guard
+            .values()
+            .map(|r| (r.id().to_string(), r.created_at()))
+            .collect();
+        by_age.sort_by_key(|(_, created)| *created);
+        let to_remove = guard.len().saturating_sub(MAX_RUNS);
+        for (id, _) in by_age.into_iter().take(to_remove) {
+            guard.remove(&id);
+            if let Ok(path) = self.path_for(&id) {
+                if let Err(e) = std::fs::remove_file(&path) {
+                    if e.kind() != std::io::ErrorKind::NotFound {
+                        tracing::warn!(target: "nightcore::store", run_id = %id, error = %e, "failed to prune old {} file", R::RUN_LABEL);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Mark every run still in `running` as `failed` (with [`PersistedRun::INTERRUPTED_ERROR`])
+    /// and persist. A `running` run at BOOT means the work died with the previous process,
+    /// so it can never complete — reaping it stops the UI from spinning forever. Call ONLY
+    /// on boot, never on a project switch (a cross-project run may still be live).
+    pub fn reap_running(&self) {
+        let mut guard = crate::sync::lock_or_recover(&self.runs);
+        let stale: Vec<String> = guard
+            .values()
+            .filter(|r| r.status() == "running")
+            .map(|r| r.id().to_string())
+            .collect();
+        for id in stale {
+            if let Some(run) = guard.get_mut(&id) {
+                run.set_status("failed");
+                run.set_error(Some(R::INTERRUPTED_ERROR.to_string()));
+                run.set_updated_at(crate::task::now_ms());
+                let snapshot = run.clone();
+                let _ = self.persist(&snapshot);
+            }
+        }
+    }
+
+    /// Delete a run from memory and disk. Idempotent on a missing file.
+    pub fn remove(&self, id: &str) -> Result<(), String> {
+        let path = self.path_for(id)?;
+        let mut guard = crate::sync::lock_or_recover(&self.runs);
+        guard.remove(id);
+        match std::fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(format!("failed to delete {}: {e}", path.display())),
+        }
+    }
+
+    /// Apply `f` to a run, bump `updated_at`, persist, and return it — all under one lock
+    /// (so a concurrent finalize/dismiss can't interleave a stale read-write).
+    pub fn mutate<F>(&self, id: &str, f: F) -> Result<R, String>
+    where
+        F: FnOnce(&mut R),
+    {
+        let (_, run) = self.edit_run(id, |run| {
+            f(run);
+            Ok(Edit::Commit(()))
+        })?;
+        Ok(run)
+    }
+
+    /// The generic core of every per-item lifecycle mutator: load run `id` (Err — using
+    /// [`PersistedRun::RUN_LABEL`] — if unknown), apply `edit`, then per its returned
+    /// [`Edit`] either commit (bump `updated_at`, persist, reinsert) or skip (an
+    /// idempotent no-op that persists nothing) — ALL under one `runs` lock. Returns the
+    /// closure's value alongside the (possibly-updated) run.
+    ///
+    /// `edit` may return `Err` (e.g. the item wasn't found) to abort with no persist,
+    /// exactly like the hand-written mutators this replaces.
+    pub(crate) fn edit_run<T, F>(&self, id: &str, edit: F) -> Result<(T, R), String>
+    where
+        F: FnOnce(&mut R) -> Result<Edit<T>, String>,
+    {
+        let mut guard = crate::sync::lock_or_recover(&self.runs);
+        let mut run = guard
+            .get(id)
+            .cloned()
+            .ok_or_else(|| format!("no {} with id {id}", R::RUN_LABEL))?;
+        match edit(&mut run)? {
+            Edit::Skip(value) => Ok((value, run)),
+            Edit::Commit(value) => {
+                run.set_updated_at(crate::task::now_ms());
+                self.persist(&run)?;
+                guard.insert(run.id().to_string(), run.clone());
+                Ok((value, run))
+            }
+        }
+    }
+
+    /// Read-only access to the run map under the lock — for the single-item getters and
+    /// the cross-run scans (dismissed fingerprints, prior artifact states).
+    pub(crate) fn read<T>(&self, f: impl FnOnce(&HashMap<String, R>) -> T) -> T {
+        f(&crate::sync::lock_or_recover(&self.runs))
+    }
+}
