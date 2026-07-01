@@ -68,6 +68,16 @@ pub struct Settings {
     /// Serde-additive: a settings file written before this field loads as `true`.
     #[serde(default = "default_true")]
     pub context_pack_enabled: bool,
+    /// Auto Mode option: when the autonomous loop is running and this is enabled,
+    /// the web observer fires the `commit_task` IPC for each task that reaches the
+    /// verified state (`Done` + `verified`), so the loop commits its output as it
+    /// goes. A main-mode task commits its working tree; a worktree-mode task whose
+    /// build work was already committed pre-review is a benign "nothing to commit"
+    /// skip. Global-only (like `cleanup_worktrees`/`notify_on_complete`) — there is
+    /// no per-project override. Default `false` (opt-in). Serde-additive: a settings
+    /// file written before this field loads as `false`.
+    #[serde(default)]
+    pub auto_commit_on_verified: bool,
     /// Per-project overrides keyed by project id.
     pub project_overrides: HashMap<String, SettingsOverride>,
 }
@@ -295,6 +305,9 @@ impl Default for Settings {
             // Lock (feature #4): the curated Constitution is injected by default; a
             // project with no `context.md` simply has nothing to inject (a no-op).
             context_pack_enabled: true,
+            // Auto Mode option: opt-in — the loop commits verified tasks only once
+            // the user enables it in the Auto Mode options popover.
+            auto_commit_on_verified: false,
             project_overrides: HashMap::new(),
         }
     }

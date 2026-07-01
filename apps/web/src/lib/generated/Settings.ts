@@ -64,6 +64,17 @@ mcpServers: Array<McpServerEntry>,
  */
 contextPackEnabled: boolean, 
 /**
+ * Auto Mode option: when the autonomous loop is running and this is enabled,
+ * the web observer fires the `commit_task` IPC for each task that reaches the
+ * verified state (`Done` + `verified`), so the loop commits its output as it
+ * goes. A main-mode task commits its working tree; a worktree-mode task whose
+ * build work was already committed pre-review is a benign "nothing to commit"
+ * skip. Global-only (like `cleanup_worktrees`/`notify_on_complete`) — there is
+ * no per-project override. Default `false` (opt-in). Serde-additive: a settings
+ * file written before this field loads as `false`.
+ */
+autoCommitOnVerified: boolean, 
+/**
  * Per-project overrides keyed by project id.
  */
 projectOverrides: { [key in string]: SettingsOverride }, };

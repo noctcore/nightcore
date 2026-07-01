@@ -15,6 +15,7 @@ const settings: Settings = {
   maxBudgetUsd: null,
   mcpServers: [],
   contextPackEnabled: true,
+  autoCommitOnVerified: false,
   projectOverrides: {
     nightcore: { defaultModel: 'claude-haiku-4-5' },
   },
