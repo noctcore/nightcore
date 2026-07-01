@@ -15,13 +15,16 @@ import {
   armHarnessGauntletCheck,
   cancelHarnessScan,
   convertHarnessFindingToTask,
+  convertHarnessProposal,
   dismissHarnessArtifact,
   dismissHarnessFinding,
+  dismissHarnessProposal,
   getHarnessRun,
   listHarnessRuns,
   onHarnessEvent,
   restoreHarnessArtifact,
   restoreHarnessFinding,
+  restoreHarnessProposal,
   startHarnessScan,
   type ConventionCategory,
   type EffortLevel,
@@ -64,6 +67,10 @@ export interface UseHarnessResult {
   restoreFinding: (findingId: string) => Promise<void>;
   /** Convert a convention finding into a board task (idempotent). Returns the task. */
   convertFinding: (findingId: string) => Promise<Task | null>;
+  dismissProposal: (proposalId: string) => Promise<void>;
+  restoreProposal: (proposalId: string) => Promise<void>;
+  /** Convert a task-shaped proposal into a board task (idempotent). Returns the task. */
+  convertProposal: (proposalId: string) => Promise<Task | null>;
   dismissArtifact: (artifactId: string) => Promise<void>;
   restoreArtifact: (artifactId: string) => Promise<void>;
   /** Apply an artifact to disk. Resolves on success; REJECTS with the write error
@@ -163,6 +170,24 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
                     f.id === event.findingId
                       ? { ...f, status: 'converted', linkedTaskId: event.taskId }
                       : f,
+                  ),
+                }
+              : prev,
+          );
+          void refreshRuns();
+          return;
+        }
+        if (event.type === 'proposal-converted') {
+          // Matches on stream.runId (like finding-converted) so a convert against a
+          // displayed-but-not-live run still updates in place.
+          setStream((prev) =>
+            prev.runId === event.runId
+              ? {
+                  ...prev,
+                  proposals: prev.proposals.map((p) =>
+                    p.id === event.proposalId
+                      ? { ...p, status: 'converted', linkedTaskId: event.taskId }
+                      : p,
                   ),
                 }
               : prev,
@@ -289,6 +314,46 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
     [stream.runId, refreshRuns],
   );
 
+  const dismissProposal = useCallback(
+    async (proposalId: string) => {
+      if (stream.runId === null) return;
+      const run = await dismissHarnessProposal(stream.runId, proposalId);
+      if (run !== null) setStream(streamFromRun(run));
+      await refreshRuns();
+    },
+    [stream.runId, refreshRuns],
+  );
+
+  const restoreProposal = useCallback(
+    async (proposalId: string) => {
+      if (stream.runId === null) return;
+      const run = await restoreHarnessProposal(stream.runId, proposalId);
+      if (run !== null) setStream(streamFromRun(run));
+      await refreshRuns();
+    },
+    [stream.runId, refreshRuns],
+  );
+
+  const convertProposal = useCallback(
+    async (proposalId: string): Promise<Task | null> => {
+      if (stream.runId === null) return null;
+      const task = await convertHarnessProposal(stream.runId, proposalId);
+      // Optimistic flip from the returned task id; the `proposal-converted` notice
+      // idempotently applies the same flip for any other open view.
+      setStream((prev) => ({
+        ...prev,
+        proposals: prev.proposals.map((p) =>
+          p.id === proposalId
+            ? { ...p, status: 'converted', linkedTaskId: task.id }
+            : p,
+        ),
+      }));
+      await refreshRuns();
+      return task;
+    },
+    [stream.runId, refreshRuns],
+  );
+
   const dismissArtifact = useCallback(
     async (artifactId: string) => {
       if (stream.runId === null) return;
@@ -349,6 +414,9 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
     dismissFinding,
     restoreFinding,
     convertFinding,
+    dismissProposal,
+    restoreProposal,
+    convertProposal,
     dismissArtifact,
     restoreArtifact,
     applyArtifact,
@@ -455,6 +523,12 @@ export interface HarnessViewModel {
   selectedFinding: ConventionFindingVM | null;
   openFinding: (finding: ConventionFindingVM) => void;
   closeFinding: () => void;
+  /** The proposal open in the detail panel, or `null`. */
+  selectedProposal: HarnessProposalVM | null;
+  openProposal: (proposal: HarnessProposalVM) => void;
+  closeProposal: () => void;
+  /** Whether any proposal is still convertible (drives the "Convert all" affordance). */
+  hasConvertibleProposals: boolean;
   /** The artifact open in the detail panel, or `null`. */
   selectedArtifact: ProposedArtifactVM | null;
   openArtifact: (artifact: ProposedArtifactVM) => void;
@@ -473,6 +547,12 @@ export interface HarnessViewModel {
   onConvertFinding: (findingId: string) => void;
   onDismissFinding: (findingId: string) => void;
   onRestoreFinding: (findingId: string) => void;
+  /** Task-shaped proposal lifecycle actions. */
+  onConvertProposal: (proposalId: string) => void;
+  onDismissProposal: (proposalId: string) => void;
+  onRestoreProposal: (proposalId: string) => void;
+  /** Convert every still-convertible proposal in one action. */
+  onConvertAllProposals: () => void;
   /** Navigate to the board (after convert-to-task / for a converted finding). */
   onGotoBoard?: () => void;
   onDismissArtifact: (artifactId: string) => void;
@@ -511,6 +591,7 @@ export function useHarnessView({
   const [section, setSection] = useState<HarnessSection>('conventions');
   const [activeTab, setActiveTab] = useState<'all' | ConventionCategory>('all');
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
+  const [selectedProposalId, setSelectedProposalId] = useState<string | null>(null);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [applyTargetId, setApplyTargetId] = useState<string | null>(null);
@@ -640,6 +721,10 @@ export function useHarnessView({
     () => stream.findings.find((f) => f.id === selectedFindingId) ?? null,
     [stream.findings, selectedFindingId],
   );
+  const selectedProposal = useMemo(
+    () => stream.proposals.find((p) => p.id === selectedProposalId) ?? null,
+    [stream.proposals, selectedProposalId],
+  );
   const selectedArtifact = useMemo(
     () => stream.artifacts.find((a) => a.id === selectedArtifactId) ?? null,
     [stream.artifacts, selectedArtifactId],
@@ -757,6 +842,29 @@ export function useHarnessView({
 
   const cancelArm = useCallback(() => setArmTargetId(null), []);
 
+  // Convert every still-convertible proposal (status `proposed`) in one action, mirroring
+  // Insight's convert-all. Sequential so a mid-flight failure surfaces without racing the
+  // store; the `proposal-converted` notice keeps the stream in sync as each lands.
+  const convertibleProposals = useMemo(
+    () => stream.proposals.filter((p) => p.status === 'proposed'),
+    [stream.proposals],
+  );
+  const onConvertAllProposals = useCallback(() => {
+    if (convertibleProposals.length === 0) return;
+    void runAction('convert all proposals', async () => {
+      for (const p of convertibleProposals) {
+        await harness.convertProposal(p.id);
+      }
+      toast.push({
+        tone: 'success',
+        title: 'Proposals converted',
+        description: `${convertibleProposals.length} ${
+          convertibleProposals.length === 1 ? 'proposal' : 'proposals'
+        } converted to board tasks.`,
+      });
+    });
+  }, [convertibleProposals, runAction, harness, toast]);
+
   return {
     hasProject,
     projectName,
@@ -799,6 +907,10 @@ export function useHarnessView({
     selectedFinding,
     openFinding: (finding: ConventionFindingVM) => setSelectedFindingId(finding.id),
     closeFinding: () => setSelectedFindingId(null),
+    selectedProposal,
+    openProposal: (proposal: HarnessProposalVM) => setSelectedProposalId(proposal.id),
+    closeProposal: () => setSelectedProposalId(null),
+    hasConvertibleProposals: convertibleProposals.length > 0,
     selectedArtifact,
     openArtifact: (artifact: ProposedArtifactVM) => setSelectedArtifactId(artifact.id),
     closeArtifact: () => setSelectedArtifactId(null),
@@ -811,6 +923,10 @@ export function useHarnessView({
     onConvertFinding: (id) => void runAction('convert convention', () => harness.convertFinding(id)),
     onDismissFinding: (id) => void runAction('dismiss convention', () => harness.dismissFinding(id)),
     onRestoreFinding: (id) => void runAction('restore convention', () => harness.restoreFinding(id)),
+    onConvertProposal: (id) => void runAction('convert proposal', () => harness.convertProposal(id)),
+    onDismissProposal: (id) => void runAction('dismiss proposal', () => harness.dismissProposal(id)),
+    onRestoreProposal: (id) => void runAction('restore proposal', () => harness.restoreProposal(id)),
+    onConvertAllProposals,
     onGotoBoard,
     onDismissArtifact: (id) => void runAction('dismiss artifact', () => harness.dismissArtifact(id)),
     onRestoreArtifact: (id) => void runAction('restore artifact', () => harness.restoreArtifact(id)),

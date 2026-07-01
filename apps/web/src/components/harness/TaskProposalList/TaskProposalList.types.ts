@@ -6,4 +6,6 @@ export interface TaskProposalListProps {
   loading: boolean;
   /** Shown when there are no proposals and nothing is streaming. */
   emptyMessage: string;
+  /** Open a proposal in the detail panel (convert / dismiss / go-to-task flow). */
+  onOpen: (proposal: HarnessProposalVM) => void;
 }

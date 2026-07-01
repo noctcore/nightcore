@@ -1347,11 +1347,22 @@ export interface HarnessCheckArmedEvent {
   kind: string;
 }
 
+/** A non-`NightcoreEvent` notice the Rust core emits on `nc:harness` when a task-shaped
+ *  proposal is converted to a board task, so the open Harness view can update in place.
+ *  The proposal twin of {@link HarnessFindingConvertedEvent}. */
+export interface HarnessProposalConvertedEvent {
+  type: 'proposal-converted';
+  runId: string;
+  proposalId: string;
+  taskId: string;
+}
+
 /** Everything that arrives on the `nc:harness` channel. */
 export type HarnessEvent =
   | HarnessScanEvent
   | ArtifactAppliedEvent
   | HarnessFindingConvertedEvent
+  | HarnessProposalConvertedEvent
   | HarnessCheckArmedEvent;
 
 /** Start a Harness scan over the active project. Returns the `runId` the
@@ -1421,6 +1432,40 @@ export async function convertHarnessFindingToTask(
   return invoke<Task>('convert_harness_finding_to_task', { runId, findingId });
 }
 
+/** Mark a task-shaped proposal dismissed (it stays dismissed across future
+ *  re-scans). Returns the updated run. No-op (`null`) outside Tauri. */
+export async function dismissHarnessProposal(
+  runId: string,
+  proposalId: string,
+): Promise<HarnessRun | null> {
+  return tauriInvoke<HarnessRun | null>(
+    'dismiss_harness_proposal',
+    { runId, proposalId },
+    null,
+  );
+}
+
+/** Restore a dismissed proposal back to proposed. Returns the updated run. */
+export async function restoreHarnessProposal(
+  runId: string,
+  proposalId: string,
+): Promise<HarnessRun | null> {
+  return tauriInvoke<HarnessRun | null>(
+    'restore_harness_proposal',
+    { runId, proposalId },
+    null,
+  );
+}
+
+/** Convert a task-shaped proposal into a board task (idempotent). Returns the created
+ *  task. Uses raw `invoke` (throws outside Tauri), mirroring `convertHarnessFindingToTask`. */
+export async function convertHarnessProposal(
+  runId: string,
+  proposalId: string,
+): Promise<Task> {
+  return invoke<Task>('convert_harness_proposal', { runId, proposalId });
+}
+
 /** Mark a proposed artifact dismissed (it stays dismissed across future
  *  re-scans). Returns the updated run. No-op (`null`) outside Tauri. */
 export async function dismissHarnessArtifact(
@@ -1470,10 +1515,11 @@ export async function armHarnessGauntletCheck(
   await invoke<void>('arm_harness_gauntlet_check', { runId, name, kind, command });
 }
 
-/** Narrow an unknown `nc:harness` payload to a `HarnessEvent`. The channel carries TWO
- *  non-`NightcoreEvent` notices — `finding-converted` and `artifact-applied` — plus the
- *  `harness-*` wire family. `parseChannelEvent` handles one notice + the wire events, so
- *  the convert notice is shape-checked here first, then the rest is delegated. */
+/** Narrow an unknown `nc:harness` payload to a `HarnessEvent`. The channel carries the
+ *  `harness-*` wire family plus several non-`NightcoreEvent` notices (`finding-converted`,
+ *  `proposal-converted`, `check-armed`, `artifact-applied`). `parseChannelEvent` handles
+ *  the `artifact-applied` notice + the wire events, so the object-shaped notices are
+ *  shape-checked here first, then the rest is delegated. */
 function parseHarnessEvent(value: unknown): HarnessEvent | null {
   if (typeof value === 'object' && value !== null) {
     const v = value as Record<string, unknown>;
@@ -1487,6 +1533,21 @@ function parseHarnessEvent(value: unknown): HarnessEvent | null {
           type: 'finding-converted',
           runId: v.runId,
           findingId: v.findingId,
+          taskId: v.taskId,
+        };
+      }
+      return null;
+    }
+    if (v.type === 'proposal-converted') {
+      if (
+        typeof v.runId === 'string' &&
+        typeof v.proposalId === 'string' &&
+        typeof v.taskId === 'string'
+      ) {
+        return {
+          type: 'proposal-converted',
+          runId: v.runId,
+          proposalId: v.proposalId,
           taskId: v.taskId,
         };
       }

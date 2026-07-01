@@ -1,20 +1,26 @@
-import { Skeleton } from '@/components/ui';
+import { Card, Skeleton } from '@/components/ui';
 import { PROPOSAL_KIND_META } from '../harness.constants';
 import type { HarnessProposalVM } from '../harness.types';
 import type { TaskProposalListProps } from './TaskProposalList.types';
 
 /** One proposal card: kind + status badges, title, description, and the convert
  *  signal (bundled-artifact count for `apply-artifacts`, verify command for
- *  `agent-task`) plus any suggested gauntlet check. Read-only in this phase — the
- *  convert / dismiss / go-to-task actions land with the detail panel (phase 3). */
-function ProposalCard({ proposal }: { proposal: HarnessProposalVM }) {
+ *  `agent-task`) plus any suggested gauntlet check. Clickable → the detail panel. */
+function ProposalCard({
+  proposal,
+  onOpen,
+}: {
+  proposal: HarnessProposalVM;
+  onOpen: (proposal: HarnessProposalVM) => void;
+}) {
   const dimmed = proposal.status === 'dismissed';
   const meta = PROPOSAL_KIND_META[proposal.kind];
 
   return (
-    <div
+    <Card
+      onClick={() => onOpen(proposal)}
       title={dimmed ? 'Dismissed' : undefined}
-      className="flex flex-col gap-2 rounded-[10px] border border-border bg-white/[0.02] p-3.5 text-left"
+      className="flex flex-col gap-2 p-3.5 text-left"
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="inline-flex items-center rounded-md border border-primary/40 bg-primary/[0.1] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-primary">
@@ -62,7 +68,7 @@ function ProposalCard({ proposal }: { proposal: HarnessProposalVM }) {
           </span>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -86,6 +92,7 @@ export function TaskProposalList({
   proposals,
   loading,
   emptyMessage,
+  onOpen,
 }: TaskProposalListProps) {
   if (proposals.length === 0) {
     if (loading) {
@@ -112,7 +119,7 @@ export function TaskProposalList({
   return (
     <div className="grid flex-1 grid-cols-1 content-start gap-3 overflow-y-auto px-6 py-5 sm:grid-cols-2">
       {proposals.map((proposal) => (
-        <ProposalCard key={proposal.id} proposal={proposal} />
+        <ProposalCard key={proposal.id} proposal={proposal} onOpen={onOpen} />
       ))}
     </div>
   );

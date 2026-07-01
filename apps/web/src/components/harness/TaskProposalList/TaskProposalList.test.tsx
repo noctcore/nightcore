@@ -1,6 +1,6 @@
 import { composeStories } from '@storybook/react-vite';
 import { render } from 'vitest-browser-react';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import * as stories from './TaskProposalList.stories';
 
 const { WithProposals, Empty } = composeStories(stories);
@@ -21,6 +21,16 @@ test('renders each proposal with its kind and convert signals', async () => {
   await expect
     .element(screen.getByText('converted', { exact: true }))
     .toBeInTheDocument();
+});
+
+test('opens a proposal when its card is clicked', async () => {
+  const onOpen = vi.fn();
+  const screen = render(<WithProposals onOpen={onOpen} />);
+  await screen
+    .getByRole('heading', { name: 'Adopt the folder-per-component agent contract' })
+    .click();
+  expect(onOpen).toHaveBeenCalledTimes(1);
+  expect(onOpen.mock.calls[0]?.[0]?.id).toBe('hp-1');
 });
 
 test('shows the empty message when there is nothing to render', async () => {

@@ -8,6 +8,7 @@ import {
   FolderIcon,
   HistoryIcon,
   Menu,
+  MoveIcon,
   RetryIcon,
   RunLifecycleShell,
   RunProgress,
@@ -21,6 +22,7 @@ import { ConventionDetailPanel } from '../ConventionDetailPanel';
 import { ConventionGrid } from '../ConventionGrid';
 import { HarnessProposalList } from '../HarnessProposalList';
 import { ProfileBanner } from '../ProfileBanner';
+import { ProposalDetailPanel } from '../ProposalDetailPanel';
 import { RunControls } from '../RunControls';
 import { TaskProposalList } from '../TaskProposalList';
 import { useHarnessView } from './HarnessView.hooks';
@@ -203,11 +205,22 @@ function ResultsScreen({
         </>
       )}
       {view.section === 'proposals' && (
-        <TaskProposalList
-          proposals={view.proposals}
-          loading={view.proposalsLoading}
-          emptyMessage={view.proposalsEmptyMessage}
-        />
+        <div className="flex min-h-0 flex-1 flex-col">
+          {view.hasConvertibleProposals && (
+            <div className="flex items-center justify-end border-b border-border px-6 py-2">
+              <Button variant="secondary" onClick={view.onConvertAllProposals}>
+                <MoveIcon size={14} />
+                Convert all to tasks
+              </Button>
+            </div>
+          )}
+          <TaskProposalList
+            proposals={view.proposals}
+            loading={view.proposalsLoading}
+            emptyMessage={view.proposalsEmptyMessage}
+            onOpen={view.openProposal}
+          />
+        </div>
       )}
       {view.section === 'artifacts' && (
         <HarnessProposalList
@@ -305,6 +318,18 @@ export function HarnessView(props: HarnessViewProps) {
           onConvert={view.onConvertFinding}
           onDismiss={view.onDismissFinding}
           onRestore={view.onRestoreFinding}
+          onGotoBoard={view.onGotoBoard}
+        />
+      )}
+
+      {view.selectedProposal !== null && (
+        <ProposalDetailPanel
+          proposal={view.selectedProposal}
+          pending={view.pending}
+          onClose={view.closeProposal}
+          onConvert={view.onConvertProposal}
+          onDismiss={view.onDismissProposal}
+          onRestore={view.onRestoreProposal}
           onGotoBoard={view.onGotoBoard}
         />
       )}

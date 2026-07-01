@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { fn } from 'storybook/test';
 import type { HarnessProposalVM } from '../harness.types';
 import { TaskProposalList } from './TaskProposalList';
 
@@ -46,6 +47,7 @@ const meta = {
     ],
     loading: false,
     emptyMessage: 'Run a scan to synthesize proposals from your conventions.',
+    onOpen: fn(),
   },
 } satisfies Meta<typeof TaskProposalList>;
 
