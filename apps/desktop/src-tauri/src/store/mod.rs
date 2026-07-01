@@ -9,6 +9,7 @@
 //! Held in managed Tauri state; commands take it as `State<'_, TaskStore>`.
 
 pub(crate) mod attachments;
+pub(crate) mod board_background;
 pub(crate) mod context;
 pub(crate) mod harness;
 pub(crate) mod insight;

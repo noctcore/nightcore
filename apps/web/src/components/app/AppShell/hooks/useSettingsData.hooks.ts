@@ -1,5 +1,13 @@
 import { useCallback, useState } from 'react';
-import { getSettings, updateSettings, type Settings, type SettingsPatch } from '@/lib/bridge';
+import {
+  clearBoardBackground,
+  getSettings,
+  setBoardBackground,
+  updateSettings,
+  type Settings,
+  type SettingsPatch,
+} from '@/lib/bridge';
+import type { ImageFormat } from '@/lib/attachments';
 import type { ToastApi } from '@/components/ui';
 import { useAsyncData } from './useAsyncData.hooks';
 
@@ -33,5 +41,30 @@ export function useSettingsData(toast: ToastApi) {
     [toast],
   );
 
-  return { settings, update };
+  // Custom Background: persist / clear a project's board background image. Both
+  // return the promise so the panel can hold its "Loading…" state until the write
+  // settles, and both refresh the in-memory settings from the command result.
+  const setBackground = useCallback(
+    (projectId: string, image: { format: ImageFormat; data: string }) =>
+      setBoardBackground(projectId, image)
+        .then(setSettings)
+        .catch((err) => {
+          console.error('set_board_background failed', err);
+          toast.error('Could not set board background', err);
+        }),
+    [toast],
+  );
+
+  const clearBackground = useCallback(
+    (projectId: string) =>
+      clearBoardBackground(projectId)
+        .then(setSettings)
+        .catch((err) => {
+          console.error('clear_board_background failed', err);
+          toast.error('Could not clear board background', err);
+        }),
+    [toast],
+  );
+
+  return { settings, update, setBackground, clearBackground };
 }

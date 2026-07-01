@@ -14,7 +14,9 @@ import {
   type QuestionAnswer,
   type QuestionItem,
 } from '@nightcore/contracts';
-import type { NewAttachmentPayload } from './attachments';
+import type { NewAttachmentPayload, ImageFormat } from './attachments';
+import { imageDataUrl } from './attachments';
+import type { BoardBackgroundRef } from './generated/BoardBackgroundRef';
 
 export type { SessionStatus } from '@nightcore/contracts';
 
@@ -41,6 +43,8 @@ export type { Project } from './generated/Project';
 export type { Settings } from './generated/Settings';
 export type { SettingsOverride } from './generated/SettingsOverride';
 export type { SettingsPatch } from './generated/SettingsPatch';
+export type { BoardAppearance } from './generated/BoardAppearance';
+export type { BoardBackgroundRef } from './generated/BoardBackgroundRef';
 export type { McpServerEntry } from './generated/McpServerEntry';
 export type { McpServerTransport } from './generated/McpServerTransport';
 export type { AppInfo } from './generated/AppInfo';
@@ -771,6 +775,57 @@ export async function updateSettings(patch: SettingsPatch): Promise<Settings> {
  *  outside Tauri (browser preview). */
 export async function getAppInfo(): Promise<AppInfo> {
   return tauriInvoke<AppInfo>('app_info', {}, MOCK_APP_INFO);
+}
+
+// --- Custom Board Background ------------------------------------------------
+
+/** In-memory background images for browser preview / Storybook (no Tauri fs). Keyed
+ *  by project id so the panel + board demo behave like the real per-project store. */
+const MOCK_BACKGROUNDS = new Map<string, { version: number; url: string }>();
+
+/** Build a mock `Settings` whose project override carries (or drops) a background
+ *  ref, so the non-Tauri path returns the same shape the real command would. */
+function mockSettingsWithBackground(projectId: string, ref: BoardBackgroundRef | null): Settings {
+  const overrides = { ...MOCK_SETTINGS.projectOverrides };
+  const prev = overrides[projectId] ?? {};
+  overrides[projectId] = { ...prev, boardBackground: ref ?? undefined };
+  return { ...MOCK_SETTINGS, projectOverrides: overrides };
+}
+
+/** Persist a project's custom board-background image (bytes to app-data, ref to the
+ *  project's settings override); returns the merged settings. In browser preview it
+ *  caches the image in memory so `readBoardBackground` can echo it back. */
+export async function setBoardBackground(
+  projectId: string,
+  image: { format: ImageFormat; data: string },
+): Promise<Settings> {
+  if (!isTauri()) {
+    const version = (MOCK_BACKGROUNDS.get(projectId)?.version ?? 0) + 1;
+    MOCK_BACKGROUNDS.set(projectId, { version, url: imageDataUrl(image.format, image.data) });
+    return mockSettingsWithBackground(projectId, { format: image.format, version });
+  }
+  return invoke<Settings>('set_board_background', {
+    projectId,
+    format: image.format,
+    data: image.data,
+  });
+}
+
+/** Clear a project's custom board background (ref + on-disk bytes); returns the
+ *  merged settings. Idempotent. */
+export async function clearBoardBackground(projectId: string): Promise<Settings> {
+  if (!isTauri()) {
+    MOCK_BACKGROUNDS.delete(projectId);
+    return mockSettingsWithBackground(projectId, null);
+  }
+  return invoke<Settings>('clear_board_background', { projectId });
+}
+
+/** Read a project's custom board background as a `data:` URL for the board's CSS
+ *  `background-image`, or `null` when none is set. */
+export async function readBoardBackground(projectId: string): Promise<string | null> {
+  if (!isTauri()) return MOCK_BACKGROUNDS.get(projectId)?.url ?? null;
+  return invoke<string | null>('read_board_background', { projectId });
 }
 
 // --- Pre-flight Context Pack ----------------------------------------------

@@ -171,9 +171,21 @@ export function AppShell() {
               ) : (
                 <Board
                   tasks={tasks}
+                  projectId={active.id}
                   projectName={active.name}
                   projectPath={active.path}
                   projectBranch={active.branch}
+                  appearanceOverride={
+                    settings.settings?.projectOverrides[active.id]?.boardAppearance ?? null
+                  }
+                  backgroundVersion={
+                    settings.settings?.projectOverrides[active.id]?.boardBackground?.version ?? null
+                  }
+                  onChangeAppearance={(next) =>
+                    settings.update({ projectId: active.id, boardAppearance: next })
+                  }
+                  onPickBackground={(image) => settings.setBackground(active.id, image)}
+                  onClearBackground={() => settings.clearBackground(active.id)}
                   worktrees={board.worktrees}
                   activeWorktree={board.activeWorktree}
                   onSelectWorktree={board.setActiveWorktree}

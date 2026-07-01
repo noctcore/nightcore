@@ -22,7 +22,7 @@ import { useElapsed, useTaskDraggable } from './TaskCard.hooks';
 import type { TaskCardProps } from './TaskCard.types';
 
 const CARD_BASE =
-  'group relative w-full rounded-xl border bg-card p-3.5 text-left transition-[border-color,box-shadow,background]';
+  'nc-board-card group relative w-full rounded-xl border bg-card p-3.5 text-left transition-[border-color,box-shadow,background]';
 
 /** Container classes per status, always using the glow treatment. The
  *  running-accent glow stays; a verifying task carries the primary-tinted

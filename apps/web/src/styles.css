@@ -379,3 +379,85 @@ body {
   font-weight: 600;
   color: var(--nc-foreground);
 }
+
+/* --- Board custom appearance (Custom Background feature) ------------------- *
+ * A per-project background image behind the Kanban board, with card/column
+ * translucency, borders, glassmorphism, and scrollbar hiding. Every effect is
+ * scoped under the board root's `[data-board-appearance="on"]` and driven by the
+ * inline CSS variables the board sets — so with the feature off (or every knob at
+ * its default) the board renders exactly as it did before. The board's own modals
+ * are rendered OUTSIDE `.nc-board-appearance`, so the stacking rules below never
+ * touch them. */
+
+/* The board root anchors the absolutely-positioned background layer. */
+.nc-board-appearance {
+  position: relative;
+}
+
+/* The background-image layer: fills the board, sits behind the content (it is the
+ * FIRST child, so equal-level content painted later lands on top), and is inert. */
+.nc-board-appearance__bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+/* Lift the real board content (header, switcher, banner, columns) above the
+ * background layer by making each a positioned box painted after it. */
+.nc-board-appearance > :not(.nc-board-appearance__bg) {
+  position: relative;
+}
+
+/* Card + column translucency: mix the panel color toward transparent by the
+ * configured opacity (1 ⇒ solid = the pre-feature look) so the background shows
+ * through as it's dialed down. */
+[data-board-appearance='on'] .nc-board-column {
+  background-color: color-mix(
+    in oklch,
+    var(--color-card) calc(var(--nc-column-opacity, 1) * 100%),
+    transparent
+  );
+}
+[data-board-appearance='on'] .nc-board-card {
+  background-color: color-mix(
+    in oklch,
+    var(--color-card) calc(var(--nc-card-opacity, 1) * 100%),
+    transparent
+  );
+}
+
+/* Card glassmorphism: blur whatever shows through the translucent card. */
+[data-board-appearance='on'][data-card-glass='on'] .nc-board-card {
+  backdrop-filter: blur(8px);
+}
+
+/* Card borders: hide when off; else recolor to a neutral border at the configured
+ * opacity. Status GLOW SHADOWS are untouched, so a running/verifying card stays
+ * legible even when its 1px accent border is neutralized. */
+[data-board-appearance='on'][data-card-borders='on'] .nc-board-card {
+  border-color: color-mix(
+    in oklch,
+    var(--color-border) calc(var(--nc-card-border-opacity, 1) * 100%),
+    transparent
+  );
+}
+[data-board-appearance='on'][data-card-borders='off'] .nc-board-card {
+  border-color: transparent;
+}
+
+/* Column borders: hide when off (default on keeps the current border + drop tint). */
+[data-board-appearance='on'][data-column-borders='off'] .nc-board-column {
+  border-color: transparent;
+}
+
+/* Hide the horizontal board scrollbar when requested (both engines). */
+[data-board-appearance='on'][data-hide-scrollbar='on'] .nc-board-columns {
+  scrollbar-width: none;
+}
+[data-board-appearance='on'][data-hide-scrollbar='on'] .nc-board-columns::-webkit-scrollbar {
+  display: none;
+}

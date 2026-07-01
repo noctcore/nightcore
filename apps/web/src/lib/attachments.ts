@@ -89,6 +89,29 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+/** Max bytes for a board-background image (decoded). Mirrors the Rust
+ *  `board_background::MAX_BG_BYTES` (15 MB) — larger than the 10 MB task-image cap
+ *  because animated-gif wallpaper is commonly bigger. The server re-validates. */
+export const MAX_BACKGROUND_BYTES = 15 * 1024 * 1024;
+
+/** Validate + read a File into a board-background payload (`{ format, data }`).
+ *  Throws an Error with a user-facing message when the type or size is rejected.
+ *  Reuses the shared base64 reader; the cap is the background-specific 15 MB (vs.
+ *  `fileToPending`'s 10 MB task-image cap). */
+export async function fileToBackgroundImage(
+  file: File,
+): Promise<{ format: ImageFormat; data: string }> {
+  const format = formatFromMime(file.type);
+  if (format === null) {
+    throw new Error(`"${file.name}" is not a supported image (${ACCEPTED_IMAGE_LABEL}).`);
+  }
+  if (file.size > MAX_BACKGROUND_BYTES) {
+    throw new Error(`"${file.name}" is larger than 15 MB.`);
+  }
+  const data = await fileToBase64(file);
+  return { format, data };
+}
+
 /** Validate + read a File into a `PendingAttachment`. Throws an Error with a
  *  user-facing message when the type or size is rejected. */
 export async function fileToPending(file: File): Promise<PendingAttachment> {

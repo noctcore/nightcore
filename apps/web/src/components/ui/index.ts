@@ -5,6 +5,8 @@ export type { BranchPickerProps } from './BranchPicker/BranchPicker.types';
 export { BrandMark } from './BrandMark';
 export { Button } from './Button';
 export { Card } from './Card';
+export { Checkbox } from './Checkbox';
+export type { CheckboxProps } from './Checkbox';
 export { CategoryTabsShell } from './CategoryTabsShell';
 export type {
   CategoryTabDescriptor,

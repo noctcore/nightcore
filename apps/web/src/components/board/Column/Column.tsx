@@ -51,7 +51,7 @@ function ColumnImpl({
   return (
     <div
       ref={setDropRef}
-      className={`flex shrink-0 flex-col rounded-[13px] border bg-white/[0.015] transition-colors ${
+      className={`nc-board-column flex shrink-0 flex-col rounded-[13px] border bg-white/[0.015] transition-colors ${
         isOver ? 'border-primary/60 bg-primary/[0.04]' : 'border-border'
       }`}
       style={{ width: title === 'Failed' ? 248 : 296 }}

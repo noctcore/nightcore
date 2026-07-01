@@ -41,7 +41,8 @@ fn export_all_bindings() {
     };
     use crate::project::Project;
     use crate::settings::{
-        AppInfo, McpServerEntry, McpServerTransport, Settings, SettingsOverride, SettingsPatch,
+        AppInfo, BoardAppearance, BoardBackgroundRef, McpServerEntry, McpServerTransport, Settings,
+        SettingsOverride, SettingsPatch,
     };
     use crate::sidecar::{ProviderConfigSnapshotView, SessionInfoView, SessionMessageView};
     use crate::store::insight::{FindingLocation, InsightRun, InsightUsage, StoredFinding};
@@ -81,6 +82,10 @@ fn export_all_bindings() {
         // The MCP server form types (also reached transitively via Settings).
         McpServerEntry,
         McpServerTransport,
+        // Custom Background: the per-project board-appearance knobs + image ref (also
+        // reached transitively via SettingsOverride).
+        BoardAppearance,
+        BoardBackgroundRef,
         AppInfo,
         WorktreeStatus,
         // Worktree overhaul: branch picker + merge-preview + worktree-diff shapes.
@@ -156,6 +161,8 @@ mod tests {
             "SettingsPatch.ts",
             "McpServerEntry.ts",
             "McpServerTransport.ts",
+            "BoardAppearance.ts",
+            "BoardBackgroundRef.ts",
             "AppInfo.ts",
             "WorktreeInfo.ts",
             "BranchInfo.ts",

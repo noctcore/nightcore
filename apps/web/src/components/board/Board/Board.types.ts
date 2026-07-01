@@ -1,5 +1,6 @@
 /** Prop and supporting types for the Board component. */
-import type { Task, WorktreeInfo } from '@/lib/bridge';
+import type { BoardAppearance, Task, WorktreeInfo } from '@/lib/bridge';
+import type { PickedBackgroundImage } from '../BoardBackgroundPanel';
 import type { ActiveWorktree } from '../WorktreeSwitcher';
 
 /** A tripped circuit breaker: the autonomous loop paused after consecutive
@@ -13,10 +14,24 @@ export interface BreakerInfo {
  *  full set of card/header action handlers (owned by the shell). */
 export interface BoardProps {
   tasks: Task[];
+  /** Active project id — scopes the per-project board background/appearance. */
+  projectId: string;
   /** Active project name + path + branch for the header (and the inspector). */
   projectName: string;
   projectPath: string;
   projectBranch: string | null;
+  /** This project's raw board-appearance override (Custom Background), or `null` when
+   *  it hasn't been customized — the board normalizes it to the defaults. */
+  appearanceOverride: BoardAppearance | null;
+  /** This project's background image `version` (cache-bust key), or `null` when no
+   *  custom background is set. */
+  backgroundVersion: number | null;
+  /** Persist a board-appearance knob change (the panel sends the full next set). */
+  onChangeAppearance: (next: BoardAppearance) => void;
+  /** Persist a newly picked background image. */
+  onPickBackground: (image: PickedBackgroundImage) => Promise<void> | void;
+  /** Clear the current background image. */
+  onClearBackground: () => Promise<void> | void;
   /** Live worktrees for the switcher; empty falls back to task branches. */
   worktrees: WorktreeInfo[];
   /** The selected worktree tab (`null` = Main); filters the board. */
