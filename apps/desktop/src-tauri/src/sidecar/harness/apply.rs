@@ -12,11 +12,21 @@
 use std::io::Write as _;
 use std::path::{Component, Path, PathBuf};
 
+use serde_json::{json, Value};
+
 /// The delimiters bounding the managed block a `merge-section` artifact owns inside a
 /// CLAUDE.md / AGENTS.md. Re-applying replaces only the block between these markers, so
 /// the user's surrounding hand-written content is never touched.
 const SECTION_START: &str = "<!-- nightcore:harness:start -->";
 const SECTION_END: &str = "<!-- nightcore:harness:end -->";
+
+/// The one file the Structure-Lock manifest write mode may EVER target. This is a
+/// POSITIVE allowlist of exactly one path — the counterpart to the execution-sink
+/// denylist. `harness.json` drives the zero-agent-cost gate (`workflow::gauntlet_project`),
+/// so an injected proposal that could author it freely would author the gate that is
+/// supposed to police injected proposals. It is therefore never model-authored: the caller
+/// (`apply_harness_artifact`) hands us a Rust-built check entry and we merge it here.
+const MANIFEST_REL_PATH: &str = ".nightcore/harness.json";
 
 /// In-repo execution sinks: directories whose contents run AUTOMATICALLY (CI
 /// pipelines, git hooks, editor/agent config). Containing a write to the repo root
@@ -246,6 +256,78 @@ fn merge_managed_section(existing: &str, body: &str) -> String {
     } else {
         format!("{}\n\n{block}\n", existing.trim_end())
     }
+}
+
+/// Arm (or re-arm) a Structure-Lock check in the target repo's `.nightcore/harness.json`,
+/// merging `entry` into the `checks` array by `name`. This is how the Harden→Lock arrow
+/// closes: applying a generated lint-plugin bundle deterministically writes the check that
+/// the zero-cost gauntlet ([`crate::workflow::gauntlet_project`]) will run before every
+/// reviewer and merge — but the entry is built in Rust from known-applied facts, NEVER from
+/// model output, and the target is hard-pinned to exactly `.nightcore/harness.json` (this
+/// function takes no caller-supplied path). Security posture is identical to
+/// [`write_merge_section`]: the resolved destination is re-validated through [`safe_join`]
+/// (symlink/containment) as defence in depth, and the write is atomic (temp + rename, which
+/// replaces a destination symlink rather than following it). Returns the destination path.
+pub(super) fn write_merge_manifest(root: &Path, entry: &Value) -> Result<PathBuf, String> {
+    // Defence in depth: even though the path is a hardcoded constant, route it through the
+    // same containment/symlink guard every other write uses (a symlinked `.nightcore/` or
+    // `harness.json` pointing outside the repo is rejected, not followed).
+    let dest = safe_join(root, MANIFEST_REL_PATH)?;
+    let existing = std::fs::read_to_string(&dest).unwrap_or_default();
+    let merged = merge_manifest_checks(&existing, entry);
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+    }
+    crate::store::write_atomic(&dest, merged.as_bytes())
+        .map_err(|e| format!("failed to write {}: {e}", dest.display()))?;
+    Ok(dest)
+}
+
+/// Pure: merge one check `entry` into the manifest text, keyed by its `name`. An existing
+/// check with the same `name` is REPLACED in place (arming is idempotent + updatable);
+/// otherwise the entry is appended. Every other top-level key and every non-matching check
+/// is preserved verbatim, so a hand-authored manifest is never clobbered — only the one
+/// check we own is touched. A manifest that is absent, empty, malformed, or not a JSON
+/// object starts fresh as `{ "checks": [entry] }`: the gauntlet already warn-and-skips a
+/// malformed file, so replacing it with a valid one strictly improves the gate (and we
+/// never had a parseable prior state to preserve). Kept pure for filesystem-free tests.
+fn merge_manifest_checks(existing: &str, entry: &Value) -> String {
+    let entry_name = entry.get("name").and_then(Value::as_str);
+
+    // Start from the existing object when it parses to one; otherwise a fresh object.
+    let mut root = match serde_json::from_str::<Value>(existing) {
+        Ok(Value::Object(map)) => Value::Object(map),
+        _ => json!({}),
+    };
+    let obj = root.as_object_mut().expect("root is an object");
+
+    // Take the existing `checks` array (drop a non-array `checks` — it can't be merged).
+    let mut checks: Vec<Value> = match obj.remove("checks") {
+        Some(Value::Array(items)) => items,
+        _ => Vec::new(),
+    };
+
+    // Replace a same-name check in place, else append. A null/absent name always appends
+    // (nothing to match), but callers always supply one.
+    let replaced = entry_name.is_some()
+        && checks.iter_mut().any(|c| {
+            if c.get("name").and_then(Value::as_str) == entry_name {
+                *c = entry.clone();
+                true
+            } else {
+                false
+            }
+        });
+    if !replaced {
+        checks.push(entry.clone());
+    }
+
+    obj.insert("checks".to_string(), Value::Array(checks));
+    // Pretty-print with a trailing newline so the file reads cleanly in a diff/editor.
+    let mut out = serde_json::to_string_pretty(&root).unwrap_or_else(|_| "{}".to_string());
+    out.push('\n');
+    out
 }
 
 #[cfg(test)]
@@ -484,5 +566,167 @@ mod tests {
         let merged = merge_managed_section("", "## Conventions\n- x");
         assert!(merged.starts_with(SECTION_START));
         assert!(merged.contains("- x"));
+    }
+
+    /// Parse a merged-manifest string back to the `checks` array for assertions.
+    fn checks_of(manifest: &str) -> Vec<Value> {
+        serde_json::from_str::<Value>(manifest)
+            .unwrap()
+            .get("checks")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn merge_manifest_seeds_a_fresh_file() {
+        let entry = json!({ "name": "folder-per-component", "kind": "lint-plugin", "command": "sh -c true" });
+        let out = merge_manifest_checks("", &entry);
+        let checks = checks_of(&out);
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0]["name"], "folder-per-component");
+        assert!(out.ends_with('\n'), "trailing newline for clean diffs");
+    }
+
+    #[test]
+    fn merge_manifest_appends_a_distinct_check() {
+        let first = merge_manifest_checks(
+            "",
+            &json!({ "name": "lint", "kind": "lint-plugin", "command": "a" }),
+        );
+        let out = merge_manifest_checks(
+            &first,
+            &json!({ "name": "arch", "kind": "dependency-cruiser", "command": "b" }),
+        );
+        let checks = checks_of(&out);
+        let names: Vec<&str> = checks.iter().map(|c| c["name"].as_str().unwrap()).collect();
+        assert_eq!(names, vec!["lint", "arch"], "distinct names both kept, in order");
+    }
+
+    #[test]
+    fn merge_manifest_replaces_a_same_name_check_in_place() {
+        // Arming the same check twice UPDATES it (idempotent + re-armable), never
+        // duplicates — the gauntlet would otherwise run the stale command too.
+        let first = merge_manifest_checks(
+            "",
+            &json!({ "name": "lint", "kind": "lint-plugin", "command": "old" }),
+        );
+        let out = merge_manifest_checks(
+            &first,
+            &json!({ "name": "lint", "kind": "lint-plugin", "command": "new" }),
+        );
+        let checks = checks_of(&out);
+        assert_eq!(checks.len(), 1, "same name replaced, not appended");
+        assert_eq!(checks[0]["command"], "new");
+    }
+
+    #[test]
+    fn merge_manifest_preserves_hand_authored_checks_and_unknown_keys() {
+        // A user's existing manifest (a hand-written check + an unknown top-level key)
+        // must survive arming untouched — we only ever own the one check we write.
+        let existing = r#"{
+            "version": 2,
+            "checks": [
+                { "name": "my-own", "kind": "coverage-threshold", "command": "npm run cov", "enabled": true }
+            ]
+        }"#;
+        let out = merge_manifest_checks(
+            existing,
+            &json!({ "name": "generated", "kind": "lint-plugin", "command": "npx eslint ." }),
+        );
+        let root: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(root["version"], 2, "unknown top-level key preserved");
+        let checks = checks_of(&out);
+        let names: Vec<&str> = checks.iter().map(|c| c["name"].as_str().unwrap()).collect();
+        assert_eq!(names, vec!["my-own", "generated"], "user's check preserved + ours appended");
+        assert_eq!(checks[0]["command"], "npm run cov", "user's check body untouched");
+    }
+
+    #[test]
+    fn merge_manifest_resets_a_malformed_file() {
+        // A malformed manifest is warn-and-skipped by the gauntlet anyway, so replacing
+        // it with a valid single-check file strictly improves the gate.
+        let out = merge_manifest_checks(
+            "{ this is not json",
+            &json!({ "name": "lint", "kind": "lint-plugin", "command": "x" }),
+        );
+        let checks = checks_of(&out);
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0]["name"], "lint");
+    }
+
+    #[test]
+    fn merge_manifest_reseeds_when_checks_is_not_an_array() {
+        // A `checks` that is an object (not an array) can't be merged — drop it and seed
+        // a valid array rather than crashing.
+        let out = merge_manifest_checks(
+            r#"{ "checks": { "oops": true }, "keep": 1 }"#,
+            &json!({ "name": "lint", "kind": "lint-plugin", "command": "x" }),
+        );
+        let root: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(root["keep"], 1, "sibling keys preserved");
+        assert_eq!(checks_of(&out).len(), 1);
+    }
+
+    #[test]
+    fn write_merge_manifest_arms_a_loadable_config() {
+        // End-to-end: the writer lands a real `.nightcore/harness.json` that round-trips
+        // as valid JSON with our check present. (The gauntlet's own loader is tested in
+        // `workflow::gauntlet_project`; here we prove the file it will read is well-formed.)
+        let tmp = TempDir::new().unwrap();
+        let entry = json!({ "name": "folder-per-component", "kind": "lint-plugin", "command": "npx eslint ." });
+        let dest = write_merge_manifest(tmp.path(), &entry).unwrap();
+        assert!(dest.ends_with(".nightcore/harness.json"));
+        let on_disk = std::fs::read_to_string(&dest).unwrap();
+        let checks = checks_of(&on_disk);
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0]["kind"], "lint-plugin");
+
+        // A second arm of a different check appends (the file persists across applies).
+        write_merge_manifest(
+            tmp.path(),
+            &json!({ "name": "arch", "kind": "dependency-cruiser", "command": "npx depcruise src" }),
+        )
+        .unwrap();
+        let after = std::fs::read_to_string(&dest).unwrap();
+        assert_eq!(checks_of(&after).len(), 2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn armed_manifest_is_actually_run_by_the_structure_lock_gauntlet() {
+        // The whole point of the writer: a check armed here must be picked up + executed by
+        // the gauntlet that had no producer before. Arm a trivially-passing check, then run
+        // the real `gauntlet_project::run` over the dir and assert it planned + ran it.
+        // (Proves the spec's previously-broken Harden→Lock arrow now closes end-to-end.)
+        let tmp = TempDir::new().unwrap();
+        write_merge_manifest(
+            tmp.path(),
+            &json!({ "name": "folder-per-component", "kind": "lint-plugin", "command": "sh -c true", "enabled": true }),
+        )
+        .unwrap();
+        let result = crate::workflow::gauntlet_project::run(tmp.path());
+        assert!(result.passed, "the armed passing check runs and passes");
+        assert_eq!(result.checks.len(), 1, "the gauntlet loaded our armed check");
+        assert_eq!(result.checks[0].name, "folder-per-component");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_merge_manifest_rejects_a_symlinked_manifest_escaping_the_root() {
+        // Defence in depth: a scanned repo shipping `.nightcore` as a symlink to an
+        // outside dir must not let the arming write escape the project root.
+        let root = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.path().join(".nightcore")).unwrap();
+        let entry = json!({ "name": "lint", "kind": "lint-plugin", "command": "x" });
+        assert!(
+            write_merge_manifest(root.path(), &entry).is_err(),
+            "a symlinked .nightcore escaping the root must be rejected"
+        );
+        assert!(
+            !outside.path().join("harness.json").exists(),
+            "nothing written outside the root"
+        );
     }
 }
