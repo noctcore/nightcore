@@ -78,6 +78,58 @@ impl HarnessStore {
         Ok(outcome)
     }
 
+    /// Set a proposal's status (`proposed` | `dismissed` | `converted`), persisting the
+    /// scan. `linked_task_id` is `Some(link)` to also (re)set the linked task (outer `None`
+    /// leaves it untouched, so dismiss/restore never disturb a link). Errors if the run OR
+    /// the proposal is unknown — the proposal twin of [`set_finding_status`].
+    pub fn set_proposal_status(
+        &self,
+        run_id: &str,
+        proposal_id: &str,
+        status: &str,
+        linked_task_id: Option<Option<String>>,
+    ) -> Result<HarnessRun, String> {
+        let (_, run) = self.edit_run(run_id, |run| {
+            let proposal = run
+                .proposals
+                .iter_mut()
+                .find(|p| p.id == proposal_id)
+                .ok_or_else(|| format!("no proposal {proposal_id} in run {run_id}"))?;
+            proposal.status = status.to_string();
+            if let Some(link) = linked_task_id {
+                proposal.linked_task_id = link;
+            }
+            Ok(Edit::Commit(()))
+        })?;
+        Ok(run)
+    }
+
+    /// Atomically link a proposal to a task: under ONE lock, if already linked return
+    /// [`LinkOutcome::AlreadyLinked`]; otherwise stamp it `converted` + linked and return
+    /// [`LinkOutcome::Linked`]. The proposal twin of [`link_finding_task`] — same
+    /// convert-to-task TOCTOU guard (two concurrent sync commands can't mint two tasks).
+    pub fn link_proposal_task(
+        &self,
+        run_id: &str,
+        proposal_id: &str,
+        task_id: &str,
+    ) -> Result<LinkOutcome, String> {
+        let (outcome, _) = self.edit_run(run_id, |run| {
+            let proposal = run
+                .proposals
+                .iter_mut()
+                .find(|p| p.id == proposal_id)
+                .ok_or_else(|| format!("no proposal {proposal_id} in run {run_id}"))?;
+            if let Some(existing) = &proposal.linked_task_id {
+                return Ok(Edit::Skip(LinkOutcome::AlreadyLinked(existing.clone())));
+            }
+            proposal.status = "converted".to_string();
+            proposal.linked_task_id = Some(task_id.to_string());
+            Ok(Edit::Commit(LinkOutcome::Linked))
+        })?;
+        Ok(outcome)
+    }
+
     /// Set an artifact's status to `proposed` or `dismissed`, persisting the scan. Used by
     /// dismiss/restore; the `applied` transition goes through [`mark_artifact_applied`].
     pub fn set_artifact_status(

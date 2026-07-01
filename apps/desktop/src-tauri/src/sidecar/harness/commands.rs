@@ -24,7 +24,7 @@ use crate::sidecar::scan::{
 use crate::sidecar::HARNESS_EVENT;
 use crate::store::harness::{
     ApplyOutcome, HarnessRun, HarnessStore, HarnessUsage, LinkOutcome, StoredConventionFinding,
-    StoredRepoProfile,
+    StoredHarnessProposal, StoredRepoProfile,
 };
 use crate::store::TaskStore;
 use crate::task::{Task, TaskKind, TASK_EVENT};
@@ -263,6 +263,144 @@ fn convention_task_description(f: &StoredConventionFinding) -> String {
     }
     let mut out = untrusted_block(&body);
     out.push_str("\n---\n_Created from a Harness convention finding._\n");
+    out
+}
+
+/// Dismiss a task-shaped proposal (hidden from the proposals panel; stays dismissed
+/// across future re-scans by fingerprint).
+#[tauri::command]
+pub fn dismiss_harness_proposal(
+    harness_store: State<'_, HarnessStore>,
+    run_id: String,
+    proposal_id: String,
+) -> Result<HarnessRun, String> {
+    harness_store.set_proposal_status(&run_id, &proposal_id, "dismissed", None)
+}
+
+/// Restore a dismissed proposal back to proposed.
+#[tauri::command]
+pub fn restore_harness_proposal(
+    harness_store: State<'_, HarnessStore>,
+    run_id: String,
+    proposal_id: String,
+) -> Result<HarnessRun, String> {
+    harness_store.set_proposal_status(&run_id, &proposal_id, "proposed", None)
+}
+
+/// Convert a task-shaped proposal into a board task. Idempotent (a proposal already linked
+/// to a live task returns it, no duplicate mint), with the same mint-first / atomic-CAS /
+/// rollback protocol as [`convert_harness_finding_to_task`]. Every proposal becomes a
+/// `build` task; an `agent-task` proposal's `verifyCommand` is carried onto the task's
+/// `verify_command` so the Structure-Lock gauntlet runs it before the paid reviewer (the
+/// mechanism shipped as hardening module #1). The proposal's model-derived text is fenced
+/// as untrusted in the description. Emits the task event + a `proposal-converted` notice.
+#[tauri::command]
+pub fn convert_harness_proposal(
+    app: AppHandle,
+    store: State<'_, TaskStore>,
+    harness_store: State<'_, HarnessStore>,
+    run_id: String,
+    proposal_id: String,
+) -> Result<Task, String> {
+    let proposal = harness_store
+        .get_proposal(&run_id, &proposal_id)
+        .ok_or_else(|| format!("proposal {proposal_id} not found in run {run_id}"))?;
+
+    // Fast-path idempotency: a proposal already linked to a still-existing task returns it.
+    if let Some(existing_id) = proposal.linked_task_id.as_deref() {
+        if let Some(task) = store.get(existing_id) {
+            return Ok(task);
+        }
+    }
+
+    // Mint FIRST (a crash before linking leaves a retryable unlinked proposal), then link
+    // ATOMICALLY — the CAS in `link_proposal_task` is the real guard against two concurrent
+    // converts minting two tasks.
+    let mut task = Task::new(proposal.title.clone(), proposal_task_description(&proposal));
+    task.kind = TaskKind::Build;
+    // An agent-task proposal carries a machine-checkable done-command → the task's
+    // verify_command, so the gauntlet gates the work before the reviewer. A blank command
+    // is left as None (an empty check would pass trivially and add noise).
+    task.verify_command = proposal
+        .verify_command
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+        .map(str::to_string);
+    let stamped = store.upsert(&task)?;
+
+    match harness_store.link_proposal_task(&run_id, &proposal_id, &task.id) {
+        Ok(LinkOutcome::Linked) => {}
+        Ok(LinkOutcome::AlreadyLinked(existing_id)) => {
+            let _ = store.remove(&task.id);
+            if let Some(existing) = store.get(&existing_id) {
+                return Ok(existing);
+            }
+            // The linked task was deleted out from under us: re-point at the one we minted.
+            store.upsert(&task)?;
+            harness_store.set_proposal_status(
+                &run_id,
+                &proposal_id,
+                "converted",
+                Some(Some(task.id.clone())),
+            )?;
+        }
+        Err(e) => {
+            let _ = store.remove(&task.id);
+            return Err(e);
+        }
+    }
+
+    let _ = app.emit(TASK_EVENT, &stamped);
+    let _ = app.emit(
+        HARNESS_EVENT,
+        json!({
+            "type": "proposal-converted",
+            "runId": run_id,
+            "proposalId": proposal_id,
+            "taskId": stamped.id,
+        }),
+    );
+    tracing::info!(target: "nightcore", task_id = %stamped.id, proposal_id = %proposal_id, "harness proposal converted to task");
+    Ok(stamped)
+}
+
+/// Build the markdown task description from a proposal's fields + provenance. The whole
+/// model-derived body (description, prompt, suggested check) is wrapped in an
+/// [`untrusted_block`] so the write-capable Build agent treats it as data, not
+/// instructions; only the trusted provenance footer sits outside the fence.
+fn proposal_task_description(p: &StoredHarnessProposal) -> String {
+    let mut body = String::new();
+    body.push_str(&p.description);
+    body.push('\n');
+    if let Some(prompt) = &p.prompt {
+        if !prompt.trim().is_empty() {
+            body.push_str(&format!("\n**Task:** {prompt}\n"));
+        }
+    }
+    if let Some(r) = &p.rationale {
+        body.push_str(&format!("\n**Why it matters:** {r}\n"));
+    }
+    if !p.artifact_ids.is_empty() {
+        body.push_str(&format!(
+            "\n**Bundles {} artifact(s):** {}\n",
+            p.artifact_ids.len(),
+            p.artifact_ids.join(", ")
+        ));
+    }
+    if let Some(cmd) = &p.verify_command {
+        if !cmd.trim().is_empty() {
+            body.push_str(&format!("\n**Verify with:** `{cmd}`\n"));
+        }
+    }
+    if let Some(check) = &p.harness_check {
+        body.push_str(&format!(
+            "\n**Suggested Structure-Lock check:** `{}` (kind `{}`) — arm it after this lands.\n",
+            check.command, check.kind
+        ));
+    }
+    let mut out = untrusted_block(&body);
+    out.push_str("\n---\n_Created from a Harness proposal._\n");
     out
 }
 
