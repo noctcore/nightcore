@@ -9,11 +9,14 @@
  * WHY THIS EXISTS. The Structure-Lock gauntlet catches a degraded codebase AFTER
  * the agent finishes; this gate stops the highest-signal degradations AT THE TOOL
  * CALL: editing lockfiles, migrations, or generated code the project declared
- * off-limits (`protectedPaths`), and Bash escape hatches that weaken the gates
- * themselves (`denyBashPatterns`, e.g. `--no-verify`). The rules come from the
- * `policy` key of the project's `.nightcore/harness.json` — project-authored (or
- * Rust-written) config resolved by the Rust core at dispatch and carried on
- * `start-session`; NEVER model output.
+ * off-limits (`protectedPaths`), Bash escape hatches that weaken the gates
+ * themselves (`denyBashPatterns`, e.g. `--no-verify`), reads of declared secret
+ * or injection-quarantined repo paths (`denyReadPaths` — modules #4/#12), and
+ * tools the project disallows outright (`disallowedTools` — module #9,
+ * least-privilege). The rules come from the `policy` key of the project's
+ * `.nightcore/harness.json` — project-authored (or Rust-written) config resolved
+ * by the Rust core at dispatch and carried on `start-session`; NEVER model
+ * output.
  *
  * SELF-PROTECTION. Whenever the policy layer is armed, `.nightcore/**` is
  * IMPLICITLY protected ({@link MANIFEST_PROTECTED_PATTERN}): the manifest drives
@@ -77,6 +80,30 @@ export const HARNESS_PROTECTED_PATH_RULE_ID = 'harness-protected-path';
 /** Stable id surfaced when a project Bash deny pattern matches. */
 export const HARNESS_BASH_DENY_RULE_ID = 'harness-bash-deny';
 
+/** Stable id surfaced when a read-deny rule (module #4 secret hygiene / #12
+ *  injection quarantine) refuses a native read. */
+export const HARNESS_READ_DENY_RULE_ID = 'harness-read-deny';
+
+/** Stable id surfaced when the project's `disallowedTools` list (module #9
+ *  least-privilege) denies a tool outright. */
+export const HARNESS_TOOL_DENY_RULE_ID = 'harness-tool-deny';
+
+/** The path-bearing native READ tools the `denyReadPaths` rules inspect → input
+ *  key. `Grep`/`Glob` are covered only when they carry an explicit `path` — a
+ *  rootless sweep can't be decided lexically and stays allowed (a cwd-wide Grep
+ *  can still surface denied CONTENT in match lines; the full-file channel `Read`
+ *  is what these rules close, and Bash-level reads (`cat .env`) are the
+ *  project's `denyBashPatterns` to declare — one owner per channel). Out-of-cwd
+ *  credential stores are the confinement read guard's jurisdiction, not ours:
+ *  `denyReadPaths` is for paths INSIDE the repo the project declared secret
+ *  (`.env*`) or quarantined (injection-flagged). */
+const FILE_READ_TARGET_KEY: Record<string, string> = {
+  Read: 'file_path',
+  NotebookRead: 'notebook_path',
+  Grep: 'path',
+  Glob: 'path',
+};
+
 /** The implicit self-protection pattern — see the module header. `.nightcore/`
  *  holds the harness manifest, the task store, and future enforcement state
  *  (ratchet baselines); none of it is ever an agent's legitimate write target. */
@@ -102,6 +129,11 @@ interface CompiledBashRule {
 export interface CompiledHarnessPolicy {
   pathRules: readonly CompiledPathRule[];
   bashRules: readonly CompiledBashRule[];
+  /** Read-denial rules (same glob semantics as `pathRules`, no implicit entry —
+   *  reading the manifest is harmless; writing it is what self-protection stops). */
+  readRules: readonly CompiledPathRule[];
+  /** Tools denied outright for this project (exact SDK tool names). */
+  disallowedTools: ReadonlySet<string>;
 }
 
 /** Escape regex metacharacters, then translate `*` → "any run of non-separator
@@ -157,7 +189,27 @@ export function compileHarnessPolicy(
     }
   }
 
-  return { pathRules, bashRules };
+  const readRules: CompiledPathRule[] = [];
+  for (const pattern of policy.denyReadPaths) {
+    const rule = compilePathRule(pattern);
+    if (rule === undefined) {
+      logger?.warn('skipping empty harness denyReadPaths pattern');
+      continue;
+    }
+    readRules.push(rule);
+  }
+
+  const disallowedTools = new Set<string>();
+  for (const tool of policy.disallowedTools) {
+    const trimmed = tool.trim();
+    if (trimmed.length === 0) {
+      logger?.warn('skipping empty harness disallowedTools entry');
+      continue;
+    }
+    disallowedTools.add(trimmed);
+  }
+
+  return { pathRules, bashRules, readRules, disallowedTools };
 }
 
 /** True when `rule` matches a prefix of `segments` starting at `from` — a full
@@ -218,6 +270,27 @@ function bashDenyReason(pattern: string): string {
   );
 }
 
+/** The deny reason for a read-deny match — the target is secret material or a
+ *  quarantined (injection-flagged) file the project declared off-limits. */
+function readDenyReason(target: string, pattern: string): string {
+  return (
+    `Blocked by this project's harness policy: reading ${target} is refused — it ` +
+    `matches the read-denied pattern "${pattern}". Read-denied paths hold secret ` +
+    `material (.env files, keys) or content quarantined as a prompt-injection ` +
+    `risk. The task must not depend on this file's contents; if it genuinely ` +
+    `does, stop and report that to the user.`
+  );
+}
+
+/** The deny reason when a tool is disallowed outright for this project. */
+function toolDenyReason(toolName: string): string {
+  return (
+    `Blocked by this project's harness policy: the ${toolName} tool is disallowed ` +
+    `for autonomous runs in this project (least-privilege configuration). ` +
+    `Accomplish the task with the remaining tools, or stop and report to the user.`
+  );
+}
+
 /**
  * Evaluate a single tool call against the compiled harness policy. Returns
  * `{ denied: false }` for everything the policy doesn't cover (the common path).
@@ -231,30 +304,48 @@ export function evaluateHarnessPolicy(
   policy: CompiledHarnessPolicy,
   cwd: string | undefined,
 ): ToolDenyVerdict {
+  // Least-privilege tool denial (module #9) first: the broadest rule, needing no
+  // input inspection. Belt to the SDK-Options `disallowedTools` suspenders (the
+  // options builder unions the same list) — the hook holds even if the SDK-side
+  // list is bypassed or regresses.
+  if (policy.disallowedTools.has(toolName)) {
+    return {
+      denied: true,
+      ruleId: HARNESS_TOOL_DENY_RULE_ID,
+      reason: toolDenyReason(toolName),
+    };
+  }
+
   const key = FILE_MUTATION_TARGET_KEY[toolName];
   if (key !== undefined) {
-    if (cwd === undefined || cwd.length === 0 || policy.pathRules.length === 0) {
-      return { denied: false };
+    const denied = matchPathRules(
+      toolInput,
+      key,
+      policy.pathRules,
+      cwd,
+    );
+    if (denied !== undefined) {
+      return {
+        denied: true,
+        ruleId: HARNESS_PROTECTED_PATH_RULE_ID,
+        reason: protectedPathReason(denied.target, denied.pattern),
+      };
     }
-    const target = targetUnderKey(toolInput, key);
-    // Unreadable target: workspace confinement (which runs FIRST) fail-closes
-    // this exact shape, so leaving it alone here never allows it in a session.
-    if (target === undefined) return { denied: false };
-    const resolvedCwd = path.resolve(cwd);
-    const resolved = resolveAgainst(cwd, target);
-    // Outside the run cwd ⇒ confinement's jurisdiction, not a repo-relative path.
-    if (!isWithin(resolved, resolvedCwd)) return { denied: false };
-    const rel = path.relative(resolvedCwd, resolved);
-    if (rel.length === 0) return { denied: false };
-    const segments = rel.split(/[\\/]/).filter((s) => s.length > 0);
-    for (const rule of policy.pathRules) {
-      if (ruleProtects(rule, segments)) {
-        return {
-          denied: true,
-          ruleId: HARNESS_PROTECTED_PATH_RULE_ID,
-          reason: protectedPathReason(resolved, rule.pattern),
-        };
-      }
+    return { denied: false };
+  }
+
+  // Read-denial (modules #4/#12): same lexical matching as protected paths, over
+  // the path-bearing read tools. A read-shaped call is never ALSO mutation-shaped
+  // (disjoint tool sets), so the two branches can't shadow each other.
+  const readKey = FILE_READ_TARGET_KEY[toolName];
+  if (readKey !== undefined) {
+    const denied = matchPathRules(toolInput, readKey, policy.readRules, cwd);
+    if (denied !== undefined) {
+      return {
+        denied: true,
+        ruleId: HARNESS_READ_DENY_RULE_ID,
+        reason: readDenyReason(denied.target, denied.pattern),
+      };
     }
     return { denied: false };
   }
@@ -274,4 +365,40 @@ export function evaluateHarnessPolicy(
   }
 
   return { denied: false };
+}
+
+/**
+ * Match a tool call's path target against a compiled rule set, returning the
+ * matched target+pattern or undefined. Shared by the protected-path (mutation)
+ * and read-denial branches — identical resolution, identical jurisdiction:
+ * - no cwd / no rules / no readable target ⇒ no match (for mutations, workspace
+ *   confinement runs FIRST and fail-closes the unreadable-target shape; reads
+ *   with no explicit path can't be decided lexically and stay allowed),
+ * - targets resolving OUTSIDE the run cwd ⇒ no match (confinement's
+ *   jurisdiction for writes, the confinement READ guard's for secret reads —
+ *   these rules are meaningful only as repo-relative paths).
+ */
+function matchPathRules(
+  toolInput: unknown,
+  key: string,
+  rules: readonly CompiledPathRule[],
+  cwd: string | undefined,
+): { target: string; pattern: string } | undefined {
+  if (cwd === undefined || cwd.length === 0 || rules.length === 0) {
+    return undefined;
+  }
+  const target = targetUnderKey(toolInput, key);
+  if (target === undefined) return undefined;
+  const resolvedCwd = path.resolve(cwd);
+  const resolved = resolveAgainst(cwd, target);
+  if (!isWithin(resolved, resolvedCwd)) return undefined;
+  const rel = path.relative(resolvedCwd, resolved);
+  if (rel.length === 0) return undefined;
+  const segments = rel.split(/[\\/]/).filter((s) => s.length > 0);
+  for (const rule of rules) {
+    if (ruleProtects(rule, segments)) {
+      return { target: resolved, pattern: rule.pattern };
+    }
+  }
+  return undefined;
 }

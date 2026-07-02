@@ -276,6 +276,8 @@ describe('HookBus — harness runtime policy gate (module #3)', () => {
   const POLICY = {
     protectedPaths: ['bun.lock', 'migrations/**'],
     denyBashPatterns: ['--no-verify'],
+    denyReadPaths: ['.env*'],
+    disallowedTools: ['WebSearch'],
   };
 
   test('denies a Write to a protected path with the harness-policy reason', async () => {
@@ -295,10 +297,25 @@ describe('HookBus — harness runtime policy gate (module #3)', () => {
   test('the implicit .nightcore/** self-protection holds with an empty policy', async () => {
     const bus = new HookBus(undefined, {
       cwd: CWD,
-      harnessPolicy: { protectedPaths: [], denyBashPatterns: [] },
+      harnessPolicy: {
+        protectedPaths: [],
+        denyBashPatterns: [],
+        denyReadPaths: [],
+        disallowedTools: [],
+      },
     });
     const r = await pre(bus, 'Edit', { file_path: '.nightcore/harness.json' });
     expect(decision(r)).toBe('deny');
+  });
+
+  test('denies a Read of a read-denied path and a disallowed tool', async () => {
+    const bus = new HookBus(undefined, { cwd: CWD, harnessPolicy: POLICY });
+    const r = await pre(bus, 'Read', { file_path: '.env.local' });
+    expect(decision(r)).toBe('deny');
+    expect(reason(r)).toContain('read-denied');
+    const t = await pre(bus, 'WebSearch', { query: 'anything' });
+    expect(decision(t)).toBe('deny');
+    expect(reason(t)).toContain('disallowed');
   });
 
   test('allows unprotected work under the same policy', async () => {

@@ -4,6 +4,8 @@ import type { Logger } from '@nightcore/shared';
 import {
   HARNESS_BASH_DENY_RULE_ID,
   HARNESS_PROTECTED_PATH_RULE_ID,
+  HARNESS_READ_DENY_RULE_ID,
+  HARNESS_TOOL_DENY_RULE_ID,
   MANIFEST_PROTECTED_PATTERN,
   compileHarnessPolicy,
   evaluateHarnessPolicy,
@@ -25,8 +27,13 @@ function compiled(
   protectedPaths: string[] = [],
   denyBashPatterns: string[] = [],
   logger?: Logger,
+  denyReadPaths: string[] = [],
+  disallowedTools: string[] = [],
 ): CompiledHarnessPolicy {
-  return compileHarnessPolicy({ protectedPaths, denyBashPatterns }, logger);
+  return compileHarnessPolicy(
+    { protectedPaths, denyBashPatterns, denyReadPaths, disallowedTools },
+    logger,
+  );
 }
 
 function write(policy: CompiledHarnessPolicy, filePath: string, cwd: string | undefined = CWD) {
@@ -35,6 +42,10 @@ function write(policy: CompiledHarnessPolicy, filePath: string, cwd: string | un
 
 function bash(policy: CompiledHarnessPolicy, command: string, cwd: string | undefined = CWD) {
   return evaluateHarnessPolicy('Bash', { command }, policy, cwd);
+}
+
+function read(policy: CompiledHarnessPolicy, filePath: string, cwd: string | undefined = CWD) {
+  return evaluateHarnessPolicy('Read', { file_path: filePath }, policy, cwd);
 }
 
 describe('protected paths — anchored patterns', () => {
@@ -242,5 +253,95 @@ describe('compile hygiene', () => {
     const policy = compiled(['file.(x)+?.ts']);
     expect(write(policy, 'file.(x)+?.ts').denied).toBe(true);
     expect(write(policy, 'fileA(x)Bts').denied).toBe(false);
+  });
+});
+
+describe('read-denial (modules #4/#12)', () => {
+  test('a denyReadPaths glob blocks a matching Read and allows others', () => {
+    const policy = compiled([], [], undefined, ['.env*', 'secrets/**']);
+    const denied = read(policy, '.env');
+    expect(denied.denied).toBe(true);
+    expect(denied.ruleId).toBe(HARNESS_READ_DENY_RULE_ID);
+    expect(read(policy, '.env.local').denied).toBe(true);
+    expect(read(policy, 'secrets/api-key.txt').denied).toBe(true);
+    expect(read(policy, 'src/app.ts').denied).toBe(false);
+  });
+
+  test('read rules do not gate mutation tools and vice versa', () => {
+    // A read-denied path stays WRITABLE unless also protected (disjoint rule
+    // sets, one owner per channel) — and a protected path stays readable.
+    const policy = compiled(['bun.lock'], [], undefined, ['.env*']);
+    expect(write(policy, '.env').denied).toBe(false);
+    expect(read(policy, 'bun.lock').denied).toBe(false);
+  });
+
+  test('floating patterns match at any depth, like protectedPaths', () => {
+    const policy = compiled([], [], undefined, ['.env*']);
+    expect(read(policy, 'apps/web/.env.production').denied).toBe(true);
+  });
+
+  test('Grep/Glob with an explicit denied path are refused; rootless stay allowed', () => {
+    const policy = compiled([], [], undefined, ['secrets/**']);
+    expect(
+      evaluateHarnessPolicy('Grep', { pattern: 'key', path: 'secrets' }, policy, CWD)
+        .denied,
+    ).toBe(true);
+    expect(
+      evaluateHarnessPolicy('Glob', { pattern: '**/*.txt', path: 'secrets' }, policy, CWD)
+        .denied,
+    ).toBe(true);
+    // No explicit path ⇒ lexically undecidable ⇒ allowed (documented gap).
+    expect(
+      evaluateHarnessPolicy('Grep', { pattern: 'key' }, policy, CWD).denied,
+    ).toBe(false);
+  });
+
+  test('an out-of-cwd read target is left to the confinement read guard', () => {
+    const policy = compiled([], [], undefined, ['.env*']);
+    expect(read(policy, '/other/.env').denied).toBe(false);
+  });
+
+  test('reads are skipped entirely without a cwd', () => {
+    const policy = compiled([], [], undefined, ['.env*']);
+    expect(
+      evaluateHarnessPolicy('Read', { file_path: '.env' }, policy, undefined).denied,
+    ).toBe(false);
+  });
+
+  test('the manifest is NOT implicitly read-denied (write-protection only)', () => {
+    const policy = compiled([], [], undefined, ['.env*']);
+    expect(read(policy, '.nightcore/harness.json').denied).toBe(false);
+  });
+});
+
+describe('least-privilege tool denial (module #9)', () => {
+  test('a disallowed tool is denied regardless of input', () => {
+    const policy = compiled([], [], undefined, [], ['WebSearch']);
+    const denied = evaluateHarnessPolicy('WebSearch', { query: 'x' }, policy, CWD);
+    expect(denied.denied).toBe(true);
+    expect(denied.ruleId).toBe(HARNESS_TOOL_DENY_RULE_ID);
+  });
+
+  test('tool denial needs no cwd and matches exact names only', () => {
+    const policy = compiled([], [], undefined, [], ['mcp__acme__push']);
+    expect(
+      evaluateHarnessPolicy('mcp__acme__push', {}, policy, undefined).denied,
+    ).toBe(true);
+    expect(
+      evaluateHarnessPolicy('mcp__acme__pull', {}, policy, undefined).denied,
+    ).toBe(false);
+  });
+
+  test('a disallowed mutation tool is denied by the tool rule, not path rules', () => {
+    const policy = compiled(['bun.lock'], [], undefined, [], ['Write']);
+    const denied = write(policy, 'src/app.ts');
+    expect(denied.denied).toBe(true);
+    expect(denied.ruleId).toBe(HARNESS_TOOL_DENY_RULE_ID);
+  });
+
+  test('empty/whitespace tool entries are skipped at compile', () => {
+    const logger = fakeLogger();
+    const policy = compiled([], [], logger, [], ['', '  ', 'WebSearch']);
+    expect(policy.disallowedTools.size).toBe(1);
   });
 });

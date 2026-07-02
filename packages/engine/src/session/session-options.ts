@@ -423,20 +423,24 @@ export class SessionOptionsBuilder {
       ...(this.cfg.allowedTools !== undefined
         ? { allowedTools: this.cfg.allowedTools }
         : {}),
-      // Union the policy deny list into `disallowedTools` so that a configured
-      // `permissions.deny` entry is hard-blocked even under `bypassPermissions`
-      // mode (where `canUseTool` is never called by the SDK). The SDK enforces
-      // `disallowedTools` regardless of permission mode — this is the correct
-      // enforcement seam. Preset-provided entries are preserved (union, not
-      // overwrite). An empty deny list is a no-op: the result collapses back to
-      // the preset value (or is omitted when both are absent/empty).
+      // Union the policy deny lists into `disallowedTools` so that a configured
+      // `permissions.deny` entry — and the harness policy's least-privilege
+      // `disallowedTools` (hardening module #9) — is hard-blocked even under
+      // `bypassPermissions` mode (where `canUseTool` is never called by the
+      // SDK). The SDK enforces `disallowedTools` regardless of permission mode —
+      // this is the correct enforcement seam; the HookBus evaluator denies the
+      // same tools at PreToolUse as defense in depth. Preset-provided entries
+      // are preserved (union, not overwrite). Empty lists are a no-op: the
+      // result collapses back to the preset value (or is omitted when all are
+      // absent/empty).
       ...((): { disallowedTools?: string[] } => {
         const preset = this.cfg.disallowedTools ?? [];
         const denied = this.cfg.permissionPolicy.deny;
-        if (denied.length === 0) {
+        const policyDenied = this.cfg.harnessPolicy?.disallowedTools ?? [];
+        if (denied.length === 0 && policyDenied.length === 0) {
           return preset.length > 0 ? { disallowedTools: preset } : {};
         }
-        const merged = [...new Set([...preset, ...denied])];
+        const merged = [...new Set([...preset, ...denied, ...policyDenied])];
         return { disallowedTools: merged };
       })(),
       // Autonomy ceilings (maxTurns / maxBudgetUsd). An absent field leaves the
