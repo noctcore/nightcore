@@ -109,14 +109,28 @@ pub(crate) async fn handle_build_completed(
         task.error = None;
     });
 
-    // Structure-Lock Gauntlet (feature #3): run the TARGET project's own generated
-    // harness checks (custom lint-plugin / dependency-cruiser / coverage) as a
-    // DETERMINISTIC gate BEFORE the paid reviewer — an agent must not be able to
-    // verify (or later merge) code that breaks the locked structure, and a broken
-    // build should never burn a reviewer session. Absent `.nightcore/harness.json`
-    // ⇒ no checks ⇒ pass, so existing projects are unaffected. On failure we either
-    // feed the failing check into the existing bounded auto-fix loop, or park.
-    let lock = crate::gauntlet_project::run(&review_dir.path);
+    // The deterministic gate battery, in order: the project's own structure-lock
+    // manifest checks (feature #3) → the built-in anti-gaming sweep (#2) — all
+    // BEFORE the paid reviewer, so an agent can neither verify (nor later merge)
+    // code that breaks the locked structure or games the tests, and a broken build
+    // never burns a reviewer session. Absent `.nightcore/harness.json` ⇒ no
+    // manifest checks ⇒ pass, so existing projects are unaffected. Any failure
+    // routes through the SAME bounded auto-fix loop (or parks).
+    let mut lock = crate::gauntlet_project::run(&review_dir.path);
+
+    // Anti-gaming sweep: always-on for worktree builds (no manifest entry arms
+    // it — it guards the gate machinery itself), appended only while the manifest
+    // checks passed so the fix agent sees ONE failure at a time (stop-at-first).
+    if lock.passed && review_dir.is_worktree {
+        if let Some(project) = app.state::<ProjectStore>().active() {
+            crate::workflow::anti_gaming::append_anti_gaming_check(
+                &mut lock,
+                &review_dir.path,
+                Path::new(&project.path),
+            );
+        }
+    }
+
     apply_and_emit(app, store, task_id, |task| {
         task.structure_lock_result = Some(lock.clone());
     });
