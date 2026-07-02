@@ -36,6 +36,13 @@ jobs:
       # guard) and agent-contract-parity. This is the "lint-meta fails CI" gate.
       - run: bun run lint
       - run: bun run typecheck
+      # Vitest browser mode (apps/web) drives Playwright's own chromium build,
+      # which runners don't ship. --with-deps adds the distro shared libraries.
+      # Run from apps/web so the isolated workspace layout resolves the
+      # playwright package (it is apps/web's dep, not the root's).
+      - name: Install Playwright chromium
+        run: bunx playwright install --with-deps chromium
+        working-directory: apps/web
       # The JS/TS tiers (node + web + plugin). The Rust tier runs in rust-checks.
       - run: bun run test
 
