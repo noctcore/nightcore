@@ -3,6 +3,7 @@ import type {
   GauntletResult,
   PermissionMode,
   PermissionPrompt,
+  PrSupport,
   QuestionAnswer,
   QuestionPrompt,
   RunMode,
@@ -59,6 +60,11 @@ export interface TaskDetailActions {
   onMerge?: (id: string) => void;
   /** Commit a verified task's worktree. */
   onCommit?: (id: string) => void;
+  /** Open the Create PR dialog (the human gate) for an eligible task — shown
+   *  beside Merge when the full PR eligibility contract holds. */
+  onCreatePr?: (id: string) => void;
+  /** Open a created pull request in the system browser (the `PR #<n>` chip). */
+  onOpenPr?: (url: string) => void;
   /** Resume a chosen historical session — relaunches the task pointed at the UUID
    *  (refused Rust-side for an orphaned session). Enables the History section. */
   onResumeSession?: (taskId: string, sdkSessionId: string) => void;
@@ -83,6 +89,11 @@ export interface TaskDetailProps {
   gauntlet?: GauntletResult | null;
   /** True while a gauntlet run is in flight for this task. */
   gauntletRunning?: boolean;
+  /** Story/test override for the PR capability probe. When provided (including
+   *  `null`), the drawer's lazy `pr_support` fetch is skipped and this value
+   *  gates the Create PR button directly; omit it (the app shell does) to let
+   *  `usePrSupport` probe lazily per task id. */
+  prSupport?: PrSupport | null;
   onClose: () => void;
   /** Every drawer action callback, grouped into one object (see `TaskDetailActions`). */
   actions: TaskDetailActions;
@@ -130,6 +141,10 @@ export interface TaskDetailChromeProps {
   questions: QuestionPrompt[];
   gauntlet: GauntletResult | null;
   gauntletRunning: boolean;
+  /** The resolved PR capability probe for this task (`null` = unknown/red —
+   *  the Create PR button hides). Resolved by the outer drawer's `usePrSupport`
+   *  so this memoized chrome stays hook-free. */
+  prSupport: PrSupport | null;
   onClose: () => void;
   actions: TaskDetailActions;
   isActionPending?: (action: string, id: string) => boolean;

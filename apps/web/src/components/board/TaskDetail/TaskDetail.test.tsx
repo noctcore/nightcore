@@ -9,7 +9,7 @@ import {
   SAMPLE_REVIEW_CHANGES,
 } from '../_fixtures';
 import { EMPTY_STREAM } from '../session-stream';
-import { canMerge, deriveTaskDetailView } from './TaskDetail.hooks';
+import { canCreatePr, canMerge, deriveTaskDetailView, prChipLabel } from './TaskDetail.hooks';
 import * as stories from './TaskDetail.stories';
 
 const {
@@ -25,6 +25,9 @@ const {
   ResearchDone,
   EmptyBacklog,
   FromScanProvenance,
+  ReadyForPr,
+  PrSupportRed,
+  PrCreated,
 } = composeStories(stories);
 
 test('shows a provenance chip for a task converted from a scan', async () => {
@@ -195,6 +198,68 @@ test('a done-but-unverified research task shows neutral "Done" — not green "Ve
 test('a done AND verified task shows the green "Verified" badge', async () => {
   const screen = render(<Done />);
   await expect.element(screen.getByText('Verified')).toBeInTheDocument();
+});
+
+test('shows Create PR beside Merge for an eligible task with a green probe', async () => {
+  const onCreatePr = vi.fn();
+  const screen = render(
+    <ReadyForPr actions={{ ...ReadyForPr.args!.actions!, onCreatePr }} />,
+  );
+  await expect.element(screen.getByRole('button', { name: /^merge$/i })).toBeInTheDocument();
+  const create = screen.getByRole('button', { name: /create pr/i });
+  await expect.element(create).toBeEnabled();
+  await create.click();
+  expect(onCreatePr).toHaveBeenCalledWith('t-done');
+});
+
+test('hides Create PR when the capability probe is red', async () => {
+  const screen = render(<PrSupportRed />);
+  await expect.element(screen.getByRole('button', { name: /^merge$/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /create pr/i }).query()).toBeNull();
+});
+
+test('hides Create PR while the probe is unknown (Done keeps only Merge)', async () => {
+  const screen = render(<Done />);
+  await expect.element(screen.getByRole('button', { name: /^merge$/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /create pr/i }).query()).toBeNull();
+});
+
+test('swaps the button for a PR #<n> chip once prUrl is set, linking out', async () => {
+  const onOpenPr = vi.fn();
+  const screen = render(<PrCreated actions={{ ...PrCreated.args!.actions!, onOpenPr }} />);
+  expect(screen.getByRole('button', { name: /create pr/i }).query()).toBeNull();
+  const chip = screen.getByRole('button', { name: /PR #123/ });
+  await chip.click();
+  expect(onOpenPr).toHaveBeenCalledWith('https://github.com/acme/nightcore/pull/123');
+});
+
+test('canCreatePr enforces the full eligibility contract', () => {
+  const green = { ghInstalled: true, remote: 'git@github.com:acme/nightcore.git' };
+  const eligible = makeTask({
+    status: 'done',
+    verified: true,
+    committed: true,
+    runMode: 'worktree',
+    branch: 'nc/x',
+  });
+  expect(canCreatePr(eligible, green)).toBe(true);
+  // Task-side gates: each broken precondition hides the button.
+  expect(canCreatePr(makeTask({ ...eligible, status: 'ready' }), green)).toBe(false);
+  expect(canCreatePr(makeTask({ ...eligible, verified: false }), green)).toBe(false);
+  expect(canCreatePr(makeTask({ ...eligible, committed: false }), green)).toBe(false);
+  expect(canCreatePr(makeTask({ ...eligible, runMode: 'main' }), green)).toBe(false);
+  expect(canCreatePr(makeTask({ ...eligible, merged: true }), green)).toBe(false);
+  expect(canCreatePr(makeTask({ ...eligible, prUrl: 'https://x/pr/1' }), green)).toBe(false);
+  // Capability gates: unknown probe, missing gh, and missing remote all hide it.
+  expect(canCreatePr(eligible, null)).toBe(false);
+  expect(canCreatePr(eligible, undefined)).toBe(false);
+  expect(canCreatePr(eligible, { ghInstalled: false, remote: 'git@x' })).toBe(false);
+  expect(canCreatePr(eligible, { ghInstalled: true, remote: null })).toBe(false);
+});
+
+test('prChipLabel folds in the PR number when present', () => {
+  expect(prChipLabel(makeTask({ prNumber: 123 }))).toBe('PR #123');
+  expect(prChipLabel(makeTask({}))).toBe('PR');
 });
 
 test('deriveTaskDetailView splits review-parked from plan-parked on task.review', () => {
