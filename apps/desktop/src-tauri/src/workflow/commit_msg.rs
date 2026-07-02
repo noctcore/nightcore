@@ -10,22 +10,15 @@
 //! output) collapses to `None`, and the caller falls back to the title-based
 //! message. A commit must never fail because message generation failed.
 //!
-//! **No side effects, least privilege.** The CLI runs in print mode with ALL tools
-//! disallowed — mutation AND read/network (`--disallowed-tools Bash,Edit,Write,…,
-//! Read,Glob,Grep,WebFetch,WebSearch,…`) — and external MCP servers suppressed
-//! (`--strict-mcp-config`). The payload is partly attacker-influenceable (task
-//! title/description) and the output is committed verbatim, so the generation pass
-//! must be unable to read local secrets or exfiltrate them: it gets only its stdin.
-//! The diff is fed on **stdin** (no arg-length limit for large diffs); the
-//! instruction is the one positional prompt — which MUST precede the variadic
-//! `--disallowed-tools` flag or the CLI swallows it as tool names. A wall-clock
-//! timeout kills a hung child.
+//! The CLI spawn itself (print mode, ALL tools disallowed, stdin-fed context,
+//! the positional-prompt-before-variadic-flag arg-order gotcha, the 30s
+//! timeout) lives in the shared [`super::claude_oneshot`] core, which the PR
+//! drafter ([`super::pr_msg`]) reuses; this module owns only the commit-shaped
+//! instruction, payload, and sanitize pass.
 
-use std::io::{Read, Write};
 use std::path::Path;
-use std::process::Stdio;
-use std::time::{Duration, Instant};
 
+use super::claude_oneshot::{cap, run_claude, strip_code_fence};
 use crate::store::TaskStore;
 use crate::task::Task;
 
@@ -36,10 +29,6 @@ const DIFF_CAP: usize = 12_000;
 
 /// Max characters of transcript digest included as secondary context.
 const DIGEST_CAP: usize = 1_500;
-
-/// Hard wall-clock bound on the `claude -p` child. Haiku typically answers in a few
-/// seconds; this only fires on a genuine hang, after which we fall back to the title.
-const GEN_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The fixed instruction (the single positional prompt). All variable context —
 /// task intent, transcript digest, and the diff — arrives on stdin.
@@ -87,109 +76,6 @@ fn build_payload(title: &str, description: &str, digest: &str, diff: &str) -> St
     out
 }
 
-/// Borrow at most `max` bytes of `s`, ending on a char boundary (so a multi-byte
-/// glyph is never split). Appends a truncation marker when it cuts.
-fn cap(s: &str, max: usize) -> &str {
-    if s.len() <= max {
-        return s;
-    }
-    let mut end = max;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    &s[..end]
-}
-
-/// Spawn `claude -p` (resolved cross-platform via the platform layer), feed `stdin`
-/// the context, and return its stdout — or `None` on spawn failure, non-zero exit,
-/// or timeout. The child runs with mutation tools disallowed and external MCP
-/// suppressed, so it can read but never modify the repo.
-fn run_claude(instruction: &str, stdin_payload: &str) -> Option<String> {
-    // Arg order matters: the instruction is the positional prompt and MUST come
-    // right after `-p`, BEFORE the variadic `--disallowed-tools <tools...>` flag.
-    // If the prompt trails the variadic flag, the CLI greedily consumes the prompt's
-    // words as tool names (verified against claude 2.1.195) — the instruction is lost
-    // and the model answers from stdin alone, silently producing a garbage message.
-    // Keeping `--disallowed-tools` last bounds the variadic to its one comma value.
-    let mut child = crate::platform::std_command("claude")
-        .arg("-p")
-        .arg(instruction)
-        .args([
-            "--model",
-            "haiku",
-            "--strict-mcp-config",
-            "--output-format",
-            "text",
-            // Least privilege: the diff arrives on stdin, so the run needs ZERO
-            // tools. Deny mutation AND read/network tools — the payload (task title,
-            // diff, transcript) is partly untrusted, and the output is committed
-            // verbatim, so a prompt injection must not be able to read local secrets
-            // or exfiltrate over the network. `--strict-mcp-config` covers MCP; these
-            // are the built-ins.
-            "--disallowed-tools",
-            "Bash,Edit,Write,MultiEdit,NotebookEdit,Read,Glob,Grep,WebFetch,WebSearch,Task,TodoWrite",
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        // stderr is discarded, not piped: an undrained stderr pipe could fill its OS
-        // buffer (claude can be chatty with warnings) and block the child on write
-        // forever — stalling the commit until the timeout. We never read stderr.
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| {
-            tracing::warn!(target: "nightcore::commit", error = %e, "could not spawn `claude` for commit message; falling back to title");
-        })
-        .ok()?;
-
-    // Feed stdin from a detached thread so a large diff can't deadlock against a
-    // child that is also writing stdout (dropping the handle closes the pipe / EOF).
-    if let Some(mut stdin) = child.stdin.take() {
-        let payload = stdin_payload.as_bytes().to_vec();
-        std::thread::spawn(move || {
-            let _ = stdin.write_all(&payload);
-        });
-    }
-
-    // Drain stdout on a thread for the same reason; join it after the child exits.
-    let mut stdout = child.stdout.take()?;
-    let reader = std::thread::spawn(move || {
-        let mut buf = String::new();
-        let _ = stdout.read_to_string(&mut buf);
-        buf
-    });
-
-    // Poll for exit with a wall-clock bound; kill a child that overruns it.
-    let start = Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) => {
-                if start.elapsed() > GEN_TIMEOUT {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    tracing::warn!(target: "nightcore::commit", "`claude` commit-message generation timed out; falling back to title");
-                    return None;
-                }
-                std::thread::sleep(Duration::from_millis(100));
-            }
-            // Symmetric with the timeout branch: reap the child and close its pipes
-            // (unblocking the stdin-writer and stdout-reader threads) before bailing.
-            Err(_) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return None;
-            }
-        }
-    };
-
-    let out = reader.join().ok()?;
-    if !status.success() {
-        tracing::warn!(target: "nightcore::commit", code = ?status.code(), "`claude` exited non-zero for commit message; falling back to title");
-        return None;
-    }
-    Some(out)
-}
-
 /// Clean the model's raw stdout into a commit message: strip a wrapping ``` fence if
 /// present, trim, and cap the total length. Returns `None` when nothing usable
 /// remains (so the caller falls back to the title).
@@ -198,17 +84,7 @@ fn sanitize(raw: &str) -> Option<String> {
     /// reject the tail rather than write a wall of text into git history.
     const MESSAGE_CAP: usize = 4_000;
 
-    let mut text = raw.trim();
-
-    // Strip a single wrapping code fence (```…``` or ```text …```) if the whole
-    // message is fenced — a common formatting habit despite the instruction.
-    if let Some(rest) = text.strip_prefix("```") {
-        // Drop the rest of the opening fence line (e.g. "```text\n").
-        let after_lang = rest.find('\n').map(|i| &rest[i + 1..]).unwrap_or("");
-        text = after_lang.strip_suffix("```").unwrap_or(after_lang).trim();
-    }
-
-    let text = text.trim();
+    let text = strip_code_fence(raw);
     if text.is_empty() {
         return None;
     }
