@@ -7,6 +7,7 @@
 
 pub(crate) mod anti_gaming;
 pub(crate) mod commit_msg;
+pub(crate) mod diff_budget;
 pub(crate) mod gauntlet;
 pub(crate) mod gauntlet_project;
 pub(crate) mod kind;

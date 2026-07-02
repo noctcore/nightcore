@@ -109,13 +109,39 @@ pub(crate) async fn handle_build_completed(
         task.error = None;
     });
 
-    // The deterministic gate battery, in order: the project's own structure-lock
-    // manifest checks (feature #3) → the built-in anti-gaming sweep (#2) — all
-    // BEFORE the paid reviewer, so an agent can neither verify (nor later merge)
-    // code that breaks the locked structure or games the tests, and a broken build
-    // never burns a reviewer session. Absent `.nightcore/harness.json` ⇒ no
-    // manifest checks ⇒ pass, so existing projects are unaffected. Any failure
-    // routes through the SAME bounded auto-fix loop (or parks).
+    // The deterministic gate battery, in order: the diff-budget park gate
+    // (feature #5) → the project's own structure-lock manifest checks (#3) → the
+    // built-in anti-gaming sweep (#2) — all BEFORE the paid reviewer, so an agent
+    // can neither verify (nor later merge) out-of-scope work, code that breaks
+    // the locked structure, or gamed tests, and a broken build never burns a
+    // reviewer session. Absent `.nightcore/harness.json` ⇒ no budget and no
+    // manifest checks ⇒ pass, so existing projects are unaffected.
+
+    // Diff budget: an out-of-budget diff is a SCOPING decision, not a defect — an
+    // auto-fix could only shrink it by deleting work — so a breach parks for
+    // human triage (same transition as an exhausted fix budget) and NEVER routes
+    // into the auto-fix loop. Worktree builds only: main-mode work has no
+    // committed base..HEAD range to measure. The budget is read from the PROJECT
+    // root's manifest (`.nightcore/` is gitignored, so no worktree copy exists).
+    if review_dir.is_worktree {
+        if let Some(project) = app.state::<ProjectStore>().active() {
+            if let Some(breach) =
+                crate::workflow::diff_budget::evaluate(Path::new(&project.path), &review_dir.path)
+            {
+                tracing::warn!(target: "nightcore", task_id, "diff budget exceeded; parking for triage");
+                apply_and_emit(app, store, task_id, |task| {
+                    task.status = TaskStatus::WaitingApproval;
+                    task.verified = false;
+                    task.error = Some(breach.clone());
+                });
+                park_for_approval(app, task_id, None);
+                return;
+            }
+        }
+    }
+
+    // Structure-lock manifest checks: any failure below routes through the SAME
+    // bounded auto-fix loop (or parks once the budget is spent).
     let mut lock = crate::gauntlet_project::run(&review_dir.path);
 
     // Anti-gaming sweep: always-on for worktree builds (no manifest entry arms
