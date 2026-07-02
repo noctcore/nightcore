@@ -201,6 +201,7 @@ pub fn convert_finding_to_task(
         task_description(&finding),
     );
     task.kind = category_to_kind(&finding.category);
+    task.source_ref = Some(format!("insight:{run_id}:{finding_id}"));
 
     let stamped = super::convert::convert_to_task(
         &store,

@@ -157,6 +157,7 @@ pub fn convert_reading_to_task(
     let skill = harden_skill_for(&reading.dimension);
     let mut task = Task::new(skill.to_string(), task_description(&reading, skill));
     task.kind = TaskKind::Build;
+    task.source_ref = Some(format!("scorecard:{run_id}:{reading_id}"));
 
     let stamped = super::convert::convert_to_task(
         &store,

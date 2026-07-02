@@ -27,6 +27,22 @@ import {
 } from './TaskDetail.hooks';
 import type { TaskDetailChromeProps, TaskDetailProps } from './TaskDetail.types';
 
+/** Human labels for a minted task's `sourceRef` provenance token
+ *  (`<feature>:<runId>:<itemId>`) — the scan item this task was converted from. */
+const SOURCE_LABELS: Record<string, string> = {
+  insight: 'Insight finding',
+  scorecard: 'Scorecard reading',
+  harness: 'Harness convention',
+  'harness-proposal': 'Harness proposal',
+};
+
+/** Resolve a `sourceRef` to its human provenance label, or `null` for an unknown/absent
+ *  token (so a future/legacy scheme degrades to no chip rather than a raw string). */
+function sourceLabel(sourceRef: string | null): string | null {
+  if (sourceRef === null) return null;
+  return SOURCE_LABELS[sourceRef.split(':')[0] ?? ''] ?? null;
+}
+
 /** The logs / detail drawer. A thin coordinator over two halves: the static
  *  `TaskDetailChrome` (title, verdict, gauntlet, description, session config, and
  *  the per-status controls) and the live activity timeline.
@@ -124,6 +140,8 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
     actions.onRenameSession !== undefined &&
     actions.onTagSession !== undefined;
   const mainMode = task.runMode === 'main';
+  // Provenance chip: where a converted task came from (scan finding/reading/proposal).
+  const provenance = sourceLabel(task.sourceRef);
   // True while the named action is mid-flight for this task — disables the button
   // so it can't double-fire before the `nc:task` echo lands.
   const pending = (action: string): boolean => isActionPending?.(action, task.id) ?? false;
@@ -152,6 +170,11 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
           <h2 className="mt-2 truncate text-base font-semibold text-foreground">
             {task.title || 'Untitled task'}
           </h2>
+          {provenance !== null && (
+            <span className="mt-1.5 inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+              From {provenance}
+            </span>
+          )}
         </div>
         <IconButton label="Close detail panel" onClick={onClose}>
           <CloseIcon size={16} />

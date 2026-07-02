@@ -109,6 +109,16 @@ export const EmptyBacklog: Story = {
   args: { task: TASKS_BY_STATUS.backlog, stream: undefined },
 };
 
+export const FromScanProvenance: Story = {
+  args: {
+    task: makeTask({
+      title: 'Adopt the folder-per-component convention',
+      sourceRef: 'harness:run-7:pfp1',
+    }),
+    stream: undefined,
+  },
+};
+
 export const Running: Story = {
   args: {
     task: TASKS_BY_STATUS.in_progress,

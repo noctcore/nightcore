@@ -22,7 +22,22 @@ const {
   GauntletFailed,
   MainModeCommitted,
   ResearchDone,
+  EmptyBacklog,
+  FromScanProvenance,
 } = composeStories(stories);
+
+test('shows a provenance chip for a task converted from a scan', async () => {
+  const screen = render(<FromScanProvenance />);
+  await expect
+    .element(screen.getByText('From Harness convention'))
+    .toBeInTheDocument();
+});
+
+test('shows no provenance chip for a hand-created task', async () => {
+  const screen = render(<EmptyBacklog />);
+  // `.query()` returns null when no element matches (vitest-browser locators).
+  expect(screen.getByText(/^From /).query()).toBeNull();
+});
 
 test('shows the plan and Approve / Refine / Reject for a waiting task', async () => {
   const onApprove = vi.fn();

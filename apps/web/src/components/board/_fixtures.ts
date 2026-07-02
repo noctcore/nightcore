@@ -47,6 +47,7 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     attachments: overrides.attachments ?? [],
     parentTaskId: overrides.parentTaskId ?? null,
     proposedSubtasks: overrides.proposedSubtasks ?? [],
+    sourceRef: overrides.sourceRef ?? null,
   };
 }
 

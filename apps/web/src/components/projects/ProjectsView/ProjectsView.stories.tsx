@@ -57,6 +57,7 @@ const tasks: Task[] = [
     attachments: [],
     parentTaskId: null,
     proposedSubtasks: [],
+    sourceRef: null,
   },
   {
     seq: 0,
@@ -92,6 +93,7 @@ const tasks: Task[] = [
     attachments: [],
     parentTaskId: null,
     proposedSubtasks: [],
+    sourceRef: null,
   },
 ];
 

@@ -180,4 +180,13 @@ parentTaskId: string | null,
  * finishes. Each is convertible into a board task. Serde-additive: legacy tasks
  * load as an empty list.
  */
-proposedSubtasks: Array<ProposedSubtask>, };
+proposedSubtasks: Array<ProposedSubtask>, 
+/**
+ * Provenance for a task minted from a scan finding/reading/proposal, as
+ * `"<feature>:<runId>:<itemId>"` (e.g. `"harness:run-7:pfp1"`). Lets the board show
+ * where a converted task came from and, later, jump back to that finding in its run.
+ * The inverse of the source item's `linkedTaskId`. `None` for hand-created tasks and
+ * decompose children (which use `parent_task_id`). Serde-additive: legacy tasks load
+ * as `None`.
+ */
+sourceRef: string | null, };

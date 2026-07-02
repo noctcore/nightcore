@@ -172,6 +172,7 @@ pub fn convert_harness_finding_to_task(
         convention_task_description(&finding),
     );
     task.kind = TaskKind::Build;
+    task.source_ref = Some(format!("harness:{run_id}:{finding_id}"));
 
     let stamped = crate::sidecar::convert::convert_to_task(
         &store,
@@ -293,6 +294,7 @@ pub fn convert_harness_proposal(
         proposal_task_description(&proposal),
     );
     task.kind = TaskKind::Build;
+    task.source_ref = Some(format!("harness-proposal:{run_id}:{proposal_id}"));
     // An agent-task proposal carries a machine-checkable done-command → the task's
     // verify_command, so the gauntlet gates the work before the reviewer. A blank command
     // is left as None (an empty check would pass trivially and add noise).
