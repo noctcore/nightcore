@@ -155,7 +155,8 @@ export function hardeningReference(profile: RepoProfile): string {
     'config FILE ships as a kind:"tool-config" `create` artifact at a NEW path — never',
     'propose one for a file already in the repo map (create refuses to overwrite).',
     'ANYTHING that can auto-run code (package.json scripts, git hooks, lefthook/husky,',
-    'CI, editor/agent config, installs) must be an `agent-task` proposal instead — the',
+    'CI, editor/agent config, devcontainers, installs, shell scripts) must be an',
+    '`agent-task` proposal instead — the',
     'apply path REJECTS those targets. Attach each suggested `harnessCheck` to the',
     'proposal whose work makes its command pass, and never claim a tool is installed',
     'unless you saw it in the repo.',
@@ -175,6 +176,15 @@ export function hardeningReference(profile: RepoProfile): string {
 
   if (isNode) {
     lines.push(...importBoundaryModule(profile), '');
+  }
+
+  lines.push(...astGrepPolicyModule(profile), '');
+
+  if (
+    profile.languages.includes('typescript') &&
+    profile.packages.some((p) => p.role === 'package')
+  ) {
+    lines.push(...apiExtractorModule(profile), '');
   }
 
   lines.push(
@@ -241,6 +251,11 @@ export function hardeningReference(profile: RepoProfile): string {
     'commitlint hook (plus the lint/test gates that already exist), a commitlint',
     'config, and run `lefthook install`.',
     '',
+  );
+
+  lines.push(...sandboxContainmentModule(), '');
+
+  lines.push(
     'AGENT-CONTRACT BUDGET — every `agent-contract` artifact you propose is COMPILED,',
     'not accumulated: keep the managed section under ~150 lines of imperative,',
     'project-specific rules an agent can act on. Ban filler ("write clean code",',
@@ -348,4 +363,119 @@ function dependencyFirewallModule(
     'human can add it themselves.',
   );
   return lines;
+}
+
+/** Module #18 (ast-grep policy pack): `sgconfig.yml` + starter rule files under
+ *  `ast-grep-rules/`. ast-grep is tree-sitter based and language-agnostic, so the module
+ *  is offered on every stack — but the starter rule must stay GROUNDED (the
+ *  dependency-cruiser honesty pattern): a TypeScript repo gets the one rule that is true
+ *  everywhere (`debugger` must not ship); any other stack writes a rule only for a
+ *  pattern the findings actually name. CLI facts verified against ast-grep 0.44: the npm
+ *  package `@ast-grep/cli` ships TWO bins (`ast-grep`, `sg`), so bare `npx @ast-grep/cli`
+ *  fails with "could not determine executable" — the runnable form is
+ *  `npx --yes --package=@ast-grep/cli ast-grep …`; `scan` reads `sgconfig.yml` from the
+ *  cwd, and `--error` escalates every rule to error severity and exits 1 on any match. */
+function astGrepPolicyModule(profile: RepoProfile): string[] {
+  const hasTs = profile.languages.includes('typescript');
+  return [
+    'AST-GREP POLICY PACK — tool-config `sgconfig.yml` + starter rule files under',
+    '`ast-grep-rules/` (inert YAML — nothing runs them until the check below is wired):',
+    '  sgconfig.yml:',
+    '    ruleDirs:',
+    '      - ast-grep-rules',
+    ...(hasTs
+      ? [
+          '  ast-grep-rules/no-debugger.yml:',
+          '    id: no-debugger',
+          '    language: TypeScript',
+          '    severity: error',
+          '    message: debugger statements must not ship',
+          '    rule:',
+          '      pattern: debugger',
+        ]
+      : [
+          '  Write the starter rule ONLY for a pattern the findings actually name, in the',
+          '  dominant language you observed (ast-grep is tree-sitter based — rust/python/go',
+          '  rules are fine). With no grounded pattern, propose just the config + the',
+          '  agent-task and let the human author the first rule.',
+        ]),
+    'At most one or two further rules, each grounded in a specific finding (cite it in',
+    'sourceFindings) — an invented policy is a false gate. PLUS an agent-task: add',
+    '`@ast-grep/cli` as a devDependency (or keep the npx form), wire a script, and run',
+    'the scan once; verifyCommand + harnessCheck { "kind": "ast-grep", "command":',
+    '"npx --yes --package=@ast-grep/cli ast-grep scan --error" } (the package ships two',
+    'bins so plain `npx @ast-grep/cli` cannot resolve one; `scan` reads `sgconfig.yml`',
+    'from the cwd and `--error` escalates every rule, exiting 1 on any match).',
+  ];
+}
+
+/** Module #18 (api-extractor surface lock): ONLY for a TypeScript LIBRARY package — the
+ *  profile must show a `package`-role member to anchor it (an app has no public API
+ *  surface to lock), and the observed member path grounds the config location + `-c`
+ *  flag. Verified semantics (api-extractor 7.58, api-extractor.com): `run --local`
+ *  UPDATES the committed `etc/<name>.api.md` when the surface changed ("Updating
+ *  'etc/….api.md'"), while WITHOUT `--local` (the CI/gate form) an out-of-date report is
+ *  an ERROR — so the agent-task seeds the report with `--local` and the armed check runs
+ *  without it. */
+function apiExtractorModule(profile: RepoProfile): string[] {
+  const lib = profile.packages.find((p) => p.role === 'package');
+  const root = lib?.path ?? 'packages/<name>';
+  return [
+    'API SURFACE LOCK — ONLY for a TypeScript LIBRARY package whose public entry you',
+    `actually saw (a package-role member, e.g. ${root}): tool-config`,
+    `\`${root}/api-extractor.json\`:`,
+    '  {',
+    '    "$schema": "https://developer.microsoft.com/json-schemas/api-extractor/v7/api-extractor.schema.json",',
+    '    "mainEntryPointFilePath": "<projectFolder>/dist/index.d.ts",',
+    '    "apiReport": { "enabled": true, "reportFolder": "<projectFolder>/etc/" },',
+    '    "docModel": { "enabled": false },',
+    '    "dtsRollup": { "enabled": false }',
+    '  }',
+    'Point `mainEntryPointFilePath` at the REAL built declaration entry (read the',
+    'package\'s `types`/`exports` fields and its build output dir) — a guessed path fails',
+    'the first run. PLUS an agent-task: install `@microsoft/api-extractor` as a',
+    'devDependency, build the package, then generate + COMMIT the initial report with',
+    `\`npx --yes @microsoft/api-extractor run --local -c ${root}/api-extractor.json\``,
+    '(LOCAL mode writes/updates `etc/<name>.api.md`); verifyCommand + harnessCheck',
+    `{ "kind": "api-extractor", "command": "npx --yes @microsoft/api-extractor run -c ${root}/api-extractor.json" }`,
+    '— WITHOUT `--local` an out-of-date committed report is an ERROR, which is the gate',
+    'form (it compares against built `.d.ts`, so the wiring must keep a build step ahead',
+    'of it).',
+  ];
+}
+
+/** Module #15 (sandbox tier): OS-level write containment around agent runs. The in-app
+ *  workspace gate is LEXICAL with documented residual gaps (symlink hops, shell
+ *  redirects/heredocs, MCP-server writers), and OS containment is the honest fix. Ships
+ *  as ONE inert config artifact (a Seatbelt profile nothing loads until a human runs
+ *  `sandbox-exec -f` themselves) plus two agent-tasks for the pieces that are
+ *  execution-adjacent by nature: a devcontainer runs postCreate/onCreate hooks (its
+ *  basename is on the apply-path denylist, so a synthesized artifact can never write
+ *  one), and a launcher script is shell. */
+function sandboxContainmentModule(): string[] {
+  return [
+    'AGENT SANDBOX TIER — OS-level write containment for agent runs. Be honest in every',
+    'description about the tier: lexical workspace gates have documented gaps (symlink',
+    'hops, shell redirects, MCP-server writers) — OS containment closes the WRITE vector;',
+    'it does not by itself contain network or secret exfiltration.',
+    '  (a) tool-config `sandbox/agent.sb` — a macOS Seatbelt deny-write-except profile:',
+    '    (version 1)',
+    '    (allow default)',
+    '    (deny file-write*)',
+    '    (allow file-write* (subpath "__WORKSPACE_ROOT__"))',
+    '    (allow file-write* (subpath "/private/tmp"))',
+    '    (allow file-write* (subpath "/private/var/folders"))',
+    '  INERT config: nothing loads it until a human explicitly runs',
+    '  `sandbox-exec -f sandbox/agent.sb <command>`. The DESCRIPTION must tell the user',
+    '  to replace __WORKSPACE_ROOT__ with the absolute workspace path (Seatbelt profiles',
+    '  do no env expansion) and note Apple marks `sandbox-exec` deprecated-but-working.',
+    '  (b) agent-task ONLY: propose a `.devcontainer/devcontainer.json` for',
+    '  container-level isolation. devcontainers carry postCreateCommand/onCreateCommand',
+    '  hooks, so the file is execution-adjacent — the apply path DENIES its basename;',
+    '  never emit it as an artifact.',
+    '  (c) agent-task ONLY: a Linux bubblewrap launcher script, e.g.',
+    '  `scripts/agent-sandbox.sh` wrapping `bwrap --ro-bind / / --bind <workspace>',
+    '  <workspace> --dev /dev --proc /proc --unshare-all --share-net -- <command>` — a',
+    '  shell script is execution-adjacent.',
+  ];
 }
