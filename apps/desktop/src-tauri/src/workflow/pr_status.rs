@@ -21,9 +21,7 @@
 //! creation, so a finalize can never delete a worktree out from under an
 //! in-flight push.
 
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use serde::Serialize;
@@ -530,14 +528,6 @@ fn finalize_merged_core(
     })
 }
 
-/// Per-task single-flight guard for the base pull — its own action set (the
-/// `pr_in_flight` pattern): a double-fired pull must not race two fetches +
-/// ff-merges on the project root.
-fn pull_in_flight() -> &'static Mutex<HashSet<String>> {
-    static IN_FLIGHT: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-    IN_FLIGHT.get_or_init(|| Mutex::new(HashSet::new()))
-}
-
 /// Fast-forward-only pull of the task's base branch on the PROJECT ROOT, for
 /// after a remote merge: `git fetch origin <base>` + `git merge --ff-only
 /// origin/<base>`. Refuses a dirty root and a root not checked out on the base;
@@ -550,11 +540,9 @@ pub async fn pull_base_ff(app: AppHandle, id: String) -> Result<(), String> {
         .map_err(|e| format!("pull base failed to run: {e}"))?
 }
 
-/// The blocking body of `pull_base_ff`: lease → resolve the base → the testable
-/// core.
+/// The blocking body of `pull_base_ff`: root lease → resolve the base → the
+/// testable core.
 fn pull_base_ff_blocking(app: &AppHandle, id: &str) -> Result<(), String> {
-    let _lease = TaskLease::acquire(pull_in_flight(), id)
-        .ok_or_else(|| "a base pull for this task is already in progress".to_string())?;
     let store = app
         .try_state::<TaskStore>()
         .ok_or_else(|| "task store unavailable".to_string())?;
@@ -563,6 +551,13 @@ fn pull_base_ff_blocking(app: &AppHandle, id: &str) -> Result<(), String> {
         .ok_or_else(|| format!("no task with id {id}"))?;
     let project = require_project(app)?;
     let project_path = PathBuf::from(&project.path);
+    // The pull mutates the SHARED project root, so its guard is the ROOT lease
+    // (keyed per project path, shared with merge_task's merge phase and the
+    // main-mode commit), not a per-task set: single-flight per PROJECT — two
+    // tasks pulling one root refuse each other — and cross-refused against any
+    // in-flight merge/commit on that root. The pull takes no per-task lease, so
+    // the root lease is its only acquisition (ordering trivially safe).
+    let _root_lease = super::merge::acquire_root_lease(&project_path, "pulling the base")?;
     // The base resolves like merge/create do: the task's stored base, else the
     // project's current branch.
     let base = task
@@ -872,20 +867,51 @@ mod tests {
     }
 
     #[test]
-    fn pull_lease_is_single_flight_and_independent() {
-        let first = TaskLease::acquire(pull_in_flight(), "pull-x").expect("first acquire");
+    fn pull_is_single_flight_per_project_root_and_cross_refused() {
+        use super::super::merge::acquire_root_lease;
+        // The pull's guard is the ROOT lease keyed per project path — the same
+        // lease merge_task's merge phase and the main-mode commit take — so all
+        // three root mutators serialize on one project and different projects
+        // are independent. Unique paths: the set is global.
+        let root_a = Path::new("/tmp/nc-root-serialization-a");
+        let root_b = Path::new("/tmp/nc-root-serialization-b");
+
+        // Simulate a merge holding root A: a pull on root A refuses (either
+        // direction — the lease is symmetric), root B is unaffected.
+        let merge_holds = acquire_root_lease(root_a, "merging")
+            .unwrap_or_else(|e| panic!("merge leases root A: {e}"));
+        let err = acquire_root_lease(root_a, "pulling the base")
+            .err()
+            .expect("a pull on the same root is refused");
         assert!(
-            TaskLease::acquire(pull_in_flight(), "pull-x").is_none(),
-            "a second concurrent pull on the same task is refused"
+            err.contains("modifying the project root") && err.contains("pulling the base"),
+            "explains the refusal and names the blocked action: {err}"
         );
         assert!(
-            TaskLease::acquire(pull_in_flight(), "pull-y").is_some(),
-            "a different task is unaffected"
+            acquire_root_lease(root_b, "pulling the base").is_ok(),
+            "a different project root is unaffected"
         );
-        drop(first);
+        drop(merge_holds);
+
+        // With the root free, a pull leases it and blocks a merge and a commit
+        // — the cross-refusal arms of the shared guard.
+        let pull_holds = acquire_root_lease(root_a, "pulling the base")
+            .unwrap_or_else(|e| panic!("pull leases root A: {e}"));
+        let err = acquire_root_lease(root_a, "merging")
+            .err()
+            .expect("merge refused under a pull");
+        assert!(err.contains("merging"), "names the blocked action: {err}");
+        let err = acquire_root_lease(root_a, "committing")
+            .err()
+            .expect("commit refused under a pull");
         assert!(
-            TaskLease::acquire(pull_in_flight(), "pull-x").is_some(),
-            "dropping the lease frees the task"
+            err.contains("committing"),
+            "names the blocked action: {err}"
+        );
+        drop(pull_holds);
+        assert!(
+            acquire_root_lease(root_a, "merging").is_ok(),
+            "dropping the lease frees the root"
         );
     }
 
