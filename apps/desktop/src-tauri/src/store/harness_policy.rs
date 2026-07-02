@@ -132,6 +132,8 @@ pub fn read_policy(project_path: &str) -> Option<HarnessPolicy> {
         deny_bash_patterns: string_entries(&policy, "denyBashPatterns"),
         deny_read_paths: string_entries(&policy, "denyReadPaths"),
         disallowed_tools: string_entries(&policy, "disallowedTools"),
+        allow_tools: string_entries(&policy, "allowTools"),
+        ask_tools: string_entries(&policy, "askTools"),
     })
 }
 
@@ -197,6 +199,26 @@ mod tests {
         assert_eq!(policy.protected_paths, vec!["bun.lock", "migrations/**"]);
         assert_eq!(policy.deny_bash_patterns, vec!["--no-verify"]);
         assert!(policy.deny_read_paths.is_empty());
+        assert!(policy.disallowed_tools.is_empty());
+        assert!(policy.allow_tools.is_empty());
+        assert!(policy.ask_tools.is_empty());
+    }
+
+    #[test]
+    fn allow_and_ask_tool_lists_resolve() {
+        let tmp = TempDir::new().expect("temp dir");
+        let root = write_manifest(
+            &tmp,
+            r#"{
+              "policy": {
+                "allowTools": ["WebSearch", "Bash(git status:*)"],
+                "askTools": ["Write", "mcp__acme__push"]
+              }
+            }"#,
+        );
+        let policy = read_policy(&root).expect("policy armed");
+        assert_eq!(policy.allow_tools, vec!["WebSearch", "Bash(git status:*)"]);
+        assert_eq!(policy.ask_tools, vec!["Write", "mcp__acme__push"]);
         assert!(policy.disallowed_tools.is_empty());
     }
 
