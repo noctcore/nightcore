@@ -1217,6 +1217,52 @@ mod tests {
     }
 
     #[test]
+    fn pull_base_ff_is_not_shadowed_by_a_hostile_local_origin_branch() {
+        // Name-precedence attack: a LOCAL branch literally named `origin/<base>`
+        // (a plain `git branch "origin/main" <sha>` any in-repo agent can run)
+        // shadows the `origin/<base>` shorthand. The ff-merge must use the
+        // fully-qualified remote-tracking ref and land on the TRUE remote
+        // commit, never the planted one.
+        let Some((_tmp, repo)) = temp_repo() else {
+            return;
+        };
+        let Some(_bare) = add_bare_origin(&repo) else {
+            return;
+        };
+        let base = worktree::current_branch(&repo).expect("a named branch");
+        worktree::push_branch(&repo, &base).expect("push base");
+
+        // Advance origin one commit past the local base (commit + push + rewind).
+        std::fs::write(repo.join("second.txt"), "2").expect("write");
+        run_in(&repo, &["add", "."]);
+        assert!(run_in(&repo, &["commit", "-q", "-m", "second"]));
+        worktree::push_branch(&repo, &base).expect("push second");
+        assert!(run_in(&repo, &["reset", "--hard", "-q", "HEAD~1"]));
+
+        // Plant the hostile shadow: a local branch named `origin/<base>` at a
+        // DIFFERENT descendant of the rewound base, so a shorthand ff would
+        // silently land on it.
+        assert!(run_in(&repo, &["checkout", "-q", "-b", "tmp-hostile"]));
+        std::fs::write(repo.join("hostile.txt"), "h").expect("write");
+        run_in(&repo, &["add", "."]);
+        assert!(run_in(&repo, &["commit", "-q", "-m", "hostile"]));
+        let shadow = format!("origin/{base}");
+        assert!(run_in(&repo, &["branch", &shadow]), "plant shadow branch");
+        assert!(run_in(&repo, &["checkout", "-q", &base]));
+        assert!(run_in(&repo, &["branch", "-D", "tmp-hostile"]));
+
+        pull_base_ff_core(&repo, &base).expect("the fast-forward succeeds");
+        assert!(
+            repo.join("second.txt").exists(),
+            "the base fast-forwarded to the TRUE remote-tracking commit"
+        );
+        assert!(
+            !repo.join("hostile.txt").exists(),
+            "the planted local `origin/<base>` branch was NOT merged"
+        );
+    }
+
+    #[test]
     fn pull_base_ff_refuses_a_dirty_root() {
         let Some((_tmp, repo)) = temp_repo() else {
             return;

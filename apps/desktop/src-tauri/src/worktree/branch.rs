@@ -78,15 +78,23 @@ pub fn fetch_base(project_path: &Path, base: &str) -> Result<(), String> {
     .map(|_| ())
 }
 
-/// Fast-forward the checked-out branch to `origin/<base>` — `git merge
+/// Fast-forward the checked-out branch to origin's `base` — `git merge
 /// --ff-only`, NEVER a real merge: when the local base has diverged the command
 /// fails and git's error surfaces verbatim (the abort-not-force philosophy; the
 /// caller must never fall back to a merge commit). The caller has already
 /// verified the root is clean and checked out on `base`; the ref is validated
 /// here too (defence in depth) before it reaches the argv.
+///
+/// The merged ref is the FULLY-QUALIFIED remote-tracking ref
+/// (`refs/remotes/origin/<base>`), never the `origin/<base>` shorthand: the
+/// shorthand resolves by name precedence, so a hostile LOCAL branch or tag
+/// literally named `origin/<base>` (a plain `git branch "origin/main" <sha>` —
+/// creatable by any in-repo agent) would shadow the remote-tracking ref and
+/// fast-forward the project root onto unreviewed commits. The qualified form is
+/// a verbatim lookup and cannot be shadowed.
 pub fn merge_ff_only(project_path: &Path, base: &str) -> Result<(), String> {
     validate_ref(base)?;
-    let remote_ref = format!("origin/{base}");
+    let remote_ref = format!("refs/remotes/origin/{base}");
     git(
         project_path,
         &["merge", "--ff-only", "--end-of-options", &remote_ref],
