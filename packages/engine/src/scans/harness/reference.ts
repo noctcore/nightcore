@@ -240,6 +240,14 @@ export function hardeningReference(profile: RepoProfile): string {
     'config-conventional} as devDependencies, a `lefthook.yml` with a commit-msg',
     'commitlint hook (plus the lint/test gates that already exist), a commitlint',
     'config, and run `lefthook install`.',
+    '',
+    'AGENT-CONTRACT BUDGET — every `agent-contract` artifact you propose is COMPILED,',
+    'not accumulated: keep the managed section under ~150 lines of imperative,',
+    'project-specific rules an agent can act on. Ban filler ("write clean code",',
+    'restating defaults) and anything derivable from configs the agent already reads',
+    '(tsconfig, lint rules). When the honest content exceeds the budget, keep the',
+    'contract as a ranked index and move the overflow to satellite docs it links',
+    '(e.g. docs/agent/testing.md) via an agent-task.',
   );
 
   return lines.join('\n');
