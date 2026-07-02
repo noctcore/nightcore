@@ -47,8 +47,9 @@ done-command (a `verify` script + an AGENTS.md line + a manifest entry). **Tier:
 `Task.ts`); `gauntlet_project::append_task_verify_command` runs it in the review dir and
 folds the outcome into the `StructureLockResult`; wired in `verification/handlers.rs`
 after the project checks pass; settable via `update_task` (`TaskPatch.verify_command`).
-Producer still open: a Harness proposal-convert that *sets* the command on the task that
-wires enforcement (see §3).
+Producer CONFIRMED WIRED (2026-07-02 audit): playbook agent-tasks carry `verifyCommand`
+→ `convert_harness_proposal` sets `task.verify_command` (`sidecar/harness/commands.rs`)
+→ consumed by `append_task_verify_command`. Nothing was missing.
 
 ### 2. Test-integrity anti-gaming sweep — `SHIPPED` (2026-07-02)
 Pure-diff detection of `.only`/`.skip`, gutted assertions, new suppressions
@@ -63,8 +64,10 @@ identifier-boundary matching, added `@ts-ignore`/`eslint-disable` (never
 `anti-gaming` check with file+pattern evidence into the structure-lock gate → same
 fix/park loop; silent on zero findings. Always-on for worktree builds, no manifest
 entry; infrastructure failures (no base/git) warn-and-skip, never fail the gate. The
-Bash-history `--no-verify` detection is deferred to the #5 flight-recorder ledger — the
-runtime hook (#3 `denyBashPatterns`) already denies it live.
+Bash-history half SHIPPED with the #5 ledger (2026-07-02): the sweep scans the task's
+flight-recorder file for ALLOWED Bash records containing `--no-verify`
+(identifier-boundary, `--no-verify-signatures` excluded) — the hook-bypass evidence a
+diff can't show; missing/unparseable ledger contributes nothing.
 
 ### 3. Protected-paths + bypass-flag denial — `SHIPPED`
 Manifest-driven PreToolUse rules blocking Edit/Write to lockfiles, migrations, generated
@@ -83,16 +86,14 @@ resolved from the project root the run cwd was pinned to) and carries the effect
 on `start-session` (`HarnessPolicySchema`, serde-additive); a manifest without a `policy`
 key still arms the empty self-protection floor, `policy.enabled:false` is the wholesale
 opt-out. Commits `672e522` (core threading) + `6447df0` (engine enforcement) + `345ed2d`
-(adversarial-review hardening). **Open follow-ups (from the 3-lens verification, none
-blocking):** the worktree-mode Structure-Lock gauntlet reads its manifest from the worktree
-dir (where `.nightcore/` is gitignored → absent → skips all checks) while the policy layer
-reads from root — a PRE-EXISTING gauntlet parity gap module #3 now makes visible; a task
-that legitimately needs a protected-path edit burns the full reviewer+fix budget because
-verification is policy-blind (feed the deny signal to an early "blocked-by-policy" park);
-a catastrophic-backtracking `denyBashPatterns` regex can stall the single-process sidecar
-(trusted config today, but a length cap / re2 guard would close it); and the two-step
-symlink write (`ln -s` then Edit through it) defeats the lexical self-protection — the same
-documented gap workspace-confinement has, deferred to the OS sandbox (#15).
+(adversarial-review hardening). **Follow-ups: ALL FOUR CLOSED (2026-07-02):** the
+gauntlet parity gap is fixed (`gauntlet_project::run_from` reads the manifest from the
+PROJECT root while running checks in the review dir; main mode provably unchanged); the
+blocked-by-policy park ships (a failed build whose #5 ledger shows protected-path
+denials parks `WaitingApproval` with the denied paths as evidence instead of burning the
+reviewer+fix budget); the regex stall is capped (patterns > 512 chars warn-and-skip,
+commands sliced to 16 KiB before testing); and the symlink/Bash-redirect write vectors
+are closed at the OS layer by #15's opt-in Seatbelt write containment.
 
 ### 4. Secret hygiene — `SHIPPED` (2026-07-02)
 A `.gitleaks.toml` artifact + read-denial of `.env*`/keys via the hook layer + gitleaks
@@ -108,17 +109,24 @@ between staging and committing in `commit_task_blocking` — fail-closed once gi
 installed (opt-in by install, `which`-probed so gitleaks-less Windows machines don't
 misread ToolAbsent as Findings), redacted-tail evidence only.
 
-### 5. Diff budget + session flight recorder — `SHIPPED` (budget) / `PLANNED` (ledger)
+### 5. Diff budget + session flight recorder — `SHIPPED` (both, 2026-07-02)
 Per-task changed-lines/files ceiling (breach *parks for triage*, never hard-fails) over a
 persisted tool-event ledger. **Tier:** gate + observability. **Prior art:** Danger JS
-`bigPRThreshold`; agent audit-log practice. **Implementation (2026-07-02):**
+`bigPRThreshold`; agent audit-log practice. **Implementation:**
 `workflow/diff_budget.rs` reads `policy.diffBudget { maxChangedLines, maxChangedFiles }`
 from the PROJECT root's manifest (a deliberately separate small reader — `.nightcore/`
 is gitignored in worktrees) and measures `merge-base..HEAD` in the review dir; a breach
 runs BEFORE the gauntlet and parks the task `WaitingApproval` with actuals-vs-budget in
 `task.error` — never the auto-fix loop (an agent must not "fix" scope by deleting work).
-Worktree builds only. The session flight-recorder ledger remains the open half (the
-biggest new surface here).
+Worktree builds only. **The flight recorder (the other half) shipped 2026-07-02:**
+`ledgerPath` on `start-session` (serde-additive; Rust owner of the path formula is
+`store/ledger.rs::ledger_path` → `<projectRoot>/.nightcore/ledger/<taskId>.ndjson`);
+the engine's `SessionLedger` appends one NDJSON record per PreToolUse gate evaluation
+(`{ts, tool, inputDigest, decision: allow|deny|ask, ruleId?}`) plus session start/end
+markers from the ONE seam every evaluation flows through (`HookBus.onToolDecision`) —
+append-only `appendFileSync` (crash-survival is the point), fail-open, ~5 MB cap with a
+`truncated` marker. Build, reviewer, and fix sessions share the task's file, segmented
+by markers. Consumers: the #2 `--no-verify` detector and the #3 blocked-by-policy park.
 
 ### 6. Strictness ratchet — `SHIPPED` (2026-07-02)
 Baseline snapshot of `any`/`ts-ignore`/`eslint-disable` counts + a never-worse gauntlet
@@ -146,21 +154,30 @@ an agent-task installing/wiring it with `verifyCommand: npx depcruise …` and a
 CLAUDE.md/AGENTS.md compiled against an instruction budget (~150 lines), banned-pattern
 lint, overflow restructured into satellite docs. **Tier:** advisory doc + meta-lint gate.
 **Prior art:** HumanLayer CLAUDE.md guide; GitHub 2,500-repo AGENTS.md analysis.
-**Implementation:** the synthesis playbook now compiles every `agent-contract` artifact
+**Implementation:** the synthesis playbook compiles every `agent-contract` artifact
 against the budget — imperative project-specific rules only, filler and config-derivable
-content banned, overflow restructured into linked satellite docs via agent-task. A
-deterministic line-count lint (gate tier) remains open; today the budget is enforced at
-generation, not re-checked at verify.
+content banned, overflow restructured into linked satellite docs via agent-task. The
+verify-time gate SHIPPED 2026-07-02: `workflow/contract_budget.rs` gates every
+CLAUDE.md/AGENTS.md the build's diff TOUCHED (any depth) against a 200-line ceiling
+(~150 target + headroom) — over ⇒ Failed `agent-contract-budget` check with per-file
+line counts routed through the same fix/park loop; within ⇒ a visible Passed check;
+untouched/pre-existing overweight contracts gate nothing. Worktree builds only.
 
-### 9. Least-privilege permission manifest — `SHIPPED` (deny tier, 2026-07-02)
-A derived deny→ask→allow ruleset emitted as a settings artifact and merged into SDK
-`Options` per session. **Tier:** runtime gate — the concrete first step of the LOCKED
-tiered-sandbox decision. **Prior art:** Claude Code permissions docs. **Implementation:**
-`policy.disallowedTools` (exact SDK tool names, incl. `mcp__server__tool`) resolves from
-the manifest and is enforced twice: unioned into SDK `Options.disallowedTools` at
-session construction (belt — the SDK enforces it regardless of permission mode) AND
-denied at the HookBus PreToolUse evaluator (`harness-tool-deny`, suspenders against SDK
-regressions). The fuller derived ask/allow tiers remain open.
+### 9. Least-privilege permission manifest — `SHIPPED` (all three tiers, 2026-07-02)
+A deny→ask→allow ruleset from the manifest, merged into SDK `Options` per session.
+**Tier:** runtime gate — the concrete first step of the LOCKED tiered-sandbox decision.
+**Prior art:** Claude Code permissions docs. **Implementation:** DENY —
+`policy.disallowedTools` (exact SDK tool names, incl. `mcp__server__tool`) enforced
+twice: unioned into SDK `Options.disallowedTools` at session construction AND denied at
+the HookBus PreToolUse evaluator (`harness-tool-deny`). ASK — `policy.askTools` (exact
+tool names) returns `permissionDecision: 'ask'` from the hook AFTER every deny tier
+(an ask can never shadow a deny); VERIFIED against the CLI internals (2.1.198): a hook
+'ask' pre-decision short-circuits the mode pipeline's bypass auto-allow and routes to
+the host's `canUseTool` — so the ask tier HOLDS under `bypassPermissions`. ALLOW —
+`policy.allowTools` (verbatim SDK permission-rule strings, e.g. `Bash(git status:*)`)
+unioned into `Options.allowedTools`, verified purely-additive auto-approval per the SDK
+docs (the exclusive whitelist is the separate `tools` option). All three editable in
+the Policy UI.
 
 ### 10. Changed-lines coverage gate — `SHIPPED` (producer, 2026-07-02)
 Coverage restricted to the agent's own diff (~80% threshold), uncovered lines fed to the
@@ -194,7 +211,9 @@ exposed as the `scan_injection_surface` command. Detection only BY DESIGN: flags
 evidence a human quarantines via `policy.denyReadPaths` (the engine read-deny then
 enforces per-session) — a scan auto-writing enforcement config would itself be an
 injection target. Complements the shipped `untrusted_block`/`defuse_fence` output
-fencing with the input-side sweep.
+fencing with the input-side sweep. **UI shipped 2026-07-02:** the Harness Policy tab's
+Injection-scan card runs the sweep and quarantines any flagged path into
+`denyReadPaths` with one click (deduped, via the merge-preserving policy writer).
 
 ### 13. Env-var contract — `SHIPPED` (producer, 2026-07-02)
 A typed env schema (zod/t3-env style) + a `.env.example` sync check. **Tier:** gate +
@@ -204,15 +223,37 @@ saw read, plus an agent-task wiring it at the entry point with an `env:check` sc
 that fails on `.env.example` drift; the `env-contract` armable kind makes the check a
 standing gauntlet gate.
 
-### 14. Ranked repo map for the Context Pack — `PLANNED`
+### 14. Ranked repo map for the Context Pack — `SHIPPED` (2026-07-02)
 A tree-sitter symbol graph, PageRank-ranked, budgeted into every session's pre-flight
-context. **Tier:** advisory grounding. **Prior art:** Aider repomap. **Implementation
-note:** feeds the existing Pre-flight Context Pack feature; no enforcement, pure grounding.
+context. **Tier:** advisory grounding. **Prior art:** Aider repomap. **Implementation:**
+`store/repo_map.rs` — REAL tree-sitter (0.26 + TS/TSX/JS/Rust grammar crates) over
+git-tracked sources (4000-file / 512 KiB caps), import-graph edges (TS static/re-export/
+`require`/dynamic; Rust `use`/`mod` with brace expansion), hand-rolled PageRank (0.85,
+30 iters, path-stable ties), rendered as a 120-line budgeted section appended to
+`assemble_default` in `store/context.rs` — so "regenerate context pack" now grounds
+every session in the repo's actual hubs. `regenerate_context_pack` went async
+(`spawn_blocking`; ~1.2s on this repo). Non-git projects omit the section. Known
+honest limits: no cross-package edges for workspace deps, no tsconfig-paths aliases,
+symbols ranked exported-first not by reference frequency.
 
-### 15. Sandbox profile artifact — `PLANNED`
-A per-repo devcontainer + Seatbelt/bubblewrap config. **Tier:** OS containment — the
-strongest tier, blocked on the tiered-sandbox roadmap item. **Prior art:** Anthropic
-sandbox-runtime.
+### 15. Sandbox profile artifact + opt-in runtime — `SHIPPED` (2026-07-02)
+A per-repo devcontainer + Seatbelt/bubblewrap config, PLUS a working opt-in runtime.
+**Tier:** OS containment — the strongest tier; this is the first shipped step of the
+LOCKED tiered-sandbox decision. **Prior art:** Anthropic sandbox-runtime.
+**Implementation:** (a) PRODUCERS — the playbook's sandbox-containment module emits a
+`tool-config` Seatbelt `sandbox/agent.sb` write-containment profile (inert config,
+`__WORKSPACE_ROOT__` placeholder) and routes the devcontainer + bubblewrap launcher as
+agent-task ONLY (execution-adjacent; `devcontainer.json`/`.devcontainer.json` added to
+the apply denylist + engine mirror). (b) RUNTIME — `packages/engine/src/session/
+sandbox.ts`: when the GLOBAL `sandbox_sessions` setting is on (web toggle, default OFF,
+darwin-only) the engine wraps the resolved `claude` executable in `sandbox-exec` with a
+generated deny-write-except profile (writable roots: cwd, worktree git common dir, temp
+trees, `~/.claude*` state, claude CLI cache) — requested-but-unavailable warns loudly
+and runs unwrapped. PROVEN on-machine: dogfooded against the real sidecar — a
+sandboxed outside-cwd Bash redirect was BLOCKED while the unsandboxed control escaped;
+this closes the lexical layer's documented symlink/redirect write vectors. Residual
+(documented): reads/network stay open (write containment only); a concurrently-starting
+session's not-yet-exec'd wrapper lives in the writable temp tree.
 
 ### 16. Characterization-test bootstrapper — `SHIPPED` (producer, 2026-07-02)
 Golden-master tests for high-fan-in/low-coverage modules before agents touch them.
@@ -227,44 +268,54 @@ Stryker incremental on critical paths; scores how much "tests pass" is worth per
 feeding the Scorecard Tests dimension. **Tier:** advisory that tunes gates. **Prior art:**
 Google mutation-at-scale. **Implementation:** an agent-task in the playbook (Stryker
 incremental, scoped `mutate`) + the `mutation-score` armable kind. The
-Scorecard-dimension feedback loop remains open.
+Scorecard-dimension feedback loop SHIPPED 2026-07-02: the Scorecard Tests rubric
+(`scans/scorecard/presets.ts`) now checks for a Stryker report
+(`reports/mutation/mutation.json`, `stryker.conf.*`, `.stryker-tmp/`) and grounds the
+Tests grade in the mutation score over raw coverage when one exists, citing it.
 
-### 18. Public-API snapshot lock / AST policy pack / commit discipline — `SHIPPED` (commit discipline) / `PLANNED` (rest)
+### 18. Public-API snapshot lock / AST policy pack / commit discipline — `SHIPPED` (all three, 2026-07-02)
 api-extractor surface reports, ast-grep multi-language rules, lefthook+commitlint
-bundles. **Tier:** gates, lower priority until the manifest ecosystem is proven.
-**Implementation (2026-07-02):** commit discipline ships as agent-task ONLY (lefthook/
-husky configs drive git hooks = execution-adjacent), and the trust boundary was hardened
-to match: 8 lefthook config basenames added to `apply.rs::DENIED_TARGET_BASENAMES` + the
-engine mirror. api-extractor and ast-grep packs remain planned.
+bundles. **Tier:** gates. **Implementation:** commit discipline ships as agent-task ONLY
+(lefthook/husky configs drive git hooks = execution-adjacent), and the trust boundary
+was hardened to match: 8 lefthook config basenames added to
+`apply.rs::DENIED_TARGET_BASENAMES` + the engine mirror. The ast-grep pack ships as a
+`tool-config` `sgconfig.yml` + starter rules (TS gets a live `no-debugger` rule; other
+stacks must ground rules in named findings) with the `ast-grep` armable kind — encoded
+command empirically verified (`npx --yes --package=@ast-grep/cli ast-grep scan --error`;
+the docs' bare `npx @ast-grep/cli` form is broken on current npm, two-bin package). The
+api-extractor pack ships gated on a TypeScript `package`-role member: `tool-config`
+`api-extractor.json` starter + agent-task to seed the committed `.api.md` report, with
+the `api-extractor` armable kind running the non-mutating drift-fails form.
 
-## 3. Where the catalog stands (2026-07-02, end of day)
+## 3. Where the catalog stands (2026-07-02, second pass — COMPLETE)
 
-Sixteen of the eighteen modules now have shipped enforcement and/or producers. The
-deterministic gate battery in `handle_build_completed` runs, in order: **diff-budget
-park gate (#5) → structure-lock manifest checks (#3) → anti-gaming sweep (#2) →
-strictness ratchet (#6) → task verify-command (#1)** — all zero-token, all before the
-paid reviewer. The runtime hook enforces **protected paths + Bash denial (#3), read
-denial (#4/#12), and tool denial (#9)** per session, including under
-`bypassPermissions`. `commit_task` is gated by the **staged-changes secret scan (#4c)**.
-Synthesis produces the **#4/#7/#10/#11/#13/#16/#17/#18 artifacts and agent-task
-proposals** with honest per-stack routing (execution-adjacent targets go agent-task; the
-apply denylist gained lefthook basenames), and compiles agent contracts against the
-**#8** instruction budget. Seven armable check kinds exist end-to-end
+**All eighteen modules are shipped.** The deterministic gate battery in
+`handle_build_completed` runs, in order: **diff-budget park gate (#5) →
+blocked-by-policy park (#3+#5) → structure-lock manifest checks (#3, manifest now read
+from the PROJECT root in worktree mode) → anti-gaming sweep incl. ledger Bash-history
+(#2) → agent-contract budget (#8) → strictness ratchet (#6) → task verify-command
+(#1)** — all zero-token, all before the paid reviewer. The runtime hook enforces
+**protected paths + Bash denial (#3, regex-capped), read denial (#4/#12), tool denial +
+ask escalation (#9)** per session, including under `bypassPermissions` (the ask tier
+verified to reach `canUseTool` even under bypass); `allowTools` auto-approvals union
+into SDK Options. Every PreToolUse decision lands in the per-task **flight-recorder
+ledger (#5)**. `commit_task` is gated by the **staged-changes secret scan (#4c)**.
+**OS write containment (#15)** ships opt-in (macOS Seatbelt, proven blocking real
+escapes) closing the lexical layer's symlink/redirect gaps. Every session's Context
+Pack can carry the **tree-sitter+PageRank repo map (#14)**. Synthesis produces the
+**#4/#7/#10/#11/#13/#15/#16/#17/#18 artifacts and agent-task proposals** with honest
+per-stack routing (execution-adjacent targets go agent-task; the apply denylist covers
+lefthook + devcontainer basenames), and compiles agent contracts against the **#8**
+budget — now also re-checked at verify. NINE armable check kinds exist end-to-end
 (lint-plugin, dependency-cruiser, coverage-threshold, lockfile-lint, env-contract,
-secret-scan, mutation-score).
+secret-scan, mutation-score, ast-grep, api-extractor). The **Policy tab** in Harness
+results edits the whole `policy` block (all three #9 tiers + diff budget) through a
+merge-by-key writer that preserves unknown manifest keys, and runs the **#12 injection
+scan** with one-click quarantine into `denyReadPaths`.
 
-**Still open, in value order:**
-1. **#14 Ranked repo map** — the largest standalone piece (tree-sitter symbol graph +
-   PageRank into the Context Pack); nothing else blocks on it, but #16's evidence
-   gating would sharpen with its fan-in data.
-2. **#15 Sandbox profile artifact** — blocked on the tiered-sandbox roadmap decision;
-   it is also the honest fix for every documented lexical gap (symlinks, rootless
-   Grep, Bash write vectors).
-3. **#5's flight recorder** — the persisted per-run tool-event ledger (also unlocks
-   #2's Bash-history detection).
-4. **#9's ask/allow tiers** — deny shipped; the derived full ruleset remains.
-5. **#18's api-extractor / ast-grep packs** — parked until the manifest ecosystem is
-   proven in anger.
-6. **A policy-authoring UI** for the `policy` block of `harness.json` (today
-   hand-authored or Rust-written) and a UI surface for `scan_injection_surface`
-   results → one-click quarantine into `denyReadPaths`.
+**Documented residuals (deliberate limits, not open modules):** the sandbox contains
+writes only (reads/network open — the tiered-sandbox roadmap owns network egress);
+repo-map edges are intra-package (no workspace-dep or tsconfig-paths resolution);
+rootless Grep content sweeps remain a lexical read-deny gap (the OS sandbox does not
+cover reads); `allowTools`/`askTools` are manifest-authored — nothing derives them from
+observed traffic yet.
