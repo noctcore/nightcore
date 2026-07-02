@@ -1,8 +1,11 @@
 // @ts-check
 import eslint from '@eslint/js';
-import tseslint from 'typescript-eslint';
-import nightcore from '@nightcore/eslint-plugin';
 import jsxA11y from 'eslint-plugin-jsx-a11y';
+import simpleImportSort from 'eslint-plugin-simple-import-sort';
+import tseslint from 'typescript-eslint';
+
+import nightcore from '@nightcore/eslint-plugin';
+
 import { layerRules } from './tools/lint-meta/index.mjs';
 
 // The folder-per-component convention (Tier C) is enforced on every component
@@ -65,6 +68,32 @@ export default tseslint.config(
   // Register the nightcore plugin once, globally (no rules enabled here).
   {
     plugins: { nightcore },
+  },
+  // Import ordering is mechanical, not authorial: node/bun builtins →
+  // third-party → workspace (@nightcore/*, @/ alias) → relative, blank-line
+  // separated (side-effect imports lead). Autofixable via `eslint --fix`.
+  {
+    plugins: { 'simple-import-sort': simpleImportSort },
+    rules: {
+      'simple-import-sort/imports': [
+        'error',
+        {
+          groups: [
+            // Side-effect imports (e.g. a CSS entry) stay in their own leading group.
+            ['^\\u0000'],
+            // Node/Bun builtins.
+            ['^node:', '^bun(:|$)'],
+            // Third-party packages — everything except the workspace scope.
+            ['^(?!@nightcore)@?\\w'],
+            // Workspace barrels and the web `@/` alias.
+            ['^@nightcore/', '^@/'],
+            // Relative imports.
+            ['^\\.'],
+          ],
+        },
+      ],
+      'simple-import-sort/exports': 'error',
+    },
   },
   {
     // Dogfood probe scripts (scripts/**) are standalone Node/Bun programs, not

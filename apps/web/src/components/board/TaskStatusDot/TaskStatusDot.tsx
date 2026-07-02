@@ -1,4 +1,5 @@
 import { StatusDot } from '@/components/ui';
+
 import { isActive, STATUS_DOT_COLOR } from '../status';
 import type { TaskStatusDotProps } from './TaskStatusDot.types';
 

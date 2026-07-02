@@ -19,27 +19,28 @@ import type {
   ScorecardReading,
   SurfaceCommand,
 } from '@nightcore/contracts';
+
 import { ANALYZER_PERSONA } from '../shared/presets.js';
 import {
   DEFAULT_MAX_TURNS,
+  type FinalizeArgs,
   fmtCost,
   fmtElapsed,
   fmtSecs,
-  ScanManager,
-  type FinalizeArgs,
   type ItemCompletedArgs,
-  type ScanManagerDeps,
   type ScanFailureReason,
+  ScanManager,
+  type ScanManagerDeps,
   type ScanRunnerFactory,
   type ScanSessionRunner,
   type SessionConfigParts,
 } from '../shared/scan-manager.js';
 import {
   readingOutputContract,
-  scorecardPreset,
   SCORECARD_ALLOWED_TOOLS,
   SCORECARD_DISALLOWED_TOOLS,
   type ScorecardPreset,
+  scorecardPreset,
 } from './presets.js';
 import { groundReading, parseReading } from './readings.js';
 

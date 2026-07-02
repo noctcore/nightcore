@@ -1,7 +1,10 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
-import type { PermissionPolicy, ToolRisk } from '@nightcore/contracts';
+
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
+
+import type { PermissionPolicy, ToolRisk } from '@nightcore/contracts';
+
 import {
   PermissionLayer,
   type PermissionPromptRequest,

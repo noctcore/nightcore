@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest';
+
 import {
   ACCEPTED_IMAGE_MIME,
   fileToPending,

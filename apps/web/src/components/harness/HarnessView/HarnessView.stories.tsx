@@ -1,5 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+
 import { ToastProvider } from '@/components/ui';
+
 import { HarnessView } from './HarnessView';
 
 const meta = {

@@ -1,10 +1,12 @@
 /// <reference types="bun" />
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { groundReading, parseReading } from './readings.js';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+
 import type { ScorecardReading } from '@nightcore/contracts';
+
+import { groundReading, parseReading } from './readings.js';
 
 describe('parseReading', () => {
   test('parses a single reading object, forces dimension, assigns id + fingerprint', () => {

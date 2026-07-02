@@ -1,8 +1,9 @@
 import { composeStories } from '@storybook/react-vite';
-import { render } from 'vitest-browser-react';
 import { expect, test, vi } from 'vitest';
-import { activeModelId } from './ModelEffortPicker.hooks';
+import { render } from 'vitest-browser-react';
+
 import { ModelEffortPicker } from './ModelEffortPicker';
+import { activeModelId } from './ModelEffortPicker.hooks';
 import * as stories from './ModelEffortPicker.stories';
 
 const { Inherit, OpusHigh, OpusUnlocksMax, HaikuBaseEfforts, LegacyModelId, Disabled } =

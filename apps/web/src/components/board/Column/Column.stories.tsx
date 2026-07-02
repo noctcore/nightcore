@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
-import { Column } from './Column';
+
 import { TASKS_BY_STATUS } from '../_fixtures';
+import { Column } from './Column';
 
 const meta = {
   title: 'Board/Column',

@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react';
+
 import {
   AgentsIcon,
   BookIcon,
@@ -17,6 +18,7 @@ import type {
   HarnessProposalKind,
   HarnessRun,
 } from '@/lib/bridge';
+
 import type { RunStatus } from './harness.types';
 
 /** Every convention lens, in display order. */

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+
 import { EffortLevelSchema } from './config.js';
 
 /** The model-picker descriptor surfaced by the engine's `listModels()`. */

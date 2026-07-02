@@ -1,6 +1,8 @@
 /** Draft state + patch assembly for the harness policy editor. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+
 import type { HarnessPolicyFile, HarnessPolicyPatch } from '@/lib/bridge';
+
 import type { PolicyDraft, PolicyEditorProps, PolicyListKey } from './PolicyEditor.types';
 
 /** The editor's working copy of a loaded policy: lists copied as rows, the

@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
+
 import type { ProposedSubtask } from '@/lib/bridge';
+
 import { ProposedSubtasksPanel } from './ProposedSubtasksPanel';
 
 const open = (id: string, title: string, prompt: string): ProposedSubtask => ({

@@ -1,5 +1,6 @@
 /** Prop types for the Session and History cards. */
 import type { Task } from '@/lib/bridge';
+
 import type { TaskDetailActions } from '../TaskDetail';
 
 /** Props for the collapsible Session card. */

@@ -1,5 +1,6 @@
 /** Read-only inspector sheet for the active provider's resolved configuration. */
 import type { ReactNode } from 'react';
+
 import {
   AgentsIcon,
   Badge,
@@ -20,6 +21,7 @@ import type {
   SkillSummary,
   SubagentSummary,
 } from '@/lib/bridge';
+
 import {
   LIVE_PROVIDER_CONFIG_DATA,
   useProviderConfig,

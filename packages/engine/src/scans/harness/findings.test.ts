@@ -1,15 +1,17 @@
 /// <reference types="bun" />
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+
+import type { ConventionFinding } from '@nightcore/contracts';
+
 import {
   conventionFingerprint,
   dedupeConventionFindings,
   groundConventionFindings,
   parseConventionFindings,
 } from './findings.js';
-import type { ConventionFinding } from '@nightcore/contracts';
 
 describe('parseConventionFindings', () => {
   test('coerces a JSON array, forces category, assigns id + fingerprint', () => {

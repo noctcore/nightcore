@@ -24,17 +24,17 @@
  * (`import.meta.main`) wires the real `SessionManager` to real stdio.
  */
 import { resolveConfig } from '@nightcore/config';
-import { SessionManager } from '@nightcore/engine';
-import { createLogger, type Logger } from '@nightcore/shared';
 import {
-  NightcoreEventSchema,
-  SurfaceCommandSchema,
-  SurfaceQuerySchema,
   type NightcoreEvent,
   type NightcoreEventOf,
+  NightcoreEventSchema,
   type SurfaceCommand,
+  SurfaceCommandSchema,
   type SurfaceQuery,
+  SurfaceQuerySchema,
 } from '@nightcore/contracts';
+import { SessionManager } from '@nightcore/engine';
+import { createLogger, type Logger } from '@nightcore/shared';
 
 /** Emits one already-framed `NightcoreEvent` line to the wire. The live sink
  *  writes to stdout; tests inject a collector to assert framing. */

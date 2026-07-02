@@ -1,12 +1,13 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
-import { ReviewPanel } from './ReviewPanel';
+
 import {
+  makeTask,
   SAMPLE_REVIEW_CHANGES,
   SAMPLE_REVIEW_PASS,
   STRUCTURE_LOCK_FAILED,
-  makeTask,
 } from '../_fixtures';
+import { ReviewPanel } from './ReviewPanel';
 
 const meta = {
   title: 'Board/ReviewPanel',

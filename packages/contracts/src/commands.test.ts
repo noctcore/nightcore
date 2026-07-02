@@ -1,10 +1,11 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
+
 import {
-  SurfaceCommandSchema,
-  SurfaceQuerySchema,
   type SurfaceCommand,
+  SurfaceCommandSchema,
   type SurfaceQuery,
+  SurfaceQuerySchema,
 } from './commands.js';
 
 describe('SurfaceCommandSchema round-trips', () => {

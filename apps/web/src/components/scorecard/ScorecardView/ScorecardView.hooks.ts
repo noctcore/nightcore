@@ -1,35 +1,37 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useToast } from '@/components/ui';
+
 import type {
   MenuItem,
   RunPhase,
   RunProgressCategory,
 } from '@/components/ui';
+import { useToast } from '@/components/ui';
 import {
   cancelScorecard,
   convertReadingToTask,
+  type EffortLevel,
   getScorecardRun,
   listScorecardRuns,
   onScorecardEvent,
-  startScorecard,
-  type EffortLevel,
   type ScorecardDimension,
   type ScorecardEvent,
   type ScorecardRun,
+  startScorecard,
   type Task,
 } from '@/lib/bridge';
-import { DIMENSION_META, gradeRankValue } from '../scorecard.constants';
-import type { ScorecardReadingView } from '../scorecard.types';
-import {
-  EMPTY_SCORECARD_STREAM,
-  foldScorecard,
-  streamFromRun,
-  type DimensionProgress,
-  type ScorecardStream,
-} from '../scorecard-stream';
+
 import type { DimensionRow } from '../DimensionGrid';
 import { useRunConfig } from '../RunControls/RunControls.hooks';
 import type { ScorecardRunConfig } from '../RunControls/RunControls.types';
+import { DIMENSION_META, gradeRankValue } from '../scorecard.constants';
+import type { ScorecardReadingView } from '../scorecard.types';
+import {
+  type DimensionProgress,
+  EMPTY_SCORECARD_STREAM,
+  foldScorecard,
+  type ScorecardStream,
+  streamFromRun,
+} from '../scorecard-stream';
 import type { ScorecardViewProps } from './ScorecardView.types';
 
 interface UseScorecardResult {

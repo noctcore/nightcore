@@ -1,8 +1,10 @@
 /** Open/filter/highlight + keyboard state for the BranchPicker. The .tsx shell is
  *  purely presentational; everything stateful lives here. */
-import { useId, useMemo, useState } from 'react';
 import type { ChangeEvent, FocusEvent, KeyboardEvent } from 'react';
+import { useId, useMemo, useState } from 'react';
+
 import type { BranchInfo } from '@/lib/bridge';
+
 import type { BranchPickerView, BranchRow, CreateRow } from './BranchPicker.types';
 
 /** Inputs the hook needs from the BranchPicker props. */

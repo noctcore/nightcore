@@ -1,5 +1,6 @@
-import { beforeAll } from 'vitest';
 import { setProjectAnnotations } from '@storybook/react-vite';
+import { beforeAll } from 'vitest';
+
 import * as previewAnnotations from './preview';
 
 // Apply the preview-level annotations (decorators, parameters) to every story

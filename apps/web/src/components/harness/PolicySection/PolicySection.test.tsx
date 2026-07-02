@@ -1,6 +1,7 @@
 import { composeStories } from '@storybook/react-vite';
-import { render } from 'vitest-browser-react';
 import { expect, test } from 'vitest';
+import { render } from 'vitest-browser-react';
+
 import { appendQuarantinePath } from './PolicySection.hooks';
 import * as stories from './PolicySection.stories';
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+
 import { isTauri } from '@/lib/bridge';
 
 /** How long the boot splash stays up on first mount (ms). */

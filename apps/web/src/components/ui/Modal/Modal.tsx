@@ -1,5 +1,6 @@
 /** Shared focus-trapped modal dialog primitive. */
 import type { ReactNode } from 'react';
+
 import { useModal } from './Modal.hooks';
 
 /** Props for {@link Modal}. */

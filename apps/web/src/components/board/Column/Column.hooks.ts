@@ -1,7 +1,9 @@
-import { useCallback, useId, useRef } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { useVirtualizer, type Virtualizer } from '@tanstack/react-virtual';
+import { useCallback, useId, useRef } from 'react';
+
 import type { Task, TaskStatus } from '@/lib/bridge';
+
 import { isDroppableStatus } from '../status';
 
 /** Estimated card height (px) before measurement. Cards are variable-height

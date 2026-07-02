@@ -11,6 +11,7 @@ import {
   TagIcon,
 } from '@/components/ui';
 import type { SessionInfo, SessionMessage } from '@/lib/bridge';
+
 import {
   extractMessageText,
   formatTimestamp,

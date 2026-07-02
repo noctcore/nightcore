@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
-import { BoardDnd } from './BoardDnd';
-import { Column } from '../Column';
+
 import { TASKS_BY_STATUS } from '../_fixtures';
+import { Column } from '../Column';
+import { BoardDnd } from './BoardDnd';
 
 const TASKS = [TASKS_BY_STATUS.backlog, TASKS_BY_STATUS.done];
 

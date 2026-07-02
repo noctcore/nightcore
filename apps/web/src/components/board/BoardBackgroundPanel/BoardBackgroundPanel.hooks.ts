@@ -1,7 +1,9 @@
 /** State + file-picking logic for the Board Background panel (kept out of the .tsx
  *  per the folder-per-component convention). */
 import { useCallback, useRef, useState } from 'react';
+
 import { ACCEPTED_IMAGE_MIME, fileToBackgroundImage } from '@/lib/attachments';
+
 import type { PickedBackgroundImage } from './BoardBackgroundPanel.types';
 
 /** The `accept` attribute for the hidden file input. */

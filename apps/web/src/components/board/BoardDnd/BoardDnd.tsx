@@ -1,6 +1,7 @@
 /** Drag-and-drop context wrapping the board's columns. */
+import { closestCorners,DndContext, DragOverlay } from '@dnd-kit/core';
 import { memo } from 'react';
-import { DndContext, DragOverlay, closestCorners } from '@dnd-kit/core';
+
 import { TaskCard } from '../TaskCard';
 import { useBoardDnd } from './BoardDnd.hooks';
 import type { BoardDndProps } from './BoardDnd.types';

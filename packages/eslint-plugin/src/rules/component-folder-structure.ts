@@ -3,13 +3,13 @@ import path from 'node:path';
 
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
-import { createRule } from '../utils/createRule';
 import {
   getComponentName,
   getFeatureName,
   isComponentEntryFile,
   isIgnoredPath,
 } from '../utils/component-architecture';
+import { createRule } from '../utils/createRule';
 
 export const RULE_NAME = 'component-folder-structure';
 

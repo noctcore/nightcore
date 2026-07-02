@@ -1,68 +1,68 @@
 /** Public surface of the board feature: components, the status vocabulary, and
  *  the session-stream folding helpers. */
-export { Board } from './Board';
-export type { BreakerInfo } from './Board';
-export { AutoModeOptions } from './AutoModeOptions';
 export type { AutoModeOptionsProps } from './AutoModeOptions';
+export { AutoModeOptions } from './AutoModeOptions';
+export type { BreakerInfo } from './Board';
+export { Board } from './Board';
 export { BoardDnd } from './BoardDnd';
 export { Column } from './Column';
-export { TaskCard } from './TaskCard';
-export { TaskDetail } from './TaskDetail';
-export type { TaskDetailActions } from './TaskDetail';
-export { PermissionPrompt } from './PermissionPrompt';
-export { QuestionPrompt } from './QuestionPrompt';
-export { InteractionDock } from './InteractionDock';
-export { TaskStatusDot } from './TaskStatusDot';
-export { NewTaskForm } from './NewTaskForm';
-export { KindPicker } from './KindPicker';
-export { WorkModePicker } from './WorkModePicker';
-export { PermissionModePicker } from './PermissionModePicker';
-export { WorktreeSwitcher, filterTasksByWorktree } from './WorktreeSwitcher';
-export type { ActiveWorktree, WorktreeTab } from './WorktreeSwitcher';
-export { ReviewPanel } from './ReviewPanel';
 export { GauntletResults } from './GauntletResults';
-export { SessionHistory } from './SessionHistory';
-export type { SessionHistoryProps, SessionHistoryData } from './SessionHistory';
+export { InteractionDock } from './InteractionDock';
+export { KindPicker } from './KindPicker';
+export { NewTaskForm } from './NewTaskForm';
+export { PermissionModePicker } from './PermissionModePicker';
+export { PermissionPrompt } from './PermissionPrompt';
+export type { ProviderConfigData,ProviderConfigPanelProps } from './ProviderConfigPanel';
 export { ProviderConfigPanel } from './ProviderConfigPanel';
-export type { ProviderConfigPanelProps, ProviderConfigData } from './ProviderConfigPanel';
-export {
-  COLUMNS,
-  STATUS_LABEL,
-  STATUS_TEXT,
-  STATUS_DOT_COLOR,
-  formatCost,
-  isActive,
-  modelDisplayName,
-  modelDotColor,
-  parseVerdict,
-  KIND_OPTIONS,
-  KIND_LABEL,
-  RUN_MODE_OPTIONS,
-  RUN_MODE_LABEL,
-  VERDICT_LABEL,
-  VERDICT_TEXT,
-  PERMISSION_MODE_OPTIONS,
-  PERMISSION_MODE_LABEL,
-  MODEL_OPTIONS,
-  EFFORT_OPTIONS,
-  type ColumnDef,
-  type KindOption,
-  type RunModeOption,
-  type Verdict,
-  type PermissionModeOption,
-  type ModelOption,
-  type EffortOption,
-} from './status';
+export { QuestionPrompt } from './QuestionPrompt';
+export { ReviewPanel } from './ReviewPanel';
 export {
   EMPTY_STREAM,
   EMPTY_TRANSCRIPT,
   foldSession,
   foldTranscript,
-  type SessionStream,
   type SessionGroup,
   type SessionPhase,
+  type SessionStream,
   type TaskTranscript,
-  type TimelineEntry,
   type TextEntry,
+  type TimelineEntry,
   type ToolEntry,
 } from './session-stream';
+export type { SessionHistoryData,SessionHistoryProps } from './SessionHistory';
+export { SessionHistory } from './SessionHistory';
+export {
+  type ColumnDef,
+  COLUMNS,
+  EFFORT_OPTIONS,
+  type EffortOption,
+  formatCost,
+  isActive,
+  KIND_LABEL,
+  KIND_OPTIONS,
+  type KindOption,
+  MODEL_OPTIONS,
+  modelDisplayName,
+  modelDotColor,
+  type ModelOption,
+  parseVerdict,
+  PERMISSION_MODE_LABEL,
+  PERMISSION_MODE_OPTIONS,
+  type PermissionModeOption,
+  RUN_MODE_LABEL,
+  RUN_MODE_OPTIONS,
+  type RunModeOption,
+  STATUS_DOT_COLOR,
+  STATUS_LABEL,
+  STATUS_TEXT,
+  type Verdict,
+  VERDICT_LABEL,
+  VERDICT_TEXT,
+} from './status';
+export { TaskCard } from './TaskCard';
+export type { TaskDetailActions } from './TaskDetail';
+export { TaskDetail } from './TaskDetail';
+export { TaskStatusDot } from './TaskStatusDot';
+export { WorkModePicker } from './WorkModePicker';
+export type { ActiveWorktree, WorktreeTab } from './WorktreeSwitcher';
+export { filterTasksByWorktree,WorktreeSwitcher } from './WorktreeSwitcher';

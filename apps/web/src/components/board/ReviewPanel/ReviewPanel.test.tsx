@@ -1,9 +1,10 @@
 import { composeStories } from '@storybook/react-vite';
-import { render } from 'vitest-browser-react';
 import { expect, test, vi } from 'vitest';
-import * as stories from './ReviewPanel.stories';
+import { render } from 'vitest-browser-react';
+
+import { makeTask,SAMPLE_REVIEW_CHANGES } from '../_fixtures';
 import { deriveReviewPanelView } from './ReviewPanel.hooks';
-import { SAMPLE_REVIEW_CHANGES, makeTask } from '../_fixtures';
+import * as stories from './ReviewPanel.stories';
 
 const { ParkedChangesRequested, Passed, Unparseable, StructureLockParked } =
   composeStories(stories);

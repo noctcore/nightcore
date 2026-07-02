@@ -1,7 +1,8 @@
 import { composeStories } from '@storybook/react-vite';
-import { render } from 'vitest-browser-react';
-import { expect, test, vi } from 'vitest';
 import { userEvent } from '@vitest/browser/context';
+import { expect, test, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+
 import * as stories from './NewProjectDialog.stories';
 
 const { NoFolder, FolderChosen, NotAGitRepo } = composeStories(stories);

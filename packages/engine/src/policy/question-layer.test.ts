@@ -1,12 +1,14 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
+
 import type {
   UserDialogRequest,
   UserDialogResult,
 } from '@anthropic-ai/claude-agent-sdk';
+
 import {
-  QuestionLayer,
   ASK_USER_QUESTION_DIALOG,
+  QuestionLayer,
   type QuestionPromptRequest,
 } from './question-layer.js';
 

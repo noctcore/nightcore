@@ -1,4 +1,5 @@
 import { memo } from 'react';
+
 import {
   AlertIcon,
   BoardIcon,
@@ -17,6 +18,7 @@ import {
   TrashIcon,
   VerifiedIcon,
 } from '@/components/ui';
+
 import { formatCost, modelDisplayName, modelDotColor } from '../status';
 import { useElapsed, useTaskDraggable } from './TaskCard.hooks';
 import type { TaskCardProps } from './TaskCard.types';

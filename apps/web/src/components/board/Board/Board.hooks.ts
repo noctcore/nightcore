@@ -2,9 +2,11 @@
  *  keyword search, the provider inspector toggle, and the breaker banner. The
  *  board-appearance / background-panel hooks live in `Board.appearance.hooks.ts`. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+
 import type { Task } from '@/lib/bridge';
-import { COLUMNS, type ColumnDef } from '../status';
-import { filterTasksByWorktree, type ActiveWorktree } from '../WorktreeSwitcher';
+
+import { type ColumnDef,COLUMNS } from '../status';
+import { type ActiveWorktree,filterTasksByWorktree } from '../WorktreeSwitcher';
 import type { BreakerInfo } from './Board.types';
 
 /** A board column paired with the tasks currently grouped into it. */

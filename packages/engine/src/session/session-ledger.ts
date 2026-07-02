@@ -23,6 +23,7 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+
 import type { Logger } from '@nightcore/shared';
 
 /** The ledger size cap. Crossing it writes one final `truncated` marker line

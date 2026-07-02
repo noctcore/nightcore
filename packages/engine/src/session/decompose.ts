@@ -13,6 +13,7 @@
  * session-completed emit.
  */
 import { z } from 'zod';
+
 import { extractJson } from '../scans/shared/findings.js';
 
 /** One proposed sub-task: a short imperative `title` + a self-contained `prompt`.

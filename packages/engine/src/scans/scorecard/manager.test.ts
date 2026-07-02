@@ -1,12 +1,14 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
+
 import {
-  ConfigSchema,
   type Config,
+  ConfigSchema,
   type NightcoreEvent,
   type ScorecardDimension,
   type SurfaceCommand,
 } from '@nightcore/contracts';
+
 import {
   ScorecardManager,
   type ScorecardRunnerFactory,

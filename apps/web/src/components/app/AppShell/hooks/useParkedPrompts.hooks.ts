@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
+
+import type { ToastApi } from '@/components/ui';
 import {
   answerQuestion,
   onPermissionEvent,
   onQuestionEvent,
-  respondPermission,
   type PermissionPrompt,
   type QuestionAnswer,
   type QuestionPrompt,
+  respondPermission,
   type Task,
 } from '@/lib/bridge';
-import type { ToastApi } from '@/components/ui';
 
 /**
  * Shared machinery for a family of parked interactive prompts that block a live

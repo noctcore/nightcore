@@ -1,4 +1,5 @@
 import { LayersIcon } from '@/components/ui';
+
 import { useWorktreeTabs } from './WorktreeSwitcher.hooks';
 import { WorktreeTabButton } from './WorktreeSwitcher.parts';
 import type { WorktreeSwitcherProps } from './WorktreeSwitcher.types';

@@ -5,6 +5,7 @@
  *  `styles.css`. Kept out of any component so the resolution/clamp/mapping logic is
  *  unit-testable in isolation (mirrors the sibling `status.ts` board helper). */
 import type { CSSProperties } from 'react';
+
 import type { BoardAppearance, Settings } from '@/lib/bridge';
 
 /** The identity appearance: every knob at the value that reproduces the pre-feature

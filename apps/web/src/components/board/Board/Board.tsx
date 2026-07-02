@@ -1,4 +1,5 @@
 import { memo } from 'react';
+
 import {
   AgentsIcon,
   AlertIcon,
@@ -11,6 +12,7 @@ import {
   SearchIcon,
   SlidersIcon,
 } from '@/components/ui';
+
 import { AutoModeOptions } from '../AutoModeOptions';
 import { BoardBackgroundPanel } from '../BoardBackgroundPanel';
 import { BoardDnd } from '../BoardDnd';

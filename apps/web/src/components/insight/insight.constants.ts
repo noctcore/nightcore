@@ -1,6 +1,7 @@
 /** Static display metadata for the Insight surface: category/severity/effort/scope
  *  labels and glyphs, plus the helpers that order and project these enums. */
 import type { ComponentType } from 'react';
+
 import {
   BookIcon,
   BugIcon,
@@ -19,6 +20,7 @@ import type {
   FindingSeverity,
   InsightRun,
 } from '@/lib/bridge';
+
 import type { RunStatus } from './insight.types';
 
 /** Every category, in display order. */

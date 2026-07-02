@@ -2,12 +2,12 @@
 import {
   cloneElement,
   isValidElement,
+  type ReactElement,
+  type ReactNode,
   useCallback,
   useEffect,
   useRef,
   useState,
-  type ReactElement,
-  type ReactNode,
 } from 'react';
 
 /** A single selectable row in a {@link Menu}. */

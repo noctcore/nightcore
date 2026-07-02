@@ -1,5 +1,7 @@
 import { useCallback, useState } from 'react';
+
 import { parseSourceRef, type ScanTarget } from '@/lib/source-ref';
+
 import type { AppView } from '../AppShell.types';
 
 /** Routing + overlay open/close state for the shell. */

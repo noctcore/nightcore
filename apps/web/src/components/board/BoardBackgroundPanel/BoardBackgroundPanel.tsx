@@ -12,6 +12,7 @@ import {
   UploadIcon,
 } from '@/components/ui';
 import type { BoardAppearance } from '@/lib/bridge';
+
 import { BACKGROUND_ACCEPT, useBackgroundPicker } from './BoardBackgroundPanel.hooks';
 import type { BoardBackgroundPanelProps } from './BoardBackgroundPanel.types';
 

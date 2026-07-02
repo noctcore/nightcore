@@ -7,13 +7,16 @@
  * so the JSON extraction and fingerprint key can never diverge from Insight's.
  */
 import * as path from 'node:path';
+
 import {
-  ScorecardReadingSchema,
   type ScorecardDimension,
   type ScorecardEvidence,
   type ScorecardGrade,
   type ScorecardReading,
+  ScorecardReadingSchema,
 } from '@nightcore/contracts';
+
+import { getNumber, getString, getStringArray } from '../../util/field-extract.js';
 import {
   clampLocationLines,
   coerceLocation,
@@ -23,7 +26,6 @@ import {
   lineCount,
   normalizeFile,
 } from '../shared/findings.js';
-import { getNumber, getString, getStringArray } from '../../util/field-extract.js';
 
 /** The valid grade letters. */
 const GRADES: readonly ScorecardGrade[] = ['A', 'B', 'C', 'D', 'E', 'F'];

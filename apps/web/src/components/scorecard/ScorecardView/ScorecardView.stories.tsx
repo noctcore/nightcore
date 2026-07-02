@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
+
 import { ToastProvider } from '@/components/ui';
+
 import { ScorecardView } from './ScorecardView';
 
 const meta = {

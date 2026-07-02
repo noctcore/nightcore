@@ -1,5 +1,6 @@
 /// <reference types="bun" />
 import { afterEach, describe, expect, test } from 'bun:test';
+
 import { createLogger } from './logger.js';
 
 /** Capture every line written to stderr while `fn` runs, restoring the original. */

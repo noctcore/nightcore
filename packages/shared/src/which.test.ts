@@ -1,6 +1,7 @@
 /// <reference types="bun" />
-import { describe, expect, test } from 'bun:test';
 import { isAbsolute } from 'node:path';
+import { describe, expect, test } from 'bun:test';
+
 import { whichSync } from './which.js';
 
 describe('whichSync', () => {

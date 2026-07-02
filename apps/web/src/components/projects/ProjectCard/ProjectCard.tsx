@@ -16,6 +16,7 @@ import {
   StatusDot,
   TrashIcon,
 } from '@/components/ui';
+
 import { useProjectCard } from './ProjectCard.hooks';
 import type { ProjectCardProps, ProjectSummary } from './ProjectCard.types';
 

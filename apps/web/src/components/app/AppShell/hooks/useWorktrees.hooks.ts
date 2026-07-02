@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { listWorktrees, onProjectEvent, onTaskEvent, type WorktreeInfo } from '@/lib/bridge';
+
 import type { ActiveWorktree } from '@/components/board';
+import { listWorktrees, onProjectEvent, onTaskEvent, type WorktreeInfo } from '@/lib/bridge';
+
 import { useDebouncedRefetch } from './useDebouncedRefetch.hooks';
 
 /** The active project's live worktrees plus the selected worktree tab.

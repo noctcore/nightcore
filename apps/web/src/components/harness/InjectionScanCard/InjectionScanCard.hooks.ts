@@ -1,6 +1,8 @@
 /** Scan + quarantine state for the injection-surface card. */
 import { useCallback, useState } from 'react';
-import { scanInjectionSurface, type InjectionFlag } from '@/lib/bridge';
+
+import { type InjectionFlag,scanInjectionSurface } from '@/lib/bridge';
+
 import type { InjectionScanCardProps } from './InjectionScanCard.types';
 
 /** Everything the InjectionScanCard shell renders. */

@@ -2,8 +2,9 @@
  *  (enable switch, path/pattern/tool lists, diff budget) with explicit dirty-state
  *  save. Rendered purely from the `usePolicyEditor` view model. */
 import { Button, CloseIcon, PlusIcon, Skeleton, Spinner } from '@/components/ui';
-import { usePolicyEditor } from './PolicyEditor.hooks';
+
 import type { PolicyEditorVM } from './PolicyEditor.hooks';
+import { usePolicyEditor } from './PolicyEditor.hooks';
 import type { PolicyEditorProps, PolicyListKey } from './PolicyEditor.types';
 
 const FIELD_INPUT =

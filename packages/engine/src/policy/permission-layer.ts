@@ -1,6 +1,8 @@
+import type { CanUseTool, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
+
 import type { PermissionPolicy, ToolRisk } from '@nightcore/contracts';
 import { createRequestIdFactory, type Logger } from '@nightcore/shared';
-import type { CanUseTool, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
+
 import { ASK_USER_QUESTION_TOOL } from './question-layer.js';
 
 /** Look up a tool's declared risk class by the name the model uses. Returns

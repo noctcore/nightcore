@@ -1,11 +1,12 @@
 /// <reference types="bun" />
-import { describe, expect, test } from 'bun:test';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { describe, expect, test } from 'bun:test';
+
 import {
   evaluateWorkspaceConfinement,
-  WORKSPACE_CONFINEMENT_RULE_ID,
   SENSITIVE_READ_RULE_ID,
+  WORKSPACE_CONFINEMENT_RULE_ID,
 } from './workspace-confinement.js';
 
 // The reported bug: cwd is the task worktree, nested inside the main checkout, so

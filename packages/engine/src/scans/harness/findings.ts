@@ -14,14 +14,17 @@
  */
 import { createHash } from 'node:crypto';
 import * as path from 'node:path';
+
 import {
-  ConventionFindingSchema,
   type ConventionCategory,
   type ConventionFinding,
+  ConventionFindingSchema,
   type ConventionKind,
   type FindingLocation,
   type FindingSeverity,
 } from '@nightcore/contracts';
+
+import { getNumber, getString, getStringArray } from '../../util/field-extract.js';
 import {
   clampLocationLines,
   coerceLocation,
@@ -29,7 +32,6 @@ import {
   fileExists,
   lineCount,
 } from '../shared/findings.js';
-import { getNumber, getString, getStringArray } from '../../util/field-extract.js';
 
 /** Severity ordering for ranking/merge (low → high). */
 const SEVERITY_RANK: Record<FindingSeverity, number> = {

@@ -18,6 +18,7 @@ import type {
   FindingCategory,
   SurfaceCommand,
 } from '@nightcore/contracts';
+
 import {
   dedupeFindings,
   groundFindings,
@@ -26,21 +27,21 @@ import {
 import {
   ANALYSIS_ALLOWED_TOOLS,
   ANALYSIS_DISALLOWED_TOOLS,
-  ANALYZER_PERSONA,
-  analysisPreset,
-  outputContract,
   type AnalysisPreset,
+  analysisPreset,
+  ANALYZER_PERSONA,
+  outputContract,
 } from '../shared/presets.js';
 import {
   DEFAULT_MAX_TURNS,
+  type FinalizeArgs,
   fmtCost,
   fmtElapsed,
   fmtSecs,
-  ScanManager,
-  type FinalizeArgs,
   type ItemCompletedArgs,
-  type ScanManagerDeps,
   type ScanFailureReason,
+  ScanManager,
+  type ScanManagerDeps,
   type ScanRunnerFactory,
   type ScanSessionRunner,
   type SessionConfigParts,

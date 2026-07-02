@@ -1,12 +1,13 @@
-import type { QuestionAnswer, QuestionItem } from '@nightcore/contracts';
-import { QuestionItemSchema } from '@nightcore/contracts';
-import { createRequestIdFactory, type Logger } from '@nightcore/shared';
 import type {
   OnUserDialog,
   UserDialogRequest,
   UserDialogResult,
 } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
+
+import type { QuestionAnswer, QuestionItem } from '@nightcore/contracts';
+import { QuestionItemSchema } from '@nightcore/contracts';
+import { createRequestIdFactory, type Logger } from '@nightcore/shared';
 
 /**
  * The SDK dialog kind the Claude CLI uses to collect `AskUserQuestion` answers.

@@ -1,5 +1,6 @@
 /** Reusable confirmation modal for guarding destructive actions. */
 import { type ReactNode } from 'react';
+
 import { Button } from './Button';
 import { Kbd } from './Kbd';
 import { Modal } from './Modal';

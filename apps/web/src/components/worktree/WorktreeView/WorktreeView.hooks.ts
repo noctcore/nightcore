@@ -2,9 +2,10 @@
  *  merge-preview / diff fetches, and the merge / discard bridge actions with
  *  friendly error toasts. The view component stays a thin shell over this. */
 import { useCallback, useState } from 'react';
+
 import { useToast } from '@/components/ui';
-import { discardWorktree, mergePreview, mergeTask, worktreeDiff } from '@/lib/bridge';
 import type { MergePreview, Task, WorktreeDiff, WorktreeInfo } from '@/lib/bridge';
+import { discardWorktree, mergePreview, mergeTask, worktreeDiff } from '@/lib/bridge';
 import { parseGitError } from '@/lib/git-error';
 
 /** The merge-preview dialog's data, keyed by the task it was opened for. */

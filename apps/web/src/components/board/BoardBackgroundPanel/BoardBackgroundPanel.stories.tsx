@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
+
 import { DEFAULT_APPEARANCE } from '../appearance';
 import { BoardBackgroundPanel } from './BoardBackgroundPanel';
 

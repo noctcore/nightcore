@@ -4,10 +4,11 @@
  * self-resolution. Exposes the resolver plus a few helpers it composes.
  */
 import * as fs from 'node:fs';
+import { createRequire } from 'node:module';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+
 import { whichSync } from '@nightcore/shared';
 
 /**

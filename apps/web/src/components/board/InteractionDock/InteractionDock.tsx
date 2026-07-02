@@ -1,4 +1,5 @@
 import { Badge, BellIcon } from '@/components/ui';
+
 import { PermissionPrompt } from '../PermissionPrompt';
 import { QuestionPrompt } from '../QuestionPrompt';
 import { interactionCount } from './InteractionDock.hooks';

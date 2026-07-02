@@ -1,11 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { ActivityLog } from './ActivityLog';
+
 import {
   EMPTY_STREAM,
   type SessionGroup,
   type SessionPhase,
   type SessionStream,
 } from '../session-stream';
+import { ActivityLog } from './ActivityLog';
 
 /** Assemble session groups from per-session (phase, stream) pairs. */
 function sessions(

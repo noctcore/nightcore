@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import type {
   ConventionFinding,
   HarnessRun,
@@ -9,16 +10,17 @@ import type {
   StoredProposedArtifact,
   StoredRepoProfile,
 } from '@/lib/bridge';
+
 import {
   EMPTY_HARNESS_STREAM,
   foldHarness,
+  type HarnessStream,
   storedToArtifact,
   storedToConventionFinding,
   storedToProfile,
   streamFromRun,
   wireToArtifact,
   wireToConventionFinding,
-  type HarnessStream,
 } from './harness-stream';
 
 function wireFinding(over: Partial<ConventionFinding> = {}): ConventionFinding {

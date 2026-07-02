@@ -9,6 +9,7 @@ import {
   MoveIcon,
 } from '@/components/ui';
 import { formatLocation } from '@/lib/formatters';
+
 import { DIMENSION_META, GRADE_META } from '../scorecard.constants';
 import type { ReadingDetailPanelProps } from './ReadingDetailPanel.types';
 

@@ -1,4 +1,5 @@
 import type { Project } from '@/lib/bridge';
+
 import type { AppView, NavItem } from '../AppShell/AppShell.types';
 
 /** Props for the presentational {@link Sidebar}: the project list + active

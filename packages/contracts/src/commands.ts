@@ -1,14 +1,15 @@
 import { z } from 'zod';
+
 import {
   EffortLevelSchema,
   McpServerEntrySchema,
   PermissionModeSchema,
   TaskKindSchema,
 } from './config.js';
-import { PermissionDecisionSchema, QuestionAnswerSchema } from './tools.js';
+import { ConventionCategorySchema, HarnessPolicySchema } from './harness.js';
 import { AnalysisScopeSchema, FindingCategorySchema } from './insight.js';
 import { ScorecardDimensionSchema } from './scorecard.js';
-import { ConventionCategorySchema, HarnessPolicySchema } from './harness.js';
+import { PermissionDecisionSchema, QuestionAnswerSchema } from './tools.js';
 
 /**
  * `SurfaceCommand` — the typed stream flowing surface → engine.

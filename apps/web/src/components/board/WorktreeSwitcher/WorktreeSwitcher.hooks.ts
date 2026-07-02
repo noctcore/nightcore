@@ -1,6 +1,8 @@
 /** WorktreeSwitcher derivation: per-worktree task filtering and tab building. */
 import { useMemo } from 'react';
+
 import type { Task, WorktreeInfo } from '@/lib/bridge';
+
 import type { ActiveWorktree, WorktreeTab } from './WorktreeSwitcher.types';
 
 /** Whether a task is actively running (counts toward a tab's running indicator). */

@@ -11,6 +11,7 @@ import {
   TrashIcon,
 } from '@/components/ui';
 import type { McpServerEntry } from '@/lib/bridge';
+
 import { useMcpServersCard } from './McpServersCard.hooks';
 import type {
   McpServerDraft,

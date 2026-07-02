@@ -4,6 +4,7 @@ import {
   ACCEPTED_IMAGE_MIME,
   MAX_IMAGES_PER_TASK,
 } from '@/lib/attachments';
+
 import { CloseIcon, ImageIcon, UploadIcon } from '../icons';
 import { useImageDropzone } from './ImageDropzone.hooks';
 import type { ImageDropzoneProps } from './ImageDropzone.types';

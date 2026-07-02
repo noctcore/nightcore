@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+
 import type { RepoProfileVM } from '../harness.types';
 import { ProfileBanner } from './ProfileBanner';
 

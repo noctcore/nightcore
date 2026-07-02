@@ -11,6 +11,7 @@ import {
   PlusIcon,
   StatusDot,
 } from '@/components/ui';
+
 import type { SidebarProps } from './Sidebar.types';
 
 const NAV_BASE =

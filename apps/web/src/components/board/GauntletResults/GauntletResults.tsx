@@ -1,5 +1,6 @@
 /** Readiness-gauntlet and structure-lock results panel for a task. */
 import { Button, ChecksIcon, Spinner } from '@/components/ui';
+
 import { STEP_STATUS_GLYPH, STEP_STATUS_TEXT } from './GauntletResults.hooks';
 import type { GauntletResultsProps } from './GauntletResults.types';
 

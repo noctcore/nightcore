@@ -1,9 +1,10 @@
 import { composeStories } from '@storybook/react-vite';
-import { render } from 'vitest-browser-react';
 import { expect, test } from 'vitest';
-import * as stories from './ActivityLog.stories';
-import { ActivityLog } from './ActivityLog';
+import { render } from 'vitest-browser-react';
+
 import { EMPTY_STREAM, type SessionGroup, type TimelineEntry } from '../session-stream';
+import { ActivityLog } from './ActivityLog';
+import * as stories from './ActivityLog.stories';
 
 const { Empty, WaitingForToken, SingleSession, MultiSession, WithError } =
   composeStories(stories);

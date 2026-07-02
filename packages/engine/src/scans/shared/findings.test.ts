@@ -1,8 +1,11 @@
 /// <reference types="bun" />
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+
+import type { Finding } from '@nightcore/contracts';
+
 import {
   dedupeFindings,
   extractJson,
@@ -11,7 +14,6 @@ import {
   parseFindings,
   severityRank,
 } from './findings.js';
-import type { Finding } from '@nightcore/contracts';
 
 describe('extractJson', () => {
   test('parses a bare JSON array', () => {

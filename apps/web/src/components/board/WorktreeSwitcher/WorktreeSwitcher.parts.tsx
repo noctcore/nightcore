@@ -1,6 +1,7 @@
 /** Presentational sub-parts for the WorktreeSwitcher: the per-tab button. */
 import { BoardIcon, BranchIcon } from '@/components/ui';
 import { rovingKeydown } from '@/lib/roving-keydown';
+
 import type { WorktreeTab } from './WorktreeSwitcher.types';
 
 /** Props for a single worktree tab button. */

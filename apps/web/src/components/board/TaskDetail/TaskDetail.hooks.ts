@@ -1,7 +1,9 @@
 /** TaskDetail derivation helpers: build the drawer's view-model from the task +
  *  live transcript, and decide whether Merge is permitted. */
 import { createContext, useContext } from 'react';
+
 import type { GauntletResult, Task } from '@/lib/bridge';
+
 import { EMPTY_STREAM, type SessionGroup, type TaskTranscript } from '../session-stream';
 
 /** Carries the open task's live per-session transcript from the drawer's outer

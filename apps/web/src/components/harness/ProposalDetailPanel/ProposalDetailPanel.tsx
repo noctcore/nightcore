@@ -13,6 +13,7 @@ import {
   RetryIcon,
   TrashIcon,
 } from '@/components/ui';
+
 import { PROPOSAL_KIND_META } from '../harness.constants';
 import type { ProposalDetailPanelProps } from './ProposalDetailPanel.types';
 

@@ -12,31 +12,32 @@ import type {
   WireImage,
 } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
+
+import { HookBus } from '../policy/hook-bus.js';
+import { type ApprovalDecision,PermissionLayer } from '../policy/permission-layer.js';
+import { ASK_USER_QUESTION_DIALOG,QuestionLayer } from '../policy/question-layer.js';
+import { ToolRegistry } from '../policy/tool-registry.js';
+import { resolveClaudeBinary } from './resolve-claude-binary.js';
+import { prepareWriteSandbox } from './sandbox.js';
 import {
-  query,
-  translateMessage,
   type AgentInfo,
   type McpServerStatus,
   type ModelInfo,
   type Query,
+  query,
   type RewindFilesResult,
   type SDKControlGetContextUsageResponse,
   type SDKControlInitializeResponse,
   type SDKUserMessage,
   type SlashCommand,
+  translateMessage,
 } from './sdk-adapter.js';
+import { SessionLedger } from './session-ledger.js';
 import {
-  SessionOptionsBuilder,
   buildUserMessageContent,
+  SessionOptionsBuilder,
   type SessionRunnerConfig,
 } from './session-options.js';
-import { PermissionLayer, type ApprovalDecision } from '../policy/permission-layer.js';
-import { QuestionLayer, ASK_USER_QUESTION_DIALOG } from '../policy/question-layer.js';
-import { ToolRegistry } from '../policy/tool-registry.js';
-import { HookBus } from '../policy/hook-bus.js';
-import { SessionLedger } from './session-ledger.js';
-import { resolveClaudeBinary } from './resolve-claude-binary.js';
-import { prepareWriteSandbox } from './sandbox.js';
 
 // The option-composition surface (`SessionOptionsBuilder` + the pure compose
 // helpers) lives in `session-options.ts` so it is unit-testable without spinning a

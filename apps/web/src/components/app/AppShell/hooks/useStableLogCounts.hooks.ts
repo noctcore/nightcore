@@ -1,4 +1,5 @@
 import { useMemo, useRef } from 'react';
+
 import type { TaskTranscript } from '@/components/board';
 
 /** Serialize the per-task tool counts to a stable key so identity tracks the

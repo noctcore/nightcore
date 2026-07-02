@@ -5,6 +5,7 @@
  * command families to their dedicated managers, and exposes SDK→wire mappers.
  */
 import { EventEmitter } from 'node:events';
+
 import type {
   Config,
   ModelDescriptor,
@@ -17,16 +18,17 @@ import type {
   SurfaceCommand,
   SurfaceQuery,
 } from '@nightcore/contracts';
-import { SessionStore } from '@nightcore/storage';
 import { createMonotonicCounter, type Logger } from '@nightcore/shared';
-import { SessionRunner } from './session-runner.js';
-import { AnalysisManager } from '../scans/insight/manager.js';
+import { SessionStore } from '@nightcore/storage';
+
+import { ProviderConfigReader } from '../providers/provider-config.js';
 import { HarnessManager } from '../scans/harness/manager.js';
+import { AnalysisManager } from '../scans/insight/manager.js';
 import { ScorecardManager } from '../scans/scorecard/manager.js';
 import { resolveKindPreset } from './kind-presets.js';
 import type { ModelInfo } from './sdk-adapter.js';
-import { SessionApi, type SDKSessionInfo, type SessionMessage } from './session-api.js';
-import { ProviderConfigReader } from '../providers/provider-config.js';
+import { type SDKSessionInfo, SessionApi, type SessionMessage } from './session-api.js';
+import { SessionRunner } from './session-runner.js';
 
 /**
  * Map an SDK `ModelInfo` to a contract `ModelDescriptor`. Pure so it can be

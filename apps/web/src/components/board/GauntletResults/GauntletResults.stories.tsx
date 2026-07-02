@@ -1,12 +1,13 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
-import { GauntletResults } from './GauntletResults';
+
 import {
   GAUNTLET_FAILED,
   GAUNTLET_PASSED,
   STRUCTURE_LOCK_FAILED,
   STRUCTURE_LOCK_PASSED,
 } from '../_fixtures';
+import { GauntletResults } from './GauntletResults';
 
 const meta = {
   title: 'Board/GauntletResults',

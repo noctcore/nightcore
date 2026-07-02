@@ -1,12 +1,14 @@
 /** Data seam, load lifecycle, transcript/rename state, and pure formatting helpers
  *  for the session-history list. */
 import { useCallback, useEffect, useState } from 'react';
+
 import {
   getTaskSessionMessages as bridgeLoadMessages,
   listTaskSessions as bridgeLoadSessions,
   type SessionInfo,
   type SessionMessage,
 } from '@/lib/bridge';
+
 import type { SessionHistoryData } from './SessionHistory.types';
 
 /** The live data seam — the real bridge. Stories/tests pass an in-memory override

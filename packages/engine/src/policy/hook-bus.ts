@@ -3,21 +3,23 @@ import type {
   HookEvent,
   HookJSONOutput,
 } from '@anthropic-ai/claude-agent-sdk';
+
 import type { HarnessPolicy } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
+
 import {
-  evaluateToolDeny,
+  type CompiledHarnessPolicy,
+  compileHarnessPolicy,
+  evaluateHarnessPolicy,
+  type HarnessPolicyVerdict,
+} from './harness-policy.js';
+import {
   DEFAULT_DESTRUCTIVE_RULES,
+  evaluateToolDeny,
   type ToolDenyRule,
   type ToolDenyVerdict,
 } from './tool-deny-policy.js';
 import { evaluateWorkspaceConfinement } from './workspace-confinement.js';
-import {
-  compileHarnessPolicy,
-  evaluateHarnessPolicy,
-  type CompiledHarnessPolicy,
-  type HarnessPolicyVerdict,
-} from './harness-policy.js';
 
 /**
  * Registers a small set of SDK hooks and re-emits them to local observers.

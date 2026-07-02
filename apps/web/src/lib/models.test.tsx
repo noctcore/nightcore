@@ -1,10 +1,11 @@
 import { expect, test } from 'vitest';
+
 import {
   effortOptionsForModel,
   isAdaptiveModel,
   isEffortSupported,
-  modelOptionFor,
   MODEL_OPTIONS,
+  modelOptionFor,
 } from './models';
 
 test('MODEL_OPTIONS carry tier + effort metadata for every surfaced model', () => {

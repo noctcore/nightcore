@@ -1,5 +1,6 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
+
 import { buildSubprocessEnv, isAllowedEnvVar } from './subprocess-env.js';
 
 describe('isAllowedEnvVar', () => {

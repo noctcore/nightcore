@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
+
 import type { ProviderConfigSnapshot } from '@/lib/bridge';
+
 import { ProviderConfigPanel } from './ProviderConfigPanel';
 import type { ProviderConfigData } from './ProviderConfigPanel.types';
 

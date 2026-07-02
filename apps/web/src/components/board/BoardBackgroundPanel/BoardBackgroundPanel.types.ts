@@ -1,6 +1,6 @@
 /** Prop types for the Board Background settings panel. */
-import type { BoardAppearance } from '@/lib/bridge';
 import type { ImageFormat } from '@/lib/attachments';
+import type { BoardAppearance } from '@/lib/bridge';
 
 /** A picked background image ready to persist (format token + raw base64). */
 export interface PickedBackgroundImage {

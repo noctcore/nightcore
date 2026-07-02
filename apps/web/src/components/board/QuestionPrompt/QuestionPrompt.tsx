@@ -1,5 +1,6 @@
 /** Interactive AskUserQuestion prompt shown in the interaction dock. */
 import { Button, CheckIcon, Kbd, QuestionIcon } from '@/components/ui';
+
 import { useQuestionAnswers } from './QuestionPrompt.hooks';
 import type { QuestionPromptProps } from './QuestionPrompt.types';
 

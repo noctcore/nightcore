@@ -1,5 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+
 import { AlertIcon, Button, EmptyState, RetryIcon } from '@/components/ui';
+
 import { useReload } from './ErrorBoundary.hooks';
 import type { ErrorBoundaryProps, ErrorBoundaryState } from './ErrorBoundary.types';
 

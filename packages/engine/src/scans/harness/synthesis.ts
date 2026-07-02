@@ -12,6 +12,7 @@
  */
 import { createHash } from 'node:crypto';
 import * as path from 'node:path';
+
 import type {
   Config,
   HarnessProposal,
@@ -24,25 +25,26 @@ import type {
 import {
   ArtifactKindSchema,
   ArtifactWriteModeSchema,
+  type ConventionFinding,
   HarnessProposalKindSchema,
   HarnessProposalSchema,
   ProposedArtifactSchema,
-  type ConventionFinding,
 } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
-import { extractJson } from '../shared/findings.js';
+
 import { getNumber, getString, getStringArray } from '../../util/field-extract.js';
-import {
-  ANALYSIS_ALLOWED_TOOLS,
-  ANALYSIS_DISALLOWED_TOOLS,
-  ANALYZER_PERSONA,
-} from './presets.js';
-import { HARNESS_REFERENCE, hardeningReference } from './reference.js';
+import { extractJson } from '../shared/findings.js';
 import {
   makeHeartbeat,
   type ScanRunnerFactory,
   type ScanSessionRunner,
 } from '../shared/scan-manager.js';
+import {
+  ANALYSIS_ALLOWED_TOOLS,
+  ANALYSIS_DISALLOWED_TOOLS,
+  ANALYZER_PERSONA,
+} from './presets.js';
+import { hardeningReference,HARNESS_REFERENCE } from './reference.js';
 
 type StartHarnessScan = Extract<SurfaceCommand, { type: 'start-harness-scan' }>;
 

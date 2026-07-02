@@ -1,9 +1,10 @@
 import { composeStories } from '@storybook/react-vite';
-import { render } from 'vitest-browser-react';
 import { expect, test, vi } from 'vitest';
-import * as stories from './SessionCard.stories';
-import { summarizeSession } from './SessionCard.hooks';
+import { render } from 'vitest-browser-react';
+
 import { makeTask } from '../_fixtures';
+import { summarizeSession } from './SessionCard.hooks';
+import * as stories from './SessionCard.stories';
 
 const { Editable, Readonly } = composeStories(stories);
 

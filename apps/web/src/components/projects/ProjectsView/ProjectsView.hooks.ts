@@ -1,6 +1,8 @@
 /** @file Derives ProjectCard view-models from the registry and active tasks. */
 import { useMemo } from 'react';
+
 import type { Task } from '@/lib/bridge';
+
 import type { ProjectSummary } from '../ProjectCard';
 import type { ProjectsViewProps } from './ProjectsView.types';
 

@@ -1,4 +1,5 @@
-import { Button, AlertIcon, TerminalIcon } from '@/components/ui';
+import { AlertIcon, Button, TerminalIcon } from '@/components/ui';
+
 import { summarizeInput } from './PermissionPrompt.hooks';
 import type { PermissionPromptProps } from './PermissionPrompt.types';
 

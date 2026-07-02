@@ -1,17 +1,19 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
+
 import {
-  ConfigSchema,
   type Config,
+  ConfigSchema,
   type FindingCategory,
   type NightcoreEvent,
   type SurfaceCommand,
 } from '@nightcore/contracts';
+
+import type { SessionRunnerConfig } from '../../session/session-runner.js';
 import {
   AnalysisManager,
   type AnalysisRunnerFactory,
 } from './manager.js';
-import type { SessionRunnerConfig } from '../../session/session-runner.js';
 
 type StartAnalysis = Extract<SurfaceCommand, { type: 'start-analysis' }>;
 

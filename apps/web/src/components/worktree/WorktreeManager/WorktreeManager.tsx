@@ -4,6 +4,7 @@
  *  (AppShell) owns the data and the dialogs; this panel only emits action
  *  callbacks keyed on each worktree's primary task. */
 import { Badge, BranchIcon, EmptyState, Spinner } from '@/components/ui';
+
 import { worktreeRowView } from './WorktreeManager.hooks';
 import { WorktreeRow } from './WorktreeManager.parts';
 import type { WorktreeManagerProps } from './WorktreeManager.types';

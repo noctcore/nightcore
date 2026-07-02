@@ -1,12 +1,13 @@
 /** The Settings surface: grouped left nav, per-page cards, and a global/project scope toggle. */
 import type { ReactNode } from 'react';
+
 import {
   AgentsIcon,
   BellIcon,
-  BookIcon,
   BoltIcon,
-  BrandMark,
+  BookIcon,
   BranchIcon,
+  BrandMark,
   FolderIcon,
   GearIcon,
   GithubIcon,
@@ -16,19 +17,20 @@ import {
   SlidersIcon,
   SparkIcon,
 } from '@/components/ui';
+import { DEFAULT_REPO_URL } from '@/lib/bridge';
 import {
   effortOptionsForModel,
   isEffortSupported,
-  modelOptionFor,
   MODEL_OPTIONS,
+  modelOptionFor,
 } from '@/lib/models';
-import { DEFAULT_REPO_URL } from '@/lib/bridge';
 import { parseNumericCommit } from '@/lib/numeric-field';
+
 import { ConstitutionCard } from '../ConstitutionCard';
 import { McpServersCard } from '../McpServersCard';
-import { SettingsCard } from '../SettingsCard';
 import type { SettingsCardProps } from '../SettingsCard';
-import { useAppInfo, useSettingsView, type EffectiveSettings } from './SettingsView.hooks';
+import { SettingsCard } from '../SettingsCard';
+import { type EffectiveSettings,useAppInfo, useSettingsView } from './SettingsView.hooks';
 import type {
   SettingsPage,
   SettingsScope,

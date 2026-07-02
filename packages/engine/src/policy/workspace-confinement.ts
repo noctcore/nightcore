@@ -78,6 +78,7 @@
  */
 import * as os from 'node:os';
 import * as path from 'node:path';
+
 import { BASH_TOOL, parseCommandLine, type ToolDenyVerdict } from './tool-deny-policy.js';
 
 /** Mutation tools whose target path is inspected → the input key holding it.

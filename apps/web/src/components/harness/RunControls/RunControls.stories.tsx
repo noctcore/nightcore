@@ -1,7 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
+
 import type { ConventionCategory } from '@/lib/bridge';
 import { useRunConfig } from '@/lib/useRunConfig';
+
 import { ALL_CATEGORIES } from '../harness.constants';
 import { RunControls } from './RunControls';
 

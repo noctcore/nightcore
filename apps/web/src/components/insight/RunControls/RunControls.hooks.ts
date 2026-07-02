@@ -1,7 +1,9 @@
 /** Hook that owns the Insight run-config state for the RunControls form. */
 import { useState } from 'react';
+
 import type { AnalysisScope, FindingCategory } from '@/lib/bridge';
 import { useRunConfig as useSharedRunConfig } from '@/lib/useRunConfig';
+
 import { ALL_CATEGORIES } from '../insight.constants';
 import type { InsightRunConfig } from './RunControls.types';
 

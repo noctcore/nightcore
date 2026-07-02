@@ -1,6 +1,7 @@
 /** The category tab strip for the Insight results view — a thin wrapper that
  *  feeds Insight's category metadata into the shared {@link CategoryTabsShell}. */
 import { CategoryTabsShell } from '@/components/ui';
+
 import { CATEGORY_META } from '../insight.constants';
 import type { CategoryTabsProps } from './CategoryTabs.types';
 

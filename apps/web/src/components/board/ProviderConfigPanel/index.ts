@@ -1,6 +1,6 @@
 /** Public surface for the ProviderConfigPanel component. */
 export { ProviderConfigPanel } from './ProviderConfigPanel';
 export type {
-  ProviderConfigPanelProps,
   ProviderConfigData,
+  ProviderConfigPanelProps,
 } from './ProviderConfigPanel.types';

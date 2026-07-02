@@ -1,8 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fireEvent, fn, userEvent, within } from 'storybook/test';
-import { Board } from './Board';
-import { BLOCKED_TASK, TASKS_BY_STATUS, WORKTREES } from '../_fixtures';
+
 import type { Task } from '@/lib/bridge';
+
+import { BLOCKED_TASK, TASKS_BY_STATUS, WORKTREES } from '../_fixtures';
+import { Board } from './Board';
 
 const meta = {
   title: 'Board/Board',

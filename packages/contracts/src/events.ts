@@ -1,10 +1,6 @@
 import { z } from 'zod';
+
 import { PermissionModeSchema } from './config.js';
-import {
-  AnalysisScopeSchema,
-  FindingCategorySchema,
-  FindingSchema,
-} from './insight.js';
 import {
   ConventionCategorySchema,
   ConventionFindingSchema,
@@ -13,10 +9,15 @@ import {
   RepoProfileSchema,
 } from './harness.js';
 import {
+  AnalysisScopeSchema,
+  FindingCategorySchema,
+  FindingSchema,
+} from './insight.js';
+import { ProviderConfigSnapshotSchema } from './provider-config.js';
+import {
   ScorecardDimensionSchema,
   ScorecardReadingSchema,
 } from './scorecard.js';
-import { ProviderConfigSnapshotSchema } from './provider-config.js';
 import { SessionStatusSchema } from './session.js';
 import { ToolRiskSchema } from './tools.js';
 

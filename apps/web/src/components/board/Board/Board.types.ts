@@ -1,5 +1,6 @@
 /** Prop and supporting types for the Board component. */
 import type { BoardAppearance, Task, WorktreeInfo } from '@/lib/bridge';
+
 import type { PickedBackgroundImage } from '../BoardBackgroundPanel';
 import type { ActiveWorktree } from '../WorktreeSwitcher';
 

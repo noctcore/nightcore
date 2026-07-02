@@ -1,38 +1,41 @@
 /** Data + UI-state hooks for the Harness surface: `useHarness` drives the live/
  *  persisted run and lifecycle actions, `useHarnessView` resolves the full view model. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useToast } from '@/components/ui';
+
 import type {
   CategoryRunState,
   MenuItem,
   RunPhase,
   RunProgressCategory,
 } from '@/components/ui';
-import { EFFORT_OPTIONS, MODEL_OPTIONS } from '@/lib/models';
-import type { RunConfig } from '@/lib/useRunConfig';
+import { useToast } from '@/components/ui';
 import {
   applyHarnessArtifact,
   applyHarnessProposal,
   armHarnessGauntletCheck,
   cancelHarnessScan,
+  type ConventionCategory,
   convertHarnessFindingToTask,
   convertHarnessProposal,
   dismissHarnessArtifact,
   dismissHarnessFinding,
   dismissHarnessProposal,
+  type EffortLevel,
   getHarnessRun,
+  type HarnessEvent,
+  type HarnessRun,
   listHarnessRuns,
   onHarnessEvent,
   restoreHarnessArtifact,
   restoreHarnessFinding,
   restoreHarnessProposal,
   startHarnessScan,
-  type ConventionCategory,
-  type EffortLevel,
-  type HarnessEvent,
-  type HarnessRun,
   type Task,
 } from '@/lib/bridge';
+import { EFFORT_OPTIONS, MODEL_OPTIONS } from '@/lib/models';
+import type { RunConfig } from '@/lib/useRunConfig';
+
+import type { CategoryTab } from '../CategoryTabs';
 import { ALL_CATEGORIES, CATEGORY_META, severityRankValue } from '../harness.constants';
 import type {
   ConventionFindingVM,
@@ -40,13 +43,12 @@ import type {
   ProposedArtifactVM,
 } from '../harness.types';
 import {
+  type CategoryProgress,
   EMPTY_HARNESS_STREAM,
   foldHarness,
-  streamFromRun,
-  type CategoryProgress,
   type HarnessStream,
+  streamFromRun,
 } from '../harness-stream';
-import type { CategoryTab } from '../CategoryTabs';
 import { useRunConfig } from '../RunControls/RunControls.hooks';
 import type { HarnessViewProps } from './HarnessView.types';
 

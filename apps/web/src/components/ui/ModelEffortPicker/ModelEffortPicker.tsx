@@ -1,13 +1,15 @@
 /** Per-task model and reasoning-effort selection control. */
 import type { ComponentType } from 'react';
+
 import {
   effortOptionsForModel,
   isAdaptiveModel,
   isEffortSupported,
-  modelOptionFor,
   MODEL_OPTIONS,
+  modelOptionFor,
   type ModelTier,
 } from '@/lib/models';
+
 import { BoltIcon, BrainIcon, PerfIcon, SparkIcon } from '../icons';
 import { activeModelId } from './ModelEffortPicker.hooks';
 import type { ModelEffortPickerProps } from './ModelEffortPicker.types';

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { onProjectEvent, runGauntlet, type GauntletResult } from '@/lib/bridge';
+
 import type { ToastApi } from '@/components/ui';
+import { type GauntletResult,onProjectEvent, runGauntlet } from '@/lib/bridge';
 
 /** Per-task readiness-gauntlet results + in-flight state. The Verified
  *  column runs the gauntlet on demand; the result gates the merge. Results are

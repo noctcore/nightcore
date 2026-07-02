@@ -1,6 +1,7 @@
 /** The Insight CONFIGURE screen: the run-configuration form. */
 import { Button, InsightIcon, ModelEffortPicker, Spinner } from '@/components/ui';
 import type { AnalysisScope } from '@/lib/bridge';
+
 import { ALL_CATEGORIES, CATEGORY_META, SCOPE_META } from '../insight.constants';
 import type { RunControlsProps } from './RunControls.types';
 

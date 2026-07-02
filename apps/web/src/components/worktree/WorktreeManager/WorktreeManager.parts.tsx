@@ -1,6 +1,7 @@
 /** Presentational sub-parts for WorktreeManager: a tinted status chip and a
  *  worktree row with its badge cluster + per-row actions. */
 import { BranchIcon, Button, LogsIcon, MoveIcon, TrashIcon } from '@/components/ui';
+
 import type { WorktreeChip, WorktreeChipTone, WorktreeRowView } from './WorktreeManager.types';
 
 /** Tinted classes per chip tone, mirroring the codebase's semantic status

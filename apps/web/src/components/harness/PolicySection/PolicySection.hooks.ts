@@ -1,11 +1,12 @@
 /** Policy-file load/save/quarantine state for the Policy section. */
 import { useCallback, useEffect, useState } from 'react';
+
 import { useToast } from '@/components/ui';
 import {
   getHarnessPolicyFile,
-  updateHarnessPolicyFile,
   type HarnessPolicyFile,
   type HarnessPolicyPatch,
+  updateHarnessPolicyFile,
 } from '@/lib/bridge';
 
 /** denyReadPaths with `path` appended, or `null` when it is already present

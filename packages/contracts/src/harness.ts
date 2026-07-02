@@ -1,4 +1,5 @@
 import { z } from 'zod';
+
 import { FindingLocationSchema, FindingSeveritySchema } from './insight.js';
 
 /**

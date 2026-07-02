@@ -1,7 +1,9 @@
 import { composeStories } from '@storybook/react-vite';
-import { render } from 'vitest-browser-react';
 import { expect, test, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+
 import type { McpServerEntry } from '@/lib/bridge';
+
 import { McpServersCard } from './McpServersCard';
 import * as stories from './McpServersCard.stories';
 

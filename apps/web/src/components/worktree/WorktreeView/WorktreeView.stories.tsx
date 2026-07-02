@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+
 import { ToastProvider } from '@/components/ui';
 import type { Task, WorktreeInfo } from '@/lib/bridge';
+
 import { WorktreeView } from './WorktreeView';
 
 const WORKTREES: WorktreeInfo[] = [

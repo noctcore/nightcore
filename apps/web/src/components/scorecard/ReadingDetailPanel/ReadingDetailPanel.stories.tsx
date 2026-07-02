@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
-import { ReadingDetailPanel } from './ReadingDetailPanel';
+
 import type { ScorecardReadingView } from '../scorecard.types';
+import { ReadingDetailPanel } from './ReadingDetailPanel';
 
 const READING: ScorecardReadingView = {
   id: 'security-1',

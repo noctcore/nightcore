@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { render } from 'vitest-browser-react';
-import { expect, test, vi } from 'vitest';
 import { userEvent } from '@vitest/browser/context';
+import { useState } from 'react';
+import { expect, test, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+
 import { Modal } from './Modal';
 
 function Body() {

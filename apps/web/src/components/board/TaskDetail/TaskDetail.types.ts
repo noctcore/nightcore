@@ -9,6 +9,7 @@ import type {
   Task,
   TaskKind,
 } from '@/lib/bridge';
+
 import type { TaskTranscript } from '../session-stream';
 
 /** The drawer's action callbacks, grouped into one object so the ~25 `on*`

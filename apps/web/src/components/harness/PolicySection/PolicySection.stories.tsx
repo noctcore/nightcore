@@ -1,5 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+
 import { ToastProvider } from '@/components/ui';
+
 import { PolicySection } from './PolicySection';
 
 /** Outside Tauri the bridge resolves the mock policy, so the section renders the

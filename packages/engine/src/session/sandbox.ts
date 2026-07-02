@@ -52,6 +52,7 @@ import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+
 import type { Logger } from '@nightcore/shared';
 
 /** The Seatbelt interpreter. An absolute, SIP-protected path — never resolved

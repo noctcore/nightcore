@@ -1,5 +1,6 @@
 /** Props + view types for the BranchPicker combobox. */
 import type { ChangeEvent, FocusEvent, KeyboardEvent } from 'react';
+
 import type { BranchInfo } from '@/lib/bridge';
 
 /** Props for the BranchPicker — a presentational branch combobox. The current

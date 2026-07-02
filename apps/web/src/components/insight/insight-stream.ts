@@ -13,6 +13,7 @@ import type {
   InsightRun,
   StoredFinding,
 } from '@/lib/bridge';
+
 import type {
   FindingStatus,
   InsightFinding,

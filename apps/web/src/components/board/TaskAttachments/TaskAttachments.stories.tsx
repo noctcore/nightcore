@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { TaskAttachments } from './TaskAttachments';
+
 import { makeTask } from '../_fixtures';
+import { TaskAttachments } from './TaskAttachments';
 
 const withImages = makeTask({
   attachments: [

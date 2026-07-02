@@ -74,9 +74,11 @@
  *   - A matched PREFIX protects the whole subtree (`migrations` ⇒ every file
  *     under `migrations/`), so non-glob patterns read naturally.
  */
+import * as path from 'node:path';
+
 import type { HarnessPolicy } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
-import * as path from 'node:path';
+
 import {
   BASH_TOOL,
   type ToolDenyVerdict,

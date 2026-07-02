@@ -1,5 +1,6 @@
 /** Reviewer-verdict and structure-lock panel for a verified/parked task. */
 import { Button, CheckIcon, Markdown, RetryIcon, Spinner, VerifiedIcon } from '@/components/ui';
+
 import { VERDICT_LABEL, VERDICT_TEXT } from '../status';
 import { deriveReviewPanelView, MAX_FIX_ATTEMPTS } from './ReviewPanel.hooks';
 import type { ReviewPanelProps } from './ReviewPanel.types';

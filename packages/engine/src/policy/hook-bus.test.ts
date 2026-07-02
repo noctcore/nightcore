@@ -1,6 +1,8 @@
 /// <reference types="bun" />
 import { describe, expect, mock, test } from 'bun:test';
+
 import type { Logger } from '@nightcore/shared';
+
 import { HookBus } from './hook-bus.js';
 
 function fakeLogger(): Logger {

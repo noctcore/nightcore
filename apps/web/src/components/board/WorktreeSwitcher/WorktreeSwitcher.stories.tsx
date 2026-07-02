@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
-import { WorktreeSwitcher } from './WorktreeSwitcher';
+
 import { MAIN_MODE_TASK, TASKS_BY_STATUS, WORKTREES } from '../_fixtures';
+import { WorktreeSwitcher } from './WorktreeSwitcher';
 
 const ALL_TASKS = [MAIN_MODE_TASK, ...Object.values(TASKS_BY_STATUS)];
 

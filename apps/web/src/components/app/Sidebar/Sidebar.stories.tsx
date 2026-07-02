@@ -1,8 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
+
 import type { Project } from '@/lib/bridge';
-import { Sidebar } from './Sidebar';
+
 import type { NavItem } from '../AppShell/AppShell.types';
+import { Sidebar } from './Sidebar';
 
 const NAV: NavItem[] = [
   { view: 'board', label: 'Kanban Board', hint: 'K', icon: '▦' },

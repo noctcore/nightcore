@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+
+import type { BreakerInfo } from '@/components/board';
+import type { ToastApi } from '@/components/ui';
 import {
+  type LoopEnvelope,
   onLoopEvent,
   resumeAutoLoop,
   setMaxConcurrency,
   startAutoLoop,
   stopAutoLoop,
-  type LoopEnvelope,
 } from '@/lib/bridge';
-import type { BreakerInfo } from '@/components/board';
-import type { ToastApi } from '@/components/ui';
 
 /** Live autonomous-loop state, derived from `nc:loop`. The board's Auto Mode
  *  toggle and concurrency slider reflect this; the persisted concurrency is the

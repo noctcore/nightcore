@@ -2,6 +2,7 @@
  *  (primary task, friendly title, and the status-chip cluster). Pure — no React
  *  state — so the `.tsx` shell stays a thin presentation layer. */
 import type { WorktreeInfo } from '@/lib/bridge';
+
 import type { WorktreeChip, WorktreeRowView } from './WorktreeManager.types';
 
 /** Build the ordered status-chip cluster for a worktree: uncommitted changes

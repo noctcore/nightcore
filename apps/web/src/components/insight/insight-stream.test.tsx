@@ -1,17 +1,19 @@
 import { describe, expect, it } from 'vitest';
+
 import type {
   AnalysisEvent,
   Finding,
   InsightRun,
   StoredFinding,
 } from '@/lib/bridge';
+
 import {
   EMPTY_INSIGHT_STREAM,
   foldInsight,
+  type InsightStream,
   storedToFinding,
   streamFromRun,
   wireToFinding,
-  type InsightStream,
 } from './insight-stream';
 
 function wireFinding(over: Partial<Finding> = {}): Finding {

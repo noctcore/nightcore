@@ -3,6 +3,7 @@
  *  future Auto Mode knobs. Thin shell: open/close state lives in the colocated
  *  hook; the persisted option value + setter come from the shell via props. */
 import { GearIcon } from '@/components/ui';
+
 import { useAutoModeOptions } from './AutoModeOptions.hooks';
 import type { AutoModeOptionsProps } from './AutoModeOptions.types';
 

@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
-import { Menu } from './Menu';
+
 import { IconButton } from './IconButton';
 import { DotsIcon, EditIcon, TrashIcon } from './icons';
+import { Menu } from './Menu';
 
 const meta = {
   title: 'UI/Menu',

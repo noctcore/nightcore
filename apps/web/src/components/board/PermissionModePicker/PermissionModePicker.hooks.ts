@@ -1,4 +1,5 @@
 import type { PermissionMode } from '@/lib/bridge';
+
 import { PERMISSION_MODE_OPTIONS } from '../status';
 
 /** The hint shown beneath the selector for the active choice (or the inherit

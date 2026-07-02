@@ -1,8 +1,9 @@
 import { composeStories } from '@storybook/react-vite';
-import { render } from 'vitest-browser-react';
 import { expect, test, vi } from 'vitest';
-import { resolveDrop } from './BoardDnd.hooks';
+import { render } from 'vitest-browser-react';
+
 import { TASKS_BY_STATUS } from '../_fixtures';
+import { resolveDrop } from './BoardDnd.hooks';
 import * as stories from './BoardDnd.stories';
 
 const { WrapsColumns } = composeStories(stories);

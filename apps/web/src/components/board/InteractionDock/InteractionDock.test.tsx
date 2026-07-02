@@ -1,8 +1,9 @@
 import { composeStories } from '@storybook/react-vite';
-import { render } from 'vitest-browser-react';
 import { expect, test, vi } from 'vitest';
-import * as stories from './InteractionDock.stories';
+import { render } from 'vitest-browser-react';
+
 import { interactionCount } from './InteractionDock.hooks';
+import * as stories from './InteractionDock.stories';
 
 const { Empty, QuestionOnly, Both } = composeStories(stories);
 

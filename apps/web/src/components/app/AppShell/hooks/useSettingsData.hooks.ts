@@ -1,14 +1,16 @@
 import { useCallback, useState } from 'react';
+
+import type { ToastApi } from '@/components/ui';
+import type { ImageFormat } from '@/lib/attachments';
 import {
   clearBoardBackground,
   getSettings,
   setBoardBackground,
-  updateSettings,
   type Settings,
   type SettingsPatch,
+  updateSettings,
 } from '@/lib/bridge';
-import type { ImageFormat } from '@/lib/attachments';
-import type { ToastApi } from '@/components/ui';
+
 import { useAsyncData } from './useAsyncData.hooks';
 
 /** Live settings, kept in memory and patched through `update_settings`. */

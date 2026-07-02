@@ -1,9 +1,10 @@
 import { composeStories } from '@storybook/react-vite';
-import { render } from 'vitest-browser-react';
 import { expect, test, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+
+import { MAIN_MODE_TASK, TASKS_BY_STATUS } from '../_fixtures';
 import { filterTasksByWorktree } from './WorktreeSwitcher.hooks';
 import * as stories from './WorktreeSwitcher.stories';
-import { MAIN_MODE_TASK, TASKS_BY_STATUS } from '../_fixtures';
 
 const { MainSelected, FallbackToTaskBranches, HiddenWhenOnlyMain } = composeStories(stories);
 

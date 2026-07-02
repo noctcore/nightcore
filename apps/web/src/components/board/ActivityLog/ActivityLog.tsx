@@ -1,5 +1,6 @@
 /** Grouped, per-session activity log for a task's run transcript. */
 import { memo } from 'react';
+
 import {
   ChevronDownIcon,
   LayersIcon,
@@ -8,8 +9,9 @@ import {
   TerminalIcon,
 } from '@/components/ui';
 import { summarizeInput } from '@/lib/summarize';
-import { formatCost, modelDisplayName } from '../status';
+
 import type { SessionGroup, SessionPhase, TimelineEntry } from '../session-stream';
+import { formatCost, modelDisplayName } from '../status';
 import { useCollapse } from './ActivityLog.hooks';
 import type { ActivityLogProps } from './ActivityLog.types';
 

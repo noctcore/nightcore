@@ -1,8 +1,9 @@
 /** Append-only JSONL persistence for Nightcore session metadata. */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { SessionRecordSchema, type SessionRecord } from '@nightcore/contracts';
-import { sessionsDir, tryCatch, type Logger } from '@nightcore/shared';
+
+import { type SessionRecord,SessionRecordSchema } from '@nightcore/contracts';
+import { type Logger,sessionsDir, tryCatch } from '@nightcore/shared';
 
 /** True when a captured fs error is "file does not exist" (ENOENT) — the normal
  *  cold-start case, distinct from a real read failure worth logging. */

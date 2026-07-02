@@ -1,8 +1,8 @@
-export { ConstitutionCard } from './ConstitutionCard';
 export type { ConstitutionCardProps } from './ConstitutionCard';
-export { McpServersCard } from './McpServersCard';
+export { ConstitutionCard } from './ConstitutionCard';
 export type { McpServersCardProps } from './McpServersCard';
-export { SettingsCard } from './SettingsCard';
+export { McpServersCard } from './McpServersCard';
 export type { SettingsCardProps, SettingsRow } from './SettingsCard';
+export { SettingsCard } from './SettingsCard';
+export type { SettingsPage,SettingsScope, SettingsViewProps } from './SettingsView';
 export { SettingsView } from './SettingsView';
-export type { SettingsViewProps, SettingsScope, SettingsPage } from './SettingsView';

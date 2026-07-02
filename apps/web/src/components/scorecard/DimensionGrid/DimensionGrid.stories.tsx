@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
+
+import type { ScorecardReadingView } from '../scorecard.types';
 import { DimensionGrid } from './DimensionGrid';
 import type { DimensionRow } from './DimensionGrid.types';
-import type { ScorecardReadingView } from '../scorecard.types';
 
 function reading(over: Partial<ScorecardReadingView>): ScorecardReadingView {
   return {

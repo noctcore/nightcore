@@ -1,4 +1,5 @@
 import { memo } from 'react';
+
 import {
   BranchIcon,
   Button,
@@ -11,15 +12,16 @@ import {
   Spinner,
 } from '@/components/ui';
 import { sourceRefLabel } from '@/lib/source-ref';
-import { formatCost, STATUS_LABEL, STATUS_TEXT } from '../status';
-import { TaskStatusDot } from '../TaskStatusDot';
-import { InteractionDock } from '../InteractionDock';
-import { ReviewPanel } from '../ReviewPanel';
-import { ProposedSubtasksPanel } from '../ProposedSubtasksPanel';
-import { GauntletResults } from '../GauntletResults';
+
 import { ActivityLog } from '../ActivityLog';
-import { TaskAttachments } from '../TaskAttachments';
+import { GauntletResults } from '../GauntletResults';
+import { InteractionDock } from '../InteractionDock';
+import { ProposedSubtasksPanel } from '../ProposedSubtasksPanel';
+import { ReviewPanel } from '../ReviewPanel';
 import { GroupLabel, HistoryCard, SessionCard } from '../SessionCard';
+import { formatCost, STATUS_LABEL, STATUS_TEXT } from '../status';
+import { TaskAttachments } from '../TaskAttachments';
+import { TaskStatusDot } from '../TaskStatusDot';
 import {
   canMerge,
   deriveTaskDetailView,

@@ -5,8 +5,8 @@
 import type { ReactNode } from 'react';
 
 import { IconButton } from '../IconButton';
-import { Modal } from '../Modal';
 import { CloseIcon } from '../icons';
+import { Modal } from '../Modal';
 import type { DetailPanelShellProps } from './DetailPanelShell.types';
 
 export function DetailPanelShell({

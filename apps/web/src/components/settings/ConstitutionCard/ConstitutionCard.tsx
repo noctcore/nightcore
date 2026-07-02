@@ -1,11 +1,12 @@
 /** The Constitution editor card: view/edit and regenerate the project's injected context pack. */
 import { BookIcon, Button, CodeBlock, RetryIcon, Spinner } from '@/components/ui';
-import { useConstitutionCard } from './ConstitutionCard.hooks';
+
 import {
   EMPTY_PACK_PLACEHOLDER,
   MODE_TABS,
   PACK_LANGUAGE,
 } from './ConstitutionCard.constants';
+import { useConstitutionCard } from './ConstitutionCard.hooks';
 import type { ConstitutionCardProps } from './ConstitutionCard.types';
 
 /** A small toggle switch (shared visual with the settings Toggle). */

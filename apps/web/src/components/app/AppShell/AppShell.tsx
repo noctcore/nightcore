@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import type { PermissionPrompt, QuestionPrompt } from '@/lib/bridge';
+
 import { Board, EMPTY_TRANSCRIPT, NewTaskForm } from '@/components/board';
 import { NewProjectDialog } from '@/components/new-project';
 import {
@@ -14,6 +14,8 @@ import {
   PerfIcon,
   VerifiedIcon,
 } from '@/components/ui';
+import type { PermissionPrompt, QuestionPrompt } from '@/lib/bridge';
+
 import { Sidebar } from '../Sidebar';
 import { Splash } from '../Splash';
 import { useAppShell } from './AppShell.hooks';

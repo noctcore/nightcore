@@ -21,36 +21,37 @@ import type {
   RepoProfile,
   SurfaceCommand,
 } from '@nightcore/contracts';
+
 import {
-  ANALYSIS_ALLOWED_TOOLS,
-  ANALYSIS_DISALLOWED_TOOLS,
-  ANALYZER_PERSONA,
-  conventionOutputContract,
-  harnessPreset,
-  type HarnessPreset,
-} from './presets.js';
+  addUsage,
+  DEFAULT_MAX_TURNS,
+  type FinalizeArgs,
+  fmtCost,
+  fmtElapsed,
+  fmtSecs,
+  type ItemCompletedArgs,
+  type ScanFailureReason,
+  ScanManager,
+  type ScanManagerDeps,
+  type ScanRunnerFactory,
+  type ScanSessionRunner,
+  type SessionConfigParts,
+} from '../shared/scan-manager.js';
 import {
   dedupeConventionFindings,
   groundConventionFindings,
   parseConventionFindings,
 } from './findings.js';
+import {
+  ANALYSIS_ALLOWED_TOOLS,
+  ANALYSIS_DISALLOWED_TOOLS,
+  ANALYZER_PERSONA,
+  conventionOutputContract,
+  type HarnessPreset,
+  harnessPreset,
+} from './presets.js';
 import { detectRepoProfile } from './repo-profile.js';
 import { summarizeProfile, synthesizeHarness } from './synthesis.js';
-import {
-  addUsage,
-  DEFAULT_MAX_TURNS,
-  fmtCost,
-  fmtElapsed,
-  fmtSecs,
-  ScanManager,
-  type FinalizeArgs,
-  type ItemCompletedArgs,
-  type ScanManagerDeps,
-  type ScanFailureReason,
-  type ScanRunnerFactory,
-  type ScanSessionRunner,
-  type SessionConfigParts,
-} from '../shared/scan-manager.js';
 
 /** The `start-harness-scan` command variant (the zod schema is exported as a value,
  *  so the engine narrows the union for the type). */

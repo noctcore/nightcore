@@ -31,7 +31,9 @@ import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
 import { z } from 'zod';
+
 // Import the zod spine from SOURCE (not the `@nightcore/contracts` `exports` map,
 // which resolves to the compiled `dist/`). Reading source guarantees the emitter
 // and `--check` reflect the CURRENT schemas without depending on a prior `tsc -b`
@@ -39,9 +41,9 @@ import { z } from 'zod';
 // pass. Bun runs the contract TS directly and resolves the internal `./*.js`
 // specifiers to their `.ts` sources, so the relative source entry works as-is.
 import {
+  NightcoreEventSchema,
   SurfaceCommandSchema,
   SurfaceQuerySchema,
-  NightcoreEventSchema,
 } from '../../packages/contracts/src/index.ts';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));

@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+
 import { ErrorBoundary } from './ErrorBoundary';
 
 /** A child that throws on render, to exercise the boundary's fallback. */

@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
-import { SessionCard } from './SessionCard';
+
+import { makeTask,SAMPLE_REVIEW_PASS } from '../_fixtures';
 import type { TaskDetailActions } from '../TaskDetail';
-import { SAMPLE_REVIEW_PASS, makeTask } from '../_fixtures';
+import { SessionCard } from './SessionCard';
 
 /** The full grouped-action object with every handler stubbed — stories pass this
  *  so the editable card surfaces its pickers (the card renders pickers only when

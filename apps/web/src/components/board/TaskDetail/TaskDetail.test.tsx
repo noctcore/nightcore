@@ -1,15 +1,16 @@
 import { composeStories } from '@storybook/react-vite';
-import { render } from 'vitest-browser-react';
 import { expect, test, vi } from 'vitest';
-import * as stories from './TaskDetail.stories';
-import { canMerge, deriveTaskDetailView } from './TaskDetail.hooks';
-import { EMPTY_STREAM } from '../session-stream';
+import { render } from 'vitest-browser-react';
+
 import {
   GAUNTLET_FAILED,
   GAUNTLET_PASSED,
-  SAMPLE_REVIEW_CHANGES,
   makeTask,
+  SAMPLE_REVIEW_CHANGES,
 } from '../_fixtures';
+import { EMPTY_STREAM } from '../session-stream';
+import { canMerge, deriveTaskDetailView } from './TaskDetail.hooks';
+import * as stories from './TaskDetail.stories';
 
 const {
   Running,

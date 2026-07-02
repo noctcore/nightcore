@@ -1,9 +1,10 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
+
 import {
+  NETWORK_EGRESS_TOOLS,
   resolveKindPreset,
   WRITE_TOOLS,
-  NETWORK_EGRESS_TOOLS,
 } from './kind-presets.js';
 
 describe('resolveKindPreset', () => {

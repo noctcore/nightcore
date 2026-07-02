@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest';
+
 import { parseNumericCommit } from './numeric-field';
 
 test('blank input is a no-op (inherit)', () => {

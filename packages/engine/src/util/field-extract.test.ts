@@ -1,5 +1,6 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
+
 import {
   getBoolean,
   getNumber,

@@ -1,6 +1,7 @@
 /** The collapsible Session and History cards plus the GroupLabel divider used in
  *  the task-detail drawer. */
 import type { ReactNode } from 'react';
+
 import {
   BoltIcon,
   ChevronDownIcon,
@@ -9,18 +10,19 @@ import {
 } from '@/components/ui';
 import type { Task } from '@/lib/bridge';
 import { parseNumericCommit } from '@/lib/numeric-field';
+
+import { KindPicker } from '../KindPicker';
+import { PermissionModePicker } from '../PermissionModePicker';
+import { SessionHistory } from '../SessionHistory';
 import {
   KIND_LABEL,
   modelDisplayName,
   PERMISSION_MODE_LABEL,
   RUN_MODE_LABEL,
 } from '../status';
-import { KindPicker } from '../KindPicker';
-import { WorkModePicker } from '../WorkModePicker';
-import { PermissionModePicker } from '../PermissionModePicker';
-import { SessionHistory } from '../SessionHistory';
 import type { TaskDetailActions } from '../TaskDetail';
-import { useHistoryCard, useSessionCard, summarizeSession } from './SessionCard.hooks';
+import { WorkModePicker } from '../WorkModePicker';
+import { summarizeSession,useHistoryCard, useSessionCard } from './SessionCard.hooks';
 import type { HistoryCardProps, SessionCardProps } from './SessionCard.types';
 
 /** The expand animation for the collapsible Session card body. */

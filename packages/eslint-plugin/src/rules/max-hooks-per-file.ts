@@ -1,8 +1,8 @@
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
-import { createRule } from '../utils/createRule';
 import { isHookBucketFile } from '../utils/component-architecture';
+import { createRule } from '../utils/createRule';
 
 export const RULE_NAME = 'max-hooks-per-file';
 

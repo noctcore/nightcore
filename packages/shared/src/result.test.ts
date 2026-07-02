@@ -1,5 +1,6 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
+
 import { err, ok, tryCatch, tryCatchAsync } from './result.js';
 
 describe('ok / err constructors', () => {

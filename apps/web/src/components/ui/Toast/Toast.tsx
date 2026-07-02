@@ -1,7 +1,8 @@
 /** Toast provider and render surface for transient notifications. */
 import type { ReactNode } from 'react';
-import { AlertIcon, CheckIcon, CloseIcon } from '../icons';
+
 import { IconButton } from '../IconButton';
+import { AlertIcon, CheckIcon, CloseIcon } from '../icons';
 import { ToastContext, useToast, useToastState } from './Toast.hooks';
 import type { ToastTone } from './Toast.types';
 

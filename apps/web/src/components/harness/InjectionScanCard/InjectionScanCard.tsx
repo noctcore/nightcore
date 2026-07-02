@@ -4,8 +4,9 @@
  *  `useInjectionScan` view model. */
 import { Button, LockIcon, SearchIcon, Spinner } from '@/components/ui';
 import type { InjectionFlag } from '@/lib/bridge';
-import { useInjectionScan } from './InjectionScanCard.hooks';
+
 import type { InjectionScanVM } from './InjectionScanCard.hooks';
+import { useInjectionScan } from './InjectionScanCard.hooks';
 import type { InjectionScanCardProps } from './InjectionScanCard.types';
 
 /** One flagged file row: the path, every detector reason, and the quarantine

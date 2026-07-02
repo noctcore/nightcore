@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
-import { TaskCard } from './TaskCard';
+
 import { BLOCKED_TASK, MAIN_MODE_TASK, TASKS_BY_STATUS } from '../_fixtures';
+import { TaskCard } from './TaskCard';
 
 const meta = {
   title: 'Board/TaskCard',

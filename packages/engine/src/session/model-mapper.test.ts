@@ -1,6 +1,8 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
+
 import type { ModelInfo } from '@anthropic-ai/claude-agent-sdk';
+
 import { toModelDescriptor } from './session-manager.js';
 
 describe('toModelDescriptor', () => {

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'bun:test';
+
 import type { WireImage } from '@nightcore/contracts';
+
 import { buildUserMessageContent } from './session-options.js';
 
 describe('buildUserMessageContent', () => {

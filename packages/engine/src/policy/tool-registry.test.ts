@@ -1,5 +1,6 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
+
 import { ToolRegistry } from './tool-registry.js';
 
 describe('ToolRegistry native-tool risk classification', () => {

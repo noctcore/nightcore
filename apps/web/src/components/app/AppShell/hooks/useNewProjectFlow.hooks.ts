@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
-import { chooseFolder, createProject, gitInit, isGitRepo } from '@/lib/bridge';
+
 import type { ToastApi } from '@/components/ui';
+import { chooseFolder, createProject, gitInit, isGitRepo } from '@/lib/bridge';
 
 /** Git-repo status for the folder chosen in the New Project dialog. */
 type GitState = 'unknown' | 'checking' | 'valid' | 'invalid';

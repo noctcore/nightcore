@@ -1,9 +1,11 @@
 /** Data seam and load lifecycle for the ProviderConfigPanel snapshot. */
 import { useCallback, useEffect, useState } from 'react';
+
 import {
   getProviderConfig as bridgeGetProviderConfig,
   type ProviderConfigSnapshot,
 } from '@/lib/bridge';
+
 import type { ProviderConfigData } from './ProviderConfigPanel.types';
 
 /** The live data seam — the real bridge. Stories/tests pass an in-memory override

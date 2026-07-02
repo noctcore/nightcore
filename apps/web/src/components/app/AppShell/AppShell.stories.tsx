@@ -1,5 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+
 import { ToastProvider } from '@/components/ui';
+
 import { AppShell } from './AppShell';
 
 /** The full app shell. In Storybook the bridge runs in browser mode, so it seeds

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { render } from 'vitest-browser-react';
 import { expect, test } from 'vitest';
-import { useActionGuard, type ActionGuard } from './useActionGuard.hooks';
+import { render } from 'vitest-browser-react';
+
+import { type ActionGuard,useActionGuard } from './useActionGuard.hooks';
 
 /** Renders `useActionGuard`, reports the returned `action` after every commit, and
  *  exposes two triggers: an unrelated re-render (the per-frame stream-flush case)

@@ -1,4 +1,12 @@
 import { useCallback, useMemo } from 'react';
+
+import {
+  type ActiveWorktree,
+  EMPTY_TRANSCRIPT,
+  type TaskDetailActions,
+  type TaskTranscript,
+} from '@/components/board';
+import { useToast } from '@/components/ui';
 import {
   acceptReview,
   approveTask,
@@ -7,46 +15,40 @@ import {
   convertAllSubtasks,
   convertSubtask,
   createTask,
+  type CreateTaskOptions,
   deleteTask,
+  type GauntletResult,
   isTauri,
   mergeTask,
   moveTask,
-  refineTask,
-  renameSession,
-  rejectReview,
-  rejectTask,
-  rerunVerification,
-  resumeSession,
-  runTask,
-  tagSession,
-  updateTask,
-  type CreateTaskOptions,
-  type GauntletResult,
   type PermissionMode,
   type PermissionPrompt,
   type QuestionAnswer,
   type QuestionPrompt,
+  refineTask,
+  rejectReview,
+  rejectTask,
+  renameSession,
+  rerunVerification,
+  resumeSession,
   type RunMode,
+  runTask,
+  tagSession,
   type Task,
   type TaskKind,
   type TaskPatch,
   type TaskStatus,
+  updateTask,
   type WorktreeInfo,
 } from '@/lib/bridge';
-import {
-  EMPTY_TRANSCRIPT,
-  type ActiveWorktree,
-  type TaskDetailActions,
-  type TaskTranscript,
-} from '@/components/board';
-import { useToast } from '@/components/ui';
+
 import { useActionGuard } from './hooks/useActionGuard.hooks';
-import { useGlobalErrorToast } from './hooks/useGlobalErrorToast.hooks';
 import { useAutoLoop } from './hooks/useAutoLoop.hooks';
 import { useBlockedIds } from './hooks/useBlockedIds.hooks';
 import { useBoard } from './hooks/useBoard.hooks';
 import { useDestructiveConfirm } from './hooks/useDestructiveConfirm.hooks';
 import { useGauntlet } from './hooks/useGauntlet.hooks';
+import { useGlobalErrorToast } from './hooks/useGlobalErrorToast.hooks';
 import { useNewProjectFlow } from './hooks/useNewProjectFlow.hooks';
 import { usePermissions, useQuestions } from './hooks/useParkedPrompts.hooks';
 import { useProjectRegistry } from './hooks/useProjectRegistry.hooks';

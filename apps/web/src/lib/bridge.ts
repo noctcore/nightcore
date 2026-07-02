@@ -5,16 +5,18 @@
  * commands degrade to mock/no-op data outside the Tauri webview (browser preview).
  */
 import { invoke } from '@tauri-apps/api/core';
-import { listen, type EventCallback, type UnlistenFn } from '@tauri-apps/api/event';
+import { type EventCallback, listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
+
 import {
-  NightcoreEventSchema,
-  QuestionItemSchema,
   type NightcoreEvent,
+  NightcoreEventSchema,
   type QuestionAnswer,
   type QuestionItem,
+  QuestionItemSchema,
 } from '@nightcore/contracts';
-import type { NewAttachmentPayload, ImageFormat } from './attachments';
+
+import type { ImageFormat,NewAttachmentPayload } from './attachments';
 import { imageDataUrl } from './attachments';
 import type { BoardBackgroundRef } from './generated/BoardBackgroundRef';
 
@@ -34,60 +36,60 @@ export const DEFAULT_REPO_URL = 'https://github.com/Shironex/nightcore';
 // bindings and the CI drift guard (`git diff` over `generated/`) fails on any
 // mismatch. The runtime invoke/listen wrappers + zod re-validation below are
 // UNCHANGED; only the type DECLARATIONS now come from the generated bindings.
+export type { AppInfo } from './generated/AppInfo';
+export type { BoardAppearance } from './generated/BoardAppearance';
+export type { BoardBackgroundRef } from './generated/BoardBackgroundRef';
+export type { BranchInfo } from './generated/BranchInfo';
+export type { DiffFileStat } from './generated/DiffFileStat';
+export type { DiffStatus } from './generated/DiffStatus';
+export type { GauntletResult } from './generated/GauntletResult';
+export type { GauntletStep } from './generated/GauntletStep';
+export type { LoopEnvelope } from './generated/LoopEnvelope';
+export type { McpServerEntry } from './generated/McpServerEntry';
+export type { McpServerSummary } from './generated/McpServerSummary';
+export type { McpServerTransport } from './generated/McpServerTransport';
+export type { MergePreview } from './generated/MergePreview';
+export type { MergePreviewStatus } from './generated/MergePreviewStatus';
+export type { Project } from './generated/Project';
+export type { ProviderConfigSection } from './generated/ProviderConfigSection';
+export type { ProviderConfigSnapshot } from './generated/ProviderConfigSnapshot';
+export type { RunMode } from './generated/RunMode';
+export type { SessionInfo } from './generated/SessionInfo';
+export type { SessionMessage } from './generated/SessionMessage';
+export type { Settings } from './generated/Settings';
+export type { SettingsOverride } from './generated/SettingsOverride';
+export type { SettingsPatch } from './generated/SettingsPatch';
+export type { SkillSummary } from './generated/SkillSummary';
+export type { StructureLockCheck } from './generated/StructureLockCheck';
+export type { StructureLockResult } from './generated/StructureLockResult';
+export type { SubagentSummary } from './generated/SubagentSummary';
 export type { Task } from './generated/Task';
 export type { TaskAttachment } from './generated/TaskAttachment';
 export type { TaskPatch } from './generated/TaskPatch';
 export type { TaskStatus } from './generated/TaskStatus';
-export type { RunMode } from './generated/RunMode';
-export type { Project } from './generated/Project';
-export type { Settings } from './generated/Settings';
-export type { SettingsOverride } from './generated/SettingsOverride';
-export type { SettingsPatch } from './generated/SettingsPatch';
-export type { BoardAppearance } from './generated/BoardAppearance';
-export type { BoardBackgroundRef } from './generated/BoardBackgroundRef';
-export type { McpServerEntry } from './generated/McpServerEntry';
-export type { McpServerTransport } from './generated/McpServerTransport';
-export type { AppInfo } from './generated/AppInfo';
-export type { WorktreeInfo } from './generated/WorktreeInfo';
-export type { BranchInfo } from './generated/BranchInfo';
-export type { MergePreview } from './generated/MergePreview';
-export type { MergePreviewStatus } from './generated/MergePreviewStatus';
-export type { DiffFileStat } from './generated/DiffFileStat';
 export type { WorktreeDiff } from './generated/WorktreeDiff';
 export type { WorktreeDiffFile } from './generated/WorktreeDiffFile';
-export type { DiffStatus } from './generated/DiffStatus';
-export type { GauntletResult } from './generated/GauntletResult';
-export type { GauntletStep } from './generated/GauntletStep';
-export type { StructureLockResult } from './generated/StructureLockResult';
-export type { StructureLockCheck } from './generated/StructureLockCheck';
-export type { LoopEnvelope } from './generated/LoopEnvelope';
-export type { SessionInfo } from './generated/SessionInfo';
-export type { SessionMessage } from './generated/SessionMessage';
-export type { ProviderConfigSnapshot } from './generated/ProviderConfigSnapshot';
-export type { ProviderConfigSection } from './generated/ProviderConfigSection';
-export type { McpServerSummary } from './generated/McpServerSummary';
-export type { SkillSummary } from './generated/SkillSummary';
-export type { SubagentSummary } from './generated/SubagentSummary';
+export type { WorktreeInfo } from './generated/WorktreeInfo';
 // Insight (codebase analysis) persisted shapes (ts-rs from `store/insight.rs`).
-export type { InsightRun } from './generated/InsightRun';
-export type { StoredFinding } from './generated/StoredFinding';
 export type { FindingLocation } from './generated/FindingLocation';
+export type { InsightRun } from './generated/InsightRun';
 export type { InsightUsage } from './generated/InsightUsage';
+export type { StoredFinding } from './generated/StoredFinding';
 // The unified Insight taxonomy comes from the zod contract (the engine's wire
 // shape); the generated `StoredFinding` keeps these as `string`, so the Insight
 // view casts to these unions.
 export type {
-  Finding,
-  FindingCategory,
-  FindingSeverity,
-  FindingEffort,
   AnalysisScope,
   EffortLevel,
+  Finding,
+  FindingCategory,
+  FindingEffort,
+  FindingSeverity,
 } from '@nightcore/contracts';
 // Readiness Scorecard (Profile) persisted shapes (ts-rs from `store/scorecard.rs`).
+export type { ScorecardEvidence } from './generated/ScorecardEvidence';
 export type { ScorecardRun } from './generated/ScorecardRun';
 export type { StoredReading } from './generated/StoredReading';
-export type { ScorecardEvidence } from './generated/ScorecardEvidence';
 // The Scorecard taxonomy comes from the zod contract (the engine's wire shape); the
 // generated `StoredReading` keeps `dimension`/`grade` as `string`, so the Scorecard
 // view casts to these unions.
@@ -98,35 +100,35 @@ export type {
 } from '@nightcore/contracts';
 // Harness (codebase convention auditor) persisted shapes (ts-rs from `store/harness.rs`).
 export type { HarnessRun } from './generated/HarnessRun';
-export type { StoredConventionFinding } from './generated/StoredConventionFinding';
-export type { StoredProposedArtifact } from './generated/StoredProposedArtifact';
-export type { StoredHarnessProposal } from './generated/StoredHarnessProposal';
-export type { StoredHarnessCheck } from './generated/StoredHarnessCheck';
-export type { StoredRepoProfile } from './generated/StoredRepoProfile';
-export type { StoredRepoPackage } from './generated/StoredRepoPackage';
 export type { HarnessUsage } from './generated/HarnessUsage';
+export type { StoredConventionFinding } from './generated/StoredConventionFinding';
+export type { StoredHarnessCheck } from './generated/StoredHarnessCheck';
+export type { StoredHarnessProposal } from './generated/StoredHarnessProposal';
+export type { StoredProposedArtifact } from './generated/StoredProposedArtifact';
+export type { StoredRepoPackage } from './generated/StoredRepoPackage';
+export type { StoredRepoProfile } from './generated/StoredRepoProfile';
 // Harness policy authoring (ts-rs from `commands/policy.rs`) + the injection-scan
 // flag rows (ts-rs from `store/injection_scan.rs`).
 export type { HarnessPolicyFile } from './generated/HarnessPolicyFile';
 export type { HarnessPolicyPatch } from './generated/HarnessPolicyPatch';
-export type { PolicyDiffBudget } from './generated/PolicyDiffBudget';
 export type { InjectionFlag } from './generated/InjectionFlag';
+export type { PolicyDiffBudget } from './generated/PolicyDiffBudget';
 // The harness convention taxonomy + proposed-artifact shapes come from the zod
 // contract (the engine's wire shape); the generated `Stored*` types keep the
 // enum-ish fields as `string`, so the Harness view casts to these unions.
 export type {
-  ConventionCategory,
-  ConventionKind,
-  ConventionFinding,
-  RepoProfile,
-  RepoPackage,
-  WorkspaceTool,
   ArtifactKind,
   ArtifactWriteMode,
-  ProposedArtifact,
+  ConventionCategory,
+  ConventionFinding,
+  ConventionKind,
+  HarnessCheck,
   HarnessProposal,
   HarnessProposalKind,
-  HarnessCheck,
+  ProposedArtifact,
+  RepoPackage,
+  RepoProfile,
+  WorkspaceTool,
 } from '@nightcore/contracts';
 
 /** The kind preset a task runs under and the four UI permission modes are
@@ -137,8 +139,8 @@ export type {
  *  generated `PermissionMode` is the studio's per-task UI vocabulary
  *  (`bypass`/`auto-accept`/`ask`/`plan`), distinct from the contracts SDK
  *  `PermissionMode` — it always lived here, never in contracts. */
-export type { TaskKind } from './generated/TaskKind';
 export type { PermissionMode } from './generated/PermissionMode';
+export type { TaskKind } from './generated/TaskKind';
 /** Decompose: a proposed sub-task + its convert lifecycle, generated from the Rust
  *  `ProposedSubtask` / `SubtaskStatus` so the detail panel can't drift from serde. */
 export type { ProposedSubtask } from './generated/ProposedSubtask';
@@ -147,38 +149,39 @@ export type { SubtaskStatus } from './generated/SubtaskStatus';
 // Locally-aliased imports of the generated types the command wrappers below
 // reference by value position (return types, fallbacks). Type-only, so they erase
 // at build under `verbatimModuleSyntax`.
-import type { Task } from './generated/Task';
-import type { TaskPatch } from './generated/TaskPatch';
-import type { TaskStatus } from './generated/TaskStatus';
-import type { RunMode } from './generated/RunMode';
-import type { Project } from './generated/Project';
-import type { Settings } from './generated/Settings';
-import type { SettingsPatch } from './generated/SettingsPatch';
-import type { AppInfo } from './generated/AppInfo';
-import type { WorktreeInfo } from './generated/WorktreeInfo';
-import type { BranchInfo } from './generated/BranchInfo';
-import type { MergePreview } from './generated/MergePreview';
-import type { WorktreeDiff } from './generated/WorktreeDiff';
-import type { GauntletResult } from './generated/GauntletResult';
-import type { LoopEnvelope } from './generated/LoopEnvelope';
-import type { PermissionMode } from './generated/PermissionMode';
-import type { TaskKind } from './generated/TaskKind';
-import type { SessionInfo } from './generated/SessionInfo';
-import type { SessionMessage } from './generated/SessionMessage';
-import type { ProviderConfigSnapshot } from './generated/ProviderConfigSnapshot';
-import type { InsightRun } from './generated/InsightRun';
-import type { ScorecardRun } from './generated/ScorecardRun';
-import type { HarnessRun } from './generated/HarnessRun';
-import type { HarnessPolicyFile } from './generated/HarnessPolicyFile';
-import type { HarnessPolicyPatch } from './generated/HarnessPolicyPatch';
-import type { InjectionFlag } from './generated/InjectionFlag';
 import type {
   AnalysisScope,
-  FindingCategory,
-  EffortLevel,
   ConventionCategory,
+  EffortLevel,
+  FindingCategory,
   ScorecardDimension,
 } from '@nightcore/contracts';
+
+import type { AppInfo } from './generated/AppInfo';
+import type { BranchInfo } from './generated/BranchInfo';
+import type { GauntletResult } from './generated/GauntletResult';
+import type { HarnessPolicyFile } from './generated/HarnessPolicyFile';
+import type { HarnessPolicyPatch } from './generated/HarnessPolicyPatch';
+import type { HarnessRun } from './generated/HarnessRun';
+import type { InjectionFlag } from './generated/InjectionFlag';
+import type { InsightRun } from './generated/InsightRun';
+import type { LoopEnvelope } from './generated/LoopEnvelope';
+import type { MergePreview } from './generated/MergePreview';
+import type { PermissionMode } from './generated/PermissionMode';
+import type { Project } from './generated/Project';
+import type { ProviderConfigSnapshot } from './generated/ProviderConfigSnapshot';
+import type { RunMode } from './generated/RunMode';
+import type { ScorecardRun } from './generated/ScorecardRun';
+import type { SessionInfo } from './generated/SessionInfo';
+import type { SessionMessage } from './generated/SessionMessage';
+import type { Settings } from './generated/Settings';
+import type { SettingsPatch } from './generated/SettingsPatch';
+import type { Task } from './generated/Task';
+import type { TaskKind } from './generated/TaskKind';
+import type { TaskPatch } from './generated/TaskPatch';
+import type { TaskStatus } from './generated/TaskStatus';
+import type { WorktreeDiff } from './generated/WorktreeDiff';
+import type { WorktreeInfo } from './generated/WorktreeInfo';
 
 /** True when running inside the Tauri webview (vs. a plain browser preview). */
 export function isTauri(): boolean {
@@ -228,7 +231,7 @@ export interface PermissionPrompt {
   suggestions?: unknown;
 }
 
-export type { QuestionItem, QuestionOption, QuestionAnswer } from '@nightcore/contracts';
+export type { QuestionAnswer,QuestionItem, QuestionOption } from '@nightcore/contracts';
 
 /** `nc:question` payload: an interactive `AskUserQuestion` prompt for a running
  *  task. The questions/options carry model-authored text — render it, but the core

@@ -1,5 +1,6 @@
 /** @file Local overlay state hook for a ProjectCard. */
 import { useCallback, useState } from 'react';
+
 import type { ProjectCardProps } from './ProjectCard.types';
 
 /** Which transient overlay (if any) the card has open. */

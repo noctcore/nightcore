@@ -1,7 +1,9 @@
 import { memo } from 'react';
+
 import { TrashIcon } from '@/components/ui';
-import { TaskCard } from '../TaskCard';
+
 import { canDragStatus } from '../status';
+import { TaskCard } from '../TaskCard';
 import { useColumn } from './Column.hooks';
 import type { ColumnProps } from './Column.types';
 

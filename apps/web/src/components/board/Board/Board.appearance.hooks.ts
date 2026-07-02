@@ -2,8 +2,10 @@
  *  disclosure toggle and the appearance loader. Split out of `Board.hooks.ts` to
  *  keep each hooks file focused (and under the per-file hook cap). */
 import { useEffect, useMemo, useState } from 'react';
-import { readBoardBackground, type BoardAppearance } from '@/lib/bridge';
-import { appearanceView, normalizeAppearance, type AppearanceView } from '../appearance';
+
+import { type BoardAppearance,readBoardBackground } from '@/lib/bridge';
+
+import { type AppearanceView,appearanceView, normalizeAppearance } from '../appearance';
 import { useDisclosure } from './Board.hooks';
 
 /** Open/close state for the Board Background settings sheet (same disclosure shape

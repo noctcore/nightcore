@@ -10,9 +10,10 @@ import {
   Spinner,
 } from '@/components/ui';
 import { imageDataUrl, MAX_IMAGES_PER_TASK } from '@/lib/attachments';
+
 import { KindPicker } from '../KindPicker';
-import { WorkModePicker } from '../WorkModePicker';
 import { PermissionModePicker } from '../PermissionModePicker';
+import { WorkModePicker } from '../WorkModePicker';
 import { useNewTaskForm } from './NewTaskForm.hooks';
 import type { NewTaskFormProps } from './NewTaskForm.types';
 

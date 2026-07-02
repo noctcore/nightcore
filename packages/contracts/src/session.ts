@@ -1,4 +1,5 @@
 import { z } from 'zod';
+
 import { PermissionModeSchema } from './config.js';
 
 /** Session identity, status, and persisted-record shapes for a Nightcore session. */

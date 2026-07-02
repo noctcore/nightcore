@@ -3,6 +3,7 @@
  *  via {@link DetailCardGrid}. */
 import { DetailCard, DetailCardGrid } from '@/components/ui';
 import { formatLocation } from '@/lib/formatters';
+
 import { CATEGORY_META, KIND_META, SEVERITY_META } from '../harness.constants';
 import type { ConventionFindingVM } from '../harness.types';
 import type { ConventionGridProps } from './ConventionGrid.types';

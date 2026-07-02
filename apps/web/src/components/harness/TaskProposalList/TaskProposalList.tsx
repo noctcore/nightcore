@@ -1,4 +1,5 @@
 import { Card, Skeleton } from '@/components/ui';
+
 import { PROPOSAL_KIND_META } from '../harness.constants';
 import type { HarnessProposalVM } from '../harness.types';
 import type { TaskProposalListProps } from './TaskProposalList.types';

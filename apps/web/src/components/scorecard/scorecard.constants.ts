@@ -1,10 +1,11 @@
 /** Static Scorecard lookup tables: the dimension list + per-dimension and
  *  per-grade display metadata, plus grade-ranking and run-status helpers. */
 import type { ComponentType } from 'react';
+
 import {
   AlertIcon,
-  BookIcon,
   BoltIcon,
+  BookIcon,
   ChecksIcon,
   DepsIcon,
   DesignIcon,
@@ -18,6 +19,7 @@ import type {
   ScorecardGrade,
   ScorecardRun,
 } from '@/lib/bridge';
+
 import type { RunStatus } from './scorecard.types';
 
 /** Every dimension, in display order. */

@@ -1,12 +1,14 @@
 /** State for the Settings view: scope/page selection, effective values, and scoped patching. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+
 import {
-  getAppInfo,
   type AppInfo,
+  getAppInfo,
   type McpServerEntry,
   type RunMode,
   type SettingsPatch,
 } from '@/lib/bridge';
+
 import type {
   SettingsPage,
   SettingsScope,

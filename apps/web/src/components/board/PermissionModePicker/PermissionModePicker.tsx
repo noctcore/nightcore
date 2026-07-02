@@ -1,4 +1,5 @@
 import { rovingKeydown } from '@/lib/roving-keydown';
+
 import { PERMISSION_MODE_OPTIONS } from '../status';
 import { permissionModeHint } from './PermissionModePicker.hooks';
 import type { PermissionModePickerProps } from './PermissionModePicker.types';

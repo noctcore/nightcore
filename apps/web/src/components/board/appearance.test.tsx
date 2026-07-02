@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+
 import type { BoardAppearance, Settings } from '@/lib/bridge';
+
 import {
   appearanceView,
   clampOpacity,

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { listTasks, onProjectEvent, onSessionEvent, onTaskEvent, readTranscript } from '@/lib/bridge';
-import type { SessionEnvelope, Task } from '@/lib/bridge';
+
 import { EMPTY_TRANSCRIPT, foldTranscript, type TaskTranscript } from '@/components/board';
 import type { ToastApi } from '@/components/ui';
+import type { SessionEnvelope, Task } from '@/lib/bridge';
+import { listTasks, onProjectEvent, onSessionEvent, onTaskEvent, readTranscript } from '@/lib/bridge';
 
 /** Terminal session events — when one arrives we flush the coalescing buffer
  *  immediately so the final tokens render promptly (not on the next rAF, which a

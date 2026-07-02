@@ -19,14 +19,15 @@
  *    sessions that still have a live worktree.
  */
 import type { Logger } from '@nightcore/shared';
+
 import {
   getSessionInfo,
   getSessionMessages,
   listSessions,
   renameSession,
-  tagSession,
   type SDKSessionInfo,
   type SessionMessage,
+  tagSession,
 } from './sdk-adapter.js';
 
 export type { SDKSessionInfo, SessionMessage };

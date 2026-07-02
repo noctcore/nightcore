@@ -6,9 +6,10 @@
  * maxTurns guardrail + session resume. Uses real Claude (subscription auth via
  * ~/.claude). Not a committed test — a dogfood probe.
  */
-import type { NightcoreEvent, SurfaceCommand } from '@nightcore/contracts';
 import { existsSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+
+import type { NightcoreEvent, SurfaceCommand } from '@nightcore/contracts';
 
 /**
  * Config (all overridable so this is portable, not pinned to one machine):

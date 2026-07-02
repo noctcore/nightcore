@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
+
+import type { ToastApi } from '@/components/ui';
 import {
   activeProject,
   deleteProject,
   listProjects,
   onProjectEvent,
+  type Project,
   renameProject,
   setActiveProject,
-  type Project,
 } from '@/lib/bridge';
-import type { ToastApi } from '@/components/ui';
+
 import { useAsyncData } from './useAsyncData.hooks';
 
 /** Cap on the initial registry read. A wedged core could leave the `invoke` pending

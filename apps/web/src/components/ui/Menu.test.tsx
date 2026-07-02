@@ -1,9 +1,10 @@
-import { render } from 'vitest-browser-react';
-import { expect, test, vi } from 'vitest';
 import { userEvent } from '@vitest/browser/context';
-import { Menu } from './Menu';
+import { expect, test, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+
 import { IconButton } from './IconButton';
 import { DotsIcon } from './icons';
+import { Menu } from './Menu';
 
 function setup(onRename = vi.fn(), onRemove = vi.fn()) {
   return render(

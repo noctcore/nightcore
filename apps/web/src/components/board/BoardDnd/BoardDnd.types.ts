@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+
 import type { Task } from '@/lib/bridge';
 
 /** Props for {@link BoardDnd}. */

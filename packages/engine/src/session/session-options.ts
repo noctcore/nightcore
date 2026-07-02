@@ -27,8 +27,9 @@ import type {
   WireImage,
 } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
-import type { McpServerConfig, Options } from './sdk-adapter.js';
+
 import { resolveClaudeBinary } from './resolve-claude-binary.js';
+import type { McpServerConfig, Options } from './sdk-adapter.js';
 import { buildSubprocessEnv } from './subprocess-env.js';
 
 /**

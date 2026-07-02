@@ -1,14 +1,16 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
+
 import {
-  ConfigSchema,
   type Config,
+  ConfigSchema,
   type ConventionCategory,
   type NightcoreEvent,
   type SurfaceCommand,
 } from '@nightcore/contracts';
-import { HarnessManager, type HarnessRunnerFactory } from './manager.js';
+
 import type { SessionRunnerConfig } from '../../session/session-runner.js';
+import { HarnessManager, type HarnessRunnerFactory } from './manager.js';
 
 type StartHarnessScan = Extract<SurfaceCommand, { type: 'start-harness-scan' }>;
 

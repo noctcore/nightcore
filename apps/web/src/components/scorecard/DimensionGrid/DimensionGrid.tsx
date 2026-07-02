@@ -1,4 +1,5 @@
 import { Card } from '@/components/ui';
+
 import { DIMENSION_META, GRADE_META } from '../scorecard.constants';
 import type { DimensionGridProps, DimensionRow } from './DimensionGrid.types';
 

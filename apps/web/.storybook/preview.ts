@@ -1,7 +1,9 @@
+import '../src/styles.css';
+
 import type { Preview } from '@storybook/react-vite';
 import React from 'react';
+
 import { nightcoreTheme } from './nightcore-theme';
-import '../src/styles.css';
 
 /**
  * Wrap every story in the cosmic-dark surface. The tokens live on :root in

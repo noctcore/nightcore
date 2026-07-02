@@ -1,5 +1,6 @@
 import type { ScorecardDimension } from '@/lib/bridge';
 import { useRunConfig as useSharedRunConfig } from '@/lib/useRunConfig';
+
 import { ALL_DIMENSIONS } from '../scorecard.constants';
 import type { ScorecardRunConfig } from './RunControls.types';
 

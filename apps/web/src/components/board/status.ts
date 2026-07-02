@@ -273,8 +273,8 @@ export const PERMISSION_MODE_LABEL: Record<PermissionMode, string> = {
 // The option sets live in `@/lib/models` (shared with Settings); re-exported here
 // so existing `../status` imports keep working.
 export {
-  MODEL_OPTIONS,
   EFFORT_OPTIONS,
-  type ModelOption,
   type EffortOption,
+  MODEL_OPTIONS,
+  type ModelOption,
 } from '@/lib/models';

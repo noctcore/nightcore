@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
+
+import { SESSION_MESSAGES,SESSIONS } from '../_fixtures';
 import { SessionHistory } from './SessionHistory';
-import { SESSIONS, SESSION_MESSAGES } from '../_fixtures';
 import type { SessionHistoryData } from './SessionHistory.types';
 
 /** A static in-memory data seam so the stories render without Tauri. */

@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+
 import type { ToastApi } from '@/components/ui';
 
 /** Last-resort UI net for stray promise rejections that escape component-level

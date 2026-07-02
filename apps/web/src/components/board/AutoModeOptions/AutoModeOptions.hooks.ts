@@ -1,6 +1,6 @@
 /** Open/close state for the AutoModeOptions popover (kept out of the component
  *  body per the folder-per-component convention). */
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { type RefObject,useCallback, useEffect, useRef, useState } from 'react';
 
 /** The popover control returned by {@link useAutoModeOptions}. */
 export interface AutoModeOptionsControl {

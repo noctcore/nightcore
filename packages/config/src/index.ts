@@ -1,18 +1,19 @@
 /** Layered Nightcore config resolution: defaults → user home → project, merged and validated. */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+
 import {
-  ConfigFileSchema,
-  ConfigSchema,
   type Config,
   type ConfigFile,
+  ConfigFileSchema,
+  ConfigSchema,
 } from '@nightcore/contracts';
 import {
-  nightcoreHome,
-  sessionsDir,
-  projectDir,
-  tryCatch,
   type Logger,
+  nightcoreHome,
+  projectDir,
+  sessionsDir,
+  tryCatch,
 } from '@nightcore/shared';
 
 const CONFIG_FILENAME = 'config.json';

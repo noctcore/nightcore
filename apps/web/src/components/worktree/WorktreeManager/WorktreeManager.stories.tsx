@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
+
 import type { WorktreeInfo } from '@/lib/bridge';
+
 import { WorktreeManager } from './WorktreeManager';
 
 /** Build a WorktreeInfo fixture with sane defaults (clean, in sync). */

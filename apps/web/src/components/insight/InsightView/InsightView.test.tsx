@@ -1,6 +1,7 @@
 import { composeStories } from '@storybook/react-vite';
-import { render } from 'vitest-browser-react';
 import { expect, test } from 'vitest';
+import { render } from 'vitest-browser-react';
+
 import * as stories from './InsightView.stories';
 
 const { Idle, NoProject } = composeStories(stories);

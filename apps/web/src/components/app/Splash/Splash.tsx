@@ -1,4 +1,5 @@
 import { BrandMark } from '@/components/ui';
+
 import type { SplashProps } from './Splash.types';
 
 /** The boot splash shown on first mount — brand mark, animated loader bar, and a

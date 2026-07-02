@@ -1,8 +1,9 @@
 import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vitest/config';
-import react from '@vitejs/plugin-react';
-import tailwind from '@tailwindcss/vite';
+
 import { storybookTest } from '@storybook/addon-vitest/vitest-plugin';
+import tailwind from '@tailwindcss/vite';
+import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vitest/config';
 
 const alias = { '@': fileURLToPath(new URL('./src', import.meta.url)) };
 

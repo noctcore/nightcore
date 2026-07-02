@@ -1,11 +1,13 @@
 /// <reference types="bun" />
 import { describe, expect, mock, test } from 'bun:test';
+
 import type {
   NightcoreEvent,
   NightcoreEventOf,
   SurfaceCommand,
   SurfaceQuery,
 } from '@nightcore/contracts';
+
 import {
   CommandLineBuffer,
   createSidecar,

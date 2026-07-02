@@ -1,5 +1,6 @@
 /** Toast context, state machine hook, and the public useToast hook. */
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+
 import type { Toast, ToastApi } from './Toast.types';
 
 /** How long a toast lingers before auto-dismissing (ms). */

@@ -1,6 +1,7 @@
 import type { ScorecardDimension } from '@/lib/bridge';
-import type { DimensionProgress } from '../scorecard-stream';
+
 import type { ScorecardReadingView } from '../scorecard.types';
+import type { DimensionProgress } from '../scorecard-stream';
 
 /** One row in the grid: a dimension, its live pass state, and the graded reading
  *  once the pass completes (null while pending/running or if it errored). */

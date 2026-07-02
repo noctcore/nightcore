@@ -1,38 +1,40 @@
 /** Hooks that resolve the Insight surface into a single view model: the live and
  *  persisted run stream, the lifted run-config, and every screen's derived state. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useToast } from '@/components/ui';
+
 import type {
   MenuItem,
   RunPhase,
   RunProgressCategory,
 } from '@/components/ui';
+import { useToast } from '@/components/ui';
 import {
+  type AnalysisScope,
   cancelAnalysis,
   convertFindingToTask,
   dismissFinding,
+  type EffortLevel,
+  type FindingCategory,
   getInsightRun,
+  type InsightEvent,
+  type InsightRun,
   listInsightRuns,
   onInsightEvent,
   restoreFinding,
   startAnalysis,
-  type AnalysisScope,
-  type EffortLevel,
-  type FindingCategory,
-  type InsightEvent,
-  type InsightRun,
   type Task,
 } from '@/lib/bridge';
+
+import type { CategoryTab } from '../CategoryTabs';
 import { ALL_CATEGORIES, CATEGORY_META, severityRankValue } from '../insight.constants';
 import type { InsightFinding } from '../insight.types';
 import {
+  type CategoryProgress,
   EMPTY_INSIGHT_STREAM,
   foldInsight,
-  streamFromRun,
-  type CategoryProgress,
   type InsightStream,
+  streamFromRun,
 } from '../insight-stream';
-import type { CategoryTab } from '../CategoryTabs';
 import { useRunConfig } from '../RunControls/RunControls.hooks';
 import type { InsightRunConfig } from '../RunControls/RunControls.types';
 import type { InsightViewProps } from './InsightView.types';

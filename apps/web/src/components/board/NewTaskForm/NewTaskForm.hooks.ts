@@ -1,15 +1,17 @@
 /** State, validation, submit, and keyboard/paste handling for the create-task
  *  dialog. */
 import { useCallback, useEffect, useState } from 'react';
-import { listBranches } from '@/lib/bridge';
-import type { BranchInfo, PermissionMode, RunMode, TaskKind } from '@/lib/bridge';
+
 import {
   imageFilesFrom,
   MAX_IMAGES_PER_TASK,
+  type PendingAttachment,
   readImageFiles,
   toPayload,
-  type PendingAttachment,
 } from '@/lib/attachments';
+import type { BranchInfo, PermissionMode, RunMode, TaskKind } from '@/lib/bridge';
+import { listBranches } from '@/lib/bridge';
+
 import type { NewTaskFormProps } from './NewTaskForm.types';
 
 /** Parse a positive-integer ceiling from free text; `null` for blank/invalid

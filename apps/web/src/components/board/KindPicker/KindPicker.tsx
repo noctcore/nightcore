@@ -1,4 +1,5 @@
 import { rovingKeydown } from '@/lib/roving-keydown';
+
 import { KIND_OPTIONS } from '../status';
 import { kindIcon } from './KindPicker.hooks';
 import type { KindPickerProps } from './KindPicker.types';

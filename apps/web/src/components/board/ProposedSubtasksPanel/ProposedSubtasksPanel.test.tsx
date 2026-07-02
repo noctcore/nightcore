@@ -1,6 +1,7 @@
 import { composeStories } from '@storybook/react-vite';
-import { render } from 'vitest-browser-react';
 import { expect, test } from 'vitest';
+import { render } from 'vitest-browser-react';
+
 import * as stories from './ProposedSubtasksPanel.stories';
 
 const { Default, PartiallyConverted, AllConverted } = composeStories(stories);

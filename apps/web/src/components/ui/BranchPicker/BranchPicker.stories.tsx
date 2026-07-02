@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
+
 import type { BranchInfo } from '@/lib/bridge';
+
 import { BranchPicker } from './BranchPicker';
 
 const branches: BranchInfo[] = [

@@ -1,5 +1,6 @@
 /** State and handlers backing the QuestionPrompt's option/free-text answering. */
 import { useState } from 'react';
+
 import type { QuestionAnswer, QuestionItem, QuestionPrompt } from '@/lib/bridge';
 
 /** The per-question answer state + handlers for a `QuestionPrompt`. Answer model:

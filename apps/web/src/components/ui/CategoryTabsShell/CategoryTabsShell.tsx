@@ -3,6 +3,7 @@
  *  and a live pulse while its pass runs. Feature wrappers resolve their own
  *  metadata (labels, glyphs, the list/error labels) and pass it in. */
 import { rovingKeydown } from '@/lib/roving-keydown';
+
 import type { CategoryTabsShellProps } from './CategoryTabsShell.types';
 
 export function CategoryTabsShell<K extends string>({

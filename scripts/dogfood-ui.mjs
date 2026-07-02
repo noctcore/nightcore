@@ -6,8 +6,8 @@
 // Usage:  bun run web        # in another terminal (serves :5173)
 //         node scripts/dogfood-ui.mjs
 //         BASE_URL=http://localhost:5173 OUT_DIR=/tmp/nc node scripts/dogfood-ui.mjs
-import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 

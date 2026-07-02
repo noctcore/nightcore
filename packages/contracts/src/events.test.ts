@@ -1,6 +1,7 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
-import { NightcoreEventSchema, type NightcoreEvent } from './events.js';
+
+import { type NightcoreEvent,NightcoreEventSchema } from './events.js';
 
 describe('NightcoreEventSchema round-trips', () => {
   const valid: NightcoreEvent[] = [

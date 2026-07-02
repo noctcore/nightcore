@@ -23,6 +23,7 @@ import type {
   StoredProposedArtifact,
   StoredRepoProfile,
 } from '@/lib/bridge';
+
 import type {
   ArtifactStatus,
   CategoryProgress,

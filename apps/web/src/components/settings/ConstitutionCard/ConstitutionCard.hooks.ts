@@ -1,10 +1,12 @@
 /** State and bridge actions for the Constitution editor card (load/edit/save/regenerate). */
 import { useCallback, useEffect, useState } from 'react';
+
 import {
   getContextPack,
   regenerateContextPack,
   setContextPack,
 } from '@/lib/bridge';
+
 import type { ConstitutionMode } from './ConstitutionCard.types';
 
 /** The state and actions the Constitution editor card binds to. */

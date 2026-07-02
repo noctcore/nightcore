@@ -1,13 +1,14 @@
 import { composeStories } from '@storybook/react-vite';
-import { render } from 'vitest-browser-react';
 import { expect, test, vi } from 'vitest';
-import * as stories from './SessionHistory.stories';
+import { render } from 'vitest-browser-react';
+
+import { SESSIONS } from '../_fixtures';
 import {
   extractMessageText,
   formatTimestamp,
   sessionTitle,
 } from './SessionHistory.hooks';
-import { SESSIONS } from '../_fixtures';
+import * as stories from './SessionHistory.stories';
 
 const { Default, Empty, ResumeDisabled } = composeStories(stories);
 

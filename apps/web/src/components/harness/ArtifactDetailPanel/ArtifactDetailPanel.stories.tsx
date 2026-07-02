@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
+
 import type { ProposedArtifactVM } from '../harness.types';
 import { ArtifactDetailPanel } from './ArtifactDetailPanel';
 

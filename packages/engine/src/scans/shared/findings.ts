@@ -10,13 +10,15 @@
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+
 import {
-  FindingSchema,
   type Finding,
   type FindingCategory,
   type FindingLocation,
+  FindingSchema,
   type FindingSeverity,
 } from '@nightcore/contracts';
+
 import { getNumber, getString, getStringArray } from '../../util/field-extract.js';
 
 /** Severity ordering for ranking/merge (low → high). */

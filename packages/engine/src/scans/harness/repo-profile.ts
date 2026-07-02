@@ -13,7 +13,8 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { RepoProfile, RepoPackage, WorkspaceTool } from '@nightcore/contracts';
+
+import type { RepoPackage, RepoProfile, WorkspaceTool } from '@nightcore/contracts';
 
 /** Cap on discovered workspace members — keeps a pathological glob from listing
  *  thousands of dirs. */

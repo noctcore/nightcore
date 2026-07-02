@@ -1,5 +1,6 @@
-import { render } from 'vitest-browser-react';
 import { expect, test } from 'vitest';
+import { render } from 'vitest-browser-react';
+
 import { ToastProvider } from './Toast';
 import { useToast } from './Toast.hooks';
 

@@ -1,6 +1,7 @@
 /** The convention-lens tab strip for the Harness results view — a thin wrapper
  *  that feeds Harness's lens metadata into the shared {@link CategoryTabsShell}. */
 import { CategoryTabsShell } from '@/components/ui';
+
 import { CATEGORY_META } from '../harness.constants';
 import type { CategoryTabsProps } from './CategoryTabs.types';
 

@@ -1,7 +1,7 @@
-export { AppShell } from './AppShell';
 export type { AppView, NavItem } from './AppShell';
+export { AppShell } from './AppShell';
 export { ErrorBoundary } from './ErrorBoundary';
-export { Sidebar } from './Sidebar';
 export type { SidebarProps } from './Sidebar';
-export { Splash } from './Splash';
+export { Sidebar } from './Sidebar';
 export type { SplashProps } from './Splash';
+export { Splash } from './Splash';

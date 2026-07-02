@@ -1,8 +1,9 @@
 import type { ConventionCategory } from '@/lib/bridge';
 import {
-  useRunConfig as useSharedRunConfig,
   type RunConfig,
+  useRunConfig as useSharedRunConfig,
 } from '@/lib/useRunConfig';
+
 import { ALL_CATEGORIES } from '../harness.constants';
 
 /**

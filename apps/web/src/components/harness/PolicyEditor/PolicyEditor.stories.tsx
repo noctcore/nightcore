@@ -1,5 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+
 import type { HarnessPolicyFile } from '@/lib/bridge';
+
 import { PolicyEditor } from './PolicyEditor';
 
 const POLICY: HarnessPolicyFile = {

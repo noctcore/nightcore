@@ -1,9 +1,10 @@
 import { composeStories } from '@storybook/react-vite';
-import { render } from 'vitest-browser-react';
 import { expect, test } from 'vitest';
-import * as stories from './Board.stories';
-import { computeBlockedIds, groupTasksByColumn, matchesQuery } from './Board.hooks';
+import { render } from 'vitest-browser-react';
+
 import { BLOCKED_TASK, TASKS_BY_STATUS } from '../_fixtures';
+import { computeBlockedIds, groupTasksByColumn, matchesQuery } from './Board.hooks';
+import * as stories from './Board.stories';
 
 const { Empty, Populated, AutoModeOn, CircuitBreakerPaused } =
   composeStories(stories);

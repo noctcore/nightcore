@@ -1,8 +1,9 @@
 import { composeStories } from '@storybook/react-vite';
-import { render } from 'vitest-browser-react';
 import { expect, test, vi } from 'vitest';
-import { Column } from './Column';
+import { render } from 'vitest-browser-react';
+
 import { TASKS_BY_STATUS } from '../_fixtures';
+import { Column } from './Column';
 import * as stories from './Column.stories';
 
 const { Empty, InProgress, WaitingApproval, Verified } = composeStories(stories);

@@ -15,6 +15,7 @@ import {
   StopIcon,
   VerifiedIcon,
 } from '@/components/ui';
+
 import { ApplyConfirmDialog } from '../ApplyConfirmDialog';
 import { ArtifactDetailPanel } from '../ArtifactDetailPanel';
 import { CategoryTabs } from '../CategoryTabs';
@@ -26,8 +27,8 @@ import { ProfileBanner } from '../ProfileBanner';
 import { ProposalDetailPanel } from '../ProposalDetailPanel';
 import { RunControls } from '../RunControls';
 import { TaskProposalList } from '../TaskProposalList';
-import { useHarnessView } from './HarnessView.hooks';
 import type { HarnessSection, HarnessViewModel } from './HarnessView.hooks';
+import { useHarnessView } from './HarnessView.hooks';
 import type { HarnessViewProps } from './HarnessView.types';
 
 /** One section-toggle tab: "Conventions" / "Proposals" / "Artifacts", with a live count. */

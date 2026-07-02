@@ -28,6 +28,7 @@ import {
   type SurfaceCommand,
   type SurfaceQuery,
 } from '@nightcore/contracts';
+
 import { createSidecar, pumpCommands, type SidecarManager } from './index.js';
 
 /**
@@ -52,7 +53,7 @@ class ScriptedManager implements SidecarManager {
     this.listener?.(event);
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await -- async to satisfy the SidecarManager contract; emits synchronously.
+   
   async dispatch(command: SurfaceCommand): Promise<void> {
     if (command.type !== 'start-session') {
       // Every other command (interrupt, set-model, approve-permission, …) is a
@@ -120,7 +121,7 @@ class ScriptedManager implements SidecarManager {
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await -- async to satisfy the SidecarManager contract; resolves synchronously.
+   
   async handleQuery(query: SurfaceQuery): Promise<NightcoreEventOf<'query-result'>> {
     if (query.type === 'list-sessions') {
       return {

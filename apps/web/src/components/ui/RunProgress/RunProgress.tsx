@@ -1,6 +1,6 @@
 /** Live per-category progress panel for the running screen. */
-import { StatusDot } from '../StatusDot';
 import { CheckIcon, ChevronRightIcon } from '../icons';
+import { StatusDot } from '../StatusDot';
 import { useElapsedMs } from './RunProgress.hooks';
 import type {
   CategoryRunState,

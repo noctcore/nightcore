@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, within } from 'storybook/test';
+
+import { Button } from '../Button';
 import { ToastProvider } from './Toast';
 import { useToast } from './Toast.hooks';
-import { Button } from '../Button';
 
 /** Demo surface: buttons that push a toast of each tone through `useToast()`. */
 function ToastDemo() {

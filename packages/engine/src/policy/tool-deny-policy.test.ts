@@ -1,10 +1,11 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
+
 import {
+  BASH_TOOL,
+  DEFAULT_DESTRUCTIVE_RULES,
   evaluateToolDeny,
   tokenizeCommand,
-  DEFAULT_DESTRUCTIVE_RULES,
-  BASH_TOOL,
 } from './tool-deny-policy.js';
 
 /** Convenience: build the `{ command }` tool_input a Bash PreToolUse carries. */

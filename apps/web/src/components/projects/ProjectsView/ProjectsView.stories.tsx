@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
+
 import type { Project, Task } from '@/lib/bridge';
+
 import { ProjectsView } from './ProjectsView';
 
 const projects: Project[] = [

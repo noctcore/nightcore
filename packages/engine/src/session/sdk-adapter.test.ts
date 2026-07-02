@@ -1,10 +1,12 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
+
 import type { NightcoreEvent } from '@nightcore/contracts';
+
 import {
   mapAssistantError,
-  translateMessage,
   type SDKMessage,
+  translateMessage,
 } from './sdk-adapter.js';
 
 const SID = 7;

@@ -15,7 +15,7 @@
 // stand-in shaped like the descriptor: when the seam opens, the picker can swap
 // to live descriptors without a component change.
 
-import { KnownModelSchema, type EffortLevel, type KnownModel } from '@nightcore/contracts';
+import { type EffortLevel, type KnownModel,KnownModelSchema } from '@nightcore/contracts';
 
 /** Capability/cost tier shown as a badge on the model option. */
 export type ModelTier = 'Speed' | 'Balanced' | 'Premium';

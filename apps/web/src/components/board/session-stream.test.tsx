@@ -1,5 +1,7 @@
 import { expect, test } from 'vitest';
+
 import type { NcEvent } from '@/lib/bridge';
+
 import {
   EMPTY_STREAM,
   EMPTY_TRANSCRIPT,

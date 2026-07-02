@@ -1,15 +1,17 @@
 /** Drag-and-drop state, sensors, and drop resolution for the board's columns. */
-import { useCallback, useMemo, useState } from 'react';
 import {
+  type DragEndEvent,
+  type DragStartEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
-  type DragEndEvent,
-  type DragStartEvent,
 } from '@dnd-kit/core';
+import { useCallback, useMemo, useState } from 'react';
+
 import type { Task, TaskStatus } from '@/lib/bridge';
-import { COLUMNS, canDragStatus, isDroppableStatus } from '../status';
+
+import { canDragStatus, COLUMNS, isDroppableStatus } from '../status';
 
 /** A pointer drag only begins after this much movement (px) — below it the press
  *  is a click, so selecting a card or tapping its action buttons never starts a

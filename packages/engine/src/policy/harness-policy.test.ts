@@ -1,8 +1,13 @@
 /// <reference types="bun" />
 import { describe, expect, mock, test } from 'bun:test';
+
 import type { Logger } from '@nightcore/shared';
+
 import {
   BASH_COMMAND_SCAN_LIMIT,
+  type CompiledHarnessPolicy,
+  compileHarnessPolicy,
+  evaluateHarnessPolicy,
   HARNESS_BASH_DENY_RULE_ID,
   HARNESS_PROTECTED_PATH_RULE_ID,
   HARNESS_READ_DENY_RULE_ID,
@@ -10,9 +15,6 @@ import {
   HARNESS_TOOL_DENY_RULE_ID,
   MANIFEST_PROTECTED_PATTERN,
   MAX_BASH_PATTERN_LENGTH,
-  compileHarnessPolicy,
-  evaluateHarnessPolicy,
-  type CompiledHarnessPolicy,
 } from './harness-policy.js';
 
 const CWD = '/repo';

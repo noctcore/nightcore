@@ -34,7 +34,9 @@ import {
   renameSession,
   tagSession,
 } from '@anthropic-ai/claude-agent-sdk';
+
 import type { NightcoreEvent, TaskKind } from '@nightcore/contracts';
+
 import { getBoolean, getObject, getString } from '../util/field-extract.js';
 import { parseSubtasks } from './decompose.js';
 

@@ -1,4 +1,5 @@
 import { Card, Skeleton } from '@/components/ui';
+
 import { ARTIFACT_KIND_META } from '../harness.constants';
 import type { ProposedArtifactVM } from '../harness.types';
 import type { HarnessProposalListProps } from './HarnessProposalList.types';

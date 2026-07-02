@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
-import type { Task, TaskStatus } from '@/lib/bridge';
+
 import { COLUMNS } from '@/components/board';
+import type { Task, TaskStatus } from '@/lib/bridge';
 
 /** A pending column-clear: the target statuses, the resolved column title, and
  *  the number of tasks the clear would delete (for the confirm copy). */

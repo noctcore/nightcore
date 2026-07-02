@@ -1,7 +1,14 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
-import { TaskDetail } from './TaskDetail';
-import type { TaskDetailActions } from './TaskDetail.types';
+
+import {
+  GAUNTLET_FAILED,
+  GAUNTLET_PASSED,
+  makeTask,
+  SAMPLE_REVIEW_CHANGES,
+  SAMPLE_REVIEW_PASS,
+  TASKS_BY_STATUS,
+} from '../_fixtures';
 import {
   EMPTY_STREAM,
   type SessionGroup,
@@ -9,14 +16,8 @@ import {
   type SessionStream,
   type TaskTranscript,
 } from '../session-stream';
-import {
-  GAUNTLET_FAILED,
-  GAUNTLET_PASSED,
-  SAMPLE_REVIEW_CHANGES,
-  SAMPLE_REVIEW_PASS,
-  TASKS_BY_STATUS,
-  makeTask,
-} from '../_fixtures';
+import { TaskDetail } from './TaskDetail';
+import type { TaskDetailActions } from './TaskDetail.types';
 
 /** Every drawer action stubbed — the grouped `actions` object the drawer (and its
  *  sub-components) destructure from. Stories override individual handlers by

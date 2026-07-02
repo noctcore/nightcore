@@ -1,7 +1,7 @@
 /** Sanitizing markdown renderer for assistant and plan text. */
-import { useMemo } from 'react';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
+import { useMemo } from 'react';
 
 /** Props for {@link Markdown}. */
 export interface MarkdownProps {

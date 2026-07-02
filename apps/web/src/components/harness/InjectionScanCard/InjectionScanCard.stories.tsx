@@ -1,5 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+
 import type { InjectionFlag } from '@/lib/bridge';
+
 import { InjectionScanCard } from './InjectionScanCard';
 
 /** Deterministic story/test flags (the same shape the Rust scan returns). */

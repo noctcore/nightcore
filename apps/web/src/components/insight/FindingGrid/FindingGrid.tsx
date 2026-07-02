@@ -2,6 +2,7 @@
  *  lays them out (with streaming skeletons + empty state) via {@link DetailCardGrid}. */
 import { DetailCard, DetailCardGrid } from '@/components/ui';
 import { formatLocation } from '@/lib/formatters';
+
 import {
   CATEGORY_META,
   EFFORT_META,

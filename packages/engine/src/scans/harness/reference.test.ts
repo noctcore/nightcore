@@ -1,6 +1,8 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
+
 import type { RepoProfile } from '@nightcore/contracts';
+
 import { hardeningReference } from './reference.js';
 
 /**

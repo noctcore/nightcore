@@ -1,5 +1,6 @@
 /** A presentational grouped settings card: header plus label/hint/control rows. */
 import { Badge } from '@/components/ui';
+
 import type { SettingsCardProps } from './SettingsCard.types';
 
 /** A grouped settings card: header (icon + title + optional badge) followed by

@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
+
 import type { Settings } from '@/lib/bridge';
+
 import { SettingsView } from './SettingsView';
 
 const settings: Settings = {

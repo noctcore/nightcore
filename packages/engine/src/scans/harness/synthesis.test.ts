@@ -1,6 +1,8 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
+
 import type { Config, RepoProfile, SurfaceCommand } from '@nightcore/contracts';
+
 import type {
   ScanRunnerFactory,
   ScanSessionRunner,

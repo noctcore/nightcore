@@ -1,4 +1,5 @@
 import { Button, CheckIcon, MoveIcon, Spinner } from '@/components/ui';
+
 import { deriveProposedSubtasksView } from './ProposedSubtasksPanel.hooks';
 import type { ProposedSubtasksPanelProps } from './ProposedSubtasksPanel.types';
 

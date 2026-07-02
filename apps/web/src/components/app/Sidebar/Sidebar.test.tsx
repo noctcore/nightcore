@@ -1,6 +1,7 @@
 import { composeStories } from '@storybook/react-vite';
-import { render } from 'vitest-browser-react';
 import { expect, test, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+
 import * as stories from './Sidebar.stories';
 
 const { Default, SwitcherOpen, Running } = composeStories(stories);
