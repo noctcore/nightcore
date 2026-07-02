@@ -18,6 +18,7 @@ import { ActivityLog } from '../ActivityLog';
 import { GauntletResults } from '../GauntletResults';
 import { InteractionDock } from '../InteractionDock';
 import { ProposedSubtasksPanel } from '../ProposedSubtasksPanel';
+import { PrStatusCard } from '../PrStatusCard';
 import { ReviewPanel } from '../ReviewPanel';
 import { GroupLabel, HistoryCard, SessionCard } from '../SessionCard';
 import { formatCost, STATUS_LABEL, STATUS_TEXT } from '../status';
@@ -53,6 +54,7 @@ export function TaskDetail({
   gauntlet = null,
   gauntletRunning = false,
   prSupport,
+  prStatus,
   onClose,
   actions,
   isActionPending,
@@ -79,6 +81,7 @@ export function TaskDetail({
         gauntlet={gauntlet}
         gauntletRunning={gauntletRunning}
         prSupport={resolvedPrSupport}
+        prStatus={prStatus}
         onClose={onClose}
         actions={actions}
         isActionPending={isActionPending}
@@ -117,6 +120,7 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
   gauntlet,
   gauntletRunning,
   prSupport,
+  prStatus,
   onClose,
   actions,
   isActionPending,
@@ -230,6 +234,25 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
                 structureLock={task.structureLockResult}
               />
             )}
+          </div>
+        )}
+
+        {/* Pull request — live GitHub status for the task's PR (phase 2): state /
+            review / checks badges plus the human-gated push-updates, remote-merged
+            finalize, and base fast-forward actions. Fetches on mount + manual
+            refresh only; sits directly below the Result band's gauntlet. */}
+        {task.prUrl !== undefined && (
+          <div className="space-y-3">
+            <GroupLabel>Pull request</GroupLabel>
+            <PrStatusCard
+              task={task}
+              onOpenPr={actions.onOpenPr}
+              onPushUpdates={actions.onPushPrUpdates}
+              onFinalize={actions.onFinalizePr}
+              onPullBase={actions.onPullBaseFf}
+              isActionPending={isActionPending}
+              statusOverride={prStatus}
+            />
           </div>
         )}
 

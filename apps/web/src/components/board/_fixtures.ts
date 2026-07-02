@@ -1,5 +1,6 @@
 import type {
   GauntletResult,
+  PrStatus,
   SessionInfo,
   SessionMessage,
   StructureLockResult,
@@ -51,6 +52,26 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     parentTaskId: overrides.parentTaskId ?? null,
     proposedSubtasks: overrides.proposedSubtasks ?? [],
     sourceRef: overrides.sourceRef ?? null,
+  };
+}
+
+/** Build a PrStatus fixture for the PrStatusCard stories/tests. Defaults to a
+ *  clean, open, review-pending PR against `main` with no check runs. */
+export function makePrStatus(overrides: Partial<PrStatus> = {}): PrStatus {
+  return {
+    state: 'OPEN',
+    isDraft: false,
+    mergeable: 'MERGEABLE',
+    mergeStateStatus: 'CLEAN',
+    reviewDecision: '',
+    checksPassed: 0,
+    checksFailed: 0,
+    checksPending: 0,
+    baseRefName: 'main',
+    url: 'https://github.com/acme/nightcore/pull/123',
+    number: 123,
+    unpushedCommits: 0,
+    ...overrides,
   };
 }
 

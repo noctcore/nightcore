@@ -14,6 +14,8 @@ export { PermissionModePicker } from './PermissionModePicker';
 export { PermissionPrompt } from './PermissionPrompt';
 export type { ProviderConfigData,ProviderConfigPanelProps } from './ProviderConfigPanel';
 export { ProviderConfigPanel } from './ProviderConfigPanel';
+export type { PrStatusCardProps } from './PrStatusCard';
+export { PrStatusCard } from './PrStatusCard';
 export { QuestionPrompt } from './QuestionPrompt';
 export { ReviewPanel } from './ReviewPanel';
 export {

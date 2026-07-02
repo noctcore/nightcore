@@ -631,6 +631,71 @@ export async function openExternal(url: string): Promise<void> {
   await invoke('open_external', { url });
 }
 
+// MERGER NOTE — EXPECTED CODEGEN HANDOFF: the Rust half of PR phase 2 ts-rs-
+// exports this exact struct; once its `cargo test` regen lands, DELETE this
+// local interface and re-export the binding instead:
+//   export type { PrStatus } from './generated/PrStatus';
+// (the same handoff phase 1 did for PrSupport/PrDraft). The shape below IS the
+// shared contract — do not drift it.
+/** Live GitHub state for a task's pull request, straight from a bounded
+ *  `gh pr view --json …` (fields counted/shaped Rust-side). String fields are
+ *  gh vocabulary PASS-THROUGHS (`state`, `mergeable`, `mergeStateStatus`,
+ *  `reviewDecision`) — no enum fork, so the UI must degrade gracefully (show
+ *  the raw string) on values it doesn't know. Carries NO timestamps: the web
+ *  stamps receive-time locally when a fetch resolves. */
+export interface PrStatus {
+  /** `"OPEN" | "CLOSED" | "MERGED"` (gh vocabulary). */
+  state: string;
+  isDraft: boolean;
+  /** `"MERGEABLE" | "CONFLICTING" | "UNKNOWN"`. */
+  mergeable: string;
+  /** `"CLEAN" | "BEHIND" | "BLOCKED" | "DIRTY" | "UNSTABLE" | …`. */
+  mergeStateStatus: string;
+  /** `"APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | ""`. */
+  reviewDecision: string;
+  /** Check-run counts, tallied Rust-side from `statusCheckRollup`. */
+  checksPassed: number;
+  checksFailed: number;
+  checksPending: number;
+  baseRefName: string;
+  /** The gh-reported PR page URL (never a raw remote URL). */
+  url: string;
+  number: number;
+  /** LOCAL-ONLY count of commits on the task branch not on its upstream;
+   *  `0` when the worktree is gone. */
+  unpushedCommits: number;
+}
+
+/** Fetch the live PR status for a task (requires `prNumber` set) via a bounded
+ *  `gh pr view`. On-demand only — the card fetches on mount + manual refresh;
+ *  there is deliberately NO polling. Read-only (no lease). Resolves `null`
+ *  outside Tauri (browser preview) so the card shows its unavailable note
+ *  instead of a fabricated status. */
+export async function prStatus(id: string): Promise<PrStatus | null> {
+  return tauriInvoke<PrStatus | null>('pr_status', { id }, null);
+}
+
+/** Re-push the task branch to its remote (plain push — never `--force`) so an
+ *  open PR picks up new local commits. Void: the caller refetches `prStatus`
+ *  afterwards. Rejects loudly (and outside Tauri) — no silent fallback. */
+export async function pushPrUpdates(id: string): Promise<void> {
+  await invoke('push_pr_updates', { id });
+}
+
+/** Finalize a REMOTE-merged PR: the backend re-verifies `state == MERGED`
+ *  itself, marks the task merged locally, and honors the `cleanupWorktrees`
+ *  setting. The updated task arrives via the `nc:task` echo. */
+export async function finalizeMergedPr(id: string): Promise<void> {
+  await invoke('finalize_merged_pr', { id });
+}
+
+/** Fast-forward-only pull of the task's base branch on the PROJECT ROOT after
+ *  a remote merge. The backend refuses a dirty root or a non-ff pull — the
+ *  rejection message surfaces verbatim in the failure toast. */
+export async function pullBaseFf(id: string): Promise<void> {
+  await invoke('pull_base_ff', { id });
+}
+
 // --- Verification gate ----------------------------------------------------
 
 /** Accept a parked verification (CHANGES_REQUESTED budget-exhausted / FAIL /

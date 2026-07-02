@@ -53,6 +53,7 @@ import { useGauntlet } from './hooks/useGauntlet.hooks';
 import { useGlobalErrorToast } from './hooks/useGlobalErrorToast.hooks';
 import { useNewProjectFlow } from './hooks/useNewProjectFlow.hooks';
 import { usePermissions, useQuestions } from './hooks/useParkedPrompts.hooks';
+import { usePrLifecycle } from './hooks/usePrLifecycle.hooks';
 import { useProjectRegistry } from './hooks/useProjectRegistry.hooks';
 import { useRouting } from './hooks/useRouting.hooks';
 import { useSettingsData } from './hooks/useSettingsData.hooks';
@@ -210,6 +211,7 @@ export function useAppShell(): AppShellState {
   const gauntlet = useGauntlet(toast);
   const worktrees = useWorktrees();
   const createPr = useCreatePr(action, toast);
+  const prLifecycle = usePrLifecycle(action, toast);
 
   const anyRunning = useMemo(
     () => tasks.some((t) => t.status === 'in_progress' || t.status === 'verifying'),
@@ -621,6 +623,9 @@ export function useAppShell(): AppShellState {
       onCommit: handleCommit,
       onCreatePr: createPr.openPrDialog,
       onOpenPr: createPr.openPr,
+      onPushPrUpdates: prLifecycle.pushUpdates,
+      onFinalizePr: prLifecycle.finalize,
+      onPullBaseFf: prLifecycle.pullBase,
       onResumeSession: handleResumeSession,
       onRenameSession: handleRenameSession,
       onTagSession: handleTagSession,
@@ -651,6 +656,9 @@ export function useAppShell(): AppShellState {
       handleCommit,
       createPr.openPrDialog,
       createPr.openPr,
+      prLifecycle.pushUpdates,
+      prLifecycle.finalize,
+      prLifecycle.pullBase,
       handleResumeSession,
       handleRenameSession,
       handleTagSession,
