@@ -1,0 +1,22 @@
+# cargo-audit config for the Nightcore Rust core. Read by `cargo audit` when it
+# runs from apps/desktop/src-tauri (the Dependency Audit CI job does).
+#
+# Ignores are for advisories with NO upstream fix path we control — each entry
+# must say where the crate comes from and when to remove it. Never ignore an
+# advisory on a direct dependency we can bump ourselves.
+
+[advisories]
+ignore = [
+    # quick-xml <0.41 DoS advisories (RUSTSEC-2026-0194 quadratic duplicate-
+    # attribute check, RUSTSEC-2026-0195 unbounded NsReader namespace
+    # allocation), published 2026-06-29. Pulled twice, both upstream-pinned:
+    #   - 0.39.4 via plist → tauri (macOS Info.plist parsing)
+    #   - 0.37.5 via tauri-winrt-notification → notify-rust →
+    #     tauri-plugin-notification (Windows toast XML)
+    # No tauri/plist/notify-rust release with quick-xml >=0.41 exists yet, and
+    # the parsers only see Nightcore's own bundled plists / OS notification
+    # XML, not attacker-supplied documents. Re-check after each tauri bump
+    # (`cargo audit` from this dir) and remove once these resolve.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+]
