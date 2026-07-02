@@ -40,14 +40,14 @@
     "audit:all": "bun run audit && bun run audit:rust"
   },
   "devDependencies": {
-    "@eslint/js": "^9.0.0",
+    "@eslint/js": "^10.0.1",
     "@nightcore/eslint-plugin": "workspace:*",
     "@types/bun": "^1.1.0",
-    "@types/node": "^22.0.0",
-    "eslint": "^9.0.0",
+    "@types/node": "^26.1.0",
+    "eslint": "^10.6.0",
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-simple-import-sort": "^13.0.0",
-    "typescript": "^5.6.0",
+    "typescript": "^6.0.3",
     "typescript-eslint": "^8.0.0"
   }
 }
