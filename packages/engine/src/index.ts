@@ -76,6 +76,37 @@ export type {
 } from './scans/harness/synthesis.js';
 export { parseProposedArtifacts,synthesizeHarness } from './scans/harness/synthesis.js';
 
+// The PR Review orchestrator (the fourth scan sibling) + its pure DIFF-relative
+// parse/ground/dedup helpers, per-lens presets, and the adversarial finding-validator
+// pass. SDK stays confined to the SessionRunner the manager spins.
+export {
+  dedupePrReviewFindings,
+  groundPrReviewFindings,
+  parsePrReviewFindings,
+  reviewFingerprint,
+  reviewSeverityRank,
+} from './scans/pr-review/findings.js';
+export type {
+  PrReviewManagerDeps,
+  PrReviewRunnerFactory,
+  PrReviewSessionRunner,
+} from './scans/pr-review/manager.js';
+export { PrReviewScanManager } from './scans/pr-review/manager.js';
+export type { PrReviewPreset } from './scans/pr-review/presets.js';
+export {
+  PR_REVIEW_ALLOWED_TOOLS,
+  PR_REVIEW_DISALLOWED_TOOLS,
+  PR_REVIEW_PRESETS,
+  PR_REVIEWER_PERSONA,
+  prReviewOutputContract,
+  prReviewPreset,
+} from './scans/pr-review/presets.js';
+export type {
+  ValidatePrReviewArgs,
+  ValidatePrReviewResult,
+} from './scans/pr-review/validator.js';
+export { validatePrReviewFindings } from './scans/pr-review/validator.js';
+
 // The Readiness Scorecard (Profile) orchestrator + its pure parse/ground helpers
 // and per-dimension presets. SDK stays confined to the SessionRunner the manager
 // spins. Mirrors the Insight orchestrator tier-for-tier.
