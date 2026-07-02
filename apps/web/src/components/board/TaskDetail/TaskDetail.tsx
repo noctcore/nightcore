@@ -6,6 +6,7 @@ import {
   CheckIcon,
   CloseIcon,
   CommitIcon,
+  GithubIcon,
   IconButton,
   Markdown,
   RefineIcon,
@@ -23,9 +24,12 @@ import { formatCost, STATUS_LABEL, STATUS_TEXT } from '../status';
 import { TaskAttachments } from '../TaskAttachments';
 import { TaskStatusDot } from '../TaskStatusDot';
 import {
+  canCreatePr,
   canMerge,
   deriveTaskDetailView,
+  prChipLabel,
   TaskStreamContext,
+  usePrSupport,
   useTaskStreamSessions,
 } from './TaskDetail.hooks';
 import type { TaskDetailChromeProps, TaskDetailProps } from './TaskDetail.types';
@@ -48,6 +52,7 @@ export function TaskDetail({
   questions = [],
   gauntlet = null,
   gauntletRunning = false,
+  prSupport,
   onClose,
   actions,
   isActionPending,
@@ -55,6 +60,9 @@ export function TaskDetail({
 }: TaskDetailProps) {
   const { isRunning, cost, sessions, reviewParked, planParked, kindEditable, isDoneColumn } =
     deriveTaskDetailView(task, stream);
+  // Lazy PR capability probe (gh + origin remote), cached per task id; the
+  // `prSupport` prop (stories/tests) overrides and skips the fetch entirely.
+  const resolvedPrSupport = usePrSupport(task, prSupport);
   return (
     <TaskStreamContext.Provider value={sessions}>
       <TaskDetailChrome
@@ -70,6 +78,7 @@ export function TaskDetail({
         questions={questions}
         gauntlet={gauntlet}
         gauntletRunning={gauntletRunning}
+        prSupport={resolvedPrSupport}
         onClose={onClose}
         actions={actions}
         isActionPending={isActionPending}
@@ -107,6 +116,7 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
   questions,
   gauntlet,
   gauntletRunning,
+  prSupport,
   onClose,
   actions,
   isActionPending,
@@ -373,6 +383,30 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
                 {pending('commit') ? 'Committing…' : 'Commit'}
               </Button>
             )}
+            {/* The PR terminal action beside Merge: a `PR #<n>` chip linking out
+                once one exists, else Create PR when the full eligibility contract
+                holds (done + verified + committed + worktree + !merged + a green
+                `pr_support` probe). Hidden while the probe is unknown or red. */}
+            {task.prUrl !== undefined ? (
+              <Button
+                variant="secondary"
+                onClick={() => actions.onOpenPr?.(task.prUrl!)}
+                title="Open the pull request in your browser"
+              >
+                <GithubIcon size={13} />
+                {prChipLabel(task)} ↗
+              </Button>
+            ) : canCreatePr(task, prSupport) && actions.onCreatePr !== undefined ? (
+              <Button
+                variant="secondary"
+                onClick={() => actions.onCreatePr!(task.id)}
+                disabled={pending('createPr')}
+                aria-busy={pending('createPr')}
+              >
+                {pending('createPr') ? <Spinner /> : <GithubIcon size={13} />}
+                Create PR
+              </Button>
+            ) : null}
             <span className="flex-1" />
             <Button variant="ghost" onClick={() => actions.onDelete(task.id)}>
               Delete

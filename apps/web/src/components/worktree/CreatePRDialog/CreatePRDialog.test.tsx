@@ -1,0 +1,158 @@
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+
+// Mock the Tauri command surface underneath the bridge (the same seam
+// bridge.test.tsx mocks) so `draftPrMessage` / `listBranches` / `createPrTask`
+// are observable. The bridge gates real calls on `isTauri()`, satisfied by
+// stubbing `window.__TAURI_INTERNALS__` in `beforeEach`.
+const invoke = vi.fn();
+vi.mock('@tauri-apps/api/core', () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
+vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }));
+vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }));
+
+import type { BranchInfo, CreatePrOptions, Task } from '@/lib/bridge';
+import { createPrTask } from '@/lib/bridge';
+
+import { makeTask } from '../../board/_fixtures';
+import { CreatePRDialog } from './CreatePRDialog';
+
+const TASK: Task = makeTask({
+  id: 't-pr',
+  status: 'done',
+  title: 'Wire up auth guard',
+  description: 'Adds the auth middleware and covers it with tests.',
+  branch: 'nc/auth-guard',
+  baseBranch: 'main',
+  runMode: 'worktree',
+  verified: true,
+  committed: true,
+});
+
+const BRANCHES: BranchInfo[] = [
+  { name: 'main', isRemote: false, isCurrent: true, ahead: 0, behind: 0 },
+  { name: 'develop', isRemote: false, isCurrent: false, ahead: 0, behind: 0 },
+];
+
+/** Route the mocked invoke per command; tests override single commands. */
+function stubCommands(overrides: Record<string, (args: unknown) => Promise<unknown>> = {}) {
+  invoke.mockImplementation((cmd: unknown, args: unknown) => {
+    const override = overrides[cmd as string];
+    if (override !== undefined) return override(args);
+    switch (cmd) {
+      case 'draft_pr_message':
+        return Promise.resolve({ title: 'feat: auth guard', body: 'Drafted summary.' });
+      case 'list_branches':
+        return Promise.resolve(BRANCHES);
+      case 'create_pr_task':
+        return Promise.resolve(undefined);
+      default:
+        return Promise.resolve(undefined);
+    }
+  });
+}
+
+/** The production wiring: the dialog's onCreate relays to the bridge command. */
+const onCreate = (id: string, opts: CreatePrOptions) => createPrTask(id, opts);
+
+beforeEach(() => {
+  invoke.mockReset();
+  (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+});
+
+afterEach(() => {
+  delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+});
+
+test('renders and pre-fills title/body from draftPrMessage', async () => {
+  stubCommands();
+  const screen = render(
+    <CreatePRDialog open task={TASK} onCreate={onCreate} onClose={() => {}} />,
+  );
+  await expect.element(screen.getByLabelText('Title')).toHaveValue('feat: auth guard');
+  await expect.element(screen.getByLabelText('Body')).toHaveValue('Drafted summary.');
+  // The confirm footer states exactly what leaves the machine.
+  await expect
+    .element(screen.getByText(/to origin and open a pull request against/))
+    .toBeInTheDocument();
+});
+
+test('a drafting failure degrades to the task title/description and never blocks', async () => {
+  stubCommands({ draft_pr_message: () => Promise.reject(new Error('claude not found')) });
+  const screen = render(
+    <CreatePRDialog open task={TASK} onCreate={onCreate} onClose={() => {}} />,
+  );
+  await expect.element(screen.getByLabelText('Title')).toHaveValue('Wire up auth guard');
+  await expect
+    .element(screen.getByLabelText('Body'))
+    .toHaveValue('Adds the auth middleware and covers it with tests.');
+  await expect.element(screen.getByRole('button', { name: 'Create PR' })).toBeEnabled();
+});
+
+test('confirm calls createPrTask with the edited values, base, and draft flag', async () => {
+  stubCommands();
+  const onClose = vi.fn();
+  const screen = render(
+    <CreatePRDialog open task={TASK} onCreate={onCreate} onClose={onClose} />,
+  );
+  const title = screen.getByLabelText('Title');
+  await expect.element(title).toHaveValue('feat: auth guard');
+
+  await title.fill('feat: wire up the auth guard');
+  await screen.getByLabelText('Body').fill('Edited body.');
+  // The checkbox <input> is visually hidden (sr-only); click the visible label
+  // text, which toggles the associated control natively.
+  await screen.getByText('Open as a draft pull request').click();
+  await screen.getByRole('button', { name: 'Create PR' }).click();
+
+  await vi.waitFor(() =>
+    expect(invoke).toHaveBeenCalledWith('create_pr_task', {
+      id: 't-pr',
+      base: 'main',
+      title: 'feat: wire up the auth guard',
+      body: 'Edited body.',
+      draft: true,
+    }),
+  );
+  await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
+});
+
+test('the confirm button single-flights while the create is pending', async () => {
+  let resolveCreate: (() => void) | undefined;
+  stubCommands({
+    create_pr_task: () =>
+      new Promise<void>((resolve) => {
+        resolveCreate = () => resolve();
+      }),
+  });
+  const onClose = vi.fn();
+  const screen = render(
+    <CreatePRDialog open task={TASK} onCreate={onCreate} onClose={onClose} />,
+  );
+  await expect.element(screen.getByLabelText('Title')).toHaveValue('feat: auth guard');
+
+  await screen.getByRole('button', { name: 'Create PR' }).click();
+  await expect.element(screen.getByRole('button', { name: /Creating…/ })).toBeDisabled();
+  expect(onClose).not.toHaveBeenCalled();
+
+  resolveCreate!();
+  await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
+});
+
+test('a rejected create shows the inline error and keeps the dialog open', async () => {
+  stubCommands({
+    create_pr_task: () => Promise.reject(new Error('gh: authentication required')),
+  });
+  const onClose = vi.fn();
+  const screen = render(
+    <CreatePRDialog open task={TASK} onCreate={onCreate} onClose={onClose} />,
+  );
+  await expect.element(screen.getByLabelText('Title')).toHaveValue('feat: auth guard');
+
+  await screen.getByRole('button', { name: 'Create PR' }).click();
+  await expect.element(screen.getByText('gh: authentication required')).toBeInTheDocument();
+  // Still open (the title field is present) and never closed.
+  await expect.element(screen.getByLabelText('Title')).toBeInTheDocument();
+  expect(onClose).not.toHaveBeenCalled();
+  // A retry is possible: the confirm button is re-enabled.
+  await expect.element(screen.getByRole('button', { name: 'Create PR' })).toBeEnabled();
+});

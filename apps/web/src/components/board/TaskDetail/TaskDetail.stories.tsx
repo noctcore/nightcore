@@ -44,6 +44,8 @@ const actions: TaskDetailActions = {
   onRunGauntlet: fn(),
   onMerge: fn(),
   onCommit: fn(),
+  onCreatePr: fn(),
+  onOpenPr: fn(),
 };
 
 /** Wrap a single session's stream into a one-session transcript (the common
@@ -91,6 +93,10 @@ const meta = {
     anyRunning: false,
     gauntlet: null,
     gauntletRunning: false,
+    // Default the PR capability probe to a deterministic override (unknown ⇒
+    // hidden) so stories never hit the lazy `pr_support` fetch; the PR stories
+    // below override with an explicit green/red probe.
+    prSupport: null,
     onClose: fn(),
     actions,
   },
@@ -287,6 +293,77 @@ export const VerifiedMergeGated: Story = {
     }),
     gauntlet: null,
     stream: undefined,
+  },
+};
+
+/** A verified, committed worktree task with a GREEN PR capability probe (`gh`
+ *  installed + an `origin` remote) — the Create PR button shows beside Merge. */
+export const ReadyForPr: Story = {
+  args: {
+    task: makeTask({
+      id: 't-done',
+      status: 'done',
+      title: 'Wire up auth guard',
+      branch: 'nc/auth-guard',
+      runMode: 'worktree',
+      verified: true,
+      committed: true,
+      review: SAMPLE_REVIEW_PASS,
+    }),
+    gauntlet: GAUNTLET_PASSED,
+    prSupport: { ghInstalled: true, remote: 'git@github.com:acme/nightcore.git' },
+    stream: undefined,
+  },
+};
+
+/** The same eligible task with a RED probe (no `gh` / no remote) — the Create
+ *  PR button hides; the capability gate is honest instead of failing on click. */
+export const PrSupportRed: Story = {
+  args: {
+    ...ReadyForPr.args,
+    prSupport: { ghInstalled: false, remote: null },
+  },
+};
+
+/** A task whose PR exists (`prUrl`/`prNumber` set): the button is replaced by a
+ *  `PR #<n>` chip that links out via the system browser. */
+export const PrCreated: Story = {
+  args: {
+    ...ReadyForPr.args,
+    task: makeTask({
+      id: 't-done',
+      status: 'done',
+      title: 'Wire up auth guard',
+      branch: 'nc/auth-guard',
+      runMode: 'worktree',
+      verified: true,
+      committed: true,
+      review: SAMPLE_REVIEW_PASS,
+      prUrl: 'https://github.com/acme/nightcore/pull/123',
+      prNumber: 123,
+    }),
+  },
+};
+
+/** Play test: Create PR opens the human-gate dialog (relays the task id). */
+export const OpensCreatePr: Story = {
+  args: { ...ReadyForPr.args },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: /create pr/i }));
+    await expect(args.actions.onCreatePr).toHaveBeenCalledWith('t-done');
+  },
+};
+
+/** Play test: the PR chip links out through the system-browser opener. */
+export const OpensPrChip: Story = {
+  args: { ...PrCreated.args },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: /PR #123/ }));
+    await expect(args.actions.onOpenPr).toHaveBeenCalledWith(
+      'https://github.com/acme/nightcore/pull/123',
+    );
   },
 };
 

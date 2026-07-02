@@ -1,4 +1,6 @@
 /** Barrel for the worktree feature: the standalone manager view + its dialogs. */
+export { CreatePRDialog } from './CreatePRDialog';
+export type { CreatePRDialogProps } from './CreatePRDialog/CreatePRDialog.types';
 export { DiffViewDialog } from './DiffViewDialog';
 export type { DiffViewDialogProps } from './DiffViewDialog/DiffViewDialog.types';
 export { DiscardDialog } from './DiscardDialog';

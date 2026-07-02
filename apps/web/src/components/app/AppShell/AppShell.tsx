@@ -46,6 +46,11 @@ const HarnessView = lazy(() =>
 const WorktreeView = lazy(() =>
   import('@/components/worktree').then((m) => ({ default: m.WorktreeView })),
 );
+// The Create PR dialog mounts on demand only (an explicit button click), so it
+// shares the worktree feature's lazy chunk instead of joining the entry bundle.
+const CreatePRDialog = lazy(() =>
+  import('@/components/worktree').then((m) => ({ default: m.CreatePRDialog })),
+);
 
 /** A minimal fallback while a lazy route view streams in — a quiet centered
  *  status line that never flashes chrome of its own. */
@@ -330,6 +335,19 @@ export function AppShell() {
             newProject.reset();
           }}
         />
+      )}
+
+      {/* The Create PR human gate: opened from the drawer's Create PR button;
+          the mutation (push + `gh pr create`) only fires from its confirm. */}
+      {board.prDialogTaskId !== null && (
+        <Suspense fallback={null}>
+          <CreatePRDialog
+            open
+            task={tasks.find((t) => t.id === board.prDialogTaskId) ?? null}
+            onCreate={board.handleCreatePr}
+            onClose={board.closePrDialog}
+          />
+        </Suspense>
       )}
 
       {confirm.pendingDelete !== null && (

@@ -580,6 +580,67 @@ export async function mergeTask(id: string): Promise<void> {
   await invoke('merge_task', { id });
 }
 
+// --- Pull requests ----------------------------------------------------------
+//
+// NOTE: `PrSupport` / `PrDraft` mirror the ts-rs-exported Rust structs from the
+// PR-system backend (`pr_support` / `draft_pr_message`). They are declared
+// locally (exact contract shapes) until the generated bindings land under
+// `./generated/`; switch these to `export type { … } from './generated/…'`
+// once `cargo test` has emitted them.
+
+/** Capability probe for the Create PR action: whether the user's `gh` CLI is
+ *  installed and whether the project has an `origin` remote. Both must be green
+ *  for the button to show — the UI gates honestly instead of failing on click. */
+export interface PrSupport {
+  ghInstalled: boolean;
+  remote: string | null;
+}
+
+/** An AI-drafted pull-request title/body pair (deterministic fallback: the task
+ *  title and description) used to pre-fill the Create PR dialog. */
+export interface PrDraft {
+  title: string;
+  body: string;
+}
+
+/** Options for {@link createPrTask}. `base` omitted ⇒ the backend resolves the
+ *  task's base branch exactly like merge does. */
+export interface CreatePrOptions {
+  base?: string;
+  title: string;
+  body: string;
+  draft: boolean;
+}
+
+/** Probe PR support for a task's project: `gh` on PATH + an `origin` remote.
+ *  Returns a red probe outside Tauri (browser preview) so the button hides. */
+export async function prSupport(id: string): Promise<PrSupport> {
+  return tauriInvoke<PrSupport>('pr_support', { id }, { ghInstalled: false, remote: null });
+}
+
+/** Draft a PR title/body for a task via a one-shot `claude -p` pass. The command
+ *  itself degrades to a deterministic fallback (task title + description), so a
+ *  resolved value is always usable; outside Tauri an empty draft is returned and
+ *  the dialog falls back locally. */
+export async function draftPrMessage(id: string): Promise<PrDraft> {
+  return tauriInvoke<PrDraft>('draft_pr_message', { id }, { title: '', body: '' });
+}
+
+/** Push a task's worktree branch to `origin` and open a pull request against
+ *  `base` via the user's `gh` CLI. The backend re-runs the merge-grade gauntlet
+ *  first; on success it persists `prUrl`/`prNumber` and emits the task echo.
+ *  Rejects loudly (no silent fallback) so the dialog can surface the failure. */
+export async function createPrTask(id: string, opts: CreatePrOptions): Promise<void> {
+  const { base, title, body, draft } = opts;
+  await invoke('create_pr_task', { id, base: base ?? null, title, body, draft });
+}
+
+/** Open an `https://` URL in the system browser (backend-validated https-only).
+ *  Used by the PR chip; rejects on a non-https URL. */
+export async function openExternal(url: string): Promise<void> {
+  await invoke('open_external', { url });
+}
+
 // --- Verification gate ----------------------------------------------------
 
 /** Accept a parked verification (CHANGES_REQUESTED budget-exhausted / FAIL /
