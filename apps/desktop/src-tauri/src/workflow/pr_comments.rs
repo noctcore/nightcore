@@ -29,8 +29,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 #[cfg(test)]
 use ts_rs::TS;
 
-use super::merge::require_project;
-use super::pr::{run_gh_bounded, GH_BINARY};
+use super::merge::{commit_in_flight, lease_held, merge_in_flight, require_project, TaskLease};
+use super::pr::{pr_in_flight, run_gh_bounded, GH_BINARY};
 use crate::store::TaskStore;
 use crate::task::{Task, TaskStatus, TASK_EVENT};
 use crate::worktree;
@@ -387,6 +387,30 @@ fn ensure_actionable(comments: &PrReviewComments) -> Result<(), String> {
     Ok(())
 }
 
+/// Refuse an address-comments run while a sibling terminal action (merge /
+/// commit) holds the task — the same cross-action discipline as push-updates
+/// ([`super::pr_status`]), checked AFTER the PR lease is acquired so whichever
+/// action leases second reliably sees the other's lease. A merge/finalize that
+/// completes mid-run force-deletes the worktree the dispatched fix-build is
+/// cwd'd into; the shared `pr_in_flight` lease (which merge/finalize/push/create
+/// all check) blocks a NEW one from starting, and this blocks addressing while
+/// one is ALREADY live. Pure, unit-testable.
+fn refuse_address_while_sibling_in_flight(id: &str) -> Result<(), String> {
+    if lease_held(merge_in_flight(), id) {
+        return Err(
+            "a merge for this task is in progress — wait for it to finish before addressing comments"
+                .to_string(),
+        );
+    }
+    if lease_held(commit_in_flight(), id) {
+        return Err(
+            "a commit for this task is in progress — wait for it to finish before addressing comments"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
 /// Build the fix prompt for a fix-BUILD run (PURE, unit-tested). Trusted framing
 /// (the untrusted posture, the original task, path/line/author metadata, the
 /// closing instruction) sits OUTSIDE the fence; every UNTRUSTED comment/review
@@ -491,6 +515,21 @@ pub async fn address_pr_comments(
     orch: State<'_, crate::orchestration::coordinator::Orchestrator>,
     id: String,
 ) -> Result<(), String> {
+    // Single-flight on the SHARED PR-arc lease (the push/create set), held across
+    // the WHOLE fetch→flip→dispatch window. `address` acts on a verified task —
+    // the same state a merge requires — so unlike `rerun_verification` (which only
+    // runs on unverified `WaitingApproval` tasks, state-exclusive with merge) its
+    // up-to-60s fetch is a wide window a merge/finalize could complete inside,
+    // force-deleting the worktree and flipping `merged`/`verified` under us. Every
+    // merge/finalize/push/create checks `pr_in_flight`, so holding it here blocks
+    // them for the whole run; after dispatch the InProgress status + the held slot
+    // take over as the guard, so dropping the lease on return is safe.
+    let _lease = TaskLease::acquire(pr_in_flight(), &id)
+        .ok_or_else(|| "a PR action for this task is already in progress".to_string())?;
+    // Cross-action: refuse under a merge/commit ALREADY in flight (checked after
+    // our lease, so whichever leases second sees the other — the push discipline).
+    refuse_address_while_sibling_in_flight(&id)?;
+
     let task = store
         .get(&id)
         .ok_or_else(|| format!("no task with id {id}"))?;
@@ -506,7 +545,8 @@ pub async fn address_pr_comments(
 
     // Fetch the comments (blocking `gh`) OFF the UI thread, then flip to the
     // async lease/dispatch. Read-only so far: nothing is mutated until the fetch
-    // returns something actionable.
+    // returns something actionable. The PR lease is held throughout, so the task's
+    // merge-state cannot change under us during the up-to-60s fetch.
     let fetch_dir = worktree_dir.clone();
     let comments = tauri::async_runtime::spawn_blocking(move || {
         fetch_review_comments_with(&fetch_dir, GH_BINARY, number, GH_COMMENTS_TIMEOUT)
@@ -515,10 +555,25 @@ pub async fn address_pr_comments(
     .map_err(|e| format!("reading review comments failed to run: {e}"))??;
     ensure_actionable(&comments)?;
 
+    // Re-read + re-check just before mutating state (defence in depth behind the
+    // lease — the store is the source of truth, and this also catches a worktree
+    // removed by any non-lease path). Snapshot the PRE-FLIP status/verified so a
+    // dispatch failure restores them instead of downgrading a Done+verified task
+    // (the `rerun_verification` rollback assumed an already-unverified pre-state).
+    let task = store
+        .get(&id)
+        .ok_or_else(|| format!("no task with id {id}"))?;
+    check_address_preconditions(&task)?;
+    if !worktree_dir.exists() {
+        return Err("no worktree to address — re-run the task instead".to_string());
+    }
+    let prev_status = task.status;
+    let prev_verified = task.verified;
+
     let prompt = build_fix_prompt(&task, &comments);
 
-    // The exact `rerun_verification` dispatch shape: lease → reader → flip state →
-    // dispatch, rolling back the slot + status on a dispatch failure.
+    // The `rerun_verification` dispatch shape: lease slot → reader → flip state →
+    // dispatch, rolling back the slot + the PRE-FLIP status/verified on failure.
     if !orch.slots.try_lease(&id) {
         return Err("no free slot (max concurrency reached)".to_string());
     }
@@ -536,8 +591,11 @@ pub async fn address_pr_comments(
     if let Err(e) = crate::sidecar::dispatch_pr_comment_fix(&app, &id, &prompt, &worktree_dir).await
     {
         orch.slots.release(&id);
+        // Restore the pre-flip state — a transient dispatch failure must not strand
+        // a previously Done+verified task as WaitingApproval+unverified.
         if let Ok(updated) = store.mutate(&id, |t| {
-            t.status = TaskStatus::WaitingApproval;
+            t.status = prev_status;
+            t.verified = prev_verified;
             t.error = Some(format!("could not start fix run: {e}"));
         }) {
             let _ = app.emit(TASK_EVENT, &updated);
@@ -862,6 +920,56 @@ mod tests {
         let mut with = task.clone();
         with.pr_number = Some(7);
         assert_eq!(require_pr_number(&with), Ok(7));
+    }
+
+    #[test]
+    fn address_refused_while_merge_or_commit_holds_the_task() {
+        // The cross-action guard closing the fetch-window race: a merge/finalize
+        // completing mid-run force-deletes the worktree the fix-build is cwd'd
+        // into, so addressing must refuse while one is already in flight. Unique
+        // ids: the in-flight sets are global.
+        let merge_lease =
+            TaskLease::acquire(merge_in_flight(), "addr-vs-merge").expect("merge lease");
+        let err = refuse_address_while_sibling_in_flight("addr-vs-merge")
+            .expect_err("address is refused under a merge");
+        assert!(err.contains("merge"), "names the conflicting action: {err}");
+        drop(merge_lease);
+        assert!(refuse_address_while_sibling_in_flight("addr-vs-merge").is_ok());
+
+        let commit_lease =
+            TaskLease::acquire(commit_in_flight(), "addr-vs-commit").expect("commit lease");
+        let err = refuse_address_while_sibling_in_flight("addr-vs-commit")
+            .expect_err("address is refused under a commit");
+        assert!(
+            err.contains("commit"),
+            "names the conflicting action: {err}"
+        );
+        // Other tasks are unaffected, and dropping the lease frees this one.
+        assert!(refuse_address_while_sibling_in_flight("addr-vs-commit-other").is_ok());
+        drop(commit_lease);
+        assert!(refuse_address_while_sibling_in_flight("addr-vs-commit").is_ok());
+    }
+
+    #[test]
+    fn address_single_flight_shares_the_pr_arc_lease() {
+        // Holding `pr_in_flight` is what blocks a merge/finalize/push from
+        // starting during the fetch window (they all check it) AND makes two
+        // concurrent address runs on one task mutually exclusive.
+        let lease = TaskLease::acquire(pr_in_flight(), "addr-single-flight")
+            .expect("first address leases the task");
+        assert!(
+            TaskLease::acquire(pr_in_flight(), "addr-single-flight").is_none(),
+            "a second concurrent address (or push/create) on the same task is refused"
+        );
+        assert!(
+            TaskLease::acquire(pr_in_flight(), "addr-single-flight-other").is_some(),
+            "a different task is unaffected"
+        );
+        drop(lease);
+        assert!(
+            TaskLease::acquire(pr_in_flight(), "addr-single-flight").is_some(),
+            "dropping the lease frees the task"
+        );
     }
 
     // ── Fixtures (the phase-1 fake-gh pattern) ─────────────────────────────
