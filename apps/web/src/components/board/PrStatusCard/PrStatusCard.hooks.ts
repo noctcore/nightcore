@@ -259,9 +259,27 @@ export function confirmCopy(
   }
   return {
     title: 'Update the base branch?',
-    message: `Fast-forward-only pull of ${status.baseRefName} on the project root. Refused if the root is dirty or the pull is not a fast-forward.`,
+    message: `${pullBaseLine(status, task)} Refused if the root is dirty or the pull is not a fast-forward.`,
     confirmLabel: 'Update base',
   };
+}
+
+/** The pull-base confirm's first sentence, grounded exactly like the backend
+ *  resolves the branch it will act on: the task's persisted base wins; a legacy
+ *  task (no persisted base) shows the gh-reported base EXPLICITLY marked as
+ *  server-reported; and when both exist but disagree, the mismatch is shown
+ *  with the task's base named as the one used — so the dialog can never bless
+ *  a different branch than the command mutates. */
+export function pullBaseLine(status: PrStatus, task: Task): string {
+  const taskBase = task.baseBranch;
+  const serverBase = status.baseRefName;
+  if (taskBase === undefined || taskBase === '') {
+    return `Fast-forward-only pull of ${serverBase} (as reported by GitHub) on the project root.`;
+  }
+  if (serverBase !== '' && serverBase !== taskBase) {
+    return `Fast-forward-only pull of ${taskBase} (the task's recorded base) on the project root — note: GitHub reports the PR's base as ${serverBase}.`;
+  }
+  return `Fast-forward-only pull of ${taskBase} on the project root.`;
 }
 
 /** Format the web-side receive timestamp for the "Refreshed …" footer line. */

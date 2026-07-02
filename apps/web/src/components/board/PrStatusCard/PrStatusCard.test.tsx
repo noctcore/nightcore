@@ -21,6 +21,7 @@ import {
   canPushUpdates,
   mergeStateLine,
   prStateBadge,
+  pullBaseLine,
   reviewDecisionBadge,
 } from './PrStatusCard.hooks';
 
@@ -309,6 +310,41 @@ test('Update base branch shows once finalized and fires pull_base_ff from its co
   await expect.element(screen.getByText(/Fast-forward-only pull of main/)).toBeInTheDocument();
   await screen.getByRole('alertdialog').getByRole('button', { name: 'Update base' }).click();
   await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('pull_base_ff', { id: 't-pr' }));
+});
+
+test('pullBaseLine grounds the confirm copy like the backend resolves the base', () => {
+  const status = makePrStatus({ baseRefName: 'main' });
+  // Legacy task (no persisted base): the server-reported base, explicitly
+  // marked as such — the dialog never presents remote input as local truth.
+  expect(pullBaseLine(status, makeTask({}))).toBe(
+    'Fast-forward-only pull of main (as reported by GitHub) on the project root.',
+  );
+  // Persisted base agreeing with the server: the task's base, unqualified.
+  expect(pullBaseLine(status, makeTask({ baseBranch: 'main' }))).toBe(
+    'Fast-forward-only pull of main on the project root.',
+  );
+  // Mismatch: the task's base is the one used (matching resolve_pull_base) and
+  // the server's differing answer is surfaced, not hidden.
+  const line = pullBaseLine(
+    makePrStatus({ baseRefName: 'develop' }),
+    makeTask({ baseBranch: 'main' }),
+  );
+  expect(line).toContain("main (the task's recorded base)");
+  expect(line).toContain("GitHub reports the PR's base as develop");
+});
+
+test('the Update base confirm names the task-persisted base over a differing server base', async () => {
+  stubCommands({
+    pr_status: () => Promise.resolve(makePrStatus({ state: 'MERGED', baseRefName: 'develop' })),
+  });
+  const screen = renderCard(makeTask({ ...TASK, merged: true, baseBranch: 'main' }));
+  await screen.getByRole('button', { name: 'Update base branch' }).click();
+  await expect
+    .element(screen.getByText(/pull of main \(the task's recorded base\)/))
+    .toBeInTheDocument();
+  await expect
+    .element(screen.getByText(/GitHub reports the PR's base as develop/))
+    .toBeInTheDocument();
 });
 
 test('a pr_status failure shows the error inline and Refresh retries', async () => {

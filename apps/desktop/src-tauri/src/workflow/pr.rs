@@ -326,13 +326,31 @@ fn create_pr_task_blocking(
         PrCreateOutcome::Failed { message } => return Err(message),
     };
 
-    let updated = store.mutate(id, |t| {
-        t.pr_url = Some(url.clone());
-        t.pr_number = Some(number);
-    })?;
+    let updated = persist_created_pr(&store, id, &url, number, &base)?;
     tracing::info!(target: "nightcore::pr", task_id = %id, pr_number = number, "created pull request");
     let _ = app.emit(TASK_EVENT, &updated);
     Ok(())
+}
+
+/// Persist a created PR on the task: `pr_url`/`pr_number` plus the RESOLVED
+/// base it was opened against. Grounding `base_branch` here is what keeps the
+/// whole later chain honest — the pull-base fast-forward and the confirm-dialog
+/// copy both key on `task.base_branch`, so a task created against the project's
+/// then-current branch must remember it instead of leaving `None` (which used
+/// to make the pull re-guess from whatever branch the root happens to be on).
+/// Store-only (no `AppHandle`), so the persistence is unit-testable.
+fn persist_created_pr(
+    store: &TaskStore,
+    id: &str,
+    url: &str,
+    number: u64,
+    base: &str,
+) -> Result<Task, String> {
+    store.mutate(id, |t| {
+        t.pr_url = Some(url.to_string());
+        t.pr_number = Some(number);
+        t.base_branch = Some(base.to_string());
+    })
 }
 
 /// The PR preconditions, pure so they are unit-testable without an `AppHandle`:
@@ -870,6 +888,32 @@ mod tests {
         })
         .expect_err("a dash base is rejected");
         assert!(err.contains("invalid branch/base name"), "err: {err}");
+    }
+
+    #[test]
+    fn persist_created_pr_grounds_url_number_and_base() {
+        let tmp = tempfile::TempDir::new().expect("store dir");
+        let store = TaskStore::load_from(tmp.path().join("tasks"));
+        let task = ready_task();
+        let id = task.id.clone();
+        store.upsert(&task).expect("seed");
+
+        let updated =
+            persist_created_pr(&store, &id, "https://github.com/a/b/pull/7", 7, "develop")
+                .expect("persist");
+        assert_eq!(
+            updated.pr_url.as_deref(),
+            Some("https://github.com/a/b/pull/7")
+        );
+        assert_eq!(updated.pr_number, Some(7));
+        assert_eq!(
+            updated.base_branch.as_deref(),
+            Some("develop"),
+            "the RESOLVED base is grounded on the task at creation"
+        );
+        // Persisted via the store, not just returned.
+        let stored = store.get(&id).expect("task");
+        assert_eq!(stored.base_branch.as_deref(), Some("develop"));
     }
 
     #[test]

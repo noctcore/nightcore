@@ -558,14 +558,50 @@ fn pull_base_ff_blocking(app: &AppHandle, id: &str) -> Result<(), String> {
     // in-flight merge/commit on that root. The pull takes no per-task lease, so
     // the root lease is its only acquisition (ordering trivially safe).
     let _root_lease = super::merge::acquire_root_lease(&project_path, "pulling the base")?;
-    // The base resolves like merge/create do: the task's stored base, else the
-    // project's current branch.
-    let base = task
-        .base_branch
-        .clone()
-        .unwrap_or_else(|| worktree::base_branch(&project_path));
+    // GROUNDED base resolution: the task's persisted base (written at PR
+    // creation), else the SERVER truth (`gh pr view` baseRefName) for legacy
+    // tasks created before the base was persisted. NEVER the root's current
+    // branch — that fallback made the strict current==base check below vacuous
+    // (whatever branch the root sat on "was" the base) and let the command act
+    // on a different branch than the one the confirm dialog named.
+    let base = resolve_pull_base(&task, || {
+        let number = require_pr_number(&task)?;
+        let worktree_dir = worktree::worktree_path(&project_path, id);
+        let view_dir = if worktree_dir.exists() {
+            worktree_dir
+        } else {
+            project_path.clone()
+        };
+        let view = fetch_pr_view_with(&view_dir, GH_BINARY, number, GH_VIEW_TIMEOUT)?;
+        Ok(view.base_ref_name.unwrap_or_default())
+    })?;
     tracing::info!(target: "nightcore::pr", task_id = %id, base = %base, "fast-forwarding base from origin");
     pull_base_ff_core(&project_path, &base)
+}
+
+/// Resolve the base the pull acts on: the task's persisted `base_branch` wins;
+/// a legacy task (no persisted base) falls back to `fetch_base_ref` — the
+/// gh-reported `baseRefName`, validated through `validate_ref` because it is
+/// REMOTE-controlled input headed for a git argv. An empty server answer is a
+/// refusal, never a guess. Pure over the injected fetch, so the whole
+/// resolution order is unit-testable without a gh spawn.
+fn resolve_pull_base(
+    task: &Task,
+    fetch_base_ref: impl FnOnce() -> Result<String, String>,
+) -> Result<String, String> {
+    if let Some(base) = task.base_branch.clone() {
+        return Ok(base);
+    }
+    let base = fetch_base_ref()?.trim().to_string();
+    if base.is_empty() {
+        return Err(
+            "could not determine the pull request's base branch — GitHub reported none; \
+             re-create the PR or set the task's base branch"
+                .to_string(),
+        );
+    }
+    validate_ref(&base)?;
+    Ok(base)
 }
 
 /// The pull core, `AppHandle`-free and unit-tested against a real temp repo
@@ -1471,6 +1507,47 @@ mod tests {
         assert!(run_in(&repo, &["checkout", "-q", "--detach"]));
         let err = pull_base_ff_core(&repo, &base).expect_err("detached HEAD is refused");
         assert!(err.contains("detached"), "explains the refusal: {err}");
+    }
+
+    #[test]
+    fn resolve_pull_base_prefers_the_persisted_base_and_never_fetches_for_it() {
+        // A task with a persisted base (written at PR creation) resolves to it
+        // without touching gh — the injected fetch proves it by failing loudly.
+        let mut task = Task::new("t".into(), String::new()).with_run_mode(RunMode::Worktree);
+        task.base_branch = Some("develop".into());
+        let base = resolve_pull_base(&task, || panic!("must not fetch when the base is stored"));
+        assert_eq!(base.as_deref(), Ok("develop"));
+    }
+
+    #[test]
+    fn resolve_pull_base_falls_back_to_the_server_base_for_legacy_tasks() {
+        // A legacy task (no persisted base) resolves through the gh-reported
+        // baseRefName — the server truth, never the root's current branch.
+        let task = Task::new("t".into(), String::new()).with_run_mode(RunMode::Worktree);
+        let base = resolve_pull_base(&task, || Ok("release/2.0".into()));
+        assert_eq!(base.as_deref(), Ok("release/2.0"));
+
+        // The fetch failure surfaces (no silent guess).
+        let err = resolve_pull_base(&task, || Err("gh: network down".into()))
+            .expect_err("a failed fetch refuses");
+        assert!(err.contains("network down"), "surfaces the cause: {err}");
+
+        // An empty server answer refuses rather than guessing.
+        let err =
+            resolve_pull_base(&task, || Ok("  ".into())).expect_err("an empty baseRefName refuses");
+        assert!(
+            err.contains("could not determine"),
+            "explains the refusal: {err}"
+        );
+
+        // The server-reported name is REMOTE-controlled input headed for a git
+        // argv: option-injection shapes are rejected by validate_ref.
+        let err = resolve_pull_base(&task, || Ok("--force".into()))
+            .expect_err("a hostile server base is rejected");
+        assert!(
+            err.contains("invalid branch/base name"),
+            "validate_ref rejection: {err}"
+        );
     }
 
     #[test]
