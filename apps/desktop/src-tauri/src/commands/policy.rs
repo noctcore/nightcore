@@ -163,12 +163,13 @@ pub fn read_policy_file(project_path: &str) -> HarnessPolicyFile {
     };
     let policy = root.get("policy").cloned().unwrap_or(Value::Null);
 
-    let diff_budget = policy.get("diffBudget").and_then(Value::as_object).map(|b| {
-        PolicyDiffBudget {
+    let diff_budget = policy
+        .get("diffBudget")
+        .and_then(Value::as_object)
+        .map(|b| PolicyDiffBudget {
             max_changed_lines: b.get("maxChangedLines").and_then(Value::as_u64),
             max_changed_files: b.get("maxChangedFiles").and_then(Value::as_u64),
-        }
-    });
+        });
 
     HarnessPolicyFile {
         // Absent / non-bool `enabled` means the layer arms (the runtime reader's
@@ -477,7 +478,9 @@ mod tests {
         // absent (the patch unset it and it wasn't there).
         assert_eq!(value["policy"]["diffBudget"]["maxChangedLines"], 400);
         assert_eq!(value["policy"]["diffBudget"]["futureLimit"], 7);
-        assert!(value["policy"]["diffBudget"].get("maxChangedFiles").is_none());
+        assert!(value["policy"]["diffBudget"]
+            .get("maxChangedFiles")
+            .is_none());
     }
 
     #[test]

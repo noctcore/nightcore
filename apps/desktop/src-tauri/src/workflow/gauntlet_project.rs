@@ -368,7 +368,11 @@ pub fn append_task_verify_command(result: &mut StructureLockResult, command: &st
 /// its exact command, and the captured output so the agent can self-correct. Pure,
 /// so it's unit-testable without spawning anything.
 pub fn fix_instruction(result: &StructureLockResult) -> String {
-    match result.checks.iter().find(|c| c.status == StepStatus::Failed) {
+    match result
+        .checks
+        .iter()
+        .find(|c| c.status == StepStatus::Failed)
+    {
         Some(c) => format!(
             "The Structure-Lock Gauntlet failed: the project's own harness check \
              `{name}` did not pass. It MUST pass before this work can be verified or \
@@ -463,7 +467,12 @@ mod tests {
         let wires: Vec<&str> = planned.iter().map(|p| p.kind.as_wire()).collect();
         assert_eq!(
             wires,
-            vec!["lockfile-lint", "env-contract", "secret-scan", "mutation-score"],
+            vec![
+                "lockfile-lint",
+                "env-contract",
+                "secret-scan",
+                "mutation-score"
+            ],
             "every new kind parses and reports its stable wire string"
         );
     }
@@ -601,7 +610,11 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("temp dir");
         let result = run_planned(
             vec![
-                sh_check("lint", HarnessCheckKind::LintPlugin, "echo boom 1>&2; exit 1"),
+                sh_check(
+                    "lint",
+                    HarnessCheckKind::LintPlugin,
+                    "echo boom 1>&2; exit 1",
+                ),
                 sh_check("arch", HarnessCheckKind::DependencyCruiser, "exit 0"),
             ],
             tmp.path(),
@@ -625,7 +638,11 @@ mod tests {
         let result = run_planned(
             vec![
                 sh_check("policy", HarnessCheckKind::AstGrep, "exit 0"),
-                sh_check("surface", HarnessCheckKind::ApiExtractor, "echo drift 1>&2; exit 1"),
+                sh_check(
+                    "surface",
+                    HarnessCheckKind::ApiExtractor,
+                    "echo drift 1>&2; exit 1",
+                ),
             ],
             tmp.path(),
         );
@@ -635,7 +652,11 @@ mod tests {
         assert_eq!(result.checks[0].kind, "ast-grep");
         assert_eq!(result.checks[1].status, StepStatus::Failed);
         assert_eq!(result.checks[1].kind, "api-extractor");
-        assert!(result.checks[1].output.as_deref().unwrap().contains("drift"));
+        assert!(result.checks[1]
+            .output
+            .as_deref()
+            .unwrap()
+            .contains("drift"));
     }
 
     #[test]
@@ -683,7 +704,10 @@ mod tests {
 
         // The old bug shape: running over the manifest-less review dir skips all.
         let skipped = run(review.path());
-        assert!(skipped.passed && skipped.checks.is_empty(), "no manifest ⇒ silent skip");
+        assert!(
+            skipped.passed && skipped.checks.is_empty(),
+            "no manifest ⇒ silent skip"
+        );
 
         // The fix: manifest from the root, execution in the review dir.
         let result = run_from(project.path(), review.path());
@@ -717,7 +741,10 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("temp dir");
         let mut result = empty_pass();
         append_task_verify_command(&mut result, "sh -c true", tmp.path());
-        assert!(result.passed, "a passing verify command keeps the gate green");
+        assert!(
+            result.passed,
+            "a passing verify command keeps the gate green"
+        );
         assert_eq!(result.checks.len(), 1);
         assert_eq!(result.checks[0].name, VERIFY_COMMAND_CHECK);
         assert_eq!(result.checks[0].kind, VERIFY_COMMAND_CHECK);
@@ -736,7 +763,14 @@ mod tests {
         assert_eq!(result.failed_check.as_deref(), Some(VERIFY_COMMAND_CHECK));
         let check = &result.checks[0];
         assert_eq!(check.status, StepStatus::Failed);
-        assert!(check.output.as_deref().unwrap().contains("no-such-path-nc-xyz"), "captures output for the fix loop");
+        assert!(
+            check
+                .output
+                .as_deref()
+                .unwrap()
+                .contains("no-such-path-nc-xyz"),
+            "captures output for the fix loop"
+        );
         // The fix instruction the auto-fix loop feeds back names it + its command.
         let fix = fix_instruction(&result);
         assert!(fix.contains(VERIFY_COMMAND_CHECK) && fix.contains("ls /no-such-path-nc-xyz"));
@@ -747,7 +781,10 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("temp dir");
         let mut result = empty_pass();
         append_task_verify_command(&mut result, "   ", tmp.path());
-        assert!(result.passed && result.checks.is_empty(), "a blank command adds nothing");
+        assert!(
+            result.passed && result.checks.is_empty(),
+            "a blank command adds nothing"
+        );
     }
 
     #[test]

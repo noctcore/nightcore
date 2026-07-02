@@ -313,10 +313,7 @@ pub(crate) fn tail_output(stdout: &[u8], stderr: &[u8]) -> String {
 /// the whole duration (the "Run checks" lockup). Run it on the blocking pool and
 /// merely await it, keeping the UI thread free — same pattern as `commit_task`.
 #[tauri::command]
-pub async fn run_gauntlet(
-    app: tauri::AppHandle,
-    id: String,
-) -> Result<GauntletResult, String> {
+pub async fn run_gauntlet(app: tauri::AppHandle, id: String) -> Result<GauntletResult, String> {
     tauri::async_runtime::spawn_blocking(move || run_gauntlet_blocking(&app, &id))
         .await
         .map_err(|e| format!("gauntlet failed to run: {e}"))?
@@ -325,10 +322,7 @@ pub async fn run_gauntlet(
 /// The blocking body of `run_gauntlet`, run off the UI thread via `spawn_blocking`.
 /// State is re-acquired via `try_state` (the `State<'_>` guard can't cross into the
 /// 'static blocking closure) so an unmanaged store fails gracefully.
-fn run_gauntlet_blocking(
-    app: &tauri::AppHandle,
-    id: &str,
-) -> Result<GauntletResult, String> {
+fn run_gauntlet_blocking(app: &tauri::AppHandle, id: &str) -> Result<GauntletResult, String> {
     use tauri::Manager;
     let store = app
         .try_state::<crate::store::TaskStore>()

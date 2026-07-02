@@ -24,7 +24,7 @@
 use std::path::Path;
 
 use serde_json::Value;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::project::ProjectStore;
 use crate::store::TaskStore;

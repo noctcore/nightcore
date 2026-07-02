@@ -231,10 +231,7 @@ mod tests {
             },
         );
         assert!(hostile.branch.is_none(), "an option-like branch is dropped");
-        assert!(
-            hostile.base_branch.is_none(),
-            "a malformed base is dropped"
-        );
+        assert!(hostile.base_branch.is_none(), "a malformed base is dropped");
 
         // A legal picker branch/base survives ingestion unchanged.
         let ok = build_new_task(

@@ -175,8 +175,14 @@ mod tests {
         store.upsert(&run("new")).unwrap();
 
         let converted = store.converted_proposal_fingerprints(Some("new"));
-        assert_eq!(converted.get("shared-pfp").map(String::as_str), Some("task-3"));
-        assert!(!converted.contains_key("pfp1"), "proposed proposals are not carried");
+        assert_eq!(
+            converted.get("shared-pfp").map(String::as_str),
+            Some("task-3")
+        );
+        assert!(
+            !converted.contains_key("pfp1"),
+            "proposed proposals are not carried"
+        );
 
         let dismissed = store.dismissed_proposal_fingerprints(Some("new"));
         assert!(dismissed.contains("gone-pfp"));
@@ -207,17 +213,25 @@ mod tests {
     fn set_proposal_status_errors_on_missing() {
         let (store, _tmp) = store();
         store.upsert(&run("r1")).unwrap();
-        assert!(store.set_proposal_status("r1", "ghost", "dismissed", None).is_err());
-        assert!(store.set_proposal_status("nope", "p1", "dismissed", None).is_err());
+        assert!(store
+            .set_proposal_status("r1", "ghost", "dismissed", None)
+            .is_err());
+        assert!(store
+            .set_proposal_status("nope", "p1", "dismissed", None)
+            .is_err());
     }
 
     #[test]
     fn dismiss_then_restore_proposal() {
         let (store, _tmp) = store();
         store.upsert(&run("r1")).unwrap();
-        store.set_proposal_status("r1", "p1", "dismissed", None).unwrap();
+        store
+            .set_proposal_status("r1", "p1", "dismissed", None)
+            .unwrap();
         assert_eq!(store.get_proposal("r1", "p1").unwrap().status, "dismissed");
-        store.set_proposal_status("r1", "p1", "proposed", None).unwrap();
+        store
+            .set_proposal_status("r1", "p1", "proposed", None)
+            .unwrap();
         assert_eq!(store.get_proposal("r1", "p1").unwrap().status, "proposed");
     }
 
@@ -246,7 +260,9 @@ mod tests {
     fn dismiss_finding_persists() {
         let (store, _tmp) = store();
         store.upsert(&run("r1")).unwrap();
-        store.set_finding_status("r1", "f1", "dismissed", None).unwrap();
+        store
+            .set_finding_status("r1", "f1", "dismissed", None)
+            .unwrap();
         assert_eq!(
             store.get("r1").unwrap().findings[0].status,
             "dismissed".to_string()
@@ -257,8 +273,12 @@ mod tests {
     fn set_finding_status_errors_on_missing() {
         let (store, _tmp) = store();
         store.upsert(&run("r1")).unwrap();
-        assert!(store.set_finding_status("r1", "ghost", "dismissed", None).is_err());
-        assert!(store.set_finding_status("nope", "f1", "dismissed", None).is_err());
+        assert!(store
+            .set_finding_status("r1", "ghost", "dismissed", None)
+            .is_err());
+        assert!(store
+            .set_finding_status("nope", "f1", "dismissed", None)
+            .is_err());
     }
 
     #[test]
@@ -280,7 +300,11 @@ mod tests {
             LinkOutcome::Linked => panic!("second link must be AlreadyLinked"),
         }
         assert_eq!(
-            store.get_finding("r1", "f1").unwrap().linked_task_id.as_deref(),
+            store
+                .get_finding("r1", "f1")
+                .unwrap()
+                .linked_task_id
+                .as_deref(),
             Some("task-9")
         );
     }
@@ -304,8 +328,14 @@ mod tests {
         store.upsert(&run("new")).unwrap();
 
         let converted = store.converted_finding_fingerprints(Some("new"));
-        assert_eq!(converted.get("shared-fp").map(String::as_str), Some("task-7"));
-        assert!(!converted.contains_key("fp1"), "open findings are not carried");
+        assert_eq!(
+            converted.get("shared-fp").map(String::as_str),
+            Some("task-7")
+        );
+        assert!(
+            !converted.contains_key("fp1"),
+            "open findings are not carried"
+        );
     }
 
     #[test]
@@ -313,7 +343,11 @@ mod tests {
         let (store, _tmp) = store();
         store.upsert(&run("r1")).unwrap();
 
-        match store.mark_artifact_applied("r1", "a1", "AGENTS.md").unwrap().0 {
+        match store
+            .mark_artifact_applied("r1", "a1", "AGENTS.md")
+            .unwrap()
+            .0
+        {
             ApplyOutcome::Applied => {}
             ApplyOutcome::AlreadyApplied(_) => panic!("first apply should be Applied"),
         }
@@ -323,7 +357,11 @@ mod tests {
         assert!(a.applied_at.is_some());
 
         // A second apply (the losing race) returns the existing path, no re-write.
-        match store.mark_artifact_applied("r1", "a1", "OTHER.md").unwrap().0 {
+        match store
+            .mark_artifact_applied("r1", "a1", "OTHER.md")
+            .unwrap()
+            .0
+        {
             ApplyOutcome::AlreadyApplied(existing) => assert_eq!(existing, "AGENTS.md"),
             ApplyOutcome::Applied => panic!("second apply must be AlreadyApplied"),
         }
@@ -367,7 +405,11 @@ mod tests {
         let carry = prior.get("shared-afp").expect("present");
         assert_eq!(carry.status, "applied");
         assert_eq!(carry.applied_path.as_deref(), Some("AGENTS.md"));
-        assert_eq!(carry.applied_at, Some(123_456), "apply timestamp carries forward");
+        assert_eq!(
+            carry.applied_at,
+            Some(123_456),
+            "apply timestamp carries forward"
+        );
     }
 
     #[test]
@@ -417,7 +459,11 @@ mod tests {
             .accumulate_findings("r1", vec![finding("f1", "fp1")], &empty, 0.7, 8, 4)
             .unwrap();
         let got = store.get("r1").unwrap();
-        assert_eq!(got.findings.len(), 1, "the lens's finding is persisted mid-scan");
+        assert_eq!(
+            got.findings.len(),
+            1,
+            "the lens's finding is persisted mid-scan"
+        );
         assert_eq!(got.cost_usd, 0.7);
         assert_eq!(got.usage.input_tokens, 8);
 
@@ -438,7 +484,9 @@ mod tests {
         assert_eq!(f2.status, "dismissed");
 
         // A completed scan is authoritative — no incremental accumulation.
-        store.accumulate_findings("r1", vec![finding("f3", "fp3")], &empty, 0.0, 0, 0).unwrap();
+        store
+            .accumulate_findings("r1", vec![finding("f3", "fp3")], &empty, 0.0, 0, 0)
+            .unwrap();
         store
             .mutate("r1", |run| run.status = "completed".into())
             .unwrap();

@@ -288,7 +288,10 @@ fn list_worktree_statuses_reports_branch_dirty_and_ahead() {
     assert!(!committed[0].dirty, "a committed worktree is clean");
     assert_eq!(committed[0].ahead_of_base, 1, "one commit ahead of base");
     assert_eq!(committed[0].behind_of_base, 0, "not behind base");
-    assert_eq!(committed[0].changed_files, 0, "no changed files after commit");
+    assert_eq!(
+        committed[0].changed_files, 0,
+        "no changed files after commit"
+    );
 }
 
 #[test]
@@ -513,7 +516,11 @@ fn worktree_diff_lists_committed_and_untracked() {
         "untracked file should appear: {:?}",
         diff.files
     );
-    assert!(diff.additions >= 2, "added.txt has 2 lines: {}", diff.summary);
+    assert!(
+        diff.additions >= 2,
+        "added.txt has 2 lines: {}",
+        diff.summary
+    );
 }
 
 #[test]
@@ -561,8 +568,8 @@ fn allocate_branch_rejects_a_dash_branch_before_touching_git() {
         return;
     };
     let base = base_branch(&repo);
-    let err = allocate_branch(&repo, "task-1", "-D", &base)
-        .expect_err("a dash-branch must be rejected");
+    let err =
+        allocate_branch(&repo, "task-1", "-D", &base).expect_err("a dash-branch must be rejected");
     assert!(err.contains("invalid branch/base name"), "err was: {err}");
     // Nothing was allocated.
     assert!(
@@ -573,7 +580,10 @@ fn allocate_branch_rejects_a_dash_branch_before_touching_git() {
     // A hostile BASE (used only when the branch is new) is rejected too.
     let err_base = allocate_branch(&repo, "task-2", "feature/ok", "--all")
         .expect_err("a dash-base must be rejected");
-    assert!(err_base.contains("invalid branch/base name"), "err: {err_base}");
+    assert!(
+        err_base.contains("invalid branch/base name"),
+        "err: {err_base}"
+    );
 }
 
 #[test]
@@ -624,11 +634,11 @@ fn delete_refuses_base_branch_under_equivalent_spellings() {
     let before = head_sha(&repo).expect("base resolves before");
 
     for spelling in [
-        base.clone(),                        // exact short name
-        base.to_uppercase(),                 // case variant (case-fold delete on macOS/Windows)
-        format!("refs/heads/{base}"),        // fully-qualified ref
-        format!("heads/{base}"),             // partially-qualified ref
-        "HEAD".to_string(),                  // the literal HEAD
+        base.clone(),                 // exact short name
+        base.to_uppercase(),          // case variant (case-fold delete on macOS/Windows)
+        format!("refs/heads/{base}"), // fully-qualified ref
+        format!("heads/{base}"),      // partially-qualified ref
+        "HEAD".to_string(),           // the literal HEAD
     ] {
         assert!(
             delete_branch_named(&repo, &spelling).is_err(),
@@ -648,7 +658,10 @@ fn delete_refuses_base_branch_under_equivalent_spellings() {
     );
     delete_branch_named(&repo, "feature/keepable").expect("non-base branch deletes");
     assert!(
-        !run_in(&repo, &["rev-parse", "--verify", "--quiet", "feature/keepable"]),
+        !run_in(
+            &repo,
+            &["rev-parse", "--verify", "--quiet", "feature/keepable"]
+        ),
         "the non-base branch was deleted"
     );
 }

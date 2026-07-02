@@ -206,8 +206,11 @@ pub fn add_task_attachments(
     id: String,
     attachments: Vec<crate::store::attachments::NewAttachment>,
 ) -> Result<Task, String> {
-    let existing = store.get(&id).ok_or_else(|| format!("no task with id {id}"))?;
-    let new_refs = crate::store::attachments::persist(&app, &id, &existing.attachments, attachments)?;
+    let existing = store
+        .get(&id)
+        .ok_or_else(|| format!("no task with id {id}"))?;
+    let new_refs =
+        crate::store::attachments::persist(&app, &id, &existing.attachments, attachments)?;
     // Commit the refs; if the task vanished between the read and the write, delete the
     // files we just persisted so a failed add leaves no orphans (mirrors create_task).
     let to_commit = new_refs.clone();
@@ -235,7 +238,9 @@ pub fn remove_task_attachment(
     id: String,
     attachment_id: String,
 ) -> Result<Task, String> {
-    let task = store.get(&id).ok_or_else(|| format!("no task with id {id}"))?;
+    let task = store
+        .get(&id)
+        .ok_or_else(|| format!("no task with id {id}"))?;
     if let Some(att) = task.attachments.iter().find(|a| a.id == attachment_id) {
         crate::store::attachments::remove_one(&app, &id, att)?;
     }
@@ -276,7 +281,9 @@ fn read_task_attachment_blocking(
     let store = app
         .try_state::<TaskStore>()
         .ok_or("task store unavailable")?;
-    let task = store.get(id).ok_or_else(|| format!("no task with id {id}"))?;
+    let task = store
+        .get(id)
+        .ok_or_else(|| format!("no task with id {id}"))?;
     let att = task
         .attachments
         .iter()

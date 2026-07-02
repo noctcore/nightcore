@@ -162,7 +162,9 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let path = dir.join("fake-gitleaks.sh");
         std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write script");
-        let mut perms = std::fs::metadata(&path).expect("script metadata").permissions();
+        let mut perms = std::fs::metadata(&path)
+            .expect("script metadata")
+            .permissions();
         perms.set_mode(0o755);
         std::fs::set_permissions(&path, perms).expect("chmod script");
         path
@@ -191,8 +193,14 @@ mod tests {
         let ScanOutcome::Findings { summary } = outcome else {
             panic!("a non-zero exit must map to Findings");
         };
-        assert!(summary.contains("Finding: aws_key=REDACTED"), "stdout captured: {summary}");
-        assert!(summary.contains("leaks found: 2"), "stderr captured: {summary}");
+        assert!(
+            summary.contains("Finding: aws_key=REDACTED"),
+            "stdout captured: {summary}"
+        );
+        assert!(
+            summary.contains("leaks found: 2"),
+            "stderr captured: {summary}"
+        );
     }
 
     #[test]
@@ -200,7 +208,10 @@ mod tests {
         let msg = blocked_message("WRN leaks found: 3");
         assert!(msg.contains("secret scan blocked this commit"), "{msg}");
         assert!(msg.contains("3 potential secret(s)"), "{msg}");
-        assert!(msg.contains(".gitleaks.toml"), "the way out is named: {msg}");
+        assert!(
+            msg.contains(".gitleaks.toml"),
+            "the way out is named: {msg}"
+        );
 
         // An unparseable summary (e.g. a gitleaks config error) still blocks,
         // with a generic count and the raw (redacted) summary appended.

@@ -67,8 +67,12 @@ pub(super) fn read_settings(path: &Path) -> Option<Settings> {
             // otherwise the next settings write persists those defaults over it and the
             // user's settings (incl. plaintext MCP env/headers secrets) are lost for good.
             match crate::store::quarantine_corrupt(path) {
-                Ok(backup) => tracing::warn!(target: "nightcore::settings", path = %path.display(), backup = %backup.display(), error = %e, "cannot parse settings; quarantined the file and using defaults"),
-                Err(rename_err) => tracing::error!(target: "nightcore::settings", path = %path.display(), error = %e, rename_error = %rename_err, "cannot parse settings and failed to quarantine it; defaults may overwrite it on next save"),
+                Ok(backup) => {
+                    tracing::warn!(target: "nightcore::settings", path = %path.display(), backup = %backup.display(), error = %e, "cannot parse settings; quarantined the file and using defaults")
+                }
+                Err(rename_err) => {
+                    tracing::error!(target: "nightcore::settings", path = %path.display(), error = %e, rename_error = %rename_err, "cannot parse settings and failed to quarantine it; defaults may overwrite it on next save")
+                }
             }
             None
         }

@@ -47,13 +47,29 @@ mod tests;
 // ─── Public API (facade) ───────────────────────────────────────────────────────
 // Re-exported so every prior `crate::worktree::X` call site resolves unchanged.
 
-pub use branch::{base_branch, delete_branch_named, list_branches, BranchInfo, DEFAULT_BASE_BRANCH};
-pub use commit::{commit, commit_in, commit_staged, has_staged_changes, stage_all, staged_diff};
-pub use diff::{worktree_diff, DiffFileStat, DiffStatus, WorktreeDiff, WorktreeDiffFile};
-pub use lifecycle::{allocate, allocate_branch, list_worktree_task_ids, reconcile, remove};
-pub use merge::{merge_branch, merge_preview, MergeOutcome, MergePreview, MergePreviewStatus};
-pub use path::{branch_name, is_under, validate_ref, worktree_path, worktrees_base};
-pub use status::{is_worktree_clean, list_worktree_statuses, worktree_status, WorktreeStatus};
+pub use branch::{
+    base_branch, delete_branch_named, list_branches, BranchInfo, DEFAULT_BASE_BRANCH,
+};
+pub use commit::{commit, commit_staged, has_staged_changes, stage_all, staged_diff};
+pub use diff::{worktree_diff, WorktreeDiff};
+pub use lifecycle::{allocate, allocate_branch, reconcile, remove};
+pub use merge::{merge_branch, merge_preview, MergeOutcome, MergePreview};
+pub use path::{branch_name, validate_ref, worktree_path};
+pub use status::{is_worktree_clean, list_worktree_statuses, WorktreeStatus};
+
+// Facade names below are consumed only by cfg(test) code today (the module tests
+// and the `contracts::ts_bindings` exporter reach them as `crate::worktree::X`),
+// so the non-test build sees these re-exports as unused.
+#[allow(unused_imports)]
+pub use commit::commit_in;
+#[allow(unused_imports)]
+pub use diff::{DiffFileStat, DiffStatus, WorktreeDiffFile};
+#[allow(unused_imports)]
+pub use lifecycle::list_worktree_task_ids;
+#[allow(unused_imports)]
+pub use merge::MergePreviewStatus;
+#[allow(unused_imports)]
+pub use status::worktree_status;
 
 // ─── Shared git plumbing (the isolation chokepoint) ────────────────────────────
 // Private to the `worktree` module tree: Rust lets descendant submodules call these

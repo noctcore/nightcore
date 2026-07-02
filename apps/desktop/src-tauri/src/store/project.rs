@@ -201,8 +201,12 @@ fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
             // overwrites the file — losing the entire known-project list. Quarantine the
             // bad file first so the data is recoverable instead of silently erased.
             match crate::store::quarantine_corrupt(path) {
-                Ok(backup) => tracing::warn!(target: "nightcore::project", path = %path.display(), backup = %backup.display(), error = %e, "cannot parse project file; quarantined it and starting empty"),
-                Err(rename_err) => tracing::error!(target: "nightcore::project", path = %path.display(), error = %e, rename_error = %rename_err, "cannot parse project file and failed to quarantine it; it may be overwritten on next save"),
+                Ok(backup) => {
+                    tracing::warn!(target: "nightcore::project", path = %path.display(), backup = %backup.display(), error = %e, "cannot parse project file; quarantined it and starting empty")
+                }
+                Err(rename_err) => {
+                    tracing::error!(target: "nightcore::project", path = %path.display(), error = %e, rename_error = %rename_err, "cannot parse project file and failed to quarantine it; it may be overwritten on next save")
+                }
             }
             None
         }
@@ -281,7 +285,10 @@ mod tests {
 
         // ...but the unparsable file must be moved aside, not left in place to be
         // overwritten by an empty registry on the next write.
-        assert!(!registry.exists(), "corrupt projects.json must be quarantined");
+        assert!(
+            !registry.exists(),
+            "corrupt projects.json must be quarantined"
+        );
         let quarantined: Vec<_> = std::fs::read_dir(&config)
             .unwrap()
             .filter_map(|e| e.ok())
@@ -291,7 +298,11 @@ mod tests {
                     .starts_with("projects.json.corrupt-")
             })
             .collect();
-        assert_eq!(quarantined.len(), 1, "exactly one quarantine backup expected");
+        assert_eq!(
+            quarantined.len(),
+            1,
+            "exactly one quarantine backup expected"
+        );
         assert_eq!(
             std::fs::read_to_string(quarantined[0].path()).unwrap(),
             "{ this is not valid json",

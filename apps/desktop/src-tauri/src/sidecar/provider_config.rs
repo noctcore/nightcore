@@ -55,7 +55,10 @@ pub struct McpServerSummaryView {
 #[derive(Debug, Clone, serde::Serialize, PartialEq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(test, ts(export, rename = "SkillSummary", export_to = "SkillSummary.ts"))]
+#[cfg_attr(
+    test,
+    ts(export, rename = "SkillSummary", export_to = "SkillSummary.ts")
+)]
 pub struct SkillSummaryView {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -337,8 +340,16 @@ mod tests {
         let view = to_view(snapshot);
         assert_eq!(view.provider_id, "claude");
         assert_eq!(view.mcp.status, "supported");
-        assert_eq!(view.mcp.mcp_servers.as_ref().unwrap()[0].tool_count, Some(3.0));
-        assert_eq!(view.mcp.mcp_servers.as_ref().unwrap()[0].transport.as_deref(), Some("stdio"));
+        assert_eq!(
+            view.mcp.mcp_servers.as_ref().unwrap()[0].tool_count,
+            Some(3.0)
+        );
+        assert_eq!(
+            view.mcp.mcp_servers.as_ref().unwrap()[0]
+                .transport
+                .as_deref(),
+            Some("stdio")
+        );
         assert_eq!(view.skills.status, "supported");
         assert_eq!(view.subagents.status, "unavailable");
         assert_eq!(view.subagents.error.as_deref(), Some("probe timed out"));

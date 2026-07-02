@@ -42,10 +42,10 @@ use tokio::sync::Notify;
 use ts_rs::TS;
 
 use crate::orchestration::breaker::CircuitBreaker;
-use crate::provider::SidecarProvider;
 use crate::orchestration::slots::SlotManager;
-use crate::worktree;
 use crate::project::ProjectStore;
+use crate::provider::SidecarProvider;
+use crate::worktree;
 
 /// The Tauri event reflecting auto-loop state. Payload:
 /// `{ state, reason?, maxConcurrency, leased, failureThreshold }`.

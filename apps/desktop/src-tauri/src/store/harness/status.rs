@@ -53,9 +53,9 @@ impl HarnessStore {
     /// Atomically link a convention finding to a task: under ONE lock, if the finding is
     /// already linked return [`LinkOutcome::AlreadyLinked`] (the caller discards its
     /// freshly-minted task and returns the existing one); otherwise stamp it `converted`
-    /// + linked and return [`LinkOutcome::Linked`]. Cloned from `InsightStore` — the same
-    /// convert-to-task TOCTOU applies: two concurrent sync Tauri commands would both see
-    /// `linked_task_id == None` and mint two tasks if the check-and-set were split.
+    /// and linked, returning [`LinkOutcome::Linked`]. Cloned from `InsightStore` — the
+    /// same convert-to-task TOCTOU applies: two concurrent sync Tauri commands would both
+    /// see `linked_task_id == None` and mint two tasks if the check-and-set were split.
     pub fn link_finding_task(
         &self,
         run_id: &str,
@@ -215,7 +215,10 @@ impl HarnessStore {
     /// converted stays `converted` + linked (when its task still lives, unfinished)
     /// instead of re-surfacing `open` and being re-minted on every re-scan. The caller
     /// checks task liveness/status; this only gathers the map. Mirrors `InsightStore`.
-    pub fn converted_finding_fingerprints(&self, except_run: Option<&str>) -> HashMap<String, String> {
+    pub fn converted_finding_fingerprints(
+        &self,
+        except_run: Option<&str>,
+    ) -> HashMap<String, String> {
         self.read(|runs| {
             let mut map = HashMap::new();
             for run in runs.values() {

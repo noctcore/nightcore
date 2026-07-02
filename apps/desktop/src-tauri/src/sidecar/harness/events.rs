@@ -140,17 +140,20 @@ pub(crate) async fn handle_harness_event(app: &AppHandle, event_type: &str, even
                     // Carry IN-RUN finding lifecycle (dismissed/converted live during this
                     // scan), preserving the linked task id so a finding converted mid-scan
                     // doesn't lose its link at finalize.
-                    let prior_findings: std::collections::HashMap<String, (String, Option<String>)> =
-                        run.findings
-                            .iter()
-                            .filter(|f| f.status != "open")
-                            .map(|f| {
-                                (
-                                    f.fingerprint.clone(),
-                                    (f.status.clone(), f.linked_task_id.clone()),
-                                )
-                            })
-                            .collect();
+                    let prior_findings: std::collections::HashMap<
+                        String,
+                        (String, Option<String>),
+                    > = run
+                        .findings
+                        .iter()
+                        .filter(|f| f.status != "open")
+                        .map(|f| {
+                            (
+                                f.fingerprint.clone(),
+                                (f.status.clone(), f.linked_task_id.clone()),
+                            )
+                        })
+                        .collect();
                     let mut merged_findings = findings;
                     for f in &mut merged_findings {
                         if let Some((status, link)) = prior_findings.get(&f.fingerprint) {
@@ -243,17 +246,11 @@ pub(crate) async fn handle_harness_event(app: &AppHandle, event_type: &str, even
             tracing::info!(target: "nightcore", run_id, is_monorepo, workspace_tool, packages, "harness profile ready");
         }
         "harness-category-started" => {
-            let category = event
-                .get("category")
-                .and_then(Value::as_str)
-                .unwrap_or("");
+            let category = event.get("category").and_then(Value::as_str).unwrap_or("");
             tracing::info!(target: "nightcore", run_id, category, "harness lens started");
         }
         "harness-category-completed" => {
-            let category = event
-                .get("category")
-                .and_then(Value::as_str)
-                .unwrap_or("");
+            let category = event.get("category").and_then(Value::as_str).unwrap_or("");
             let cost = event.get("costUsd").and_then(Value::as_f64).unwrap_or(0.0);
             let usage = event.get("usage");
             let token = |key: &str| {

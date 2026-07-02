@@ -21,11 +21,7 @@ use super::{git, parse_left_right_count};
 /// starts no merge and is surfaced as `Err`, never mislabeled a conflict.
 /// `branch`/`base` are resolved by the caller (the task's stored branch / base,
 /// defaulting to `nc/<taskId>` off the project's current branch).
-pub fn merge_branch(
-    project_path: &Path,
-    branch: &str,
-    base: &str,
-) -> Result<MergeOutcome, String> {
+pub fn merge_branch(project_path: &Path, branch: &str, base: &str) -> Result<MergeOutcome, String> {
     // Reject a branch/base git would read as an OPTION or that is not a legal ref
     // before either reaches a `git` argument list.
     validate_ref(base)?;
@@ -37,7 +33,10 @@ pub fn merge_branch(
     }
     git(project_path, &["checkout", "--end-of-options", base])?;
 
-    match git(project_path, &["merge", "--no-edit", "--end-of-options", branch]) {
+    match git(
+        project_path,
+        &["merge", "--no-edit", "--end-of-options", branch],
+    ) {
         Ok(_) => Ok(MergeOutcome::Merged),
         Err(merge_err) => {
             // A merge failure is only a *conflict* when it left unmerged paths in the
@@ -133,11 +132,17 @@ pub fn merge_preview(project_path: &Path, branch: &str, base: &str) -> MergePrev
     let range = format!("{base}...{branch}");
     let (behind, ahead) = git(
         project_path,
-        &["rev-list", "--left-right", "--count", "--end-of-options", &range],
+        &[
+            "rev-list",
+            "--left-right",
+            "--count",
+            "--end-of-options",
+            &range,
+        ],
     )
     .ok()
-        .and_then(|s| parse_left_right_count(&s))
-        .unwrap_or((0, 0));
+    .and_then(|s| parse_left_right_count(&s))
+    .unwrap_or((0, 0));
     let (files, additions, deletions) = diff_numstat(project_path, &range);
     let (status, conflict_files) = match detect_merge_conflicts(project_path, base, branch) {
         ConflictDetection::Conflicts(f) => (MergePreviewStatus::Conflicts, f),

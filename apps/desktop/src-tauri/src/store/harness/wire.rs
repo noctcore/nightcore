@@ -205,7 +205,9 @@ impl StoredHarnessProposal {
             artifact_ids: string_array(v.get("artifactIds")),
             prompt: s("prompt"),
             verify_command: s("verifyCommand"),
-            harness_check: v.get("harnessCheck").and_then(StoredHarnessCheck::from_wire),
+            harness_check: v
+                .get("harnessCheck")
+                .and_then(StoredHarnessCheck::from_wire),
             confidence: v.get("confidence").and_then(Value::as_f64),
             fingerprint: s("fingerprint")?,
             status: "proposed".to_string(),
@@ -313,7 +315,10 @@ impl StoredRepoProfile {
             })
             .unwrap_or_default();
         Self {
-            is_monorepo: v.get("isMonorepo").and_then(Value::as_bool).unwrap_or(false),
+            is_monorepo: v
+                .get("isMonorepo")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
             workspace_tool: v
                 .get("workspaceTool")
                 .and_then(Value::as_str)
@@ -326,8 +331,14 @@ impl StoredRepoProfile {
                 .get("hasEslintFlatConfig")
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
-            has_lint_meta: v.get("hasLintMeta").and_then(Value::as_bool).unwrap_or(false),
-            has_agent_docs: v.get("hasAgentDocs").and_then(Value::as_bool).unwrap_or(false),
+            has_lint_meta: v
+                .get("hasLintMeta")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            has_agent_docs: v
+                .get("hasAgentDocs")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
             existing_plugins: string_array(v.get("existingPlugins")),
         }
     }

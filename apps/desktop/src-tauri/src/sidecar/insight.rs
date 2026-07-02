@@ -347,17 +347,17 @@ pub(crate) async fn handle_analysis_event(app: &AppHandle, event_type: &str, eve
             // dismissed set was already applied to `findings` above.
             let finalized =
                 finalize_completed(insight_store.inner(), "insight", run_id, &tel, move |run| {
-                    let prior: std::collections::HashMap<String, (String, Option<String>)> =
-                        run.findings
-                            .iter()
-                            .filter(|f| f.status != "open")
-                            .map(|f| {
-                                (
-                                    f.fingerprint.clone(),
-                                    (f.status.clone(), f.linked_task_id.clone()),
-                                )
-                            })
-                            .collect();
+                    let prior: std::collections::HashMap<String, (String, Option<String>)> = run
+                        .findings
+                        .iter()
+                        .filter(|f| f.status != "open")
+                        .map(|f| {
+                            (
+                                f.fingerprint.clone(),
+                                (f.status.clone(), f.linked_task_id.clone()),
+                            )
+                        })
+                        .collect();
                     let mut merged = findings;
                     for f in &mut merged {
                         if let Some((status, link)) = prior.get(&f.fingerprint) {
@@ -383,17 +383,11 @@ pub(crate) async fn handle_analysis_event(app: &AppHandle, event_type: &str, eve
         // here (mirroring reader.rs's session logging) so a long analysis's progress
         // reaches the terminal instead of going silent between the two endpoints.
         "analysis-category-started" => {
-            let category = event
-                .get("category")
-                .and_then(Value::as_str)
-                .unwrap_or("");
+            let category = event.get("category").and_then(Value::as_str).unwrap_or("");
             tracing::info!(target: "nightcore", run_id, category, "insight category started");
         }
         "analysis-category-completed" => {
-            let category = event
-                .get("category")
-                .and_then(Value::as_str)
-                .unwrap_or("");
+            let category = event.get("category").and_then(Value::as_str).unwrap_or("");
             let cost = event.get("costUsd").and_then(Value::as_f64).unwrap_or(0.0);
             let usage = event.get("usage");
             let token = |key: &str| {
@@ -458,7 +452,9 @@ mod tests {
     #[test]
     fn category_to_kind_always_returns_build() {
         // All categories map to Build so findings become actionable work tasks.
-        for cat in &["perf", "security", "ui-ux", "refactor", "test", "arch", "unknown"] {
+        for cat in &[
+            "perf", "security", "ui-ux", "refactor", "test", "arch", "unknown",
+        ] {
             assert_eq!(
                 category_to_kind(cat),
                 TaskKind::Build,
@@ -477,20 +473,32 @@ mod tests {
     fn wire_str_serializes_category_to_wire_string() {
         // Spot-check a few well-known categories to confirm the mapping.
         let perf = wire_str(&FindingCategory::Performance);
-        assert!(!perf.is_empty(), "performance category should serialize to a non-empty string");
+        assert!(
+            !perf.is_empty(),
+            "performance category should serialize to a non-empty string"
+        );
         let sec = wire_str(&FindingCategory::Security);
-        assert!(!sec.is_empty(), "security category should serialize to a non-empty string");
+        assert!(
+            !sec.is_empty(),
+            "security category should serialize to a non-empty string"
+        );
     }
 
     #[test]
     fn task_description_contains_required_fields() {
         let f = minimal_finding();
         let desc = task_description(&f);
-        assert!(desc.contains("N+1 query in user list"), "should include description");
+        assert!(
+            desc.contains("N+1 query in user list"),
+            "should include description"
+        );
         assert!(desc.contains("perf"), "should include category");
         assert!(desc.contains("high"), "should include severity");
         assert!(desc.contains("low"), "should include effort");
-        assert!(desc.contains("Insight analysis finding"), "should include provenance footer");
+        assert!(
+            desc.contains("Insight analysis finding"),
+            "should include provenance footer"
+        );
     }
 
     #[test]
@@ -517,7 +525,10 @@ mod tests {
             symbol: None,
         });
         let desc = task_description(&f);
-        assert!(desc.contains("src/lib.rs:42"), "should format single-line location");
+        assert!(
+            desc.contains("src/lib.rs:42"),
+            "should format single-line location"
+        );
     }
 
     #[test]
@@ -530,7 +541,10 @@ mod tests {
             symbol: None,
         });
         let desc = task_description(&f);
-        assert!(desc.contains("src/main.rs:10-20"), "should format line range");
+        assert!(
+            desc.contains("src/main.rs:10-20"),
+            "should format line range"
+        );
     }
 
     #[test]
@@ -544,7 +558,10 @@ mod tests {
         });
         let desc = task_description(&f);
         // Same start/end → should format as `:5` not `:5-5`
-        assert!(desc.contains("src/main.rs:5"), "same start/end shows single line");
+        assert!(
+            desc.contains("src/main.rs:5"),
+            "same start/end shows single line"
+        );
         assert!(!desc.contains(":5-5"), "should not show redundant range");
     }
 
@@ -554,8 +571,14 @@ mod tests {
         f.rationale = Some("Causes timeouts under load".to_string());
         f.suggestion = Some("Add an index on user_id".to_string());
         let desc = task_description(&f);
-        assert!(desc.contains("Causes timeouts under load"), "should include rationale");
-        assert!(desc.contains("Add an index on user_id"), "should include suggestion");
+        assert!(
+            desc.contains("Causes timeouts under load"),
+            "should include rationale"
+        );
+        assert!(
+            desc.contains("Add an index on user_id"),
+            "should include suggestion"
+        );
     }
 
     #[test]
@@ -564,10 +587,22 @@ mod tests {
         f.code_before = Some("SELECT * FROM users".to_string());
         f.code_after = Some("SELECT id FROM users WHERE id = ?".to_string());
         let desc = task_description(&f);
-        assert!(desc.contains("// before"), "should include before block marker");
-        assert!(desc.contains("// after"), "should include after block marker");
-        assert!(desc.contains("SELECT * FROM users"), "should include before code");
-        assert!(desc.contains("SELECT id FROM users WHERE id = ?"), "should include after code");
+        assert!(
+            desc.contains("// before"),
+            "should include before block marker"
+        );
+        assert!(
+            desc.contains("// after"),
+            "should include after block marker"
+        );
+        assert!(
+            desc.contains("SELECT * FROM users"),
+            "should include before code"
+        );
+        assert!(
+            desc.contains("SELECT id FROM users WHERE id = ?"),
+            "should include after code"
+        );
     }
 
     #[test]
@@ -575,8 +610,14 @@ mod tests {
         let mut f = minimal_finding();
         f.affected_files = vec!["src/a.rs".to_string(), "src/b.rs".to_string()];
         let desc = task_description(&f);
-        assert!(desc.contains("src/a.rs"), "should include first affected file");
-        assert!(desc.contains("src/b.rs"), "should include second affected file");
+        assert!(
+            desc.contains("src/a.rs"),
+            "should include first affected file"
+        );
+        assert!(
+            desc.contains("src/b.rs"),
+            "should include second affected file"
+        );
     }
 
     #[test]

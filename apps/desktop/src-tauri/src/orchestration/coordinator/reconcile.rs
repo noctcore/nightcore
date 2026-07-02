@@ -10,10 +10,10 @@ use std::path::PathBuf;
 
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::worktree;
 use crate::project::ProjectStore;
 use crate::store::TaskStore;
 use crate::task::{TaskStatus, TASK_EVENT};
+use crate::worktree;
 
 /// Mark a task `InProgress` for a fresh run: clear the prior summary/error and the
 /// verification verdict (M4 §B), and record the run's `branch` chip (worktree mode

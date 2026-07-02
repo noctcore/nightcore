@@ -85,11 +85,17 @@ pub fn worktree_status(dir: &Path, task_id: &str, base: &str) -> WorktreeStatus 
     let range = format!("{base}...HEAD");
     let (behind_of_base, ahead_of_base) = git(
         dir,
-        &["rev-list", "--left-right", "--count", "--end-of-options", &range],
+        &[
+            "rev-list",
+            "--left-right",
+            "--count",
+            "--end-of-options",
+            &range,
+        ],
     )
-        .ok()
-        .and_then(|s| parse_left_right_count(&s))
-        .unwrap_or((0, 0));
+    .ok()
+    .and_then(|s| parse_left_right_count(&s))
+    .unwrap_or((0, 0));
     WorktreeStatus {
         branch,
         path: dir.to_string_lossy().to_string(),

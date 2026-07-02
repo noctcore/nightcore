@@ -22,6 +22,10 @@ use super::{apply_and_emit, finish_run, park_for_approval, Outcome, SESSION_EVEN
 
 /// The pure routing decision for one parsed sidecar event, extracted from all
 /// `AppHandle` side-effects so it can be unit-tested with plain JSON fixtures.
+// Consumed only by this file's cfg(test) routing-contract tests today: `handle_event`
+// still dispatches inline rather than matching on this, so the non-test build sees
+// it as dead. Kept as the unit-tested spec of the routing rules.
+#[allow(dead_code)]
 #[derive(Debug, PartialEq)]
 pub(crate) enum EventRoute {
     /// A `query-result` RPC reply with a known `requestId` — route to the
@@ -49,7 +53,9 @@ pub(crate) enum EventRoute {
 
 /// Classify a raw sidecar event into its routing decision. This function is
 /// PURE: it reads only `event` and returns an `EventRoute`; all `AppHandle`
-/// side-effects live in `handle_event` which matches on the returned value.
+/// side-effects live in `handle_event`, whose inline dispatch mirrors these rules.
+// See `EventRoute`: only the cfg(test) routing-contract tests call this today.
+#[allow(dead_code)]
 pub(crate) fn classify_event(event: &Value) -> EventRoute {
     let event_type = event.get("type").and_then(Value::as_str).unwrap_or("");
 

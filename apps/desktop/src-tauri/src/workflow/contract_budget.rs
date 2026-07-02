@@ -42,8 +42,7 @@ pub fn append_contract_budget_check(
         return;
     };
     let range = format!("{merge_base}..HEAD");
-    let Some(names) = git_stdout(review_dir, &["diff", "--no-color", "--name-only", &range])
-    else {
+    let Some(names) = git_stdout(review_dir, &["diff", "--no-color", "--name-only", &range]) else {
         tracing::warn!(target: "nightcore::contract_budget", range = %range, dir = %review_dir.display(), "git diff failed; skipping contract-budget gate");
         return;
     };
@@ -107,7 +106,9 @@ fn measure(review_dir: &Path, touched: &[&str]) -> (Vec<String>, Vec<String>) {
         };
         let lines = text.lines().count();
         if lines > MAX_CONTRACT_LINES {
-            over.push(format!("{path} — {lines} lines (budget {MAX_CONTRACT_LINES})"));
+            over.push(format!(
+                "{path} — {lines} lines (budget {MAX_CONTRACT_LINES})"
+            ));
         } else {
             within.push(format!("{path} — {lines} lines"));
         }
@@ -156,10 +157,7 @@ mod tests {
             "rule\n".repeat(MAX_CONTRACT_LINES + 30),
         )
         .expect("write");
-        let (within, over) = measure(
-            tmp.path(),
-            &["CLAUDE.md", "AGENTS.md", "deleted/AGENTS.md"],
-        );
+        let (within, over) = measure(tmp.path(), &["CLAUDE.md", "AGENTS.md", "deleted/AGENTS.md"]);
         assert_eq!(within, vec!["CLAUDE.md — 120 lines".to_string()]);
         assert_eq!(
             over,
@@ -212,7 +210,13 @@ mod tests {
         let review = tmp.path().join("wt");
         git(
             &root,
-            &["worktree", "add", review.to_str().expect("utf8"), "-b", "task"],
+            &[
+                "worktree",
+                "add",
+                review.to_str().expect("utf8"),
+                "-b",
+                "task",
+            ],
         );
 
         // An untouched contract appends nothing, even with other file changes.

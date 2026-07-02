@@ -168,7 +168,10 @@ mod tests {
     fn no_budget_when_file_key_or_limits_are_absent() {
         // Absent file.
         let bare = tempfile::TempDir::new().expect("temp dir");
-        assert!(load_budget(bare.path()).is_none(), "absent file ⇒ no budget");
+        assert!(
+            load_budget(bare.path()).is_none(),
+            "absent file ⇒ no budget"
+        );
         // Present file, no policy key (the gauntlet-only manifest shape).
         let tmp = project_with_manifest(r#"{ "checks": [] }"#);
         assert!(load_budget(tmp.path()).is_none(), "absent key ⇒ no budget");
@@ -184,15 +187,16 @@ mod tests {
     fn malformed_manifest_or_budget_warns_and_skips() {
         let tmp = project_with_manifest("{ not json");
         assert!(load_budget(tmp.path()).is_none(), "malformed file ⇒ skip");
-        let tmp = project_with_manifest(r#"{ "policy": { "diffBudget": { "maxChangedLines": "lots" } } }"#);
+        let tmp = project_with_manifest(
+            r#"{ "policy": { "diffBudget": { "maxChangedLines": "lots" } } }"#,
+        );
         assert!(load_budget(tmp.path()).is_none(), "malformed value ⇒ skip");
     }
 
     #[test]
     fn budget_parses_partial_and_full_limits() {
-        let tmp = project_with_manifest(
-            r#"{ "policy": { "diffBudget": { "maxChangedLines": 400 } } }"#,
-        );
+        let tmp =
+            project_with_manifest(r#"{ "policy": { "diffBudget": { "maxChangedLines": 400 } } }"#);
         let b = load_budget(tmp.path()).expect("lines-only budget");
         assert_eq!(b.max_changed_lines, Some(400));
         assert_eq!(b.max_changed_files, None);
@@ -224,17 +228,26 @@ mod tests {
             max_changed_files: Some(20),
         };
         // At the limit is within budget (a max, not a threshold).
-        let at_limit = DiffMeasure { changed_lines: 400, changed_files: 20 };
+        let at_limit = DiffMeasure {
+            changed_lines: 400,
+            changed_files: 20,
+        };
         assert!(breach_message(&budget, &at_limit).is_none());
 
-        let lines_over = DiffMeasure { changed_lines: 812, changed_files: 8 };
+        let lines_over = DiffMeasure {
+            changed_lines: 812,
+            changed_files: 8,
+        };
         let msg = breach_message(&budget, &lines_over).expect("breach");
         assert_eq!(
             msg,
             "diff budget exceeded: 812 changed lines (budget 400) — review scope before verifying"
         );
 
-        let both_over = DiffMeasure { changed_lines: 812, changed_files: 27 };
+        let both_over = DiffMeasure {
+            changed_lines: 812,
+            changed_files: 27,
+        };
         let msg = breach_message(&budget, &both_over).expect("breach");
         assert!(msg.contains("812 changed lines (budget 400)"), "{msg}");
         assert!(msg.contains("27 changed files (budget 20)"), "{msg}");
@@ -246,7 +259,10 @@ mod tests {
             max_changed_lines: None,
             max_changed_files: Some(2),
         };
-        let m = DiffMeasure { changed_lines: 9999, changed_files: 3 };
+        let m = DiffMeasure {
+            changed_lines: 9999,
+            changed_files: 3,
+        };
         let msg = breach_message(&files_only, &m).expect("files breach");
         assert!(
             !msg.contains("changed lines"),
@@ -258,9 +274,8 @@ mod tests {
     fn evaluate_skips_on_infrastructure_failure() {
         // A configured budget over a non-repo review dir: merge-base fails ⇒ skip
         // (warn), never a park message.
-        let project = project_with_manifest(
-            r#"{ "policy": { "diffBudget": { "maxChangedLines": 1 } } }"#,
-        );
+        let project =
+            project_with_manifest(r#"{ "policy": { "diffBudget": { "maxChangedLines": 1 } } }"#);
         let not_a_repo = tempfile::TempDir::new().expect("temp dir");
         assert!(
             evaluate(project.path(), not_a_repo.path()).is_none(),

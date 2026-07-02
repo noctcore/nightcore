@@ -44,7 +44,10 @@ mod tests {
         })
         .join();
 
-        assert!(m.is_poisoned(), "the mutex is poisoned by the panicked thread");
+        assert!(
+            m.is_poisoned(),
+            "the mutex is poisoned by the panicked thread"
+        );
         // The recovering lock still yields the last-written state instead of crashing.
         let g = lock_or_recover(&m);
         assert_eq!(*g, vec![1, 2, 3, 4]);

@@ -330,7 +330,11 @@ mod tests {
         let merged = store.get();
         assert!(merged.context_pack_enabled, "global stays on");
         assert_eq!(
-            merged.project_overrides.get("p1").unwrap().context_pack_enabled,
+            merged
+                .project_overrides
+                .get("p1")
+                .unwrap()
+                .context_pack_enabled,
             Some(false)
         );
 
@@ -625,8 +629,14 @@ mod tests {
         std::fs::write(dir.join("settings.json"), legacy).unwrap();
         let store = SettingsStore::load_from(dir);
         let ov = store.get().project_overrides.get("p1").unwrap().clone();
-        assert!(ov.board_appearance.is_none(), "legacy override has no appearance");
-        assert!(store.board_background("p1").is_none(), "legacy override has no bg");
+        assert!(
+            ov.board_appearance.is_none(),
+            "legacy override has no appearance"
+        );
+        assert!(
+            store.board_background("p1").is_none(),
+            "legacy override has no bg"
+        );
 
         // A partial BoardAppearance object (only cardOpacity present) loads, with the
         // omitted knobs falling back to their pre-feature defaults (forward-compat).
@@ -671,15 +681,38 @@ mod tests {
     fn set_board_background_bumps_version_and_persists_then_clear_prunes() {
         let (store, tmp) = temp_store();
         // First set ⇒ version 1.
-        let s1 = store.set_board_background("p1", "gif".to_string()).expect("set");
-        let bg1 = s1.project_overrides.get("p1").unwrap().board_background.clone().unwrap();
+        let s1 = store
+            .set_board_background("p1", "gif".to_string())
+            .expect("set");
+        let bg1 = s1
+            .project_overrides
+            .get("p1")
+            .unwrap()
+            .board_background
+            .clone()
+            .unwrap();
         assert_eq!(bg1.format, "gif");
         assert_eq!(bg1.version, 1);
 
         // A same-format replace bumps the version so the web cache-busts.
-        let s2 = store.set_board_background("p1", "gif".to_string()).expect("re-set");
-        assert_eq!(store.board_background("p1").unwrap().version, 2, "version bumps on replace");
-        assert_eq!(s2.project_overrides.get("p1").unwrap().board_background.as_ref().unwrap().format, "gif");
+        let s2 = store
+            .set_board_background("p1", "gif".to_string())
+            .expect("re-set");
+        assert_eq!(
+            store.board_background("p1").unwrap().version,
+            2,
+            "version bumps on replace"
+        );
+        assert_eq!(
+            s2.project_overrides
+                .get("p1")
+                .unwrap()
+                .board_background
+                .as_ref()
+                .unwrap()
+                .format,
+            "gif"
+        );
 
         // Persisted across reload.
         let reloaded = SettingsStore::load_from(tmp.path().join("config"));
@@ -689,9 +722,14 @@ mod tests {
         // it can't orphan (data-integrity #4).
         let cleared = store.clear_board_background("p1").expect("clear");
         assert!(store.board_background("p1").is_none(), "ref gone");
-        assert!(!cleared.project_overrides.contains_key("p1"), "empty override pruned");
+        assert!(
+            !cleared.project_overrides.contains_key("p1"),
+            "empty override pruned"
+        );
         // Clearing again is a no-op.
-        store.clear_board_background("p1").expect("idempotent clear");
+        store
+            .clear_board_background("p1")
+            .expect("idempotent clear");
     }
 
     #[test]
@@ -699,13 +737,22 @@ mod tests {
         let (store, _tmp) = temp_store();
         // An override that also carries a real setting must survive a bg clear.
         store
-            .update(serde_json::from_str(r#"{"projectId":"p1","defaultModel":"claude-sonnet-4-6"}"#).unwrap())
+            .update(
+                serde_json::from_str(r#"{"projectId":"p1","defaultModel":"claude-sonnet-4-6"}"#)
+                    .unwrap(),
+            )
             .expect("seed override");
-        store.set_board_background("p1", "png".to_string()).expect("set bg");
+        store
+            .set_board_background("p1", "png".to_string())
+            .expect("set bg");
         store.clear_board_background("p1").expect("clear bg");
         let ov = store.get();
         let ov = ov.project_overrides.get("p1").expect("override survives");
         assert!(ov.board_background.is_none(), "bg ref cleared");
-        assert_eq!(ov.default_model.as_deref(), Some("claude-sonnet-4-6"), "other setting kept");
+        assert_eq!(
+            ov.default_model.as_deref(),
+            Some("claude-sonnet-4-6"),
+            "other setting kept"
+        );
     }
 }

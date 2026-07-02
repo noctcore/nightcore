@@ -201,7 +201,10 @@ fn extract_ts_js(root: Node<'_>, src: &str) -> (Vec<Symbol>, Vec<String>) {
                         .map(|v| {
                             matches!(
                                 v.kind(),
-                                "arrow_function" | "function_expression" | "function" | "generator_function"
+                                "arrow_function"
+                                    | "function_expression"
+                                    | "function"
+                                    | "generator_function"
                             )
                         })
                         .unwrap_or(false);
@@ -363,7 +366,12 @@ fn resolve_ts_import(files: &HashSet<String>, from_dir: &str, spec: &str) -> Opt
     for ext in ["ts", "tsx", "js", "jsx", "mjs", "cjs"] {
         candidates.push(format!("{base}.{ext}"));
     }
-    for (written, actual) in [(".js", ".ts"), (".js", ".tsx"), (".mjs", ".ts"), (".cjs", ".ts")] {
+    for (written, actual) in [
+        (".js", ".ts"),
+        (".js", ".tsx"),
+        (".mjs", ".ts"),
+        (".cjs", ".ts"),
+    ] {
         if let Some(stem) = base.strip_suffix(written) {
             candidates.push(format!("{stem}{actual}"));
         }
@@ -489,7 +497,11 @@ fn rust_module_ctx(files: &HashSet<String>, file: &str) -> RustModuleCtx {
     };
     let parent_dir = if is_root_file {
         // `mod.rs`'s super lives one directory up; `lib.rs`/`main.rs` have none.
-        (stem == "mod").then(|| dir.rfind('/').map(|i| dir[..i].to_string()).unwrap_or_default())
+        (stem == "mod").then(|| {
+            dir.rfind('/')
+                .map(|i| dir[..i].to_string())
+                .unwrap_or_default()
+        })
     } else {
         Some(dir.to_string())
     };
@@ -567,7 +579,11 @@ fn module_own_file(files: &HashSet<String>, base: &str) -> Option<String> {
 /// deps, and sibling workspace crates referenced by name — yield no edge. A
 /// path whose segments name no module file falls back to the anchor module's
 /// own file (the item is defined there).
-fn resolve_rust_use(files: &HashSet<String>, ctx: &RustModuleCtx, path: &[String]) -> Option<String> {
+fn resolve_rust_use(
+    files: &HashSet<String>,
+    ctx: &RustModuleCtx,
+    path: &[String],
+) -> Option<String> {
     let (anchor, rest) = path.split_first()?;
     let (base, rest) = match anchor.as_str() {
         "crate" => (ctx.crate_root.clone()?, rest),
@@ -622,7 +638,7 @@ fn resolve_imports(
                 }
                 for m in &imports.mods {
                     if let Some(t) =
-                        resolve_mod_path(files, &ctx.children_dir, &[m.clone()])
+                        resolve_mod_path(files, &ctx.children_dir, std::slice::from_ref(m))
                     {
                         targets.push(t);
                     }
@@ -688,8 +704,7 @@ fn collect_facts(root: &Path, files: &[String]) -> Vec<FileFacts> {
         let (symbols, imports) = match lang {
             Lang::Rust => {
                 let (symbols, rust_imports) = extract_rust(root_node, &source);
-                let imports =
-                    resolve_imports(&file_set, rel, lang, &[], Some(&rust_imports));
+                let imports = resolve_imports(&file_set, rel, lang, &[], Some(&rust_imports));
                 (symbols, imports)
             }
             _ => {
@@ -868,7 +883,10 @@ const localFn = function () {};
         for sym in ["publicFn", "Widget", "Shape", "Alias", "Color", "arrowFn"] {
             assert!(a_line.contains(sym), "missing {sym} in: {a_line}");
         }
-        assert!(a_line.contains("internalHelper"), "non-exported fn included");
+        assert!(
+            a_line.contains("internalHelper"),
+            "non-exported fn included"
+        );
         assert!(a_line.contains("localFn"), "const fn-expression included");
         assert!(
             !a_line.contains("plainData"),
@@ -906,7 +924,13 @@ fn main() {}
             .lines()
             .find(|l| l.contains("`src/main.rs`"))
             .expect("main.rs listed");
-        for sym in ["Config", "Mode", "Runner", "impl Runner for Config", "entry"] {
+        for sym in [
+            "Config",
+            "Mode",
+            "Runner",
+            "impl Runner for Config",
+            "entry",
+        ] {
             assert!(line.contains(sym), "missing {sym} in: {line}");
         }
     }
@@ -971,23 +995,31 @@ fn main() {}
             resolve_rust_use(
                 &files,
                 &ctx,
-                &["crate".into(), "store".into(), "context".into(), "read_pack".into()]
+                &[
+                    "crate".into(),
+                    "store".into(),
+                    "context".into(),
+                    "read_pack".into()
+                ]
             )
             .as_deref(),
             Some("src/store/context.rs")
         );
         // Longest-prefix fallback: `crate::util::Item` → util.rs.
         assert_eq!(
-            resolve_rust_use(&files, &ctx, &["crate".into(), "util".into(), "Item".into()])
-                .as_deref(),
+            resolve_rust_use(
+                &files,
+                &ctx,
+                &["crate".into(), "util".into(), "Item".into()]
+            )
+            .as_deref(),
             Some("src/util.rs")
         );
         // `use super::item` from a nested module file: the item lives in the
         // parent module's own file (`store/mod.rs`).
         let nested = rust_module_ctx(&files, "src/store/context.rs");
         assert_eq!(
-            resolve_rust_use(&files, &nested, &["super".into(), "write_atomic".into()])
-                .as_deref(),
+            resolve_rust_use(&files, &nested, &["super".into(), "write_atomic".into()]).as_deref(),
             Some("src/store/mod.rs")
         );
         assert_eq!(
@@ -1009,7 +1041,11 @@ fn main() {}
         assert_eq!(
             expanded,
             vec![
-                vec!["crate".to_string(), "store".to_string(), "context".to_string()],
+                vec![
+                    "crate".to_string(),
+                    "store".to_string(),
+                    "context".to_string()
+                ],
                 vec!["crate".to_string(), "util".to_string()],
             ]
         );
@@ -1084,7 +1120,10 @@ fn main() {}
         let tmp = git_fixture();
         write(tmp.path(), "README.md", "# hi\n");
         track_all(tmp.path());
-        assert!(generate(tmp.path()).is_none(), "no source files → no section");
+        assert!(
+            generate(tmp.path()).is_none(),
+            "no source files → no section"
+        );
     }
 
     // --- determinism ----------------------------------------------------------------

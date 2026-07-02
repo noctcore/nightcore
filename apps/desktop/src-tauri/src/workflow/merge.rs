@@ -13,11 +13,11 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use super::{commit_msg, secret_scan};
 use crate::gauntlet;
 use crate::gauntlet_project;
-use crate::worktree::{self, MergeOutcome};
 use crate::project::{Project, ProjectStore};
 use crate::settings::SettingsStore;
 use crate::store::TaskStore;
 use crate::task::{Task, TaskStatus, TASK_EVENT};
+use crate::worktree::{self, MergeOutcome};
 
 /// The active project, or an error message for a command that needs one.
 fn require_project(app: &AppHandle) -> Result<Project, String> {

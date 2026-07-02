@@ -44,8 +44,8 @@ const DENIED_TARGET_PREFIXES: &[&str] = &[
     ".github/workflows/", // GitHub Actions
     ".husky/",            // Husky-managed git hooks
     ".circleci/",         // CircleCI
-    ".claude/",           // Claude Code settings/hooks — run arbitrary shell; loaded on the next agent run
-    ".vscode/",           // VS Code tasks.json / launch.json — auto-run on folder open / debug
+    ".claude/", // Claude Code settings/hooks — run arbitrary shell; loaded on the next agent run
+    ".vscode/", // VS Code tasks.json / launch.json — auto-run on folder open / debug
 ];
 /// Execution-sink FILE BASENAMES: rejected wherever they sit in the tree (matched on the
 /// last path component, not just the repo root), because their trigger is the file name —
@@ -55,12 +55,12 @@ const DENIED_TARGET_PREFIXES: &[&str] = &[
 /// below; for `create`, this basename set covers the highest-value auto-exec sinks. Lower
 /// case (matched case-insensitively).
 const DENIED_TARGET_BASENAMES: &[&str] = &[
-    "package.json",           // npm/bun/yarn preinstall/postinstall/prepare lifecycle scripts
-    "makefile",               // `make` recipe bodies
-    "gnumakefile",            // GNU make's higher-priority makefile name
-    ".envrc",                 // direnv — auto-exec on cd into the dir
+    "package.json", // npm/bun/yarn preinstall/postinstall/prepare lifecycle scripts
+    "makefile",     // `make` recipe bodies
+    "gnumakefile",  // GNU make's higher-priority makefile name
+    ".envrc",       // direnv — auto-exec on cd into the dir
     ".pre-commit-config.yaml", // pre-commit — runs hook commands on every commit
-    ".gitlab-ci.yml",         // GitLab CI
+    ".gitlab-ci.yml", // GitLab CI
     ".gitlab-ci.yaml",
     // lefthook — its recipe bodies run as git hooks once `lefthook install` has wired
     // the repo, and dropping a config re-arms an already-wired one. Same class as
@@ -89,8 +89,7 @@ const DENIED_TARGET_BASENAMES: &[&str] = &[
 /// dotfile would otherwise be merged in place. It exists solely to manage the agent-contract
 /// docs, so restrict it to those (matched case-insensitively). `create` cannot reach these
 /// existing-file sinks (it never clobbers) and is bounded by the denylists above instead.
-const MERGE_SECTION_ALLOWED_BASENAMES: &[&str] =
-    &["claude.md", "agents.md", "agent_contract.md"];
+const MERGE_SECTION_ALLOWED_BASENAMES: &[&str] = &["claude.md", "agents.md", "agent_contract.md"];
 
 /// Resolve a repo-relative artifact path against `root`, rejecting anything that could
 /// escape the project. Defence in layers:
@@ -99,6 +98,7 @@ const MERGE_SECTION_ALLOWED_BASENAMES: &[&str] =
 ///  2. canonical: ensure the deepest EXISTING ancestor of the destination canonicalizes
 ///     to inside the canonical project root — this defeats a symlinked directory in the
 ///     path that lexical checks can't see.
+///
 /// Returns the absolute destination path (which may not exist yet, for `create`).
 pub(super) fn safe_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
     if rel.trim().is_empty() {
@@ -113,7 +113,9 @@ pub(super) fn safe_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
                 return Err(format!("artifact path escapes the project (`..`): {rel}"))
             }
             Component::RootDir | Component::Prefix(_) => {
-                return Err(format!("artifact path must be repo-relative, not absolute: {rel}"))
+                return Err(format!(
+                    "artifact path must be repo-relative, not absolute: {rel}"
+                ))
             }
         }
     }
@@ -394,7 +396,10 @@ mod tests {
         {
             std::os::unix::fs::symlink(outside.path(), &link).unwrap();
             let result = safe_join(root.path(), "link/escape.ts");
-            assert!(result.is_err(), "symlinked dir escaping the root must be rejected");
+            assert!(
+                result.is_err(),
+                "symlinked dir escaping the root must be rejected"
+            );
         }
         #[cfg(not(unix))]
         {
@@ -421,7 +426,10 @@ mod tests {
             safe_join(root.path(), "AGENTS.md").is_err(),
             "a dangling-leaf symlink must be rejected, not followed out of the root"
         );
-        assert!(!outside.exists(), "nothing must have been written outside the root");
+        assert!(
+            !outside.exists(),
+            "nothing must have been written outside the root"
+        );
     }
 
     #[cfg(unix)]
@@ -538,7 +546,12 @@ mod tests {
         // docs it manages — a prompt-injected merge into any other existing file (an
         // execution sink the denylist might miss) is rejected outright.
         let tmp = TempDir::new().unwrap();
-        for ok in ["CLAUDE.md", "AGENTS.md", "AGENT_CONTRACT.md", "docs/agents.md"] {
+        for ok in [
+            "CLAUDE.md",
+            "AGENTS.md",
+            "AGENT_CONTRACT.md",
+            "docs/agents.md",
+        ] {
             let dest = tmp.path().join(ok);
             assert!(
                 write_merge_section(&dest, "## Conventions\n- x").is_ok(),
@@ -551,10 +564,7 @@ mod tests {
                 write_merge_section(&dest, "malicious body").is_err(),
                 "must reject merge into non-agent-doc {bad:?}"
             );
-            assert!(
-                !dest.exists(),
-                "a rejected merge must not create {bad:?}"
-            );
+            assert!(!dest.exists(), "a rejected merge must not create {bad:?}");
         }
     }
 
@@ -590,7 +600,10 @@ mod tests {
         let remerged = merge_managed_section(&merged, "## Conventions\n- no-cross-feature-imports");
         assert!(remerged.contains("Hand-written intro."));
         assert!(remerged.contains("no-cross-feature-imports"));
-        assert!(!remerged.contains("folder-per-component"), "old block replaced");
+        assert!(
+            !remerged.contains("folder-per-component"),
+            "old block replaced"
+        );
         // Exactly one managed block remains.
         assert_eq!(remerged.matches(SECTION_START).count(), 1);
     }
@@ -634,7 +647,11 @@ mod tests {
         );
         let checks = checks_of(&out);
         let names: Vec<&str> = checks.iter().map(|c| c["name"].as_str().unwrap()).collect();
-        assert_eq!(names, vec!["lint", "arch"], "distinct names both kept, in order");
+        assert_eq!(
+            names,
+            vec!["lint", "arch"],
+            "distinct names both kept, in order"
+        );
     }
 
     #[test]
@@ -672,8 +689,15 @@ mod tests {
         assert_eq!(root["version"], 2, "unknown top-level key preserved");
         let checks = checks_of(&out);
         let names: Vec<&str> = checks.iter().map(|c| c["name"].as_str().unwrap()).collect();
-        assert_eq!(names, vec!["my-own", "generated"], "user's check preserved + ours appended");
-        assert_eq!(checks[0]["command"], "npm run cov", "user's check body untouched");
+        assert_eq!(
+            names,
+            vec!["my-own", "generated"],
+            "user's check preserved + ours appended"
+        );
+        assert_eq!(
+            checks[0]["command"], "npm run cov",
+            "user's check body untouched"
+        );
     }
 
     #[test]
@@ -741,7 +765,11 @@ mod tests {
         .unwrap();
         let result = crate::workflow::gauntlet_project::run(tmp.path());
         assert!(result.passed, "the armed passing check runs and passes");
-        assert_eq!(result.checks.len(), 1, "the gauntlet loaded our armed check");
+        assert_eq!(
+            result.checks.len(),
+            1,
+            "the gauntlet loaded our armed check"
+        );
         assert_eq!(result.checks[0].name, "folder-per-component");
     }
 

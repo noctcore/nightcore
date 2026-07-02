@@ -7,8 +7,8 @@
 use tauri::{AppHandle, Manager};
 
 use crate::orchestration::breaker::CircuitBreaker;
-use crate::worktree;
 use crate::store::TaskStore;
+use crate::worktree;
 
 use super::{fail_task, mark_task_in_progress, resolve_worktree, Orchestrator};
 
@@ -75,8 +75,11 @@ pub(crate) async fn submit_run(
     let cwd = resolved.map(|r| r.path);
     // The chip is the picker-chosen branch (stored at create) or the default
     // `nc/<taskId>`; `cwd.rs` allocated the worktree on the same branch.
-    let branch =
-        is_worktree.then(|| task.branch.clone().unwrap_or_else(|| worktree::branch_name(task_id)));
+    let branch = is_worktree.then(|| {
+        task.branch
+            .clone()
+            .unwrap_or_else(|| worktree::branch_name(task_id))
+    });
 
     // Mark in-progress + persist + emit BEFORE ensuring the reader, so a sidecar
     // start failure can't strand the task started-but-unmarked.

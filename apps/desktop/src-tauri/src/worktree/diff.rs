@@ -26,7 +26,13 @@ pub(super) fn diff_numstat(repo: &Path, range: &str) -> (Vec<DiffFileStat>, u32,
     // than git's `old => new` form, which would not key cleanly.
     let out = git(
         repo,
-        &["diff", "--numstat", "--no-renames", "--end-of-options", range],
+        &[
+            "diff",
+            "--numstat",
+            "--no-renames",
+            "--end-of-options",
+            range,
+        ],
     )
     .unwrap_or_default();
     let mut files = Vec::new();
@@ -98,7 +104,16 @@ pub fn worktree_diff(dir: &Path, base: &str) -> WorktreeDiff {
     // `--no-renames` keeps numstat ⇄ name-status keyed on a single path per row (a
     // rename becomes a Delete+Add pair) so per-file stats join correctly.
     let mut stats: HashMap<String, (u32, u32)> = HashMap::new();
-    if let Ok(numstat) = git(dir, &["diff", "--numstat", "--no-renames", "--end-of-options", base]) {
+    if let Ok(numstat) = git(
+        dir,
+        &[
+            "diff",
+            "--numstat",
+            "--no-renames",
+            "--end-of-options",
+            base,
+        ],
+    ) {
         for line in numstat.lines() {
             let mut f = line.splitn(3, '\t');
             let add = f.next().unwrap_or("0").parse::<u32>().unwrap_or(0);
@@ -113,7 +128,16 @@ pub fn worktree_diff(dir: &Path, base: &str) -> WorktreeDiff {
     let mut files = Vec::new();
     let mut add_total = 0;
     let mut del_total = 0;
-    if let Ok(name_status) = git(dir, &["diff", "--name-status", "--no-renames", "--end-of-options", base]) {
+    if let Ok(name_status) = git(
+        dir,
+        &[
+            "diff",
+            "--name-status",
+            "--no-renames",
+            "--end-of-options",
+            base,
+        ],
+    ) {
         for line in name_status.lines() {
             let mut f = line.splitn(2, '\t');
             let code = f.next().unwrap_or("");

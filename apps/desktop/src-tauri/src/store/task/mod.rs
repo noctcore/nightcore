@@ -27,8 +27,8 @@ pub use model::*;
 // through this facade. The create-input plumbing (`CreateInputs`/`build_new_task`)
 // is `pub(crate)` — the create path (`commands::task`, `crud`) is its only caller —
 // so re-export it crate-visible.
-pub use patch::*;
 pub(crate) use create::*;
+pub use patch::*;
 
 /// The Tauri event carrying a single task to the webview. The UI upserts its
 /// board state by `task.id`, so every create/update/status change re-emits this.

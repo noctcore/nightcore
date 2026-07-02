@@ -318,7 +318,10 @@ mod tests {
             &serde_json::json!({"type":"tool-use-requested","toolName":"Write"}),
         );
         let d = digest(&store, &task.id, 1_000);
-        assert!(d.contains("Implemented login"), "includes assistant prose: {d}");
+        assert!(
+            d.contains("Implemented login"),
+            "includes assistant prose: {d}"
+        );
         assert!(d.contains("[Write]"), "includes the tool name: {d}");
     }
 
@@ -333,10 +336,20 @@ mod tests {
             &serde_json::json!({"type":"assistant-text","text":"abcdefghij"}),
         );
         let capped = digest(&store, &task.id, 4);
-        assert!(capped.starts_with('…'), "capped digest is ellipsis-prefixed: {capped:?}");
+        assert!(
+            capped.starts_with('…'),
+            "capped digest is ellipsis-prefixed: {capped:?}"
+        );
         // The ellipsis plus exactly `max_chars` trailing characters.
-        assert_eq!(capped.chars().count(), 5, "ellipsis + max_chars tail: {capped:?}");
-        assert!(capped.ends_with("ghij"), "keeps the most recent characters: {capped:?}");
+        assert_eq!(
+            capped.chars().count(),
+            5,
+            "ellipsis + max_chars tail: {capped:?}"
+        );
+        assert!(
+            capped.ends_with("ghij"),
+            "keeps the most recent characters: {capped:?}"
+        );
     }
 
     #[test]

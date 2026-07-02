@@ -10,8 +10,8 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::contracts::AnswerQuestionAnswerUnion;
 use crate::engine_api::EngineApi;
-use crate::provider::{PermissionDecision, Provider, SidecarProvider};
 use crate::project::ProjectStore;
+use crate::provider::{PermissionDecision, Provider, SidecarProvider};
 use crate::store::TaskStore;
 use crate::task::Task;
 
@@ -178,6 +178,9 @@ pub fn resolve_mcp_servers(app: &AppHandle) -> Vec<crate::contracts::McpServerEn
 /// the `approve-permission` SurfaceCommand to the sidecar. Fail-closed: an unknown
 /// `decision` is treated as a deny.
 #[tauri::command]
+// Tauri command surface: every arg is a wire field the web bridge passes by name;
+// bundling them into a struct would churn the generated bridge for no safety win.
+#[allow(clippy::too_many_arguments)]
 pub async fn respond_permission(
     app: AppHandle,
     store: State<'_, TaskStore>,
@@ -230,9 +233,7 @@ pub async fn answer_question(
         .ok_or_else(|| format!("no live session for task {task_id}"))?;
 
     tracing::debug!(target: "nightcore", task_id, session_id, "ask-user-question answer sent");
-    provider
-        .send_answer(session_id, &request_id, answer)
-        .await
+    provider.send_answer(session_id, &request_id, answer).await
 }
 
 /// Best-effort interrupt of a task's run. Aborts the slot's driver (if the loop

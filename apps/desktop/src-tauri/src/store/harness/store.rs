@@ -59,11 +59,7 @@ impl HarnessStore {
 
     /// One task-shaped proposal within a scan (cloned), if present. The convert-to-task
     /// command reads it to build the minted task's title/description/verify command.
-    pub fn get_proposal(
-        &self,
-        run_id: &str,
-        proposal_id: &str,
-    ) -> Option<StoredHarnessProposal> {
+    pub fn get_proposal(&self, run_id: &str, proposal_id: &str) -> Option<StoredHarnessProposal> {
         self.read(|runs| {
             runs.get(run_id)
                 .and_then(|r| r.proposals.iter().find(|p| p.id == proposal_id).cloned())

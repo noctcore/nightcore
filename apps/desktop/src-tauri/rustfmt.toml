@@ -1,0 +1,10 @@
+# rustfmt style lock for the Nightcore Rust core (apps/desktop/src-tauri).
+# Pins formatting so `cargo fmt --check` is a deterministic CI gate instead of
+# relying on each contributor's editor defaults. Only stable rustfmt options are
+# set (no nightly-only keys), so `cargo fmt` works on the stable toolchain CI
+# uses (dtolnay/rust-toolchain@stable). Edition is supplied by `cargo fmt` from
+# Cargo.toml, so it is intentionally not pinned here.
+max_width = 100
+newline_style = "Unix"
+use_field_init_shorthand = true
+use_try_shorthand = true

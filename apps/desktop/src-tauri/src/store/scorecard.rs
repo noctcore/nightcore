@@ -507,7 +507,11 @@ mod tests {
             .accumulate_reading("r1", reading("d1", "fp1"), 0.4, 5, 2)
             .unwrap();
         let got = store.get("r1").unwrap();
-        assert_eq!(got.readings.len(), 1, "the dimension's grade is persisted mid-run");
+        assert_eq!(
+            got.readings.len(),
+            1,
+            "the dimension's grade is persisted mid-run"
+        );
         assert_eq!(got.cost_usd, 0.4);
         assert_eq!(got.usage.input_tokens, 5);
 

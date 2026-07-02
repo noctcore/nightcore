@@ -167,8 +167,7 @@ impl TaskStore {
         let reloaded = read_dir_into_map(&dir);
         // Reseed the seq counter above the new dir's high-water mark so a project
         // switch keeps `seq` strictly increasing for every subsequent persist.
-        self.seq
-            .store(seq_high_water(&reloaded), Ordering::Relaxed);
+        self.seq.store(seq_high_water(&reloaded), Ordering::Relaxed);
         *crate::sync::lock_or_recover(&self.tasks) = reloaded;
         *crate::sync::lock_or_recover(&self.dir) = dir;
         // Drop the old project's per-task write locks — the new project's tasks get
@@ -327,8 +326,7 @@ impl TaskStore {
         self.write_file(&task)?;
         // Publish to memory after the write succeeds — memory never runs ahead of disk.
         // Re-`Arc` the mutated task so the map keeps sharing a pointer with readers.
-        crate::sync::lock_or_recover(&self.tasks)
-            .insert(task.id.clone(), Arc::new(task.clone()));
+        crate::sync::lock_or_recover(&self.tasks).insert(task.id.clone(), Arc::new(task.clone()));
         Ok(task)
     }
 
@@ -468,7 +466,9 @@ mod tests {
             let task = Task::new("t".into(), String::new());
             let id = task.id.clone();
             store.upsert(&task).expect("upsert");
-            store.mutate(&id, |t| t.status = TaskStatus::Ready).expect("mutate");
+            store
+                .mutate(&id, |t| t.status = TaskStatus::Ready)
+                .expect("mutate");
             let final_task = store
                 .mutate(&id, |t| t.status = TaskStatus::Done)
                 .expect("mutate");
@@ -520,7 +520,10 @@ mod tests {
         let restamped = store
             .mutate("legacy-1", |t| t.status = TaskStatus::Ready)
             .expect("mutate");
-        assert!(restamped.seq > 0, "a re-persisted legacy task gets a real seq");
+        assert!(
+            restamped.seq > 0,
+            "a re-persisted legacy task gets a real seq"
+        );
     }
 
     #[test]
@@ -707,9 +710,11 @@ mod tests {
 
         let handles: Vec<_> = ids
             .iter()
-            .cloned()
             .map(|id| {
                 let s = store.clone();
+                // Clone per-thread here (not via `.cloned()` on the iterator): `ids` is
+                // still borrowed by the verification loop after the join below.
+                let id = id.clone();
                 std::thread::spawn(move || {
                     for i in 0..iterations {
                         s.mutate(&id, |t| t.summary = Some(format!("v{i}")))
@@ -772,11 +777,17 @@ mod tests {
             let _ = store.mutate(&id, |t| t.summary = Some(format!("late{i}")));
         }
 
-        assert!(store.get(&id).is_none(), "removed task stays gone in memory");
+        assert!(
+            store.get(&id).is_none(),
+            "removed task stays gone in memory"
+        );
         assert!(!path.exists(), "no task file resurrected after the delete");
         // And a fresh load agrees — nothing lingers on disk.
         let reloaded = TaskStore::load_from(tmp.path().join("tasks"));
-        assert!(reloaded.get(&id).is_none(), "removed task absent after reload");
+        assert!(
+            reloaded.get(&id).is_none(),
+            "removed task absent after reload"
+        );
     }
 
     #[test]

@@ -94,7 +94,12 @@ fn project_dir(app: &AppHandle, project_id: &str) -> Result<PathBuf, String> {
 /// it via [`remove_other_formats`] only AFTER the new ref is committed, so a failed
 /// ref-record can't destroy the project's only readable image (see the command's
 /// rollback in `commands/settings.rs`).
-pub fn persist(app: &AppHandle, project_id: &str, format: &str, data: &str) -> Result<String, String> {
+pub fn persist(
+    app: &AppHandle,
+    project_id: &str,
+    format: &str,
+    data: &str,
+) -> Result<String, String> {
     let fmt = parse_format(format)?;
     // Base64 expands ~4 chars per 3 bytes, so an encoded string longer than this
     // can't decode to <= MAX_BG_BYTES. Reject on the ENCODED length first so a
@@ -166,7 +171,11 @@ pub fn read_data_url(app: &AppHandle, project_id: &str, format: &str) -> Result<
     let fmt = parse_format(format)?;
     let path = project_dir(app, project_id)?.join(format!("background.{}", ext_for(fmt)));
     let bytes = std::fs::read(&path).map_err(|e| format!("cannot read background: {e}"))?;
-    Ok(format!("data:{};base64,{}", mime_for(fmt), STANDARD.encode(bytes)))
+    Ok(format!(
+        "data:{};base64,{}",
+        mime_for(fmt),
+        STANDARD.encode(bytes)
+    ))
 }
 
 /// Remove a project's whole background dir. Idempotent: a missing dir is success (so

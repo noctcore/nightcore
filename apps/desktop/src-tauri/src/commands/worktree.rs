@@ -62,7 +62,9 @@ fn merge_preview_blocking(
     let store = app
         .try_state::<TaskStore>()
         .ok_or_else(|| "task store unavailable".to_string())?;
-    let task = store.get(id).ok_or_else(|| format!("no task with id {id}"))?;
+    let task = store
+        .get(id)
+        .ok_or_else(|| format!("no task with id {id}"))?;
     let project = active_project_path(app)?;
     let branch = task_branch(&task);
     // Preview against the task's chosen base (matching what `merge_task` will target),
@@ -85,7 +87,9 @@ fn worktree_diff_blocking(app: &AppHandle, id: &str) -> Result<WorktreeDiff, Str
     let store = app
         .try_state::<TaskStore>()
         .ok_or_else(|| "task store unavailable".to_string())?;
-    let task = store.get(id).ok_or_else(|| format!("no task with id {id}"))?;
+    let task = store
+        .get(id)
+        .ok_or_else(|| format!("no task with id {id}"))?;
     let project = active_project_path(app)?;
     let dir = worktree::worktree_path(&project, id);
     if !dir.exists() {
@@ -116,7 +120,9 @@ fn discard_worktree_blocking(app: &AppHandle, id: &str) -> Result<(), String> {
     let store = app
         .try_state::<TaskStore>()
         .ok_or_else(|| "task store unavailable".to_string())?;
-    let task = store.get(id).ok_or_else(|| format!("no task with id {id}"))?;
+    let task = store
+        .get(id)
+        .ok_or_else(|| format!("no task with id {id}"))?;
     // Refuse to pull a worktree out from under a live run (authoritative: the slot
     // lease). A finished/failed/idle task is safe to discard.
     if let Some(orch) = app.try_state::<crate::orchestration::coordinator::Orchestrator>() {

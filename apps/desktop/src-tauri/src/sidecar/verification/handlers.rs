@@ -6,13 +6,13 @@ use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
-use crate::store::types::StructureLockResult;
 use crate::kind;
-use crate::provider::SidecarProvider;
-use crate::worktree;
 use crate::project::ProjectStore;
+use crate::provider::SidecarProvider;
+use crate::store::types::StructureLockResult;
 use crate::store::TaskStore;
 use crate::task::{ProposedSubtask, Task, TaskKind, TaskStatus};
+use crate::worktree;
 
 use crate::sidecar::{apply_and_emit, finish_run, park_for_approval, Outcome};
 
@@ -162,8 +162,7 @@ pub(crate) async fn handle_build_completed(
     // the sweep (`--no-verify` bypasses the diff can't show).
     if lock.passed && review_dir.is_worktree {
         if let Some(project) = app.state::<ProjectStore>().active() {
-            let ledger =
-                crate::store::ledger::ledger_path(Path::new(&project.path), task_id);
+            let ledger = crate::store::ledger::ledger_path(Path::new(&project.path), task_id);
             crate::workflow::anti_gaming::append_anti_gaming_check(
                 &mut lock,
                 &review_dir.path,
@@ -208,7 +207,11 @@ pub(crate) async fn handle_build_completed(
     // folds into the same gate below.
     if lock.passed {
         if let Some(command) = task.verify_command.as_deref() {
-            crate::gauntlet_project::append_task_verify_command(&mut lock, command, &review_dir.path);
+            crate::gauntlet_project::append_task_verify_command(
+                &mut lock,
+                command,
+                &review_dir.path,
+            );
         }
     }
 
@@ -424,9 +427,15 @@ async fn maybe_auto_commit_on_verified(app: &AppHandle, store: &TaskStore, task_
     })
     .await
     {
-        Ok(Ok(())) => tracing::info!(target: "nightcore", task_id, "auto-committed task on verified"),
-        Ok(Err(e)) => tracing::info!(target: "nightcore", task_id, reason = %e, "auto-commit on verified skipped"),
-        Err(e) => tracing::warn!(target: "nightcore", task_id, error = %e, "auto-commit on verified failed to run"),
+        Ok(Ok(())) => {
+            tracing::info!(target: "nightcore", task_id, "auto-committed task on verified")
+        }
+        Ok(Err(e)) => {
+            tracing::info!(target: "nightcore", task_id, reason = %e, "auto-commit on verified skipped")
+        }
+        Err(e) => {
+            tracing::warn!(target: "nightcore", task_id, error = %e, "auto-commit on verified failed to run")
+        }
     }
 }
 

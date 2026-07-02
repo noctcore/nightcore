@@ -231,10 +231,17 @@ mod tests {
             r#"{"event":"session-end","sessionId":1}"#,
         ]);
         let msg = blocked_by_policy_message(&path).expect("denials present");
-        assert!(msg.starts_with("blocked by harness policy: 3 denied write(s)"), "{msg}");
+        assert!(
+            msg.starts_with("blocked by harness policy: 3 denied write(s)"),
+            "{msg}"
+        );
         assert!(msg.contains("migrations/0001.sql"), "{msg}");
         assert!(msg.contains("bun.lock"), "{msg}");
-        assert_eq!(msg.matches("migrations/0001.sql").count(), 1, "paths dedupe");
+        assert_eq!(
+            msg.matches("migrations/0001.sql").count(),
+            1,
+            "paths dedupe"
+        );
         assert!(msg.contains("+1 other policy denial"), "{msg}");
     }
 

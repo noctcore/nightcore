@@ -163,10 +163,7 @@ pub fn get_context_pack(project: State<'_, ProjectStore>) -> Result<Option<Strin
 /// Persist the curated context pack for the active project (the Constitution editor's
 /// save).
 #[tauri::command]
-pub fn set_context_pack(
-    project: State<'_, ProjectStore>,
-    content: String,
-) -> Result<(), String> {
+pub fn set_context_pack(project: State<'_, ProjectStore>, content: String) -> Result<(), String> {
     let path = active_project_path(&project)?;
     write_pack(&path, &content)
 }

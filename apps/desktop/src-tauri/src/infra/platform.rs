@@ -234,7 +234,11 @@ fn floor_dirs() -> Vec<String> {
 /// and skipping any already present. Unit-testable without touching the environment.
 #[cfg(not(windows))]
 fn merge_paths(base: &str, extra: &[String]) -> String {
-    let mut parts: Vec<String> = base.split(':').filter(|s| !s.is_empty()).map(str::to_string).collect();
+    let mut parts: Vec<String> = base
+        .split(':')
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
     for dir in extra {
         if !parts.iter().any(|p| p == dir) {
             parts.push(dir.clone());
@@ -270,13 +274,19 @@ mod tests {
                 "/Users/x/.cargo/bin".to_string(),
             ],
         );
-        assert_eq!(merged, "/usr/bin:/bin:/opt/homebrew/bin:/Users/x/.cargo/bin");
+        assert_eq!(
+            merged,
+            "/usr/bin:/bin:/opt/homebrew/bin:/Users/x/.cargo/bin"
+        );
     }
 
     #[test]
     #[cfg(not(windows))]
     fn merge_paths_handles_empty_base() {
-        assert_eq!(merge_paths("", &["/opt/homebrew/bin".to_string()]), "/opt/homebrew/bin");
+        assert_eq!(
+            merge_paths("", &["/opt/homebrew/bin".to_string()]),
+            "/opt/homebrew/bin"
+        );
     }
 
     #[test]

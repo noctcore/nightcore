@@ -6,11 +6,11 @@ use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
-use crate::provider::{Provider, SidecarProvider};
-use crate::worktree;
 use crate::project::ProjectStore;
+use crate::provider::{Provider, SidecarProvider};
 use crate::store::TaskStore;
 use crate::task::{Task, TaskKind};
+use crate::worktree;
 
 use crate::sidecar::commands::{
     resolve_context_pack, resolve_harness_policy, resolve_ledger_path, resolve_mcp_servers,

@@ -19,11 +19,7 @@ pub(crate) const EXIT_PLAN_MODE: &str = "ExitPlanMode";
 
 /// Build the `nc:permission` payload for an interactive permission prompt.
 /// Exported as a pure builder so it can be unit-tested without an AppHandle.
-pub(crate) fn build_permission_payload(
-    task_id: &str,
-    request_id: &str,
-    event: &Value,
-) -> Value {
+pub(crate) fn build_permission_payload(task_id: &str, request_id: &str, event: &Value) -> Value {
     serde_json::json!({
         "taskId": task_id,
         "requestId": request_id,
@@ -43,7 +39,10 @@ pub(crate) fn emit_permission_prompt(
     request_id: &str,
     event: &Value,
 ) {
-    let _ = app.emit(PERMISSION_EVENT, build_permission_payload(task_id, request_id, event));
+    let _ = app.emit(
+        PERMISSION_EVENT,
+        build_permission_payload(task_id, request_id, event),
+    );
 }
 
 /// Build the `nc:question` payload for an interactive AskUserQuestion prompt.
@@ -73,7 +72,10 @@ pub(crate) fn emit_question_prompt(
     request_id: &str,
     event: &Value,
 ) {
-    let _ = app.emit(QUESTION_EVENT, build_question_payload(task_id, request_id, event));
+    let _ = app.emit(
+        QUESTION_EVENT,
+        build_question_payload(task_id, request_id, event),
+    );
 }
 
 /// The plan-approval gate (M3 §C): the agent finished a plan in `plan` mode and
@@ -121,9 +123,15 @@ mod tests {
         let event = json!({ "input": { "other": "value" } });
         let result = extract_plan(&event);
         // The fallback renders the whole input as a JSON string — not None.
-        assert!(result.is_some(), "should fall back to input.to_string(), not None");
+        assert!(
+            result.is_some(),
+            "should fall back to input.to_string(), not None"
+        );
         let s = result.unwrap();
-        assert!(s.contains("other"), "fallback string should include the input content");
+        assert!(
+            s.contains("other"),
+            "fallback string should include the input content"
+        );
     }
 
     #[test]

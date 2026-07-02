@@ -3,7 +3,7 @@
 //!
 //! Each feature's `*Store` is a [`RunStore<TheirRun>`] type alias; this module owns
 //! the correctness-sensitive run-level CRUD in exactly ONE audited place:
-//!   - disk-first `upsert` ordering (persist, then insert, then prune),
+//!   - disk-first `upsert_if_idle` ordering (persist, then insert, then prune),
 //!   - the prune-by-age cap ([`MAX_RUNS`]),
 //!   - the boot-only `reap_running` interrupt-marking,
 //!   - and the load → mutate → persist → reinsert lock discipline (`edit_run`).
@@ -28,7 +28,7 @@ use serde::Serialize;
 
 use crate::store::{is_safe_task_id, write_atomic};
 
-/// Keep at most this many runs per project on disk + in memory; [`RunStore::upsert`]
+/// Keep at most this many runs per project on disk + in memory; [`RunStore::upsert_if_idle`]
 /// prunes the oldest beyond it so run history (and its resident item `Vec`s) can't
 /// grow unbounded across re-runs.
 pub(crate) const MAX_RUNS: usize = 50;
@@ -155,8 +155,10 @@ impl<R: PersistedRun> RunStore<R> {
             .map_err(|e| format!("failed to persist {} {}: {e}", R::RUN_LABEL, run.id()))
     }
 
-    /// Insert or replace a run and write its file (disk-first), then prune the oldest
-    /// runs beyond [`MAX_RUNS`].
+    /// Unconditional insert-or-replace (persist, insert, prune) — the test-seeding
+    /// escape hatch. Production run creation goes through [`RunStore::upsert_if_idle`]
+    /// so the single-flight guard can't be bypassed outside tests.
+    #[cfg(test)]
     pub fn upsert(&self, run: &R) -> Result<(), String> {
         let mut guard = crate::sync::lock_or_recover(&self.runs);
         self.persist(run)?;
@@ -184,8 +186,8 @@ impl<R: PersistedRun> RunStore<R> {
     }
 
     /// Drop the oldest runs (by `created_at`) beyond [`MAX_RUNS`], deleting their files.
-    /// Called under the `runs` lock from `upsert`. Best-effort on the file delete (a
-    /// failed unlink is logged, not fatal — the in-memory cap still holds).
+    /// Called under the `runs` lock from `upsert_if_idle`. Best-effort on the file delete
+    /// (a failed unlink is logged, not fatal — the in-memory cap still holds).
     fn prune_locked(&self, guard: &mut MutexGuard<'_, HashMap<String, R>>) {
         if guard.len() <= MAX_RUNS {
             return;

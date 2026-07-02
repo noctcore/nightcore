@@ -97,7 +97,8 @@ pub fn append_ratchet_check(
     let regressions = compare(&baseline, &current);
     // The "command" surfaced on the check is the reproducible measurement, so a
     // human can re-derive the counts the verdict is based on.
-    let command = format!("git ls-files -z -- '*.ts' '*.tsx' | xargs -0 grep -c … (vs {BASELINE_REL_PATH})");
+    let command =
+        format!("git ls-files -z -- '*.ts' '*.tsx' | xargs -0 grep -c … (vs {BASELINE_REL_PATH})");
     if regressions.is_empty() {
         tracing::info!(target: "nightcore::ratchet", "strictness ratchet held");
         result.checks.push(StructureLockCheck {
@@ -218,7 +219,11 @@ fn compare(baseline: &RatchetCounts, current: &RatchetCounts) -> Vec<String> {
     let pairs = [
         ("any", baseline.any, current.any),
         ("tsIgnore", baseline.ts_ignore, current.ts_ignore),
-        ("eslintDisable", baseline.eslint_disable, current.eslint_disable),
+        (
+            "eslintDisable",
+            baseline.eslint_disable,
+            current.eslint_disable,
+        ),
     ];
     pairs
         .iter()
@@ -290,12 +295,24 @@ mod tests {
 
     #[test]
     fn compare_lists_only_regressions_with_wire_names() {
-        let baseline = RatchetCounts { any: 41, ts_ignore: 5, eslint_disable: 3 };
+        let baseline = RatchetCounts {
+            any: 41,
+            ts_ignore: 5,
+            eslint_disable: 3,
+        };
         // Improvement + hold ⇒ nothing listed.
-        let better = RatchetCounts { any: 40, ts_ignore: 5, eslint_disable: 0 };
+        let better = RatchetCounts {
+            any: 40,
+            ts_ignore: 5,
+            eslint_disable: 0,
+        };
         assert!(compare(&baseline, &better).is_empty());
 
-        let worse = RatchetCounts { any: 44, ts_ignore: 5, eslint_disable: 4 };
+        let worse = RatchetCounts {
+            any: 44,
+            ts_ignore: 5,
+            eslint_disable: 4,
+        };
         let regressions = compare(&baseline, &worse);
         assert_eq!(
             regressions,
@@ -306,7 +323,11 @@ mod tests {
 
     #[test]
     fn counts_serialize_with_wire_names_and_tolerate_missing_fields() {
-        let counts = RatchetCounts { any: 1, ts_ignore: 2, eslint_disable: 3 };
+        let counts = RatchetCounts {
+            any: 1,
+            ts_ignore: 2,
+            eslint_disable: 3,
+        };
         let json = serde_json::to_value(RatchetBaseline { counts }).unwrap();
         assert_eq!(json["counts"]["any"], 1);
         assert_eq!(json["counts"]["tsIgnore"], 2);
@@ -328,7 +349,10 @@ mod tests {
         std::fs::create_dir_all(tmp.path().join(".nightcore")).expect("mkdir");
         std::fs::write(tmp.path().join(BASELINE_REL_PATH), "{ nope").expect("write");
         append_ratchet_check(&mut result, tmp.path(), tmp.path());
-        assert!(result.passed && result.checks.is_empty(), "malformed ⇒ skip");
+        assert!(
+            result.passed && result.checks.is_empty(),
+            "malformed ⇒ skip"
+        );
     }
 
     /// The full real-git ratchet cycle: snapshot a baseline, hold ⇒ visible
@@ -355,7 +379,14 @@ mod tests {
         std::fs::write(repo.join("scratch.ts"), "x as any; y as any;\n").expect("write");
 
         let counts = snapshot(&repo).expect("snapshot");
-        assert_eq!(counts, RatchetCounts { any: 1, ts_ignore: 1, eslint_disable: 0 });
+        assert_eq!(
+            counts,
+            RatchetCounts {
+                any: 1,
+                ts_ignore: 1,
+                eslint_disable: 0
+            }
+        );
         assert!(
             repo.join(BASELINE_REL_PATH).exists(),
             "the baseline was persisted"
@@ -378,7 +409,10 @@ mod tests {
         let mut regressed = StructureLockResult::empty_pass();
         append_ratchet_check(&mut regressed, &repo, &repo);
         assert!(!regressed.passed);
-        assert_eq!(regressed.failed_check.as_deref(), Some("strictness-ratchet"));
+        assert_eq!(
+            regressed.failed_check.as_deref(),
+            Some("strictness-ratchet")
+        );
         let output = regressed.checks[0].output.as_deref().unwrap();
         assert!(output.contains("any: 1 → 2 (+1)"), "{output}");
         assert!(

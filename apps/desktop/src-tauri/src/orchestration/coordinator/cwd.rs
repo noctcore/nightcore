@@ -6,9 +6,9 @@ use std::path::PathBuf;
 
 use tauri::{AppHandle, Manager};
 
-use crate::worktree;
 use crate::project::ProjectStore;
 use crate::store::TaskStore;
+use crate::worktree;
 
 /// Resolve the run cwd for a task, branching on its `run_mode` (M4.6 §B). Returns
 /// `Ok(None)` when there is no active project (run in the workspace root, M1

@@ -22,10 +22,10 @@ mod convert;
 mod harness;
 mod insight;
 mod permission;
-mod scan;
-mod scorecard;
 mod provider_config;
 mod reader;
+mod scan;
+mod scorecard;
 mod sessions;
 mod verification;
 

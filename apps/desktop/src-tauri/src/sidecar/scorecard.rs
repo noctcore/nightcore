@@ -17,8 +17,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::contracts::{EffortLevel, ScorecardDimension, SurfaceCommand};
 use crate::project::ProjectStore;
-use crate::store::scorecard::{ScorecardRun, ScorecardStore, StoredReading};
 use crate::store::insight::InsightUsage;
+use crate::store::scorecard::{ScorecardRun, ScorecardStore, StoredReading};
 use crate::store::TaskStore;
 use crate::task::{Task, TaskKind, TASK_EVENT};
 
@@ -278,17 +278,17 @@ pub(crate) async fn handle_scorecard_event(app: &AppHandle, event_type: &str, ev
                 run_id,
                 &tel,
                 move |run| {
-                    let prior: std::collections::HashMap<String, (String, Option<String>)> =
-                        run.readings
-                            .iter()
-                            .filter(|r| r.status != "open")
-                            .map(|r| {
-                                (
-                                    r.fingerprint.clone(),
-                                    (r.status.clone(), r.linked_task_id.clone()),
-                                )
-                            })
-                            .collect();
+                    let prior: std::collections::HashMap<String, (String, Option<String>)> = run
+                        .readings
+                        .iter()
+                        .filter(|r| r.status != "open")
+                        .map(|r| {
+                            (
+                                r.fingerprint.clone(),
+                                (r.status.clone(), r.linked_task_id.clone()),
+                            )
+                        })
+                        .collect();
                     let mut merged = readings;
                     for r in &mut merged {
                         if let Some((status, link)) = prior.get(&r.fingerprint) {
@@ -415,7 +415,10 @@ mod tests {
 
     #[test]
     fn wire_str_serializes_dimension_to_wire_string() {
-        assert_eq!(wire_str(&ScorecardDimension::ErrorHandling), "error-handling");
+        assert_eq!(
+            wire_str(&ScorecardDimension::ErrorHandling),
+            "error-handling"
+        );
         assert_eq!(wire_str(&ScorecardDimension::DocsCi), "docs-ci");
     }
 }

@@ -85,7 +85,11 @@ fn task_dir(app: &AppHandle, task_id: &str) -> Result<PathBuf, String> {
 /// task JSON authored elsewhere and shared in) can't traverse out of the task dir
 /// on read/delete. Server-minted uuids satisfy the rule, so this never rejects a
 /// legitimate ref.
-fn attachment_path(app: &AppHandle, task_id: &str, att: &TaskAttachment) -> Result<PathBuf, String> {
+fn attachment_path(
+    app: &AppHandle,
+    task_id: &str,
+    att: &TaskAttachment,
+) -> Result<PathBuf, String> {
     if !super::is_safe_task_id(&att.id) {
         return Err("invalid attachment id".to_string());
     }
@@ -99,7 +103,13 @@ fn attachment_path(app: &AppHandle, task_id: &str, att: &TaskAttachment) -> Resu
 fn sanitize_filename(name: &str) -> String {
     let cleaned: String = name
         .chars()
-        .map(|c| if c.is_control() || c == '/' || c == '\\' { '_' } else { c })
+        .map(|c| {
+            if c.is_control() || c == '/' || c == '\\' {
+                '_'
+            } else {
+                c
+            }
+        })
         .collect();
     let trimmed = cleaned.trim().trim_start_matches('.').trim();
     if trimmed.is_empty() {

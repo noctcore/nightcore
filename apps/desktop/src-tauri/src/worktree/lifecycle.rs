@@ -29,7 +29,13 @@ pub fn allocate(project_path: &Path, task_id: &str) -> Result<PathBuf, String> {
     // out into a fresh worktree instead of creating it.
     let branch_exists = git(
         project_path,
-        &["rev-parse", "--verify", "--quiet", "--end-of-options", &branch],
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            "--end-of-options",
+            &branch,
+        ],
     )
     .is_ok();
 
@@ -72,7 +78,13 @@ pub fn allocate_branch(
     validate_ref(branch)?;
     let branch_exists = git(
         project_path,
-        &["rev-parse", "--verify", "--quiet", "--end-of-options", branch],
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            "--end-of-options",
+            branch,
+        ],
     )
     .is_ok();
     let args: Vec<&str> = if branch_exists {
@@ -82,7 +94,15 @@ pub fn allocate_branch(
         // Create `branch` off `base`. `-b <branch>` consumes `branch` as the flag's
         // argument; `--end-of-options` guards the trailing `base` positional.
         validate_ref(base)?;
-        vec!["worktree", "add", &dir_str, "-b", branch, "--end-of-options", base]
+        vec![
+            "worktree",
+            "add",
+            &dir_str,
+            "-b",
+            branch,
+            "--end-of-options",
+            base,
+        ]
     };
     git_worktree_add_retrying(project_path, &args)?;
     Ok(dir)

@@ -34,12 +34,7 @@ use ts_rs::TS;
 fn export_all_bindings() {
     use crate::commands::policy::{HarnessPolicyFile, HarnessPolicyPatch, PolicyDiffBudget};
     use crate::gauntlet::{GauntletResult, GauntletStep};
-    use crate::store::types::{StepStatus, StructureLockCheck, StructureLockResult};
     use crate::orchestration::coordinator::LoopSnapshot;
-    use crate::worktree::{
-        BranchInfo, DiffFileStat, DiffStatus, MergePreview, MergePreviewStatus, WorktreeDiff,
-        WorktreeDiffFile, WorktreeStatus,
-    };
     use crate::project::Project;
     use crate::settings::{
         AppInfo, BoardAppearance, BoardBackgroundRef, McpServerEntry, McpServerTransport, Settings,
@@ -49,9 +44,14 @@ fn export_all_bindings() {
     use crate::store::injection_scan::InjectionFlag;
     use crate::store::insight::{FindingLocation, InsightRun, InsightUsage, StoredFinding};
     use crate::store::scorecard::{ScorecardEvidence, ScorecardRun, StoredReading};
+    use crate::store::types::{StepStatus, StructureLockCheck, StructureLockResult};
     use crate::task::{
         PermissionMode, ProposedSubtask, RunMode, SubtaskStatus, Task, TaskKind, TaskPatch,
         TaskStatus,
+    };
+    use crate::worktree::{
+        BranchInfo, DiffFileStat, DiffStatus, MergePreview, MergePreviewStatus, WorktreeDiff,
+        WorktreeDiffFile, WorktreeStatus,
     };
 
     // `export_all` writes the type AND all of its `TS` dependencies, so exporting

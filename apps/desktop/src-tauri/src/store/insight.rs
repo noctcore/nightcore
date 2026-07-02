@@ -482,8 +482,14 @@ mod tests {
             .unwrap();
 
         let converted = store.converted_fingerprints(Some("new"));
-        assert_eq!(converted.get("shared-fp").map(String::as_str), Some("task-7"));
-        assert!(!converted.contains_key("other-fp"), "open findings are not carried");
+        assert_eq!(
+            converted.get("shared-fp").map(String::as_str),
+            Some("task-7")
+        );
+        assert!(
+            !converted.contains_key("other-fp"),
+            "open findings are not carried"
+        );
     }
 
     #[test]
@@ -590,7 +596,11 @@ mod tests {
             .accumulate_findings("r1", vec![finding("f1", "fp1")], &empty, 0.5, 10, 3)
             .unwrap();
         let got = store.get("r1").unwrap();
-        assert_eq!(got.findings.len(), 1, "the pass's finding is persisted mid-run");
+        assert_eq!(
+            got.findings.len(),
+            1,
+            "the pass's finding is persisted mid-run"
+        );
         assert_eq!(got.cost_usd, 0.5);
         assert_eq!(got.usage.input_tokens, 10);
 
@@ -614,7 +624,10 @@ mod tests {
             .accumulate_findings("done", vec![finding("f1", "fp1")], &empty, 1.0, 0, 0)
             .unwrap();
         let got = store.get("done").unwrap();
-        assert!(got.findings.is_empty(), "no incremental write once not running");
+        assert!(
+            got.findings.is_empty(),
+            "no incremental write once not running"
+        );
         assert_eq!(got.cost_usd, 0.0);
     }
 
@@ -648,10 +661,15 @@ mod tests {
         let mut second = run("r2", vec![]);
         second.status = "running".into();
         assert_eq!(store.upsert_if_idle(&second, "busy").unwrap_err(), "busy");
-        assert!(store.get("r2").is_none(), "the rejected run is not persisted");
+        assert!(
+            store.get("r2").is_none(),
+            "the rejected run is not persisted"
+        );
 
         // Once the first is no longer running, a new run is admitted again.
-        store.mutate("r1", |r| r.status = "completed".into()).unwrap();
+        store
+            .mutate("r1", |r| r.status = "completed".into())
+            .unwrap();
         store.upsert_if_idle(&second, "busy").unwrap();
         assert!(store.get("r2").is_some());
     }

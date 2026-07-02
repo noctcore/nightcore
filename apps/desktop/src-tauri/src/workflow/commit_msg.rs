@@ -258,11 +258,19 @@ mod tests {
 
     #[test]
     fn build_payload_orders_intent_then_digest_then_diff() {
-        let payload = build_payload("Add login", "OAuth flow", "[Read] wrote auth.ts", "diff --git a b");
+        let payload = build_payload(
+            "Add login",
+            "OAuth flow",
+            "[Read] wrote auth.ts",
+            "diff --git a b",
+        );
         let task_at = payload.find("### Task").unwrap();
         let notes_at = payload.find("### Agent notes").unwrap();
         let diff_at = payload.find("### Staged diff").unwrap();
-        assert!(task_at < notes_at && notes_at < diff_at, "sections are ordered");
+        assert!(
+            task_at < notes_at && notes_at < diff_at,
+            "sections are ordered"
+        );
         assert!(payload.contains("Add login"));
         assert!(payload.contains("OAuth flow"));
         assert!(payload.contains("diff --git a b"));
@@ -271,7 +279,10 @@ mod tests {
     #[test]
     fn build_payload_omits_empty_digest_and_description() {
         let payload = build_payload("Title only", "", "", "the diff");
-        assert!(!payload.contains("### Agent notes"), "no notes section when digest empty");
+        assert!(
+            !payload.contains("### Agent notes"),
+            "no notes section when digest empty"
+        );
         assert!(payload.contains("Title only"));
         assert!(payload.contains("the diff"));
     }

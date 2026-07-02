@@ -51,6 +51,10 @@ pub trait EngineApi: Send + Sync {
     async fn interrupt_all(&self, app: &AppHandle);
     /// The shared launch sequence behind the auto-loop and the manual `run_task`
     /// command. `feed_breaker` feeds the circuit breaker only for the auto-loop.
-    async fn submit_run(&self, app: &AppHandle, task_id: &str, feed_breaker: bool)
-        -> Result<(), String>;
+    async fn submit_run(
+        &self,
+        app: &AppHandle,
+        task_id: &str,
+        feed_breaker: bool,
+    ) -> Result<(), String>;
 }

@@ -45,7 +45,13 @@ pub fn delete_branch_named(project_path: &Path, branch: &str) -> Result<(), Stri
     }
     if git_status_success(
         project_path,
-        &["rev-parse", "--verify", "--quiet", "--end-of-options", branch],
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            "--end-of-options",
+            branch,
+        ],
     ) {
         git(project_path, &["branch", "-D", "--end-of-options", branch])?;
     }

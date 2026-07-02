@@ -254,9 +254,7 @@ const MAX_COMMAND_EXCERPT: usize = 120;
 fn detect_ledger_findings(records: &[crate::store::ledger::LedgerRecord]) -> Vec<Finding> {
     let mut findings = Vec::new();
     for record in records {
-        if record.tool.as_deref() != Some("Bash")
-            || record.decision.as_deref() != Some("allow")
-        {
+        if record.tool.as_deref() != Some("Bash") || record.decision.as_deref() != Some("allow") {
             continue;
         }
         let Some(digest) = record.input_digest.as_deref() else {
@@ -434,7 +432,11 @@ mod tests {
         // All three test-path conventions are recognized.
         for path in ["a/b.test.tsx", "a/b.spec.ts", "src/__tests__/b.ts"] {
             let diff = diff_for(path, &["+it.only('x', () => {})"]);
-            assert_eq!(detect_findings(&diff).len(), 1, "path {path:?} is a test file");
+            assert_eq!(
+                detect_findings(&diff).len(),
+                1,
+                "path {path:?} is a test file"
+            );
         }
     }
 
@@ -450,18 +452,28 @@ mod tests {
         // REMOVING a `.only(` is the fix, not the crime; context lines are ambient.
         let diff = diff_for(
             "src/foo.test.ts",
-            &["-it.only('x', () => {})", " it.only('pre-existing', () => {})"],
+            &[
+                "-it.only('x', () => {})",
+                " it.only('pre-existing', () => {})",
+            ],
         );
         let findings = detect_findings(&diff);
         // The removed line still counts toward the gutting tally only if it is an
         // assertion — `.only(` is not — so nothing at all is flagged here.
-        assert!(findings.is_empty(), "removed/context lines are not findings: {findings:?}");
+        assert!(
+            findings.is_empty(),
+            "removed/context lines are not findings: {findings:?}"
+        );
     }
 
     #[test]
     fn suppressions_flagged_in_any_file_but_ts_expect_error_is_sanctioned() {
         let diff = diff_for("src/anything.rs", &["+// @ts-ignore"]);
-        assert_eq!(detect_findings(&diff).len(), 1, "@ts-ignore flagged in any file");
+        assert_eq!(
+            detect_findings(&diff).len(),
+            1,
+            "@ts-ignore flagged in any file"
+        );
 
         for variant in [
             "+/* eslint-disable */",
@@ -521,9 +533,15 @@ mod tests {
         // Removed AND added assertions ⇒ a rewrite, not gutting.
         let diff = diff_for(
             "src/math.test.ts",
-            &["-  expect(add(1, 2)).toBe(3)", "+  expect(add(1, 2)).toStrictEqual(3)"],
+            &[
+                "-  expect(add(1, 2)).toBe(3)",
+                "+  expect(add(1, 2)).toStrictEqual(3)",
+            ],
         );
-        assert!(detect_findings(&diff).is_empty(), "a rewrite is not gutting");
+        assert!(
+            detect_findings(&diff).is_empty(),
+            "a rewrite is not gutting"
+        );
 
         // A DELETED test file is a scope decision the reviewer sees in the diff
         // anyway — the gutting detector targets stealth edits to surviving files.
@@ -533,11 +551,17 @@ mod tests {
                        +++ /dev/null\n\
                        @@ -1,1 +0,0 @@\n\
                        -expect(x).toBe(1)\n";
-        assert!(detect_findings(deleted).is_empty(), "deleted files are exempt");
+        assert!(
+            detect_findings(deleted).is_empty(),
+            "deleted files are exempt"
+        );
 
         // Assertion-looking removals outside test files are none of our business.
         let diff = diff_for("src/util.ts", &["-  assert(invariant)"]);
-        assert!(detect_findings(&diff).is_empty(), "non-test files are exempt");
+        assert!(
+            detect_findings(&diff).is_empty(),
+            "non-test files are exempt"
+        );
     }
 
     #[test]
@@ -581,7 +605,10 @@ mod tests {
         assert!(evidence.contains("… and 3 more"), "{evidence}");
         // The instruction the auto-fix agent acts on leads the output.
         assert!(evidence.starts_with("Anti-gaming sweep:"));
-        assert!(evidence.contains("@ts-expect-error"), "names the sanctioned form");
+        assert!(
+            evidence.contains("@ts-expect-error"),
+            "names the sanctioned form"
+        );
     }
 
     #[test]
@@ -596,7 +623,10 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("temp dir");
         let mut result = StructureLockResult::empty_pass();
         append_anti_gaming_check(&mut result, tmp.path(), tmp.path(), None);
-        assert!(result.passed, "infrastructure failure must not fail the gate");
+        assert!(
+            result.passed,
+            "infrastructure failure must not fail the gate"
+        );
         assert!(result.checks.is_empty(), "nothing appended on skip");
     }
 
@@ -627,7 +657,10 @@ mod tests {
         ]);
         let findings = detect_ledger_findings(&records);
         assert_eq!(findings.len(), 1, "{findings:?}");
-        assert!(findings[0].file.contains("git commit -m x --no-verify"), "{findings:?}");
+        assert!(
+            findings[0].file.contains("git commit -m x --no-verify"),
+            "{findings:?}"
+        );
         assert!(findings[0].pattern.contains("hook bypass"), "{findings:?}");
     }
 
@@ -637,7 +670,9 @@ mod tests {
         assert!(contains_no_verify("git commit --no-verify -m x"));
         assert!(contains_no_verify("git push --no-verify"));
         // The DISTINCT git flag --no-verify-signatures must not fire.
-        assert!(!contains_no_verify("git merge --no-verify-signatures branch"));
+        assert!(!contains_no_verify(
+            "git merge --no-verify-signatures branch"
+        ));
         // Mid-identifier / longer-dash-run occurrences must not fire.
         assert!(!contains_no_verify("echo x--no-verify"));
         assert!(!contains_no_verify("run ---no-verify"));
@@ -687,10 +722,16 @@ mod tests {
 
         let mut result = StructureLockResult::empty_pass();
         append_anti_gaming_check(&mut result, &wt, &repo, Some(&ledger));
-        assert!(!result.passed, "a ledger hit fails the gate even with a clean diff");
+        assert!(
+            !result.passed,
+            "a ledger hit fails the gate even with a clean diff"
+        );
         assert_eq!(result.failed_check.as_deref(), Some("anti-gaming"));
         let output = result.checks[0].output.as_deref().unwrap();
-        assert!(output.contains("--no-verify"), "evidence names the flag: {output}");
+        assert!(
+            output.contains("--no-verify"),
+            "evidence names the flag: {output}"
+        );
         assert!(output.contains("hook bypass"), "{output}");
 
         // The same sweep with NO ledger stays clean (the diff half is innocent).
@@ -724,7 +765,10 @@ mod tests {
         assert!(run(&wt, &["add", "."]) && run(&wt, &["commit", "-q", "-m", "honest work"]));
         let mut clean = StructureLockResult::empty_pass();
         append_anti_gaming_check(&mut clean, &wt, &repo, None);
-        assert!(clean.passed && clean.checks.is_empty(), "clean diff appends nothing");
+        assert!(
+            clean.passed && clean.checks.is_empty(),
+            "clean diff appends nothing"
+        );
 
         // Gaming change: a focused test fails the gate with evidence.
         std::fs::write(
@@ -740,10 +784,19 @@ mod tests {
         let check = &gamed.checks[0];
         assert_eq!(check.kind, "anti-gaming");
         assert_eq!(check.status, StepStatus::Failed);
-        assert!(check.command.starts_with("git diff "), "reproducible command");
+        assert!(
+            check.command.starts_with("git diff "),
+            "reproducible command"
+        );
         let output = check.output.as_deref().unwrap();
-        assert!(output.contains("math.test.ts"), "evidence names the file: {output}");
-        assert!(output.contains(".only("), "evidence names the pattern: {output}");
+        assert!(
+            output.contains("math.test.ts"),
+            "evidence names the file: {output}"
+        );
+        assert!(
+            output.contains(".only("),
+            "evidence names the pattern: {output}"
+        );
     }
 
     /// Real git repo with one commit, or `None` when git is unavailable

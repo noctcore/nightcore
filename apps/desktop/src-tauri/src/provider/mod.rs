@@ -133,6 +133,9 @@ pub trait Provider: Send + Sync {
     /// method — WITHOUT a `match provider` branch in the inspector. `dir` is the
     /// project root resolution keys off; `None` ⇒ the engine's cwd. Returns the raw
     /// `query-result` payload (a `Value`) for the caller to map.
+    // Deliberate provider-seam API (the multi-provider override point described above);
+    // the inspector command currently issues the query directly, so no caller yet.
+    #[allow(dead_code)]
     async fn provider_config(&self, dir: Option<String>) -> Result<Value, String> {
         let query = SurfaceQuery::GetProviderConfig {
             // `requestId` is overwritten by `query` with a fresh uuid.

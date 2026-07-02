@@ -20,7 +20,7 @@ mod verdict;
 // `verdict`'s pure helpers are reached in-crate via `super::verdict` (handlers) and
 // aren't part of the external contract, so this path-preserving re-export currently
 // has no consumer — allow the unused-glob warning (sidecar/mod.rs:53 convention).
-#[allow(unused_imports)]
-pub use verdict::*;
 pub(crate) use dispatch::*;
 pub(crate) use handlers::*;
+#[allow(unused_imports)]
+pub use verdict::*;

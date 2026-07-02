@@ -213,7 +213,9 @@ mod tests {
         // (SIGABRT, nightcore-2026-06-27-161645.ips). Using catch_unwind so the panic
         // is caught rather than crashing the test runner.
         let result = std::panic::catch_unwind(|| {
-            let _ = tokio::spawn(async {});
+            // Explicit drop of the JoinHandle: the spawn is EXPECTED to panic before
+            // one ever exists — the panic is the assertion, not the spawned work.
+            drop(tokio::spawn(async {}));
         });
         assert!(
             result.is_err(),
