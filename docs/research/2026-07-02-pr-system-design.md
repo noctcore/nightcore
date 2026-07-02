@@ -1,7 +1,7 @@
 # The Pull Request System — full-arc design
 
 **Date:** 2026-07-02
-**Status:** phases 1–3 SHIPPED (Create PR / status+finalize+push / address-review-comments); phase 4 (AI PR reviewer) not yet built. NOT dogfooded against a real remote — all `gh` interactions fake-binary tested; E2E deferred to after the build phases.
+**Status:** ALL FOUR PHASES SHIPPED (1 Create PR / 2 status+finalize+push / 3 address-review-comments / 4 AI PR reviewer scan sibling). NOT dogfooded against a real remote — all `gh` interactions fake-binary tested; E2E deferred to after the build phases. Phase-4 divergence from §6: DIFF-CENTRIC (no `gh pr checkout`, no temp worktree) — review sessions are read-only (no execution surface) so the diff is the untrusted material (grounding is diff-relative to the PR's changed files); the foreign-PR sandboxed-checkout is deliberately DEFERRED (recipe known). Post-review is one atomic `gh api POST .../reviews` (event + body + inline comments), human-gated.
 **Reference implementation studied:** Auto-Claude (`AndyMik90/Auto-Claude`, Electron+React) — its local task-review + `gh pr create` escape hatch, and its separate multi-agent GitHub PR reviewer.
 
 ---
