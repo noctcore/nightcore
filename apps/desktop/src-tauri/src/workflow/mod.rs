@@ -17,5 +17,7 @@ pub(crate) mod gauntlet_project;
 pub(crate) mod kind;
 pub(crate) mod merge;
 pub(crate) mod plan_approval;
+pub(crate) mod pr;
+pub(crate) mod pr_msg;
 pub(crate) mod ratchet;
 pub(crate) mod secret_scan;

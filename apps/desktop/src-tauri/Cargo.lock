@@ -2080,6 +2080,7 @@ dependencies = [
  "tree-sitter-rust",
  "tree-sitter-typescript",
  "ts-rs",
+ "url",
  "uuid",
  "which",
 ]

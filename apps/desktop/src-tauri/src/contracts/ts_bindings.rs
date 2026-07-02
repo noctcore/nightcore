@@ -49,6 +49,7 @@ fn export_all_bindings() {
         PermissionMode, ProposedSubtask, RunMode, SubtaskStatus, Task, TaskKind, TaskPatch,
         TaskStatus,
     };
+    use crate::workflow::pr::{PrDraft, PrSupport};
     use crate::worktree::{
         BranchInfo, DiffFileStat, DiffStatus, MergePreview, MergePreviewStatus, WorktreeDiff,
         WorktreeDiffFile, WorktreeStatus,
@@ -129,6 +130,9 @@ fn export_all_bindings() {
         HarnessPolicyPatch,
         PolicyDiffBudget,
         InjectionFlag,
+        // PR arc (phase 1): the capability probe + the editable draft shape.
+        PrSupport,
+        PrDraft,
     );
 }
 
@@ -201,6 +205,8 @@ mod tests {
             "HarnessPolicyPatch.ts",
             "PolicyDiffBudget.ts",
             "InjectionFlag.ts",
+            "PrSupport.ts",
+            "PrDraft.ts",
         ] {
             assert!(
                 dir.join(file).exists(),
