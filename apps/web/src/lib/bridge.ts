@@ -19,6 +19,8 @@ import {
 import type { ImageFormat,NewAttachmentPayload } from './attachments';
 import { imageDataUrl } from './attachments';
 import type { BoardBackgroundRef } from './generated/BoardBackgroundRef';
+import type { PrDraft } from './generated/PrDraft';
+import type { PrSupport } from './generated/PrSupport';
 
 export type { SessionStatus } from '@nightcore/contracts';
 
@@ -50,9 +52,11 @@ export type { McpServerSummary } from './generated/McpServerSummary';
 export type { McpServerTransport } from './generated/McpServerTransport';
 export type { MergePreview } from './generated/MergePreview';
 export type { MergePreviewStatus } from './generated/MergePreviewStatus';
+export type { PrDraft } from './generated/PrDraft';
 export type { Project } from './generated/Project';
 export type { ProviderConfigSection } from './generated/ProviderConfigSection';
 export type { ProviderConfigSnapshot } from './generated/ProviderConfigSnapshot';
+export type { PrSupport } from './generated/PrSupport';
 export type { RunMode } from './generated/RunMode';
 export type { SessionInfo } from './generated/SessionInfo';
 export type { SessionMessage } from './generated/SessionMessage';
@@ -581,27 +585,6 @@ export async function mergeTask(id: string): Promise<void> {
 }
 
 // --- Pull requests ----------------------------------------------------------
-//
-// NOTE: `PrSupport` / `PrDraft` mirror the ts-rs-exported Rust structs from the
-// PR-system backend (`pr_support` / `draft_pr_message`). They are declared
-// locally (exact contract shapes) until the generated bindings land under
-// `./generated/`; switch these to `export type { … } from './generated/…'`
-// once `cargo test` has emitted them.
-
-/** Capability probe for the Create PR action: whether the user's `gh` CLI is
- *  installed and whether the project has an `origin` remote. Both must be green
- *  for the button to show — the UI gates honestly instead of failing on click. */
-export interface PrSupport {
-  ghInstalled: boolean;
-  remote: string | null;
-}
-
-/** An AI-drafted pull-request title/body pair (deterministic fallback: the task
- *  title and description) used to pre-fill the Create PR dialog. */
-export interface PrDraft {
-  title: string;
-  body: string;
-}
 
 /** Options for {@link createPrTask}. `base` omitted ⇒ the backend resolves the
  *  task's base branch exactly like merge does. */
