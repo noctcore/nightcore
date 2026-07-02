@@ -32,6 +32,7 @@ use ts_rs::TS;
 /// codegen fails the test rather than silently skipping a type.
 #[cfg(test)]
 fn export_all_bindings() {
+    use crate::commands::policy::{HarnessPolicyFile, HarnessPolicyPatch, PolicyDiffBudget};
     use crate::gauntlet::{GauntletResult, GauntletStep};
     use crate::store::types::{StepStatus, StructureLockCheck, StructureLockResult};
     use crate::orchestration::coordinator::LoopSnapshot;
@@ -45,6 +46,7 @@ fn export_all_bindings() {
         SettingsOverride, SettingsPatch,
     };
     use crate::sidecar::{ProviderConfigSnapshotView, SessionInfoView, SessionMessageView};
+    use crate::store::injection_scan::InjectionFlag;
     use crate::store::insight::{FindingLocation, InsightRun, InsightUsage, StoredFinding};
     use crate::store::scorecard::{ScorecardEvidence, ScorecardRun, StoredReading};
     use crate::task::{
@@ -121,6 +123,12 @@ fn export_all_bindings() {
         ScorecardRun,
         StoredReading,
         ScorecardEvidence,
+        // Harness policy authoring: the manifest's `policy` block as the editor
+        // reads/patches it, plus the injection-scan flag rows it quarantines.
+        HarnessPolicyFile,
+        HarnessPolicyPatch,
+        PolicyDiffBudget,
+        InjectionFlag,
     );
 }
 
@@ -189,6 +197,10 @@ mod tests {
             "StoredFinding.ts",
             "FindingLocation.ts",
             "InsightUsage.ts",
+            "HarnessPolicyFile.ts",
+            "HarnessPolicyPatch.ts",
+            "PolicyDiffBudget.ts",
+            "InjectionFlag.ts",
         ] {
             assert!(
                 dir.join(file).exists(),

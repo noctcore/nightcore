@@ -20,9 +20,15 @@
 
 use std::path::Path;
 
+// `ts-rs` is a dev-dependency; the codegen derive is gated to `cfg(test)`.
+#[cfg(test)]
+use ts_rs::TS;
+
 /// One flagged file: its repo-relative path and every detector that fired.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(TS))]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "InjectionFlag.ts"))]
 pub struct InjectionFlag {
     pub path: String,
     pub reasons: Vec<String>,

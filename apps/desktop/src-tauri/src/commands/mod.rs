@@ -6,6 +6,7 @@
 //! orchestration. Phase 2 moves the TASK, PROJECT, and SETTINGS command families
 //! here.
 
+pub mod policy;
 pub mod project;
 pub mod settings;
 pub mod task;

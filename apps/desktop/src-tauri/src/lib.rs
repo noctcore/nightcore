@@ -200,6 +200,8 @@ pub fn run() {
             gauntlet::run_gauntlet,
             workflow::ratchet::snapshot_ratchet_baseline,
             store::injection_scan::scan_injection_surface,
+            commands::policy::get_harness_policy_file,
+            commands::policy::update_harness_policy_file,
             commands::project::list_projects,
             commands::project::active_project,
             commands::project::create_project,
