@@ -45,6 +45,12 @@ use crate::worktree::{self, validate_ref};
 /// parameterized seams below (tests inject fake scripts instead).
 const GH_BINARY: &str = "gh";
 
+/// Wall-clock bound on every network-facing `gh` spawn (create + view). Same
+/// rationale as the push deadline: generous, but finite — a black-holed GitHub
+/// must error out, not pin the blocking thread + PR lease with the dialog stuck
+/// on "Creating…".
+const GH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
 /// Whether the machine can create PRs for the active project: `gh` on PATH and
 /// an `origin` remote configured. Sent to the UI so the Create PR button gates
 /// honestly instead of failing on click.
@@ -357,6 +363,89 @@ enum PrCreateOutcome {
     Failed { message: String },
 }
 
+/// The drained output of a bounded `gh` run (see [`run_gh_bounded`]).
+struct GhOutput {
+    status: std::process::ExitStatus,
+    stdout: String,
+    stderr: String,
+}
+
+/// Spawn `binary args…` in `dir` (feeding `stdin_payload` when given), drain
+/// both pipes on threads, and wait under [`GH_TIMEOUT`] — `gh` talks to the
+/// network, so a black-holed GitHub errors out (`timeout_msg`) instead of
+/// pinning the blocking thread + PR lease forever. Errs are user-facing
+/// strings; the caller decides the outcome mapping.
+fn run_gh_bounded(
+    dir: &Path,
+    binary: &str,
+    args: &[&str],
+    stdin_payload: Option<&str>,
+    timeout_msg: &str,
+) -> Result<GhOutput, String> {
+    let mut child = match crate::platform::std_command(binary)
+        .args(args)
+        .current_dir(dir)
+        .stdin(if stdin_payload.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        // The pre-spawn `which` probe is the ONLY ToolAbsent source: it already
+        // resolved the binary, so a spawn-time NotFound here is almost always a
+        // vanished cwd (the worktree was deleted under us — exactly what a racing
+        // merge cleanup does), not a missing tool. Report it as a launch failure
+        // naming the cwd instead of the misleading "gh is not installed".
+        Err(e) => {
+            return Err(format!(
+                "could not launch `{binary}` in `{}` — the task's worktree may have been \
+                 removed: {e}",
+                dir.display()
+            ))
+        }
+    };
+
+    // Feed stdin from a detached thread so a large body can't deadlock against
+    // a child that is also writing output (dropping the handle closes the pipe).
+    if let (Some(payload), Some(mut stdin)) = (stdin_payload, child.stdin.take()) {
+        let payload = payload.as_bytes().to_vec();
+        std::thread::spawn(move || {
+            let _ = stdin.write_all(&payload);
+        });
+    }
+
+    // Drain stdout AND stderr on threads so neither pipe can fill and block the
+    // child; join after the bounded wait (the claude_oneshot discipline).
+    fn drain<R: std::io::Read + Send + 'static>(
+        pipe: Option<R>,
+    ) -> std::thread::JoinHandle<String> {
+        std::thread::spawn(move || {
+            let mut buf = String::new();
+            if let Some(mut p) = pipe {
+                let _ = p.read_to_string(&mut buf);
+            }
+            buf
+        })
+    }
+    let stdout = drain(child.stdout.take());
+    let stderr = drain(child.stderr.take());
+
+    let status = match crate::proc::wait_with_deadline(&mut child, GH_TIMEOUT) {
+        Ok(Some(status)) => status,
+        Ok(None) => return Err(timeout_msg.to_string()),
+        Err(e) => return Err(format!("`{binary}` did not finish: {e}")),
+    };
+    Ok(GhOutput {
+        status,
+        stdout: stdout.join().unwrap_or_default(),
+        stderr: stderr.join().unwrap_or_default(),
+    })
+}
+
 /// Create the PR via `gh pr create`, with the binary as a parameter — the
 /// injection seam the tests use to exercise the real spawn path with a fake
 /// script (the `secret_scan::scan_staged_with` template). The body travels on
@@ -383,8 +472,7 @@ fn create_pr_with(
         return PrCreateOutcome::ToolAbsent;
     }
 
-    let mut cmd = crate::platform::std_command(binary);
-    cmd.args([
+    let mut args = vec![
         "pr",
         "create",
         "--head",
@@ -395,57 +483,22 @@ fn create_pr_with(
         title,
         "--body-file",
         "-",
-    ]);
+    ];
     if draft {
-        cmd.arg("--draft");
+        args.push("--draft");
     }
-    let mut child = match cmd
-        .current_dir(dir)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
-        Ok(child) => child,
-        // The pre-spawn `which` probe is the ONLY ToolAbsent source: it already
-        // resolved the binary, so a spawn-time NotFound here is almost always a
-        // vanished cwd (the worktree was deleted under us — exactly what a racing
-        // merge cleanup does), not a missing tool. Report it as a launch failure
-        // naming the cwd instead of the misleading "gh is not installed".
-        Err(e) => {
-            return PrCreateOutcome::Failed {
-                message: format!(
-                    "could not launch `{binary}` in `{}` — the task's worktree may have been \
-                     removed: {e}",
-                    dir.display()
-                ),
-            }
-        }
-    };
-
-    // Feed the body from a detached thread so a large body can't deadlock against
-    // a child that is also writing output (dropping the handle closes the pipe).
-    if let Some(mut stdin) = child.stdin.take() {
-        let payload = body.as_bytes().to_vec();
-        std::thread::spawn(move || {
-            let _ = stdin.write_all(&payload);
-        });
-    }
-
-    // `wait_with_output` drains stdout AND stderr concurrently, so neither pipe
-    // can fill and block the child.
-    let out = match child.wait_with_output() {
+    let out = match run_gh_bounded(
+        dir,
+        binary,
+        &args,
+        Some(body),
+        "timed out creating the pull request on GitHub — check your network and try again",
+    ) {
         Ok(out) => out,
-        Err(e) => {
-            return PrCreateOutcome::Failed {
-                message: format!("`{binary} pr create` did not finish: {e}"),
-            }
-        }
+        Err(message) => return PrCreateOutcome::Failed { message },
     };
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let stderr = String::from_utf8_lossy(&out.stderr);
     if !out.status.success() {
-        let stderr = stderr.trim();
+        let stderr = out.stderr.trim();
         let message = if stderr.is_empty() {
             format!("`{binary} pr create` failed (exit {:?})", out.status.code())
         } else {
@@ -453,13 +506,13 @@ fn create_pr_with(
         };
         return PrCreateOutcome::Failed { message };
     }
-    match parse_pr_url(&stdout) {
+    match parse_pr_url(&out.stdout) {
         Some((url, number)) => PrCreateOutcome::Created { url, number },
         None => PrCreateOutcome::Failed {
             message: format!(
                 "`{binary} pr create` succeeded but its output carried no PR URL — \
                  check the PR on GitHub; output was: {}",
-                stdout.trim()
+                out.stdout.trim()
             ),
         },
     }

@@ -28,7 +28,7 @@ mod worktree;
 // regroup so call sites elsewhere keep resolving unchanged. Crate-internal
 // (`pub(crate)`) — these are not part of the lib's public API (only `run` is), so
 // the re-export must not widen doc visibility beyond the original private `mod`s.
-pub(crate) use infra::{logging, platform};
+pub(crate) use infra::{logging, platform, proc};
 pub(crate) use store::{project, settings, task, transcript};
 pub(crate) use workflow::{gauntlet, gauntlet_project, kind, merge, plan_approval};
 
