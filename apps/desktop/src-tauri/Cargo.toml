@@ -38,6 +38,14 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["ansi", "env-filter"] }
 tracing-appender = "0.2"
 which = "6.0"
+# Repo Map (hardening #14, `store::repo_map`): real parsers extract definition
+# symbols + import edges from TS/TSX/JS/Rust sources for the PageRank-ranked map
+# in the Context Pack. The grammar crates interop with core via
+# `tree-sitter-language`, so their versions need not match the core's.
+tree-sitter = "0.26.10"
+tree-sitter-typescript = "0.23.2"
+tree-sitter-javascript = "0.25.0"
+tree-sitter-rust = "0.24.2"
 
 [dev-dependencies]
 tempfile = "3.27"
