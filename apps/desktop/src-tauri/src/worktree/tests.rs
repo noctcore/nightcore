@@ -720,11 +720,7 @@ fn try_ahead_of_upstream_counts_unpushed_commits_and_fails_closed() {
     // A local commit that never reached the remote counts as unpushed.
     std::fs::write(dir.join("g.txt"), "y").expect("write");
     commit(&repo, "task-1", "more").expect("commit 2");
-    assert_eq!(
-        try_ahead_of_upstream(&dir),
-        Ok(1),
-        "one unpushed commit"
-    );
+    assert_eq!(try_ahead_of_upstream(&dir), Ok(1), "one unpushed commit");
     push_branch(&dir, &branch_name("task-1")).expect("re-push");
     assert_eq!(
         try_ahead_of_upstream(&dir),

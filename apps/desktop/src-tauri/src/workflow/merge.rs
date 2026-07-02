@@ -132,6 +132,23 @@ fn refuse_while_pr_in_flight(id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Refuse a commit while a merge-class action (a local merge OR a finalize —
+/// both take the merge lease) holds the task. The reverse direction always
+/// existed (merge/finalize refuse under a live commit); without this mirror the
+/// pair wasn't genuinely mutual: a commit that leased FIRST would happily
+/// stage/commit into a worktree the completing merge/finalize is about to
+/// force-delete. Checked AFTER the commit lease is acquired (the shared
+/// discipline), so whichever action leases second reliably sees the other.
+fn refuse_commit_while_merge_in_flight(id: &str) -> Result<(), String> {
+    if lease_held(merge_in_flight(), id) {
+        return Err(
+            "a merge for this task is in progress — wait for it to finish before committing"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
 /// RAII membership in one of the in-flight sets: inserts on acquire, removes on drop —
 /// so an early `?` return (or a panic) still releases the task. `acquire` yields `None`
 /// when that action is already running for `id`, so the caller can refuse rather than race.
@@ -169,6 +186,10 @@ pub(crate) fn commit_task_blocking(app: &AppHandle, id: &str) -> Result<(), Stri
     // (held for the whole stage→generate→commit body; released on every exit path).
     let _lease = TaskLease::acquire(commit_in_flight(), id)
         .ok_or_else(|| "a commit for this task is already in progress".to_string())?;
+    // Cross-action serialization: never stage/commit under an in-flight merge or
+    // finalize on the same task — their cleanup force-deletes the worktree this
+    // commit is writing into (see `refuse_commit_while_merge_in_flight`).
+    refuse_commit_while_merge_in_flight(id)?;
     // `try_state` (not `state`) so an unmanaged store fails the command gracefully,
     // matching the old injected-`State` behavior rather than panicking on the pool.
     let store = app
@@ -515,6 +536,28 @@ mod tests {
             TaskLease::acquire(commit_in_flight(), "task-x").is_some(),
             "dropping the lease (incl. on an early `?` return) frees the task"
         );
+    }
+
+    #[test]
+    fn commit_refused_while_merge_or_finalize_holds_the_task() {
+        // The symmetry arm: merge/finalize always refused under a live commit,
+        // but a commit that leased FIRST slipped past — it would stage/commit
+        // into a worktree the completing merge/finalize force-deletes. Both
+        // finalize and the local merge take the MERGE lease, so one probe
+        // covers both. Unique id: the sets are global.
+        let merge_lease =
+            TaskLease::acquire(merge_in_flight(), "commit-vs-merge").expect("merge lease");
+        let err =
+            refuse_commit_while_merge_in_flight("commit-vs-merge").expect_err("commit is refused");
+        assert!(err.contains("merge"), "names the conflicting action: {err}");
+        assert!(
+            err.contains("committing"),
+            "names the refused action: {err}"
+        );
+        // Other tasks are unaffected, and dropping the lease frees this one.
+        assert!(refuse_commit_while_merge_in_flight("commit-vs-merge-other").is_ok());
+        drop(merge_lease);
+        assert!(refuse_commit_while_merge_in_flight("commit-vs-merge").is_ok());
     }
 
     #[test]

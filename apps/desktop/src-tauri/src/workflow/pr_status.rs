@@ -36,7 +36,7 @@ use super::merge::{commit_in_flight, lease_held, merge_in_flight, require_projec
 use super::pr::{pr_in_flight, run_gh_bounded, GH_BINARY};
 use crate::settings::SettingsStore;
 use crate::store::TaskStore;
-use crate::task::{Task, TASK_EVENT};
+use crate::task::{Task, TaskStatus, TASK_EVENT};
 use crate::worktree::{self, validate_ref};
 
 /// Wall-clock bound on the read-only `gh pr view` spawns (status + the finalize
@@ -282,6 +282,24 @@ fn refuse_push_while_sibling_in_flight(id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Refuse a finalize while the task has a LIVE SESSION on its worktree: a held
+/// orchestrator slot (a build/reviewer session is running or being dispatched —
+/// the same probe `ensure_review_resolvable` uses) or an `InProgress`/
+/// `Verifying` status (the slot may not be leased yet in the dispatch window,
+/// e.g. `rerun_verification` just fired). The lease cross-checks below cover
+/// sibling *commands*; this covers sibling *sessions* — without it a finalize
+/// could force-delete the worktree out from under a running agent whose cwd is
+/// that worktree. Pure (the probes are injected booleans), unit-testable.
+fn refuse_finalize_under_live_session(slot_leased: bool, status: TaskStatus) -> Result<(), String> {
+    if slot_leased || matches!(status, TaskStatus::InProgress | TaskStatus::Verifying) {
+        return Err(
+            "a session is using this worktree — wait for it to finish before finalizing"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
 /// Refuse a finalize while a PR action or commit holds the task — the mirror
 /// checks for the merge-class lease `finalize_merged_pr` takes (its cleanup
 /// deletes the worktree + branch, exactly what an in-flight push/commit is
@@ -414,6 +432,16 @@ fn finalize_merged_pr_blocking(app: &AppHandle, id: &str) -> Result<(), String> 
     let store = app
         .try_state::<TaskStore>()
         .ok_or_else(|| "task store unavailable".to_string())?;
+    // Live-session guard: the cleanup below force-deletes the worktree, so it
+    // must never run under a live build/reviewer session (slot leased) or in
+    // the `InProgress`/`Verifying` dispatch window.
+    let task = store
+        .get(id)
+        .ok_or_else(|| format!("no task with id {id}"))?;
+    let orch = app
+        .try_state::<crate::orchestration::coordinator::Orchestrator>()
+        .ok_or_else(|| "orchestrator unavailable".to_string())?;
+    refuse_finalize_under_live_session(orch.slots.is_leased(id), task.status)?;
     let project = require_project(app)?;
     let project_path = PathBuf::from(&project.path);
     let cleanup = app
@@ -807,6 +835,40 @@ mod tests {
         );
         drop(commit_lease);
         assert!(refuse_finalize_while_sibling_in_flight("fin-vs-commit").is_ok());
+    }
+
+    #[test]
+    fn finalize_refused_under_a_live_session() {
+        // Slot arm: a leased orchestrator slot (running/dispatching session)
+        // refuses regardless of status — finalize's cleanup would force-delete
+        // the worktree that session is cwd'd into.
+        for status in [
+            TaskStatus::Backlog,
+            TaskStatus::Done,
+            TaskStatus::WaitingApproval,
+        ] {
+            let err = refuse_finalize_under_live_session(true, status)
+                .expect_err("a leased slot refuses finalize");
+            assert!(err.contains("session"), "explains the refusal: {err}");
+        }
+        // Status arm: InProgress/Verifying refuse even when the slot probe
+        // reads free (the dispatch window — e.g. rerun_verification just moved
+        // the task to Verifying).
+        for status in [TaskStatus::InProgress, TaskStatus::Verifying] {
+            let err = refuse_finalize_under_live_session(false, status)
+                .expect_err("a live status refuses finalize");
+            assert!(err.contains("session"), "explains the refusal: {err}");
+        }
+        // No slot + settled statuses pass.
+        for status in [
+            TaskStatus::Backlog,
+            TaskStatus::Ready,
+            TaskStatus::WaitingApproval,
+            TaskStatus::Done,
+            TaskStatus::Failed,
+        ] {
+            assert!(refuse_finalize_under_live_session(false, status).is_ok());
+        }
     }
 
     #[test]
@@ -1225,10 +1287,7 @@ mod tests {
 
         let err = finalize_merged_core(&store, &repo, &id, script.to_str().unwrap(), true)
             .expect_err("an unresolvable upstream must refuse to finalize");
-        assert!(
-            err.contains("cannot verify"),
-            "explains the refusal: {err}"
-        );
+        assert!(err.contains("cannot verify"), "explains the refusal: {err}");
         assert!(
             dir.exists() && dir.join("late-fix.txt").exists(),
             "the worktree and its unpushed commit survive"
