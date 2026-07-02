@@ -50,6 +50,7 @@ fn export_all_bindings() {
         TaskStatus,
     };
     use crate::workflow::pr::{PrDraft, PrSupport};
+    use crate::workflow::pr_status::PrStatus;
     use crate::worktree::{
         BranchInfo, DiffFileStat, DiffStatus, MergePreview, MergePreviewStatus, WorktreeDiff,
         WorktreeDiffFile, WorktreeStatus,
@@ -133,6 +134,8 @@ fn export_all_bindings() {
         // PR arc (phase 1): the capability probe + the editable draft shape.
         PrSupport,
         PrDraft,
+        // PR arc (phase 2): the status-card snapshot.
+        PrStatus,
     );
 }
 
@@ -207,6 +210,7 @@ mod tests {
             "InjectionFlag.ts",
             "PrSupport.ts",
             "PrDraft.ts",
+            "PrStatus.ts",
         ] {
             assert!(
                 dir.join(file).exists(),
