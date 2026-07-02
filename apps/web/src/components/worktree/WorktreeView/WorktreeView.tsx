@@ -17,6 +17,8 @@ export function WorktreeView({ worktrees, tasks }: WorktreeViewProps) {
       <WorktreeManager
         worktrees={worktrees}
         titleForTask={v.titleForTask}
+        prForTask={v.prForTask}
+        onOpenPr={v.openPr}
         onViewDiff={v.openDiff}
         onPreviewMerge={v.openPreview}
         onDiscard={v.openDiscard}

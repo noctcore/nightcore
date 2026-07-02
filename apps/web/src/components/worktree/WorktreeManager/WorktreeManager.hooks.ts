@@ -3,7 +3,7 @@
  *  state — so the `.tsx` shell stays a thin presentation layer. */
 import type { WorktreeInfo } from '@/lib/bridge';
 
-import type { WorktreeChip, WorktreeRowView } from './WorktreeManager.types';
+import type { WorktreeChip, WorktreePrRef, WorktreeRowView } from './WorktreeManager.types';
 
 /** Build the ordered status-chip cluster for a worktree: uncommitted changes
  *  (amber), commits ahead of base (emerald), commits behind base (amber), and a
@@ -54,18 +54,21 @@ function statusChips(worktree: WorktreeInfo): WorktreeChip[] {
 
 /** Derive the render-ready row view for one worktree: its primary task id
  *  (`taskIds[0]`, or `null` when none — actions disable), a friendly task title
- *  via the optional resolver, and the status-chip cluster. */
+ *  and its recorded PR via the optional resolvers, and the status-chip cluster. */
 export function worktreeRowView(
   worktree: WorktreeInfo,
   titleForTask?: (taskId: string) => string | undefined,
+  prForTask?: (taskId: string) => WorktreePrRef | null,
 ): WorktreeRowView {
   const primaryTaskId = worktree.taskIds[0] ?? null;
   const title = primaryTaskId !== null ? titleForTask?.(primaryTaskId) : undefined;
+  const pr = primaryTaskId !== null ? (prForTask?.(primaryTaskId) ?? null) : null;
 
   return {
     branch: worktree.branch,
     title,
     primaryTaskId,
+    pr,
     chips: statusChips(worktree),
   };
 }

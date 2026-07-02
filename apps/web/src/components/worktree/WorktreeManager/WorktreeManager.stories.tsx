@@ -73,6 +73,30 @@ export const Single: Story = {
 
 export const Orphaned: Story = { args: { worktrees: ORPHAN } };
 
+/** Rows whose task carries a PR show a passive `PR #n` chip (opens in the
+ *  system browser); rows without one show no chip — and NO live status is
+ *  fetched per row (design §4: the no-polling rule). */
+export const WithPrChip: Story = {
+  args: {
+    worktrees: [
+      wt({ branch: 'nc/task-1', taskIds: ['task-1'], aheadOfBase: 2 }),
+      wt({ branch: 'nc/task-2', taskIds: ['task-2'], dirty: true, changedFiles: 5 }),
+    ],
+    prForTask: (id: string) =>
+      id === 'task-1' ? { url: 'https://github.com/acme/nightcore/pull/123', number: 123 } : null,
+    onOpenPr: fn(),
+  },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    const chip = canvas.getByRole('button', { name: /PR #123/ });
+    await expect(chip).toBeInTheDocument();
+    await userEvent.click(chip);
+    await expect(args.onOpenPr).toHaveBeenCalledWith(
+      'https://github.com/acme/nightcore/pull/123',
+    );
+  },
+};
+
 /** Play test: a diverged worktree (ahead AND behind) shows the red flag. */
 export const Diverged: Story = {
   args: {

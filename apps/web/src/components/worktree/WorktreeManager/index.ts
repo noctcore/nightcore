@@ -1,2 +1,2 @@
 export { WorktreeManager } from './WorktreeManager';
-export type { WorktreeManagerProps } from './WorktreeManager.types';
+export type { WorktreeManagerProps, WorktreePrRef } from './WorktreeManager.types';

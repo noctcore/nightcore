@@ -1,6 +1,6 @@
 /** Presentational sub-parts for WorktreeManager: a tinted status chip and a
  *  worktree row with its badge cluster + per-row actions. */
-import { BranchIcon, Button, LogsIcon, MoveIcon, TrashIcon } from '@/components/ui';
+import { BranchIcon, Button, GithubIcon, LogsIcon, MoveIcon, TrashIcon } from '@/components/ui';
 
 import type { WorktreeChip, WorktreeChipTone, WorktreeRowView } from './WorktreeManager.types';
 
@@ -28,15 +28,24 @@ function StatusChip({ chip }: { chip: WorktreeChip }) {
 /** Props for a single worktree row. */
 interface WorktreeRowProps {
   view: WorktreeRowView;
+  onOpenPr?: (url: string) => void;
   onViewDiff: (taskId: string) => void;
   onPreviewMerge: (taskId: string) => void;
   onDiscard: (taskId: string) => void;
 }
 
 /** One worktree: the branch (monospace) + optional task title, a status-badge
- *  cluster, and View diff / Merge / Discard actions keyed on the primary task.
- *  Actions disable when the worktree owns no task (`primaryTaskId === null`). */
-export function WorktreeRow({ view, onViewDiff, onPreviewMerge, onDiscard }: WorktreeRowProps) {
+ *  cluster (plus a passive `PR #n` chip when the task carries a PR — a static
+ *  link-out, NO live status fetching per row), and View diff / Merge / Discard
+ *  actions keyed on the primary task. Actions disable when the worktree owns
+ *  no task (`primaryTaskId === null`). */
+export function WorktreeRow({
+  view,
+  onOpenPr,
+  onViewDiff,
+  onPreviewMerge,
+  onDiscard,
+}: WorktreeRowProps) {
   const taskId = view.primaryTaskId;
   const disabled = taskId === null;
 
@@ -46,6 +55,16 @@ export function WorktreeRow({ view, onViewDiff, onPreviewMerge, onDiscard }: Wor
         <div className="flex items-center gap-1.5">
           <BranchIcon size={13} className="shrink-0 text-muted-foreground" />
           <span className="truncate font-mono text-[12px] text-foreground">{view.branch}</span>
+          {view.pr !== null && onOpenPr !== undefined && (
+            <Button
+              variant="ghost"
+              onClick={() => onOpenPr(view.pr!.url)}
+              title="Open the pull request in your browser"
+            >
+              <GithubIcon size={12} />
+              {view.pr.number !== null ? `PR #${view.pr.number}` : 'PR'} ↗
+            </Button>
+          )}
         </div>
         {view.title !== undefined && (
           <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{view.title}</p>

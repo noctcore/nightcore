@@ -12,6 +12,8 @@ import type { WorktreeManagerProps } from './WorktreeManager.types';
 export function WorktreeManager({
   worktrees,
   titleForTask,
+  prForTask,
+  onOpenPr,
   loading = false,
   onViewDiff,
   onPreviewMerge,
@@ -44,7 +46,8 @@ export function WorktreeManager({
           {worktrees.map((worktree) => (
             <WorktreeRow
               key={worktree.branch}
-              view={worktreeRowView(worktree, titleForTask)}
+              view={worktreeRowView(worktree, titleForTask, prForTask)}
+              onOpenPr={onOpenPr}
               onViewDiff={onViewDiff}
               onPreviewMerge={onPreviewMerge}
               onDiscard={onDiscard}

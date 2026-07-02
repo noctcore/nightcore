@@ -5,8 +5,10 @@ import { useCallback, useState } from 'react';
 
 import { useToast } from '@/components/ui';
 import type { MergePreview, Task, WorktreeDiff, WorktreeInfo } from '@/lib/bridge';
-import { discardWorktree, mergePreview, mergeTask, worktreeDiff } from '@/lib/bridge';
+import { discardWorktree, mergePreview, mergeTask, openExternal, worktreeDiff } from '@/lib/bridge';
 import { parseGitError } from '@/lib/git-error';
+
+import type { WorktreePrRef } from '../WorktreeManager';
 
 /** The merge-preview dialog's data, keyed by the task it was opened for. */
 interface PreviewState {
@@ -34,6 +36,12 @@ interface DiscardState {
 /** The view-model the WorktreeView binds to. */
 export interface WorktreeViewModel {
   titleForTask: (id: string) => string | undefined;
+  /** The PR recorded on a task (`prUrl`/`prNumber`), for the row's passive
+   *  `PR #n` chip — threaded like `titleForTask`; `null` when the task has
+   *  none. Static resolution only (no per-row status fetching). */
+  prForTask: (id: string) => WorktreePrRef | null;
+  /** Open a PR page in the system browser (https-gated Rust-side). */
+  openPr: (url: string) => void;
   openDiff: (taskId: string) => void;
   openPreview: (taskId: string) => void;
   openDiscard: (taskId: string) => void;
@@ -59,6 +67,27 @@ export function useWorktreeView(tasks: Task[], worktrees: WorktreeInfo[]): Workt
   const titleForTask = useCallback(
     (id: string) => tasks.find((t) => t.id === id)?.title,
     [tasks],
+  );
+
+  const prForTask = useCallback(
+    (id: string): WorktreePrRef | null => {
+      const task = tasks.find((t) => t.id === id);
+      if (task?.prUrl === undefined) return null;
+      return { url: task.prUrl, number: task.prNumber ?? null };
+    },
+    [tasks],
+  );
+
+  const openPr = useCallback(
+    (url: string) => {
+      // The bridge command is https-only Rust-side; failures surface as a toast
+      // (the useCreatePr openPr discipline).
+      void openExternal(url).catch((err: unknown) => {
+        console.error('open_external failed', err);
+        toast.error('Could not open the pull request', err);
+      });
+    },
+    [toast],
   );
 
   const reportError = useCallback(
@@ -165,6 +194,8 @@ export function useWorktreeView(tasks: Task[], worktrees: WorktreeInfo[]): Workt
 
   return {
     titleForTask,
+    prForTask,
+    openPr,
     openDiff,
     openPreview,
     openDiscard,

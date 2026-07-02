@@ -4,7 +4,8 @@ import { render } from 'vitest-browser-react';
 
 import * as stories from './WorktreeManager.stories';
 
-const { Default, Empty, Loading, Single, Orphaned, Diverged } = composeStories(stories);
+const { Default, Empty, Loading, Single, Orphaned, Diverged, WithPrChip } =
+  composeStories(stories);
 
 test('renders the header with the worktree count', async () => {
   const screen = render(<Default />);
@@ -51,4 +52,22 @@ test('disables actions for a worktree with no owning task', async () => {
 test('flags a diverged worktree', async () => {
   const screen = render(<Diverged />);
   await expect.element(screen.getByLabelText(/diverged from base/i)).toBeInTheDocument();
+});
+
+test('shows a passive PR chip only on rows whose task has a PR, firing onOpenPr', async () => {
+  const onOpenPr = vi.fn();
+  const screen = render(<WithPrChip onOpenPr={onOpenPr} />);
+  // task-1 carries the PR: its chip renders and opens the PR URL.
+  const chip = screen.getByRole('button', { name: /PR #123/ });
+  await expect.element(chip).toBeInTheDocument();
+  await chip.click();
+  expect(onOpenPr).toHaveBeenCalledWith('https://github.com/acme/nightcore/pull/123');
+  // task-2 has none: exactly ONE chip in the list (nothing on the second row).
+  expect(screen.getByRole('button', { name: /^PR/ }).elements().length).toBe(1);
+});
+
+test('renders no PR chip when no resolver is provided', async () => {
+  const screen = render(<Default />);
+  await expect.element(screen.getByText('Worktrees')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /^PR/ }).query()).toBeNull();
 });

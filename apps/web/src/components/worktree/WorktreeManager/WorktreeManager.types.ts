@@ -19,6 +19,17 @@ export interface WorktreeChip {
   dot?: boolean;
 }
 
+/** The pull request recorded on a row's primary task — enough for the passive
+ *  `PR #n` chip (design §4 parity), resolved by the parent's `prForTask`.
+ *  Deliberately static: NO per-row status fetching (the no-polling rule). */
+export interface WorktreePrRef {
+  /** The gh-reported PR page URL (opened via the system browser). */
+  url: string;
+  /** The PR number, or `null` when (unexpectedly) absent — the chip degrades
+   *  to a plain `PR` label. */
+  number: number | null;
+}
+
 /** The derived, render-ready view of one worktree row. */
 export interface WorktreeRowView {
   /** The worktree's branch (`nc/<taskId>`), shown monospace. */
@@ -28,6 +39,8 @@ export interface WorktreeRowView {
   /** The primary owning task id (`taskIds[0]`), or `null` when the worktree owns
    *  no task — actions are disabled in that case. */
   primaryTaskId: string | null;
+  /** The primary task's PR, or `null` when it has none (chip hidden). */
+  pr: WorktreePrRef | null;
   /** The status-badge cluster, in display order. */
   chips: WorktreeChip[];
 }
@@ -41,6 +54,11 @@ export interface WorktreeManagerProps {
   worktrees: WorktreeInfo[];
   /** Resolve a friendly title for a task id; the branch shows when it's absent. */
   titleForTask?: (taskId: string) => string | undefined;
+  /** Resolve the PR recorded on a task (`task.prUrl`/`prNumber`), threaded like
+   *  `titleForTask` from the tasks-owning parent; `null`/absent hides the chip. */
+  prForTask?: (taskId: string) => WorktreePrRef | null;
+  /** Open a PR page in the system browser (the passive `PR #n` chip's click). */
+  onOpenPr?: (url: string) => void;
   /** Show a spinner instead of the list while the first read is in flight. */
   loading?: boolean;
   /** View the diff for a worktree's primary task. */
