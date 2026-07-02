@@ -4,6 +4,7 @@ import { expect, fn, userEvent, within } from 'storybook/test';
 import {
   GAUNTLET_FAILED,
   GAUNTLET_PASSED,
+  makePrReviewComments,
   makePrStatus,
   makeTask,
   SAMPLE_REVIEW_CHANGES,
@@ -51,6 +52,7 @@ const actions: TaskDetailActions = {
   onPushPrUpdates: fn(async () => {}),
   onFinalizePr: fn(async () => {}),
   onPullBaseFf: fn(async () => {}),
+  onAddressPrComments: fn(async () => {}),
 };
 
 /** Wrap a single session's stream into a one-session transcript (the common
@@ -356,6 +358,16 @@ export const PrStatusTracked: Story = {
   args: {
     ...PrCreated.args,
     prStatus: makePrStatus({ reviewDecision: 'APPROVED', unpushedCommits: 2 }),
+  },
+};
+
+/** A PR'd task whose Review comments section carries unresolved feedback (the
+ *  story override seam): the read-only threads + review summaries render below
+ *  the PR status band, with the human-gated Address-comments action. */
+export const PrCommentsTracked: Story = {
+  args: {
+    ...PrCreated.args,
+    prReviewComments: makePrReviewComments(),
   },
 };
 

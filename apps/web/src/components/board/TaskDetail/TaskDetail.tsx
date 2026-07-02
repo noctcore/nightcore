@@ -18,6 +18,7 @@ import { ActivityLog } from '../ActivityLog';
 import { GauntletResults } from '../GauntletResults';
 import { InteractionDock } from '../InteractionDock';
 import { ProposedSubtasksPanel } from '../ProposedSubtasksPanel';
+import { PrReviewComments, usePrReviewComments } from '../PrReviewComments';
 import { PrStatusCard, usePrStatus } from '../PrStatusCard';
 import { ReviewPanel } from '../ReviewPanel';
 import { GroupLabel, HistoryCard, SessionCard } from '../SessionCard';
@@ -55,6 +56,7 @@ export function TaskDetail({
   gauntletRunning = false,
   prSupport,
   prStatus,
+  prReviewComments,
   onClose,
   actions,
   isActionPending,
@@ -71,6 +73,14 @@ export function TaskDetail({
   // and skips the fetch. The returned view is memoized, so the chrome memo
   // below still bails on stream flushes.
   const prStatusView = usePrStatus(task.id, prStatus, task.prUrl !== undefined);
+  // The review-comments hook is LIFTED here too (mirroring `usePrStatus`) so its
+  // fetched state is memoized and survives stream flushes. Enabled only once a
+  // PR exists; outside Tauri it resolves an empty payload (the quiet empty note).
+  const prReviewCommentsView = usePrReviewComments(
+    task.id,
+    task.prUrl !== undefined,
+    prReviewComments,
+  );
   return (
     <TaskStreamContext.Provider value={sessions}>
       <TaskDetailChrome
@@ -88,6 +98,7 @@ export function TaskDetail({
         gauntletRunning={gauntletRunning}
         prSupport={resolvedPrSupport}
         prStatusView={prStatusView}
+        prReviewCommentsView={prReviewCommentsView}
         onClose={onClose}
         actions={actions}
         isActionPending={isActionPending}
@@ -127,6 +138,7 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
   gauntletRunning,
   prSupport,
   prStatusView,
+  prReviewCommentsView,
   onClose,
   actions,
   isActionPending,
@@ -266,6 +278,27 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
               onPushUpdates={actions.onPushPrUpdates}
               onFinalize={actions.onFinalizePr}
               onPullBase={actions.onPullBaseFf}
+              isActionPending={isActionPending}
+            />
+          </div>
+        )}
+
+        {/* Review comments — the UNRESOLVED inline threads + top-level review
+            summaries for the task's PR (phase 3), read-only, plus the single
+            human-gated Address-comments action (dispatches a fix run over the
+            worktree). Fetches on mount + manual refresh; sits directly below the
+            PR status band. Comment bodies are untrusted external text. */}
+        {task.prUrl !== undefined && (
+          <div className="space-y-3">
+            <GroupLabel>Review comments</GroupLabel>
+            {/* Keyed per task (suspenders — the hook's own task-switch reset is
+                the belt) so a switch remounts the card: no stale payload or armed
+                confirm dialog can carry from task A to B. */}
+            <PrReviewComments
+              key={task.id}
+              task={task}
+              view={prReviewCommentsView}
+              onAddressComments={actions.onAddressPrComments}
               isActionPending={isActionPending}
             />
           </div>

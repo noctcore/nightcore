@@ -82,6 +82,32 @@ test('a successful finalize toasts success', async () => {
   expect(toast.push).toHaveBeenCalledWith(expect.objectContaining({ tone: 'success' }));
 });
 
+test('a successful address-comments run toasts success', async () => {
+  invoke.mockImplementation(() => Promise.resolve(undefined));
+  const toast = fakeToast();
+  const controller = await mountController(toast);
+
+  await controller.addressComments('t-pr');
+  expect(invoke).toHaveBeenCalledWith('address_pr_comments', { id: 't-pr' });
+  expect(toast.push).toHaveBeenCalledWith(expect.objectContaining({ tone: 'success' }));
+  expect(toast.error).not.toHaveBeenCalled();
+});
+
+test('an address-comments failure fires the error toast and rejects', async () => {
+  invoke.mockImplementation((cmd: unknown) =>
+    cmd === 'address_pr_comments'
+      ? Promise.reject(new Error('no unresolved review comments to address'))
+      : Promise.resolve(undefined),
+  );
+  const toast = fakeToast();
+  const controller = await mountController(toast);
+
+  await expect(controller.addressComments('t-pr')).rejects.toThrow(
+    'no unresolved review comments to address',
+  );
+  expect(toast.error).toHaveBeenCalledWith('Could not start the fix run', expect.anything());
+});
+
 test('a pull-base refusal surfaces the backend message verbatim in the toast', async () => {
   // Tauri command rejections arrive as plain strings; the toast's detail
   // coercion must carry the refusal through verbatim (dirty root / non-ff).
