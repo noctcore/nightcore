@@ -310,6 +310,7 @@ macro_rules! scan_kinds {
         $cb!(crate::store::insight::InsightRun, "insights");
         $cb!(crate::store::harness::HarnessRun, "harness");
         $cb!(crate::store::scorecard::ScorecardRun, "scorecards");
+        $cb!(crate::store::pr_review::PrReviewRun, "pr-reviews");
     };
 }
 pub(crate) use scan_kinds;
