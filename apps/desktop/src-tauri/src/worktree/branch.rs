@@ -6,9 +6,15 @@
 //! ([`list_branches`]).
 
 use std::path::Path;
+use std::time::Duration;
 
 use super::path::validate_ref;
-use super::{git, git_status_success};
+use super::{git, git_status_success, git_with_deadline};
+
+/// Wall-clock bound on the network-facing `git push`. Generous — a slow first
+/// push of a big branch is legitimate — but finite, so a black-holed origin
+/// can't pin the blocking thread (and the task's PR lease) forever.
+const PUSH_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The fallback base branch when `HEAD` can't be resolved to a named branch (e.g.
 /// detached HEAD). Used by [`base_branch`] and the reviewer's no-project fallback.
@@ -40,10 +46,18 @@ pub fn remote_url(repo: &Path) -> Option<String> {
 /// resolve exactly as the user's own `git push` would there. Idempotent: re-pushing
 /// an already-pushed branch is a no-op, so a failure between push and PR-create is
 /// safely re-runnable. The ref is validated at ingestion AND fenced from option
-/// parsing at the call site (`--end-of-options` before the positionals).
+/// parsing at the call site (`--end-of-options` before the positionals). The push
+/// talks to the network, so it runs under a wall-clock deadline — a black-holed
+/// origin errors out instead of pinning the blocking thread forever.
 pub fn push_branch(dir: &Path, branch: &str) -> Result<(), String> {
     validate_ref(branch)?;
-    git(dir, &["push", "-u", "--end-of-options", "origin", branch]).map(|_| ())
+    git_with_deadline(
+        dir,
+        &["push", "-u", "--end-of-options", "origin", branch],
+        PUSH_TIMEOUT,
+        "timed out pushing to origin — check your network and try again",
+    )
+    .map(|_| ())
 }
 
 /// Delete a specific `branch` (best-effort). Refuses to delete the project's current

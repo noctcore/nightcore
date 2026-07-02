@@ -93,6 +93,58 @@ fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
     }
 }
 
+/// Like [`git`], but bounded by a wall-clock `deadline` — for subcommands that
+/// talk to the NETWORK (`push`, `fetch`), where a black-holed origin would
+/// otherwise pin the calling blocking thread (and any task lease it holds)
+/// forever. Same chokepoint (`crate::platform::git_command`, so the git-env
+/// isolation is preserved), but spawned with piped output drained on threads and
+/// reaped via [`crate::proc::wait_with_deadline`]; on overrun the child is
+/// killed and `timeout_msg` is returned as the error.
+fn git_with_deadline(
+    repo: &Path,
+    args: &[&str],
+    deadline: std::time::Duration,
+    timeout_msg: &str,
+) -> Result<String, String> {
+    use std::io::Read;
+    use std::process::Stdio;
+
+    let mut child = crate::platform::git_command(repo)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("failed to run git (is `git` on PATH?): {e}"))?;
+
+    // Drain both pipes on threads so neither can fill and block the child
+    // (the claude_oneshot discipline); join after the bounded wait.
+    fn drain<R: Read + Send + 'static>(pipe: Option<R>) -> std::thread::JoinHandle<String> {
+        std::thread::spawn(move || {
+            let mut buf = String::new();
+            if let Some(mut p) = pipe {
+                let _ = p.read_to_string(&mut buf);
+            }
+            buf
+        })
+    }
+    let stdout = drain(child.stdout.take());
+    let stderr = drain(child.stderr.take());
+
+    let status = match crate::proc::wait_with_deadline(&mut child, deadline) {
+        Ok(Some(status)) => status,
+        Ok(None) => return Err(timeout_msg.to_string()),
+        Err(e) => return Err(format!("git did not finish: {e}")),
+    };
+    let stdout = stdout.join().unwrap_or_default();
+    let stderr = stderr.join().unwrap_or_default();
+    if status.success() {
+        Ok(stdout.trim().to_string())
+    } else {
+        Err(stderr.trim().to_string())
+    }
+}
+
 /// Run a git subcommand purely for its exit status (no output capture). Returns
 /// true on success. Used for predicate-style git calls (`diff --quiet`, `merge`).
 fn git_status_success(repo: &Path, args: &[&str]) -> bool {
