@@ -478,6 +478,13 @@ export class SessionManager {
         ...(command.harnessPolicy !== undefined
           ? { harnessPolicy: command.harnessPolicy }
           : {}),
+        // Session flight recorder (module #5): the per-task ledger path the Rust
+        // core computed from the project root. The runner appends every
+        // PreToolUse gate evaluation there. Absent ⇒ no recording (pre-feature
+        // shape).
+        ...(command.ledgerPath !== undefined
+          ? { ledgerPath: command.ledgerPath }
+          : {}),
         ...(preset.allowedTools !== undefined
           ? { allowedTools: preset.allowedTools }
           : {}),

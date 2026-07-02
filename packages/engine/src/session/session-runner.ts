@@ -34,6 +34,7 @@ import { PermissionLayer, type ApprovalDecision } from '../policy/permission-lay
 import { QuestionLayer, ASK_USER_QUESTION_DIALOG } from '../policy/question-layer.js';
 import { ToolRegistry } from '../policy/tool-registry.js';
 import { HookBus } from '../policy/hook-bus.js';
+import { SessionLedger } from './session-ledger.js';
 import { resolveClaudeBinary } from './resolve-claude-binary.js';
 
 // The option-composition surface (`SessionOptionsBuilder` + the pure compose
@@ -95,6 +96,10 @@ export class SessionRunner {
   private readonly questions: QuestionLayer;
   private readonly registry = new ToolRegistry();
   private readonly hooks: HookBus;
+  /** The session flight recorder (module #5): appends every PreToolUse gate
+   *  evaluation + start/end markers to the per-task ledger the core computed.
+   *  Undefined ⇒ no `ledgerPath` on the command (probes, no project root). */
+  private readonly ledger?: SessionLedger;
   /** Composes the SDK `Options` from `cfg` for both the run loop and the probes. */
   private readonly optionsBuilder: SessionOptionsBuilder;
 
@@ -110,13 +115,22 @@ export class SessionRunner {
     private readonly logger?: Logger,
   ) {
     this.optionsBuilder = new SessionOptionsBuilder(cfg, logger);
+    this.ledger =
+      cfg.ledgerPath !== undefined
+        ? new SessionLedger(cfg.ledgerPath, logger)
+        : undefined;
     // Confine file mutations to the run cwd (worktree isolation) and enforce the
     // project's harness runtime policy (protected paths + Bash deny patterns) —
-    // the PreToolUse gate enforces both even under `bypassPermissions`.
+    // the PreToolUse gate enforces both even under `bypassPermissions`. The
+    // flight recorder rides the same gate's decision seam (one writer sees
+    // every allow AND deny).
     this.hooks = new HookBus(logger, {
       cwd: cfg.cwd,
       ...(cfg.harnessPolicy !== undefined
         ? { harnessPolicy: cfg.harnessPolicy }
+        : {}),
+      ...(this.ledger !== undefined
+        ? { onToolDecision: this.ledger.recordToolDecision }
         : {}),
     });
     this.permissions = new PermissionLayer(
@@ -151,6 +165,19 @@ export class SessionRunner {
    *  terminal state; never rejects — failures surface as `session-failed`
    *  events and a returned status (degrade, don't throw). */
   async run(): Promise<void> {
+    // Flight-recorder markers bracket the whole run so the Rust-side readers can
+    // segment the shared per-task ledger by session. The end marker rides a
+    // finally: every exit path (terminal, crash, CLI-missing preflight) closes
+    // the segment.
+    this.ledger?.recordSessionStart(this.cfg.sessionId);
+    try {
+      await this.runQueryLoop();
+    } finally {
+      this.ledger?.recordSessionEnd(this.cfg.sessionId);
+    }
+  }
+
+  private async runQueryLoop(): Promise<void> {
     // Preflight: the Claude CLI is a REQUIRED, user-installed prerequisite —
     // Nightcore does not bundle it. If `resolveClaudeBinary()` finds nothing on
     // disk, the SDK would boot and then crash at session init with a cryptic

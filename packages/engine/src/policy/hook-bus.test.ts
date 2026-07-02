@@ -352,3 +352,80 @@ describe('HookBus — harness runtime policy gate (module #3)', () => {
     expect(decision(r)).toBe('deny');
   });
 });
+
+describe('HookBus — onToolDecision flight-recorder seam (module #5)', () => {
+  async function pre(bus: HookBus, toolName: string, toolInput: unknown) {
+    return bus.hooks().PreToolUse![0]!.hooks[0]!({
+      hook_event_name: 'PreToolUse',
+      tool_name: toolName,
+      tool_input: toolInput,
+    });
+  }
+
+  const CWD = '/repo';
+  const POLICY = {
+    protectedPaths: ['migrations/**'],
+    denyBashPatterns: [],
+    denyReadPaths: [],
+    disallowedTools: [],
+  };
+
+  type Seen = { tool: string; input: unknown; decision: string; ruleId?: string };
+
+  test('records an allow (no ruleId) and a deny (with the matched ruleId)', async () => {
+    const seen: Seen[] = [];
+    const bus = new HookBus(undefined, {
+      cwd: CWD,
+      harnessPolicy: POLICY,
+      onToolDecision: (tool, input, decision, ruleId) =>
+        seen.push({ tool, input, decision, ...(ruleId !== undefined ? { ruleId } : {}) }),
+    });
+
+    await pre(bus, 'Bash', { command: 'bun test' });
+    await pre(bus, 'Write', { file_path: 'migrations/002.sql' });
+
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toMatchObject({
+      tool: 'Bash',
+      input: { command: 'bun test' },
+      decision: 'allow',
+    });
+    expect(seen[0]!.ruleId).toBeUndefined();
+    expect(seen[1]).toMatchObject({
+      tool: 'Write',
+      decision: 'deny',
+      ruleId: 'harness-protected-path',
+    });
+  });
+
+  test('a throwing observer is fail-open: the call still allows/denies normally', async () => {
+    const logger = fakeLogger();
+    const bus = new HookBus(logger, {
+      cwd: CWD,
+      harnessPolicy: POLICY,
+      onToolDecision: () => {
+        throw new Error('recorder exploded');
+      },
+    });
+
+    // Allow path unaffected.
+    expect(await pre(bus, 'Bash', { command: 'bun test' })).toEqual({
+      continue: true,
+    });
+    // Deny path unaffected.
+    const denied = (await pre(bus, 'Write', {
+      file_path: 'migrations/002.sql',
+    })) as { hookSpecificOutput?: { permissionDecision?: string } };
+    expect(denied.hookSpecificOutput?.permissionDecision).toBe('deny');
+    expect(logger.warn).toHaveBeenCalled();
+  });
+
+  test('malformed input (no tool_name) records nothing', async () => {
+    const seen: unknown[] = [];
+    const bus = new HookBus(undefined, {
+      onToolDecision: (...args) => seen.push(args),
+    });
+    await bus.hooks().PreToolUse![0]!.hooks[0]!({ nonsense: true });
+    expect(seen).toHaveLength(0);
+  });
+});

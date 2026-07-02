@@ -49,6 +49,16 @@ export class HookBus {
   /** The project's harness runtime policy (module #3), compiled once for the
    *  session. Undefined ⇒ no policy layer (no manifest / disabled). */
   private readonly harnessPolicy?: CompiledHarnessPolicy;
+  /** Observer of every PreToolUse gate evaluation (the session flight-recorder
+   *  seam, module #5): called with the tool, its raw input, and the gate's
+   *  decision (+ the matched rule id on deny). Purely observational — a throw
+   *  here is swallowed (fail-open) and never blocks the tool call. */
+  private readonly onToolDecision?: (
+    tool: string,
+    input: unknown,
+    decision: 'allow' | 'deny',
+    ruleId?: string,
+  ) => void;
 
   constructor(
     private readonly logger?: Logger,
@@ -62,6 +72,13 @@ export class HookBus {
        *  carried on `start-session`. Path rules need `cwd` to resolve against;
        *  Bash rules enforce regardless. */
       harnessPolicy?: HarnessPolicy;
+      /** Flight-recorder observer for every gate evaluation (see the field). */
+      onToolDecision?: (
+        tool: string,
+        input: unknown,
+        decision: 'allow' | 'deny',
+        ruleId?: string,
+      ) => void;
     },
   ) {
     this.cwd = opts?.cwd;
@@ -69,6 +86,7 @@ export class HookBus {
     if (opts?.harnessPolicy !== undefined) {
       this.harnessPolicy = compileHarnessPolicy(opts.harnessPolicy, logger);
     }
+    this.onToolDecision = opts?.onToolDecision;
   }
 
   /** Subscribe to all observed hook events. Returns an unsubscribe fn. */
@@ -106,7 +124,7 @@ export class HookBus {
 
     // (1) Destructive-command deny list (rm -rf, force-push, …).
     const destructive = evaluateToolDeny(tool_name, tool_input, this.denyRules);
-    if (destructive.denied) return this.denyOutput(tool_name, destructive);
+    if (destructive.denied) return this.denyOutput(tool_name, tool_input, destructive);
 
     // (2) Workspace confinement — a file mutation outside the run cwd. Only when a
     // cwd is set (a real session always has one; probes/tests may omit it).
@@ -116,7 +134,7 @@ export class HookBus {
         tool_input,
         this.cwd,
       );
-      if (confinement.denied) return this.denyOutput(tool_name, confinement);
+      if (confinement.denied) return this.denyOutput(tool_name, tool_input, confinement);
     }
 
     // (3) Harness runtime policy — the project's declared protected paths + Bash
@@ -130,15 +148,37 @@ export class HookBus {
         this.harnessPolicy,
         this.cwd,
       );
-      if (policy.denied) return this.denyOutput(tool_name, policy);
+      if (policy.denied) return this.denyOutput(tool_name, tool_input, policy);
     }
 
+    this.recordDecision(tool_name, tool_input, 'allow');
     return undefined;
+  }
+
+  /** Feed the flight-recorder seam, fail-open: an observer error is warned and
+   *  swallowed so recording can never block (or fail) a tool call. */
+  private recordDecision(
+    tool: string,
+    input: unknown,
+    decision: 'allow' | 'deny',
+    ruleId?: string,
+  ): void {
+    if (this.onToolDecision === undefined) return;
+    try {
+      this.onToolDecision(tool, input, decision, ruleId);
+    } catch (error) {
+      this.logger?.warn('tool-decision observer threw', error);
+    }
   }
 
   /** Build the `PreToolUse` deny output for a matched verdict — denies THIS call
    *  (the session keeps running so the agent can adapt), never `continue: false`. */
-  private denyOutput(toolName: string, verdict: ToolDenyVerdict): HookJSONOutput {
+  private denyOutput(
+    toolName: string,
+    toolInput: unknown,
+    verdict: ToolDenyVerdict,
+  ): HookJSONOutput {
+    this.recordDecision(toolName, toolInput, 'deny', verdict.ruleId);
     this.logger?.warn('blocked tool call', {
       toolName,
       ruleId: verdict.ruleId,

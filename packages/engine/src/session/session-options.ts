@@ -199,6 +199,13 @@ export interface SessionRunnerConfig {
    *  session's PreToolUse gate — the layer that holds even under
    *  `bypassPermissions`. Absent ⇒ no policy layer (pre-feature shape). */
   harnessPolicy?: HarnessPolicy;
+  /** Session flight recorder (module #5): absolute path of the per-task NDJSON
+   *  tool-event ledger the Rust core computed
+   *  (`<projectRoot>/.nightcore/ledger/<taskId>.ndjson`) and carried on
+   *  `start-session`. The runner appends one record per PreToolUse gate
+   *  evaluation plus session start/end markers — append-only, fail-open,
+   *  size-capped (see `SessionLedger`). Absent ⇒ no recording. */
+  ledgerPath?: string;
 }
 
 /**
