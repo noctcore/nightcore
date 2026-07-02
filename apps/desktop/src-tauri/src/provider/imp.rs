@@ -146,6 +146,11 @@ impl Provider for SidecarProvider {
             // path the engine appends to. `None` serializes as an OMITTED field —
             // byte-identical to the pre-feature `start-session` (no recording).
             ledger_path: guardrails.ledger_path,
+            // OS write containment (hardening module #15): opt-in Seatbelt
+            // wrapping of the session's `claude` on the engine side. `false`
+            // serializes as an OMITTED field — byte-identical to the
+            // pre-feature `start-session`.
+            sandbox_writes: guardrails.sandbox_writes.then_some(true),
             // Task image attachments → SDK image content blocks. An empty list
             // serializes as an OMITTED field — byte-identical to the pre-feature
             // `start-session` (a text-only user message).

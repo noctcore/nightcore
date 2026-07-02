@@ -172,6 +172,7 @@ mod tests {
             append_context_pack: None,
             harness_policy: None,
             ledger_path: None,
+            sandbox_writes: None,
             images: None,
         };
         let wire = serde_json::to_value(&cmd).expect("serializes");
@@ -194,6 +195,7 @@ mod tests {
             "appendContextPack",
             "harnessPolicy",
             "ledgerPath",
+            "sandboxWrites",
             "images",
         ] {
             assert!(

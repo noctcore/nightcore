@@ -16,6 +16,7 @@ const settings: Settings = {
   mcpServers: [],
   contextPackEnabled: true,
   autoCommitOnVerified: false,
+  sandboxSessions: false,
   projectOverrides: {
     nightcore: { defaultModel: 'claude-haiku-4-5' },
   },

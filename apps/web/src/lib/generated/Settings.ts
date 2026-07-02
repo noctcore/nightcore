@@ -75,6 +75,20 @@ contextPackEnabled: boolean,
  */
 autoCommitOnVerified: boolean, 
 /**
+ * OS write containment (hardening module #15, tier "OS containment"): when
+ * enabled, every agent session launches with `sandboxWrites` on the
+ * `start-session` command, and the engine wraps the `claude` executable in a
+ * macOS Seatbelt deny-write-except profile — file writes outside the
+ * session's writable roots (cwd, worktree git common dir, temp trees, Claude
+ * CLI state) are blocked at the OS layer, closing the lexical PreToolUse
+ * gate's documented gaps (Bash redirects, symlinks). darwin-only: on other
+ * hosts (or if Seatbelt breaks) the engine logs a loud warning and runs
+ * unwrapped (fail-open). Global-only (like `auto_commit_on_verified`).
+ * Default `false` (opt-in, experimental). Serde-additive: a settings file
+ * written before this field loads as `false`.
+ */
+sandboxSessions: boolean, 
+/**
  * Per-project overrides keyed by project id.
  */
 projectOverrides: { [key in string]: SettingsOverride }, };

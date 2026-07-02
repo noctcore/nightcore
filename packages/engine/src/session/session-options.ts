@@ -206,6 +206,14 @@ export interface SessionRunnerConfig {
    *  evaluation plus session start/end markers — append-only, fail-open,
    *  size-capped (see `SessionLedger`). Absent ⇒ no recording. */
   ledgerPath?: string;
+  /** OPT-IN macOS OS-level WRITE containment (hardening module #15): the runner
+   *  wraps the resolved `claude` executable in a Seatbelt deny-write-except
+   *  profile (see `sandbox.ts`) so writes outside the session's workspace are
+   *  blocked at the OS layer — closing the lexical PreToolUse gate's documented
+   *  gaps (Bash redirects, symlinks). Requested by the Rust core from the
+   *  `sandbox_sessions` setting; when requested but unavailable the runner logs
+   *  a loud warning and runs UNwrapped (fail-open). Absent ⇒ off. */
+  sandboxWrites?: boolean;
 }
 
 /**

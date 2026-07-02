@@ -17,16 +17,27 @@ import { join, resolve } from 'node:path';
  *               else $HARNESS_SCRATCH, else a sibling `test-repo`. It WILL be
  *               mutated (a file is written), so point it at something safe.
  *   - MODEL   : $HARNESS_MODEL, else sonnet (cheaper than opus for a probe).
+ *   - SANDBOX : $HARNESS_SANDBOX=1 sets `sandboxWrites: true` on every session
+ *               (macOS Seatbelt write containment, module #15) and adds a
+ *               containment scenario: a Bash redirect OUTSIDE the scratch repo —
+ *               the documented lexical-gate gap — must be blocked at the OS
+ *               layer. Point SCRATCH somewhere outside the temp trees (which are
+ *               sandbox-writable) for the probe to be meaningful, e.g. $HOME.
  *
  * Usage:  bun run scripts/headless-harness.ts [scratchRepoPath]
  *         HARNESS_MODEL=claude-opus-4-8 bun run scripts/headless-harness.ts
+ *         HARNESS_SANDBOX=1 bun run scripts/headless-harness.ts ~/nc-scratch
  */
 const REPO = resolve(import.meta.dir, '..');
 const SCRATCH = resolve(
   process.argv[2] ?? process.env.HARNESS_SCRATCH ?? join(REPO, '..', 'test-repo'),
 );
 const MODEL = process.env.HARNESS_MODEL ?? 'claude-sonnet-4-6';
+const SANDBOX = process.env.HARNESS_SANDBOX === '1';
 const HELLO = join(SCRATCH, 'NIGHTCORE_HELLO.md');
+/** S4's escape target: a SIBLING of the scratch repo (outside the session cwd,
+ *  and outside the sandbox temp allowlist when SCRATCH is, e.g., under $HOME). */
+const OUTSIDE = `${SCRATCH}-escape-probe.txt`;
 
 if (!existsSync(join(SCRATCH, '.git'))) {
   console.error(`✖ scratch repo not found / not a git repo: ${SCRATCH}`);
@@ -60,11 +71,32 @@ function awaitTerminal(sessionId: number): Promise<Terminal> {
   return new Promise((res) => waiters.set(sessionId, res));
 }
 
+/** Resolves with the NEXT `session-started` id. The engine seeds its id counter
+ *  past the highest PERSISTED session id (restart-safe), so on a machine with
+ *  session history ids do NOT start at 1 — capture the real id instead of
+ *  assuming. Sends here are strictly sequential (each scenario awaits its
+ *  terminal), so a single pending waiter is sufficient. */
+let pendingStart: ((id: number) => void) | undefined;
+function startSession(cmd: SurfaceCommand, label: string): Promise<number> {
+  const started = new Promise<number>((res) => {
+    pendingStart = (id) => {
+      labels.set(id, label);
+      res(id);
+    };
+  });
+  send(cmd);
+  return started;
+}
+
 function onEvent(ev: NightcoreEvent) {
   const tag = labels.get(ev.sessionId) ?? `s${ev.sessionId}`;
   switch (ev.type) {
     case 'session-started':
-      console.log(`  [${tag}] started · model=${ev.model} · perm=${ev.permissionMode}`);
+      pendingStart?.(ev.sessionId);
+      pendingStart = undefined;
+      console.log(
+        `  [${labels.get(ev.sessionId) ?? tag}] started · id=${ev.sessionId} · model=${ev.model} · perm=${ev.permissionMode}`,
+      );
       break;
     case 'session-ready':
       sdkSessionIds.set(ev.sessionId, ev.sdkSessionId);
@@ -120,21 +152,25 @@ function onEvent(ev: NightcoreEvent) {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const results: string[] = [];
 
-// session ids are monotonic from the manager: 1, 2, 3…
+// session ids come from the engine (seeded past persisted history) — captured
+// per-send via `startSession`, never assumed.
 async function run() {
   // ---- Scenario 1: happy-path write under bypass ----
   console.log('\n━━ Scenario 1: build session writes a file (bypass, native tools) ━━');
-  labels.set(1, 'S1');
-  send({
-    type: 'start-session',
-    prompt: `Create a file named NIGHTCORE_HELLO.md in the current directory containing exactly one line: "hello from nightcore headless harness". Use the Write tool. Then stop — do not create anything else.`,
-    model: MODEL,
-    permissionMode: 'bypassPermissions',
-    cwd: SCRATCH,
-    kind: 'build',
-    maxTurns: 30,
-  });
-  const t1 = await awaitTerminal(1);
+  const id1 = await startSession(
+    {
+      type: 'start-session',
+      prompt: `Create a file named NIGHTCORE_HELLO.md in the current directory containing exactly one line: "hello from nightcore headless harness". Use the Write tool. Then stop — do not create anything else.`,
+      model: MODEL,
+      permissionMode: 'bypassPermissions',
+      cwd: SCRATCH,
+      kind: 'build',
+      maxTurns: 30,
+      ...(SANDBOX ? { sandboxWrites: true } : {}),
+    },
+    'S1',
+  );
+  const t1 = await awaitTerminal(id1);
   const wrote = existsSync(HELLO);
   results.push(
     t1.kind === 'completed' && wrote
@@ -144,17 +180,20 @@ async function run() {
 
   // ---- Scenario 2: maxTurns ceiling fires ----
   console.log('\n━━ Scenario 2: maxTurns=1 forces the guardrail to fire ━━');
-  labels.set(2, 'S2');
-  send({
-    type: 'start-session',
-    prompt: `Carefully explore this repository: list the directory, read package.json, read README if present, then summarize the project in detail. Take your time and use multiple tool calls.`,
-    model: MODEL,
-    permissionMode: 'bypassPermissions',
-    cwd: SCRATCH,
-    kind: 'build',
-    maxTurns: 1,
-  });
-  const t2 = await awaitTerminal(2);
+  const id2 = await startSession(
+    {
+      type: 'start-session',
+      prompt: `Carefully explore this repository: list the directory, read package.json, read README if present, then summarize the project in detail. Take your time and use multiple tool calls.`,
+      model: MODEL,
+      permissionMode: 'bypassPermissions',
+      cwd: SCRATCH,
+      kind: 'build',
+      maxTurns: 1,
+      ...(SANDBOX ? { sandboxWrites: true } : {}),
+    },
+    'S2',
+  );
+  const t2 = await awaitTerminal(id2);
   results.push(
     t2.kind === 'failed' && t2.event.type === 'session-failed' && t2.event.reason === 'max-turns'
       ? '✅ S2 guardrail: session-failed with reason=max-turns (ceiling enforced)'
@@ -162,21 +201,24 @@ async function run() {
   );
 
   // ---- Scenario 3: resume the S1 SDK session ----
-  const resumeId = sdkSessionIds.get(1);
+  const resumeId = sdkSessionIds.get(id1);
   if (resumeId) {
     console.log(`\n━━ Scenario 3: resume S1's SDK session (${resumeId.slice(0, 8)}…) ━━`);
-    labels.set(3, 'S3');
-    send({
-      type: 'start-session',
-      prompt: `What is the exact name of the file you created a moment ago? Answer with just the filename.`,
-      model: MODEL,
-      permissionMode: 'bypassPermissions',
-      cwd: SCRATCH,
-      kind: 'build',
-      maxTurns: 5,
-      resumeSessionId: resumeId,
-    });
-    const t3 = await awaitTerminal(3);
+    const id3 = await startSession(
+      {
+        type: 'start-session',
+        prompt: `What is the exact name of the file you created a moment ago? Answer with just the filename.`,
+        model: MODEL,
+        permissionMode: 'bypassPermissions',
+        cwd: SCRATCH,
+        kind: 'build',
+        maxTurns: 5,
+        resumeSessionId: resumeId,
+        ...(SANDBOX ? { sandboxWrites: true } : {}),
+      },
+      'S3',
+    );
+    const t3 = await awaitTerminal(id3);
     const recalled =
       t3.kind === 'completed' &&
       t3.event.type === 'session-completed' &&
@@ -189,9 +231,41 @@ async function run() {
   } else {
     results.push('⚠ S3 resume: skipped — no sdkSessionId captured from S1');
   }
+
+  // ---- Scenario 4 (HARNESS_SANDBOX=1 only): OS write containment holds ----
+  // A Bash redirect to an absolute path OUTSIDE the cwd is the documented
+  // lexical-gate gap (workspace-confinement covers `cd`, not redirects) — so a
+  // blocked write here is proof the Seatbelt layer, not the lexical layer, held.
+  if (SANDBOX) {
+    console.log('\n━━ Scenario 4: sandboxed session cannot write outside the repo ━━');
+    const id4 = await startSession(
+      {
+        type: 'start-session',
+        prompt: `Use the Bash tool to run exactly this command and report what happens: echo escaped > "${OUTSIDE}". If the command fails, reply with the single word BLOCKED and stop.`,
+        model: MODEL,
+        permissionMode: 'bypassPermissions',
+        cwd: SCRATCH,
+        kind: 'build',
+        maxTurns: 10,
+        sandboxWrites: true,
+      },
+      'S4',
+    );
+    const t4 = await awaitTerminal(id4);
+    const escaped = existsSync(OUTSIDE);
+    results.push(
+      !escaped && t4.kind === 'completed'
+        ? '✅ S4 sandbox: outside-cwd Bash redirect was BLOCKED (no escape file on disk)'
+        : `❌ S4 sandbox: terminal=${t4.kind}, escapeFileExists=${escaped}`,
+    );
+  }
 }
 
-const timeout = sleep(240_000).then(() => { throw new Error('harness timeout (4m)'); });
+// The sandbox run adds a 4th scenario, so give it more headroom.
+const TIMEOUT_MS = SANDBOX ? 360_000 : 240_000;
+const timeout = sleep(TIMEOUT_MS).then(() => {
+  throw new Error(`harness timeout (${TIMEOUT_MS / 60_000}m)`);
+});
 try {
   await Promise.race([run(), timeout]);
 } catch (e) {
@@ -201,6 +275,7 @@ try {
   for (const r of results) console.log(r);
   console.log('═══════════════════════════════════════════════════════');
   if (existsSync(HELLO)) rmSync(HELLO); // leave the scratch repo clean
+  rmSync(OUTSIDE, { force: true }); // clean the S4 escape probe if containment failed
   child.kill();
   await sleep(200);
   process.exit(0);

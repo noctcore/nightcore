@@ -15,6 +15,12 @@ export type SettingsPatch = { projectId?: string, defaultModel?: string, default
  */
 autoCommitOnVerified?: boolean, 
 /**
+ * Module #15: toggle OS write containment for agent sessions (macOS Seatbelt,
+ * experimental). Global-only (ignored for a per-project override target). See
+ * [`super::model::Settings::sandbox_sessions`].
+ */
+sandboxSessions?: boolean, 
+/**
  * M4.6: default run mode (`"main"` | `"worktree"`). With a `projectId` it lands
  * in that project's override; without one, the global default.
  */

@@ -14,7 +14,7 @@ use crate::task::{Task, TaskKind};
 
 use crate::sidecar::commands::{
     resolve_context_pack, resolve_harness_policy, resolve_ledger_path, resolve_mcp_servers,
-    resolve_permission_mode,
+    resolve_permission_mode, resolve_sandbox_writes,
 };
 
 /// The bounded auto-fix budget for the verification gate (M4 §B). On a
@@ -83,6 +83,8 @@ pub(crate) async fn dispatch_reviewer(
                 // Module #5: the reviewer appends to the task's SHARED ledger
                 // (its own session-start/end markers segment it from the build).
                 ledger_path: resolve_ledger_path(app, task_id),
+                // Module #15: the reviewer is OS-write-contained like the build.
+                sandbox_writes: resolve_sandbox_writes(app),
             },
         )
         .await
@@ -135,6 +137,8 @@ pub(crate) async fn dispatch_fix(
                 // Module #5: a fix-build appends to the task's SHARED ledger, so
                 // policy denials during the fix loop reach the same park gate.
                 ledger_path: resolve_ledger_path(app, task_id),
+                // Module #15: a fix-build is OS-write-contained like the build.
+                sandbox_writes: resolve_sandbox_writes(app),
             },
         )
         .await
