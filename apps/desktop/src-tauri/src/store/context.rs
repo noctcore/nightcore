@@ -119,6 +119,12 @@ pub fn assemble_default(project_path: &str) -> String {
         sections.push(block);
     }
 
+    // Ranked repo map (hardening #14): deterministic, budgeted, derived from the
+    // git-tracked tree — omitted entirely for non-git projects or empty trees.
+    if let Some(map) = crate::store::repo_map::generate(Path::new(project_path)) {
+        sections.push(map);
+    }
+
     let preamble = "# Pre-flight Context Pack\n\nNightcore injects this trusted, \
 project-controlled context into every agent run so the agent starts knowing the \
 project's rules instead of rediscovering (or violating) them. Edit it freely — it \
@@ -168,12 +174,27 @@ pub fn set_context_pack(
 /// Re-assemble the default pack from on-disk sources, persist it as `context.md`, and
 /// return the new content (the "regenerate from sources" action). Overwrites the
 /// curated file with a fresh assembly the user can then re-edit.
+///
+/// Async + `spawn_blocking` because assembly now parses the whole tracked source
+/// tree for the repo map (`store::repo_map`) — hundreds of ms on a large repo,
+/// which a sync command would spend blocking the WKWebView. State is re-acquired
+/// via `try_state` inside the blocking closure (the established converted-command
+/// pattern). No single-flight guard: assembly is deterministic and the persist is
+/// atomic, so concurrent regenerates write byte-identical content.
 #[tauri::command]
-pub fn regenerate_context_pack(project: State<'_, ProjectStore>) -> Result<String, String> {
-    let path = active_project_path(&project)?;
-    let content = assemble_default(&path);
-    write_pack(&path, &content)?;
-    Ok(content)
+pub async fn regenerate_context_pack(app: tauri::AppHandle) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        let project = app
+            .try_state::<ProjectStore>()
+            .ok_or("project store unavailable")?;
+        let path = active_project_path(&project)?;
+        let content = assemble_default(&path);
+        write_pack(&path, &content)?;
+        Ok(content)
+    })
+    .await
+    .map_err(|e| format!("regenerate context pack failed to run: {e}"))?
 }
 
 #[cfg(test)]
@@ -251,6 +272,41 @@ mod tests {
         // Still a valid, non-empty pack the user can edit — never an empty string.
         assert!(pack.contains("Pre-flight Context Pack"));
         assert!(pack.contains("No on-disk sources found"));
+    }
+
+    #[test]
+    fn assemble_default_appends_the_repo_map_for_a_git_project() {
+        let tmp = project_root();
+        let root = tmp.path();
+        let path = root.to_string_lossy().to_string();
+        std::fs::write(root.join("CLAUDE.md"), "rules").expect("write CLAUDE.md");
+
+        // Pre-git: no repo map section (the store omits, never errors).
+        let pack = assemble_default(&path);
+        assert!(!pack.contains("## Repo Map"), "no git repo → no repo map");
+
+        // A git repo with one tracked source file gets the ranked map appended.
+        let git = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(root)
+                .output()
+                .expect("git");
+            assert!(out.status.success(), "git {args:?} failed");
+        };
+        git(&["init", "-q"]);
+        std::fs::write(root.join("api.ts"), "export const fetchAll = () => 1;\n")
+            .expect("write api.ts");
+        git(&["add", "api.ts"]);
+
+        let pack = assemble_default(&path);
+        assert!(pack.contains("## Repo Map (auto-generated)"));
+        assert!(pack.contains("`api.ts`"));
+        assert!(pack.contains("fetchAll"));
+        // The map sits after the curated sections, never replacing them.
+        let constitution_at = pack.find("Project Constitution").expect("constitution");
+        let map_at = pack.find("## Repo Map").expect("map");
+        assert!(constitution_at < map_at, "repo map is appended last");
     }
 
     #[test]
