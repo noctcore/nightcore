@@ -1,0 +1,372 @@
+/// <reference types="bun" />
+import { describe, expect, test } from 'bun:test';
+
+import {
+  type Config,
+  ConfigSchema,
+  type NightcoreEvent,
+  type ReviewLens,
+  type SurfaceCommand,
+} from '@nightcore/contracts';
+
+import type { SessionRunnerConfig } from '../../session/session-runner.js';
+import { reviewFingerprint } from './findings.js';
+import { type PrReviewRunnerFactory,PrReviewScanManager } from './manager.js';
+
+type StartPrReview = Extract<SurfaceCommand, { type: 'start-pr-review' }>;
+
+/**
+ * Drive the `PrReviewScanManager` with a FAKE runner injected via `runnerFactory` — no
+ * SDK, no subprocess. The same fake serves BOTH roles, routed by persona: a lens pass
+ * returns a canned findings array; the single validator pass (routed by its
+ * "VALIDATING" persona) returns a canned drop-list. This exercises the
+ * started → fan-out → diff-ground → dedup → validate → complete flow, the validator
+ * fail-open, and the cancel path in isolation.
+ */
+
+const BASE_CONFIG: Config = ConfigSchema.parse({
+  paths: { home: '/tmp/nc-home', sessions: '/tmp/nc-home/sessions' },
+});
+
+function startCommand(
+  lenses: ReviewLens[],
+  over: Partial<{ runId: string; maxConcurrency: number }> = {},
+): StartPrReview {
+  return {
+    type: 'start-pr-review',
+    runId: over.runId ?? 'run-1',
+    projectPath: '/proj',
+    prNumber: 42,
+    diff: 'diff --git a/src/a.ts b/src/a.ts\n@@\n+ oops();',
+    changedFiles: ['src/a.ts'],
+    lenses,
+    ...(over.maxConcurrency !== undefined
+      ? { maxConcurrency: over.maxConcurrency }
+      : {}),
+  };
+}
+
+/** Resolves once the manager emits a terminal `pr-review-completed`/`-failed`. */
+function collect(): {
+  events: NightcoreEvent[];
+  emit: (event: NightcoreEvent) => void;
+  done: Promise<NightcoreEvent[]>;
+} {
+  const events: NightcoreEvent[] = [];
+  let resolve!: (value: NightcoreEvent[]) => void;
+  const done = new Promise<NightcoreEvent[]>((r) => {
+    resolve = r;
+  });
+  const emit = (event: NightcoreEvent): void => {
+    events.push(event);
+    if (event.type === 'pr-review-completed' || event.type === 'pr-review-failed') {
+      resolve(events);
+    }
+  };
+  return { events, emit, done };
+}
+
+/** Emit a `session-completed` carrying `result`, then resolve. */
+function completing(
+  result: string,
+): (emit: (e: NightcoreEvent) => void) => Promise<void> {
+  return async (emit) => {
+    emit({
+      type: 'session-completed',
+      sessionId: -1,
+      result,
+      costUsd: 0,
+      numTurns: 1,
+      durationMs: 1,
+      usage: {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+      },
+    });
+  };
+}
+
+/** One finding on a CHANGED file (survives diff-relative grounding). */
+const ONE_FINDING = JSON.stringify([
+  { severity: 'high', file: 'src/a.ts', line: 10, title: 'Bug', body: 'drops errors' },
+]);
+
+const isValidator = (cfg: SessionRunnerConfig): boolean =>
+  cfg.appendSystemPrompt?.includes('VALIDATING') ?? false;
+
+/** Lens → canned findings; validator → drop nothing (`[]`). */
+function cannedFactory(): PrReviewRunnerFactory {
+  return (cfg: SessionRunnerConfig, emit) => ({
+    async run() {
+      await completing(isValidator(cfg) ? '[]' : ONE_FINDING)(emit);
+    },
+    async interrupt() {},
+  });
+}
+
+describe('PrReviewScanManager — event ordering', () => {
+  test('emits started → lens-started → lens-completed → completed', async () => {
+    const { emit, done } = collect();
+    const manager = new PrReviewScanManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      runnerFactory: cannedFactory(),
+    });
+
+    manager.start(startCommand(['security']));
+    const events = await done;
+    const types = events.map((e) => e.type);
+
+    expect(types[0]).toBe('pr-review-started');
+    expect(types[types.length - 1]).toBe('pr-review-completed');
+    const lensStarted = types.indexOf('pr-review-lens-started');
+    const lensCompleted = types.indexOf('pr-review-lens-completed');
+    expect(lensStarted).toBeGreaterThan(0);
+    expect(lensCompleted).toBeGreaterThan(lensStarted);
+
+    const completed = events.find((e) => e.type === 'pr-review-completed');
+    if (completed?.type !== 'pr-review-completed') throw new Error('no completed');
+    expect(completed.findings).toHaveLength(1);
+    expect(completed.findings[0]?.file).toBe('src/a.ts');
+    expect(completed.findings[0]?.lens).toBe('security');
+    expect(completed.lensesRun).toBe(1);
+
+    const started = events.find((e) => e.type === 'pr-review-started');
+    expect(started?.type === 'pr-review-started' && started.lenses).toEqual([
+      'security',
+    ]);
+  });
+});
+
+describe('PrReviewScanManager — per-lens fan-out', () => {
+  test('runs every requested lens and emits one lens-completed per lens', async () => {
+    const { events, emit, done } = collect();
+    const manager = new PrReviewScanManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      runnerFactory: cannedFactory(),
+    });
+
+    manager.start(
+      startCommand(['security', 'logic', 'tests'], { maxConcurrency: 2 }),
+    );
+    await done;
+
+    const completedLenses = events
+      .filter((e) => e.type === 'pr-review-lens-completed')
+      .map((e) => (e.type === 'pr-review-lens-completed' ? e.lens : ''));
+    expect(completedLenses.sort()).toEqual(['logic', 'security', 'tests']);
+  });
+});
+
+describe('PrReviewScanManager — diff-relative grounding', () => {
+  test('drops a lens finding on a file that is NOT in the PR changed set', async () => {
+    const offDiff = JSON.stringify([
+      { severity: 'high', file: 'src/not-in-pr.ts', title: 'Ghost', body: 'x' },
+    ]);
+    const factory: PrReviewRunnerFactory = (cfg, emit) => ({
+      async run() {
+        await completing(isValidator(cfg) ? '[]' : offDiff)(emit);
+      },
+      async interrupt() {},
+    });
+    const { emit, done } = collect();
+    const manager = new PrReviewScanManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      runnerFactory: factory,
+    });
+
+    manager.start(startCommand(['security']));
+    const events = await done;
+    const completed = events.find((e) => e.type === 'pr-review-completed');
+    expect(
+      completed?.type === 'pr-review-completed' && completed.findings,
+    ).toHaveLength(0);
+    // …and the streamed per-lens batch was already filtered too.
+    const lens = events.find((e) => e.type === 'pr-review-lens-completed');
+    expect(
+      lens?.type === 'pr-review-lens-completed' && lens.findings,
+    ).toHaveLength(0);
+  });
+});
+
+describe('PrReviewScanManager — corrective retry', () => {
+  test('a non-JSON-then-JSON lens triggers exactly ONE corrective retry', async () => {
+    let lensCalls = 0;
+    const factory: PrReviewRunnerFactory = (cfg: SessionRunnerConfig, emit) => ({
+      async run() {
+        if (isValidator(cfg)) {
+          await completing('[]')(emit);
+          return;
+        }
+        lensCalls++;
+        const isRetry = cfg.prompt.includes('was not valid JSON');
+        await completing(isRetry ? ONE_FINDING : 'prose, not json')(emit);
+      },
+      async interrupt() {},
+    });
+
+    const { emit, done } = collect();
+    const manager = new PrReviewScanManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      runnerFactory: factory,
+    });
+
+    manager.start(startCommand(['security']));
+    const events = await done;
+    expect(lensCalls).toBe(2); // one original + one retry
+    const completed = events.find((e) => e.type === 'pr-review-completed');
+    expect(
+      completed?.type === 'pr-review-completed' && completed.findings,
+    ).toHaveLength(1);
+  });
+});
+
+describe('PrReviewScanManager — validator', () => {
+  test('the validator drops a flagged finding before completion', async () => {
+    const droppedId = `security-${reviewFingerprint('security', 'src/a.ts', 'Bug')}`;
+    const factory: PrReviewRunnerFactory = (cfg, emit) => ({
+      async run() {
+        await completing(
+          isValidator(cfg) ? JSON.stringify([droppedId]) : ONE_FINDING,
+        )(emit);
+      },
+      async interrupt() {},
+    });
+    const { emit, done } = collect();
+    const manager = new PrReviewScanManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      runnerFactory: factory,
+    });
+
+    manager.start(startCommand(['security']));
+    const events = await done;
+    const completed = events.find((e) => e.type === 'pr-review-completed');
+    // The lens-completed batch still carried it; the validator removed it from the
+    // terminal survivors.
+    expect(
+      completed?.type === 'pr-review-completed' && completed.findings,
+    ).toHaveLength(0);
+    const lens = events.find((e) => e.type === 'pr-review-lens-completed');
+    expect(
+      lens?.type === 'pr-review-lens-completed' && lens.findings,
+    ).toHaveLength(1);
+  });
+
+  test('FAIL-OPEN: a validator that throws still completes with all findings', async () => {
+    const factory: PrReviewRunnerFactory = (cfg, emit) => ({
+      async run() {
+        if (isValidator(cfg)) throw new Error('validator exploded');
+        await completing(ONE_FINDING)(emit);
+      },
+      async interrupt() {},
+    });
+    const { emit, done } = collect();
+    const manager = new PrReviewScanManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      runnerFactory: factory,
+    });
+
+    manager.start(startCommand(['security']));
+    const events = await done;
+    const completed = events.find((e) => e.type === 'pr-review-completed');
+    expect(completed).toBeDefined();
+    expect(
+      completed?.type === 'pr-review-completed' && completed.findings,
+    ).toHaveLength(1);
+    // A crashed validator must never surface as a run failure.
+    expect(events.some((e) => e.type === 'pr-review-failed')).toBe(false);
+  });
+});
+
+describe('PrReviewScanManager — cancellation', () => {
+  test('cancel interrupts live lens passes and surfaces reason "aborted"', async () => {
+    const live: Array<() => void> = [];
+    const factory: PrReviewRunnerFactory = (_cfg, emit) => {
+      let abort!: () => void;
+      const parked = new Promise<void>((r) => {
+        abort = r;
+      });
+      return {
+        async run() {
+          live.push(abort);
+          await parked;
+          emit({
+            type: 'session-failed',
+            sessionId: -1,
+            reason: 'aborted',
+            message: 'interrupted',
+          });
+        },
+        async interrupt() {
+          abort();
+        },
+      };
+    };
+
+    const { emit, done } = collect();
+    const manager = new PrReviewScanManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      runnerFactory: factory,
+    });
+
+    manager.start(startCommand(['security', 'logic']));
+    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 5));
+    expect(live.length).toBeGreaterThan(0);
+    manager.cancel('run-1');
+
+    const events = await done;
+    const failed = events.find((e) => e.type === 'pr-review-failed');
+    expect(failed).toBeDefined();
+    expect(failed?.type === 'pr-review-failed' && failed.reason).toBe('aborted');
+  });
+});
+
+describe('PrReviewScanManager — duplicate start', () => {
+  test('a duplicate-runId start() is ignored', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const factory: PrReviewRunnerFactory = (cfg: SessionRunnerConfig, emit) => ({
+      async run() {
+        if (!isValidator(cfg)) await gate;
+        await completing(isValidator(cfg) ? '[]' : ONE_FINDING)(emit);
+      },
+      async interrupt() {},
+    });
+
+    const { events, emit, done } = collect();
+    const manager = new PrReviewScanManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      runnerFactory: factory,
+    });
+
+    manager.start(startCommand(['security'], { runId: 'dup' }));
+    manager.start(startCommand(['logic'], { runId: 'dup' }));
+    release();
+    await done;
+
+    const starts = events.filter((e) => e.type === 'pr-review-started');
+    expect(starts).toHaveLength(1);
+    const lensStarts = events.filter((e) => e.type === 'pr-review-lens-started');
+    expect(lensStarts).toHaveLength(1);
+  });
+});

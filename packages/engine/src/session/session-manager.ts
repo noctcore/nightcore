@@ -24,6 +24,7 @@ import { SessionStore } from '@nightcore/storage';
 import { ProviderConfigReader } from '../providers/provider-config.js';
 import { HarnessManager } from '../scans/harness/manager.js';
 import { AnalysisManager } from '../scans/insight/manager.js';
+import { PrReviewScanManager } from '../scans/pr-review/manager.js';
 import { ScorecardManager } from '../scans/scorecard/manager.js';
 import { resolveKindPreset } from './kind-presets.js';
 import type { ModelInfo } from './sdk-adapter.js';
@@ -110,6 +111,7 @@ export class SessionManager {
   private readonly analysis: AnalysisManager;
   private readonly harness: HarnessManager;
   private readonly scorecard: ScorecardManager;
+  private readonly prReview: PrReviewScanManager;
 
   constructor(
     private readonly config: Config,
@@ -138,6 +140,12 @@ export class SessionManager {
       apiKeyFallback: this.apiKeyFallback,
       emit: (event) => this.emit(event),
       ...(logger !== undefined ? { logger: logger.child('scorecard') } : {}),
+    });
+    this.prReview = new PrReviewScanManager({
+      config,
+      apiKeyFallback: this.apiKeyFallback,
+      emit: (event) => this.emit(event),
+      ...(logger !== undefined ? { logger: logger.child('pr-review') } : {}),
     });
     // Seed the id counter past the highest persisted id so a restart never
     // reuses an id and clobbers a prior record (the SessionStore collapses by id,
@@ -196,15 +204,16 @@ export class SessionManager {
       this.scorecard.cancel(command.runId);
       return;
     }
-    // PR Review runs are also keyed by `runId` (not a session id). The
-    // `PrReviewScanManager` (Stage 2A) owns them; until it is wired here, narrow the
-    // two commands out of the session-targeting union below so the contract variants
-    // typecheck. Stage 2A REPLACES this block with `this.prReview.start(command)` /
-    // `this.prReview.cancel(command.runId)`, mirroring the analysis cases above.
-    if (command.type === 'start-pr-review' || command.type === 'cancel-pr-review') {
-      this.logger?.debug('pr-review command received before its manager is wired', {
-        type: command.type,
-      });
+    // PR Review runs are also keyed by `runId` (not a session id) and are owned by the
+    // PrReviewScanManager, which fans out one read-only review pass per lens over the
+    // Rust-resolved PR diff, diff-grounds + dedups the findings, runs an adversarial
+    // validator pass, and emits the `pr-review-*` event family.
+    if (command.type === 'start-pr-review') {
+      this.prReview.start(command);
+      return;
+    }
+    if (command.type === 'cancel-pr-review') {
+      this.prReview.cancel(command.runId);
       return;
     }
 
