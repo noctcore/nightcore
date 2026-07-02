@@ -36,6 +36,11 @@ export interface CreatePrDialogView {
   canSubmit: boolean;
   /** Fire the create; no-ops while drafting/submitting or without a title. */
   submit: () => void;
+  /** Dismiss the dialog — a NO-OP while the create is in flight. The shared
+   *  Modal fires `onClose` unconditionally on Esc/backdrop, which would unmount
+   *  a submitting dialog and make a later failure invisible; every close
+   *  affordance routes through this submitting-aware gate instead. */
+  requestClose: () => void;
 }
 
 /** Coerce a thrown value (Tauri rejections are commonly plain strings) into a
@@ -221,6 +226,12 @@ export function useCreatePrDialog({
 
   const canSubmit = !submitting && !drafting && title.trim().length > 0;
 
+  // Submitting-aware close (gated HERE, at the call site — the shared Modal's
+  // Esc/backdrop semantics stay unconditional for every other dialog).
+  const requestClose = useCallback(() => {
+    if (!submitting) onClose();
+  }, [submitting, onClose]);
+
   const submit = useCallback(() => {
     if (taskId === null || submitting || drafting) return;
     const finalTitle = title.trim();
@@ -257,5 +268,6 @@ export function useCreatePrDialog({
     staleDraftNote,
     canSubmit,
     submit,
+    requestClose,
   };
 }

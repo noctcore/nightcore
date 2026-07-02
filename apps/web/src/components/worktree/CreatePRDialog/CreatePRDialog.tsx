@@ -20,8 +20,11 @@ const LABEL_CLASS = 'font-mono text-[10px] uppercase tracking-[0.1em] text-muted
  *  an editable title/body pre-filled by `draftPrMessage` (never posted without
  *  review), a base-branch picker, a draft toggle, and a confirm footer that
  *  states exactly what will happen. Built on the shared `<Modal>` primitive
- *  (focus trap + Esc / click-outside close). Enter is deliberately NOT wired to
- *  confirm — publishing is irreversible, so it takes an explicit click. */
+ *  (focus trap + Esc / click-outside close), with every close affordance routed
+ *  through the submitting-aware `requestClose` — Esc/backdrop must not unmount
+ *  a mid-submit dialog (a later failure would be invisible). Enter is
+ *  deliberately NOT wired to confirm — publishing is irreversible, so it takes
+ *  an explicit click. */
 export function CreatePRDialog({ open, task, onCreate, onClose }: CreatePRDialogProps) {
   const v = useCreatePrDialog({ open, task, onCreate, onClose });
   if (!open || task === null) return null;
@@ -33,7 +36,7 @@ export function CreatePRDialog({ open, task, onCreate, onClose }: CreatePRDialog
     <Modal
       label="Create pull request"
       panelClassName="w-full max-w-md overflow-hidden rounded-[14px] border border-border bg-popover shadow-2xl"
-      onClose={onClose}
+      onClose={v.requestClose}
     >
       <div className="flex items-start justify-between gap-3 px-5 pb-3 pt-5">
         <div className="flex min-w-0 flex-col gap-1">
@@ -45,7 +48,7 @@ export function CreatePRDialog({ open, task, onCreate, onClose }: CreatePRDialog
             <span className="truncate font-mono text-foreground">{baseLabel}</span>
           </div>
         </div>
-        <IconButton label="Close" onClick={onClose} className="-mr-1 shrink-0">
+        <IconButton label="Close" onClick={v.requestClose} className="-mr-1 shrink-0">
           <CloseIcon size={16} />
         </IconButton>
       </div>
@@ -127,7 +130,7 @@ export function CreatePRDialog({ open, task, onCreate, onClose }: CreatePRDialog
           pull request against <span className="font-mono text-foreground">{baseLabel}</span>
         </p>
         <div className="flex items-center justify-end gap-2">
-          <Button variant="ghost" onClick={onClose} disabled={v.submitting}>
+          <Button variant="ghost" onClick={v.requestClose} disabled={v.submitting}>
             Cancel
           </Button>
           <Button variant="primary" disabled={!v.canSubmit} onClick={v.submit}>

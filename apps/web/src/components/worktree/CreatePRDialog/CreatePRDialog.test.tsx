@@ -1,3 +1,4 @@
+import { userEvent } from '@vitest/browser/context';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
@@ -185,6 +186,41 @@ test('a base change after hand-edits shows the stale-draft note and never clobbe
     .toHaveValue('feat: my hand-edited title');
   // No re-draft fired against the new base — dirty fields are never clobbered.
   expect(invoke).not.toHaveBeenCalledWith('draft_pr_message', { id: 't-pr', base: 'develop' });
+});
+
+test('Escape and backdrop clicks are no-ops while the create is submitting', async () => {
+  let resolveCreate: (() => void) | undefined;
+  stubCommands({
+    create_pr_task: () =>
+      new Promise<void>((resolve) => {
+        resolveCreate = () => resolve();
+      }),
+  });
+  const onClose = vi.fn();
+  const screen = render(
+    <CreatePRDialog open task={TASK} onCreate={onCreate} onClose={onClose} />,
+  );
+  await expect.element(screen.getByLabelText('Title')).toHaveValue('feat: auth guard');
+
+  await screen.getByRole('button', { name: 'Create PR' }).click();
+  await expect.element(screen.getByRole('button', { name: /Creating…/ })).toBeDisabled();
+
+  // Esc mid-submit must NOT dismiss: an unmounted dialog would swallow a later
+  // failure. The shared Modal fires onClose unconditionally; the dialog's
+  // submitting-aware gate absorbs it.
+  await userEvent.keyboard('{Escape}');
+  await expect.element(screen.getByLabelText('Title')).toBeInTheDocument();
+  expect(onClose).not.toHaveBeenCalled();
+
+  // The backdrop click routes through the same gate.
+  const backdrop = screen.container.querySelector('[role="presentation"]');
+  (backdrop as HTMLElement).click();
+  await expect.element(screen.getByLabelText('Title')).toBeInTheDocument();
+  expect(onClose).not.toHaveBeenCalled();
+
+  // Once the create settles, closing works again.
+  resolveCreate!();
+  await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
 });
 
 test('a rejected create shows the inline error and keeps the dialog open', async () => {

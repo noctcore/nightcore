@@ -17,7 +17,8 @@ export interface CreatePrController {
   /** Push the branch + `gh pr create`, guarded like merge/commit. Resolves on
    *  success (after the success toast); REJECTS on failure so the dialog can
    *  show the error inline and stay open — the deliberate NewTaskForm-style
-   *  rethrow, not the toast-and-swallow of the fire-and-forget handlers. */
+   *  rethrow. A failure ALSO fires an error toast, so it still surfaces when
+   *  the dialog was dismissed mid-submit and nobody hears the rejection. */
   create: (id: string, opts: CreatePrOptions) => Promise<void>;
   /** Open a created PR in the system browser (backend https-only validated). */
   openPr: (url: string) => void;
@@ -58,6 +59,10 @@ export function useCreatePr(action: ActionGuard, toast: ToastApi): CreatePrContr
             },
             (err: unknown) => {
               console.error('create_pr_task failed', err);
+              // Toast BESIDES rejecting (the sibling failure-toast pattern):
+              // the dialog may have been dismissed mid-submit, and a rejection
+              // with no listener would leave the failure invisible.
+              toast.error('Could not create the pull request', err);
               reject(err instanceof Error ? err : new Error(String(err)));
             },
           );
