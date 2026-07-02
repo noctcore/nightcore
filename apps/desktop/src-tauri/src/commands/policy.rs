@@ -58,6 +58,8 @@ pub struct HarnessPolicyFile {
     pub deny_bash_patterns: Vec<String>,
     pub deny_read_paths: Vec<String>,
     pub disallowed_tools: Vec<String>,
+    pub allow_tools: Vec<String>,
+    pub ask_tools: Vec<String>,
     pub diff_budget: Option<PolicyDiffBudget>,
     /// Whether `.nightcore/harness.json` exists at all — the UI tells "editing an
     /// existing manifest" apart from "saving will create one".
@@ -74,6 +76,8 @@ impl HarnessPolicyFile {
             deny_bash_patterns: Vec::new(),
             deny_read_paths: Vec::new(),
             disallowed_tools: Vec::new(),
+            allow_tools: Vec::new(),
+            ask_tools: Vec::new(),
             diff_budget: None,
             manifest_exists,
         }
@@ -101,6 +105,10 @@ pub struct HarnessPolicyPatch {
     pub deny_read_paths: Option<Vec<String>>,
     #[serde(default)]
     pub disallowed_tools: Option<Vec<String>>,
+    #[serde(default)]
+    pub allow_tools: Option<Vec<String>>,
+    #[serde(default)]
+    pub ask_tools: Option<Vec<String>>,
     #[serde(default)]
     pub diff_budget: Option<PolicyDiffBudget>,
 }
@@ -170,6 +178,8 @@ pub fn read_policy_file(project_path: &str) -> HarnessPolicyFile {
         deny_bash_patterns: string_entries(&policy, "denyBashPatterns"),
         deny_read_paths: string_entries(&policy, "denyReadPaths"),
         disallowed_tools: string_entries(&policy, "disallowedTools"),
+        allow_tools: string_entries(&policy, "allowTools"),
+        ask_tools: string_entries(&policy, "askTools"),
         diff_budget,
         manifest_exists: true,
     }
@@ -226,6 +236,8 @@ pub fn write_policy_patch(
         ("denyBashPatterns", &patch.deny_bash_patterns),
         ("denyReadPaths", &patch.deny_read_paths),
         ("disallowedTools", &patch.disallowed_tools),
+        ("allowTools", &patch.allow_tools),
+        ("askTools", &patch.ask_tools),
     ] {
         if let Some(list) = list {
             policy.insert(key.to_string(), json!(list));

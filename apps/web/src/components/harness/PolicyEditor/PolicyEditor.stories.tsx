@@ -8,6 +8,8 @@ const POLICY: HarnessPolicyFile = {
   denyBashPatterns: ['--no-verify'],
   denyReadPaths: ['.env*'],
   disallowedTools: ['WebSearch'],
+  askTools: ['WebFetch'],
+  allowTools: ['Bash(git status:*)'],
   diffBudget: { maxChangedLines: 400, maxChangedFiles: null },
   manifestExists: true,
 };
@@ -36,6 +38,8 @@ export const NoManifest: Story = {
       denyBashPatterns: [],
       denyReadPaths: [],
       disallowedTools: [],
+      askTools: [],
+      allowTools: [],
       diffBudget: null,
       manifestExists: false,
     },

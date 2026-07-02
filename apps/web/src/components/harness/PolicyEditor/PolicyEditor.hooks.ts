@@ -12,6 +12,8 @@ export function draftFromPolicy(policy: HarnessPolicyFile): PolicyDraft {
     denyBashPatterns: [...policy.denyBashPatterns],
     denyReadPaths: [...policy.denyReadPaths],
     disallowedTools: [...policy.disallowedTools],
+    askTools: [...policy.askTools],
+    allowTools: [...policy.allowTools],
     maxChangedLines: policy.diffBudget?.maxChangedLines?.toString() ?? '',
     maxChangedFiles: policy.diffBudget?.maxChangedFiles?.toString() ?? '',
   };
@@ -58,6 +60,8 @@ export function buildPolicyPatch(draft: PolicyDraft): HarnessPolicyPatch {
     denyBashPatterns: cleanList(draft.denyBashPatterns),
     denyReadPaths: cleanList(draft.denyReadPaths),
     disallowedTools: cleanList(draft.disallowedTools),
+    askTools: cleanList(draft.askTools),
+    allowTools: cleanList(draft.allowTools),
     diffBudget: {
       maxChangedLines: limitValue(draft.maxChangedLines),
       maxChangedFiles: limitValue(draft.maxChangedFiles),

@@ -35,6 +35,18 @@ const LIST_FIELDS: { key: PolicyListKey; label: string; hint: string; placeholde
     hint: 'Tool names removed from the agent entirely.',
     placeholder: 'WebSearch',
   },
+  {
+    key: 'askTools',
+    label: 'Ask-first tools',
+    hint: 'Tool names that require your interactive approval on every call, even in bypass mode.',
+    placeholder: 'WebFetch',
+  },
+  {
+    key: 'allowTools',
+    label: 'Auto-allowed rules',
+    hint: 'SDK permission rules approved without prompting (never overrides a deny).',
+    placeholder: 'Bash(git status:*)',
+  },
 ];
 
 /** The enable switch (shared visual with the settings toggles). */

@@ -1638,6 +1638,8 @@ const MOCK_POLICY_FILE: HarnessPolicyFile = {
   denyBashPatterns: ['--no-verify'],
   denyReadPaths: ['.env*'],
   disallowedTools: [],
+  askTools: ['WebFetch'],
+  allowTools: [],
   diffBudget: null,
   manifestExists: true,
 };

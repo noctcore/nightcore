@@ -9,4 +9,4 @@ import type { PolicyDiffBudget } from "./PolicyDiffBudget";
  * inside `diffBudget` still survive. The `diffBudget` key itself is dropped when
  * it ends up empty.
  */
-export type HarnessPolicyPatch = { enabled: boolean | null, protectedPaths: Array<string> | null, denyBashPatterns: Array<string> | null, denyReadPaths: Array<string> | null, disallowedTools: Array<string> | null, diffBudget: PolicyDiffBudget | null, };
+export type HarnessPolicyPatch = { enabled: boolean | null, protectedPaths: Array<string> | null, denyBashPatterns: Array<string> | null, denyReadPaths: Array<string> | null, disallowedTools: Array<string> | null, allowTools: Array<string> | null, askTools: Array<string> | null, diffBudget: PolicyDiffBudget | null, };

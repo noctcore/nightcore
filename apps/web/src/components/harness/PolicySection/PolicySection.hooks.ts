@@ -95,6 +95,8 @@ export function usePolicySection(): PolicySectionVM {
           denyBashPatterns: null,
           denyReadPaths: next,
           disallowedTools: null,
+          askTools: null,
+          allowTools: null,
           diffBudget: null,
         });
         setPolicy(updated);

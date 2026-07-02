@@ -14,12 +14,14 @@ export interface PolicyEditorProps {
   onSave: (patch: HarnessPolicyPatch) => void;
 }
 
-/** The four editable string-list policy fields. */
+/** The editable string-list policy fields. */
 export type PolicyListKey =
   | 'protectedPaths'
   | 'denyBashPatterns'
   | 'denyReadPaths'
-  | 'disallowedTools';
+  | 'disallowedTools'
+  | 'askTools'
+  | 'allowTools';
 
 /** The editor's working copy: lists as row arrays, diff-budget limits as raw
  *  input text (`''` = unset, so both inputs are clearable). */
@@ -29,6 +31,8 @@ export interface PolicyDraft {
   denyBashPatterns: string[];
   denyReadPaths: string[];
   disallowedTools: string[];
+  askTools: string[];
+  allowTools: string[];
   maxChangedLines: string;
   maxChangedFiles: string;
 }

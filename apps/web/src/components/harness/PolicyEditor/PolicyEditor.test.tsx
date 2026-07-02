@@ -32,6 +32,8 @@ test('buildPolicyPatch maps cleared limit inputs to null (unset)', () => {
     denyBashPatterns: [],
     denyReadPaths: [' .env* '],
     disallowedTools: [''],
+    askTools: ['WebFetch', 'WebFetch'],
+    allowTools: [],
     maxChangedLines: '',
     maxChangedFiles: '20',
   };
@@ -41,6 +43,8 @@ test('buildPolicyPatch maps cleared limit inputs to null (unset)', () => {
     denyBashPatterns: [],
     denyReadPaths: ['.env*'],
     disallowedTools: [],
+    askTools: ['WebFetch'],
+    allowTools: [],
     diffBudget: { maxChangedLines: null, maxChangedFiles: 20 },
   });
 });
@@ -52,6 +56,8 @@ test('draftFromPolicy stringifies the diff budget for the clearable inputs', () 
     denyBashPatterns: [],
     denyReadPaths: [],
     disallowedTools: [],
+    askTools: [],
+    allowTools: [],
     diffBudget: { maxChangedLines: 400, maxChangedFiles: null },
     manifestExists: true,
   });

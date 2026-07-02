@@ -7,7 +7,7 @@ import type { PolicyDiffBudget } from "./PolicyDiffBudget";
  * absent (the layer arms unless explicitly opted out), lists default empty, and
  * `diff_budget` is `None` when the manifest declares no `diffBudget` object.
  */
-export type HarnessPolicyFile = { enabled: boolean, protectedPaths: Array<string>, denyBashPatterns: Array<string>, denyReadPaths: Array<string>, disallowedTools: Array<string>, diffBudget: PolicyDiffBudget | null, 
+export type HarnessPolicyFile = { enabled: boolean, protectedPaths: Array<string>, denyBashPatterns: Array<string>, denyReadPaths: Array<string>, disallowedTools: Array<string>, allowTools: Array<string>, askTools: Array<string>, diffBudget: PolicyDiffBudget | null, 
 /**
  * Whether `.nightcore/harness.json` exists at all — the UI tells "editing an
  * existing manifest" apart from "saving will create one".
