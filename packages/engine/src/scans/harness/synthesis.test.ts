@@ -225,6 +225,63 @@ describe('synthesizeHarness — corrective retry', () => {
   });
 });
 
+describe('synthesizeHarness — hardening playbook in the prompt', () => {
+  const PROFILE = {
+    isMonorepo: false,
+    workspaceTool: 'npm',
+    packages: [],
+    languages: ['typescript'],
+    frameworks: [],
+    hasEslintFlatConfig: false,
+    hasLintMeta: false,
+    hasAgentDocs: false,
+    existingPlugins: [],
+  } as unknown as RepoProfile;
+  const COMMAND = {
+    type: 'start-harness-scan',
+    runId: 'run-1',
+    projectPath: PROJECT,
+    categories: [],
+  } as unknown as Extract<SurfaceCommand, { type: 'start-harness-scan' }>;
+  const CONFIG = {
+    model: 'test-model',
+    permissions: {},
+    settingSources: [],
+  } as unknown as Config;
+
+  test('the synthesis prompt carries the hardening modules and the tool-config kind', async () => {
+    let prompt = '';
+    const factory: ScanRunnerFactory = (config, emit): ScanSessionRunner => ({
+      async run() {
+        prompt = config.prompt;
+        emit({
+          type: 'session-completed',
+          sessionId: -1,
+          result: '{"artifacts":[],"proposals":[]}',
+          costUsd: 0,
+        } as never);
+      },
+      async interrupt() {},
+    });
+    await synthesizeHarness({
+      profile: PROFILE,
+      findings: [],
+      inventory: 'top-level: x',
+      command: COMMAND,
+      config: CONFIG,
+      apiKeyFallback: false,
+      runnerFactory: factory,
+    });
+    // The profile-conditional playbook (reference.ts) is injected…
+    expect(prompt).toContain('HARDENING MODULES');
+    expect(prompt).toContain('.gitleaks.toml');
+    // …and the artifact contract advertises the tool-config kind so the model can
+    // actually emit what the playbook asks for.
+    expect(prompt).toContain('custom-lint-plugin|tool-config');
+    expect(prompt).toContain('`tool-config` is a standalone hardening config file');
+  });
+});
+
 describe('parseSynthesis — task-shaped proposals', () => {
   /** A single valid artifact whose engine-assigned id we reuse in proposals. */
   const ARTIFACT = {
@@ -335,6 +392,114 @@ describe('parseSynthesis — task-shaped proposals', () => {
     expect(error).toBeUndefined();
     expect(artifacts).toHaveLength(1);
     expect(proposals).toHaveLength(0);
+  });
+});
+
+describe('parseSynthesis — tool-config artifacts + hardening checks', () => {
+  /** A valid `.gitleaks.toml` tool-config artifact (module #4a's shape). */
+  const GITLEAKS = {
+    kind: 'tool-config',
+    title: 'Secret-scan starter config',
+    description: 'Gitleaks config extending the default ruleset with a project allowlist.',
+    targetPath: '.gitleaks.toml',
+    writeMode: 'create',
+    content: 'title = "gitleaks"\n[extend]\nuseDefault = true\n',
+    language: 'toml',
+  };
+  const GITLEAKS_ID = parseProposedArtifacts(JSON.stringify([GITLEAKS]), PROJECT)
+    .artifacts[0]!.id;
+
+  test('a tool-config artifact + its secret-scan harnessCheck round-trip', () => {
+    const raw = JSON.stringify({
+      artifacts: [GITLEAKS],
+      proposals: [
+        {
+          kind: 'apply-artifacts',
+          title: 'Adopt secret scanning',
+          description: 'Write the gitleaks starter config.',
+          artifactIds: [GITLEAKS_ID],
+          harnessCheck: {
+            name: 'secret-scan',
+            kind: 'secret-scan',
+            command: 'gitleaks detect --no-banner --redact',
+          },
+        },
+      ],
+    });
+    const { artifacts, proposals, error } = parseSynthesis(raw, PROJECT);
+    expect(error).toBeUndefined();
+    expect(artifacts[0]?.kind).toBe('tool-config');
+    expect(artifacts[0]?.targetPath).toBe('.gitleaks.toml');
+    expect(proposals[0]?.harnessCheck?.kind).toBe('secret-scan');
+  });
+
+  test('every hardening harnessCheck kind passes through (kind is a wire string)', () => {
+    // The contract keeps `harnessCheck.kind` a bare string precisely so new gauntlet
+    // kinds never break deserialize; the armable-kind allowlist lives in Rust at arm
+    // time. All four producer kinds must survive the engine parse untouched.
+    for (const kind of ['lockfile-lint', 'env-contract', 'secret-scan', 'mutation-score']) {
+      const raw = JSON.stringify({
+        artifacts: [],
+        proposals: [
+          {
+            kind: 'agent-task',
+            title: `wire ${kind}`,
+            description: 'x',
+            prompt: 'do the wiring',
+            harnessCheck: { name: kind, kind, command: 'run-the-check' },
+          },
+        ],
+      });
+      const { proposals } = parseSynthesis(raw, PROJECT);
+      expect(proposals[0]?.harnessCheck?.kind, `kind ${kind} must survive`).toBe(kind);
+    }
+  });
+
+  test('a .npmrc tool-config survives grounding (pin config, not an execution sink)', () => {
+    // Module #11's carrier: `.npmrc` only sets install FLAGS (ignore-scripts,
+    // save-exact) — it cannot itself run code, so it is deliberately NOT denied.
+    const { artifacts } = parseProposedArtifacts(
+      JSON.stringify([
+        {
+          kind: 'tool-config',
+          title: 'Dependency firewall pin config',
+          description: 'ignore-scripts + save-exact.',
+          targetPath: '.npmrc',
+          writeMode: 'create',
+          content: 'ignore-scripts=true\nsave-exact=true\n',
+        },
+      ]),
+      PROJECT,
+    );
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]?.targetPath).toBe('.npmrc');
+  });
+
+  test('lefthook configs are dropped as execution sinks in every variant', () => {
+    // Module #18's guardrail: lefthook recipe bodies run as git hooks once installed,
+    // so commit-discipline output must be an agent-task — a tool-config aimed at any
+    // lefthook config name (any depth, any case) never reaches the preview.
+    for (const targetPath of [
+      'lefthook.yml',
+      '.lefthook.yaml',
+      'tools/lefthook.toml',
+      'packages/web/Lefthook.json',
+    ]) {
+      const { artifacts } = parseProposedArtifacts(
+        JSON.stringify([
+          {
+            kind: 'tool-config',
+            title: 'x',
+            description: 'x',
+            targetPath,
+            writeMode: 'create',
+            content: 'pre-commit:\n  commands: {}\n',
+          },
+        ]),
+        PROJECT,
+      );
+      expect(artifacts, `must drop lefthook config ${targetPath}`).toHaveLength(0);
+    }
   });
 });
 

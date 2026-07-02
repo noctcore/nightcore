@@ -37,7 +37,7 @@ import {
   ANALYSIS_DISALLOWED_TOOLS,
   ANALYZER_PERSONA,
 } from './presets.js';
-import { HARNESS_REFERENCE } from './reference.js';
+import { HARNESS_REFERENCE, hardeningReference } from './reference.js';
 import {
   makeHeartbeat,
   type ScanRunnerFactory,
@@ -261,6 +261,8 @@ function buildSynthesisPrompt(
     '',
     HARNESS_REFERENCE,
     '',
+    hardeningReference(profile),
+    '',
     'REPO PROFILE (deterministically detected):',
     summarizeProfile(profile),
     '',
@@ -312,7 +314,7 @@ function artifactOutputContract(profile: RepoProfile): string {
     'Propose the harness as a JSON array (no prose, no markdown fences) where each',
     'element is:',
     '{',
-    '  "kind": "lint-meta-rule|eslint-rule|eslint-plugin-file|eslint-config|agent-contract|custom-lint-plugin",',
+    '  "kind": "lint-meta-rule|eslint-rule|eslint-plugin-file|eslint-config|agent-contract|custom-lint-plugin|tool-config",',
     '  "group": "optional group id; share it across files that ship together",',
     '  "groupTitle": "optional human label for the group",',
     '  "title": "one-line headline",',
@@ -348,6 +350,8 @@ function artifactOutputContract(profile: RepoProfile): string {
         ].join('\n')
       : 'This repo has no monorepo/eslint host: prefer an `agent-contract` plus minimal rules; do NOT scaffold a full plugin package or a `custom-lint-plugin` bundle.',
     'CLAUDE.md / AGENTS.md guardrail docs use `agent-contract` + `writeMode:"merge-section"`.',
+    '`tool-config` is a standalone hardening config file (see HARDENING MODULES above),',
+    'always `writeMode:"create"` at a path that does not exist yet.',
     'Every `targetPath` MUST be repo-relative (no leading `/`, no `..`).',
     `Propose at most ${MAX_ARTIFACTS} artifacts.`,
     '',
@@ -657,6 +661,18 @@ const EXECUTION_SINK_BASENAMES = new Set([
   '.pre-commit-config.yaml',
   '.gitlab-ci.yml',
   '.gitlab-ci.yaml',
+  // lefthook config: its recipe bodies run as git hooks once `lefthook install` has
+  // wired the repo (and dropping the file re-arms an already-wired one), so
+  // commit-discipline output (#18) must be an agent-task, never an artifact. Every
+  // config name lefthook resolves.
+  'lefthook.yml',
+  '.lefthook.yml',
+  'lefthook.yaml',
+  '.lefthook.yaml',
+  'lefthook.toml',
+  '.lefthook.toml',
+  'lefthook.json',
+  '.lefthook.json',
 ]);
 /** Basenames a `merge-section` write may target (agent-contract docs only). */
 const MERGE_SECTION_ALLOWED_BASENAMES = new Set([

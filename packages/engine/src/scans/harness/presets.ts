@@ -78,7 +78,9 @@ const PRESETS: Record<ConventionCategory, HarnessPreset> = {
       'the existing lint / eslint / lint-meta setup: what is configured, whether ' +
       'rules are actually enforced (error vs warn vs off), how the monorepo wires ' +
       'configs per package, and the gaps where conventions are unenforced. Point at ' +
-      'the config files.',
+      'the config files. Also flag supply-chain / secret-hygiene tooling gaps (no ' +
+      'secret-scan config, dependency lifecycle scripts unpinned, no lockfile check) ' +
+      '— they ground the hardening modules synthesis proposes.',
   },
   testing: {
     category: 'testing',
@@ -86,7 +88,9 @@ const PRESETS: Record<ConventionCategory, HarnessPreset> = {
     focus:
       'the test conventions: where tests live (colocated vs a tests dir), how they ' +
       'are named, which framework/runner is used, and the coverage discipline for ' +
-      'critical paths. State the convention new tests must follow.',
+      'critical paths. State the convention new tests must follow. When a heavily ' +
+      'imported module has little or no coverage, NAME it (real files only) — those ' +
+      'anchors are what makes a characterization-test proposal honest.',
   },
   'agent-context': {
     category: 'agent-context',
