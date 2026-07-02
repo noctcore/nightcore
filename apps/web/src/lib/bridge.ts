@@ -756,6 +756,7 @@ const MOCK_SETTINGS: Settings = {
   mcpServers: [],
   contextPackEnabled: true,
   autoCommitOnVerified: false,
+  sandboxSessions: false,
   projectOverrides: {},
 };
 

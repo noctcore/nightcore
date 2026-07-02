@@ -14,6 +14,7 @@ use crate::task::{Task, TaskKind};
 
 use crate::sidecar::commands::{
     resolve_context_pack, resolve_harness_policy, resolve_mcp_servers, resolve_permission_mode,
+    resolve_sandbox_writes,
 };
 
 /// The bounded auto-fix budget for the verification gate (M4 §B). On a
@@ -79,6 +80,8 @@ pub(crate) async fn dispatch_reviewer(
                 // Module #3: the reviewer session runs under the same protected-path
                 // rules as the build (it can run tools too).
                 harness_policy: resolve_harness_policy(app),
+                // Module #15: the reviewer is OS-write-contained like the build.
+                sandbox_writes: resolve_sandbox_writes(app),
             },
         )
         .await
@@ -128,6 +131,8 @@ pub(crate) async fn dispatch_fix(
                 // Module #3: a fix-build mutates the project under the same
                 // protected-path rules as the original build.
                 harness_policy: resolve_harness_policy(app),
+                // Module #15: a fix-build is OS-write-contained like the build.
+                sandbox_writes: resolve_sandbox_writes(app),
             },
         )
         .await

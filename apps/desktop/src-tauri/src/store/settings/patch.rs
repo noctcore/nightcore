@@ -154,6 +154,11 @@ pub struct SettingsPatch {
     /// target). See [`super::model::Settings::auto_commit_on_verified`].
     #[cfg_attr(test, ts(optional))]
     pub auto_commit_on_verified: Option<bool>,
+    /// Module #15: toggle OS write containment for agent sessions (macOS Seatbelt,
+    /// experimental). Global-only (ignored for a per-project override target). See
+    /// [`super::model::Settings::sandbox_sessions`].
+    #[cfg_attr(test, ts(optional))]
+    pub sandbox_sessions: Option<bool>,
     /// M4.6: default run mode (`"main"` | `"worktree"`). With a `projectId` it lands
     /// in that project's override; without one, the global default.
     #[cfg_attr(test, ts(optional, as = "Option<RunMode>"))]
@@ -225,6 +230,11 @@ impl Settings {
         // in the global block alongside `cleanup_worktrees`/`notify_on_complete`.
         if let Some(v) = patch.auto_commit_on_verified {
             self.auto_commit_on_verified = v;
+        }
+        // Module #15: global-only toggle (no per-project override), like the Auto
+        // Mode option above.
+        if let Some(v) = patch.sandbox_sessions {
+            self.sandbox_sessions = v;
         }
         if let Some(v) = patch.default_run_mode {
             self.default_run_mode = v;

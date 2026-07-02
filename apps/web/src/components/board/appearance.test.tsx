@@ -23,6 +23,7 @@ function settingsWith(projectId: string, appearance: BoardAppearance): Settings 
     mcpServers: [],
     contextPackEnabled: true,
     autoCommitOnVerified: false,
+    sandboxSessions: false,
     projectOverrides: { [projectId]: { boardAppearance: appearance } },
   };
 }

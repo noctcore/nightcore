@@ -78,6 +78,19 @@ pub struct Settings {
     /// file written before this field loads as `false`.
     #[serde(default)]
     pub auto_commit_on_verified: bool,
+    /// OS write containment (hardening module #15, tier "OS containment"): when
+    /// enabled, every agent session launches with `sandboxWrites` on the
+    /// `start-session` command, and the engine wraps the `claude` executable in a
+    /// macOS Seatbelt deny-write-except profile — file writes outside the
+    /// session's writable roots (cwd, worktree git common dir, temp trees, Claude
+    /// CLI state) are blocked at the OS layer, closing the lexical PreToolUse
+    /// gate's documented gaps (Bash redirects, symlinks). darwin-only: on other
+    /// hosts (or if Seatbelt breaks) the engine logs a loud warning and runs
+    /// unwrapped (fail-open). Global-only (like `auto_commit_on_verified`).
+    /// Default `false` (opt-in, experimental). Serde-additive: a settings file
+    /// written before this field loads as `false`.
+    #[serde(default)]
+    pub sandbox_sessions: bool,
     /// Per-project overrides keyed by project id.
     pub project_overrides: HashMap<String, SettingsOverride>,
 }
@@ -308,6 +321,9 @@ impl Default for Settings {
             // Auto Mode option: opt-in — the loop commits verified tasks only once
             // the user enables it in the Auto Mode options popover.
             auto_commit_on_verified: false,
+            // Module #15: OS write containment is opt-in (experimental,
+            // darwin-only) — sessions run unwrapped until the user enables it.
+            sandbox_sessions: false,
             project_overrides: HashMap::new(),
         }
     }

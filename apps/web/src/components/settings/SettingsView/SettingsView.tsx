@@ -592,6 +592,19 @@ function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardProps[] {
                 />
               ),
             },
+            {
+              label: 'Sandbox agent writes (macOS, experimental)',
+              hint: 'Block file writes outside the task workspace at the OS layer',
+              control: (
+                // Global-only (like Delete-on-merge): OS containment is a
+                // machine-level guarantee, not a per-project preference.
+                <Toggle
+                  on={settings.sandboxSessions}
+                  onChange={(next) => patchGlobal({ sandboxSessions: next })}
+                  label="Sandbox agent writes (macOS, experimental)"
+                />
+              ),
+            },
           ],
         },
       ];

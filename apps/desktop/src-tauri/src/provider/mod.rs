@@ -175,6 +175,13 @@ pub struct Guardrails {
     /// patterns), which holds even under `bypassPermissions`. `None` ⇒ no policy
     /// layer (no manifest, or `policy.enabled: false` — the pre-feature shape).
     pub harness_policy: Option<crate::contracts::HarnessPolicy>,
+    /// OS write containment (hardening module #15): whether the engine wraps the
+    /// session's `claude` in a Seatbelt deny-write-except profile → engine
+    /// `sandboxWrites`. Resolved from the GLOBAL `sandbox_sessions` setting.
+    /// `false` ⇒ the field is omitted on the wire (the pre-feature shape). The
+    /// engine applies it only where the host supports it (darwin) and warns +
+    /// runs unwrapped otherwise (fail-open; experimental, default-off).
+    pub sandbox_writes: bool,
 }
 
 /// The child's piped output streams, handed to `sidecar::ensure_reader` once on

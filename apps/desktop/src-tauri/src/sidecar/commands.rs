@@ -76,7 +76,21 @@ pub fn build_guardrails(
             Some(root) => crate::store::harness_policy::read_policy(&root.to_string_lossy()),
             None => resolve_harness_policy(app),
         },
+        sandbox_writes: resolve_sandbox_writes(app),
     }
+}
+
+/// OS write containment (hardening module #15): whether sessions launch with the
+/// engine's Seatbelt write-containment wrapper, from the GLOBAL `sandbox_sessions`
+/// setting (no per-project override — like `auto_commit_on_verified`). The engine
+/// applies it only where the host supports it (darwin with `sandbox-exec`);
+/// elsewhere it logs a loud warning and runs unwrapped (fail-open). Shared by the
+/// manual/auto build path and the reviewer/fix sub-runs so every session in a run
+/// is contained the same way.
+pub fn resolve_sandbox_writes(app: &AppHandle) -> bool {
+    use crate::settings::SettingsStore;
+    app.state::<SettingsStore>()
+        .with_settings(|s| s.sandbox_sessions)
 }
 
 /// The harness runtime policy (hardening module #3) to arm for a run in the active
