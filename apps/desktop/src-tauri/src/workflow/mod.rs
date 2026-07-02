@@ -20,6 +20,7 @@ pub(crate) mod plan_approval;
 pub(crate) mod pr;
 pub(crate) mod pr_comments;
 pub(crate) mod pr_msg;
+pub(crate) mod pr_review_post;
 pub(crate) mod pr_status;
 pub(crate) mod ratchet;
 pub(crate) mod secret_scan;

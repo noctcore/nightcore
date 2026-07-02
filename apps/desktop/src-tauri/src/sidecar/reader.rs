@@ -39,6 +39,8 @@ pub(crate) enum EventRoute {
     Harness,
     /// Any `scorecard-*` event — route to the scorecard channel by `runId`.
     Scorecard,
+    /// Any `pr-review-*` event — route to the pr-review channel by `runId`.
+    PrReview,
     /// A `permission-required` for `ExitPlanMode` — park as `waiting_approval`.
     PermissionPlanGate,
     /// A `permission-required` for any other tool — surface an `nc:permission` prompt.
@@ -78,6 +80,10 @@ pub(crate) fn classify_event(event: &Value) -> EventRoute {
 
     if event_type.starts_with("scorecard-") {
         return EventRoute::Scorecard;
+    }
+
+    if event_type.starts_with("pr-review-") {
+        return EventRoute::PrReview;
     }
 
     // Session-correlated events below: all require a sessionId (or a special
@@ -167,6 +173,13 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
     // correlation.
     if event_type.starts_with("scorecard-") {
         super::scorecard::handle_scorecard_event(app, event_type, &event).await;
+        return;
+    }
+
+    // The PR Review `pr-review-*` family also correlates by `runId` (no `sessionId`) and
+    // is owned by a separate channel + store, so it is routed BEFORE session-id correlation.
+    if event_type.starts_with("pr-review-") {
+        super::pr_review::handle_pr_review_event(app, event_type, &event).await;
         return;
     }
 
@@ -422,6 +435,16 @@ mod tests {
 
         let event = json!({ "type": "analysis-category-started", "runId": "run-1" });
         assert_eq!(classify_event(&event), EventRoute::Analysis);
+    }
+
+    #[test]
+    fn pr_review_event_routes_before_session_id_correlation() {
+        // A pr-review-* event has no sessionId; it must route to PrReview, NOT Drop.
+        let event = json!({ "type": "pr-review-completed", "runId": "run-pr1" });
+        assert_eq!(classify_event(&event), EventRoute::PrReview);
+
+        let event = json!({ "type": "pr-review-lens-started", "runId": "run-pr1" });
+        assert_eq!(classify_event(&event), EventRoute::PrReview);
     }
 
     #[test]

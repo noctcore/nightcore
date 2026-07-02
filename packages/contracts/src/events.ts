@@ -13,6 +13,7 @@ import {
   FindingCategorySchema,
   FindingSchema,
 } from './insight.js';
+import { ReviewFindingSchema, ReviewLensSchema } from './pr-review.js';
 import { ProviderConfigSnapshotSchema } from './provider-config.js';
 import {
   ScorecardDimensionSchema,
@@ -530,6 +531,75 @@ export const ScorecardFailedEvent = z.object({
   message: z.string(),
 });
 
+/**
+ * PR Review events (the fourth scan sibling). Like the `analysis-*` family these carry
+ * no `sessionId` and correlate by `runId`; the Rust reader routes the whole
+ * `pr-review-*` family to the `nc:pr-review` channel and persists the run on
+ * `pr-review-completed`. Each lens pass emits a batch of grounded findings over the PR
+ * diff. `pr-review-finding-converted` is a Rust-emitted notice on the same channel (the
+ * convert-to-task acknowledgement), part of the union so surfaces can narrow it.
+ */
+
+/** A run started. Echoes the resolved lenses/model for the UI header. */
+export const PrReviewStartedEvent = z.object({
+  type: z.literal('pr-review-started'),
+  runId: z.string(),
+  lenses: z.array(ReviewLensSchema),
+  model: z.string(),
+});
+
+/** A lens pass began reviewing (the UI shows skeleton cards for it). */
+export const PrReviewLensStartedEvent = z.object({
+  type: z.literal('pr-review-lens-started'),
+  runId: z.string(),
+  lens: ReviewLensSchema,
+});
+
+/** A lens pass finished: its grounded findings stream in as a batch, plus the pass's
+ *  own token usage and cost so the UI can show per-lens spend. */
+export const PrReviewLensCompletedEvent = z.object({
+  type: z.literal('pr-review-lens-completed'),
+  runId: z.string(),
+  lens: ReviewLensSchema,
+  findings: z.array(ReviewFindingSchema),
+  usage: TokenUsageSchema.optional(),
+  costUsd: z.number().default(0),
+  /** Set when the pass itself failed (parse/abort): findings is then empty and the UI
+   *  marks the lens errored rather than "0 findings". */
+  error: z.string().optional(),
+});
+
+/** The whole run finished: the final cross-lens-deduped findings plus run totals. The
+ *  Rust reader persists from THIS event (authoritative). `lensesRun` is the count of
+ *  lens passes that ran. */
+export const PrReviewCompletedEvent = z.object({
+  type: z.literal('pr-review-completed'),
+  runId: z.string(),
+  findings: z.array(ReviewFindingSchema),
+  lensesRun: z.number().int().nonnegative(),
+  costUsd: z.number(),
+  durationMs: z.number().nonnegative().default(0),
+  usage: TokenUsageSchema.optional(),
+});
+
+/** The run failed before completing (could not start, or aborted). `reason` is a free
+ *  string (the manager's failure code) so a surface degrades on drift. */
+export const PrReviewFailedEvent = z.object({
+  type: z.literal('pr-review-failed'),
+  runId: z.string(),
+  reason: z.string(),
+  message: z.string(),
+});
+
+/** A finding was converted into a board task. Emitted by the Rust convert command on
+ *  the `nc:pr-review` channel (mirrors Insight's convert notice), not by the engine. */
+export const PrReviewFindingConvertedEvent = z.object({
+  type: z.literal('pr-review-finding-converted'),
+  runId: z.string(),
+  findingId: z.string(),
+  taskId: z.string(),
+});
+
 /** The discriminated union of every engine → surface event, keyed by `type`. */
 export const NightcoreEventSchema = z.discriminatedUnion('type', [
   SessionStartedEvent,
@@ -562,6 +632,12 @@ export const NightcoreEventSchema = z.discriminatedUnion('type', [
   ScorecardDimensionCompletedEvent,
   ScorecardCompletedEvent,
   ScorecardFailedEvent,
+  PrReviewStartedEvent,
+  PrReviewLensStartedEvent,
+  PrReviewLensCompletedEvent,
+  PrReviewCompletedEvent,
+  PrReviewFailedEvent,
+  PrReviewFindingConvertedEvent,
 ]);
 export type NightcoreEvent = z.infer<typeof NightcoreEventSchema>;
 

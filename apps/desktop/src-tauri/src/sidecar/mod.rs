@@ -22,6 +22,7 @@ mod convert;
 mod harness;
 mod insight;
 mod permission;
+mod pr_review;
 mod provider_config;
 mod reader;
 mod scan;
@@ -49,6 +50,9 @@ pub(crate) use harness::*;
 // The Readiness Scorecard (Profile) commands + the reader-side `scorecard-*` handler
 // (glob so the `#[tauri::command]` macro siblings resolve through `sidecar::*`).
 pub(crate) use scorecard::*;
+// The PR Review commands + the reader-side `pr-review-*` handler (glob so the
+// `#[tauri::command]` macro siblings resolve through `sidecar::*` for `generate_handler!`).
+pub(crate) use pr_review::*;
 pub(crate) use verification::dispatch_reviewer_for;
 // The PR-comment fix-build dispatcher (PR arc, phase 3): `workflow::pr_comments`
 // reaches it as `crate::sidecar::dispatch_pr_comment_fix`, a peer of the reviewer.
@@ -111,6 +115,13 @@ pub(crate) const HARNESS_EVENT: &str = "nc:harness";
 /// persisted run on completion. `convert_reading_to_task` also emits a
 /// `reading-converted` notice on this channel.
 pub(crate) const SCORECARD_EVENT: &str = "nc:scorecard";
+
+/// The Tauri event carrying one streamed PR Review `pr-review-*` event. Like
+/// `nc:insight`, the payload is the raw `NightcoreEvent` (it carries its own `runId`);
+/// the PR Review view folds the stream and reconciles against the persisted run on
+/// completion. `convert_review_finding_to_task` also emits a `pr-review-finding-converted`
+/// notice on this channel.
+pub(crate) const PRREVIEW_EVENT: &str = "nc:pr-review";
 
 /// Ensure the persistent sidecar is running and its stdout reader is installed.
 /// Idempotent: spawns lazily on first use, then a no-op. Shared by `run_task` and
