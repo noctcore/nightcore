@@ -80,13 +80,23 @@ merged: boolean,
  * True when `merge_task` hit a conflict it refused to force. The card surfaces
  * the conflict so the user resolves it manually.
  */
-conflict: boolean, 
+conflict: boolean,
+/**
+ * PR system phase 1: the pull request URL once `create_pr_task` opened one.
+ * `None` until then. Serde-additive: legacy tasks load without it.
+ */
+prUrl?: string,
+/**
+ * PR system phase 1: the pull request number, derived from the created PR.
+ * `None` until then. Serde-additive: legacy tasks load without it.
+ */
+prNumber?: number,
 /**
  * M4: the kind of work this task represents. Default `Build` (pre-M4
  * behavior). Drives the orchestration policy (`kind.rs`) and the engine's
  * agent preset.
  */
-kind: TaskKind, 
+kind: TaskKind,
 /**
  * M4.6: where this task's run executes — `main` (default, run in the project
  * root on the current branch) or `worktree` (isolate on `nc/<taskId>`). Legacy
