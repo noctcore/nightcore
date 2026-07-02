@@ -130,6 +130,8 @@ pub fn read_policy(project_path: &str) -> Option<HarnessPolicy> {
     Some(HarnessPolicy {
         protected_paths: string_entries(&policy, "protectedPaths"),
         deny_bash_patterns: string_entries(&policy, "denyBashPatterns"),
+        deny_read_paths: string_entries(&policy, "denyReadPaths"),
+        disallowed_tools: string_entries(&policy, "disallowedTools"),
     })
 }
 
@@ -194,6 +196,25 @@ mod tests {
         let policy = read_policy(&root).expect("policy armed");
         assert_eq!(policy.protected_paths, vec!["bun.lock", "migrations/**"]);
         assert_eq!(policy.deny_bash_patterns, vec!["--no-verify"]);
+        assert!(policy.deny_read_paths.is_empty());
+        assert!(policy.disallowed_tools.is_empty());
+    }
+
+    #[test]
+    fn read_deny_and_tool_lists_resolve() {
+        let tmp = TempDir::new().expect("temp dir");
+        let root = write_manifest(
+            &tmp,
+            r#"{
+              "policy": {
+                "denyReadPaths": [".env*", "secrets/**"],
+                "disallowedTools": ["WebSearch"]
+              }
+            }"#,
+        );
+        let policy = read_policy(&root).expect("policy armed");
+        assert_eq!(policy.deny_read_paths, vec![".env*", "secrets/**"]);
+        assert_eq!(policy.disallowed_tools, vec!["WebSearch"]);
     }
 
     #[test]

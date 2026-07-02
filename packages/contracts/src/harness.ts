@@ -151,6 +151,10 @@ export const ArtifactKindSchema = z.enum([
   'eslint-config',
   'agent-contract',
   'custom-lint-plugin',
+  // A standalone tool config file (`.gitleaks.toml`, `.dependency-cruiser.cjs`,
+  // `.npmrc`, an env schema, lefthook/commitlint configs, …) — the create-mode
+  // carrier for the hardening-catalog producer modules (#4/#7/#11/#13/#18).
+  'tool-config',
 ]);
 export type ArtifactKind = z.infer<typeof ArtifactKindSchema>;
 
@@ -266,6 +270,17 @@ export const HarnessPolicySchema = z.object({
    *  command line; a match denies the call (e.g. `--no-verify`, `git commit
    *  \\s+--amend`). An invalid pattern is warn-and-skipped by the engine. */
   denyBashPatterns: z.array(z.string()).default([]),
+  /** Repo-relative paths/globs the native READ tools (Read/Grep/Glob) may not
+   *  target — secret hygiene (`.env*`, key material; module #4) and
+   *  prompt-injection quarantine (flagged paths; module #12). Same glob
+   *  semantics as `protectedPaths`. Bash-level reads (`cat .env`) are the
+   *  project's `denyBashPatterns` to declare — one owner per channel. */
+  denyReadPaths: z.array(z.string()).default([]),
+  /** Tool names denied outright for sessions in this project (module #9,
+   *  least-privilege): matched case-sensitively against the SDK tool name
+   *  (e.g. `WebSearch`, or `mcp__<server>__<tool>`). The engine denies the
+   *  call at PreToolUse, so it holds under `bypassPermissions` too. */
+  disallowedTools: z.array(z.string()).default([]),
 });
 export type HarnessPolicy = z.infer<typeof HarnessPolicySchema>;
 

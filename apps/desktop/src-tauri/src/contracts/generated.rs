@@ -481,17 +481,6 @@ pub enum AnswerQuestionAnswerUnion {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum ArtifactKind {
-    LintMetaRule,
-    EslintRule,
-    EslintPluginFile,
-    EslintConfig,
-    AgentContract,
-    CustomLintPlugin,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
 pub enum ArtifactWriteMode {
     Create,
     MergeSection,
@@ -645,6 +634,10 @@ pub struct HarnessPolicy {
     pub protected_paths: Vec<String>,
     #[serde(default)]
     pub deny_bash_patterns: Vec<String>,
+    #[serde(default)]
+    pub deny_read_paths: Vec<String>,
+    #[serde(default)]
+    pub disallowed_tools: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -760,7 +753,7 @@ pub enum PermissionMode {
 #[serde(rename_all = "camelCase")]
 pub struct ProposedArtifact {
     pub id: String,
-    pub kind: ArtifactKind,
+    pub kind: ProposedArtifactKindEnum,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -781,6 +774,18 @@ pub struct ProposedArtifact {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidence: Option<f64>,
     pub fingerprint: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ProposedArtifactKindEnum {
+    LintMetaRule,
+    EslintRule,
+    EslintPluginFile,
+    EslintConfig,
+    AgentContract,
+    CustomLintPlugin,
+    ToolConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
