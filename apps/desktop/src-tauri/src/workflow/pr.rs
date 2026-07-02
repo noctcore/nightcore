@@ -136,9 +136,34 @@ fn draft_pr_message_blocking(app: &AppHandle, id: &str) -> Result<PrDraft, Strin
 /// Per-task single-flight guard for PR creation (the pattern of
 /// `commit_in_flight`/`merge_in_flight` in [`super::merge`]): a double-fired
 /// command must not race two pushes + two `gh pr create` runs for one task.
-fn pr_in_flight() -> &'static Mutex<HashSet<String>> {
+/// `pub(crate)` so `merge_task_blocking` can refuse while a creation is live.
+pub(crate) fn pr_in_flight() -> &'static Mutex<HashSet<String>> {
     static IN_FLIGHT: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
     IN_FLIGHT.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+/// Refuse PR creation while a sibling terminal action (merge / commit) holds
+/// the task. The three in-flight sets are per-action, so without this a merge
+/// and a create-PR could run concurrently on one task — and a completing merge
+/// (with `cleanup_worktrees` on) deletes the worktree + branch out from under
+/// the in-flight push/`gh` spawn. Checked AFTER the PR lease is acquired (the
+/// mirror check in `merge` runs after ITS lease), so whichever action leases
+/// second reliably sees the other's lease.
+fn refuse_while_sibling_in_flight(id: &str) -> Result<(), String> {
+    use super::merge::{commit_in_flight, lease_held, merge_in_flight};
+    if lease_held(merge_in_flight(), id) {
+        return Err(
+            "a merge for this task is in progress — wait for it to finish before creating a PR"
+                .to_string(),
+        );
+    }
+    if lease_held(commit_in_flight(), id) {
+        return Err(
+            "a commit for this task is in progress — wait for it to finish before creating a PR"
+                .to_string(),
+        );
+    }
+    Ok(())
 }
 
 /// Push a task's worktree branch to `origin` and create a GitHub PR against
@@ -179,6 +204,9 @@ fn create_pr_task_blocking(
     // racing (held for the whole gauntlet→push→create body; released on every exit).
     let _lease = TaskLease::acquire(pr_in_flight(), id)
         .ok_or_else(|| "a PR creation for this task is already in progress".to_string())?;
+    // Cross-action serialization: never push/create under an in-flight merge or
+    // commit on the same task (see `refuse_while_sibling_in_flight`).
+    refuse_while_sibling_in_flight(id)?;
     let store = app
         .try_state::<TaskStore>()
         .ok_or_else(|| "task store unavailable".to_string())?;
@@ -217,6 +245,15 @@ fn create_pr_task_blocking(
             "structure-lock gauntlet failed at `{failed}` — fix the harness checks before creating a PR"
         ));
     }
+
+    // The gauntlets run for SECONDS — wide enough for a parallel actor (a second
+    // window, a completed merge, an earlier create) to change the task's publish
+    // state. Re-read the task from the store and re-check the preconditions just
+    // before anything leaves the machine, closing that window.
+    let task = store
+        .get(id)
+        .ok_or_else(|| format!("no task with id {id}"))?;
+    check_pr_preconditions(&task)?;
 
     // Branch + base honor the create dialog's picker, defaulting like merge does;
     // both are validated before they reach any argv (refs are git's injection
@@ -275,6 +312,12 @@ fn check_pr_preconditions(task: &Task) -> Result<(), String> {
              before creating a PR"
                 .to_string(),
         );
+    }
+    if task.merged {
+        return Err("task is already merged — nothing to publish".to_string());
+    }
+    if task.pr_url.is_some() {
+        return Err("a PR already exists for this task".to_string());
     }
     Ok(())
 }
@@ -539,6 +582,54 @@ mod tests {
 
         // All three bars cleared ⇒ pass.
         assert!(check_pr_preconditions(&ready_task()).is_ok());
+    }
+
+    #[test]
+    fn preconditions_refuse_merged_and_already_published_tasks() {
+        // A merged task has nothing left to publish.
+        let mut merged = ready_task();
+        merged.merged = true;
+        let err = check_pr_preconditions(&merged).expect_err("merged is refused");
+        assert!(
+            err.contains("already merged"),
+            "explains the refusal: {err}"
+        );
+
+        // A task that already carries a PR must not create a second one.
+        let mut published = ready_task();
+        published.pr_url = Some("https://github.com/acme/widget/pull/7".into());
+        let err = check_pr_preconditions(&published).expect_err("existing PR is refused");
+        assert!(
+            err.contains("already exists"),
+            "explains the refusal: {err}"
+        );
+    }
+
+    #[test]
+    fn create_pr_refused_while_merge_or_commit_holds_the_task() {
+        use super::super::merge::{commit_in_flight, merge_in_flight};
+        // Merge direction: a live merge blocks PR creation (its cleanup would
+        // delete the worktree/branch mid-push). Unique ids: the sets are global.
+        let merge_lease =
+            TaskLease::acquire(merge_in_flight(), "pr-vs-merge").expect("merge lease");
+        let err = refuse_while_sibling_in_flight("pr-vs-merge").expect_err("create is refused");
+        assert!(err.contains("merge"), "names the conflicting action: {err}");
+        drop(merge_lease);
+        assert!(refuse_while_sibling_in_flight("pr-vs-merge").is_ok());
+
+        // Commit direction: a live commit blocks PR creation too (the push
+        // would race the in-progress stage/commit of the same worktree).
+        let commit_lease =
+            TaskLease::acquire(commit_in_flight(), "pr-vs-commit").expect("commit lease");
+        let err = refuse_while_sibling_in_flight("pr-vs-commit").expect_err("create is refused");
+        assert!(
+            err.contains("commit"),
+            "names the conflicting action: {err}"
+        );
+        // Other tasks are unaffected, and dropping the lease frees this one.
+        assert!(refuse_while_sibling_in_flight("pr-vs-commit-other").is_ok());
+        drop(commit_lease);
+        assert!(refuse_while_sibling_in_flight("pr-vs-commit").is_ok());
     }
 
     #[test]

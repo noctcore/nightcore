@@ -98,14 +98,38 @@ pub async fn commit_task(app: AppHandle, id: String) -> Result<(), String> {
 /// (the second hitting an empty index), or two gauntlet+merge passes for merge. Each
 /// guard restores single-flight per task at the backend, independent of (and defence-
 /// in-depth behind) the frontend pending guard.
-fn commit_in_flight() -> &'static Mutex<HashSet<String>> {
+pub(crate) fn commit_in_flight() -> &'static Mutex<HashSet<String>> {
     static IN_FLIGHT: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
     IN_FLIGHT.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
-fn merge_in_flight() -> &'static Mutex<HashSet<String>> {
+pub(crate) fn merge_in_flight() -> &'static Mutex<HashSet<String>> {
     static IN_FLIGHT: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
     IN_FLIGHT.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+/// Whether an in-flight set currently holds `id` — the cross-action probe the
+/// terminal actions use to refuse their SIBLINGS (a merge refuses while a PR
+/// creation holds the task and vice versa), since the per-action `TaskLease`
+/// only serializes an action with itself.
+pub(crate) fn lease_held(set: &'static Mutex<HashSet<String>>, id: &str) -> bool {
+    set.lock().unwrap_or_else(|e| e.into_inner()).contains(id)
+}
+
+/// Refuse a merge while a PR creation holds the task — the mirror of
+/// `pr::refuse_while_sibling_in_flight`. A completing merge (with
+/// `cleanup_worktrees` on) deletes the worktree + branch out from under an
+/// in-flight push/`gh pr create`. Checked AFTER the merge lease is acquired, so
+/// the two directions can't slip past each other: whichever action leases
+/// second sees the other's lease.
+fn refuse_while_pr_in_flight(id: &str) -> Result<(), String> {
+    if lease_held(super::pr::pr_in_flight(), id) {
+        return Err(
+            "a PR is being created for this task — wait for it to finish before merging"
+                .to_string(),
+        );
+    }
+    Ok(())
 }
 
 /// RAII membership in one of the in-flight sets: inserts on acquire, removes on drop —
@@ -209,6 +233,9 @@ fn merge_task_blocking(app: &AppHandle, id: &str) -> Result<(), String> {
     // Single-flight per task: merge is the one irreversible action — never race two.
     let _lease = TaskLease::acquire(merge_in_flight(), id)
         .ok_or_else(|| "a merge for this task is already in progress".to_string())?;
+    // Cross-action serialization: never merge under an in-flight PR creation —
+    // the merge's cleanup would delete the worktree/branch mid push/create.
+    refuse_while_pr_in_flight(id)?;
     let store = app
         .try_state::<TaskStore>()
         .ok_or_else(|| "task store unavailable".to_string())?;
@@ -488,5 +515,21 @@ mod tests {
             TaskLease::acquire(commit_in_flight(), "task-x").is_some(),
             "dropping the lease (incl. on an early `?` return) frees the task"
         );
+    }
+
+    #[test]
+    fn merge_refused_while_pr_creation_holds_the_task() {
+        // The cross-action direction: a merge must refuse while a PR creation
+        // holds the task (its cleanup would delete the worktree/branch under
+        // the in-flight push/`gh pr create`). Unique id: the sets are global.
+        let pr_lease = TaskLease::acquire(crate::workflow::pr::pr_in_flight(), "merge-vs-pr")
+            .expect("pr lease");
+        let err = refuse_while_pr_in_flight("merge-vs-pr").expect_err("merge is refused");
+        assert!(err.contains("PR"), "names the conflicting action: {err}");
+        assert!(err.contains("merging"), "names the refused action: {err}");
+        // Other tasks are unaffected, and dropping the lease frees this one.
+        assert!(refuse_while_pr_in_flight("merge-vs-pr-other").is_ok());
+        drop(pr_lease);
+        assert!(refuse_while_pr_in_flight("merge-vs-pr").is_ok());
     }
 }
