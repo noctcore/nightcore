@@ -190,11 +190,13 @@ pub(crate) async fn handle_build_completed(
     }
 }
 
-/// Route a failed Structure-Lock Gauntlet (feature #3) at the verification gate:
-/// when the bounded auto-fix budget (shared with the reviewer's `CHANGES_REQUESTED`
-/// loop, [`MAX_FIX_ATTEMPTS`]) has room, feed the failing harness check into a
-/// fix-build over the same worktree so the agent self-corrects; once the budget is
-/// spent, park the task for human approval (never silently verify). The build
+/// Route a failed Structure-Lock Gauntlet (feature #3) — or one of the built-in
+/// checks appended to the same result (the anti-gaming sweep, the strictness
+/// ratchet) — at the verification gate: when the bounded auto-fix budget (shared
+/// with the reviewer's `CHANGES_REQUESTED` loop, [`MAX_FIX_ATTEMPTS`]) has room,
+/// feed the failing check into a fix-build over the same worktree so the agent
+/// self-corrects; once the budget is spent, park the task for human approval
+/// (never silently verify). The build
 /// session was already forgotten by the caller and the slot is still leased, so a
 /// dispatched fix correlates to the same task via the FIFO — exactly like the
 /// reviewer's auto-fix path.
