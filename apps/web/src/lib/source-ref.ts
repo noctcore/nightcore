@@ -8,7 +8,7 @@
  *  preselect there. `kind` picks the view's selection channel — Harness
  *  distinguishes convention findings from task-shaped proposals. */
 export interface ScanTarget {
-  view: 'insight' | 'scorecard' | 'harness';
+  view: 'insight' | 'scorecard' | 'harness' | 'prreview';
   kind: 'finding' | 'reading' | 'proposal';
   runId: string;
   itemId: string;
@@ -25,6 +25,9 @@ const REGISTRY: Record<
   scorecard: { view: 'scorecard', kind: 'reading', label: 'Scorecard reading' },
   harness: { view: 'harness', kind: 'finding', label: 'Harness convention' },
   'harness-proposal': { view: 'harness', kind: 'proposal', label: 'Harness proposal' },
+  // Keyed by the sourceRef PREFIX the Rust convert mints (`pr-review:<n>:<id>`),
+  // not the AppView slug — the parser resolves by the token's first segment.
+  'pr-review': { view: 'prreview', kind: 'finding', label: 'PR Review finding' },
 };
 
 /** Resolve a `sourceRef` to its human provenance label, or `null` for an
