@@ -99,7 +99,6 @@ pub(crate) async fn dispatch_fix(
     review_text: &str,
     worktree_dir: &Path,
 ) -> Result<(), String> {
-    let provider = app.state::<std::sync::Arc<SidecarProvider>>();
     let store = app.state::<TaskStore>();
     let task = store.get(task_id).ok_or("task vanished before fix")?;
     let prompt = format!(
@@ -107,6 +106,36 @@ pub(crate) async fn dispatch_fix(
         task.prompt(),
         review_text
     );
+    dispatch_build_fix(app, task_id, prompt, worktree_dir).await
+}
+
+/// Dispatch a fix-build session for GitHub PR review comments (PR arc, phase 3).
+/// Identical to [`dispatch_fix`] except the caller supplies a READY-BUILT, fenced
+/// prompt (each UNTRUSTED comment body already wrapped by `untrusted_block`) that
+/// is used verbatim — the composition lives in `workflow::pr_comments`, not here.
+pub(crate) async fn dispatch_pr_comment_fix(
+    app: &AppHandle,
+    task_id: &str,
+    prompt: &str,
+    worktree_dir: &Path,
+) -> Result<(), String> {
+    dispatch_build_fix(app, task_id, prompt.to_string(), worktree_dir).await
+}
+
+/// The shared body of the two fix-build dispatchers: start a `kind=build` session
+/// over `worktree_dir` with the given ready-built `prompt` and the task's
+/// ceilings/policy. [`dispatch_fix`] (a reviewer verdict) and
+/// [`dispatch_pr_comment_fix`] (GitHub review comments) differ ONLY in how they
+/// compose the prompt; everything below is identical for both.
+async fn dispatch_build_fix(
+    app: &AppHandle,
+    task_id: &str,
+    prompt: String,
+    worktree_dir: &Path,
+) -> Result<(), String> {
+    let provider = app.state::<std::sync::Arc<SidecarProvider>>();
+    let store = app.state::<TaskStore>();
+    let task = store.get(task_id).ok_or("task vanished before fix")?;
     let permission_mode = resolve_permission_mode(app, task.permission_mode.as_deref());
     provider
         .start_session(
