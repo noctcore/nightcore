@@ -184,8 +184,21 @@ fn plan_check(cfg: &HarnessCheckConfig) -> Option<PlannedCheck> {
 /// Run the structure-lock gauntlet over a directory: load the enabled checks from
 /// `.nightcore/harness.json`, run them sequentially, and stop at the first non-zero
 /// exit. A project with no config (or no enabled checks) passes trivially.
+/// Main-mode shape (the review dir IS the project root, so the manifest and the
+/// checks share one dir); worktree mode uses [`run_from`].
 pub fn run(dir: &Path) -> StructureLockResult {
-    let planned = load_checks(dir);
+    run_from(dir, dir)
+}
+
+/// The worktree-parity variant: load the manifest from `manifest_root` (the
+/// PROJECT root) while RUNNING the checks in `run_dir` (the review worktree).
+/// `.nightcore/` is gitignored, so no manifest copy exists inside a worktree —
+/// reading it from the review dir made every project check silently skip for
+/// worktree builds (a trivially-green gate). This mirrors how the diff-budget
+/// gate deliberately reads the root manifest. `run(dir)` (main mode) is the
+/// `manifest_root == run_dir` case, byte-identical to the old behavior.
+pub fn run_from(manifest_root: &Path, run_dir: &Path) -> StructureLockResult {
+    let planned = load_checks(manifest_root);
     // No config / no enabled checks: trivially passing (mirrors `gauntlet::empty_pass`).
     if planned.is_empty() {
         return empty_pass();
@@ -211,7 +224,7 @@ pub fn run(dir: &Path) -> StructureLockResult {
         tracing::debug!(target: "nightcore::structure_lock", check = %check.name, "running structure-lock check");
         let output = crate::platform::std_command(&check.program)
             .args(&check.args)
-            .current_dir(dir)
+            .current_dir(run_dir)
             .output();
 
         match output {
@@ -599,6 +612,51 @@ mod tests {
     fn empty_pass_is_trivially_passing() {
         let r = empty_pass();
         assert!(r.passed && r.checks.is_empty() && r.failed_check.is_none());
+    }
+
+    /// Worktree-parity regression (the gauntlet manifest gap): the manifest is
+    /// loaded from the PROJECT root while the checks RUN in the review dir. A
+    /// worktree has no `.nightcore/` (gitignored), so the old `run(review_dir)`
+    /// silently skipped every project check.
+    #[cfg(unix)]
+    #[test]
+    fn run_from_reads_the_root_manifest_but_runs_in_the_review_dir() {
+        // The check passes ONLY when executed in the review dir: the marker file
+        // exists there and deliberately NOT in the project root.
+        let project = temp_project_with_config(
+            r#"{ "checks": [
+                { "name": "marker", "kind": "lint-plugin", "command": "test -f review-marker.txt" }
+            ] }"#,
+        );
+        let review = tempfile::TempDir::new().expect("review dir");
+        std::fs::write(review.path().join("review-marker.txt"), "x").expect("write marker");
+
+        // The old bug shape: running over the manifest-less review dir skips all.
+        let skipped = run(review.path());
+        assert!(skipped.passed && skipped.checks.is_empty(), "no manifest ⇒ silent skip");
+
+        // The fix: manifest from the root, execution in the review dir.
+        let result = run_from(project.path(), review.path());
+        assert_eq!(result.checks.len(), 1, "the root manifest's check ran");
+        assert_eq!(result.checks[0].status, StepStatus::Passed);
+        assert!(result.passed);
+
+        // Cross-check the cwd claim: the same call rooted AT the project (which
+        // lacks the marker) fails — proving the check really ran in `run_dir`.
+        let at_root = run_from(project.path(), project.path());
+        assert!(!at_root.passed, "the marker only exists in the review dir");
+        assert_eq!(at_root.checks[0].status, StepStatus::Failed);
+    }
+
+    #[test]
+    fn run_is_the_manifest_root_eq_run_dir_case() {
+        // Main-mode pinning: `run(dir)` must stay byte-identical to
+        // `run_from(dir, dir)` — absent config passes trivially through both.
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let a = run(tmp.path());
+        let b = run_from(tmp.path(), tmp.path());
+        assert!(a.passed && b.passed);
+        assert_eq!(a.checks.len(), b.checks.len());
     }
 
     #[cfg(unix)]
