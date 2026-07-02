@@ -50,12 +50,16 @@ export interface UsePrReviewResult {
   runs: PrReviewRun[];
   isStarting: boolean;
   startError: string | null;
+  /** Resolves `true` once the run has actually started (the synchronous
+   *  `gh pr diff` fetch succeeded and the running state is armed); `false` if the
+   *  start was rejected (startError is set) or guarded out. Callers use this to
+   *  decide whether to leave the configure screen. */
   start: (
     prNumber: number,
     lenses: ReviewLens[],
     model: string | null,
     effort: string | null,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   cancel: () => Promise<void>;
   selectRun: (runId: string) => Promise<void>;
   dismiss: (findingId: string) => Promise<void>;
@@ -156,11 +160,11 @@ export function usePrReview(hasProject: boolean): UsePrReviewResult {
       model: string | null,
       effort: string | null,
     ) => {
-      if (!hasProject || lenses.length === 0 || prNumber <= 0) return;
+      if (!hasProject || lenses.length === 0 || prNumber <= 0) return false;
       // Set synchronously, before the first await: a second click that slips
       // through the render gap before `isStarting`/the optimistic running state
       // disables Review is a no-op instead of a second paid run.
-      if (reviewInFlight.current) return;
+      if (reviewInFlight.current) return false;
       reviewInFlight.current = true;
       setIsStarting(true);
       setStartError(null);
@@ -184,8 +188,10 @@ export function usePrReview(hasProject: boolean): UsePrReviewResult {
           ),
         });
         await refreshRuns();
+        return true;
       } catch (err) {
         setStartError(err instanceof Error ? err.message : String(err));
+        return false;
       } finally {
         setIsStarting(false);
         reviewInFlight.current = false;
@@ -645,15 +651,23 @@ export function usePrReviewView({
     closeFinding: () => setSelectedId(null),
     pending,
     onReview: () => {
-      setReconfiguring(false);
       resetBulk();
       setSelection(new Set());
-      void prReview.start(
-        config.prNumberValue ?? 0,
-        config.orderedSelected,
-        config.model,
-        config.effort,
-      );
+      // Leave the configure screen only once the run actually starts. start()
+      // performs a synchronous `gh pr diff` fetch that rejects on common inputs
+      // (missing PR, expired token, a run already in flight); on rejection it
+      // sets startError and we STAY on configure so that banner is seen —
+      // clearing reconfiguring eagerly would drop the view to the previous
+      // run's stale results, where startError is never rendered.
+      void (async () => {
+        const started = await prReview.start(
+          config.prNumberValue ?? 0,
+          config.orderedSelected,
+          config.model,
+          config.effort,
+        );
+        if (started) setReconfiguring(false);
+      })();
     },
     onCancel: () => void prReview.cancel(),
     startNewRun: () => {
