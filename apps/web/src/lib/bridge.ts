@@ -20,6 +20,7 @@ import type { ImageFormat,NewAttachmentPayload } from './attachments';
 import { imageDataUrl } from './attachments';
 import type { BoardBackgroundRef } from './generated/BoardBackgroundRef';
 import type { PrDraft } from './generated/PrDraft';
+import type { PrReviewComments } from './generated/PrReviewComments';
 import type { PrStatus } from './generated/PrStatus';
 import type { PrSupport } from './generated/PrSupport';
 
@@ -53,12 +54,16 @@ export type { McpServerSummary } from './generated/McpServerSummary';
 export type { McpServerTransport } from './generated/McpServerTransport';
 export type { MergePreview } from './generated/MergePreview';
 export type { MergePreviewStatus } from './generated/MergePreviewStatus';
+export type { PrComment } from './generated/PrComment';
 export type { PrDraft } from './generated/PrDraft';
 export type { Project } from './generated/Project';
 export type { ProviderConfigSection } from './generated/ProviderConfigSection';
 export type { ProviderConfigSnapshot } from './generated/ProviderConfigSnapshot';
+export type { PrReviewComments } from './generated/PrReviewComments';
+export type { PrReviewSummary } from './generated/PrReviewSummary';
 export type { PrStatus } from './generated/PrStatus';
 export type { PrSupport } from './generated/PrSupport';
+export type { PrThread } from './generated/PrThread';
 export type { RunMode } from './generated/RunMode';
 export type { SessionInfo } from './generated/SessionInfo';
 export type { SessionMessage } from './generated/SessionMessage';
@@ -661,6 +666,22 @@ export async function finalizeMergedPr(id: string): Promise<void> {
  *  rejection message surfaces verbatim in the failure toast. */
 export async function pullBaseFf(id: string): Promise<void> {
   await invoke('pull_base_ff', { id });
+}
+
+/** Fetch the UNRESOLVED review threads + top-level review summaries for a task's
+ *  PR via a bounded `gh api graphql`. Read-only, on-demand (mount + manual
+ *  refresh; NO polling). Resolves an empty payload outside Tauri (browser
+ *  preview) so the section shows its empty/unavailable note. */
+export async function listPrComments(id: string): Promise<PrReviewComments> {
+  return tauriInvoke<PrReviewComments>('list_pr_comments', { id }, { threads: [], reviews: [] });
+}
+
+/** RE-FETCH the PR review comments server-side, build a fenced fix prompt, and
+ *  dispatch a fix run on the task's existing worktree — the fixes flow into the
+ *  normal verify → gauntlet path, then the phase-2 Push updates button publishes
+ *  them. Rejects loudly (and outside Tauri) — no silent fallback. */
+export async function addressPrComments(id: string): Promise<void> {
+  await invoke('address_pr_comments', { id });
 }
 
 // --- Verification gate ----------------------------------------------------
