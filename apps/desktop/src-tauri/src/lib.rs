@@ -192,6 +192,7 @@ pub fn run() {
             merge::reject_review,
             merge::rerun_verification,
             gauntlet::run_gauntlet,
+            workflow::ratchet::snapshot_ratchet_baseline,
             commands::project::list_projects,
             commands::project::active_project,
             commands::project::create_project,

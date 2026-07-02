@@ -111,11 +111,12 @@ pub(crate) async fn handle_build_completed(
 
     // The deterministic gate battery, in order: the diff-budget park gate
     // (feature #5) → the project's own structure-lock manifest checks (#3) → the
-    // built-in anti-gaming sweep (#2) — all BEFORE the paid reviewer, so an agent
-    // can neither verify (nor later merge) out-of-scope work, code that breaks
-    // the locked structure, or gamed tests, and a broken build never burns a
-    // reviewer session. Absent `.nightcore/harness.json` ⇒ no budget and no
-    // manifest checks ⇒ pass, so existing projects are unaffected.
+    // built-in anti-gaming sweep (#2) → the strictness ratchet (#6) — all BEFORE
+    // the paid reviewer, so an agent can neither verify (nor later merge)
+    // out-of-scope work, code that breaks the locked structure, gamed tests, or
+    // new laxness, and a broken build never burns a reviewer session. Every gate
+    // is opt-in via `.nightcore/` config except the anti-gaming sweep (always-on
+    // for worktree builds), so existing projects are unaffected.
 
     // Diff budget: an out-of-budget diff is a SCOPING decision, not a defect — an
     // auto-fix could only shrink it by deleting work — so a breach parks for
@@ -150,6 +151,19 @@ pub(crate) async fn handle_build_completed(
     if lock.passed && review_dir.is_worktree {
         if let Some(project) = app.state::<ProjectStore>().active() {
             crate::workflow::anti_gaming::append_anti_gaming_check(
+                &mut lock,
+                &review_dir.path,
+                Path::new(&project.path),
+            );
+        }
+    }
+
+    // Strictness ratchet: recount the review dir's laxness against the project's
+    // snapshotted `.nightcore/ratchet.json` baseline (absent ⇒ nothing appended;
+    // held ⇒ a visible Passed check). Same stop-at-first gating as above.
+    if lock.passed {
+        if let Some(project) = app.state::<ProjectStore>().active() {
+            crate::workflow::ratchet::append_ratchet_check(
                 &mut lock,
                 &review_dir.path,
                 Path::new(&project.path),
