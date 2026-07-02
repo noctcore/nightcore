@@ -29,6 +29,7 @@ const {
   PrSupportRed,
   PrCreated,
   PrStatusTracked,
+  PrCommentsTracked,
   PrRemoteMerged,
   PrFinalized,
 } = composeStories(stories);
@@ -289,7 +290,11 @@ test('mounts the PR status card once prUrl is set', async () => {
   // bridge resolves its null sentinel — the quiet unavailable note.
   const screen = render(<PrCreated />);
   await expect.element(screen.getByText('Pull request')).toBeInTheDocument();
-  await expect.element(screen.getByRole('button', { name: /refresh/i })).toBeInTheDocument();
+  // The Review comments section below adds its own Refresh — scope to the first
+  // (the PR status card's, which renders above it).
+  await expect
+    .element(screen.getByRole('button', { name: /refresh/i }).first())
+    .toBeInTheDocument();
   await expect
     .element(screen.getByText(/PR status is unavailable in the browser preview/))
     .toBeInTheDocument();
@@ -299,6 +304,43 @@ test('no PR band renders before a PR exists', async () => {
   const screen = render(<Done />);
   await expect.element(screen.getByText('Overview')).toBeInTheDocument();
   expect(screen.getByText('Pull request').query()).toBeNull();
+});
+
+test('mounts the Review comments section once prUrl is set', async () => {
+  // No prReviewComments override: the section fetches on mount, and outside
+  // Tauri the bridge resolves its empty payload — the quiet empty note.
+  const screen = render(<PrCreated />);
+  // Anchored so the label span doesn't collide with the "No unresolved review
+  // comments." note below (a substring match otherwise resolves to two nodes).
+  await expect.element(screen.getByText(/^Review comments$/)).toBeInTheDocument();
+  await expect
+    .element(screen.getByText('No unresolved review comments.'))
+    .toBeInTheDocument();
+});
+
+test('no Review comments section renders before a PR exists', async () => {
+  const screen = render(<Done />);
+  await expect.element(screen.getByText('Overview')).toBeInTheDocument();
+  expect(screen.getByText(/^Review comments$/).query()).toBeNull();
+});
+
+test('the Review comments section fires onAddressPrComments through its confirm', async () => {
+  const onAddressPrComments = vi.fn(async () => {});
+  const screen = render(
+    <PrCommentsTracked
+      actions={{ ...PrCommentsTracked.args!.actions!, onAddressPrComments }}
+    />,
+  );
+  // The injected payload carries unresolved comments — Address is armed.
+  await screen.getByRole('button', { name: 'Address comments' }).click();
+  // Human gate: nothing fires until the dialog confirm (dialog-scoped — the
+  // card button's name matches the confirm's).
+  expect(onAddressPrComments).not.toHaveBeenCalled();
+  await screen
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Address comments' })
+    .click();
+  await vi.waitFor(() => expect(onAddressPrComments).toHaveBeenCalledWith('t-done'));
 });
 
 test('the card offers Push updates for an open PR with unpushed commits and confirms through the dialog', async () => {

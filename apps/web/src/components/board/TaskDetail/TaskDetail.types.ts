@@ -3,6 +3,7 @@ import type {
   GauntletResult,
   PermissionMode,
   PermissionPrompt,
+  PrReviewComments,
   PrStatus,
   PrSupport,
   QuestionAnswer,
@@ -12,6 +13,7 @@ import type {
   TaskKind,
 } from '@/lib/bridge';
 
+import type { PrReviewCommentsView } from '../PrReviewComments';
 import type { PrStatusView } from '../PrStatusCard';
 import type { TaskTranscript } from '../session-stream';
 
@@ -77,6 +79,10 @@ export interface TaskDetailActions {
   /** Fast-forward-only pull of the base branch on the project root after a
    *  remote merge (`pullBaseFf` pending key). */
   onPullBaseFf?: (id: string) => Promise<void>;
+  /** Dispatch the fix run that addresses the PR's review comments — re-fetched
+   *  server-side and fenced as UNTRUSTED input (`addressPrComments` pending key).
+   *  The task echo flips it to in_progress. */
+  onAddressPrComments?: (id: string) => Promise<void>;
   /** Resume a chosen historical session — relaunches the task pointed at the UUID
    *  (refused Rust-side for an orphaned session). Enables the History section. */
   onResumeSession?: (taskId: string, sdkSessionId: string) => void;
@@ -110,6 +116,11 @@ export interface TaskDetailProps {
    *  `null`), the card's fetch-on-mount is skipped and this value renders
    *  directly; omit it (the app shell does) to let the card fetch lazily. */
   prStatus?: PrStatus | null;
+  /** Story/test override for the Review comments card. When provided (including
+   *  `null`), the section's fetch-on-mount is skipped and this payload renders
+   *  directly (`null` ⇒ the unavailable note); omit it (the app shell does) to
+   *  let the section fetch lazily. */
+  prReviewComments?: PrReviewComments | null;
   onClose: () => void;
   /** Every drawer action callback, grouped into one object (see `TaskDetailActions`). */
   actions: TaskDetailActions;
@@ -167,6 +178,12 @@ export interface TaskDetailChromeProps {
    *  footer (Merge disables when the fetched state is MERGED). Memoized by the
    *  hook, so this memo still bails on stream flushes. */
   prStatusView: PrStatusView;
+  /** The LIFTED PR review-comments view, resolved by the outer drawer's
+   *  `usePrReviewComments` (fetches once `task.prUrl` exists; outside Tauri it
+   *  resolves an empty payload → the quiet empty note). Rendered by the read-only
+   *  Review comments card below the PR status band. Memoized by the hook, so this
+   *  memo still bails on stream flushes. */
+  prReviewCommentsView: PrReviewCommentsView;
   onClose: () => void;
   actions: TaskDetailActions;
   isActionPending?: (action: string, id: string) => boolean;

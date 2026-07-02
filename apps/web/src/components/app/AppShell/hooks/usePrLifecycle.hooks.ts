@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 
 import type { ToastApi } from '@/components/ui';
-import { finalizeMergedPr, pullBaseFf, pushPrUpdates } from '@/lib/bridge';
+import { addressPrComments, finalizeMergedPr, pullBaseFf, pushPrUpdates } from '@/lib/bridge';
 
 import type { ActionGuard } from './useActionGuard.hooks';
 
@@ -21,6 +21,11 @@ export interface PrLifecycleController {
    *  refusal (dirty root / non-ff) surfaces verbatim in the failure toast.
    *  Pending key: `pullBaseFf`. */
   pullBase: (id: string) => Promise<void>;
+  /** Dispatch the fix run that addresses a PR's review comments (re-fetched
+   *  server-side, fenced as UNTRUSTED input). The `nc:task` echo flips the task
+   *  to in_progress and the fixes flow into the normal verify → gauntlet path.
+   *  Pending key: `addressPrComments`. */
+  addressComments: (id: string) => Promise<void>;
 }
 
 /** The three guarded PR-lifecycle mutations, cloned from the `useCreatePr`
@@ -88,9 +93,19 @@ export function usePrLifecycle(action: ActionGuard, toast: ToastApi): PrLifecycl
       guarded('pullBaseFf', pullBaseFf, 'Base branch updated', 'Could not update the base branch'),
     [guarded],
   );
+  const addressComments = useMemo(
+    () =>
+      guarded(
+        'addressPrComments',
+        addressPrComments,
+        'Fix run started for the review comments',
+        'Could not start the fix run',
+      ),
+    [guarded],
+  );
 
   return useMemo(
-    () => ({ pushUpdates, finalize, pullBase }),
-    [pushUpdates, finalize, pullBase],
+    () => ({ pushUpdates, finalize, pullBase, addressComments }),
+    [pushUpdates, finalize, pullBase, addressComments],
   );
 }
