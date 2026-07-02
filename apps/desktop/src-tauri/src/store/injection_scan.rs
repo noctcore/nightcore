@@ -158,6 +158,31 @@ pub fn scan_project(root: &Path) -> Result<Vec<InjectionFlag>, String> {
     Ok(flags)
 }
 
+/// Scan the ACTIVE project's tracked files for injection-shaped content and
+/// return the flags for human review (module #12). Blocking-pool + `try_state`
+/// like `snapshot_ratchet_baseline`: a repo walk must not stall the WKWebView,
+/// and an unmanaged store fails gracefully instead of panicking on the pool.
+#[tauri::command]
+pub async fn scan_injection_surface(
+    app: tauri::AppHandle,
+) -> Result<Vec<InjectionFlag>, String> {
+    tauri::async_runtime::spawn_blocking(move || scan_active_project_blocking(&app))
+        .await
+        .map_err(|e| format!("injection scan failed to run: {e}"))?
+}
+
+/// The blocking body of [`scan_injection_surface`].
+fn scan_active_project_blocking(app: &tauri::AppHandle) -> Result<Vec<InjectionFlag>, String> {
+    use tauri::Manager;
+    let projects = app
+        .try_state::<crate::project::ProjectStore>()
+        .ok_or_else(|| "project store unavailable".to_string())?;
+    let project = projects
+        .active()
+        .ok_or_else(|| "no active project".to_string())?;
+    scan_project(Path::new(&project.path))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

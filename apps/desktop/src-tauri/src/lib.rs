@@ -199,6 +199,7 @@ pub fn run() {
             merge::rerun_verification,
             gauntlet::run_gauntlet,
             workflow::ratchet::snapshot_ratchet_baseline,
+            store::injection_scan::scan_injection_surface,
             commands::project::list_projects,
             commands::project::active_project,
             commands::project::create_project,
