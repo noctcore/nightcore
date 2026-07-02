@@ -499,9 +499,9 @@ function openCount(
   ).length;
 }
 
-/** Which body section is showing: the convention grid, the task-shaped proposals, or
- *  the file-level artifacts. */
-export type HarnessSection = 'conventions' | 'proposals' | 'artifacts';
+/** Which body section is showing: the convention grid, the task-shaped proposals,
+ *  the file-level artifacts, or the runtime-policy editor + injection scan. */
+export type HarnessSection = 'conventions' | 'proposals' | 'artifacts' | 'policy';
 
 /** Everything the HarnessView shell renders. `hasProject === false` is the only
  *  early-return branch; every other field is meaningful in the project view. */

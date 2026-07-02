@@ -105,6 +105,12 @@ export type { StoredHarnessCheck } from './generated/StoredHarnessCheck';
 export type { StoredRepoProfile } from './generated/StoredRepoProfile';
 export type { StoredRepoPackage } from './generated/StoredRepoPackage';
 export type { HarnessUsage } from './generated/HarnessUsage';
+// Harness policy authoring (ts-rs from `commands/policy.rs`) + the injection-scan
+// flag rows (ts-rs from `store/injection_scan.rs`).
+export type { HarnessPolicyFile } from './generated/HarnessPolicyFile';
+export type { HarnessPolicyPatch } from './generated/HarnessPolicyPatch';
+export type { PolicyDiffBudget } from './generated/PolicyDiffBudget';
+export type { InjectionFlag } from './generated/InjectionFlag';
 // The harness convention taxonomy + proposed-artifact shapes come from the zod
 // contract (the engine's wire shape); the generated `Stored*` types keep the
 // enum-ish fields as `string`, so the Harness view casts to these unions.
@@ -163,6 +169,9 @@ import type { ProviderConfigSnapshot } from './generated/ProviderConfigSnapshot'
 import type { InsightRun } from './generated/InsightRun';
 import type { ScorecardRun } from './generated/ScorecardRun';
 import type { HarnessRun } from './generated/HarnessRun';
+import type { HarnessPolicyFile } from './generated/HarnessPolicyFile';
+import type { HarnessPolicyPatch } from './generated/HarnessPolicyPatch';
+import type { InjectionFlag } from './generated/InjectionFlag';
 import type {
   AnalysisScope,
   FindingCategory,
@@ -1617,4 +1626,60 @@ export async function onHarnessEvent(
   handler: (event: HarnessEvent) => void,
 ): Promise<UnlistenFn> {
   return subscribeChannel('nc:harness', parseHarnessEvent, handler);
+}
+
+// --- Harness policy authoring + injection scan ------------------------------
+
+/** The mock policy shown outside Tauri (browser preview / component tests). */
+const MOCK_POLICY_FILE: HarnessPolicyFile = {
+  enabled: true,
+  protectedPaths: ['bun.lock', 'migrations/**'],
+  denyBashPatterns: ['--no-verify'],
+  denyReadPaths: ['.env*'],
+  disallowedTools: [],
+  diffBudget: null,
+  manifestExists: true,
+};
+
+/** The mock injection-scan flags returned outside Tauri, so the scan card's
+ *  results list renders deterministically in Storybook + component tests. */
+const MOCK_INJECTION_FLAGS: InjectionFlag[] = [
+  {
+    path: 'docs/pasted-snippet.md',
+    reasons: ['instruction-shaped phrase: "ignore previous instructions"'],
+  },
+  {
+    path: 'vendor/readme.txt',
+    reasons: [
+      'invisible Unicode tag characters (hidden-prompt vector)',
+      'zero-width character run (hidden-payload vector)',
+    ],
+  },
+];
+
+/** Read the ACTIVE project's harness policy block (`.nightcore/harness.json`),
+ *  with defaults when the manifest/key is absent; `manifestExists` tells the
+ *  editor whether saving edits or creates the file. Returns a mock outside Tauri. */
+export async function getHarnessPolicyFile(): Promise<HarnessPolicyFile> {
+  return tauriInvoke<HarnessPolicyFile>('get_harness_policy_file', {}, MOCK_POLICY_FILE);
+}
+
+/** Merge a policy patch into the active project's `.nightcore/harness.json` —
+ *  WRITES to disk (creating the manifest when absent) and returns the updated
+ *  policy. Only the keys present in the patch change; unknown manifest keys
+ *  survive. Uses raw `invoke` (throws outside Tauri) so a failed write surfaces
+ *  to the caller instead of silently "saving". */
+export async function updateHarnessPolicyFile(
+  patch: HarnessPolicyPatch,
+): Promise<HarnessPolicyFile> {
+  return invoke<HarnessPolicyFile>('update_harness_policy_file', { patch });
+}
+
+/** Sweep the active project's git-tracked text files for prompt-injection-shaped
+ *  content (invisible Unicode tags, zero-width runs, bidi overrides, instruction
+ *  phrases), returning the flagged paths + reasons for human review. Detection
+ *  only — quarantining is the user's explicit denyReadPaths update. Returns mock
+ *  flags outside Tauri. */
+export async function scanInjectionSurface(): Promise<InjectionFlag[]> {
+  return tauriInvoke<InjectionFlag[]>('scan_injection_surface', {}, MOCK_INJECTION_FLAGS);
 }

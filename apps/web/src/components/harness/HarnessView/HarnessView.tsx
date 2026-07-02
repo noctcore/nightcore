@@ -21,6 +21,7 @@ import { CategoryTabs } from '../CategoryTabs';
 import { ConventionDetailPanel } from '../ConventionDetailPanel';
 import { ConventionGrid } from '../ConventionGrid';
 import { HarnessProposalList } from '../HarnessProposalList';
+import { PolicySection } from '../PolicySection';
 import { ProfileBanner } from '../ProfileBanner';
 import { ProposalDetailPanel } from '../ProposalDetailPanel';
 import { RunControls } from '../RunControls';
@@ -191,6 +192,13 @@ function ResultsScreen({
           active={view.section === 'artifacts'}
           onClick={() => setSection('artifacts')}
         />
+        {/* Policy edits the project manifest directly — no per-run count. */}
+        <SectionTab
+          label="Policy"
+          count={0}
+          active={view.section === 'policy'}
+          onClick={() => setSection('policy')}
+        />
       </div>
 
       {view.section === 'conventions' && (
@@ -230,6 +238,7 @@ function ResultsScreen({
           onOpen={view.openArtifact}
         />
       )}
+      {view.section === 'policy' && <PolicySection />}
     </div>
   );
 }
