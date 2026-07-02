@@ -133,6 +133,7 @@ export const ARTIFACT_KIND_META: Record<ArtifactKind, { label: string }> = {
   'eslint-config': { label: 'ESLint config' },
   'agent-contract': { label: 'Agent contract' },
   'custom-lint-plugin': { label: 'Custom lint plugin' },
+  'tool-config': { label: 'Tool config' },
 };
 
 /** eslint-runnable artifact kinds. Arming one wires the project's Structure-Lock
