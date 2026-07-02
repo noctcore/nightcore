@@ -129,6 +129,23 @@ pub enum SurfaceCommand {
     },
     #[serde(rename_all = "camelCase")]
     CancelScorecard { run_id: String },
+    #[serde(rename_all = "camelCase")]
+    StartPrReview {
+        run_id: String,
+        project_path: String,
+        pr_number: u64,
+        diff: String,
+        changed_files: Vec<String>,
+        lenses: Vec<ReviewLens>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        effort: Option<EffortLevel>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_concurrency: Option<u64>,
+    },
+    #[serde(rename_all = "camelCase")]
+    CancelPrReview { run_id: String },
 }
 
 // === Surface → engine queries (Rust SERIALIZES these; replies arrive as the
@@ -452,6 +469,49 @@ pub enum NightcoreEvent {
         run_id: String,
         reason: AnalysisFailedReason,
         message: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    PrReviewStarted {
+        run_id: String,
+        lenses: Vec<ReviewLens>,
+        model: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    PrReviewLensStarted { run_id: String, lens: ReviewLens },
+    #[serde(rename_all = "camelCase")]
+    PrReviewLensCompleted {
+        run_id: String,
+        lens: ReviewLens,
+        findings: Vec<ReviewFinding>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        usage: Option<SessionCompletedUsage>,
+        #[serde(default)]
+        cost_usd: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    PrReviewCompleted {
+        run_id: String,
+        findings: Vec<ReviewFinding>,
+        lenses_run: u64,
+        cost_usd: f64,
+        #[serde(default)]
+        duration_ms: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        usage: Option<SessionCompletedUsage>,
+    },
+    #[serde(rename_all = "camelCase")]
+    PrReviewFailed {
+        run_id: String,
+        reason: String,
+        message: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    PrReviewFindingConverted {
+        run_id: String,
+        finding_id: String,
+        task_id: String,
     },
 }
 
@@ -893,6 +953,32 @@ pub struct RepoProfile {
     pub has_agent_docs: bool,
     #[serde(default)]
     pub existing_plugins: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewFinding {
+    pub id: String,
+    pub lens: ReviewLens,
+    pub severity: FindingSeverity,
+    pub file: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<u64>,
+    pub title: String,
+    pub body: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggested_fix: Option<String>,
+    pub fingerprint: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReviewLens {
+    Security,
+    Logic,
+    Structure,
+    Tests,
+    Contracts,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
