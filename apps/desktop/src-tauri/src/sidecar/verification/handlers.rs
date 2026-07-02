@@ -173,6 +173,20 @@ pub(crate) async fn handle_build_completed(
         }
     }
 
+    // Agent-contract budget (module #8, gate tier): a CLAUDE.md/AGENTS.md this
+    // run touched that outgrew the compiled instruction budget fails
+    // deterministically — the generation-time budget, re-checked at verify.
+    // Worktree builds only (the committed diff is what says "touched").
+    if lock.passed && review_dir.is_worktree {
+        if let Some(project) = app.state::<ProjectStore>().active() {
+            crate::workflow::contract_budget::append_contract_budget_check(
+                &mut lock,
+                &review_dir.path,
+                Path::new(&project.path),
+            );
+        }
+    }
+
     // Strictness ratchet: recount the review dir's laxness against the project's
     // snapshotted `.nightcore/ratchet.json` baseline (absent ⇒ nothing appended;
     // held ⇒ a visible Passed check). Same stop-at-first gating as above.
