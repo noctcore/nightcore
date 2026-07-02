@@ -2,11 +2,14 @@
 import { describe, expect, mock, test } from 'bun:test';
 import type { Logger } from '@nightcore/shared';
 import {
+  BASH_COMMAND_SCAN_LIMIT,
   HARNESS_BASH_DENY_RULE_ID,
   HARNESS_PROTECTED_PATH_RULE_ID,
   HARNESS_READ_DENY_RULE_ID,
+  HARNESS_TOOL_ASK_RULE_ID,
   HARNESS_TOOL_DENY_RULE_ID,
   MANIFEST_PROTECTED_PATTERN,
+  MAX_BASH_PATTERN_LENGTH,
   compileHarnessPolicy,
   evaluateHarnessPolicy,
   type CompiledHarnessPolicy,
@@ -29,9 +32,18 @@ function compiled(
   logger?: Logger,
   denyReadPaths: string[] = [],
   disallowedTools: string[] = [],
+  askTools: string[] = [],
+  allowTools: string[] = [],
 ): CompiledHarnessPolicy {
   return compileHarnessPolicy(
-    { protectedPaths, denyBashPatterns, denyReadPaths, disallowedTools },
+    {
+      protectedPaths,
+      denyBashPatterns,
+      denyReadPaths,
+      disallowedTools,
+      allowTools,
+      askTools,
+    },
     logger,
   );
 }
@@ -343,5 +355,116 @@ describe('least-privilege tool denial (module #9)', () => {
     const logger = fakeLogger();
     const policy = compiled([], [], logger, [], ['', '  ', 'WebSearch']);
     expect(policy.disallowedTools.size).toBe(1);
+  });
+});
+
+describe('interactive ask tier (module #9)', () => {
+  test('an askTools match escalates with ask: true and the ask rule id', () => {
+    const policy = compiled([], [], undefined, [], [], ['WebFetch']);
+    const verdict = evaluateHarnessPolicy('WebFetch', { url: 'x' }, policy, CWD);
+    expect(verdict.denied).toBe(false);
+    expect(verdict.ask).toBe(true);
+    expect(verdict.ruleId).toBe(HARNESS_TOOL_ASK_RULE_ID);
+    expect(verdict.reason).toContain('interactive approval');
+  });
+
+  test('ask needs no cwd and matches exact names only', () => {
+    const policy = compiled([], [], undefined, [], [], ['mcp__acme__push']);
+    expect(
+      evaluateHarnessPolicy('mcp__acme__push', {}, policy, undefined).ask,
+    ).toBe(true);
+    expect(
+      evaluateHarnessPolicy('mcp__acme__pull', {}, policy, undefined).ask,
+    ).toBeUndefined();
+  });
+
+  test('a tool in both disallowedTools and askTools is DENIED (deny wins)', () => {
+    const logger = fakeLogger();
+    const policy = compiled([], [], logger, [], ['WebSearch'], ['WebSearch']);
+    const verdict = evaluateHarnessPolicy('WebSearch', {}, policy, CWD);
+    expect(verdict.denied).toBe(true);
+    expect(verdict.ask).toBeUndefined();
+    expect(verdict.ruleId).toBe(HARNESS_TOOL_DENY_RULE_ID);
+    // The dead ask entry is called out at compile so the author learns
+    // it is not a softer deny.
+    expect(logger.warn).toHaveBeenCalled();
+  });
+
+  test('an askTools entry cannot shadow a protected-path deny', () => {
+    const policy = compiled(['bun.lock'], [], undefined, [], [], ['Write']);
+    const denied = write(policy, 'bun.lock');
+    expect(denied.denied).toBe(true);
+    expect(denied.ask).toBeUndefined();
+    expect(denied.ruleId).toBe(HARNESS_PROTECTED_PATH_RULE_ID);
+    // …but an unprotected write by the same tool still asks.
+    const asked = write(policy, 'src/app.ts');
+    expect(asked.denied).toBe(false);
+    expect(asked.ask).toBe(true);
+  });
+
+  test('an askTools entry cannot shadow a Bash deny pattern or a read deny', () => {
+    const policy = compiled(
+      [],
+      ['--no-verify'],
+      undefined,
+      ['.env*'],
+      [],
+      ['Bash', 'Read'],
+    );
+    const bashDenied = bash(policy, 'git commit --no-verify');
+    expect(bashDenied.denied).toBe(true);
+    expect(bashDenied.ask).toBeUndefined();
+    const readDenied = read(policy, '.env');
+    expect(readDenied.denied).toBe(true);
+    expect(readDenied.ask).toBeUndefined();
+    // Non-matching inputs by the same tools escalate to ask.
+    expect(bash(policy, 'git commit -m ok').ask).toBe(true);
+    expect(read(policy, 'src/app.ts').ask).toBe(true);
+  });
+
+  test('empty/whitespace ask entries are skipped at compile', () => {
+    const logger = fakeLogger();
+    const policy = compiled([], [], logger, [], [], ['', '  ', 'WebFetch']);
+    expect(policy.askTools.size).toBe(1);
+  });
+
+  test('allowTools is NOT compiled into the hook policy (SDK-side only)', () => {
+    const policy = compiled([], [], undefined, [], [], [], ['WebSearch']);
+    // An allow entry must not produce any hook opinion — and must never
+    // override a deny elsewhere in the policy.
+    expect(evaluateHarnessPolicy('WebSearch', {}, policy, CWD)).toEqual({
+      denied: false,
+    });
+  });
+});
+
+describe('regex-guard caps (module #3 hardening)', () => {
+  test('a pattern over MAX_BASH_PATTERN_LENGTH is warn-and-skipped; valid rules enforce', () => {
+    const logger = fakeLogger();
+    const oversized = 'a'.repeat(MAX_BASH_PATTERN_LENGTH + 1);
+    const policy = compiled([], [oversized, '--no-verify'], logger);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(policy.bashRules).toHaveLength(1);
+    expect(bash(policy, 'git commit --no-verify').denied).toBe(true);
+  });
+
+  test('a pattern exactly at the cap still compiles', () => {
+    const policy = compiled([], ['b'.repeat(MAX_BASH_PATTERN_LENGTH)]);
+    expect(policy.bashRules).toHaveLength(1);
+  });
+
+  test('only the first 16 KiB of a command are tested (match past the cap fails open)', () => {
+    const policy = compiled([], ['--no-verify']);
+    const pastCap = `${'x'.repeat(BASH_COMMAND_SCAN_LIMIT)} --no-verify`;
+    expect(bash(policy, pastCap).denied).toBe(false);
+    const withinCap = `--no-verify ${'x'.repeat(BASH_COMMAND_SCAN_LIMIT)}`;
+    expect(bash(policy, withinCap).denied).toBe(true);
+  });
+
+  test('a match straddling the cap boundary does not fire (sliced input)', () => {
+    const policy = compiled([], ['--no-verify']);
+    // Place the pattern so it starts before the cap but completes after it.
+    const prefix = 'y'.repeat(BASH_COMMAND_SCAN_LIMIT - 4);
+    expect(bash(policy, `${prefix}--no-verify`).denied).toBe(false);
   });
 });

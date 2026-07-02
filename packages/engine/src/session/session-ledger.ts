@@ -55,7 +55,7 @@ export interface LedgerToolRecord {
   ts: string;
   tool: string;
   inputDigest: string;
-  decision: 'allow' | 'deny';
+  decision: 'allow' | 'deny' | 'ask';
   ruleId?: string;
 }
 
@@ -111,7 +111,7 @@ export class SessionLedger {
   recordToolDecision = (
     tool: string,
     input: unknown,
-    decision: 'allow' | 'deny',
+    decision: 'allow' | 'deny' | 'ask',
     ruleId?: string,
   ): void => {
     this.append({

@@ -11,12 +11,26 @@
  * CALL: editing lockfiles, migrations, or generated code the project declared
  * off-limits (`protectedPaths`), Bash escape hatches that weaken the gates
  * themselves (`denyBashPatterns`, e.g. `--no-verify`), reads of declared secret
- * or injection-quarantined repo paths (`denyReadPaths` — modules #4/#12), and
- * tools the project disallows outright (`disallowedTools` — module #9,
- * least-privilege). The rules come from the `policy` key of the project's
- * `.nightcore/harness.json` — project-authored (or Rust-written) config resolved
- * by the Rust core at dispatch and carried on `start-session`; NEVER model
- * output.
+ * or injection-quarantined repo paths (`denyReadPaths` — modules #4/#12), tools
+ * the project disallows outright (`disallowedTools` — module #9,
+ * least-privilege), and tools the project requires an INTERACTIVE approval for
+ * (`askTools` — module #9's ask tier). The rules come from the `policy` key of
+ * the project's `.nightcore/harness.json` — project-authored (or Rust-written)
+ * config resolved by the Rust core at dispatch and carried on `start-session`;
+ * NEVER model output. (`allowTools` — module #9's allow tier — is deliberately
+ * NOT enforced here: it is pure SDK-side auto-approval, unioned into
+ * `Options.allowedTools` by the session options builder, and an allow must
+ * never override a deny, so the hook ignores it.)
+ *
+ * EVALUATE ORDER. All deny tiers first — disallowedTools → protected mutation
+ * paths → read denials → Bash deny patterns — then the `askTools` ask tier.
+ * Deny ALWAYS wins over ask: an ask is only returned when no deny tier matched,
+ * so an `askTools` entry can never shadow a deny (e.g. `Write` in `askTools`
+ * still hard-denies on a protected path). The SDK aggregates multiple hooks the
+ * same way (deny > ask > allow — verified in the claude 2.1.198 hook-result
+ * merge), and an 'ask' decision is forwarded to the host's `canUseTool` even
+ * under `bypassPermissions` (the hook pre-decision short-circuits the mode
+ * pipeline's auto-allow — verified in the CLI's `createCanUseTool`).
  *
  * SELF-PROTECTION. Whenever the policy layer is armed, `.nightcore/**` is
  * IMPLICITLY protected ({@link MANIFEST_PROTECTED_PATTERN}): the manifest drives
@@ -88,6 +102,23 @@ export const HARNESS_READ_DENY_RULE_ID = 'harness-read-deny';
  *  least-privilege) denies a tool outright. */
 export const HARNESS_TOOL_DENY_RULE_ID = 'harness-tool-deny';
 
+/** Stable id surfaced when the project's `askTools` list (module #9 ask tier)
+ *  escalates a tool call to an interactive permission ask. */
+export const HARNESS_TOOL_ASK_RULE_ID = 'harness-tool-ask';
+
+/** Max length of one `denyBashPatterns` regex; longer patterns are
+ *  warn-and-skipped at compile (same path as an invalid regex). Caps the
+ *  pattern half of the catastrophic-backtracking surface: the sidecar is a
+ *  single process, so one pathological `RegExp.test` stalls every session. */
+export const MAX_BASH_PATTERN_LENGTH = 512;
+
+/** Only this many chars of a Bash command are tested against the deny
+ *  patterns — the input half of the backtracking mitigation. A >16 KiB command
+ *  is already pathological; a deny pattern that would only match PAST the cap
+ *  fails open, which is acceptable for a heuristic gate (the destructive deny
+ *  list and the OS-sandbox roadmap remain the hard lines). */
+export const BASH_COMMAND_SCAN_LIMIT = 16 * 1024;
+
 /** The path-bearing native READ tools the `denyReadPaths` rules inspect → input
  *  key. `Grep`/`Glob` are covered only when they carry an explicit `path` — a
  *  rootless sweep can't be decided lexically and stays allowed (a cwd-wide Grep
@@ -134,6 +165,19 @@ export interface CompiledHarnessPolicy {
   readRules: readonly CompiledPathRule[];
   /** Tools denied outright for this project (exact SDK tool names). */
   disallowedTools: ReadonlySet<string>;
+  /** Tools escalated to an interactive ask (exact SDK tool names). Checked only
+   *  AFTER every deny tier — deny wins; see the module header. `allowTools` has
+   *  no compiled form here (SDK-side auto-approval, not a hook concern). */
+  askTools: ReadonlySet<string>;
+}
+
+/** The harness gate's verdict. Extends the shared deny shape so existing
+ *  `denied` consumers keep working; `ask` marks module #9's ask tier — never
+ *  set alongside `denied: true` (deny always wins). */
+export interface HarnessPolicyVerdict extends ToolDenyVerdict {
+  /** True when the call must escalate to an interactive permission ask (the
+   *  hook returns `permissionDecision: 'ask'`). */
+  ask?: boolean;
 }
 
 /** Escape regex metacharacters, then translate `*` → "any run of non-separator
@@ -179,6 +223,17 @@ export function compileHarnessPolicy(
 
   const bashRules: CompiledBashRule[] = [];
   for (const pattern of policy.denyBashPatterns) {
+    // Length cap before compile: a very long project-authored pattern is the
+    // easiest way to smuggle in catastrophic backtracking. Same warn-and-skip
+    // posture as an invalid regex — the remaining rules still enforce.
+    if (pattern.length > MAX_BASH_PATTERN_LENGTH) {
+      logger?.warn('skipping oversized harness denyBashPatterns regex', {
+        pattern: pattern.slice(0, 64),
+        length: pattern.length,
+        max: MAX_BASH_PATTERN_LENGTH,
+      });
+      continue;
+    }
     try {
       bashRules.push({ pattern, regex: new RegExp(pattern) });
     } catch (error) {
@@ -209,7 +264,24 @@ export function compileHarnessPolicy(
     disallowedTools.add(trimmed);
   }
 
-  return { pathRules, bashRules, readRules, disallowedTools };
+  const askTools = new Set<string>();
+  for (const tool of policy.askTools) {
+    const trimmed = tool.trim();
+    if (trimmed.length === 0) {
+      logger?.warn('skipping empty harness askTools entry');
+      continue;
+    }
+    // A tool in both lists denies (deny wins over ask) — warn so the author
+    // learns the ask entry is dead config rather than a softer deny.
+    if (disallowedTools.has(trimmed)) {
+      logger?.warn('askTools entry is also in disallowedTools; deny wins', {
+        tool: trimmed,
+      });
+    }
+    askTools.add(trimmed);
+  }
+
+  return { pathRules, bashRules, readRules, disallowedTools, askTools };
 }
 
 /** True when `rule` matches a prefix of `segments` starting at `from` — a full
@@ -291,14 +363,50 @@ function toolDenyReason(toolName: string): string {
   );
 }
 
+/** The reason carried on an ask escalation — shown as the permission prompt's
+ *  context (user) and as the decision reason (agent transcript). */
+function toolAskReason(toolName: string): string {
+  return (
+    `This project's harness policy requires interactive approval for the ` +
+    `${toolName} tool (ask tier, least-privilege configuration). The call has ` +
+    `been escalated to the user; wait for their decision.`
+  );
+}
+
 /**
  * Evaluate a single tool call against the compiled harness policy. Returns
- * `{ denied: false }` for everything the policy doesn't cover (the common path).
- * `cwd` may be undefined (probes/tests): path rules are then skipped — a
- * repo-relative pattern is meaningless without a root — but Bash rules still
- * enforce (they match the raw command, no root needed).
+ * `{ denied: false }` for everything the policy doesn't cover (the common path),
+ * a deny verdict for a deny-tier match, or an ask verdict (`ask: true`) when no
+ * deny tier matched and the tool is in `askTools` — deny always wins, so an ask
+ * entry can never shadow a deny (see the module header). `cwd` may be undefined
+ * (probes/tests): path rules are then skipped — a repo-relative pattern is
+ * meaningless without a root — but Bash rules and the tool tiers still enforce.
  */
 export function evaluateHarnessPolicy(
+  toolName: string,
+  toolInput: unknown,
+  policy: CompiledHarnessPolicy,
+  cwd: string | undefined,
+): HarnessPolicyVerdict {
+  const denied = evaluateDenyTiers(toolName, toolInput, policy, cwd);
+  if (denied.denied) return denied;
+  if (policy.askTools.has(toolName)) {
+    return {
+      denied: false,
+      ask: true,
+      ruleId: HARNESS_TOOL_ASK_RULE_ID,
+      reason: toolAskReason(toolName),
+    };
+  }
+  return { denied: false };
+}
+
+/**
+ * The deny tiers, in order: disallowedTools → protected mutation paths → read
+ * denials → Bash deny patterns. Split from {@link evaluateHarnessPolicy} so the
+ * ask tier provably runs only when NO deny tier matched.
+ */
+function evaluateDenyTiers(
   toolName: string,
   toolInput: unknown,
   policy: CompiledHarnessPolicy,
@@ -353,8 +461,14 @@ export function evaluateHarnessPolicy(
   if (toolName === BASH_TOOL && policy.bashRules.length > 0) {
     const command = targetUnderKey(toolInput, 'command');
     if (command === undefined) return { denied: false };
+    // Input cap (the pattern cap's counterpart, see BASH_COMMAND_SCAN_LIMIT):
+    // bound the text a project regex can backtrack over.
+    const bounded =
+      command.length > BASH_COMMAND_SCAN_LIMIT
+        ? command.slice(0, BASH_COMMAND_SCAN_LIMIT)
+        : command;
     for (const rule of policy.bashRules) {
-      if (rule.regex.test(command)) {
+      if (rule.regex.test(bounded)) {
         return {
           denied: true,
           ruleId: HARNESS_BASH_DENY_RULE_ID,

@@ -58,7 +58,8 @@ pub struct LedgerRecord {
     /// target path). A digest, never the full tool input.
     #[serde(default)]
     pub input_digest: Option<String>,
-    /// `allow` | `deny` — the PreToolUse gate's decision.
+    /// `allow` | `deny` | `ask` — the PreToolUse gate's decision (`ask` =
+    /// escalated to an interactive approval by the policy's `askTools` tier).
     #[serde(default)]
     pub decision: Option<String>,
     /// The matched rule id on deny (e.g. `harness-protected-path`).

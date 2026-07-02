@@ -427,9 +427,27 @@ export class SessionOptionsBuilder {
         );
         return composed !== undefined ? { appendSystemPrompt: composed } : {};
       })(),
-      ...(this.cfg.allowedTools !== undefined
-        ? { allowedTools: this.cfg.allowedTools }
-        : {}),
+      // Union the harness policy's `allowTools` (hardening module #9, allow
+      // tier) into `allowedTools`. VERIFIED SDK semantics (sdk.d.ts,
+      // @anthropic-ai/claude-agent-sdk@0.3.190, `Options.allowedTools`): "List
+      // of tool names that are auto-allowed without prompting for permission.
+      // … To restrict which tools are available, use the `tools` option
+      // instead." — i.e. allowedTools is purely ADDITIVE auto-approval, not an
+      // exclusive whitelist (the whitelist is the separate `tools` option), so
+      // setting it for a session that previously passed nothing cannot
+      // restrict anything. Entries are verbatim SDK permission-rule strings
+      // (`WebSearch`, `Bash(git status:*)`). An allow never overrides a deny:
+      // SDK deny rules and the PreToolUse gate still win.
+      ...((): { allowedTools?: string[] } => {
+        const preset = this.cfg.allowedTools;
+        const policyAllowed = this.cfg.harnessPolicy?.allowTools ?? [];
+        if (policyAllowed.length === 0) {
+          return preset !== undefined ? { allowedTools: preset } : {};
+        }
+        return {
+          allowedTools: [...new Set([...(preset ?? []), ...policyAllowed])],
+        };
+      })(),
       // Union the policy deny lists into `disallowedTools` so that a configured
       // `permissions.deny` entry — and the harness policy's least-privilege
       // `disallowedTools` (hardening module #9) — is hard-blocked even under

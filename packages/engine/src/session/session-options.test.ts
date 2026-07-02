@@ -186,6 +186,74 @@ describe('SessionOptionsBuilder.run() — full query options', () => {
     expect(options).not.toHaveProperty('disallowedTools');
   });
 
+  test('unions the harness policy allowTools into allowedTools without duplicates', () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    const options = new SessionOptionsBuilder(
+      makeConfig({
+        allowedTools: ['Read', 'WebSearch'],
+        harnessPolicy: {
+          protectedPaths: [],
+          denyBashPatterns: [],
+          denyReadPaths: [],
+          disallowedTools: [],
+          allowTools: ['WebSearch', 'Bash(git status:*)'],
+          askTools: [],
+        },
+      }),
+    ).run(makeRuntime());
+
+    expect((options.allowedTools as string[]).sort()).toEqual([
+      'Bash(git status:*)',
+      'Read',
+      'WebSearch',
+    ]);
+  });
+
+  test('policy allowTools alone sets allowedTools (additive auto-approval, no preset)', () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    const options = new SessionOptionsBuilder(
+      makeConfig({
+        harnessPolicy: {
+          protectedPaths: [],
+          denyBashPatterns: [],
+          denyReadPaths: [],
+          disallowedTools: [],
+          allowTools: ['WebSearch'],
+          askTools: [],
+        },
+      }),
+    ).run(makeRuntime());
+    expect(options.allowedTools).toEqual(['WebSearch']);
+  });
+
+  test('omits allowedTools when the preset is absent and the policy allow list is empty', () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    const noPolicy = new SessionOptionsBuilder(makeConfig()).run(makeRuntime());
+    expect(noPolicy).not.toHaveProperty('allowedTools');
+
+    const emptyPolicy = new SessionOptionsBuilder(
+      makeConfig({
+        harnessPolicy: {
+          protectedPaths: ['bun.lock'],
+          denyBashPatterns: [],
+          denyReadPaths: [],
+          disallowedTools: [],
+          allowTools: [],
+          askTools: [],
+        },
+      }),
+    ).run(makeRuntime());
+    expect(emptyPolicy).not.toHaveProperty('allowedTools');
+  });
+
+  test('a preset allowedTools passes through unchanged when the policy has no allow list', () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    const options = new SessionOptionsBuilder(
+      makeConfig({ allowedTools: ['Read'] }),
+    ).run(makeRuntime());
+    expect(options.allowedTools).toEqual(['Read']);
+  });
+
   test('leads with the working-root directive, then the context pack, then the persona', () => {
     resolvedClaudePath = '/usr/local/bin/claude';
     const options = new SessionOptionsBuilder(

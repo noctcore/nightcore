@@ -278,6 +278,8 @@ describe('HookBus — harness runtime policy gate (module #3)', () => {
     denyBashPatterns: ['--no-verify'],
     denyReadPaths: ['.env*'],
     disallowedTools: ['WebSearch'],
+    allowTools: [],
+    askTools: ['WebFetch'],
   };
 
   test('denies a Write to a protected path with the harness-policy reason', async () => {
@@ -302,6 +304,8 @@ describe('HookBus — harness runtime policy gate (module #3)', () => {
         denyBashPatterns: [],
         denyReadPaths: [],
         disallowedTools: [],
+        allowTools: [],
+        askTools: [],
       },
     });
     const r = await pre(bus, 'Edit', { file_path: '.nightcore/harness.json' });
@@ -351,6 +355,41 @@ describe('HookBus — harness runtime policy gate (module #3)', () => {
     const r = await pre(bus, 'Bash', { command: 'git commit --no-verify' });
     expect(decision(r)).toBe('deny');
   });
+
+  test('an askTools match returns the SDK ask decision shape', async () => {
+    const bus = new HookBus(undefined, { cwd: CWD, harnessPolicy: POLICY });
+    const r = (await pre(bus, 'WebFetch', { url: 'https://example.com' })) as {
+      continue?: unknown;
+      hookSpecificOutput?: {
+        hookEventName?: string;
+        permissionDecision?: string;
+        permissionDecisionReason?: string;
+      };
+    };
+    expect(r.hookSpecificOutput?.hookEventName).toBe('PreToolUse');
+    expect(r.hookSpecificOutput?.permissionDecision).toBe('ask');
+    expect(r.hookSpecificOutput?.permissionDecisionReason).toContain(
+      'interactive approval',
+    );
+    // An ask must not abort the session either.
+    expect(r.continue).toBeUndefined();
+  });
+
+  test('ask does not shadow a deny — a tool in both lists is denied', async () => {
+    const bus = new HookBus(undefined, {
+      cwd: CWD,
+      harnessPolicy: { ...POLICY, askTools: ['WebSearch', 'Write'] },
+    });
+    // WebSearch is disallowed AND asked-for: deny wins.
+    const t = await pre(bus, 'WebSearch', { query: 'x' });
+    expect(decision(t)).toBe('deny');
+    // Write is asked-for, but a protected-path target still hard-denies…
+    const w = await pre(bus, 'Write', { file_path: 'bun.lock' });
+    expect(decision(w)).toBe('deny');
+    // …while an unprotected target escalates to ask.
+    const ok = await pre(bus, 'Write', { file_path: 'src/app.ts' });
+    expect(decision(ok)).toBe('ask');
+  });
 });
 
 describe('HookBus — onToolDecision flight-recorder seam (module #5)', () => {
@@ -368,6 +407,8 @@ describe('HookBus — onToolDecision flight-recorder seam (module #5)', () => {
     denyBashPatterns: [],
     denyReadPaths: [],
     disallowedTools: [],
+    allowTools: [],
+    askTools: [],
   };
 
   type Seen = { tool: string; input: unknown; decision: string; ruleId?: string };

@@ -16,6 +16,7 @@ import {
   compileHarnessPolicy,
   evaluateHarnessPolicy,
   type CompiledHarnessPolicy,
+  type HarnessPolicyVerdict,
 } from './harness-policy.js';
 
 /**
@@ -25,11 +26,13 @@ import {
  * call against (1) a safe default destructive-command deny list, (2) the
  * workspace-confinement gate — a file mutation that resolves outside the run
  * `cwd` — and (3) the project's harness runtime policy (protected paths + Bash
- * deny patterns from `.nightcore/harness.json`), and returns a
- * `permissionDecision: 'deny'` for a match. Crucially, SDK hooks fire
+ * deny patterns + tool deny/ask tiers from `.nightcore/harness.json`), and
+ * returns a `permissionDecision: 'deny'` for a deny match or
+ * `permissionDecision: 'ask'` for an `askTools` match (escalated to the host's
+ * `canUseTool` by the CLI, even under bypass). Crucially, SDK hooks fire
  * **regardless of `permissionMode`** — including `bypassPermissions`, where the
- * `canUseTool` permission layer is never consulted — so this is the one
- * guardrail that contains the studio's default unattended config. See
+ * `canUseTool` permission layer is never consulted for ordinary calls — so this
+ * is the one guardrail that contains the studio's default unattended config. See
  * {@link DEFAULT_DESTRUCTIVE_RULES}, {@link evaluateWorkspaceConfinement}, and
  * {@link evaluateHarnessPolicy} for scope and limits (heuristic, not a sandbox).
  * `SessionStart` stays a pure non-blocking observer.
@@ -56,7 +59,7 @@ export class HookBus {
   private readonly onToolDecision?: (
     tool: string,
     input: unknown,
-    decision: 'allow' | 'deny',
+    decision: 'allow' | 'deny' | 'ask',
     ruleId?: string,
   ) => void;
 
@@ -76,7 +79,7 @@ export class HookBus {
       onToolDecision?: (
         tool: string,
         input: unknown,
-        decision: 'allow' | 'deny',
+        decision: 'allow' | 'deny' | 'ask',
         ruleId?: string,
       ) => void;
     },
@@ -140,7 +143,9 @@ export class HookBus {
     // (3) Harness runtime policy — the project's declared protected paths + Bash
     // deny patterns. AFTER confinement so its fail-closed unreadable-target denial
     // owns that shape (the policy gate deliberately leaves it alone); Bash rules
-    // enforce even without a cwd.
+    // enforce even without a cwd. The evaluator runs its ask tier only when no
+    // deny tier matched (deny wins over ask, inside this hook and across hooks —
+    // the SDK merges multiple hooks' decisions as deny > ask > allow).
     if (this.harnessPolicy !== undefined) {
       const policy = evaluateHarnessPolicy(
         tool_name,
@@ -149,6 +154,7 @@ export class HookBus {
         this.cwd,
       );
       if (policy.denied) return this.denyOutput(tool_name, tool_input, policy);
+      if (policy.ask === true) return this.askOutput(tool_name, tool_input, policy);
     }
 
     this.recordDecision(tool_name, tool_input, 'allow');
@@ -160,7 +166,7 @@ export class HookBus {
   private recordDecision(
     tool: string,
     input: unknown,
-    decision: 'allow' | 'deny',
+    decision: 'allow' | 'deny' | 'ask',
     ruleId?: string,
   ): void {
     if (this.onToolDecision === undefined) return;
@@ -189,6 +195,31 @@ export class HookBus {
         permissionDecision: 'deny',
         permissionDecisionReason:
           verdict.reason ?? 'Blocked by Nightcore safety policy.',
+      },
+    };
+  }
+
+  /** Build the `PreToolUse` ask output for an `askTools` match — escalates THIS
+   *  call to an interactive permission ask. The CLI forwards an 'ask' hook
+   *  decision to the host's `canUseTool` even under `bypassPermissions` (the
+   *  hook pre-decision short-circuits the mode pipeline's auto-allow), which is
+   *  what makes the ask tier hold in the studio's default unattended config. */
+  private askOutput(
+    toolName: string,
+    toolInput: unknown,
+    verdict: HarnessPolicyVerdict,
+  ): HookJSONOutput {
+    this.recordDecision(toolName, toolInput, 'ask', verdict.ruleId);
+    this.logger?.info('escalating tool call to interactive approval', {
+      toolName,
+      ruleId: verdict.ruleId,
+    });
+    return {
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'ask',
+        permissionDecisionReason:
+          verdict.reason ?? 'This project requires approval for this tool.',
       },
     };
   }

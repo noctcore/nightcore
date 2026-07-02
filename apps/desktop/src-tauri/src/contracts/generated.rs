@@ -640,6 +640,10 @@ pub struct HarnessPolicy {
     pub deny_read_paths: Vec<String>,
     #[serde(default)]
     pub disallowed_tools: Vec<String>,
+    #[serde(default)]
+    pub allow_tools: Vec<String>,
+    #[serde(default)]
+    pub ask_tools: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

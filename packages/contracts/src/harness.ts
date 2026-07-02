@@ -281,6 +281,21 @@ export const HarnessPolicySchema = z.object({
    *  (e.g. `WebSearch`, or `mcp__<server>__<tool>`). The engine denies the
    *  call at PreToolUse, so it holds under `bypassPermissions` too. */
   disallowedTools: z.array(z.string()).default([]),
+  /** VERBATIM SDK permission-rule strings auto-APPROVED for sessions in this
+   *  project (module #9, allow tier): exact tool names (`WebSearch`) or rules
+   *  (`Bash(git status:*)`). Unioned into SDK `Options.allowedTools`, which is
+   *  additive auto-approval only (the exclusive whitelist is the separate
+   *  `tools` option), so entries here can never RESTRICT a session — and an
+   *  allow never overrides a deny: SDK deny rules and the engine's PreToolUse
+   *  gate still win. */
+  allowTools: z.array(z.string()).default([]),
+  /** Exact SDK tool names (same convention as `disallowedTools`) that must
+   *  escalate to an INTERACTIVE permission ask even in permissive modes
+   *  (module #9, ask tier). The engine's PreToolUse gate returns
+   *  `permissionDecision: 'ask'`, which the CLI forwards to the host's
+   *  `canUseTool` — even under `bypassPermissions`. Every deny tier wins over
+   *  ask (a tool both denied and asked-for is denied). */
+  askTools: z.array(z.string()).default([]),
 });
 export type HarnessPolicy = z.infer<typeof HarnessPolicySchema>;
 

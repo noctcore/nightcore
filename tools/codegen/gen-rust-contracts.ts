@@ -285,7 +285,8 @@ const STRUCT_NAMES: Record<string, string> = {
     'HarnessProposal',
   // The manifest-declared runtime policy the engine's PreToolUse gate enforces
   // (hardening modules #3/#4/#9/#12), carried on `start-session`.
-  'denyBashPatterns|denyReadPaths|disallowedTools|protectedPaths': 'HarnessPolicy',
+  'allowTools|askTools|denyBashPatterns|denyReadPaths|disallowedTools|protectedPaths':
+    'HarnessPolicy',
 };
 
 /** Stable Rust enum name for a referenced/inline `z.enum`. Named enums in the
