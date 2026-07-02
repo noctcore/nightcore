@@ -95,6 +95,17 @@ export const StartSessionCommand = z.object({
    *  gate that holds even under `bypassPermissions`. Absent ⇒ no policy layer
    *  (no manifest, or the project disabled it). */
   harnessPolicy: HarnessPolicySchema.optional(),
+  /** OPT-IN macOS OS-level WRITE containment (hardening module #15, tier "OS
+   *  containment"): when true AND the host supports it (darwin with a working
+   *  `sandbox-exec`), the engine wraps the resolved `claude` executable in a
+   *  Seatbelt deny-write-except profile so file writes outside the session's
+   *  writable roots (cwd, worktree git common dir, temp trees, Claude CLI state)
+   *  are blocked at the OS layer — closing the lexical PreToolUse gate's
+   *  documented gaps (Bash redirects, symlinks). Requested but unavailable ⇒ the
+   *  engine logs a loud warning and runs UNwrapped (fail-open; the feature is
+   *  experimental and default-off). Set by the Rust core from the
+   *  `sandbox_sessions` setting. Absent ⇒ off (pre-feature shape). */
+  sandboxWrites: z.boolean().optional(),
   /** Image attachments to include on the user message as SDK image content blocks.
    *  The Rust core loads these from the task's persisted app-data files at launch.
    *  Absent/empty ⇒ a text-only message.
