@@ -17,11 +17,31 @@ ruleTester.run('zod-schema-naming', zodSchemaNamingRule, {
     },
     // Non-zod exported const is ignored.
     { code: `export const MAX = 10;`, filename: FILE },
+    // Discriminated-union members carry a role suffix, not `Schema` — carved
+    // out (their naming contract is wire-message-naming's job).
+    {
+      code: `import { z } from 'zod';\nexport const FooCompletedEvent = z.object({ type: z.literal('foo-completed') });`,
+      filename: FILE,
+    },
+    {
+      code: `import { z } from 'zod';\nexport const RunTaskCommand = z.object({ type: z.literal('run-task') });`,
+      filename: FILE,
+    },
+    {
+      code: `import { z } from 'zod';\nexport const ListSessionsQuery = z.object({ type: z.literal('list-sessions') });`,
+      filename: FILE,
+    },
   ],
   invalid: [
     // Schema const not suffixed `Schema`.
     {
       code: `import { z } from 'zod';\nexport const Task = z.object({});`,
+      filename: FILE,
+      errors: [{ messageId: 'schemaNaming' }],
+    },
+    // A lowercase standalone schema must be `FooSchema`, not `foo`.
+    {
+      code: `import { z } from 'zod';\nexport const foo = z.string();`,
       filename: FILE,
       errors: [{ messageId: 'schemaNaming' }],
     },

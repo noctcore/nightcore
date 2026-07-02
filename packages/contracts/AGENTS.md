@@ -8,7 +8,7 @@ This package is the single source of truth at the sidecar boundary and the depen
   export const FooSchema = z.object({ /* ... */ });
   export type Foo = z.infer<typeof FooSchema>;
   ```
-  Convention checked by `nightcore/zod-schema-naming` (registered but currently advisory/`off`, not wired to `error`): discriminated-union *member* schemas below use role suffixes (`Command`/`Event`/`Query`), not `Schema`, so enforcing the suffix repo-wide would mis-flag them.
+  Enforced by `nightcore/zod-schema-naming` (`error` on `packages/contracts/src/**`): discriminated-union *member* schemas below use role suffixes (`Command`/`Event`/`Query`), not `Schema`, and are carved out inside the rule — their naming contract is `nightcore/wire-message-naming`.
 - Message schemas are named `<Noun><PastVerb>Event` / `<Verb><Noun>Command` / `<Verb><Noun>Query`. The wire `type` discriminant is a kebab-case literal equal to the const name minus its role suffix (e.g. `SessionFailedEvent` → `type: 'session-failed'`).
 - Wire field names are camelCase. Any SDK snake_case field crossing the boundary is renamed to camelCase in the zod schema.
 - Enum string-value casing tracks the source of truth: wire `type` discriminants → kebab-case; SDK-mirrored enums → copy the SDK casing verbatim (note it in a comment); Rust-shared enums → snake_case/lowercase matching the serde mapping. Add the rationale as a comment so the choice isn't re-guessed.

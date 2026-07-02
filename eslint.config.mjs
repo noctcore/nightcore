@@ -170,6 +170,10 @@ export default tseslint.config(
     files: ['packages/contracts/src/**/*.ts'],
     rules: {
       'nightcore/wire-message-naming': 'error',
+      // Standalone schemas must be `<Pascal>Schema` + inferred sibling type.
+      // Discriminated-union members (role suffixes Event/Command/Query) are
+      // carved out inside the rule — that carve-out is what un-dormanted it.
+      'nightcore/zod-schema-naming': 'error',
     },
   },
   // Component-architecture rules (Tier C), scoped to the component folders.

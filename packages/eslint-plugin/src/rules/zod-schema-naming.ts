@@ -10,6 +10,19 @@ const SCHEMA_NAME = /^[A-Z][A-Za-z0-9]*Schema$/;
 const SUFFIX = 'Schema';
 
 /*
+ * Discriminated-union member schemas intentionally carry a role suffix
+ * (`SessionStartedEvent`, `RunTaskCommand`, `ListSessionsQuery`) instead of
+ * `Schema` — their const-name → wire-discriminant contract is enforced by
+ * `nightcore/wire-message-naming`, so they are carved out here. This carve-out
+ * is what lets the rule run at `error` on the contracts source.
+ */
+const ROLE_SUFFIXES = ['Event', 'Command', 'Query'] as const;
+
+function hasRoleSuffix(name: string): boolean {
+  return ROLE_SUFFIXES.some((s) => name.endsWith(s) && name.length > s.length);
+}
+
+/*
  * Walk an expression down its call/member chain to the root identifier so
  * `z.object({...})`, `z.union([...])`, `z.string().min(1)` etc. all resolve to
  * the root `z`. Anything not rooted at `z` is not treated as a zod schema.
@@ -65,6 +78,7 @@ export const zodSchemaNamingRule = createRule<[], MessageIds>({
               d.init &&
               rootIdentifierName(d.init) === 'z'
             ) {
+              if (hasRoleSuffix(d.id.name)) continue;
               if (!SCHEMA_NAME.test(d.id.name)) {
                 context.report({
                   node: d.id,

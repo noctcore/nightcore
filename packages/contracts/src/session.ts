@@ -9,8 +9,12 @@ import { PermissionModeSchema } from './config.js';
  * `@nightcore/engine`). This is distinct from the SDK's own session UUID, which
  * we record separately once the SDK's `init` message arrives.
  */
-export const NightcoreSessionId = z.number().int().nonnegative().brand('NightcoreSessionId');
-export type NightcoreSessionId = z.infer<typeof NightcoreSessionId>;
+export const NightcoreSessionIdSchema = z
+  .number()
+  .int()
+  .nonnegative()
+  .brand('NightcoreSessionId');
+export type NightcoreSessionId = z.infer<typeof NightcoreSessionIdSchema>;
 
 /** The lifecycle state of a Nightcore session. */
 export const SessionStatusSchema = z.enum([
