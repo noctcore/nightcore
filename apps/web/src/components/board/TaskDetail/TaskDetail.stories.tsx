@@ -4,6 +4,7 @@ import { expect, fn, userEvent, within } from 'storybook/test';
 import {
   GAUNTLET_FAILED,
   GAUNTLET_PASSED,
+  makePrStatus,
   makeTask,
   SAMPLE_REVIEW_CHANGES,
   SAMPLE_REVIEW_PASS,
@@ -46,6 +47,10 @@ const actions: TaskDetailActions = {
   onCommit: fn(),
   onCreatePr: fn(),
   onOpenPr: fn(),
+  // Promise-returning (the status card sequences a refetch on push success).
+  onPushPrUpdates: fn(async () => {}),
+  onFinalizePr: fn(async () => {}),
+  onPullBaseFf: fn(async () => {}),
 };
 
 /** Wrap a single session's stream into a one-session transcript (the common
@@ -342,6 +347,46 @@ export const PrCreated: Story = {
       prUrl: 'https://github.com/acme/nightcore/pull/123',
       prNumber: 123,
     }),
+  },
+};
+
+/** A PR'd task with a live status (the story override seam): the Pull request
+ *  band renders below the Result band with badges + the push-updates gate. */
+export const PrStatusTracked: Story = {
+  args: {
+    ...PrCreated.args,
+    prStatus: makePrStatus({ reviewDecision: 'APPROVED', unpushedCommits: 2 }),
+  },
+};
+
+/** A REMOTE-merged PR before the local finalize — the card offers the
+ *  human-gated Finalize (mark merged locally + cleanup per settings). */
+export const PrRemoteMerged: Story = {
+  args: {
+    ...PrCreated.args,
+    prStatus: makePrStatus({ state: 'MERGED', reviewDecision: 'APPROVED' }),
+  },
+};
+
+/** The finalized aftermath: `task.merged` flipped by the echo, so the card
+ *  swaps Finalize for the fast-forward base update and the footer shows Merged. */
+export const PrFinalized: Story = {
+  args: {
+    ...PrCreated.args,
+    task: makeTask({
+      id: 't-done',
+      status: 'done',
+      title: 'Wire up auth guard',
+      branch: 'nc/auth-guard',
+      runMode: 'worktree',
+      verified: true,
+      committed: true,
+      merged: true,
+      review: SAMPLE_REVIEW_PASS,
+      prUrl: 'https://github.com/acme/nightcore/pull/123',
+      prNumber: 123,
+    }),
+    prStatus: makePrStatus({ state: 'MERGED', reviewDecision: 'APPROVED' }),
   },
 };
 

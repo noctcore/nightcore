@@ -28,6 +28,9 @@ const {
   ReadyForPr,
   PrSupportRed,
   PrCreated,
+  PrStatusTracked,
+  PrRemoteMerged,
+  PrFinalized,
 } = composeStories(stories);
 
 test('shows a provenance chip for a task converted from a scan', async () => {
@@ -260,6 +263,64 @@ test('canCreatePr enforces the full eligibility contract', () => {
 test('prChipLabel folds in the PR number when present', () => {
   expect(prChipLabel(makeTask({ prNumber: 123 }))).toBe('PR #123');
   expect(prChipLabel(makeTask({}))).toBe('PR');
+});
+
+test('mounts the PR status card once prUrl is set', async () => {
+  // No prStatus override: the card fetches on mount, and outside Tauri the
+  // bridge resolves its null sentinel — the quiet unavailable note.
+  const screen = render(<PrCreated />);
+  await expect.element(screen.getByText('Pull request')).toBeInTheDocument();
+  await expect.element(screen.getByRole('button', { name: /refresh/i })).toBeInTheDocument();
+  await expect
+    .element(screen.getByText(/PR status is unavailable in the browser preview/))
+    .toBeInTheDocument();
+});
+
+test('no PR band renders before a PR exists', async () => {
+  const screen = render(<Done />);
+  await expect.element(screen.getByText('Overview')).toBeInTheDocument();
+  expect(screen.getByText('Pull request').query()).toBeNull();
+});
+
+test('the card offers Push updates for an open PR with unpushed commits and confirms through the dialog', async () => {
+  const onPushPrUpdates = vi.fn(async () => {});
+  const screen = render(
+    <PrStatusTracked
+      actions={{ ...PrStatusTracked.args!.actions!, onPushPrUpdates }}
+    />,
+  );
+  await expect.element(screen.getByText('Approved')).toBeInTheDocument();
+  await screen.getByRole('button', { name: 'Push updates (2)' }).click();
+  // Human gate: nothing fires until the dialog confirm (dialog-scoped — the
+  // card button's name contains the confirm's).
+  expect(onPushPrUpdates).not.toHaveBeenCalled();
+  await screen.getByRole('alertdialog').getByRole('button', { name: 'Push updates' }).click();
+  await vi.waitFor(() => expect(onPushPrUpdates).toHaveBeenCalledWith('t-done'));
+});
+
+test('a remote-merged PR offers Finalize until the local task flips merged', async () => {
+  const onFinalizePr = vi.fn(async () => {});
+  const screen = render(
+    <PrRemoteMerged actions={{ ...PrRemoteMerged.args!.actions!, onFinalizePr }} />,
+  );
+  await expect.element(screen.getByText('Merged')).toBeInTheDocument();
+  await screen.getByRole('button', { name: /finalize/i }).click();
+  // The card button and dialog confirm share the label — scope to the dialog.
+  await screen.getByRole('alertdialog').getByRole('button', { name: 'Finalize' }).click();
+  await vi.waitFor(() => expect(onFinalizePr).toHaveBeenCalledWith('t-done'));
+});
+
+test('a finalized task swaps Finalize for the base fast-forward offer', async () => {
+  const onPullBaseFf = vi.fn(async () => {});
+  const screen = render(
+    <PrFinalized actions={{ ...PrFinalized.args!.actions!, onPullBaseFf }} />,
+  );
+  // The footer shows the existing Merged terminal state (the echo flipped it).
+  await expect.element(screen.getByRole('button', { name: /^merged$/i })).toBeDisabled();
+  expect(screen.getByRole('button', { name: /finalize/i }).query()).toBeNull();
+  await screen.getByRole('button', { name: 'Update base branch' }).click();
+  await screen.getByRole('alertdialog').getByRole('button', { name: 'Update base' }).click();
+  await vi.waitFor(() => expect(onPullBaseFf).toHaveBeenCalledWith('t-done'));
 });
 
 test('deriveTaskDetailView splits review-parked from plan-parked on task.review', () => {

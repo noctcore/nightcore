@@ -3,6 +3,7 @@ import type {
   GauntletResult,
   PermissionMode,
   PermissionPrompt,
+  PrStatus,
   PrSupport,
   QuestionAnswer,
   QuestionPrompt,
@@ -65,6 +66,16 @@ export interface TaskDetailActions {
   onCreatePr?: (id: string) => void;
   /** Open a created pull request in the system browser (the `PR #<n>` chip). */
   onOpenPr?: (url: string) => void;
+  /** Re-push the task branch to an open PR (the status card's Push updates).
+   *  Promise-returning so the card can refetch the status on success. Guarded
+   *  under the `pushPrUpdates` pending key. */
+  onPushPrUpdates?: (id: string) => Promise<void>;
+  /** Finalize a REMOTE-merged PR: mark the task merged locally + honor the
+   *  cleanup setting (`finalizePr` pending key). The task echo updates the board. */
+  onFinalizePr?: (id: string) => Promise<void>;
+  /** Fast-forward-only pull of the base branch on the project root after a
+   *  remote merge (`pullBaseFf` pending key). */
+  onPullBaseFf?: (id: string) => Promise<void>;
   /** Resume a chosen historical session — relaunches the task pointed at the UUID
    *  (refused Rust-side for an orphaned session). Enables the History section. */
   onResumeSession?: (taskId: string, sdkSessionId: string) => void;
@@ -94,6 +105,10 @@ export interface TaskDetailProps {
    *  gates the Create PR button directly; omit it (the app shell does) to let
    *  `usePrSupport` probe lazily per task id. */
   prSupport?: PrSupport | null;
+  /** Story/test override for the PR status card. When provided (including
+   *  `null`), the card's fetch-on-mount is skipped and this value renders
+   *  directly; omit it (the app shell does) to let the card fetch lazily. */
+  prStatus?: PrStatus | null;
   onClose: () => void;
   /** Every drawer action callback, grouped into one object (see `TaskDetailActions`). */
   actions: TaskDetailActions;
@@ -145,6 +160,9 @@ export interface TaskDetailChromeProps {
    *  the Create PR button hides). Resolved by the outer drawer's `usePrSupport`
    *  so this memoized chrome stays hook-free. */
   prSupport: PrSupport | null;
+  /** Story/test override for the PR status card (forwarded as its
+   *  `statusOverride`); `undefined` in the app, so the card fetches itself. */
+  prStatus?: PrStatus | null;
   onClose: () => void;
   actions: TaskDetailActions;
   isActionPending?: (action: string, id: string) => boolean;
