@@ -35,6 +35,7 @@ import { QuestionLayer, ASK_USER_QUESTION_DIALOG } from '../policy/question-laye
 import { ToolRegistry } from '../policy/tool-registry.js';
 import { HookBus } from '../policy/hook-bus.js';
 import { resolveClaudeBinary } from './resolve-claude-binary.js';
+import { prepareWriteSandbox } from './sandbox.js';
 
 // The option-composition surface (`SessionOptionsBuilder` + the pure compose
 // helpers) lives in `session-options.ts` so it is unit-testable without spinning a
@@ -158,7 +159,8 @@ export class SessionRunner {
     // instead, surfaced through the same degrade-not-throw `session-failed`
     // channel (reuses `reason: 'runner-crash'`, the reason this case already
     // maps to today) so it reaches the board/transcript like any other failure.
-    if (resolveClaudeBinary() === undefined) {
+    const claudePath = resolveClaudeBinary();
+    if (claudePath === undefined) {
       this.emitClaudeCliMissing();
       return;
     }
@@ -174,6 +176,30 @@ export class SessionRunner {
       hooks: this.hooks.hooks(),
       abortController: this.abort,
     });
+
+    // OPT-IN macOS OS-level WRITE containment (hardening module #15): swap the
+    // SDK's executable for a Seatbelt wrapper that denies file-writes outside
+    // the session's writable roots (cwd, worktree git common dir, temp trees,
+    // Claude CLI state). Closes the lexical PreToolUse gate's documented gaps
+    // (Bash redirects, symlinks) at the OS layer. When requested but the host
+    // can't provide it, `prepareWriteSandbox` warns LOUDLY and returns
+    // undefined — the session runs unwrapped (fail-open: default-off,
+    // experimental). Probes (`withProbe`/`base()`) stay unwrapped: they never
+    // run a model turn, so they perform no agent writes.
+    if (this.cfg.sandboxWrites === true) {
+      const sandbox = prepareWriteSandbox({
+        claudePath,
+        cwd: this.cfg.cwd,
+        logger: this.logger,
+      });
+      if (sandbox !== undefined) {
+        options.pathToClaudeCodeExecutable = sandbox.wrapperPath;
+        this.logger?.info('OS write containment active', {
+          wrapper: sandbox.wrapperPath,
+          writableRoots: sandbox.writableRoots,
+        });
+      }
+    }
 
     if (this.cfg.resumeSessionId !== undefined) {
       this.logger?.debug('resuming SDK session', {

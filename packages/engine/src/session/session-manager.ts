@@ -478,6 +478,13 @@ export class SessionManager {
         ...(command.harnessPolicy !== undefined
           ? { harnessPolicy: command.harnessPolicy }
           : {}),
+        // OPT-IN macOS OS write containment (module #15): requested by the Rust
+        // core from the `sandbox_sessions` setting. The runner wraps the CLI in
+        // a Seatbelt deny-write-except profile when the host supports it (and
+        // warns loudly + runs unwrapped when it doesn't). Absent ⇒ off.
+        ...(command.sandboxWrites !== undefined
+          ? { sandboxWrites: command.sandboxWrites }
+          : {}),
         ...(preset.allowedTools !== undefined
           ? { allowedTools: preset.allowedTools }
           : {}),
