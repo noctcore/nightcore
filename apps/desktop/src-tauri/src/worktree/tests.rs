@@ -681,7 +681,7 @@ fn push_branch_pushes_to_origin_idempotently_and_rejects_dash_refs() {
 }
 
 #[test]
-fn ahead_of_upstream_counts_unpushed_commits_tolerantly() {
+fn try_ahead_of_upstream_counts_unpushed_commits_and_fails_closed() {
     let Some((_tmp, repo)) = temp_repo() else {
         return;
     };
@@ -699,22 +699,55 @@ fn ahead_of_upstream_counts_unpushed_commits_tolerantly() {
     ));
 
     let dir = allocate(&repo, "task-1").expect("allocate");
-    // No upstream yet (never pushed): tolerant 0, not an error.
-    assert_eq!(ahead_of_upstream(&dir), 0, "no upstream reads as 0");
+    // No upstream yet (never pushed): Err, NEVER a silent 0 — a destructive
+    // caller cannot verify anything was pushed.
+    assert!(
+        try_ahead_of_upstream(&dir).is_err(),
+        "no upstream is Err, not 0"
+    );
     std::fs::write(dir.join("f.txt"), "x").expect("write");
     commit(&repo, "task-1", "work").expect("commit");
-    assert_eq!(ahead_of_upstream(&dir), 0, "still no upstream");
+    assert!(try_ahead_of_upstream(&dir).is_err(), "still no upstream");
 
     // Pushing sets the upstream (`push -u`); level ⇒ 0.
     push_branch(&dir, &branch_name("task-1")).expect("push");
-    assert_eq!(ahead_of_upstream(&dir), 0, "level with upstream after push");
+    assert_eq!(
+        try_ahead_of_upstream(&dir),
+        Ok(0),
+        "level with upstream after push"
+    );
 
     // A local commit that never reached the remote counts as unpushed.
     std::fs::write(dir.join("g.txt"), "y").expect("write");
     commit(&repo, "task-1", "more").expect("commit 2");
-    assert_eq!(ahead_of_upstream(&dir), 1, "one unpushed commit");
+    assert_eq!(
+        try_ahead_of_upstream(&dir),
+        Ok(1),
+        "one unpushed commit"
+    );
     push_branch(&dir, &branch_name("task-1")).expect("re-push");
-    assert_eq!(ahead_of_upstream(&dir), 0, "re-pushing clears the count");
+    assert_eq!(
+        try_ahead_of_upstream(&dir),
+        Ok(0),
+        "re-pushing clears the count"
+    );
+
+    // THE FAIL-OPEN SHAPE: prune the remote-tracking ref (what any `fetch
+    // --prune` does after GitHub auto-deleted the merged head branch) — the
+    // upstream is configured but `@{upstream}` no longer resolves. One more
+    // local commit exists only here; the count MUST be Err, not 0.
+    std::fs::write(dir.join("h.txt"), "z").expect("write");
+    commit(&repo, "task-1", "late fix").expect("commit 3");
+    let tracking = format!("refs/remotes/origin/{}", branch_name("task-1"));
+    assert!(
+        run_in(&dir, &["update-ref", "-d", &tracking]),
+        "prune the remote-tracking ref"
+    );
+    assert!(
+        try_ahead_of_upstream(&dir).is_err(),
+        "a pruned upstream is Err — the old tolerant 0 silently bypassed the \
+         finalize refusal and destroyed the unpushed commit"
+    );
 }
 
 #[test]

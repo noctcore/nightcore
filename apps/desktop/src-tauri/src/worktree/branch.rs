@@ -48,19 +48,23 @@ pub fn current_branch(repo: &Path) -> Option<String> {
 
 /// How many commits the worktree's checked-out branch carries that its UPSTREAM
 /// does not (`git rev-list --left-right --count @{upstream}...HEAD`, the ahead
-/// side) — the unpushed-commits count for the PR status card, computed LOCALLY
-/// (no network). Tolerant like the other monitor reads: `0` when the branch has
-/// no upstream (never pushed), on detached HEAD, or when the read fails. The
-/// range is a fixed string (no user input reaches the argv).
-pub fn ahead_of_upstream(dir: &Path) -> u32 {
-    git(
+/// side) — the unpushed-commits count for the PR status card and the finalize
+/// guard, computed LOCALLY (no network). FALLIBLE by design: an unresolvable
+/// `@{upstream}` (never pushed, detached HEAD, or — the dangerous shape — a
+/// remote-tracking ref pruned after GitHub auto-deleted the merged head branch)
+/// is `Err`, never a silent `0`. A destructive caller (finalize's cleanup) must
+/// treat `Err` as "cannot verify the branch was fully pushed" and REFUSE — the
+/// old tolerant-zero read let a prune turn "1 unpushed commit" into "0" and
+/// bypass the refusal, destroying the commit. The range is a fixed string (no
+/// user input reaches the argv).
+pub fn try_ahead_of_upstream(dir: &Path) -> Result<u32, String> {
+    let out = git(
         dir,
         &["rev-list", "--left-right", "--count", "@{upstream}...HEAD"],
-    )
-    .ok()
-    .and_then(|s| parse_left_right_count(&s))
-    .map(|(_behind, ahead)| ahead)
-    .unwrap_or(0)
+    )?;
+    parse_left_right_count(&out)
+        .map(|(_behind, ahead)| ahead)
+        .ok_or_else(|| format!("unparseable `git rev-list --count` output: {out}"))
 }
 
 /// Fetch `base` from `origin` into its remote-tracking ref (`git fetch origin

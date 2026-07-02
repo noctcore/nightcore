@@ -81,9 +81,12 @@ pub struct PrStatus {
     pub url: String,
     pub number: u64,
     /// LOCAL-only: commits on the task branch not on its upstream — computed
-    /// from the worktree with no network; `0` when the worktree or upstream is
-    /// gone. Non-zero means "Push updates" has something to publish.
-    pub unpushed_commits: u32,
+    /// from the worktree with no network. `Some(0)` also covers a removed
+    /// worktree (nothing local exists to push). `None` = CANNOT DETERMINE: the
+    /// branch's `@{upstream}` doesn't resolve (e.g. pruned after GitHub
+    /// auto-deleted the merged head branch) — the UI must NOT read that as "all
+    /// pushed"; a re-push with `-u` recreates the upstream.
+    pub unpushed_commits: Option<u32>,
 }
 
 /// The deserialized shape of `gh pr view --json` output. Everything beyond the
@@ -115,8 +118,9 @@ struct GhPrView {
 
 impl GhPrView {
     /// Map the gh view onto the wire contract, folding the rollup into counts
-    /// and attaching the locally-computed unpushed count.
-    fn into_status(self, unpushed_commits: u32) -> PrStatus {
+    /// and attaching the locally-computed unpushed count (`None` = the upstream
+    /// was unresolvable, so the count is unknown).
+    fn into_status(self, unpushed_commits: Option<u32>) -> PrStatus {
         let (checks_passed, checks_failed, checks_pending) =
             count_checks(self.status_check_rollup.as_ref());
         PrStatus {
@@ -327,13 +331,15 @@ fn pr_status_blocking(app: &AppHandle, id: &str) -> Result<PrStatus, String> {
     // exactly as the user's own gh would there), else the project root — a
     // finalized/cleaned task can still refresh its PR state. The unpushed count
     // is local-only and needs the worktree; without one there is nothing
-    // unpushed to report.
+    // unpushed to report (a real 0). With one, an unresolvable upstream maps to
+    // `None` ("cannot determine"), never a fake 0 — the UI keeps Push updates
+    // armed on `None` because a `-u` re-push recreates a pruned upstream.
     let worktree_dir = worktree::worktree_path(&project_path, id);
     let (dir, unpushed_commits) = if worktree_dir.exists() {
-        let unpushed = worktree::ahead_of_upstream(&worktree_dir);
+        let unpushed = worktree::try_ahead_of_upstream(&worktree_dir).ok();
         (worktree_dir, unpushed)
     } else {
-        (project_path, 0)
+        (project_path, Some(0))
     };
     let view = fetch_pr_view_with(&dir, GH_BINARY, number, GH_VIEW_TIMEOUT)?;
     Ok(view.into_status(unpushed_commits))
@@ -456,13 +462,25 @@ fn finalize_merged_core(
     }
 
     // Never destroy work: cleanup removes the worktree with `--force`, so local
-    // commits that never reached the remote would be silently lost.
+    // commits that never reached the remote would be silently lost. FAIL CLOSED:
+    // an unresolvable upstream (`Err`) refuses too — GitHub's auto-delete of the
+    // merged head branch plus any prune fetch removes `origin/nc/<id>`, which
+    // used to read as a tolerant 0 and let this cleanup destroy an unpushed
+    // commit. Unknown ≠ zero.
     if worktree_dir.exists() {
-        let unpushed = worktree::ahead_of_upstream(&worktree_dir);
-        if unpushed > 0 {
-            return Err(format!(
-                "the worktree has {unpushed} unpushed local commit(s) — push or discard them first"
-            ));
+        match worktree::try_ahead_of_upstream(&worktree_dir) {
+            Ok(0) => {}
+            Ok(unpushed) => {
+                return Err(format!(
+                    "the worktree has {unpushed} unpushed local commit(s) — push or discard them first"
+                ));
+            }
+            Err(e) => {
+                return Err(format!(
+                    "cannot verify the branch was fully pushed — its upstream is gone; \
+                     push again or discard the worktree manually ({e})"
+                ));
+            }
         }
     }
 
@@ -631,7 +649,7 @@ mod tests {
         let minimal: GhPrView =
             serde_json::from_str(r#"{"number":7,"url":"https://x/pull/7","state":"OPEN"}"#)
                 .expect("minimal view parses");
-        let status = minimal.into_status(2);
+        let status = minimal.into_status(Some(2));
         assert_eq!(status.number, 7);
         assert_eq!(status.state, "OPEN");
         assert!(!status.is_draft);
@@ -647,7 +665,11 @@ mod tests {
             ),
             (0, 0, 0)
         );
-        assert_eq!(status.unpushed_commits, 2, "the local count passes through");
+        assert_eq!(
+            status.unpushed_commits,
+            Some(2),
+            "the local count passes through"
+        );
 
         let padded: GhPrView = serde_json::from_str(
             r#"{"number":8,"url":"https://x/pull/8","state":"MERGED","isDraft":null,
@@ -655,7 +677,7 @@ mod tests {
                 "baseRefName":null,"statusCheckRollup":null}"#,
         )
         .expect("null-padded view parses");
-        assert_eq!(padded.into_status(0).state, "MERGED");
+        assert_eq!(padded.into_status(Some(0)).state, "MERGED");
     }
 
     #[test]
@@ -673,7 +695,7 @@ mod tests {
             base_ref_name: Some("main".into()),
             status_check_rollup: None,
         }
-        .into_status(4);
+        .into_status(Some(4));
         let json = serde_json::to_string(&status).expect("serialize");
         for key in [
             r#""state":"OPEN""#,
@@ -690,6 +712,26 @@ mod tests {
         ] {
             assert!(json.contains(key), "wire shape carries {key}: {json}");
         }
+
+        // The cannot-determine shape crosses the wire as an explicit null (the
+        // web contract is `number | null`), never a fake 0.
+        let unknown = GhPrView {
+            number: 13,
+            url: "https://github.com/a/b/pull/13".into(),
+            state: "OPEN".into(),
+            is_draft: None,
+            mergeable: None,
+            merge_state_status: None,
+            review_decision: None,
+            base_ref_name: None,
+            status_check_rollup: None,
+        }
+        .into_status(None);
+        let json = serde_json::to_string(&unknown).expect("serialize");
+        assert!(
+            json.contains(r#""unpushedCommits":null"#),
+            "unknown count serializes as null: {json}"
+        );
     }
 
     // ── Preconditions + lease cross-checks ─────────────────────────────────
@@ -897,7 +939,7 @@ mod tests {
             Duration::from_secs(10),
         )
         .expect("view parses");
-        let status = view.into_status(5);
+        let status = view.into_status(Some(5));
         assert_eq!(status.number, 42);
         assert_eq!(status.state, "OPEN");
         assert!(status.is_draft);
@@ -914,7 +956,7 @@ mod tests {
             (1, 1, 1),
             "the rollup was counted Rust-side"
         );
-        assert_eq!(status.unpushed_commits, 5);
+        assert_eq!(status.unpushed_commits, Some(5));
 
         // The argv carries the contract: `pr view <n> --json <field list>`.
         let args = std::fs::read_to_string(tmp.path().join("args.txt")).expect("args.txt");
@@ -1143,6 +1185,54 @@ mod tests {
             .expect_err("unpushed commits must refuse to finalize");
         assert!(err.contains("unpushed"), "explains the refusal: {err}");
         assert!(dir.exists(), "the worktree (and its commits) survive");
+        assert!(!store.get(&id).expect("task").merged, "task untouched");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn finalize_refuses_when_the_upstream_is_gone_instead_of_failing_open() {
+        // THE FAIL-OPEN SCENARIO the old tolerant-zero count enabled: `-u` push,
+        // one more local commit never pushed, PR merged on GitHub with
+        // auto-delete-head-branches, any prune fetch removes `origin/nc/<id>` —
+        // `@{upstream}` no longer resolves, the count read as 0, the refusal was
+        // bypassed, and cleanup destroyed the unpushed commit. Now the
+        // unresolvable upstream REFUSES.
+        let Some((_tmp, repo)) = temp_repo() else {
+            return;
+        };
+        let Some(_bare) = add_bare_origin(&repo) else {
+            return;
+        };
+        let (store, _store_tmp, id) = seed_pr_task(7);
+        let dir = worktree::allocate(&repo, &id).expect("allocate");
+        std::fs::write(dir.join("f.txt"), "x").expect("write");
+        worktree::commit(&repo, &id, "work").expect("commit");
+        let branch = worktree::branch_name(&id);
+        worktree::push_branch(&dir, &branch).expect("push");
+        // The commit that must survive: local-only, never pushed.
+        std::fs::write(dir.join("late-fix.txt"), "y").expect("write");
+        worktree::commit(&repo, &id, "late fix").expect("commit 2");
+        // Prune the remote-tracking ref (what GitHub auto-delete + any prune
+        // fetch produces).
+        let tracking = format!("refs/remotes/origin/{branch}");
+        assert!(
+            run_in(&dir, &["update-ref", "-d", &tracking]),
+            "prune the remote-tracking ref"
+        );
+
+        let script_dir = tempfile::TempDir::new().expect("script dir");
+        let script = fake_gh(script_dir.path(), &view_json(7, "MERGED"));
+
+        let err = finalize_merged_core(&store, &repo, &id, script.to_str().unwrap(), true)
+            .expect_err("an unresolvable upstream must refuse to finalize");
+        assert!(
+            err.contains("cannot verify"),
+            "explains the refusal: {err}"
+        );
+        assert!(
+            dir.exists() && dir.join("late-fix.txt").exists(),
+            "the worktree and its unpushed commit survive"
+        );
         assert!(!store.get(&id).expect("task").merged, "task untouched");
     }
 

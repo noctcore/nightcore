@@ -43,7 +43,10 @@ baseRefName: string,
 url: string, number: number, 
 /**
  * LOCAL-only: commits on the task branch not on its upstream — computed
- * from the worktree with no network; `0` when the worktree or upstream is
- * gone. Non-zero means "Push updates" has something to publish.
+ * from the worktree with no network. `Some(0)` also covers a removed
+ * worktree (nothing local exists to push). `None` = CANNOT DETERMINE: the
+ * branch's `@{upstream}` doesn't resolve (e.g. pruned after GitHub
+ * auto-deleted the merged head branch) — the UI must NOT read that as "all
+ * pushed"; a re-push with `-u` recreates the upstream.
  */
-unpushedCommits: number, };
+unpushedCommits: number | null, };

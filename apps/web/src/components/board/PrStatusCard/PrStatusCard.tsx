@@ -114,8 +114,9 @@ export function PrStatusCard({
           )}
           {canPushUpdates(status) && (
             <p className="text-muted-foreground">
-              {status.unpushedCommits} local commit{status.unpushedCommits === 1 ? '' : 's'} not
-              on the pull request yet.
+              {status.unpushedCommits !== null
+                ? `${status.unpushedCommits} local commit${status.unpushedCommits === 1 ? '' : 's'} not on the pull request yet.`
+                : 'Unpushed commits could not be counted — the branch upstream is missing; pushing recreates it.'}
             </p>
           )}
         </div>
@@ -136,7 +137,9 @@ export function PrStatusCard({
                 aria-busy={pending('pushPrUpdates')}
               >
                 {pending('pushPrUpdates') ? <Spinner size={14} /> : <UploadIcon size={14} />}
-                Push updates ({status.unpushedCommits})
+                {status.unpushedCommits !== null
+                  ? `Push updates (${status.unpushedCommits})`
+                  : 'Push updates'}
               </Button>
             )}
             {canFinalize(status, task) && onFinalize !== undefined && (

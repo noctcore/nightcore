@@ -209,9 +209,13 @@ export function checksSummary(
   return { passed, failed, pending };
 }
 
-/** Push-updates visibility: an OPEN PR with local commits its upstream lacks. */
+/** Push-updates visibility: an OPEN PR with local commits its upstream lacks.
+ *  A `null` count means the upstream is UNRESOLVABLE (e.g. pruned after GitHub
+ *  auto-deleted a merged head branch) — the button must stay visible: a `-u`
+ *  re-push recreates the upstream, so hiding it would funnel the user to
+ *  Finalize, the exact wrong direction for possibly-unpushed work. */
 export function canPushUpdates(status: PrStatus): boolean {
-  return status.state === 'OPEN' && status.unpushedCommits > 0;
+  return status.state === 'OPEN' && (status.unpushedCommits === null || status.unpushedCommits > 0);
 }
 
 /** Finalize visibility: remote-merged but not yet marked merged locally. */
@@ -237,7 +241,12 @@ export function confirmCopy(
     const branch = task.branch ?? 'the task branch';
     return {
       title: 'Push updates to the pull request?',
-      message: `Push ${n} commit${n === 1 ? '' : 's'} on ${branch} to origin (plain push — never forced). The pull request updates in place.`,
+      // The count is named only when KNOWN; `null` means the branch's upstream
+      // is unresolvable, so the copy says that instead of inventing a number.
+      message:
+        n !== null
+          ? `Push ${n} commit${n === 1 ? '' : 's'} on ${branch} to origin (plain push — never forced). The pull request updates in place.`
+          : `Push ${branch} to origin (plain push — never forced). The branch's upstream is missing, so the exact commit count is unknown — the push recreates it. The pull request updates in place.`,
       confirmLabel: 'Push updates',
     };
   }

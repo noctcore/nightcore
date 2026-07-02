@@ -187,6 +187,31 @@ test('push-updates visibility contract: OPEN with unpushed commits only', () => 
   expect(canPushUpdates(makePrStatus({ unpushedCommits: 0 }))).toBe(false);
   expect(canPushUpdates(makePrStatus({ state: 'MERGED', unpushedCommits: 2 }))).toBe(false);
   expect(canPushUpdates(makePrStatus({ state: 'CLOSED', unpushedCommits: 2 }))).toBe(false);
+  // A null count = "cannot determine" (the upstream is unresolvable): the
+  // button MUST stay armed — a `-u` re-push recreates a pruned upstream, and
+  // hiding it would funnel the user to Finalize, the exact wrong direction.
+  expect(canPushUpdates(makePrStatus({ unpushedCommits: null }))).toBe(true);
+  expect(canPushUpdates(makePrStatus({ state: 'MERGED', unpushedCommits: null }))).toBe(false);
+});
+
+test('a null unpushed count keeps Push updates armed without inventing a number', async () => {
+  stubCommands({
+    pr_status: () => Promise.resolve(makePrStatus({ unpushedCommits: null })),
+  });
+  const screen = renderCard();
+  // The button shows WITHOUT a count suffix, and the info line explains the
+  // unknown count instead of claiming "0" or a fake number.
+  const push = screen.getByRole('button', { name: /^push updates$/i });
+  await expect.element(push).toBeInTheDocument();
+  await expect
+    .element(screen.getByText(/Unpushed commits could not be counted/))
+    .toBeInTheDocument();
+
+  // The confirm copy states the unknown count too.
+  await push.click();
+  await expect
+    .element(screen.getByText(/the exact commit count is unknown/))
+    .toBeInTheDocument();
 });
 
 test('no Push updates button without unpushed commits', async () => {
