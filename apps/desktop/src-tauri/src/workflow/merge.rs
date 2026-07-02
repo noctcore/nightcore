@@ -19,8 +19,9 @@ use crate::store::TaskStore;
 use crate::task::{Task, TaskStatus, TASK_EVENT};
 use crate::worktree::{self, MergeOutcome};
 
-/// The active project, or an error message for a command that needs one.
-fn require_project(app: &AppHandle) -> Result<Project, String> {
+/// The active project, or an error message for a command that needs one. Shared
+/// with the sibling workflow commands (`pr.rs`).
+pub(crate) fn require_project(app: &AppHandle) -> Result<Project, String> {
     app.state::<ProjectStore>()
         .active()
         .ok_or_else(|| "no active project".to_string())
@@ -110,13 +111,14 @@ fn merge_in_flight() -> &'static Mutex<HashSet<String>> {
 /// RAII membership in one of the in-flight sets: inserts on acquire, removes on drop —
 /// so an early `?` return (or a panic) still releases the task. `acquire` yields `None`
 /// when that action is already running for `id`, so the caller can refuse rather than race.
-struct TaskLease {
+/// Shared with the sibling workflow commands (`pr.rs` brings its own action set).
+pub(crate) struct TaskLease {
     id: String,
     set: &'static Mutex<HashSet<String>>,
 }
 
 impl TaskLease {
-    fn acquire(set: &'static Mutex<HashSet<String>>, id: &str) -> Option<Self> {
+    pub(crate) fn acquire(set: &'static Mutex<HashSet<String>>, id: &str) -> Option<Self> {
         let mut guard = set.lock().unwrap_or_else(|e| e.into_inner());
         guard.insert(id.to_string()).then(|| Self {
             id: id.to_string(),

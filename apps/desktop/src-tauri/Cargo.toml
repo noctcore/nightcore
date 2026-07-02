@@ -38,6 +38,10 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["ansi", "env-filter"] }
 tracing-appender = "0.2"
 which = "6.0"
+# `open_external`'s https-only validation (PR arc, phase 1): parse + normalize a
+# URL before it reaches the platform browser opener. Already in the tree via
+# tauri, so this adds no new transitive code.
+url = "2"
 # Repo Map (hardening #14, `store::repo_map`): real parsers extract definition
 # symbols + import edges from TS/TSX/JS/Rust sources for the PageRank-ranked map
 # in the Context Pack. The grammar crates interop with core via

@@ -96,6 +96,16 @@ pub struct WorktreeDiff {
     pub deletions: u32,
 }
 
+/// The committed diff of `dir`'s HEAD vs its merge-base with `base`
+/// (`git diff <base>...HEAD`) — the authoritative payload for PR drafting (PR
+/// arc, phase 1). Validates `base` before it is spliced into the range argument
+/// (the combined `<base>...HEAD` positional cannot begin with `-` once `base`
+/// passes [`validate_ref`]).
+pub fn base_diff(dir: &Path, base: &str) -> Result<String, String> {
+    super::path::validate_ref(base)?;
+    git(dir, &["diff", &format!("{base}...HEAD")])
+}
+
 /// Compute the worktree's changed files vs `base` (committed + uncommitted tracked
 /// changes via `git diff <base>`, plus untracked files).
 pub fn worktree_diff(dir: &Path, base: &str) -> WorktreeDiff {

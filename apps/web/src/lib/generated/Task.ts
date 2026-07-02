@@ -189,4 +189,17 @@ proposedSubtasks: Array<ProposedSubtask>,
  * decompose children (which use `parent_task_id`). Serde-additive: legacy tasks load
  * as `None`.
  */
-sourceRef: string | null, };
+sourceRef: string | null, 
+/**
+ * PR arc (phase 1): the GitHub pull-request URL `create_pr_task` opened for
+ * this task's branch. NOT settable via `TaskPatch` — only the PR create path
+ * writes it. Serde-additive: a legacy task without it loads as `None`, and
+ * the key is omitted while unset.
+ */
+prUrl?: string, 
+/**
+ * PR arc (phase 1): the PR number derived from the trailing segment of
+ * `pr_url` (`…/pull/<n>`). Written together with `pr_url` by
+ * `create_pr_task` only; same serde-additive posture.
+ */
+prNumber?: number, };

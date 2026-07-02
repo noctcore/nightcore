@@ -611,6 +611,99 @@ fn merge_and_delete_reject_dash_refs() {
     );
 }
 
+#[test]
+fn remote_url_reports_origin_or_none() {
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    assert!(
+        remote_url(&repo).is_none(),
+        "a repo without an origin remote reports None"
+    );
+    assert!(run_in(
+        &repo,
+        &[
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/acme/widget.git",
+        ],
+    ));
+    assert_eq!(
+        remote_url(&repo).as_deref(),
+        Some("https://github.com/acme/widget.git")
+    );
+}
+
+#[test]
+fn push_branch_pushes_to_origin_idempotently_and_rejects_dash_refs() {
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    // A local bare repo stands in for the remote so the test needs no network.
+    let bare = tempfile::TempDir::new().expect("bare dir");
+    assert!(Command::new("git")
+        .args(["init", "-q", "--bare"])
+        .current_dir(bare.path())
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false));
+    assert!(run_in(
+        &repo,
+        &["remote", "add", "origin", bare.path().to_str().unwrap()],
+    ));
+
+    let dir = allocate(&repo, "task-1").expect("allocate");
+    std::fs::write(dir.join("f.txt"), "x").expect("write");
+    commit(&repo, "task-1", "work").expect("commit");
+
+    push_branch(&dir, &branch_name("task-1")).expect("push");
+    let ls = Command::new("git")
+        .args(["ls-remote", "--heads", "origin", &branch_name("task-1")])
+        .current_dir(&dir)
+        .output()
+        .expect("ls-remote");
+    assert!(
+        String::from_utf8_lossy(&ls.stdout).contains("refs/heads/nc/task-1"),
+        "the branch landed on the remote"
+    );
+    // Re-pushing an already-pushed branch is a no-op (the re-runnable contract).
+    push_branch(&dir, &branch_name("task-1")).expect("re-push is idempotent");
+    // Option-injection refs are refused before any git spawn (never --force).
+    assert!(
+        push_branch(&dir, "--force").is_err(),
+        "a dash-ref push must be rejected"
+    );
+    assert!(
+        push_branch(&dir, "-D").is_err(),
+        "a dash-ref push must be rejected"
+    );
+}
+
+#[test]
+fn base_diff_reports_committed_changes_and_rejects_dash_base() {
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    let base = base_branch(&repo);
+    let dir = allocate(&repo, "task-1").expect("allocate");
+
+    // Level with base: the committed diff is empty.
+    let empty = base_diff(&dir, &base).expect("diff");
+    assert!(empty.trim().is_empty(), "level branch has no diff: {empty}");
+
+    std::fs::write(dir.join("feature.txt"), "feature\n").expect("write");
+    commit(&repo, "task-1", "add feature").expect("commit");
+    let diff = base_diff(&dir, &base).expect("diff");
+    assert!(
+        diff.contains("feature.txt"),
+        "the committed diff names the file: {diff}"
+    );
+
+    // A base git would parse as an option is refused before reaching argv.
+    assert!(base_diff(&dir, "-D").is_err());
+}
+
 /// The base-branch guard matches on identity, not one spelling: neither a qualified
 /// ref (`refs/heads/main`) nor a case variant (`Main` — which `git branch -D`
 /// case-folds and deletes on macOS/Windows) may bypass it.

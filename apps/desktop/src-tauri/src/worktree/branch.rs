@@ -24,6 +24,28 @@ pub fn base_branch(project_path: &Path) -> String {
         .unwrap_or_else(|| DEFAULT_BASE_BRANCH.to_string())
 }
 
+/// The URL of the `origin` remote, or `None` when the repo has no `origin` remote
+/// (or the read fails). A read-only capability probe for the PR arc (design §3.1):
+/// no remote ⇒ the Create PR surface is disabled honestly instead of failing on
+/// click.
+pub fn remote_url(repo: &Path) -> Option<String> {
+    git(repo, &["remote", "get-url", "origin"])
+        .ok()
+        .filter(|url| !url.is_empty())
+}
+
+/// Push `branch` to `origin`, setting its upstream (`git push -u origin <branch>`).
+/// Plain push only — NEVER `--force`: the abort-not-force philosophy extends to the
+/// remote (PR arc, phase 1). Run from the task's worktree dir so config/credentials
+/// resolve exactly as the user's own `git push` would there. Idempotent: re-pushing
+/// an already-pushed branch is a no-op, so a failure between push and PR-create is
+/// safely re-runnable. The ref is validated at ingestion AND fenced from option
+/// parsing at the call site (`--end-of-options` before the positionals).
+pub fn push_branch(dir: &Path, branch: &str) -> Result<(), String> {
+    validate_ref(branch)?;
+    git(dir, &["push", "-u", "--end-of-options", "origin", branch]).map(|_| ())
+}
+
 /// Delete a specific `branch` (best-effort). Refuses to delete the project's current
 /// base branch / `HEAD` — a safety guard (Aperant) so a bad or user-supplied branch
 /// value can never delete the user's working branch. The guard matches on *identity*,

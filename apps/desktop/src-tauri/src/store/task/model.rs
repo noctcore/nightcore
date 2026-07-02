@@ -370,6 +370,19 @@ pub struct Task {
     /// as `None`.
     #[serde(default)]
     pub source_ref: Option<String>,
+    /// PR arc (phase 1): the GitHub pull-request URL `create_pr_task` opened for
+    /// this task's branch. NOT settable via `TaskPatch` — only the PR create path
+    /// writes it. Serde-additive: a legacy task without it loads as `None`, and
+    /// the key is omitted while unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub pr_url: Option<String>,
+    /// PR arc (phase 1): the PR number derived from the trailing segment of
+    /// `pr_url` (`…/pull/<n>`). Written together with `pr_url` by
+    /// `create_pr_task` only; same serde-additive posture.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub pr_number: Option<u64>,
 }
 
 impl Task {
@@ -413,6 +426,8 @@ impl Task {
             parent_task_id: None,
             proposed_subtasks: Vec::new(),
             source_ref: None,
+            pr_url: None,
+            pr_number: None,
         }
     }
 
@@ -896,6 +911,54 @@ mod tests {
         assert_eq!(restored.max_turns, Some(42));
         assert_eq!(restored.max_budget_usd, Some(7.5));
         assert_eq!(restored.sdk_session_id.as_deref(), Some("sdk-uuid"));
+    }
+
+    #[test]
+    fn pr_fields_default_none_and_are_serde_additive() {
+        // PR arc (phase 1): `pr_url`/`pr_number` default to None; while unset the
+        // keys are omitted entirely (`skip_serializing_if`), so pre-PR task JSON
+        // is byte-compatible.
+        let task = Task::new("t".into(), String::new());
+        assert!(task.pr_url.is_none(), "pr_url defaults to None");
+        assert!(task.pr_number.is_none(), "pr_number defaults to None");
+
+        let value: serde_json::Value = serde_json::to_value(&task).unwrap();
+        let obj = value.as_object().unwrap();
+        assert!(
+            !obj.contains_key("prUrl") && !obj.contains_key("prNumber"),
+            "unset PR fields are omitted from the JSON"
+        );
+
+        // A legacy task JSON written before the PR fields existed still loads
+        // (serde default), so existing task files aren't broken.
+        let legacy = r#"{"id":"x","title":"t","description":"","status":"backlog",
+            "dependencies":[],"model":null,"branch":null,"createdAt":1,"updatedAt":1,
+            "sessionId":null,"summary":null,"error":null,"costUsd":null,
+            "plan":null,"committed":true,"merged":false,"conflict":false,
+            "kind":"build","runMode":"worktree","verified":true,"review":null,
+            "fixAttempts":0}"#;
+        let back: Task = serde_json::from_str(legacy).expect("legacy task deserializes");
+        assert!(back.pr_url.is_none() && back.pr_number.is_none());
+
+        // Populated values round-trip with camelCase keys.
+        let mut pr = Task::new("t".into(), String::new());
+        pr.pr_url = Some("https://github.com/acme/widget/pull/7".into());
+        pr.pr_number = Some(7);
+        let json = serde_json::to_string(&pr).unwrap();
+        assert!(
+            json.contains("\"prUrl\":\"https://github.com/acme/widget/pull/7\""),
+            "pr_url serializes camelCase: {json}"
+        );
+        assert!(
+            json.contains("\"prNumber\":7"),
+            "pr_number serializes camelCase: {json}"
+        );
+        let restored: Task = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            restored.pr_url.as_deref(),
+            Some("https://github.com/acme/widget/pull/7")
+        );
+        assert_eq!(restored.pr_number, Some(7));
     }
 
     #[test]
