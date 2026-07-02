@@ -142,6 +142,10 @@ impl Provider for SidecarProvider {
             // enforces. `None` serializes as an OMITTED field — byte-identical to
             // the pre-feature `start-session` (no policy layer).
             harness_policy: guardrails.harness_policy,
+            // Session flight recorder (module #5): the per-task tool-event ledger
+            // path the engine appends to. `None` serializes as an OMITTED field —
+            // byte-identical to the pre-feature `start-session` (no recording).
+            ledger_path: guardrails.ledger_path,
             // Task image attachments → SDK image content blocks. An empty list
             // serializes as an OMITTED field — byte-identical to the pre-feature
             // `start-session` (a text-only user message).

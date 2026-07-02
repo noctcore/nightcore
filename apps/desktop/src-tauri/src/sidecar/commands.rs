@@ -60,22 +60,35 @@ pub fn build_guardrails(
     task: &Task,
     project_root: Option<&std::path::Path>,
 ) -> crate::provider::Guardrails {
+    // Resolve the enforcement root from the project root the RUN CWD was
+    // pinned to (threaded from `resolve_worktree`), NOT a fresh `active()`
+    // read — so a project switch during the launch's sidecar-cold-start await
+    // can't arm the wrong project's rails (or none) over this run. Falls back
+    // to the active project only when the caller has no pinned root (there is
+    // then no cwd/project mismatch to guard against). The harness policy AND
+    // the flight-recorder ledger path both resolve from this SAME root: the
+    // ledger lives beside the manifest, never in the worktree.
+    let root: Option<std::path::PathBuf> = match project_root {
+        Some(root) => Some(root.to_path_buf()),
+        None => app
+            .state::<ProjectStore>()
+            .active()
+            .map(|p| std::path::PathBuf::from(&p.path)),
+    };
     crate::provider::Guardrails {
         max_turns: task.max_turns,
         max_budget_usd: task.max_budget_usd,
         resume_session_id: task.sdk_session_id.clone(),
         mcp_servers: resolve_mcp_servers(app),
         append_context_pack: resolve_context_pack(app),
-        // Resolve the enforcement policy from the project root the RUN CWD was
-        // pinned to (threaded from `resolve_worktree`), NOT a fresh `active()`
-        // read — so a project switch during the launch's sidecar-cold-start await
-        // can't arm the wrong project's rails (or none) over this run. Falls back
-        // to the active project only when the caller has no pinned root (there is
-        // then no cwd/project mismatch to guard against).
-        harness_policy: match project_root {
-            Some(root) => crate::store::harness_policy::read_policy(&root.to_string_lossy()),
-            None => resolve_harness_policy(app),
-        },
+        harness_policy: root
+            .as_deref()
+            .and_then(|r| crate::store::harness_policy::read_policy(&r.to_string_lossy())),
+        ledger_path: root.as_deref().map(|r| {
+            crate::store::ledger::ledger_path(r, &task.id)
+                .to_string_lossy()
+                .to_string()
+        }),
     }
 }
 
@@ -92,6 +105,22 @@ pub fn build_guardrails(
 pub fn resolve_harness_policy(app: &AppHandle) -> Option<crate::contracts::HarnessPolicy> {
     let project = app.state::<ProjectStore>().active()?;
     crate::store::harness_policy::read_policy(&project.path)
+}
+
+/// The session flight-recorder ledger path (module #5) for a run of `task_id`
+/// in the active project: `<project>/.nightcore/ledger/<task_id>.ndjson`, the
+/// SAME project root the harness policy resolves from (never the worktree cwd),
+/// so a task's build/reviewer/fix sessions all append to one file. `None` when
+/// no project is active (no root to anchor the ledger — the engine then records
+/// nothing). Used by the reviewer/fix sub-runs; the main build path derives the
+/// path from its PINNED root inside [`build_guardrails`] instead.
+pub fn resolve_ledger_path(app: &AppHandle, task_id: &str) -> Option<String> {
+    let project = app.state::<ProjectStore>().active()?;
+    Some(
+        crate::store::ledger::ledger_path(std::path::Path::new(&project.path), task_id)
+            .to_string_lossy()
+            .to_string(),
+    )
 }
 
 /// The Pre-flight Context Pack (Lock, feature #4) to inject for a run in the active

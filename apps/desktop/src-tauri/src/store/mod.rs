@@ -15,6 +15,7 @@ pub(crate) mod harness;
 pub(crate) mod harness_policy;
 pub(crate) mod injection_scan;
 pub(crate) mod insight;
+pub(crate) mod ledger;
 pub(crate) mod project;
 pub(crate) mod run_store;
 pub(crate) mod scorecard;

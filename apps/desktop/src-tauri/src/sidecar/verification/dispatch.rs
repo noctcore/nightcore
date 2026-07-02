@@ -13,7 +13,8 @@ use crate::store::TaskStore;
 use crate::task::{Task, TaskKind};
 
 use crate::sidecar::commands::{
-    resolve_context_pack, resolve_harness_policy, resolve_mcp_servers, resolve_permission_mode,
+    resolve_context_pack, resolve_harness_policy, resolve_ledger_path, resolve_mcp_servers,
+    resolve_permission_mode,
 };
 
 /// The bounded auto-fix budget for the verification gate (M4 §B). On a
@@ -79,6 +80,9 @@ pub(crate) async fn dispatch_reviewer(
                 // Module #3: the reviewer session runs under the same protected-path
                 // rules as the build (it can run tools too).
                 harness_policy: resolve_harness_policy(app),
+                // Module #5: the reviewer appends to the task's SHARED ledger
+                // (its own session-start/end markers segment it from the build).
+                ledger_path: resolve_ledger_path(app, task_id),
             },
         )
         .await
@@ -128,6 +132,9 @@ pub(crate) async fn dispatch_fix(
                 // Module #3: a fix-build mutates the project under the same
                 // protected-path rules as the original build.
                 harness_policy: resolve_harness_policy(app),
+                // Module #5: a fix-build appends to the task's SHARED ledger, so
+                // policy denials during the fix loop reach the same park gate.
+                ledger_path: resolve_ledger_path(app, task_id),
             },
         )
         .await

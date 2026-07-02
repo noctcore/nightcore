@@ -175,6 +175,13 @@ pub struct Guardrails {
     /// patterns), which holds even under `bypassPermissions`. `None` ⇒ no policy
     /// layer (no manifest, or `policy.enabled: false` — the pre-feature shape).
     pub harness_policy: Option<crate::contracts::HarnessPolicy>,
+    /// Session flight recorder (module #5): the per-task NDJSON tool-event
+    /// ledger path, computed by [`crate::store::ledger::ledger_path`] from the
+    /// SAME project root `harness_policy` resolves from (never the worktree
+    /// cwd) → engine `ledgerPath` → one appended record per PreToolUse gate
+    /// evaluation. `None` ⇒ no recording (no project root — the pre-feature
+    /// shape).
+    pub ledger_path: Option<String>,
 }
 
 /// The child's piped output streams, handed to `sidecar::ensure_reader` once on
