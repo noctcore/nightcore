@@ -349,7 +349,9 @@ fn resolve_branch_and_base(
 enum PrCreateOutcome {
     /// The PR was created; the URL parsed from gh's stdout + the derived number.
     Created { url: String, number: u64 },
-    /// The gh binary is not on PATH (or vanished between probe and spawn).
+    /// The gh binary is not on PATH (the pre-spawn `which` probe — the ONLY
+    /// ToolAbsent source; a spawn-time NotFound after a green probe is a
+    /// vanished cwd and maps to `Failed`).
     ToolAbsent,
     /// gh exited non-zero (its stderr, verbatim) or its output was unusable.
     Failed { message: String },
@@ -405,11 +407,18 @@ fn create_pr_with(
         .spawn()
     {
         Ok(child) => child,
-        // TOCTOU guard: resolvable at probe time, gone at spawn time.
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return PrCreateOutcome::ToolAbsent,
+        // The pre-spawn `which` probe is the ONLY ToolAbsent source: it already
+        // resolved the binary, so a spawn-time NotFound here is almost always a
+        // vanished cwd (the worktree was deleted under us — exactly what a racing
+        // merge cleanup does), not a missing tool. Report it as a launch failure
+        // naming the cwd instead of the misleading "gh is not installed".
         Err(e) => {
             return PrCreateOutcome::Failed {
-                message: format!("could not launch `{binary}`: {e}"),
+                message: format!(
+                    "could not launch `{binary}` in `{}` — the task's worktree may have been \
+                     removed: {e}",
+                    dir.display()
+                ),
             }
         }
     };
@@ -856,6 +865,38 @@ mod tests {
             panic!("a URL-less success must map to Failed");
         };
         assert!(message.contains("no PR URL"), "{message}");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn create_pr_with_vanished_cwd_is_a_launch_failure_not_tool_absent() {
+        // The binary EXISTS (which succeeds) but the worktree dir is gone by
+        // spawn time — the racing-merge-cleanup shape. That spawn NotFound must
+        // NOT read as "gh is not installed"; it is a launch failure naming the
+        // cwd so the user looks at the worktree, not their gh install.
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let script = fake_gh(tmp.path(), "echo 'https://github.com/acme/widget/pull/1'");
+        let gone = tmp.path().join("deleted-worktree");
+        let outcome = create_pr_with(
+            &gone,
+            script.to_str().expect("utf8 path"),
+            "nc/t-1",
+            "main",
+            "t",
+            "b",
+            false,
+        );
+        let PrCreateOutcome::Failed { message } = outcome else {
+            panic!("a vanished cwd must map to Failed, not ToolAbsent");
+        };
+        assert!(
+            message.contains("deleted-worktree"),
+            "the failure names the cwd: {message}"
+        );
+        assert!(
+            message.contains("worktree may have been removed"),
+            "the failure explains the likely cause: {message}"
+        );
     }
 
     #[test]
