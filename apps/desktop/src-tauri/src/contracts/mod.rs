@@ -171,6 +171,7 @@ mod tests {
             mcp_servers: None,
             append_context_pack: None,
             harness_policy: None,
+            ledger_path: None,
             images: None,
         };
         let wire = serde_json::to_value(&cmd).expect("serializes");
@@ -192,6 +193,7 @@ mod tests {
             "mcpServers",
             "appendContextPack",
             "harnessPolicy",
+            "ledgerPath",
             "images",
         ] {
             assert!(

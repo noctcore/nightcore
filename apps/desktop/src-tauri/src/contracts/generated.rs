@@ -43,6 +43,8 @@ pub enum SurfaceCommand {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         harness_policy: Option<HarnessPolicy>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        ledger_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         images: Option<Vec<WireImage>>,
     },
     #[serde(rename_all = "camelCase")]

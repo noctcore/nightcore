@@ -731,6 +731,7 @@ const COMMAND_INPUTS: Record<string, unknown> = {
         },
       },
     ],
+    ledgerPath: '/tmp/proj/.nightcore/ledger/task-1.ndjson',
     images: [{ format: 'png', data: 'iVBORw0KGgo=' }],
   },
   'send-input': { type: 'send-input', sessionId: 1, text: 'more input' },

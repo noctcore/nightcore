@@ -95,6 +95,15 @@ export const StartSessionCommand = z.object({
    *  gate that holds even under `bypassPermissions`. Absent ⇒ no policy layer
    *  (no manifest, or the project disabled it). */
   harnessPolicy: HarnessPolicySchema.optional(),
+  /** Session flight recorder (hardening module #5): absolute path of the per-task
+   *  NDJSON tool-event ledger, computed by the Rust core as
+   *  `<projectRoot>/.nightcore/ledger/<taskId>.ndjson` — the SAME project root
+   *  `harnessPolicy` resolves from, NOT the worktree cwd. The engine appends one
+   *  record per PreToolUse gate evaluation plus session start/end markers:
+   *  append-only, parent dirs created lazily, FAIL-OPEN (a ledger write error
+   *  never blocks a tool call), capped at ~5 MB with a final `truncated` marker.
+   *  Absent ⇒ no recording (probes, or no project root). */
+  ledgerPath: z.string().optional(),
   /** Image attachments to include on the user message as SDK image content blocks.
    *  The Rust core loads these from the task's persisted app-data files at launch.
    *  Absent/empty ⇒ a text-only message.

@@ -52,6 +52,7 @@
           }
         }
       ],
+      "ledgerPath": "/tmp/proj/.nightcore/ledger/task-1.ndjson",
       "images": [
         {
           "format": "png",
