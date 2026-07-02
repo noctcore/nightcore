@@ -4,6 +4,7 @@ import { type ReactNode } from 'react';
 import { Button } from './Button';
 import { Kbd } from './Kbd';
 import { Modal } from './Modal';
+import { Spinner } from './Spinner';
 
 /** Props for {@link ConfirmDialog}. */
 export interface ConfirmDialogProps {
@@ -17,6 +18,10 @@ export interface ConfirmDialogProps {
   cancelLabel?: string;
   /** Render the confirm action as destructive (red). */
   destructive?: boolean;
+  /** While the confirmed action is in flight: the confirm shows a spinner and is
+   *  disabled + `aria-busy` (so it can't double-fire), Cancel is disabled, and
+   *  Enter is inert (a held key can't re-trigger). Defaults to `false`. */
+  busy?: boolean;
   /** Called when the user confirms (Enter or the confirm button). */
   onConfirm: () => void;
   /** Called when the user cancels (Esc, click-outside, or Cancel). */
@@ -33,6 +38,7 @@ export function ConfirmDialog({
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   destructive = false,
+  busy = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -42,7 +48,8 @@ export function ConfirmDialog({
       label={title}
       initialFocus="[data-confirm]"
       onClose={onCancel}
-      onEnter={onConfirm}
+      // Enter is inert while the action is in flight so a held key can't re-fire it.
+      onEnter={busy ? undefined : onConfirm}
     >
       <div className="flex flex-col gap-2 px-5 pb-4 pt-5">
         <h2 className="text-base font-semibold text-foreground">{title}</h2>
@@ -52,14 +59,17 @@ export function ConfirmDialog({
         <span className="mr-auto flex items-center gap-1 text-xs text-muted-foreground">
           <Kbd>↵</Kbd> to confirm
         </span>
-        <Button variant="ghost" onClick={onCancel}>
+        <Button variant="ghost" disabled={busy} onClick={onCancel}>
           {cancelLabel}
         </Button>
         <Button
           data-confirm
           variant={destructive ? 'danger' : 'primary'}
+          disabled={busy}
+          aria-busy={busy}
           onClick={onConfirm}
         >
+          {busy ? <Spinner size={14} /> : null}
           {confirmLabel}
         </Button>
       </div>
