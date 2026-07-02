@@ -272,19 +272,27 @@ fn create_pr_task_blocking(
     // reads resolve. Idempotent — a retry after a failed create just re-pushes.
     worktree::push_branch(&worktree_dir, &branch)?;
 
-    let (url, number) =
-        match create_pr_with(&worktree_dir, GH_BINARY, &branch, &base, title, body, draft) {
-            PrCreateOutcome::Created { url, number } => (url, number),
-            PrCreateOutcome::ToolAbsent => {
-                return Err(
-                    "GitHub CLI (`gh`) is not installed — install it to create pull requests"
-                        .to_string(),
-                )
-            }
-            // gh's stderr is surfaced verbatim: it already explains itself (e.g.
-            // "a pull request for branch … already exists").
-            PrCreateOutcome::Failed { message } => return Err(message),
-        };
+    let (url, number) = match create_or_recover_with(
+        &worktree_dir,
+        GH_BINARY,
+        &branch,
+        &base,
+        title,
+        body,
+        draft,
+    ) {
+        PrCreateOutcome::Created { url, number } => (url, number),
+        PrCreateOutcome::ToolAbsent => {
+            return Err(
+                "GitHub CLI (`gh`) is not installed — install it to create pull requests"
+                    .to_string(),
+            )
+        }
+        // gh's stderr is surfaced verbatim: it already explains itself (e.g.
+        // "a pull request for branch … already exists" — though that exact shape
+        // is normally recovered by the `gh pr view` net above).
+        PrCreateOutcome::Failed { message } => return Err(message),
+    };
 
     let updated = store.mutate(id, |t| {
         t.pr_url = Some(url.clone());
@@ -516,6 +524,77 @@ fn create_pr_with(
             ),
         },
     }
+}
+
+/// Create the PR, and on a create failure attempt RECOVERY through `gh pr view`:
+/// if an OPEN PR for `branch` already exists, report it as `Created` instead of
+/// surfacing the error. This is the idempotency net for two half-done shapes —
+/// a create that succeeded on GitHub but died before Nightcore persisted the
+/// URL, and a zero-exit create whose output carried no parseable URL — which
+/// would otherwise fail every retry forever on "a pull request already exists".
+/// `ToolAbsent` is never recovered (no gh ⇒ no view either).
+fn create_or_recover_with(
+    dir: &Path,
+    binary: &str,
+    branch: &str,
+    base: &str,
+    title: &str,
+    body: &str,
+    draft: bool,
+) -> PrCreateOutcome {
+    match create_pr_with(dir, binary, branch, base, title, body, draft) {
+        PrCreateOutcome::Failed { message } => match view_pr_with(dir, binary, branch) {
+            Some((url, number)) => {
+                tracing::info!(
+                    target: "nightcore::pr",
+                    branch = %branch,
+                    pr_number = number,
+                    "create failed but an open PR already exists for the branch — recovered"
+                );
+                PrCreateOutcome::Created { url, number }
+            }
+            None => PrCreateOutcome::Failed { message },
+        },
+        outcome => outcome,
+    }
+}
+
+/// Look up the existing OPEN PR for `branch` via `gh pr view <branch> --json
+/// url,number,state` in the worktree dir (the same bounded-spawn seam as
+/// create). Best-effort by design: any failure — non-zero exit (no PR), a
+/// timeout, unparseable JSON, a non-open PR — yields `None`, and the caller
+/// surfaces the ORIGINAL create error instead.
+fn view_pr_with(dir: &Path, binary: &str, branch: &str) -> Option<(String, u64)> {
+    validate_ref(branch).ok()?;
+    let out = run_gh_bounded(
+        dir,
+        binary,
+        &["pr", "view", branch, "--json", "url,number,state"],
+        None,
+        "timed out looking up the pull request on GitHub",
+    )
+    .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    parse_pr_view(&out.stdout)
+}
+
+/// Parse `gh pr view --json url,number,state` output into `(url, number)`,
+/// accepting only an OPEN PR (a closed/merged PR for the branch must not be
+/// resurrected as "the" created PR) with an https URL. Pure.
+fn parse_pr_view(stdout: &str) -> Option<(String, u64)> {
+    #[derive(serde::Deserialize)]
+    struct View {
+        url: String,
+        number: u64,
+        state: String,
+    }
+    let view: View = serde_json::from_str(stdout.trim()).ok()?;
+    if view.state != "OPEN" || !view.url.starts_with("https://") {
+        return None;
+    }
+    Some((view.url, view.number))
 }
 
 /// Parse the created PR's URL + number from `gh pr create` stdout. By contract
@@ -993,6 +1072,141 @@ mod tests {
                 "validate_ref rejection reaches create: {message}"
             );
         }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn create_or_recover_recovers_an_existing_open_pr_when_create_fails() {
+        // The half-done shape: a previous create landed the PR on GitHub but
+        // the app died before persisting, so every retry's `pr create` fails
+        // with "already exists". Recovery resolves it via `pr view` and maps
+        // the retry to Created instead of failing forever.
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let script = fake_gh(
+            tmp.path(),
+            r#"if [ "$2" = "create" ]; then
+  cat > /dev/null
+  echo 'a pull request for branch "nc/t-1" into branch "main" already exists' >&2
+  exit 1
+fi
+if [ "$2" = "view" ]; then
+  printf '%s\n' "$@" > view-args.txt
+  echo '{"url":"https://github.com/acme/widget/pull/9","number":9,"state":"OPEN"}'
+  exit 0
+fi
+exit 1"#,
+        );
+        let outcome = create_or_recover_with(
+            tmp.path(),
+            script.to_str().expect("utf8 path"),
+            "nc/t-1",
+            "main",
+            "t",
+            "b",
+            false,
+        );
+        let PrCreateOutcome::Created { url, number } = outcome else {
+            panic!("a failed create with an existing open PR must recover to Created");
+        };
+        assert_eq!(url, "https://github.com/acme/widget/pull/9");
+        assert_eq!(number, 9);
+        // The recovery asked `pr view` for the branch's url/number/state.
+        let args = std::fs::read_to_string(tmp.path().join("view-args.txt")).expect("args");
+        assert!(args.contains("view"), "recovery path used pr view: {args}");
+        assert!(args.contains("nc/t-1"), "view targets the branch: {args}");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn create_or_recover_surfaces_the_original_error_when_no_pr_exists() {
+        // A genuine create failure (nothing on GitHub) must keep the create's
+        // own stderr, not a recovery artifact.
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let script = fake_gh(
+            tmp.path(),
+            r#"if [ "$2" = "create" ]; then
+  cat > /dev/null
+  echo 'gh: authentication required' >&2
+  exit 1
+fi
+echo 'no pull requests found' >&2
+exit 1"#,
+        );
+        let outcome = create_or_recover_with(
+            tmp.path(),
+            script.to_str().expect("utf8 path"),
+            "nc/t-1",
+            "main",
+            "t",
+            "b",
+            false,
+        );
+        let PrCreateOutcome::Failed { message } = outcome else {
+            panic!("no recoverable PR ⇒ the original failure surfaces");
+        };
+        assert_eq!(
+            message, "gh: authentication required",
+            "the CREATE error is kept, not the view's"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn create_or_recover_recovers_the_zero_exit_no_url_branch_too() {
+        // gh exits 0 but prints no URL (the unusable-output branch): recovery
+        // still resolves the PR via view, so the user is not stranded.
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let script = fake_gh(
+            tmp.path(),
+            r#"if [ "$2" = "create" ]; then
+  cat > /dev/null
+  echo 'no url in this output'
+  exit 0
+fi
+if [ "$2" = "view" ]; then
+  echo '{"url":"https://github.com/acme/widget/pull/12","number":12,"state":"OPEN"}'
+  exit 0
+fi
+exit 1"#,
+        );
+        let outcome = create_or_recover_with(
+            tmp.path(),
+            script.to_str().expect("utf8 path"),
+            "nc/t-1",
+            "main",
+            "t",
+            "b",
+            false,
+        );
+        assert!(
+            matches!(outcome, PrCreateOutcome::Created { number: 12, .. }),
+            "the zero-exit-no-URL create recovers through pr view"
+        );
+    }
+
+    #[test]
+    fn parse_pr_view_accepts_only_open_https_prs() {
+        assert_eq!(
+            parse_pr_view(r#"{"url":"https://github.com/a/b/pull/7","number":7,"state":"OPEN"}"#),
+            Some(("https://github.com/a/b/pull/7".to_string(), 7))
+        );
+        // A closed/merged PR must not be resurrected as "the" created PR.
+        for state in ["CLOSED", "MERGED"] {
+            assert_eq!(
+                parse_pr_view(&format!(
+                    r#"{{"url":"https://github.com/a/b/pull/7","number":7,"state":"{state}"}}"#
+                )),
+                None,
+                "{state} is not recoverable"
+            );
+        }
+        // Non-https URLs and garbage are rejected.
+        assert_eq!(
+            parse_pr_view(r#"{"url":"http://github.com/a/b/pull/7","number":7,"state":"OPEN"}"#),
+            None
+        );
+        assert_eq!(parse_pr_view("not json"), None);
+        assert_eq!(parse_pr_view(""), None);
     }
 
     #[test]
