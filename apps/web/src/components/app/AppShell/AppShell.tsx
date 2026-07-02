@@ -10,6 +10,7 @@ import {
   EmptyState,
   FolderIcon,
   GearIcon,
+  GithubIcon,
   InsightIcon,
   PerfIcon,
   VerifiedIcon,
@@ -43,6 +44,9 @@ const ScorecardView = lazy(() =>
 const HarnessView = lazy(() =>
   import('@/components/harness').then((m) => ({ default: m.HarnessView })),
 );
+const PrReviewView = lazy(() =>
+  import('@/components/prreview').then((m) => ({ default: m.PrReviewView })),
+);
 const WorktreeView = lazy(() =>
   import('@/components/worktree').then((m) => ({ default: m.WorktreeView })),
 );
@@ -75,6 +79,7 @@ const NAV: NavItem[] = [
   { view: 'insight', label: 'Insight', hint: 'I', icon: <InsightIcon size={16} /> },
   { view: 'scorecard', label: 'Scorecard', hint: 'R', icon: <PerfIcon size={16} /> },
   { view: 'harness', label: 'Harness', hint: 'H', icon: <VerifiedIcon size={16} /> },
+  { view: 'prreview', label: 'PR Review', hint: 'P', icon: <GithubIcon size={16} /> },
   { view: 'settings', label: 'Settings', hint: 'S', icon: <GearIcon size={16} /> },
 ];
 
@@ -295,6 +300,18 @@ export function AppShell() {
               projectName={active?.name ?? null}
               onGotoBoard={() => routing.goto('board')}
               preselect={routing.scanTarget?.view === 'harness' ? routing.scanTarget : null}
+              onPreselectConsumed={routing.clearScanTarget}
+            />
+          </Suspense>
+        )}
+
+        {view === 'prreview' && (
+          <Suspense fallback={<RouteFallback />}>
+            <PrReviewView
+              projectPath={active?.path ?? null}
+              projectName={active?.name ?? null}
+              onGotoBoard={() => routing.goto('board')}
+              preselect={routing.scanTarget?.view === 'prreview' ? routing.scanTarget : null}
               onPreselectConsumed={routing.clearScanTarget}
             />
           </Suspense>

@@ -6,6 +6,7 @@ export type AppView =
   | 'insight'
   | 'scorecard'
   | 'harness'
+  | 'prreview'
   | 'projects'
   | 'settings';
 
