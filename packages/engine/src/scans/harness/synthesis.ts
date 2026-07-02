@@ -673,6 +673,13 @@ const EXECUTION_SINK_BASENAMES = new Set([
   '.lefthook.toml',
   'lefthook.json',
   '.lefthook.json',
+  // devcontainer config: postCreateCommand/onCreateCommand execute on container
+  // create/attach, so the sandbox module (#15) routes devcontainers through a
+  // human-reviewed agent task — never a one-click artifact. Covers the canonical
+  // `.devcontainer/devcontainer.json` (basename matches at any depth) and the root
+  // `.devcontainer.json` dot-form.
+  'devcontainer.json',
+  '.devcontainer.json',
 ]);
 /** Basenames a `merge-section` write may target (agent-contract docs only). */
 const MERGE_SECTION_ALLOWED_BASENAMES = new Set([

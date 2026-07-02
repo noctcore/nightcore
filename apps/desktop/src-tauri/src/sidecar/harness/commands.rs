@@ -33,10 +33,11 @@ use super::apply::{safe_join, write_create, write_merge_manifest, write_merge_se
 
 /// The check kinds the Structure-Lock gauntlet knows how to run (kept in lockstep with
 /// `workflow::gauntlet_project::HarnessCheckKind`). Arming is restricted to these so a
-/// stray kind can't land an entry the gauntlet will only warn-and-skip. The last four
-/// are the hardening-catalog producers: `lockfile-lint` (#11 dependency firewall),
-/// `env-contract` (#13 env-var contract), `secret-scan` (#4 secret hygiene),
-/// `mutation-score` (#17 mutation audit).
+/// stray kind can't land an entry the gauntlet will only warn-and-skip. Beyond the three
+/// original gauntlet kinds, the rest are the hardening-catalog producers: `lockfile-lint`
+/// (#11 dependency firewall), `env-contract` (#13 env-var contract), `secret-scan`
+/// (#4 secret hygiene), `mutation-score` (#17 mutation audit), `ast-grep` (#18 policy
+/// pack), `api-extractor` (#18 API surface lock).
 const ARMABLE_CHECK_KINDS: &[&str] = &[
     "lint-plugin",
     "dependency-cruiser",
@@ -45,6 +46,8 @@ const ARMABLE_CHECK_KINDS: &[&str] = &[
     "env-contract",
     "secret-scan",
     "mutation-score",
+    "ast-grep",
+    "api-extractor",
 ];
 
 /// Validate a requested gauntlet-check kind against the armable allowlist. Factored out
@@ -653,10 +656,11 @@ mod tests {
 
     #[test]
     fn every_armable_check_kind_validates() {
-        // The full producer set: the three original gauntlet kinds plus the four
+        // The full producer set: the three original gauntlet kinds plus the
         // hardening-catalog kinds (#4 secret-scan, #11 lockfile-lint, #13 env-contract,
-        // #17 mutation-score). Each must arm — a kind listed here but rejected would
-        // strand its module's harnessCheck suggestion with no way to go live.
+        // #17 mutation-score, #18 ast-grep + api-extractor). Each must arm — a kind
+        // listed here but rejected would strand its module's harnessCheck suggestion
+        // with no way to go live.
         for kind in [
             "lint-plugin",
             "dependency-cruiser",
@@ -665,6 +669,8 @@ mod tests {
             "env-contract",
             "secret-scan",
             "mutation-score",
+            "ast-grep",
+            "api-extractor",
         ] {
             assert!(
                 validate_armable_check_kind(kind).is_ok(),
@@ -678,7 +684,17 @@ mod tests {
         // A kind outside the allowlist must never land a manifest entry: the gauntlet
         // would warn-and-skip it, leaving the user believing a gate is armed that never
         // runs. Case/format near-misses are rejected too (wire kinds are exact).
-        for kind in ["", "shell", "Lint-Plugin", "lint_plugin", "secret_scan", "secret-scan "] {
+        for kind in [
+            "",
+            "shell",
+            "Lint-Plugin",
+            "lint_plugin",
+            "secret_scan",
+            "secret-scan ",
+            "astgrep",
+            "ast_grep",
+            "Api-Extractor",
+        ] {
             let err = validate_armable_check_kind(kind).unwrap_err();
             assert!(
                 err.contains("unknown check kind"),

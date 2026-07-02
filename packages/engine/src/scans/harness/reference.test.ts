@@ -54,6 +54,10 @@ describe('hardeningReference — module coverage', () => {
     expect(ref).toContain('"kind": "mutation-score"');
     // #18 commit discipline
     expect(ref).toContain('COMMIT DISCIPLINE');
+    // #18 ast-grep policy pack
+    expect(ref).toContain('"kind": "ast-grep"');
+    // #15 sandbox tier
+    expect(ref).toContain('AGENT SANDBOX TIER');
   });
 
   test('the routing header names both shapes and the apply-path denial', () => {
@@ -157,6 +161,104 @@ describe('hardeningReference — import boundaries derived from the profile', ()
     expect(ref).toContain('// add layer rules ONLY for boundaries you observed');
     expect(ref).toContain('npx depcruise src');
     expect(ref).not.toContain('packages-not-into-apps');
+  });
+});
+
+describe('hardeningReference — ast-grep policy pack (#18)', () => {
+  test('every stack gets the module with the runnable npx form and its check kind', () => {
+    const ref = hardeningReference(profile({ workspaceTool: 'npm' }));
+    expect(ref).toContain('sgconfig.yml');
+    expect(ref).toContain('ast-grep-rules');
+    expect(ref).toContain('"kind": "ast-grep"');
+    // The empirically-verified command: bare `npx @ast-grep/cli` cannot resolve a bin
+    // (the package ships two: ast-grep + sg), so the encoded form pins --package + the
+    // ast-grep bin; `--error` escalates every rule and exits 1 on any match.
+    expect(ref).toContain('npx --yes --package=@ast-grep/cli ast-grep scan --error');
+  });
+
+  test('a TypeScript repo gets the one live starter rule; other stacks stay grounded', () => {
+    const ts = hardeningReference(profile());
+    expect(ts).toContain('no-debugger');
+    expect(ts).toContain('pattern: debugger');
+
+    // ast-grep is tree-sitter based, so the module survives a non-node stack — but the
+    // starter rule must be grounded in an observed pattern, never the TS example.
+    const rust = hardeningReference(
+      profile({ workspaceTool: 'cargo', languages: ['rust'] }),
+    );
+    expect(rust).toContain('sgconfig.yml');
+    expect(rust).not.toContain('no-debugger');
+    expect(rust).toContain('a pattern the findings actually name');
+  });
+});
+
+describe('hardeningReference — api-extractor surface lock (#18)', () => {
+  const libProfile = () =>
+    profile({
+      isMonorepo: true,
+      workspaceTool: 'bun',
+      packages: [
+        { name: 'web', path: 'apps/web', role: 'app' },
+        { name: 'contracts', path: 'packages/contracts', role: 'package' },
+      ],
+    });
+
+  test('a TS library package gets the module grounded on the observed member path', () => {
+    const ref = hardeningReference(libProfile());
+    expect(ref).toContain('API SURFACE LOCK');
+    expect(ref).toContain('packages/contracts/api-extractor.json');
+    expect(ref).toContain('"kind": "api-extractor"');
+    // Verified semantics: --local seeds/updates the committed report; the GATE form
+    // omits it, so drift in the committed report is an error (non-zero exit).
+    expect(ref).toContain(
+      'npx --yes @microsoft/api-extractor run --local -c packages/contracts/api-extractor.json',
+    );
+    expect(ref).toContain(
+      '"command": "npx --yes @microsoft/api-extractor run -c packages/contracts/api-extractor.json"',
+    );
+  });
+
+  test('skipped without a package-role member or without typescript', () => {
+    const appsOnly = hardeningReference(
+      profile({
+        isMonorepo: true,
+        workspaceTool: 'bun',
+        packages: [{ name: 'web', path: 'apps/web', role: 'app' }],
+      }),
+    );
+    expect(appsOnly).not.toContain('API SURFACE LOCK');
+
+    const rust = hardeningReference(
+      profile({ workspaceTool: 'cargo', languages: ['rust'] }),
+    );
+    expect(rust).not.toContain('API SURFACE LOCK');
+    expect(rust).not.toContain('api-extractor');
+  });
+});
+
+describe('hardeningReference — agent sandbox tier (#15)', () => {
+  test('the Seatbelt profile is the only artifact and carries the placeholder contract', () => {
+    const ref = hardeningReference(profile());
+    expect(ref).toContain('sandbox/agent.sb');
+    expect(ref).toContain('(deny file-write*)');
+    expect(ref).toContain('__WORKSPACE_ROOT__');
+    // Inert until a human explicitly loads it.
+    expect(ref).toContain('sandbox-exec -f sandbox/agent.sb');
+  });
+
+  test('devcontainer + bubblewrap route agent-task ONLY (execution-adjacent)', () => {
+    const ref = hardeningReference(profile());
+    expect(ref).toContain('.devcontainer/devcontainer.json');
+    expect(ref).toContain('postCreateCommand');
+    expect(ref).toContain('DENIES its basename');
+    expect(ref).toContain('bwrap');
+    expect(ref).toContain('shell script is execution-adjacent');
+  });
+
+  test('the tier claim stays honest about what containment fixes', () => {
+    const ref = hardeningReference(profile());
+    expect(ref).toContain('symlink');
+    expect(ref).toContain('does not by itself contain network');
   });
 });
 

@@ -437,7 +437,14 @@ describe('parseSynthesis — tool-config artifacts + hardening checks', () => {
     // The contract keeps `harnessCheck.kind` a bare string precisely so new gauntlet
     // kinds never break deserialize; the armable-kind allowlist lives in Rust at arm
     // time. All four producer kinds must survive the engine parse untouched.
-    for (const kind of ['lockfile-lint', 'env-contract', 'secret-scan', 'mutation-score']) {
+    for (const kind of [
+      'lockfile-lint',
+      'env-contract',
+      'secret-scan',
+      'mutation-score',
+      'ast-grep',
+      'api-extractor',
+    ]) {
       const raw = JSON.stringify({
         artifacts: [],
         proposals: [
@@ -500,6 +507,55 @@ describe('parseSynthesis — tool-config artifacts + hardening checks', () => {
       );
       expect(artifacts, `must drop lefthook config ${targetPath}`).toHaveLength(0);
     }
+  });
+
+  test('devcontainer configs are dropped as execution sinks in both name forms', () => {
+    // Module #15's guardrail: devcontainers run postCreate/onCreate hooks, so the
+    // sandbox tier's devcontainer piece must be an agent-task — a tool-config aimed at
+    // either name form (any depth, any case) never reaches the preview. Mirrors the
+    // Rust DENIED_TARGET_BASENAMES entries in harness/apply.rs.
+    for (const targetPath of [
+      '.devcontainer/devcontainer.json',
+      '.devcontainer.json',
+      'apps/web/.devcontainer/devcontainer.json',
+      '.devcontainer/DevContainer.json',
+    ]) {
+      const { artifacts } = parseProposedArtifacts(
+        JSON.stringify([
+          {
+            kind: 'tool-config',
+            title: 'x',
+            description: 'x',
+            targetPath,
+            writeMode: 'create',
+            content: '{ "postCreateCommand": "evil" }',
+          },
+        ]),
+        PROJECT,
+      );
+      expect(artifacts, `must drop devcontainer config ${targetPath}`).toHaveLength(0);
+    }
+  });
+
+  test('the Seatbelt profile tool-config survives grounding (inert until sandbox-exec)', () => {
+    // Module #15's one direct artifact: `sandbox/agent.sb` is a deny-write-except
+    // profile nothing loads until a human runs `sandbox-exec -f` — not a sink.
+    const { artifacts } = parseProposedArtifacts(
+      JSON.stringify([
+        {
+          kind: 'tool-config',
+          title: 'macOS Seatbelt write-containment profile',
+          description: 'Deny-write-except profile for agent runs.',
+          targetPath: 'sandbox/agent.sb',
+          writeMode: 'create',
+          content:
+            '(version 1)\n(allow default)\n(deny file-write*)\n(allow file-write* (subpath "__WORKSPACE_ROOT__"))\n',
+        },
+      ]),
+      PROJECT,
+    );
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]?.targetPath).toBe('sandbox/agent.sb');
   });
 });
 

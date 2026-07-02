@@ -39,7 +39,8 @@ const CONFIG_REL_PATH: &str = ".nightcore/harness.json";
 /// The kind of structure-lock check, mirroring the `.nightcore/harness.json`
 /// `kind` vocabulary. Deserialized kebab-case so the on-disk config reads
 /// naturally (`"lint-plugin"`, `"dependency-cruiser"`, `"coverage-threshold"`,
-/// `"lockfile-lint"`, `"env-contract"`, `"secret-scan"`, `"mutation-score"`).
+/// `"lockfile-lint"`, `"env-contract"`, `"secret-scan"`, `"mutation-score"`,
+/// `"ast-grep"`, `"api-extractor"`).
 /// Adding a variant here is what makes a manifest entry of that kind RUNNABLE —
 /// the arm-time allowlist (which kinds a proposal may write) is gated separately.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -59,6 +60,10 @@ enum HarnessCheckKind {
     SecretScan,
     /// A mutation-testing score gate (e.g. Stryker threshold).
     MutationScore,
+    /// An ast-grep policy-pack scan (`sgconfig.yml` + rule dir, run with `--error`).
+    AstGrep,
+    /// An api-extractor API-report drift gate (verify mode, i.e. `run` WITHOUT `--local`).
+    ApiExtractor,
 }
 
 impl HarnessCheckKind {
@@ -73,6 +78,8 @@ impl HarnessCheckKind {
             HarnessCheckKind::EnvContract => "env-contract",
             HarnessCheckKind::SecretScan => "secret-scan",
             HarnessCheckKind::MutationScore => "mutation-score",
+            HarnessCheckKind::AstGrep => "ast-grep",
+            HarnessCheckKind::ApiExtractor => "api-extractor",
         }
     }
 }
@@ -449,6 +456,27 @@ mod tests {
     }
 
     #[test]
+    fn config_parses_the_ast_grep_and_api_extractor_kinds() {
+        // The two #18 producers (ast-grep policy pack, api-extractor surface lock) are
+        // RUNNABLE from a manifest entry: kebab-case parse + stable wire round-trip,
+        // exactly like the seven kinds before them.
+        let body = r#"{
+            "checks": [
+                { "name": "policy", "kind": "ast-grep", "command": "sh -c true" },
+                { "name": "surface", "kind": "api-extractor", "command": "sh -c true" }
+            ]
+        }"#;
+        let tmp = temp_project_with_config(body);
+        let planned = load_checks(tmp.path());
+        let wires: Vec<&str> = planned.iter().map(|p| p.kind.as_wire()).collect();
+        assert_eq!(
+            wires,
+            vec!["ast-grep", "api-extractor"],
+            "both new kinds parse and report their stable wire strings"
+        );
+    }
+
+    #[test]
     fn malformed_entry_is_skipped_but_siblings_run() {
         // The first entry is missing `kind` (malformed) — warn-and-skip it; the
         // second still plans.
@@ -573,6 +601,28 @@ mod tests {
         // Everything after a failure is skipped (stop-at-first).
         let arch = result.checks.iter().find(|c| c.name == "arch").unwrap();
         assert_eq!(arch.status, StepStatus::Skipped);
+    }
+
+    #[test]
+    fn ast_grep_and_api_extractor_checks_run_like_any_other() {
+        // The runner arm for the two new kinds: a passing ast-grep check runs, a failing
+        // api-extractor check (an out-of-date API report exits non-zero) stops the gate
+        // and carries its wire kind onto the result.
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let result = run_planned(
+            vec![
+                sh_check("policy", HarnessCheckKind::AstGrep, "exit 0"),
+                sh_check("surface", HarnessCheckKind::ApiExtractor, "echo drift 1>&2; exit 1"),
+            ],
+            tmp.path(),
+        );
+        assert!(!result.passed);
+        assert_eq!(result.failed_check.as_deref(), Some("surface"));
+        assert_eq!(result.checks[0].status, StepStatus::Passed);
+        assert_eq!(result.checks[0].kind, "ast-grep");
+        assert_eq!(result.checks[1].status, StepStatus::Failed);
+        assert_eq!(result.checks[1].kind, "api-extractor");
+        assert!(result.checks[1].output.as_deref().unwrap().contains("drift"));
     }
 
     #[test]

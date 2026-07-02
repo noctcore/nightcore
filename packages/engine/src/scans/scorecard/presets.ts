@@ -59,7 +59,11 @@ const PRESETS: Record<ScorecardDimension, ScorecardPreset> = {
       'tested, meaningful assertions, regression coverage for bug-prone logic. ' +
       'A = critical paths and edge cases well covered with strong assertions; ' +
       'C = happy-path only with notable gaps; F = no meaningful tests. Point at the ' +
-      'unguarded behavior.',
+      'unguarded behavior. FIRST look for mutation-testing evidence ' +
+      '(reports/mutation/mutation.json, a stryker.conf.* file, a .stryker-tmp/ dir, ' +
+      'or a stryker config block): when a mutation report exists, ground the grade ' +
+      'in the MUTATION SCORE — killed vs survived mutants measure assertion ' +
+      'strength, which raw line coverage cannot — and cite the score you read.',
   },
   security: {
     dimension: 'security',

@@ -74,6 +74,13 @@ const DENIED_TARGET_BASENAMES: &[&str] = &[
     ".lefthook.toml",
     "lefthook.json",
     ".lefthook.json",
+    // devcontainer config — postCreateCommand/onCreateCommand execute on container
+    // create/attach, so the sandbox module (#15) must route devcontainers through a
+    // human-reviewed agent task; a synthesized artifact can never write one. Covers the
+    // canonical `.devcontainer/devcontainer.json` (basename matches at any depth) and
+    // the root `.devcontainer.json` dot-form.
+    "devcontainer.json",
+    ".devcontainer.json",
 ];
 
 /// Basenames a `merge-section` write may target. `merge-section` is the ONLY write mode
@@ -478,6 +485,13 @@ mod tests {
             ".lefthook.yaml",
             "tools/lefthook.toml",
             "packages/web/Lefthook.json", // case-insensitive basename bypass attempt
+            // devcontainer configs execute postCreate hooks on container create — the
+            // sandbox module (#15) must never land one as an artifact, at any depth,
+            // in either name form, case-insensitively.
+            ".devcontainer/devcontainer.json",
+            ".devcontainer.json",
+            "apps/web/.devcontainer/devcontainer.json",
+            ".devcontainer/DevContainer.json", // case-insensitive bypass attempt
         ] {
             assert!(
                 safe_join(tmp.path(), bad).is_err(),
@@ -508,6 +522,8 @@ mod tests {
             "packages/claude-helpers/index.ts",       // dir contains "claude", not `.claude/`
             "docs/package-json-guide.md",             // basename is NOT `package.json`
             "src/makefile-parser.ts",                 // basename is NOT `makefile`
+            "docs/devcontainer-setup.md",             // basename is NOT `devcontainer.json`
+            "sandbox/agent.sb",                       // module #15's inert Seatbelt profile
         ] {
             assert!(
                 safe_join(tmp.path(), ok).is_ok(),
