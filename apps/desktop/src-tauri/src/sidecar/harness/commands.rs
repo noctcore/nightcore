@@ -27,7 +27,7 @@ use crate::store::harness::{
     StoredHarnessProposal, StoredProposedArtifact, StoredRepoProfile,
 };
 use crate::store::TaskStore;
-use crate::task::{Task, TaskKind, TASK_EVENT};
+use crate::task::{sanitize_minted_title, Task, TaskKind, TASK_EVENT};
 
 use super::apply::{safe_join, write_create, write_merge_manifest, write_merge_section};
 
@@ -167,7 +167,10 @@ pub fn convert_harness_finding_to_task(
     // Build the task, then run the shared mint-first / atomic-CAS / rollback convert
     // protocol (see [`crate::sidecar::convert`]). Every finding becomes a Build task; its
     // model-derived text is fenced as untrusted inside `convention_task_description`.
-    let mut task = Task::new(finding.title.clone(), convention_task_description(&finding));
+    let mut task = Task::new(
+        sanitize_minted_title(&finding.title, "Untitled convention"),
+        convention_task_description(&finding),
+    );
     task.kind = TaskKind::Build;
 
     let stamped = crate::sidecar::convert::convert_to_task(
@@ -285,7 +288,10 @@ pub fn convert_harness_proposal(
 
     // Build the task, then run the shared mint-first / atomic-CAS / rollback convert
     // protocol (see [`crate::sidecar::convert`]).
-    let mut task = Task::new(proposal.title.clone(), proposal_task_description(&proposal));
+    let mut task = Task::new(
+        sanitize_minted_title(&proposal.title, "Untitled proposal"),
+        proposal_task_description(&proposal),
+    );
     task.kind = TaskKind::Build;
     // An agent-task proposal carries a machine-checkable done-command → the task's
     // verify_command, so the gauntlet gates the work before the reviewer. A blank command

@@ -11,7 +11,7 @@ use tauri::{AppHandle, Emitter};
 use crate::store::TaskStore;
 
 use super::create::{build_new_task, CreateInputs};
-use super::model::{SubtaskStatus, Task, TaskKind, TaskStatus};
+use super::model::{sanitize_minted_title, SubtaskStatus, Task, TaskKind, TaskStatus};
 use super::TASK_EVENT;
 
 /// Mint one child task from a proposed sub-task and atomically mark the proposal
@@ -55,7 +55,7 @@ pub(crate) fn convert_one(
     let mut child = build_new_task(
         settings,
         project_id.as_deref(),
-        sub.title.clone(),
+        sanitize_minted_title(&sub.title, "Untitled sub-task"),
         sub.prompt.clone(),
         CreateInputs::default(),
     );

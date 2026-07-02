@@ -19,7 +19,7 @@ use crate::contracts::{AnalysisScope, EffortLevel, FindingCategory, SurfaceComma
 use crate::project::ProjectStore;
 use crate::store::insight::{InsightRun, InsightStore, InsightUsage, StoredFinding};
 use crate::store::TaskStore;
-use crate::task::{Task, TaskKind, TaskStatus, TASK_EVENT};
+use crate::task::{sanitize_minted_title, Task, TaskKind, TaskStatus, TASK_EVENT};
 
 use super::scan::{
     begin_scan_run, dispatch_scan_command, failure_reason, finalize_completed,
@@ -196,7 +196,10 @@ pub fn convert_finding_to_task(
     // Build the task, then run the shared mint-first / atomic-CAS / rollback convert
     // protocol (see [`crate::sidecar::convert`]). The category maps to a task kind; the
     // model-derived body is fenced as untrusted inside `task_description`.
-    let mut task = Task::new(finding.title.clone(), task_description(&finding));
+    let mut task = Task::new(
+        sanitize_minted_title(&finding.title, "Untitled finding"),
+        task_description(&finding),
+    );
     task.kind = category_to_kind(&finding.category);
 
     let stamped = super::convert::convert_to_task(
