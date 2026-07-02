@@ -42,8 +42,9 @@ use crate::task::{Task, TASK_EVENT};
 use crate::worktree::{self, validate_ref};
 
 /// The GitHub CLI binary name — the production argument to the binary-
-/// parameterized seams below (tests inject fake scripts instead).
-const GH_BINARY: &str = "gh";
+/// parameterized seams below (tests inject fake scripts instead). Shared with
+/// the phase-2 status/finalize commands (`pr_status.rs`).
+pub(super) const GH_BINARY: &str = "gh";
 
 /// Wall-clock bound on every network-facing `gh` spawn (create + view). Same
 /// rationale as the push deadline: generous, but finite — a black-holed GitHub
@@ -402,23 +403,25 @@ enum PrCreateOutcome {
     Failed { message: String },
 }
 
-/// The drained output of a bounded `gh` run (see [`run_gh_bounded`]).
-struct GhOutput {
-    status: std::process::ExitStatus,
-    stdout: String,
-    stderr: String,
+/// The drained output of a bounded `gh` run (see [`run_gh_bounded`]). Shared
+/// with the phase-2 status/finalize commands (`pr_status.rs`).
+pub(super) struct GhOutput {
+    pub(super) status: std::process::ExitStatus,
+    pub(super) stdout: String,
+    pub(super) stderr: String,
 }
 
 /// Spawn `binary args…` in `dir` (feeding `stdin_payload` when given), drain
-/// both pipes on threads, and wait under [`GH_TIMEOUT`] — `gh` talks to the
+/// both pipes on threads, and wait under `deadline` — `gh` talks to the
 /// network, so a black-holed GitHub errors out (`timeout_msg`) instead of
 /// pinning the blocking thread + PR lease forever. Errs are user-facing
 /// strings; the caller decides the outcome mapping.
-fn run_gh_bounded(
+pub(super) fn run_gh_bounded(
     dir: &Path,
     binary: &str,
     args: &[&str],
     stdin_payload: Option<&str>,
+    deadline: std::time::Duration,
     timeout_msg: &str,
 ) -> Result<GhOutput, String> {
     let mut child = match crate::platform::std_command(binary)
@@ -473,7 +476,7 @@ fn run_gh_bounded(
     let stdout = drain(child.stdout.take());
     let stderr = drain(child.stderr.take());
 
-    let status = match crate::proc::wait_with_deadline(&mut child, GH_TIMEOUT) {
+    let status = match crate::proc::wait_with_deadline(&mut child, deadline) {
         Ok(Some(status)) => status,
         Ok(None) => return Err(timeout_msg.to_string()),
         Err(e) => return Err(format!("`{binary}` did not finish: {e}")),
@@ -531,6 +534,7 @@ fn create_pr_with(
         binary,
         &args,
         Some(body),
+        GH_TIMEOUT,
         "timed out creating the pull request on GitHub — check your network and try again",
     ) {
         Ok(out) => out,
@@ -602,6 +606,7 @@ fn view_pr_with(dir: &Path, binary: &str, branch: &str) -> Option<(String, u64)>
         binary,
         &["pr", "view", branch, "--json", "url,number,state"],
         None,
+        GH_TIMEOUT,
         "timed out looking up the pull request on GitHub",
     )
     .ok()?;
