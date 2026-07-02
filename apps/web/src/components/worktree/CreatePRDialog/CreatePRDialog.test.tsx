@@ -138,6 +138,55 @@ test('the confirm button single-flights while the create is pending', async () =
   await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
 });
 
+test('picking a different base re-drafts against it while the fields are pristine', async () => {
+  stubCommands({
+    draft_pr_message: (args) => {
+      const { base } = args as { base: string | null };
+      return Promise.resolve(
+        base === 'develop'
+          ? { title: 'feat: against develop', body: 'Develop summary.' }
+          : { title: 'feat: auth guard', body: 'Drafted summary.' },
+      );
+    },
+  });
+  const screen = render(
+    <CreatePRDialog open task={TASK} onCreate={onCreate} onClose={() => {}} />,
+  );
+  await expect.element(screen.getByLabelText('Title')).toHaveValue('feat: auth guard');
+
+  // Pick a different base — the pristine draft is re-computed against it (the
+  // body states base-relative facts), passing the base through the bridge.
+  await screen.getByLabelText('Base branch').fill('develop');
+  await expect.element(screen.getByLabelText('Title')).toHaveValue('feat: against develop');
+  await expect.element(screen.getByLabelText('Body')).toHaveValue('Develop summary.');
+  await vi.waitFor(() =>
+    expect(invoke).toHaveBeenCalledWith('draft_pr_message', { id: 't-pr', base: 'develop' }),
+  );
+  // The auto-heal leaves no stale-draft note behind.
+  expect(screen.getByText(/Draft was written against/).query()).toBeNull();
+});
+
+test('a base change after hand-edits shows the stale-draft note and never clobbers', async () => {
+  stubCommands();
+  const screen = render(
+    <CreatePRDialog open task={TASK} onCreate={onCreate} onClose={() => {}} />,
+  );
+  await expect.element(screen.getByLabelText('Title')).toHaveValue('feat: auth guard');
+
+  // Hand-edit, then diverge the base: the edits must survive, with the note
+  // naming the base the visible draft was actually written against.
+  await screen.getByLabelText('Title').fill('feat: my hand-edited title');
+  await screen.getByLabelText('Base branch').fill('develop');
+  await expect
+    .element(screen.getByText('Draft was written against main'))
+    .toBeInTheDocument();
+  await expect
+    .element(screen.getByLabelText('Title'))
+    .toHaveValue('feat: my hand-edited title');
+  // No re-draft fired against the new base — dirty fields are never clobbered.
+  expect(invoke).not.toHaveBeenCalledWith('draft_pr_message', { id: 't-pr', base: 'develop' });
+});
+
 test('a rejected create shows the inline error and keeps the dialog open', async () => {
   stubCommands({
     create_pr_task: () => Promise.reject(new Error('gh: authentication required')),

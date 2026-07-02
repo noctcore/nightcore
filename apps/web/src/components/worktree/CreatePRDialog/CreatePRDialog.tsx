@@ -102,6 +102,9 @@ export function CreatePRDialog({ open, task, onCreate, onClose }: CreatePRDialog
             ariaLabel="Base branch"
             disabled={v.submitting}
           />
+          {v.staleDraftNote !== null && (
+            <p className="text-[11px] leading-snug text-muted-foreground">{v.staleDraftNote}</p>
+          )}
         </div>
 
         <Checkbox

@@ -606,9 +606,14 @@ export async function prSupport(id: string): Promise<PrSupport> {
 /** Draft a PR title/body for a task via a one-shot `claude -p` pass. The command
  *  itself degrades to a deterministic fallback (task title + description), so a
  *  resolved value is always usable; outside Tauri an empty draft is returned and
- *  the dialog falls back locally. */
-export async function draftPrMessage(id: string): Promise<PrDraft> {
-  return tauriInvoke<PrDraft>('draft_pr_message', { id }, { title: '', body: '' });
+ *  the dialog falls back locally. `base` re-drafts against a picker-chosen base
+ *  (the draft describes `diff <base>...HEAD`); omitted ⇒ the backend default. */
+export async function draftPrMessage(id: string, base?: string): Promise<PrDraft> {
+  return tauriInvoke<PrDraft>(
+    'draft_pr_message',
+    { id, base: base ?? null },
+    { title: '', body: '' },
+  );
 }
 
 /** Push a task's worktree branch to `origin` and open a pull request against

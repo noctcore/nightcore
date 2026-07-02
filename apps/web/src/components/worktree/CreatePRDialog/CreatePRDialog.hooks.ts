@@ -29,6 +29,9 @@ export interface CreatePrDialogView {
   submitting: boolean;
   /** Inline error from a failed create; the dialog stays open for a retry. */
   error: string | null;
+  /** Warns that the visible draft was computed against a different base than
+   *  the one now picked, when a hand-edited draft can't be auto-refreshed. */
+  staleDraftNote: string | null;
   /** Whether Create may fire: a non-empty title, not drafting, not in flight. */
   canSubmit: boolean;
   /** Fire the create; no-ops while drafting/submitting or without a title. */
@@ -41,6 +44,20 @@ function errorText(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
 }
+
+/** Normalize a picker base for divergence comparison: `''` (the backend
+ *  default) resolves to the repo's checked-out branch — `current` — so the
+ *  branch-list effect promoting `''` to the current branch's name is not read
+ *  as a base change. */
+function normalizeBase(base: string, current: string): string {
+  const trimmed = base.trim();
+  return trimmed === '' ? current : trimmed;
+}
+
+/** Debounce before a base-divergence re-draft fires: the BranchPicker input
+ *  doubles as its filter, so `base` changes on every keystroke — without this,
+ *  each keypress would race a fresh `claude -p` drafting pass. */
+const REDRAFT_DEBOUNCE_MS = 300;
 
 /** Orchestrate the Create PR dialog. On every open (or task switch while open)
  *  the fields reset and `draftPrMessage` pre-fills the title/body — a drafting
@@ -66,6 +83,13 @@ export function useCreatePrDialog({
   const [drafting, setDrafting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The base the CURRENT draft was computed against (`''` = the backend
+  // default; `null` until the first draft resolves) + whether the user has
+  // hand-edited title/body since. Together they drive the base-divergence
+  // handling: pristine ⇒ re-draft against the new base; dirty ⇒ never clobber,
+  // show the stale-draft note instead.
+  const [draftedAgainst, setDraftedAgainst] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
 
   const taskId = task?.id ?? null;
   // Primitive fallbacks (not the task object) keep the pre-fill effect's deps
@@ -84,6 +108,8 @@ export function useCreatePrDialog({
     setBase(defaultBase);
     setTitle('');
     setBody('');
+    setDirty(false);
+    setDraftedAgainst(null);
     setDrafting(true);
     let stale = false;
     void draftPrMessage(taskId)
@@ -101,7 +127,12 @@ export function useCreatePrDialog({
         setBody(fallbackBody);
       })
       .finally(() => {
-        if (!stale) setDrafting(false);
+        if (stale) return;
+        // The no-base call drafts against the backend default: the task's own
+        // base, else the project's checked-out branch — which is exactly what
+        // `defaultBase` ('' ⇒ project default) denotes on this side.
+        setDraftedAgainst(defaultBase);
+        setDrafting(false);
       });
     return () => {
       stale = true;
@@ -125,6 +156,68 @@ export function useCreatePrDialog({
       alive = false;
     };
   }, [open]);
+
+  // The draft describes `git diff <base>...HEAD`, so a base switch changes the
+  // FACTS the body states. Divergence is judged against normalized names (`''`
+  // = the checked-out branch) so the branch-list effect's `''`→current-name
+  // promotion never reads as a change.
+  const currentBranch = branches.find((b) => b.isCurrent)?.name ?? '';
+  const pickedBase = normalizeBase(base, currentBranch);
+  const baseDiverged =
+    draftedAgainst !== null && pickedBase !== normalizeBase(draftedAgainst, currentBranch);
+  // Only a base that names a real branch triggers a re-draft: the picker input
+  // doubles as its filter, so intermediate keystrokes ("deve…") must neither
+  // spawn drafting passes nor clobber a good draft with the fallback.
+  const pickedIsKnown = branches.some((b) => b.name === pickedBase);
+
+  // Re-draft when the picked base diverges — but ONLY while the fields are
+  // pristine. A hand-edited draft is never clobbered (the stale note below
+  // covers that case instead).
+  useEffect(() => {
+    if (!open || taskId === null || dirty || !baseDiverged || !pickedIsKnown) return;
+    let stale = false;
+    const timer = window.setTimeout(() => {
+      setDrafting(true);
+      void draftPrMessage(taskId, pickedBase)
+        .then((d) => {
+          if (stale) return;
+          const usable = d.title.trim().length > 0;
+          setTitle(usable ? d.title : fallbackTitle);
+          setBody(usable ? d.body : fallbackBody);
+        })
+        .catch(() => {
+          // Keep the existing text — a failed re-draft must not eat the draft.
+        })
+        .finally(() => {
+          if (stale) return;
+          setDraftedAgainst(pickedBase);
+          setDrafting(false);
+        });
+    }, REDRAFT_DEBOUNCE_MS);
+    return () => {
+      stale = true;
+      window.clearTimeout(timer);
+    };
+  }, [open, taskId, dirty, baseDiverged, pickedIsKnown, pickedBase, fallbackTitle, fallbackBody]);
+
+  // Surface staleness whenever it can't be auto-healed: the user edited the
+  // fields (never clobber), or the picked base isn't a known branch (never
+  // draft against it). Names the base the visible draft was written against.
+  const staleDraftNote =
+    baseDiverged && (dirty || !pickedIsKnown) && draftedAgainst !== null
+      ? `Draft was written against ${
+          normalizeBase(draftedAgainst, currentBranch) || 'the project base'
+        }`
+      : null;
+
+  const editTitle = useCallback((next: string) => {
+    setDirty(true);
+    setTitle(next);
+  }, []);
+  const editBody = useCallback((next: string) => {
+    setDirty(true);
+    setBody(next);
+  }, []);
 
   const canSubmit = !submitting && !drafting && title.trim().length > 0;
 
@@ -150,9 +243,9 @@ export function useCreatePrDialog({
 
   return {
     title,
-    setTitle,
+    setTitle: editTitle,
     body,
-    setBody,
+    setBody: editBody,
     base,
     setBase,
     draft,
@@ -161,6 +254,7 @@ export function useCreatePrDialog({
     drafting,
     submitting,
     error,
+    staleDraftNote,
     canSubmit,
     submit,
   };
