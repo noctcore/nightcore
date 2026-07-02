@@ -14,6 +14,7 @@ import {
   commitTask,
   convertAllSubtasks,
   convertSubtask,
+  type CreatePrOptions,
   createTask,
   type CreateTaskOptions,
   deleteTask,
@@ -46,6 +47,7 @@ import { useActionGuard } from './hooks/useActionGuard.hooks';
 import { useAutoLoop } from './hooks/useAutoLoop.hooks';
 import { useBlockedIds } from './hooks/useBlockedIds.hooks';
 import { useBoard } from './hooks/useBoard.hooks';
+import { useCreatePr } from './hooks/useCreatePr.hooks';
 import { useDestructiveConfirm } from './hooks/useDestructiveConfirm.hooks';
 import { useGauntlet } from './hooks/useGauntlet.hooks';
 import { useGlobalErrorToast } from './hooks/useGlobalErrorToast.hooks';
@@ -123,6 +125,13 @@ export interface AppShellState {
     handleRefine: (id: string) => void;
     handleCommit: (id: string) => void;
     handleMerge: (id: string) => void;
+    /** The task id the Create PR dialog is open for (`null` = closed). */
+    prDialogTaskId: string | null;
+    /** Close the Create PR dialog. */
+    closePrDialog: () => void;
+    /** The guarded push + `gh pr create` mutation the dialog confirms. Rejects
+     *  on failure (the dialog shows the error inline and stays open). */
+    handleCreatePr: (id: string, opts: CreatePrOptions) => Promise<void>;
     /** Edit a not-yet-run task's kind. */
     handleChangeKind: (id: string, kind: TaskKind) => void;
     /** Edit a not-yet-run task's run mode. */
@@ -200,6 +209,7 @@ export function useAppShell(): AppShellState {
   const questions = useQuestions(tasks, toast);
   const gauntlet = useGauntlet(toast);
   const worktrees = useWorktrees();
+  const createPr = useCreatePr(action, toast);
 
   const anyRunning = useMemo(
     () => tasks.some((t) => t.status === 'in_progress' || t.status === 'verifying'),
@@ -609,6 +619,8 @@ export function useAppShell(): AppShellState {
       onConvertAllSubtasks: handleConvertAllSubtasks,
       onMerge: handleMerge,
       onCommit: handleCommit,
+      onCreatePr: createPr.openPrDialog,
+      onOpenPr: createPr.openPr,
       onResumeSession: handleResumeSession,
       onRenameSession: handleRenameSession,
       onTagSession: handleTagSession,
@@ -637,6 +649,8 @@ export function useAppShell(): AppShellState {
       handleConvertAllSubtasks,
       handleMerge,
       handleCommit,
+      createPr.openPrDialog,
+      createPr.openPr,
       handleResumeSession,
       handleRenameSession,
       handleTagSession,
@@ -679,6 +693,9 @@ export function useAppShell(): AppShellState {
       handleRefine,
       handleCommit,
       handleMerge,
+      prDialogTaskId: createPr.prDialogTaskId,
+      closePrDialog: createPr.closePrDialog,
+      handleCreatePr: createPr.create,
       handleChangeKind,
       handleChangeRunMode,
       handleChangePermissionMode,
