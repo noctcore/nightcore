@@ -38,7 +38,10 @@ const CONFIG_REL_PATH: &str = ".nightcore/harness.json";
 
 /// The kind of structure-lock check, mirroring the `.nightcore/harness.json`
 /// `kind` vocabulary. Deserialized kebab-case so the on-disk config reads
-/// naturally (`"lint-plugin"`, `"dependency-cruiser"`, `"coverage-threshold"`).
+/// naturally (`"lint-plugin"`, `"dependency-cruiser"`, `"coverage-threshold"`,
+/// `"lockfile-lint"`, `"env-contract"`, `"secret-scan"`, `"mutation-score"`).
+/// Adding a variant here is what makes a manifest entry of that kind RUNNABLE —
+/// the arm-time allowlist (which kinds a proposal may write) is gated separately.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 enum HarnessCheckKind {
@@ -48,6 +51,14 @@ enum HarnessCheckKind {
     DependencyCruiser,
     /// A coverage-threshold gate.
     CoverageThreshold,
+    /// A lockfile-integrity linter (e.g. `lockfile-lint` over package-lock/bun.lock).
+    LockfileLint,
+    /// An env-var contract check (declared env schema vs `.env.example` / usage).
+    EnvContract,
+    /// A secret scanner (e.g. gitleaks/trufflehog over the tree).
+    SecretScan,
+    /// A mutation-testing score gate (e.g. Stryker threshold).
+    MutationScore,
 }
 
 impl HarnessCheckKind {
@@ -58,6 +69,10 @@ impl HarnessCheckKind {
             HarnessCheckKind::LintPlugin => "lint-plugin",
             HarnessCheckKind::DependencyCruiser => "dependency-cruiser",
             HarnessCheckKind::CoverageThreshold => "coverage-threshold",
+            HarnessCheckKind::LockfileLint => "lockfile-lint",
+            HarnessCheckKind::EnvContract => "env-contract",
+            HarnessCheckKind::SecretScan => "secret-scan",
+            HarnessCheckKind::MutationScore => "mutation-score",
         }
     }
 }
@@ -336,6 +351,30 @@ mod tests {
         assert_eq!(names, vec!["lint", "arch"], "the disabled check is dropped");
         assert_eq!(planned[0].kind.as_wire(), "lint-plugin");
         assert_eq!(planned[1].kind.as_wire(), "dependency-cruiser");
+    }
+
+    #[test]
+    fn config_parses_the_armable_future_kinds() {
+        // The four kinds added for the hardening catalog are RUNNABLE from a
+        // manifest entry: they parse kebab-case and round-trip to the same wire
+        // string a `StructureLockCheck` will carry (arm-time allowlisting of what
+        // a proposal may WRITE is a separate gate, not this parser's job).
+        let body = r#"{
+            "checks": [
+                { "name": "lock", "kind": "lockfile-lint", "command": "sh -c true" },
+                { "name": "env", "kind": "env-contract", "command": "sh -c true" },
+                { "name": "sec", "kind": "secret-scan", "command": "sh -c true" },
+                { "name": "mut", "kind": "mutation-score", "command": "sh -c true" }
+            ]
+        }"#;
+        let tmp = temp_project_with_config(body);
+        let planned = load_checks(tmp.path());
+        let wires: Vec<&str> = planned.iter().map(|p| p.kind.as_wire()).collect();
+        assert_eq!(
+            wires,
+            vec!["lockfile-lint", "env-contract", "secret-scan", "mutation-score"],
+            "every new kind parses and reports its stable wire string"
+        );
     }
 
     #[test]
