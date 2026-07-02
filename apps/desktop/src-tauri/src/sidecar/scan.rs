@@ -29,6 +29,7 @@ use crate::project::Project;
 use crate::provider::SidecarProvider;
 use crate::store::harness::{HarnessRun, HarnessStore, HarnessUsage};
 use crate::store::insight::{InsightRun, InsightStore, InsightUsage};
+use crate::store::pr_review::{PrReviewRun, PrReviewStore};
 use crate::store::scorecard::{ScorecardRun, ScorecardStore};
 use crate::task::now_ms;
 
@@ -327,6 +328,23 @@ impl ScanRun for HarnessRun {
     }
 }
 
+impl ScanRun for PrReviewRun {
+    fn is_finalized(&self) -> bool {
+        self.status == "completed" && !self.findings.is_empty()
+    }
+    fn stamp_completion(&mut self, tel: &ScanTelemetry) {
+        self.status = "completed".to_string();
+        self.cost_usd = tel.cost_usd;
+        self.duration_ms = tel.duration_ms;
+        // PR Review reuses `InsightUsage` for its token totals.
+        self.usage = InsightUsage {
+            input_tokens: tel.input_tokens,
+            output_tokens: tel.output_tokens,
+        };
+        self.error = None;
+    }
+}
+
 /// A scan store whose runs can be mutated by id — the ONE operation [`finalize_completed`]
 /// needs. Each feature store already exposes `mutate(id, |run| …)` under a single lock;
 /// this trait just names that shape so the finalizer is generic over all three. It is
@@ -364,6 +382,16 @@ impl ScanStore for HarnessStore {
     fn mutate_run<F>(&self, run_id: &str, f: F) -> Result<HarnessRun, String>
     where
         F: FnOnce(&mut HarnessRun),
+    {
+        self.mutate(run_id, f)
+    }
+}
+
+impl ScanStore for PrReviewStore {
+    type Run = PrReviewRun;
+    fn mutate_run<F>(&self, run_id: &str, f: F) -> Result<PrReviewRun, String>
+    where
+        F: FnOnce(&mut PrReviewRun),
     {
         self.mutate(run_id, f)
     }

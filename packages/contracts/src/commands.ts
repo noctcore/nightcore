@@ -8,6 +8,7 @@ import {
 } from './config.js';
 import { ConventionCategorySchema, HarnessPolicySchema } from './harness.js';
 import { AnalysisScopeSchema, FindingCategorySchema } from './insight.js';
+import { ReviewLensSchema } from './pr-review.js';
 import { ScorecardDimensionSchema } from './scorecard.js';
 import { PermissionDecisionSchema, QuestionAnswerSchema } from './tools.js';
 
@@ -274,6 +275,46 @@ export const CancelScorecardCommand = z.object({
   runId: z.string(),
 });
 
+/** Start a PR Review run over a GitHub pull request of the active project. Like
+ *  `start-analysis` this is NOT a single rendered Claude turn — the engine fans out
+ *  one read-only review pass per `lenses` entry (bounded by `maxConcurrency`) over the
+ *  PR DIFF, grounds each finding against `changedFiles`, dedups, and streams
+ *  `pr-review-*` events keyed by `runId`. The Rust core resolves the diff (the sidecar
+ *  is network-free): it runs `gh pr diff <n>` + `--name-only`, caps the diff, and
+ *  passes both inline here. The review sessions run cwd = `projectPath` (the current
+ *  checkout) for surrounding context, but the DIFF — never a checkout of the PR head —
+ *  is the authoritative material reviewed. */
+export const StartPrReviewCommand = z.object({
+  type: z.literal('start-pr-review'),
+  /** Correlation id (also the persisted run id) assigned by the Rust core. */
+  runId: z.string(),
+  /** Absolute project root the review sessions run in (read-only). */
+  projectPath: z.string(),
+  /** The pull-request number to review (a positive integer). */
+  prNumber: z.number().int().positive(),
+  /** The `gh pr diff <n>` output, resolved + capped by the Rust core (the sidecar is
+   *  network-free). */
+  diff: z.string(),
+  /** The PR's changed files (`gh pr diff <n> --name-only`), resolved by the Rust core.
+   *  A finding whose `file` is not a member of this set is dropped (diff-relative
+   *  grounding). */
+  changedFiles: z.array(z.string()),
+  /** The review lenses to run (a subset of the five). */
+  lenses: z.array(ReviewLensSchema),
+  /** Model override for the passes; absent ⇒ inherit the resolved config. */
+  model: z.string().optional(),
+  /** Reasoning effort for the passes; absent ⇒ inherit. */
+  effort: EffortLevelSchema.optional(),
+  /** Max lens passes to run at once. Absent ⇒ engine default (bounded). */
+  maxConcurrency: z.number().int().positive().optional(),
+});
+
+/** Cancel an in-flight PR Review run (aborts every lens pass). */
+export const CancelPrReviewCommand = z.object({
+  type: z.literal('cancel-pr-review'),
+  runId: z.string(),
+});
+
 /** The discriminated union of every surface → engine command, keyed by `type`. */
 export const SurfaceCommandSchema = z.discriminatedUnion('type', [
   StartSessionCommand,
@@ -289,6 +330,8 @@ export const SurfaceCommandSchema = z.discriminatedUnion('type', [
   CancelHarnessScanCommand,
   StartScorecardCommand,
   CancelScorecardCommand,
+  StartPrReviewCommand,
+  CancelPrReviewCommand,
 ]);
 export type SurfaceCommand = z.infer<typeof SurfaceCommandSchema>;
 

@@ -289,6 +289,9 @@ const STRUCT_NAMES: Record<string, string> = {
   // (hardening modules #3/#4/#9/#12), carried on `start-session`.
   'allowTools|askTools|denyBashPatterns|denyReadPaths|disallowedTools|protectedPaths':
     'HarnessPolicy',
+  // PR Review: one grounded review finding over the PR diff (severity reuses the
+  // Insight `FindingSeverity` enum; lens is `ReviewLens`).
+  'body|file|fingerprint|id|lens|line|severity|suggestedFix|title': 'ReviewFinding',
 };
 
 /** Stable Rust enum name for a referenced/inline `z.enum`. Named enums in the
@@ -330,6 +333,10 @@ const ENUM_NAMES: Record<string, string> = {
     'ArtifactKind',
   'create|merge-section': 'ArtifactWriteMode',
   'apply-artifacts|agent-task': 'HarnessProposalKind',
+  // PR Review (GitHub pull-request review) enums. `ReviewSeverity`
+  // (`info|low|medium|high|critical`) reuses `FindingSeverity` above — an identical
+  // value-set collapses to one generated Rust enum, so only the lens is new here.
+  'security|logic|structure|tests|contracts': 'ReviewLens',
 };
 
 function registerInlineEnum(
@@ -798,6 +805,19 @@ const COMMAND_INPUTS: Record<string, unknown> = {
     maxBudgetUsdPerDimension: 2,
   },
   'cancel-scorecard': { type: 'cancel-scorecard', runId: 'run-s1' },
+  'start-pr-review': {
+    type: 'start-pr-review',
+    runId: 'run-pr1',
+    projectPath: '/proj',
+    prNumber: 42,
+    diff: 'diff --git a/src/handler.ts b/src/handler.ts\n@@ -1,3 +1,4 @@\n-old\n+new line\n',
+    changedFiles: ['src/handler.ts', 'src/store.ts'],
+    lenses: ['security', 'logic', 'structure', 'tests', 'contracts'],
+    model: 'claude-opus-4-8',
+    effort: 'high',
+    maxConcurrency: 3,
+  },
+  'cancel-pr-review': { type: 'cancel-pr-review', runId: 'run-pr1' },
 };
 
 /** A representative raw input per query variant (the request/reply stream). */
@@ -1295,6 +1315,78 @@ const EVENT_INPUTS: Record<string, unknown> = {
     runId: 'run-s1',
     reason: 'aborted',
     message: 'cancelled by user',
+  },
+  'pr-review-started': {
+    type: 'pr-review-started',
+    runId: 'run-pr1',
+    lenses: ['security', 'logic', 'structure', 'tests', 'contracts'],
+    model: 'claude-opus-4-8',
+  },
+  'pr-review-lens-started': {
+    type: 'pr-review-lens-started',
+    runId: 'run-pr1',
+    lens: 'security',
+  },
+  'pr-review-lens-completed': {
+    type: 'pr-review-lens-completed',
+    runId: 'run-pr1',
+    lens: 'security',
+    findings: [
+      {
+        id: 'security-1',
+        lens: 'security',
+        severity: 'high',
+        file: 'src/handler.ts',
+        line: 42,
+        title: 'Unsanitized input reaches the query',
+        body: 'The handler passes req.body.id straight into the SQL string, so a crafted id injects.',
+        suggestedFix: 'Parameterize the query or validate the id with zod first.',
+        fingerprint: 'security:src/handler.ts:unsanitized-input',
+      },
+    ],
+    usage: {
+      inputTokens: 1200,
+      outputTokens: 300,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    },
+    costUsd: 0.04,
+  },
+  'pr-review-completed': {
+    type: 'pr-review-completed',
+    runId: 'run-pr1',
+    findings: [
+      {
+        id: 'security-1',
+        lens: 'security',
+        severity: 'high',
+        file: 'src/handler.ts',
+        title: 'Unsanitized input reaches the query',
+        body: 'The handler passes req.body.id straight into the SQL string.',
+        fingerprint: 'security:src/handler.ts:unsanitized-input',
+      },
+    ],
+    lensesRun: 5,
+    costUsd: 0.12,
+    durationMs: 45000,
+    usage: {
+      inputTokens: 5000,
+      outputTokens: 1500,
+      cacheReadTokens: 200,
+      cacheCreationTokens: 100,
+    },
+  },
+  'pr-review-failed': {
+    type: 'pr-review-failed',
+    runId: 'run-pr1',
+    reason: 'aborted',
+    message: 'cancelled by user',
+  },
+  'pr-review-finding-converted': {
+    type: 'pr-review-finding-converted',
+    runId: 'run-pr1',
+    findingId: 'security-1',
+    taskId: 'task-9',
   },
   'query-result': {
     type: 'query-result',

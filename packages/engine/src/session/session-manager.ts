@@ -196,6 +196,17 @@ export class SessionManager {
       this.scorecard.cancel(command.runId);
       return;
     }
+    // PR Review runs are also keyed by `runId` (not a session id). The
+    // `PrReviewScanManager` (Stage 2A) owns them; until it is wired here, narrow the
+    // two commands out of the session-targeting union below so the contract variants
+    // typecheck. Stage 2A REPLACES this block with `this.prReview.start(command)` /
+    // `this.prReview.cancel(command.runId)`, mirroring the analysis cases above.
+    if (command.type === 'start-pr-review' || command.type === 'cancel-pr-review') {
+      this.logger?.debug('pr-review command received before its manager is wired', {
+        type: command.type,
+      });
+      return;
+    }
 
     const session = this.sessions.get(command.sessionId);
     if (!session) {

@@ -43,6 +43,7 @@ fn export_all_bindings() {
     use crate::sidecar::{ProviderConfigSnapshotView, SessionInfoView, SessionMessageView};
     use crate::store::injection_scan::InjectionFlag;
     use crate::store::insight::{FindingLocation, InsightRun, InsightUsage, StoredFinding};
+    use crate::store::pr_review::{PrReviewRun, StoredReviewFinding};
     use crate::store::scorecard::{ScorecardEvidence, ScorecardRun, StoredReading};
     use crate::store::types::{StepStatus, StructureLockCheck, StructureLockResult};
     use crate::task::{
@@ -125,6 +126,11 @@ fn export_all_bindings() {
         ScorecardRun,
         StoredReading,
         ScorecardEvidence,
+        // PR Review (GitHub pull-request review) persisted shapes. `export_all` on
+        // PrReviewRun writes its nested StoredReviewFinding (→ ReviewFinding.ts) too
+        // (InsightUsage is shared with Insight).
+        PrReviewRun,
+        StoredReviewFinding,
         // Harness policy authoring: the manifest's `policy` block as the editor
         // reads/patches it, plus the injection-scan flag rows it quarantines.
         HarnessPolicyFile,
@@ -204,6 +210,8 @@ mod tests {
             "StoredFinding.ts",
             "FindingLocation.ts",
             "InsightUsage.ts",
+            "PrReviewRun.ts",
+            "ReviewFinding.ts",
             "HarnessPolicyFile.ts",
             "HarnessPolicyPatch.ts",
             "PolicyDiffBudget.ts",
