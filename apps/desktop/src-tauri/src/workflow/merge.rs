@@ -177,6 +177,42 @@ impl Drop for TaskLease {
     }
 }
 
+/// The PROJECT-ROOT mutation guard, keyed per project path (the `TaskLease`
+/// machinery reused with a path key). The per-task leases serialize actions on
+/// one TASK, but three actions mutate the SHARED project root working tree —
+/// the pull-base fast-forward (fetch + ff-merge), `merge_task`'s real merge,
+/// and a main-mode commit's stage/commit — and nothing serialized them against
+/// each other: concurrent tasks could collide on the root index (`index.lock`)
+/// or fast-forward/merge a root that just moved under a confirmed-safe dialog.
+///
+/// LOCK ORDERING (deadlock freedom): every path acquires its per-task action
+/// lease FIRST and this root lease SECOND, and no path ever acquires a task
+/// lease while holding the root lease. Both levels are TRY-acquire — a held
+/// lease refuses with a message, never waits — so there is no blocking cycle
+/// at all; the ordering rule exists so the refusal messages stay causal.
+fn root_mutation_in_flight() -> &'static Mutex<HashSet<String>> {
+    static IN_FLIGHT: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    IN_FLIGHT.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+/// Acquire the root-mutation lease for `project_path`, or refuse naming the
+/// blocked action (`before_what` completes "wait for it to finish before …").
+/// Shared with the pull-base command (`pr_status.rs`).
+pub(crate) fn acquire_root_lease(
+    project_path: &std::path::Path,
+    before_what: &str,
+) -> Result<TaskLease, String> {
+    TaskLease::acquire(
+        root_mutation_in_flight(),
+        &project_path.to_string_lossy(),
+    )
+    .ok_or_else(|| {
+        format!(
+            "another action is modifying the project root — wait for it to finish before {before_what}"
+        )
+    })
+}
+
 /// The blocking body of `commit_task`, run off the UI thread via `spawn_blocking`.
 /// Managed state is re-acquired from the owned `AppHandle` because a `State<'_, _>`
 /// guard is borrowed from the command invocation and can't cross the thread boundary.
@@ -201,6 +237,16 @@ pub(crate) fn commit_task_blocking(app: &AppHandle, id: &str) -> Result<(), Stri
     let project = require_project(app)?;
     let project_path = std::path::PathBuf::from(&project.path);
     let dir = commit_dir(&project_path, &task)?;
+
+    // A MAIN-MODE commit stages/commits the shared project root — serialize it
+    // against the other root mutators (pull-base ff, merge_task's merge phase)
+    // via the root lease. ORDERING: task lease first (above), root lease second.
+    // A worktree commit touches only its own tree and needs no root lease.
+    let _root_lease = if task.run_mode.is_worktree() {
+        None
+    } else {
+        Some(acquire_root_lease(&project_path, "committing")?)
+    };
 
     // Stage everything first, then bail before generation if the tree is clean.
     worktree::stage_all(&dir)?;
@@ -312,6 +358,13 @@ fn merge_task_blocking(app: &AppHandle, id: &str) -> Result<(), String> {
         .clone()
         .unwrap_or_else(|| worktree::branch_name(id));
     tracing::info!(target: "nightcore", task_id = %id, branch = %branch, base = %base, "merging task branch into base");
+
+    // The real merge mutates the SHARED project root — serialize it against the
+    // other root mutators (pull-base ff, main-mode commit) via the root lease.
+    // ORDERING: task lease first (top of fn), root lease second. Acquired after
+    // the gauntlets (which run inside the worktree, not the root) so a long
+    // gauntlet never holds the root hostage.
+    let _root_lease = acquire_root_lease(&project_path, "merging")?;
 
     match worktree::merge_branch(&project_path, &branch, &base)? {
         MergeOutcome::Merged => {
