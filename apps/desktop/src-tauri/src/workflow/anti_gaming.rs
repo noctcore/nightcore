@@ -69,10 +69,17 @@ impl Finding {
 /// a Failed `anti-gaming` check when it finds evidence. Infrastructure failures
 /// (no merge-base, git error) WARN and skip — the sweep never fails the gate on
 /// its own plumbing, only on what it actually saw in the diff.
+///
+/// `ledger` is the task's session flight-recorder file (module #5): its ALLOWED
+/// Bash history is scanned for `--no-verify` — the hook-bypass half the diff
+/// can't see (a command leaves no diff) — and any hit folds into the SAME
+/// evidence list. A missing/unparseable ledger contributes nothing (the same
+/// warn-and-skip posture as the git plumbing; runs predate the recorder).
 pub fn append_anti_gaming_check(
     result: &mut StructureLockResult,
     review_dir: &Path,
     project_root: &Path,
+    ledger: Option<&Path>,
 ) {
     let base = crate::worktree::base_branch(project_root);
     let Some(merge_base) = git_stdout(review_dir, &["merge-base", &base, "HEAD"]) else {
@@ -85,7 +92,12 @@ pub fn append_anti_gaming_check(
         return;
     };
 
-    let findings = detect_findings(&diff);
+    let mut findings = detect_findings(&diff);
+    if let Some(ledger) = ledger {
+        findings.extend(detect_ledger_findings(&crate::store::ledger::read_records(
+            ledger,
+        )));
+    }
     if findings.is_empty() {
         tracing::debug!(target: "nightcore::anti_gaming", "anti-gaming sweep clean; nothing appended");
         return;
@@ -227,6 +239,63 @@ fn detect_findings(diff: &str) -> Vec<Finding> {
         }
     }
     findings
+}
+
+/// Cap on the command excerpt quoted in a ledger finding's evidence line — the
+/// digest itself is already bounded (~200 chars) by the engine writer.
+const MAX_COMMAND_EXCERPT: usize = 120;
+
+/// Scan the run's flight-recorder ledger for the Bash-history half of the sweep
+/// (the deferred detector the diff can't cover): any ALLOWED Bash record whose
+/// digest carries a standalone `--no-verify` flag — the classic hook/gate
+/// bypass. DENIED records are exempt (the rail already held; the blocked-by-
+/// policy park gate owns denial accounting), and non-Bash records can't carry a
+/// command line. Pure over parsed records, like the diff detectors.
+fn detect_ledger_findings(records: &[crate::store::ledger::LedgerRecord]) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    for record in records {
+        if record.tool.as_deref() != Some("Bash")
+            || record.decision.as_deref() != Some("allow")
+        {
+            continue;
+        }
+        let Some(digest) = record.input_digest.as_deref() else {
+            continue;
+        };
+        if contains_no_verify(digest) {
+            let excerpt: String = digest.chars().take(MAX_COMMAND_EXCERPT).collect();
+            findings.push(Finding {
+                file: format!("Bash: `{excerpt}`"),
+                pattern: "hook bypass: ran a `--no-verify` command".to_string(),
+                line: None,
+            });
+        }
+    }
+    findings
+}
+
+/// A standalone `--no-verify` flag with identifier boundaries on BOTH sides:
+/// the char before must not be an identifier char or `-` (so `x--no-verify` and
+/// a longer dash run don't count) and the char after must not be an identifier
+/// char or `-` (so the DISTINCT git flag `--no-verify-signatures` doesn't fire).
+fn contains_no_verify(text: &str) -> bool {
+    const FLAG: &str = "--no-verify";
+    let mut start = 0;
+    while let Some(idx) = text[start..].find(FLAG) {
+        let abs = start + idx;
+        // MSRV 1.77: `is_some_and` + negation instead of `is_none_or` (1.82).
+        let breaks_boundary = |c: char| is_ident(c) || c == '-';
+        let before_ok = !text[..abs].chars().next_back().is_some_and(breaks_boundary);
+        let after_ok = !text[abs + FLAG.len()..]
+            .chars()
+            .next()
+            .is_some_and(breaks_boundary);
+        if before_ok && after_ok {
+            return true;
+        }
+        start = abs + 1;
+    }
+    false
 }
 
 /// Extract the repo-relative path from a `---`/`+++` header remainder
@@ -526,9 +595,108 @@ mod tests {
         // (WARN), never fail the gate on its own plumbing.
         let tmp = tempfile::TempDir::new().expect("temp dir");
         let mut result = StructureLockResult::empty_pass();
-        append_anti_gaming_check(&mut result, tmp.path(), tmp.path());
+        append_anti_gaming_check(&mut result, tmp.path(), tmp.path(), None);
         assert!(result.passed, "infrastructure failure must not fail the gate");
         assert!(result.checks.is_empty(), "nothing appended on skip");
+    }
+
+    // ─── Ledger (Bash-history) detector ────────────────────────────────────────
+
+    /// Parse fixture NDJSON lines into ledger records (the reader is lenient, so
+    /// building through it also pins the wire shape the engine writes).
+    fn ledger_records(lines: &[&str]) -> Vec<crate::store::ledger::LedgerRecord> {
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let path = tmp.path().join("task.ndjson");
+        std::fs::write(&path, lines.join("\n")).expect("write ledger");
+        crate::store::ledger::read_records(&path)
+    }
+
+    #[test]
+    fn ledger_detector_flags_allowed_no_verify_bash_only() {
+        let records = ledger_records(&[
+            r#"{"ts":"2026-07-01T00:00:00Z","event":"session-start","sessionId":1}"#,
+            // The crime: an ALLOWED Bash record carrying --no-verify.
+            r#"{"tool":"Bash","inputDigest":"git commit -m x --no-verify","decision":"allow"}"#,
+            // A DENIED one is exempt (the rail held).
+            r#"{"tool":"Bash","inputDigest":"git commit --no-verify","decision":"deny","ruleId":"harness-bash-deny"}"#,
+            // Innocent allowed Bash.
+            r#"{"tool":"Bash","inputDigest":"bun test","decision":"allow"}"#,
+            // Non-Bash records never carry a command line.
+            r#"{"tool":"Write","inputDigest":"--no-verify","decision":"allow"}"#,
+            r#"{"event":"session-end","sessionId":1}"#,
+        ]);
+        let findings = detect_ledger_findings(&records);
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(findings[0].file.contains("git commit -m x --no-verify"), "{findings:?}");
+        assert!(findings[0].pattern.contains("hook bypass"), "{findings:?}");
+    }
+
+    #[test]
+    fn no_verify_matches_on_identifier_boundaries_only() {
+        assert!(contains_no_verify("git commit --no-verify"));
+        assert!(contains_no_verify("git commit --no-verify -m x"));
+        assert!(contains_no_verify("git push --no-verify"));
+        // The DISTINCT git flag --no-verify-signatures must not fire.
+        assert!(!contains_no_verify("git merge --no-verify-signatures branch"));
+        // Mid-identifier / longer-dash-run occurrences must not fire.
+        assert!(!contains_no_verify("echo x--no-verify"));
+        assert!(!contains_no_verify("run ---no-verify"));
+        assert!(!contains_no_verify("git commit --no-verifyx"));
+        // Not present at all.
+        assert!(!contains_no_verify("git commit -m 'no verify needed'"));
+    }
+
+    #[test]
+    fn empty_or_missing_ledger_contributes_nothing() {
+        assert!(detect_ledger_findings(&[]).is_empty());
+        // A missing file reads as zero records (silent skip), so the appended
+        // sweep sees only the diff half.
+        let records =
+            crate::store::ledger::read_records(std::path::Path::new("/no/such/ledger.ndjson"));
+        assert!(detect_ledger_findings(&records).is_empty());
+    }
+
+    /// End-to-end fold: a clean committed diff + a dirty ledger still fails the
+    /// gate, with the Bash-history evidence in the SAME `anti-gaming` check the
+    /// diff detectors use. Skips when `git` is unavailable.
+    #[test]
+    fn ledger_findings_fold_into_the_anti_gaming_check() {
+        use std::process::Command;
+        let Some((_tmp, repo)) = temp_repo() else {
+            return;
+        };
+        let run = |dir: &Path, args: &[&str]| {
+            Command::new("git")
+                .args(args)
+                .current_dir(dir)
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        };
+        assert!(run(&repo, &["worktree", "add", "wt", "-b", "feature"]));
+        let wt = repo.join("wt");
+        std::fs::write(wt.join("honest.ts"), "export const x = 1;\n").expect("write");
+        assert!(run(&wt, &["add", "."]) && run(&wt, &["commit", "-q", "-m", "honest work"]));
+
+        let ledger = repo.join("task.ndjson");
+        std::fs::write(
+            &ledger,
+            r#"{"tool":"Bash","inputDigest":"git commit -q -m x --no-verify","decision":"allow"}"#,
+        )
+        .expect("write ledger");
+
+        let mut result = StructureLockResult::empty_pass();
+        append_anti_gaming_check(&mut result, &wt, &repo, Some(&ledger));
+        assert!(!result.passed, "a ledger hit fails the gate even with a clean diff");
+        assert_eq!(result.failed_check.as_deref(), Some("anti-gaming"));
+        let output = result.checks[0].output.as_deref().unwrap();
+        assert!(output.contains("--no-verify"), "evidence names the flag: {output}");
+        assert!(output.contains("hook bypass"), "{output}");
+
+        // The same sweep with NO ledger stays clean (the diff half is innocent).
+        let mut clean = StructureLockResult::empty_pass();
+        append_anti_gaming_check(&mut clean, &wt, &repo, None);
+        assert!(clean.passed && clean.checks.is_empty());
     }
 
     /// One real-git integration pass: a worktree branch whose first commit is
@@ -555,7 +723,7 @@ mod tests {
         std::fs::write(wt.join("math.test.ts"), "expect(add(1,1)).toBe(2)\n").expect("write");
         assert!(run(&wt, &["add", "."]) && run(&wt, &["commit", "-q", "-m", "honest work"]));
         let mut clean = StructureLockResult::empty_pass();
-        append_anti_gaming_check(&mut clean, &wt, &repo);
+        append_anti_gaming_check(&mut clean, &wt, &repo, None);
         assert!(clean.passed && clean.checks.is_empty(), "clean diff appends nothing");
 
         // Gaming change: a focused test fails the gate with evidence.
@@ -566,7 +734,7 @@ mod tests {
         .expect("write");
         assert!(run(&wt, &["commit", "-qam", "focus the suite"]));
         let mut gamed = StructureLockResult::empty_pass();
-        append_anti_gaming_check(&mut gamed, &wt, &repo);
+        append_anti_gaming_check(&mut gamed, &wt, &repo, None);
         assert!(!gamed.passed, "a focused test fails the gate");
         assert_eq!(gamed.failed_check.as_deref(), Some("anti-gaming"));
         let check = &gamed.checks[0];

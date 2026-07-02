@@ -143,18 +143,32 @@ pub(crate) async fn handle_build_completed(
     }
 
     // Structure-lock manifest checks: any failure below routes through the SAME
-    // bounded auto-fix loop (or parks once the budget is spent).
-    let mut lock = crate::gauntlet_project::run(&review_dir.path);
+    // bounded auto-fix loop (or parks once the budget is spent). In worktree mode
+    // the manifest is read from the PROJECT root (`.nightcore/` is gitignored, so
+    // no worktree copy exists — reading the review dir silently skipped every
+    // check) while the checks still RUN in the review dir; main mode is the
+    // manifest-root == run-dir case, unchanged.
+    let mut lock = match app.state::<ProjectStore>().active() {
+        Some(project) if review_dir.is_worktree => {
+            crate::gauntlet_project::run_from(Path::new(&project.path), &review_dir.path)
+        }
+        _ => crate::gauntlet_project::run(&review_dir.path),
+    };
 
     // Anti-gaming sweep: always-on for worktree builds (no manifest entry arms
     // it — it guards the gate machinery itself), appended only while the manifest
     // checks passed so the fix agent sees ONE failure at a time (stop-at-first).
+    // The task's flight-recorder ledger rides along for the Bash-history half of
+    // the sweep (`--no-verify` bypasses the diff can't show).
     if lock.passed && review_dir.is_worktree {
         if let Some(project) = app.state::<ProjectStore>().active() {
+            let ledger =
+                crate::store::ledger::ledger_path(Path::new(&project.path), task_id);
             crate::workflow::anti_gaming::append_anti_gaming_check(
                 &mut lock,
                 &review_dir.path,
                 Path::new(&project.path),
+                Some(&ledger),
             );
         }
     }
@@ -188,6 +202,27 @@ pub(crate) async fn handle_build_completed(
         task.structure_lock_result = Some(lock.clone());
     });
     if !lock.passed {
+        // Blocked-by-policy park gate: when the battery failed AND the run's
+        // flight-recorder ledger shows the harness policy denied writes to
+        // protected paths, the failure is a RAILS collision, not a defect — a
+        // fix run faces the same denials, so routing into the auto-fix loop
+        // only burns the budget before parking anyway. Park for human triage
+        // with the denial evidence instead (the diff-budget posture: a scoping
+        // decision, never auto-fixed). A PASSING battery with denials changes
+        // nothing — the agent completed the work within the rails.
+        if let Some(project) = app.state::<ProjectStore>().active() {
+            let ledger = crate::store::ledger::ledger_path(Path::new(&project.path), task_id);
+            if let Some(message) = crate::store::ledger::blocked_by_policy_message(&ledger) {
+                tracing::warn!(target: "nightcore", task_id, "gates failed with harness-policy denials on protected paths; parking for triage");
+                apply_and_emit(app, store, task_id, |task| {
+                    task.status = TaskStatus::WaitingApproval;
+                    task.verified = false;
+                    task.error = Some(message.clone());
+                });
+                park_for_approval(app, task_id, None);
+                return;
+            }
+        }
         gate_structure_lock_failure(app, store, task_id, &lock, &review_dir.path).await;
         return;
     }
