@@ -31,10 +31,36 @@ use crate::task::{sanitize_minted_title, Task, TaskKind, TASK_EVENT};
 
 use super::apply::{safe_join, write_create, write_merge_manifest, write_merge_section};
 
-/// The check kinds the Structure-Lock gauntlet knows how to run (mirrors
+/// The check kinds the Structure-Lock gauntlet knows how to run (kept in lockstep with
 /// `workflow::gauntlet_project::HarnessCheckKind`). Arming is restricted to these so a
-/// stray kind can't land an entry the gauntlet will only warn-and-skip.
-const ARMABLE_CHECK_KINDS: &[&str] = &["lint-plugin", "dependency-cruiser", "coverage-threshold"];
+/// stray kind can't land an entry the gauntlet will only warn-and-skip. The last four
+/// are the hardening-catalog producers: `lockfile-lint` (#11 dependency firewall),
+/// `env-contract` (#13 env-var contract), `secret-scan` (#4 secret hygiene),
+/// `mutation-score` (#17 mutation audit).
+const ARMABLE_CHECK_KINDS: &[&str] = &[
+    "lint-plugin",
+    "dependency-cruiser",
+    "coverage-threshold",
+    "lockfile-lint",
+    "env-contract",
+    "secret-scan",
+    "mutation-score",
+];
+
+/// Validate a requested gauntlet-check kind against the armable allowlist. Factored out
+/// of [`arm_harness_gauntlet_check`] so the security-relevant gate — a stray or injected
+/// kind must never land a manifest entry the gauntlet will only warn-and-skip — is
+/// unit-testable without Tauri state. Matching is exact and case-sensitive: kinds are
+/// kebab-case wire strings, and accepting a near-miss would arm a check that never runs.
+fn validate_armable_check_kind(kind: &str) -> Result<(), String> {
+    if !ARMABLE_CHECK_KINDS.contains(&kind) {
+        return Err(format!(
+            "unknown check kind `{kind}` — expected one of: {}",
+            ARMABLE_CHECK_KINDS.join(", ")
+        ));
+    }
+    Ok(())
+}
 
 // The four store-agnostic lifecycle commands (list / get / delete / cancel), stamped
 // from the shared scan macro instead of hand-copied per feature.
@@ -590,12 +616,7 @@ pub fn arm_harness_gauntlet_check(
     if command.is_empty() {
         return Err("a gauntlet check needs a command to run".to_string());
     }
-    if !ARMABLE_CHECK_KINDS.contains(&kind.as_str()) {
-        return Err(format!(
-            "unknown check kind `{kind}` — expected one of: {}",
-            ARMABLE_CHECK_KINDS.join(", ")
-        ));
-    }
+    validate_armable_check_kind(&kind)?;
     let run = harness_store
         .get(&run_id)
         .ok_or_else(|| format!("no harness run with id {run_id}"))?;
@@ -624,4 +645,45 @@ pub fn arm_harness_gauntlet_check(
     );
     tracing::info!(target: "nightcore", run_id = %run_id, name = %name, kind = %kind, path = %dest.display(), "structure-lock check armed in harness.json");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_armable_check_kind_validates() {
+        // The full producer set: the three original gauntlet kinds plus the four
+        // hardening-catalog kinds (#4 secret-scan, #11 lockfile-lint, #13 env-contract,
+        // #17 mutation-score). Each must arm — a kind listed here but rejected would
+        // strand its module's harnessCheck suggestion with no way to go live.
+        for kind in [
+            "lint-plugin",
+            "dependency-cruiser",
+            "coverage-threshold",
+            "lockfile-lint",
+            "env-contract",
+            "secret-scan",
+            "mutation-score",
+        ] {
+            assert!(
+                validate_armable_check_kind(kind).is_ok(),
+                "kind {kind:?} must be armable"
+            );
+        }
+    }
+
+    #[test]
+    fn stray_check_kinds_are_rejected() {
+        // A kind outside the allowlist must never land a manifest entry: the gauntlet
+        // would warn-and-skip it, leaving the user believing a gate is armed that never
+        // runs. Case/format near-misses are rejected too (wire kinds are exact).
+        for kind in ["", "shell", "Lint-Plugin", "lint_plugin", "secret_scan", "secret-scan "] {
+            let err = validate_armable_check_kind(kind).unwrap_err();
+            assert!(
+                err.contains("unknown check kind"),
+                "kind {kind:?} must be rejected, got: {err}"
+            );
+        }
+    }
 }
