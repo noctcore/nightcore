@@ -60,15 +60,33 @@ worktree diff (`base...HEAD`), appended like the verify-command check; evidence 
 the fix loop via `fix_instruction`. No manifest entry needed (built-in, always-on for
 worktree Build tasks).
 
-### 3. Protected-paths + bypass-flag denial — `PLANNED`
+### 3. Protected-paths + bypass-flag denial — `SHIPPED`
 Manifest-driven PreToolUse rules blocking Edit/Write to lockfiles, migrations, generated
 code, and the manifest itself, plus Bash escape hatches. **Tier:** runtime hook, enforced
 in Nightcore's seam (never the target repo's `.claude/settings.json`, so it holds under
 bypassPermissions). **Prior art:** Claude Code hooks exit-2 semantics; dwarvesf/
-claude-guardrails. **Implementation note:** a `harness-policy.ts` sibling of
-`workspace-confinement.ts`, reading `protectedPaths`/`denyBashPatterns` from the
-codegen'd manifest. Ship with a per-task "intends protected change" override or users
-disable it wholesale.
+claude-guardrails. **Implementation:** `packages/engine/src/policy/harness-policy.ts` — the
+THIRD PreToolUse evaluator in `HookBus` (after the destructive deny list + workspace
+confinement), enforcing `protectedPaths` (segment-aware globs over Write/Edit/MultiEdit/
+NotebookEdit — `*` within a segment, `**` across, floating basename patterns, subtree
+protection, case-insensitive) and `denyBashPatterns` (project regexes over the raw Bash
+command line, invalid ones warn-and-skipped). `.nightcore/**` is IMPLICITLY protected
+whenever the layer is armed so an agent can't edit the config that gates it. The Rust core
+reads the `policy` key of `.nightcore/harness.json` (`store/harness_policy.rs::read_policy`,
+resolved from the project root the run cwd was pinned to) and carries the effective policy
+on `start-session` (`HarnessPolicySchema`, serde-additive); a manifest without a `policy`
+key still arms the empty self-protection floor, `policy.enabled:false` is the wholesale
+opt-out. Commits `672e522` (core threading) + `6447df0` (engine enforcement) + `345ed2d`
+(adversarial-review hardening). **Open follow-ups (from the 3-lens verification, none
+blocking):** the worktree-mode Structure-Lock gauntlet reads its manifest from the worktree
+dir (where `.nightcore/` is gitignored → absent → skips all checks) while the policy layer
+reads from root — a PRE-EXISTING gauntlet parity gap module #3 now makes visible; a task
+that legitimately needs a protected-path edit burns the full reviewer+fix budget because
+verification is policy-blind (feed the deny signal to an early "blocked-by-policy" park);
+a catastrophic-backtracking `denyBashPatterns` regex can stall the single-process sidecar
+(trusted config today, but a length cap / re2 guard would close it); and the two-step
+symlink write (`ln -s` then Edit through it) defeats the lexical self-protection — the same
+documented gap workspace-confinement has, deferred to the OS sandbox (#15).
 
 ### 4. Secret hygiene — `PLANNED`
 A `.gitleaks.toml` artifact + read-denial of `.env*`/keys via the hook layer + gitleaks
@@ -175,7 +193,19 @@ wiring an ESLint plugin into `eslint.config.*` becomes a worktree agent task gat
 `npx eslint .`, and on verify the manifest is armed. That closes the "inert ESLint plugin"
 gap end-to-end using only mechanisms that now exist.
 
-**Runtime-hook modules (3, 4, 9, 11, 12)** all wait on one shared piece: a
+**Runtime-hook modules (4, 9, 11, 12)** waited on one shared piece: a
 `harness-policy.ts` PreToolUse layer in Nightcore's seam, driven by the codegen'd
-manifest. Building that unlocks five modules at once and is the recommended next
-infrastructure investment after the proposal-convert producer.
+manifest. That layer is now **SHIPPED** (module #3 above), so those four are unlocked:
+- **#4 Secret hygiene** — read-denial of `.env*`/keys reuses the protected-paths/Bash-deny
+  seam; the `.gitleaks.toml` is a `create` artifact + a `commit_task` staged-diff scan.
+- **#9 Least-privilege permission manifest** — a derived deny→ask→allow ruleset; the hook
+  now demonstrates manifest→session-policy plumbing to copy.
+- **#11 Dependency firewall** — install-command interception is a `denyBashPatterns` entry
+  today; `ignore-scripts`/`save-exact` configs are `create` artifacts; lockfile-lint is an
+  armable check.
+- **#12 Prompt-injection surface scan** — flagged paths become `protectedPaths`/read-deny
+  entries once the input pre-flight scan exists.
+The next producer to build is still the **Harness proposal-convert that sets a
+`verifyCommand`** (§3 above) plus a UI to author the `policy` block of `harness.json`
+(today it is hand-authored or Rust-written); with the hook shipped, the remaining hook-tier
+work is populating the manifest, not new enforcement infrastructure.
