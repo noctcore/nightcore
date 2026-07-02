@@ -20,6 +20,7 @@ import type { ImageFormat,NewAttachmentPayload } from './attachments';
 import { imageDataUrl } from './attachments';
 import type { BoardBackgroundRef } from './generated/BoardBackgroundRef';
 import type { PrDraft } from './generated/PrDraft';
+import type { PrStatus } from './generated/PrStatus';
 import type { PrSupport } from './generated/PrSupport';
 
 export type { SessionStatus } from '@nightcore/contracts';
@@ -56,6 +57,7 @@ export type { PrDraft } from './generated/PrDraft';
 export type { Project } from './generated/Project';
 export type { ProviderConfigSection } from './generated/ProviderConfigSection';
 export type { ProviderConfigSnapshot } from './generated/ProviderConfigSnapshot';
+export type { PrStatus } from './generated/PrStatus';
 export type { PrSupport } from './generated/PrSupport';
 export type { RunMode } from './generated/RunMode';
 export type { SessionInfo } from './generated/SessionInfo';
@@ -629,41 +631,6 @@ export async function createPrTask(id: string, opts: CreatePrOptions): Promise<v
  *  Used by the PR chip; rejects on a non-https URL. */
 export async function openExternal(url: string): Promise<void> {
   await invoke('open_external', { url });
-}
-
-// MERGER NOTE — EXPECTED CODEGEN HANDOFF: the Rust half of PR phase 2 ts-rs-
-// exports this exact struct; once its `cargo test` regen lands, DELETE this
-// local interface and re-export the binding instead:
-//   export type { PrStatus } from './generated/PrStatus';
-// (the same handoff phase 1 did for PrSupport/PrDraft). The shape below IS the
-// shared contract — do not drift it.
-/** Live GitHub state for a task's pull request, straight from a bounded
- *  `gh pr view --json …` (fields counted/shaped Rust-side). String fields are
- *  gh vocabulary PASS-THROUGHS (`state`, `mergeable`, `mergeStateStatus`,
- *  `reviewDecision`) — no enum fork, so the UI must degrade gracefully (show
- *  the raw string) on values it doesn't know. Carries NO timestamps: the web
- *  stamps receive-time locally when a fetch resolves. */
-export interface PrStatus {
-  /** `"OPEN" | "CLOSED" | "MERGED"` (gh vocabulary). */
-  state: string;
-  isDraft: boolean;
-  /** `"MERGEABLE" | "CONFLICTING" | "UNKNOWN"`. */
-  mergeable: string;
-  /** `"CLEAN" | "BEHIND" | "BLOCKED" | "DIRTY" | "UNSTABLE" | …`. */
-  mergeStateStatus: string;
-  /** `"APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | ""`. */
-  reviewDecision: string;
-  /** Check-run counts, tallied Rust-side from `statusCheckRollup`. */
-  checksPassed: number;
-  checksFailed: number;
-  checksPending: number;
-  baseRefName: string;
-  /** The gh-reported PR page URL (never a raw remote URL). */
-  url: string;
-  number: number;
-  /** LOCAL-ONLY count of commits on the task branch not on its upstream;
-   *  `0` when the worktree is gone. */
-  unpushedCommits: number;
 }
 
 /** Fetch the live PR status for a task (requires `prNumber` set) via a bounded
