@@ -376,11 +376,21 @@ export class SessionRunner {
   }
 
   async setModel(model: string): Promise<void> {
-    await this.query?.setModel(model);
+    // Mirror interrupt(): the SDK control request can reject when the session is
+    // mid-teardown or the transport has closed. Swallow that so a doomed model
+    // switch degrades to a no-op with a session-scoped log rather than bubbling
+    // up as a generic sidecar 'dispatch failed' warning.
+    await this.query?.setModel(model).catch((error: unknown) => {
+      this.logger?.warn('setModel rejected (session may be stopping)', error);
+    });
   }
 
   async setPermissionMode(mode: PermissionMode): Promise<void> {
-    await this.query?.setPermissionMode(mode);
+    // Same degrade-not-throw contract as setModel()/interrupt(): a rejected
+    // control request must not surface as an unhandled sidecar dispatch error.
+    await this.query?.setPermissionMode(mode).catch((error: unknown) => {
+      this.logger?.warn('setPermissionMode rejected (session may be stopping)', error);
+    });
   }
 
   /**

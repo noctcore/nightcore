@@ -41,6 +41,11 @@ let stallStream = false;
 /** Counts `interrupt()` calls on the stubbed query, so a test can assert the
  *  stall path tears the subprocess down. */
 let interruptCalls = 0;
+/** When true, the stubbed query's control methods (`interrupt`/`setModel`/
+ *  `setPermissionMode`) REJECT — reproducing a control request that fails because
+ *  the session is mid-teardown or the transport is closed. Each control method
+ *  must swallow that and degrade to a no-op rather than throwing. */
+let rejectControl = false;
 mock.module('@anthropic-ai/claude-agent-sdk', () => ({
   ...realSdk,
   query: (args: { options?: Record<string, unknown> }) => {
@@ -71,9 +76,14 @@ mock.module('@anthropic-ai/claude-agent-sdk', () => ({
     return Object.assign(iterator, {
       async interrupt() {
         interruptCalls += 1;
+        if (rejectControl) throw new Error('interrupt rejected: transport closed');
       },
-      async setModel() {},
-      async setPermissionMode() {},
+      async setModel() {
+        if (rejectControl) throw new Error('setModel rejected: session stopping');
+      },
+      async setPermissionMode() {
+        if (rejectControl) throw new Error('setPermissionMode rejected: session stopping');
+      },
     });
   },
 }));
@@ -265,6 +275,57 @@ describe('SessionRunner — idle watchdog frees a wedged subprocess', () => {
     expect(failed?.type).toBe('session-failed');
     if (failed?.type === 'session-failed') {
       expect(failed.reason).toBe('runner-crash');
+    }
+  });
+});
+
+describe('SessionRunner — control requests degrade when the SDK rejects', () => {
+  // interrupt() already awaits behind a .catch(); setModel()/setPermissionMode()
+  // must mirror it. A rejected control request (session mid-teardown / closed
+  // transport) has to degrade to a no-op, not bubble up as an unhandled rejection
+  // that the sidecar can only report as a generic 'dispatch failed'.
+  async function runnerWithLiveQuery(): Promise<InstanceType<typeof SessionRunner>> {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    queryCalls = 0;
+    queuedMessages = [];
+    const runner = makeRunner(() => {});
+    // run() completes on the empty stream but leaves `this.query` assigned, so the
+    // control methods proxy to the (now settled) stubbed Query.
+    await runner.run();
+    expect(queryCalls).toBe(1);
+    return runner;
+  }
+
+  test('setModel swallows a rejected control request', async () => {
+    const runner = await runnerWithLiveQuery();
+    rejectControl = true;
+    try {
+      await expect(runner.setModel('claude-sonnet-4-5')).resolves.toBeUndefined();
+    } finally {
+      rejectControl = false;
+    }
+  });
+
+  test('setPermissionMode swallows a rejected control request', async () => {
+    const runner = await runnerWithLiveQuery();
+    rejectControl = true;
+    try {
+      await expect(runner.setPermissionMode('acceptEdits')).resolves.toBeUndefined();
+    } finally {
+      rejectControl = false;
+    }
+  });
+
+  test('interrupt swallows a rejected control request', async () => {
+    const runner = await runnerWithLiveQuery();
+    rejectControl = true;
+    interruptCalls = 0;
+    try {
+      await expect(runner.interrupt()).resolves.toBeUndefined();
+      // The control request WAS issued (and rejected) — it did not silently skip.
+      expect(interruptCalls).toBe(1);
+    } finally {
+      rejectControl = false;
     }
   });
 });
