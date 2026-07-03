@@ -68,9 +68,13 @@ where
                 return Ok(existing);
             }
             // The linked task was deleted out from under us: re-point the item at the task
-            // we just (re)created instead of leaving a dangling link.
-            store.upsert(&task)?;
+            // we just (re)created instead of leaving a dangling link. Return the RE-upsert's
+            // snapshot — not the stale pre-remove `stamped` — so the emitted task carries the
+            // current stored `seq` (the emit-the-stamped-snapshot invariant this module
+            // guarantees; a stale seq would let the web reconciler drop the healed event).
+            let restamped = store.upsert(&task)?;
             repoint(&task.id)?;
+            return Ok(restamped);
         }
         Err(e) => {
             // Linking failed (run/item vanished): roll back the orphan task so a retry is
@@ -186,7 +190,14 @@ mod tests {
 
         assert!(repointed.get(), "repoint must heal the dangling link");
         assert_eq!(out.id, id, "must return the freshly minted task");
-        assert!(store.get(&id).is_some(), "the minted task must persist");
+        let stored = store.get(&id).expect("the minted task must persist");
+        // Regression: the heal path must return the RE-upsert's fresh snapshot, not the
+        // stale pre-remove one — so the emitted task carries the current stored `seq` and
+        // the web's seq-based reconciler can't drop the healed event as stale.
+        assert_eq!(
+            out.seq, stored.seq,
+            "the healed task must carry the current stored seq, not a stale pre-remove one"
+        );
     }
 
     #[test]
