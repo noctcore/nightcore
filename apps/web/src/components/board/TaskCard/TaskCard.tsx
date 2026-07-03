@@ -14,6 +14,7 @@ import {
   RefineIcon,
   RetryIcon,
   SparkIcon,
+  Spinner,
   StopIcon,
   TrashIcon,
   VerifiedIcon,
@@ -98,6 +99,16 @@ function TaskCardImpl({
   // A main-mode task edits the project tree in place — surface a "main" chip
   // (it has no branch) whenever a worktree task would show its branch chip.
   const showMainChip = mainMode && settled;
+
+  // True while a named bridge command is in flight for this task — disables the
+  // matching board button and swaps its icon for a Spinner + "…ing" label, so the
+  // card gives the same pending feedback the TaskDetail footer already does.
+  const pending = (action: string): boolean => isActionPending?.(action, task.id) ?? false;
+  const runPending = pending('run');
+  const approvePending = pending('approve');
+  const refinePending = pending('refine');
+  const mergePending = pending('merge');
+  const commitPending = pending('commit');
 
   const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
   const pulse = needsApproval
@@ -242,12 +253,13 @@ function TaskCardImpl({
           <>
             <button
               type="button"
-              disabled={blocked}
+              disabled={blocked || runPending}
+              aria-busy={runPending}
               onClick={() => onRun?.(task.id)}
-              className={`${ACTION_BASE} ${blocked ? ACTION_DISABLED : ACTION_PRIMARY}`}
+              className={`${ACTION_BASE} ${blocked || runPending ? ACTION_DISABLED : ACTION_PRIMARY}`}
             >
-              {blocked ? <LockIcon size={13} /> : <PlayIcon size={13} />}
-              {blocked ? 'Blocked' : 'Run'}
+              {runPending ? <Spinner size={13} /> : blocked ? <LockIcon size={13} /> : <PlayIcon size={13} />}
+              {runPending ? 'Starting…' : blocked ? 'Blocked' : 'Run'}
             </button>
             <button
               type="button"
@@ -282,19 +294,23 @@ function TaskCardImpl({
           <>
             <button
               type="button"
+              disabled={approvePending}
+              aria-busy={approvePending}
               onClick={() => onApprove?.(task.id)}
-              className={`${ACTION_BASE} ${ACTION_PRIMARY}`}
+              className={`${ACTION_BASE} ${approvePending ? ACTION_DISABLED : ACTION_PRIMARY}`}
             >
-              <CheckIcon size={13} />
-              Approve
+              {approvePending ? <Spinner size={13} /> : <CheckIcon size={13} />}
+              {approvePending ? 'Approving…' : 'Approve'}
             </button>
             <button
               type="button"
+              disabled={refinePending}
+              aria-busy={refinePending}
               onClick={() => onRefine?.(task.id)}
-              className={`${ACTION_BASE} ${ACTION_GHOST}`}
+              className={`${ACTION_BASE} ${refinePending ? ACTION_DISABLED : ACTION_GHOST}`}
             >
-              <RefineIcon size={13} />
-              Refine
+              {refinePending ? <Spinner size={13} /> : <RefineIcon size={13} />}
+              {refinePending ? 'Refining…' : 'Refine'}
             </button>
           </>
         ) : task.status === 'done' ? (
@@ -322,27 +338,29 @@ function TaskCardImpl({
             ) : task.committed ? (
               <button
                 type="button"
-                disabled={!task.verified}
+                disabled={!task.verified || mergePending}
+                aria-busy={mergePending}
                 title={
                   task.verified
                     ? undefined
                     : 'Open the task to run the readiness gauntlet before merging'
                 }
                 onClick={() => onMerge?.(task.id)}
-                className={`${ACTION_BASE} ${task.verified ? ACTION_PRIMARY : ACTION_DISABLED}`}
+                className={`${ACTION_BASE} ${task.verified && !mergePending ? ACTION_PRIMARY : ACTION_DISABLED}`}
               >
-                <BranchIcon size={13} />
-                Merge
+                {mergePending ? <Spinner size={13} /> : <BranchIcon size={13} />}
+                {mergePending ? 'Merging…' : 'Merge'}
               </button>
             ) : (
               <button
                 type="button"
-                disabled={isActionPending?.('commit', task.id) ?? false}
+                disabled={commitPending}
+                aria-busy={commitPending}
                 onClick={() => onCommit?.(task.id)}
-                className={`${ACTION_BASE} ${isActionPending?.('commit', task.id) ? ACTION_DISABLED : ACTION_PRIMARY}`}
+                className={`${ACTION_BASE} ${commitPending ? ACTION_DISABLED : ACTION_PRIMARY}`}
               >
-                <CommitIcon size={13} />
-                {isActionPending?.('commit', task.id) ? 'Committing…' : 'Commit'}
+                {commitPending ? <Spinner size={13} /> : <CommitIcon size={13} />}
+                {commitPending ? 'Committing…' : 'Commit'}
               </button>
             )}
             <button
@@ -358,11 +376,13 @@ function TaskCardImpl({
           <>
             <button
               type="button"
+              disabled={runPending}
+              aria-busy={runPending}
               onClick={() => onRun?.(task.id)}
-              className={`${ACTION_BASE} ${ACTION_PRIMARY}`}
+              className={`${ACTION_BASE} ${runPending ? ACTION_DISABLED : ACTION_PRIMARY}`}
             >
-              <RetryIcon size={13} />
-              Retry
+              {runPending ? <Spinner size={13} /> : <RetryIcon size={13} />}
+              {runPending ? 'Starting…' : 'Retry'}
             </button>
             <button
               type="button"

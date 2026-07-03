@@ -5,7 +5,7 @@ import { render } from 'vitest-browser-react';
 import { formatElapsed, subscribeSecondTick } from './TaskCard.hooks';
 import * as stories from './TaskCard.stories';
 
-const { Backlog, Failed, Done, Blocked, Running, Verifying, MainMode, MainModeCommitted, Draggable } =
+const { Backlog, Failed, Done, Blocked, Running, Verifying, WaitingApproval, MainMode, MainModeCommitted, Draggable } =
   composeStories(stories);
 
 test('shows the reviewing chip and a cancel control while verifying', async () => {
@@ -84,6 +84,28 @@ test('a draggable card carries the grab affordance and keyboard-draggable attrib
 test('a non-draggable card exposes no drag affordance', async () => {
   const screen = render(<Backlog />);
   expect(screen.container.querySelector('.cursor-grab')).toBeNull();
+});
+
+test('the Run button shows in-flight feedback while its command is pending (a11y)', async () => {
+  // Mirrors the TaskDetail footer: a pending run disables the button, sets
+  // aria-busy, and swaps the label to "Starting…" so the board isn't inert-looking.
+  const screen = render(<Backlog isActionPending={(action) => action === 'run'} />);
+  const btn = screen.getByRole('button', { name: /starting/i });
+  await expect.element(btn).toBeDisabled();
+  await expect.element(btn).toHaveAttribute('aria-busy', 'true');
+});
+
+test('the Approve button shows in-flight feedback while its command is pending (a11y)', async () => {
+  const screen = render(<WaitingApproval isActionPending={(action) => action === 'approve'} />);
+  const btn = screen.getByRole('button', { name: /approving/i });
+  await expect.element(btn).toBeDisabled();
+  await expect.element(btn).toHaveAttribute('aria-busy', 'true');
+});
+
+test('an unrelated pending action leaves this card\'s buttons interactive', async () => {
+  // A pending merge on some OTHER task must not disable this card's Run button.
+  const screen = render(<Backlog isActionPending={(action) => action === 'merge'} />);
+  await expect.element(screen.getByRole('button', { name: /^run$/i })).toBeEnabled();
 });
 
 test('formatElapsed renders mm:ss and clamps negatives to 00:00', () => {
