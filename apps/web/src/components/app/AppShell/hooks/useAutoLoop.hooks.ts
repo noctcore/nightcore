@@ -48,11 +48,16 @@ export function useAutoLoop(
 
   const changeConcurrency = useCallback(
     (n: number) => {
-      void setMaxConcurrency(n).catch((err) => {
-        console.error('set_max_concurrency failed', err);
-        toast.error('Could not change concurrency', err);
-      });
-      persistConcurrency(n);
+      void setMaxConcurrency(n)
+        .then(() => {
+          // Only persist the value the backend actually accepted; a rejected
+          // command must not survive as the persisted first-load fallback.
+          persistConcurrency(n);
+        })
+        .catch((err) => {
+          console.error('set_max_concurrency failed', err);
+          toast.error('Could not change concurrency', err);
+        });
     },
     [persistConcurrency, toast],
   );
