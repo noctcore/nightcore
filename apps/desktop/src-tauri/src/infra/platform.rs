@@ -102,11 +102,52 @@ pub const GIT_ENV_VARS_TO_CLEAR: &[&str] = &[
     "GIT_COMMITTER_DATE",
 ];
 
+/// Environment variables that turn a plain `git` invocation into arbitrary host
+/// **code execution**: git spawns the named program as part of an otherwise-inert
+/// operation (ssh transport, external diff/textconv, pager, proxy, editor). Left
+/// inherited (or set by a hostile parent), any of these hands the trusted Rust host
+/// a command the agent controls on the next merge/diff/status/push. Scrubbed before
+/// every git spawn alongside [`GIT_ENV_VARS_TO_CLEAR`]. `LD_PRELOAD` /
+/// `DYLD_INSERT_LIBRARIES` are the dynamic-linker equivalents — they inject a
+/// shared object into the git child, so they belong to the same class.
+pub const GIT_EXEC_ENV_VARS_TO_CLEAR: &[&str] = &[
+    "GIT_SSH_COMMAND",
+    "GIT_SSH",
+    "GIT_EXTERNAL_DIFF",
+    "GIT_PAGER",
+    "GIT_PROXY_COMMAND",
+    "GIT_EDITOR",
+    "GIT_SEQUENCE_EDITOR",
+    "GIT_ASKPASS",
+    "LD_PRELOAD",
+    "LD_AUDIT",
+    "DYLD_INSERT_LIBRARIES",
+];
+
+/// Repo-local git-config keys that name a program git will EXECUTE, neutralized via
+/// leading `-c <key>=` overrides on every git spawn. A `git` op runs with
+/// `.current_dir(worktree)`, so git reads the worktree's own `.git/config` — which
+/// the agent can write through a Bash redirect (the documented workspace-confinement
+/// gap that does not intercept `> /abs/.git/config`). Without these overrides a
+/// planted `core.fsmonitor=<cmd>` / `core.sshCommand=<cmd>` / `core.pager=<cmd>` /
+/// `core.hooksPath=<dir>` yields code execution in the host on the next git call.
+/// Command-line `-c` beats repo/global/system config, so these win.
+const GIT_CONFIG_NEUTRALIZERS: &[&str] = &[
+    "core.fsmonitor=",
+    "core.sshCommand=",
+    "core.pager=cat",
+    "core.hooksPath=/dev/null",
+];
+
 /// Build a `git` [`std::process::Command`] in `repo` with an ISOLATED environment.
 /// Every production git call routes through here so a leaked parent git context can
 /// never redirect git at the wrong repo. We:
 /// - remove the 11 `GIT_*` vars that override repo/work-tree/index/author
 ///   ([`GIT_ENV_VARS_TO_CLEAR`]);
+/// - remove the code-execution / dynamic-linker vectors ([`GIT_EXEC_ENV_VARS_TO_CLEAR`])
+///   and neutralize the agent-writable repo-local exec config keys
+///   ([`GIT_CONFIG_NEUTRALIZERS`]) so a poisoned env or `.git/config` can't turn a
+///   git op into host code execution;
 /// - set `HUSKY=0` so the user's git hooks never fire on our automated commits/merges;
 /// - pin `LC_ALL=C` so git's porcelain text output is locale-stable for parsing;
 /// - set `GIT_TERMINAL_PROMPT=0` so a credential prompt errors instead of hanging a
@@ -116,8 +157,21 @@ pub const GIT_ENV_VARS_TO_CLEAR: &[&str] = &[
 /// clearing the whole env would stop git finding its binary or credentials.
 pub fn git_command(repo: &Path) -> std::process::Command {
     let mut cmd = std_command("git");
+    // Leading `-c key=value` overrides neutralize any agent-planted repo-local
+    // code-execution config keys BEFORE the caller appends its subcommand (git
+    // requires `-c` options to precede the subcommand).
+    for kv in GIT_CONFIG_NEUTRALIZERS {
+        cmd.arg("-c").arg(kv);
+    }
     cmd.current_dir(repo);
     for var in GIT_ENV_VARS_TO_CLEAR {
+        cmd.env_remove(var);
+    }
+    // Scrub the code-execution / dynamic-linker vectors so a poisoned parent env
+    // can't turn a git op into host RCE. We intentionally do NOT set
+    // GIT_CONFIG_NOSYSTEM: system config is not agent-writable and on Apple git it
+    // carries the osxkeychain credential helper first-party pushes depend on.
+    for var in GIT_EXEC_ENV_VARS_TO_CLEAR {
         cmd.env_remove(var);
     }
     cmd.env("HUSKY", "0");
@@ -390,8 +444,59 @@ mod tests {
             Some(&Some(OsStr::new("0")))
         );
         // PATH/HOME are inherited (not in the override map) — env_remove only marks
-        // the 11 GIT_* vars; we never env_clear.
+        // the GIT_* vars; we never env_clear.
         assert!(!envs.contains_key(OsStr::new("PATH")));
         assert_eq!(cmd.get_current_dir(), Some(Path::new("/tmp")));
+    }
+
+    /// The code-execution / dynamic-linker vectors must be scrubbed from every git
+    /// spawn: a poisoned parent env (GIT_SSH_COMMAND, GIT_EXTERNAL_DIFF, GIT_PAGER,
+    /// GIT_PROXY_COMMAND, GIT_EDITOR, LD_PRELOAD, DYLD_INSERT_LIBRARIES, …) must not
+    /// survive into the child, or a contained agent gets host RCE on the next git op.
+    #[test]
+    fn git_command_scrubs_code_execution_env_vectors() {
+        use std::collections::HashMap;
+        use std::ffi::OsStr;
+        let cmd = git_command(Path::new("/tmp"));
+        let envs: HashMap<&OsStr, Option<&OsStr>> = cmd.get_envs().collect();
+        for var in GIT_EXEC_ENV_VARS_TO_CLEAR {
+            assert_eq!(
+                envs.get(OsStr::new(var)),
+                Some(&None),
+                "{var} must be removed from the git env"
+            );
+        }
+        // The classic RCE trio and dynamic-linker vectors are explicitly covered.
+        for var in [
+            "GIT_SSH_COMMAND",
+            "GIT_EXTERNAL_DIFF",
+            "GIT_PAGER",
+            "GIT_PROXY_COMMAND",
+            "LD_PRELOAD",
+            "DYLD_INSERT_LIBRARIES",
+        ] {
+            assert_eq!(envs.get(OsStr::new(var)), Some(&None), "{var} not scrubbed");
+        }
+    }
+
+    /// Every git spawn must lead with `-c <key>=` overrides that neutralize the
+    /// agent-writable repo-local code-execution config keys (core.fsmonitor,
+    /// core.sshCommand, core.pager, core.hooksPath), and those overrides must
+    /// precede any subcommand the caller appends.
+    #[test]
+    fn git_command_neutralizes_repo_local_exec_config() {
+        let cmd = git_command(Path::new("/tmp"));
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        for kv in GIT_CONFIG_NEUTRALIZERS {
+            let pos = args.iter().position(|a| a == kv);
+            assert!(pos.is_some(), "missing `-c {kv}` override in {args:?}");
+            let i = pos.unwrap();
+            assert!(i >= 1 && args[i - 1] == "-c", "`{kv}` not preceded by -c");
+        }
+        // core.hooksPath is neutralized so native hooks (not just Husky) can't fire.
+        assert!(args.iter().any(|a| a == "core.hooksPath=/dev/null"));
     }
 }
