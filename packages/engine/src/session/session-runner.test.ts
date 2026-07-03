@@ -46,11 +46,23 @@ let interruptCalls = 0;
  *  the session is mid-teardown or the transport is closed. Each control method
  *  must swallow that and degrade to a no-op rather than throwing. */
 let rejectControl = false;
+/** When set, `query()` THROWS on open — reproducing a transient probe subprocess
+ *  that can't be spawned. `withProbe` must return the fallback, not reject. */
+let throwOnQuery = false;
+/** When true, the stubbed query's provider-config read methods (`supportedModels`
+ *  et al.) REJECT — reproducing a body-call failure mid-probe. `withProbe` must
+ *  still run its teardown (abort + interrupt) and return the fallback. */
+let rejectProbeRead = false;
+/** Scripted return value for the stubbed `supportedModels()` control read. */
+let scriptedModels: unknown[] = [];
 mock.module('@anthropic-ai/claude-agent-sdk', () => ({
   ...realSdk,
   query: (args: { options?: Record<string, unknown> }) => {
     queryCalls += 1;
     lastQueryOptions = args?.options;
+    // A transient probe subprocess that fails to spawn: withProbe must degrade to
+    // its fallback, not reject.
+    if (throwOnQuery) throw new Error('transient probe failed to open');
     const pending = [...queuedMessages];
     const iterator: AsyncGenerator<unknown> = {
       async next() {
@@ -83,6 +95,15 @@ mock.module('@anthropic-ai/claude-agent-sdk', () => ({
       },
       async setPermissionMode() {
         if (rejectControl) throw new Error('setPermissionMode rejected: session stopping');
+      },
+      // Provider-config inspector control reads. `supportedModels` is the template
+      // the whole probe surface (mcpServerStatus/supportedCommands/…) shares.
+      async supportedModels() {
+        if (rejectProbeRead) throw new Error('probe read rejected mid-flight');
+        return scriptedModels;
+      },
+      async mcpServerStatus() {
+        return [] as unknown[];
       },
     });
   },
@@ -327,6 +348,122 @@ describe('SessionRunner — control requests degrade when the SDK rejects', () =
     } finally {
       rejectControl = false;
     }
+  });
+});
+
+describe('SessionRunner — live-control probe surface (transient-probe teardown)', () => {
+  // The provider-config inspector reads the SDK's model list / MCP status /
+  // skills / subagents / init off `withProbe`. Its `finally` (abort + interrupt)
+  // is the SOLE guard against leaking a `claude` subprocess on every inspection.
+  // These exercise the REAL transient spawn-and-teardown, not a stubbed withProbe.
+
+  /** The AbortController the transient probe was spawned with, read off the last
+   *  `query()` options — its `.signal.aborted` proves `abort.abort()` ran. */
+  function lastAbort(): AbortController {
+    return lastQueryOptions?.abortController as AbortController;
+  }
+
+  test('with NO live query, supportedModels spawns a transient probe and tears it down', async () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    queryCalls = 0;
+    interruptCalls = 0;
+    lastQueryOptions = undefined;
+    scriptedModels = [{ value: 'claude-opus-4-8', displayName: 'Opus' }];
+
+    // A fresh runner has never opened a query, so this MUST take the transient path.
+    const runner = makeRunner(() => {});
+    const models = await runner.supportedModels();
+
+    // The scripted control read flowed back through the real probeControl/withProbe.
+    expect(models).toEqual(scriptedModels);
+    // Exactly one transient subprocess was spawned for the probe...
+    expect(queryCalls).toBe(1);
+    // ...and torn down in the finally: abort.abort() fired AND interrupt() ran, so
+    // no claude subprocess leaks. This is the subprocess-leak guard under test.
+    expect(lastAbort().signal.aborted).toBe(true);
+    expect(interruptCalls).toBe(1);
+  });
+
+  test('an OPEN failure (probe cannot spawn) returns the fallback without throwing', async () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    queryCalls = 0;
+    interruptCalls = 0;
+    scriptedModels = [{ value: 'm' }];
+    throwOnQuery = true;
+    try {
+      const runner = makeRunner(() => {});
+      // Degrade-not-throw: a probe that can't open resolves to the `[]` fallback.
+      await expect(runner.supportedModels()).resolves.toEqual([]);
+      expect(queryCalls).toBe(1);
+      // The transient never opened, so there is nothing to interrupt.
+      expect(interruptCalls).toBe(0);
+    } finally {
+      throwOnQuery = false;
+    }
+  });
+
+  test('a body-throw (probe read rejects) still tears the transient down and returns the fallback', async () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    queryCalls = 0;
+    interruptCalls = 0;
+    lastQueryOptions = undefined;
+    rejectProbeRead = true;
+    try {
+      const runner = makeRunner(() => {});
+      await expect(runner.supportedModels()).resolves.toEqual([]);
+      // The transient WAS opened, so teardown (abort + interrupt) must still run —
+      // a failing read must not leak the subprocess it was reading from.
+      expect(queryCalls).toBe(1);
+      expect(lastAbort().signal.aborted).toBe(true);
+      expect(interruptCalls).toBe(1);
+    } finally {
+      rejectProbeRead = false;
+    }
+  });
+
+  test('with a live query and no cwd override, withProbe REUSES it (no new subprocess)', async () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    queryCalls = 0;
+    interruptCalls = 0;
+    queuedMessages = [];
+    scriptedModels = [{ value: 'reused' }];
+
+    // Drive run() to completion so `this.query` is assigned (never nulled), giving
+    // the runner a live query to reuse.
+    const runner = makeRunner(() => {});
+    await runner.run();
+    expect(queryCalls).toBe(1);
+
+    const models = await runner.supportedModels();
+
+    // Reuse path: the read went to the existing query — NO transient was spawned...
+    expect(models).toEqual(scriptedModels);
+    expect(queryCalls).toBe(1);
+    // ...and the shared live query is NOT torn down by the probe.
+    expect(interruptCalls).toBe(0);
+  });
+
+  test('a cwd override FORCES a transient probe even when a live query exists', async () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    queryCalls = 0;
+    interruptCalls = 0;
+    queuedMessages = [];
+    lastQueryOptions = undefined;
+
+    const runner = makeRunner(() => {});
+    await runner.run();
+    expect(queryCalls).toBe(1);
+
+    // The live query is rooted at this runner's own cwd; a cwd override must
+    // re-root resolution, which the live query can't do — so it forces a transient.
+    const status = await runner.mcpServerStatus('/other/project/root');
+
+    expect(status).toEqual([]);
+    expect(queryCalls).toBe(2);
+    // The transient was spawned at the override root and torn down afterwards.
+    expect(lastQueryOptions?.cwd).toBe('/other/project/root');
+    expect(lastAbort().signal.aborted).toBe(true);
+    expect(interruptCalls).toBe(1);
   });
 });
 
