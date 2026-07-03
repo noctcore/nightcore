@@ -72,14 +72,30 @@ export function encodeEvent(event: NightcoreEvent): string {
 const FAST_PATH_EVENT_TYPES = new Set<NightcoreEvent['type']>(['assistant-delta']);
 
 /**
+ * The maximum length (in decoded characters, a proxy for bytes) of a single
+ * inbound NDJSON command line. Real `SurfaceCommand`s are tiny; the bound exists
+ * only so a newline-free multi-GB emission from a compromised/runaway core can't
+ * grow the buffer unboundedly and OOM the sidecar. Mirrors the Rust reader's
+ * `MAX_WIRE_LINE_BYTES` on the stdout side.
+ */
+export const MAX_COMMAND_LINE_BYTES = 16 * 1024 * 1024;
+
+/**
  * Buffers raw stdin bytes and yields complete NDJSON command lines. A command
  * split across chunks still parses: bytes accumulate until a newline closes a
  * line. Blank lines are skipped. Decoded with a streaming `TextDecoder` so a
  * multibyte char split across a chunk boundary is not corrupted.
+ *
+ * DoS guard: a newline-free run that grows the buffer past `maxLineBytes` is
+ * dropped whole and the buffer skips bytes until the next newline resynchronizes
+ * the stream — one oversized line can never exhaust memory.
  */
 export class CommandLineBuffer {
   private readonly decoder = new TextDecoder();
   private buffer = '';
+  private overflowed = false;
+
+  constructor(private readonly maxLineBytes: number = MAX_COMMAND_LINE_BYTES) {}
 
   /** Feed a chunk; return every complete, non-blank line it completes. */
   push(chunk: Uint8Array): string[] {
@@ -90,7 +106,19 @@ export class CommandLineBuffer {
       const line = this.buffer.slice(0, newline).trim();
       this.buffer = this.buffer.slice(newline + 1);
       newline = this.buffer.indexOf('\n');
+      if (this.overflowed) {
+        // This newline closes the oversized line we already discarded — swallow it
+        // and resume normal parsing from the remaining buffer.
+        this.overflowed = false;
+        continue;
+      }
       if (line.length > 0) lines.push(line);
+    }
+    // A pending, newline-free buffer over the cap is a runaway/hostile emission:
+    // drop it and enter skip-until-newline mode so memory stays bounded.
+    if (!this.overflowed && this.buffer.length > this.maxLineBytes) {
+      this.buffer = '';
+      this.overflowed = true;
     }
     return lines;
   }

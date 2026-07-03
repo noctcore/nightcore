@@ -119,6 +119,27 @@ describe('CommandLineBuffer', () => {
     const [line] = buffer.push(bytes.slice(splitAt));
     expect(JSON.parse(line!)).toEqual({ t: '€' });
   });
+
+  test('drops a newline-free line over the cap and resynchronizes', () => {
+    // A small cap makes the DoS guard testable without allocating gigabytes: a
+    // newline-free blob past the cap must be dropped whole (not accumulated), and
+    // the next complete line must still parse — proving memory stays bounded.
+    const buffer = new CommandLineBuffer(64);
+    // Feed 200 newline-free chars in chunks: nothing is yielded and the buffer
+    // does not grow without bound (it is discarded once past the cap).
+    expect(buffer.push(utf8('x'.repeat(200)))).toEqual([]);
+    // The newline that finally arrives closes the discarded oversized line; the
+    // trailing valid command after it parses normally.
+    expect(buffer.push(utf8('leftover\n{"ok":true}\n'))).toEqual(['{"ok":true}']);
+  });
+
+  test('overflow across multiple chunks still resynchronizes at the next newline', () => {
+    const buffer = new CommandLineBuffer(64);
+    expect(buffer.push(utf8('a'.repeat(50)))).toEqual([]);
+    expect(buffer.push(utf8('b'.repeat(50)))).toEqual([]); // now over the cap → dropped
+    expect(buffer.push(utf8('c'.repeat(50)))).toEqual([]); // still skipping
+    expect(buffer.push(utf8('\n{"next":1}\n'))).toEqual(['{"next":1}']);
+  });
 });
 
 describe('createSidecar — event sink', () => {
