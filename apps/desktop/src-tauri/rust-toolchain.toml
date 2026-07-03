@@ -1,0 +1,9 @@
+# Pin the build/lint toolchain so `cargo clippy --all-targets -- -D warnings`
+# runs against a known Rust release. Without this, CI floated on `stable`, so a
+# new Rust release that adds a clippy lint would red the gate with zero code
+# changes. rustup reads this override file for every cargo invocation in this
+# crate, so local dev and CI use the same toolchain. Bump this deliberately.
+# (This is the build toolchain, distinct from Cargo.toml's `rust-version` MSRV.)
+[toolchain]
+channel = "1.94.1"
+components = ["clippy", "rustfmt"]
