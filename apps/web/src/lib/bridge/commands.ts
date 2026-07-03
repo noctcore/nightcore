@@ -1,314 +1,69 @@
 /**
- * The web↔Rust bridge: typed wrappers over every Tauri `invoke` command and
- * `nc:*` event subscription the board uses, plus the defensive narrowers that
- * validate event payloads against the authoritative contracts before use. All
- * commands degrade to mock/no-op data outside the Tauri webview (browser preview).
+ * The web↔Rust bridge's COMMAND surface: a typed wrapper over every Tauri `invoke`
+ * command the board issues, plus the argument shapes those commands accept. Each
+ * wrapper either uses raw `invoke` (rejecting outside Tauri) or `tauriInvoke` (which
+ * degrades to a browser-preview mock from `./mocks`). Event subscriptions live in
+ * `./events`; shared types in `./types`.
  */
 import { invoke } from '@tauri-apps/api/core';
-import { type EventCallback, listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 
+import { NightcoreEventSchema } from '@nightcore/contracts';
+
+import type { ImageFormat, NewAttachmentPayload } from '../attachments';
+import { imageDataUrl } from '../attachments';
+import { isTauri, tauriInvoke } from './internal';
 import {
-  type NightcoreEvent,
-  NightcoreEventSchema,
-  type QuestionAnswer,
-  type QuestionItem,
-  QuestionItemSchema,
-} from '@nightcore/contracts';
-
-import type { ImageFormat,NewAttachmentPayload } from './attachments';
-import { imageDataUrl } from './attachments';
-import type { BoardBackgroundRef } from './generated/BoardBackgroundRef';
-import type { PrDraft } from './generated/PrDraft';
-import type { PrReviewComments } from './generated/PrReviewComments';
-import type { PrStatus } from './generated/PrStatus';
-import type { PrSupport } from './generated/PrSupport';
-
-export type { SessionStatus } from '@nightcore/contracts';
-
-/** Canonical fallbacks shared by the browser-preview mocks and UI fallbacks, so
- *  the default model id and repo URL live in exactly one place. */
-const DEFAULT_MODEL_ID = 'claude-opus-4-8';
-export const DEFAULT_REPO_URL = 'https://github.com/Shironex/nightcore';
-
-// --- Generated IPC types (Rust→TS codegen) --------------------------------
-//
-// These types are GENERATED from the Rust serde structs by `ts-rs` (run via
-// `cargo test` in `apps/desktop/src-tauri`; output under `./generated/`). They
-// replace the hand-mirrored interfaces that used to live here, so a Rust field
-// rename can no longer silently break the board — `cargo test` regenerates the
-// bindings and the CI drift guard (`git diff` over `generated/`) fails on any
-// mismatch. The runtime invoke/listen wrappers + zod re-validation below are
-// UNCHANGED; only the type DECLARATIONS now come from the generated bindings.
-export type { AppInfo } from './generated/AppInfo';
-export type { BoardAppearance } from './generated/BoardAppearance';
-export type { BoardBackgroundRef } from './generated/BoardBackgroundRef';
-export type { BranchInfo } from './generated/BranchInfo';
-export type { DiffFileStat } from './generated/DiffFileStat';
-export type { DiffStatus } from './generated/DiffStatus';
-export type { GauntletResult } from './generated/GauntletResult';
-export type { GauntletStep } from './generated/GauntletStep';
-export type { LoopEnvelope } from './generated/LoopEnvelope';
-export type { McpServerEntry } from './generated/McpServerEntry';
-export type { McpServerSummary } from './generated/McpServerSummary';
-export type { McpServerTransport } from './generated/McpServerTransport';
-export type { MergePreview } from './generated/MergePreview';
-export type { MergePreviewStatus } from './generated/MergePreviewStatus';
-export type { PrComment } from './generated/PrComment';
-export type { PrDraft } from './generated/PrDraft';
-export type { Project } from './generated/Project';
-export type { ProviderConfigSection } from './generated/ProviderConfigSection';
-export type { ProviderConfigSnapshot } from './generated/ProviderConfigSnapshot';
-export type { PrReviewComments } from './generated/PrReviewComments';
-export type { PrReviewSummary } from './generated/PrReviewSummary';
-export type { PrStatus } from './generated/PrStatus';
-export type { PrSupport } from './generated/PrSupport';
-export type { PrThread } from './generated/PrThread';
-export type { RunMode } from './generated/RunMode';
-export type { SessionInfo } from './generated/SessionInfo';
-export type { SessionMessage } from './generated/SessionMessage';
-export type { Settings } from './generated/Settings';
-export type { SettingsOverride } from './generated/SettingsOverride';
-export type { SettingsPatch } from './generated/SettingsPatch';
-export type { SkillSummary } from './generated/SkillSummary';
-export type { StructureLockCheck } from './generated/StructureLockCheck';
-export type { StructureLockResult } from './generated/StructureLockResult';
-export type { SubagentSummary } from './generated/SubagentSummary';
-export type { Task } from './generated/Task';
-export type { TaskAttachment } from './generated/TaskAttachment';
-export type { TaskPatch } from './generated/TaskPatch';
-export type { TaskStatus } from './generated/TaskStatus';
-export type { WorktreeDiff } from './generated/WorktreeDiff';
-export type { WorktreeDiffFile } from './generated/WorktreeDiffFile';
-export type { WorktreeInfo } from './generated/WorktreeInfo';
-// Insight (codebase analysis) persisted shapes (ts-rs from `store/insight.rs`).
-export type { FindingLocation } from './generated/FindingLocation';
-export type { InsightRun } from './generated/InsightRun';
-export type { InsightUsage } from './generated/InsightUsage';
-export type { StoredFinding } from './generated/StoredFinding';
-// The unified Insight taxonomy comes from the zod contract (the engine's wire
-// shape); the generated `StoredFinding` keeps these as `string`, so the Insight
-// view casts to these unions.
-export type {
-  AnalysisScope,
-  EffortLevel,
-  Finding,
-  FindingCategory,
-  FindingEffort,
-  FindingSeverity,
-} from '@nightcore/contracts';
-// Readiness Scorecard (Profile) persisted shapes (ts-rs from `store/scorecard.rs`).
-export type { ScorecardEvidence } from './generated/ScorecardEvidence';
-export type { ScorecardRun } from './generated/ScorecardRun';
-export type { StoredReading } from './generated/StoredReading';
-// The Scorecard taxonomy comes from the zod contract (the engine's wire shape); the
-// generated `StoredReading` keeps `dimension`/`grade` as `string`, so the Scorecard
-// view casts to these unions.
-export type {
-  ScorecardDimension,
-  ScorecardGrade,
-  ScorecardReading,
-} from '@nightcore/contracts';
-// Harness (codebase convention auditor) persisted shapes (ts-rs from `store/harness.rs`).
-export type { HarnessRun } from './generated/HarnessRun';
-export type { HarnessUsage } from './generated/HarnessUsage';
-export type { StoredConventionFinding } from './generated/StoredConventionFinding';
-export type { StoredHarnessCheck } from './generated/StoredHarnessCheck';
-export type { StoredHarnessProposal } from './generated/StoredHarnessProposal';
-export type { StoredProposedArtifact } from './generated/StoredProposedArtifact';
-export type { StoredRepoPackage } from './generated/StoredRepoPackage';
-export type { StoredRepoProfile } from './generated/StoredRepoProfile';
-// Harness policy authoring (ts-rs from `commands/policy.rs`) + the injection-scan
-// flag rows (ts-rs from `store/injection_scan.rs`).
-export type { HarnessPolicyFile } from './generated/HarnessPolicyFile';
-export type { HarnessPolicyPatch } from './generated/HarnessPolicyPatch';
-export type { InjectionFlag } from './generated/InjectionFlag';
-export type { PolicyDiffBudget } from './generated/PolicyDiffBudget';
-// The harness convention taxonomy + proposed-artifact shapes come from the zod
-// contract (the engine's wire shape); the generated `Stored*` types keep the
-// enum-ish fields as `string`, so the Harness view casts to these unions.
-export type {
-  ArtifactKind,
-  ArtifactWriteMode,
-  ConventionCategory,
-  ConventionFinding,
-  ConventionKind,
-  HarnessCheck,
-  HarnessProposal,
-  HarnessProposalKind,
-  ProposedArtifact,
-  RepoPackage,
-  RepoProfile,
-  WorkspaceTool,
-} from '@nightcore/contracts';
-// PR Review (fourth scan sibling) persisted shapes (ts-rs from `store/pr_review.rs`).
-// `PrReviewRun` reuses the shared `InsightUsage` token totals; `StoredReviewFinding`
-// is the Rust `StoredReviewFinding` (its ts-rs `export_to="ReviewFinding.ts"`).
-export type { PrReviewRun } from './generated/PrReviewRun';
-export type { StoredReviewFinding } from './generated/ReviewFinding';
-// The PR-review lens/severity taxonomy + the live wire `ReviewFinding` come from the
-// zod contract (the engine's wire shape); the generated `StoredReviewFinding` keeps
-// `lens`/`severity`/`status` as `string`, so the PR Review view casts to these unions.
-export type { ReviewFinding, ReviewLens, ReviewSeverity } from '@nightcore/contracts';
-// Open-PR summaries + labels for the PR Review config picker (ts-rs from `workflow/pr_list.rs`).
-export type { PrLabel } from './generated/PrLabel';
-export type { PrSummary } from './generated/PrSummary';
-
-/** The kind preset a task runs under and the four UI permission modes are
- *  generated FROM the Rust enums (`TaskKind` / `PermissionMode` in
- *  `store/task.rs`) rather than re-declared, so the board's pickers can't drift
- *  from the authoritative serde mapping. The generated `TaskKind` is byte-identical
- *  to the contracts `TaskKindSchema` enum (same snake_case wire union); the
- *  generated `PermissionMode` is the studio's per-task UI vocabulary
- *  (`bypass`/`auto-accept`/`ask`/`plan`), distinct from the contracts SDK
- *  `PermissionMode` — it always lived here, never in contracts. */
-export type { PermissionMode } from './generated/PermissionMode';
-export type { TaskKind } from './generated/TaskKind';
-/** Decompose: a proposed sub-task + its convert lifecycle, generated from the Rust
- *  `ProposedSubtask` / `SubtaskStatus` so the detail panel can't drift from serde. */
-export type { ProposedSubtask } from './generated/ProposedSubtask';
-export type { SubtaskStatus } from './generated/SubtaskStatus';
-
-// Locally-aliased imports of the generated types the command wrappers below
-// reference by value position (return types, fallbacks). Type-only, so they erase
-// at build under `verbatimModuleSyntax`.
+  MOCK_APP_INFO,
+  MOCK_BACKGROUNDS,
+  MOCK_CONTEXT_PACK,
+  MOCK_INJECTION_FLAGS,
+  MOCK_POLICY_FILE,
+  MOCK_PROJECT,
+  MOCK_PROVIDER_CONFIG,
+  MOCK_SETTINGS,
+  mockSettingsWithBackground,
+} from './mocks';
 import type {
   AnalysisScope,
+  AppInfo,
+  BranchInfo,
   ConventionCategory,
   EffortLevel,
   FindingCategory,
+  GauntletResult,
+  HarnessPolicyFile,
+  HarnessPolicyPatch,
+  HarnessRun,
+  InjectionFlag,
+  InsightRun,
+  MergePreview,
+  NcEvent,
+  PermissionMode,
+  PrDraft,
+  Project,
+  ProviderConfigSnapshot,
+  PrReviewComments,
+  PrReviewRun,
+  PrStatus,
+  PrSummary,
+  PrSupport,
+  QuestionAnswer,
   ReviewLens,
+  RunMode,
   ScorecardDimension,
-} from '@nightcore/contracts';
-
-import type { AppInfo } from './generated/AppInfo';
-import type { BranchInfo } from './generated/BranchInfo';
-import type { GauntletResult } from './generated/GauntletResult';
-import type { HarnessPolicyFile } from './generated/HarnessPolicyFile';
-import type { HarnessPolicyPatch } from './generated/HarnessPolicyPatch';
-import type { HarnessRun } from './generated/HarnessRun';
-import type { InjectionFlag } from './generated/InjectionFlag';
-import type { InsightRun } from './generated/InsightRun';
-import type { LoopEnvelope } from './generated/LoopEnvelope';
-import type { MergePreview } from './generated/MergePreview';
-import type { PermissionMode } from './generated/PermissionMode';
-import type { Project } from './generated/Project';
-import type { ProviderConfigSnapshot } from './generated/ProviderConfigSnapshot';
-import type { PrReviewRun } from './generated/PrReviewRun';
-import type { PrSummary } from './generated/PrSummary';
-import type { RunMode } from './generated/RunMode';
-import type { ScorecardRun } from './generated/ScorecardRun';
-import type { SessionInfo } from './generated/SessionInfo';
-import type { SessionMessage } from './generated/SessionMessage';
-import type { Settings } from './generated/Settings';
-import type { SettingsPatch } from './generated/SettingsPatch';
-import type { Task } from './generated/Task';
-import type { TaskKind } from './generated/TaskKind';
-import type { TaskPatch } from './generated/TaskPatch';
-import type { TaskStatus } from './generated/TaskStatus';
-import type { WorktreeDiff } from './generated/WorktreeDiff';
-import type { WorktreeInfo } from './generated/WorktreeInfo';
-
-/** True when running inside the Tauri webview (vs. a plain browser preview). */
-export function isTauri(): boolean {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-}
-
-/** Invoke a Tauri command, returning `fallback` (resolved) outside the webview so
- *  Storybook/browser preview no-ops with mock data instead of rejecting. Folds the
- *  repeated `if (!isTauri()) return …` guard into one place. */
-function tauriInvoke<T>(
-  command: string,
-  args: Record<string, unknown>,
-  fallback: T,
-): Promise<T> {
-  if (!isTauri()) return Promise.resolve(fallback);
-  return invoke<T>(command, args);
-}
-
-/** The full engine event union streamed inside the `nc:session` envelope. This is
- *  the AUTHORITATIVE contract (`@nightcore/contracts` → `NightcoreEventSchema`),
- *  not a hand-maintained subset — so the board can never silently drift from what
- *  the engine emits (e.g. the `task-updated` subagent-step event the board used to
- *  drop). The Rust core forwards each event verbatim; `onSessionEvent` /
- *  `readTranscript` validate the wire against `NightcoreEventSchema` before use. */
-export type NcEvent = NightcoreEvent;
-export type { NightcoreEvent } from '@nightcore/contracts';
-
-/** `nc:session` payload: a streamed engine event tagged with its task. */
-export interface SessionEnvelope {
-  taskId: string;
-  event: NcEvent;
-}
-
-/** A surface decision for a parked permission prompt. Mirrors the Rust
- *  `respond_permission` arguments. An allow may rewrite the tool input; a deny may
- *  carry a short reason returned to the model. */
-export type PermissionDecision = 'allow' | 'deny';
-
-/** `nc:permission` payload: an interactive permission prompt for a running task.
- *  The input may contain paths/commands — render it, but the core never logs it. */
-export interface PermissionPrompt {
-  taskId: string;
-  requestId: string;
-  toolName: string;
-  input: Record<string, unknown>;
-  /** Optional SDK-provided choices the surface can offer (rarely present). */
-  suggestions?: unknown;
-}
-
-export type { QuestionAnswer,QuestionItem, QuestionOption } from '@nightcore/contracts';
-
-/** `nc:question` payload: an interactive `AskUserQuestion` prompt for a running
- *  task. The questions/options carry model-authored text — render it, but the core
- *  never logs it. The surface answers via the `answer_question` command. */
-export interface QuestionPrompt {
-  taskId: string;
-  requestId: string;
-  /** SDK toolUseId of the originating call, when the dialog carried one. */
-  toolUseId?: string;
-  questions: QuestionItem[];
-}
-
-/** The `nc:project` event variant union. This is the AUTHORITATIVE type — every
- *  place that cares about project event kinds (the interface, the runtime guard,
- *  and any downstream switch) references THIS, not a hand-enumerated literal. When
- *  a new event variant is added to the Rust emitter, add it here first; the
- *  `satisfies` on `PROJECT_EVENT_TYPES` below will then force a compile error until
- *  the array is updated to match. */
-export type ProjectEventType = 'created' | 'deleted' | 'activated' | 'renamed';
-
-/** Runtime membership array for `ProjectEventType`. Must stay exhaustive: the
- *  `satisfies` clause makes adding a variant to `ProjectEventType` above without
- *  adding it here a compile error. The guard uses this array directly — no
- *  hand-enumerated strings at the call site. */
-const PROJECT_EVENT_TYPES = [
-  'created',
-  'deleted',
-  'activated',
-  'renamed',
-] as const satisfies readonly ProjectEventType[];
-
-/** `nc:project` payload: a registry change plus the full registry snapshot.
- *  `renamed` carries the updated project (name changed; active pointer unchanged). */
-export interface ProjectEnvelope {
-  type: ProjectEventType;
-  project: Project | null;
-  projects: Project[];
-}
-
-/** The autonomous loop's run state. This is the AUTHORITATIVE type — the generated
- *  `LoopEnvelope.state` field is a plain `string` (Rust emits it as a free string),
- *  so this web-local union is the single source of truth for valid states. When the
- *  Rust coordinator adds a new state, add it here first; the `satisfies` on
- *  `LOOP_STATES` below will then force a compile error until the array is updated. */
-export type LoopState = 'running' | 'drained' | 'paused';
-
-/** Runtime membership array for `LoopState`. Must stay exhaustive: the `satisfies`
- *  clause makes adding a state to `LoopState` above without adding it here a compile
- *  error. The guard uses this array directly — no hand-enumerated strings at the
- *  call site. */
-const LOOP_STATES = ['running', 'drained', 'paused'] as const satisfies readonly LoopState[];
+  ScorecardRun,
+  SessionInfo,
+  SessionMessage,
+  Settings,
+  SettingsPatch,
+  Task,
+  TaskKind,
+  TaskPatch,
+  TaskStatus,
+  WorktreeDiff,
+  WorktreeInfo,
+} from './types';
 
 // --- Commands -------------------------------------------------------------
 
@@ -482,43 +237,6 @@ export async function tagSession(sdkSessionId: string, tag: string | null): Prom
 
 // --- Provider configuration inspector (read-only) -------------------------
 
-/** A populated mock snapshot so the inspector renders outside Tauri (browser
- *  preview / Storybook). Exercises all three per-section tri-states so the panel's
- *  branches are visible without a live SDK probe. */
-const MOCK_PROVIDER_CONFIG: ProviderConfigSnapshot = {
-  providerId: 'claude',
-  providerLabel: 'Claude',
-  projectPath: '~/dev/nightcore',
-  mcp: {
-    status: 'supported',
-    mcpServers: [
-      {
-        name: 'github',
-        status: 'connected',
-        scope: 'project',
-        transport: 'http',
-        toolCount: 14,
-      },
-      { name: 'filesystem', status: 'pending', scope: 'user', transport: 'stdio' },
-    ],
-  },
-  skills: {
-    status: 'supported',
-    skills: [
-      { name: 'add-feature', description: 'Plan and ship a new feature' },
-      { name: 'fix-bug', description: 'Diagnose an integration that should work' },
-    ],
-  },
-  subagents: {
-    status: 'unavailable',
-    error: 'probe timed out',
-  },
-  model: DEFAULT_MODEL_ID,
-  permissionMode: 'acceptEdits',
-  outputStyle: 'default',
-  extrasStatus: 'supported',
-};
-
 /** Read the active provider's RESOLVED configuration for a project — its MCP
  *  servers, skills, subagents, and scalar extras — for the read-only inspector.
  *  Omit `projectPath` to inspect the ACTIVE project (the board-header entry point);
@@ -536,6 +254,11 @@ export async function getProviderConfig(
 }
 
 // --- Interactive permissions ----------------------------------------------
+
+/** A surface decision for a parked permission prompt. Mirrors the Rust
+ *  `respond_permission` arguments. An allow may rewrite the tool input; a deny may
+ *  carry a short reason returned to the model. */
+export type PermissionDecision = 'allow' | 'deny';
 
 /** Answer a parked permission prompt (`nc:permission`). An allow may rewrite the
  *  tool input via `updatedInput`; a deny may carry a short `message` reason.
@@ -812,16 +535,6 @@ export async function setMaxConcurrency(n: number): Promise<void> {
 
 // --- Projects -------------------------------------------------------------
 
-/** A mock project so Storybook/browser preview shows a populated switcher. */
-const MOCK_PROJECT: Project = {
-  id: 'mock-nightcore',
-  name: 'nightcore',
-  path: '~/dev/nightcore',
-  branch: 'main',
-  createdAt: '2026-06-21T00:00:00Z',
-  lastActiveAt: '2026-06-21T00:00:00Z',
-};
-
 /** All known projects. Returns a mock outside Tauri (browser preview). */
 export async function listProjects(): Promise<Project[]> {
   return tauriInvoke<Project[]>('list_projects', {}, [MOCK_PROJECT]);
@@ -873,30 +586,6 @@ export async function chooseFolder(): Promise<string | null> {
 
 // --- Settings -------------------------------------------------------------
 
-/** The default settings used outside Tauri (browser preview). */
-const MOCK_SETTINGS: Settings = {
-  defaultModel: DEFAULT_MODEL_ID,
-  defaultEffort: 'medium',
-  maxConcurrency: 3,
-  permissionMode: 'auto-accept',
-  cleanupWorktrees: true,
-  notifyOnComplete: false,
-  defaultRunMode: 'main',
-  maxTurns: null,
-  maxBudgetUsd: null,
-  mcpServers: [],
-  contextPackEnabled: true,
-  autoCommitOnVerified: false,
-  sandboxSessions: false,
-  projectOverrides: {},
-};
-
-/** App metadata used outside Tauri (browser preview). */
-const MOCK_APP_INFO: AppInfo = {
-  version: '0.0.0',
-  repository: DEFAULT_REPO_URL,
-};
-
 /** The current settings. Returns mock defaults outside Tauri. */
 export async function getSettings(): Promise<Settings> {
   return tauriInvoke<Settings>('get_settings', {}, MOCK_SETTINGS);
@@ -916,19 +605,6 @@ export async function getAppInfo(): Promise<AppInfo> {
 }
 
 // --- Custom Board Background ------------------------------------------------
-
-/** In-memory background images for browser preview / Storybook (no Tauri fs). Keyed
- *  by project id so the panel + board demo behave like the real per-project store. */
-const MOCK_BACKGROUNDS = new Map<string, { version: number; url: string }>();
-
-/** Build a mock `Settings` whose project override carries (or drops) a background
- *  ref, so the non-Tauri path returns the same shape the real command would. */
-function mockSettingsWithBackground(projectId: string, ref: BoardBackgroundRef | null): Settings {
-  const overrides = { ...MOCK_SETTINGS.projectOverrides };
-  const prev = overrides[projectId] ?? {};
-  overrides[projectId] = { ...prev, boardBackground: ref ?? undefined };
-  return { ...MOCK_SETTINGS, projectOverrides: overrides };
-}
 
 /** Persist a project's custom board-background image (bytes to app-data, ref to the
  *  project's settings override); returns the merged settings. In browser preview it
@@ -968,12 +644,6 @@ export async function readBoardBackground(projectId: string): Promise<string | n
 
 // --- Pre-flight Context Pack ----------------------------------------------
 
-/** The mock Constitution shown outside Tauri (browser preview). */
-const MOCK_CONTEXT_PACK =
-  '# Pre-flight Context Pack\n\nNightcore injects this trusted, project-controlled ' +
-  'context into every agent run.\n\n## Project Constitution\n\n- Keep tests green.\n' +
-  '- Folder-per-component for every UI component.';
-
 /** Read the active project's curated context pack (`.nightcore/context.md`), or
  *  `null` when no project is active or none has been authored yet. Returns the mock
  *  outside Tauri (browser preview). */
@@ -993,216 +663,7 @@ export async function regenerateContextPack(): Promise<string> {
   return tauriInvoke<string>('regenerate_context_pack', {}, MOCK_CONTEXT_PACK);
 }
 
-// --- Events ---------------------------------------------------------------
-
-/** True when `value` is a non-null object exposing every key in `keys`. The
- *  shared spine of the defensive narrowers below — narrows `value` to a string
- *  record so each guard can then check the field *types* it actually reads. */
-function hasKeys<K extends string>(
-  value: unknown,
-  keys: readonly K[],
-): value is Record<K, unknown> {
-  if (typeof value !== 'object' || value === null) return false;
-  return keys.every((k) => k in value);
-}
-
-/** Narrow an unknown payload to a `Task` defensively. INTENTIONALLY PARTIAL: only
- *  validates the fields the board reducer + optimistic-move reconciliation actually
- *  read (`id`, `status`, `createdAt`/`updatedAt`). The full shape is the generated
- *  `Task` type (`./generated/Task.ts`) — add checks here if the reducer starts
- *  consuming new fields that could be missing or mis-typed. */
-function isTask(value: unknown): value is Task {
-  if (!hasKeys(value, ['id', 'status', 'createdAt', 'updatedAt'])) return false;
-  return (
-    typeof value.id === 'string' &&
-    typeof value.status === 'string' &&
-    typeof value.createdAt === 'number' &&
-    typeof value.updatedAt === 'number'
-  );
-}
-
-/** Parse an unknown `nc:session` payload into a validated `SessionEnvelope`, or
- *  `null` when the shape or the inner event fails the authoritative contract.
- *  The inner `event` is validated against `NightcoreEventSchema`: a
- *  malformed/future event is dropped rather than fed to `foldSession`. */
-function parseSessionEnvelope(value: unknown): SessionEnvelope | null {
-  if (typeof value !== 'object' || value === null) return null;
-  const v = value as Record<string, unknown>;
-  if (typeof v.taskId !== 'string') return null;
-  const parsed = NightcoreEventSchema.safeParse(v.event);
-  if (!parsed.success) return null;
-  return { taskId: v.taskId, event: parsed.data };
-}
-
-/** `listen`, but the returned unlisten can NEVER throw or reject — every `nc:*`
- *  subscription routes through this. React `<StrictMode>` (dev) mounts effects
- *  twice (mount → unmount → mount), so a hook's fire-and-forget
- *  `void unlisten.then((fn) => fn())` cleanup can call Tauri's unlisten against an
- *  event registration whose internal `listeners[eventId]` entry is already gone —
- *  Tauri's unlisten isn't idempotent and throws
- *  `undefined is not an object (listeners[eventId].handlerId)`. That throw lands as
- *  an unhandled promise rejection, which `useGlobalErrorToast` then surfaces as a
- *  stray "Unexpected error" toast. Swallowing it here keeps teardown idempotent and
- *  silent (and a failed registration resolves to a no-op unlisten, so the cleanup
- *  promise never rejects either). */
-async function safeListen<T>(event: string, handler: EventCallback<T>): Promise<UnlistenFn> {
-  try {
-    const unlisten = await listen<T>(event, handler);
-    return () => {
-      try {
-        unlisten();
-      } catch {
-        // Already torn down (StrictMode double-cleanup / rapid remount) — idempotent.
-      }
-    };
-  } catch {
-    // Registration failed (e.g. the Tauri runtime isn't ready) — nothing to undo.
-    return () => {};
-  }
-}
-
-/** The shared `nc:*` subscription skeleton: no-op outside Tauri, otherwise
- *  `safeListen` on `channel` and dispatch only payloads that `narrow` accepts
- *  (returns the typed value, or `null` to drop). Collapses the nine per-channel
- *  subscribers into a single shape. */
-function subscribeChannel<T>(
-  channel: string,
-  narrow: (value: unknown) => T | null,
-  handler: (value: T) => void,
-): Promise<UnlistenFn> {
-  if (!isTauri()) return Promise.resolve(() => {});
-  return safeListen<unknown>(channel, (event) => {
-    const value = narrow(event.payload);
-    if (value !== null) handler(value);
-  });
-}
-
-/** Subscribe to `nc:task` board upserts. Returns an unlisten function. */
-export async function onTaskEvent(
-  handler: (task: Task) => void,
-): Promise<UnlistenFn> {
-  return subscribeChannel('nc:task', (v) => (isTask(v) ? v : null), handler);
-}
-
-/** Subscribe to `nc:session` streamed events. Returns an unlisten function. */
-export async function onSessionEvent(
-  handler: (envelope: SessionEnvelope) => void,
-): Promise<UnlistenFn> {
-  return subscribeChannel('nc:session', parseSessionEnvelope, handler);
-}
-
-/** Narrow an unknown payload to a `ProjectEnvelope` defensively. The handler reads
- *  `type`, the full `projects` snapshot, and `project` (for activated/renamed), so
- *  all three are checked: a valid `type`, an array `projects`, and `project` being
- *  an object-or-null. `PROJECT_EVENT_TYPES` is the single source of truth for the
- *  membership check — no hand-enumerated string literals here. */
-function isProjectEnvelope(value: unknown): value is ProjectEnvelope {
-  if (!hasKeys(value, ['type', 'project', 'projects'])) return false;
-  return (
-    (PROJECT_EVENT_TYPES as readonly string[]).includes(value.type as string) &&
-    Array.isArray(value.projects) &&
-    (value.project === null || typeof value.project === 'object')
-  );
-}
-
-/** Subscribe to `nc:project` registry changes. Returns an unlisten function. */
-export async function onProjectEvent(
-  handler: (envelope: ProjectEnvelope) => void,
-): Promise<UnlistenFn> {
-  return subscribeChannel('nc:project', (v) => (isProjectEnvelope(v) ? v : null), handler);
-}
-
-/** Narrow an unknown payload to a `LoopEnvelope` defensively. The handler reads
- *  `state`, `maxConcurrency`, `reason`, and `failureThreshold` (the breaker
- *  badge), so the numeric fields it depends on are type-checked too. `LOOP_STATES`
- *  is the single source of truth for the membership check — no hand-enumerated
- *  string literals here. */
-function isLoopEnvelope(value: unknown): value is LoopEnvelope {
-  if (!hasKeys(value, ['state', 'maxConcurrency', 'failureThreshold'])) return false;
-  return (
-    (LOOP_STATES as readonly string[]).includes(value.state as string) &&
-    typeof value.maxConcurrency === 'number' &&
-    typeof value.failureThreshold === 'number'
-  );
-}
-
-/** Subscribe to `nc:loop` autonomous-loop state changes. Returns an unlisten
- *  function (a no-op outside Tauri). */
-export async function onLoopEvent(
-  handler: (envelope: LoopEnvelope) => void,
-): Promise<UnlistenFn> {
-  return subscribeChannel('nc:loop', (v) => (isLoopEnvelope(v) ? v : null), handler);
-}
-
-/** Narrow an unknown payload to a `PermissionPrompt` defensively. The prompt UI
- *  reads `taskId`, `requestId`, `toolName`, and renders `input`, so all four are
- *  checked (`input` must be a non-null object — the surface iterates it). */
-function isPermissionPrompt(value: unknown): value is PermissionPrompt {
-  if (!hasKeys(value, ['taskId', 'requestId', 'toolName', 'input'])) return false;
-  return (
-    typeof value.taskId === 'string' &&
-    typeof value.requestId === 'string' &&
-    typeof value.toolName === 'string' &&
-    typeof value.input === 'object' &&
-    value.input !== null
-  );
-}
-
-/** Subscribe to `nc:permission` interactive prompts. Returns an unlisten function
- *  (a no-op outside Tauri). */
-export async function onPermissionEvent(
-  handler: (prompt: PermissionPrompt) => void,
-): Promise<UnlistenFn> {
-  return subscribeChannel('nc:permission', (v) => (isPermissionPrompt(v) ? v : null), handler);
-}
-
-/** Narrow an unknown payload to a `QuestionPrompt` defensively. The dock reads
- *  `taskId`, `requestId`, and renders `questions`, so all three are checked and the
- *  `questions` array is validated against the contract schema (it arrives over the
- *  dedicated `nc:question` channel, not the zod-validated session stream). */
-function isQuestionPrompt(value: unknown): value is QuestionPrompt {
-  if (!hasKeys(value, ['taskId', 'requestId', 'questions'])) return false;
-  if (typeof value.taskId !== 'string' || typeof value.requestId !== 'string') {
-    return false;
-  }
-  return QuestionItemSchema.array().nonempty().safeParse(value.questions).success;
-}
-
-/** Subscribe to `nc:question` interactive AskUserQuestion prompts. Returns an
- *  unlisten function (a no-op outside Tauri). */
-export async function onQuestionEvent(
-  handler: (prompt: QuestionPrompt) => void,
-): Promise<UnlistenFn> {
-  return subscribeChannel('nc:question', (v) => (isQuestionPrompt(v) ? v : null), handler);
-}
-
 // --- Insight (codebase analysis) ------------------------------------------
-
-/** The Insight analysis event family streamed over `nc:insight`, narrowed from
- *  the authoritative `NightcoreEvent` union. */
-export type AnalysisEvent = Extract<
-  NcEvent,
-  {
-    type:
-      | 'analysis-started'
-      | 'analysis-category-started'
-      | 'analysis-category-completed'
-      | 'analysis-completed'
-      | 'analysis-failed';
-  }
->;
-
-/** A non-`NightcoreEvent` notice the Rust core emits on `nc:insight` when a finding
- *  is converted to a board task, so the open Insight view can update in place. */
-export interface FindingConvertedEvent {
-  type: 'finding-converted';
-  runId: string;
-  findingId: string;
-  taskId: string;
-}
-
-/** Everything that arrives on the `nc:insight` channel. */
-export type InsightEvent = AnalysisEvent | FindingConvertedEvent;
 
 /** Start an Insight analysis run over the active project. Returns the `runId` the
  *  `analysis-*` events correlate by. Rejects outside Tauri (no active project). */
@@ -1287,74 +748,7 @@ export async function deleteInsightRun(runId: string): Promise<void> {
   await tauriInvoke<void>('delete_insight_run', { runId }, undefined);
 }
 
-/** Narrow an unknown `nc:insight` payload to an `InsightEvent`. The `analysis-*`
- *  events are validated against the authoritative `NightcoreEventSchema`; the
- *  `finding-converted` notice (not a `NightcoreEvent`) is shape-checked. */
-/**
- * Generic narrower for the three scan channels (insight/scorecard/harness). Each
- * carries the authoritative `NightcoreEvent` family for its surface (matched by
- * `wirePrefix` and validated against `NightcoreEventSchema`) PLUS one
- * non-`NightcoreEvent` "notice" the Rust core emits in place (convert/apply), whose
- * `noticeFields` are shape-checked as strings. Returns the typed notice, the
- * validated wire event, or `null`.
- */
-function parseChannelEvent<TNotice extends { type: string }, TWire>(
-  value: unknown,
-  noticeType: TNotice['type'],
-  noticeFields: readonly string[],
-  wirePrefix: string,
-): TNotice | TWire | null {
-  if (typeof value !== 'object' || value === null) return null;
-  const v = value as Record<string, unknown>;
-  if (v.type === noticeType) {
-    if (!noticeFields.every((f) => typeof v[f] === 'string')) return null;
-    const notice: Record<string, string> = { type: noticeType };
-    for (const f of noticeFields) notice[f] = v[f] as string;
-    return notice as TNotice;
-  }
-  const parsed = NightcoreEventSchema.safeParse(value);
-  if (parsed.success && parsed.data.type.startsWith(wirePrefix)) {
-    return parsed.data as TWire;
-  }
-  return null;
-}
-
-function parseInsightEvent(value: unknown): InsightEvent | null {
-  return parseChannelEvent<FindingConvertedEvent, AnalysisEvent>(
-    value,
-    'finding-converted',
-    ['runId', 'findingId', 'taskId'],
-    'analysis-',
-  );
-}
-
-/** Subscribe to `nc:insight` streamed analysis events. Returns an unlisten
- *  function (a no-op outside Tauri). */
-export async function onInsightEvent(
-  handler: (event: InsightEvent) => void,
-): Promise<UnlistenFn> {
-  return subscribeChannel('nc:insight', parseInsightEvent, handler);
-}
-
 // --- PR Review (fourth scan sibling) --------------------------------------
-
-/** The PR Review event family streamed over `nc:pr-review`, narrowed from the
- *  authoritative `NightcoreEvent` union. Unlike Insight — whose `finding-converted`
- *  is a non-schema notice shape-checked in place — the convert acknowledgement
- *  `pr-review-finding-converted` is itself a `NightcoreEvent`, so the whole channel
- *  narrows as one validated family. */
-export type PrReviewEvent = Extract<
-  NcEvent,
-  {
-    type:
-      | 'pr-review-started'
-      | 'pr-review-lens-started'
-      | 'pr-review-lens-completed'
-      | 'pr-review-completed'
-      | 'pr-review-failed'
-      | 'pr-review-finding-converted';
-  }
->;
 
 /** One inline review comment posted alongside a GitHub review: a diff anchor
  *  (`path` + 1-based `line`) plus the Nightcore-composed body. */
@@ -1460,53 +854,7 @@ export async function postReviewToGithub(
   await invoke<void>('post_review_to_github', { prNumber, verdict, body, comments });
 }
 
-/** Narrow an unknown `nc:pr-review` payload to a `PrReviewEvent`. The whole
- *  `pr-review-*` family (including the convert acknowledgement) is a
- *  `NightcoreEvent`, so a single `NightcoreEventSchema` validation + prefix check
- *  is enough — no separate notice branch (unlike Insight). */
-function parsePrReviewEvent(value: unknown): PrReviewEvent | null {
-  const parsed = NightcoreEventSchema.safeParse(value);
-  if (parsed.success && parsed.data.type.startsWith('pr-review-')) {
-    return parsed.data as PrReviewEvent;
-  }
-  return null;
-}
-
-/** Subscribe to `nc:pr-review` streamed review events. Returns an unlisten
- *  function (a no-op outside Tauri). */
-export async function onPrReviewEvent(
-  handler: (event: PrReviewEvent) => void,
-): Promise<UnlistenFn> {
-  return subscribeChannel('nc:pr-review', parsePrReviewEvent, handler);
-}
-
 // --- Readiness Scorecard (Profile) ----------------------------------------
-
-/** The Scorecard event family streamed over `nc:scorecard`, narrowed from the
- *  authoritative `NightcoreEvent` union. */
-export type ScorecardWireEvent = Extract<
-  NcEvent,
-  {
-    type:
-      | 'scorecard-started'
-      | 'scorecard-dimension-started'
-      | 'scorecard-dimension-completed'
-      | 'scorecard-completed'
-      | 'scorecard-failed';
-  }
->;
-
-/** A non-`NightcoreEvent` notice the Rust core emits on `nc:scorecard` when a reading
- *  is hardened into a board task, so the open Scorecard view can update in place. */
-export interface ReadingConvertedEvent {
-  type: 'reading-converted';
-  runId: string;
-  readingId: string;
-  taskId: string;
-}
-
-/** Everything that arrives on the `nc:scorecard` channel. */
-export type ScorecardEvent = ScorecardWireEvent | ReadingConvertedEvent;
 
 /** Start a Readiness Scorecard run over the active project. Returns the `runId` the
  *  `scorecard-*` events correlate by. Rejects outside Tauri (no active project). */
@@ -1550,108 +898,7 @@ export async function deleteScorecardRun(runId: string): Promise<void> {
   await tauriInvoke<void>('delete_scorecard_run', { runId }, undefined);
 }
 
-/** Narrow an unknown `nc:scorecard` payload to a `ScorecardEvent`. The `scorecard-*`
- *  events are validated against the authoritative `NightcoreEventSchema`; the
- *  `reading-converted` notice (not a `NightcoreEvent`) is shape-checked. */
-function parseScorecardEvent(value: unknown): ScorecardEvent | null {
-  return parseChannelEvent<ReadingConvertedEvent, ScorecardWireEvent>(
-    value,
-    'reading-converted',
-    ['runId', 'readingId', 'taskId'],
-    'scorecard-',
-  );
-}
-
-/** Subscribe to `nc:scorecard` streamed events. Returns an unlisten function (a
- *  no-op outside Tauri). */
-export async function onScorecardEvent(
-  handler: (event: ScorecardEvent) => void,
-): Promise<UnlistenFn> {
-  return subscribeChannel('nc:scorecard', parseScorecardEvent, handler);
-}
-
 // --- Harness (codebase convention auditor) --------------------------------
-
-/** The Harness scan event family streamed over `nc:harness`, narrowed from the
- *  authoritative `NightcoreEvent` union. Mirrors `AnalysisEvent`, with the two
- *  extra hops Harness adds (`harness-profile-ready`, `harness-proposals-ready`). */
-export type HarnessScanEvent = Extract<
-  NcEvent,
-  {
-    type:
-      | 'harness-scan-started'
-      | 'harness-profile-ready'
-      | 'harness-category-started'
-      | 'harness-category-completed'
-      | 'harness-synthesis-started'
-      | 'harness-proposals-ready'
-      | 'harness-scan-completed'
-      | 'harness-scan-failed';
-  }
->;
-
-/** A non-`NightcoreEvent` notice the Rust core emits on `nc:harness` when an
- *  artifact is written to disk, so the open Harness view can mark it applied in
- *  place. */
-export interface ArtifactAppliedEvent {
-  type: 'artifact-applied';
-  runId: string;
-  artifactId: string;
-  /** The repo-relative path the artifact was written to. */
-  path: string;
-}
-
-/** A non-`NightcoreEvent` notice the Rust core emits on `nc:harness` when a convention
- *  finding is converted to a board task, so the open Harness view can update in place.
- *  The Harness twin of {@link FindingConvertedEvent}. */
-export interface HarnessFindingConvertedEvent {
-  type: 'finding-converted';
-  runId: string;
-  findingId: string;
-  taskId: string;
-}
-
-/** A non-`NightcoreEvent` notice the Rust core emits on `nc:harness` when a
- *  Structure-Lock check is armed into `.nightcore/harness.json`, so the open Harness
- *  view can confirm the gauntlet is now wired. */
-export interface HarnessCheckArmedEvent {
-  type: 'check-armed';
-  runId: string;
-  /** The check name written to the manifest. */
-  name: string;
-  /** The check kind (`lint-plugin` | `dependency-cruiser` | `coverage-threshold`). */
-  kind: string;
-}
-
-/** A non-`NightcoreEvent` notice the Rust core emits on `nc:harness` when a task-shaped
- *  proposal is converted to a board task, so the open Harness view can update in place.
- *  The proposal twin of {@link HarnessFindingConvertedEvent}. */
-export interface HarnessProposalConvertedEvent {
-  type: 'proposal-converted';
-  runId: string;
-  proposalId: string;
-  taskId: string;
-}
-
-/** A non-`NightcoreEvent` notice the Rust core emits on `nc:harness` when an
- *  `apply-artifacts` proposal is applied as a bundle (all its artifacts written to disk),
- *  so the open Harness view can mark the proposal applied in place. */
-export interface HarnessProposalAppliedEvent {
-  type: 'proposal-applied';
-  runId: string;
-  proposalId: string;
-  /** How many artifacts the bundle wrote. */
-  count: number;
-}
-
-/** Everything that arrives on the `nc:harness` channel. */
-export type HarnessEvent =
-  | HarnessScanEvent
-  | ArtifactAppliedEvent
-  | HarnessFindingConvertedEvent
-  | HarnessProposalConvertedEvent
-  | HarnessProposalAppliedEvent
-  | HarnessCheckArmedEvent;
 
 /** Start a Harness scan over the active project. Returns the `runId` the
  *  `harness-*` events correlate by. Rejects outside Tauri (no active project). */
@@ -1815,116 +1062,7 @@ export async function armHarnessGauntletCheck(
   await invoke<void>('arm_harness_gauntlet_check', { runId, name, kind, command });
 }
 
-/** Narrow an unknown `nc:harness` payload to a `HarnessEvent`. The channel carries the
- *  `harness-*` wire family plus several non-`NightcoreEvent` notices (`finding-converted`,
- *  `proposal-converted`, `proposal-applied`, `check-armed`, `artifact-applied`). `parseChannelEvent` handles
- *  the `artifact-applied` notice + the wire events, so the object-shaped notices are
- *  shape-checked here first, then the rest is delegated. */
-function parseHarnessEvent(value: unknown): HarnessEvent | null {
-  if (typeof value === 'object' && value !== null) {
-    const v = value as Record<string, unknown>;
-    if (v.type === 'finding-converted') {
-      if (
-        typeof v.runId === 'string' &&
-        typeof v.findingId === 'string' &&
-        typeof v.taskId === 'string'
-      ) {
-        return {
-          type: 'finding-converted',
-          runId: v.runId,
-          findingId: v.findingId,
-          taskId: v.taskId,
-        };
-      }
-      return null;
-    }
-    if (v.type === 'proposal-converted') {
-      if (
-        typeof v.runId === 'string' &&
-        typeof v.proposalId === 'string' &&
-        typeof v.taskId === 'string'
-      ) {
-        return {
-          type: 'proposal-converted',
-          runId: v.runId,
-          proposalId: v.proposalId,
-          taskId: v.taskId,
-        };
-      }
-      return null;
-    }
-    if (v.type === 'proposal-applied') {
-      if (
-        typeof v.runId === 'string' &&
-        typeof v.proposalId === 'string' &&
-        typeof v.count === 'number'
-      ) {
-        return {
-          type: 'proposal-applied',
-          runId: v.runId,
-          proposalId: v.proposalId,
-          count: v.count,
-        };
-      }
-      return null;
-    }
-    if (v.type === 'check-armed') {
-      if (
-        typeof v.runId === 'string' &&
-        typeof v.name === 'string' &&
-        typeof v.kind === 'string'
-      ) {
-        return { type: 'check-armed', runId: v.runId, name: v.name, kind: v.kind };
-      }
-      return null;
-    }
-  }
-  return parseChannelEvent<ArtifactAppliedEvent, HarnessScanEvent>(
-    value,
-    'artifact-applied',
-    ['runId', 'artifactId', 'path'],
-    'harness-',
-  );
-}
-
-/** Subscribe to `nc:harness` streamed scan events. Returns an unlisten function
- *  (a no-op outside Tauri). */
-export async function onHarnessEvent(
-  handler: (event: HarnessEvent) => void,
-): Promise<UnlistenFn> {
-  return subscribeChannel('nc:harness', parseHarnessEvent, handler);
-}
-
 // --- Harness policy authoring + injection scan ------------------------------
-
-/** The mock policy shown outside Tauri (browser preview / component tests). */
-const MOCK_POLICY_FILE: HarnessPolicyFile = {
-  enabled: true,
-  protectedPaths: ['bun.lock', 'migrations/**'],
-  denyBashPatterns: ['--no-verify'],
-  denyReadPaths: ['.env*'],
-  disallowedTools: [],
-  askTools: ['WebFetch'],
-  allowTools: [],
-  diffBudget: null,
-  manifestExists: true,
-};
-
-/** The mock injection-scan flags returned outside Tauri, so the scan card's
- *  results list renders deterministically in Storybook + component tests. */
-const MOCK_INJECTION_FLAGS: InjectionFlag[] = [
-  {
-    path: 'docs/pasted-snippet.md',
-    reasons: ['instruction-shaped phrase: "ignore previous instructions"'],
-  },
-  {
-    path: 'vendor/readme.txt',
-    reasons: [
-      'invisible Unicode tag characters (hidden-prompt vector)',
-      'zero-width character run (hidden-payload vector)',
-    ],
-  },
-];
 
 /** Read the ACTIVE project's harness policy block (`.nightcore/harness.json`),
  *  with defaults when the manifest/key is absent; `manifestExists` tells the

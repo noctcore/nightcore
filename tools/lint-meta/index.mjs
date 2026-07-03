@@ -8,8 +8,9 @@
  * remains here are the two boundaries that rule does not express, encoded with
  * ESLint's built-in `no-restricted-imports`:
  *
- *   1. Only `lib/bridge.ts` may import `@tauri-apps/api`. It is the single Tauri
- *      seam; every other module talks to the core through it.
+ *   1. Only the `lib/bridge/` seam may import `@tauri-apps/api`. It is the single
+ *      Tauri seam (split into types/commands/events/mocks + an index barrel);
+ *      every other module talks to the core through it.
  *   2. `components/ui` (the shadcn-style primitives dir, the cross-feature escape
  *      hatch) must not import from a feature. Primitives are leaves of the
  *      dependency graph — features depend on ui, never the reverse.
@@ -31,7 +32,7 @@ const TAURI_GROUP = [
   '@tauri-apps/plugin-*',
 ];
 const TAURI_MESSAGE =
-  'Only lib/bridge.ts may import @tauri-apps/* (api + plugins). Route Tauri commands/events through the bridge seam.';
+  'Only lib/bridge/ may import @tauri-apps/* (api + plugins). Route Tauri commands/events through the bridge seam.';
 
 /**
  * The SDK ban from the base config. Repeated here because `no-restricted-imports`
@@ -64,10 +65,10 @@ const FEATURE_GROUPS = [
   '@/components/new-project/**',
 ];
 
-/** Block 1 — every web file except lib/bridge.ts: forbid the Tauri API. */
+/** Block 1 — every web file except the lib/bridge/ seam: forbid the Tauri API. */
 const tauriSeamBlock = {
   files: [`${WEB}/**/*.{ts,tsx}`],
-  ignores: [`${WEB}/lib/bridge.ts`, `${WEB}/components/ui/**`],
+  ignores: [`${WEB}/lib/bridge/**`, `${WEB}/components/ui/**`],
   rules: {
     'no-restricted-imports': [
       'error',

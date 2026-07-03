@@ -9,8 +9,9 @@ encoding the shiranami feature-folder boundaries:
 
 1. **No cross-feature imports.** A file under `features/<A>/` may not import from
    `features/<B>/`. Shared code lives in `shared/`.
-2. **Single Tauri seam.** Only `bridge.ts` may import `@tauri-apps/api`; every
-   other module goes through the bridge.
+2. **Single Tauri seam.** Only the `lib/bridge/` module (types/commands/events/
+   mocks + index barrel) may import `@tauri-apps/api`; every other module goes
+   through the bridge.
 3. **`shared/` purity.** `shared/**` may not import from `features/*` (primitives
    are leaves of the dependency graph) and stays Tauri-agnostic.
 
