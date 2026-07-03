@@ -383,7 +383,7 @@ pub(crate) fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Res
     let tmp = dir.join(format!(".{file_name}.{}.{nonce}.tmp", std::process::id()));
 
     let write_then_rename = || -> std::io::Result<()> {
-        let mut file = std::fs::File::create(&tmp)?;
+        let mut file = create_owner_only(&tmp)?;
         file.write_all(bytes)?;
         file.sync_all()?;
         drop(file);
@@ -394,6 +394,29 @@ pub(crate) fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Res
         let _ = std::fs::remove_file(&tmp);
     }
     result
+}
+
+/// Create+truncate a fresh file for writing with owner-only (0600) permissions
+/// applied AT CREATION on Unix, so a secret-bearing atomic write (e.g. settings.json
+/// with plaintext MCP env/headers) never exists at the default umask (0644) — not
+/// even for the temp-file window before the caller's late `restrict_to_owner`, and
+/// not permanently if a crash lands between the rename and that chmod. On non-Unix
+/// there is no mode bit; a plain create is used.
+fn create_owner_only(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::File::create(path)
+    }
 }
 
 /// Move an unparsable store file aside to a non-clobbering `<name>.corrupt-<millis>`
@@ -926,5 +949,27 @@ mod tests {
         // No active project → an empty scratch dir → an empty board.
         store.retarget(tmp.path().join("empty"));
         assert!(store.list().is_empty());
+    }
+
+    /// The atomic write must land the final file at owner-only (0600) on Unix — the
+    /// temp file is created 0600 up front, so a secret-bearing write is never
+    /// world-readable, not even during the temp window or after an ill-timed crash.
+    #[test]
+    #[cfg(unix)]
+    fn write_atomic_produces_an_owner_only_file() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = TempDir::new().expect("create temp dir");
+        let path = tmp.path().join("secret.json");
+        write_atomic(&path, b"{\"token\":\"s3cr3t\"}").expect("atomic write");
+        let mode = std::fs::metadata(&path)
+            .expect("metadata")
+            .permissions()
+            .mode();
+        assert_eq!(
+            mode & 0o777,
+            0o600,
+            "written file must be owner-only, got {:o}",
+            mode & 0o777
+        );
     }
 }
