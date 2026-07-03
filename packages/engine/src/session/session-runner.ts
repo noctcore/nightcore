@@ -237,11 +237,22 @@ export class SessionRunner {
 
     try {
       this.query = query({ prompt: this.inputStream(), options });
+      // The terminal `result` message never carries the assistant-level error
+      // (auth/rate-limit/overloaded/…); track the most recent one off the
+      // assistant frames so `translateResult` can refine an otherwise-`unknown`
+      // failure reason instead of collapsing it.
+      let assistantError: string | undefined;
       for await (const message of this.query) {
+        if (message.type === 'assistant' && message.error !== undefined) {
+          assistantError = message.error;
+        }
         const { events, terminal } = translateMessage(
           this.cfg.sessionId,
           message,
-          this.cfg.kind !== undefined ? { kind: this.cfg.kind } : {},
+          {
+            ...(this.cfg.kind !== undefined ? { kind: this.cfg.kind } : {}),
+            ...(assistantError !== undefined ? { assistantError } : {}),
+          },
         );
         for (const event of events) this.emit(event);
         if (terminal) {

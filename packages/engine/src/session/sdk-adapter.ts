@@ -161,6 +161,11 @@ export interface TranslateOptions {
    *  is parsed into `proposedSubtasks` on the emitted `session-completed` event;
    *  for every other kind (or when absent) that field is omitted. */
   kind?: TaskKind;
+  /** The most recent `SDKAssistantMessageError` seen on the stream, if any. The
+   *  SDK's terminal `result` message does not carry the assistant-level error, so
+   *  the runner threads it here; a non-ceiling failure reason is refined from it
+   *  (auth / rate-limit / …) instead of collapsing to `'unknown'`. */
+  assistantError?: string;
 }
 
 export interface TranslateResult {
@@ -405,13 +410,16 @@ function translateResult(
   // silent success. The SDK result subtype carries which ceiling was hit:
   // `error_max_turns` (turn guard) / `error_max_budget_usd`
   // (cost guard). Both surface as a distinct `session-failed` reason the web can
-  // park on rather than treating as a verified pass.
+  // park on rather than treating as a verified pass. For every other error
+  // subtype (`error_during_execution`, …) the result message carries no reason,
+  // so we refine from the last assistant-level error the runner threaded in —
+  // an auth/rate-limit stall must not collapse to an indistinct `'unknown'`.
   const reason: NightcoreEventOfReason =
     msg.subtype === 'error_max_turns'
       ? 'max-turns'
       : msg.subtype === 'error_max_budget_usd'
         ? 'max-budget'
-        : 'unknown';
+        : mapAssistantError(options.assistantError);
   const message = msg.errors.join('; ') || msg.subtype;
   return {
     events: [

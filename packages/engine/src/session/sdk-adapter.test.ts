@@ -506,6 +506,37 @@ describe('translateMessage — result (terminal)', () => {
     >;
     expect(event.message).toBe('a; b');
   });
+
+  test('refines a non-ceiling failure from the threaded assistant error', () => {
+    const result = translateMessage(
+      SID,
+      sdk({ type: 'result', subtype: 'error_during_execution', errors: [] }),
+      { assistantError: 'rate_limit' },
+    );
+    const event = result.events[0] as Extract<
+      NightcoreEvent,
+      { type: 'session-failed' }
+    >;
+    expect(event.reason).toBe('rate-limit');
+    expect(result.terminal).toEqual({
+      kind: 'failed',
+      reason: 'rate-limit',
+      message: 'error_during_execution',
+    });
+  });
+
+  test('an autonomy-ceiling reason wins over any threaded assistant error', () => {
+    const result = translateMessage(
+      SID,
+      sdk({ type: 'result', subtype: 'error_max_turns', errors: [] }),
+      { assistantError: 'rate_limit' },
+    );
+    const event = result.events[0] as Extract<
+      NightcoreEvent,
+      { type: 'session-failed' }
+    >;
+    expect(event.reason).toBe('max-turns');
+  });
 });
 
 describe('translateMessage — unknown message types', () => {

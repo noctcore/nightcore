@@ -30,14 +30,21 @@ const realSdk = await import('@anthropic-ai/claude-agent-sdk');
 let queryCalls = 0;
 /** The SDK `Options` object from the most recent `query()` call, for assertions. */
 let lastQueryOptions: Record<string, unknown> | undefined;
+/** Messages the stubbed `query()` should yield before completing. Default `[]`
+ *  reproduces the yields-nothing case; a test can queue a scripted stream. */
+let queuedMessages: unknown[] = [];
 mock.module('@anthropic-ai/claude-agent-sdk', () => ({
   ...realSdk,
   query: (args: { options?: Record<string, unknown> }) => {
     queryCalls += 1;
     lastQueryOptions = args?.options;
+    const pending = [...queuedMessages];
     const iterator: AsyncGenerator<unknown> = {
       async next() {
-        return { value: undefined, done: true };
+        const value = pending.shift();
+        return value === undefined
+          ? { value: undefined, done: true }
+          : { value, done: false };
       },
       async return() {
         return { value: undefined, done: true };
@@ -135,6 +142,37 @@ describe('SessionRunner — Claude CLI preflight', () => {
     expect(queryCalls).toBe(1);
     expect(lastQueryOptions).toBeDefined();
     expect(lastQueryOptions).not.toHaveProperty('agents');
+  });
+});
+
+describe('SessionRunner — assistant-error → failure reason threading', () => {
+  test('an assistant-level error refines the terminal failure reason', async () => {
+    // The SDK signals a throttle/auth stall via the assistant frame's `error`
+    // field; the terminal `result` message carries no reason. The runner must
+    // thread the last assistant error into the translation so a rate-limit stall
+    // surfaces as a distinct reason instead of collapsing to `unknown`.
+    resolvedClaudePath = '/usr/local/bin/claude';
+    queryCalls = 0;
+    queuedMessages = [
+      {
+        type: 'assistant',
+        error: 'rate_limit',
+        message: { content: [] },
+        session_id: 's',
+        uuid: 'u1',
+      },
+      { type: 'result', subtype: 'error_during_execution', errors: [], session_id: 's', uuid: 'u2' },
+    ];
+    const events: NightcoreEvent[] = [];
+
+    await makeRunner((e) => events.push(e)).run();
+
+    queuedMessages = [];
+    const failed = events.find((e) => e.type === 'session-failed');
+    expect(failed?.type).toBe('session-failed');
+    if (failed?.type === 'session-failed') {
+      expect(failed.reason).toBe('rate-limit');
+    }
   });
 });
 
