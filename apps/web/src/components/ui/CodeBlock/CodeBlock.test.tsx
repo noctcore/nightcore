@@ -2,7 +2,7 @@ import { composeStories } from '@storybook/react-vite';
 import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
-import { resolveLang } from './CodeBlock.hooks';
+import { isHighlightable, MAX_HIGHLIGHT_LENGTH, resolveLang } from './CodeBlock.hooks';
 import * as stories from './CodeBlock.stories';
 
 const { TypeScript, UnknownLanguage } = composeStories(stories);
@@ -27,6 +27,12 @@ test('upgrades to Shiki-highlighted output once the highlighter resolves', async
 test('renders unknown languages as plain text without throwing', async () => {
   const screen = render(<UnknownLanguage />);
   await expect.element(screen.getByText(/plain text, no grammar/)).toBeInTheDocument();
+});
+
+test('isHighlightable caps at MAX_HIGHLIGHT_LENGTH so huge payloads stay plain <pre>', () => {
+  expect(isHighlightable('const x = 1;')).toBe(true);
+  expect(isHighlightable('x'.repeat(MAX_HIGHLIGHT_LENGTH))).toBe(true);
+  expect(isHighlightable('x'.repeat(MAX_HIGHLIGHT_LENGTH + 1))).toBe(false);
 });
 
 test('resolveLang maps aliases/extensions to grammars and unknowns to text', () => {
