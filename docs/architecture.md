@@ -42,12 +42,13 @@ packages/engine — the hub: owns the SDK query() loop
   `lib/bridge.ts`; it `import type`s the Rust-generated TS bindings under
   `lib/generated/`.
 - **Core** (`apps/desktop/src-tauri`) — the Rust orchestration brain. It owns the
-  task registry, the M2 auto-loop (`m2/coordinator.rs`: slots, dependency
+  task registry, the auto-loop (`orchestration/coordinator/`: slots, dependency
   ordering, circuit breaker, worktrees), the verification gauntlet, and settings.
-  It spawns the sidecar and serializes commands to it. 35 `#[tauri::command]` fns
-  ↔ 35 invoked from the bridge; 5 `nc:*` event channels (`nc:task`, `nc:session`,
-  `nc:project`, `nc:loop`, `nc:permission`), each one Rust emitter ↔ one bridge
-  listener.
+  It spawns the sidecar and serializes commands to it. ~120 `#[tauri::command]`
+  fns across ~37 files, invoked from the bridge; 10 `nc:*` event channels
+  (`nc:task`, `nc:session`, `nc:project`, `nc:loop`, `nc:permission`,
+  `nc:question`, `nc:insight`, `nc:harness`, `nc:scorecard`, `nc:pr-review`),
+  each one Rust emitter ↔ one bridge listener.
 - **Bridge** (`apps/sidecar`) — a thin NDJSON stdio adapter over `SessionManager`.
   It validates each line against `SurfaceCommandSchema` and forwards; zero
   orchestration logic. One persistent sidecar multiplexes N sessions.
@@ -55,7 +56,7 @@ packages/engine — the hub: owns the SDK query() loop
   owns the SDK `query()` loop; only `sdk-adapter.ts` imports the SDK runtime.
 
 The sidecar is **bundled** as a compiled `externalBin` in release and run via
-`bun run` in dev (`m2/provider.rs`). The `claude` CLI itself is **not bundled** —
+`bun run` in dev (`provider/`). The `claude` CLI itself is **not bundled** —
 it is a required prereq the engine resolves on the user's machine (fail-fast with
 an actionable error if missing).
 
@@ -121,10 +122,3 @@ Zero credential code. The user's installed `claude` CLI resolves the local Claud
 credentials (`~/.claude`); `ANTHROPIC_API_KEY` in the inherited env is honored as
 a fallback. Nightcore never passes an `apiKey`. Install the Claude CLI and run its
 login — see the README.
-
-## Alternate surfaces (retired v0)
-
-`apps/cli` and `apps/tui` import `@nightcore/engine` **directly** and touch
-neither the sidecar nor the Rust core — they are parallel in-process surfaces
-kept from the original v0 TS harness (tag `v0-ts-harness`), **not** part of the
-desktop 3-tier path.

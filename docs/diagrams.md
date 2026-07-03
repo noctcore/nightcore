@@ -18,7 +18,8 @@ core that multiplexes autonomous runs, behind a React board.
 ## A — The 3-tier architecture
 
 Every web IPC funnels through `lib/bridge.ts`; only `sdk-adapter.ts` imports the
-SDK runtime. `@nightcore/tools` / `@nightcore/mcp` are dormant (risk-lookup only).
+SDK runtime. `@nightcore/tools` / `@nightcore/mcp` have been removed (D-002);
+`ToolRegistry.riskOf` remains for risk-lookup only.
 
 ```mermaid
 flowchart TD
@@ -31,9 +32,9 @@ flowchart TD
     end
 
     subgraph desktop["apps/desktop/src-tauri — RUST CORE"]
-        Lib["lib.rs<br/>35 invoke handlers + setup"]
-        Coord["m2/coordinator.rs<br/>auto-loop: slots · deps · breaker · worktrees"]
-        Prov["m2/provider.rs<br/>spawns sidecar, SERIALIZES commands"]
+        Lib["lib.rs<br/>~120 command handlers + setup"]
+        Coord["orchestration/coordinator/<br/>auto-loop: slots · deps · breaker · worktrees"]
+        Prov["provider/<br/>spawns sidecar, SERIALIZES commands"]
         Stores["store/ task · project · settings · transcript"]
         GenRs[["contracts/generated.rs<br/>(zod OUTPUT)"]]
         Lib --> Coord & Stores
@@ -53,20 +54,16 @@ flowchart TD
     end
 
     contracts[["@nightcore/contracts<br/>zod spine — SOURCE OF TRUTH"]]
-    tools[["@nightcore/tools + @nightcore/mcp<br/>(DORMANT: riskOf only)"]]
 
     Bridge -->|"invoke() / listen('nc:*')"| Lib
     Prov -->|"spawn + NDJSON stdin/stdout"| SC
     SC --> SM
-    TRk --> tools
     engine --> contracts
     contracts ==>|"codegen: gen-rust-contracts.ts"| GenRs
     Stores ==>|"codegen: ts-rs (cargo test)"| Gen
 
-    classDef dormant fill:#fde,stroke:#c39,stroke-width:2px;
     classDef spine fill:#def,stroke:#39c,stroke-width:2px;
     classDef codegen fill:#efe,stroke:#3a3,stroke-width:2px;
-    class tools dormant;
     class contracts spine;
     class GenRs,Gen codegen;
 ```
@@ -83,7 +80,7 @@ sequenceDiagram
     autonumber
     actor User
     participant Web as apps/web (bridge.ts)
-    participant Core as Rust core (m2/*)
+    participant Core as Rust core (orchestration/*)
     participant Side as apps/sidecar
     participant Eng as SessionManager / SessionRunner
     participant SDK as sdk-adapter / SDK → claude CLI
@@ -199,7 +196,7 @@ flowchart TD
 | Concern | Files |
 |---------|-------|
 | Web IPC boundary | `apps/web/src/lib/bridge.ts` |
-| Rust core / orchestration | `apps/desktop/src-tauri/src/{lib.rs, m2/*, store/*, workflow/*}` |
+| Rust core / orchestration | `apps/desktop/src-tauri/src/{main.rs, lib.rs, orchestration/*, store/*, workflow/*}` |
 | Sidecar bridge | `apps/sidecar/src/index.ts` |
 | Supervisor & runner | `packages/engine/src/session/{session-manager,session-runner}.ts` |
 | SDK boundary | `packages/engine/src/session/sdk-adapter.ts` |
@@ -207,4 +204,3 @@ flowchart TD
 | Spine (unions) | `packages/contracts/src/{events,commands,config}.ts` |
 | zod → Rust codegen | `tools/codegen/gen-rust-contracts.ts` → `src-tauri/src/contracts/generated.rs` |
 | Rust → web codegen | ts-rs (`cargo test`) → `apps/web/src/lib/generated/` |
-| Alt surfaces (retired v0) | `apps/cli/src/index.ts`, `apps/tui/src/index.ts` (tag `v0-ts-harness`) |
