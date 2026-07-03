@@ -28,10 +28,12 @@ jobs:
       # --frozen-lockfile doubles as a lockfile-drift guard: it fails if bun.lock
       # is out of sync with the manifests.
       - run: bun install --frozen-lockfile
-      # Gate on high + critical. One known low advisory (esbuild
-      # GHSA-g7r4-m6w7-qqqr, a Windows dev-server-only file read) is below the
-      # threshold; run `bun run audit` locally to see every advisory.
-      - run: bun audit --audit-level=high
+      # Gate on moderate + high + critical. The desktop app renders untrusted
+      # model/PR/web content through marked + dompurify + shiki, so a moderate
+      # advisory in the sanitizer/markdown stack is exactly the class this gate
+      # must catch. If a specific moderate advisory ever needs tolerating, ignore
+      # it by id explicitly rather than raising the global threshold.
+      - run: bun audit --audit-level=moderate
 
   cargo-audit:
     name: cargo audit (Rust crate)
