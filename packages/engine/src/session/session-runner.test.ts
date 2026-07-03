@@ -33,6 +33,14 @@ let lastQueryOptions: Record<string, unknown> | undefined;
 /** Messages the stubbed `query()` should yield before completing. Default `[]`
  *  reproduces the yields-nothing case; a test can queue a scripted stream. */
 let queuedMessages: unknown[] = [];
+/** When true, the stubbed `query()` yields its queued messages (if any) and then
+ *  WEDGES — `next()` returns a promise that never resolves — reproducing a
+ *  subprocess that stopped yielding without a terminal `result`. The idle
+ *  watchdog must trip and fail the session so the slot is freed. */
+let stallStream = false;
+/** Counts `interrupt()` calls on the stubbed query, so a test can assert the
+ *  stall path tears the subprocess down. */
+let interruptCalls = 0;
 mock.module('@anthropic-ai/claude-agent-sdk', () => ({
   ...realSdk,
   query: (args: { options?: Record<string, unknown> }) => {
@@ -42,6 +50,10 @@ mock.module('@anthropic-ai/claude-agent-sdk', () => ({
     const iterator: AsyncGenerator<unknown> = {
       async next() {
         const value = pending.shift();
+        if (value === undefined && stallStream) {
+          // Wedge: never resolve, never reject — the watchdog is the only exit.
+          return new Promise<IteratorResult<unknown>>(() => {});
+        }
         return value === undefined
           ? { value: undefined, done: true }
           : { value, done: false };
@@ -57,7 +69,9 @@ mock.module('@anthropic-ai/claude-agent-sdk', () => ({
       },
     };
     return Object.assign(iterator, {
-      async interrupt() {},
+      async interrupt() {
+        interruptCalls += 1;
+      },
       async setModel() {},
       async setPermissionMode() {},
     });
@@ -172,6 +186,85 @@ describe('SessionRunner — assistant-error → failure reason threading', () =>
     expect(failed?.type).toBe('session-failed');
     if (failed?.type === 'session-failed') {
       expect(failed.reason).toBe('rate-limit');
+    }
+  });
+});
+
+describe('SessionRunner — idle watchdog frees a wedged subprocess', () => {
+  test('a stalled stream fails the session (runner-crash) instead of hanging forever', async () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    queryCalls = 0;
+    interruptCalls = 0;
+    stallStream = true;
+    queuedMessages = [];
+    const events: NightcoreEvent[] = [];
+
+    // A tiny idle deadline so the watchdog trips fast; the real default is
+    // 30 minutes. run() MUST resolve (degrade-not-throw), not hang, when the
+    // subprocess wedges mid-turn without a terminal `result`.
+    const runner = new SessionRunner(
+      {
+        sessionId: 42,
+        prompt: 'hi',
+        model: 'claude-opus-4-8',
+        permissionMode: 'default',
+        permissionPolicy: policy,
+        cwd: process.cwd(),
+        apiKeyFallback: false,
+        settingSources,
+        todoFeatureEnabled: false,
+        idleTimeoutMs: 20,
+      },
+      (e) => events.push(e),
+    );
+
+    await expect(runner.run()).resolves.toBeUndefined();
+    stallStream = false;
+
+    const failed = events.find((e) => e.type === 'session-failed');
+    expect(failed).toBeDefined();
+    if (failed?.type === 'session-failed') {
+      expect(failed.reason).toBe('runner-crash');
+      expect(failed.message).toContain('stalled');
+    }
+    // The wedged subprocess is torn down (abort + interrupt), not leaked.
+    expect(interruptCalls).toBeGreaterThanOrEqual(1);
+  });
+
+  test('a stream that yields then wedges still trips the watchdog', async () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    queryCalls = 0;
+    stallStream = true;
+    // One non-terminal assistant frame, then the stream wedges (no `result`).
+    queuedMessages = [
+      { type: 'assistant', message: { content: [] }, session_id: 's', uuid: 'u1' },
+    ];
+    const events: NightcoreEvent[] = [];
+
+    const runner = new SessionRunner(
+      {
+        sessionId: 43,
+        prompt: 'hi',
+        model: 'claude-opus-4-8',
+        permissionMode: 'default',
+        permissionPolicy: policy,
+        cwd: process.cwd(),
+        apiKeyFallback: false,
+        settingSources,
+        todoFeatureEnabled: false,
+        idleTimeoutMs: 20,
+      },
+      (e) => events.push(e),
+    );
+
+    await expect(runner.run()).resolves.toBeUndefined();
+    stallStream = false;
+    queuedMessages = [];
+
+    const failed = events.find((e) => e.type === 'session-failed');
+    expect(failed?.type).toBe('session-failed');
+    if (failed?.type === 'session-failed') {
+      expect(failed.reason).toBe('runner-crash');
     }
   });
 });

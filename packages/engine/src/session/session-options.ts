@@ -215,6 +215,14 @@ export interface SessionRunnerConfig {
    *  `sandbox_sessions` setting; when requested but unavailable the runner logs
    *  a loud warning and runs UNwrapped (fail-open). Absent ⇒ off. */
   sandboxWrites?: boolean;
+  /** Idle watchdog deadline (ms): if the SDK subprocess yields NO message for this
+   *  long mid-run, the runner treats the stream as wedged, aborts the subprocess,
+   *  and fails the session (`reason: 'runner-crash'`) so the concurrency slot is
+   *  released instead of leaking forever. Deliberately GENEROUS — a single long
+   *  tool call (a multi-minute build/test) emits no intermediate SDK messages, so
+   *  this must clear the longest legitimate quiet gap. Absent ⇒
+   *  [`DEFAULT_IDLE_TIMEOUT_MS`]. */
+  idleTimeoutMs?: number;
 }
 
 /**

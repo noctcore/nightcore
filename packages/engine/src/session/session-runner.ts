@@ -28,6 +28,7 @@ import {
   type RewindFilesResult,
   type SDKControlGetContextUsageResponse,
   type SDKControlInitializeResponse,
+  type SDKMessage,
   type SDKUserMessage,
   type SlashCommand,
   translateMessage,
@@ -83,6 +84,29 @@ const CLAUDE_CLI_MISSING_MESSAGE =
   '(see https://code.claude.com/docs/en/setup), then retry.';
 
 /**
+ * Default idle watchdog deadline for the main run loop: 30 minutes with NO SDK
+ * message resets the timer on every yield. It is deliberately generous — one
+ * long tool call (a multi-minute build, a full test suite, a large download)
+ * produces no intermediate SDK messages, so a tight deadline would kill healthy
+ * work. Only a genuinely wedged subprocess (stopped yielding, no terminal
+ * `result`) should trip it, freeing the concurrency slot it would otherwise
+ * leak forever. Overridable per-session via `SessionRunnerConfig.idleTimeoutMs`.
+ */
+const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+
+/**
+ * Bounded deadline for a transient control probe (model list / MCP status /
+ * slash commands / subagents / init). These are cheap control reads, not model
+ * turns, so a probe that hasn't answered within this window is wedged — degrade
+ * to the caller's `[]`/`undefined` fallback rather than hang the inspector.
+ */
+const PROBE_TIMEOUT_MS = 30 * 1000;
+
+/** Sentinel returned by [`SessionRunner.nextWithIdleDeadline`] when the idle
+ *  watchdog fires before the SDK yields the next message. */
+const IDLE_STALLED = Symbol('idle-stalled');
+
+/**
  * Owns a single SDK `query()` loop and translates each `SDKMessage` into a
  * `NightcoreEvent`. Control methods (`interrupt`, `setModel`,
  * `setPermissionMode`, `streamInput`) proxy to the SDK `Query`.
@@ -104,6 +128,9 @@ export class SessionRunner {
   private readonly ledger?: SessionLedger;
   /** Composes the SDK `Options` from `cfg` for both the run loop and the probes. */
   private readonly optionsBuilder: SessionOptionsBuilder;
+  /** Idle watchdog deadline (ms) for the main run loop — see
+   *  [`DEFAULT_IDLE_TIMEOUT_MS`]. Resolved once from `cfg` at construction. */
+  private readonly idleTimeoutMs: number;
 
   /** Streaming input plumbing: a queue of user messages + a waiter the input
    *  generator parks on between messages. */
@@ -117,6 +144,7 @@ export class SessionRunner {
     private readonly logger?: Logger,
   ) {
     this.optionsBuilder = new SessionOptionsBuilder(cfg, logger);
+    this.idleTimeoutMs = cfg.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
     this.ledger =
       cfg.ledgerPath !== undefined
         ? new SessionLedger(cfg.ledgerPath, logger)
@@ -242,7 +270,18 @@ export class SessionRunner {
       // assistant frames so `translateResult` can refine an otherwise-`unknown`
       // failure reason instead of collapsing it.
       let assistantError: string | undefined;
-      for await (const message of this.query) {
+      // Drive the iterator by hand (not `for await`) so each `next()` can race an
+      // idle watchdog: a wedged subprocess that stops yielding without a terminal
+      // `result` would otherwise hang here forever, leaking the concurrency slot.
+      const iterator = this.query[Symbol.asyncIterator]();
+      for (;;) {
+        const next = await this.nextWithIdleDeadline(iterator);
+        if (next === IDLE_STALLED) {
+          this.handleStall();
+          return;
+        }
+        if (next.done === true) break;
+        const message = next.value;
         if (message.type === 'assistant' && message.error !== undefined) {
           assistantError = message.error;
         }
@@ -266,6 +305,62 @@ export class SessionRunner {
       this.permissions.failAllPending();
       this.questions.failAllPending();
     }
+  }
+
+  /**
+   * Await the iterator's next message under an idle deadline. Returns the
+   * `IteratorResult` when the SDK yields (or completes) in time, or
+   * [`IDLE_STALLED`] when [`idleTimeoutMs`] elapses first. The deadline is a
+   * fresh timer per call, so it resets on every yielded message — only a
+   * genuinely quiet (wedged) stream trips it. When the timer wins, the pending
+   * `next()` is left dangling but its eventual rejection (from the teardown
+   * abort) is swallowed so it never surfaces as an unhandled rejection.
+   */
+  private async nextWithIdleDeadline(
+    iterator: AsyncIterator<SDKMessage>,
+  ): Promise<IteratorResult<SDKMessage> | typeof IDLE_STALLED> {
+    const nextPromise = iterator.next();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const idle = new Promise<typeof IDLE_STALLED>((resolve) => {
+      timer = setTimeout(() => resolve(IDLE_STALLED), this.idleTimeoutMs);
+    });
+    try {
+      const result = await Promise.race([nextPromise, idle]);
+      if (result === IDLE_STALLED) {
+        // The next() promise may reject later when teardown aborts the query —
+        // attach a no-op catch now so it never bubbles as unhandled.
+        void Promise.resolve(nextPromise).catch(() => {});
+      }
+      return result;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Handle a wedged stream: emit a `session-failed` (`reason: 'runner-crash'`,
+   * 'stream stalled') through the normal degrade-not-throw channel so the board
+   * shows a terminal state and the slot is retired, then tear the subprocess
+   * down (abort + best-effort interrupt). Distinct from `handleCrash` so an
+   * idle-stall reports as a runner crash, not `aborted` — we abort AFTER
+   * classifying, so the abort flag must not decide the reason.
+   */
+  private handleStall(): void {
+    this.logger?.warn('session runner stream stalled — no SDK message within idle deadline', {
+      sessionId: this.cfg.sessionId,
+      idleTimeoutMs: this.idleTimeoutMs,
+    });
+    this.emit({
+      type: 'session-failed',
+      sessionId: this.cfg.sessionId,
+      reason: 'runner-crash',
+      message: `stream stalled: no SDK activity for ${this.idleTimeoutMs}ms`,
+    });
+    this.closeInput();
+    this.abort.abort();
+    void this.query?.interrupt().catch((error: unknown) => {
+      this.logger?.debug('stall teardown interrupt failed', error);
+    });
   }
 
   /** Stream additional user input into a running session. */
@@ -408,7 +503,9 @@ export class SessionRunner {
     cwdOverride?: string,
   ): Promise<T> {
     if (this.query && cwdOverride === undefined) {
-      return body(this.query);
+      // Bound even the live-query reuse path: a wedged control request must
+      // degrade to the fallback, not hang the inspector.
+      return this.raceProbeDeadline(body(this.query), fallback);
     }
 
     const abort = new AbortController();
@@ -422,7 +519,7 @@ export class SessionRunner {
           abortController: abort,
         },
       });
-      return await body(transient);
+      return await this.raceProbeDeadline(body(transient), fallback);
     } catch (error) {
       this.logger?.debug('control probe transient query failed', error);
       return fallback;
@@ -434,6 +531,31 @@ export class SessionRunner {
         // rather than swallowing it silently.
         this.logger?.debug('probe teardown interrupt failed', error);
       });
+    }
+  }
+
+  /**
+   * Race a control-probe promise against [`PROBE_TIMEOUT_MS`], resolving to
+   * `fallback` if the probe hasn't answered in time. Keeps the provider-config
+   * inspector responsive when a subprocess wedges mid-read: the section degrades
+   * to `unavailable` instead of hanging the whole snapshot. A probe rejection is
+   * NOT caught here — `withProbe`'s own `catch` maps it to the fallback.
+   */
+  private async raceProbeDeadline<T>(work: Promise<T>, fallback: T): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<typeof IDLE_STALLED>((resolve) => {
+      timer = setTimeout(() => resolve(IDLE_STALLED), PROBE_TIMEOUT_MS);
+    });
+    try {
+      const result = await Promise.race([work, deadline]);
+      if (result === IDLE_STALLED) {
+        void Promise.resolve(work).catch(() => {});
+        this.logger?.debug('control probe timed out — degrading to fallback');
+        return fallback;
+      }
+      return result;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
     }
   }
 
