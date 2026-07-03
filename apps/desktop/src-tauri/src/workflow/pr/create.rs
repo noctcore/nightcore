@@ -1,50 +1,21 @@
-//! Create-PR workflow (PR arc, phase 1 — design doc §3.1).
-//!
-//! The deterministic publish path beside the local merge: probe capability
-//! ([`pr_support`]), draft an editable title/body ([`draft_pr_message`]), then
-//! push the task's worktree branch and open a GitHub PR ([`create_pr_task`]).
-//! `gh` is the GitHub seam — user-installed, `which`-probed, never bundled (the
-//! `claude` / gitleaks precedent); `gh` owns auth, Nightcore stores no tokens.
-//! Absent `gh` or no `origin` remote ⇒ the capability is reported off and the UI
-//! never shows the button, rather than failing on click.
-//!
-//! Safety posture:
-//! - **Same bar as merge.** A PR is a publish; it requires a worktree-mode task
-//!   that is committed AND verified, plus a passing readiness + structure-lock
-//!   gauntlet — never a side door around the gates.
-//! - **argv hygiene.** Every ref goes through `validate_ref` (and the push call
-//!   site adds `--end-of-options`); the PR body travels on **stdin**, never argv
-//!   (length + injection). Plain `git push` only — NEVER `--force`.
-//! - **Re-runnable.** A failure between push and create is safe: the push is
-//!   idempotent and `gh` errors loudly (verbatim to the user) when a PR already
-//!   exists for the branch.
-//! - **[`open_external`] is https-only** so a stored URL can never launch a
-//!   local resource or script through the browser seam.
+//! The create-PR command and its orchestration: the per-task single-flight
+//! guard, the merge-bar preconditions + gauntlets, ref resolution, the push,
+//! and the `gh pr create` seam (with the `gh pr view` idempotency recovery).
 
 use std::collections::HashSet;
-use std::io::Write;
 use std::path::Path;
-use std::process::Stdio;
 use std::sync::{Mutex, OnceLock};
 
-use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
-// ts-rs is a dev-dependency (the Rust→TS codegen runs under `cargo test` only).
-#[cfg(test)]
-use ts_rs::TS;
 
-use super::merge::{require_project, TaskLease};
-use super::pr_msg;
+use super::gh::{run_gh_bounded, GH_BINARY};
+use super::parse::{parse_pr_url, parse_pr_view};
 use crate::gauntlet;
 use crate::gauntlet_project;
 use crate::store::TaskStore;
 use crate::task::{Task, TASK_EVENT};
+use crate::workflow::merge::{require_project, TaskLease};
 use crate::worktree::{self, validate_ref};
-
-/// The GitHub CLI binary name — the production argument to the binary-
-/// parameterized seams below (tests inject fake scripts instead). Shared with
-/// the phase-2 status/finalize commands (`pr_status.rs`).
-pub(super) const GH_BINARY: &str = "gh";
 
 /// Wall-clock bound on every network-facing `gh` spawn (create + view). Same
 /// rationale as the push deadline: generous, but finite — a black-holed GitHub
@@ -52,127 +23,8 @@ pub(super) const GH_BINARY: &str = "gh";
 /// on "Creating…".
 const GH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
-/// Whether the machine can create PRs for the active project: `gh` on PATH and
-/// an `origin` remote configured. Sent to the UI so the Create PR button gates
-/// honestly instead of failing on click. Booleans ONLY — the raw remote URL can
-/// embed credentials (`https://user:token@host/…`) and must never cross the IPC
-/// boundary into the renderer.
-#[derive(Debug, Clone, Serialize)]
-#[cfg_attr(test, derive(TS))]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, ts(export, export_to = "PrSupport.ts"))]
-pub struct PrSupport {
-    /// `which`-probed presence of the GitHub CLI.
-    pub gh_installed: bool,
-    /// Whether the project has an `origin` remote configured (the URL itself
-    /// stays on the Rust side — it may carry embedded credentials).
-    pub has_remote: bool,
-}
-
-/// An AI-drafted (or deterministically fallen-back) PR title + markdown body,
-/// pre-filled into the editable create dialog — never posted directly.
-#[derive(Debug, Clone, Serialize)]
-#[cfg_attr(test, derive(TS))]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, ts(export, export_to = "PrDraft.ts"))]
-pub struct PrDraft {
-    pub title: String,
-    pub body: String,
-}
-
-/// Probe PR capability for the active project (see [`PrSupport`]). The `id` is
-/// part of the shared command contract (the bridge always sends the task id);
-/// the probe itself is project-scoped. Runs off the UI thread — the remote read
-/// spawns `git`.
-#[tauri::command]
-pub async fn pr_support(app: AppHandle, id: String) -> Result<PrSupport, String> {
-    tauri::async_runtime::spawn_blocking(move || pr_support_blocking(&app, &id))
-        .await
-        .map_err(|e| format!("PR support probe failed to run: {e}"))?
-}
-
-/// The blocking body of `pr_support` (see `commit_task_blocking` for the
-/// state-reacquisition rationale behind the owned `AppHandle`).
-fn pr_support_blocking(app: &AppHandle, id: &str) -> Result<PrSupport, String> {
-    tracing::debug!(target: "nightcore::pr", task_id = %id, "probing PR support");
-    let project = require_project(app)?;
-    let project_path = std::path::PathBuf::from(&project.path);
-    Ok(PrSupport {
-        gh_installed: which::which(GH_BINARY).is_ok(),
-        has_remote: worktree::remote_url(&project_path).is_some(),
-    })
-}
-
-/// Draft a PR title/body for a task via the `claude -p` one-shot
-/// ([`pr_msg::draft_for`]), falling back to the deterministic pair (task title +
-/// task description) on any failure — the command itself never errors on a
-/// drafting failure, only on a missing task/project or an invalid `base`. Run
-/// when the create dialog opens, so `create_pr_task` never blocks on `claude`.
-/// `base` lets the dialog RE-draft against a picker-chosen base (the draft
-/// describes `git diff <base>...HEAD`, so a base switch changes the facts);
-/// `None` keeps the default resolution (task base → project branch).
-#[tauri::command]
-pub async fn draft_pr_message(
-    app: AppHandle,
-    id: String,
-    base: Option<String>,
-) -> Result<PrDraft, String> {
-    // The drafting pass spawns `claude -p` (up to a 30s timeout) plus git reads —
-    // blocking work that must not run on the UI thread (the WKWebView rule).
-    tauri::async_runtime::spawn_blocking(move || draft_pr_message_blocking(&app, &id, base))
-        .await
-        .map_err(|e| format!("PR message drafting failed to run: {e}"))?
-}
-
-/// The blocking body of `draft_pr_message`.
-fn draft_pr_message_blocking(
-    app: &AppHandle,
-    id: &str,
-    base_arg: Option<String>,
-) -> Result<PrDraft, String> {
-    let store = app
-        .try_state::<TaskStore>()
-        .ok_or_else(|| "task store unavailable".to_string())?;
-    let task = store
-        .get(id)
-        .ok_or_else(|| format!("no task with id {id}"))?;
-    let project = require_project(app)?;
-    let project_path = std::path::PathBuf::from(&project.path);
-    let dir = worktree::worktree_path(&project_path, id);
-    let base = resolve_draft_base(base_arg, task.base_branch.clone(), || {
-        worktree::base_branch(&project_path)
-    })?;
-    let drafted = if dir.exists() {
-        pr_msg::draft_for(&store, &dir, &task, &base)
-    } else {
-        None
-    };
-    Ok(drafted.unwrap_or_else(|| PrDraft {
-        title: task.title.clone(),
-        body: task.description.clone(),
-    }))
-}
-
-/// Resolve the base a draft is computed against: an explicit picker base wins
-/// (validated — it reaches `git diff` argv inside `draft_for`), else the task's
-/// stored base, else the project's current branch. A blank/whitespace explicit
-/// base counts as "not provided". Pure, unit-testable.
-fn resolve_draft_base(
-    base_arg: Option<String>,
-    task_base: Option<String>,
-    project_base: impl FnOnce() -> String,
-) -> Result<String, String> {
-    match base_arg.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
-        Some(b) => {
-            validate_ref(b)?;
-            Ok(b.to_string())
-        }
-        None => Ok(task_base.unwrap_or_else(project_base)),
-    }
-}
-
 /// Per-task single-flight guard for PR creation (the pattern of
-/// `commit_in_flight`/`merge_in_flight` in [`super::merge`]): a double-fired
+/// `commit_in_flight`/`merge_in_flight` in [`crate::workflow::merge`]): a double-fired
 /// command must not race two pushes + two `gh pr create` runs for one task.
 /// `pub(crate)` so `merge_task_blocking` can refuse while a creation is live.
 pub(crate) fn pr_in_flight() -> &'static Mutex<HashSet<String>> {
@@ -188,7 +40,7 @@ pub(crate) fn pr_in_flight() -> &'static Mutex<HashSet<String>> {
 /// mirror check in `merge` runs after ITS lease), so whichever action leases
 /// second reliably sees the other's lease.
 fn refuse_while_sibling_in_flight(id: &str) -> Result<(), String> {
-    use super::merge::{commit_in_flight, lease_held, merge_in_flight};
+    use crate::workflow::merge::{commit_in_flight, lease_held, merge_in_flight};
     if lease_held(merge_in_flight(), id) {
         return Err(
             "a merge for this task is in progress — wait for it to finish before creating a PR"
@@ -421,91 +273,6 @@ enum PrCreateOutcome {
     Failed { message: String },
 }
 
-/// The drained output of a bounded `gh` run (see [`run_gh_bounded`]). Shared
-/// with the phase-2 status/finalize commands (`pr_status.rs`).
-pub(super) struct GhOutput {
-    pub(super) status: std::process::ExitStatus,
-    pub(super) stdout: String,
-    pub(super) stderr: String,
-}
-
-/// Spawn `binary args…` in `dir` (feeding `stdin_payload` when given), drain
-/// both pipes on threads, and wait under `deadline` — `gh` talks to the
-/// network, so a black-holed GitHub errors out (`timeout_msg`) instead of
-/// pinning the blocking thread + PR lease forever. Errs are user-facing
-/// strings; the caller decides the outcome mapping.
-pub(super) fn run_gh_bounded(
-    dir: &Path,
-    binary: &str,
-    args: &[&str],
-    stdin_payload: Option<&str>,
-    deadline: std::time::Duration,
-    timeout_msg: &str,
-) -> Result<GhOutput, String> {
-    let mut child = match crate::platform::std_command(binary)
-        .args(args)
-        .current_dir(dir)
-        .stdin(if stdin_payload.is_some() {
-            Stdio::piped()
-        } else {
-            Stdio::null()
-        })
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
-        Ok(child) => child,
-        // The pre-spawn `which` probe is the ONLY ToolAbsent source: it already
-        // resolved the binary, so a spawn-time NotFound here is almost always a
-        // vanished cwd (the worktree was deleted under us — exactly what a racing
-        // merge cleanup does), not a missing tool. Report it as a launch failure
-        // naming the cwd instead of the misleading "gh is not installed".
-        Err(e) => {
-            return Err(format!(
-                "could not launch `{binary}` in `{}` — the task's worktree may have been \
-                 removed: {e}",
-                dir.display()
-            ))
-        }
-    };
-
-    // Feed stdin from a detached thread so a large body can't deadlock against
-    // a child that is also writing output (dropping the handle closes the pipe).
-    if let (Some(payload), Some(mut stdin)) = (stdin_payload, child.stdin.take()) {
-        let payload = payload.as_bytes().to_vec();
-        std::thread::spawn(move || {
-            let _ = stdin.write_all(&payload);
-        });
-    }
-
-    // Drain stdout AND stderr on threads so neither pipe can fill and block the
-    // child; join after the bounded wait (the claude_oneshot discipline).
-    fn drain<R: std::io::Read + Send + 'static>(
-        pipe: Option<R>,
-    ) -> std::thread::JoinHandle<String> {
-        std::thread::spawn(move || {
-            let mut buf = String::new();
-            if let Some(mut p) = pipe {
-                let _ = p.read_to_string(&mut buf);
-            }
-            buf
-        })
-    }
-    let stdout = drain(child.stdout.take());
-    let stderr = drain(child.stderr.take());
-
-    let status = match crate::proc::wait_with_deadline(&mut child, deadline) {
-        Ok(Some(status)) => status,
-        Ok(None) => return Err(timeout_msg.to_string()),
-        Err(e) => return Err(format!("`{binary}` did not finish: {e}")),
-    };
-    Ok(GhOutput {
-        status,
-        stdout: stdout.join().unwrap_or_default(),
-        stderr: stderr.join().unwrap_or_default(),
-    })
-}
-
 /// Create the PR via `gh pr create`, with the binary as a parameter — the
 /// injection seam the tests use to exercise the real spawn path with a fake
 /// script (the `secret_scan::scan_staged_with` template). The body travels on
@@ -634,111 +401,6 @@ fn view_pr_with(dir: &Path, binary: &str, branch: &str) -> Option<(String, u64)>
     parse_pr_view(&out.stdout)
 }
 
-/// Parse `gh pr view --json url,number,state` output into `(url, number)`,
-/// accepting only an OPEN PR (a closed/merged PR for the branch must not be
-/// resurrected as "the" created PR) with an https URL. Pure.
-fn parse_pr_view(stdout: &str) -> Option<(String, u64)> {
-    #[derive(serde::Deserialize)]
-    struct View {
-        url: String,
-        number: u64,
-        state: String,
-    }
-    let view: View = serde_json::from_str(stdout.trim()).ok()?;
-    if view.state != "OPEN" || !view.url.starts_with("https://") {
-        return None;
-    }
-    Some((view.url, view.number))
-}
-
-/// Parse the created PR's URL + number from `gh pr create` stdout. By contract
-/// gh prints the URL as the trailing line (`https://…/pull/<n>`); scan from the
-/// end for the first line that parses, tolerating trailing blank lines and any
-/// leading chatter. Pure.
-fn parse_pr_url(stdout: &str) -> Option<(String, u64)> {
-    stdout
-        .lines()
-        .rev()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .find_map(|line| {
-            if !line.starts_with("https://") {
-                return None;
-            }
-            let number = pr_number_from_url(line)?;
-            Some((line.to_string(), number))
-        })
-}
-
-/// The PR number from a URL shaped `https://…/pull/<n>` (tolerating a trailing
-/// slash). `None` when the shape doesn't match. Pure.
-fn pr_number_from_url(url: &str) -> Option<u64> {
-    let (_, tail) = url.rsplit_once("/pull/")?;
-    tail.trim_end_matches('/').parse().ok()
-}
-
-/// Open `url` in the OS default browser — **https-only**. Every other scheme
-/// (`http`, `file`, `javascript`, custom app schemes, …) is rejected, so a
-/// stored task field or model output can never launch a local resource or
-/// script through this seam. The URL is re-serialized from its parsed form
-/// (normalized + percent-encoded) before it reaches the platform opener.
-#[tauri::command]
-pub fn open_external(url: String) -> Result<(), String> {
-    let normalized = validate_https_url(&url)?;
-    open_in_browser(&normalized)
-}
-
-/// Parse + validate `url`: well-formed and scheme exactly `https`. Returns the
-/// normalized serialization. Pure, unit-testable.
-fn validate_https_url(url: &str) -> Result<String, String> {
-    let parsed = url::Url::parse(url).map_err(|e| format!("invalid URL: {e}"))?;
-    if parsed.scheme() != "https" {
-        return Err(format!(
-            "refusing to open a non-https URL (scheme `{}`)",
-            parsed.scheme()
-        ));
-    }
-    Ok(parsed.to_string())
-}
-
-/// Hand a validated https URL to the platform's default-browser opener. The
-/// child is reaped on a detached thread so no zombie lingers and the command
-/// never blocks the caller.
-#[cfg(target_os = "macos")]
-fn open_in_browser(url: &str) -> Result<(), String> {
-    spawn_and_reap(crate::platform::std_command("open").arg(url))
-}
-
-#[cfg(all(unix, not(target_os = "macos")))]
-fn open_in_browser(url: &str) -> Result<(), String> {
-    spawn_and_reap(crate::platform::std_command("xdg-open").arg(url))
-}
-
-#[cfg(windows)]
-fn open_in_browser(url: &str) -> Result<(), String> {
-    // `start` is a cmd builtin (the first quoted token is the window title). The
-    // whole tail is passed via `raw_arg` with the URL explicitly quoted so cmd's
-    // metacharacters (& | ^ < >) inside it stay literal; a validated https URL
-    // (re-serialized by the parser, which percent-encodes `"`) cannot break out
-    // of the quoting.
-    use std::os::windows::process::CommandExt;
-    let mut cmd = crate::platform::std_command("cmd");
-    cmd.raw_arg(format!("/C start \"\" \"{url}\""));
-    spawn_and_reap(&mut cmd)
-}
-
-/// Spawn `cmd` and reap the child on a detached thread (the openers exit almost
-/// immediately after handing the URL to the browser).
-fn spawn_and_reap(cmd: &mut std::process::Command) -> Result<(), String> {
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("could not open the browser: {e}"))?;
-    std::thread::spawn(move || {
-        let _ = child.wait();
-    });
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -802,7 +464,7 @@ mod tests {
 
     #[test]
     fn create_pr_refused_while_merge_or_commit_holds_the_task() {
-        use super::super::merge::{commit_in_flight, merge_in_flight};
+        use crate::workflow::merge::{commit_in_flight, merge_in_flight};
         // Merge direction: a live merge blocks PR creation (its cleanup would
         // delete the worktree/branch mid-push). Unique ids: the sets are global.
         let merge_lease =
@@ -825,30 +487,6 @@ mod tests {
         assert!(refuse_while_sibling_in_flight("pr-vs-commit-other").is_ok());
         drop(commit_lease);
         assert!(refuse_while_sibling_in_flight("pr-vs-commit").is_ok());
-    }
-
-    #[test]
-    fn resolve_draft_base_prefers_explicit_then_task_then_project() {
-        // No explicit base: the task's stored base wins, else the project's.
-        let base = resolve_draft_base(None, Some("develop".into()), || "main".into());
-        assert_eq!(base.as_deref(), Ok("develop"));
-        let base = resolve_draft_base(None, None, || "main".into());
-        assert_eq!(base.as_deref(), Ok("main"));
-
-        // An explicit picker base beats both (the re-draft-on-base-change path).
-        let base = resolve_draft_base(Some("release/2.0".into()), Some("develop".into()), || {
-            "main".into()
-        });
-        assert_eq!(base.as_deref(), Ok("release/2.0"));
-
-        // Blank/whitespace explicit base counts as "not provided".
-        let base = resolve_draft_base(Some("   ".into()), Some("develop".into()), || "main".into());
-        assert_eq!(base.as_deref(), Ok("develop"));
-
-        // An option-injection base is rejected before it can reach git argv.
-        let err = resolve_draft_base(Some("--force".into()), None, || "main".into())
-            .expect_err("a dash base is rejected");
-        assert!(err.contains("invalid branch/base name"), "err: {err}");
     }
 
     #[test]
@@ -914,46 +552,6 @@ mod tests {
         // Persisted via the store, not just returned.
         let stored = store.get(&id).expect("task");
         assert_eq!(stored.base_branch.as_deref(), Some("develop"));
-    }
-
-    #[test]
-    fn parse_pr_url_reads_the_trailing_line() {
-        // The clean contract shape: the URL is the last line.
-        assert_eq!(
-            parse_pr_url("https://github.com/acme/widget/pull/123\n"),
-            Some(("https://github.com/acme/widget/pull/123".to_string(), 123))
-        );
-        // gh may print chatter first (e.g. "Creating pull request for … into …").
-        let noisy = "Creating pull request for nc/t-1 into main in acme/widget\n\n\
-                     https://github.com/acme/widget/pull/7\n\n";
-        assert_eq!(
-            parse_pr_url(noisy),
-            Some(("https://github.com/acme/widget/pull/7".to_string(), 7))
-        );
-        // A trailing slash still parses; GHES-style hosts too.
-        assert_eq!(
-            parse_pr_url("https://git.corp.example/o/r/pull/42/"),
-            Some(("https://git.corp.example/o/r/pull/42/".to_string(), 42))
-        );
-        // No URL, a non-https line, or an unparseable number ⇒ None.
-        assert_eq!(parse_pr_url("nothing here"), None);
-        assert_eq!(parse_pr_url("http://github.com/acme/widget/pull/1"), None);
-        assert_eq!(
-            parse_pr_url("https://github.com/acme/widget/pull/abc"),
-            None
-        );
-        assert_eq!(parse_pr_url(""), None);
-    }
-
-    #[test]
-    fn pr_number_from_url_parses_the_tail() {
-        assert_eq!(pr_number_from_url("https://github.com/a/b/pull/9"), Some(9));
-        assert_eq!(
-            pr_number_from_url("https://github.com/a/b/pull/9/"),
-            Some(9)
-        );
-        assert_eq!(pr_number_from_url("https://github.com/a/b/issues/9"), None);
-        assert_eq!(pr_number_from_url("https://github.com/a/b/pull/"), None);
     }
 
     /// Write an executable shell script into `dir` to stand in for `gh`, so the
@@ -1286,53 +884,5 @@ exit 1"#,
             matches!(outcome, PrCreateOutcome::Created { number: 12, .. }),
             "the zero-exit-no-URL create recovers through pr view"
         );
-    }
-
-    #[test]
-    fn parse_pr_view_accepts_only_open_https_prs() {
-        assert_eq!(
-            parse_pr_view(r#"{"url":"https://github.com/a/b/pull/7","number":7,"state":"OPEN"}"#),
-            Some(("https://github.com/a/b/pull/7".to_string(), 7))
-        );
-        // A closed/merged PR must not be resurrected as "the" created PR.
-        for state in ["CLOSED", "MERGED"] {
-            assert_eq!(
-                parse_pr_view(&format!(
-                    r#"{{"url":"https://github.com/a/b/pull/7","number":7,"state":"{state}"}}"#
-                )),
-                None,
-                "{state} is not recoverable"
-            );
-        }
-        // Non-https URLs and garbage are rejected.
-        assert_eq!(
-            parse_pr_view(r#"{"url":"http://github.com/a/b/pull/7","number":7,"state":"OPEN"}"#),
-            None
-        );
-        assert_eq!(parse_pr_view("not json"), None);
-        assert_eq!(parse_pr_view(""), None);
-    }
-
-    #[test]
-    fn open_external_accepts_only_https() {
-        assert_eq!(
-            validate_https_url("https://github.com/acme/widget/pull/7").as_deref(),
-            Ok("https://github.com/acme/widget/pull/7")
-        );
-        for bad in [
-            "http://github.com/acme/widget/pull/7", // downgrade
-            "file:///etc/passwd",                   // local resource
-            "javascript:alert(1)",                  // script
-            "nightcore://internal",                 // custom scheme
-            "ftp://host/file",                      // legacy scheme
-            "github.com/acme/widget",               // no scheme
-            "not a url at all",
-            "",
-        ] {
-            assert!(
-                validate_https_url(bad).is_err(),
-                "must reject {bad:?} (https-only)"
-            );
-        }
     }
 }
