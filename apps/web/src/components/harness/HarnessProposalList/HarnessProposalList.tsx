@@ -1,7 +1,10 @@
+import { memo } from 'react';
+
 import { Card, Skeleton } from '@/components/ui';
 
 import { ARTIFACT_KIND_META } from '../harness.constants';
 import type { ProposedArtifactVM } from '../harness.types';
+import { useStableOnOpen } from './HarnessProposalList.hooks';
 import type { HarnessProposalListProps } from './HarnessProposalList.types';
 
 interface ArtifactGroup {
@@ -40,8 +43,13 @@ function previewOf(content: string): string {
 }
 
 /** One artifact card: kind + write-mode badges, target path, applied state, and a
- *  truncated content preview. Clickable → the detail panel. */
-function ArtifactCard({
+ *  truncated content preview. Clickable → the detail panel.
+ *
+ *  `memo`ized so a single artifact's status change (apply/dismiss) re-renders only
+ *  that one card — the rest keep a stable `artifact` ref and a stable `onOpen`
+ *  (see {@link useStableOnOpen}) and skip, instead of the whole list re-rendering
+ *  on a per-item update. */
+const ArtifactCard = memo(function ArtifactCard({
   artifact,
   onOpen,
 }: {
@@ -88,7 +96,7 @@ function ArtifactCard({
       </pre>
     </Card>
   );
-}
+});
 
 function SkeletonCard() {
   return (
@@ -113,6 +121,8 @@ export function HarnessProposalList({
   emptyMessage,
   onOpen,
 }: HarnessProposalListProps) {
+  // Called before the early returns so hook order stays stable across states.
+  const stableOpen = useStableOnOpen(onOpen);
   if (artifacts.length === 0) {
     if (loading) {
       return (
@@ -148,7 +158,7 @@ export function HarnessProposalList({
           )}
           <div className="grid grid-cols-1 content-start gap-3 sm:grid-cols-2">
             {group.items.map((artifact) => (
-              <ArtifactCard key={artifact.id} artifact={artifact} onOpen={onOpen} />
+              <ArtifactCard key={artifact.id} artifact={artifact} onOpen={stableOpen} />
             ))}
           </div>
         </section>

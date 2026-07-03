@@ -35,3 +35,16 @@ test('shows the empty message when there is nothing to render', async () => {
     .element(screen.getByText(/run a scan to synthesize a proposed harness/i))
     .toBeInTheDocument();
 });
+
+test('the stabilized onOpen still invokes the LATEST handler after a re-render', async () => {
+  // The memo-enabling stabilizer keeps a single onOpen identity across renders;
+  // it must forward to the most recent handler, never a stale closure.
+  const first = vi.fn();
+  const second = vi.fn();
+  const screen = render(<WithArtifacts onOpen={first} />);
+  screen.rerender(<WithArtifacts onOpen={second} />);
+  await screen.getByRole('heading', { name: 'component-folder-structure' }).click();
+  expect(first).not.toHaveBeenCalled();
+  expect(second).toHaveBeenCalledTimes(1);
+  expect(second.mock.calls[0]?.[0]?.id).toBe('a1');
+});

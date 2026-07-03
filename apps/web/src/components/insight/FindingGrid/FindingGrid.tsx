@@ -1,5 +1,7 @@
 /** The Insight finding grid: maps findings to the shared {@link DetailCard} and
  *  lays them out (with streaming skeletons + empty state) via {@link DetailCardGrid}. */
+import { memo } from 'react';
+
 import { DetailCard, DetailCardGrid } from '@/components/ui';
 import { formatLocation } from '@/lib/formatters';
 
@@ -9,11 +11,18 @@ import {
   SEVERITY_META,
 } from '../insight.constants';
 import type { InsightFinding } from '../insight.types';
+import { useStableOnOpen } from './FindingGrid.hooks';
 import type { FindingGridProps } from './FindingGrid.types';
 
 /** One finding card: severity/effort badges, category glyph, title, grounded
- *  file:line, and a truncated description. Clickable → the detail panel. */
-function FindingCard({
+ *  file:line, and a truncated description. Clickable → the detail panel.
+ *
+ *  `memo`ized so a single finding's status change (dismiss/convert) re-renders
+ *  only that one card — every other card keeps a stable `finding` object ref
+ *  (the upstream `.map` preserves refs for unchanged findings) and a stable
+ *  `onOpen` (see {@link useStableOnOpen}), so the list no longer re-renders in
+ *  full on a per-item update. */
+const FindingCard = memo(function FindingCard({
   finding,
   onOpen,
 }: {
@@ -67,7 +76,7 @@ function FindingCard({
       }
     />
   );
-}
+});
 
 /** The finding grid. Renders real cards, then any streaming skeletons; falls back
  *  to an empty message when there is nothing to show and nothing in flight. */
@@ -77,6 +86,7 @@ export function FindingGrid({
   emptyMessage,
   onOpen,
 }: FindingGridProps) {
+  const stableOpen = useStableOnOpen(onOpen);
   return (
     <DetailCardGrid
       isEmpty={findings.length === 0 && skeletonCount === 0}
@@ -84,7 +94,7 @@ export function FindingGrid({
       skeletonCount={skeletonCount}
     >
       {findings.map((finding) => (
-        <FindingCard key={finding.id} finding={finding} onOpen={onOpen} />
+        <FindingCard key={finding.id} finding={finding} onOpen={stableOpen} />
       ))}
     </DetailCardGrid>
   );
