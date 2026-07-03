@@ -68,11 +68,29 @@ fn merge_preview_blocking(
     let project = active_project_path(app)?;
     let branch = task_branch(&task);
     // Preview against the task's chosen base (matching what `merge_task` will target),
-    // an explicit override, else the project's current branch.
-    let base = base
-        .or_else(|| task.base_branch.clone())
-        .unwrap_or_else(|| worktree::base_branch(&project));
+    // an explicit override, else the project's current branch — validated identically to
+    // `merge_branch` so a bogus/option-shaped base fails loudly here instead of yielding a
+    // silently degraded preview that the actual (validating) merge would then reject.
+    let base = resolve_preview_base(base, task.base_branch.as_deref(), &project)?;
+    // The resolved branch is validated too, mirroring `merge_branch`'s two-ref check.
+    worktree::validate_ref(&branch)?;
     Ok(worktree::merge_preview(&project, &branch, &base))
+}
+
+/// Resolve the preview base (explicit override → task's stored base → project's current
+/// branch) and reject an illegal/option-shaped ref before it reaches git — mirroring
+/// [`merge_branch`], so a read-only preview and the merge it previews agree on what is a
+/// legal base.
+fn resolve_preview_base(
+    explicit: Option<String>,
+    task_base: Option<&str>,
+    project: &std::path::Path,
+) -> Result<String, String> {
+    let base = explicit
+        .or_else(|| task_base.map(str::to_string))
+        .unwrap_or_else(|| worktree::base_branch(project));
+    worktree::validate_ref(&base)?;
+    Ok(base)
 }
 
 /// The changed files in a task's worktree vs base (committed + uncommitted + untracked).
@@ -143,4 +161,45 @@ fn discard_worktree_blocking(app: &AppHandle, id: &str) -> Result<(), String> {
     })?;
     let _ = app.emit(TASK_EVENT, &updated);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn preview_base_rejects_option_shaped_explicit_base() {
+        // An explicit option-shaped base must be rejected before it reaches git —
+        // identical to `merge_branch`'s `validate_ref`, so the preview and the merge it
+        // previews never disagree on what is a legal base. (The explicit override wins,
+        // so the project path is never consulted.)
+        for bad in ["--all", "-D", "--orphan", "-"] {
+            let err = resolve_preview_base(Some(bad.to_string()), None, Path::new("/nonexistent"))
+                .unwrap_err();
+            assert!(
+                err.contains("invalid branch/base name"),
+                "explicit base {bad:?} must be rejected loudly, got: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn preview_base_accepts_a_legal_explicit_base() {
+        let base = resolve_preview_base(Some("main".to_string()), None, Path::new("/nonexistent"))
+            .expect("a legal explicit base must resolve");
+        assert_eq!(base, "main");
+    }
+
+    #[test]
+    fn preview_base_validates_a_bogus_task_base() {
+        // Falling back to the task's stored base must also be validated (an option-shaped
+        // stored base must not slip through into a degraded preview).
+        let err =
+            resolve_preview_base(None, Some("--force"), Path::new("/nonexistent")).unwrap_err();
+        assert!(
+            err.contains("invalid branch/base name"),
+            "a bogus task base must be rejected, got: {err}"
+        );
+    }
 }
