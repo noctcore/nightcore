@@ -30,3 +30,25 @@ test('reflects the enabled option as aria-checked', async () => {
     .element(screen.getByRole('switch', { name: /auto-commit on verified/i }))
     .toHaveAttribute('aria-checked', 'true');
 });
+
+test('closes when focus leaves the panel (Tab-out, a11y)', async () => {
+  // A keyboard user tabbing past the last control must not be stranded on an
+  // element behind the still-open popover — focus-out closes it.
+  const screen = render(
+    <div>
+      <Collapsed />
+      <button type="button" data-testid="after">
+        after
+      </button>
+    </div>,
+  );
+  await screen.getByRole('button', { name: /auto mode options/i }).click();
+  await expect
+    .element(screen.getByRole('switch', { name: /auto-commit on verified/i }))
+    .toBeInTheDocument();
+  // Move focus to a control outside the popover — simulates Tab past the panel.
+  (screen.getByTestId('after').element() as HTMLElement).focus();
+  await expect
+    .element(screen.getByRole('switch', { name: /auto-commit on verified/i }))
+    .not.toBeInTheDocument();
+});
