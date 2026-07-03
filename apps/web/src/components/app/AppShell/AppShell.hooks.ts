@@ -427,7 +427,10 @@ export function useAppShell(): AppShellState {
   // Plan-approval + commit/merge actions. Each resolves a parked request or runs a
   // git op on the backend; the authoritative status arrives via `nc:task`. All are
   // guarded against a double-fire between click and the command settling, and
-  // surface failures through the toast channel.
+  // surface failures through the toast channel. commit/merge ALSO toast on success:
+  // unlike approve/reject/refine — which visibly move the card to a new column —
+  // their result leaves no board signal, so the toast is the only confirmation the
+  // click landed (the PR-lifecycle + WorktreeView `tone: 'success'` convention).
   const handleApprove = useCallback(
     (id: string) =>
       action.guard('approve', id, () =>
@@ -461,20 +464,26 @@ export function useAppShell(): AppShellState {
   const handleCommit = useCallback(
     (id: string) =>
       action.guard('commit', id, () =>
-        commitTask(id).catch((err) => {
-          console.error('commit_task failed', err);
-          toast.error('Could not commit the worktree', err);
-        }),
+        commitTask(id).then(
+          () => toast.push({ tone: 'success', title: 'Changes committed' }),
+          (err) => {
+            console.error('commit_task failed', err);
+            toast.error('Could not commit the worktree', err);
+          },
+        ),
       ),
     [action, toast],
   );
   const handleMerge = useCallback(
     (id: string) =>
       action.guard('merge', id, () =>
-        mergeTask(id).catch((err) => {
-          console.error('merge_task failed', err);
-          toast.error('Could not merge the branch', err);
-        }),
+        mergeTask(id).then(
+          () => toast.push({ tone: 'success', title: 'Branch merged into base' }),
+          (err) => {
+            console.error('merge_task failed', err);
+            toast.error('Could not merge the branch', err);
+          },
+        ),
       ),
     [action, toast],
   );
@@ -556,23 +565,31 @@ export function useAppShell(): AppShellState {
   // Convert a proposed sub-task (or all of them) into board tasks.
   // The backend emits `nc:task` for both the new child and the updated parent, so
   // the board + open drawer refresh via the echo — no optimistic local edit needed.
+  // Both toast on success: the new card lands in another column (usually off-screen
+  // behind the decompose drawer), so the toast is the confirmation the click worked.
   const handleConvertSubtask = useCallback(
     (parentId: string, subtaskId: string) =>
       action.guard('convertSubtask', parentId, () =>
-        convertSubtask(parentId, subtaskId).catch((err) => {
-          console.error('convert_subtask failed', err);
-          toast.error('Could not convert the sub-task', err);
-        }),
+        convertSubtask(parentId, subtaskId).then(
+          () => toast.push({ tone: 'success', title: 'Sub-task added to the board' }),
+          (err) => {
+            console.error('convert_subtask failed', err);
+            toast.error('Could not convert the sub-task', err);
+          },
+        ),
       ),
     [action, toast],
   );
   const handleConvertAllSubtasks = useCallback(
     (parentId: string) =>
       action.guard('convertAllSubtasks', parentId, () =>
-        convertAllSubtasks(parentId).catch((err) => {
-          console.error('convert_all_subtasks failed', err);
-          toast.error('Could not convert the sub-tasks', err);
-        }),
+        convertAllSubtasks(parentId).then(
+          () => toast.push({ tone: 'success', title: 'Sub-tasks added to the board' }),
+          (err) => {
+            console.error('convert_all_subtasks failed', err);
+            toast.error('Could not convert the sub-tasks', err);
+          },
+        ),
       ),
     [action, toast],
   );
