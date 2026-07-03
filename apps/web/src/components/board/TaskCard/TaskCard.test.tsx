@@ -2,6 +2,7 @@ import { composeStories } from '@storybook/react-vite';
 import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
+import { formatElapsed, subscribeSecondTick } from './TaskCard.hooks';
 import * as stories from './TaskCard.stories';
 
 const { Backlog, Failed, Done, Blocked, Running, Verifying, MainMode, MainModeCommitted, Draggable } =
@@ -83,4 +84,42 @@ test('a draggable card carries the grab affordance and keyboard-draggable attrib
 test('a non-draggable card exposes no drag affordance', async () => {
   const screen = render(<Backlog />);
   expect(screen.container.querySelector('.cursor-grab')).toBeNull();
+});
+
+test('formatElapsed renders mm:ss and clamps negatives to 00:00', () => {
+  expect(formatElapsed(0)).toBe('00:00');
+  expect(formatElapsed(65_000)).toBe('01:05');
+  expect(formatElapsed(-5_000)).toBe('00:00');
+});
+
+test('subscribeSecondTick shares ONE interval across cards and stops when the last detaches', () => {
+  vi.useFakeTimers();
+  try {
+    const a = vi.fn();
+    const b = vi.fn();
+    const offA = subscribeSecondTick(a);
+    const offB = subscribeSecondTick(b);
+    // Two subscribers, but only one interval is scheduled.
+    expect(vi.getTimerCount()).toBe(1);
+
+    vi.advanceTimersByTime(1000);
+    expect(a).toHaveBeenCalledTimes(1);
+    expect(b).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(2000);
+    expect(a).toHaveBeenCalledTimes(3);
+    expect(b).toHaveBeenCalledTimes(3);
+
+    // One card detaches — the shared interval keeps ticking for the rest.
+    offA();
+    vi.advanceTimersByTime(1000);
+    expect(a).toHaveBeenCalledTimes(3);
+    expect(b).toHaveBeenCalledTimes(4);
+
+    // Last subscriber gone → the interval is torn down (no idle timer).
+    offB();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    vi.useRealTimers();
+  }
 });

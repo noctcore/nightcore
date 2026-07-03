@@ -12,16 +12,46 @@ export function formatElapsed(ms: number): string {
   return `${minutes}:${seconds}`;
 }
 
+/** Module-level 1Hz ticker shared by every live card. N running cards subscribe to
+ *  ONE interval (not N), and the interval runs only while at least one subscriber is
+ *  active — so an idle board schedules no timer at all. Each subscriber is notified
+ *  on the tick; the returned unsubscribe tears the interval down once the last card
+ *  detaches. Exported for the colocated deterministic ticker test. */
+const tickSubscribers = new Set<() => void>();
+let tickHandle: ReturnType<typeof setInterval> | null = null;
+
+export function subscribeSecondTick(onTick: () => void): () => void {
+  tickSubscribers.add(onTick);
+  if (tickHandle === null) {
+    tickHandle = setInterval(() => {
+      for (const fn of tickSubscribers) fn();
+    }, 1000);
+  }
+  return () => {
+    tickSubscribers.delete(onTick);
+    if (tickSubscribers.size === 0 && tickHandle !== null) {
+      clearInterval(tickHandle);
+      tickHandle = null;
+    }
+  };
+}
+
 /** A live mm:ss elapsed timer counting up from `since`, ticking once a second
- *  while `active`. Used by the running card and the detail drawer header. */
+ *  while `active`. Used by the running card and the detail drawer header.
+ *
+ *  `since` is deliberately NOT in the effect deps: it is the task's `updatedAt`,
+ *  bumped repeatedly as the stream flushes, so keying the effect on it would tear
+ *  down and rebuild the ticker on every delta (and fire an extra immediate tick).
+ *  The effect only needs to (re)subscribe when `active` flips; `since` is read on
+ *  each render in the returned `formatElapsed(now - since)`, so the displayed value
+ *  still tracks the latest `since` without churning the interval. */
 export function useElapsed(since: number, active: boolean): string {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!active) return;
     setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [active, since]);
+    return subscribeSecondTick(() => setNow(Date.now()));
+  }, [active]);
   return formatElapsed(now - since);
 }
 
