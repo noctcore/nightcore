@@ -160,7 +160,13 @@ fn fail_run(app: &AppHandle, task_id: &str, message: &str, feed_breaker: bool) {
         );
         orch.emit_state(app, "paused", Some("circuit-breaker"));
         let app = app.clone();
-        tokio::spawn(async move {
+        // `tauri::async_runtime::spawn` (not bare `tokio::spawn`) — the latter panics
+        // when no Tokio runtime is entered on the calling thread and aborted the release
+        // app via SIGABRT across the WKWebView extern-"C" boundary. This mirrors the fix
+        // already applied to the sibling start()/stop() (auto_loop.rs) and is guarded by
+        // their spawn-mechanism regression tests; a refactor reaching this breaker path
+        // from a sync Tauri command/callback thread would otherwise reintroduce the abort.
+        tauri::async_runtime::spawn(async move {
             app.state::<Orchestrator>().interrupt_all().await;
         });
     }
@@ -243,6 +249,28 @@ mod tests {
         assert!(
             feed_breaker_on_failure(&breaker, true),
             "2nd auto-loop failure trips — only auto-loop failures advanced the window"
+        );
+    }
+
+    #[test]
+    fn fail_run_breaker_trip_uses_the_guarded_spawn() {
+        // Regression guard for the SIGABRT pattern (nightcore-2026-06-27-161645.ips): the
+        // breaker-trip branch of `fail_run` must launch `interrupt_all` via
+        // `tauri::async_runtime::spawn`, never bare `tokio::spawn` (which panics when no
+        // Tokio runtime is entered on the calling thread and aborted the release app across
+        // the WKWebView extern-"C" boundary). The spawn site needs a full `AppHandle`, so
+        // this is a source-level guard rather than a behavioral one. The forbidden needle is
+        // assembled from parts so the literal never appears in this file except where it is
+        // (dis)allowed.
+        let src = include_str!("submit.rs");
+        let bare_spawn = concat!("tokio", "::spawn(async move {");
+        assert!(
+            !src.contains(bare_spawn),
+            "fail_run must NOT use bare tokio::spawn — it aborts off-runtime (SIGABRT)"
+        );
+        assert!(
+            src.contains("tauri::async_runtime::spawn(async move {"),
+            "fail_run must launch interrupt_all via the guarded tauri::async_runtime::spawn"
         );
     }
 }
