@@ -46,3 +46,31 @@ test('Escape closes the menu', async () => {
   await userEvent.keyboard('{Escape}');
   expect(screen.container.querySelector('[role="menu"]')).toBeNull();
 });
+
+test('closes when focus leaves the menu (Tab-out)', async () => {
+  // Tabbing off the last menuitem moves focus to a control outside the menu; the
+  // focus-out handler closes it so focus is never stranded behind the open panel.
+  const screen = render(
+    <div>
+      <Menu
+        label="Project menu"
+        trigger={
+          <IconButton label="Open menu">
+            <DotsIcon size={16} />
+          </IconButton>
+        }
+        items={[
+          { label: 'Rename', onClick: vi.fn() },
+          { label: 'Remove', onClick: vi.fn(), destructive: true },
+        ]}
+      />
+      <button type="button" data-testid="after">
+        after
+      </button>
+    </div>,
+  );
+  await screen.getByRole('button', { name: 'Open menu' }).click();
+  await expect.element(screen.getByRole('menu')).toBeInTheDocument();
+  (screen.getByTestId('after').element() as HTMLElement).focus();
+  await expect.element(screen.getByRole('menu')).not.toBeInTheDocument();
+});

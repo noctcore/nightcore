@@ -16,9 +16,9 @@ export interface AutoModeOptionsControl {
   triggerRef: RefObject<HTMLButtonElement | null>;
 }
 
-/** Anchored-popover open state with outside-click + Esc close and keyboard focus
- *  management (focus the first option on open; return focus to the trigger on Esc),
- *  mirroring the `Menu` primitive's dismissal + first-item focus. */
+/** Anchored-popover open state with outside-click + Esc close, Tab-out close, and
+ *  keyboard focus management (focus the first option on open; return focus to the
+ *  trigger on Esc), mirroring the `Menu` primitive's dismissal + first-item focus. */
 export function useAutoModeOptions(): AutoModeOptionsControl {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -48,11 +48,23 @@ export function useAutoModeOptions(): AutoModeOptionsControl {
         closeAndRestore();
       }
     };
+    // Tab-out: closing when focus leaves the panel keeps a keyboard user from
+    // landing on a control behind the still-open popover with no visual tie to it.
+    // Focus has already moved to `relatedTarget`, so we close WITHOUT restoring to
+    // the trigger (that would fight the Tab); a null relatedTarget is left to the
+    // outside-pointerdown handler.
+    const root = rootRef.current;
+    const onFocusOut = (e: FocusEvent) => {
+      const next = e.relatedTarget as Node | null;
+      if (next !== null && root !== null && !root.contains(next)) close();
+    };
     window.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('keydown', onKeyDown);
+    root?.addEventListener('focusout', onFocusOut);
     return () => {
       window.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('keydown', onKeyDown);
+      root?.removeEventListener('focusout', onFocusOut);
     };
   }, [open, close, closeAndRestore]);
 

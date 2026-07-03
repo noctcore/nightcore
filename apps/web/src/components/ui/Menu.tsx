@@ -52,11 +52,22 @@ export function Menu({ trigger, label, items, align = 'right' }: MenuProps) {
         close();
       }
     };
+    // Tab-out: close when focus leaves the menu so a keyboard user never ends up
+    // on a control behind the still-open panel. Focus has already moved on to
+    // `relatedTarget`, so we let it go rather than trap it; a null relatedTarget
+    // (focus lost to nothing) is left to the outside-pointerdown handler.
+    const root = rootRef.current;
+    const onFocusOut = (e: FocusEvent) => {
+      const next = e.relatedTarget as Node | null;
+      if (next !== null && root !== null && !root.contains(next)) close();
+    };
     window.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('keydown', onKeyDown);
+    root?.addEventListener('focusout', onFocusOut);
     return () => {
       window.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('keydown', onKeyDown);
+      root?.removeEventListener('focusout', onFocusOut);
     };
   }, [open, close]);
 
