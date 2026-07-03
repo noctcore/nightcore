@@ -1,7 +1,7 @@
 /** Board-local derivation and view hooks: dependency-blocking, column grouping,
  *  keyword search, the provider inspector toggle, and the breaker banner. The
  *  board-appearance / background-panel hooks live in `Board.appearance.hooks.ts`. */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 
 import type { Task } from '@/lib/bridge';
 
@@ -66,12 +66,19 @@ export interface BoardViewState {
  *  on the full registry + run state, not just the visible cards). */
 export function useBoardView(tasks: Task[], activeWorktree: ActiveWorktree): BoardViewState {
   const [search, setSearch] = useState('');
+  // Decouple the O(n log n) filter/group/sort from each keystroke. The input stays
+  // controlled on `search` (updated urgently, so typing never lags), while the
+  // columns memo reads a DEFERRED copy: React commits the input immediately and
+  // reruns the expensive recompute at low priority, discarding intermediate passes
+  // when the user keeps typing. Ties typing latency to input responsiveness, not
+  // board size — the 1000+-task target.
+  const deferredSearch = useDeferredValue(search);
 
   const columns = useMemo(() => {
     const scoped = filterTasksByWorktree(tasks, activeWorktree);
-    const visible = scoped.filter((task) => matchesQuery(task, search));
+    const visible = scoped.filter((task) => matchesQuery(task, deferredSearch));
     return groupTasksByColumn(visible);
-  }, [tasks, activeWorktree, search]);
+  }, [tasks, activeWorktree, deferredSearch]);
 
   return {
     search,
