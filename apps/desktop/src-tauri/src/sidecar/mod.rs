@@ -123,6 +123,103 @@ pub(crate) const SCORECARD_EVENT: &str = "nc:scorecard";
 /// notice on this channel.
 pub(crate) const PRREVIEW_EVENT: &str = "nc:pr-review";
 
+/// The maximum byte length of a single NDJSON line accepted from the sidecar's
+/// stdout. Legitimate events (lifecycle, deltas, even large tool-result content)
+/// sit far below this; the bound exists only to stop a newline-free multi-GB
+/// emission from OOM-ing the core. A line over the cap is dropped whole and the
+/// reader resynchronizes at the next newline (see [`read_capped_line`]).
+const MAX_WIRE_LINE_BYTES: usize = 16 * 1024 * 1024;
+
+/// One outcome of [`read_capped_line`]. `Line` is a complete newline-terminated
+/// (or final EOF-terminated) line within the cap; `Oversized` reports the byte
+/// count of a line that exceeded the cap and was dropped; `Eof` is a clean stream
+/// close; `Err` is a read error.
+enum WireLine {
+    Line(String),
+    Oversized(usize),
+    Eof,
+    Err(std::io::Error),
+}
+
+/// Read one line from `reader`, bounding the in-memory accumulation to `max_bytes`.
+/// Unlike `AsyncBufReadExt::next_line`, a line whose bytes exceed `max_bytes` is NOT
+/// buffered whole: once the accumulator would pass the cap we discard it and skip
+/// bytes until the terminating newline, returning [`WireLine::Oversized`] with the
+/// total bytes seen so the caller can log and continue. A trailing `\r` is stripped
+/// (CRLF), matching `next_line`. Invalid UTF-8 is decoded lossily (the JSON parser
+/// downstream rejects it as a normal parse error).
+async fn read_capped_line<R>(reader: &mut R, max_bytes: usize) -> WireLine
+where
+    R: tokio::io::AsyncBufRead + Unpin,
+{
+    let mut buf: Vec<u8> = Vec::new();
+    let mut overflowed = false;
+    let mut discarded: usize = 0;
+    loop {
+        let available = match reader.fill_buf().await {
+            Ok(b) => b,
+            Err(e) => return WireLine::Err(e),
+        };
+        if available.is_empty() {
+            // EOF: emit whatever complete-but-unterminated content we hold.
+            if overflowed {
+                return WireLine::Oversized(discarded);
+            }
+            if buf.is_empty() {
+                return WireLine::Eof;
+            }
+            return WireLine::Line(finalize_line(&buf));
+        }
+        match available.iter().position(|&b| b == b'\n') {
+            Some(pos) => {
+                if !overflowed {
+                    let remaining = max_bytes.saturating_sub(buf.len());
+                    if pos > remaining {
+                        overflowed = true;
+                        discarded = buf.len() + pos;
+                    } else {
+                        buf.extend_from_slice(&available[..pos]);
+                    }
+                }
+                reader.consume(pos + 1);
+                if overflowed {
+                    return WireLine::Oversized(discarded);
+                }
+                return WireLine::Line(finalize_line(&buf));
+            }
+            None => {
+                let len = available.len();
+                if !overflowed {
+                    let remaining = max_bytes.saturating_sub(buf.len());
+                    if len > remaining {
+                        // This chunk pushes us past the cap with no newline in
+                        // sight — abandon the accumulator and start discarding.
+                        overflowed = true;
+                        discarded = buf.len() + len;
+                        buf = Vec::new();
+                    } else {
+                        buf.extend_from_slice(available);
+                    }
+                } else {
+                    discarded = discarded.saturating_add(len);
+                }
+                reader.consume(len);
+            }
+        }
+    }
+}
+
+/// Decode an accumulated line to a `String` (lossy) and strip a trailing `\r` so a
+/// Windows CRLF terminator doesn't leak into the JSON parse (parity with
+/// `AsyncBufReadExt::next_line`).
+fn finalize_line(buf: &[u8]) -> String {
+    let mut s = String::from_utf8_lossy(buf).into_owned();
+    if s.ends_with('\r') {
+        s.pop();
+    }
+    s
+}
+
 /// Ensure the persistent sidecar is running and its stdout reader is installed.
 /// Idempotent: spawns lazily on first use, then a no-op. Shared by `run_task` and
 /// the coordinator's `launch`.
@@ -140,10 +237,17 @@ pub async fn ensure_reader(app: &AppHandle) -> Result<(), String> {
     // task and applying terminal transitions + slot release + worktree cleanup.
     let reader_app = app.clone();
     tokio::spawn(async move {
-        let mut lines = BufReader::new(stdout).lines();
+        // A length-bounded line reader (NOT `.lines()`): tokio's `next_line`
+        // accumulates bytes until a newline with NO maximum, so one newline-free
+        // multi-GB emission from a compromised/runaway sidecar would be buffered
+        // whole into a String (then copied again by serde) and OOM the core. We cap
+        // each line and DROP anything over the cap, resynchronizing at the next
+        // newline — the wire is only structurally trusted, so a dropped line is an
+        // availability event, never a correctness one.
+        let mut reader = BufReader::new(stdout);
         loop {
-            match lines.next_line().await {
-                Ok(Some(raw)) => match parse_line(&raw) {
+            match read_capped_line(&mut reader, MAX_WIRE_LINE_BYTES).await {
+                WireLine::Line(raw) => match parse_line(&raw) {
                     Some(Ok(event)) => handle_event(&reader_app, event).await,
                     // A protocol parse error: the bad line is debug-only (it may
                     // echo content), the failure itself is a warn.
@@ -152,12 +256,15 @@ pub async fn ensure_reader(app: &AppHandle) -> Result<(), String> {
                     }
                     None => {}
                 },
-                Ok(None) => {
+                WireLine::Oversized(bytes) => {
+                    tracing::error!(target: "sidecar", bytes, cap = MAX_WIRE_LINE_BYTES, "dropped oversized sidecar line (exceeds wire cap) — resynchronizing");
+                }
+                WireLine::Eof => {
                     tracing::warn!(target: "sidecar", "sidecar stdout closed (process exited)");
                     handle_sidecar_crash(&reader_app).await;
                     break;
                 }
-                Err(e) => {
+                WireLine::Err(e) => {
                     tracing::error!(target: "sidecar", error = %e, "error reading sidecar stdout");
                     handle_sidecar_crash(&reader_app).await;
                     break;
@@ -478,5 +585,53 @@ mod tests {
             strip_level_token("nightcore-sidecar ready"),
             "nightcore-sidecar ready"
         );
+    }
+
+    #[tokio::test]
+    async fn capped_line_reads_normal_lines_and_reports_eof() {
+        use tokio::io::BufReader;
+        let data = b"{\"a\":1}\n{\"b\":2}\n".to_vec();
+        let mut reader = BufReader::new(&data[..]);
+        let l1 = read_capped_line(&mut reader, 1024).await;
+        assert!(matches!(l1, WireLine::Line(ref s) if s == "{\"a\":1}"));
+        let l2 = read_capped_line(&mut reader, 1024).await;
+        assert!(matches!(l2, WireLine::Line(ref s) if s == "{\"b\":2}"));
+        assert!(matches!(
+            read_capped_line(&mut reader, 1024).await,
+            WireLine::Eof
+        ));
+    }
+
+    #[tokio::test]
+    async fn capped_line_drops_an_oversized_line_and_resynchronizes() {
+        use tokio::io::BufReader;
+        // A newline-free blob far larger than the cap, followed by a normal line.
+        // The blob must be DROPPED (not buffered whole) and the next line must
+        // parse cleanly — the resync that keeps one hostile emission from OOM-ing.
+        let mut data = vec![b'x'; 5000];
+        data.push(b'\n');
+        data.extend_from_slice(b"{\"ok\":true}\n");
+        let mut reader = BufReader::new(&data[..]);
+
+        match read_capped_line(&mut reader, 256).await {
+            WireLine::Oversized(bytes) => assert!(bytes >= 5000, "reports the byte count"),
+            _ => panic!("expected Oversized for a line over the cap"),
+        }
+        let next = read_capped_line(&mut reader, 256).await;
+        assert!(
+            matches!(next, WireLine::Line(ref s) if s == "{\"ok\":true}"),
+            "reader resynchronizes at the next newline"
+        );
+    }
+
+    #[tokio::test]
+    async fn capped_line_strips_trailing_carriage_return() {
+        use tokio::io::BufReader;
+        let data = b"{\"a\":1}\r\n".to_vec();
+        let mut reader = BufReader::new(&data[..]);
+        assert!(matches!(
+            read_capped_line(&mut reader, 1024).await,
+            WireLine::Line(ref s) if s == "{\"a\":1}"
+        ));
     }
 }
