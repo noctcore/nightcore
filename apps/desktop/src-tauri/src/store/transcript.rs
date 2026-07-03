@@ -72,18 +72,21 @@ pub fn append_line(store: &TaskStore, task_id: &str, line: &str) {
 
 /// The blocking append: create the per-task dir if needed, then open in append mode
 /// and write one line. Logged-and-swallowed on failure (best-effort persistence).
+///
+/// Security: the transcript persists UNREDACTED tool I/O — including whatever
+/// secrets the agent read (a `cat ~/.aws/credentials`, a Read of a repo `.env`).
+/// So, on Unix, the per-task dir is created 0700 and the file 0600 at creation
+/// (mirroring `settings/helpers.rs::restrict_to_owner`), so another local user or a
+/// home-dir backup/sync tool can't read it off this predictable path.
 fn write_line(path: &Path, task_id: &str, line: &str) {
     if let Some(parent) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
             tracing::warn!(target: "nightcore::transcript", task_id, error = %e, "cannot create transcript dir");
             return;
         }
+        restrict_dir_to_owner(parent);
     }
-    match std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-    {
+    match owner_only_append(path) {
         Ok(mut file) => {
             if let Err(e) = file.write_all(line.as_bytes()) {
                 tracing::warn!(target: "nightcore::transcript", task_id, error = %e, "cannot append transcript event");
@@ -94,6 +97,33 @@ fn write_line(path: &Path, task_id: &str, line: &str) {
         }
     }
 }
+
+/// Open the transcript in create+append mode, applying owner-only (0600) perms AT
+/// CREATION on Unix so a secret-bearing line is never written at the default umask.
+/// An existing file keeps its perms (already 0600 from the first write); on non-Unix
+/// there is no mode bit.
+fn owner_only_append(path: &Path) -> std::io::Result<std::fs::File> {
+    let mut opts = std::fs::OpenOptions::new();
+    opts.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    opts.open(path)
+}
+
+/// Best-effort: restrict the per-task transcript dir to owner-only (0700) on Unix so
+/// its contents aren't listable/readable by other local users. A failure is
+/// swallowed — the file itself is still created 0600, and this is defence in depth.
+#[cfg(unix)]
+fn restrict_dir_to_owner(dir: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+}
+
+#[cfg(not(unix))]
+fn restrict_dir_to_owner(_dir: &Path) {}
 
 /// Read the persisted events for a task (M4.7 §C), tail-bounded to
 /// [`TRANSCRIPT_TAIL`]. Each line is one `NightcoreEvent`; unparsable lines are
@@ -449,6 +479,44 @@ mod tests {
                 .unwrap_or(0);
             assert_eq!(leaked, 0, "unsafe id {bad:?} wrote no transcript file");
         }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn transcript_file_and_dir_are_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let (store, _tmp) = temp_store();
+        let task = Task::new("t".into(), String::new());
+        store.upsert(&task).expect("upsert");
+
+        // A synchronous append (no tokio runtime in the test) writes the file.
+        append_line(
+            &store,
+            &task.id,
+            "{\"type\":\"tool-result\",\"text\":\"AKIA-secret\"}",
+        );
+
+        let path = transcript_path(&store.tasks_dir(), &task.id);
+        let file_mode = std::fs::metadata(&path)
+            .expect("file meta")
+            .permissions()
+            .mode();
+        assert_eq!(
+            file_mode & 0o777,
+            0o600,
+            "transcript file must be owner-only, got {:o}",
+            file_mode & 0o777
+        );
+        let dir_mode = std::fs::metadata(path.parent().unwrap())
+            .expect("dir meta")
+            .permissions()
+            .mode();
+        assert_eq!(
+            dir_mode & 0o777,
+            0o700,
+            "transcript dir must be owner-only, got {:o}",
+            dir_mode & 0o777
+        );
     }
 
     #[test]
