@@ -1,4 +1,5 @@
 import { composeStories } from '@storybook/react-vite';
+import type { ReactNode } from 'react';
 import { expect, test } from 'vitest';
 import { render } from 'vitest-browser-react';
 
@@ -14,6 +15,31 @@ function oneSession(entries: TimelineEntry[]): SessionGroup[] {
   return [
     { index: 1, sdkSessionId: null, model: null, prompt: null, phase: 'build', stream: { ...EMPTY_STREAM, entries } },
   ];
+}
+
+/** A short, fixed-height overflow container mimicking TaskDetail's shared scroll
+ *  region — the auto-follow hook walks up to it as the scrollable ancestor. */
+function Scroller({ children }: { children: ReactNode }) {
+  return (
+    <div data-testid="scroll" style={{ height: '120px', overflowY: 'auto' }}>
+      {children}
+    </div>
+  );
+}
+
+/** N sealed text turns — enough to overflow the 120px Scroller. */
+function manyEntries(n: number): TimelineEntry[] {
+  return Array.from({ length: n }, (_, i) => ({
+    kind: 'text' as const,
+    id: i + 1,
+    markdown: `Transcript line number ${i + 1}`,
+    closed: true,
+  }));
+}
+
+/** Distance (px) from the container's scrolled position to its very bottom. */
+function distanceFromBottom(el: HTMLElement): number {
+  return el.scrollHeight - el.scrollTop - el.clientHeight;
 }
 
 test('renders the run-this-task prompt when there is no activity', async () => {
@@ -83,4 +109,58 @@ test('a streaming turn mutated in place still updates on screen', async () => {
     .toBeInTheDocument();
   // The sealed turn above is untouched by the trailing-row update.
   await expect.element(screen.getByText('Sealed intro turn.')).toBeInTheDocument();
+});
+
+test('sticks to the newest streamed entry while the user is at the bottom', async () => {
+  const entries = manyEntries(14);
+  const screen = render(
+    <Scroller>
+      <ActivityLog sessions={oneSession(entries)} isRunning />
+    </Scroller>,
+  );
+  const scroll = screen.container.querySelector('[data-testid="scroll"]') as HTMLElement;
+
+  // Follow is on by default → the mount effect already parked us at the tail.
+  await expect.poll(() => distanceFromBottom(scroll)).toBeLessThan(4);
+
+  // A new streamed entry appends below the fold; the follow effect pulls it in.
+  const grown: TimelineEntry[] = [
+    ...entries,
+    { kind: 'text', id: 99, markdown: 'The very newest streamed token', closed: false },
+  ];
+  screen.rerender(
+    <Scroller>
+      <ActivityLog sessions={oneSession(grown)} isRunning />
+    </Scroller>,
+  );
+  await expect.element(screen.getByText('The very newest streamed token')).toBeInTheDocument();
+  await expect.poll(() => distanceFromBottom(scroll)).toBeLessThan(4);
+});
+
+test('does NOT yank the view back when the user has scrolled up to read history', async () => {
+  const entries = manyEntries(14);
+  const screen = render(
+    <Scroller>
+      <ActivityLog sessions={oneSession(entries)} isRunning />
+    </Scroller>,
+  );
+  const scroll = screen.container.querySelector('[data-testid="scroll"]') as HTMLElement;
+
+  // The user scrolls up to the top to read earlier output — auto-follow suspends.
+  scroll.scrollTop = 0;
+  scroll.dispatchEvent(new Event('scroll'));
+
+  const grown: TimelineEntry[] = [
+    ...entries,
+    { kind: 'text', id: 99, markdown: 'A later streamed token', closed: false },
+  ];
+  screen.rerender(
+    <Scroller>
+      <ActivityLog sessions={oneSession(grown)} isRunning />
+    </Scroller>,
+  );
+  await expect.element(screen.getByText('A later streamed token')).toBeInTheDocument();
+  // Give any stray follow effect a chance to fire, then assert we stayed put.
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  expect(scroll.scrollTop).toBeLessThan(4);
 });

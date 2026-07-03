@@ -12,7 +12,7 @@ import { summarizeInput } from '@/lib/summarize';
 
 import type { SessionGroup, SessionPhase, TimelineEntry } from '../session-stream';
 import { formatCost, modelDisplayName } from '../status';
-import { useCollapse } from './ActivityLog.hooks';
+import { useCollapse, useStickToBottom } from './ActivityLog.hooks';
 import type { ActivityLogProps } from './ActivityLog.types';
 
 /** Display label for a session's lifecycle phase. A generic `session` falls back
@@ -29,6 +29,16 @@ const PHASE_LABEL: Record<SessionPhase, string> = {
  *  visible alongside the later verification run (the old single-stream model
  *  wiped the build when the verification session started). */
 export function ActivityLog({ sessions, isRunning }: ActivityLogProps) {
+  // A monotone-ish signal that changes as the newest session grows — new entries
+  // AND the trailing turn's in-place markdown appends — so the auto-follow effect
+  // re-fires on every streamed delta, not just when a whole entry is added.
+  const live = sessions[sessions.length - 1];
+  const liveEntries = live?.stream.entries ?? [];
+  const tail = liveEntries[liveEntries.length - 1];
+  const scrollTick =
+    sessions.length + liveEntries.length + (tail?.kind === 'text' ? tail.markdown.length : 0);
+  const sentinelRef = useStickToBottom(scrollTick, isRunning);
+
   return (
     <section aria-label="Activity">
       <h3 className="mb-2 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
@@ -63,6 +73,11 @@ export function ActivityLog({ sessions, isRunning }: ActivityLogProps) {
           ))}
         </div>
       )}
+
+      {/* Zero-height tail sentinel: the auto-follow effect scrolls this into view
+          so the newest streamed token stays visible without yanking a user who
+          scrolled up to read history. */}
+      <div ref={sentinelRef} aria-hidden="true" />
     </section>
   );
 }
