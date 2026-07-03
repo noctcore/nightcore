@@ -1,6 +1,8 @@
 /// <reference types="bun" />
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { LogLevelSchema } from '@nightcore/contracts';
+
 import { createLogger } from './logger.js';
 
 /** Capture every line written to stderr while `fn` runs, restoring the original. */
@@ -120,6 +122,36 @@ describe('TTY colorization', () => {
     expect(plain).toMatch(
       /^\d{4}-\d{2}-\d{2}T[\d:.]+Z INFO \[core\] msg \{"k":"v"\}\n$/,
     );
+  });
+});
+
+describe('LogLevel single source (@nightcore/contracts is canonical)', () => {
+  // `LogLevel` used to be declared twice — a bare union here and the
+  // `LogLevelSchema` zod enum in @nightcore/contracts — kept in sync only by
+  // coincidence. The type is now imported from contracts, so the two can no
+  // longer diverge. This test pins the wiring: every level the contract enum
+  // admits is a real, weighted level the shared logger honors. It only compiles
+  // because `createLogger`'s parameter type IS the contracts `LogLevel`; if the
+  // contract enum diverged, the logger's `Record<LogLevel, …>` weight table would
+  // fail to compile before this ever ran.
+  test('createLogger honors every level in the contracts LogLevel enum', () => {
+    setTTY(false);
+    for (const level of LogLevelSchema.options) {
+      const lines = captureStderr(() => createLogger(level, 'core').error('x'));
+      if (level === 'silent') {
+        expect(lines).toHaveLength(0); // 'silent' suppresses even error
+      } else {
+        expect(lines[0]).toContain('ERROR'); // every other level admits error
+      }
+    }
+    // Pin the canonical set so an accidental enum edit trips a review here too.
+    expect([...LogLevelSchema.options].sort()).toEqual([
+      'debug',
+      'error',
+      'info',
+      'silent',
+      'warn',
+    ]);
   });
 });
 

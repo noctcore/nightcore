@@ -1,9 +1,17 @@
 /**
- * Tiny structured logger. No dependencies — writes leveled lines to stderr so
- * stdout stays clean for the CLI's machine-readable / streamed output.
+ * Tiny structured logger. No runtime dependencies — writes leveled lines to
+ * stderr so stdout stays clean for the CLI's machine-readable / streamed output.
  */
 
-export type LogLevel = 'silent' | 'error' | 'warn' | 'info' | 'debug';
+// `LogLevel` is owned by @nightcore/contracts (the base contract layer, rank 1)
+// as the `LogLevelSchema` zod enum; shared (rank 2) may depend on it. This is a
+// TYPE-ONLY import (erased at runtime, so the logger keeps zero runtime deps) and
+// the single source of truth — the `Record<LogLevel, …>` tables below now fail to
+// compile if contracts adds or renames a level, killing the old silent-drift risk.
+import type { LogLevel } from '@nightcore/contracts';
+
+// Re-export so `@nightcore/shared` consumers keep importing `LogLevel` from here.
+export type { LogLevel };
 
 const LEVEL_WEIGHT: Record<LogLevel, number> = {
   silent: 0,
