@@ -12,13 +12,45 @@
 //! are written. The file is bounded on read (a tail) so a long-running task can't
 //! blow up the webview; writes are append-only one JSON object per line.
 
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::{Mutex, OnceLock};
+use std::thread;
+use std::time::Duration;
 
 use serde_json::Value;
 use tauri::{Manager, State};
 
 use crate::store::TaskStore;
+
+/// Registry of per-task transcript writers. Each active task gets ONE background
+/// writer thread that opens its transcript file once and appends every line handed
+/// to it over a channel — replacing the old `spawn_blocking(write_line)` that
+/// spawned a fresh task AND reopened the file for every streamed event (thousands
+/// of open/write/close + task allocations per run, with no cross-event ordering
+/// guarantee across the blocking pool). Keyed by task id (a globally-unique uuid).
+///
+/// A writer self-retires from this map after [`WRITER_IDLE`] with no events, so a
+/// finished task doesn't leak its thread/fd for the session. The retirement is done
+/// while holding the same lock `append_line` sends under, so a line can never be
+/// enqueued into a channel that is about to be abandoned — the retiring thread
+/// re-checks the channel under the lock and keeps running if a line slipped in.
+struct Writer {
+    tx: Sender<Vec<u8>>,
+    handle: thread::JoinHandle<()>,
+}
+
+static WRITERS: OnceLock<Mutex<HashMap<String, Writer>>> = OnceLock::new();
+
+/// Idle window after which a writer with no pending events retires (closes its file
+/// and exits) so finished tasks don't hold a thread + open fd for the whole session.
+const WRITER_IDLE: Duration = Duration::from_secs(30);
+
+fn writers() -> &'static Mutex<HashMap<String, Writer>> {
+    WRITERS.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 /// Max events returned by [`read_transcript`]. A long run streams thousands of
 /// partial-message deltas; the web only needs the recent window to repaint, so we
@@ -41,12 +73,19 @@ fn transcript_path(tasks_dir: &Path, task_id: &str) -> PathBuf {
 /// is appended here). Best-effort: a write failure is logged and swallowed so
 /// transcript persistence can never break the live stream.
 ///
-/// Perf #4: the file I/O (create-dir + open + append) is moved off the reader task
-/// via `tokio::task::spawn_blocking`, so a slow disk can't stall the live event
-/// stream. The cheap parts (path resolution, the owned copy) run inline; only the
-/// blocking syscalls are offloaded. Ordering within a single task's transcript is
-/// preserved because the append opens in `append` mode (each write seeks to EOF) and
-/// the events for one session arrive serially on the one reader.
+/// Perf: the file I/O is handled by ONE persistent background writer thread per task
+/// (see [`Writer`]) that opens the transcript once and appends every line fed to it
+/// over a channel — so a busy run no longer pays an open/write/close syscall cycle
+/// plus a fresh `spawn_blocking` task per streamed delta, and the blocking I/O still
+/// stays off the reader. The cheap parts (path resolution, the owned copy, the
+/// non-blocking channel send) run inline. Ordering within a task's transcript is
+/// guaranteed: the events for one session arrive serially on the one reader, and a
+/// single writer thread appends them in receive order (the old `spawn_blocking` pool
+/// had no such guarantee).
+///
+/// In a context WITHOUT a tokio runtime (unit tests, and the rare inline caller), the
+/// line is written synchronously so it is durable immediately — the same behaviour
+/// the previous inline branch gave.
 pub fn append_line(store: &TaskStore, task_id: &str, line: &str) {
     // Defence in depth: a task id is a flat filename component, never a path. Refuse
     // anything that could escape the per-task subdir (mirrors `store::path_for`).
@@ -55,46 +94,154 @@ pub fn append_line(store: &TaskStore, task_id: &str, line: &str) {
         return;
     }
     let path = transcript_path(&store.tasks_dir(), task_id);
-    // Own the bytes to move into `spawn_blocking`, appending the record separator in
-    // the same allocation (one flat copy — far cheaper than the deep `Value` clone the
-    // old wrapper paid per streamed delta).
-    let mut owned = String::with_capacity(line.len() + 1);
-    owned.push_str(line);
-    owned.push('\n');
-    let task_id = task_id.to_string();
-    match tokio::runtime::Handle::try_current() {
-        Ok(_) => {
-            tokio::task::spawn_blocking(move || write_line(&path, &task_id, &owned));
+    // Own the bytes to hand to the writer, appending the record separator in the same
+    // allocation (one flat copy — far cheaper than the deep `Value` clone the old
+    // wrapper paid per streamed delta).
+    let mut owned = Vec::with_capacity(line.len() + 1);
+    owned.extend_from_slice(line.as_bytes());
+    owned.push(b'\n');
+
+    // No tokio runtime (tests / inline callers): write synchronously so the line is
+    // readable back immediately, keeping behaviour deterministic.
+    if tokio::runtime::Handle::try_current().is_err() {
+        write_line(&path, task_id, &owned);
+        return;
+    }
+
+    // Production: enqueue to this task's persistent writer thread. The registry lock
+    // spans the lookup AND the send so a concurrently-retiring writer can never drop
+    // the entry between our lookup and enqueue (which would lose the line).
+    let mut map = crate::sync::lock_or_recover(writers());
+    if let Some(w) = map.get(task_id) {
+        match w.tx.send(owned) {
+            Ok(()) => return,
+            // Receiver gone (the thread already exited): reclaim the line, drop the
+            // dead entry, and fall through to spawn a fresh writer below.
+            Err(mpsc::SendError(returned)) => {
+                map.remove(task_id);
+                owned = returned;
+            }
         }
-        Err(_) => write_line(&path, &task_id, &owned),
+    }
+    spawn_writer(&mut map, task_id, path, owned);
+}
+
+/// Create a new writer thread for `task_id`, hand it the first `line`, and register
+/// it. The caller holds the [`writers`] lock. On spawn failure (extremely rare) the
+/// line is written synchronously inline and no entry is registered.
+fn spawn_writer(map: &mut HashMap<String, Writer>, task_id: &str, path: PathBuf, line: Vec<u8>) {
+    let (tx, rx) = mpsc::channel::<Vec<u8>>();
+    let thread_id = task_id.to_string();
+    let thread_path = path.clone();
+    match thread::Builder::new()
+        .name(format!("nc-transcript-{task_id}"))
+        .spawn(move || run_writer(rx, thread_path, thread_id))
+    {
+        Ok(handle) => {
+            // Send the first line, then register so subsequent appends reuse this
+            // writer. Both happen under the caller-held lock, so no line is lost.
+            let _ = tx.send(line);
+            map.insert(task_id.to_string(), Writer { tx, handle });
+        }
+        Err(e) => {
+            tracing::warn!(target: "nightcore::transcript", task_id, error = %e, "cannot spawn transcript writer; writing inline");
+            write_line(&path, task_id, &line);
+        }
     }
 }
 
-/// The blocking append: create the per-task dir if needed, then open in append mode
-/// and write one line. Logged-and-swallowed on failure (best-effort persistence).
+/// The persistent writer loop: open the transcript file ONCE, then append every line
+/// received over the channel (coalescing whatever is currently queued into a single
+/// `write_all` to cut syscalls). Retires after [`WRITER_IDLE`] idle or when all
+/// senders are dropped (task removed). Best-effort: I/O errors are logged and
+/// swallowed so transcript persistence can never break the live stream.
+fn run_writer(rx: Receiver<Vec<u8>>, path: PathBuf, task_id: String) {
+    let mut file = match open_append(&path, &task_id) {
+        Some(f) => f,
+        // Couldn't open the file: retire so a later append recreates + retries.
+        None => {
+            crate::sync::lock_or_recover(writers()).remove(&task_id);
+            return;
+        }
+    };
+    loop {
+        match rx.recv_timeout(WRITER_IDLE) {
+            Ok(first) => write_batch(&mut file, &rx, first, &task_id),
+            Err(RecvTimeoutError::Timeout) => {
+                // Idle. Retire under the registry lock so a racing `append_line`
+                // (which sends under the same lock) can't enqueue into a channel we
+                // abandon: if a line slipped in first, keep running; else remove self.
+                let mut map = crate::sync::lock_or_recover(writers());
+                match rx.try_recv() {
+                    Ok(line) => {
+                        drop(map); // release before the I/O
+                        write_batch(&mut file, &rx, line, &task_id);
+                    }
+                    Err(_) => {
+                        map.remove(&task_id);
+                        return;
+                    }
+                }
+            }
+            Err(RecvTimeoutError::Disconnected) => return,
+        }
+    }
+}
+
+/// Coalesce `first` plus everything currently queued into one `write_all`.
+fn write_batch(file: &mut std::fs::File, rx: &Receiver<Vec<u8>>, first: Vec<u8>, task_id: &str) {
+    let mut batch = first;
+    while let Ok(more) = rx.try_recv() {
+        batch.extend_from_slice(&more);
+    }
+    if let Err(e) = file.write_all(&batch) {
+        tracing::warn!(target: "nightcore::transcript", task_id, error = %e, "cannot append transcript event");
+    }
+}
+
+/// The synchronous append (no-runtime / spawn-failure fallback): open the file and
+/// write one buffer. Logged-and-swallowed on failure (best-effort persistence).
+fn write_line(path: &Path, task_id: &str, line: &[u8]) {
+    if let Some(mut file) = open_append(path, task_id) {
+        if let Err(e) = file.write_all(line) {
+            tracing::warn!(target: "nightcore::transcript", task_id, error = %e, "cannot append transcript event");
+        }
+    }
+}
+
+/// Create the per-task dir if needed, then open the transcript in owner-only append
+/// mode. Returns `None` (logged) on failure.
 ///
-/// Security: the transcript persists UNREDACTED tool I/O — including whatever
-/// secrets the agent read (a `cat ~/.aws/credentials`, a Read of a repo `.env`).
-/// So, on Unix, the per-task dir is created 0700 and the file 0600 at creation
-/// (mirroring `settings/helpers.rs::restrict_to_owner`), so another local user or a
-/// home-dir backup/sync tool can't read it off this predictable path.
-fn write_line(path: &Path, task_id: &str, line: &str) {
+/// Security: the transcript persists UNREDACTED tool I/O — including whatever secrets
+/// the agent read (a `cat ~/.aws/credentials`, a Read of a repo `.env`). So, on Unix,
+/// the per-task dir is created 0700 and the file 0600 at creation (mirroring
+/// `settings/helpers.rs::restrict_to_owner`), so another local user or a home-dir
+/// backup/sync tool can't read it off this predictable path.
+fn open_append(path: &Path, task_id: &str) -> Option<std::fs::File> {
     if let Some(parent) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
             tracing::warn!(target: "nightcore::transcript", task_id, error = %e, "cannot create transcript dir");
-            return;
+            return None;
         }
         restrict_dir_to_owner(parent);
     }
     match owner_only_append(path) {
-        Ok(mut file) => {
-            if let Err(e) = file.write_all(line.as_bytes()) {
-                tracing::warn!(target: "nightcore::transcript", task_id, error = %e, "cannot append transcript event");
-            }
-        }
+        Ok(file) => Some(file),
         Err(e) => {
-            tracing::warn!(target: "nightcore::transcript", task_id, error = %e, "cannot open transcript file")
+            tracing::warn!(target: "nightcore::transcript", task_id, error = %e, "cannot open transcript file");
+            None
         }
+    }
+}
+
+/// Close and flush a task's writer (if any): drop its sender so the thread drains any
+/// remaining lines and exits, then join so the file is closed before the caller
+/// proceeds (e.g. deletes the dir). A no-op if the task has no active writer.
+fn close_writer(task_id: &str) {
+    let writer = crate::sync::lock_or_recover(writers()).remove(task_id);
+    if let Some(w) = writer {
+        drop(w.tx);
+        let _ = w.handle.join();
     }
 }
 
@@ -240,6 +387,9 @@ pub fn remove_transcript(app: &tauri::AppHandle, task_id: &str) {
         tracing::warn!(target: "nightcore::transcript", task_id, "refusing transcript removal for unsafe task id");
         return;
     }
+    // Close the persistent writer first so its open file handle is released and no
+    // in-flight line lands after we delete the dir.
+    close_writer(task_id);
     let dir = app.state::<TaskStore>().tasks_dir().join(task_id);
     if dir.exists() {
         if let Err(e) = std::fs::remove_dir_all(&dir) {
@@ -535,5 +685,60 @@ mod tests {
             2,
             "the junk line is skipped, the valid ones survive"
         );
+    }
+
+    #[test]
+    fn async_writer_persists_every_event_in_append_order() {
+        // Under a real tokio runtime `append_line` routes to the persistent per-task
+        // writer thread (one open file, no spawn-per-event). Every line it receives
+        // must be persisted, in receive order — the property the old `spawn_blocking`
+        // pool did NOT guarantee. `close_writer` flushes + joins the thread so the
+        // read-back is deterministic.
+        let (store, _tmp) = temp_store();
+        let task = Task::new("t".into(), String::new());
+        store.upsert(&task).expect("upsert");
+
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+        rt.block_on(async {
+            for i in 0..500 {
+                append_line(&store, &task.id, &format!("{{\"seq\":{i}}}"));
+            }
+        });
+        // Flush + close the background writer before reading back.
+        close_writer(&task.id);
+
+        let got = read_events(&store.tasks_dir(), &task.id);
+        assert_eq!(got.len(), 500, "every enqueued event is persisted");
+        for (i, ev) in got.iter().enumerate() {
+            assert_eq!(
+                ev["seq"],
+                serde_json::json!(i),
+                "events are persisted in append order"
+            );
+        }
+    }
+
+    #[test]
+    fn async_writer_reuses_one_writer_across_appends() {
+        // Two appends for the same task under a runtime must share ONE registered
+        // writer (open-once), not a fresh thread/file per event.
+        let (store, _tmp) = temp_store();
+        let task = Task::new("t".into(), String::new());
+        store.upsert(&task).expect("upsert");
+
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+        rt.block_on(async {
+            append_line(&store, &task.id, "{\"seq\":0}");
+            append_line(&store, &task.id, "{\"seq\":1}");
+            // Exactly one writer is registered for this task.
+            let n = crate::sync::lock_or_recover(writers())
+                .get(&task.id)
+                .is_some();
+            assert!(n, "a single persistent writer is registered for the task");
+        });
+        close_writer(&task.id);
+
+        let got = read_events(&store.tasks_dir(), &task.id);
+        assert_eq!(got.len(), 2, "both events land in the one reused file");
     }
 }
