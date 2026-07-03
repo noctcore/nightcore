@@ -73,14 +73,37 @@ function getHighlighter(): Promise<HighlighterCore> {
 }
 
 /**
+ * Above this many characters we skip Shiki entirely and render the raw `<pre>`.
+ * `codeToHtml` is fully synchronous CPU work (the JS regex engine, not WASM) with
+ * no internal bound, so a 100KB+ diff/source file blocks the main thread for
+ * hundreds of ms — dropping frames on the very panel that fed it. Plain text is a
+ * correct, instant fallback for payloads that large.
+ */
+export const MAX_HIGHLIGHT_LENGTH = 50_000;
+
+/** Whether `code` is small enough to highlight synchronously without stalling the
+ *  main thread. Exported for the colocated test — pure, no React. */
+export function isHighlightable(code: string): boolean {
+  return code.length <= MAX_HIGHLIGHT_LENGTH;
+}
+
+/**
  * Highlight `code` to a Shiki HTML string, or `null` until the lazy highlighter
- * resolves (and on any failure) — the caller renders a raw `<pre>` fallback for
- * `null` so there's never a blank flash. Re-runs when `code`/`language` change.
+ * resolves (and on any failure, or when the body exceeds {@link MAX_HIGHLIGHT_LENGTH})
+ * — the caller renders a raw `<pre>` fallback for `null` so there's never a blank
+ * flash. Re-runs only when `code`/`language` change; `code` is a primitive string,
+ * so an unchanged value never re-highlights even if the parent re-renders.
  */
 export function useHighlightedHtml(code: string, language: string | undefined): string | null {
   const [html, setHtml] = useState<string | null>(null);
 
   useEffect(() => {
+    // Oversized payloads stay as plain <pre>: reset any prior highlight and bail
+    // before scheduling the synchronous highlight pass.
+    if (!isHighlightable(code)) {
+      setHtml(null);
+      return;
+    }
     let cancelled = false;
     const lang = resolveLang(language);
     getHighlighter()
