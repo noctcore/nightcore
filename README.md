@@ -156,7 +156,8 @@ The suites are fast and offline (no live Claude session, no token use, no cost):
 
 - **Rust core** (`apps/desktop/src-tauri`): `bun run test:rust` (or `cargo test`
   there). Covers `TaskStatus` serde, `TaskStore` JSON round-trips on a temp dir,
-  `TaskPatch` application, the sidecar serial-guard, and the M2 seams (`src/m2/`).
+  `TaskPatch` application, the sidecar serial-guard, and the orchestration seams
+  (`src/orchestration/`).
   Any `cargo build` needs the compiled sidecar binary (Tauri `externalBin`); build
   it first with `bun run --filter @nightcore/sidecar compile`. `bun run test:rust`
   and `bun run test:all` run this compile step for you, so they work on a fresh
@@ -188,6 +189,28 @@ scanning runs separately in `audit.yml` (with `dependabot.yml` for bumps).
 - **Insight** — Claude-powered codebase analysis that surfaces categorized,
   grounded findings and lets you convert any finding directly into a board task.
   (`docs/research/`)
+- **Harness** — a codebase-convention auditor that proposes an applyable harness
+  (lint-meta rules + a generated ESLint plugin + `CLAUDE.md`/`AGENTS.md`) so agents
+  can't degrade the project's structure.
+  (`docs/research/2026-07-01-scan-features-review-and-harness-v2.md`)
+- **Readiness Scorecard** — a production-readiness profile of a target project,
+  scored into grounded findings you can convert into tasks.
+  (`docs/research/2026-06-26-production-harness-features-build-spec.md`)
+- **PR system** — create a pull request from a task, track its status /
+  finalize / push, address review comments, and run an AI PR-reviewer scan that
+  posts a diff-grounded, human-gated review via `gh`.
+  (`docs/research/2026-07-02-pr-system-design.md`)
+- **Worktree manager** — a task-integrated branch picker plus a standalone
+  worktrees view with merge-preview, diff, and discard, over git-env-isolated
+  per-task worktrees.
+  (`docs/research/2026-06-30-worktree-overhaul-build-spec.md`)
+- **Hardening & scan gates** — enforcement modules (diff-budget, anti-gaming,
+  ratchet, contract-budget), a flight-recorder ledger, deny/ask/allow runtime
+  permission tiers, prompt-injection quarantine, and an opt-in write sandbox,
+  surfaced in a Policy tab. (`docs/research/2026-07-02-hardening-module-catalog.md`)
+- **Task kinds** — the run picker chooses Build · Research · TDD · Decompose;
+  Decompose proposes subtasks you convert into the board.
+  (`docs/research/2026-06-26-control-panel-roadmap.md`)
 
 ## Status & roadmap
 
@@ -207,6 +230,11 @@ Following the studio milestones (see the architecture doc):
   (build → commit → independent review → done / auto-fix / park); pre-merge
   gauntlet detects real tooling (Bun/npm scripts or Cargo) and stops at first
   failure.
+- **Post-M4 — studio + governance** *(shipped, ongoing)*. Session resume, the
+  provider-config inspector, UI-configurable MCP, Insight, Harness, the Readiness
+  Scorecard, the full PR system, the worktree manager, task kinds, and the
+  hardening/scan gates behind a Policy tab (see **What it does today** above and
+  the dated specs under `docs/research/`).
 
 Open threads: see `docs/` for current work in progress.
 
