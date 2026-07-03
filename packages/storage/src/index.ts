@@ -21,8 +21,26 @@ function isFileNotFound(error: Error): boolean {
  * record per line, last-write-wins on read. Append-only keeps writes atomic and
  * crash-safe without a real database — adequate for a single-user local tool.
  */
+/** A parsed snapshot of the JSONL, tagged with the file stat it was built from so
+ *  a later read can detect whether the file changed without re-parsing it. */
+interface CacheEntry {
+  /** id → record, last-write-wins (the collapsed view of the append log). */
+  readonly byId: Map<number, SessionRecord>;
+  /** Records newest-first — the exact `list()` return, memoized to avoid resorting. */
+  readonly sorted: SessionRecord[];
+  /** File size the snapshot was parsed from (append-only ⇒ size always grows on write). */
+  readonly size: number;
+  /** File mtime (ms) the snapshot was parsed from (defends against same-size rewrites). */
+  readonly mtimeMs: number;
+}
+
 export class SessionStore {
   private readonly file: string;
+  /** Memoized parse of `index.jsonl`, keyed on the file's size+mtime. Repeated
+   *  `list()`/`get()` calls reuse it after a single cheap `stat`; a write (our own
+   *  append or an external edit) changes size/mtime and invalidates it on next read.
+   *  Cost then scales with reads-since-last-write, not with total history. */
+  private cache?: CacheEntry;
 
   constructor(
     private readonly dir: string = sessionsDir(),
@@ -45,10 +63,34 @@ export class SessionStore {
     if (!write.ok) {
       this.logger?.warn('failed to persist session record', write.error);
     }
+    // Invalidate: the append grew the file, so the memoized snapshot is stale.
+    // (The size/mtime guard in list() would catch this too, but dropping the
+    //  entry here keeps the invariant explicit and avoids trusting a stale stat.)
+    this.cache = undefined;
   }
 
   /** Read all records, collapsing duplicates by id (last write wins). */
   list(): SessionRecord[] {
+    // Cheap freshness probe: one `stat` instead of a full read+parse+validate.
+    // When it matches the cached snapshot's tag, reuse the memoized result —
+    // this is the hot path for the startup id-seed scan and every session query.
+    const stat = tryCatch(() => fs.statSync(this.file));
+    if (!stat.ok) {
+      if (!isFileNotFound(stat.error)) {
+        this.logger?.warn('failed to read session store', stat.error);
+      }
+      this.cache = undefined;
+      return [];
+    }
+    const { size, mtimeMs } = stat.value;
+    if (
+      this.cache !== undefined &&
+      this.cache.size === size &&
+      this.cache.mtimeMs === mtimeMs
+    ) {
+      return this.cache.sorted;
+    }
+
     const read = tryCatch(() => fs.readFileSync(this.file, 'utf8'));
     if (!read.ok) {
       // A missing index file is the normal cold-start case — return [] silently.
@@ -57,6 +99,7 @@ export class SessionStore {
       if (!isFileNotFound(read.error)) {
         this.logger?.warn('failed to read session store', read.error);
       }
+      this.cache = undefined;
       return [];
     }
 
@@ -68,11 +111,20 @@ export class SessionStore {
       const validated = SessionRecordSchema.safeParse(parsed.value);
       if (validated.success) byId.set(validated.data.id, validated.data);
     }
-    return [...byId.values()].sort((a, b) => b.createdAt - a.createdAt);
+    const sorted = [...byId.values()].sort((a, b) => b.createdAt - a.createdAt);
+    this.cache = { byId, sorted, size, mtimeMs };
+    return sorted;
+    // Residual (deferred): the log is never compacted, so a repeatedly-saved id
+    // leaves superseded lines that still get parsed on the first read after each
+    // write. The cache bounds per-read cost between writes; bounding on-disk size
+    // would need a periodic rewrite (a durability-sensitive change) — out of scope.
   }
 
-  /** Look up a single record by Nightcore id. */
+  /** Look up a single record by Nightcore id. O(1) against the memoized index. */
   get(id: number): SessionRecord | undefined {
-    return this.list().find((r) => r.id === id);
+    // Refresh the cache if dirty (list() re-parses only when the file changed),
+    // then hit the by-id map directly instead of scanning the sorted array.
+    this.list();
+    return this.cache?.byId.get(id);
   }
 }

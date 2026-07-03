@@ -108,6 +108,49 @@ describe('SessionStore resilience', () => {
     expect(String(warns[0]?.[0])).toContain('failed to read session store');
   });
 
+  test('reflects fresh data after an append (cache is invalidated on save)', () => {
+    const store = new SessionStore(dir);
+    store.save(record({ id: 1, status: 'running' }));
+    // Warm the cache.
+    expect(store.list().map((r) => r.id)).toEqual([1]);
+    expect(store.get(1)?.status).toBe('running');
+    // A subsequent save must be visible to both list() and get().
+    store.save(record({ id: 1, status: 'completed', costUsd: 0.5 }));
+    store.save(record({ id: 2, createdAt: 2000 }));
+    expect(store.list().map((r) => r.id)).toEqual([2, 1]);
+    expect(store.get(1)?.status).toBe('completed');
+    expect(store.get(2)).toBeDefined();
+  });
+
+  test('memoizes the parsed result when the file has not changed (cache hit)', () => {
+    const store = new SessionStore(dir);
+    store.save(record({ id: 1 }));
+    const first = store.list();
+    // With no intervening save, repeated reads return the SAME array instance —
+    // the file is not re-parsed. A save() below breaks the identity, proving the
+    // memoization is invalidated rather than permanently frozen.
+    expect(store.list()).toBe(first);
+    expect(store.get(1)?.id).toBe(1);
+    store.save(record({ id: 2, createdAt: 2000 }));
+    expect(store.list()).not.toBe(first);
+    expect(store.list()).toBe(store.list());
+  });
+
+  test('picks up an external edit to the file (stat-based invalidation)', () => {
+    const store = new SessionStore(dir);
+    store.save(record({ id: 1 }));
+    expect(store.list().map((r) => r.id)).toEqual([1]);
+    // Simulate another writer appending directly, bypassing save().
+    const file = path.join(dir, 'index.jsonl');
+    fs.appendFileSync(
+      file,
+      `${JSON.stringify(record({ id: 2, createdAt: 2000 }))}\n`,
+      'utf8',
+    );
+    expect(store.list().map((r) => r.id)).toEqual([2, 1]);
+    expect(store.get(2)).toBeDefined();
+  });
+
   test('skips malformed and invalid lines without throwing', () => {
     const store = new SessionStore(dir);
     store.save(record({ id: 1 }));
