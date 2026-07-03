@@ -27,11 +27,15 @@
  *  - Bash write vectors other than `cd`: a redirect to an absolute path
  *    (`> /abs`), `tee`/`cp`/`mv`/`dd` to an absolute path, `sh -c`, subshells, or
  *    an exotic interpreter can still write outside cwd.
- *  - MCP file-writer tools (`mcp__<server>__write_file`, …) are not native tool
- *    names, so they are NOT confined. External MCP servers are opt-in (none ship
- *    by default) and classified `dangerous` (they prompt in non-bypass mode), but
- *    under `bypassPermissions` there is no prompt — treat an MCP write server as
- *    an isolation hole.
+ *  - MCP write/network tools (`mcp__<server>__write_file`, `…__http_post`, …) are
+ *    not native tool names, so the native-name gates miss them. They are caught by
+ *    a NAME-HEURISTIC fallback (see {@link evaluateMcpContainment}): a write-classed
+ *    action is confined by its path argument (denied outside cwd, denied fail-closed
+ *    when it exposes no inspectable path), and a network-classed action is denied
+ *    outright (egress can't be contained by a path check) — under bypass, where the
+ *    `dangerous`→prompt classification is inert. This is a coarse keyword classifier,
+ *    not a capability model: an unconventionally named write/egress tool, or a write
+ *    via a non-path argument, can still slip. Real containment is the OS sandbox.
  *  - Symlinks: resolution is LEXICAL (not `realpath`, because a `Write` target
  *    need not exist yet), so a symlink inside cwd pointing outward is not
  *    followed — reachable in two steps under bypass (`Bash: ln -s /repo esc`, then
@@ -98,6 +102,11 @@ export const WORKSPACE_CONFINEMENT_RULE_ID = 'workspace-confinement';
  *  distinct from `workspace-confinement` so telemetry can tell "escaped a write"
  *  apart from "tried to read a secret"). */
 export const SENSITIVE_READ_RULE_ID = 'sensitive-read';
+
+/** Stable id surfaced when the MCP fallback refuses an uncontained mutation or a
+ *  network egress by an external `mcp__*` tool (distinct from the native-tool
+ *  `workspace-confinement` id so telemetry can tell the two apart). */
+export const MCP_CONTAINMENT_RULE_ID = 'mcp-uncontained';
 
 /** The native read tool whose target path the read guard inspects → its input
  *  key. Only `Read` is covered; `Grep`/`Glob`/`Bash`-based reads are out of scope
@@ -266,6 +275,178 @@ function bashCdEscape(toolInput: unknown, roots: readonly string[]): string | un
   return undefined;
 }
 
+/** The action segment of an `mcp__<server>__<action>` tool name (everything after
+ *  the final `__`), lowercased. Keying off the ACTION — not the whole name —
+ *  avoids classifying a tool by its SERVER name (`mcp__http_server__list_files`
+ *  is a list, not a network call). */
+function mcpAction(toolName: string): string {
+  const idx = toolName.lastIndexOf('__');
+  return (idx === -1 ? toolName : toolName.slice(idx + 2)).toLowerCase();
+}
+
+/** Action-name substrings that denote a NETWORK/egress capability — a channel
+ *  that could ship local data off the machine. Egress can't be contained by a
+ *  path check, so a match is denied outright under bypass (fail-closed). */
+const MCP_NETWORK_KEYWORDS: readonly string[] = [
+  'http',
+  'fetch',
+  'request',
+  'curl',
+  'wget',
+  'url',
+  'uri',
+  'webhook',
+  'upload',
+  'download',
+  'browse',
+  'navigate',
+  'socket',
+  'email',
+  'mail',
+  'send',
+  'publish',
+  'post',
+];
+
+/** Action-name substrings that denote a file-WRITE capability — contained by its
+ *  path argument (allowed inside cwd, denied outside; denied fail-closed when no
+ *  path argument can be found, since an uncontained mutation can't be verified). */
+const MCP_WRITE_KEYWORDS: readonly string[] = [
+  'write',
+  'create',
+  'edit',
+  'save',
+  'put',
+  'append',
+  'delete',
+  'remove',
+  'move',
+  'rename',
+  'copy',
+  'mkdir',
+  'patch',
+  'update',
+  'insert',
+  'replace',
+  'touch',
+  'chmod',
+];
+
+/** Classify an external MCP tool by its action name. `network` and `write` are the
+ *  two uncontained-by-default capabilities the native-name gates never see; every
+ *  other action (reads, queries, listings, unknown-benign) is left to fall
+ *  through. Network is checked first so a `put_url`/`upload` reads as egress. */
+function classifyMcpTool(toolName: string): 'network' | 'write' | 'other' {
+  const action = mcpAction(toolName);
+  if (MCP_NETWORK_KEYWORDS.some((k) => action.includes(k))) return 'network';
+  if (MCP_WRITE_KEYWORDS.some((k) => action.includes(k))) return 'write';
+  return 'other';
+}
+
+/** Input keys that conventionally carry a filesystem destination. */
+const MCP_PATH_KEYS: ReadonlySet<string> = new Set([
+  'path',
+  'file_path',
+  'filepath',
+  'file',
+  'target',
+  'dest',
+  'destination',
+  'output',
+  'out',
+  'filename',
+  'to',
+  'location',
+  'dir',
+  'directory',
+]);
+
+/** Best-effort extraction of filesystem-path arguments from an unknown MCP tool
+ *  input: a string value under a conventional path key, or any string that looks
+ *  like a local path (absolute / `./` / `../` / `~`). URL-scheme strings
+ *  (`https://…`) are excluded — they are not filesystem targets. */
+function extractMcpPaths(toolInput: unknown): string[] {
+  if (toolInput === null || typeof toolInput !== 'object') return [];
+  const paths: string[] = [];
+  for (const [key, value] of Object.entries(toolInput as Record<string, unknown>)) {
+    if (typeof value !== 'string' || value.length === 0) continue;
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) continue; // a URL, not a path
+    const looksLikePath =
+      MCP_PATH_KEYS.has(key.toLowerCase()) ||
+      path.isAbsolute(value) ||
+      value.startsWith('./') ||
+      value.startsWith('../') ||
+      value.startsWith('~');
+    if (looksLikePath) paths.push(value);
+  }
+  return paths;
+}
+
+/** The reason surfaced when the MCP fallback refuses a network/uncontained-write
+ *  external tool call under bypass (no `canUseTool` prompt fires there). */
+function mcpContainmentReason(toolName: string, cwd: string, detail: string): string {
+  return (
+    `Blocked by Nightcore MCP containment: the external tool ${toolName} ${detail}, ` +
+    `so it is refused under the studio's unattended (bypass) mode where no approval ` +
+    `prompt fires. This task's working directory is ${cwd}; run this server's ` +
+    `write/network tools in an attended session, or scope the write to a path inside ` +
+    `the working directory.`
+  );
+}
+
+/**
+ * The bypass-mode fallback for external `mcp__*` tools, which the native-name
+ * gates above never inspect: a write-capable MCP tool is confined by its path
+ * argument (denied outside cwd, denied fail-closed when no path is present — an
+ * uncontained mutation can't be verified), and a network-capable one is denied
+ * outright (egress can't be contained by a path check). Read/query/unknown-benign
+ * actions fall through to allow, matching how native unknown reads are left alone.
+ */
+function evaluateMcpContainment(
+  toolName: string,
+  toolInput: unknown,
+  resolvedCwd: string,
+  roots: readonly string[],
+): ToolDenyVerdict {
+  const kind = classifyMcpTool(toolName);
+  if (kind === 'network') {
+    return {
+      denied: true,
+      ruleId: MCP_CONTAINMENT_RULE_ID,
+      reason: mcpContainmentReason(
+        toolName,
+        resolvedCwd,
+        'looks like a network/egress tool that could exfiltrate local data',
+      ),
+    };
+  }
+  if (kind === 'write') {
+    const paths = extractMcpPaths(toolInput);
+    if (paths.length === 0) {
+      return {
+        denied: true,
+        ruleId: MCP_CONTAINMENT_RULE_ID,
+        reason: mcpContainmentReason(
+          toolName,
+          resolvedCwd,
+          'looks like a file-mutating tool but exposes no inspectable path argument',
+        ),
+      };
+    }
+    for (const p of paths) {
+      const resolved = resolveAgainst(resolvedCwd, p);
+      if (!isAllowedTarget(resolved, roots)) {
+        return {
+          denied: true,
+          ruleId: WORKSPACE_CONFINEMENT_RULE_ID,
+          reason: confinementReason(resolved, resolvedCwd),
+        };
+      }
+    }
+  }
+  return { denied: false };
+}
+
 /**
  * Evaluate a single tool call against the workspace-confinement gate. Returns
  * `{ denied: false }` for anything it doesn't cover (the common path) so the
@@ -338,6 +519,13 @@ export function evaluateWorkspaceConfinement(
         reason: confinementReason(escape, resolvedCwd),
       };
     }
+  }
+
+  // External `mcp__*` tools — the one tool class both native-name gates miss. Under
+  // bypass, `canUseTool` (which classifies unknown MCP as dangerous) never fires,
+  // so contain write/network MCP tools here (fail-closed for uncontained mutation).
+  if (toolName.startsWith('mcp__')) {
+    return evaluateMcpContainment(toolName, toolInput, resolvedCwd, roots);
   }
 
   return { denied: false };

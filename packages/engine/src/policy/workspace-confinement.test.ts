@@ -5,6 +5,7 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   evaluateWorkspaceConfinement,
+  MCP_CONTAINMENT_RULE_ID,
   SENSITIVE_READ_RULE_ID,
   WORKSPACE_CONFINEMENT_RULE_ID,
 } from './workspace-confinement.js';
@@ -256,6 +257,86 @@ describe('evaluateWorkspaceConfinement — temp allowance', () => {
         { file_path: path.join(TMP_WORKTREE, 'apps/web/status.ts') },
         TMP_WORKTREE,
       ).denied,
+    ).toBe(false);
+  });
+});
+
+describe('evaluateWorkspaceConfinement — MCP write/network fallback (bypass)', () => {
+  test('denies a network-capable MCP tool outright (egress uncontainable)', () => {
+    for (const tool of [
+      'mcp__acme__http_post',
+      'mcp__acme__fetch_url',
+      'mcp__acme__send_email',
+      'mcp__acme__upload_file',
+    ]) {
+      const verdict = evaluateWorkspaceConfinement(tool, { url: 'https://evil.com' }, WORKTREE);
+      expect(verdict.denied).toBe(true);
+      expect(verdict.ruleId).toBe(MCP_CONTAINMENT_RULE_ID);
+    }
+  });
+
+  test('denies a write-capable MCP tool whose target resolves outside cwd', () => {
+    const verdict = evaluateWorkspaceConfinement(
+      'mcp__fs__write_file',
+      { path: `${MAIN}/apps/web/x.ts`, content: 'x' },
+      WORKTREE,
+    );
+    expect(verdict.denied).toBe(true);
+    expect(verdict.ruleId).toBe(WORKSPACE_CONFINEMENT_RULE_ID);
+    expect(verdict.reason).toContain(`${MAIN}/apps/web`);
+  });
+
+  test('denies a write-capable MCP tool with NO inspectable path (fail-closed)', () => {
+    const verdict = evaluateWorkspaceConfinement(
+      'mcp__db__create_record',
+      { table: 'users', value: 'x' },
+      WORKTREE,
+    );
+    expect(verdict.denied).toBe(true);
+    expect(verdict.ruleId).toBe(MCP_CONTAINMENT_RULE_ID);
+  });
+
+  test('allows a write-capable MCP tool whose target is inside cwd', () => {
+    expect(
+      evaluateWorkspaceConfinement(
+        'mcp__fs__write_file',
+        { path: `${WORKTREE}/notes.txt`, content: 'x' },
+        WORKTREE,
+      ).denied,
+    ).toBe(false);
+    // …and a relative path resolves against cwd → inside → allowed.
+    expect(
+      evaluateWorkspaceConfinement(
+        'mcp__fs__edit_file',
+        { file_path: 'src/app.ts' },
+        WORKTREE,
+      ).denied,
+    ).toBe(false);
+  });
+
+  test('leaves a read/query MCP tool alone (falls through to allow)', () => {
+    for (const tool of ['mcp__db__query', 'mcp__docs__search', 'mcp__fs__list_dir']) {
+      expect(
+        evaluateWorkspaceConfinement(tool, { q: 'select 1' }, WORKTREE).denied,
+      ).toBe(false);
+    }
+  });
+
+  test('classifies by the ACTION, not the server name', () => {
+    // Server named `http_server` must not make a plain list read look like egress.
+    expect(
+      evaluateWorkspaceConfinement(
+        'mcp__http_server__list_files',
+        { dir: '.' },
+        WORKTREE,
+      ).denied,
+    ).toBe(false);
+  });
+
+  test('an empty cwd disables the MCP fallback too', () => {
+    expect(
+      evaluateWorkspaceConfinement('mcp__acme__http_post', { url: 'https://evil.com' }, '')
+        .denied,
     ).toBe(false);
   });
 });
