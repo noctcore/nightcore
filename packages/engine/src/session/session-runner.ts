@@ -17,7 +17,7 @@ import { HookBus } from '../policy/hook-bus.js';
 import { type ApprovalDecision,PermissionLayer } from '../policy/permission-layer.js';
 import { ASK_USER_QUESTION_DIALOG,QuestionLayer } from '../policy/question-layer.js';
 import { ToolRegistry } from '../policy/tool-registry.js';
-import { resolveClaudeBinary } from './resolve-claude-binary.js';
+import { checkClaudeCliVersion, resolveClaudeBinary } from './resolve-claude-binary.js';
 import { prepareWriteSandbox } from './sandbox.js';
 import {
   type AgentInfo,
@@ -220,6 +220,15 @@ export class SessionRunner {
     if (claudePath === undefined) {
       this.emitClaudeCliMissing();
       return;
+    }
+
+    // Warn (never fail) if the resolved external CLI is below the SDK's expected
+    // floor: in the shipped binary the version-pinned SDK drives whatever `claude`
+    // is on PATH, whose version is uncoupled from the build-time pin. A one-time
+    // probe turns silent mid-session breakage into an actionable upgrade message.
+    const versionWarning = checkClaudeCliVersion(claudePath);
+    if (versionWarning !== undefined) {
+      this.logger?.warn(versionWarning, { claudePath });
     }
 
     this.enqueueInput(this.cfg.prompt, this.cfg.images);

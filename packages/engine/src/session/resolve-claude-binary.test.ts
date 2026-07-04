@@ -6,8 +6,12 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import {
   ancestors,
+  claudeCliVersionWarning,
+  compareCliVersions,
   isRealExecutable,
   isTruthyEnv,
+  MIN_CLAUDE_CLI_VERSION,
+  parseClaudeCliVersion,
   platformPackageSpecifiers,
   resetClaudeBinaryCacheForTest,
   resolveClaudeBinary,
@@ -257,5 +261,58 @@ describe('platformPackageSpecifiers', () => {
     expect(specs).toHaveLength(2);
     // Both entries must end with /claude (no .exe on linux).
     for (const s of specs) expect(s.endsWith('/claude')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CLI version floor (checkClaudeCliVersion helpers)
+// ---------------------------------------------------------------------------
+
+describe('parseClaudeCliVersion', () => {
+  test('extracts x.y.z from real `claude --version` output', () => {
+    expect(parseClaudeCliVersion('2.1.201 (Claude Code)')).toBe('2.1.201');
+  });
+
+  test('extracts a leading dotted-triple with surrounding text', () => {
+    expect(parseClaudeCliVersion('claude version 1.0.44\n')).toBe('1.0.44');
+  });
+
+  test('returns null when no dotted-triple is present', () => {
+    expect(parseClaudeCliVersion('unknown')).toBe(null);
+    expect(parseClaudeCliVersion('')).toBe(null);
+  });
+});
+
+describe('compareCliVersions', () => {
+  test('orders by major, then minor, then patch', () => {
+    expect(compareCliVersions('2.0.0', '1.9.9')).toBeGreaterThan(0);
+    expect(compareCliVersions('2.1.0', '2.0.9')).toBeGreaterThan(0);
+    expect(compareCliVersions('2.0.1', '2.0.0')).toBeGreaterThan(0);
+    expect(compareCliVersions('1.0.0', '2.0.0')).toBeLessThan(0);
+    expect(compareCliVersions('2.0.0', '2.0.0')).toBe(0);
+  });
+
+  test('treats missing segments as zero', () => {
+    expect(compareCliVersions('2', '2.0.0')).toBe(0);
+  });
+});
+
+describe('claudeCliVersionWarning', () => {
+  test('warns when the CLI is below the floor', () => {
+    const warning = claudeCliVersionWarning('1.0.44 (Claude Code)');
+    expect(warning).toBeDefined();
+    expect(warning).toContain('1.0.44');
+    expect(warning).toContain(MIN_CLAUDE_CLI_VERSION);
+    expect(warning).toContain('Upgrade Claude Code');
+  });
+
+  test('does not warn at or above the floor', () => {
+    expect(claudeCliVersionWarning(`${MIN_CLAUDE_CLI_VERSION} (Claude Code)`)).toBeUndefined();
+    expect(claudeCliVersionWarning('2.1.201 (Claude Code)')).toBeUndefined();
+  });
+
+  test('degrades quietly (no warning) on null or unparseable output', () => {
+    expect(claudeCliVersionWarning(null)).toBeUndefined();
+    expect(claudeCliVersionWarning('not a version')).toBeUndefined();
   });
 });

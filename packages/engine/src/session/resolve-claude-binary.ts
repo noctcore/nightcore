@@ -3,6 +3,7 @@
  * `bun build --compile` `$bunfs` bundling that breaks the SDK's own binary
  * self-resolution. Exposes the resolver plus a few helpers it composes.
  */
+import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as os from 'node:os';
@@ -76,6 +77,90 @@ export function resolveClaudeBinary(): string | undefined {
  */
 export function resetClaudeBinaryCacheForTest(): void {
   cachedClaudeBinary = UNRESOLVED;
+  cachedVersionWarning = undefined;
+}
+
+/**
+ * Minimum `claude` CLI version the pinned Claude Agent SDK
+ * (@anthropic-ai/claude-agent-sdk, see packages/engine/package.json) is expected
+ * to drive. In the SHIPPED compiled binary the SDK's version-pinned platform
+ * package resolves to a `$bunfs:` virtual path, so `resolveClaudeBinary()` falls
+ * through to an EXTERNAL `claude` off PATH (resolution steps 3/4 above) whose
+ * version is uncoupled from the build-time SDK pin. SDK↔CLI coupling is tight and
+ * both move fast, so a CLI far below the SDK's era surfaces as confusing
+ * mid-session failures rather than a clear error.
+ *
+ * This is a CONSERVATIVE, WARN-ONLY floor — the CLI major the current SDK line
+ * targets, not the exact matching version — so it never false-warns a current
+ * install nor blocks a session. Bump it DELIBERATELY when the SDK pin moves
+ * (mirroring the SDK's own exact pin), never automatically.
+ */
+export const MIN_CLAUDE_CLI_VERSION = '2.0.0';
+
+let cachedVersionWarning: { path: string; warning: string | undefined } | undefined;
+
+/**
+ * Extract an `x.y.z` semver from `claude --version` output
+ * (e.g. `"2.1.201 (Claude Code)"` → `"2.1.201"`). Returns `null` when no
+ * dotted-triple is present, so callers can degrade quietly on unexpected output.
+ */
+export function parseClaudeCliVersion(output: string): string | null {
+  const m = output.match(/(\d+)\.(\d+)\.(\d+)/);
+  return m ? `${m[1]}.${m[2]}.${m[3]}` : null;
+}
+
+/**
+ * Numeric compare of two `x.y.z` semvers: negative if `a < b`, `0` if equal,
+ * positive if `a > b`. Missing segments count as `0`.
+ */
+export function compareCliVersions(a: string, b: string): number {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+
+/**
+ * Given raw `claude --version` output, return a human-readable upgrade warning if
+ * the CLI is below {@link MIN_CLAUDE_CLI_VERSION}, else `undefined`. `null` or
+ * unparseable output returns `undefined` — never block on a version we cannot
+ * read. Pure, so it is unit-testable without spawning a real CLI.
+ */
+export function claudeCliVersionWarning(versionOutput: string | null): string | undefined {
+  if (versionOutput === null) return undefined;
+  const version = parseClaudeCliVersion(versionOutput);
+  if (version === null) return undefined;
+  if (compareCliVersions(version, MIN_CLAUDE_CLI_VERSION) >= 0) return undefined;
+  return (
+    `The resolved \`claude\` CLI is v${version}, below the minimum v${MIN_CLAUDE_CLI_VERSION} ` +
+    `expected by the pinned Claude Agent SDK. Sessions may fail in confusing ways mid-run. ` +
+    `Upgrade Claude Code: npm i -g @anthropic-ai/claude-code@latest`
+  );
+}
+
+/**
+ * Probe `<binaryPath> --version` and, if the CLI is below the floor, return a
+ * warning message (see {@link claudeCliVersionWarning}); otherwise `undefined`.
+ * WARN-NOT-FATAL: any exec failure/timeout returns `undefined` so a transient
+ * probe error never blocks a session. Memoized by path (the resolved binary is
+ * immutable for the process lifetime, like {@link resolveClaudeBinary}); cleared
+ * by {@link resetClaudeBinaryCacheForTest}.
+ */
+export function checkClaudeCliVersion(binaryPath: string): string | undefined {
+  if (cachedVersionWarning?.path === binaryPath) return cachedVersionWarning.warning;
+  let output: string | null = null;
+  try {
+    const res = spawnSync(binaryPath, ['--version'], { encoding: 'utf8', timeout: 5_000 });
+    if (res.status === 0) output = `${res.stdout ?? ''}${res.stderr ?? ''}`;
+  } catch {
+    output = null;
+  }
+  const warning = claudeCliVersionWarning(output);
+  cachedVersionWarning = { path: binaryPath, warning };
+  return warning;
 }
 
 /** The uncached resolution logic; see `resolveClaudeBinary` for the contract. */
