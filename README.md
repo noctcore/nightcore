@@ -59,6 +59,204 @@ human logs on stderr. See
 for the full design, and [`AGENTS.md`](AGENTS.md) (Repository shape + Hard
 import boundaries) for the package layer model.
 
+### How scans and tasks connect
+
+Insight, Harness, and Scorecard are read-only Claude analyses. Each produces
+actionable output you can turn into board tasks with one click. Converted tasks
+carry a `sourceRef` chip so you can jump back to the finding, reading, or
+proposal that spawned them.
+
+```mermaid
+flowchart LR
+  subgraph scans["Sidebar scans (read-only)"]
+    I[Insight]
+    H[Harness]
+    S[Scorecard]
+  end
+  subgraph outputs["What you get"]
+    IF[Findings · severity · evidence]
+    HC[Conventions · proposals · artifacts]
+    SR[Graded readings · A–F · evidence]
+  end
+  subgraph board["Kanban Board"]
+    T[Build / TDD / Research / Decompose tasks]
+    V[Verification gate · merge · PR]
+  end
+  I --> IF
+  H --> HC
+  S --> SR
+  IF -->|Convert| T
+  HC -->|Convert / Apply| T
+  SR -->|Harden| T
+  T --> V
+```
+
+### Build-task lifecycle
+
+`Build` and `TDD` tasks get an isolated git worktree (when run mode is
+**Worktree**), run the agent, then pass through an automated verification gate
+before they can land as **Done**.
+
+```mermaid
+stateDiagram-v2
+  [*] --> Backlog
+  Backlog --> Ready
+  Ready --> InProgress: Run
+  InProgress --> Verifying: Agent completes
+  Verifying --> WaitingApproval: Reviewer requests changes
+  Verifying --> Done: Reviewer PASS
+  Verifying --> Failed: Reviewer FAIL / build breaks
+  WaitingApproval --> InProgress: Accept & merge path
+  WaitingApproval --> InProgress: Reject & fix
+  InProgress --> Failed: Circuit-breaker / cancel
+  Done --> [*]
+  Failed --> [*]
+```
+
+## Features
+
+Nightcore's workspace sidebar routes between the surfaces below. Keyboard hints
+are shown next to each nav item.
+
+### Kanban Board (`K`)
+
+The primary control surface. You describe work as cards, drag them across
+columns, and let the auto-loop run agents in parallel (up to your concurrency
+limit).
+
+**What you get:** live agent transcripts, per-task cost/usage, dependency
+ordering, a failure circuit-breaker, session history with resume, plan-approval
+for interactive runs, commit/merge/PR actions from the task drawer, and a
+pre-merge **readiness gauntlet** (build → lint/typecheck as detected →
+structure-lock checks from Harness).
+
+**Run modes:** **Main** edits the project tree on the current branch; **Worktree**
+isolates the task on its own branch in a separate git worktree (recommended for
+parallel agents).
+
+### Task kinds
+
+When you create a task you pick a **kind**. The kind controls the agent persona,
+tool restrictions, and orchestration policy (worktree allocation, verification).
+
+| Kind | Agent behavior | Orchestration | What you get |
+|------|----------------|---------------|--------------|
+| **Build** | Writes code with an injection guard against hostile text in task descriptions | Own worktree + verification gate | A reviewed diff in an isolated branch, ready to commit/merge |
+| **TDD** | Same as Build, but enforces strict red→green→refactor (failing test first, then minimum implementation) | Same as Build | Test-first changes with the same verification gate |
+| **Research** | Read-only investigation; the only kind that may use web tools (`WebFetch` / `WebSearch`) | No worktree, no verification | A report in the transcript — no code mutations |
+| **Decompose** | Read-only planning; ends with a JSON array of `{ title, prompt }` sub-tasks | No worktree, no verification | 2–8 proposed sub-tasks you convert into board cards one-by-one or in bulk |
+| **Review** *(internal)* | Independent read-only reviewer over a worktree diff; emits `VERDICT: PASS \| CHANGES_REQUESTED \| FAIL` | Runs inside the build's worktree | Not user-selectable — dispatched automatically by the verification gate |
+
+```mermaid
+flowchart TB
+  subgraph engine["Engine — agent definition"]
+    KP[kind-presets.ts]
+    KP --> B[Build: write + injection guard]
+    KP --> T[TDD: test-first persona]
+    KP --> R[Research: web-enabled, read-only]
+    KP --> D[Decompose: JSON sub-tasks]
+    KP --> RV[Review: read-only judge]
+  end
+  subgraph rust["Rust core — orchestration"]
+    POL[kind.rs policy]
+    POL --> WT{Allocate worktree?}
+    POL --> VG{Verify after build?}
+  end
+  B --> POL
+  T --> POL
+  R --> POL
+  D --> POL
+  RV --> POL
+  WT -->|Build, TDD| W[Per-task git worktree]
+  WT -->|Research, Decompose, Review| N[Project tree / build worktree]
+  VG -->|Build, TDD| V[Reviewer session]
+  VG -->|Others| X[Skip gate]
+```
+
+### Insight (`I`)
+
+Claude-powered **codebase analysis** that surfaces grounded, categorized findings
+you can triage and turn into work.
+
+**How it runs:** pick analysis scope (**whole repo** or **changes since last
+commit**), select one or more categories, optionally choose model and reasoning
+effort. The engine fans out one read-only Claude pass per category (bounded
+parallel), deduplicates across categories, and streams progress to the UI.
+
+**Categories:** Architecture · Bugs · Refactor · Performance · Security · Tests ·
+Docs · UI/UX · Dependencies
+
+**What you get per finding:** title, severity (critical → info), estimated
+effort, evidence anchored to repo paths, lifecycle status (open / dismissed /
+converted). Actions: **Convert to task** (creates a Build task with injection
+fencing), **Dismiss**, **Restore**, or **Convert all** open findings in one
+shot. Run history lets you revisit past analyses.
+
+### Harness (`H`)
+
+A **codebase-convention auditor** that discovers how your project is structured,
+surfaces convention gaps, and proposes an applyable harness so agents cannot
+quietly degrade project structure.
+
+**How it runs:** select convention **lenses** (multi-select), optionally model
+and effort. A deterministic repo-profile pass runs first (monorepo detection,
+package map, languages). Then one read-only pass per lens runs in parallel, followed
+by a synthesis pass that proposes enforceable artifacts.
+
+**Convention lenses:** Architecture · Folder Structure · Naming · Imports &
+Boundaries · Design Decisions · Tooling & Lint · Testing · Agent Context
+
+**What you get — three result layers:**
+
+1. **Convention findings** — existing conventions to codify, or gaps against best
+   practice (severity-ranked). Convert any finding into a board task.
+2. **Task-shaped proposals** — bundled work the agent should do (`agent-task` →
+   Build task) or safe file bundles to write (`apply-artifacts` → confirm and
+   write to disk).
+3. **Harness artifacts** — generated files such as lint-meta rules, ESLint plugin
+   rules/config, and `AGENTS.md` / `CLAUDE.md` contract blocks. **Apply** writes
+   them to disk (create-only or merge-section modes). ESLint-class artifacts can
+   be **armed** as Structure-Lock gauntlet checks in `.nightcore/harness.json`
+   so every future task runs `npx eslint .` (or your confirmed command) before
+   merge.
+
+A **Policy** section in Harness also surfaces runtime hardening controls
+(permission tiers, injection scan, diff budget, etc.).
+
+### Scorecard (`R`)
+
+A **production-readiness profile** of your codebase. Unlike Insight's many
+findings per category, Scorecard emits **one graded reading per dimension** with
+supporting evidence.
+
+**How it runs:** select dimensions (multi-select), optionally model and effort.
+One read-only Claude pass per dimension grades the repo on an A–F scale.
+
+**Dimensions:** Architecture · Tests · Security · Error Handling · Observability
+· Dependencies · Performance · Type Safety · Accessibility · Docs & CI
+
+**What you get per reading:** letter grade, summary, grounded evidence list.
+**Harden** converts a weak dimension into a Build task pre-filled with the
+reading's remediation context. The results grid sorts worst grades first so you
+see the biggest gaps immediately.
+
+### Worktrees (`W`)
+
+Standalone git worktree manager: browse per-task branches, preview merges, view
+diffs, discard worktrees. Integrates with the board's worktree tab filter.
+
+### PR Review (`P`)
+
+Create and track pull requests from tasks (`gh pr create`), push updates, finalize,
+pull base, address review comments with an AI-assisted fix pass, and run a
+diff-grounded PR reviewer scan that posts a human-gated review via `gh`.
+
+### Settings (`S`)
+
+Project and global configuration: concurrency, auto-loop, model defaults,
+permission mode, external MCP servers, provider-config inspector, and policy
+hardening modules.
+
 ## Requirements
 
 - **[Bun](https://bun.sh) ≥ 1.1** — runtime for the sidecar and the TS
@@ -182,42 +380,21 @@ separately in `audit.yml` (with `dependabot.yml` for bumps).
 
 ## What it does today
 
-- **Verification gauntlet** — every completed task runs build → commit → independent
-  reviewer before merging; the board shows per-step results. (`docs/arch/`)
-- **Session history and resume** — completed sessions are resumable; the board
-  can rehydrate a prior run from the SDK's on-disk session store.
-  (`docs/research/2026-06-24-agent-sdk-session-resume-ux-build-plan.md`)
-- **Provider-config inspector** — a Settings panel that probes the SDK's runtime
-  control methods to show the resolved, scope-aware config for a project.
-  (`docs/research/2026-06-24-provider-config-inspector.md`)
-- **UI-configurable external MCP servers** — register external MCP servers in
-  Settings; they are injected additively via the SDK's `Options.mcpServers`.
-  (`docs/research/2026-06-24-ui-configurable-external-mcp-servers.md`)
-- **Insight** — Claude-powered codebase analysis that surfaces categorized,
-  grounded findings and lets you convert any finding directly into a board task.
-  (`docs/research/`)
-- **Harness** — a codebase-convention auditor that proposes an applyable harness
-  (lint-meta rules + a generated ESLint plugin + `CLAUDE.md`/`AGENTS.md`) so agents
-  can't degrade the project's structure.
-  (`docs/research/2026-07-01-scan-features-review-and-harness-v2.md`)
-- **Readiness Scorecard** — a production-readiness profile of a target project,
-  scored into grounded findings you can convert into tasks.
-  (`docs/research/2026-06-26-production-harness-features-build-spec.md`)
-- **PR system** — create a pull request from a task, track its status /
-  finalize / push, address review comments, and run an AI PR-reviewer scan that
-  posts a diff-grounded, human-gated review via `gh`.
-  (`docs/research/2026-07-02-pr-system-design.md`)
-- **Worktree manager** — a task-integrated branch picker plus a standalone
-  worktrees view with merge-preview, diff, and discard, over git-env-isolated
-  per-task worktrees.
-  (`docs/research/2026-06-30-worktree-overhaul-build-spec.md`)
-- **Hardening & scan gates** — enforcement modules (diff-budget, anti-gaming,
-  ratchet, contract-budget), a flight-recorder ledger, deny/ask/allow runtime
-  permission tiers, prompt-injection quarantine, and an opt-in write sandbox,
-  surfaced in a Policy tab. (`docs/research/2026-07-02-hardening-module-catalog.md`)
-- **Task kinds** — the run picker chooses Build · Research · TDD · Decompose;
-  Decompose proposes subtasks you convert into the board.
-  (`docs/research/2026-06-26-control-panel-roadmap.md`)
+See **[Features](#features)** above for a user-facing guide to task kinds, Insight,
+Harness, Scorecard, and the rest of the sidebar. Shipped capabilities in brief:
+
+- **Verification gauntlet** — build → commit → independent reviewer before merging
+- **Session history and resume** — rehydrate prior runs from the SDK session store
+- **Provider-config inspector** — resolved, scope-aware SDK config for a project
+- **UI-configurable external MCP servers** — injected via `Options.mcpServers`
+- **Insight / Harness / Scorecard** — Claude scans with convert-to-task workflows
+- **PR system** — create, track, finalize, address comments, AI PR-reviewer scan
+- **Worktree manager** — branch picker + standalone merge-preview/diff/discard view
+- **Hardening & scan gates** — diff-budget, anti-gaming, ratchet, permission tiers,
+  injection quarantine, write sandbox (Policy tab)
+- **Task kinds** — Build · Research · TDD · Decompose (+ internal Review gate)
+
+Detailed build specs live under `docs/research/` and `docs/arch/`.
 
 ## Status & roadmap
 
