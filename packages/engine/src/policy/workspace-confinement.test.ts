@@ -226,6 +226,77 @@ describe('evaluateWorkspaceConfinement — fail-closed on unreadable target', ()
   );
 });
 
+describe('evaluateWorkspaceConfinement — ApplyPatch (multi-target patch body)', () => {
+  test('denies an apply-patch body that Updates a file in the parent (main) checkout', () => {
+    const patch = [
+      '*** Begin Patch',
+      `*** Update File: ${MAIN}/apps/web/src/main.ts`,
+      '@@',
+      '-a',
+      '+b',
+      '*** End Patch',
+    ].join('\n');
+    const verdict = evaluateWorkspaceConfinement('ApplyPatch', { patch }, WORKTREE);
+    expect(verdict.denied).toBe(true);
+    expect(verdict.ruleId).toBe(WORKSPACE_CONFINEMENT_RULE_ID);
+    expect(verdict.reason).toContain(`${MAIN}/apps/web`);
+  });
+
+  test('denies when ANY target in a multi-file patch escapes cwd', () => {
+    const patch = [
+      '*** Begin Patch',
+      '*** Update File: src/in-cwd.ts',
+      '*** Add File: /etc/cron.d/evil',
+      '*** End Patch',
+    ].join('\n');
+    expect(
+      evaluateWorkspaceConfinement('ApplyPatch', { patch }, WORKTREE).denied,
+    ).toBe(true);
+  });
+
+  test('denies an apply-patch that writes ~/.claude via an absolute Add File', () => {
+    const patch = [
+      '*** Begin Patch',
+      `*** Add File: ${os.homedir()}/.claude/settings.json`,
+      '*** End Patch',
+    ].join('\n');
+    expect(
+      evaluateWorkspaceConfinement('ApplyPatch', { patch }, WORKTREE).denied,
+    ).toBe(true);
+  });
+
+  test('allows an apply-patch whose targets are all inside cwd (relative + absolute)', () => {
+    const patch = [
+      '*** Begin Patch',
+      '*** Update File: src/a.ts',
+      `*** Add File: ${WORKTREE}/src/b.ts`,
+      '*** Delete File: src/c.ts',
+      '*** End Patch',
+    ].join('\n');
+    expect(
+      evaluateWorkspaceConfinement('ApplyPatch', { patch }, WORKTREE).denied,
+    ).toBe(false);
+  });
+
+  test('also honors a direct file_path arg (harness-parity key) outside cwd', () => {
+    expect(
+      evaluateWorkspaceConfinement(
+        'ApplyPatch',
+        { file_path: `${MAIN}/pkg/x.ts` },
+        WORKTREE,
+      ).denied,
+    ).toBe(true);
+  });
+
+  test('FAIL-CLOSED: an ApplyPatch with no inspectable target is denied', () => {
+    for (const input of [{}, { patch: 'no file markers here' }, null] as const) {
+      const verdict = evaluateWorkspaceConfinement('ApplyPatch', input, WORKTREE);
+      expect(verdict.denied).toBe(true);
+      expect(verdict.ruleId).toBe(WORKSPACE_CONFINEMENT_RULE_ID);
+    }
+  });
+});
+
 describe('evaluateWorkspaceConfinement — temp allowance', () => {
   const TMP_REPO = path.join(os.tmpdir(), 'nc-scratch');
   const TMP_WORKTREE = path.join(TMP_REPO, '.nightcore/worktrees/task-1');

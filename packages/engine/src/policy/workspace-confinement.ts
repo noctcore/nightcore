@@ -20,7 +20,10 @@
  * escapes, `..` traversal, and the `/repo` vs `/repo-evil` prefix trick are all
  * caught (lexical `path.resolve` + a trailing-separator-guarded prefix check). A
  * known mutation tool whose target path can't be read is DENIED (fail-closed — a
- * containment gate must not fail open on SDK shape drift). For `Bash` it is
+ * containment gate must not fail open on SDK shape drift). `ApplyPatch` is covered
+ * the same way but via a multi-target parse of its patch body (see
+ * {@link APPLY_PATCH_TOOL}): every Add/Update/Delete/Move target is confined, and a
+ * patch that exposes NO inspectable target is DENIED (fail-closed). For `Bash` it is
  * BEST-EFFORT: only an absolute `cd`/`pushd` outside cwd is flagged. It is NOT a
  * sandbox — real containment is the OS sandbox (the tiered-sandbox roadmap). Known
  * residual gaps:
@@ -87,13 +90,58 @@ import { BASH_TOOL, parseCommandLine, type ToolDenyVerdict } from './tool-deny-p
 
 /** Mutation tools whose target path is inspected → the input key holding it.
  *  Exported so the harness-policy gate (protected paths) confines the SAME tool
- *  set — one source of the "which native tools mutate files" fact. */
+ *  set — one source of the "which native tools mutate files" fact.
+ *
+ *  `ApplyPatch` is a special case: its single `file_path` key (when present) is
+ *  listed here so the harness protected-path gate inspects it too, but its real
+ *  target set is a PATCH BODY that can name MANY files, so workspace confinement
+ *  handles it via a dedicated branch ({@link APPLY_PATCH_TOOL}) that parses every
+ *  target out of the patch and fail-closes when none is inspectable. */
 export const FILE_MUTATION_TARGET_KEY: Record<string, 'file_path' | 'notebook_path'> = {
   Write: 'file_path',
   Edit: 'file_path',
   MultiEdit: 'file_path',
   NotebookEdit: 'notebook_path',
+  ApplyPatch: 'file_path',
 };
+
+/** The native patch-apply tool. Unlike the other mutation tools it does not carry
+ *  a single target path — its input is an apply-patch envelope whose body names
+ *  every file it Adds/Updates/Deletes/Moves — so confinement parses ALL targets
+ *  out of it (below) rather than reading one key. It is a recognized file-mutating
+ *  tool (Nightcore's `WRITE_TOOLS` lists it), so an unconfined `ApplyPatch` would
+ *  re-open the exact worktree-escape this gate exists to close. */
+export const APPLY_PATCH_TOOL = 'ApplyPatch';
+
+/** Apply-patch envelope lines that name a mutated file (OpenAI apply_patch
+ *  format: `*** Add File: a/b.ts`, `*** Update File: …`, `*** Delete File: …`,
+ *  and a rename's `*** Move to: …`). Global + multiline + case-insensitive so
+ *  every target in a multi-file patch is captured. */
+const APPLY_PATCH_FILE_MARKER =
+  /^\*\*\*\s+(?:Add File|Update File|Delete File|Move to|Move File to|Rename to):\s*(.+?)\s*$/gim;
+
+/** Every filesystem target an `ApplyPatch` call would mutate: a direct `file_path`
+ *  arg (when the shape carries one) PLUS every path named in an apply-patch body
+ *  found in any string field of the input (the body's field name varies by SDK
+ *  shape, so all string values are scanned). Empty ⇒ nothing inspectable, which
+ *  the caller treats as fail-closed (an uncontained mutation can't be verified). */
+export function extractApplyPatchTargets(toolInput: unknown): string[] {
+  if (toolInput === null || typeof toolInput !== 'object') return [];
+  const rec = toolInput as Record<string, unknown>;
+  const targets = new Set<string>();
+  const direct = rec['file_path'];
+  if (typeof direct === 'string' && direct.length > 0) targets.add(direct);
+  for (const value of Object.values(rec)) {
+    if (typeof value !== 'string' || value.length === 0) continue;
+    APPLY_PATCH_FILE_MARKER.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = APPLY_PATCH_FILE_MARKER.exec(value)) !== null) {
+      const captured = match[1]?.trim();
+      if (captured !== undefined && captured.length > 0) targets.add(captured);
+    }
+  }
+  return [...targets];
+}
 
 /** Stable id surfaced in logs/telemetry when the confinement gate denies. */
 export const WORKSPACE_CONFINEMENT_RULE_ID = 'workspace-confinement';
@@ -461,6 +509,36 @@ export function evaluateWorkspaceConfinement(
   if (cwd.length === 0) return { denied: false };
   const resolvedCwd = path.resolve(cwd);
   const roots = allowedRoots(resolvedCwd);
+
+  // `ApplyPatch` names its targets in a patch body (possibly MANY files), not in a
+  // single key, so confine every parsed target and FAIL-CLOSED when the patch
+  // exposes none (an uncontained mutation can't be verified — mirrors the MCP
+  // uncontained-write branch). Runs before the single-key mutation branch below so
+  // the multi-target parse owns `ApplyPatch`.
+  if (toolName === APPLY_PATCH_TOOL) {
+    const targets = extractApplyPatchTargets(toolInput);
+    if (targets.length === 0) {
+      return {
+        denied: true,
+        ruleId: WORKSPACE_CONFINEMENT_RULE_ID,
+        reason:
+          `Blocked by Nightcore worktree isolation: could not read the target path(s) ` +
+          `of this ApplyPatch call, so it is refused to protect the working directory ` +
+          `(${resolvedCwd}). Patch files only inside the working directory.`,
+      };
+    }
+    for (const target of targets) {
+      const resolved = resolveAgainst(cwd, target);
+      if (!isAllowedTarget(resolved, roots)) {
+        return {
+          denied: true,
+          ruleId: WORKSPACE_CONFINEMENT_RULE_ID,
+          reason: confinementReason(resolved, resolvedCwd),
+        };
+      }
+    }
+    return { denied: false };
+  }
 
   // A known native mutation tool → confine its target. FAIL-CLOSED: if the tool is
   // one we confine but its target path can't be read (SDK shape drift, a malformed
