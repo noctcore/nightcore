@@ -290,4 +290,63 @@ mod tests {
              must keep forwarding the raw Value, not parse into NightcoreEvent"
         );
     }
+
+    /// Parity guard for the DOUBLE-DEFINED `TaskKind`.
+    ///
+    /// `TaskKind` is authored three times with no mechanical cross-check between
+    /// the two Rust copies: the zod schema, the codegen'd
+    /// [`generated::TaskKind`](super::generated) (zod→Rust, its stable name matched
+    /// by value-set in `tools/codegen/gen-rust-contracts.ts`'s `ENUM_NAMES`), and
+    /// the hand-written `store::task::TaskKind` (Rust→ts-rs→web). The
+    /// `codegen:contracts --check` guard covers zod↔generated; this test covers
+    /// generated↔store, so the whole chain is guarded and a kind added on only one
+    /// side reds the gate. Each enum's wire vocabulary is built from an EXHAUSTIVE
+    /// match, so a newly-added variant also fails to COMPILE here until its arm is
+    /// added — the array beside it must gain the same variant in the same edit.
+    #[test]
+    fn task_kind_variants_match_between_generated_and_store() {
+        use std::collections::BTreeSet;
+
+        // zod→Rust side: wire string via serde (what the sidecar validates against).
+        fn generated_wire() -> BTreeSet<String> {
+            use super::generated::TaskKind as K;
+            [K::Build, K::Research, K::Review, K::Decompose, K::Tdd]
+                .into_iter()
+                .map(|k| {
+                    // Exhaustiveness tripwire: a new codegen'd variant breaks this
+                    // match (and the array above it) until it is added.
+                    match k {
+                        K::Build | K::Research | K::Review | K::Decompose | K::Tdd => {}
+                    }
+                    serde_json::to_value(k)
+                        .expect("TaskKind serializes")
+                        .as_str()
+                        .expect("TaskKind is a string enum")
+                        .to_owned()
+                })
+                .collect()
+        }
+
+        // Rust→ts-rs side: wire string via the store enum's own `as_wire()`.
+        fn store_wire() -> BTreeSet<String> {
+            use crate::task::TaskKind as K;
+            [K::Build, K::Research, K::Review, K::Decompose, K::Tdd]
+                .into_iter()
+                .map(|k| {
+                    match k {
+                        K::Build | K::Research | K::Review | K::Decompose | K::Tdd => {}
+                    }
+                    k.as_wire().to_owned()
+                })
+                .collect()
+        }
+
+        assert_eq!(
+            generated_wire(),
+            store_wire(),
+            "generated::TaskKind and store::task::TaskKind carry different \
+             variant/wire sets — adding a task kind touches zod + ENUM_NAMES + the \
+             store enum + as_wire(); one site was missed."
+        );
+    }
 }
