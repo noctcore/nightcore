@@ -34,3 +34,23 @@ export function formatLocation(
   }
   return loc.file;
 }
+
+/** Format a USD amount as a two-decimal dollar string (e.g. `$0.42`). Shared by
+ *  the board cost badges and the RUNNING-screen progress readout. */
+export function formatCostUsd(usd: number): string {
+  return `$${usd.toFixed(2)}`;
+}
+
+/**
+ * Format a millisecond elapsed span as `m:ss`, clamping negatives to zero.
+ * Seconds are always zero-padded to two digits; minutes are padded only when
+ * `padMinutes` is set — the board's live card timer shows `01:05`, while the
+ * progress readout shows `1:05`.
+ */
+export function formatElapsed(ms: number, opts?: { padMinutes?: boolean }): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  const mm = (opts?.padMinutes ?? false) ? String(minutes).padStart(2, '0') : String(minutes);
+  return `${mm}:${String(seconds).padStart(2, '0')}`;
+}

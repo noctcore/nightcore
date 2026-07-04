@@ -119,10 +119,9 @@ export const STATUS_TEXT: Record<TaskStatus, string> = {
   failed: 'text-destructive',
 };
 
-/** Format a USD cost as a two-decimal dollar amount (e.g. `$0.42`). */
-export function formatCost(costUsd: number): string {
-  return `$${costUsd.toFixed(2)}`;
-}
+/** Format a USD cost as a two-decimal dollar amount (e.g. `$0.42`). Re-exported
+ *  from the shared `lib/formatters` home under the board's local name. */
+export { formatCostUsd as formatCost } from '@/lib/formatters';
 
 /** Map a stored model id (or already-display name) to its display name. The
  *  store may hold ids like `opus-4.8` / `sonnet-4.6` / `haiku-4.5`, or the

@@ -4,12 +4,12 @@ import type { DraggableSyntheticListeners } from '@dnd-kit/core';
 import { useDraggable } from '@dnd-kit/core';
 import { useEffect, useState } from 'react';
 
-/** Format a millisecond elapsed span as mm:ss. */
+import { formatElapsed as formatElapsedShared } from '@/lib/formatters';
+
+/** Format a millisecond elapsed span as mm:ss (zero-padded minutes). Delegates
+ *  to the shared `lib/formatters` helper; the board's live cards pad minutes. */
 export function formatElapsed(ms: number): string {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
-  const seconds = String(totalSeconds % 60).padStart(2, '0');
-  return `${minutes}:${seconds}`;
+  return formatElapsedShared(ms, { padMinutes: true });
 }
 
 /** Module-level 1Hz ticker shared by every live card. N running cards subscribe to
