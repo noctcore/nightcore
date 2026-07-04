@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import type {
   MenuItem,
@@ -19,7 +19,8 @@ import {
   startScorecard,
   type Task,
 } from '@/lib/bridge';
-import { seedStepState } from '@/lib/scan-run';
+import { deriveRunPhase, seedStepState } from '@/lib/scan-run';
+import { usePreselectNavigation } from '@/lib/usePreselectNavigation';
 import { useScanRun } from '@/lib/useScanRun';
 
 import type { DimensionRow } from '../DimensionGrid';
@@ -212,27 +213,17 @@ export function useScorecardView({
   const [reconfiguring, setReconfiguring] = useState(false);
 
   // Board→scan provenance navigation: a task's `sourceRef` chip landed here with
-  // a run + reading to open. Consume the target FIRST (so it can never refire),
-  // land on that run's RESULTS, and open the reading's detail panel. A deleted
-  // run/reading degrades to the current stream with no panel — never an error.
-  const { selectRun } = scorecard;
-  useEffect(() => {
-    if (preselect === null || preselect === undefined) return;
-    const { runId, itemId } = preselect;
-    onPreselectConsumed?.();
-    setReconfiguring(false);
-    void (async () => {
-      await selectRun(runId);
-      setSelectedId(itemId);
-    })();
-  }, [preselect, onPreselectConsumed, selectRun]);
+  // a run + reading to open. Consume the target FIRST, land on that run's RESULTS,
+  // and open the reading's detail panel.
+  usePreselectNavigation({
+    preselect,
+    onPreselectConsumed,
+    selectRun: scorecard.selectRun,
+    onEnter: () => setReconfiguring(false),
+    onOpenItem: (target) => setSelectedId(target.itemId),
+  });
 
-  const phase: RunPhase =
-    stream.status === 'running' || scorecard.isStarting
-      ? 'running'
-      : reconfiguring || stream.status === 'idle'
-        ? 'configure'
-        : 'results';
+  const phase: RunPhase = deriveRunPhase(stream.status, scorecard.isStarting, reconfiguring);
 
   const rows: DimensionRow[] = useMemo(() => {
     const byDim = new Map<string, ScorecardReadingView>();

@@ -1,7 +1,7 @@
 /** Hooks that resolve the PR Review surface into a single view model: the live and
  *  persisted run stream, the lifted run-config, the finding selection, and the
  *  human-gated post-review state machine. */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
 import type {
   MenuItem,
@@ -26,7 +26,9 @@ import {
   startPrReview,
   type Task,
 } from '@/lib/bridge';
-import { seedStepState } from '@/lib/scan-run';
+import { deriveRunPhase, seedStepState } from '@/lib/scan-run';
+import { useBulkConvert } from '@/lib/useBulkConvert';
+import { usePreselectNavigation } from '@/lib/usePreselectNavigation';
 import { useScanRun } from '@/lib/useScanRun';
 
 import {
@@ -338,12 +340,9 @@ export function usePrReviewView({
   const [reconfiguring, setReconfiguring] = useState(false);
   // The findings checked for inclusion in the posted review.
   const [selection, setSelection] = useState<ReadonlySet<string>>(() => new Set());
-  // Bulk convert-all progress.
-  const [bulkConverting, setBulkConverting] = useState(false);
-  const [bulkTotal, setBulkTotal] = useState(0);
-  const [bulkDone, setBulkDone] = useState(0);
-  const [bulkFailed, setBulkFailed] = useState(0);
-  const convertAllInFlight = useRef(false);
+  // Bulk convert-all progress + loop (shared with the Insight sibling).
+  const { resetBulk, convertAll, bulkConverting, bulkProgress, bulkStatusMessage, bulkError } =
+    useBulkConvert(prReview.convert, 'convertReviewFindingToTask failed');
   // Post-review human gate: the pending verdict (dialog open when non-null), the
   // in-flight flag (blocks double-fire + cancel), and the last error.
   const [postVerdict, setPostVerdict] = useState<ReviewVerdict | null>(null);
@@ -351,35 +350,22 @@ export function usePrReviewView({
   const [postError, setPostError] = useState<string | null>(null);
   const postInFlight = useRef(false);
 
-  const resetBulk = useCallback(() => {
-    setBulkTotal(0);
-    setBulkDone(0);
-    setBulkFailed(0);
-  }, []);
-
   // Board→scan provenance navigation: a task's `sourceRef` chip landed here with a
-  // run + finding to open. Consume the target FIRST (so it can never refire), land
-  // on that run's RESULTS, and open the finding's detail panel.
-  const { selectRun } = prReview;
-  useEffect(() => {
-    if (preselect === null || preselect === undefined) return;
-    const { runId, itemId } = preselect;
-    onPreselectConsumed?.();
-    setReconfiguring(false);
-    resetBulk();
-    setSelection(new Set());
-    void (async () => {
-      await selectRun(runId);
-      setSelectedId(itemId);
-    })();
-  }, [preselect, onPreselectConsumed, selectRun, resetBulk]);
+  // run + finding to open. Consume the target FIRST, land on that run's RESULTS,
+  // and open the finding's detail panel.
+  usePreselectNavigation({
+    preselect,
+    onPreselectConsumed,
+    selectRun: prReview.selectRun,
+    onEnter: () => {
+      setReconfiguring(false);
+      resetBulk();
+      setSelection(new Set());
+    },
+    onOpenItem: (target) => setSelectedId(target.itemId),
+  });
 
-  const phase: RunPhase =
-    stream.status === 'running' || prReview.isStarting
-      ? 'running'
-      : reconfiguring || stream.status === 'idle'
-        ? 'configure'
-        : 'results';
+  const phase: RunPhase = deriveRunPhase(stream.status, prReview.isStarting, reconfiguring);
 
   const gridFindings = useMemo(() => sortFindings(stream.findings), [stream.findings]);
 
@@ -450,20 +436,6 @@ export function usePrReviewView({
     }
     return 'No findings — the diff looks clean across the selected lenses.';
   }, [stream.status, stream.error, stream.failureReason]);
-
-  const bulkStatusMessage = useMemo(() => {
-    if (bulkConverting) return `Converting ${bulkDone + bulkFailed}/${bulkTotal}…`;
-    if (bulkTotal === 0) return '';
-    const ok = `Converted ${bulkDone} ${bulkDone === 1 ? 'finding' : 'findings'}`;
-    return bulkFailed > 0 ? `${ok} (${bulkFailed} failed).` : `${ok}.`;
-  }, [bulkConverting, bulkDone, bulkFailed, bulkTotal]);
-
-  const bulkError = useMemo(() => {
-    if (bulkConverting || bulkFailed === 0) return null;
-    return `${bulkFailed} of ${bulkTotal} ${
-      bulkTotal === 1 ? 'finding' : 'findings'
-    } could not be converted.`;
-  }, [bulkConverting, bulkFailed, bulkTotal]);
 
   const runAction = useCallback(
     async (label: string, fn: () => Promise<unknown>) => {
@@ -603,34 +575,9 @@ export function usePrReviewView({
       });
       setReconfiguring(true);
     },
-    convertAll: () => {
-      if (convertAllInFlight.current) return;
-      const targets = stream.findings.filter((f) => f.status === 'open');
-      if (targets.length === 0) return;
-      convertAllInFlight.current = true;
-      setBulkTotal(targets.length);
-      setBulkDone(0);
-      setBulkFailed(0);
-      setBulkConverting(true);
-      void (async () => {
-        try {
-          for (const f of targets) {
-            try {
-              await prReview.convert(f.id);
-              setBulkDone((n) => n + 1);
-            } catch (err) {
-              console.error('convertReviewFindingToTask failed', err);
-              setBulkFailed((n) => n + 1);
-            }
-          }
-        } finally {
-          setBulkConverting(false);
-          convertAllInFlight.current = false;
-        }
-      })();
-    },
+    convertAll: () => convertAll(stream.findings.filter((f) => f.status === 'open')),
     bulkConverting,
-    bulkProgress: { done: bulkDone, total: bulkTotal, failed: bulkFailed },
+    bulkProgress,
     bulkStatusMessage,
     bulkError,
     openCount: openCount(stream.findings),

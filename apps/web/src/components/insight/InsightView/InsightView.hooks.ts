@@ -1,6 +1,6 @@
 /** Hooks that resolve the Insight surface into a single view model: the live and
  *  persisted run stream, the lifted run-config, and every screen's derived state. */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import type {
   MenuItem,
@@ -24,7 +24,9 @@ import {
   startAnalysis,
   type Task,
 } from '@/lib/bridge';
-import { seedStepState } from '@/lib/scan-run';
+import { deriveRunPhase, seedStepState } from '@/lib/scan-run';
+import { useBulkConvert } from '@/lib/useBulkConvert';
+import { usePreselectNavigation } from '@/lib/usePreselectNavigation';
 import { useScanRun } from '@/lib/useScanRun';
 
 import type { CategoryTab } from '../CategoryTabs';
@@ -294,53 +296,27 @@ export function useInsightView({
   const [reconfiguring, setReconfiguring] = useState(false);
   // RUNNING partial-reveal: the finished category currently peeked, if any.
   const [peekCategory, setPeekCategory] = useState<FindingCategory | null>(null);
-  // Bulk convert-all progress. `bulkFailed` collects per-finding convert
-  // rejections so the loop continues and surfaces a "converted k, m failed"
-  // summary instead of aborting silently.
-  const [bulkConverting, setBulkConverting] = useState(false);
-  const [bulkTotal, setBulkTotal] = useState(0);
-  const [bulkDone, setBulkDone] = useState(0);
-  const [bulkFailed, setBulkFailed] = useState(0);
-  // Synchronous re-entrancy guard for convert-all: a sub-frame double-click can't
-  // launch two concurrent conversion loops (which would double-count progress).
-  const convertAllInFlight = useRef(false);
-
-  // Clear the convert-all counters so a prior run's "Converted k/N" summary can't
-  // bleed into a freshly entered results view (a new analysis or a history select).
-  const resetBulk = useCallback(() => {
-    setBulkTotal(0);
-    setBulkDone(0);
-    setBulkFailed(0);
-  }, []);
+  // Bulk convert-all progress + loop (shared with the PR-Review sibling).
+  const { resetBulk, convertAll, bulkConverting, bulkProgress, bulkStatusMessage, bulkError } =
+    useBulkConvert(insight.convert, 'convertFindingToTask failed');
 
   // Board→scan provenance navigation: a task's `sourceRef` chip landed here with
-  // a run + finding to open. Consume the target FIRST (so it can never refire),
-  // land on that run's RESULTS, and open the finding's detail panel. A deleted
-  // run/finding degrades to the current stream with no panel — never an error.
-  const { selectRun } = insight;
-  useEffect(() => {
-    if (preselect === null || preselect === undefined) return;
-    const { runId, itemId } = preselect;
-    onPreselectConsumed?.();
-    setReconfiguring(false);
-    setPeekCategory(null);
-    resetBulk();
-    setActiveTab('all');
-    void (async () => {
-      await selectRun(runId);
-      setSelectedId(itemId);
-    })();
-  }, [preselect, onPreselectConsumed, selectRun, resetBulk]);
+  // a run + finding to open. Consume the target FIRST, land on that run's RESULTS,
+  // and open the finding's detail panel.
+  usePreselectNavigation({
+    preselect,
+    onPreselectConsumed,
+    selectRun: insight.selectRun,
+    onEnter: () => {
+      setReconfiguring(false);
+      setPeekCategory(null);
+      resetBulk();
+      setActiveTab('all');
+    },
+    onOpenItem: (target) => setSelectedId(target.itemId),
+  });
 
-  // `isStarting` is folded into the phase so the optimistic-running IPC gap shows
-  // the RUNNING screen, not a flash of the previous run's RESULTS (the persisted
-  // `stream.status` is still `completed` until the optimistic running stream lands).
-  const phase: RunPhase =
-    stream.status === 'running' || insight.isStarting
-      ? 'running'
-      : reconfiguring || stream.status === 'idle'
-        ? 'configure'
-        : 'results';
+  const phase: RunPhase = deriveRunPhase(stream.status, insight.isStarting, reconfiguring);
 
   const visibleCategories = useMemo(() => tabCategories(stream), [stream]);
 
@@ -452,24 +428,6 @@ export function useInsightView({
     return 'No findings in this category — a clean bill of health.';
   }, [stream.status, stream.error, stream.failureReason]);
 
-  // Convert-all live announcement (aria-live region) — "Converting k/N" while in
-  // flight, then a terminal "Converted N findings (M failed)" once it settles.
-  const bulkStatusMessage = useMemo(() => {
-    if (bulkConverting) return `Converting ${bulkDone + bulkFailed}/${bulkTotal}…`;
-    if (bulkTotal === 0) return '';
-    const ok = `Converted ${bulkDone} ${bulkDone === 1 ? 'finding' : 'findings'}`;
-    return bulkFailed > 0 ? `${ok} (${bulkFailed} failed).` : `${ok}.`;
-  }, [bulkConverting, bulkDone, bulkFailed, bulkTotal]);
-
-  // Inline (visible) failure summary surfaced in the results toolbar when one or
-  // more conversions rejected mid-loop.
-  const bulkError = useMemo(() => {
-    if (bulkConverting || bulkFailed === 0) return null;
-    return `${bulkFailed} of ${bulkTotal} ${
-      bulkTotal === 1 ? 'finding' : 'findings'
-    } could not be converted.`;
-  }, [bulkConverting, bulkFailed, bulkTotal]);
-
   const runAction = useCallback(
     async (label: string, fn: () => Promise<unknown>) => {
       setPending(true);
@@ -540,39 +498,9 @@ export function useInsightView({
       setPeekCategory(null);
       setReconfiguring(true);
     },
-    convertAll: () => {
-      // Synchronous ref guard (not the async `bulkConverting` state) so a sub-frame
-      // double-click can't start a second concurrent conversion loop.
-      if (convertAllInFlight.current) return;
-      const targets = stream.findings.filter((f) => f.status === 'open');
-      if (targets.length === 0) return;
-      convertAllInFlight.current = true;
-      setBulkTotal(targets.length);
-      setBulkDone(0);
-      setBulkFailed(0);
-      setBulkConverting(true);
-      void (async () => {
-        try {
-          for (const f of targets) {
-            try {
-              await insight.convert(f.id);
-              setBulkDone((n) => n + 1);
-            } catch (err) {
-              // One finding's convert rejected — record it and keep going so the
-              // rest still convert. Without this catch the loop would abort AND the
-              // rejection would escape as an unhandled promise rejection.
-              console.error('convertFindingToTask failed', err);
-              setBulkFailed((n) => n + 1);
-            }
-          }
-        } finally {
-          setBulkConverting(false);
-          convertAllInFlight.current = false;
-        }
-      })();
-    },
+    convertAll: () => convertAll(stream.findings.filter((f) => f.status === 'open')),
     bulkConverting,
-    bulkProgress: { done: bulkDone, total: bulkTotal, failed: bulkFailed },
+    bulkProgress,
     bulkStatusMessage,
     bulkError,
     openCount: openCount(stream.findings),

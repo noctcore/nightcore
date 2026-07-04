@@ -7,6 +7,31 @@
  * `ScanStore`/`ScanRun` (see `packages/engine/src/scans/shared/`).
  */
 
+/**
+ * The lifecycle screen a scan view renders. Structurally identical to the shell's
+ * `RunPhase` (`@/components/ui`), re-declared here so `lib/` stays below the
+ * component layer — a value of this type assigns freely to a `RunPhase` field.
+ */
+export type ScanViewPhase = 'configure' | 'running' | 'results';
+
+/**
+ * Derive the active lifecycle screen from the live stream status and the two view
+ * flags. Cloned byte-for-byte across all four scan `*View.hooks.ts`: `isStarting`
+ * folds the optimistic-launch IPC gap into RUNNING (the persisted `status` is
+ * still the prior run's `completed` until the optimistic running stream lands, so
+ * without it a "New run" would flash the previous RESULTS); `reconfiguring` is the
+ * explicit "New run" override that returns a completed run to CONFIGURE.
+ */
+export function deriveRunPhase(
+  status: string,
+  isStarting: boolean,
+  reconfiguring: boolean,
+): ScanViewPhase {
+  if (status === 'running' || isStarting) return 'running';
+  if (reconfiguring || status === 'idle') return 'configure';
+  return 'results';
+}
+
 /** The token-usage accumulator every scan stream carries (input/output tokens). */
 export interface ScanUsage {
   inputTokens: number;

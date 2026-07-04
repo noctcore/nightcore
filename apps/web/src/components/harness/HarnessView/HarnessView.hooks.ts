@@ -1,6 +1,6 @@
 /** Data + UI-state hooks for the Harness surface: `useHarness` drives the live/
  *  persisted run and lifecycle actions, `useHarnessView` resolves the full view model. */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import type {
   CategoryRunState,
@@ -33,7 +33,8 @@ import {
   type Task,
 } from '@/lib/bridge';
 import { EFFORT_OPTIONS, MODEL_OPTIONS } from '@/lib/models';
-import { seedStepState } from '@/lib/scan-run';
+import { deriveRunPhase, seedStepState } from '@/lib/scan-run';
+import { usePreselectNavigation } from '@/lib/usePreselectNavigation';
 import type { RunConfig } from '@/lib/useRunConfig';
 import { useScanRun } from '@/lib/useScanRun';
 
@@ -590,19 +591,18 @@ export function useHarnessView({
   const [peekCategory, setPeekCategory] = useState<ConventionCategory | null>(null);
 
   // Board→scan provenance navigation: a task's `sourceRef` chip landed here with
-  // a run + item to open. Consume the target FIRST (so it can never refire), land
-  // on that run's RESULTS in the owning section, and open the item's detail
-  // panel — a convention finding or a proposal, per the token's `kind`. A deleted
-  // run/item degrades to the current stream with no panel — never an error.
-  const { selectRun } = harness;
-  useEffect(() => {
-    if (preselect === null || preselect === undefined) return;
-    const { runId, itemId, kind } = preselect;
-    onPreselectConsumed?.();
-    setReconfiguring(false);
-    setPeekCategory(null);
-    void (async () => {
-      await selectRun(runId);
+  // a run + item to open. Consume the target FIRST, land on that run's RESULTS in
+  // the owning section, and open the item's detail panel — a convention finding or
+  // a proposal, per the token's `kind`.
+  usePreselectNavigation({
+    preselect,
+    onPreselectConsumed,
+    selectRun: harness.selectRun,
+    onEnter: () => {
+      setReconfiguring(false);
+      setPeekCategory(null);
+    },
+    onOpenItem: ({ itemId, kind }) => {
       if (kind === 'proposal') {
         setSection('proposals');
         setSelectedProposalId(itemId);
@@ -611,18 +611,10 @@ export function useHarnessView({
         setActiveTab('all');
         setSelectedFindingId(itemId);
       }
-    })();
-  }, [preselect, onPreselectConsumed, selectRun]);
+    },
+  });
 
-  // `isStarting` folds the launch round-trip into RUNNING: between clicking Scan
-  // and the optimistic running stream landing, `stream.status` is still the prior
-  // run's `completed`, so without this a "New run" would flash the old RESULTS.
-  const phase: RunPhase =
-    stream.status === 'running' || harness.isStarting
-      ? 'running'
-      : reconfiguring || stream.status === 'idle'
-        ? 'configure'
-        : 'results';
+  const phase: RunPhase = deriveRunPhase(stream.status, harness.isStarting, reconfiguring);
 
   // "New run": pre-fill the form from the last run's model + lenses, then drop back
   // to CONFIGURE. (Effort isn't persisted on a run, so the lifted value carries.)
