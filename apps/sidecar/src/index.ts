@@ -65,11 +65,20 @@ export function encodeEvent(event: NightcoreEvent): string {
  * `content_block_delta` (hundreds–thousands per assistant turn, for every live
  * session concurrently); a union `safeParse` walks variants and revalidates every
  * field per delta, which materially outweighs the `JSON.stringify` that follows
- * and buys nothing the type system hasn't already guaranteed. Every other event
- * is low-frequency (lifecycle/terminal), so full validation stays on there where
- * the cost is negligible and an upstream contract gap actually matters.
+ * and buys nothing the type system hasn't already guaranteed. `tool-result` fires
+ * once per completed tool call across every concurrent session and is the single
+ * most expensive event to validate: its `content` field carries the full
+ * stringified tool output (a big-file Read or long Bash result, tens-to-hundreds
+ * of KB), which the union walk re-validates variant by variant to reach the
+ * `tool-result` member — same typed-translator trust argument as `assistant-delta`,
+ * far larger payload. Every other event is low-frequency (lifecycle/terminal), so
+ * full validation stays on there where the cost is negligible and an upstream
+ * contract gap actually matters.
  */
-const FAST_PATH_EVENT_TYPES = new Set<NightcoreEvent['type']>(['assistant-delta']);
+const FAST_PATH_EVENT_TYPES = new Set<NightcoreEvent['type']>([
+  'assistant-delta',
+  'tool-result',
+]);
 
 /**
  * The maximum length (in decoded characters, a proxy for bytes) of a single

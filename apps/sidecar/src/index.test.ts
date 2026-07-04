@@ -226,6 +226,37 @@ describe('createSidecar — event sink', () => {
     expect(errors).toEqual([]);
   });
 
+  test('a hot tool-result is fast-pathed to the wire and still serializes correctly', () => {
+    const manager = new StubManager();
+    const lines: string[] = [];
+    const errors: string[] = [];
+    createSidecar(manager, (line) => lines.push(line), (m) => errors.push(m));
+
+    // tool-result is the largest-payload hot path (full stringified tool output);
+    // like assistant-delta it is typed-translator-constructed, so it skips the
+    // union safeParse — but it must still frame to exactly one valid NDJSON line.
+    const content = 'x'.repeat(200_000);
+    manager.emit({
+      type: 'tool-result',
+      sessionId: 3,
+      toolUseId: 'tu-1',
+      isError: false,
+      content,
+    });
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.endsWith('\n')).toBe(true);
+    expect(lines[0]!.trimEnd().includes('\n')).toBe(false);
+    expect(JSON.parse(lines[0]!)).toEqual({
+      type: 'tool-result',
+      sessionId: 3,
+      toolUseId: 'tu-1',
+      isError: false,
+      content,
+    });
+    expect(errors).toEqual([]);
+  });
+
   test('a malformed low-frequency event is still dropped and logged, not shipped', () => {
     const manager = new StubManager();
     const lines: string[] = [];
