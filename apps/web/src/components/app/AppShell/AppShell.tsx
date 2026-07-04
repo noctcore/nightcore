@@ -167,6 +167,7 @@ export function AppShell() {
             collapsed={collapsed}
             switcherOpen={switcherOpen}
             runningCount={runningCount}
+            awaitingInputCount={board.promptIds.size}
             version="v0.1.0"
             onToggleCollapsed={routing.toggleCollapsed}
             onToggleSwitcher={routing.toggleSwitcher}
@@ -174,6 +175,14 @@ export function AppShell() {
             onGotoProjects={() => routing.goto('projects')}
             onPickProject={registry.activate}
             onNewProject={routing.openNewProject}
+            onGotoAwaitingInput={() => {
+              // Select the first task parked awaiting input and open its board
+              // drawer (where the InteractionDock renders the prompt to act on).
+              const first = board.promptIds.values().next().value;
+              if (first === undefined) return;
+              setSelectedId(first);
+              routing.goto('board');
+            }}
           />
 
           <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">

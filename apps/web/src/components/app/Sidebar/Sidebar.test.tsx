@@ -4,7 +4,7 @@ import { render } from 'vitest-browser-react';
 
 import * as stories from './Sidebar.stories';
 
-const { Default, SwitcherOpen, Running } = composeStories(stories);
+const { Default, SwitcherOpen, Running, AwaitingInput } = composeStories(stories);
 
 test('navigates when a nav item is clicked', async () => {
   const onNavigate = vi.fn();
@@ -35,6 +35,19 @@ test('lists projects and opens new project from the switcher', async () => {
 test('shows the running-agents indicator when agents are running', async () => {
   const screen = render(<Running />);
   await expect.element(screen.getByText('2 running')).toBeInTheDocument();
+});
+
+test('shows the awaiting-input indicator and jumps to the parked task on click', async () => {
+  const onGotoAwaitingInput = vi.fn();
+  const screen = render(<AwaitingInput onGotoAwaitingInput={onGotoAwaitingInput} />);
+  await screen.getByText('2 awaiting input').click();
+  expect(onGotoAwaitingInput).toHaveBeenCalled();
+});
+
+test('hides the awaiting-input indicator when nothing is parked', async () => {
+  const screen = render(<Default />);
+  await expect.element(screen.getByText('Kanban Board')).toBeInTheDocument();
+  expect(screen.container.querySelector('[aria-label*="awaiting your input"]')).toBeNull();
 });
 
 test('marks the active nav item with aria-current="page"', async () => {

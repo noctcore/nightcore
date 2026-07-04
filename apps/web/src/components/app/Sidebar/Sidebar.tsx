@@ -1,4 +1,5 @@
 import {
+  BellIcon,
   BrandMark,
   ChevronDownIcon,
   ChevronLeftIcon,
@@ -28,6 +29,7 @@ export function Sidebar({
   collapsed,
   switcherOpen,
   runningCount,
+  awaitingInputCount,
   version,
   onToggleCollapsed,
   onToggleSwitcher,
@@ -35,6 +37,7 @@ export function Sidebar({
   onGotoProjects,
   onPickProject,
   onNewProject,
+  onGotoAwaitingInput,
 }: SidebarProps) {
   return (
     <aside
@@ -176,9 +179,37 @@ export function Sidebar({
         })}
       </nav>
 
+      {/* awaiting-input indicator: always visible on every view, so a background
+          run parked on a permission/question prompt is never hidden behind a
+          non-board surface. Clicking jumps to the parked task's board drawer. */}
+      {awaitingInputCount > 0 && (
+        <button
+          type="button"
+          onClick={onGotoAwaitingInput}
+          title={`${awaitingInputCount} awaiting your input`}
+          aria-label={`${awaitingInputCount} task${awaitingInputCount === 1 ? '' : 's'} awaiting your input`}
+          className={`mt-auto flex items-center gap-2 border-t border-border bg-warning/[0.06] px-3.5 py-2.5 text-left text-warning transition-colors hover:bg-warning/[0.12] ${collapsed ? 'justify-center' : ''}`}
+        >
+          <span className="flex shrink-0 animate-[nc-pulse_1.4s_ease-in-out_infinite] items-center">
+            <BellIcon size={14} />
+          </span>
+          {!collapsed ? (
+            <span className="font-mono text-[11px] font-semibold">
+              {awaitingInputCount} awaiting input
+            </span>
+          ) : (
+            awaitingInputCount > 1 && (
+              <span className="font-mono text-[10px] font-semibold">
+                {awaitingInputCount}
+              </span>
+            )
+          )}
+        </button>
+      )}
+
       {/* footer: running-agents indicator + version */}
       <div
-        className={`mt-auto flex items-center gap-2.5 border-t border-border px-3.5 py-3 ${collapsed ? 'justify-center' : ''}`}
+        className={`flex items-center gap-2.5 border-t border-border px-3.5 py-3 ${awaitingInputCount > 0 ? '' : 'mt-auto'} ${collapsed ? 'justify-center' : ''}`}
       >
         {runningCount > 0 ? (
           <span className="flex items-center gap-1.5 font-mono text-[10.5px] text-warning">

@@ -49,6 +49,7 @@ const meta = {
     collapsed: false,
     switcherOpen: false,
     runningCount: 0,
+    awaitingInputCount: 0,
     version: 'v0.1.0',
     onToggleCollapsed: fn(),
     onToggleSwitcher: fn(),
@@ -56,6 +57,7 @@ const meta = {
     onGotoProjects: fn(),
     onPickProject: fn(),
     onNewProject: fn(),
+    onGotoAwaitingInput: fn(),
   },
 } satisfies Meta<typeof Sidebar>;
 
@@ -70,6 +72,10 @@ export const SwitcherOpen: Story = {
 
 export const Running: Story = {
   args: { runningCount: 2 },
+};
+
+export const AwaitingInput: Story = {
+  args: { awaitingInputCount: 2 },
 };
 
 export const Collapsed: Story = {

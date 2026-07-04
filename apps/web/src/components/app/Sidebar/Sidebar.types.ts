@@ -13,6 +13,11 @@ export interface SidebarProps {
   collapsed: boolean;
   switcherOpen: boolean;
   runningCount: number;
+  /** Tasks parked awaiting the user's input (permission approvals or
+   *  AskUserQuestion prompts) across every view. Drives the always-visible
+   *  "awaiting input" indicator so a background stall is never hidden behind a
+   *  non-board surface. */
+  awaitingInputCount: number;
   version: string;
   onToggleCollapsed: () => void;
   onToggleSwitcher: () => void;
@@ -22,4 +27,6 @@ export interface SidebarProps {
   onGotoProjects: () => void;
   onPickProject: (id: string) => void;
   onNewProject: () => void;
+  /** Jump to the first task awaiting input: select it and open its board drawer. */
+  onGotoAwaitingInput: () => void;
 }
