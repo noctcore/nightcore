@@ -189,6 +189,27 @@ export const MAIN_MODE_TASK: Task = makeTask({
   review: SAMPLE_REVIEW_PASS,
 });
 
+/** A worktree-mode task the coordinator has NOT yet named a branch for — the normal
+ *  pre-submit state (`branch: null`). It belongs on the Main board until it has a
+ *  branch/worktree; without the Main-tab fix it is unreachable from every tab. */
+export const PENDING_WORKTREE_TASK: Task = makeTask({
+  id: 't-pending-worktree',
+  status: 'backlog',
+  title: 'Extract the settings store',
+  runMode: 'worktree',
+  branch: null,
+});
+
+/** A worktree-mode task WITH a branch whose live worktree directory does not exist
+ *  (not created yet, or already pruned). It must still get its own tab. */
+export const ORPHAN_BRANCH_TASK: Task = makeTask({
+  id: 't-orphan-branch',
+  status: 'backlog',
+  title: 'Trim the shiki bundle',
+  runMode: 'worktree',
+  branch: 'nc/shiki-trim',
+});
+
 /** Live worktrees for the switcher's stories/tests — one dirty + ahead, one
  *  clean. Mirrors the `list_worktrees` shape; branches match the worktree-mode
  *  task fixtures above so the switcher groups them. */
