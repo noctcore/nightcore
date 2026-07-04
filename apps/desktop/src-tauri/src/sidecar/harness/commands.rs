@@ -480,8 +480,8 @@ fn apply_one_artifact(
     })?;
 
     let write_result = match artifact.write_mode.as_str() {
-        "create" => write_create(&dest, &artifact.content),
-        "merge-section" => write_merge_section(&dest, &artifact.content),
+        "create" => write_create(Path::new(project_path), &dest, &artifact.content),
+        "merge-section" => write_merge_section(Path::new(project_path), &dest, &artifact.content),
         other => return Err(format!("unknown artifact writeMode: {other}")),
     };
     if let Err(e) = write_result {

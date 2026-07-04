@@ -201,14 +201,59 @@ pub(super) fn safe_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
     Ok(dest)
 }
 
+/// Re-assert, in the instant BEFORE the write syscall, that `dest`'s parent still
+/// canonicalizes to inside `root`. This narrows the TOCTOU window that `safe_join`
+/// alone leaves open: `safe_join` walks the path with per-component `lstat` and
+/// returns, but the actual create/rename happens on a LATER syscall — a mid-path
+/// directory component swapped to a symlink in between could redirect the write out
+/// of the root. Called after `create_dir_all` (so the parent exists) and immediately
+/// before the write, this collapses the exploitable gap to the single
+/// `canonicalize(parent) → open` syscall pair. A path-based op can never make that
+/// gap literally zero (only an `openat`/`O_NOFOLLOW` fd walk would), but combined
+/// with `safe_join`'s lstat walk, `create_new`'s no-clobber, and the atomic rename
+/// (which replaces rather than follows a destination symlink), the residual race is
+/// sub-microsecond and the write path stays human-gated.
+fn revalidate_parent_contained(root: &Path, dest: &Path) -> Result<(), String> {
+    let root_canon = root
+        .canonicalize()
+        .map_err(|e| format!("project root {} is not accessible: {e}", root.display()))?;
+    let parent = dest
+        .parent()
+        .ok_or_else(|| "artifact path has no parent directory".to_string())?;
+    let parent_canon = parent
+        .canonicalize()
+        .map_err(|e| format!("cannot resolve {} before write: {e}", parent.display()))?;
+    if parent_canon != root_canon && !parent_canon.starts_with(&root_canon) {
+        return Err(format!(
+            "artifact parent resolved outside the project root just before write: {}",
+            dest.display()
+        ));
+    }
+    // The leaf must not have become a symlink since safe_join's walk. `create_new`
+    // already refuses an existing leaf, and the atomic rename replaces rather than
+    // follows one, but reject explicitly so no writer can be surprised.
+    if let Ok(meta) = std::fs::symlink_metadata(dest) {
+        if meta.file_type().is_symlink() {
+            return Err(format!(
+                "artifact target became a symlink before write (rejected): {}",
+                dest.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Write a brand-new file, FAILING if it already exists (never clobber). `create_new` is
 /// the atomic no-clobber guard — it closes the check-then-write race a separate `exists()`
-/// test would leave open. Creates any missing parent directories first.
-pub(super) fn write_create(dest: &Path, content: &str) -> Result<(), String> {
+/// test would leave open. Creates any missing parent directories first, then re-validates
+/// (via [`revalidate_parent_contained`]) that the parent still resolves inside `root`
+/// immediately before the open — narrowing the mid-path-symlink-swap TOCTOU window.
+pub(super) fn write_create(root: &Path, dest: &Path, content: &str) -> Result<(), String> {
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
     }
+    revalidate_parent_contained(root, dest)?;
     match std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -232,7 +277,7 @@ pub(super) fn write_create(dest: &Path, content: &str) -> Result<(), String> {
 /// hardens the write: `rename` REPLACES a destination symlink rather than following it (a
 /// second guard atop `safe_join`'s symlink rejection), and a crash mid-write can never
 /// truncate the user's hand-written CLAUDE.md/AGENTS.md.
-pub(super) fn write_merge_section(dest: &Path, body: &str) -> Result<(), String> {
+pub(super) fn write_merge_section(root: &Path, dest: &Path, body: &str) -> Result<(), String> {
     // Allowlist the target: merge-section rewrites a pre-existing file, so it is confined
     // to the agent-contract docs it exists to manage. This is the positive counterpart to
     // the execution-sink denylist in `safe_join` — a denylist can miss a sink, but this
@@ -251,6 +296,9 @@ pub(super) fn write_merge_section(dest: &Path, body: &str) -> Result<(), String>
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
     }
+    // Re-validate containment in the instant before the write (mid-path symlink-swap
+    // TOCTOU narrowing) — the parent now exists, so canonicalize resolves it.
+    revalidate_parent_contained(root, dest)?;
     let existing = std::fs::read_to_string(dest).unwrap_or_default();
     let merged = merge_managed_section(&existing, body);
     crate::store::write_atomic(dest, merged.as_bytes())
@@ -300,6 +348,9 @@ pub(super) fn write_merge_manifest(root: &Path, entry: &Value) -> Result<PathBuf
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
     }
+    // Re-validate containment in the instant before the write (mid-path symlink-swap
+    // TOCTOU narrowing), consistent with the other two writers.
+    revalidate_parent_contained(root, &dest)?;
     crate::store::write_atomic(&dest, merged.as_bytes())
         .map_err(|e| format!("failed to write {}: {e}", dest.display()))?;
     Ok(dest)
@@ -554,14 +605,14 @@ mod tests {
         ] {
             let dest = tmp.path().join(ok);
             assert!(
-                write_merge_section(&dest, "## Conventions\n- x").is_ok(),
+                write_merge_section(tmp.path(), &dest, "## Conventions\n- x").is_ok(),
                 "must allow merge into agent doc {ok:?}"
             );
         }
         for bad in ["README.md", "src/index.ts", "deploy.sh", "config.json"] {
             let dest = tmp.path().join(bad);
             assert!(
-                write_merge_section(&dest, "malicious body").is_err(),
+                write_merge_section(tmp.path(), &dest, "malicious body").is_err(),
                 "must reject merge into non-agent-doc {bad:?}"
             );
             assert!(!dest.exists(), "a rejected merge must not create {bad:?}");
@@ -572,10 +623,10 @@ mod tests {
     fn write_create_refuses_to_clobber() {
         let tmp = TempDir::new().unwrap();
         let dest = tmp.path().join("AGENTS.md");
-        write_create(&dest, "first").unwrap();
+        write_create(tmp.path(), &dest, "first").unwrap();
         assert_eq!(std::fs::read_to_string(&dest).unwrap(), "first");
         // A second create must NOT overwrite.
-        assert!(write_create(&dest, "second").is_err());
+        assert!(write_create(tmp.path(), &dest, "second").is_err());
         assert_eq!(std::fs::read_to_string(&dest).unwrap(), "first");
     }
 
@@ -583,8 +634,41 @@ mod tests {
     fn write_create_makes_missing_parent_dirs() {
         let tmp = TempDir::new().unwrap();
         let dest = tmp.path().join("packages/eslint-plugin/src/index.ts");
-        write_create(&dest, "export {}").unwrap();
+        write_create(tmp.path(), &dest, "export {}").unwrap();
         assert!(dest.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn writers_reject_a_mid_path_dir_swapped_to_a_symlink_before_write() {
+        // TOCTOU narrowing: simulate the post-safe_join swap where a mid-path DIRECTORY
+        // component is a symlink pointing OUTSIDE the root at write time. The pre-write
+        // re-validation must canonicalize the parent, see it resolves outside root, and
+        // refuse — for both writers — while a genuinely in-root parent still writes.
+        let root = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+
+        // `sub` is a symlink to an out-of-root dir; a naive write to `sub/AGENTS.md`
+        // would land in `outside`. revalidate_parent_contained must reject it.
+        std::os::unix::fs::symlink(outside.path(), root.path().join("sub")).unwrap();
+        let escaping = root.path().join("sub").join("AGENTS.md");
+        assert!(
+            write_create(root.path(), &escaping, "x").is_err(),
+            "create through a symlinked parent escaping root must be rejected"
+        );
+        assert!(
+            write_merge_section(root.path(), &escaping, "## x\n- y").is_err(),
+            "merge-section through a symlinked parent escaping root must be rejected"
+        );
+        assert!(
+            !outside.path().join("AGENTS.md").exists(),
+            "nothing may be written outside the root"
+        );
+
+        // First-party control: a real in-root parent still writes.
+        let ok = root.path().join("nested").join("AGENTS.md");
+        assert!(write_create(root.path(), &ok, "first-party").is_ok());
+        assert_eq!(std::fs::read_to_string(&ok).unwrap(), "first-party");
     }
 
     #[test]
