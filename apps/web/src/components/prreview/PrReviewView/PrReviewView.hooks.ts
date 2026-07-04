@@ -26,6 +26,8 @@ import {
   startPrReview,
   type Task,
 } from '@/lib/bridge';
+import { seedStepState } from '@/lib/scan-run';
+import { useScanRun } from '@/lib/useScanRun';
 
 import {
   LENS_META,
@@ -71,146 +73,69 @@ export interface UsePrReviewResult {
  *  authoritative reconciliation against the persisted run on completion, and
  *  finding actions. Clone of `useInsight`. */
 export function usePrReview(hasProject: boolean): UsePrReviewResult {
-  const [stream, setStream] = useState<ReviewStream>(EMPTY_REVIEW_STREAM);
-  const [runs, setRuns] = useState<PrReviewRun[]>([]);
-  const [isStarting, setIsStarting] = useState(false);
-  const [startError, setStartError] = useState<string | null>(null);
-
-  // The run the live event stream is folded into. A ref so the once-installed
-  // listener always reads the latest without re-subscribing.
-  const activeRunId = useRef<string | null>(null);
-  // Synchronous re-entrancy guard for `start`: blocks a second dispatch in the
-  // render-timing gap before the disabled Review button / optimistic running
-  // state lands, so two fast clicks can't mint two uuids and launch two paid runs.
-  const reviewInFlight = useRef(false);
-
-  const refreshRuns = useCallback(async () => {
-    const next = await listPrReviewRuns();
-    setRuns(next);
-    return next;
-  }, []);
-
-  const reconcile = useCallback(
-    async (runId: string) => {
-      const run = await getPrReviewRun(runId);
-      if (run !== null) setStream(streamFromRun(run));
-      await refreshRuns();
+  const scan = useScanRun<PrReviewEvent, PrReviewRun, ReviewStream>({
+    emptyStream: EMPTY_REVIEW_STREAM,
+    listRuns: listPrReviewRuns,
+    getRun: getPrReviewRun,
+    streamFromRun,
+    cancelRun: cancelPrReview,
+    subscribe: onPrReviewEvent,
+    onEvent: (event, { activeRunId, setStream, refreshRuns, reconcile }) => {
+      if (event.type === 'pr-review-finding-converted') {
+        setStream((prev) =>
+          prev.runId === event.runId
+            ? {
+                ...prev,
+                findings: prev.findings.map((f) =>
+                  f.id === event.findingId
+                    ? { ...f, status: 'converted', linkedTaskId: event.taskId }
+                    : f,
+                ),
+              }
+            : prev,
+        );
+        void refreshRuns();
+        return;
+      }
+      // pr-review-* lens events only apply to the run currently displayed/driven.
+      if (event.runId !== activeRunId.current) return;
+      setStream((prev) => foldReview(prev, event));
+      if (event.type === 'pr-review-completed' || event.type === 'pr-review-failed') {
+        void reconcile(event.runId);
+      }
     },
-    [refreshRuns],
-  );
-
-  // Initial load: list runs and display the newest (already sorted newest-first).
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const next = await refreshRuns();
-      if (cancelled || next.length === 0) return;
-      const newest = next[0];
-      if (newest === undefined) return;
-      activeRunId.current = newest.id;
-      setStream(streamFromRun(newest));
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshRuns]);
-
-  // Subscribe to the live PR-review stream once.
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    let disposed = false;
-    void (async () => {
-      const fn = await onPrReviewEvent((event: PrReviewEvent) => {
-        if (event.type === 'pr-review-finding-converted') {
-          setStream((prev) =>
-            prev.runId === event.runId
-              ? {
-                  ...prev,
-                  findings: prev.findings.map((f) =>
-                    f.id === event.findingId
-                      ? { ...f, status: 'converted', linkedTaskId: event.taskId }
-                      : f,
-                  ),
-                }
-              : prev,
-          );
-          void refreshRuns();
-          return;
-        }
-        // pr-review-* lens events only apply to the run currently displayed/driven.
-        if (event.runId !== activeRunId.current) return;
-        setStream((prev) => foldReview(prev, event));
-        if (event.type === 'pr-review-completed' || event.type === 'pr-review-failed') {
-          void reconcile(event.runId);
-        }
-      });
-      if (disposed) fn();
-      else unlisten = fn;
-    })();
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [reconcile, refreshRuns]);
+  });
+  const { stream, setStream, runStart, refreshRuns } = scan;
 
   const start = useCallback(
-    async (
+    (
       prNumber: number,
       lenses: ReviewLens[],
       model: string | null,
       effort: string | null,
-    ) => {
-      if (!hasProject || lenses.length === 0 || prNumber <= 0) return false;
-      // Set synchronously, before the first await: a second click that slips
-      // through the render gap before `isStarting`/the optimistic running state
-      // disables Review is a no-op instead of a second paid run.
-      if (reviewInFlight.current) return false;
-      reviewInFlight.current = true;
-      setIsStarting(true);
-      setStartError(null);
-      try {
+    ) =>
+      runStart(hasProject && lenses.length > 0 && prNumber > 0, async () => {
         const runId = await startPrReview(prNumber, lenses, {
           model,
           effort: effort as EffortLevel | null,
         });
-        activeRunId.current = runId;
         // Optimistic running state until `pr-review-started` lands. Carries the PR
         // number (the started event omits it) so the post-review target survives.
-        setStream({
-          ...EMPTY_REVIEW_STREAM,
+        return {
           runId,
-          status: 'running',
-          prNumber,
-          model,
-          requestedLenses: lenses,
-          lensState: Object.fromEntries(
-            lenses.map((l) => [l, 'pending' as LensProgress]),
-          ),
-        });
-        await refreshRuns();
-        return true;
-      } catch (err) {
-        setStartError(err instanceof Error ? err.message : String(err));
-        return false;
-      } finally {
-        setIsStarting(false);
-        reviewInFlight.current = false;
-      }
-    },
-    [hasProject, refreshRuns],
+          optimistic: {
+            ...EMPTY_REVIEW_STREAM,
+            runId,
+            status: 'running',
+            prNumber,
+            model,
+            requestedLenses: lenses,
+            lensState: seedStepState(lenses),
+          },
+        };
+      }),
+    [hasProject, runStart],
   );
-
-  const cancel = useCallback(async () => {
-    if (stream.runId === null) return;
-    await cancelPrReview(stream.runId);
-  }, [stream.runId]);
-
-  const selectRun = useCallback(async (runId: string) => {
-    const run = await getPrReviewRun(runId);
-    if (run === null) return;
-    activeRunId.current = runId;
-    setStream(streamFromRun(run));
-  }, []);
 
   const dismiss = useCallback(
     async (findingId: string) => {
@@ -219,7 +144,7 @@ export function usePrReview(hasProject: boolean): UsePrReviewResult {
       if (run !== null) setStream(streamFromRun(run));
       await refreshRuns();
     },
-    [stream.runId, refreshRuns],
+    [stream.runId, setStream, refreshRuns],
   );
 
   const restore = useCallback(
@@ -229,7 +154,7 @@ export function usePrReview(hasProject: boolean): UsePrReviewResult {
       if (run !== null) setStream(streamFromRun(run));
       await refreshRuns();
     },
-    [stream.runId, refreshRuns],
+    [stream.runId, setStream, refreshRuns],
   );
 
   const convert = useCallback(
@@ -247,17 +172,17 @@ export function usePrReview(hasProject: boolean): UsePrReviewResult {
       await refreshRuns();
       return task;
     },
-    [stream.runId, refreshRuns],
+    [stream.runId, setStream, refreshRuns],
   );
 
   return {
     stream,
-    runs,
-    isStarting,
-    startError,
+    runs: scan.runs,
+    isStarting: scan.isStarting,
+    startError: scan.startError,
     start,
-    cancel,
-    selectRun,
+    cancel: scan.cancel,
+    selectRun: scan.selectRun,
     dismiss,
     restore,
     convert,
