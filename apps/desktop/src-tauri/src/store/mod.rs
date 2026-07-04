@@ -1010,3 +1010,78 @@ mod tests {
         assert_eq!(got.plan, task.plan);
     }
 }
+
+/// Mechanical layer-boundary guard for `store/`, the Rust analogue of the TS
+/// `layer-rank` lint-meta rule.
+///
+/// The Rust core's dependency direction is fixed: `store/` is the persistence
+/// LEAF (on-disk registries, path safety, structure lock), and `commands/`
+/// deliberately depends on BOTH persistence and orchestration precisely *so
+/// `store/` can stay a pure persistence leaf* (see `commands/mod.rs`). That
+/// invariant was enforced by comment only — nothing stopped a helper moved into
+/// `store/` from reaching UP into `orchestration/` or `sidecar/`; it would
+/// compile and pass CI. This test scans the `store/` source and fails if any
+/// real code line imports those upper layers, so a drift reds the gate.
+#[cfg(test)]
+mod layer_boundary {
+    use std::path::{Path, PathBuf};
+
+    /// Every `.rs` file under `src/store`, recursively.
+    fn store_sources() -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        collect(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("src/store"),
+            &mut out,
+        );
+        out
+    }
+
+    fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
+        for entry in std::fs::read_dir(dir).expect("read a store dir") {
+            let path = entry.expect("read a store dir entry").path();
+            if path.is_dir() {
+                collect(&path, out);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                out.push(path);
+            }
+        }
+    }
+
+    #[test]
+    fn store_does_not_reach_up_into_orchestration_or_sidecar() {
+        // The upward layers `store/` must never import. Route any dependency on
+        // these through `commands/` (which is allowed to depend on both) so this
+        // leaf stays pure persistence. Built via `concat!` so this scanner's own
+        // needle literals don't appear whole on one line and flag this file.
+        const FORBIDDEN: [&str; 2] = [
+            concat!("crate", "::orchestration"),
+            concat!("crate", "::sidecar"),
+        ];
+
+        let mut offences = Vec::new();
+        for file in store_sources() {
+            let src = std::fs::read_to_string(&file).expect("read a store source file");
+            for (idx, line) in src.lines().enumerate() {
+                // Comment lines (incl. `//!`/`///` intra-doc links such as
+                // `[crate::sidecar::harness]`) name these paths as prose, not as
+                // imports — they are not a layer violation, so skip them.
+                if line.trim_start().starts_with("//") {
+                    continue;
+                }
+                for needle in FORBIDDEN {
+                    if line.contains(needle) {
+                        offences.push(format!("{}:{}: {}", file.display(), idx + 1, line.trim()));
+                    }
+                }
+            }
+        }
+
+        assert!(
+            offences.is_empty(),
+            "store/ is the persistence leaf and must not import orchestration/ or \
+             sidecar/ — route such dependencies through commands/. Offending \
+             line(s):\n{}",
+            offences.join("\n")
+        );
+    }
+}
