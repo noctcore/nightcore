@@ -1,6 +1,6 @@
 /** Data + UI-state hooks for the Harness surface: `useHarness` drives the live/
  *  persisted run and lifecycle actions, `useHarnessView` resolves the full view model. */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type {
   CategoryRunState,
@@ -33,7 +33,9 @@ import {
   type Task,
 } from '@/lib/bridge';
 import { EFFORT_OPTIONS, MODEL_OPTIONS } from '@/lib/models';
+import { seedStepState } from '@/lib/scan-run';
 import type { RunConfig } from '@/lib/useRunConfig';
+import { useScanRun } from '@/lib/useScanRun';
 
 import type { CategoryTab } from '../CategoryTabs';
 import { ALL_CATEGORIES, CATEGORY_META, severityRankValue } from '../harness.constants';
@@ -91,156 +93,107 @@ export interface UseHarnessResult {
  *  authoritative reconciliation against the persisted run on completion, and the
  *  finding/artifact lifecycle actions. */
 export function useHarness(hasProject: boolean): UseHarnessResult {
-  const [stream, setStream] = useState<HarnessStream>(EMPTY_HARNESS_STREAM);
-  const [runs, setRuns] = useState<HarnessRun[]>([]);
-  const [isStarting, setIsStarting] = useState(false);
-  const [startError, setStartError] = useState<string | null>(null);
-
-  // The run the live event stream is folded into. A ref so the once-installed
-  // listener always reads the latest without re-subscribing.
-  const activeRunId = useRef<string | null>(null);
-  // Synchronous re-entrancy guard for `start`: blocks a second dispatch in the
-  // render-timing gap before the disabled Scan button / optimistic running state
-  // lands, so two fast clicks can't mint two uuids and launch two paid scans.
-  const scanInFlight = useRef(false);
-
-  const refreshRuns = useCallback(async () => {
-    const next = await listHarnessRuns();
-    setRuns(next);
-    return next;
-  }, []);
-
-  const reconcile = useCallback(
-    async (runId: string) => {
-      const run = await getHarnessRun(runId);
-      if (run !== null) {
-        // The persisted run drops the failure `reason`, so keep the live fold's
-        // reason for the same run — otherwise reconciling a user cancel reverts
-        // the neutral "cancelled" notice straight back to a red failure banner.
-        setStream((prev) => ({
-          ...streamFromRun(run),
-          failureReason: prev.runId === run.id ? prev.failureReason : null,
-        }));
+  const scan = useScanRun<HarnessEvent, HarnessRun, HarnessStream>({
+    emptyStream: EMPTY_HARNESS_STREAM,
+    listRuns: listHarnessRuns,
+    getRun: getHarnessRun,
+    streamFromRun,
+    cancelRun: cancelHarnessScan,
+    subscribe: onHarnessEvent,
+    // The persisted run drops the failure `reason`, so keep the live fold's reason
+    // for the same run — otherwise reconciling a user cancel reverts the neutral
+    // "cancelled" notice straight back to a red failure banner.
+    reconcileStream: (run, prev) => ({
+      ...streamFromRun(run),
+      failureReason: prev.runId === run.id ? prev.failureReason : null,
+    }),
+    onEvent: (event, { activeRunId, setStream, refreshRuns, reconcile }) => {
+      if (event.type === 'artifact-applied') {
+        setStream((prev) =>
+          prev.runId === event.runId
+            ? {
+                ...prev,
+                artifacts: prev.artifacts.map((a) =>
+                  a.id === event.artifactId
+                    ? { ...a, status: 'applied', appliedPath: event.path }
+                    : a,
+                ),
+              }
+            : prev,
+        );
+        void refreshRuns();
+        return;
       }
-      await refreshRuns();
+      if (event.type === 'finding-converted') {
+        // Matches on stream.runId (NOT the activeRunId gate below) so a convert against
+        // a displayed-but-not-live run still updates in place — mirrors Insight.
+        setStream((prev) =>
+          prev.runId === event.runId
+            ? {
+                ...prev,
+                findings: prev.findings.map((f) =>
+                  f.id === event.findingId
+                    ? { ...f, status: 'converted', linkedTaskId: event.taskId }
+                    : f,
+                ),
+              }
+            : prev,
+        );
+        void refreshRuns();
+        return;
+      }
+      if (event.type === 'proposal-converted') {
+        // Matches on stream.runId (like finding-converted) so a convert against a
+        // displayed-but-not-live run still updates in place.
+        setStream((prev) =>
+          prev.runId === event.runId
+            ? {
+                ...prev,
+                proposals: prev.proposals.map((p) =>
+                  p.id === event.proposalId
+                    ? { ...p, status: 'converted', linkedTaskId: event.taskId }
+                    : p,
+                ),
+              }
+            : prev,
+        );
+        void refreshRuns();
+        return;
+      }
+      if (event.type === 'proposal-applied') {
+        // The bundle's per-artifact writes each emit their own `artifact-applied`
+        // notice (which flips the artifact rows); this one flips the PROPOSAL to
+        // applied. Matches on stream.runId so a displayed-but-not-live run updates too.
+        setStream((prev) =>
+          prev.runId === event.runId
+            ? {
+                ...prev,
+                proposals: prev.proposals.map((p) =>
+                  p.id === event.proposalId ? { ...p, status: 'applied' } : p,
+                ),
+              }
+            : prev,
+        );
+        void refreshRuns();
+        return;
+      }
+      if (event.type === 'check-armed') {
+        // Arming writes only to the project's harness.json (no run/stream change);
+        // the arm action surfaces its own success toast, so this notice is a no-op.
+        return;
+      }
+      // harness-* events only apply to the run currently displayed/driven.
+      if (event.runId !== activeRunId.current) return;
+      setStream((prev) => foldHarness(prev, event));
+      if (
+        event.type === 'harness-scan-completed' ||
+        event.type === 'harness-scan-failed'
+      ) {
+        void reconcile(event.runId);
+      }
     },
-    [refreshRuns],
-  );
-
-  // Initial load: list runs and display the newest (already sorted newest-first).
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const next = await refreshRuns();
-      if (cancelled || next.length === 0) return;
-      const newest = next[0];
-      if (newest === undefined) return;
-      activeRunId.current = newest.id;
-      setStream(streamFromRun(newest));
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshRuns]);
-
-  // Subscribe to the live harness stream once.
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    let disposed = false;
-    void (async () => {
-      const fn = await onHarnessEvent((event: HarnessEvent) => {
-        if (event.type === 'artifact-applied') {
-          setStream((prev) =>
-            prev.runId === event.runId
-              ? {
-                  ...prev,
-                  artifacts: prev.artifacts.map((a) =>
-                    a.id === event.artifactId
-                      ? { ...a, status: 'applied', appliedPath: event.path }
-                      : a,
-                  ),
-                }
-              : prev,
-          );
-          void refreshRuns();
-          return;
-        }
-        if (event.type === 'finding-converted') {
-          // Matches on stream.runId (NOT the activeRunId gate below) so a convert against
-          // a displayed-but-not-live run still updates in place — mirrors Insight.
-          setStream((prev) =>
-            prev.runId === event.runId
-              ? {
-                  ...prev,
-                  findings: prev.findings.map((f) =>
-                    f.id === event.findingId
-                      ? { ...f, status: 'converted', linkedTaskId: event.taskId }
-                      : f,
-                  ),
-                }
-              : prev,
-          );
-          void refreshRuns();
-          return;
-        }
-        if (event.type === 'proposal-converted') {
-          // Matches on stream.runId (like finding-converted) so a convert against a
-          // displayed-but-not-live run still updates in place.
-          setStream((prev) =>
-            prev.runId === event.runId
-              ? {
-                  ...prev,
-                  proposals: prev.proposals.map((p) =>
-                    p.id === event.proposalId
-                      ? { ...p, status: 'converted', linkedTaskId: event.taskId }
-                      : p,
-                  ),
-                }
-              : prev,
-          );
-          void refreshRuns();
-          return;
-        }
-        if (event.type === 'proposal-applied') {
-          // The bundle's per-artifact writes each emit their own `artifact-applied`
-          // notice (which flips the artifact rows); this one flips the PROPOSAL to
-          // applied. Matches on stream.runId so a displayed-but-not-live run updates too.
-          setStream((prev) =>
-            prev.runId === event.runId
-              ? {
-                  ...prev,
-                  proposals: prev.proposals.map((p) =>
-                    p.id === event.proposalId ? { ...p, status: 'applied' } : p,
-                  ),
-                }
-              : prev,
-          );
-          void refreshRuns();
-          return;
-        }
-        if (event.type === 'check-armed') {
-          // Arming writes only to the project's harness.json (no run/stream change);
-          // the arm action surfaces its own success toast, so this notice is a no-op.
-          return;
-        }
-        // harness-* events only apply to the run currently displayed/driven.
-        if (event.runId !== activeRunId.current) return;
-        setStream((prev) => foldHarness(prev, event));
-        if (
-          event.type === 'harness-scan-completed' ||
-          event.type === 'harness-scan-failed'
-        ) {
-          void reconcile(event.runId);
-        }
-      });
-      if (disposed) fn();
-      else unlisten = fn;
-    })();
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [reconcile, refreshRuns]);
+  });
+  const { stream, setStream, runStart, refreshRuns } = scan;
 
   const start = useCallback(
     async (
@@ -248,53 +201,27 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
       model: string | null,
       effort: string | null,
     ) => {
-      if (!hasProject || categories.length === 0) return;
-      // Set synchronously, before the first await: a second click that slips
-      // through the render gap before `isStarting`/the optimistic running state
-      // disables Scan is a no-op instead of a second paid scan.
-      if (scanInFlight.current) return;
-      scanInFlight.current = true;
-      setIsStarting(true);
-      setStartError(null);
-      try {
+      await runStart(hasProject && categories.length > 0, async () => {
         const runId = await startHarnessScan(categories, {
           model,
           effort: effort as EffortLevel | null,
         });
-        activeRunId.current = runId;
         // Optimistic running state until `harness-scan-started` lands.
-        setStream({
-          ...EMPTY_HARNESS_STREAM,
+        return {
           runId,
-          status: 'running',
-          model,
-          requestedCategories: categories,
-          categoryState: Object.fromEntries(
-            categories.map((c) => [c, 'pending' as const]),
-          ),
-        });
-        await refreshRuns();
-      } catch (err) {
-        setStartError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setIsStarting(false);
-        scanInFlight.current = false;
-      }
+          optimistic: {
+            ...EMPTY_HARNESS_STREAM,
+            runId,
+            status: 'running',
+            model,
+            requestedCategories: categories,
+            categoryState: seedStepState(categories),
+          },
+        };
+      });
     },
-    [hasProject, refreshRuns],
+    [hasProject, runStart],
   );
-
-  const cancel = useCallback(async () => {
-    if (stream.runId === null) return;
-    await cancelHarnessScan(stream.runId);
-  }, [stream.runId]);
-
-  const selectRun = useCallback(async (runId: string) => {
-    const run = await getHarnessRun(runId);
-    if (run === null) return;
-    activeRunId.current = runId;
-    setStream(streamFromRun(run));
-  }, []);
 
   const dismissFinding = useCallback(
     async (findingId: string) => {
@@ -303,7 +230,7 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
       if (run !== null) setStream(streamFromRun(run));
       await refreshRuns();
     },
-    [stream.runId, refreshRuns],
+    [stream.runId, setStream, refreshRuns],
   );
 
   const restoreFinding = useCallback(
@@ -313,7 +240,7 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
       if (run !== null) setStream(streamFromRun(run));
       await refreshRuns();
     },
-    [stream.runId, refreshRuns],
+    [stream.runId, setStream, refreshRuns],
   );
 
   const convertFinding = useCallback(
@@ -334,7 +261,7 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
       await refreshRuns();
       return task;
     },
-    [stream.runId, refreshRuns],
+    [stream.runId, setStream, refreshRuns],
   );
 
   const dismissProposal = useCallback(
@@ -344,7 +271,7 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
       if (run !== null) setStream(streamFromRun(run));
       await refreshRuns();
     },
-    [stream.runId, refreshRuns],
+    [stream.runId, setStream, refreshRuns],
   );
 
   const restoreProposal = useCallback(
@@ -354,7 +281,7 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
       if (run !== null) setStream(streamFromRun(run));
       await refreshRuns();
     },
-    [stream.runId, refreshRuns],
+    [stream.runId, setStream, refreshRuns],
   );
 
   const convertProposal = useCallback(
@@ -374,7 +301,7 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
       await refreshRuns();
       return task;
     },
-    [stream.runId, refreshRuns],
+    [stream.runId, setStream, refreshRuns],
   );
 
   const applyProposal = useCallback(
@@ -392,7 +319,7 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
         console.error('listHarnessRuns failed', err);
       });
     },
-    [stream.runId, refreshRuns],
+    [stream.runId, setStream, refreshRuns],
   );
 
   const dismissArtifact = useCallback(
@@ -402,7 +329,7 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
       if (run !== null) setStream(streamFromRun(run));
       await refreshRuns();
     },
-    [stream.runId, refreshRuns],
+    [stream.runId, setStream, refreshRuns],
   );
 
   const restoreArtifact = useCallback(
@@ -412,7 +339,7 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
       if (run !== null) setStream(streamFromRun(run));
       await refreshRuns();
     },
-    [stream.runId, refreshRuns],
+    [stream.runId, setStream, refreshRuns],
   );
 
   const applyArtifact = useCallback(
@@ -431,7 +358,7 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
         console.error('listHarnessRuns failed', err);
       });
     },
-    [stream.runId, refreshRuns],
+    [stream.runId, setStream, refreshRuns],
   );
 
   const armCheck = useCallback(
@@ -446,12 +373,12 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
 
   return {
     stream,
-    runs,
-    isStarting,
-    startError,
+    runs: scan.runs,
+    isStarting: scan.isStarting,
+    startError: scan.startError,
     start,
-    cancel,
-    selectRun,
+    cancel: scan.cancel,
+    selectRun: scan.selectRun,
     dismissFinding,
     restoreFinding,
     convertFinding,
