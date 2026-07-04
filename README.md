@@ -56,8 +56,8 @@ The core ↔ sidecar protocol is line-delimited JSON (NDJSON) over the child's
 stdio: one `SurfaceCommand` per line in, one `NightcoreEvent` per line out,
 human logs on stderr. See
 [`docs/arch/2026-06-21-nightcore-studio-architecture.md`](docs/arch/2026-06-21-nightcore-studio-architecture.md)
-for the full design, and [`docs/architecture.md`](docs/architecture.md) for the
-package layer model.
+for the full design, and [`AGENTS.md`](AGENTS.md) (Repository shape + Hard
+import boundaries) for the package layer model.
 
 ## Requirements
 
@@ -129,12 +129,15 @@ packages/    shared TS packages used by the sidecar and the core
   engine/    SessionManager, SessionRunner, ToolRegistry, PermissionLayer, HookBus
   session-fold/ event→state fold logic for session lifecycle
   eslint-plugin/ the nightcore/* lint rules and validator
-tools/codegen/ TS→Rust contract generator (`bun run codegen:contracts`)
+tools/codegen/   TS→Rust contract generator (`bun run codegen:contracts`)
+tools/lint-meta/ meta-lint engine (`bun run lint:meta`) — layer-rank, package-shape, codegen-drift, …
+tools/coverage/  node test coverage floor (`test:node:coverage`)
 docs/        architecture summary + design/research docs
 ```
 
-See [`docs/architecture.md`](docs/architecture.md) for the layer model and
-dependency rules.
+See [`AGENTS.md`](AGENTS.md) (Repository shape + Hard import boundaries) for the
+package layer model and dependency rules, and
+[`docs/architecture.md`](docs/architecture.md) for the runtime tiers.
 
 ## Scripts
 
@@ -145,7 +148,7 @@ dependency rules.
 | `bun run web:build` | build the web UI |
 | `bun run sidecar` | run the Bun provider sidecar (raw NDJSON over stdio) |
 | `bun run typecheck` | `tsc -b` across the workspace |
-| `bun test` | the TS/Bun tests (sidecar, engine, contracts, web, …) |
+| `bun run test` | the TS/Bun tiers (node → web → plugin; Rust skipped — use `test:all`) |
 | `bun run test:rust` | Rust core unit tests (`cargo test` in `apps/desktop/src-tauri`) |
 | `bun run test:all` | every tier: node → web → plugin → Rust |
 | `bun run lint` | eslint (flat config) + `lint:meta` (codegen-drift + agent-contract gate) |
@@ -168,10 +171,14 @@ The suites are fast and offline (no live Claude session, no token use, no cost):
   `session-manager.test.ts` stubs the SDK's `query()` the same way.)
 - **Web** (`apps/web`): `bun run test:web` — Vitest + Storybook component tests.
 
-**CI** (`.github/workflows/ci.yml`): every push to `main` and every PR runs
-`bun run lint`, `bun run typecheck`, and `bun run test:all`, then re-runs the
-ts-rs codegen via `cargo test` and asserts no `git diff` drift. Dependency CVE
-scanning runs separately in `audit.yml` (with `dependabot.yml` for bumps).
+**CI** (`.github/workflows/ci.yml`): every push to `main` and every PR runs two
+jobs. **bun-checks** runs `bun run lint`, `bun run typecheck`, then
+`bun run test:node:coverage` (node tier under a src-level coverage floor),
+`bun run test:web`, and `bun run test:plugin`. **rust-checks** runs
+`cargo fmt --check`, `bun run test:rust`, and `cargo clippy --all-targets -D warnings`,
+then asserts the ts-rs bindings (`apps/web/src/lib/generated`) have no `git diff`
+drift after `cargo test` regenerates them. Dependency CVE scanning runs
+separately in `audit.yml` (with `dependabot.yml` for bumps).
 
 ## What it does today
 
