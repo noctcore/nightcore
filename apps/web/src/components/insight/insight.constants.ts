@@ -17,7 +17,6 @@ import type {
   AnalysisScope,
   FindingCategory,
   FindingEffort,
-  FindingSeverity,
   InsightRun,
 } from '@/lib/bridge';
 
@@ -54,56 +53,10 @@ export const CATEGORY_META: Record<FindingCategory, CategoryMeta> = {
   dependencies: { label: 'Dependencies', icon: DepsIcon },
 };
 
-/** Severity order, highest first (for sorting + the "All" tab). */
-export const SEVERITY_ORDER: FindingSeverity[] = [
-  'critical',
-  'high',
-  'medium',
-  'low',
-  'info',
-];
-
-/** A numeric rank for a severity (higher = more severe), for descending sorts. */
-export function severityRankValue(s: FindingSeverity): number {
-  return SEVERITY_ORDER.length - SEVERITY_ORDER.indexOf(s);
-}
-
-interface SeverityMeta {
-  label: string;
-  /** Tailwind text tone for the badge. */
-  tone: string;
-  /** Tailwind bg/border tone for the badge chip. */
-  chip: string;
-}
-
-/** Per-severity label + Tailwind tones for badges and chips. */
-export const SEVERITY_META: Record<FindingSeverity, SeverityMeta> = {
-  critical: {
-    label: 'Critical',
-    tone: 'text-destructive',
-    chip: 'bg-destructive/[0.12] border-destructive/40',
-  },
-  high: {
-    label: 'High',
-    tone: 'text-warning',
-    chip: 'bg-warning/[0.12] border-warning/40',
-  },
-  medium: {
-    label: 'Medium',
-    tone: 'text-primary',
-    chip: 'bg-primary/[0.1] border-primary/40',
-  },
-  low: {
-    label: 'Low',
-    tone: 'text-muted-foreground',
-    chip: 'bg-white/[0.04] border-border',
-  },
-  info: {
-    label: 'Info',
-    tone: 'text-muted-foreground',
-    chip: 'bg-white/[0.04] border-border',
-  },
-};
+/** The severity scale (order, ranking, badge palette) is shared across every
+ *  grounded-finding surface — re-exported from `lib/` so it can't drift per
+ *  feature. See {@link ../../lib/severity}. */
+export { SEVERITY_META, SEVERITY_ORDER, severityRankValue } from '@/lib/severity';
 
 /** Per-effort display label. */
 export const EFFORT_META: Record<FindingEffort, { label: string }> = {
