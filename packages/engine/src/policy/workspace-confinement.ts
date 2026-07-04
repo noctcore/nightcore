@@ -24,12 +24,16 @@
  * the same way but via a multi-target parse of its patch body (see
  * {@link APPLY_PATCH_TOOL}): every Add/Update/Delete/Move target is confined, and a
  * patch that exposes NO inspectable target is DENIED (fail-closed). For `Bash` it is
- * BEST-EFFORT: only an absolute `cd`/`pushd` outside cwd is flagged. It is NOT a
- * sandbox — real containment is the OS sandbox (the tiered-sandbox roadmap). Known
- * residual gaps:
- *  - Bash write vectors other than `cd`: a redirect to an absolute path
- *    (`> /abs`), `tee`/`cp`/`mv`/`dd` to an absolute path, `sh -c`, subshells, or
- *    an exotic interpreter can still write outside cwd.
+ * BEST-EFFORT and LEXICAL: an absolute `cd`/`pushd` outside cwd, AND an absolute-
+ * (or `~`/`$HOME`-) path write via a redirect (`> /abs`, `2>/abs`, `>> ~/…`),
+ * `tee`/`cp`/`mv`/`install`/`dd of=`/`sed -i`/`ln`, or a `sh -c` subshell of those,
+ * are flagged — which closes the marquee `> ~/.claude/settings.json` config-
+ * poisoning vector. It is NOT a sandbox — real containment is the OS sandbox (the
+ * tiered-sandbox roadmap). Known residual gaps:
+ *  - Bash write vectors we can't resolve lexically: a RELATIVE target (`> ../x`,
+ *    `cd ..` then a relative write) or a DYNAMIC one (`> $VAR/x`, `> $(…)`), and a
+ *    write through a non-shell interpreter (`python -c "open(...,'w')"`) can still
+ *    escape. `/dev/*` sinks are intentionally allowed (`2>/dev/null`).
  *  - MCP write/network tools (`mcp__<server>__write_file`, `…__http_post`, …) are
  *    not native tool names, so the native-name gates miss them. They are caught by
  *    a NAME-HEURISTIC fallback (see {@link evaluateMcpContainment}): a write-classed
@@ -323,6 +327,140 @@ function bashCdEscape(toolInput: unknown, roots: readonly string[]): string | un
   return undefined;
 }
 
+/** Basename of a bash token (`/usr/bin/tee` → `tee`), handling both separators so
+ *  a path-qualified write tool can't dodge the command-word check. */
+function bashBasename(token: string): string {
+  const parts = token.split(/[\\/]/);
+  return parts[parts.length - 1] ?? token;
+}
+
+/** Shell interpreters whose `-c <script>` argument is itself a command line, so the
+ *  write-escape scan recurses into it — `sh -c 'echo x > /abs'` must not hide the
+ *  write behind a subshell. */
+const SHELL_INTERPRETERS: ReadonlySet<string> = new Set([
+  'sh',
+  'bash',
+  'zsh',
+  'dash',
+  'ksh',
+  'fish',
+]);
+
+/**
+ * Lexically resolve a bash write-target TOKEN to an absolute path — and ONLY when
+ * it can be resolved without runtime state: an absolute path, a `~`/`~/…` home
+ * path, or a `$HOME`/`${HOME}` home path. A relative or otherwise dynamic target
+ * (`out.txt`, `../x`, `$VAR/x`, `$(…)`) returns undefined and is left alone (same
+ * narrow, high-signal posture as {@link bashCdEscape} — real containment is the OS
+ * sandbox). The `~`/`$HOME` handling is what lets the gate catch the marquee
+ * `> ~/.claude/settings.json` config-poisoning vector even though `~` is not an
+ * absolute path.
+ */
+function lexicalWriteTarget(token: string): string | undefined {
+  if (token.length === 0) return undefined;
+  if (HOME_DIR.length > 0) {
+    if (token === '~') return HOME_DIR;
+    if (token.startsWith('~/')) return path.resolve(HOME_DIR, token.slice(2));
+    const homeVar = /^\$(?:HOME|\{HOME\})(?:\/(.*))?$/.exec(token);
+    if (homeVar !== null) {
+      return homeVar[1] !== undefined && homeVar[1].length > 0
+        ? path.resolve(HOME_DIR, homeVar[1])
+        : HOME_DIR;
+    }
+  }
+  if (path.isAbsolute(token)) return path.resolve(token);
+  return undefined;
+}
+
+/** True when a resolved absolute write target escapes the allowed roots. `/dev/*`
+ *  pseudo-devices (`/dev/null`, `/dev/stdout`, `2>/dev/null`) are NOT escapes —
+ *  they are benign sinks, and a raw block-device write is the destructive deny
+ *  list's job, not confinement's. */
+function isBashWriteEscape(resolved: string, roots: readonly string[]): boolean {
+  if (resolved === '/dev/null' || resolved.startsWith('/dev/')) return false;
+  return !isAllowedTarget(resolved, roots);
+}
+
+/** Every WRITE destination token in one simple command: redirect targets, plus the
+ *  destination operand(s) of the write-oriented tools we recognize (`tee`, `cp`,
+ *  `mv`, `install`, `dd of=`, `ln`, `sed -i`). Read-only operands (a `cp` SOURCE,
+ *  a `sed` script expression) are deliberately excluded — resolving a source path
+ *  would false-positive on a legitimate read of an absolute file. */
+function collectBashWriteTargets(cmd: readonly string[]): string[] {
+  const targets: string[] = [];
+  // Redirects: `>`/`>>` with an optional fd or `&` prefix, target glued or spaced
+  // (`>/abs`, `>> /abs`, `2>/abs`, `&>/abs`). `2>&1`/`>&2` capture `&1`/`&2`, which
+  // `lexicalWriteTarget` ignores (not a path).
+  for (let i = 0; i < cmd.length; i += 1) {
+    const redirect = /^(?:[0-9]*|&)>>?(.*)$/.exec(cmd[i]!);
+    if (redirect === null) continue;
+    const glued = redirect[1]!;
+    targets.push(glued.length > 0 ? glued : (cmd[i + 1] ?? ''));
+  }
+  const word = cmd.length > 0 ? bashBasename(cmd[0]!) : '';
+  const rest = cmd.slice(1);
+  const nonFlag = rest.filter((t) => !t.startsWith('-'));
+  if (word === 'tee' || word === 'ln') {
+    // tee writes every file operand; ln creates a link — flag either operand (an
+    // in-cwd link pointing OUT is a two-step escape; a link placed OUT is direct).
+    for (const t of nonFlag) targets.push(t);
+  } else if (word === 'cp' || word === 'mv' || word === 'install') {
+    // The final operand is the destination; earlier operands are read sources. A
+    // `-t DIR` / `--target-directory[=DIR]` flag names the dest explicitly.
+    const ti = rest.findIndex(
+      (t) => t === '-t' || t === '--target-directory',
+    );
+    const glued = rest.find((t) => t.startsWith('--target-directory='));
+    if (ti !== -1 && rest[ti + 1] !== undefined) targets.push(rest[ti + 1]!);
+    else if (glued !== undefined) targets.push(glued.slice('--target-directory='.length));
+    else {
+      const dest = nonFlag[nonFlag.length - 1];
+      if (dest !== undefined) targets.push(dest);
+    }
+  } else if (word === 'dd') {
+    const of = cmd.find((t) => t.startsWith('of='));
+    if (of !== undefined) targets.push(of.slice('of='.length));
+  } else if (
+    word === 'sed' &&
+    rest.some((t) => t === '-i' || t.startsWith('-i') || t.startsWith('--in-place'))
+  ) {
+    // `sed -i` edits its file operands in place. The first non-flag operand is the
+    // script (`s/a/b/`) — not an absolute path, so `lexicalWriteTarget` skips it.
+    for (const t of nonFlag) targets.push(t);
+  }
+  return targets;
+}
+
+/** The first bash WRITE target that escapes the allowed roots, or undefined —
+ *  scanning redirects and write-tool destinations across every simple command, and
+ *  recursing into `sh -c <script>` subshells. Best-effort and lexical: it catches
+ *  the high-signal absolute/`~`/`$HOME` forms (`echo … > /abs`, `tee /abs`,
+ *  `cp x /abs`, `> ~/.claude/…`) that {@link bashCdEscape} misses, while leaving
+ *  benign in-cwd/relative writes and unresolvable dynamic targets to the OS sandbox
+ *  (the tiered-sandbox roadmap remains the real containment boundary). */
+function bashWriteEscape(
+  command: string,
+  roots: readonly string[],
+): string | undefined {
+  for (const cmd of parseCommandLine(command)) {
+    for (const token of collectBashWriteTargets(cmd)) {
+      const resolved = lexicalWriteTarget(token);
+      if (resolved !== undefined && isBashWriteEscape(resolved, roots)) {
+        return resolved;
+      }
+    }
+    if (cmd.length > 0 && SHELL_INTERPRETERS.has(bashBasename(cmd[0]!))) {
+      const ci = cmd.findIndex((t) => t === '-c');
+      const script = ci !== -1 ? cmd[ci + 1] : undefined;
+      if (typeof script === 'string' && script.length > 0) {
+        const nested = bashWriteEscape(script, roots);
+        if (nested !== undefined) return nested;
+      }
+    }
+  }
+  return undefined;
+}
+
 /** The action segment of an `mcp__<server>__<action>` tool name (everything after
  *  the final `__`), lowercased. Keying off the ACTION — not the whole name —
  *  avoids classifying a tool by its SERVER name (`mcp__http_server__list_files`
@@ -589,7 +727,10 @@ export function evaluateWorkspaceConfinement(
   }
 
   if (toolName === BASH_TOOL) {
-    const escape = bashCdEscape(toolInput, roots);
+    const command = targetUnderKey(toolInput, 'command');
+    const escape =
+      bashCdEscape(toolInput, roots) ??
+      (command !== undefined ? bashWriteEscape(command, roots) : undefined);
     if (escape !== undefined) {
       return {
         denied: true,

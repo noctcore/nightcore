@@ -473,3 +473,53 @@ describe('evaluateWorkspaceConfinement — Bash cd escape (best-effort)', () => 
     ).toBe(false);
   });
 });
+
+describe('evaluateWorkspaceConfinement — Bash write escape (best-effort)', () => {
+  const denies = (command: string): boolean =>
+    evaluateWorkspaceConfinement('Bash', { command }, WORKTREE).denied;
+
+  test.each([
+    ['redirect to an absolute path', 'echo payload > /etc/cron.d/evil'],
+    ['spaced append redirect out of cwd', 'echo x >> /var/tmp/loot'],
+    ['glued fd redirect out of cwd', 'echo x 2>/etc/shadow-copy'],
+    ['tee to an absolute path', 'echo x | tee /etc/hosts'],
+    ['cp destination out of cwd', 'cp ./secret /etc/evil'],
+    ['cp -t target-directory out of cwd', 'cp -t /etc a b'],
+    ['mv destination out of cwd', 'mv ./a /usr/local/bin/b'],
+    ['dd of= out of cwd', 'dd if=./x of=/etc/passwd2'],
+    ['sed -i on an absolute file out of cwd', "sed -i 's/a/b/' /etc/hosts"],
+    ['ln -s pointing out of cwd', 'ln -s /repo escape'],
+    ['sh -c subshell hiding the redirect', "sh -c 'echo x > /etc/evil'"],
+    ['bash -c subshell hiding a tee', "bash -c \"echo x | tee /etc/evil\""],
+  ] as const)('denies %s', (_label, command) => {
+    const verdict = evaluateWorkspaceConfinement('Bash', { command }, WORKTREE);
+    expect(verdict.denied).toBe(true);
+    expect(verdict.ruleId).toBe(WORKSPACE_CONFINEMENT_RULE_ID);
+  });
+
+  test('denies a redirect that poisons ~/.claude (config-injection → persistent RCE)', () => {
+    for (const command of [
+      'echo "{}" > ~/.claude/settings.json',
+      'echo "{}" > $HOME/.claude/settings.json',
+    ]) {
+      expect(denies(command)).toBe(true);
+    }
+  });
+
+  test.each([
+    ['relative redirect stays in cwd', 'bun run build > build.log 2>&1'],
+    ['redirect to ./ path', 'echo x > ./out/report.txt'],
+    ['/dev/null sink is benign', 'bun test > /dev/null 2>&1'],
+    ['in-cwd tee', 'echo x | tee ./notes.txt'],
+    ['local cp with relative dest', 'cp ./a ./b'],
+    ['reading an absolute source is not a write', 'cat /etc/hosts'],
+    ['sed without -i (no in-place write)', "sed 's/a/b/' /etc/hosts"],
+    ['dynamic redirect target it cannot resolve', 'echo x > "$TMPDIR/scratch"'],
+  ] as const)('allows %s', (_label, command) => {
+    expect(denies(command)).toBe(false);
+  });
+
+  test('allows an absolute redirect INSIDE cwd', () => {
+    expect(denies(`echo x > ${WORKTREE}/out.txt`)).toBe(false);
+  });
+});
