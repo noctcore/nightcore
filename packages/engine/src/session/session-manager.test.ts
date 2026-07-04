@@ -14,7 +14,11 @@ import type { Config, NightcoreEvent } from '@nightcore/contracts';
  */
 type Script =
   | { kind: 'messages'; messages: unknown[] }
-  | { kind: 'throw'; error: unknown };
+  | { kind: 'throw'; error: unknown }
+  // Yields `messages` then blocks forever on the next pull, so the session stays
+  // live (never drains → never retires) — lets a test dispatch a follow-up
+  // command against an in-flight session.
+  | { kind: 'hang'; messages: unknown[] };
 
 let scripts: Script[] = [];
 const interruptCalls: number[] = [];
@@ -31,6 +35,8 @@ function makeFakeQuery() {
         throw script.error;
       }
       if (index >= script.messages.length) {
+        // A `hang` script blocks the pull forever so the session never retires.
+        if (script.kind === 'hang') return new Promise<never>(() => {});
         return { value: undefined, done: true };
       }
       return { value: script.messages[index++], done: false };
@@ -620,5 +626,72 @@ describe('SessionManager.handleQuery — SDK session store', () => {
     });
     expect(result).toEqual({ type: 'query-result', requestId: 'q7', ok: true, kind: 'ack' });
     expect(sessionFnStubs.tagSession.mock.calls[0]?.slice(0, 2)).toEqual(['u', null]);
+  });
+});
+
+describe('SessionManager stale interactive replies are observable', () => {
+  /** Minimal Logger whose `warn` is a spy; `child` returns itself. */
+  function makeSpyLogger() {
+    // bun's `mock` records every call arg regardless of the fn's own params.
+    const warn = mock(() => {});
+    const logger = {
+      error: () => {},
+      warn,
+      info: () => {},
+      debug: () => {},
+      child() {
+        return logger;
+      },
+    };
+    return { logger, warn };
+  }
+
+  test('warns when an approve-permission targets an unknown/settled requestId', async () => {
+    // `hang` keeps the session live so the command reaches a real runner.
+    scripts = [{ kind: 'hang', messages: [initMessage()] }];
+    const { logger, warn } = makeSpyLogger();
+    const manager = new SessionManager(makeConfig(), logger);
+    const { done } = collect(manager, (e) => e.type === 'session-ready');
+
+    await manager.dispatch({ type: 'start-session', prompt: 'hi' });
+    await done;
+
+    // No such parked request → runner returns false → the drop must be logged.
+    await manager.dispatch({
+      type: 'approve-permission',
+      sessionId: 1,
+      requestId: 'never-registered',
+      decision: { behavior: 'deny', message: 'no' },
+    });
+
+    expect(warn).toHaveBeenCalled();
+    const call = warn.mock.calls.find(
+      (c) => typeof c[0] === 'string' && c[0].includes('permission request'),
+    );
+    expect(call).toBeDefined();
+    expect(call?.[1]).toMatchObject({ requestId: 'never-registered', sessionId: 1 });
+  });
+
+  test('warns when an answer-question targets an unknown/settled requestId', async () => {
+    scripts = [{ kind: 'hang', messages: [initMessage()] }];
+    const { logger, warn } = makeSpyLogger();
+    const manager = new SessionManager(makeConfig(), logger);
+    const { done } = collect(manager, (e) => e.type === 'session-ready');
+
+    await manager.dispatch({ type: 'start-session', prompt: 'hi' });
+    await done;
+
+    await manager.dispatch({
+      type: 'answer-question',
+      sessionId: 1,
+      requestId: 'stale-q',
+      answer: { behavior: 'cancel' },
+    });
+
+    const call = warn.mock.calls.find(
+      (c) => typeof c[0] === 'string' && c[0].includes('question request'),
+    );
+    expect(call).toBeDefined();
+    expect(call?.[1]).toMatchObject({ requestId: 'stale-q', sessionId: 1 });
   });
 });

@@ -241,10 +241,18 @@ export class SessionManager {
         await session.runner.setPermissionMode(command.mode);
         break;
       case 'approve-permission':
-        session.runner.approvePermission(command.requestId, command.decision);
+        if (!session.runner.approvePermission(command.requestId, command.decision))
+          this.logger?.warn('stale or unknown permission request dropped', {
+            requestId: command.requestId,
+            sessionId: command.sessionId,
+          });
         break;
       case 'answer-question':
-        session.runner.answerQuestion(command.requestId, command.answer);
+        if (!session.runner.answerQuestion(command.requestId, command.answer))
+          this.logger?.warn('stale or unknown question request dropped', {
+            requestId: command.requestId,
+            sessionId: command.sessionId,
+          });
         break;
     }
   }
