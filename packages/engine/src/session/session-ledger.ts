@@ -12,9 +12,17 @@
  *     a ledger problem never blocks a tool call or fails a session;
  *   - **append-only**: sessions of the same task (build, reviewer, fix) share
  *     the file, separated by their start/end markers;
- *   - **synchronous appends**: each record is one small `appendFileSync` so a
- *     crash keeps every record up to the crash (the point of a flight
- *     recorder) and line order matches evaluation order;
+ *   - **serialized async appends**: each record method is fire-and-forget and
+ *     returns at once; the actual `fs.promises.appendFile` runs off a single
+ *     per-writer promise chain, so a slow/contended disk backs up the queue
+ *     instead of blocking the Bun event loop (which also forwards session
+ *     events for every concurrent session). Line order matches evaluation
+ *     order because the chain runs one write at a time and the timestamp is
+ *     stamped at enqueue time. Records still land eventually and durably; the
+ *     one tradeoff vs the old `appendFileSync` is that records enqueued but not
+ *     yet flushed at a hard process crash are lost — acceptable for a fail-open,
+ *     best-effort recorder. Tests (and any caller needing the file on disk)
+ *     await {@link SessionLedger.whenSettled};
  *   - **bounded**: at ~5 MB the writer emits one final `truncated` marker and
  *     stops — a pathological session can't fill the disk;
  *   - **digest, not payload**: only the first {@link DIGEST_MAX_CHARS} chars of
@@ -100,12 +108,23 @@ export class SessionLedger {
   /** Set on the first filesystem error (fail-open) or once the cap is hit. */
   private disabled = false;
   private warned = false;
+  /** The serialized write chain: every {@link append} links its write onto the
+   *  tail so writes run one at a time, in enqueue order, off the event loop. */
+  private queue: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly filePath: string,
     private readonly logger?: Logger,
     private readonly maxBytes: number = LEDGER_MAX_BYTES,
   ) {}
+
+  /** Resolve once every append enqueued so far has been flushed (or dropped by
+   *  the cap/fail-open path). Appends enqueued AFTER this call are not awaited.
+   *  For tests and any caller that needs the ledger on disk before reading it —
+   *  production callers stay fire-and-forget. Never rejects. */
+  whenSettled(): Promise<void> {
+    return this.queue;
+  }
 
   /** Record one PreToolUse gate evaluation. Bound (arrow) so it can be handed
    *  to the {@link HookBus} `onToolDecision` opt directly. */
@@ -134,34 +153,47 @@ export class SessionLedger {
   }
 
   private append(fields: Record<string, unknown>): void {
+    // Stamp the timestamp NOW (enqueue time) so `ts` and line order both track
+    // evaluation order even though the write happens later off the queue. The
+    // write itself is chained onto the serialized tail; `writeRecord` never
+    // rejects (it fails open internally), so the chain can never break.
+    const ts = new Date().toISOString();
+    this.queue = this.queue.then(() => this.writeRecord(ts, fields));
+  }
+
+  /** One serialized append. Runs off {@link queue}, one at a time in enqueue
+   *  order, so the in-memory byte count and `disabled` flag are only ever
+   *  mutated by a single non-overlapping task. Resolves always (fail-open). */
+  private async writeRecord(
+    ts: string,
+    fields: Record<string, unknown>,
+  ): Promise<void> {
     if (this.disabled) return;
     try {
       if (this.bytes === undefined) {
         // Lazy open: create parent dirs and count what a prior session of this
         // task already wrote (the cap is per FILE, not per writer).
-        fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-        this.bytes = fs.existsSync(this.filePath)
-          ? fs.statSync(this.filePath).size
-          : 0;
+        await fs.promises.mkdir(path.dirname(this.filePath), { recursive: true });
+        this.bytes = await fileSize(this.filePath);
         if (this.bytes >= this.maxBytes) {
           // A prior writer crossed the cap (and wrote the marker); stay silent.
           this.disabled = true;
           return;
         }
       }
-      const line = `${JSON.stringify({ ts: new Date().toISOString(), ...fields })}\n`;
+      const line = `${JSON.stringify({ ts, ...fields })}\n`;
       const lineBytes = Buffer.byteLength(line, 'utf8');
       if (this.bytes + lineBytes > this.maxBytes) {
         // Crossing the cap: ONE final marker, then the recorder is off.
-        const marker = `${JSON.stringify({ ts: new Date().toISOString(), event: 'truncated' })}\n`;
-        fs.appendFileSync(this.filePath, marker);
+        const marker = `${JSON.stringify({ ts, event: 'truncated' })}\n`;
+        await fs.promises.appendFile(this.filePath, marker);
         this.disabled = true;
         this.logger?.warn('session ledger reached its size cap; recording stopped', {
           maxBytes: this.maxBytes,
         });
         return;
       }
-      fs.appendFileSync(this.filePath, line);
+      await fs.promises.appendFile(this.filePath, line);
       this.bytes += lineBytes;
     } catch (error) {
       // FAIL-OPEN: a recorder error must never block a tool call. Warn once
@@ -172,5 +204,18 @@ export class SessionLedger {
         this.logger?.warn('session ledger write failed; recording disabled', error);
       }
     }
+  }
+}
+
+/** The current size of `file` in bytes, or 0 when it does not exist yet. Any
+ *  other stat error (e.g. a permission failure) propagates so the caller's
+ *  fail-open path disables the writer — matching the old `existsSync ? statSync`
+ *  behavior without the sync stat. */
+async function fileSize(file: string): Promise<number> {
+  try {
+    return (await fs.promises.stat(file)).size;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 0;
+    throw error;
   }
 }

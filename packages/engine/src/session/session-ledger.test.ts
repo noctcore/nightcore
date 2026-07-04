@@ -67,7 +67,7 @@ describe('digestToolInput', () => {
 });
 
 describe('SessionLedger — appends', () => {
-  test('creates parent dirs lazily and appends one parseable NDJSON record per decision', () => {
+  test('creates parent dirs lazily and appends one parseable NDJSON record per decision', async () => {
     const file = path.join(tmp, 'nested', 'ledger', 'task-1.ndjson');
     const ledger = new SessionLedger(file);
 
@@ -80,6 +80,7 @@ describe('SessionLedger — appends', () => {
       'harness-protected-path',
     );
     ledger.recordSessionEnd(7);
+    await ledger.whenSettled();
 
     const records = readRecords(file);
     expect(records).toHaveLength(4);
@@ -103,23 +104,45 @@ describe('SessionLedger — appends', () => {
     }
   });
 
-  test('appends to an existing file (sessions of one task share the ledger)', () => {
+  test('appends to an existing file (sessions of one task share the ledger)', async () => {
     const file = path.join(tmp, 'task-2.ndjson');
     const first = new SessionLedger(file);
     first.recordSessionStart(1);
     first.recordSessionEnd(1);
+    // Distinct writers own distinct queues: the second must not start appending
+    // until the first's writes have landed, or the shared-file order races.
+    await first.whenSettled();
 
     const second = new SessionLedger(file);
     second.recordSessionStart(2);
+    await second.whenSettled();
 
     const records = readRecords(file);
     expect(records).toHaveLength(3);
     expect(records[2]).toMatchObject({ event: 'session-start', sessionId: 2 });
   });
+
+  test('serializes a burst of appends in strict enqueue order', async () => {
+    const file = path.join(tmp, 'ordered.ndjson');
+    const ledger = new SessionLedger(file);
+
+    // Fire many appends synchronously in a tight loop; the async write chain
+    // must land them in exactly the order they were enqueued (no interleave).
+    for (let i = 0; i < 50; i += 1) {
+      ledger.recordToolDecision('Bash', { command: `echo ${i}` }, 'allow');
+    }
+    await ledger.whenSettled();
+
+    const records = readRecords(file);
+    expect(records).toHaveLength(50);
+    records.forEach((record, i) => {
+      expect(record['inputDigest']).toBe(`echo ${i}`);
+    });
+  });
 });
 
 describe('SessionLedger — size cap', () => {
-  test('crossing the cap writes ONE final truncated marker and stops recording', () => {
+  test('crossing the cap writes ONE final truncated marker and stops recording', async () => {
     const file = path.join(tmp, 'capped.ndjson');
     const logger = fakeLogger();
     // ~3 records of this shape fit in 300 bytes; the rest must be dropped.
@@ -128,6 +151,7 @@ describe('SessionLedger — size cap', () => {
     for (let i = 0; i < 20; i += 1) {
       ledger.recordToolDecision('Bash', { command: `echo ${i}` }, 'allow');
     }
+    await ledger.whenSettled();
 
     const records = readRecords(file);
     const truncated = records.filter((r) => r['event'] === 'truncated');
@@ -138,17 +162,19 @@ describe('SessionLedger — size cap', () => {
     expect(fs.statSync(file).size).toBeLessThan(300 + 120);
   });
 
-  test('a new writer over an already-capped file stays silent (no second marker)', () => {
+  test('a new writer over an already-capped file stays silent (no second marker)', async () => {
     const file = path.join(tmp, 'capped-twice.ndjson');
     const first = new SessionLedger(file, undefined, 200);
     for (let i = 0; i < 10; i += 1) {
       first.recordToolDecision('Bash', { command: `echo ${i}` }, 'allow');
     }
+    await first.whenSettled();
     const sizeAfterFirst = fs.statSync(file).size;
 
     const second = new SessionLedger(file, undefined, 200);
     second.recordSessionStart(3);
     second.recordToolDecision('Bash', { command: 'echo more' }, 'allow');
+    await second.whenSettled();
 
     expect(fs.statSync(file).size).toBe(sizeAfterFirst);
     const truncated = readRecords(file).filter((r) => r['event'] === 'truncated');
@@ -157,7 +183,7 @@ describe('SessionLedger — size cap', () => {
 });
 
 describe('SessionLedger — fail-open', () => {
-  test('a write error never throws, warns once, and drops later records silently', () => {
+  test('a write error never throws, warns once, and drops later records silently', async () => {
     // The parent "dir" is a FILE, so mkdir/append must fail.
     const blocker = path.join(tmp, 'blocker');
     fs.writeFileSync(blocker, 'not a dir');
@@ -169,6 +195,8 @@ describe('SessionLedger — fail-open', () => {
       ledger.recordToolDecision('Bash', { command: 'echo hi' }, 'allow');
       ledger.recordSessionEnd(1);
     }).not.toThrow();
+    // whenSettled must resolve (never reject) even though every write failed.
+    await ledger.whenSettled();
 
     expect(logger.warn).toHaveBeenCalledTimes(1);
   });
