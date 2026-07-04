@@ -9,7 +9,7 @@
 //! these handlers live in this command layer rather than in the `store/project`
 //! persistence leaf.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -26,6 +26,54 @@ pub const PROJECT_EVENT: &str = "nc:project";
 /// Whether `path` is (inside) a git repo: a `.git` exists at the path.
 fn path_is_git_repo(path: &str) -> bool {
     Path::new(path).join(".git").exists()
+}
+
+/// Validate a renderer-supplied filesystem path before any command uses it as a
+/// git / scaffold target. These `#[tauri::command]` handlers take a raw `path:
+/// String` over IPC; a compromised or XSS'd webview (or any code that reaches
+/// `invoke`) could otherwise create `.git`/`.nightcore` at an attacker-chosen
+/// location or probe arbitrary path existence. We require an ABSOLUTE, CANONICAL
+/// (symlinks + `..` resolved), EXISTING directory. In normal use the path comes
+/// from the native folder picker, which always yields exactly that — so this
+/// rejects only paths a legitimate picker never produces.
+fn validate_existing_dir(path: &str) -> Result<PathBuf, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("path is empty".to_string());
+    }
+    if !Path::new(trimmed).is_absolute() {
+        return Err(format!("path must be absolute: {trimmed}"));
+    }
+    // canonicalize resolves `..`/symlinks and REQUIRES the path to exist, so a
+    // non-existent attacker target and any `..`-traversal are both rejected here.
+    let canonical = std::fs::canonicalize(trimmed)
+        .map_err(|e| format!("path does not resolve to an existing location: {e}"))?;
+    if !canonical.is_dir() {
+        return Err(format!("path is not a directory: {}", canonical.display()));
+    }
+    Ok(canonical)
+}
+
+/// System-owned directory trees under which we refuse to scaffold `.git` /
+/// `.nightcore` — a renderer-reachable write there is never a legitimate project
+/// registration. Deliberately excludes `/var` (& `/private/var`): macOS temp dirs
+/// canonicalize under `/private/var/folders`, and dogfooding/scratch repos live
+/// there, so denying it would break first-party flows. Applied to the WRITE
+/// commands (`create_project` / `git_init`) only; `is_git_repo` is read-only.
+fn reject_sensitive_root(dir: &Path) -> Result<(), String> {
+    if dir.parent().is_none() {
+        return Err("refusing to operate on the filesystem root".to_string());
+    }
+    const DENY_PREFIXES: &[&str] = &["/System", "/usr", "/bin", "/sbin", "/etc", "/private/etc"];
+    for deny in DENY_PREFIXES {
+        if dir.starts_with(deny) {
+            return Err(format!(
+                "refusing to create project files under a system directory: {}",
+                dir.display()
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Best-effort current branch via `git rev-parse --abbrev-ref HEAD`.
@@ -109,11 +157,16 @@ pub fn create_project(
     path: String,
     name: String,
 ) -> Result<Project, String> {
+    // Validate the renderer-supplied path before any filesystem side effect:
+    // absolute, canonical, existing directory, and not under a system root.
+    let dir = validate_existing_dir(&path)?;
+    reject_sensitive_root(&dir)?;
+    let path = dir.to_string_lossy().to_string();
     if !path_is_git_repo(&path) {
         return Err(format!("{path} is not a git repository"));
     }
     // Scaffold the per-project `.nightcore/` so the task store has a home.
-    let nightcore = Path::new(&path).join(".nightcore");
+    let nightcore = dir.join(".nightcore");
     std::fs::create_dir_all(nightcore.join("tasks"))
         .map_err(|e| format!("failed to scaffold .nightcore: {e}"))?;
 
@@ -197,16 +250,25 @@ pub fn rename_project(
     Ok(project)
 }
 
-/// Whether `path` is a git repository.
+/// Whether `path` is a git repository. Read-only: an invalid / non-existent /
+/// relative path is simply "not a repo" (`Ok(false)`), so this can't be used as
+/// a filesystem existence oracle for arbitrary strings.
 #[tauri::command]
 pub fn is_git_repo(path: String) -> Result<bool, String> {
-    Ok(path_is_git_repo(&path))
+    match validate_existing_dir(&path) {
+        Ok(dir) => Ok(dir.join(".git").exists()),
+        Err(_) => Ok(false),
+    }
 }
 
 /// Initialize a git repository at `path` (`git init`).
 #[tauri::command]
 pub fn git_init(path: String) -> Result<(), String> {
-    let out = crate::platform::git_command(Path::new(&path))
+    // Validate before spawning: absolute, canonical, existing directory, and not
+    // under a system root (this WRITES a `.git` into the target).
+    let dir = validate_existing_dir(&path)?;
+    reject_sensitive_root(&dir)?;
+    let out = crate::platform::git_command(&dir)
         .arg("init")
         .output()
         .map_err(|e| format!("failed to run git init (is `git` on PATH?): {e}"))?;
@@ -229,5 +291,65 @@ mod tests {
         assert!(!path_is_git_repo(&path), "fresh dir is not a repo");
         std::fs::create_dir(tmp.path().join(".git")).expect("mkdir .git");
         assert!(path_is_git_repo(&path), ".git present → repo");
+    }
+
+    #[test]
+    fn validate_existing_dir_rejects_untrusted_shapes_and_accepts_a_real_dir() {
+        // Empty / whitespace-only.
+        assert!(validate_existing_dir("").is_err());
+        assert!(validate_existing_dir("   ").is_err());
+        // Relative (the picker never yields these).
+        assert!(validate_existing_dir("relative/path").is_err());
+        assert!(validate_existing_dir("../escape").is_err());
+        // Absolute but non-existent → canonicalize fails.
+        assert!(validate_existing_dir("/no/such/nightcore/path/xyz").is_err());
+        // A real existing directory (first-party picker shape) is accepted and
+        // returned canonicalized.
+        let tmp = TempDir::new().expect("temp dir");
+        let got = validate_existing_dir(&tmp.path().to_string_lossy()).expect("valid dir");
+        assert!(got.is_absolute() && got.is_dir());
+    }
+
+    #[test]
+    fn validate_existing_dir_rejects_a_file() {
+        let tmp = TempDir::new().expect("temp dir");
+        let file = tmp.path().join("f.txt");
+        std::fs::write(&file, "x").expect("write");
+        assert!(validate_existing_dir(&file.to_string_lossy()).is_err());
+    }
+
+    #[test]
+    fn reject_sensitive_root_blocks_system_dirs_but_allows_a_project_dir() {
+        // System-owned trees a renderer must never scaffold into.
+        assert!(reject_sensitive_root(Path::new("/")).is_err());
+        assert!(reject_sensitive_root(Path::new("/etc")).is_err());
+        assert!(reject_sensitive_root(Path::new("/etc/nightcore-evil")).is_err());
+        assert!(reject_sensitive_root(Path::new("/usr/local/evil")).is_err());
+        assert!(reject_sensitive_root(Path::new("/System/Library/x")).is_err());
+        // A normal user project dir (and a temp dir under /private/var/folders,
+        // where dogfooding/scratch repos live) is allowed.
+        let tmp = TempDir::new().expect("temp dir");
+        let canonical = std::fs::canonicalize(tmp.path()).expect("canonical");
+        assert!(
+            reject_sensitive_root(&canonical).is_ok(),
+            "temp/project dir must be allowed: {}",
+            canonical.display()
+        );
+    }
+
+    #[test]
+    fn is_git_repo_returns_false_for_untrusted_paths_not_an_error_oracle() {
+        // Relative / non-existent inputs are simply "not a repo", never an error
+        // that leaks whether a path exists.
+        assert_eq!(is_git_repo(String::new()), Ok(false));
+        assert_eq!(is_git_repo("relative".to_string()), Ok(false));
+        assert_eq!(is_git_repo("/no/such/xyz/repo".to_string()), Ok(false));
+        // A real repo dir still reports true.
+        let tmp = TempDir::new().expect("temp dir");
+        std::fs::create_dir(tmp.path().join(".git")).expect("mkdir .git");
+        assert_eq!(
+            is_git_repo(tmp.path().to_string_lossy().to_string()),
+            Ok(true)
+        );
     }
 }
