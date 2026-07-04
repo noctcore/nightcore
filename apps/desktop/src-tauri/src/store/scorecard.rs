@@ -19,7 +19,7 @@ use serde_json::Value;
 use ts_rs::TS;
 
 use crate::store::insight::{FindingLocation, InsightUsage};
-use crate::store::run_store::{Edit, PersistedRun, RunStore};
+use crate::store::run_store::{LifecycleItem, PersistedRun, RunStore};
 
 // The convert-to-task link outcome is one shared enum across every scan feature (Insight
 // defines the canonical one; Harness already re-exports it). Scorecard's
@@ -108,6 +108,27 @@ impl StoredReading {
             status: "open".to_string(),
             linked_task_id: None,
         })
+    }
+}
+
+impl LifecycleItem for StoredReading {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn status(&self) -> &str {
+        &self.status
+    }
+    fn set_status(&mut self, status: &str) {
+        self.status = status.to_string();
+    }
+    fn fingerprint(&self) -> &str {
+        &self.fingerprint
+    }
+    fn linked_task_id(&self) -> Option<&str> {
+        self.linked_task_id.as_deref()
+    }
+    fn set_linked_task_id(&mut self, task_id: Option<String>) {
+        self.linked_task_id = task_id;
     }
 }
 
@@ -218,19 +239,14 @@ impl ScorecardStore {
         status: &str,
         linked_task_id: Option<Option<String>>,
     ) -> Result<ScorecardRun, String> {
-        let (_, run) = self.edit_run(run_id, |run| {
-            let reading = run
-                .readings
-                .iter_mut()
-                .find(|r| r.id == reading_id)
-                .ok_or_else(|| format!("no reading {reading_id} in run {run_id}"))?;
-            reading.status = status.to_string();
-            if let Some(link) = linked_task_id {
-                reading.linked_task_id = link;
-            }
-            Ok(Edit::Commit(()))
-        })?;
-        Ok(run)
+        self.set_item_status(
+            run_id,
+            reading_id,
+            "reading",
+            status,
+            linked_task_id,
+            |run| &mut run.readings,
+        )
     }
 
     /// Merge one dimension pass's reading into a still-`running` run so a cancel or
@@ -286,20 +302,9 @@ impl ScorecardStore {
         reading_id: &str,
         task_id: &str,
     ) -> Result<LinkOutcome, String> {
-        let (outcome, _) = self.edit_run(run_id, |run| {
-            let reading = run
-                .readings
-                .iter_mut()
-                .find(|f| f.id == reading_id)
-                .ok_or_else(|| format!("no reading {reading_id} in run {run_id}"))?;
-            if let Some(existing) = &reading.linked_task_id {
-                return Ok(Edit::Skip(LinkOutcome::AlreadyLinked(existing.clone())));
-            }
-            reading.status = "converted".to_string();
-            reading.linked_task_id = Some(task_id.to_string());
-            Ok(Edit::Commit(LinkOutcome::Linked))
-        })?;
-        Ok(outcome)
+        self.link_item_task(run_id, reading_id, "reading", task_id, |run| {
+            &mut run.readings
+        })
     }
 }
 

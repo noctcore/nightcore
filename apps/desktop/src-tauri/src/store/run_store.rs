@@ -19,13 +19,14 @@
 //! store-layer refactor that module's docs anticipated ("the store-trait refactor is a
 //! separate finding"); the two abstractions are intentionally distinct and non-colliding.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+use crate::store::insight::LinkOutcome;
 use crate::store::{is_safe_task_id, write_atomic};
 
 /// Keep at most this many runs per project on disk + in memory; [`RunStore::upsert_if_idle`]
@@ -294,6 +295,149 @@ impl<R: PersistedRun> RunStore<R> {
     pub(crate) fn read<T>(&self, f: impl FnOnce(&HashMap<String, R>) -> T) -> T {
         f(&crate::sync::lock_or_recover(&self.runs))
     }
+
+    /// Set one lifecycle item's status (and optionally its linked task) under one lock,
+    /// persisting the run. Errors — using `item_noun` — if the run OR the item is
+    /// unknown, so a missing item never reports phantom success (which would let the
+    /// convert path believe an item was linked when it wasn't, minting a duplicate task
+    /// on the next click). `select` picks the item collection out of the run (findings /
+    /// readings / proposals). The single audited home of the per-item set-status write.
+    pub(crate) fn set_item_status<I, S>(
+        &self,
+        run_id: &str,
+        item_id: &str,
+        item_noun: &str,
+        status: &str,
+        linked_task_id: Option<Option<String>>,
+        select: S,
+    ) -> Result<R, String>
+    where
+        I: LifecycleItem,
+        S: FnOnce(&mut R) -> &mut Vec<I>,
+    {
+        let (_, run) = self.edit_run(run_id, |run| {
+            let item = select(run)
+                .iter_mut()
+                .find(|i| i.id() == item_id)
+                .ok_or_else(|| format!("no {item_noun} {item_id} in run {run_id}"))?;
+            item.set_status(status);
+            if let Some(link) = linked_task_id {
+                item.set_linked_task_id(link);
+            }
+            Ok(Edit::Commit(()))
+        })?;
+        Ok(run)
+    }
+
+    /// Atomically link one lifecycle item to a task under ONE lock: if it is already
+    /// linked return [`LinkOutcome::AlreadyLinked`] (the caller discards its freshly-minted
+    /// task and returns the existing one); otherwise stamp it `converted` + linked and
+    /// return [`LinkOutcome::Linked`]. This closes the convert-to-task TOCTOU — a
+    /// check-then-set split across two lock acquisitions would let two concurrent sync
+    /// Tauri commands both see `linked_task_id == None` and mint two tasks. The single
+    /// audited home of that check-and-set.
+    pub(crate) fn link_item_task<I, S>(
+        &self,
+        run_id: &str,
+        item_id: &str,
+        item_noun: &str,
+        task_id: &str,
+        select: S,
+    ) -> Result<LinkOutcome, String>
+    where
+        I: LifecycleItem,
+        S: FnOnce(&mut R) -> &mut Vec<I>,
+    {
+        let (outcome, _) = self.edit_run(run_id, |run| {
+            let item = select(run)
+                .iter_mut()
+                .find(|i| i.id() == item_id)
+                .ok_or_else(|| format!("no {item_noun} {item_id} in run {run_id}"))?;
+            if let Some(existing) = item.linked_task_id() {
+                return Ok(Edit::Skip(LinkOutcome::AlreadyLinked(existing.to_string())));
+            }
+            item.set_status("converted");
+            item.set_linked_task_id(Some(task_id.to_string()));
+            Ok(Edit::Commit(LinkOutcome::Linked))
+        })?;
+        Ok(outcome)
+    }
+
+    /// Every fingerprint a user has CONVERTED to a task across all runs (optionally
+    /// excluding `except_run`), mapped to the linked task id. Carries convert-history
+    /// forward so a re-discovered item whose fingerprint was already converted stays
+    /// `converted` + linked (when its task still lives) instead of re-surfacing `open`
+    /// and being re-minted on every re-run. `select` picks the item collection out of
+    /// each run; the caller checks task liveness.
+    pub(crate) fn converted_item_fingerprints<I, S>(
+        &self,
+        except_run: Option<&str>,
+        select: S,
+    ) -> HashMap<String, String>
+    where
+        I: LifecycleItem,
+        S: Fn(&R) -> &[I],
+    {
+        self.read(|runs| {
+            let mut map = HashMap::new();
+            for run in runs.values() {
+                if Some(run.id()) == except_run {
+                    continue;
+                }
+                for item in select(run) {
+                    if item.status() == "converted" {
+                        if let Some(task_id) = item.linked_task_id() {
+                            map.insert(item.fingerprint().to_string(), task_id.to_string());
+                        }
+                    }
+                }
+            }
+            map
+        })
+    }
+
+    /// Every fingerprint a user has DISMISSED across all runs (optionally excluding
+    /// `except_run`). Carries dismissed-history forward so a re-discovered item whose
+    /// fingerprint was previously dismissed stays dismissed. `select` picks the item
+    /// collection out of each run.
+    pub(crate) fn dismissed_item_fingerprints<I, S>(
+        &self,
+        except_run: Option<&str>,
+        select: S,
+    ) -> HashSet<String>
+    where
+        I: LifecycleItem,
+        S: Fn(&R) -> &[I],
+    {
+        self.read(|runs| {
+            let mut set = HashSet::new();
+            for run in runs.values() {
+                if Some(run.id()) == except_run {
+                    continue;
+                }
+                for item in select(run) {
+                    if item.status() == "dismissed" {
+                        set.insert(item.fingerprint().to_string());
+                    }
+                }
+            }
+            set
+        })
+    }
+}
+
+/// A per-run lifecycle item (a finding / reading / proposal) the generic item mutators
+/// operate over: it exposes exactly the fields the shared status / convert-link /
+/// fingerprint-carry logic touches, so the concurrency-sensitive check-and-set lives in
+/// exactly ONE audited place ([`RunStore::link_item_task`]) instead of a hand-cloned copy
+/// per scan store.
+pub(crate) trait LifecycleItem {
+    fn id(&self) -> &str;
+    fn status(&self) -> &str;
+    fn set_status(&mut self, status: &str);
+    fn fingerprint(&self) -> &str;
+    fn linked_task_id(&self) -> Option<&str>;
+    fn set_linked_task_id(&mut self, task_id: Option<String>);
 }
 
 /// The single registry of run-based "scan" store kinds — one `($Run:ty, $slug:literal)`

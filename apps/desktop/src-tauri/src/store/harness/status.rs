@@ -5,12 +5,54 @@
 use std::collections::{HashMap, HashSet};
 
 use super::store::HarnessStore;
-use super::wire::HarnessRun;
+use super::wire::{HarnessRun, StoredConventionFinding, StoredHarnessProposal};
 // Reuse Insight's convert-to-task outcome enum rather than duplicating it — the same
 // precedent as `FindingLocation`, so both features share ONE `LinkOutcome`. Re-exported
 // (`pub use`) so it flows through the `harness::*` facade for `commands.rs` + tests.
 pub use crate::store::insight::LinkOutcome;
-use crate::store::run_store::Edit;
+use crate::store::run_store::{Edit, LifecycleItem};
+
+impl LifecycleItem for StoredConventionFinding {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn status(&self) -> &str {
+        &self.status
+    }
+    fn set_status(&mut self, status: &str) {
+        self.status = status.to_string();
+    }
+    fn fingerprint(&self) -> &str {
+        &self.fingerprint
+    }
+    fn linked_task_id(&self) -> Option<&str> {
+        self.linked_task_id.as_deref()
+    }
+    fn set_linked_task_id(&mut self, task_id: Option<String>) {
+        self.linked_task_id = task_id;
+    }
+}
+
+impl LifecycleItem for StoredHarnessProposal {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn status(&self) -> &str {
+        &self.status
+    }
+    fn set_status(&mut self, status: &str) {
+        self.status = status.to_string();
+    }
+    fn fingerprint(&self) -> &str {
+        &self.fingerprint
+    }
+    fn linked_task_id(&self) -> Option<&str> {
+        self.linked_task_id.as_deref()
+    }
+    fn set_linked_task_id(&mut self, task_id: Option<String>) {
+        self.linked_task_id = task_id;
+    }
+}
 
 /// The result of an atomic artifact-apply transition (see [`HarnessStore::mark_artifact_applied`]).
 pub enum ApplyOutcome {
@@ -35,19 +77,14 @@ impl HarnessStore {
         status: &str,
         linked_task_id: Option<Option<String>>,
     ) -> Result<HarnessRun, String> {
-        let (_, run) = self.edit_run(run_id, |run| {
-            let finding = run
-                .findings
-                .iter_mut()
-                .find(|f| f.id == finding_id)
-                .ok_or_else(|| format!("no finding {finding_id} in run {run_id}"))?;
-            finding.status = status.to_string();
-            if let Some(link) = linked_task_id {
-                finding.linked_task_id = link;
-            }
-            Ok(Edit::Commit(()))
-        })?;
-        Ok(run)
+        self.set_item_status(
+            run_id,
+            finding_id,
+            "finding",
+            status,
+            linked_task_id,
+            |run| &mut run.findings,
+        )
     }
 
     /// Atomically link a convention finding to a task: under ONE lock, if the finding is
@@ -62,20 +99,9 @@ impl HarnessStore {
         finding_id: &str,
         task_id: &str,
     ) -> Result<LinkOutcome, String> {
-        let (outcome, _) = self.edit_run(run_id, |run| {
-            let finding = run
-                .findings
-                .iter_mut()
-                .find(|f| f.id == finding_id)
-                .ok_or_else(|| format!("no finding {finding_id} in run {run_id}"))?;
-            if let Some(existing) = &finding.linked_task_id {
-                return Ok(Edit::Skip(LinkOutcome::AlreadyLinked(existing.clone())));
-            }
-            finding.status = "converted".to_string();
-            finding.linked_task_id = Some(task_id.to_string());
-            Ok(Edit::Commit(LinkOutcome::Linked))
-        })?;
-        Ok(outcome)
+        self.link_item_task(run_id, finding_id, "finding", task_id, |run| {
+            &mut run.findings
+        })
     }
 
     /// Set a proposal's status (`proposed` | `dismissed` | `converted`), persisting the
@@ -89,19 +115,14 @@ impl HarnessStore {
         status: &str,
         linked_task_id: Option<Option<String>>,
     ) -> Result<HarnessRun, String> {
-        let (_, run) = self.edit_run(run_id, |run| {
-            let proposal = run
-                .proposals
-                .iter_mut()
-                .find(|p| p.id == proposal_id)
-                .ok_or_else(|| format!("no proposal {proposal_id} in run {run_id}"))?;
-            proposal.status = status.to_string();
-            if let Some(link) = linked_task_id {
-                proposal.linked_task_id = link;
-            }
-            Ok(Edit::Commit(()))
-        })?;
-        Ok(run)
+        self.set_item_status(
+            run_id,
+            proposal_id,
+            "proposal",
+            status,
+            linked_task_id,
+            |run| &mut run.proposals,
+        )
     }
 
     /// Atomically link a proposal to a task: under ONE lock, if already linked return
@@ -114,20 +135,9 @@ impl HarnessStore {
         proposal_id: &str,
         task_id: &str,
     ) -> Result<LinkOutcome, String> {
-        let (outcome, _) = self.edit_run(run_id, |run| {
-            let proposal = run
-                .proposals
-                .iter_mut()
-                .find(|p| p.id == proposal_id)
-                .ok_or_else(|| format!("no proposal {proposal_id} in run {run_id}"))?;
-            if let Some(existing) = &proposal.linked_task_id {
-                return Ok(Edit::Skip(LinkOutcome::AlreadyLinked(existing.clone())));
-            }
-            proposal.status = "converted".to_string();
-            proposal.linked_task_id = Some(task_id.to_string());
-            Ok(Edit::Commit(LinkOutcome::Linked))
-        })?;
-        Ok(outcome)
+        self.link_item_task(run_id, proposal_id, "proposal", task_id, |run| {
+            &mut run.proposals
+        })
     }
 
     /// Set an artifact's status to `proposed` or `dismissed`, persisting the scan. Used by
@@ -193,20 +203,7 @@ impl HarnessStore {
     /// Every fingerprint a user has DISMISSED across all scans (optionally excluding
     /// `except_run`). Carries dismissed-history forward for convention findings.
     pub fn dismissed_finding_fingerprints(&self, except_run: Option<&str>) -> HashSet<String> {
-        self.read(|runs| {
-            let mut set = HashSet::new();
-            for run in runs.values() {
-                if Some(run.id.as_str()) == except_run {
-                    continue;
-                }
-                for f in &run.findings {
-                    if f.status == "dismissed" {
-                        set.insert(f.fingerprint.clone());
-                    }
-                }
-            }
-            set
-        })
+        self.dismissed_item_fingerprints(except_run, |run| run.findings.as_slice())
     }
 
     /// Every fingerprint a user has CONVERTED to a task across all scans (optionally
@@ -219,42 +216,14 @@ impl HarnessStore {
         &self,
         except_run: Option<&str>,
     ) -> HashMap<String, String> {
-        self.read(|runs| {
-            let mut map = HashMap::new();
-            for run in runs.values() {
-                if Some(run.id.as_str()) == except_run {
-                    continue;
-                }
-                for f in &run.findings {
-                    if f.status == "converted" {
-                        if let Some(task_id) = &f.linked_task_id {
-                            map.insert(f.fingerprint.clone(), task_id.clone());
-                        }
-                    }
-                }
-            }
-            map
-        })
+        self.converted_item_fingerprints(except_run, |run| run.findings.as_slice())
     }
 
     /// Every fingerprint a user has DISMISSED a PROPOSAL under across all scans
     /// (optionally excluding `except_run`). Carries dismissed-history forward for
     /// task-shaped proposals — the proposal twin of [`dismissed_finding_fingerprints`].
     pub fn dismissed_proposal_fingerprints(&self, except_run: Option<&str>) -> HashSet<String> {
-        self.read(|runs| {
-            let mut set = HashSet::new();
-            for run in runs.values() {
-                if Some(run.id.as_str()) == except_run {
-                    continue;
-                }
-                for p in &run.proposals {
-                    if p.status == "dismissed" {
-                        set.insert(p.fingerprint.clone());
-                    }
-                }
-            }
-            set
-        })
+        self.dismissed_item_fingerprints(except_run, |run| run.proposals.as_slice())
     }
 
     /// Every fingerprint a user has CONVERTED a PROPOSAL to a task under across all scans
@@ -266,22 +235,7 @@ impl HarnessStore {
         &self,
         except_run: Option<&str>,
     ) -> HashMap<String, String> {
-        self.read(|runs| {
-            let mut map = HashMap::new();
-            for run in runs.values() {
-                if Some(run.id.as_str()) == except_run {
-                    continue;
-                }
-                for p in &run.proposals {
-                    if p.status == "converted" {
-                        if let Some(task_id) = &p.linked_task_id {
-                            map.insert(p.fingerprint.clone(), task_id.clone());
-                        }
-                    }
-                }
-            }
-            map
-        })
+        self.converted_item_fingerprints(except_run, |run| run.proposals.as_slice())
     }
 
     /// Prior artifact lifecycle states by fingerprint across all scans (optionally

@@ -22,7 +22,7 @@ use serde_json::Value;
 use ts_rs::TS;
 
 use crate::store::insight::InsightUsage;
-use crate::store::run_store::{Edit, PersistedRun, RunStore};
+use crate::store::run_store::{LifecycleItem, PersistedRun, RunStore};
 
 // The convert-to-task link outcome is one shared enum across every scan feature (Insight
 // defines the canonical one). PR Review's `link_finding_task` returns the same shape, so
@@ -84,6 +84,27 @@ impl StoredReviewFinding {
             status: "open".to_string(),
             linked_task_id: None,
         })
+    }
+}
+
+impl LifecycleItem for StoredReviewFinding {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn status(&self) -> &str {
+        &self.status
+    }
+    fn set_status(&mut self, status: &str) {
+        self.status = status.to_string();
+    }
+    fn fingerprint(&self) -> &str {
+        &self.fingerprint
+    }
+    fn linked_task_id(&self) -> Option<&str> {
+        self.linked_task_id.as_deref()
+    }
+    fn set_linked_task_id(&mut self, task_id: Option<String>) {
+        self.linked_task_id = task_id;
     }
 }
 
@@ -166,19 +187,14 @@ impl PrReviewStore {
         status: &str,
         linked_task_id: Option<Option<String>>,
     ) -> Result<PrReviewRun, String> {
-        let (_, run) = self.edit_run(run_id, |run| {
-            let finding = run
-                .findings
-                .iter_mut()
-                .find(|f| f.id == finding_id)
-                .ok_or_else(|| format!("no finding {finding_id} in run {run_id}"))?;
-            finding.status = status.to_string();
-            if let Some(link) = linked_task_id {
-                finding.linked_task_id = link;
-            }
-            Ok(Edit::Commit(()))
-        })?;
-        Ok(run)
+        self.set_item_status(
+            run_id,
+            finding_id,
+            "finding",
+            status,
+            linked_task_id,
+            |run| &mut run.findings,
+        )
     }
 
     /// Atomically link a finding to a task: under ONE lock, if the finding is already
@@ -193,20 +209,9 @@ impl PrReviewStore {
         finding_id: &str,
         task_id: &str,
     ) -> Result<LinkOutcome, String> {
-        let (outcome, _) = self.edit_run(run_id, |run| {
-            let finding = run
-                .findings
-                .iter_mut()
-                .find(|f| f.id == finding_id)
-                .ok_or_else(|| format!("no finding {finding_id} in run {run_id}"))?;
-            if let Some(existing) = &finding.linked_task_id {
-                return Ok(Edit::Skip(LinkOutcome::AlreadyLinked(existing.clone())));
-            }
-            finding.status = "converted".to_string();
-            finding.linked_task_id = Some(task_id.to_string());
-            Ok(Edit::Commit(LinkOutcome::Linked))
-        })?;
-        Ok(outcome)
+        self.link_item_task(run_id, finding_id, "finding", task_id, |run| {
+            &mut run.findings
+        })
     }
 
     /// Merge one lens pass's findings into a still-`running` run so a cancel or crash
@@ -266,42 +271,14 @@ impl PrReviewStore {
     /// converted stays `converted` + linked (when its task still lives, unfinished)
     /// instead of re-surfacing `open` and being re-minted by convert-all on every re-run.
     pub fn converted_fingerprints(&self, except_run: Option<&str>) -> HashMap<String, String> {
-        self.read(|runs| {
-            let mut map = HashMap::new();
-            for run in runs.values() {
-                if Some(run.id.as_str()) == except_run {
-                    continue;
-                }
-                for f in &run.findings {
-                    if f.status == "converted" {
-                        if let Some(task_id) = &f.linked_task_id {
-                            map.insert(f.fingerprint.clone(), task_id.clone());
-                        }
-                    }
-                }
-            }
-            map
-        })
+        self.converted_item_fingerprints(except_run, |run| run.findings.as_slice())
     }
 
     /// Every fingerprint a user has DISMISSED across all runs (optionally excluding
     /// `except_run`). Used to carry dismissed-history forward: a re-discovered finding
     /// whose fingerprint was previously dismissed stays dismissed.
     pub fn dismissed_fingerprints(&self, except_run: Option<&str>) -> HashSet<String> {
-        self.read(|runs| {
-            let mut set = HashSet::new();
-            for run in runs.values() {
-                if Some(run.id.as_str()) == except_run {
-                    continue;
-                }
-                for f in &run.findings {
-                    if f.status == "dismissed" {
-                        set.insert(f.fingerprint.clone());
-                    }
-                }
-            }
-            set
-        })
+        self.dismissed_item_fingerprints(except_run, |run| run.findings.as_slice())
     }
 }
 
