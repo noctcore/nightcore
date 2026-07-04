@@ -402,6 +402,81 @@ describe('translateMessage — result (terminal)', () => {
     expect(event.proposedSubtasks).toEqual([{ title: 'A', prompt: 'do a' }]);
   });
 
+  test('decompose reads proposals from native structured_output (preferred over text)', () => {
+    const result = translateMessage(
+      SID,
+      sdk({
+        type: 'result',
+        subtype: 'success',
+        // Text says one thing; structured_output is authoritative and wins.
+        result: 'All done — see the structured output.',
+        structured_output: {
+          subtasks: [
+            { title: 'S', prompt: 'from structured output' },
+          ],
+        },
+        total_cost_usd: 0.1,
+        num_turns: 2,
+        duration_ms: 10,
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }),
+      { kind: 'decompose' },
+    );
+    const event = result.events[0] as Extract<
+      NightcoreEvent,
+      { type: 'session-completed' }
+    >;
+    expect(event.proposedSubtasks).toEqual([
+      { title: 'S', prompt: 'from structured output' },
+    ]);
+  });
+
+  test('decompose with present-but-empty structured_output yields [] (no text fallback)', () => {
+    const result = translateMessage(
+      SID,
+      sdk({
+        type: 'result',
+        subtype: 'success',
+        // A JSON array in the text would be parsed by the fallback — but structured
+        // output is PRESENT (empty), so it wins and the text is ignored.
+        result: '```json\n[{"title":"ignored","prompt":"ignored"}]\n```',
+        structured_output: { subtasks: [] },
+        total_cost_usd: 0.1,
+        num_turns: 2,
+        duration_ms: 10,
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }),
+      { kind: 'decompose' },
+    );
+    const event = result.events[0] as Extract<
+      NightcoreEvent,
+      { type: 'session-completed' }
+    >;
+    expect(event.proposedSubtasks).toEqual([]);
+  });
+
+  test('decompose falls back to text parsing when structured_output is absent', () => {
+    const result = translateMessage(
+      SID,
+      sdk({
+        type: 'result',
+        subtype: 'success',
+        // No `structured_output` (older transcript / provider) → parse the text.
+        result: 'Plan:\n```json\n[{"title":"T","prompt":"from text"}]\n```',
+        total_cost_usd: 0.1,
+        num_turns: 2,
+        duration_ms: 10,
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }),
+      { kind: 'decompose' },
+    );
+    const event = result.events[0] as Extract<
+      NightcoreEvent,
+      { type: 'session-completed' }
+    >;
+    expect(event.proposedSubtasks).toEqual([{ title: 'T', prompt: 'from text' }]);
+  });
+
   test('decompose with no parseable array yields an empty proposedSubtasks', () => {
     const result = translateMessage(
       SID,
@@ -496,6 +571,38 @@ describe('translateMessage — result (terminal)', () => {
       reason: 'max-budget',
       message: 'budget exceeded',
     });
+  });
+
+  test('maps error_max_structured_output_retries to a structured-output-failed failure', () => {
+    const result = translateMessage(
+      SID,
+      sdk({
+        type: 'result',
+        subtype: 'error_max_structured_output_retries',
+        errors: ['output never matched the schema'],
+      }),
+      { kind: 'decompose' },
+    );
+    expect(result.events).toEqual([
+      {
+        type: 'session-failed',
+        sessionId: SID,
+        reason: 'structured-output-failed',
+        message: 'output never matched the schema',
+        detail: {
+          category: 'resource-exhausted',
+          message: 'output never matched the schema',
+          retriable: false,
+        },
+      },
+    ]);
+    expect(result.terminal).toEqual({
+      kind: 'failed',
+      reason: 'structured-output-failed',
+      message: 'output never matched the schema',
+    });
+    // Crucially NOT a silent success with an empty proposal list.
+    expect(result.events[0]?.type).toBe('session-failed');
   });
 
   test('maps a generic execution error to an unknown failure', () => {

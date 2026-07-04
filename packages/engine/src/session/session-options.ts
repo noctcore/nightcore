@@ -29,7 +29,7 @@ import type {
 import type { Logger } from '@nightcore/shared';
 
 import { resolveClaudeBinary } from './resolve-claude-binary.js';
-import type { McpServerConfig, Options } from './sdk-adapter.js';
+import type { McpServerConfig, Options, OutputFormat } from './sdk-adapter.js';
 import { buildSubprocessEnv } from './subprocess-env.js';
 
 /**
@@ -161,6 +161,10 @@ export interface SessionRunnerConfig {
   kind?: TaskKind;
   /** Appended to the SDK system prompt (kind preset). Omitted = no append. */
   appendSystemPrompt?: string;
+  /** SDK-native structured output request (`Options.outputFormat`, kind preset).
+   *  Set for `decompose` so the SDK returns a schema-conforming object and retries
+   *  non-conforming output internally. Omitted ⇒ a free-form text result. */
+  outputFormat?: OutputFormat;
   /** Tools to explicitly allow (kind preset, SDK `allowedTools`). */
   allowedTools?: string[];
   /** Tools to deny (kind preset, SDK `disallowedTools`). */
@@ -502,6 +506,13 @@ export class SessionOptionsBuilder {
       // File checkpointing: opt-in backend for `rewindFiles()`.
       ...(this.cfg.enableFileCheckpointing
         ? { enableFileCheckpointing: true }
+        : {}),
+      // SDK-native structured output (kind preset — `decompose`). The SDK forces
+      // the model to return a schema-conforming object and retries non-conforming
+      // output internally. Run-loop only (not `base()`): probes never take a model
+      // turn. Absent ⇒ a free-form text result (pre-feature shape).
+      ...(this.cfg.outputFormat !== undefined
+        ? { outputFormat: this.cfg.outputFormat }
         : {}),
     };
   }

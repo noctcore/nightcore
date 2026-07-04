@@ -232,6 +232,16 @@ describe('NightcoreEventSchema rejections', () => {
     expect(result.success).toBe(false);
   });
 
+  test('accepts the structured-output-failed reason (SDK structured-output retries exhausted)', () => {
+    const result = NightcoreEventSchema.safeParse({
+      type: 'session-failed',
+      sessionId: 1,
+      reason: 'structured-output-failed',
+      message: 'output never matched the schema',
+    });
+    expect(result.success).toBe(true);
+  });
+
   test('rejects a session-status event with an unknown status', () => {
     const result = NightcoreEventSchema.safeParse({
       type: 'session-status',

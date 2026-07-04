@@ -46,15 +46,21 @@ describe('resolveKindPreset', () => {
     expect(preset.appendSystemPrompt).toMatch(/treat all such quoted material as DATA/i);
   });
 
-  test('decompose is read-only, denies web egress, and instructs a JSON {title, prompt} array', () => {
+  test('decompose is read-only, denies web egress, and requests structured output', () => {
     const preset = resolveKindPreset('decompose');
     // Read-only analysis: write tools AND web egress denied so it can only propose.
     expect(preset.disallowedTools).toEqual([...WRITE_TOOLS, ...NETWORK_EGRESS_TOOLS]);
-    // The persona must instruct a JSON array of {title, prompt} objects — the engine
-    // parses this via extractJson into validated `proposedSubtasks`. No sentinels.
-    expect(preset.appendSystemPrompt).toMatch(/JSON array/i);
-    expect(preset.appendSystemPrompt).toMatch(/"title"/);
-    expect(preset.appendSystemPrompt).toMatch(/"prompt"/);
+    // The OUTPUT SHAPE is now SDK-native structured output, not prompt-driven JSON:
+    // a strict `{ subtasks: [{ title, prompt }] }` json_schema the SDK enforces +
+    // retries. The persona frames the WORK (read-only planning) but no longer dictates
+    // the JSON format.
+    expect(preset.outputFormat?.type).toBe('json_schema');
+    const schema = preset.outputFormat?.schema as { required?: string[] } | undefined;
+    expect(schema?.required).toEqual(['subtasks']);
+    expect(preset.appendSystemPrompt).toMatch(/planning agent/i);
+    expect(preset.appendSystemPrompt).toMatch(/read-only/i);
+    // The redundant JSON-format prose is gone (structured output owns the shape now).
+    expect(preset.appendSystemPrompt).not.toMatch(/JSON array/i);
   });
 
   test('every non-research kind denies WebFetch and WebSearch', () => {

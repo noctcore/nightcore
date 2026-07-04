@@ -1096,6 +1096,7 @@ pub enum SessionFailedReason {
     MaxTurns,
     MaxBudget,
     Unknown,
+    StructuredOutputFailed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

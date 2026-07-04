@@ -6,7 +6,10 @@ import type { ProposedSubtasksPanelProps } from './ProposedSubtasksPanel.types';
 /** The Proposed sub-tasks panel for a `decompose` task's detail drawer. Renders the
  *  sub-tasks the run proposed; each open proposal offers a Convert-to-task action,
  *  and a header Convert-all converts the rest at once. Converted rows show a muted
- *  "task" badge (the child appears on the board via the `nc:task` echo). Pure
+ *  "task" badge (the child appears on the board via the `nc:task` echo). When the
+ *  run finished with NO proposals it renders an explicit notice (plus the failure
+ *  reason when one is set) instead of nothing, so a decompose that produced no
+ *  convertible work — or failed its structured-output contract — says so. Pure
  *  presentational — selection/convert state is owned by the board controller. */
 export function ProposedSubtasksPanel({
   taskId,
@@ -14,11 +17,29 @@ export function ProposedSubtasksPanel({
   onConvert,
   onConvertAll,
   pending = false,
+  error = null,
 }: ProposedSubtasksPanelProps) {
   const { openCount, convertedCount, total, allConverted } =
     deriveProposedSubtasksView(subtasks);
 
-  if (total === 0) return null;
+  // Finished with nothing to convert: explain it rather than rendering blank where
+  // the convert list would be. The `error` (when the run FAILED — e.g. the SDK
+  // exhausted its structured-output retries) is shown as the reason.
+  if (total === 0) {
+    const reason = error !== null && error.trim().length > 0 ? error : null;
+    return (
+      <div className="rounded-md border border-border bg-white/[0.02] px-3 py-2.5">
+        <p className="text-[13px] text-foreground/90">
+          Decompose produced no convertible sub-tasks.
+        </p>
+        {reason !== null && (
+          <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+            {reason}
+          </p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">

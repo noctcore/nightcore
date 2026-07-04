@@ -468,6 +468,13 @@ export class SessionManager {
         ...(preset.disallowedTools !== undefined
           ? { disallowedTools: preset.disallowedTools }
           : {}),
+        // SDK-native structured output (`decompose` preset): forwarded so the
+        // runner sets `Options.outputFormat` and the SDK returns a schema-conforming
+        // `{ subtasks }` object (retrying non-conforming output itself). Absent ⇒ a
+        // free-form text result (every other kind).
+        ...(preset.outputFormat !== undefined
+          ? { outputFormat: preset.outputFormat }
+          : {}),
       },
       (event) => this.handleEvent(id, event),
       this.logger?.child(`session-${id}`),

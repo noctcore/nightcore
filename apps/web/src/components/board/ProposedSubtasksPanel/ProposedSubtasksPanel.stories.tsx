@@ -65,6 +65,19 @@ export const AllConverted: Story = {
 
 export const Pending: Story = { args: { pending: true } };
 
+/** A decompose run that finished with nothing to convert — the notice replaces the
+ *  (absent) convert list so the band never renders blank. */
+export const Empty: Story = { args: { subtasks: [] } };
+
+/** A decompose run that FAILED to produce proposals (e.g. the SDK exhausted its
+ *  structured-output retries): the notice carries the failure reason. */
+export const EmptyWithError: Story = {
+  args: {
+    subtasks: [],
+    error: 'Decompose could not produce a valid sub-task list (structured output retries exhausted).',
+  },
+};
+
 /** Play test: converting one proposal threads (taskId, subtaskId) through. The
  *  per-row button's accessible name carries its title (Convert all is separate). */
 export const PicksConvert: Story = {

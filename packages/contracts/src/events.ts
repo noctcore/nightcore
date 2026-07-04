@@ -278,6 +278,12 @@ export const SessionFailedEvent = z.object({
     'max-turns',
     'max-budget',
     'unknown',
+    // The SDK exhausted its internal structured-output retries: a session launched
+    // with `outputFormat` (today, `decompose`) whose model output never conformed
+    // to the requested schema (`error_max_structured_output_retries`). Terminal +
+    // needs-attention (category `resource-exhausted`) — surfaced as a real failure
+    // rather than a silent empty result.
+    'structured-output-failed',
   ]),
   message: z.string(),
   /** Structured, branch-on-able error detail (category + retriability), additive

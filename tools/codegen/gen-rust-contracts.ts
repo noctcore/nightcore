@@ -349,7 +349,7 @@ const ENUM_NAMES: Record<string, string> = {
   'starting|running|awaiting-permission|completed|failed|interrupted':
     'SessionStatus',
   'pending|running|completed|failed|killed|paused': 'TaskStatus',
-  'authentication|rate-limit|aborted|runner-crash|max-turns|max-budget|unknown':
+  'authentication|rate-limit|aborted|runner-crash|max-turns|max-budget|unknown|structured-output-failed':
     'SessionFailedReason',
   // The structured, branch-on-able error taxonomy (an `ErrorDetail.category`).
   'auth|rate-limit|runner-crash|not-found|disk-full|resource-exhausted|aborted|unknown':

@@ -311,4 +311,19 @@ describe('SessionOptionsBuilder.run() — full query options', () => {
     expect(bare).not.toHaveProperty('resume');
     expect(bare).not.toHaveProperty('enableFileCheckpointing');
   });
+
+  test('forwards outputFormat (structured output) only when the preset set it', () => {
+    const outputFormat = {
+      type: 'json_schema' as const,
+      schema: { type: 'object', properties: {}, additionalProperties: false },
+    };
+    const withFormat = new SessionOptionsBuilder(
+      makeConfig({ outputFormat }),
+    ).run(makeRuntime());
+    const bare = new SessionOptionsBuilder(makeConfig()).run(makeRuntime());
+
+    expect(withFormat.outputFormat).toEqual(outputFormat);
+    // Absent by default (every kind except decompose) — byte-identical to before.
+    expect(bare).not.toHaveProperty('outputFormat');
+  });
 });

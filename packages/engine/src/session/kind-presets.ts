@@ -12,6 +12,9 @@
  */
 import type { PermissionMode, TaskKind } from '@nightcore/contracts';
 
+import { DECOMPOSE_OUTPUT_FORMAT } from './decompose.js';
+import type { OutputFormat } from './sdk-adapter.js';
+
 /** The write tools a read-only reviewer must never be able to call. Denied for
  *  the `review` kind so a reviewer can inspect but not mutate the worktree. */
 export const WRITE_TOOLS: readonly string[] = [
@@ -63,6 +66,12 @@ export interface KindPreset {
   /** A DEFAULT permission mode for the kind. An explicit `command.permissionMode`
    *  always wins over this — it is only consulted when the command omits one. */
   permissionMode?: PermissionMode;
+  /** SDK-native structured output request (`Options.outputFormat`). Set for
+   *  `decompose` so the SDK returns a schema-conforming `{ subtasks }` object and
+   *  retries non-conforming output internally (terminal failure surfaces as the
+   *  `error_max_structured_output_retries` result subtype, not a silent empty
+   *  list). Absent ⇒ a free-form text result. */
+  outputFormat?: OutputFormat;
 }
 
 /**
@@ -115,21 +124,21 @@ const TDD_SYSTEM_PROMPT = [
 
 /**
  * The planning persona for the `decompose` kind. It investigates read-only and
- * proposes sub-tasks; the ENGINE parses a JSON array out of its final message
- * (via the shared `extractJson` + a `{ title, prompt }` schema → validated
- * `proposedSubtasks` on the `session-completed` event), and the user converts each
- * proposal into a board task. Write tools are denied so a decompose run can never
- * mutate the project.
+ * proposes sub-tasks. The OUTPUT SHAPE is no longer prompt-driven: the decompose
+ * preset sets {@link DECOMPOSE_OUTPUT_FORMAT} so the SDK returns native structured
+ * output (`{ subtasks: [{ title, prompt }] }`) and retries non-conforming output
+ * itself — the engine reads that off `structured_output` into validated
+ * `proposedSubtasks`, and the user converts each proposal into a board task. So this
+ * persona only frames the WORK (read-only, small independently-shippable steps),
+ * not the JSON format. Write tools are denied so a decompose run can never mutate
+ * the project.
  */
 const DECOMPOSE_SYSTEM_PROMPT = [
   'You are a planning agent that breaks a goal into small, independently-shippable',
   'sub-tasks. You investigate the codebase read-only — you do NOT write code or edit',
-  'files. When your analysis is complete, END your final message with a JSON array of',
-  'sub-task objects, each with a string "title" (a short imperative title) and a string',
-  '"prompt" (a self-contained task description). A fenced ```json block is fine, e.g.:',
-  '\n```json\n[{"title": "...", "prompt": "..."}]\n```\n',
-  'Propose between 2 and 8 sub-tasks ordered so each builds on the ones before it. If',
-  'the goal needs no decomposition, end with an empty array.',
+  'files. Propose between 2 and 8 sub-tasks, ordered so each builds on the ones before',
+  'it; give each a short imperative title and a self-contained prompt describing the',
+  'work. If the goal needs no decomposition, propose no sub-tasks.',
 ].join(' ');
 
 /**
@@ -139,8 +148,9 @@ const DECOMPOSE_SYSTEM_PROMPT = [
  * `WebFetch`/`WebSearch`; `research` is the deliberate web-enabled opt-in and is
  * the only kind that inherits an unrestricted toolset. `review` is the internal
  * verification reviewer; `tdd` adds a test-first persona; `decompose` adds a
- * read-only planning persona that ends with a JSON sub-task array (parsed by the
- * engine into `proposedSubtasks`).
+ * read-only planning persona AND requests SDK-native structured output
+ * (`outputFormat`) so its sub-task proposals come back as a schema-conforming
+ * object the engine reads into `proposedSubtasks`.
  */
 export function resolveKindPreset(kind: TaskKind | undefined): KindPreset {
   switch (kind) {
@@ -167,9 +177,13 @@ export function resolveKindPreset(kind: TaskKind | undefined): KindPreset {
     case 'decompose':
       // Read-only analysis: deny writes so it can only propose, never mutate — and
       // deny web egress (it investigates the local codebase, not the network).
+      // `outputFormat` requests SDK-native structured output so the sub-task
+      // proposals come back as a schema-conforming `{ subtasks }` object (the SDK
+      // retries non-conforming output; terminal failure is surfaced, not silent).
       return {
         appendSystemPrompt: DECOMPOSE_SYSTEM_PROMPT,
         disallowedTools: [...WRITE_TOOLS, ...NETWORK_EGRESS_TOOLS],
+        outputFormat: DECOMPOSE_OUTPUT_FORMAT,
       };
     case 'build':
     case undefined:

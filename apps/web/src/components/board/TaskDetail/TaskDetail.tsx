@@ -305,19 +305,24 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
         )}
 
         {/* Proposed sub-tasks — a `decompose` run's output, each convertible into a
-            board task. Hidden until the run has proposed something. */}
-        {task.kind === 'decompose' && task.proposedSubtasks.length > 0 && (
-          <div className="space-y-3">
-            <GroupLabel>Proposed sub-tasks</GroupLabel>
-            <ProposedSubtasksPanel
-              taskId={task.id}
-              subtasks={task.proposedSubtasks}
-              onConvert={actions.onConvertSubtask}
-              onConvertAll={actions.onConvertAllSubtasks}
-              pending={pending('convertSubtask') || pending('convertAllSubtasks')}
-            />
-          </div>
-        )}
+            board task. Shown once the run has FINISHED (done/failed): a run that
+            proposed something lists the proposals; one that produced nothing (or
+            failed its structured-output contract) shows an explicit notice with the
+            failure reason, so the band never renders blank where the list would be. */}
+        {task.kind === 'decompose' &&
+          (task.status === 'done' || task.status === 'failed') && (
+            <div className="space-y-3">
+              <GroupLabel>Proposed sub-tasks</GroupLabel>
+              <ProposedSubtasksPanel
+                taskId={task.id}
+                subtasks={task.proposedSubtasks}
+                onConvert={actions.onConvertSubtask}
+                onConvertAll={actions.onConvertAllSubtasks}
+                pending={pending('convertSubtask') || pending('convertAllSubtasks')}
+                error={task.error}
+              />
+            </div>
+          )}
 
         {/* Overview — what was asked for and how the session is configured. */}
         <div className="space-y-3">

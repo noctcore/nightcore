@@ -14,6 +14,7 @@ import type {
   McpServerStatus,
   ModelInfo,
   Options,
+  OutputFormat,
   PermissionMode,
   Query,
   RewindFilesResult,
@@ -43,7 +44,7 @@ import type {
 } from '@nightcore/contracts';
 
 import { getBoolean, getObject, getString } from '../util/field-extract.js';
-import { parseSubtasks } from './decompose.js';
+import { parseSubtasks, subtasksFromStructuredOutput } from './decompose.js';
 
 export type {
   AgentDefinition,
@@ -55,6 +56,7 @@ export type {
   McpServerStatus,
   ModelInfo,
   Options,
+  OutputFormat,
   PermissionMode,
   Query,
   RewindFilesResult,
@@ -115,8 +117,15 @@ export function categoryForReason(
       return 'rate-limit';
     case 'aborted':
       return 'aborted';
+    // `max-turns`/`max-budget` hit an autonomy ceiling; `structured-output-failed`
+    // means the SDK exhausted its INTERNAL structured-output retries (a decompose
+    // run whose output never conformed to the requested schema). All three are
+    // terminal + needs-attention — the ceiling/contract was hit and a blind full
+    // re-run is unlikely to help — so they bucket as `resource-exhausted`
+    // (non-retriable; does not fatal-stop the breaker).
     case 'max-turns':
     case 'max-budget':
+    case 'structured-output-failed':
       return 'resource-exhausted';
     case 'runner-crash':
     case 'unknown':
@@ -450,12 +459,20 @@ function translateResult(
             cacheReadTokens: msg.usage.cache_read_input_tokens ?? 0,
             cacheCreationTokens: msg.usage.cache_creation_input_tokens ?? 0,
           },
-          // Decompose sessions carry structured sub-task proposals parsed from the
-          // final result text (mirrors the Insight findings pipeline). Always
-          // present for `decompose` (possibly `[]` on empty/malformed output);
-          // omitted entirely for every other kind.
+          // Decompose sessions carry structured sub-task proposals. The PREFERRED
+          // source is the SDK's native `structured_output` (the run was launched
+          // with `outputFormat`, so the SDK forced a schema-conforming
+          // `{ subtasks }` object and retried non-conforming output internally).
+          // When it is absent — an older transcript, or a provider that didn't
+          // honor `outputFormat` — fall back to parsing a JSON array out of the
+          // final result TEXT (the pre-structured-output path). Always present for
+          // `decompose` (possibly `[]`); omitted entirely for every other kind.
           ...(options.kind === 'decompose'
-            ? { proposedSubtasks: parseSubtasks(msg.result) }
+            ? {
+                proposedSubtasks:
+                  subtasksFromStructuredOutput(msg.structured_output) ??
+                  parseSubtasks(msg.result),
+              }
             : {}),
         },
       ],
@@ -468,20 +485,25 @@ function translateResult(
     };
   }
 
-  // An autonomy-ceiling stop is a terminal, needs-attention outcome — not a
-  // silent success. The SDK result subtype carries which ceiling was hit:
-  // `error_max_turns` (turn guard) / `error_max_budget_usd`
-  // (cost guard). Both surface as a distinct `session-failed` reason the web can
-  // park on rather than treating as a verified pass. For every other error
-  // subtype (`error_during_execution`, …) the result message carries no reason,
-  // so we refine from the last assistant-level error the runner threaded in —
-  // an auth/rate-limit stall must not collapse to an indistinct `'unknown'`.
+  // An autonomy-ceiling / contract-failure stop is a terminal, needs-attention
+  // outcome — not a silent success. The SDK result subtype carries which one was
+  // hit: `error_max_turns` (turn guard) / `error_max_budget_usd` (cost guard) /
+  // `error_max_structured_output_retries` (the SDK exhausted its internal retries
+  // trying to make the output conform to the requested `outputFormat` schema — a
+  // decompose run that never produced a valid `{ subtasks }` object). Each
+  // surfaces as a distinct `session-failed` reason the web can park on rather
+  // than treating as a verified pass with an empty proposal list. For every other
+  // error subtype (`error_during_execution`, …) the result message carries no
+  // reason, so we refine from the last assistant-level error the runner threaded
+  // in — an auth/rate-limit stall must not collapse to an indistinct `'unknown'`.
   const reason: NightcoreEventOfReason =
     msg.subtype === 'error_max_turns'
       ? 'max-turns'
       : msg.subtype === 'error_max_budget_usd'
         ? 'max-budget'
-        : mapAssistantError(options.assistantError);
+        : msg.subtype === 'error_max_structured_output_retries'
+          ? 'structured-output-failed'
+          : mapAssistantError(options.assistantError);
   const message = msg.errors.join('; ') || msg.subtype;
   return {
     events: [
