@@ -43,3 +43,5 @@ logs/
 design
 # local agent worktrees / session scratch
 .claude/
+.cursor
+.agents
