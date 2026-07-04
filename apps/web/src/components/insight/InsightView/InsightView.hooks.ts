@@ -24,6 +24,8 @@ import {
   startAnalysis,
   type Task,
 } from '@/lib/bridge';
+import { seedStepState } from '@/lib/scan-run';
+import { useScanRun } from '@/lib/useScanRun';
 
 import type { CategoryTab } from '../CategoryTabs';
 import { ALL_CATEGORIES, CATEGORY_META, severityRankValue } from '../insight.constants';
@@ -60,84 +62,39 @@ export interface UseInsightResult {
 /** Drive the Insight view: live `analysis-*` fold for the active run, authoritative
  *  reconciliation against the persisted run on completion, and finding actions. */
 export function useInsight(hasProject: boolean): UseInsightResult {
-  const [stream, setStream] = useState<InsightStream>(EMPTY_INSIGHT_STREAM);
-  const [runs, setRuns] = useState<InsightRun[]>([]);
-  const [isStarting, setIsStarting] = useState(false);
-  const [startError, setStartError] = useState<string | null>(null);
-
-  // The run the live event stream is folded into. A ref so the once-installed
-  // listener always reads the latest without re-subscribing.
-  const activeRunId = useRef<string | null>(null);
-  // Synchronous re-entrancy guard for `start`: blocks a second dispatch in the
-  // render-timing gap before the disabled Analyze button / optimistic running
-  // state lands, so two fast clicks can't mint two uuids and launch two paid runs.
-  const analysisInFlight = useRef(false);
-
-  const refreshRuns = useCallback(async () => {
-    const next = await listInsightRuns();
-    setRuns(next);
-    return next;
-  }, []);
-
-  const reconcile = useCallback(async (runId: string) => {
-    const run = await getInsightRun(runId);
-    if (run !== null) setStream(streamFromRun(run));
-    await refreshRuns();
-  }, [refreshRuns]);
-
-  // Initial load: list runs and display the newest (already sorted newest-first).
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const next = await refreshRuns();
-      if (cancelled || next.length === 0) return;
-      const newest = next[0];
-      if (newest === undefined) return;
-      activeRunId.current = newest.id;
-      setStream(streamFromRun(newest));
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshRuns]);
-
-  // Subscribe to the live insight stream once.
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    let disposed = false;
-    void (async () => {
-      const fn = await onInsightEvent((event: InsightEvent) => {
-        if (event.type === 'finding-converted') {
-          setStream((prev) =>
-            prev.runId === event.runId
-              ? {
-                  ...prev,
-                  findings: prev.findings.map((f) =>
-                    f.id === event.findingId
-                      ? { ...f, status: 'converted', linkedTaskId: event.taskId }
-                      : f,
-                  ),
-                }
-              : prev,
-          );
-          void refreshRuns();
-          return;
-        }
-        // analysis-* events only apply to the run currently displayed/driven.
-        if (event.runId !== activeRunId.current) return;
-        setStream((prev) => foldInsight(prev, event));
-        if (event.type === 'analysis-completed' || event.type === 'analysis-failed') {
-          void reconcile(event.runId);
-        }
-      });
-      if (disposed) fn();
-      else unlisten = fn;
-    })();
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [reconcile, refreshRuns]);
+  const scan = useScanRun<InsightEvent, InsightRun, InsightStream>({
+    emptyStream: EMPTY_INSIGHT_STREAM,
+    listRuns: listInsightRuns,
+    getRun: getInsightRun,
+    streamFromRun,
+    cancelRun: cancelAnalysis,
+    subscribe: onInsightEvent,
+    onEvent: (event, { activeRunId, setStream, refreshRuns, reconcile }) => {
+      if (event.type === 'finding-converted') {
+        setStream((prev) =>
+          prev.runId === event.runId
+            ? {
+                ...prev,
+                findings: prev.findings.map((f) =>
+                  f.id === event.findingId
+                    ? { ...f, status: 'converted', linkedTaskId: event.taskId }
+                    : f,
+                ),
+              }
+            : prev,
+        );
+        void refreshRuns();
+        return;
+      }
+      // analysis-* events only apply to the run currently displayed/driven.
+      if (event.runId !== activeRunId.current) return;
+      setStream((prev) => foldInsight(prev, event));
+      if (event.type === 'analysis-completed' || event.type === 'analysis-failed') {
+        void reconcile(event.runId);
+      }
+    },
+  });
+  const { stream, setStream, runStart, refreshRuns } = scan;
 
   const start = useCallback(
     async (
@@ -146,54 +103,28 @@ export function useInsight(hasProject: boolean): UseInsightResult {
       model: string | null,
       effort: string | null,
     ) => {
-      if (!hasProject || categories.length === 0) return;
-      // Set synchronously, before the first await: a second click that slips
-      // through the render gap before `isStarting`/the optimistic running state
-      // disables Analyze is a no-op instead of a second paid run.
-      if (analysisInFlight.current) return;
-      analysisInFlight.current = true;
-      setIsStarting(true);
-      setStartError(null);
-      try {
+      await runStart(hasProject && categories.length > 0, async () => {
         const runId = await startAnalysis(scope, categories, {
           model,
           effort: effort as EffortLevel | null,
         });
-        activeRunId.current = runId;
         // Optimistic running state until `analysis-started` lands.
-        setStream({
-          ...EMPTY_INSIGHT_STREAM,
+        return {
           runId,
-          status: 'running',
-          scope,
-          model,
-          requestedCategories: categories,
-          categoryState: Object.fromEntries(
-            categories.map((c) => [c, 'pending' as const]),
-          ),
-        });
-        await refreshRuns();
-      } catch (err) {
-        setStartError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setIsStarting(false);
-        analysisInFlight.current = false;
-      }
+          optimistic: {
+            ...EMPTY_INSIGHT_STREAM,
+            runId,
+            status: 'running',
+            scope,
+            model,
+            requestedCategories: categories,
+            categoryState: seedStepState(categories),
+          },
+        };
+      });
     },
-    [hasProject, refreshRuns],
+    [hasProject, runStart],
   );
-
-  const cancel = useCallback(async () => {
-    if (stream.runId === null) return;
-    await cancelAnalysis(stream.runId);
-  }, [stream.runId]);
-
-  const selectRun = useCallback(async (runId: string) => {
-    const run = await getInsightRun(runId);
-    if (run === null) return;
-    activeRunId.current = runId;
-    setStream(streamFromRun(run));
-  }, []);
 
   const dismiss = useCallback(
     async (findingId: string) => {
@@ -202,7 +133,7 @@ export function useInsight(hasProject: boolean): UseInsightResult {
       if (run !== null) setStream(streamFromRun(run));
       await refreshRuns();
     },
-    [stream.runId, refreshRuns],
+    [stream.runId, setStream, refreshRuns],
   );
 
   const restore = useCallback(
@@ -212,7 +143,7 @@ export function useInsight(hasProject: boolean): UseInsightResult {
       if (run !== null) setStream(streamFromRun(run));
       await refreshRuns();
     },
-    [stream.runId, refreshRuns],
+    [stream.runId, setStream, refreshRuns],
   );
 
   const convert = useCallback(
@@ -230,17 +161,17 @@ export function useInsight(hasProject: boolean): UseInsightResult {
       await refreshRuns();
       return task;
     },
-    [stream.runId, refreshRuns],
+    [stream.runId, setStream, refreshRuns],
   );
 
   return {
     stream,
-    runs,
-    isStarting,
-    startError,
+    runs: scan.runs,
+    isStarting: scan.isStarting,
+    startError: scan.startError,
     start,
-    cancel,
-    selectRun,
+    cancel: scan.cancel,
+    selectRun: scan.selectRun,
     dismiss,
     restore,
     convert,
