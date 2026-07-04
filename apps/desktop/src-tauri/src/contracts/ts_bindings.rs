@@ -32,6 +32,7 @@ use ts_rs::TS;
 /// codegen fails the test rather than silently skipping a type.
 #[cfg(test)]
 fn export_all_bindings() {
+    use crate::analysis::injection_scan::InjectionFlag;
     use crate::commands::policy::{HarnessPolicyFile, HarnessPolicyPatch, PolicyDiffBudget};
     use crate::gauntlet::{GauntletResult, GauntletStep};
     use crate::orchestration::coordinator::LoopSnapshot;
@@ -41,7 +42,6 @@ fn export_all_bindings() {
         SettingsOverride, SettingsPatch,
     };
     use crate::sidecar::{ProviderConfigSnapshotView, SessionInfoView, SessionMessageView};
-    use crate::store::injection_scan::InjectionFlag;
     use crate::store::insight::{FindingLocation, InsightRun, InsightUsage, StoredFinding};
     use crate::store::pr_review::{PrReviewRun, StoredReviewFinding};
     use crate::store::scorecard::{ScorecardEvidence, ScorecardRun, StoredReading};

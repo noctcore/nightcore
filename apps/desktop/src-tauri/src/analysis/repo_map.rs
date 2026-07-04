@@ -3,7 +3,7 @@
 //! parses the project's git-tracked TS/TSX/JS/Rust sources, extracts each file's
 //! top-level definition symbols plus its import edges, ranks files with PageRank
 //! over the import graph, and renders a budgeted Markdown section that
-//! [`crate::store::context::assemble_default`] appends to the pack.
+//! [`crate::analysis::context::assemble_default`] appends to the pack.
 //!
 //! Design constraints:
 //! - **Deterministic**: identical output for an unchanged tree. Files are sorted

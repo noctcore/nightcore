@@ -151,7 +151,7 @@ pub fn resolve_context_pack(app: &AppHandle) -> Option<String> {
     if !settings.context_pack_enabled(Some(&project.id)) {
         return None;
     }
-    crate::store::context::read_pack(&project.path)
+    crate::analysis::context::read_pack(&project.path)
 }
 
 /// The enabled external MCP servers to inject for a run in the active project,

@@ -121,7 +121,7 @@ pub fn assemble_default(project_path: &str) -> String {
 
     // Ranked repo map (hardening #14): deterministic, budgeted, derived from the
     // git-tracked tree — omitted entirely for non-git projects or empty trees.
-    if let Some(map) = crate::store::repo_map::generate(Path::new(project_path)) {
+    if let Some(map) = crate::analysis::repo_map::generate(Path::new(project_path)) {
         sections.push(map);
     }
 
@@ -173,7 +173,7 @@ pub fn set_context_pack(project: State<'_, ProjectStore>, content: String) -> Re
 /// curated file with a fresh assembly the user can then re-edit.
 ///
 /// Async + `spawn_blocking` because assembly now parses the whole tracked source
-/// tree for the repo map (`store::repo_map`) — hundreds of ms on a large repo,
+/// tree for the repo map (`analysis::repo_map`) — hundreds of ms on a large repo,
 /// which a sync command would spend blocking the WKWebView. State is re-acquired
 /// via `try_state` inside the blocking closure (the established converted-command
 /// pattern). No single-flight guard: assembly is deterministic and the persist is

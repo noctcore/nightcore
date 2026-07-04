@@ -12,6 +12,7 @@
 //! at a time runs through a single long-lived sidecar, streaming its events to
 //! the board and transitioning to `done`/`failed` on completion.
 
+mod analysis;
 mod commands;
 mod contracts;
 mod engine_api;
@@ -219,7 +220,7 @@ pub fn run() {
             workflow::pr_comments::address_pr_comments,
             gauntlet::run_gauntlet,
             workflow::ratchet::snapshot_ratchet_baseline,
-            store::injection_scan::scan_injection_surface,
+            analysis::injection_scan::scan_injection_surface,
             commands::policy::get_harness_policy_file,
             commands::policy::update_harness_policy_file,
             commands::project::list_projects,
@@ -236,9 +237,9 @@ pub fn run() {
             commands::settings::set_board_background,
             commands::settings::clear_board_background,
             commands::settings::read_board_background,
-            store::context::get_context_pack,
-            store::context::set_context_pack,
-            store::context::regenerate_context_pack,
+            analysis::context::get_context_pack,
+            analysis::context::set_context_pack,
+            analysis::context::regenerate_context_pack,
             orchestration::coordinator::start_auto_loop,
             orchestration::coordinator::stop_auto_loop,
             orchestration::coordinator::resume_auto_loop,

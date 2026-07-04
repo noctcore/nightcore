@@ -3,7 +3,7 @@
 //! on `start-session` so the ENGINE's PreToolUse gate enforces it for the whole
 //! run (the gate that holds even under `bypassPermissions`).
 //!
-//! Like [`crate::store::context`] this is a pure read seam over a Nightcore-owned
+//! Like [`crate::analysis::context`] this is a pure read seam over a Nightcore-owned
 //! project file — no in-memory registry. The manifest is written by the
 //! allowlisted Rust writer ([`crate::sidecar::harness`]'s `write_merge_manifest`,
 //! which preserves the `policy` key verbatim) or hand-authored; it is NEVER model
