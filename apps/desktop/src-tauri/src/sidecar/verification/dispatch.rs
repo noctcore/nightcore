@@ -6,8 +6,10 @@ use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
+use crate::gauntlet::GauntletResult;
 use crate::project::ProjectStore;
 use crate::provider::{Provider, SidecarProvider};
+use crate::store::types::StepStatus;
 use crate::store::TaskStore;
 use crate::task::{Task, TaskKind};
 use crate::worktree;
@@ -48,7 +50,13 @@ pub(crate) async fn dispatch_reviewer(
     let has_branch = task.run_mode.is_worktree();
     let base = reviewer_base_branch(app);
     tracing::info!(target: "nightcore", task_id, base = %base, worktree = has_branch, "dispatching reviewer");
-    let prompt = reviewer_prompt(&task, &base, has_branch);
+    // Run the project's real typecheck/lint/test in the review dir and hand the
+    // reviewer the results as GROUND TRUTH (finding: the `dontAsk` reviewer is
+    // refused when it tries to run `bun run test` itself, so it fails verification
+    // instead of judging it). Best-effort — a gauntlet that can't run still yields
+    // a section, and the reviewer proceeds regardless.
+    let checks_section = reviewer_check_results(worktree_dir).await;
+    let prompt = reviewer_prompt(&task, &base, has_branch, &checks_section);
     // Reviewer model: V4 reviewer-model policy is deferred to M5; use the task's
     // model (None ⇒ core default), so the reviewer is a peer of the builder.
     provider
@@ -173,6 +181,80 @@ async fn dispatch_build_fix(
         .await
 }
 
+/// The prompt note used when the readiness gauntlet could not be run (its blocking
+/// task failed to join). The reviewer still runs — verification must never hang on
+/// the gauntlet — it just judges the diff without the ground-truth check results.
+const CHECKS_UNAVAILABLE: &str =
+    "Automated project checks: unavailable (the check runner could not be launched). \
+     Judge the diff on its own, and be conservative about correctness.";
+
+/// Run the readiness gauntlet (the project's real typecheck/lint/test, auto-detected
+/// by `crate::gauntlet`) over the review dir and render its per-step outcomes as a
+/// ground-truth block for the reviewer prompt. The gauntlet body spawns subprocesses
+/// and BLOCKS, so it runs on the blocking pool; awaited so the results are in hand
+/// before the prompt is built. Best-effort: a join failure yields
+/// [`CHECKS_UNAVAILABLE`] rather than aborting the reviewer dispatch — a broken
+/// gauntlet must never wedge the verification gate.
+async fn reviewer_check_results(worktree_dir: &Path) -> String {
+    let dir = worktree_dir.to_path_buf();
+    match tauri::async_runtime::spawn_blocking(move || crate::gauntlet::run(&dir)).await {
+        Ok(result) => format_check_results(&result),
+        Err(e) => {
+            tracing::warn!(target: "nightcore", error = %e, "readiness gauntlet failed to run for reviewer; proceeding without check results");
+            CHECKS_UNAVAILABLE.to_string()
+        }
+    }
+}
+
+/// Render the readiness gauntlet's per-step outcomes as a ground-truth block for the
+/// reviewer prompt. Empty detection ⇒ an explicit "none detected" note (so the
+/// reviewer knows the absence is real, not a runner failure); otherwise a bulleted
+/// pass/fail/skip list, with a failing step's truncated output attached as evidence.
+/// The header frames the results as authoritative and forbids the reviewer from
+/// re-running the commands (it is read-only and the attempt would be denied).
+fn format_check_results(result: &GauntletResult) -> String {
+    if result.steps.is_empty() {
+        return "Automated project checks: none detected in this worktree (no \
+                package.json typecheck/lint/test scripts and no Cargo project). Judge \
+                the diff on its own."
+            .to_string();
+    }
+
+    let mut lines = String::new();
+    for step in &result.steps {
+        let status = match step.status {
+            StepStatus::Passed => "PASSED".to_string(),
+            StepStatus::Failed => match step.exit_code {
+                Some(code) => format!("FAILED (exit {code})"),
+                None => "FAILED".to_string(),
+            },
+            StepStatus::Skipped => "SKIPPED (an earlier check failed)".to_string(),
+        };
+        lines.push_str(&format!(
+            "- {} (`{}`): {}\n",
+            step.name, step.command, status
+        ));
+        if let Some(output) = &step.output {
+            // Indent the failure tail so it reads as evidence attached to its step.
+            for line in output.lines() {
+                lines.push_str("    ");
+                lines.push_str(line);
+                lines.push('\n');
+            }
+        }
+    }
+
+    format!(
+        "The project's automated checks have ALREADY been run for you in this \
+         worktree — treat the results below as GROUND TRUTH. You are READ-ONLY and \
+         cannot run them yourself; do NOT attempt to (typecheck/lint/test calls would \
+         be denied). A genuine check FAILURE below is strong evidence the change is \
+         incomplete or broken; weigh it against the diff before deciding.\n\n\
+         Check results:\n{}",
+        lines.trim_end(),
+    )
+}
+
 /// The base branch the reviewer diffs against — the active project's base (the
 /// same base `merge.rs` merges into). Falls back to `main` without a project.
 fn reviewer_base_branch(app: &AppHandle) -> String {
@@ -188,7 +270,7 @@ fn reviewer_base_branch(app: &AppHandle) -> String {
 /// conclude "not implemented" (the dogfood bug). The reviewer inspects the union of
 /// working-tree + staged + untracked + (when a branch exists) the committed range,
 /// and must never conclude "no changes" from an empty `base...HEAD` alone.
-fn reviewer_prompt(task: &Task, base: &str, has_branch: bool) -> String {
+fn reviewer_prompt(task: &Task, base: &str, has_branch: bool, checks_section: &str) -> String {
     // The committed-range step only makes sense when this run has its own branch
     // (worktree mode). In main mode there is no branch — the working tree vs HEAD
     // IS the change set.
@@ -210,6 +292,7 @@ fn reviewer_prompt(task: &Task, base: &str, has_branch: bool) -> String {
     format!(
         "Review the changes in {scope}, which implement the task below.\n\n\
          Task:\n{task_prompt}\n\n\
+         {checks_section}\n\n\
          The change may be UNCOMMITTED. Treat the WORKING TREE as authoritative — \
          inspect the UNION of all of these and judge them together:\n\
          1. `git status --porcelain` — every staged, unstaged, and untracked path.\n\
@@ -230,6 +313,7 @@ fn reviewer_prompt(task: &Task, base: &str, has_branch: bool) -> String {
          numbered list of the changes needed.",
         scope = scope,
         task_prompt = task.prompt(),
+        checks_section = checks_section,
         range_step = range_step,
         base = base,
     )
@@ -237,8 +321,26 @@ fn reviewer_prompt(task: &Task, base: &str, has_branch: bool) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::reviewer_prompt;
+    use super::{format_check_results, reviewer_prompt, CHECKS_UNAVAILABLE};
+    use crate::gauntlet::{GauntletResult, GauntletStep};
+    use crate::store::types::StepStatus;
     use crate::task::Task;
+
+    fn step(
+        name: &str,
+        command: &str,
+        status: StepStatus,
+        exit: Option<i32>,
+        out: Option<&str>,
+    ) -> GauntletStep {
+        GauntletStep {
+            name: name.to_string(),
+            command: command.to_string(),
+            status,
+            exit_code: exit,
+            output: out.map(str::to_string),
+        }
+    }
 
     #[test]
     fn reviewer_prompt_is_working_tree_authoritative() {
@@ -246,7 +348,12 @@ mod tests {
         // standard four reads, and warn against concluding "no changes" from an
         // empty base..HEAD range alone (the dogfood bug).
         let task = Task::new("Add a README line".into(), String::new());
-        let prompt = reviewer_prompt(&task, "main", true);
+        let prompt = reviewer_prompt(
+            &task,
+            "main",
+            true,
+            "Automated project checks: none detected.",
+        );
 
         assert!(
             prompt.contains("git status --porcelain"),
@@ -284,7 +391,12 @@ mod tests {
         // A main-mode task has no branch; the prompt diffs the working tree vs HEAD
         // and must NOT instruct a (meaningless) committed-range diff.
         let task = Task::new("Edit on main".into(), String::new());
-        let prompt = reviewer_prompt(&task, "main", false);
+        let prompt = reviewer_prompt(
+            &task,
+            "main",
+            false,
+            "Automated project checks: none detected.",
+        );
 
         assert!(
             prompt.contains("project working tree"),
@@ -298,5 +410,116 @@ mod tests {
             !prompt.contains("git diff main...HEAD"),
             "main mode omits the committed-range step (no branch to range)"
         );
+    }
+
+    #[test]
+    fn reviewer_prompt_embeds_the_check_results_section() {
+        // The gauntlet's ground-truth results must reach the reviewer prompt verbatim,
+        // and the machine-readable verdict contract must survive the injection.
+        let task = Task::new("Add a feature".into(), String::new());
+        let checks = format_check_results(&GauntletResult {
+            passed: false,
+            steps: vec![
+                step(
+                    "typecheck",
+                    "bun run typecheck",
+                    StepStatus::Passed,
+                    Some(0),
+                    None,
+                ),
+                step(
+                    "test",
+                    "bun run test",
+                    StepStatus::Failed,
+                    Some(1),
+                    Some("1 test failed"),
+                ),
+            ],
+            failed_step: Some("test".into()),
+        });
+        let prompt = reviewer_prompt(&task, "main", true, &checks);
+
+        assert!(
+            prompt.contains("GROUND TRUTH"),
+            "frames checks as authoritative"
+        );
+        assert!(
+            prompt.contains("bun run test"),
+            "embeds the real command line"
+        );
+        assert!(
+            prompt.contains("FAILED (exit 1)"),
+            "surfaces the failing check"
+        );
+        assert!(
+            prompt.contains("1 test failed"),
+            "attaches the failure evidence"
+        );
+        assert!(
+            prompt.contains("VERDICT: PASS"),
+            "verdict contract survives injection"
+        );
+    }
+
+    #[test]
+    fn format_check_results_renders_pass_fail_skip() {
+        let out = format_check_results(&GauntletResult {
+            passed: false,
+            steps: vec![
+                step(
+                    "typecheck",
+                    "bun run typecheck",
+                    StepStatus::Passed,
+                    Some(0),
+                    None,
+                ),
+                step(
+                    "lint",
+                    "bun run lint",
+                    StepStatus::Failed,
+                    Some(2),
+                    Some("oops"),
+                ),
+                step("test", "bun run test", StepStatus::Skipped, None, None),
+            ],
+            failed_step: Some("lint".into()),
+        });
+        assert!(out.contains("- typecheck (`bun run typecheck`): PASSED"));
+        assert!(out.contains("- lint (`bun run lint`): FAILED (exit 2)"));
+        assert!(out.contains("SKIPPED (an earlier check failed)"));
+        assert!(out.contains("    oops"), "indents the failure tail");
+        assert!(
+            out.contains("do NOT attempt"),
+            "forbids the read-only reviewer from re-running the checks"
+        );
+    }
+
+    #[test]
+    fn format_check_results_notes_when_no_tooling_detected() {
+        // An empty gauntlet (no package.json scripts / no Cargo) is a real "none
+        // detected", distinct from a runner failure — the reviewer must be told so.
+        let out = format_check_results(&GauntletResult {
+            passed: true,
+            steps: Vec::new(),
+            failed_step: None,
+        });
+        assert!(
+            out.contains("none detected"),
+            "distinguishes empty from failure"
+        );
+        assert!(
+            !out.contains("GROUND TRUTH"),
+            "no ground-truth header without results"
+        );
+    }
+
+    #[test]
+    fn reviewer_prompt_still_assembles_when_checks_unavailable() {
+        // Verification must complete even when the gauntlet could not run: the
+        // fallback section is injected and the verdict contract is intact.
+        let task = Task::new("Add a feature".into(), String::new());
+        let prompt = reviewer_prompt(&task, "main", true, CHECKS_UNAVAILABLE);
+        assert!(prompt.contains("unavailable"), "carries the fallback note");
+        assert!(prompt.contains("VERDICT: PASS"), "verdict contract intact");
     }
 }

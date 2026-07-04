@@ -32,6 +32,12 @@ describe('resolveKindPreset', () => {
     expect(preset.permissionMode).toBe('dontAsk');
     expect(preset.disallowedTools).toEqual([...WRITE_TOOLS, ...NETWORK_EGRESS_TOOLS]);
     expect(preset.appendSystemPrompt).toMatch(/VERDICT: PASS/);
+    // The reviewer is told its checks are pre-run and provided as ground truth, so a
+    // `dontAsk` session never needs to run (and be denied) `bun run test` itself.
+    expect(preset.appendSystemPrompt).toMatch(/already been run/i);
+    expect(preset.appendSystemPrompt).toMatch(/do\s+not attempt to run those commands/i);
+    // …and it must NOT fail merely because it couldn't execute a command.
+    expect(preset.appendSystemPrompt).toMatch(/never\s+fail merely because you could not execute/i);
   });
 
   test('tdd adds a test-first persona and denies web egress (build-like otherwise)', () => {
