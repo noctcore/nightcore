@@ -13,7 +13,13 @@ import type {
   ReviewSeverity,
   StoredReviewFinding,
 } from '@/lib/bridge';
-import { addUsage } from '@/lib/scan-run';
+import {
+  addUsage,
+  runStatusFromPersisted,
+  seedStepState,
+  seedStepStateFromRun,
+  settleStepState,
+} from '@/lib/scan-run';
 
 import type {
   FindingStatus,
@@ -114,12 +120,7 @@ export function storedToFinding(f: StoredReviewFinding): ReviewFindingView {
 /** Project a persisted run into the same `ReviewStream` shape the live fold
  *  produces, so the view renders both from one model. */
 export function streamFromRun(run: PrReviewRun): ReviewStream {
-  const status: RunStatus =
-    run.status === 'running'
-      ? 'running'
-      : run.status === 'failed'
-        ? 'failed'
-        : 'completed';
+  const status: RunStatus = runStatusFromPersisted(run.status);
   const lenses = run.lenses as ReviewLens[];
   return {
     runId: run.id,
@@ -127,9 +128,7 @@ export function streamFromRun(run: PrReviewRun): ReviewStream {
     prNumber: run.prNumber,
     model: run.model || null,
     requestedLenses: lenses,
-    lensState: Object.fromEntries(
-      lenses.map((l) => [l, status === 'running' ? 'pending' : 'done']),
-    ),
+    lensState: seedStepStateFromRun(lenses, status === 'running'),
     findings: run.findings.map(storedToFinding),
     costUsd: run.costUsd,
     usage: run.usage,
@@ -157,9 +156,7 @@ export function foldReview(
         status: 'running',
         model: event.model,
         requestedLenses: event.lenses,
-        lensState: Object.fromEntries(
-          event.lenses.map((l) => [l, 'pending' as LensProgress]),
-        ),
+        lensState: seedStepState(event.lenses),
       };
     case 'pr-review-lens-started':
       return {
@@ -190,12 +187,7 @@ export function foldReview(
         costUsd: event.costUsd,
         usage: event.usage ?? prev.usage,
         durationMs: event.durationMs,
-        lensState: Object.fromEntries(
-          prev.requestedLenses.map((l) => [
-            l,
-            prev.lensState[l] === 'error' ? 'error' : 'done',
-          ]),
-        ),
+        lensState: settleStepState(prev.requestedLenses, prev.lensState),
       };
     case 'pr-review-failed':
       return {

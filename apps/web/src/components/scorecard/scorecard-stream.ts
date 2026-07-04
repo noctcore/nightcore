@@ -12,7 +12,13 @@ import type {
   ScorecardWireEvent,
   StoredReading,
 } from '@/lib/bridge';
-import { addUsage } from '@/lib/scan-run';
+import {
+  addUsage,
+  runStatusFromPersisted,
+  seedStepState,
+  seedStepStateFromRun,
+  settleStepState,
+} from '@/lib/scan-run';
 
 /** The live wire evidence shape (an element of a contract `ScorecardReading.findings`). */
 type WireEvidence = ScorecardReading['findings'][number];
@@ -149,21 +155,14 @@ export function storedToReading(r: StoredReading): ScorecardReadingView {
 /** Project a persisted run into the same `ScorecardStream` shape the live fold
  *  produces, so the view renders both from one model. */
 export function streamFromRun(run: ScorecardRun): ScorecardStream {
-  const status: RunStatus =
-    run.status === 'running'
-      ? 'running'
-      : run.status === 'failed'
-        ? 'failed'
-        : 'completed';
+  const status: RunStatus = runStatusFromPersisted(run.status);
   const dimensions = run.dimensions as ScorecardDimension[];
   return {
     runId: run.id,
     status,
     model: run.model || null,
     requestedDimensions: dimensions,
-    dimensionState: Object.fromEntries(
-      dimensions.map((d) => [d, status === 'running' ? 'pending' : 'done']),
-    ),
+    dimensionState: seedStepStateFromRun(dimensions, status === 'running'),
     readings: run.readings.map(storedToReading),
     costUsd: run.costUsd,
     usage: run.usage,
@@ -186,9 +185,7 @@ export function foldScorecard(
         status: 'running',
         model: event.model,
         requestedDimensions: event.dimensions,
-        dimensionState: Object.fromEntries(
-          event.dimensions.map((d) => [d, 'pending' as DimensionProgress]),
-        ),
+        dimensionState: seedStepState(event.dimensions),
       };
     case 'scorecard-dimension-started':
       return {
@@ -218,11 +215,9 @@ export function foldScorecard(
         costUsd: event.costUsd,
         usage: event.usage ?? prev.usage,
         durationMs: event.durationMs,
-        dimensionState: Object.fromEntries(
-          prev.requestedDimensions.map((d) => [
-            d,
-            prev.dimensionState[d] === 'error' ? 'error' : 'done',
-          ]),
+        dimensionState: settleStepState(
+          prev.requestedDimensions,
+          prev.dimensionState,
         ),
       };
     case 'scorecard-failed':

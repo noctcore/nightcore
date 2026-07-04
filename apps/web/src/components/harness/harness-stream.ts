@@ -23,7 +23,13 @@ import type {
   StoredProposedArtifact,
   StoredRepoProfile,
 } from '@/lib/bridge';
-import { addUsage } from '@/lib/scan-run';
+import {
+  addUsage,
+  runStatusFromPersisted,
+  seedStepState,
+  seedStepStateFromRun,
+  settleStepState,
+} from '@/lib/scan-run';
 
 import type {
   ArtifactStatus,
@@ -267,27 +273,20 @@ export function storedToProfile(p: StoredRepoProfile): RepoProfileVM {
 /** Project a persisted run into the same `HarnessStream` shape the live fold
  *  produces, so the view renders both from one model. */
 export function streamFromRun(run: HarnessRun): HarnessStream {
-  const status: RunStatus =
-    run.status === 'running'
-      ? 'running'
-      : run.status === 'failed'
-        ? 'failed'
-        : 'completed';
+  const status: RunStatus = runStatusFromPersisted(run.status);
   const categories = run.categories as ConventionCategory[];
   return {
     runId: run.id,
     status,
     model: run.model || null,
     requestedCategories: categories,
-    categoryState: Object.fromEntries(
-      // While synthesizing, every lens has finished — project them all `done` so a
-      // reloaded mid-synthesis run shows the finished stepper + the synthesis row,
-      // not a row of pending lenses. (A still-scanning running run carries no
-      // per-category completion, so it falls back to `pending`.)
-      categories.map((c) => [
-        c,
-        status === 'running' && !run.synthesizing ? 'pending' : 'done',
-      ]),
+    // While synthesizing, every lens has finished — project them all `done` so a
+    // reloaded mid-synthesis run shows the finished stepper + the synthesis row,
+    // not a row of pending lenses. (A still-scanning running run carries no
+    // per-category completion, so it falls back to `pending`.)
+    categoryState: seedStepStateFromRun(
+      categories,
+      status === 'running' && !run.synthesizing,
     ),
     profile: storedToProfile(run.profile),
     findings: run.findings.map(storedToConventionFinding),
@@ -321,9 +320,7 @@ export function foldHarness(
         status: 'running',
         model: event.model,
         requestedCategories: event.categories,
-        categoryState: Object.fromEntries(
-          event.categories.map((c) => [c, 'pending' as CategoryProgress]),
-        ),
+        categoryState: seedStepState(event.categories),
       };
     case 'harness-profile-ready':
       return { ...prev, profile: wireToProfile(event.profile) };
@@ -371,11 +368,9 @@ export function foldHarness(
         costUsd: event.costUsd,
         usage: event.usage ?? prev.usage,
         durationMs: event.durationMs,
-        categoryState: Object.fromEntries(
-          prev.requestedCategories.map((c) => [
-            c,
-            prev.categoryState[c] === 'error' ? 'error' : 'done',
-          ]),
+        categoryState: settleStepState(
+          prev.requestedCategories,
+          prev.categoryState,
         ),
       };
     case 'harness-scan-failed':

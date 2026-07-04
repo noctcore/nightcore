@@ -26,3 +26,66 @@ export function addUsage(a: ScanUsage, b: ScanUsage | undefined): ScanUsage {
     outputTokens: a.outputTokens + b.outputTokens,
   };
 }
+
+/**
+ * The per-step (category / dimension / lens) progress a scan tracks while it runs.
+ * Every family re-declares this same four-value union under its own noun
+ * (`CategoryProgress` / `DimensionProgress` / `LensProgress`); they are structurally
+ * identical and interchange freely with this canonical name.
+ */
+export type ScanStepProgress = 'pending' | 'running' | 'done' | 'error';
+
+/**
+ * Project a persisted run's status string onto the terminal view status. The
+ * persisted enum only ever reloads as running / failed / <else = completed>; the
+ * `idle` state is live-only, so it never appears here. Cloned verbatim in all four
+ * `streamFromRun` projectors.
+ */
+export function runStatusFromPersisted(
+  status: string,
+): 'running' | 'failed' | 'completed' {
+  return status === 'running'
+    ? 'running'
+    : status === 'failed'
+      ? 'failed'
+      : 'completed';
+}
+
+/**
+ * Seed a fresh step-state map with every requested step `pending`. Used on the
+ * `*-started` event to lay out the stepper before any step reports in.
+ */
+export function seedStepState(
+  steps: readonly string[],
+): Record<string, ScanStepProgress> {
+  return Object.fromEntries(steps.map((s) => [s, 'pending' as ScanStepProgress]));
+}
+
+/**
+ * Seed a step-state map from a reloaded persisted run: `pending` while the run is
+ * still mid-flight (`running === true`), else all `done`. A persisted run carries
+ * no per-step completion, so an in-flight reload can only show the stepper as
+ * uniformly pending.
+ */
+export function seedStepStateFromRun(
+  steps: readonly string[],
+  running: boolean,
+): Record<string, ScanStepProgress> {
+  return Object.fromEntries(
+    steps.map((s) => [s, running ? 'pending' : 'done'] as const),
+  );
+}
+
+/**
+ * Settle every requested step to its terminal state on the `*-completed` event:
+ * a step that errored stays `error`, everything else becomes `done`. Cloned
+ * verbatim in all four terminal-event folds.
+ */
+export function settleStepState(
+  requested: readonly string[],
+  prev: Record<string, ScanStepProgress>,
+): Record<string, ScanStepProgress> {
+  return Object.fromEntries(
+    requested.map((s) => [s, prev[s] === 'error' ? 'error' : 'done'] as const),
+  );
+}

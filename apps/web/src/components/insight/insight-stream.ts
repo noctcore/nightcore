@@ -13,7 +13,13 @@ import type {
   InsightRun,
   StoredFinding,
 } from '@/lib/bridge';
-import { addUsage } from '@/lib/scan-run';
+import {
+  addUsage,
+  runStatusFromPersisted,
+  seedStepState,
+  seedStepStateFromRun,
+  settleStepState,
+} from '@/lib/scan-run';
 
 import type {
   FindingStatus,
@@ -121,12 +127,7 @@ export function storedToFinding(f: StoredFinding): InsightFinding {
 /** Project a persisted run into the same `InsightStream` shape the live fold
  *  produces, so the view renders both from one model. */
 export function streamFromRun(run: InsightRun): InsightStream {
-  const status: RunStatus =
-    run.status === 'running'
-      ? 'running'
-      : run.status === 'failed'
-        ? 'failed'
-        : 'completed';
+  const status: RunStatus = runStatusFromPersisted(run.status);
   const categories = run.categories as FindingCategory[];
   return {
     runId: run.id,
@@ -134,9 +135,7 @@ export function streamFromRun(run: InsightRun): InsightStream {
     scope: run.scope as AnalysisScope,
     model: run.model || null,
     requestedCategories: categories,
-    categoryState: Object.fromEntries(
-      categories.map((c) => [c, status === 'running' ? 'pending' : 'done']),
-    ),
+    categoryState: seedStepStateFromRun(categories, status === 'running'),
     findings: run.findings.map(storedToFinding),
     costUsd: run.costUsd,
     usage: run.usage,
@@ -162,9 +161,7 @@ export function foldInsight(
         scope: event.scope,
         model: event.model,
         requestedCategories: event.categories,
-        categoryState: Object.fromEntries(
-          event.categories.map((c) => [c, 'pending' as CategoryProgress]),
-        ),
+        categoryState: seedStepState(event.categories),
       };
     case 'analysis-category-started':
       return {
@@ -194,11 +191,9 @@ export function foldInsight(
         costUsd: event.costUsd,
         usage: event.usage ?? prev.usage,
         durationMs: event.durationMs,
-        categoryState: Object.fromEntries(
-          prev.requestedCategories.map((c) => [
-            c,
-            prev.categoryState[c] === 'error' ? 'error' : 'done',
-          ]),
+        categoryState: settleStepState(
+          prev.requestedCategories,
+          prev.categoryState,
         ),
       };
     case 'analysis-failed':
