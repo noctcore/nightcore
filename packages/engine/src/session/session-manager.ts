@@ -156,6 +156,23 @@ export class SessionManager {
       this.scans.dispatch(command);
       return;
     }
+    // Issue Triage validation (`start-/cancel-issue-validation`) is a `runId`-keyed
+    // read-only session family whose engine manager lands in a later Issue Triage
+    // slice. Its contracts ship first (slice 1/5), so the command union already
+    // carries these members — but like the scan families above they are NOT
+    // session-id-keyed, so narrow them out here before the `command.sessionId`
+    // lookup below (which every remaining command has). Inert until the manager
+    // exists: logged, then dropped.
+    if (
+      command.type === 'start-issue-validation' ||
+      command.type === 'cancel-issue-validation'
+    ) {
+      this.logger?.debug('issue-validation command received before engine wiring', {
+        type: command.type,
+        runId: command.runId,
+      });
+      return;
+    }
 
     const session = this.sessions.get(command.sessionId);
     if (!session) {
