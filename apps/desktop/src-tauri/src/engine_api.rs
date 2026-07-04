@@ -39,6 +39,12 @@ pub trait EngineApi: Send + Sync {
     fn breaker_record_success(&self, app: &AppHandle);
     /// Record a failure; returns whether THIS failure tripped the breaker.
     fn breaker_record_failure(&self, app: &AppHandle) -> bool;
+    /// Record a FATAL-setup failure (an `auth`/`disk-full` error category): trips
+    /// the breaker at once regardless of the sliding-window threshold. Returns
+    /// whether THIS failure tripped it. Distinct from [`Self::breaker_record_failure`]
+    /// so the auto-loop stops immediately on a broken credential/full disk instead
+    /// of burning more tasks that will fail identically.
+    fn breaker_record_fatal(&self, app: &AppHandle) -> bool;
     /// The configured trip threshold (for diagnostics / the `nc:loop` payload).
     fn breaker_threshold(&self, app: &AppHandle) -> usize;
     /// Wake the coordinator to run a tick now.

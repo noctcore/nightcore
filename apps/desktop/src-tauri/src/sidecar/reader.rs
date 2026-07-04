@@ -372,8 +372,12 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
                     tracing::info!(target: "nightcore", task_id, session_id = ?session_id, "run aborted");
                     Outcome::Aborted
                 } else {
-                    tracing::error!(target: "nightcore", task_id, session_id = ?session_id, error = message.as_deref().unwrap_or("<none>"), "run failed");
-                    Outcome::Failed
+                    // Structured error taxonomy: a fatal-setup category (auth /
+                    // disk-full) trips the breaker at once so the auto-loop stops
+                    // rather than burning more tasks that fail identically.
+                    let fatal = is_fatal_setup_failure(&event);
+                    tracing::error!(target: "nightcore", task_id, session_id = ?session_id, fatal, error = message.as_deref().unwrap_or("<none>"), "run failed");
+                    Outcome::Failed { fatal }
                 };
                 finish_run(app, &task_id, session_id, outcome);
             }
@@ -389,6 +393,26 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
 /// `session-started` was skipped still settles normally.
 fn is_stale_terminal(event_session: Option<u64>, current_session: Option<u64>) -> bool {
     matches!((event_session, current_session), (Some(e), Some(c)) if e != c)
+}
+
+/// Whether a `session-failed` event names a FATAL-setup failure the breaker must
+/// stop the loop on immediately (auth / disk-full), reading the structured
+/// [`ErrorCategory`] from the event's `detail`. Backward-compatible: an older
+/// engine that emits no `detail` falls back to the legacy `reason` — an
+/// `authentication` reason is still treated as fatal — so a broken credential
+/// stops the loop regardless of engine version.
+fn is_fatal_setup_failure(event: &Value) -> bool {
+    use crate::contracts::ErrorCategory;
+    use crate::orchestration::breaker::trips_breaker_immediately;
+
+    let category: Option<ErrorCategory> = event
+        .get("detail")
+        .and_then(|d| d.get("category"))
+        .and_then(|c| serde_json::from_value(c.clone()).ok());
+    match category {
+        Some(category) => trips_breaker_immediately(category),
+        None => event.get("reason").and_then(Value::as_str) == Some("authentication"),
+    }
 }
 
 #[cfg(test)]
@@ -407,6 +431,41 @@ mod tests {
         // No event session id → nothing to compare → fresh.
         assert!(!is_stale_terminal(None, Some(11)));
         assert!(!is_stale_terminal(None, None));
+    }
+
+    #[test]
+    fn fatal_setup_failure_reads_structured_category() {
+        // auth / disk-full categories are fatal-setup → trip the breaker at once.
+        let auth = json!({
+            "type": "session-failed", "sessionId": 1, "reason": "authentication",
+            "message": "no", "detail": { "category": "auth", "message": "no", "retriable": false }
+        });
+        assert!(is_fatal_setup_failure(&auth));
+        let disk = json!({
+            "type": "session-failed", "sessionId": 1, "reason": "runner-crash",
+            "message": "ENOSPC", "detail": { "category": "disk-full", "message": "ENOSPC", "retriable": false }
+        });
+        assert!(is_fatal_setup_failure(&disk));
+        // A transient category is NOT fatal → stays on the tolerant window.
+        let rate = json!({
+            "type": "session-failed", "sessionId": 1, "reason": "rate-limit",
+            "message": "slow", "detail": { "category": "rate-limit", "message": "slow", "retriable": true }
+        });
+        assert!(!is_fatal_setup_failure(&rate));
+    }
+
+    #[test]
+    fn fatal_setup_failure_falls_back_to_legacy_reason() {
+        // Backward-compat: an older engine emits no `detail`. An `authentication`
+        // reason is still fatal; every other bare reason stays transient.
+        let auth = json!({
+            "type": "session-failed", "sessionId": 1, "reason": "authentication", "message": "no"
+        });
+        assert!(is_fatal_setup_failure(&auth));
+        let crash = json!({
+            "type": "session-failed", "sessionId": 1, "reason": "runner-crash", "message": "boom"
+        });
+        assert!(!is_fatal_setup_failure(&crash));
     }
 
     #[test]

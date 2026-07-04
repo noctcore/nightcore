@@ -50,6 +50,10 @@ impl EngineApi for EngineHandle {
         app.state::<Orchestrator>().breaker.record_failure()
     }
 
+    fn breaker_record_fatal(&self, app: &AppHandle) -> bool {
+        app.state::<Orchestrator>().breaker.record_fatal_failure()
+    }
+
     fn breaker_threshold(&self, app: &AppHandle) -> usize {
         app.state::<Orchestrator>().breaker.threshold()
     }

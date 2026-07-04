@@ -16,6 +16,21 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use crate::contracts::ErrorCategory;
+
+/// Whether a failure of this structured [`ErrorCategory`] should trip the breaker
+/// IMMEDIATELY rather than accumulate toward the sliding-window threshold. A
+/// fatal-setup cause won't fix itself by running more tasks — auth is broken for
+/// every task under the same credential, and a full disk fails every write — so
+/// the loop stops at once instead of burning two more tasks proving the point.
+/// Transient causes (rate-limit, runner-crash, unknown) keep the tolerant window
+/// so a single blip doesn't pause the board. `aborted`/`resource-exhausted` never
+/// reach this decision as breaker-feeding failures (they're handled upstream), but
+/// are classified conservatively as non-immediate for exhaustiveness.
+pub fn trips_breaker_immediately(category: ErrorCategory) -> bool {
+    matches!(category, ErrorCategory::Auth | ErrorCategory::DiskFull)
+}
+
 /// Default consecutive-failure threshold before the loop pauses (design §6).
 pub const DEFAULT_THRESHOLD: usize = 3;
 /// Default sliding window for counting failures (design §6).
@@ -68,6 +83,17 @@ impl CircuitBreaker {
     /// Record a failure at the current instant.
     pub fn record_failure(&self) -> bool {
         self.record_failure_at(Instant::now())
+    }
+
+    /// Record a FATAL-setup failure (an `auth`/`disk-full` category): trip the
+    /// breaker at once, regardless of the sliding-window threshold, because
+    /// retrying more tasks under the same broken environment just burns the
+    /// board. Returns whether THIS failure caused the trip (false if already
+    /// paused), mirroring [`record_failure_at`]'s contract so the caller pauses +
+    /// interrupts identically. The failure window is untouched (the latch alone
+    /// pauses the loop; `reset` clears it on resume).
+    pub fn record_fatal_failure(&self) -> bool {
+        !self.paused.swap(true, Ordering::SeqCst)
     }
 
     /// Whether the breaker is currently tripped (the coordinator tick is gated on
@@ -167,6 +193,45 @@ mod tests {
         );
         // Already paused: subsequent failures don't re-report the trip.
         assert!(!cb.record_failure_at(t0 + Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn fatal_failure_trips_on_the_first_hit_below_threshold() {
+        // A structured auth/disk-full failure must stop the loop AT ONCE — even
+        // with a high threshold and an empty window — so the board doesn't burn
+        // two more tasks under a broken credential/full disk.
+        let cb = CircuitBreaker::new(3, Duration::from_secs(60));
+        assert!(!cb.is_paused());
+        assert!(cb.record_fatal_failure(), "first fatal failure trips");
+        assert!(cb.is_paused(), "the loop is paused immediately");
+        // Already paused: a second fatal hit does not re-report the trip.
+        assert!(!cb.record_fatal_failure());
+    }
+
+    #[test]
+    fn category_branch_decides_immediate_vs_windowed() {
+        // The real category-based branch the reader/finish_run key off: auth and
+        // disk-full stop the loop at once; transient categories stay windowed.
+        assert!(trips_breaker_immediately(ErrorCategory::Auth));
+        assert!(trips_breaker_immediately(ErrorCategory::DiskFull));
+        assert!(!trips_breaker_immediately(ErrorCategory::RateLimit));
+        assert!(!trips_breaker_immediately(ErrorCategory::RunnerCrash));
+        assert!(!trips_breaker_immediately(ErrorCategory::Unknown));
+        assert!(!trips_breaker_immediately(ErrorCategory::ResourceExhausted));
+    }
+
+    #[test]
+    fn transient_failures_below_threshold_do_not_trip_even_after_a_reset() {
+        // Contrast with the fatal path: a windowed (transient) failure needs the
+        // full threshold to trip, proving the two paths really diverge.
+        let cb = CircuitBreaker::new(3, Duration::from_secs(60));
+        let t0 = Instant::now();
+        assert!(!cb.record_failure_at(t0));
+        assert!(!cb.record_failure_at(t0 + Duration::from_secs(1)));
+        assert!(
+            !cb.is_paused(),
+            "two transient failures stay under threshold"
+        );
     }
 
     #[test]

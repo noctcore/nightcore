@@ -403,8 +403,12 @@ async fn handle_sidecar_crash(app: &AppHandle) {
 pub(crate) enum Outcome {
     /// `session-completed`: clean up the worktree (per policy), reset the breaker.
     Succeeded,
-    /// `session-failed` (genuine): retain the worktree, feed the breaker.
-    Failed,
+    /// `session-failed` (genuine): retain the worktree, feed the breaker. `fatal`
+    /// carries the structured error taxonomy's verdict — an `auth`/`disk-full`
+    /// category (a broken-setup cause) trips the breaker AT ONCE rather than
+    /// accumulating toward the sliding-window threshold, so the auto-loop stops
+    /// instead of burning more tasks that fail identically.
+    Failed { fatal: bool },
     /// `session-failed { reason: "aborted" }` (cancel / circuit-break): retain the
     /// worktree, but do NOT count toward the breaker.
     Aborted,
@@ -490,18 +494,30 @@ pub(crate) fn finish_run(
     // gated on `notify_on_complete`. Aborts/approval-parks don't notify.
     match outcome {
         Outcome::Succeeded => notify_task_complete(app, task_id, true),
-        Outcome::Failed => notify_task_complete(app, task_id, false),
+        Outcome::Failed { .. } => notify_task_complete(app, task_id, false),
         Outcome::Aborted | Outcome::NeedsApproval => {}
     }
     match outcome {
         Outcome::Succeeded => engine.breaker_record_success(app),
         // Routed through `park_for_approval`, never here; handled for exhaustiveness.
         Outcome::Aborted | Outcome::NeedsApproval => {} // not a failure signal
-        Outcome::Failed => {
-            if engine.breaker_record_failure(app) {
+        Outcome::Failed { fatal } => {
+            // Category-based branch: a fatal-setup failure (auth/disk-full) trips the
+            // breaker at once; a transient one accumulates toward the tolerant window.
+            let tripped = if fatal {
+                engine.breaker_record_fatal(app)
+            } else {
+                engine.breaker_record_failure(app)
+            };
+            if tripped {
                 // This failure tripped the breaker: interrupt the rest and pause.
-                tracing::warn!(target: "nightcore", task_id, threshold = engine.breaker_threshold(app), "circuit breaker tripped; pausing auto-loop");
-                engine.emit_state(app, "paused", Some("circuit-breaker"));
+                let cause = if fatal {
+                    "circuit-breaker-fatal"
+                } else {
+                    "circuit-breaker"
+                };
+                tracing::warn!(target: "nightcore", task_id, fatal, threshold = engine.breaker_threshold(app), "circuit breaker tripped; pausing auto-loop");
+                engine.emit_state(app, "paused", Some(cause));
                 let app = app.clone();
                 tokio::spawn(async move {
                     app.state::<Arc<dyn EngineApi>>().interrupt_all(&app).await;
