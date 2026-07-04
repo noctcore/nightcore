@@ -65,7 +65,7 @@ export function PrDetail({
       {/* Header: state + number + open-on-GitHub */}
       <div className="flex items-start justify-between gap-3">
         <span className="flex items-center gap-2">
-          <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-400">
+          <span className="rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-success">
             {pr?.state === 'CLOSED'
               ? 'Closed'
               : pr?.state === 'MERGED'

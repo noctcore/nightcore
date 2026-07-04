@@ -85,8 +85,8 @@ export function DiffViewDialog({
                     {file.path}
                   </span>
                   <span className="shrink-0 font-mono text-[11px] tabular-nums">
-                    <span className="text-emerald-400">+{file.additions}</span>{' '}
-                    <span className="text-red-400">−{file.deletions}</span>
+                    <span className="text-success">+{file.additions}</span>{' '}
+                    <span className="text-destructive">−{file.deletions}</span>
                   </span>
                 </li>
               );

@@ -118,7 +118,7 @@ export function PrPicker({
                   }`}
                 >
                   <span className="flex items-center gap-2">
-                    <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-emerald-400">
+                    <span className="rounded-full border border-success/40 bg-success/10 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-success">
                       Open
                     </span>
                     <span className="font-mono text-[11.5px] text-muted-foreground">
