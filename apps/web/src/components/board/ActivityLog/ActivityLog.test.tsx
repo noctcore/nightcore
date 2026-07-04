@@ -164,3 +164,23 @@ test('does NOT yank the view back when the user has scrolled up to read history'
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   expect(scroll.scrollTop).toBeLessThan(4);
 });
+
+test('caps a long transcript to its trailing window and reveals earlier on demand', async () => {
+  // 75 entries with a 60-entry page: the newest 60 mount, the oldest 15 hide.
+  const entries = manyEntries(75);
+  const screen = render(<ActivityLog sessions={oneSession(entries)} isRunning={false} />);
+
+  // The tail is always mounted; the very first (oldest) entry is withheld.
+  await expect
+    .element(screen.getByText('Transcript line number 75', { exact: true }))
+    .toBeInTheDocument();
+  expect(screen.container.querySelector('ol')?.querySelectorAll('li').length).toBe(60);
+  expect(screen.getByText('Transcript line number 1', { exact: true }).query()).toBeNull();
+
+  // The "show earlier" affordance reveals the withheld page.
+  await screen.getByRole('button', { name: /show 15 earlier entries/i }).click();
+  await expect
+    .element(screen.getByText('Transcript line number 1', { exact: true }))
+    .toBeInTheDocument();
+  expect(screen.container.querySelector('ol')?.querySelectorAll('li').length).toBe(75);
+});

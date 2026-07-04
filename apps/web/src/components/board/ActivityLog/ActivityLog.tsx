@@ -12,8 +12,14 @@ import { summarizeInput } from '@/lib/summarize';
 
 import type { SessionGroup, SessionPhase, TimelineEntry } from '../session-stream';
 import { formatCost, modelDisplayName } from '../status';
-import { useCollapse, useStickToBottom } from './ActivityLog.hooks';
+import { useCappedEntries, useCollapse, useStickToBottom } from './ActivityLog.hooks';
 import type { ActivityLogProps } from './ActivityLog.types';
+
+/** How many trailing entries a session mounts before the "show earlier"
+ *  affordance. Bounds the DOM node count on multi-thousand-entry transcripts
+ *  while keeping the newest activity (and the streaming tail) always mounted. Set
+ *  well above a typical run's length so ordinary transcripts never cap. */
+const ENTRY_PAGE_SIZE = 60;
 
 /** Display label for a session's lifecycle phase. A generic `session` falls back
  *  to `Run N` (handled at the call site, which knows the ordinal). */
@@ -161,6 +167,11 @@ function TimelineBody({
   error: string | null;
   isRunning: boolean;
 }) {
+  // Mount only a trailing window of entries so a multi-thousand-turn transcript
+  // can't grow an unbounded DOM. The window is anchored to the TAIL, so the
+  // newest entry — and the in-place-streaming trailing row + auto-follow sentinel
+  // — is always mounted; older pages reveal on demand.
+  const { visible, hiddenCount, showEarlier } = useCappedEntries(entries, ENTRY_PAGE_SIZE);
   return (
     <>
       {error !== null ? (
@@ -168,26 +179,40 @@ function TimelineBody({
           {error}
         </pre>
       ) : entries.length > 0 ? (
-        <ol
-          className="space-y-2.5"
-          aria-live={isRunning ? 'polite' : undefined}
-          aria-atomic={isRunning ? 'false' : undefined}
-        >
-          {entries.map((entry, i) => (
-            // Cheap element creation only — the actual row render is memoized in
-            // `TimelineEntryRow`, so a streaming flush re-renders just the single
-            // growing trailing row instead of every prior entry (O(1), not O(N)).
-            <TimelineEntryRow
-              key={entryKey(entry)}
-              entry={entry}
-              // Snapshot the open turn's markdown into its own prop — see the
-              // `markdown` prop doc on why identity memoization alone isn't enough.
-              markdown={entry.kind === 'text' ? entry.markdown : ''}
-              isLast={i === entries.length - 1}
-              isRunning={isRunning}
-            />
-          ))}
-        </ol>
+        <>
+          {hiddenCount > 0 && (
+            <div className="mb-2.5 flex justify-center">
+              <button
+                type="button"
+                onClick={showEarlier}
+                className="rounded-md border border-border bg-white/[0.03] px-3 py-1.5 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-white/[0.05] focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                Show {hiddenCount} earlier {hiddenCount === 1 ? 'entry' : 'entries'}
+              </button>
+            </div>
+          )}
+          <ol
+            className="space-y-2.5"
+            aria-live={isRunning ? 'polite' : undefined}
+            aria-atomic={isRunning ? 'false' : undefined}
+          >
+            {visible.map((entry, i) => (
+              // Cheap element creation only — the actual row render is memoized in
+              // `TimelineEntryRow`, so a streaming flush re-renders just the single
+              // growing trailing row instead of every prior entry (O(1), not O(N)).
+              <TimelineEntryRow
+                key={entryKey(entry)}
+                entry={entry}
+                // Snapshot the open turn's markdown into its own prop — see the
+                // `markdown` prop doc on why identity memoization alone isn't enough.
+                markdown={entry.kind === 'text' ? entry.markdown : ''}
+                // The window is a suffix, so its last element is the true tail.
+                isLast={i === visible.length - 1}
+                isRunning={isRunning}
+              />
+            ))}
+          </ol>
+        </>
       ) : (
         <p className="text-sm text-muted-foreground">
           {isRunning ? 'Waiting for first token…' : 'No activity recorded for this session.'}

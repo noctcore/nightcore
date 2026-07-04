@@ -1,4 +1,33 @@
-import { type RefObject, useEffect, useRef, useState } from 'react';
+import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
+
+import type { TimelineEntry } from '../session-stream';
+
+/** Result of {@link useCappedEntries}. */
+export interface CappedEntries {
+  /** The trailing window of entries to actually mount. */
+  visible: TimelineEntry[];
+  /** How many older entries are withheld behind the "show earlier" affordance. */
+  hiddenCount: number;
+  /** Reveal one more page of older entries (grows the window from the top). */
+  showEarlier: () => void;
+}
+
+/** Cap a session's mounted timeline to a growable trailing window.
+ *
+ *  A long agent run streams hundreds–thousands of turns; mounting every one is an
+ *  unbounded DOM (each closed text turn also holds a marked+DOMPurify subtree),
+ *  which causes scroll jank and slow drawer-open on exactly the longest runs. This
+ *  mounts only the last `pageSize` entries — the newest, most relevant ones — and
+ *  reveals older pages on demand. Anchoring the window to the TAIL keeps
+ *  auto-follow and the in-place-streaming trailing row untouched (they live at the
+ *  end, always mounted). */
+export function useCappedEntries(entries: TimelineEntry[], pageSize: number): CappedEntries {
+  const [visibleCount, setVisibleCount] = useState(pageSize);
+  const showEarlier = useCallback(() => setVisibleCount((c) => c + pageSize), [pageSize]);
+  const start = Math.max(0, entries.length - visibleCount);
+  const visible = start > 0 ? entries.slice(start) : entries;
+  return { visible, hiddenCount: start, showEarlier };
+}
 
 /** Generic collapse state for a session-log block. The latest session opens by
  *  default (`defaultOpen`); older sessions stay collapsed until clicked. The
