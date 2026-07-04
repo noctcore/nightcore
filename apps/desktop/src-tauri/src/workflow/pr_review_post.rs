@@ -23,7 +23,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 
 use super::merge::require_project;
-use super::pr::{run_gh_bounded, GH_BINARY};
+use super::pr::{map_gh_failure, probe_gh, run_gh_bounded, GH_BINARY};
 use crate::store::TaskStore;
 
 /// Wall-clock bound on every network-facing PR-review `gh` spawn (diff fetch + post).
@@ -97,14 +97,7 @@ fn fetch_pr_diff_with(
     if pr_number == 0 {
         return Err("enter a valid PR number (a positive integer)".to_string());
     }
-    // Probe with `which` (PATHEXT-aware) so a missing gh reads as "install it", and a
-    // spawn-time NotFound after a green probe reads as the vanished-cwd launch failure
-    // it actually is (run_gh_bounded's mapping) — never as a missing tool.
-    if which::which(binary).is_err() {
-        return Err(
-            "GitHub CLI (`gh`) is not installed — install it to review pull requests".to_string(),
-        );
-    }
+    probe_gh(binary, "install it to review pull requests")?;
     let number = pr_number.to_string();
 
     let diff_out = run_gh_bounded(
@@ -116,15 +109,7 @@ fn fetch_pr_diff_with(
         "timed out fetching the PR diff from GitHub — check your network and try again",
     )?;
     if !diff_out.status.success() {
-        let stderr = diff_out.stderr.trim();
-        return Err(if stderr.is_empty() {
-            format!(
-                "`{binary} pr diff` failed (exit {:?})",
-                diff_out.status.code()
-            )
-        } else {
-            stderr.to_string()
-        });
+        return Err(map_gh_failure(binary, "pr diff", &diff_out));
     }
     let diff = cap_diff(diff_out.stdout, PR_DIFF_CAP);
 
@@ -137,15 +122,7 @@ fn fetch_pr_diff_with(
         "timed out fetching the PR changed files from GitHub — check your network and try again",
     )?;
     if !names_out.status.success() {
-        let stderr = names_out.stderr.trim();
-        return Err(if stderr.is_empty() {
-            format!(
-                "`{binary} pr diff --name-only` failed (exit {:?})",
-                names_out.status.code()
-            )
-        } else {
-            stderr.to_string()
-        });
+        return Err(map_gh_failure(binary, "pr diff --name-only", &names_out));
     }
     let changed_files: Vec<String> = names_out
         .stdout
@@ -192,12 +169,7 @@ fn post_review_with(
     }
     // Validate the verdict BEFORE any probe/spawn so a bad value fails cheaply.
     let event = review_event(verdict)?;
-    if which::which(binary).is_err() {
-        return Err(
-            "GitHub CLI (`gh`) is not installed — install it to post pull-request reviews"
-                .to_string(),
-        );
-    }
+    probe_gh(binary, "install it to post pull-request reviews")?;
     let payload = build_review_payload(event, body, comments);
     let endpoint = format!("repos/{{owner}}/{{repo}}/pulls/{pr_number}/reviews");
     let out = run_gh_bounded(
@@ -209,13 +181,7 @@ fn post_review_with(
         "timed out posting the review to GitHub — check your network and try again",
     )?;
     if !out.status.success() {
-        let stderr = out.stderr.trim();
-        return Err(if stderr.is_empty() {
-            format!("`{binary} api` failed (exit {:?})", out.status.code())
-        } else {
-            // gh's stderr explains itself (auth, rate limit, unknown repo, …).
-            stderr.to_string()
-        });
+        return Err(map_gh_failure(binary, "api", &out));
     }
     Ok(())
 }

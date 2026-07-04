@@ -19,6 +19,34 @@ pub(crate) struct GhOutput {
     pub(crate) stderr: String,
 }
 
+/// The `which`-probe every string-returning `gh` seam runs before spawning: a
+/// missing `gh` reads as a clear install message (`action_msg` names what the
+/// caller was doing, e.g. "install it to list pull requests"), and a spawn-time
+/// NotFound AFTER a green probe reads as the vanished-cwd launch failure it
+/// actually is ([`run_gh_bounded`]'s mapping) — never as a missing tool. `which`
+/// is PATHEXT-aware, so a Windows `cmd /C <name>` fallback that would
+/// spawn-succeed-then-exit-nonzero can't misread "gh absent" as a command
+/// failure. (The enum-returning create seam keeps its own `ToolAbsent` probe.)
+pub(crate) fn probe_gh(binary: &str, action_msg: &str) -> Result<(), String> {
+    if which::which(binary).is_err() {
+        return Err(format!("GitHub CLI (`gh`) is not installed — {action_msg}"));
+    }
+    Ok(())
+}
+
+/// Map a non-zero `gh <subcmd>` exit to a user-facing string: prefer `gh`'s own
+/// stderr (it explains itself — auth, rate limit, unknown repo, …) and fall back
+/// to a synthetic "`gh <subcmd>` failed (exit N)" when stderr is empty. Call only
+/// after `!out.status.success()`.
+pub(crate) fn map_gh_failure(binary: &str, subcmd: &str, out: &GhOutput) -> String {
+    let stderr = out.stderr.trim();
+    if stderr.is_empty() {
+        format!("`{binary} {subcmd}` failed (exit {:?})", out.status.code())
+    } else {
+        stderr.to_string()
+    }
+}
+
 /// Spawn `binary args…` in `dir` (feeding `stdin_payload` when given), drain
 /// both pipes on threads, and wait under `deadline` — `gh` talks to the
 /// network, so a black-holed GitHub errors out (`timeout_msg`) instead of

@@ -31,7 +31,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use ts_rs::TS;
 
 use super::merge::{commit_in_flight, lease_held, merge_in_flight, require_project, TaskLease};
-use super::pr::{pr_in_flight, run_gh_bounded, GH_BINARY};
+use super::pr::{map_gh_failure, pr_in_flight, probe_gh, run_gh_bounded, GH_BINARY};
 use crate::settings::SettingsStore;
 use crate::store::TaskStore;
 use crate::task::{Task, TaskStatus, TASK_EVENT};
@@ -212,15 +212,7 @@ fn fetch_pr_view_with(
     number: u64,
     deadline: Duration,
 ) -> Result<GhPrView, String> {
-    // Probe with `which` (PATHEXT-aware) so a missing gh reads as "install it",
-    // and a spawn-time NotFound AFTER a green probe reads as the vanished-cwd
-    // launch failure it actually is (run_gh_bounded's mapping) — never as a
-    // missing tool.
-    if which::which(binary).is_err() {
-        return Err(
-            "GitHub CLI (`gh`) is not installed — install it to track pull requests".to_string(),
-        );
-    }
+    probe_gh(binary, "install it to track pull requests")?;
     let number_arg = number.to_string();
     let out = run_gh_bounded(
         dir,
@@ -231,13 +223,7 @@ fn fetch_pr_view_with(
         "timed out reading the pull request from GitHub — check your network and try again",
     )?;
     if !out.status.success() {
-        let stderr = out.stderr.trim();
-        return Err(if stderr.is_empty() {
-            format!("`{binary} pr view` failed (exit {:?})", out.status.code())
-        } else {
-            // gh's stderr explains itself ("no pull requests found for …").
-            stderr.to_string()
-        });
+        return Err(map_gh_failure(binary, "pr view", &out));
     }
     serde_json::from_str(out.stdout.trim())
         .map_err(|e| format!("`{binary} pr view` returned unparseable JSON: {e}"))

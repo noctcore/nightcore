@@ -16,7 +16,7 @@ use tauri::AppHandle;
 use ts_rs::TS;
 
 use super::merge::require_project;
-use super::pr::{run_gh_bounded, GH_BINARY};
+use super::pr::{map_gh_failure, probe_gh, run_gh_bounded, GH_BINARY};
 
 const GH_LIST_TIMEOUT: Duration = Duration::from_secs(60);
 /// The `--json` field set the master-detail picker renders. `author` and `labels`
@@ -156,12 +156,7 @@ fn list_open_prs_with(
     binary: &str,
     deadline: Duration,
 ) -> Result<Vec<PrSummary>, String> {
-    // Probe first so an absent tool is a clear install message, not a raw spawn error.
-    if which::which(binary).is_err() {
-        return Err(
-            "GitHub CLI (`gh`) is not installed — install it to list pull requests".to_string(),
-        );
-    }
+    probe_gh(binary, "install it to list pull requests")?;
     let out = run_gh_bounded(
         dir,
         binary,
@@ -180,13 +175,7 @@ fn list_open_prs_with(
         "timed out listing pull requests — check your network and try again",
     )?;
     if !out.status.success() {
-        let stderr = out.stderr.trim();
-        return Err(if stderr.is_empty() {
-            format!("`{binary} pr list` failed (exit {:?})", out.status.code())
-        } else {
-            // gh's stderr explains itself (auth, no remote, unknown repo, …).
-            stderr.to_string()
-        });
+        return Err(map_gh_failure(binary, "pr list", &out));
     }
     parse_pr_list(&out.stdout)
 }

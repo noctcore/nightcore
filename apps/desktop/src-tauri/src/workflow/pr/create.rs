@@ -8,7 +8,7 @@ use std::sync::{Mutex, OnceLock};
 
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::gh::{run_gh_bounded, GH_BINARY};
+use super::gh::{map_gh_failure, run_gh_bounded, GH_BINARY};
 use super::parse::{parse_pr_url, parse_pr_view};
 use crate::gauntlet;
 use crate::gauntlet_project;
@@ -326,13 +326,9 @@ fn create_pr_with(
         Err(message) => return PrCreateOutcome::Failed { message },
     };
     if !out.status.success() {
-        let stderr = out.stderr.trim();
-        let message = if stderr.is_empty() {
-            format!("`{binary} pr create` failed (exit {:?})", out.status.code())
-        } else {
-            stderr.to_string()
+        return PrCreateOutcome::Failed {
+            message: map_gh_failure(binary, "pr create", &out),
         };
-        return PrCreateOutcome::Failed { message };
     }
     match parse_pr_url(&out.stdout) {
         Some((url, number)) => PrCreateOutcome::Created { url, number },
