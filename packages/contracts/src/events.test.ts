@@ -249,3 +249,43 @@ describe('NightcoreEventSchema rejections', () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe('session-failed structured ErrorDetail (additive)', () => {
+  test('accepts and preserves a structured detail alongside reason/message', () => {
+    const event = {
+      type: 'session-failed',
+      sessionId: 9,
+      reason: 'authentication',
+      message: 'auth failed',
+      detail: { category: 'auth', message: 'auth failed', retriable: false },
+    } satisfies NightcoreEvent;
+    const parsed = NightcoreEventSchema.parse(event);
+    expect(parsed).toEqual(event);
+  });
+
+  test('stays backward-compatible when detail is omitted', () => {
+    const parsed = NightcoreEventSchema.parse({
+      type: 'session-failed',
+      sessionId: 9,
+      reason: 'rate-limit',
+      message: 'slow down',
+    });
+    expect(parsed).toEqual({
+      type: 'session-failed',
+      sessionId: 9,
+      reason: 'rate-limit',
+      message: 'slow down',
+    });
+  });
+
+  test('rejects a detail with an unlisted category', () => {
+    const result = NightcoreEventSchema.safeParse({
+      type: 'session-failed',
+      sessionId: 9,
+      reason: 'unknown',
+      message: 'x',
+      detail: { category: 'meltdown', message: 'x', retriable: false },
+    });
+    expect(result.success).toBe(false);
+  });
+});

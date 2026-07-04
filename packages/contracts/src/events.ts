@@ -211,6 +211,59 @@ export const SessionCompletedEvent = z.object({
     .optional(),
 });
 
+/**
+ * Structured error taxonomy — the coarse, retriability-oriented CATEGORY a
+ * failure boundary can programmatically branch on, distinct from the
+ * display-oriented `reason`. It is a superset of the session `reason` set that
+ * folds the finer reasons into recovery-relevant buckets AND names categories
+ * other command boundaries can produce as structured errors spread past the
+ * session/run seam (`not-found`, `disk-full`). The auto-loop + circuit breaker
+ * key their recovery policy off this, not off a parsed message string.
+ */
+export const ErrorCategorySchema = z.enum([
+  /** Credentials/authorization are broken (auth failed, org not allowed). A
+   *  fatal-setup cause: retrying more tasks under the same broken credential
+   *  just burns the board, so the breaker stops the loop AT ONCE. */
+  'auth',
+  /** Provider rate-limited / overloaded. Transient: backoff + retry can succeed. */
+  'rate-limit',
+  /** The runner/subprocess crashed or the stream wedged. Usually transient. */
+  'runner-crash',
+  /** A required resource (file/session/task/branch) was not found. Terminal. */
+  'not-found',
+  /** The disk is full (ENOSPC / no space left). A fatal-setup cause: more tasks
+   *  fail identically until space is freed, so the breaker stops the loop at once. */
+  'disk-full',
+  /** An autonomy ceiling was hit (max turns / max budget). Per-task terminal;
+   *  needs human attention rather than a blind retry. */
+  'resource-exhausted',
+  /** The run was cancelled/interrupted (user cancel or a breaker pause). NOT a
+   *  broken-setup signal — never counts toward the breaker. */
+  'aborted',
+  /** Unclassified. Treated as transient (tolerant window) by the breaker. */
+  'unknown',
+]);
+export type ErrorCategory = z.infer<typeof ErrorCategorySchema>;
+
+/**
+ * Structured error detail carried ALONGSIDE the human `message` at a failure
+ * boundary so consumers branch on `category`/`retriable` instead of scraping a
+ * string. Additive everywhere it appears: the boundary's existing `reason` +
+ * `message` fields are untouched, and this whole object is optional so an older
+ * engine that omits it degrades to the legacy reason mapping.
+ */
+export const ErrorDetailSchema = z.object({
+  /** The recovery-relevant category the consumer branches on. */
+  category: ErrorCategorySchema,
+  /** Human-readable message (mirrors the boundary's display string). */
+  message: z.string(),
+  /** True when retrying the SAME operation could plausibly succeed (rate-limit,
+   *  a transient runner crash) vs. a terminal cause (auth, resource ceiling,
+   *  not-found, disk-full). The auto-loop uses this to decide retry vs. stop. */
+  retriable: z.boolean(),
+});
+export type ErrorDetail = z.infer<typeof ErrorDetailSchema>;
+
 /** Session failed or the runner crashed. Degrade-not-throw: the manager always
  *  emits this rather than rejecting, mirroring shiranami's `failAllPending`. */
 export const SessionFailedEvent = z.object({
@@ -227,6 +280,12 @@ export const SessionFailedEvent = z.object({
     'unknown',
   ]),
   message: z.string(),
+  /** Structured, branch-on-able error detail (category + retriability), additive
+   *  alongside `reason`/`message`. Absent from older engine builds; consumers
+   *  fall back to mapping `reason` → category. The circuit breaker reads
+   *  `detail.category` to decide fatal-stop (auth/disk-full) vs. the tolerant
+   *  sliding window (rate-limit/runner-crash/unknown). */
+  detail: ErrorDetailSchema.optional(),
 });
 
 /** Session status transitioned (for surfaces that render a status line). */

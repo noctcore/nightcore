@@ -339,7 +339,12 @@
       "sessionId": 1,
       "type": "session-failed",
       "reason": "rate-limit",
-      "message": "slow down"
+      "message": "slow down",
+      "detail": {
+        "category": "rate-limit",
+        "message": "slow down",
+        "retriable": true
+      }
     },
     "session-status": {
       "sessionId": 1,

@@ -306,6 +306,8 @@ pub enum NightcoreEvent {
         session_id: u64,
         reason: SessionFailedReason,
         message: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        detail: Option<ErrorDetail>,
     },
     #[serde(rename_all = "camelCase")]
     SessionStatus {
@@ -608,6 +610,27 @@ pub enum EffortLevel {
     High,
     Xhigh,
     Max,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ErrorCategory {
+    Auth,
+    RateLimit,
+    RunnerCrash,
+    NotFound,
+    DiskFull,
+    ResourceExhausted,
+    Aborted,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ErrorDetail {
+    pub category: ErrorCategory,
+    pub message: String,
+    pub retriable: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

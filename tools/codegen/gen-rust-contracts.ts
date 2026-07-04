@@ -332,6 +332,9 @@ const STRUCT_NAMES: Record<string, string> = {
   // PR Review: one grounded review finding over the PR diff (severity reuses the
   // Insight `FindingSeverity` enum; lens is `ReviewLens`).
   'body|file|fingerprint|id|lens|line|severity|suggestedFix|title': 'ReviewFinding',
+  // Structured error taxonomy carried alongside a `session-failed`'s `message`
+  // (the auto-loop + breaker branch on `category`).
+  'category|message|retriable': 'ErrorDetail',
 };
 
 /** Stable Rust enum name for a referenced/inline `z.enum`. Named enums in the
@@ -348,6 +351,9 @@ const ENUM_NAMES: Record<string, string> = {
   'pending|running|completed|failed|killed|paused': 'TaskStatus',
   'authentication|rate-limit|aborted|runner-crash|max-turns|max-budget|unknown':
     'SessionFailedReason',
+  // The structured, branch-on-able error taxonomy (an `ErrorDetail.category`).
+  'auth|rate-limit|runner-crash|not-found|disk-full|resource-exhausted|aborted|unknown':
+    'ErrorCategory',
   'supported|unsupported|unavailable': 'ConfigSectionStatus',
   // Insight (codebase analysis) enums.
   'architecture|bugs|refactor|performance|security|tests|docs|ui-ux|dependencies':
@@ -1003,6 +1009,7 @@ const EVENT_INPUTS: Record<string, unknown> = {
     sessionId: 1,
     reason: 'rate-limit',
     message: 'slow down',
+    detail: { category: 'rate-limit', message: 'slow down', retriable: true },
   },
   'session-status': {
     type: 'session-status',
