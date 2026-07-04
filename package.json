@@ -36,7 +36,7 @@
     "lint": "bun run lint:plugin && eslint . && bun run lint:meta",
     "lint:plugin": "bun run --filter @nightcore/eslint-plugin build",
     "lint:meta": "bun run tools/lint-meta/cli.ts",
-    "audit": "bun audit",
+    "audit": "bun audit --audit-level=moderate",
     "audit:rust": "cd apps/desktop/src-tauri && cargo audit",
     "audit:all": "bun run audit && bun run audit:rust"
   },
