@@ -332,6 +332,17 @@ const STRUCT_NAMES: Record<string, string> = {
   // PR Review: one grounded review finding over the PR diff (severity reuses the
   // Insight `FindingSeverity` enum; lens is `ReviewLens`).
   'body|file|fingerprint|id|lens|line|severity|suggestedFix|title': 'ReviewFinding',
+  // Issue Triage: the nested structs reachable from the engine command/event unions.
+  // One issue comment carried into the validation session (untrusted).
+  'author|body|createdAt|id': 'IssueComment',
+  // One linked PR plus its capped diff, injected as untrusted validation context.
+  'diff|number|state|title': 'IssueLinkedPrContext',
+  // The linked-PR analysis nested inside the verdict result.
+  'hasOpenPR|prFixesIssue|prNumber|prSummary|recommendation': 'IssuePrAnalysis',
+  // The single structured verdict emitted by a validation (payload of
+  // `issue-validation-completed`).
+  'bugConfirmed|confidence|estimatedComplexity|issueKind|missingInfo|prAnalysis|proposedPlan|reasoning|relatedFiles|verdict':
+    'IssueValidationResult',
   // Structured error taxonomy carried alongside a `session-failed`'s `message`
   // (the auto-loop + breaker branch on `category`).
   'category|message|retriable': 'ErrorDetail',
@@ -383,6 +394,16 @@ const ENUM_NAMES: Record<string, string> = {
   // (`info|low|medium|high|critical`) reuses `FindingSeverity` above — an identical
   // value-set collapses to one generated Rust enum, so only the lens is new here.
   'security|logic|structure|tests|contracts': 'ReviewLens',
+  // Issue Triage enums. Only the value-sets reachable from the engine command/event
+  // unions are emitted: `IssuePrState` (via the linked-PR context on the start
+  // command), and the four verdict-result enums (via `issue-validation-completed`).
+  // `IssueState` (`open|closed`) is web/gh-only (never on the wire) so it is absent.
+  'open|closed|merged': 'IssuePrState',
+  'bug_report|feature_request|question|unknown': 'IssueKind',
+  'valid|invalid|needs_clarification': 'IssueVerdict',
+  'high|medium|low': 'IssueConfidence',
+  'trivial|simple|moderate|complex|very_complex': 'IssueComplexity',
+  'wait_for_merge|pr_needs_work|no_pr': 'IssuePrRecommendation',
 };
 
 function registerInlineEnum(
@@ -864,6 +885,41 @@ const COMMAND_INPUTS: Record<string, unknown> = {
     maxConcurrency: 3,
   },
   'cancel-pr-review': { type: 'cancel-pr-review', runId: 'run-pr1' },
+  'start-issue-validation': {
+    type: 'start-issue-validation',
+    runId: 'run-iv1',
+    projectPath: '/proj',
+    issueNumber: 128,
+    issueTitle: 'Crash when opening an empty project',
+    issueBody:
+      'Steps: open Nightcore with no projects configured → white screen.',
+    issueAuthor: 'octocat',
+    labels: ['bug', 'crash'],
+    comments: [
+      {
+        id: 'ic-1',
+        author: 'maintainer',
+        body: 'Can you attach the log file?',
+        createdAt: '2026-07-01T10:00:00Z',
+      },
+    ],
+    linkedPrs: [
+      {
+        number: 130,
+        title: 'Guard the empty-project render path',
+        state: 'open',
+        diff: 'diff --git a/apps/web/src/App.tsx b/apps/web/src/App.tsx\n@@ -1,3 +1,5 @@\n+ if (!project) return <ProjectsView />;\n',
+      },
+    ],
+    model: 'claude-opus-4-8',
+    effort: 'high',
+    maxTurns: 40,
+    maxBudgetUsd: 2,
+  },
+  'cancel-issue-validation': {
+    type: 'cancel-issue-validation',
+    runId: 'run-iv1',
+  },
 };
 
 /** A representative raw input per query variant (the request/reply stream). */
@@ -1434,6 +1490,65 @@ const EVENT_INPUTS: Record<string, unknown> = {
     runId: 'run-pr1',
     findingId: 'security-1',
     taskId: 'task-9',
+  },
+  'issue-validation-started': {
+    type: 'issue-validation-started',
+    runId: 'run-iv1',
+    issueNumber: 128,
+    model: 'claude-opus-4-8',
+  },
+  'issue-validation-progress': {
+    type: 'issue-validation-progress',
+    runId: 'run-iv1',
+    message: 'Investigating related files…',
+  },
+  'issue-validation-completed': {
+    type: 'issue-validation-completed',
+    runId: 'run-iv1',
+    issueNumber: 128,
+    result: {
+      issueKind: 'bug_report',
+      verdict: 'valid',
+      confidence: 'high',
+      reasoning:
+        'The empty-project path renders before the guard, so an undefined project deref crashes.',
+      bugConfirmed: true,
+      relatedFiles: [
+        'apps/web/src/App.tsx',
+        'apps/web/src/components/projects/ProjectsView/ProjectsView.tsx',
+      ],
+      estimatedComplexity: 'simple',
+      proposedPlan:
+        '1. Guard the empty state in App.tsx.\n2. Render ProjectsView when no project is active.',
+      missingInfo: [],
+      prAnalysis: {
+        hasOpenPR: true,
+        prNumber: 130,
+        prFixesIssue: true,
+        prSummary: 'PR #130 adds the missing guard and covers the empty-project case.',
+        recommendation: 'wait_for_merge',
+      },
+    },
+    costUsd: 0.06,
+    durationMs: 8200,
+    usage: {
+      inputTokens: 3000,
+      outputTokens: 700,
+      cacheReadTokens: 100,
+      cacheCreationTokens: 50,
+    },
+  },
+  'issue-validation-failed': {
+    type: 'issue-validation-failed',
+    runId: 'run-iv1',
+    reason: 'aborted',
+    message: 'cancelled by user',
+  },
+  'issue-validation-converted': {
+    type: 'issue-validation-converted',
+    runId: 'run-iv1',
+    issueNumber: 128,
+    taskId: 'task-42',
   },
   'query-result': {
     type: 'query-result',
