@@ -99,7 +99,7 @@ export function AppShell() {
     useAppShell();
   const { view, switcherOpen, collapsed, newProjectOpen } = routing;
   const { projects, active } = registry;
-  const { tasks, selected, selectedId, setSelectedId, anyRunning } = board;
+  const { tasks, selected, selectedId, setSelectedId, anyRunning, runningCount } = board;
 
   const runningProjectIds = anyRunning && active !== null ? [active.id] : [];
 
@@ -158,7 +158,7 @@ export function AppShell() {
             nav={NAV}
             collapsed={collapsed}
             switcherOpen={switcherOpen}
-            runningCount={anyRunning ? 1 : 0}
+            runningCount={runningCount}
             version="v0.1.0"
             onToggleCollapsed={routing.toggleCollapsed}
             onToggleSwitcher={routing.toggleSwitcher}

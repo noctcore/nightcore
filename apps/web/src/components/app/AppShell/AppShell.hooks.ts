@@ -3,6 +3,7 @@ import { useCallback, useMemo } from 'react';
 import {
   type ActiveWorktree,
   EMPTY_TRANSCRIPT,
+  isActive,
   type TaskDetailActions,
   type TaskTranscript,
 } from '@/components/board';
@@ -72,6 +73,9 @@ export interface AppShellState {
   newProject: ReturnType<typeof useNewProjectFlow>;
   board: ReturnType<typeof useBoard> & {
     anyRunning: boolean;
+    /** The count of concurrently running tasks (`in_progress` + `verifying`) —
+     *  drives the sidebar footer's "N running" indicator. */
+    runningCount: number;
     selected: Task | null;
     logCounts: Record<string, number>;
     blockedIds: Set<string>;
@@ -179,6 +183,13 @@ export interface AppShellState {
   isTauri: boolean;
 }
 
+/** The number of concurrently active tasks — `in_progress` + `verifying`. Drives
+ *  the sidebar footer's "N running" indicator, which must report the real count
+ *  (concurrency defaults to 3), not a boolean coerced to 1/0. */
+export function runningTaskCount(tasks: Task[]): number {
+  return tasks.filter((t) => isActive(t.status)).length;
+}
+
 /** The shell's single composition hook: routing, the project registry, settings,
  *  the New Project flow, and the board's task/stream wiring. Each domain hook
  *  lives in its own `./hooks/*` module; this composes them and exposes the cross-
@@ -213,10 +224,11 @@ export function useAppShell(): AppShellState {
   const createPr = useCreatePr(action, toast);
   const prLifecycle = usePrLifecycle(action, toast);
 
-  const anyRunning = useMemo(
-    () => tasks.some((t) => t.status === 'in_progress' || t.status === 'verifying'),
-    [tasks],
-  );
+  // The real concurrent-run count (tasks default to concurrency 3), not a boolean.
+  // The sidebar footer reads this to show "N running"; `anyRunning` is the derived
+  // yes/no used for the card pulse, TaskDetail, and the Projects running-dots.
+  const runningCount = useMemo(() => runningTaskCount(tasks), [tasks]);
+  const anyRunning = runningCount > 0;
   const selected = useMemo(
     () => tasks.find((t) => t.id === selectedId) ?? null,
     [tasks, selectedId],
@@ -693,6 +705,7 @@ export function useAppShell(): AppShellState {
     board: {
       ...board,
       anyRunning,
+      runningCount,
       selected,
       logCounts,
       blockedIds,
