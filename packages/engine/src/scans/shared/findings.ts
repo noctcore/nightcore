@@ -21,8 +21,10 @@ import {
 
 import { getNumber, getString, getStringArray } from '../../util/field-extract.js';
 
-/** Severity ordering for ranking/merge (low → high). */
-const SEVERITY_RANK: Record<FindingSeverity, number> = {
+/** Severity ordering for ranking/merge (low → high). Exported so every scan
+ *  pipeline (Insight / Harness / PR-review) shares one rank table instead of
+ *  re-declaring it. */
+export const SEVERITY_RANK: Record<FindingSeverity, number> = {
   info: 0,
   low: 1,
   medium: 2,
@@ -35,8 +37,9 @@ export function severityRank(s: FindingSeverity): number {
   return SEVERITY_RANK[s];
 }
 
-/** Normalize a title for fingerprinting/dedup: lowercase, collapse whitespace. */
-function normalizeTitle(title: string): string {
+/** Normalize a title for fingerprinting/dedup: lowercase, collapse whitespace.
+ *  Shared by every scan pipeline's fingerprint so the keys can never diverge. */
+export function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
@@ -103,13 +106,15 @@ function tryParse(s: string): unknown {
   }
 }
 
-/** The model's raw output is an array of finding objects, or an object with a
- *  `findings` array. Normalize to an array. */
-function toRawArray(parsed: unknown): unknown[] {
+/** The model's raw output is a bare array, or an object wrapping the array under a
+ *  known key (`findings` / `artifacts` / `subtasks`). Normalize to an array. Shared
+ *  by every scan + session pipeline; the wrapper key is passed by the caller so the
+ *  single helper serves all of them. */
+export function toRawArray(parsed: unknown, key: string): unknown[] {
   if (Array.isArray(parsed)) return parsed;
   if (parsed !== null && typeof parsed === 'object') {
-    const findings = (parsed as Record<string, unknown>).findings;
-    if (Array.isArray(findings)) return findings;
+    const nested = (parsed as Record<string, unknown>)[key];
+    if (Array.isArray(nested)) return nested;
   }
   return [];
 }
@@ -194,7 +199,10 @@ export function coerceLocation(raw: unknown): FindingLocation | undefined {
   return undefined;
 }
 
-function coerceSeverity(raw: unknown): FindingSeverity {
+/** Map a raw severity onto the unified scale, tolerant of common synonyms. Shared
+ *  by every scan pipeline (Insight / Harness / PR-review) — the value-set is
+ *  identical across them, so the coercion lives once. */
+export function coerceSeverity(raw: unknown): FindingSeverity {
   const v = String(raw).toLowerCase();
   if (v in SEVERITY_RANK) return v as FindingSeverity;
   // Map common synonyms onto the unified scale.
@@ -227,7 +235,7 @@ export function parseFindings(
   if (parsed === undefined) {
     return { findings: [], error: 'no JSON findings array in model output' };
   }
-  const items = toRawArray(parsed);
+  const items = toRawArray(parsed, 'findings');
   const findings: Finding[] = [];
   for (const item of items) {
     const finding = coerceFinding(item, category);

@@ -24,26 +24,20 @@ import {
 } from '@nightcore/contracts';
 
 import { getNumber, getString } from '../../util/field-extract.js';
-import { coerceLocation, extractJson, normalizeFile } from '../shared/findings.js';
+import {
+  coerceLocation,
+  coerceSeverity,
+  extractJson,
+  normalizeFile,
+  normalizeTitle,
+  severityRank,
+  toRawArray,
+} from '../shared/findings.js';
 
-/** Severity ordering for ranking/merge (low → high). Shares its value-set with the
- *  Insight scale but is defined locally so PR review carries no coupling to it. */
-const SEVERITY_RANK: Record<ReviewSeverity, number> = {
-  info: 0,
-  low: 1,
-  medium: 2,
-  high: 3,
-  critical: 4,
-};
-
-/** Numeric rank for a review severity (info=0 … critical=4), for ordering and merge. */
+/** Numeric rank for a review severity (info=0 … critical=4), for ordering and merge.
+ *  Delegates to the shared rank table (the value-set is identical across scans). */
 export function reviewSeverityRank(s: ReviewSeverity): number {
-  return SEVERITY_RANK[s];
-}
-
-/** Normalize a title for fingerprinting/dedup: lowercase, collapse whitespace. */
-function normalizeTitle(title: string): string {
-  return title.toLowerCase().replace(/\s+/g, ' ').trim();
+  return severityRank(s);
 }
 
 /**
@@ -61,26 +55,6 @@ export function reviewFingerprint(
 ): string {
   const basis = `${lens}|${normalizeFile(file)}|${normalizeTitle(title)}`;
   return createHash('sha1').update(basis).digest('hex').slice(0, 16);
-}
-
-/** The model's raw output is an array of finding objects, or an object with a
- *  `findings` array. Normalize to an array. */
-function toRawArray(parsed: unknown): unknown[] {
-  if (Array.isArray(parsed)) return parsed;
-  if (parsed !== null && typeof parsed === 'object') {
-    const findings = (parsed as Record<string, unknown>).findings;
-    if (Array.isArray(findings)) return findings;
-  }
-  return [];
-}
-
-/** Map a raw severity onto the unified scale, tolerant of common synonyms. */
-function coerceSeverity(raw: unknown): ReviewSeverity {
-  const v = String(raw).toLowerCase();
-  if (v in SEVERITY_RANK) return v as ReviewSeverity;
-  if (v === 'warning' || v === 'minor' || v === 'suggestion') return 'low';
-  if (v === 'major' || v === 'error') return 'high';
-  return 'medium';
 }
 
 /** Keep a line number only when it is a positive integer (the contract's shape);
@@ -153,7 +127,7 @@ export function parsePrReviewFindings(
   if (parsed === undefined) {
     return { findings: [], error: 'no JSON review findings in model output' };
   }
-  const items = toRawArray(parsed);
+  const items = toRawArray(parsed, 'findings');
   const findings: ReviewFinding[] = [];
   for (const item of items) {
     const finding = coerceReviewFinding(item, lens);

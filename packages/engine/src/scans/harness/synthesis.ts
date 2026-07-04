@@ -33,8 +33,9 @@ import {
 import type { Logger } from '@nightcore/shared';
 
 import { getNumber, getString, getStringArray } from '../../util/field-extract.js';
-import { extractJson } from '../shared/findings.js';
+import { extractJson, toRawArray } from '../shared/findings.js';
 import {
+  addUsage,
   makeHeartbeat,
   type ScanRunnerFactory,
   type ScanSessionRunner,
@@ -401,17 +402,6 @@ function artifactFingerprint(kind: string, targetPath: string): string {
   return createHash('sha1').update(basis).digest('hex').slice(0, 16);
 }
 
-/** The model's raw output is an array of artifacts, or an object with an
- *  `artifacts` array. Normalize to an array. */
-function toRawArray(parsed: unknown): unknown[] {
-  if (Array.isArray(parsed)) return parsed;
-  if (parsed !== null && typeof parsed === 'object') {
-    const artifacts = (parsed as Record<string, unknown>).artifacts;
-    if (Array.isArray(artifacts)) return artifacts;
-  }
-  return [];
-}
-
 /**
  * Parse + GROUND the synthesis result into validated artifacts. Tolerant:
  * malformed items are skipped. GROUNDING drops any artifact whose `targetPath` is
@@ -427,7 +417,7 @@ export function parseProposedArtifacts(
   if (parsed === undefined) {
     return { artifacts: [], error: 'no JSON artifacts array in synthesis output' };
   }
-  const items = toRawArray(parsed);
+  const items = toRawArray(parsed, 'artifacts');
   const artifacts: ProposedArtifact[] = [];
   for (const item of items) {
     const artifact = coerceArtifact(item, projectPath);
@@ -459,7 +449,7 @@ export function parseSynthesis(raw: string, projectPath: string): ParsedSynthesi
     return { artifacts: [], proposals: [], error: 'no JSON in synthesis output' };
   }
   const artifacts: ProposedArtifact[] = [];
-  for (const item of toRawArray(parsed)) {
+  for (const item of toRawArray(parsed, 'artifacts')) {
     const artifact = coerceArtifact(item, projectPath);
     if (artifact !== undefined) artifacts.push(artifact);
   }
@@ -711,13 +701,4 @@ function isContainedPath(projectPath: string, rel: string): boolean {
   const abs = path.resolve(projectPath, rel);
   const root = path.resolve(projectPath);
   return abs === root || abs.startsWith(root + path.sep);
-}
-
-/** Accumulate token usage in place. */
-function addUsage(into: TokenUsage, add: TokenUsage | undefined): void {
-  if (add === undefined) return;
-  into.inputTokens += add.inputTokens;
-  into.outputTokens += add.outputTokens;
-  into.cacheReadTokens += add.cacheReadTokens;
-  into.cacheCreationTokens += add.cacheCreationTokens;
 }

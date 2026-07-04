@@ -21,31 +21,20 @@ import {
   ConventionFindingSchema,
   type ConventionKind,
   type FindingLocation,
-  type FindingSeverity,
 } from '@nightcore/contracts';
 
 import { getNumber, getString, getStringArray } from '../../util/field-extract.js';
 import {
   clampLocationLines,
   coerceLocation,
+  coerceSeverity,
   extractJson,
   fileExists,
   lineCount,
+  normalizeTitle,
+  severityRank,
+  toRawArray,
 } from '../shared/findings.js';
-
-/** Severity ordering for ranking/merge (low → high). */
-const SEVERITY_RANK: Record<FindingSeverity, number> = {
-  info: 0,
-  low: 1,
-  medium: 2,
-  high: 3,
-  critical: 4,
-};
-
-/** Normalize a title for fingerprinting/dedup: lowercase, collapse whitespace. */
-function normalizeTitle(title: string): string {
-  return title.toLowerCase().replace(/\s+/g, ' ').trim();
-}
 
 /**
  * Stable content fingerprint for a convention: `category | title`. Unlike
@@ -60,17 +49,6 @@ export function conventionFingerprint(
 ): string {
   const basis = `${category}|${normalizeTitle(title)}`;
   return createHash('sha1').update(basis).digest('hex').slice(0, 16);
-}
-
-/** The model's raw output is an array of finding objects, or an object with a
- *  `findings` array. Normalize to an array. */
-function toRawArray(parsed: unknown): unknown[] {
-  if (Array.isArray(parsed)) return parsed;
-  if (parsed !== null && typeof parsed === 'object') {
-    const findings = (parsed as Record<string, unknown>).findings;
-    if (Array.isArray(findings)) return findings;
-  }
-  return [];
 }
 
 /** Coerce one raw model item into a contract {@link ConventionFinding}, forcing
@@ -134,15 +112,6 @@ function coerceKind(raw: unknown): ConventionKind {
   return String(raw).toLowerCase() === 'convention' ? 'convention' : 'gap';
 }
 
-function coerceSeverity(raw: unknown): FindingSeverity {
-  const v = String(raw).toLowerCase();
-  if (v in SEVERITY_RANK) return v as FindingSeverity;
-  // Map common synonyms onto the unified scale.
-  if (v === 'warning' || v === 'minor' || v === 'suggestion') return 'low';
-  if (v === 'major' || v === 'error') return 'high';
-  return 'medium';
-}
-
 /**
  * Parse a convention pass's raw result text into validated findings. Tolerant:
  * malformed items are skipped, not fatal. Returns the parsed findings plus an
@@ -157,7 +126,7 @@ export function parseConventionFindings(
   if (parsed === undefined) {
     return { findings: [], error: 'no JSON convention findings in model output' };
   }
-  const items = toRawArray(parsed);
+  const items = toRawArray(parsed, 'findings');
   const findings: ConventionFinding[] = [];
   for (const item of items) {
     const finding = coerceConventionFinding(item, category);
@@ -211,7 +180,7 @@ export function dedupeConventionFindings(
       continue;
     }
     const winner =
-      SEVERITY_RANK[finding.severity] > SEVERITY_RANK[existing.severity]
+      severityRank(finding.severity) > severityRank(existing.severity)
         ? finding
         : existing;
     const tags = [...new Set([...existing.tags, ...finding.tags])];

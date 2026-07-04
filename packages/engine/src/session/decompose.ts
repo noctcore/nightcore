@@ -14,7 +14,7 @@
  */
 import { z } from 'zod';
 
-import { extractJson } from '../scans/shared/findings.js';
+import { extractJson, toRawArray } from '../scans/shared/findings.js';
 
 /** One proposed sub-task: a short imperative `title` + a self-contained `prompt`.
  *  This IS the element shape of the optional `proposedSubtasks` array on the
@@ -26,18 +26,6 @@ const ProposedSubtaskSchema = z.object({
 
 export type ProposedSubtask = z.infer<typeof ProposedSubtaskSchema>;
 
-/** Coerce the extracted JSON to an array of candidate items. The model is
- *  instructed to emit a bare array; tolerate the common `{ "subtasks": [...] }`
- *  wrapper too. Anything else ⇒ no items. */
-function toRawArray(parsed: unknown): unknown[] {
-  if (Array.isArray(parsed)) return parsed;
-  if (parsed !== null && typeof parsed === 'object') {
-    const subtasks = (parsed as Record<string, unknown>).subtasks;
-    if (Array.isArray(subtasks)) return subtasks;
-  }
-  return [];
-}
-
 /**
  * Parse a decompose session's final result text into validated sub-task proposals.
  * Returns the clean array — empty on ANY failure (no JSON, malformed JSON, no valid
@@ -46,7 +34,7 @@ function toRawArray(parsed: unknown): unknown[] {
  */
 export function parseSubtasks(result: string): ProposedSubtask[] {
   if (typeof result !== 'string') return [];
-  const items = toRawArray(extractJson(result));
+  const items = toRawArray(extractJson(result), 'subtasks');
   const subtasks: ProposedSubtask[] = [];
   for (const item of items) {
     const parsed = ProposedSubtaskSchema.safeParse(item);
