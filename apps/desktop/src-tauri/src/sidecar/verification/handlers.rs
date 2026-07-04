@@ -155,47 +155,73 @@ pub(crate) async fn handle_build_completed(
         _ => crate::gauntlet_project::run(&review_dir.path),
     };
 
-    // Anti-gaming sweep: always-on for worktree builds (no manifest entry arms
-    // it — it guards the gate machinery itself), appended only while the manifest
-    // checks passed so the fix agent sees ONE failure at a time (stop-at-first).
-    // The task's flight-recorder ledger rides along for the Bash-history half of
-    // the sweep (`--no-verify` bypasses the diff can't show).
-    if lock.passed && review_dir.is_worktree {
-        if let Some(project) = app.state::<ProjectStore>().active() {
-            let ledger = crate::store::ledger::ledger_path(Path::new(&project.path), task_id);
-            crate::workflow::anti_gaming::append_anti_gaming_check(
-                &mut lock,
-                &review_dir.path,
-                Path::new(&project.path),
-                Some(&ledger),
-            );
-        }
-    }
-
-    // Agent-contract budget (module #8, gate tier): a CLAUDE.md/AGENTS.md this
-    // run touched that outgrew the compiled instruction budget fails
-    // deterministically — the generation-time budget, re-checked at verify.
-    // Worktree builds only (the committed diff is what says "touched").
-    if lock.passed && review_dir.is_worktree {
-        if let Some(project) = app.state::<ProjectStore>().active() {
-            crate::workflow::contract_budget::append_contract_budget_check(
-                &mut lock,
-                &review_dir.path,
-                Path::new(&project.path),
-            );
-        }
-    }
-
-    // Strictness ratchet: recount the review dir's laxness against the project's
-    // snapshotted `.nightcore/ratchet.json` baseline (absent ⇒ nothing appended;
-    // held ⇒ a visible Passed check). Same stop-at-first gating as above.
+    // The three independent read-only measurements — the anti-gaming sweep, the
+    // agent-contract budget, and the strictness ratchet — each measure the SAME
+    // review dir with NO dependency on one another (finding #2). Sequentially they
+    // paid each subprocess's latency in series; instead, once the gauntlet has
+    // passed, run the applicable ones CONCURRENTLY on the blocking pool and fold
+    // their checks in canonical order. Semantics preserved EXACTLY:
+    //   - anti-gaming: always-on for worktree builds (no manifest arms it — it
+    //     guards the gate machinery itself); its Bash-history half reads the run's
+    //     flight-recorder ledger for the `--no-verify` bypass the diff can't show.
+    //   - contract-budget (module #8): a CLAUDE.md/AGENTS.md this run touched that
+    //     outgrew the compiled instruction budget; worktree builds only (the
+    //     committed diff is what says "touched").
+    //   - ratchet: recount the review dir's laxness vs the snapshotted
+    //     `.nightcore/ratchet.json` baseline (absent ⇒ nothing; held ⇒ a Passed check).
+    // The fold ([`merge_gate`]) reproduces the old stop-at-first byte-for-byte:
+    // gates merge in the fixed order [anti-gaming, contract-budget, ratchet], the
+    // FIRST failure sets `failed_check`, and every gate after it is dropped — the
+    // agent still sees one failure at a time. Only the wall-clock collapses
+    // (sum → max); a gate whose result is dropped ran a harmless read-only probe.
     if lock.passed {
         if let Some(project) = app.state::<ProjectStore>().active() {
-            crate::workflow::ratchet::append_ratchet_check(
-                &mut lock,
-                &review_dir.path,
-                Path::new(&project.path),
-            );
+            let project_root = PathBuf::from(&project.path);
+            let review = review_dir.path.clone();
+            let ledger = crate::store::ledger::ledger_path(&project_root, task_id);
+
+            // Spawn each applicable gate over a FRESH result (so its append logic is
+            // self-contained), collecting handles in the canonical fold order.
+            let mut jobs: Vec<tauri::async_runtime::JoinHandle<StructureLockResult>> = Vec::new();
+            if review_dir.is_worktree {
+                let (r, p, l) = (review.clone(), project_root.clone(), ledger.clone());
+                jobs.push(tauri::async_runtime::spawn_blocking(move || {
+                    let mut g = StructureLockResult::empty_pass();
+                    crate::workflow::anti_gaming::append_anti_gaming_check(
+                        &mut g,
+                        &r,
+                        &p,
+                        Some(&l),
+                    );
+                    g
+                }));
+                let (r, p) = (review.clone(), project_root.clone());
+                jobs.push(tauri::async_runtime::spawn_blocking(move || {
+                    let mut g = StructureLockResult::empty_pass();
+                    crate::workflow::contract_budget::append_contract_budget_check(&mut g, &r, &p);
+                    g
+                }));
+            }
+            let (r, p) = (review.clone(), project_root.clone());
+            jobs.push(tauri::async_runtime::spawn_blocking(move || {
+                let mut g = StructureLockResult::empty_pass();
+                crate::workflow::ratchet::append_ratchet_check(&mut g, &r, &p);
+                g
+            }));
+
+            // Fold in canonical order with stop-at-first: a gate contributes only
+            // while everything before it passed; the rest are discarded.
+            for job in jobs {
+                if !lock.passed {
+                    break;
+                }
+                match job.await {
+                    Ok(gate) => merge_gate(&mut lock, gate),
+                    Err(e) => {
+                        tracing::warn!(target: "nightcore", task_id, error = %e, "gate measurement task failed to join; skipping")
+                    }
+                }
+            }
         }
     }
 
@@ -252,6 +278,24 @@ pub(crate) async fn handle_build_completed(
             task.error = Some(format!("could not start reviewer: {e}"));
         });
         park_for_approval(app, task_id, None);
+    }
+}
+
+/// Fold one independently-measured gate result (finding #2) into the running
+/// structure-lock `lock`, reproducing the old sequential stop-at-first EXACTLY.
+/// Callers merge gates in the fixed canonical order and stop at the first failure,
+/// so when this runs `lock` has passed so far: append the gate's check(s) in order,
+/// and on failure flip `passed` + adopt its `failed_check` (only if none is set yet,
+/// so the FIRST failing gate owns the reported check). A passing/empty gate leaves
+/// `passed`/`failed_check` untouched — byte-identical to having called the gate's
+/// `append_*` directly on `lock` in sequence.
+fn merge_gate(lock: &mut StructureLockResult, gate: StructureLockResult) {
+    lock.checks.extend(gate.checks);
+    if !gate.passed {
+        lock.passed = false;
+        if lock.failed_check.is_none() {
+            lock.failed_check = gate.failed_check;
+        }
     }
 }
 
@@ -502,8 +546,75 @@ fn build_commit_message(task: &Task) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::build_commit_message;
+    use super::{build_commit_message, merge_gate};
+    use crate::store::types::{StepStatus, StructureLockCheck, StructureLockResult};
     use crate::task::Task;
+
+    fn check(name: &str, status: StepStatus) -> StructureLockCheck {
+        StructureLockCheck {
+            name: name.to_string(),
+            kind: name.to_string(),
+            command: name.to_string(),
+            status,
+            exit_code: None,
+            output: None,
+        }
+    }
+
+    /// A gate measured over a fresh result: a single failing check (mirrors how the
+    /// `append_*` gates flip their own fresh result on failure).
+    fn failing_gate(name: &str) -> StructureLockResult {
+        StructureLockResult {
+            passed: false,
+            checks: vec![check(name, StepStatus::Failed)],
+            failed_check: Some(name.to_string()),
+        }
+    }
+
+    /// A gate that appended a visible Passed check but did not fail.
+    fn passing_gate(name: &str) -> StructureLockResult {
+        StructureLockResult {
+            passed: true,
+            checks: vec![check(name, StepStatus::Passed)],
+            failed_check: None,
+        }
+    }
+
+    #[test]
+    fn merge_gate_folds_passing_gates_in_order() {
+        // gauntlet already passed → merge two passing gates; order + pass preserved.
+        let mut lock = StructureLockResult::empty_pass();
+        lock.checks.push(check("gauntlet", StepStatus::Passed));
+        merge_gate(&mut lock, passing_gate("agent-contract-budget"));
+        merge_gate(&mut lock, passing_gate("strictness-ratchet"));
+        assert!(lock.passed);
+        assert_eq!(lock.failed_check, None);
+        let names: Vec<_> = lock.checks.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["gauntlet", "agent-contract-budget", "strictness-ratchet"],
+            "checks stay in canonical fold order"
+        );
+    }
+
+    #[test]
+    fn merge_gate_first_failure_owns_the_failed_check_and_drops_the_rest() {
+        // The caller stops folding after the first failure (stop-at-first): the
+        // dropped gates are never merged, so only the first failing check appears and
+        // it owns `failed_check` — byte-identical to the old sequential guard.
+        let mut lock = StructureLockResult::empty_pass();
+        merge_gate(&mut lock, failing_gate("anti-gaming")); // first failure
+        assert!(!lock.passed);
+        assert_eq!(lock.failed_check.as_deref(), Some("anti-gaming"));
+        // Caller would `break` here; assert a later gate never overrides the owner
+        // even if (defensively) merged.
+        merge_gate(&mut lock, failing_gate("strictness-ratchet"));
+        assert_eq!(
+            lock.failed_check.as_deref(),
+            Some("anti-gaming"),
+            "the first failing gate keeps ownership of failed_check"
+        );
+    }
 
     #[test]
     fn build_commit_message_uses_title_or_falls_back() {
