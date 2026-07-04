@@ -157,3 +157,57 @@ impl SidecarProvider {
         Ok(Some(SidecarStreams { stdout, stderr }))
     }
 }
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    fn in_bundle(p: &str) -> bool {
+        SidecarProvider::exe_in_app_bundle(Path::new(p))
+    }
+
+    #[test]
+    fn release_bundle_layout_is_a_bundle() {
+        // The canonical installed layout: `<App>.app/Contents/MacOS/<exe>`.
+        assert!(in_bundle(
+            "/Applications/Nightcore.app/Contents/MacOS/nightcore"
+        ));
+    }
+
+    #[test]
+    fn debug_bundle_under_target_is_still_a_bundle() {
+        // `tauri build --debug` produces a real `.app` nested under the target dir;
+        // the `target/debug` prefix must NOT override the `.app` ancestor signal.
+        assert!(in_bundle(
+            "/repo/apps/desktop/src-tauri/target/debug/bundle/macos/Nightcore.app/Contents/MacOS/nightcore"
+        ));
+    }
+
+    #[test]
+    fn raw_dev_target_binary_is_not_a_bundle() {
+        // A plain `tauri dev` / `cargo run` binary sitting in the target dir.
+        assert!(!in_bundle(
+            "/repo/apps/desktop/src-tauri/target/debug/nightcore"
+        ));
+        assert!(!in_bundle(
+            "/repo/apps/desktop/src-tauri/target/release/nightcore"
+        ));
+    }
+
+    #[test]
+    fn app_must_be_an_extension_not_a_substring() {
+        // A directory that merely contains "app" in its name is not a bundle;
+        // only a literal `.app` extension on an ancestor counts.
+        assert!(!in_bundle("/Users/dev/myapp/build/nightcore"));
+        assert!(!in_bundle("/opt/apps/nightcore/bin/nightcore"));
+    }
+
+    #[test]
+    fn app_extension_anywhere_in_ancestry_counts() {
+        // The `.app` need not be the immediate grandparent — any ancestor suffices.
+        assert!(in_bundle(
+            "/Applications/Nightcore.app/Contents/MacOS/helpers/inner/nightcore"
+        ));
+    }
+}
