@@ -12,7 +12,7 @@ use tauri::{AppHandle, Manager};
 use super::GH_TIMEOUT;
 use crate::store::TaskStore;
 use crate::workflow::merge::require_project;
-use crate::workflow::pr::{map_gh_failure, probe_gh, run_gh_bounded, GH_BINARY};
+use crate::workflow::pr::{map_gh_failure, probe_gh, run_gh_bounded, GhOutput, GH_BINARY};
 
 /// The GitHub review verdict, mapped to the `gh` API `event` enum. The web sends the
 /// kebab form (`approve` / `request-changes` / `comment`); the uppercase `gh` forms are
@@ -86,9 +86,44 @@ pub(super) fn post_review_with(
         "timed out posting the review to GitHub — check your network and try again",
     )?;
     if !out.status.success() {
-        return Err(map_gh_failure(binary, "api", &out));
+        return Err(map_post_review_failure(binary, event, &out));
     }
     Ok(())
+}
+
+/// Map a failed review POST to an actionable message. `gh api` prints GitHub's
+/// error-response JSON to STDOUT — stderr carries only `gh: <status> (HTTP <n>)` —
+/// and for review posts the real reason lives in that body's `errors[]` (an inline
+/// anchor outside the diff, the own-PR rule, …). Surface those details, and when a
+/// 422 arrives with no detail on a non-COMMENT verdict, spell out the documented
+/// rule the bare status hides: GitHub refuses APPROVE / REQUEST_CHANGES reviews on
+/// a pull request you authored (COMMENT is allowed).
+pub(super) fn map_post_review_failure(binary: &str, event: &str, out: &GhOutput) -> String {
+    let mut msg = map_gh_failure(binary, "api", out);
+    let details: Vec<String> = serde_json::from_str::<Value>(out.stdout.trim())
+        .ok()
+        .and_then(|v| {
+            v.get("errors")?.as_array().map(|errs| {
+                errs.iter()
+                    .filter_map(|e| {
+                        // GitHub mixes plain strings and `{message}` objects in `errors[]`.
+                        e.as_str()
+                            .map(str::to_string)
+                            .or_else(|| e.get("message")?.as_str().map(str::to_string))
+                    })
+                    .collect()
+            })
+        })
+        .unwrap_or_default();
+    if !details.is_empty() {
+        msg = format!("{msg}: {}", details.join("; "));
+    } else if msg.contains("HTTP 422") && event != "COMMENT" {
+        msg.push_str(
+            " — GitHub refuses approve/request-changes reviews on a pull request \
+             you authored; post this review as a comment instead",
+        );
+    }
+    msg
 }
 
 /// Post a Nightcore-composed review to a GitHub pull request of the active project. The

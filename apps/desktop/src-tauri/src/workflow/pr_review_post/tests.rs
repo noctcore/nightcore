@@ -168,6 +168,66 @@ fn post_review_with_surfaces_stderr_verbatim_on_failure() {
 }
 
 #[test]
+#[cfg(unix)]
+fn post_review_failure_surfaces_the_error_body_details_from_stdout() {
+    // `gh api` prints GitHub's error-response JSON to STDOUT; stderr carries only the
+    // bare status line. The mapper must join the body's `errors[]` (both the plain-
+    // string and `{message}` object forms) onto the message — this is where GitHub
+    // names the real reason (own-PR rule, an inline anchor outside the diff, …).
+    let tmp = tempfile::TempDir::new().expect("temp dir");
+    let script = fake_gh(
+        tmp.path(),
+        "cat > /dev/null\n\
+         echo '{\"message\":\"Unprocessable Entity\",\"errors\":[\"Can not request changes on your own pull request\",{\"message\":\"line must be part of the diff\"}]}'\n\
+         echo 'gh: Unprocessable Entity (HTTP 422)' >&2\nexit 1",
+    );
+    let err = post_review_with(
+        tmp.path(),
+        script.to_str().expect("utf8 path"),
+        42,
+        "request-changes",
+        "b",
+        &[],
+        GH_TIMEOUT,
+    )
+    .expect_err("a non-zero exit must be an Err");
+    assert!(
+        err.contains("Can not request changes on your own pull request"),
+        "string-form errors[] detail is surfaced: {err}"
+    );
+    assert!(
+        err.contains("line must be part of the diff"),
+        "object-form errors[] detail is surfaced: {err}"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn post_review_bare_422_on_a_non_comment_verdict_names_the_own_pr_rule() {
+    // A 422 with NO body detail on approve/request-changes is (in practice) GitHub's
+    // undocumented-in-the-response own-PR refusal — the mapper spells the rule out.
+    // The same bare 422 on a COMMENT verdict (allowed on own PRs) gets no such hint.
+    let tmp = tempfile::TempDir::new().expect("temp dir");
+    let script = fake_gh(
+        tmp.path(),
+        "cat > /dev/null\necho 'gh: Unprocessable Entity (HTTP 422)' >&2\nexit 1",
+    );
+    let bin = script.to_str().expect("utf8 path");
+    let err = post_review_with(tmp.path(), bin, 42, "request-changes", "b", &[], GH_TIMEOUT)
+        .expect_err("non-zero exit");
+    assert!(
+        err.contains("pull request you authored"),
+        "request-changes 422 names the own-PR rule: {err}"
+    );
+    let err = post_review_with(tmp.path(), bin, 42, "comment", "b", &[], GH_TIMEOUT)
+        .expect_err("non-zero exit");
+    assert!(
+        !err.contains("pull request you authored"),
+        "a comment 422 must NOT claim the own-PR rule: {err}"
+    );
+}
+
+#[test]
 fn post_review_with_rejects_a_bad_verdict_before_any_spawn() {
     let tmp = tempfile::TempDir::new().expect("temp dir");
     // The binary doesn't exist — but verdict validation runs FIRST, so the outcome is
