@@ -319,6 +319,30 @@ export const QueryResultEvent = z.object({
 });
 
 /**
+ * Shared spreadable fragments for the scan-event families (`analysis-*`,
+ * `harness-*`, `scorecard-*`, `pr-review-*`), mirroring the `base`/`sessionTarget`
+ * spread pattern above. These are spread (not composed as sub-schemas) so the
+ * emitted zod object shapes — and therefore the generated Rust — stay identical to
+ * inlining the fields.
+ */
+
+/** The run-totals tail shared by every scan family's terminal `*-completed` event. */
+const runTotals = {
+  costUsd: z.number(),
+  durationMs: z.number().nonnegative().default(0),
+  usage: TokenUsageSchema.optional(),
+};
+
+/** The reason/message pair shared by the `analysis`/`harness`/`scorecard` `*-failed`
+ *  events. The single `reason` value-set collapses to ONE generated Rust enum, the
+ *  same collapse the three inline copies produced. (`pr-review-failed` keeps a free
+ *  `z.string()` reason and does NOT use this.) */
+const scanFailure = {
+  reason: z.enum(['aborted', 'runner-crash', 'unknown']),
+  message: z.string(),
+};
+
+/**
  * Insight analysis events. These do NOT carry `sessionId` (the category passes are
  * internal to the engine's analysis orchestrator and never surface as ordinary
  * sessions); they correlate by `runId`. The Rust reader routes the whole
@@ -363,17 +387,14 @@ export const AnalysisCompletedEvent = z.object({
   runId: z.string(),
   findings: z.array(FindingSchema),
   categoriesRun: z.array(FindingCategorySchema),
-  costUsd: z.number(),
-  durationMs: z.number().nonnegative().default(0),
-  usage: TokenUsageSchema.optional(),
+  ...runTotals,
 });
 
 /** The run failed before completing (could not start, or aborted). */
 export const AnalysisFailedEvent = z.object({
   type: z.literal('analysis-failed'),
   runId: z.string(),
-  reason: z.enum(['aborted', 'runner-crash', 'unknown']),
-  message: z.string(),
+  ...scanFailure,
 });
 
 /**
@@ -454,9 +475,7 @@ export const HarnessScanCompletedEvent = z.object({
    *  (`.default([])`) so an older on-disk run loads with an empty set — zero risk. */
   proposals: z.array(HarnessProposalSchema).default([]),
   categoriesRun: z.array(ConventionCategorySchema),
-  costUsd: z.number(),
-  durationMs: z.number().nonnegative().default(0),
-  usage: TokenUsageSchema.optional(),
+  ...runTotals,
   /** Set when the synthesis pass could not produce proposals (parse/session failure):
    *  the scan still completes with its findings, and the UI marks synthesis errored
    *  rather than silently showing zero proposals. */
@@ -468,8 +487,7 @@ export const HarnessScanCompletedEvent = z.object({
 export const HarnessScanFailedEvent = z.object({
   type: z.literal('harness-scan-failed'),
   runId: z.string(),
-  reason: z.enum(['aborted', 'runner-crash', 'unknown']),
-  message: z.string(),
+  ...scanFailure,
 });
 
 /**
@@ -517,9 +535,7 @@ export const ScorecardCompletedEvent = z.object({
   runId: z.string(),
   readings: z.array(ScorecardReadingSchema),
   dimensionsRun: z.array(ScorecardDimensionSchema),
-  costUsd: z.number(),
-  durationMs: z.number().nonnegative().default(0),
-  usage: TokenUsageSchema.optional(),
+  ...runTotals,
 });
 
 /** The run failed before completing (could not start, or aborted). Reuses the same
@@ -527,8 +543,7 @@ export const ScorecardCompletedEvent = z.object({
 export const ScorecardFailedEvent = z.object({
   type: z.literal('scorecard-failed'),
   runId: z.string(),
-  reason: z.enum(['aborted', 'runner-crash', 'unknown']),
-  message: z.string(),
+  ...scanFailure,
 });
 
 /**
@@ -577,9 +592,7 @@ export const PrReviewCompletedEvent = z.object({
   runId: z.string(),
   findings: z.array(ReviewFindingSchema),
   lensesRun: z.number().int().nonnegative(),
-  costUsd: z.number(),
-  durationMs: z.number().nonnegative().default(0),
-  usage: TokenUsageSchema.optional(),
+  ...runTotals,
 });
 
 /** The run failed before completing (could not start, or aborted). `reason` is a free
