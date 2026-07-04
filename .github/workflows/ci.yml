@@ -20,6 +20,26 @@ permissions:
   contents: read
 
 jobs:
+  # macOS-only lane for the Seatbelt (OS write-containment) proof. The
+  # containment-enforcement tests in packages/engine/src/session/sandbox.test.ts
+  # are `test.skipIf(!canSandbox)` — they need darwin + /usr/bin/sandbox-exec, so
+  # on the ubuntu lanes above/below they always skip and the semantic guarantee of
+  # this security feature is verified NOWHERE. This job runs the engine suite on a
+  # real macOS runner so those tests (and `sandboxAvailable() === true`) actually
+  # execute on every push, catching a containment regression that still emits a
+  # well-formed profile string. Scoped to `packages/engine` to keep macOS minutes
+  # (billed at a premium) small.
+  macos-sandbox:
+    name: seatbelt containment (macOS engine tests)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - run: bun test packages/engine
+
   bun-checks:
     name: lint · typecheck · test (Bun workspace)
     runs-on: ubuntu-latest
