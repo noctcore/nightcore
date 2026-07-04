@@ -21,6 +21,7 @@ import { Sidebar } from '../Sidebar';
 import { Splash } from '../Splash';
 import { useAppShell } from './AppShell.hooks';
 import type { NavItem } from './AppShell.types';
+import { useNavShortcuts } from './hooks/useNavShortcuts.hooks';
 
 // Off-first-paint route views are code-split (client-bundle): the entry chunk
 // only needs Splash + Sidebar + Board, so the Settings/Projects surfaces and the
@@ -102,6 +103,13 @@ export function AppShell() {
   const { tasks, selected, selectedId, setSelectedId, anyRunning, runningCount } = board;
 
   const runningProjectIds = anyRunning && active !== null ? [active.id] : [];
+
+  // Wire the sidebar's Kbd hints to real navigation. Only while the sidebar is on
+  // screen — not during the splash or the full-screen, sidebar-less Projects
+  // surface (view==='projects' or no active project).
+  const shortcutsEnabled =
+    !showSplash && registry.loaded && view !== 'projects' && active !== null;
+  useNavShortcuts(NAV, routing.goto, shortcutsEnabled);
 
   // Hold the splash until the registry has loaded — in EVERY environment, not just
   // Tauri — so the first real paint already knows whether to land on full-screen
