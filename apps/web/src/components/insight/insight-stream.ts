@@ -13,6 +13,7 @@ import type {
   InsightRun,
   StoredFinding,
 } from '@/lib/bridge';
+import { addUsage } from '@/lib/scan-run';
 
 import type {
   FindingStatus,
@@ -144,17 +145,6 @@ export function streamFromRun(run: InsightRun): InsightStream {
     // The persisted run records no failure reason — a reloaded failed run can't
     // distinguish a cancel from a crash, so it falls back to the generic banner.
     failureReason: null,
-  };
-}
-
-function addUsage(
-  a: { inputTokens: number; outputTokens: number },
-  b: { inputTokens: number; outputTokens: number } | undefined,
-): { inputTokens: number; outputTokens: number } {
-  if (b === undefined) return a;
-  return {
-    inputTokens: a.inputTokens + b.inputTokens,
-    outputTokens: a.outputTokens + b.outputTokens,
   };
 }
 

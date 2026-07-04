@@ -23,6 +23,7 @@ import type {
   StoredProposedArtifact,
   StoredRepoProfile,
 } from '@/lib/bridge';
+import { addUsage } from '@/lib/scan-run';
 
 import type {
   ArtifactStatus,
@@ -304,17 +305,6 @@ export function streamFromRun(run: HarnessRun): HarnessStream {
     // The reason isn't persisted (only the error message), so a reloaded cancel
     // can't be told apart from a crash — leave it null.
     failureReason: null,
-  };
-}
-
-function addUsage(
-  a: { inputTokens: number; outputTokens: number },
-  b: { inputTokens: number; outputTokens: number } | undefined,
-): { inputTokens: number; outputTokens: number } {
-  if (b === undefined) return a;
-  return {
-    inputTokens: a.inputTokens + b.inputTokens,
-    outputTokens: a.outputTokens + b.outputTokens,
   };
 }
 

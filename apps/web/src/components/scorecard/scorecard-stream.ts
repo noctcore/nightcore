@@ -12,6 +12,7 @@ import type {
   ScorecardWireEvent,
   StoredReading,
 } from '@/lib/bridge';
+import { addUsage } from '@/lib/scan-run';
 
 /** The live wire evidence shape (an element of a contract `ScorecardReading.findings`). */
 type WireEvidence = ScorecardReading['findings'][number];
@@ -169,17 +170,6 @@ export function streamFromRun(run: ScorecardRun): ScorecardStream {
     durationMs: run.durationMs,
     error: run.error,
     failureReason: null,
-  };
-}
-
-function addUsage(
-  a: { inputTokens: number; outputTokens: number },
-  b: { inputTokens: number; outputTokens: number } | undefined,
-): { inputTokens: number; outputTokens: number } {
-  if (b === undefined) return a;
-  return {
-    inputTokens: a.inputTokens + b.inputTokens,
-    outputTokens: a.outputTokens + b.outputTokens,
   };
 }
 
