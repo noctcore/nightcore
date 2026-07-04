@@ -105,7 +105,7 @@ export function Sidebar({
             style={{ animation: collapsed ? 'nc-slide .14s ease' : 'nc-rise .14s ease' }}
           >
             {collapsed && (
-              <div className="px-2.5 pb-1 pt-1 font-mono text-[9.5px] uppercase tracking-[0.18em] text-muted-foreground/70">
+              <div className="px-2.5 pb-1 pt-1 font-mono text-[9.5px] uppercase tracking-[0.18em] text-muted-foreground">
                 Projects
               </div>
             )}
@@ -147,7 +147,7 @@ export function Sidebar({
 
       {/* workspace nav */}
       {!collapsed && (
-        <div className="px-[18px] pb-1.5 pt-3.5 font-mono text-[9.5px] uppercase tracking-[0.18em] text-muted-foreground/70">
+        <div className="px-[18px] pb-1.5 pt-3.5 font-mono text-[9.5px] uppercase tracking-[0.18em] text-muted-foreground">
           Workspace
         </div>
       )}

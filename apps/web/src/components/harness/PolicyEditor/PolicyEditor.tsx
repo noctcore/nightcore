@@ -87,7 +87,7 @@ function ListEditor({
         <span className="text-[11px] text-muted-foreground/80">{field.hint}</span>
       </div>
       {values.length === 0 && (
-        <p className="text-[11.5px] italic text-muted-foreground/70">No entries.</p>
+        <p className="text-[11.5px] italic text-muted-foreground">No entries.</p>
       )}
       {values.map((value, index) => (
         // Index keys are correct here: rows are positional drafts with no

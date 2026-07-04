@@ -355,7 +355,7 @@ export function SettingsView({
         <div className="px-2 pb-3 text-lg font-semibold tracking-tight">Settings</div>
         {NAV_GROUPS.map((group) => (
           <div key={group.label}>
-            <div className="px-2.5 pb-1.5 pt-3.5 font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground/60">
+            <div className="px-2.5 pb-1.5 pt-3.5 font-mono text-[9.5px] uppercase tracking-[0.18em] text-muted-foreground">
               {group.label}
             </div>
             {group.items.map((item) => (

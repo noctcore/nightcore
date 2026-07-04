@@ -350,7 +350,7 @@ export function HistoryCard({ task, canResume, actions }: HistoryCardProps) {
 export function GroupLabel({ children }: { children: ReactNode }) {
   return (
     <div className="flex items-center gap-2 pt-1">
-      <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+      <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         {children}
       </span>
       <span className="h-px flex-1 bg-border" aria-hidden="true" />

@@ -67,7 +67,7 @@ export function ImageDropzone({
               `Maximum ${MAX_IMAGES_PER_TASK} images reached`
             )}
           </span>
-          <span className="text-[10.5px] text-muted-foreground/70">
+          <span className="text-[11px] text-muted-foreground">
             {ACCEPTED_IMAGE_LABEL} · ≤10MB · {items.length}/{MAX_IMAGES_PER_TASK}
           </span>
         </button>

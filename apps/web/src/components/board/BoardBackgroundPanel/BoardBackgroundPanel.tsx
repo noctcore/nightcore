@@ -142,7 +142,7 @@ export function BoardBackgroundPanel({
               {picker.error}
             </span>
           )}
-          <p className="text-[10.5px] leading-snug text-muted-foreground/70">
+          <p className="text-[11px] leading-snug text-muted-foreground">
             PNG, JPEG, WebP, or GIF · ≤ 15 MB. Lower the opacities below to let it show through.
           </p>
         </section>

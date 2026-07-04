@@ -103,7 +103,7 @@ export function ReadingDetailPanel({
               >
                 {ev.detail}
                 {ev.location !== null && (
-                  <code className="ml-1.5 font-mono text-[11px] text-muted-foreground/70">
+                  <code className="ml-1.5 font-mono text-[11px] text-muted-foreground">
                     {ev.location.file}
                     {ev.location.startLine !== null
                       ? `:${ev.location.startLine}`
