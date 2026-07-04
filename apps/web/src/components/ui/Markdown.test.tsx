@@ -26,6 +26,13 @@ test('renders the sanitized-scripts story without a live script node', async () 
   expect(screen.container.querySelector('script')).toBeNull();
 });
 
+test('external links get target=_blank and rel=noopener noreferrer', () => {
+  const html = renderMarkdown('[click me](https://phishing.example)');
+  expect(html).toContain('href="https://phishing.example"');
+  expect(html).toContain('target="_blank"');
+  expect(html).toContain('rel="noopener noreferrer"');
+});
+
 test('inline code and emphasis become real elements', () => {
   const html = renderMarkdown('a `code` and **bold**');
   expect(html).toContain('<code>code</code>');
