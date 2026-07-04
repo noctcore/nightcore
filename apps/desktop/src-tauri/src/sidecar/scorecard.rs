@@ -23,7 +23,7 @@ use crate::store::TaskStore;
 use crate::task::{Task, TaskKind, TASK_EVENT};
 
 use super::scan::{
-    begin_scan_run, dispatch_scan_command, failure_reason, finalize_completed,
+    begin_scan_run, dispatch_scan_command, failure_reason, finalize_scan_items,
     scan_lifecycle_commands, untrusted_block, wire_str, ScanRunInit, ScanTelemetry,
 };
 use super::SCORECARD_EVENT;
@@ -267,37 +267,18 @@ pub(crate) async fn handle_scorecard_event(app: &AppHandle, event_type: &str, ev
             let tel = ScanTelemetry::from_event(event);
             let count = readings.len();
 
-            // The shared finalizer owns the idempotency guard + status/telemetry stamp; we
-            // inject only the in-run lifecycle carry-forward (a reading the user hardened
-            // from the live stream during this run), by fingerprint, so the wholesale
-            // `readings` replace doesn't reset it to `open`. UNLIKE Insight there is no
-            // cross-run dismissed reconciliation — every scorecard run is a fresh grade.
-            let finalized = finalize_completed(
+            // The shared finalizer owns the idempotency guard, the status/telemetry stamp,
+            // and the by-fingerprint in-run lifecycle carry-forward (a reading the user
+            // hardened from the live stream during this run), so the wholesale `readings`
+            // replace doesn't reset it to `open`. UNLIKE Insight/PR-Review there is no
+            // cross-run reconciliation — every scorecard run is a fresh grade.
+            let finalized = finalize_scan_items(
                 scorecard_store.inner(),
                 "scorecard",
                 run_id,
                 &tel,
-                move |run| {
-                    let prior: std::collections::HashMap<String, (String, Option<String>)> = run
-                        .readings
-                        .iter()
-                        .filter(|r| r.status != "open")
-                        .map(|r| {
-                            (
-                                r.fingerprint.clone(),
-                                (r.status.clone(), r.linked_task_id.clone()),
-                            )
-                        })
-                        .collect();
-                    let mut merged = readings;
-                    for r in &mut merged {
-                        if let Some((status, link)) = prior.get(&r.fingerprint) {
-                            r.status = status.clone();
-                            r.linked_task_id = link.clone();
-                        }
-                    }
-                    run.readings = merged;
-                },
+                readings,
+                |run| &mut run.readings,
             );
             if finalized {
                 tracing::info!(target: "nightcore", run_id, readings = count, cost_usd = tel.cost_usd, "scorecard grading completed");

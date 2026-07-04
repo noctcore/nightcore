@@ -19,11 +19,12 @@ use crate::contracts::{AnalysisScope, EffortLevel, FindingCategory, SurfaceComma
 use crate::project::ProjectStore;
 use crate::store::insight::{InsightRun, InsightStore, InsightUsage, StoredFinding};
 use crate::store::TaskStore;
-use crate::task::{sanitize_minted_title, Task, TaskKind, TaskStatus, TASK_EVENT};
+use crate::task::{sanitize_minted_title, Task, TaskKind, TASK_EVENT};
 
 use super::scan::{
-    begin_scan_run, dispatch_scan_command, failure_reason, finalize_completed,
-    scan_lifecycle_commands, untrusted_block, wire_str, ScanRunInit, ScanTelemetry,
+    begin_scan_run, dispatch_scan_command, failure_reason, finalize_scan_items,
+    reconcile_scan_history, scan_lifecycle_commands, untrusted_block, wire_str, ScanRunInit,
+    ScanTelemetry,
 };
 use super::INSIGHT_EVENT;
 
@@ -304,68 +305,30 @@ pub(crate) async fn handle_analysis_event(app: &AppHandle, event_type: &str, eve
                 .map(|arr| arr.iter().filter_map(StoredFinding::from_wire).collect())
                 .unwrap_or_default();
 
-            // Dismissed-history reconciliation: a re-discovered finding whose
-            // fingerprint was previously dismissed stays dismissed.
+            // Cross-run lifecycle reconciliation, shared with PR Review: a re-discovered
+            // finding that was previously dismissed stays dismissed; one already converted
+            // in a prior run stays `converted` + linked while its task still lives and
+            // isn't Done, so a re-scan doesn't re-surface it `open` and re-mint a duplicate.
             let dismissed = insight_store.dismissed_fingerprints(Some(run_id));
-            for f in &mut findings {
-                if dismissed.contains(&f.fingerprint) {
-                    f.status = "dismissed".to_string();
-                }
-            }
-
-            // Convert-history reconciliation: a re-discovered finding whose fingerprint
-            // was already converted in a prior run stays `converted` + linked when its
-            // task still exists and isn't Done — so a re-scan doesn't re-surface it
-            // `open` and re-mint a duplicate task via convert-all. A finished (Done) or
-            // deleted task lets the finding re-surface `open` for re-verification.
             let converted = insight_store.converted_fingerprints(Some(run_id));
-            if !converted.is_empty() {
-                let task_store = app.state::<TaskStore>();
-                for f in &mut findings {
-                    if f.status != "open" {
-                        continue;
-                    }
-                    if let Some(task_id) = converted.get(&f.fingerprint) {
-                        if let Some(task) = task_store.get(task_id) {
-                            if task.status != TaskStatus::Done {
-                                f.status = "converted".to_string();
-                                f.linked_task_id = Some(task_id.clone());
-                            }
-                        }
-                    }
-                }
-            }
+            let task_store = app.state::<TaskStore>();
+            reconcile_scan_history(&mut findings, &dismissed, &converted, task_store.inner());
 
             let tel = ScanTelemetry::from_event(event);
             let count = findings.len();
 
-            // The shared finalizer owns the idempotency guard + status/telemetry stamp; we
-            // inject only the in-run lifecycle carry-forward (a finding the user
-            // dismissed/converted from the live stream during this run), by fingerprint, so
-            // the wholesale `findings` replace doesn't reset it to `open`. The cross-run
-            // dismissed set was already applied to `findings` above.
-            let finalized =
-                finalize_completed(insight_store.inner(), "insight", run_id, &tel, move |run| {
-                    let prior: std::collections::HashMap<String, (String, Option<String>)> = run
-                        .findings
-                        .iter()
-                        .filter(|f| f.status != "open")
-                        .map(|f| {
-                            (
-                                f.fingerprint.clone(),
-                                (f.status.clone(), f.linked_task_id.clone()),
-                            )
-                        })
-                        .collect();
-                    let mut merged = findings;
-                    for f in &mut merged {
-                        if let Some((status, link)) = prior.get(&f.fingerprint) {
-                            f.status = status.clone();
-                            f.linked_task_id = link.clone();
-                        }
-                    }
-                    run.findings = merged;
-                });
+            // The shared finalizer owns the idempotency guard, the status/telemetry stamp,
+            // and the by-fingerprint in-run lifecycle carry-forward (a finding the user
+            // dismissed/converted from the live stream during this run); we inject only the
+            // item-collection selector.
+            let finalized = finalize_scan_items(
+                insight_store.inner(),
+                "insight",
+                run_id,
+                &tel,
+                findings,
+                |run| &mut run.findings,
+            );
             if finalized {
                 tracing::info!(target: "nightcore", run_id, findings = count, cost_usd = tel.cost_usd, "insight analysis completed");
             }

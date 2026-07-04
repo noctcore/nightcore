@@ -21,11 +21,12 @@ use crate::project::ProjectStore;
 use crate::store::insight::InsightUsage;
 use crate::store::pr_review::{PrReviewRun, PrReviewStore, StoredReviewFinding};
 use crate::store::TaskStore;
-use crate::task::{sanitize_minted_title, Task, TaskKind, TaskStatus, TASK_EVENT};
+use crate::task::{sanitize_minted_title, Task, TaskKind, TASK_EVENT};
 
 use super::scan::{
-    begin_scan_run, dispatch_scan_command, failure_reason, finalize_completed,
-    scan_lifecycle_commands, untrusted_block, wire_str, ScanRunInit, ScanTelemetry,
+    begin_scan_run, dispatch_scan_command, failure_reason, finalize_scan_items,
+    reconcile_scan_history, scan_lifecycle_commands, untrusted_block, wire_str, ScanRunInit,
+    ScanTelemetry,
 };
 use super::PRREVIEW_EVENT;
 
@@ -276,68 +277,28 @@ pub(crate) async fn handle_pr_review_event(app: &AppHandle, event_type: &str, ev
                 })
                 .unwrap_or_default();
 
-            // Dismissed-history reconciliation: a re-discovered finding whose fingerprint
-            // was previously dismissed stays dismissed.
+            // Cross-run lifecycle reconciliation, shared with Insight: a re-discovered
+            // finding that was previously dismissed stays dismissed; one already converted
+            // in a prior run stays `converted` + linked while its task still lives and
+            // isn't Done, so a re-review doesn't re-surface it `open` and re-mint a dup.
             let dismissed = pr_review_store.dismissed_fingerprints(Some(run_id));
-            for f in &mut findings {
-                if dismissed.contains(&f.fingerprint) {
-                    f.status = "dismissed".to_string();
-                }
-            }
-
-            // Convert-history reconciliation: a re-discovered finding already converted in
-            // a prior run stays `converted` + linked when its task still exists and isn't
-            // Done — so a re-review doesn't re-surface it `open` and re-mint a duplicate.
             let converted = pr_review_store.converted_fingerprints(Some(run_id));
-            if !converted.is_empty() {
-                let task_store = app.state::<TaskStore>();
-                for f in &mut findings {
-                    if f.status != "open" {
-                        continue;
-                    }
-                    if let Some(task_id) = converted.get(&f.fingerprint) {
-                        if let Some(task) = task_store.get(task_id) {
-                            if task.status != TaskStatus::Done {
-                                f.status = "converted".to_string();
-                                f.linked_task_id = Some(task_id.clone());
-                            }
-                        }
-                    }
-                }
-            }
+            let task_store = app.state::<TaskStore>();
+            reconcile_scan_history(&mut findings, &dismissed, &converted, task_store.inner());
 
             let tel = ScanTelemetry::from_event(event);
             let count = findings.len();
 
-            // The shared finalizer owns the idempotency guard + status/telemetry stamp; we
-            // inject only the in-run lifecycle carry-forward (a finding the user
-            // dismissed/converted from the live stream during this run), by fingerprint.
-            let finalized = finalize_completed(
+            // The shared finalizer owns the idempotency guard, the status/telemetry stamp,
+            // and the by-fingerprint in-run lifecycle carry-forward; we inject only the
+            // item-collection selector.
+            let finalized = finalize_scan_items(
                 pr_review_store.inner(),
                 "pr-review",
                 run_id,
                 &tel,
-                move |run| {
-                    let prior: std::collections::HashMap<String, (String, Option<String>)> = run
-                        .findings
-                        .iter()
-                        .filter(|f| f.status != "open")
-                        .map(|f| {
-                            (
-                                f.fingerprint.clone(),
-                                (f.status.clone(), f.linked_task_id.clone()),
-                            )
-                        })
-                        .collect();
-                    let mut merged = findings;
-                    for f in &mut merged {
-                        if let Some((status, link)) = prior.get(&f.fingerprint) {
-                            f.status = status.clone();
-                            f.linked_task_id = link.clone();
-                        }
-                    }
-                    run.findings = merged;
-                },
+                findings,
+                |run| &mut run.findings,
             );
             if finalized {
                 tracing::info!(target: "nightcore", run_id, findings = count, cost_usd = tel.cost_usd, "pr review completed");

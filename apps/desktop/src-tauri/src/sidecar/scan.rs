@@ -21,6 +21,8 @@
 //! finalizer needs — deliberately not the full store trait (the store-trait refactor is a
 //! separate finding) — so this unification lands without restructuring the three stores.
 
+use std::collections::{HashMap, HashSet};
+
 use serde::Serialize;
 use serde_json::Value;
 
@@ -30,8 +32,10 @@ use crate::provider::SidecarProvider;
 use crate::store::harness::{HarnessRun, HarnessStore, HarnessUsage};
 use crate::store::insight::{InsightRun, InsightStore, InsightUsage};
 use crate::store::pr_review::{PrReviewRun, PrReviewStore};
+use crate::store::run_store::LifecycleItem;
 use crate::store::scorecard::{ScorecardRun, ScorecardStore};
-use crate::task::now_ms;
+use crate::store::TaskStore;
+use crate::task::{now_ms, TaskStatus};
 
 use super::ensure_reader;
 
@@ -433,6 +437,93 @@ where
             false
         }
     }
+}
+
+/// The cross-run lifecycle reconciliation the Insight and PR-Review completion arms share
+/// (Scorecard has none — every grade is a fresh snapshot), applied to the freshly-parsed
+/// terminal items BEFORE they are finalized:
+///   - a re-discovered item whose fingerprint was previously DISMISSED stays dismissed;
+///   - a still-`open` item whose fingerprint was already CONVERTED in a prior run stays
+///     `converted` + linked WHEN its task still exists and isn't `Done` — so a re-scan
+///     doesn't re-surface it `open` and re-mint a duplicate task via convert-all.
+///
+/// The dismissed pass runs FIRST so a now-dismissed item is never re-considered for convert
+/// (it is no longer `open`), matching the hand-written order this replaces. The `converted`
+/// map is consulted only when non-empty, so the task-store lookups are skipped otherwise.
+pub(crate) fn reconcile_scan_history<I: LifecycleItem>(
+    items: &mut [I],
+    dismissed: &HashSet<String>,
+    converted: &HashMap<String, String>,
+    task_store: &TaskStore,
+) {
+    for item in items.iter_mut() {
+        if dismissed.contains(item.fingerprint()) {
+            item.set_status("dismissed");
+        }
+    }
+    if converted.is_empty() {
+        return;
+    }
+    for item in items.iter_mut() {
+        if item.status() != "open" {
+            continue;
+        }
+        if let Some(task_id) = converted.get(item.fingerprint()) {
+            if let Some(task) = task_store.get(task_id) {
+                if task.status != TaskStatus::Done {
+                    item.set_status("converted");
+                    item.set_linked_task_id(Some(task_id.clone()));
+                }
+            }
+        }
+    }
+}
+
+/// Finalize a scan run whose completion arm rebuilds a single item collection (Insight
+/// findings, PR-Review findings, Scorecard readings) — the last-mile twin of
+/// [`finalize_completed`] that also owns the by-fingerprint IN-RUN lifecycle carry-forward
+/// those three arms applied identically. Under the finalize lock it merges `items` onto the
+/// run, preserving any non-`open` lifecycle (a dismiss / convert / harden the user applied
+/// to a peeked item DURING the run) by fingerprint so the wholesale replace doesn't reset it
+/// to `open`, then stamps completion. `select` picks the run's item `Vec`. Returns
+/// [`finalize_completed`]'s persisted flag for the caller's feature-shaped log line.
+pub(crate) fn finalize_scan_items<S, I, Sel>(
+    store: &S,
+    feature: &'static str,
+    run_id: &str,
+    tel: &ScanTelemetry,
+    items: Vec<I>,
+    select: Sel,
+) -> bool
+where
+    S: ScanStore,
+    I: LifecycleItem,
+    Sel: FnOnce(&mut S::Run) -> &mut Vec<I>,
+{
+    finalize_completed(store, feature, run_id, tel, move |run| {
+        let dest = select(run);
+        let prior: HashMap<String, (String, Option<String>)> = dest
+            .iter()
+            .filter(|item| item.status() != "open")
+            .map(|item| {
+                (
+                    item.fingerprint().to_string(),
+                    (
+                        item.status().to_string(),
+                        item.linked_task_id().map(str::to_string),
+                    ),
+                )
+            })
+            .collect();
+        let mut merged = items;
+        for item in &mut merged {
+            if let Some((status, link)) = prior.get(item.fingerprint()) {
+                item.set_status(status);
+                item.set_linked_task_id(link.clone());
+            }
+        }
+        *dest = merged;
+    })
 }
 
 /// The store-agnostic header every scan `start_*` command resolves before it can build and
