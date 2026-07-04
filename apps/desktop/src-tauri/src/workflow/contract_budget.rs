@@ -116,12 +116,13 @@ fn measure(review_dir: &Path, touched: &[&str]) -> (Vec<String>, Vec<String>) {
     (within, over)
 }
 
+/// Run git in `dir` for stdout, `None` on any failure — callers treat every
+/// `None` as "skip the gate". Routed through the env-scrubbed
+/// `platform::git_command` like every git spawn in the crate (its siblings
+/// `diff_budget::git_stdout` / `anti_gaming::sweep::git_stdout`), so a poisoned
+/// env or repo-local `.git/config` can't turn this gate's git ops into host RCE.
 fn git_stdout(dir: &Path, args: &[&str]) -> Option<String> {
-    let out = std::process::Command::new("git")
-        .args(args)
-        .current_dir(dir)
-        .output()
-        .ok()?;
+    let out = crate::platform::git_command(dir).args(args).output().ok()?;
     if !out.status.success() {
         return None;
     }
@@ -146,6 +147,52 @@ mod tests {
         assert!(!is_contract_path("docs/CLAUDE.md.bak"));
         assert!(!is_contract_path("src/agents.md"));
         assert!(!is_contract_path("README.md"));
+    }
+
+    /// Regression: `git_stdout` must route through the env-scrubbed,
+    /// config-neutralized `platform::git_command` (it once spawned git directly,
+    /// diverging from its diff_budget/sweep siblings). A repo carrying a hostile
+    /// `.git/config` with `core.fsmonitor=<cmd>` must NOT get that program spawned
+    /// when the gate reads git output — while a legit query still returns.
+    #[test]
+    #[cfg(unix)]
+    fn git_stdout_neutralizes_hostile_fsmonitor_config() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        let git = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(root)
+                .env("GIT_AUTHOR_NAME", "t")
+                .env("GIT_AUTHOR_EMAIL", "t@t")
+                .env("GIT_COMMITTER_NAME", "t")
+                .env("GIT_COMMITTER_EMAIL", "t@t")
+                .output()
+                .expect("git runs");
+            assert!(out.status.success(), "git {args:?} failed");
+        };
+        git(&["init", "-b", "main"]);
+        std::fs::write(root.join("f.txt"), "x\n").expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-m", "base"]);
+
+        let pwned = root.join("PWNED");
+        use std::io::Write;
+        let mut cfg = std::fs::OpenOptions::new()
+            .append(true)
+            .open(root.join(".git/config"))
+            .expect("open .git/config");
+        writeln!(cfg, "[core]\n\tfsmonitor = \"touch {}\"", pwned.display()).expect("write config");
+        drop(cfg);
+
+        // First-party path still works: ls-files returns the tracked file.
+        let out = git_stdout(root, &["ls-files"]).expect("ls-files returns");
+        assert!(out.contains("f.txt"));
+        // Vector blocked: the planted fsmonitor command never ran.
+        assert!(
+            !pwned.exists(),
+            "hostile core.fsmonitor was executed — git_stdout bypassed git_command"
+        );
     }
 
     #[test]
