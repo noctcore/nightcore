@@ -316,20 +316,38 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
             // The phase discriminator: a completion while `Verifying` is the
             // reviewer finishing; otherwise it is a build (or fix-build) finishing.
             let status = store.get(&task_id).map(|t| t.status);
-            if status == Some(TaskStatus::Verifying) {
-                handle_review_completed(app, &store, &task_id, session_id, result, cost).await;
-            } else {
-                handle_build_completed(
-                    app,
-                    &store,
-                    &task_id,
-                    session_id,
-                    result,
-                    cost,
-                    proposed_subtasks,
-                )
-                .await;
-            }
+            // Perf (#1): OFFLOAD the terminal gate battery off the reader task. The
+            // completed event was already streamed + persisted inline above (in wire
+            // order); here we hand the heavy tail — `handle_build_completed`'s commit +
+            // structure-lock gauntlet + gate battery + reviewer dispatch, or
+            // `handle_review_completed`'s verdict routing — to a spawned task so the
+            // reader returns AT ONCE to `read_capped_line` and keeps draining stdout for
+            // every other concurrent session (previously this ran inline for seconds,
+            // head-of-line-blocking all live token streams). Per-task ordering is
+            // preserved: the build session is terminal (it emits no further events), and
+            // no reviewer/fix event for this task can reach the wire until the spawned
+            // handler dispatches the next session — its final step — so nothing for this
+            // task races ahead of it. Uses `tauri::async_runtime::spawn` (never bare
+            // `tokio::spawn`, which aborts off-runtime — see `finish_run`'s guard).
+            let app = app.clone();
+            let task_id = task_id.clone();
+            tauri::async_runtime::spawn(async move {
+                let store = app.state::<TaskStore>();
+                if status == Some(TaskStatus::Verifying) {
+                    handle_review_completed(&app, &store, &task_id, session_id, result, cost).await;
+                } else {
+                    handle_build_completed(
+                        &app,
+                        &store,
+                        &task_id,
+                        session_id,
+                        result,
+                        cost,
+                        proposed_subtasks,
+                    )
+                    .await;
+                }
+            });
         }
         "session-failed" => {
             // A user-initiated cancel or a circuit-breaker pause interrupts the run
@@ -466,6 +484,41 @@ mod tests {
             "type": "session-failed", "sessionId": 1, "reason": "runner-crash", "message": "boom"
         });
         assert!(!is_fatal_setup_failure(&crash));
+    }
+
+    #[test]
+    fn session_completed_offloads_the_gate_battery_off_the_reader() {
+        // Perf regression guard (#1): the `session-completed` arm must dispatch the
+        // heavy terminal handlers (`handle_build_completed`/`handle_review_completed` —
+        // commit + gauntlet + gate battery + reviewer dispatch) OFF the reader task via
+        // `tauri::async_runtime::spawn`, so one task's multi-second gates never
+        // head-of-line-block every other concurrent session's live token stream. The
+        // handlers need a full `AppHandle`, so this is a source-level guard (like
+        // `finish_run_breaker_trip_uses_the_guarded_spawn` in `mod.rs`).
+        let src = include_str!("reader.rs");
+        let at = src
+            .find("\"session-completed\" => {")
+            .expect("the session-completed arm must exist");
+        // Bound the window to this arm (up to the next terminal arm) so the assertion
+        // is about THIS arm's dispatch, not an unrelated spawn elsewhere in the file.
+        let end = src[at..]
+            .find("\"session-failed\" => {")
+            .map(|rel| at + rel)
+            .unwrap_or(src.len());
+        let arm = &src[at..end];
+        assert!(
+            arm.contains("tauri::async_runtime::spawn(async move {"),
+            "session-completed must offload the gate battery via tauri::async_runtime::spawn"
+        );
+        assert!(
+            arm.contains("handle_build_completed(") && arm.contains("handle_review_completed("),
+            "both terminal handlers must be dispatched from the offloaded task"
+        );
+        let bare_spawn = concat!("tokio", "::spawn(");
+        assert!(
+            !arm.contains(bare_spawn),
+            "must NOT use bare tokio::spawn — it aborts off-runtime (SIGABRT)"
+        );
     }
 
     #[test]
