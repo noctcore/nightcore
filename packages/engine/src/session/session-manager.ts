@@ -1,8 +1,9 @@
 /**
  * The session supervisor: owns live `SessionRunner`s keyed by monotonic id,
  * dispatches surface commands and queries, persists session records, and forwards
- * the typed engine event stream. Also routes the analysis/harness/scorecard scan
- * command families to their dedicated managers, and exposes SDK→wire mappers.
+ * the typed engine event stream. Delegates the `runId`-keyed scan command families
+ * (analysis / harness / scorecard / pr-review) to a {@link ScanRouter} collaborator,
+ * and exposes SDK→wire mappers.
  */
 import { EventEmitter } from 'node:events';
 
@@ -22,10 +23,7 @@ import { createMonotonicCounter, type Logger } from '@nightcore/shared';
 import { SessionStore } from '@nightcore/storage';
 
 import { ProviderConfigReader } from '../providers/provider-config.js';
-import { HarnessManager } from '../scans/harness/manager.js';
-import { AnalysisManager } from '../scans/insight/manager.js';
-import { PrReviewScanManager } from '../scans/pr-review/manager.js';
-import { ScorecardManager } from '../scans/scorecard/manager.js';
+import { ScanRouter } from '../scans/scan-router.js';
 import { resolveKindPreset } from './kind-presets.js';
 import type { ModelInfo } from './sdk-adapter.js';
 import { type SDKSessionInfo, SessionApi, type SessionMessage } from './session-api.js';
@@ -108,10 +106,7 @@ export class SessionManager {
   private readonly apiKeyFallback: boolean;
   private readonly sessionApi: SessionApi;
   private readonly providerConfig: ProviderConfigReader;
-  private readonly analysis: AnalysisManager;
-  private readonly harness: HarnessManager;
-  private readonly scorecard: ScorecardManager;
-  private readonly prReview: PrReviewScanManager;
+  private readonly scans: ScanRouter;
 
   constructor(
     private readonly config: Config,
@@ -123,29 +118,13 @@ export class SessionManager {
       logger?.child('provider-config'),
     );
     this.apiKeyFallback = Boolean(process.env.ANTHROPIC_API_KEY);
-    this.analysis = new AnalysisManager({
+    // Scan orchestration is a separate concern: the router owns the four scan
+    // managers and their dispatch, emitting through this supervisor's event sink.
+    this.scans = new ScanRouter({
       config,
       apiKeyFallback: this.apiKeyFallback,
       emit: (event) => this.emit(event),
-      ...(logger !== undefined ? { logger: logger.child('analysis') } : {}),
-    });
-    this.harness = new HarnessManager({
-      config,
-      apiKeyFallback: this.apiKeyFallback,
-      emit: (event) => this.emit(event),
-      ...(logger !== undefined ? { logger: logger.child('harness') } : {}),
-    });
-    this.scorecard = new ScorecardManager({
-      config,
-      apiKeyFallback: this.apiKeyFallback,
-      emit: (event) => this.emit(event),
-      ...(logger !== undefined ? { logger: logger.child('scorecard') } : {}),
-    });
-    this.prReview = new PrReviewScanManager({
-      config,
-      apiKeyFallback: this.apiKeyFallback,
-      emit: (event) => this.emit(event),
-      ...(logger !== undefined ? { logger: logger.child('pr-review') } : {}),
+      ...(logger !== undefined ? { logger } : {}),
     });
     // Seed the id counter past the highest persisted id so a restart never
     // reuses an id and clobbers a prior record (the SessionStore collapses by id,
@@ -170,50 +149,11 @@ export class SessionManager {
       this.startSession(command);
       return;
     }
-    // Insight analysis commands are keyed by `runId` (not a session id) and are
-    // owned by the AnalysisManager, which fans out its own internal read-only
-    // passes and emits the `analysis-*` event family.
-    if (command.type === 'start-analysis') {
-      this.analysis.start(command);
-      return;
-    }
-    if (command.type === 'cancel-analysis') {
-      this.analysis.cancel(command.runId);
-      return;
-    }
-    // Harness convention scans are also keyed by `runId` (not a session id) and are
-    // owned by the HarnessManager, which detects the repo profile, fans out its own
-    // read-only convention passes + a synthesis pass, and emits the `harness-*`
-    // event family.
-    if (command.type === 'start-harness-scan') {
-      this.harness.start(command);
-      return;
-    }
-    if (command.type === 'cancel-harness-scan') {
-      this.harness.cancel(command.runId);
-      return;
-    }
-    // Readiness Scorecard runs are also keyed by `runId` (not a session id) and are
-    // owned by the ScorecardManager, which fans out its own read-only grading passes
-    // and emits the `scorecard-*` event family.
-    if (command.type === 'start-scorecard') {
-      this.scorecard.start(command);
-      return;
-    }
-    if (command.type === 'cancel-scorecard') {
-      this.scorecard.cancel(command.runId);
-      return;
-    }
-    // PR Review runs are also keyed by `runId` (not a session id) and are owned by the
-    // PrReviewScanManager, which fans out one read-only review pass per lens over the
-    // Rust-resolved PR diff, diff-grounds + dedups the findings, runs an adversarial
-    // validator pass, and emits the `pr-review-*` event family.
-    if (command.type === 'start-pr-review') {
-      this.prReview.start(command);
-      return;
-    }
-    if (command.type === 'cancel-pr-review') {
-      this.prReview.cancel(command.runId);
+    // The `runId`-keyed scan command families (analysis / harness / scorecard /
+    // pr-review) belong to the ScanRouter; it owns the dedicated managers, each of
+    // which fans out its own read-only passes and emits its `<family>-*` events.
+    if (this.scans.handles(command)) {
+      this.scans.dispatch(command);
       return;
     }
 
