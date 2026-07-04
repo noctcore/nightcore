@@ -543,7 +543,13 @@ where
 {
     match store.mutate(id, f) {
         Ok(task) => {
-            let _ = app.emit(TASK_EVENT, &task);
+            // The store mutation already landed; if the emit fails the board never
+            // learns the (often terminal Done/Failed) transition and the row stays
+            // visually wedged until an unrelated later event repaints it. Rare, but
+            // make the desync observable instead of swallowing it silently.
+            if let Err(e) = app.emit(TASK_EVENT, &task) {
+                tracing::warn!(target: "nightcore", task_id = id, error = %e, "failed to emit nc:task after mutation");
+            }
         }
         Err(e) => {
             tracing::error!(target: "nightcore", task_id = id, error = %e, "failed to finalize task")
