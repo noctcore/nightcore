@@ -8,6 +8,10 @@ import {
 } from './config.js';
 import { ConventionCategorySchema, HarnessPolicySchema } from './harness.js';
 import { AnalysisScopeSchema, FindingCategorySchema } from './insight.js';
+import {
+  IssueCommentSchema,
+  IssueLinkedPrContextSchema,
+} from './issue-triage.js';
 import { ReviewLensSchema } from './pr-review.js';
 import { ScorecardDimensionSchema } from './scorecard.js';
 import { PermissionDecisionSchema, QuestionAnswerSchema } from './tools.js';
@@ -315,6 +319,52 @@ export const CancelPrReviewCommand = z.object({
   runId: z.string(),
 });
 
+/** Start an Issue Triage validation. Unlike the `analysis`/`harness`/`scorecard`/
+ *  `pr-review` scans this is a SINGLE read-only session (not a fan-out): the engine
+ *  investigates one GitHub issue against the checkout and emits ONE structured
+ *  verdict via `issue-validation-completed`. The Rust core assigns `runId`, owns
+ *  persistence, and PRE-FETCHES all GitHub data (the sidecar is network-free) —
+ *  issue title/body/author, capped comments, and the capped diffs of any linked PRs
+ *  are injected inline here. Every GitHub-sourced field is attacker-controlled; the
+ *  engine wraps them in `untrusted_block`. The session runs cwd = `projectPath`
+ *  (read-only: Read/Glob/Grep/LS only, no Bash, no network). */
+export const StartIssueValidationCommand = z.object({
+  type: z.literal('start-issue-validation'),
+  /** Correlation id (also the persisted run id) assigned by the Rust core. */
+  runId: z.string(),
+  /** Absolute project root the validation session runs in (read-only). */
+  projectPath: z.string(),
+  /** The issue number being validated (a positive integer). */
+  issueNumber: z.number().int().positive(),
+  /** The issue title (GitHub-sourced, untrusted). */
+  issueTitle: z.string(),
+  /** The issue body markdown (GitHub-sourced, untrusted). */
+  issueBody: z.string(),
+  /** The issue author's GitHub login. */
+  issueAuthor: z.string(),
+  /** The issue's labels (GitHub-sourced); help classify kind. */
+  labels: z.array(z.string()).default([]),
+  /** The issue's comments, capped to the first page by the Rust core (untrusted). */
+  comments: z.array(IssueCommentSchema).default([]),
+  /** Linked PRs plus their capped diffs, pre-fetched by the Rust `gh` seam and
+   *  injected as untrusted context (the session never shells out). */
+  linkedPrs: z.array(IssueLinkedPrContextSchema).default([]),
+  /** Model override for the session; absent ⇒ inherit the resolved config. */
+  model: z.string().optional(),
+  /** Reasoning effort for the session; absent ⇒ inherit. */
+  effort: EffortLevelSchema.optional(),
+  /** Autonomy ceiling: max conversation turns (SDK `Options.maxTurns`). */
+  maxTurns: z.number().int().positive().optional(),
+  /** Autonomy ceiling: max spend in USD (SDK `Options.maxBudgetUsd`). */
+  maxBudgetUsd: z.number().positive().optional(),
+});
+
+/** Cancel an in-flight Issue Triage validation (aborts the session). */
+export const CancelIssueValidationCommand = z.object({
+  type: z.literal('cancel-issue-validation'),
+  runId: z.string(),
+});
+
 /** The discriminated union of every surface → engine command, keyed by `type`. */
 export const SurfaceCommandSchema = z.discriminatedUnion('type', [
   StartSessionCommand,
@@ -332,6 +382,8 @@ export const SurfaceCommandSchema = z.discriminatedUnion('type', [
   CancelScorecardCommand,
   StartPrReviewCommand,
   CancelPrReviewCommand,
+  StartIssueValidationCommand,
+  CancelIssueValidationCommand,
 ]);
 export type SurfaceCommand = z.infer<typeof SurfaceCommandSchema>;
 
