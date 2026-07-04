@@ -9,6 +9,8 @@ import type {
 } from '@nightcore/contracts';
 
 import {
+  BackpressuredWriter,
+  type BackpressureStream,
   CommandLineBuffer,
   createSidecar,
   encodeEvent,
@@ -421,5 +423,97 @@ describe('pumpCommands — end-to-end framing over a stdin stream', () => {
       { type: 'start-session', prompt: 'a' },
       { type: 'interrupt', sessionId: 1 },
     ]);
+  });
+});
+
+/** A controllable `BackpressureStream`: records every chunk, and can be told to
+ *  report backpressure (write → false) and later `drain` on demand. */
+class FakeStream implements BackpressureStream {
+  readonly chunks: string[] = [];
+  private accept = true;
+  private drainListener: (() => void) | null = null;
+  throwOnWrite: Error | null = null;
+
+  write(chunk: string): boolean {
+    if (this.throwOnWrite !== null) throw this.throwOnWrite;
+    this.chunks.push(chunk);
+    return this.accept;
+  }
+
+  once(_event: 'drain', listener: () => void): this {
+    this.drainListener = listener;
+    return this;
+  }
+
+  /** Simulate a full pipe: the next write reports backpressure. */
+  block(): void {
+    this.accept = false;
+  }
+
+  /** Simulate the reader catching up: writes flow again and any waiter wakes. */
+  drain(): void {
+    this.accept = true;
+    const listener = this.drainListener;
+    this.drainListener = null;
+    listener?.();
+  }
+}
+
+describe('BackpressuredWriter', () => {
+  test('coalesces a synchronous burst into one ordered, byte-identical write', async () => {
+    const stream = new FakeStream();
+    const writer = new BackpressuredWriter(stream);
+
+    writer.write('a\n');
+    writer.write('b\n');
+    writer.write('c\n');
+    // Nothing is written synchronously — the pump runs on a microtask.
+    expect(stream.chunks).toEqual([]);
+
+    await writer.whenDrained();
+
+    // One coalesced write, byte-identical to emitting the three lines separately.
+    expect(stream.chunks).toEqual(['a\nb\nc\n']);
+  });
+
+  test('awaits drain under backpressure and preserves order + delivery', async () => {
+    const stream = new FakeStream();
+    const errors: string[] = [];
+    const writer = new BackpressuredWriter(stream, (m) => errors.push(m));
+
+    // First flush hits a full pipe: the write is recorded but reports false, so
+    // the pump parks on 'drain' before writing anything more.
+    stream.block();
+    writer.write('1\n');
+    await Promise.resolve(); // let the pump run and subscribe to 'drain'
+    expect(stream.chunks).toEqual(['1\n']);
+
+    // Lines emitted DURING the stall queue in order; none reach the wire yet.
+    writer.write('2\n');
+    writer.write('3\n');
+    await Promise.resolve();
+    expect(stream.chunks).toEqual(['1\n']);
+
+    // Reader catches up: the parked pump wakes and flushes the backlog in order.
+    stream.drain();
+    await writer.whenDrained();
+
+    expect(stream.chunks).toEqual(['1\n', '2\n3\n']);
+    expect(stream.chunks.join('')).toBe('1\n2\n3\n');
+    expect(errors).toEqual([]);
+  });
+
+  test('a write error is logged, never thrown, and drops the backlog', async () => {
+    const stream = new FakeStream();
+    const errors: string[] = [];
+    const writer = new BackpressuredWriter(stream, (m) => errors.push(m));
+    stream.throwOnWrite = new Error('EPIPE');
+
+    expect(() => writer.write('x\n')).not.toThrow();
+    await writer.whenDrained();
+
+    expect(stream.chunks).toEqual([]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('stdout write failed');
   });
 });

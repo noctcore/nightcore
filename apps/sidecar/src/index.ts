@@ -56,6 +56,105 @@ export function encodeEvent(event: NightcoreEvent): string {
   return `${JSON.stringify(event)}\n`;
 }
 
+/** The minimal slice of a backpressure-aware `Writable` the stdout writer drives:
+ *  a `write` that reports whether the kernel/JS buffer accepted the chunk, and a
+ *  one-shot `drain` subscription. `process.stdout` (a pipe to the Rust core) and a
+ *  test fake both satisfy this. */
+export interface BackpressureStream {
+  /** Returns `false` once the OS pipe buffer is full and the chunk was queued in
+   *  memory — the signal to stop writing until `'drain'`. */
+  write(chunk: string): boolean;
+  /** Fire `listener` once, the next time the stream becomes writable again. */
+  once(event: 'drain', listener: () => void): unknown;
+}
+
+/**
+ * Backpressure-honoring, order-preserving stdout writer.
+ *
+ * The naive live sink was `(line) => { process.stdout.write(line); }` with the
+ * boolean return discarded: when the Rust reader stalls and the OS pipe buffer
+ * fills, `write()` returns `false` and every subsequent per-token line is queued
+ * on the stream's internal buffer as its own chunk object — N concurrent sessions
+ * fanning `assistant-delta` into one shared stdout with no ceiling and no pacing.
+ *
+ * This writer instead funnels every line through ONE ordered FIFO drained by a
+ * single async pump:
+ *   - `write` is synchronous and non-blocking (matches {@link EventSink}); it just
+ *     appends to `pending` and, on a microtask, kicks the pump — so a whole
+ *     synchronous burst of emits coalesces into ONE `stream.write`, dropping the
+ *     write frequency (and per-chunk bookkeeping) by an order of magnitude while
+ *     adding no wall-clock latency (microtask, not a timer — streaming stays
+ *     prompt);
+ *   - when `stream.write` reports backpressure the pump AWAITS `'drain'` before the
+ *     next flush, so a slow reader paces our flushing instead of us hammering an
+ *     already-full buffer;
+ *   - order and delivery are exact: a single FIFO, a single pump, and concatenated
+ *     NDJSON lines are byte-identical on the wire to writing them one at a time.
+ *
+ * Residual (documented, not fixed here): under a reader that stalls FOREVER the
+ * `pending` FIFO still grows — a hard memory ceiling would require propagating
+ * writability back to the SDK consume loop through the engine's synchronous
+ * `EventEmitter` emit path, a larger cross-cutting change deferred to keep the
+ * core event ordering untouched. For the momentary/partial stalls the finding
+ * calls out, this self-heals: one coalesced flush on `'drain'` clears the backlog.
+ */
+export class BackpressuredWriter {
+  private pending: string[] = [];
+  private flushing = false;
+  /** Resolves when the in-flight pump finishes (pending drained). Replaced each
+   *  time a fresh pump starts; exposed via {@link whenDrained} for shutdown/tests. */
+  private idle: Promise<void> = Promise.resolve();
+  private resolveIdle: () => void = () => {};
+
+  constructor(
+    private readonly stream: BackpressureStream,
+    private readonly onError: (message: string) => void = (m) =>
+      process.stderr.write(`${m}\n`),
+  ) {}
+
+  /** Enqueue one already-framed line. Synchronous and non-blocking — an
+   *  {@link EventSink}. Bound so it can be passed as the sink directly. */
+  write = (line: string): void => {
+    this.pending.push(line);
+    if (!this.flushing) {
+      this.flushing = true;
+      this.idle = new Promise((resolve) => {
+        this.resolveIdle = resolve;
+      });
+      queueMicrotask(() => void this.pump());
+    }
+  };
+
+  /** Resolves once the current backlog has been flushed to the stream (or a
+   *  write error aborted it). Await before exit to avoid truncating buffered
+   *  output; tests await it to assert the drained result. */
+  whenDrained(): Promise<void> {
+    return this.idle;
+  }
+
+  private async pump(): Promise<void> {
+    try {
+      while (this.pending.length > 0) {
+        // Coalesce everything queued so far into one write. NDJSON lines already
+        // carry their own '\n', so concatenation is byte-identical on the wire.
+        const chunk = this.pending.join('');
+        this.pending = [];
+        if (!this.stream.write(chunk)) {
+          await new Promise<void>((resolve) => this.stream.once('drain', resolve));
+        }
+      }
+    } catch (error) {
+      // A dead reader (EPIPE) surfaces here now that writes are async. Drop the
+      // backlog and log — process shutdown is driven by stdin close, not stdout.
+      this.pending = [];
+      this.onError(`sidecar: stdout write failed: ${String(error)}`);
+    } finally {
+      this.flushing = false;
+      this.resolveIdle();
+    }
+  }
+}
+
 /**
  * Outbound event types that skip the full discriminated-union `safeParse` on the
  * way to the wire. Membership requires BOTH: the variant is constructed only by
@@ -251,16 +350,20 @@ async function main(): Promise<void> {
   installProcessGuards(logger);
   const manager = new SessionManager(config, logger);
 
-  const { handleLine } = createSidecar(
-    manager,
-    (line) => {
-      process.stdout.write(line);
-    },
-    (message) => logger.warn(message),
+  // Honor stdout backpressure: a slow Rust reader must pace our flushing, not
+  // grow the sidecar heap one un-drained delta at a time (see BackpressuredWriter).
+  const writer = new BackpressuredWriter(process.stdout, (message) =>
+    logger.warn(message),
+  );
+
+  const { handleLine } = createSidecar(manager, writer.write, (message) =>
+    logger.warn(message),
   );
 
   process.stderr.write('nightcore-sidecar ready\n');
   await pumpCommands(Bun.stdin.stream(), handleLine);
+  // stdin closed ⇒ the core is gone; flush whatever is still buffered before exit.
+  await writer.whenDrained();
 }
 
 if (import.meta.main) {
