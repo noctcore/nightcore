@@ -79,14 +79,23 @@ pub(crate) async fn handle_build_completed(
     // HEAD advances and the diff is real. A clean tree commits nothing (a no-op,
     // distinct from a genuine empty result). Main mode has no branch — the reviewer
     // judges the working tree vs HEAD in the project root, so no commit here.
+    // Either `Ok` arm leaves the branch commit-complete (a commit was created, or
+    // the tree was already clean) — which is exactly what `task.committed` records
+    // for a worktree task — so the flag is set in the Verifying update below and
+    // Done offers Merge / Create PR directly instead of a no-op manual Commit
+    // click whose only effect was flipping this flag. On `Err` the tree may still
+    // hold uncommitted edits, so the flag is left alone.
+    let mut branch_committed = false;
     if review_dir.is_worktree {
         if let Some(project) = app.state::<ProjectStore>().active() {
             let message = build_commit_message(&task);
             match worktree::commit(&PathBuf::from(&project.path), task_id, &message) {
                 Ok(true) => {
+                    branch_committed = true;
                     tracing::info!(target: "nightcore", task_id, "committed build work before review")
                 }
                 Ok(false) => {
+                    branch_committed = true;
                     tracing::info!(target: "nightcore", task_id, "no build changes to commit before review (clean tree)")
                 }
                 Err(e) => {
@@ -107,6 +116,9 @@ pub(crate) async fn handle_build_completed(
         task.summary = result.clone();
         task.cost_usd = cost;
         task.error = None;
+        if branch_committed {
+            task.committed = true;
+        }
     });
 
     // The deterministic gate battery, in order: the diff-budget park gate

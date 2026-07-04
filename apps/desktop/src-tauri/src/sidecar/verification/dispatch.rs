@@ -197,7 +197,19 @@ const CHECKS_UNAVAILABLE: &str =
 /// gauntlet must never wedge the verification gate.
 async fn reviewer_check_results(worktree_dir: &Path) -> String {
     let dir = worktree_dir.to_path_buf();
-    match tauri::async_runtime::spawn_blocking(move || crate::gauntlet::run(&dir)).await {
+    match tauri::async_runtime::spawn_blocking(move || {
+        // Deps first: a worktree allocated before submit-time provisioning existed
+        // (or whose install failed transiently) would red-fail typecheck on
+        // unresolvable package-local deps — a spurious ChangesRequested that burns
+        // a paid fix cycle. Cheap when already provisioned (a frozen install
+        // no-ops), and best-effort like the gauntlet itself.
+        if let Err(e) = crate::worktree::provision_deps(&dir) {
+            tracing::warn!(target: "nightcore", error = %e, "worktree dep provisioning failed before review gauntlet; running checks anyway");
+        }
+        crate::gauntlet::run(&dir)
+    })
+    .await
+    {
         Ok(result) => format_check_results(&result),
         Err(e) => {
             tracing::warn!(target: "nightcore", error = %e, "readiness gauntlet failed to run for reviewer; proceeding without check results");

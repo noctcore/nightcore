@@ -65,6 +65,26 @@ pub(crate) async fn submit_run(
         }
     };
 
+    // A fresh worktree checkout has no `node_modules` of its own, and package-local
+    // (non-hoisted) deps never resolve upward past the worktree root — so the agent
+    // can't run the project's real checks and the review-time gauntlet red-fails on
+    // `Cannot find module` (the empirical dogfood failure: a spurious
+    // ChangesRequested that burned a paid fix cycle). Provision the worktree's deps
+    // from its committed lockfile BEFORE dispatch, off the async runtime (a cold
+    // install can take seconds). Best-effort: a failed install must not fail the
+    // run — the agent may not need JS deps at all, and PR-create still hard-gates
+    // on its own provisioning.
+    if let Some(r) = resolved.as_ref().filter(|r| r.is_worktree) {
+        let dir = r.path.clone();
+        let tid = task_id.to_string();
+        let _ = tauri::async_runtime::spawn_blocking(move || {
+            if let Err(e) = worktree::provision_deps(&dir) {
+                tracing::warn!(target: "nightcore", task_id = %tid, error = %e, "worktree dep provisioning failed; continuing without it");
+            }
+        })
+        .await;
+    }
+
     // Only a worktree-mode run carries a `nc/<taskId>` branch chip; a `main`-mode
     // run edits the project's current branch directly, so it has no chip.
     let is_worktree = resolved.as_ref().map(|r| r.is_worktree).unwrap_or(false);
