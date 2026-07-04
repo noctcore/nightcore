@@ -70,6 +70,8 @@ export function Sidebar({
           type="button"
           onClick={onToggleSwitcher}
           title={active?.name ?? 'No project'}
+          aria-haspopup="menu"
+          aria-expanded={switcherOpen}
           className={`flex w-full items-center gap-2.5 rounded-[9px] border border-border bg-white/[0.02] px-2.5 py-2.5 text-left ${collapsed ? 'justify-center' : ''}`}
         >
           <IconTile size="sm" className="h-[22px] w-[22px] rounded-md">
@@ -155,6 +157,7 @@ export function Sidebar({
               type="button"
               onClick={() => onNavigate(item.view)}
               title={item.label}
+              aria-current={isActive ? 'page' : undefined}
               className={`${NAV_BASE} ${collapsed ? 'justify-center' : ''} ${
                 isActive
                   ? 'bg-primary/[0.12] text-primary'

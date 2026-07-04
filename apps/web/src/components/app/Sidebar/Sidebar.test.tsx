@@ -36,3 +36,23 @@ test('shows the running-agents indicator when agents are running', async () => {
   const screen = render(<Running />);
   await expect.element(screen.getByText('2 running')).toBeInTheDocument();
 });
+
+test('marks the active nav item with aria-current="page"', async () => {
+  // Default renders view="board", so the Board nav item is active.
+  const screen = render(<Default />);
+  const active = screen.getByRole('button', { name: /Kanban Board/ });
+  await expect.element(active).toHaveAttribute('aria-current', 'page');
+  // A non-active item carries no aria-current.
+  const inactive = screen.getByRole('button', { name: /Settings/ });
+  expect(inactive.element().getAttribute('aria-current')).toBeNull();
+});
+
+test('the project switcher toggle exposes aria-haspopup and aria-expanded', async () => {
+  const closed = render(<Default />);
+  const toggle = closed.container.querySelector('button[aria-haspopup="menu"]');
+  expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+
+  const open = render(<SwitcherOpen />);
+  const openToggle = open.container.querySelector('button[aria-haspopup="menu"]');
+  expect(openToggle?.getAttribute('aria-expanded')).toBe('true');
+});
