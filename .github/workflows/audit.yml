@@ -33,7 +33,9 @@ jobs:
       # advisory in the sanitizer/markdown stack is exactly the class this gate
       # must catch. If a specific moderate advisory ever needs tolerating, ignore
       # it by id explicitly rather than raising the global threshold.
-      - run: bun audit --audit-level=moderate
+      # Runs the root `audit` script so the --audit-level threshold is defined
+      # once (package.json) and local `bun run audit` matches this gate exactly.
+      - run: bun run audit
 
   cargo-audit:
     name: cargo audit (Rust crate)
