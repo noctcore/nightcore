@@ -1,0 +1,131 @@
+//! The terminal post seam: build one atomic GitHub review
+//! (`{event, body, comments[]}`) with serde_json (never string formatting) and
+//! POST it via `gh api …/reviews --input -`, body on STDIN. The human gate lives
+//! on the web side; here we just do the work.
+
+use std::path::Path;
+use std::time::Duration;
+
+use serde_json::{json, Value};
+use tauri::{AppHandle, Manager};
+
+use super::GH_TIMEOUT;
+use crate::store::TaskStore;
+use crate::workflow::merge::require_project;
+use crate::workflow::pr::{map_gh_failure, probe_gh, run_gh_bounded, GH_BINARY};
+
+/// The GitHub review verdict, mapped to the `gh` API `event` enum. The web sends the
+/// kebab form (`approve` / `request-changes` / `comment`); the uppercase `gh` forms are
+/// accepted defensively. Any other value is rejected.
+pub(super) fn review_event(verdict: &str) -> Result<&'static str, String> {
+    match verdict {
+        "approve" | "APPROVE" => Ok("APPROVE"),
+        "request-changes" | "REQUEST_CHANGES" => Ok("REQUEST_CHANGES"),
+        "comment" | "COMMENT" => Ok("COMMENT"),
+        other => Err(format!(
+            "invalid review verdict `{other}` — expected one of approve, request-changes, comment"
+        )),
+    }
+}
+
+/// One inline review comment posted alongside the review: an anchor (`path` + `line` in
+/// the PR head) plus the Nightcore-authored `body`. Built by the web/command layer from
+/// the selected findings that carry a line. Deserialize-only (the web constructs the
+/// literal), so it needs no ts-rs export.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InlineComment {
+    pub path: String,
+    pub line: u64,
+    pub body: String,
+}
+
+/// Build the `gh api …/reviews` JSON payload with serde_json (NEVER string formatting):
+/// `{ event, body, comments: [{path, line, body}, …] }`. Pure, unit-testable.
+pub(super) fn build_review_payload(event: &str, body: &str, comments: &[InlineComment]) -> String {
+    let comments_json: Vec<Value> = comments
+        .iter()
+        .map(|c| json!({ "path": c.path, "line": c.line, "body": c.body }))
+        .collect();
+    let payload = json!({ "event": event, "body": body, "comments": comments_json });
+    // A `serde_json::Value` always serializes; `to_string` cannot fail here.
+    payload.to_string()
+}
+
+/// Post one atomic GitHub review to a PR (binary-parameterized seam — the tests
+/// exercise the real spawn + stdin + exit-code mapping with a fake `gh`). Validates the
+/// verdict, `which`-probes `gh`, builds the payload with serde_json, and POSTs it via
+/// `gh api --method POST repos/{owner}/{repo}/pulls/<n>/reviews --input -` with the
+/// payload on STDIN (never argv). `gh` resolves `{owner}`/`{repo}` from the repo in
+/// `dir`. Surfaces `gh`'s stderr verbatim on a non-zero exit.
+pub(super) fn post_review_with(
+    dir: &Path,
+    binary: &str,
+    pr_number: u64,
+    verdict: &str,
+    body: &str,
+    comments: &[InlineComment],
+    deadline: Duration,
+) -> Result<(), String> {
+    if pr_number == 0 {
+        return Err(
+            "no PR number to post a review to (a positive integer is required)".to_string(),
+        );
+    }
+    // Validate the verdict BEFORE any probe/spawn so a bad value fails cheaply.
+    let event = review_event(verdict)?;
+    probe_gh(binary, "install it to post pull-request reviews")?;
+    let payload = build_review_payload(event, body, comments);
+    let endpoint = format!("repos/{{owner}}/{{repo}}/pulls/{pr_number}/reviews");
+    let out = run_gh_bounded(
+        dir,
+        binary,
+        &["api", "--method", "POST", &endpoint, "--input", "-"],
+        Some(&payload),
+        deadline,
+        "timed out posting the review to GitHub — check your network and try again",
+    )?;
+    if !out.status.success() {
+        return Err(map_gh_failure(binary, "api", &out));
+    }
+    Ok(())
+}
+
+/// Post a Nightcore-composed review to a GitHub pull request of the active project. The
+/// human gate lives on the web side (a ConfirmDialog); here we just do the work. The
+/// `body` + comment text are OUR OWN findings (trusted); this never echoes raw foreign
+/// diff text. Runs off the UI thread (the network `gh` spawn must not block the WKWebView).
+#[tauri::command]
+pub async fn post_review_to_github(
+    app: AppHandle,
+    pr_number: u64,
+    verdict: String,
+    body: String,
+    comments: Vec<InlineComment>,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        post_review_blocking(&app, pr_number, &verdict, &body, &comments)
+    })
+    .await
+    .map_err(|e| format!("post review failed to run: {e}"))?
+}
+
+/// The blocking body of [`post_review_to_github`]: resolve the active project (its root
+/// is the `gh` cwd, which resolves `{owner}`/`{repo}`), then post.
+fn post_review_blocking(
+    app: &AppHandle,
+    pr_number: u64,
+    verdict: &str,
+    body: &str,
+    comments: &[InlineComment],
+) -> Result<(), String> {
+    // Touch the task store so a mis-wired managed state surfaces here rather than as a
+    // confusing gh failure (parity with the sibling PR commands' state discipline).
+    let _ = app.try_state::<TaskStore>();
+    let project = require_project(app)?;
+    let dir = std::path::PathBuf::from(&project.path);
+    tracing::info!(target: "nightcore::pr", pr_number, verdict, comments = comments.len(), "posting PR review to GitHub");
+    post_review_with(
+        &dir, GH_BINARY, pr_number, verdict, body, comments, GH_TIMEOUT,
+    )
+}
