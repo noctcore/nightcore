@@ -8,6 +8,7 @@ import {
   type NightcoreEvent,
   type SurfaceCommand,
 } from '@nightcore/contracts';
+import type { Logger } from '@nightcore/shared';
 
 import type { SessionRunnerConfig } from '../../session/session-runner.js';
 import {
@@ -237,6 +238,58 @@ describe('AnalysisManager — cancellation', () => {
     const failed = events.find((e) => e.type === 'analysis-failed');
     expect(failed).toBeDefined();
     expect(failed?.type === 'analysis-failed' && failed.reason).toBe('aborted');
+  });
+});
+
+describe('AnalysisManager — failed-session observability', () => {
+  test('logs a WARN with the category, reason, and message when a session fails', async () => {
+    // Reproduces the "every category completed — 0 findings, $0.00" case (e.g. an
+    // API rate-limit rejecting each session before any billable work): a failed
+    // session still flows through `emitItemCompleted` as a completed-with-0 item,
+    // so the run looks benign in the logs unless the captured reason is surfaced.
+    const factory: AnalysisRunnerFactory = (_cfg, emit) => ({
+      async run() {
+        emit({
+          type: 'session-failed',
+          sessionId: -1,
+          reason: 'rate-limit',
+          message: 'overloaded',
+        });
+      },
+      async interrupt() {},
+    });
+
+    const warns: Array<{ msg: string; meta?: unknown }> = [];
+    const logger: Logger = {
+      error() {},
+      warn(msg, meta) {
+        warns.push({ msg, meta });
+      },
+      info() {},
+      debug() {},
+      child() {
+        return logger;
+      },
+    };
+
+    const { emit, done } = collect();
+    const manager = new AnalysisManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      logger,
+      runnerFactory: factory,
+    });
+
+    manager.start(startCommand(['bugs']));
+    await done;
+
+    const hit = warns.find(
+      (w) => (w.meta as { reason?: string }).reason === 'rate-limit',
+    );
+    expect(hit).toBeDefined();
+    expect((hit?.meta as { item?: string }).item).toBe('bugs');
+    expect((hit?.meta as { message?: string }).message).toBe('overloaded');
   });
 });
 

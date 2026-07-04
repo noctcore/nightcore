@@ -265,6 +265,23 @@ export abstract class ScanManager<
           );
           if (run.cancelled) return;
 
+          // A per-item session that FAILED (or produced unparseable output after the
+          // corrective retry) still flows through `emitItemCompleted` below as a
+          // *completed* item with 0 findings — so without this an all-failed scan
+          // reads as a benign empty result in the logs (every category "completed —
+          // 0 findings, $0.00"), and the captured reason/message is otherwise logged
+          // nowhere. Surface it so an unexpectedly $0 / 0-finding pass is diagnosable
+          // (e.g. an API rate-limit that rejected each session before any billable
+          // work — the failure the UI already renders but the terminal hid).
+          if (outcome.reason !== undefined || outcome.error !== undefined) {
+            this.deps.logger?.warn('scan item session did not complete cleanly', {
+              runId: command.runId,
+              item: typeof item === 'string' ? item : JSON.stringify(item),
+              ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}),
+              ...(outcome.error !== undefined ? { message: outcome.error } : {}),
+            });
+          }
+
           const grounded = this.ground(outcome.findings, command.projectPath);
           itemsRun.push(item);
           totalCost += outcome.costUsd;
