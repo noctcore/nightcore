@@ -4,7 +4,7 @@ The Rust/Tauri orchestration brain — the middle tier of the Nightcore desktop
 studio. Owns the task registry, auto-loop coordinator, concurrency/slot manager,
 per-task git worktrees, dependency ordering, failure circuit-breaker, the
 verification gauntlet, and settings. Spawns and drives the Bun sidecar over
-NDJSON stdio. Exposes 35 `#[tauri::command]` functions and 5 `nc:*` event
+NDJSON stdio. Exposes ~120 `#[tauri::command]` functions and 10 `nc:*` event
 channels to the React board.
 
 See [`docs/architecture.md`](../../../docs/architecture.md) for the full 3-tier
