@@ -83,6 +83,22 @@ mock.module('@anthropic-ai/claude-agent-sdk', () => ({
   },
 }));
 
+// Fully stub the Claude-CLI resolver so the test never depends on a `claude`
+// being installed on the host. `SessionRunner.runQueryLoop()` runs a preflight:
+// if `resolveClaudeBinary()` returns undefined it emits a "Claude CLI not found"
+// `session-failed` and returns BEFORE reaching the mocked `query()` — which on a
+// machine without the CLI (e.g. CI) would break every mock-driven test here
+// (the crash assertion gets the CLI-missing message; the happy-path tests time
+// out waiting for a `session-completed` that never comes). Returning a fixed fake
+// path makes the preflight pass so the tests exercise the scripted `query()`
+// seam. `checkClaudeCliVersion` is stubbed to `undefined` too: its real body
+// `spawnSync`s `<binary> --version`, so leaving it live would spawn a real
+// subprocess — this keeps the suite fully hermetic (no CLI, no child process).
+mock.module('./resolve-claude-binary.js', () => ({
+  resolveClaudeBinary: () => '/usr/local/bin/claude',
+  checkClaudeCliVersion: () => undefined,
+}));
+
 // Imported AFTER the mock is registered so the runner picks up the stub.
 const { SessionManager } = await import('./session-manager.js');
 
