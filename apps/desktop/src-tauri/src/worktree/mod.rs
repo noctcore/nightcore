@@ -16,10 +16,11 @@
 //! - If the base working tree is dirty, the loop refuses to start (we never branch
 //!   off uncommitted work) — see [`is_worktree_clean`].
 //!
-//! **Module map** — this file is the coordinator that owns the single [`git`]
-//! spawner (the isolation chokepoint) plus the shared output parsers; every git
-//! call in every submodule routes through it. The concerns are split into cohesive,
-//! separately-auditable submodules:
+//! **Module map** — this file is the coordinator; the git runner trio + porcelain
+//! parsers now live in the shared `crate::git` module (built on the same
+//! `platform::git_command` isolation chokepoint) and are re-bound here so the
+//! submodules reach them as `super::git` unchanged. The worktree-specific concerns
+//! are split into cohesive, separately-auditable submodules:
 //! - [`path`] — pure path/branch naming + the `is_under` escape guard (no I/O).
 //! - [`lifecycle`] — allocate / remove / reconcile (the security-sensitive dir ops).
 //! - [`provision`] — install a worktree's deps from its lockfile so the gauntlet resolves them.
@@ -75,88 +76,15 @@ pub use merge::MergePreviewStatus;
 #[allow(unused_imports)]
 pub use status::worktree_status;
 
-// ─── Shared git plumbing (the isolation chokepoint) ────────────────────────────
-// Private to the `worktree` module tree: Rust lets descendant submodules call these
-// while keeping the process-spawning surface off the crate-wide API. `git` is the
-// sole spawner every submodule routes through (`git_status_success` and
+// ─── Shared git plumbing ───────────────────────────────────────────────────────
+// The git runner trio now lives in the shared `crate::git::run` module (built on
+// the same `platform::git_command` isolation chokepoint). Re-bound here (private)
+// so the submodules that reach them as `super::git` / `super::git_with_deadline` /
+// `super::git_status_success` resolve unchanged, while every OTHER module in the
+// crate gets the same runners through `crate::git::run`. (`git_status_success` and
 // `merge::detect_merge_conflicts` are the two exit-status/exit-code specializations
-// that read `crate::platform::git_command` directly for their custom handling).
-
-/// Run a git subcommand in `repo`, returning trimmed stdout on success or the
-/// trimmed stderr as the error.
-fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
-    let out = crate::platform::git_command(repo)
-        .args(args)
-        .output()
-        .map_err(|e| format!("failed to run git (is `git` on PATH?): {e}"))?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
-    } else {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
-    }
-}
-
-/// Like [`git`], but bounded by a wall-clock `deadline` — for subcommands that
-/// talk to the NETWORK (`push`, `fetch`), where a black-holed origin would
-/// otherwise pin the calling blocking thread (and any task lease it holds)
-/// forever. Same chokepoint (`crate::platform::git_command`, so the git-env
-/// isolation is preserved), but spawned with piped output drained on threads and
-/// reaped via [`crate::proc::wait_with_deadline`]; on overrun the child is
-/// killed and `timeout_msg` is returned as the error.
-fn git_with_deadline(
-    repo: &Path,
-    args: &[&str],
-    deadline: std::time::Duration,
-    timeout_msg: &str,
-) -> Result<String, String> {
-    use std::io::Read;
-    use std::process::Stdio;
-
-    let mut child = crate::platform::git_command(repo)
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("failed to run git (is `git` on PATH?): {e}"))?;
-
-    // Drain both pipes on threads so neither can fill and block the child
-    // (the claude_oneshot discipline); join after the bounded wait.
-    fn drain<R: Read + Send + 'static>(pipe: Option<R>) -> std::thread::JoinHandle<String> {
-        std::thread::spawn(move || {
-            let mut buf = String::new();
-            if let Some(mut p) = pipe {
-                let _ = p.read_to_string(&mut buf);
-            }
-            buf
-        })
-    }
-    let stdout = drain(child.stdout.take());
-    let stderr = drain(child.stderr.take());
-
-    let status = match crate::proc::wait_with_deadline(&mut child, deadline) {
-        Ok(Some(status)) => status,
-        Ok(None) => return Err(timeout_msg.to_string()),
-        Err(e) => return Err(format!("git did not finish: {e}")),
-    };
-    let stdout = stdout.join().unwrap_or_default();
-    let stderr = stderr.join().unwrap_or_default();
-    if status.success() {
-        Ok(stdout.trim().to_string())
-    } else {
-        Err(stderr.trim().to_string())
-    }
-}
-
-/// Run a git subcommand purely for its exit status (no output capture). Returns
-/// true on success. Used for predicate-style git calls (`diff --quiet`, `merge`).
-fn git_status_success(repo: &Path, args: &[&str]) -> bool {
-    crate::platform::git_command(repo)
-        .args(args)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
+// that read `crate::platform::git_command` directly for their custom handling.)
+use crate::git::run::{git, git_status_success, git_with_deadline};
 
 /// Best-effort `git update-index --refresh` in `dir` to clear git's stale stat
 /// cache. Without it, a worktree that was only `stat`-touched (a build that wrote
@@ -167,12 +95,7 @@ fn refresh_index(dir: &Path) {
     let _ = git_status_success(dir, &["update-index", "--refresh"]);
 }
 
-/// Parse `git rev-list --left-right --count <base>...HEAD` output (`"<behind>\t<ahead>"`)
-/// into `(behind, ahead)`: the left count is commits reachable from `base` but not
-/// HEAD (behind), the right is HEAD-only (ahead). `None` on malformed output.
-fn parse_left_right_count(s: &str) -> Option<(u32, u32)> {
-    let mut parts = s.split_whitespace();
-    let behind = parts.next()?.parse::<u32>().ok()?;
-    let ahead = parts.next()?.parse::<u32>().ok()?;
-    Some((behind, ahead))
-}
+// The `rev-list --left-right --count` parser now lives in the shared
+// `crate::git::parse` module. Re-bound here (private) so the submodules that
+// reach it as `super::parse_left_right_count` resolve unchanged.
+use crate::git::parse::parse_left_right_count;

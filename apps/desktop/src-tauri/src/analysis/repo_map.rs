@@ -86,18 +86,10 @@ struct FileFacts {
 /// capped at [`MAX_PARSED_FILES`]. `None` when `root` is not a git repo (or git
 /// itself fails) — the caller omits the section.
 fn tracked_source_files(root: &Path) -> Option<Vec<String>> {
-    let output = crate::platform::git_command(root)
-        .args(["ls-files", "-z"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let listing = String::from_utf8_lossy(&output.stdout);
-    let mut files: Vec<String> = listing
-        .split('\0')
-        .filter(|p| !p.is_empty() && lang_for(p).is_some())
-        .map(str::to_string)
+    let mut files: Vec<String> = crate::git::query::list_tracked_files(root, &[])
+        .ok()?
+        .into_iter()
+        .filter(|p| lang_for(p).is_some())
         .collect();
     // Path-sort BEFORE the cap so the parsed subset is stable across runs.
     files.sort();
@@ -818,20 +810,7 @@ mod tests {
     /// A git repo fixture: `write` files, then `commit` (add -A + commit) so
     /// `git ls-files` sees them. Mirrors the injection_scan/anti_gaming pattern.
     fn git(root: &Path, args: &[&str]) {
-        let out = std::process::Command::new("git")
-            .args(args)
-            .current_dir(root)
-            .env("GIT_AUTHOR_NAME", "t")
-            .env("GIT_AUTHOR_EMAIL", "t@t")
-            .env("GIT_COMMITTER_NAME", "t")
-            .env("GIT_COMMITTER_EMAIL", "t@t")
-            .output()
-            .expect("git");
-        assert!(
-            out.status.success(),
-            "git {args:?} failed: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
+        crate::git::testutil::git_expect(root, args);
     }
 
     fn write(root: &Path, rel: &str, content: &str) {

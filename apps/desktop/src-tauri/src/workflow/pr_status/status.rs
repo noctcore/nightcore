@@ -11,9 +11,9 @@ use tauri::{AppHandle, Manager};
 
 use super::view::{fetch_pr_view_with, require_pr_number, GH_VIEW_TIMEOUT};
 use super::PrStatus;
+use crate::git::gh::GH_BINARY;
 use crate::store::TaskStore;
 use crate::workflow::merge::require_project;
-use crate::workflow::pr::GH_BINARY;
 use crate::worktree;
 
 /// Fetch the live GitHub status of a task's PR (see [`PrStatus`]). Read-only —

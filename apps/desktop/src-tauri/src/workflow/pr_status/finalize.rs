@@ -8,13 +8,14 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter, Manager};
 
 use super::view::{fetch_pr_view_with, require_pr_number, GH_VIEW_TIMEOUT};
+use crate::git::gh::GH_BINARY;
 use crate::settings::SettingsStore;
 use crate::store::TaskStore;
 use crate::task::{Task, TaskStatus, TASK_EVENT};
 use crate::workflow::merge::{
     commit_in_flight, lease_held, merge_in_flight, require_project, TaskLease,
 };
-use crate::workflow::pr::{pr_in_flight, GH_BINARY};
+use crate::workflow::pr::pr_in_flight;
 use crate::worktree;
 
 /// Refuse a finalize while the task has a LIVE SESSION on its worktree: a held

@@ -9,7 +9,7 @@ use std::time::Duration;
 use serde_json::Value;
 
 use super::GH_TIMEOUT;
-use crate::workflow::pr::{map_gh_failure, probe_gh, run_gh_bounded, GH_BINARY};
+use crate::git::gh::{run_gh_checked, run_gh_json, GhCall, GH_BINARY};
 
 /// Cap on the resolved PR diff handed to the sidecar (512 KiB). A gargantuan diff would
 /// blow the review prompt's context budget; past the cap we truncate + append a marker
@@ -51,35 +51,33 @@ pub(super) fn fetch_pr_diff_with(
     if pr_number == 0 {
         return Err("enter a valid PR number (a positive integer)".to_string());
     }
-    probe_gh(binary, "install it to review pull requests")?;
     let number = pr_number.to_string();
 
-    let diff_out = run_gh_bounded(
+    let diff_stdout = run_gh_checked(GhCall {
         dir,
         binary,
-        &["pr", "diff", &number],
-        None,
+        args: &["pr", "diff", &number],
+        action: "install it to review pull requests",
+        subcmd: "pr diff",
+        stdin: None,
         deadline,
-        "timed out fetching the PR diff from GitHub — check your network and try again",
-    )?;
-    if !diff_out.status.success() {
-        return Err(map_gh_failure(binary, "pr diff", &diff_out));
-    }
-    let diff = cap_diff(diff_out.stdout, PR_DIFF_CAP);
+        timeout_msg:
+            "timed out fetching the PR diff from GitHub — check your network and try again",
+    })?;
+    let diff = cap_diff(diff_stdout, PR_DIFF_CAP);
 
-    let names_out = run_gh_bounded(
+    let names_stdout = run_gh_checked(GhCall {
         dir,
         binary,
-        &["pr", "diff", &number, "--name-only"],
-        None,
+        args: &["pr", "diff", &number, "--name-only"],
+        action: "install it to review pull requests",
+        subcmd: "pr diff --name-only",
+        stdin: None,
         deadline,
-        "timed out fetching the PR changed files from GitHub — check your network and try again",
-    )?;
-    if !names_out.status.success() {
-        return Err(map_gh_failure(binary, "pr diff --name-only", &names_out));
-    }
-    let changed_files: Vec<String> = names_out
-        .stdout
+        timeout_msg:
+            "timed out fetching the PR changed files from GitHub — check your network and try again",
+    })?;
+    let changed_files: Vec<String> = names_stdout
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
@@ -110,21 +108,17 @@ pub(super) fn fetch_pr_head_oid_with(
     if pr_number == 0 {
         return Err("enter a valid PR number (a positive integer)".to_string());
     }
-    probe_gh(binary, "install it to review pull requests")?;
     let number = pr_number.to_string();
-    let out = run_gh_bounded(
+    let value: Value = run_gh_json(GhCall {
         dir,
         binary,
-        &["pr", "view", &number, "--json", "headRefOid"],
-        None,
+        args: &["pr", "view", &number, "--json", "headRefOid"],
+        action: "install it to review pull requests",
+        subcmd: "pr view",
+        stdin: None,
         deadline,
-        "timed out reading the PR head from GitHub — check your network and try again",
-    )?;
-    if !out.status.success() {
-        return Err(map_gh_failure(binary, "pr view", &out));
-    }
-    let value: Value = serde_json::from_str(out.stdout.trim())
-        .map_err(|e| format!("`{binary} pr view` returned unparseable JSON: {e}"))?;
+        timeout_msg: "timed out reading the PR head from GitHub — check your network and try again",
+    })?;
     Ok(value
         .get("headRefOid")
         .and_then(Value::as_str)

@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::workflow::pr::{map_gh_failure, probe_gh, run_gh_bounded};
+use crate::git::gh::{map_gh_failure, probe_gh, run_gh_bounded};
 
 /// Wall-clock bound on the `gh pr checks` read (a single-PR check listing moves
 /// no data — the `GH_VIEW_TIMEOUT` rationale).

@@ -16,7 +16,7 @@ use std::time::Duration;
 use serde_json::json;
 
 use super::state::{PrFixState, KIND_CI, KIND_CONFLICTS};
-use crate::workflow::pr::{map_gh_failure, probe_gh, run_gh_bounded};
+use crate::git::gh::{run_gh_checked, GhCall};
 
 /// Wall-clock bound on the comment POST (one small write).
 pub(super) const GH_COMMENT_TIMEOUT: Duration = Duration::from_secs(60);
@@ -78,15 +78,7 @@ pub(super) fn compose_push_comment(state: &PrFixState, short_sha: Option<&str>) 
 /// comment's autolinking commit reference. Best-effort — `None` never blocks
 /// the comment.
 pub(super) fn head_short_sha(dir: &Path) -> Option<String> {
-    let out = crate::platform::git_command(dir)
-        .args(["rev-parse", "--short=10", "HEAD"])
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let sha = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    (!sha.is_empty()).then_some(sha)
+    crate::git::run::git_stdout(dir, &["rev-parse", "--short=10", "HEAD"]).filter(|s| !s.is_empty())
 }
 
 /// POST one issue comment on the PR via `gh api … --input -` (the issues
@@ -99,19 +91,17 @@ pub(super) fn post_push_comment_with(
     body: &str,
     deadline: Duration,
 ) -> Result<(), String> {
-    probe_gh(binary, "install it to post the summary comment")?;
     let payload = json!({ "body": body }).to_string();
     let endpoint = format!("repos/{{owner}}/{{repo}}/issues/{pr_number}/comments");
-    let out = run_gh_bounded(
+    run_gh_checked(GhCall {
         dir,
         binary,
-        &["api", "--method", "POST", &endpoint, "--input", "-"],
-        Some(&payload),
+        args: &["api", "--method", "POST", &endpoint, "--input", "-"],
+        action: "install it to post the summary comment",
+        subcmd: "api",
+        stdin: Some(&payload),
         deadline,
-        "timed out posting the summary comment to GitHub",
-    )?;
-    if !out.status.success() {
-        return Err(map_gh_failure(binary, "api", &out));
-    }
+        timeout_msg: "timed out posting the summary comment to GitHub",
+    })?;
     Ok(())
 }

@@ -164,20 +164,37 @@ pub fn git_command(repo: &Path) -> std::process::Command {
         cmd.arg("-c").arg(kv);
     }
     cmd.current_dir(repo);
+    scrub_git_env(&mut cmd);
+    cmd
+}
+
+/// Apply git's env ISOLATION to any [`std::process::Command`] whose (possibly
+/// transitive) child runs `git`: scrub the 11 contaminating `GIT_*` vars
+/// ([`GIT_ENV_VARS_TO_CLEAR`]) and the 11 code-execution / dynamic-linker vectors
+/// ([`GIT_EXEC_ENV_VARS_TO_CLEAR`]) so a poisoned parent env can't redirect git at
+/// the wrong repo or turn a git op into host RCE, then pin `HUSKY=0` (no user
+/// hooks on our automated ops), `LC_ALL=C` (locale-stable porcelain for parsing),
+/// and `GIT_TERMINAL_PROMPT=0` (a credential prompt errors instead of hanging a
+/// headless child).
+///
+/// [`git_command`] applies this to the git spawn itself; the **`gh` seam**
+/// (`git::gh`) applies it too, because `gh` shells out to `git` internally — so
+/// gh's inner git inherits the same scrubbed environment instead of running
+/// un-isolated. We use `env_remove` (not `env_clear`) so PATH/HOME and the
+/// credential-helper config survive; we intentionally do NOT set
+/// `GIT_CONFIG_NOSYSTEM` (system config is not agent-writable and on Apple git it
+/// carries the osxkeychain credential helper first-party pushes + `gh` depend on).
+/// Verified 2026-07-05 that `gh auth status` + `gh api rate_limit` still pass under it.
+pub(crate) fn scrub_git_env(cmd: &mut std::process::Command) {
     for var in GIT_ENV_VARS_TO_CLEAR {
         cmd.env_remove(var);
     }
-    // Scrub the code-execution / dynamic-linker vectors so a poisoned parent env
-    // can't turn a git op into host RCE. We intentionally do NOT set
-    // GIT_CONFIG_NOSYSTEM: system config is not agent-writable and on Apple git it
-    // carries the osxkeychain credential helper first-party pushes depend on.
     for var in GIT_EXEC_ENV_VARS_TO_CLEAR {
         cmd.env_remove(var);
     }
     cmd.env("HUSKY", "0");
     cmd.env("LC_ALL", "C");
     cmd.env("GIT_TERMINAL_PROMPT", "0");
-    cmd
 }
 
 /// Hydrate this process's `PATH` from the user's login shell so a GUI-launched app

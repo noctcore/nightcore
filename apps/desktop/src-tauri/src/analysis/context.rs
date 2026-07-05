@@ -283,14 +283,7 @@ mod tests {
         assert!(!pack.contains("## Repo Map"), "no git repo → no repo map");
 
         // A git repo with one tracked source file gets the ranked map appended.
-        let git = |args: &[&str]| {
-            let out = std::process::Command::new("git")
-                .args(args)
-                .current_dir(root)
-                .output()
-                .expect("git");
-            assert!(out.status.success(), "git {args:?} failed");
-        };
+        let git = |args: &[&str]| crate::git::testutil::git_expect(root, args);
         git(&["init", "-q"]);
         std::fs::write(root.join("api.ts"), "export const fetchAll = () => 1;\n")
             .expect("write api.ts");

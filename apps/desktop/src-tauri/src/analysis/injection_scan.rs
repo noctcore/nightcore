@@ -124,20 +124,9 @@ pub fn detect(text: &str) -> Vec<String> {
 /// content an agent inherits from the repo). Unreadable/binary/oversized files
 /// are skipped silently — a scan must never fail the project open.
 pub fn scan_project(root: &Path) -> Result<Vec<InjectionFlag>, String> {
-    let output = crate::platform::git_command(root)
-        .args(["ls-files", "-z"])
-        .output()
-        .map_err(|e| format!("git ls-files failed to launch: {e}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "git ls-files failed (exit {:?})",
-            output.status.code()
-        ));
-    }
-    let listing = String::from_utf8_lossy(&output.stdout);
     let mut flags = Vec::new();
-    for rel in listing.split('\0').filter(|p| !p.is_empty()) {
-        let path = root.join(rel);
+    for rel in crate::git::query::list_tracked_files(root, &[])? {
+        let path = root.join(&rel);
         let Ok(meta) = std::fs::metadata(&path) else {
             continue;
         };
@@ -154,10 +143,7 @@ pub fn scan_project(root: &Path) -> Result<Vec<InjectionFlag>, String> {
         let text = String::from_utf8_lossy(&bytes);
         let reasons = detect(&text);
         if !reasons.is_empty() {
-            flags.push(InjectionFlag {
-                path: rel.to_string(),
-                reasons,
-            });
+            flags.push(InjectionFlag { path: rel, reasons });
         }
     }
     Ok(flags)
@@ -238,18 +224,7 @@ mod tests {
     fn scan_walks_tracked_files_and_skips_binary() {
         let tmp = tempfile::TempDir::new().expect("temp dir");
         let root = tmp.path();
-        let git = |args: &[&str]| {
-            let out = std::process::Command::new("git")
-                .args(args)
-                .current_dir(root)
-                .env("GIT_AUTHOR_NAME", "t")
-                .env("GIT_AUTHOR_EMAIL", "t@t")
-                .env("GIT_COMMITTER_NAME", "t")
-                .env("GIT_COMMITTER_EMAIL", "t@t")
-                .output()
-                .expect("git");
-            assert!(out.status.success(), "git {args:?} failed");
-        };
+        let git = |args: &[&str]| crate::git::testutil::git_expect(root, args);
         git(&["init", "-q"]);
         std::fs::write(root.join("clean.ts"), "const x = 1;\n").expect("write");
         std::fs::write(
@@ -278,18 +253,7 @@ mod tests {
     fn scan_neutralizes_hostile_fsmonitor_config() {
         let tmp = tempfile::TempDir::new().expect("temp dir");
         let root = tmp.path();
-        let git = |args: &[&str]| {
-            let out = std::process::Command::new("git")
-                .args(args)
-                .current_dir(root)
-                .env("GIT_AUTHOR_NAME", "t")
-                .env("GIT_AUTHOR_EMAIL", "t@t")
-                .env("GIT_COMMITTER_NAME", "t")
-                .env("GIT_COMMITTER_EMAIL", "t@t")
-                .output()
-                .expect("git");
-            assert!(out.status.success(), "git {args:?} failed");
-        };
+        let git = |args: &[&str]| crate::git::testutil::git_expect(root, args);
         git(&["init", "-q"]);
         std::fs::write(root.join("clean.ts"), "const x = 1;\n").expect("write");
         git(&["add", "clean.ts"]);

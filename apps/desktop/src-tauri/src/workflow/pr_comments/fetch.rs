@@ -8,7 +8,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use super::{PrComment, PrReviewComments, PrReviewSummary, PrThread};
-use crate::workflow::pr::{map_gh_failure, probe_gh, run_gh_bounded};
+use crate::git::gh::{run_gh_checked, GhCall};
 
 /// Wall-clock bound on the read-only `gh api graphql` fetch — comments move no
 /// data, so a black-holed GitHub should fail the refresh fast, not pin a blocking
@@ -217,16 +217,15 @@ pub(super) fn fetch_review_comments_with(
     number: u64,
     deadline: Duration,
 ) -> Result<PrReviewComments, String> {
-    probe_gh(binary, "install it to track pull requests")?;
     // gh resolves `{owner}`/`{repo}` from the repo in `dir`; `-F number=<n>`
     // types it as Int for the `Int!` variable; the query rides in a `query=…`
     // string field.
     let number_arg = format!("number={number}");
     let query_arg = format!("query={GRAPHQL_QUERY}");
-    let out = run_gh_bounded(
+    let stdout = run_gh_checked(GhCall {
         dir,
         binary,
-        &[
+        args: &[
             "api",
             "graphql",
             "-F",
@@ -238,12 +237,12 @@ pub(super) fn fetch_review_comments_with(
             "-f",
             &query_arg,
         ],
-        None,
+        action: "install it to track pull requests",
+        subcmd: "api graphql",
+        stdin: None,
         deadline,
-        "timed out reading review comments from GitHub — check your network and try again",
-    )?;
-    if !out.status.success() {
-        return Err(map_gh_failure(binary, "api graphql", &out));
-    }
-    parse_review_comments(&out.stdout)
+        timeout_msg:
+            "timed out reading review comments from GitHub — check your network and try again",
+    })?;
+    parse_review_comments(&stdout)
 }

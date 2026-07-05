@@ -3,7 +3,7 @@
 //! additions/deletions) without shipping the whole diff.
 //!
 //! Same posture as the rest of the `gh` seam: bounded by a deadline via
-//! [`super::pr::run_gh_bounded`]; `gh` is the seam and stores no tokens; the repo is the
+//! [`crate::git::gh::run_gh_checked`]; `gh` is the seam and stores no tokens; the repo is the
 //! active project's; every `path` is gh pass-through (untrusted contributor content) the
 //! web renders as inert text and never feeds to a model. Read-only — no mutation, no
 //! lease. The list is CAPPED defensively (a pathological PR touching tens of thousands of
@@ -18,11 +18,9 @@ use tauri::AppHandle;
 use ts_rs::TS;
 
 use super::merge::require_project;
-use super::pr::{map_gh_failure, probe_gh, run_gh_bounded, GH_BINARY};
+use crate::git::gh::{run_gh_checked, GhCall, GH_BINARY, PR_FILES_FIELDS};
 
 const GH_FILES_TIMEOUT: Duration = Duration::from_secs(60);
-/// The `--json` field set for the changed-file list — path + line-delta counts only.
-const PR_FILES_FIELDS: &str = "files";
 /// Defensive ceiling on the returned list: past this we truncate rather than ship an
 /// unbounded payload for a pathological PR. The picker/detail pane shows the leading slice.
 const PR_FILES_CAP: usize = 500;
@@ -101,20 +99,19 @@ fn changed_files_with(
     if pr_number == 0 {
         return Err("enter a valid PR number (a positive integer)".to_string());
     }
-    probe_gh(binary, "install it to list a pull request's changed files")?;
     let number = pr_number.to_string();
-    let out = run_gh_bounded(
+    let stdout = run_gh_checked(GhCall {
         dir,
         binary,
-        &["pr", "view", &number, "--json", PR_FILES_FIELDS],
-        None,
+        args: &["pr", "view", &number, "--json", PR_FILES_FIELDS],
+        action: "install it to list a pull request's changed files",
+        subcmd: "pr view",
+        stdin: None,
         deadline,
-        "timed out reading the PR's changed files from GitHub — check your network and try again",
-    )?;
-    if !out.status.success() {
-        return Err(map_gh_failure(binary, "pr view", &out));
-    }
-    parse_changed_files(&out.stdout)
+        timeout_msg:
+            "timed out reading the PR's changed files from GitHub — check your network and try again",
+    })?;
+    parse_changed_files(&stdout)
 }
 
 fn pr_changed_files_blocking(

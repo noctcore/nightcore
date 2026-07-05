@@ -10,12 +10,13 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use super::fetch::{fetch_review_comments_with, GH_COMMENTS_TIMEOUT};
 use super::triage::triage_threads;
 use super::{PrCommentTriage, PrCommentTriageClass, PrReviewComments};
+use crate::git::gh::GH_BINARY;
 use crate::store::TaskStore;
 use crate::task::{Task, TaskStatus, TASK_EVENT};
 use crate::workflow::merge::{
     commit_in_flight, lease_held, merge_in_flight, require_project, TaskLease,
 };
-use crate::workflow::pr::{pr_in_flight, GH_BINARY};
+use crate::workflow::pr::pr_in_flight;
 use crate::worktree;
 
 /// The task's recorded PR number, or a clear refusal (mirrors the pr_status

@@ -37,12 +37,19 @@ pub fn append_contract_budget_check(
     project_root: &Path,
 ) {
     let base = crate::worktree::base_branch(project_root);
-    let Some(merge_base) = git_stdout(review_dir, &["merge-base", &base, "HEAD"]) else {
+    // `.filter(non-empty)` preserves this gate's original empty-as-absent posture
+    // (its local `git_stdout` mapped a successful-but-empty read to `None`).
+    let Some(merge_base) = crate::git::run::git_stdout(review_dir, &["merge-base", &base, "HEAD"])
+        .filter(|s| !s.is_empty())
+    else {
         tracing::warn!(target: "nightcore::contract_budget", base = %base, dir = %review_dir.display(), "could not resolve merge-base; skipping contract-budget gate");
         return;
     };
     let range = format!("{merge_base}..HEAD");
-    let Some(names) = git_stdout(review_dir, &["diff", "--no-color", "--name-only", &range]) else {
+    let Some(names) =
+        crate::git::run::git_stdout(review_dir, &["diff", "--no-color", "--name-only", &range])
+            .filter(|s| !s.is_empty())
+    else {
         tracing::warn!(target: "nightcore::contract_budget", range = %range, dir = %review_dir.display(), "git diff failed; skipping contract-budget gate");
         return;
     };
@@ -116,24 +123,6 @@ fn measure(review_dir: &Path, touched: &[&str]) -> (Vec<String>, Vec<String>) {
     (within, over)
 }
 
-/// Run git in `dir` for stdout, `None` on any failure — callers treat every
-/// `None` as "skip the gate". Routed through the env-scrubbed
-/// `platform::git_command` like every git spawn in the crate (its siblings
-/// `diff_budget::git_stdout` / `anti_gaming::sweep::git_stdout`), so a poisoned
-/// env or repo-local `.git/config` can't turn this gate's git ops into host RCE.
-fn git_stdout(dir: &Path, args: &[&str]) -> Option<String> {
-    let out = crate::platform::git_command(dir).args(args).output().ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if text.is_empty() {
-        None
-    } else {
-        Some(text)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -149,28 +138,17 @@ mod tests {
         assert!(!is_contract_path("README.md"));
     }
 
-    /// Regression: `git_stdout` must route through the env-scrubbed,
-    /// config-neutralized `platform::git_command` (it once spawned git directly,
-    /// diverging from its diff_budget/sweep siblings). A repo carrying a hostile
-    /// `.git/config` with `core.fsmonitor=<cmd>` must NOT get that program spawned
-    /// when the gate reads git output — while a legit query still returns.
+    /// Regression: the shared `git::run::git_stdout` this gate now routes through
+    /// must build on the env-scrubbed, config-neutralized `platform::git_command`.
+    /// A repo carrying a hostile `.git/config` with `core.fsmonitor=<cmd>` must NOT
+    /// get that program spawned when the gate reads git output — while a legit
+    /// query still returns.
     #[test]
     #[cfg(unix)]
     fn git_stdout_neutralizes_hostile_fsmonitor_config() {
         let tmp = TempDir::new().expect("tempdir");
         let root = tmp.path();
-        let git = |args: &[&str]| {
-            let out = std::process::Command::new("git")
-                .args(args)
-                .current_dir(root)
-                .env("GIT_AUTHOR_NAME", "t")
-                .env("GIT_AUTHOR_EMAIL", "t@t")
-                .env("GIT_COMMITTER_NAME", "t")
-                .env("GIT_COMMITTER_EMAIL", "t@t")
-                .output()
-                .expect("git runs");
-            assert!(out.status.success(), "git {args:?} failed");
-        };
+        let git = |args: &[&str]| crate::git::testutil::git_expect(root, args);
         git(&["init", "-b", "main"]);
         std::fs::write(root.join("f.txt"), "x\n").expect("write");
         git(&["add", "-A"]);
@@ -186,7 +164,7 @@ mod tests {
         drop(cfg);
 
         // First-party path still works: ls-files returns the tracked file.
-        let out = git_stdout(root, &["ls-files"]).expect("ls-files returns");
+        let out = crate::git::run::git_stdout(root, &["ls-files"]).expect("ls-files returns");
         assert!(out.contains("f.txt"));
         // Vector blocked: the planted fsmonitor command never ran.
         assert!(
@@ -237,18 +215,7 @@ mod tests {
         let tmp = TempDir::new().expect("tempdir");
         let root = tmp.path().join("project");
         std::fs::create_dir_all(&root).expect("mkdir project");
-        let git = |dir: &Path, args: &[&str]| {
-            let out = std::process::Command::new("git")
-                .args(args)
-                .current_dir(dir)
-                .env("GIT_AUTHOR_NAME", "t")
-                .env("GIT_AUTHOR_EMAIL", "t@t")
-                .env("GIT_COMMITTER_NAME", "t")
-                .env("GIT_COMMITTER_EMAIL", "t@t")
-                .output()
-                .expect("git runs");
-            assert!(out.status.success(), "git {args:?}: {:?}", out);
-        };
+        let git = |dir: &Path, args: &[&str]| crate::git::testutil::git_expect(dir, args);
         git(&root, &["init", "-b", "main"]);
         std::fs::write(root.join("AGENTS.md"), "rule\n".repeat(10)).expect("write");
         std::fs::write(root.join("lib.rs"), "fn main() {}\n").expect("write");

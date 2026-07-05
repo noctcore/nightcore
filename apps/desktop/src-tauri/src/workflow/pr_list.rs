@@ -2,7 +2,7 @@
 //! the user selects a pull request from a list instead of typing its number.
 //!
 //! Same posture as the rest of the `gh` seam: bounded by a deadline via
-//! [`super::pr::run_gh_bounded`]; `gh` is the seam and stores no tokens; the repo
+//! [`crate::git::gh::run_gh_checked`]; `gh` is the seam and stores no tokens; the repo
 //! is the active project's; every text field is gh pass-through (untrusted
 //! contributor content) that the web renders as inert text and never feeds to a
 //! model. Read-only — no mutation, no lease.
@@ -16,14 +16,9 @@ use tauri::AppHandle;
 use ts_rs::TS;
 
 use super::merge::require_project;
-use super::pr::{map_gh_failure, probe_gh, run_gh_bounded, GH_BINARY};
+use crate::git::gh::{run_gh_checked, GhCall, GH_BINARY, PR_LIST_FIELDS};
 
 const GH_LIST_TIMEOUT: Duration = Duration::from_secs(60);
-/// The `--json` field set the master-detail picker renders. `author` and `labels`
-/// are nested; `body`/`url` feed the detail pane; `additions`/`deletions` the size badge.
-/// All single-query fields (no N+1).
-const PR_LIST_FIELDS: &str =
-    "number,title,state,headRefName,author,isDraft,createdAt,updatedAt,url,labels,body,additions,deletions";
 /// Default cap on the list when the caller passes no limit; the picker also accepts a
 /// typed number for PRs beyond it.
 const PR_LIST_DEFAULT_LIMIT: u64 = 50;
@@ -183,12 +178,11 @@ fn list_open_prs_with(
     limit: u64,
     deadline: Duration,
 ) -> Result<Vec<PrSummary>, String> {
-    probe_gh(binary, "install it to list pull requests")?;
     let limit_arg = limit.to_string();
-    let out = run_gh_bounded(
+    let stdout = run_gh_checked(GhCall {
         dir,
         binary,
-        &[
+        args: &[
             "pr",
             "list",
             "--state",
@@ -198,14 +192,13 @@ fn list_open_prs_with(
             "--json",
             PR_LIST_FIELDS,
         ],
-        None,
+        action: "install it to list pull requests",
+        subcmd: "pr list",
+        stdin: None,
         deadline,
-        "timed out listing pull requests — check your network and try again",
-    )?;
-    if !out.status.success() {
-        return Err(map_gh_failure(binary, "pr list", &out));
-    }
-    parse_pr_list(&out.stdout)
+        timeout_msg: "timed out listing pull requests — check your network and try again",
+    })?;
+    parse_pr_list(&stdout)
 }
 
 fn list_open_prs_blocking(app: &AppHandle, limit: u64) -> Result<Vec<PrSummary>, String> {

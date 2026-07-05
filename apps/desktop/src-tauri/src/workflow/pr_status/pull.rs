@@ -7,10 +7,10 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
 use super::view::{fetch_pr_view_with, require_pr_number, GH_VIEW_TIMEOUT};
+use crate::git::gh::GH_BINARY;
 use crate::store::TaskStore;
 use crate::task::Task;
 use crate::workflow::merge::{acquire_root_lease, require_project};
-use crate::workflow::pr::GH_BINARY;
 use crate::worktree::{self, validate_ref};
 
 /// Fast-forward-only pull of the task's base branch on the PROJECT ROOT, for

@@ -38,17 +38,12 @@ pub(super) fn diff_numstat(repo: &Path, range: &str) -> (Vec<DiffFileStat>, u32,
     let mut files = Vec::new();
     let mut add_total = 0;
     let mut del_total = 0;
-    for line in out.lines() {
-        let mut f = line.splitn(3, '\t');
-        let add = f.next().unwrap_or("0").parse::<u32>().unwrap_or(0);
-        let del = f.next().unwrap_or("0").parse::<u32>().unwrap_or(0);
-        let Some(path) = f.next().map(str::to_string).filter(|p| !p.is_empty()) else {
-            continue;
-        };
+    for row in crate::git::parse::parse_numstat(&out) {
+        let (add, del) = (row.additions as u32, row.deletions as u32);
         add_total += add;
         del_total += del;
         files.push(DiffFileStat {
-            path,
+            path: row.path,
             additions: add,
             deletions: del,
         });
@@ -124,15 +119,8 @@ pub fn worktree_diff(dir: &Path, base: &str) -> WorktreeDiff {
             base,
         ],
     ) {
-        for line in numstat.lines() {
-            let mut f = line.splitn(3, '\t');
-            let add = f.next().unwrap_or("0").parse::<u32>().unwrap_or(0);
-            let del = f.next().unwrap_or("0").parse::<u32>().unwrap_or(0);
-            if let Some(path) = f.next() {
-                if !path.is_empty() {
-                    stats.insert(path.to_string(), (add, del));
-                }
-            }
+        for row in crate::git::parse::parse_numstat(&numstat) {
+            stats.insert(row.path, (row.additions as u32, row.deletions as u32));
         }
     }
     let mut files = Vec::new();

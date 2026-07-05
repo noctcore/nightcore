@@ -18,7 +18,7 @@ use super::{git, parse_left_right_count, refresh_index};
 /// count (git already ignores them).
 pub fn is_worktree_clean(project_path: &Path) -> Result<bool, String> {
     let status = git(project_path, &["status", "--porcelain"])?;
-    Ok(status.is_empty())
+    Ok(crate::git::parse::parse_status_porcelain(&status).is_empty())
 }
 
 /// A live Nightcore worktree's status for the monitoring command (M4.6 §C). One
@@ -76,12 +76,9 @@ pub fn worktree_status(dir: &Path, task_id: &str, base: &str) -> WorktreeStatus 
         .filter(|b| !b.is_empty() && b != "HEAD")
         .unwrap_or_else(|| branch_name(task_id));
     let porcelain = git(dir, &["status", "--porcelain"]).unwrap_or_default();
-    let dirty = !porcelain.is_empty();
-    let changed_files = if porcelain.is_empty() {
-        0
-    } else {
-        porcelain.lines().count() as u32
-    };
+    let entries = crate::git::parse::parse_status_porcelain(&porcelain);
+    let dirty = !entries.is_empty();
+    let changed_files = entries.len() as u32;
     let range = format!("{base}...HEAD");
     let (behind_of_base, ahead_of_base) = git(
         dir,

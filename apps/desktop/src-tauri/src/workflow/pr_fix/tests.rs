@@ -1084,21 +1084,7 @@ fn push_comment_adapts_to_ci_and_conflicts_kinds_and_tolerates_no_sha() {
 /// checkout dir (on branch `pr`, with `refs/remotes/origin/main` present).
 #[cfg(unix)]
 fn conflicted_repo(tmp: &Path) -> std::path::PathBuf {
-    use std::process::Command;
-    let run = |dir: &Path, args: &[&str]| {
-        let out = Command::new("git")
-            .args(args)
-            .current_dir(dir)
-            .env("GIT_CONFIG_GLOBAL", "/dev/null")
-            .env("GIT_CONFIG_SYSTEM", "/dev/null")
-            .output()
-            .expect("git runs");
-        assert!(
-            out.status.success(),
-            "git {args:?} failed: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-    };
+    let run = |dir: &Path, args: &[&str]| crate::git::testutil::git_expect(dir, args);
     let origin = tmp.join("origin");
     std::fs::create_dir_all(&origin).expect("mkdir origin");
     run(&origin, &["init", "-b", "main"]);
@@ -1164,20 +1150,7 @@ fn merge_base_into_reports_already_up_to_date_and_clean_merges() {
     // "already up to date".
     let _ = merge_base_into(&clone, "main").expect("first merge conflicts");
     std::fs::write(clone.join("file.txt"), "resolved\n").expect("write");
-    let run = |args: &[&str]| {
-        let out = std::process::Command::new("git")
-            .args(args)
-            .current_dir(&clone)
-            .env("GIT_CONFIG_GLOBAL", "/dev/null")
-            .env("GIT_CONFIG_SYSTEM", "/dev/null")
-            .output()
-            .expect("git runs");
-        assert!(
-            out.status.success(),
-            "{}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-    };
+    let run = |args: &[&str]| crate::git::testutil::git_expect(&clone, args);
     run(&["add", "-A"]);
     run(&["commit", "-m", "resolve"]);
     assert_eq!(

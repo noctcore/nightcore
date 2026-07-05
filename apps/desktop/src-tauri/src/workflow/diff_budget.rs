@@ -53,12 +53,14 @@ struct DiffMeasure {
 pub fn evaluate(project_root: &Path, review_dir: &Path) -> Option<String> {
     let budget = load_budget(project_root)?;
     let base = crate::worktree::base_branch(project_root);
-    let Some(merge_base) = git_stdout(review_dir, &["merge-base", &base, "HEAD"]) else {
+    let Some(merge_base) = crate::git::run::git_stdout(review_dir, &["merge-base", &base, "HEAD"])
+    else {
         tracing::warn!(target: "nightcore::diff_budget", base = %base, dir = %review_dir.display(), "could not resolve merge-base; skipping diff budget");
         return None;
     };
     let range = format!("{merge_base}..HEAD");
-    let Some(numstat) = git_stdout(review_dir, &["diff", "--numstat", "--no-renames", &range])
+    let Some(numstat) =
+        crate::git::run::git_stdout(review_dir, &["diff", "--numstat", "--no-renames", &range])
     else {
         tracing::warn!(target: "nightcore::diff_budget", range = %range, dir = %review_dir.display(), "git diff --numstat failed; skipping diff budget");
         return None;
@@ -95,17 +97,12 @@ fn load_budget(project_root: &Path) -> Option<DiffBudget> {
 }
 
 /// Sum `git diff --numstat` output into totals. Each row is one changed file;
-/// binary rows (`-\t-\tpath`) contribute one file and zero lines. Pure.
+/// binary rows (`-\t-\tpath`) contribute one file and zero lines. Pure — the
+/// per-row parse is shared with the worktree diff readers via `git::parse`.
 fn parse_numstat_totals(numstat: &str) -> DiffMeasure {
     let mut measure = DiffMeasure::default();
-    for line in numstat.lines() {
-        let mut f = line.splitn(3, '\t');
-        let add = f.next().unwrap_or("0").parse::<u64>().unwrap_or(0);
-        let del = f.next().unwrap_or("0").parse::<u64>().unwrap_or(0);
-        if f.next().filter(|p| !p.is_empty()).is_none() {
-            continue; // malformed / blank row — not a file
-        }
-        measure.changed_lines += add + del;
+    for row in crate::git::parse::parse_numstat(numstat) {
+        measure.changed_lines += row.additions + row.deletions;
         measure.changed_files += 1;
     }
     measure
@@ -139,17 +136,6 @@ fn breach_message(budget: &DiffBudget, measure: &DiffMeasure) -> Option<String> 
         "diff budget exceeded: {} — review scope before verifying",
         parts.join(", ")
     ))
-}
-
-/// Run git in `dir` for stdout, `None` on any failure — callers treat every
-/// `None` as "skip the gate". Routed through the env-scrubbed
-/// `platform::git_command` like every git spawn in the crate.
-fn git_stdout(dir: &Path, args: &[&str]) -> Option<String> {
-    let out = crate::platform::git_command(dir).args(args).output().ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
 #[cfg(test)]
@@ -288,18 +274,10 @@ mod tests {
     /// Skips when `git` is unavailable (worktree/tests.rs posture).
     #[test]
     fn evaluate_measures_a_real_worktree_diff() {
-        use std::process::Command;
         let Some((_tmp, repo)) = temp_repo() else {
             return;
         };
-        let run = |dir: &Path, args: &[&str]| {
-            Command::new("git")
-                .args(args)
-                .current_dir(dir)
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
-        };
+        let run = |dir: &Path, args: &[&str]| crate::git::testutil::git_ok(dir, args);
         assert!(run(&repo, &["worktree", "add", "wt", "-b", "feature"]));
         let wt = repo.join("wt");
         std::fs::write(wt.join("big.ts"), "line\n".repeat(10)).expect("write");
@@ -327,17 +305,9 @@ mod tests {
 
     /// Real git repo with one commit, or `None` when git is unavailable.
     fn temp_repo() -> Option<(tempfile::TempDir, std::path::PathBuf)> {
-        use std::process::Command;
         let tmp = tempfile::TempDir::new().expect("temp dir");
         let path = tmp.path().to_path_buf();
-        let run = |args: &[&str]| {
-            Command::new("git")
-                .args(args)
-                .current_dir(&path)
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
-        };
+        let run = |args: &[&str]| crate::git::testutil::git_ok(&path, args);
         if !run(&["init", "-q"]) {
             return None;
         }

@@ -8,7 +8,7 @@ use serde_json::Value;
 use super::diff::{cap_diff, fetch_pr_diff_with, fetch_pr_head_oid_with, PR_DIFF_CAP};
 use super::post::{build_review_payload, post_review_with, review_event, InlineComment};
 use super::GH_TIMEOUT;
-use crate::workflow::pr::GH_BINARY;
+use crate::git::gh::GH_BINARY;
 
 /// Write an executable shell script into `dir` to stand in for `gh`, so the tests
 /// exercise the real spawn + stdin + exit-code mapping (not a mock) — the phase-1/3

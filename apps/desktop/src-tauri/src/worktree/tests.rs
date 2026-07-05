@@ -7,21 +7,15 @@
 
 use super::*;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
+use crate::git::testutil::{git_ok, git_stdout};
 
 /// Build a real git repo with one commit. Returns `None` (skipping the test)
 /// when `git` isn't available, so the suite stays green in minimal envs.
 fn temp_repo() -> Option<(tempfile::TempDir, PathBuf)> {
     let tmp = tempfile::TempDir::new().ok()?;
     let path = tmp.path().to_path_buf();
-    let run = |args: &[&str]| {
-        Command::new("git")
-            .args(args)
-            .current_dir(&path)
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-    };
+    let run = |args: &[&str]| git_ok(&path, args);
     if !run(&["init", "-q"]) {
         return None;
     }
@@ -113,25 +107,13 @@ fn stage_diff_commit_split_helpers_round_trip() {
     // Commit the already-staged change; the tree goes clean and the message lands.
     commit_staged(&repo, "feat: add feature").expect("commit");
     assert!(!has_staged_changes(&repo), "post-commit tree is clean");
-    let log = Command::new("git")
-        .args(["log", "-1", "--pretty=%s"])
-        .current_dir(&repo)
-        .output()
-        .expect("git log");
-    assert_eq!(
-        String::from_utf8_lossy(&log.stdout).trim(),
-        "feat: add feature"
-    );
+    let log = git_stdout(&repo, &["log", "-1", "--pretty=%s"]);
+    assert_eq!(log, "feat: add feature");
 }
 
 /// Run a git command in a worktree for tests, returning success.
 fn run_in(dir: &Path, args: &[&str]) -> bool {
-    Command::new("git")
-        .args(args)
-        .current_dir(dir)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    git_ok(dir, args)
 }
 
 #[test]
@@ -149,12 +131,8 @@ fn commit_creates_a_commit_on_the_branch_and_reports_nothing_to_commit() {
     assert!(commit(&repo, "task-1", "add file").expect("commit"));
 
     // The commit landed on the task branch with our message.
-    let log = Command::new("git")
-        .args(["log", "-1", "--pretty=%s", &branch_name("task-1")])
-        .current_dir(&repo)
-        .output()
-        .expect("git log");
-    assert_eq!(String::from_utf8_lossy(&log.stdout).trim(), "add file");
+    let log = git_stdout(&repo, &["log", "-1", "--pretty=%s", &branch_name("task-1")]);
+    assert_eq!(log, "add file");
 
     // A second commit with no further change reports nothing to commit.
     assert!(!commit(&repo, "task-1", "again").expect("commit"));
@@ -178,15 +156,8 @@ fn commit_in_commits_the_project_root_for_main_mode() {
         "a change commits"
     );
 
-    let log = Command::new("git")
-        .args(["log", "-1", "--pretty=%s"])
-        .current_dir(&repo)
-        .output()
-        .expect("git log");
-    assert_eq!(
-        String::from_utf8_lossy(&log.stdout).trim(),
-        "main mode change"
-    );
+    let log = git_stdout(&repo, &["log", "-1", "--pretty=%s"]);
+    assert_eq!(log, "main mode change");
     assert!(
         is_worktree_clean(&repo).expect("status"),
         "after commit the root is clean"
@@ -207,50 +178,45 @@ fn commit_before_review_makes_an_uncommitted_edit_diffable() {
 
     // Build writes an uncommitted file. Before the fix, base..HEAD is empty.
     std::fs::write(dir.join("feature.rs"), "fn added() {}").expect("write");
-    let count_before = Command::new("git")
-        .args([
+    let count_before = git_stdout(
+        &repo,
+        &[
             "rev-list",
             "--count",
             &format!("{base}..{}", branch_name("task-1")),
-        ])
-        .current_dir(&repo)
-        .output()
-        .expect("rev-list");
+        ],
+    );
     assert_eq!(
-        String::from_utf8_lossy(&count_before.stdout).trim(),
-        "0",
+        count_before, "0",
         "the build leaves HEAD == base (the bug's precondition)"
     );
 
     // Commit-before-review advances HEAD; now the committed range is non-empty.
     assert!(commit(&repo, "task-1", "add feature").expect("commit"));
-    let count_after = Command::new("git")
-        .args([
+    let count_after = git_stdout(
+        &repo,
+        &[
             "rev-list",
             "--count",
             &format!("{base}..{}", branch_name("task-1")),
-        ])
-        .current_dir(&repo)
-        .output()
-        .expect("rev-list");
+        ],
+    );
     assert_eq!(
-        String::from_utf8_lossy(&count_after.stdout).trim(),
-        "1",
+        count_after, "1",
         "after commit-before-review the reviewer's base..HEAD range is non-empty"
     );
 
     // And the diff itself carries the new file.
-    let diff = Command::new("git")
-        .args([
+    let diff = git_stdout(
+        &repo,
+        &[
             "diff",
             &format!("{base}...{}", branch_name("task-1")),
             "--name-only",
-        ])
-        .current_dir(&repo)
-        .output()
-        .expect("git diff");
+        ],
+    );
     assert!(
-        String::from_utf8_lossy(&diff.stdout).contains("feature.rs"),
+        diff.contains("feature.rs"),
         "the committed diff includes the build's file"
     );
 }
@@ -292,14 +258,6 @@ fn list_worktree_statuses_reports_branch_dirty_and_ahead() {
         committed[0].changed_files, 0,
         "no changed files after commit"
     );
-}
-
-#[test]
-fn parse_left_right_count_reads_behind_then_ahead() {
-    assert_eq!(parse_left_right_count("3\t5"), Some((3, 5)));
-    assert_eq!(parse_left_right_count("0 0"), Some((0, 0)));
-    assert_eq!(parse_left_right_count(""), None);
-    assert_eq!(parse_left_right_count("nope"), None);
 }
 
 #[test]
@@ -532,14 +490,9 @@ fn allocate_branch_creates_named_branch_off_base_then_merges() {
     // Allocate a worktree on a picker-chosen branch name off the base.
     let dir = allocate_branch(&repo, "task-1", "feature/foo", &base).expect("allocate_branch");
     assert!(dir.is_dir());
-    let head = Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .current_dir(&dir)
-        .output()
-        .expect("head");
+    let head = git_stdout(&dir, &["rev-parse", "--abbrev-ref", "HEAD"]);
     assert_eq!(
-        String::from_utf8_lossy(&head.stdout).trim(),
-        "feature/foo",
+        head, "feature/foo",
         "the worktree is checked out on the chosen branch"
     );
     // worktree_status reports the REAL checked-out branch (so the web groups the
@@ -642,12 +595,7 @@ fn push_branch_pushes_to_origin_idempotently_and_rejects_dash_refs() {
     };
     // A local bare repo stands in for the remote so the test needs no network.
     let bare = tempfile::TempDir::new().expect("bare dir");
-    assert!(Command::new("git")
-        .args(["init", "-q", "--bare"])
-        .current_dir(bare.path())
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false));
+    assert!(git_ok(bare.path(), &["init", "-q", "--bare"]));
     assert!(run_in(
         &repo,
         &["remote", "add", "origin", bare.path().to_str().unwrap()],
@@ -658,13 +606,12 @@ fn push_branch_pushes_to_origin_idempotently_and_rejects_dash_refs() {
     commit(&repo, "task-1", "work").expect("commit");
 
     push_branch(&dir, &branch_name("task-1")).expect("push");
-    let ls = Command::new("git")
-        .args(["ls-remote", "--heads", "origin", &branch_name("task-1")])
-        .current_dir(&dir)
-        .output()
-        .expect("ls-remote");
+    let ls = git_stdout(
+        &dir,
+        &["ls-remote", "--heads", "origin", &branch_name("task-1")],
+    );
     assert!(
-        String::from_utf8_lossy(&ls.stdout).contains("refs/heads/nc/task-1"),
+        ls.contains("refs/heads/nc/task-1"),
         "the branch landed on the remote"
     );
     // Re-pushing an already-pushed branch is a no-op (the re-runnable contract).
@@ -687,12 +634,7 @@ fn try_ahead_of_upstream_counts_unpushed_commits_and_fails_closed() {
     };
     // A local bare repo stands in for the remote (no network).
     let bare = tempfile::TempDir::new().expect("bare dir");
-    assert!(Command::new("git")
-        .args(["init", "-q", "--bare"])
-        .current_dir(bare.path())
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false));
+    assert!(git_ok(bare.path(), &["init", "-q", "--bare"]));
     assert!(run_in(
         &repo,
         &["remote", "add", "origin", bare.path().to_str().unwrap()],
@@ -809,17 +751,7 @@ fn delete_refuses_base_branch_under_equivalent_spellings() {
         return;
     };
     let base = base_branch(&repo);
-    let head_sha = |r: &Path| {
-        String::from_utf8(
-            Command::new("git")
-                .args(["rev-parse", "--verify", &base])
-                .current_dir(r)
-                .output()
-                .expect("rev-parse base")
-                .stdout,
-        )
-        .ok()
-    };
+    let head_sha = |r: &Path| Some(git_stdout(r, &["rev-parse", "--verify", &base]));
     let before = head_sha(&repo).expect("base resolves before");
 
     for spelling in [

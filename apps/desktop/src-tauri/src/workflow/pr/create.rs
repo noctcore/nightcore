@@ -8,10 +8,10 @@ use std::sync::{Mutex, OnceLock};
 
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::gh::{map_gh_failure, run_gh_bounded, GH_BINARY};
 use super::parse::{parse_pr_url, parse_pr_view};
 use crate::gauntlet;
 use crate::gauntlet_project;
+use crate::git::gh::{map_gh_failure, run_gh_bounded, GH_BINARY};
 use crate::store::types::StructureLockResult;
 use crate::store::TaskStore;
 use crate::task::{Task, TASK_EVENT};

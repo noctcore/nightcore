@@ -23,6 +23,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Manager, State};
 
 use crate::engine_api::EngineApi;
+use crate::git::gh::GH_BINARY;
 use crate::provider::{Provider, SidecarProvider};
 use crate::store::pr_review::{PrReviewRun, PrReviewStore, StoredReviewFinding};
 use crate::store::TaskStore;
@@ -30,7 +31,7 @@ use crate::task::{now_ms, TaskKind};
 use crate::workflow::merge::{
     commit_in_flight, lease_held, merge_in_flight, require_project, TaskLease,
 };
-use crate::workflow::pr::{pr_in_flight, GH_BINARY};
+use crate::workflow::pr::pr_in_flight;
 use crate::worktree;
 
 use super::checkout::{

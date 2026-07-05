@@ -348,7 +348,7 @@ package layer model and dependency rules, and
 | `bun run typecheck` | `tsc -b` across the workspace |
 | `bun run test` | the TS/Bun tiers (node → web → plugin; Rust skipped — use `test:all`) |
 | `bun run test:rust` | Rust core unit tests (`cargo test` in `apps/desktop/src-tauri`) |
-| `bun run test:all` | every tier: node → web → plugin → Rust |
+| `bun run test:all` | builds the workspace (`tsc -b`) then every tier: node → web → plugin → Rust |
 | `bun run lint` | eslint (flat config) + `lint:meta` (codegen-drift + agent-contract gate) |
 
 ### Testing
@@ -362,7 +362,11 @@ The suites are fast and offline (no live Claude session, no token use, no cost):
   Any `cargo build` needs the compiled sidecar binary (Tauri `externalBin`); build
   it first with `bun run --filter @nightcore/sidecar compile`. `bun run test:rust`
   and `bun run test:all` run this compile step for you, so they work on a fresh
-  checkout where `binaries/` is still empty.
+  checkout where `binaries/` is still empty. `test:all` also runs `bun run build`
+  (`tsc -b`) up front so the `@nightcore/*` workspace deps — which the node and web
+  tiers import through their package.json `exports` (`./dist/index.js`) — are built
+  before those tiers run, the same build-before-test ordering CI does via
+  `bun run typecheck`.
 - **Sidecar** (`apps/sidecar`): `bun test apps/sidecar` — NDJSON framing, command
   dispatch, event-per-line serialization, and permission relay. The
   `SessionManager` is stubbed, so the suite never spawns a model. (The engine's
