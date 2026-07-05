@@ -32,6 +32,7 @@ const meta = {
   component: ReadingDetailPanel,
   parameters: { layout: 'fullscreen' },
   args: {
+    open: true,
     reading: READING,
     pending: false,
     onClose: fn(),

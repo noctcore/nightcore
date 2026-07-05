@@ -4,6 +4,7 @@ export type { AutoModeOptionsProps } from './AutoModeOptions';
 export { AutoModeOptions } from './AutoModeOptions';
 export type { BreakerInfo } from './Board';
 export { Board } from './Board';
+export type { PickedBackgroundImage } from './BoardBackgroundPanel';
 export { BoardDnd } from './BoardDnd';
 export { Column } from './Column';
 export { GauntletResults } from './GauntletResults';

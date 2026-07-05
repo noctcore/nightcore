@@ -9,6 +9,7 @@ import {
   Modal,
   PlusIcon,
   TrashIcon,
+  useLastPresent,
 } from '@/components/ui';
 import type { McpServerEntry } from '@/lib/bridge';
 
@@ -258,6 +259,9 @@ export function McpServersCard({ servers, onChange }: McpServersCardProps) {
     cancelRemove,
     confirmRemove,
   } = useMcpServersCard(servers, onChange);
+  // Retain the editor draft across the exit animation so the modal keeps its
+  // fields while it slides out (the parent clears `draft` to null on close).
+  const shownDraft = useLastPresent(draft);
 
   return (
     <section className="mb-[18px] rounded-2xl border border-border bg-card px-[22px] pb-2 pt-[22px]">
@@ -328,67 +332,71 @@ export function McpServersCard({ servers, onChange }: McpServersCardProps) {
         )}
       </div>
 
-      {draft !== null && (
-        <Modal
-          label={draft.id === null ? 'Add MCP server' : 'Edit MCP server'}
-          onClose={closeEditor}
-          overlayClassName="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm"
-          panelClassName="w-[480px] max-w-full overflow-hidden rounded-2xl border border-border bg-popover shadow-2xl"
-        >
-          <div className="flex items-center gap-3 border-b border-border px-5 py-4">
-            <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-lg bg-primary/[0.12] text-primary">
-              <LayersIcon size={16} />
-            </div>
-            <div className="flex-1">
-              <div className="text-base font-semibold">
-                {draft.id === null ? 'Add MCP server' : 'Edit MCP server'}
+      <Modal
+        open={draft !== null}
+        label={shownDraft?.id === null ? 'Add MCP server' : 'Edit MCP server'}
+        onClose={closeEditor}
+        overlayClassName="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm"
+        panelClassName="w-[480px] max-w-full overflow-hidden rounded-2xl border border-border bg-popover shadow-2xl"
+      >
+        {shownDraft !== null && (
+          <>
+            <div className="flex items-center gap-3 border-b border-border px-5 py-4">
+              <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-lg bg-primary/[0.12] text-primary">
+                <LayersIcon size={16} />
               </div>
-              <div className="text-xs text-muted-foreground">
-                Configure an external Model Context Protocol server.
+              <div className="flex-1">
+                <div className="text-base font-semibold">
+                  {shownDraft.id === null ? 'Add MCP server' : 'Edit MCP server'}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Configure an external Model Context Protocol server.
+                </div>
               </div>
+              <button
+                type="button"
+                aria-label="Close dialog"
+                title="Close"
+                onClick={closeEditor}
+                className="flex items-center justify-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground"
+              >
+                <CloseIcon size={16} />
+              </button>
             </div>
-            <button
-              type="button"
-              aria-label="Close dialog"
-              title="Close"
-              onClick={closeEditor}
-              className="flex items-center justify-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground"
-            >
-              <CloseIcon size={16} />
-            </button>
-          </div>
 
-          <Editor draft={draft} errors={validation} onPatch={setDraft} />
+            <Editor draft={shownDraft} errors={validation} onPatch={setDraft} />
 
-          <div className="flex items-center justify-end gap-2.5 border-t border-border bg-black/15 px-5 py-3.5">
-            <span className="mr-auto flex items-center gap-1 text-xs text-muted-foreground">
-              <Kbd>Esc</Kbd> to cancel
-            </span>
-            <Button variant="secondary" onClick={closeEditor}>
-              Cancel
-            </Button>
-            <Button onClick={saveDraft} disabled={!validation.ok}>
-              {draft.id === null ? 'Add' : 'Save changes'}
-            </Button>
-          </div>
-        </Modal>
-      )}
+            <div className="flex items-center justify-end gap-2.5 border-t border-border bg-black/15 px-5 py-3.5">
+              <span className="mr-auto flex items-center gap-1 text-xs text-muted-foreground">
+                <Kbd>Esc</Kbd> to cancel
+              </span>
+              <Button variant="secondary" onClick={closeEditor}>
+                Cancel
+              </Button>
+              <Button onClick={saveDraft} disabled={!validation.ok}>
+                {shownDraft.id === null ? 'Add' : 'Save changes'}
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
 
-      {pendingRemove !== null && (
-        <ConfirmDialog
-          title="Remove MCP server"
-          message={
+      <ConfirmDialog
+        open={pendingRemove !== null}
+        title="Remove MCP server"
+        message={
+          pendingRemove !== null ? (
             <>
               Remove <span className="font-semibold">{pendingRemove.name}</span>? New
               sessions will no longer inject its tools.
             </>
-          }
-          confirmLabel="Remove"
-          destructive
-          onConfirm={confirmRemove}
-          onCancel={cancelRemove}
-        />
-      )}
+          ) : null
+        }
+        confirmLabel="Remove"
+        destructive
+        onConfirm={confirmRemove}
+        onCancel={cancelRemove}
+      />
     </section>
   );
 }

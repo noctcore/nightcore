@@ -1,4 +1,12 @@
-import { BranchIcon, Button, CloseIcon, IconButton, Modal, Spinner } from '@/components/ui';
+import {
+  BranchIcon,
+  Button,
+  CloseIcon,
+  IconButton,
+  Modal,
+  Spinner,
+  useLastPresent,
+} from '@/components/ui';
 
 import { isMergeBlocked, mergeStatusBanner } from './MergePreviewDialog.hooks';
 import type { MergePreviewDialogProps } from './MergePreviewDialog.types';
@@ -20,13 +28,15 @@ export function MergePreviewDialog({
   onClose,
   onViewDiff,
 }: MergePreviewDialogProps) {
-  if (!open) return null;
-
-  const mergeDisabled = isMergeBlocked(preview, loading, merging);
-  const banner = preview !== null ? mergeStatusBanner(preview) : null;
+  // Retain the preview across the exit animation so the body doesn't blank when
+  // the parent clears it on close. `loading`/`merging`/callbacks stay live.
+  const shownPreview = useLastPresent(preview);
+  const mergeDisabled = isMergeBlocked(shownPreview, loading, merging);
+  const banner = shownPreview !== null ? mergeStatusBanner(shownPreview) : null;
 
   return (
     <Modal
+      open={open}
       label="Merge preview"
       panelClassName="w-full max-w-md overflow-hidden rounded-[14px] border border-border bg-popover shadow-2xl"
       onClose={onClose}
@@ -35,12 +45,12 @@ export function MergePreviewDialog({
       <div className="flex items-start justify-between gap-3 px-5 pb-3 pt-5">
         <div className="flex min-w-0 flex-col gap-1">
           <h2 className="text-base font-semibold text-foreground">Merge preview</h2>
-          {preview !== null && (
+          {shownPreview !== null && (
             <div className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
               <BranchIcon size={13} />
-              <span className="truncate font-mono text-foreground">{preview.branch}</span>
+              <span className="truncate font-mono text-foreground">{shownPreview.branch}</span>
               <span aria-hidden>→</span>
-              <span className="truncate font-mono text-foreground">{preview.base}</span>
+              <span className="truncate font-mono text-foreground">{shownPreview.base}</span>
             </div>
           )}
         </div>
@@ -55,7 +65,7 @@ export function MergePreviewDialog({
             <Spinner />
             <span>Checking for conflicts…</span>
           </div>
-        ) : preview === null || banner === null ? (
+        ) : shownPreview === null || banner === null ? (
           <p className="py-2 text-[13px] text-muted-foreground">No preview available.</p>
         ) : (
           <>
@@ -67,16 +77,16 @@ export function MergePreviewDialog({
             </div>
 
             <p className="text-[12px] text-muted-foreground">
-              {preview.files.length} files,{' '}
-              <span className="text-success">+{preview.additions}</span>{' '}
-              <span className="text-destructive">−{preview.deletions}</span>,{' '}
-              {preview.ahead} ahead / {preview.behind} behind
+              {shownPreview.files.length} files,{' '}
+              <span className="text-success">+{shownPreview.additions}</span>{' '}
+              <span className="text-destructive">−{shownPreview.deletions}</span>,{' '}
+              {shownPreview.ahead} ahead / {shownPreview.behind} behind
             </p>
 
-            {preview.status === 'conflicts' && (
+            {shownPreview.status === 'conflicts' && (
               <div className="flex flex-col gap-1.5">
                 <ul className="flex flex-col gap-0.5 rounded-[10px] border border-destructive/30 bg-destructive/[0.08] px-3 py-2">
-                  {preview.conflictFiles.map((path) => (
+                  {shownPreview.conflictFiles.map((path) => (
                     <li key={path} className="truncate font-mono text-[12px] text-destructive">
                       {path}
                     </li>

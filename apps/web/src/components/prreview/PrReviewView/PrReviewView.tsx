@@ -121,27 +121,27 @@ export function PrReviewView(props: PrReviewViewProps) {
         </div>
       </div>
 
-      {view.selected !== null && (
-        <FindingDetailPanel
-          finding={view.selected}
-          pending={view.pending}
-          onClose={view.closeFinding}
-          onConvert={view.onConvert}
-          onDismiss={view.onDismiss}
-          onRestore={view.onRestore}
-          onGotoBoard={view.onGotoBoard}
-        />
-      )}
+      <FindingDetailPanel
+        open={view.selected !== null}
+        finding={view.selected}
+        pending={view.pending}
+        onClose={view.closeFinding}
+        onConvert={view.onConvert}
+        onDismiss={view.onDismiss}
+        onRestore={view.onRestore}
+        onGotoBoard={view.onGotoBoard}
+      />
 
-      {view.postVerdict !== null && verdictMeta !== null && (
-        <ConfirmDialog
-          title={verdictMeta.confirmTitle}
-          confirmLabel={verdictMeta.confirmLabel}
-          destructive={verdictMeta.destructive}
-          busy={view.posting}
-          onConfirm={view.confirmPost}
-          onCancel={view.cancelPost}
-          message={
+      <ConfirmDialog
+        open={view.postVerdict !== null && verdictMeta !== null}
+        title={verdictMeta?.confirmTitle ?? ''}
+        confirmLabel={verdictMeta?.confirmLabel ?? 'Confirm'}
+        destructive={verdictMeta?.destructive ?? false}
+        busy={view.posting}
+        onConfirm={view.confirmPost}
+        onCancel={view.cancelPost}
+        message={
+          verdictMeta !== null ? (
             <div className="flex flex-col gap-2">
               <span>
                 Post{' '}
@@ -173,22 +173,22 @@ export function PrReviewView(props: PrReviewViewProps) {
                 </span>
               )}
             </div>
-          }
-        />
-      )}
+          ) : null
+        }
+      />
 
       {/* Address-findings human gate: starting a PAID agent session that will
           COMMIT to the PR branch never auto-fires. Pushing stays a separate,
           separately-gated manual step. */}
-      {view.addressArmed && (
-        <ConfirmDialog
-          title={`Address findings on PR #${view.addressPrNumber}?`}
-          confirmLabel="Start fix agent"
-          busy={view.addressing}
-          onConfirm={view.confirmAddress}
-          onCancel={view.cancelAddress}
-          message={
-            <div className="flex flex-col gap-2">
+      <ConfirmDialog
+        open={view.addressArmed}
+        title={`Address findings on PR #${view.addressPrNumber}?`}
+        confirmLabel="Start fix agent"
+        busy={view.addressing}
+        onConfirm={view.confirmAddress}
+        onCancel={view.cancelAddress}
+        message={
+          <div className="flex flex-col gap-2">
               <span>
                 Run a fix agent on{' '}
                 <span className="font-mono text-foreground">
@@ -210,22 +210,24 @@ export function PrReviewView(props: PrReviewViewProps) {
                 </span>
               )}
             </div>
-          }
-        />
-      )}
+        }
+      />
 
       {/* Push-fix human gate: THE external side effect of the fix arc. The
           dialog names the branch + PR, warns it publishes the commits, and
           carries the summary-comment opt-in (the comment embeds the fix
           session's summary shown on the card). */}
-      {view.pushArmedFix !== null && (
-        <ConfirmDialog
-          title={`Push fix to PR #${view.pushArmedFix.prNumber}?`}
-          confirmLabel={`Push to PR #${view.pushArmedFix.prNumber}`}
-          busy={view.pushing}
-          onConfirm={view.confirmPush}
-          onCancel={view.cancelPush}
-          message={
+      <ConfirmDialog
+        open={view.pushArmedFix !== null}
+        title={view.pushArmedFix !== null ? `Push fix to PR #${view.pushArmedFix.prNumber}?` : ''}
+        confirmLabel={
+          view.pushArmedFix !== null ? `Push to PR #${view.pushArmedFix.prNumber}` : ''
+        }
+        busy={view.pushing}
+        onConfirm={view.confirmPush}
+        onCancel={view.cancelPush}
+        message={
+          view.pushArmedFix !== null ? (
             <div className="flex flex-col gap-3">
               <span>
                 Push the fix commit on{' '}
@@ -253,29 +255,29 @@ export function PrReviewView(props: PrReviewViewProps) {
                 </span>
               )}
             </div>
-          }
-        />
-      )}
+          ) : null
+        }
+      />
 
       {/* Status-block remediation gates: starting a PAID agent session (CI fix
           / conflict resolution) never auto-fires — same discipline as the
           address gate. The dialog explains what the agent will do; the fix
           strip and push gate then take over. */}
-      {view.fixActionArmed !== null && view.selectedPr !== null && (
-        <ConfirmDialog
-          title={
-            view.fixActionArmed === 'ci'
-              ? `Fix failing CI on PR #${view.selectedPr}?`
-              : `Resolve conflicts on PR #${view.selectedPr}?`
-          }
-          confirmLabel={
-            view.fixActionArmed === 'ci' ? 'Start CI fix agent' : 'Start resolve agent'
-          }
-          busy={view.fixActionBusy}
-          onConfirm={view.confirmFixAction}
-          onCancel={view.cancelFixAction}
-          message={
-            <div className="flex flex-col gap-2">
+      <ConfirmDialog
+        open={view.fixActionArmed !== null && view.selectedPr !== null}
+        title={
+          view.fixActionArmed === 'ci'
+            ? `Fix failing CI on PR #${view.selectedPr}?`
+            : `Resolve conflicts on PR #${view.selectedPr}?`
+        }
+        confirmLabel={
+          view.fixActionArmed === 'ci' ? 'Start CI fix agent' : 'Start resolve agent'
+        }
+        busy={view.fixActionBusy}
+        onConfirm={view.confirmFixAction}
+        onCancel={view.cancelFixAction}
+        message={
+          <div className="flex flex-col gap-2">
               <span>
                 {view.fixActionArmed === 'ci' ? (
                   <>
@@ -308,9 +310,8 @@ export function PrReviewView(props: PrReviewViewProps) {
                 </span>
               )}
             </div>
-          }
-        />
-      )}
+        }
+      />
     </>
   );
 }

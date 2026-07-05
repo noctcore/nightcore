@@ -182,13 +182,12 @@ export function PrReviewComments({
         </p>
       )}
 
-      {confirm.arming && (
-        <ConfirmDialog
-          {...addressConfirmCopy(count)}
-          onConfirm={confirm.confirm}
-          onCancel={confirm.cancel}
-        />
-      )}
+      <ConfirmDialog
+        open={confirm.arming}
+        {...addressConfirmCopy(count)}
+        onConfirm={confirm.confirm}
+        onCancel={confirm.cancel}
+      />
     </section>
   );
 }

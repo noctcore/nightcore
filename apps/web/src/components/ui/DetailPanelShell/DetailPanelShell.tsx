@@ -7,9 +7,11 @@ import type { ReactNode } from 'react';
 import { IconButton } from '../IconButton';
 import { CloseIcon } from '../icons';
 import { Modal } from '../Modal';
+import { slideIn } from '../motion';
 import type { DetailPanelShellProps } from './DetailPanelShell.types';
 
 export function DetailPanelShell({
+  open,
   label,
   onClose,
   headerLead,
@@ -20,11 +22,12 @@ export function DetailPanelShell({
 }: DetailPanelShellProps) {
   return (
     <Modal
+      open={open}
       label={label}
       onClose={onClose}
       overlayClassName="fixed inset-0 z-20 flex justify-end bg-black/60 backdrop-blur-sm"
       panelClassName="flex h-full w-full max-w-lg flex-col overflow-hidden border-l border-border bg-popover shadow-2xl"
-      panelStyle={{ animation: 'nc-sheet-in .28s cubic-bezier(.22,1,.36,1)' }}
+      panelVariants={slideIn}
     >
       {/* Header */}
       <div className="flex items-start gap-3 border-b border-border px-5 py-4">

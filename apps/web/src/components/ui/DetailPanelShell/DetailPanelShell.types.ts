@@ -2,6 +2,9 @@
 import type { ReactNode } from 'react';
 
 export interface DetailPanelShellProps {
+  /** Presence flag — the sheet slides in/out. Keep it always-mounted and toggle
+   *  `open` instead of `{selected && <…DetailPanel/>}`. */
+  open: boolean;
   /** Accessible name for the dialog. */
   label: string;
   onClose: () => void;

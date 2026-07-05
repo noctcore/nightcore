@@ -13,6 +13,8 @@ export type NewProjectGitState = 'unknown' | 'checking' | 'valid' | 'invalid';
 
 /** Props for `NewProjectDialog`. */
 export interface NewProjectDialogProps {
+  /** Presence flag — the dialog scales in/out and stays mounted while closed. */
+  open: boolean;
   models: string[];
   onChooseFolder: () => void | Promise<void>;
   onCreate: (draft: NewProjectDraft) => void | Promise<void>;

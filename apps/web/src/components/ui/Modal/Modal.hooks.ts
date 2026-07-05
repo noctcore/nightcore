@@ -1,6 +1,17 @@
 /** Focus-trap, escape-to-close, and focus-restore behavior for Modal. */
 import { useEffect, useRef } from 'react';
 
+/** Retain the last non-nullish value so a presence-animated dialog keeps its
+ *  content while it animates OUT — after the source data (a selected finding, a
+ *  merge preview, a pending confirmation) has already cleared. Without this the
+ *  panel would blank for the ~140ms exit. Returns the current value while present,
+ *  the last-seen value while absent, and `null` until something has been present. */
+export function useLastPresent<T>(value: T | null | undefined): T | null {
+  const ref = useRef<T | null>(value ?? null);
+  if (value !== null && value !== undefined) ref.current = value;
+  return ref.current;
+}
+
 /** Focusable descendants a focus trap cycles through (Tab / Shift+Tab). Matches
  *  the standard interactive set, excluding anything explicitly removed from the
  *  tab order (`tabindex="-1"`) or disabled. */
@@ -20,12 +31,18 @@ const FOCUSABLE =
 export function useModal<T extends HTMLElement>(
   onClose: () => void,
   initialFocus?: string,
+  active = true,
 ): React.RefObject<T | null> {
   const ref = useRef<T>(null);
 
-  // Capture the opener once, on mount, so we can return focus to it on close.
+  // Capture the opener when the dialog becomes active, so we can return focus to
+  // it on close. Keyed on `active` (not bare mount) because a presence-animated
+  // Modal stays mounted across its exit: focus must move IN when `open` flips true
+  // and restore to the opener the moment it flips false (while the panel is still
+  // animating out), not only when the node finally unmounts.
   const openerRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
+    if (!active) return;
     openerRef.current = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
@@ -38,19 +55,27 @@ export function useModal<T extends HTMLElement>(
       node;
     target?.focus();
     return () => {
-      // Restore focus to the opener on close, so a keyboard user isn't dumped at
-      // the top of the document (the dialog node is already detached by the time
-      // cleanup runs, so we can't test containment — restore whenever the opener
-      // is still in the DOM). Skipped if the app moved focus elsewhere first.
+      // Restore focus to the opener so a keyboard user isn't dumped at the top of
+      // the document. This cleanup runs either when `active` flips false (the panel
+      // is exiting but still in the DOM → focus is inside it) or on a hard unmount
+      // (the node is detached → focus has fallen back to <body>). Handle both.
       const opener = openerRef.current;
-      if (opener !== null && opener.isConnected && document.activeElement === document.body) {
+      const node = ref.current;
+      const focusInsideDialog =
+        node !== null && node.contains(document.activeElement);
+      if (
+        opener !== null &&
+        opener.isConnected &&
+        (focusInsideDialog || document.activeElement === document.body)
+      ) {
         opener.focus();
       }
     };
-    // Run once on mount; `initialFocus` is a static selector per call site.
-  }, []);
+    // `initialFocus` is a static selector per call site; re-run only on `active`.
+  }, [active]);
 
   useEffect(() => {
+    if (!active) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -81,7 +106,7 @@ export function useModal<T extends HTMLElement>(
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
+  }, [onClose, active]);
 
   return ref;
 }

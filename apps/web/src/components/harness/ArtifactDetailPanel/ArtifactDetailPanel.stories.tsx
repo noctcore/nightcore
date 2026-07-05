@@ -34,6 +34,7 @@ const meta = {
   component: ArtifactDetailPanel,
   parameters: { layout: 'fullscreen' },
   args: {
+    open: true,
     artifact: artifact(),
     pending: false,
     onClose: fn(),

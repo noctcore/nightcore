@@ -1,6 +1,8 @@
 /** Square icon-only button with a required accessible name. */
 import type { ReactNode } from 'react';
 
+import { m } from './motion';
+
 /** Props for {@link IconButton}. */
 interface IconButtonProps {
   children: ReactNode;
@@ -10,17 +12,20 @@ interface IconButtonProps {
   className?: string;
 }
 
-/** A square, muted icon-only button with an accessible name. */
+/** A square, muted icon-only button with an accessible name. Lifts on hover and
+ *  presses in on tap (transform-only via motion). */
 export function IconButton({ children, onClick, label, className }: IconButtonProps) {
   return (
-    <button
+    <m.button
       type="button"
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`flex items-center justify-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground ${className ?? ''}`}
+      whileHover={{ y: -1 }}
+      whileTap={{ scale: 0.94 }}
+      className={`flex shrink-0 items-center justify-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground ${className ?? ''}`}
     >
       {children}
-    </button>
+    </m.button>
   );
 }

@@ -226,17 +226,16 @@ export function InsightView(props: InsightViewProps) {
         )}
       </RunLifecycleShell>
 
-      {view.selected !== null && (
-        <FindingDetailPanel
-          finding={view.selected}
-          pending={view.pending}
-          onClose={view.closeFinding}
-          onConvert={view.onConvert}
-          onDismiss={view.onDismiss}
-          onRestore={view.onRestore}
-          onGotoBoard={view.onGotoBoard}
-        />
-      )}
+      <FindingDetailPanel
+        open={view.selected !== null}
+        finding={view.selected}
+        pending={view.pending}
+        onClose={view.closeFinding}
+        onConvert={view.onConvert}
+        onDismiss={view.onDismiss}
+        onRestore={view.onRestore}
+        onGotoBoard={view.onGotoBoard}
+      />
     </>
   );
 }

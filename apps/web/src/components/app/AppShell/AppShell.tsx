@@ -3,15 +3,18 @@ import { lazy, Suspense } from 'react';
 import { Board, EMPTY_TRANSCRIPT, NewTaskForm } from '@/components/board';
 import { NewProjectDialog } from '@/components/new-project';
 import {
+  AnimatePresence,
   BoardIcon,
   BranchIcon,
   Button,
   ConfirmDialog,
   EmptyState,
+  fadeRise,
   FolderIcon,
   GearIcon,
   GithubIcon,
   InsightIcon,
+  m,
   PerfIcon,
   VerifiedIcon,
 } from '@/components/ui';
@@ -96,8 +99,18 @@ const NO_QUESTIONS: QuestionPrompt[] = [];
  *  and TaskDetail overlays. All state lives in `useAppShell`; this is a thin
  *  presentational host wiring views to the live registry, settings, and board. */
 export function AppShell() {
-  const { routing, registry, settings, autoLoop, newProject, board, confirm, showSplash, isTauri } =
-    useAppShell();
+  const {
+    routing,
+    registry,
+    settings,
+    autoLoop,
+    newProject,
+    appearance,
+    board,
+    confirm,
+    showSplash,
+    isTauri,
+  } = useAppShell();
   const { view, switcherOpen, collapsed, newProjectOpen } = routing;
   const { projects, active } = registry;
   const { tasks, selected, selectedId, setSelectedId, anyRunning, runningCount } = board;
@@ -188,6 +201,24 @@ export function AppShell() {
           <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
             {browserPreviewBanner}
 
+            {/* View-transition seam: the in-<main> view chain cross-fades on `view`
+                change (AnimatePresence keyed on the AppView string, mode="wait" so the
+                outgoing view finishes exiting before the next enters). `initial={false}`
+                skips the animation on first paint. Each lazy view keeps its own
+                <Suspense> INSIDE this keyed container, so a not-yet-loaded chunk shows
+                its fallback within the entering view rather than flashing over the
+                exiting one. The projects↔board full-screen swap (outer ternary) is
+                intentionally NOT keyed here. */}
+            <AnimatePresence mode="wait" initial={false}>
+              <m.div
+                key={view}
+                variants={fadeRise}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                className="flex min-h-0 flex-1 flex-col"
+              >
+
             {view === 'board' && (
           <div className="flex min-h-0 flex-1">
             <div className="flex min-w-0 flex-1 flex-col">
@@ -216,11 +247,9 @@ export function AppShell() {
                   backgroundVersion={
                     settings.settings?.projectOverrides[active.id]?.boardBackground?.version ?? null
                   }
-                  onChangeAppearance={(next) =>
-                    settings.update({ projectId: active.id, boardAppearance: next })
-                  }
-                  onPickBackground={(image) => settings.setBackground(active.id, image)}
-                  onClearBackground={() => settings.clearBackground(active.id)}
+                  onChangeAppearance={appearance.onChangeAppearance}
+                  onPickBackground={appearance.onPickBackground}
+                  onClearBackground={appearance.onClearBackground}
                   worktrees={board.worktrees}
                   activeWorktree={board.activeWorktree}
                   onSelectWorktree={board.setActiveWorktree}
@@ -245,38 +274,42 @@ export function AppShell() {
                   onMerge={board.handleMerge}
                   isActionPending={board.isActionPending}
                   onToggleAutoMode={autoLoop.toggleAutoMode}
-                  onAutoCommitChange={(next) =>
-                    settings.update({ autoCommitOnVerified: next })
-                  }
+                  onAutoCommitChange={appearance.onAutoCommitChange}
                   onConcurrencyChange={autoLoop.changeConcurrency}
                   onResume={autoLoop.resume}
                 />
               )}
             </div>
 
-            {selected !== null && (
-              <Suspense fallback={null}>
-              <TaskDetail
-                task={selected}
-                stream={board.streams[selected.id] ?? EMPTY_TRANSCRIPT}
-                anyRunning={anyRunning}
-                prompts={board.prompts[selected.id] ?? NO_PROMPTS}
-                questions={board.questions[selected.id] ?? NO_QUESTIONS}
-                gauntlet={board.gauntletResults[selected.id] ?? null}
-                gauntletRunning={board.gauntletRunning.has(selected.id)}
-                onClose={board.closeDetail}
-                // The drawer's ~25 action callbacks travel as one grouped object,
-                // pre-assembled once in the `board` controller (`detailActions`) so
-                // its identity is stable across the per-frame stream flush. Delete
-                // routes through the confirm-gated `requestDelete` (matching the
-                // card/column deletes).
-                actions={board.detailActions}
-                isActionPending={board.isActionPending}
-                // Provenance chip → the originating scan run/item (routing concern).
-                onOpenSourceRef={routing.gotoSourceRef}
-              />
-              </Suspense>
-            )}
+            {/* Drawer presence: AnimatePresence lives at the mount conditional so
+                the drawer's `m.aside` (slideIn variant) can play its exit on close.
+                TaskDetail is already loaded by the time it exits, so the Suspense
+                fallback never flashes. */}
+            <AnimatePresence>
+              {selected !== null && (
+                <Suspense fallback={null}>
+                  <TaskDetail
+                    task={selected}
+                    stream={board.streams[selected.id] ?? EMPTY_TRANSCRIPT}
+                    anyRunning={anyRunning}
+                    prompts={board.prompts[selected.id] ?? NO_PROMPTS}
+                    questions={board.questions[selected.id] ?? NO_QUESTIONS}
+                    gauntlet={board.gauntletResults[selected.id] ?? null}
+                    gauntletRunning={board.gauntletRunning.has(selected.id)}
+                    onClose={board.closeDetail}
+                    // The drawer's ~25 action callbacks travel as one grouped object,
+                    // pre-assembled once in the `board` controller (`detailActions`) so
+                    // its identity is stable across the per-frame stream flush. Delete
+                    // routes through the confirm-gated `requestDelete` (matching the
+                    // card/column deletes).
+                    actions={board.detailActions}
+                    isActionPending={board.isActionPending}
+                    // Provenance chip → the originating scan run/item (routing concern).
+                    onOpenSourceRef={routing.gotoSourceRef}
+                  />
+                </Suspense>
+              )}
+            </AnimatePresence>
           </div>
         )}
 
@@ -345,38 +378,42 @@ export function AppShell() {
           />
           </Suspense>
         )}
+              </m.div>
+            </AnimatePresence>
           </main>
         </div>
       )}
 
-      {routing.newTaskOpen && (
-        <NewTaskForm onCreate={board.handleCreate} onClose={routing.closeNewTask} />
-      )}
+      <NewTaskForm
+        open={routing.newTaskOpen}
+        onCreate={board.handleCreate}
+        onClose={routing.closeNewTask}
+      />
 
-      {newProjectOpen && (
-        <NewProjectDialog
-          models={MODELS}
-          folder={newProject.folder}
-          gitState={newProject.gitState}
-          onChooseFolder={newProject.pickFolder}
-          onInitGit={newProject.initGit}
-          onCreate={(draft) => {
-            if (draft.folder === null) return;
-            void newProject.create(draft.folder, draft.name);
-          }}
-          onClose={() => {
-            routing.closeNewProject();
-            newProject.reset();
-          }}
-        />
-      )}
+      <NewProjectDialog
+        open={newProjectOpen}
+        models={MODELS}
+        folder={newProject.folder}
+        gitState={newProject.gitState}
+        onChooseFolder={newProject.pickFolder}
+        onInitGit={newProject.initGit}
+        onCreate={(draft) => {
+          if (draft.folder === null) return;
+          void newProject.create(draft.folder, draft.name);
+        }}
+        onClose={() => {
+          routing.closeNewProject();
+          newProject.reset();
+        }}
+      />
 
       {/* The Create PR human gate: opened from the drawer's Create PR button;
-          the mutation (push + `gh pr create`) only fires from its confirm. */}
-      {board.prDialogTaskId !== null && (
+          the mutation (push + `gh pr create`) only fires from its confirm. Mounted
+          once first opened (a one-way latch) so the lazy dialog can animate closed. */}
+      {board.prDialogMounted && (
         <Suspense fallback={null}>
           <CreatePRDialog
-            open
+            open={board.prDialogTaskId !== null}
             task={tasks.find((t) => t.id === board.prDialogTaskId) ?? null}
             onCreate={board.handleCreatePr}
             onClose={board.closePrDialog}
@@ -384,27 +421,33 @@ export function AppShell() {
         </Suspense>
       )}
 
-      {confirm.pendingDelete !== null && (
-        <ConfirmDialog
-          title="Delete this task?"
-          message="This task and its run history will be removed. This can't be undone."
-          confirmLabel="Delete"
-          destructive
-          onConfirm={confirm.confirm}
-          onCancel={confirm.cancel}
-        />
-      )}
+      <ConfirmDialog
+        open={confirm.pendingDelete !== null}
+        title="Delete this task?"
+        message="This task and its run history will be removed. This can't be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={confirm.confirm}
+        onCancel={confirm.cancel}
+      />
 
-      {confirm.pendingClear !== null && (
-        <ConfirmDialog
-          title={`Delete all ${confirm.pendingClear.count} tasks in ${confirm.pendingClear.columnTitle}?`}
-          message={`Every task in ${confirm.pendingClear.columnTitle} will be removed. This can't be undone.`}
-          confirmLabel="Delete all"
-          destructive
-          onConfirm={confirm.confirm}
-          onCancel={confirm.cancel}
-        />
-      )}
+      <ConfirmDialog
+        open={confirm.pendingClear !== null}
+        title={
+          confirm.pendingClear !== null
+            ? `Delete all ${confirm.pendingClear.count} tasks in ${confirm.pendingClear.columnTitle}?`
+            : ''
+        }
+        message={
+          confirm.pendingClear !== null
+            ? `Every task in ${confirm.pendingClear.columnTitle} will be removed. This can't be undone.`
+            : ''
+        }
+        confirmLabel="Delete all"
+        destructive
+        onConfirm={confirm.confirm}
+        onCancel={confirm.cancel}
+      />
     </>
   );
 }

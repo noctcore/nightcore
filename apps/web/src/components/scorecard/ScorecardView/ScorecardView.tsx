@@ -152,15 +152,14 @@ export function ScorecardView(props: ScorecardViewProps) {
         )}
       </RunLifecycleShell>
 
-      {view.selected !== null && (
-        <ReadingDetailPanel
-          reading={view.selected}
-          pending={view.pending}
-          onClose={view.closeReading}
-          onHarden={view.onHarden}
-          onGotoBoard={view.onGotoBoard}
-        />
-      )}
+      <ReadingDetailPanel
+        open={view.selected !== null}
+        reading={view.selected}
+        pending={view.pending}
+        onClose={view.closeReading}
+        onHarden={view.onHarden}
+        onGotoBoard={view.onGotoBoard}
+      />
     </>
   );
 }

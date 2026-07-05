@@ -8,6 +8,7 @@ import {
   MoveIcon,
   RetryIcon,
   TrashIcon,
+  useLastPresent,
 } from '@/components/ui';
 import { formatLocation } from '@/lib/formatters';
 
@@ -17,6 +18,7 @@ import type { ConventionDetailPanelProps } from './ConventionDetailPanel.types';
 /** The convention detail sheet: full description, rationale, grounded evidence
  *  files, the rule to codify, tags, and the dismiss/restore lifecycle actions. */
 export function ConventionDetailPanel({
+  open,
   finding,
   pending,
   onClose,
@@ -25,16 +27,34 @@ export function ConventionDetailPanel({
   onRestore,
   onGotoBoard,
 }: ConventionDetailPanelProps) {
-  const sev = SEVERITY_META[finding.severity];
-  const kind = KIND_META[finding.kind];
-  const Meta = CATEGORY_META[finding.category];
+  // Retain the last finding so the sheet keeps its content while it animates out.
+  const shown = useLastPresent(finding);
+  if (shown === null) {
+    return (
+      <DetailPanelShell
+        open={false}
+        label=""
+        onClose={onClose}
+        title=""
+        badges={null}
+        footer={null}
+      >
+        {null}
+      </DetailPanelShell>
+    );
+  }
+
+  const sev = SEVERITY_META[shown.severity];
+  const kind = KIND_META[shown.kind];
+  const Meta = CATEGORY_META[shown.category];
   const Icon = Meta.icon;
 
   return (
     <DetailPanelShell
-      label={finding.title}
+      open={open}
+      label={shown.title}
       onClose={onClose}
-      title={finding.title}
+      title={shown.title}
       badges={
         <>
           <span
@@ -51,45 +71,45 @@ export function ConventionDetailPanel({
             <Icon size={11} />
             {Meta.label}
           </span>
-          {finding.confidence !== null && (
+          {shown.confidence !== null && (
             <span className="font-mono text-[10px] text-muted-foreground">
-              {Math.round(finding.confidence * 100)}% confidence
+              {Math.round(shown.confidence * 100)}% confidence
             </span>
           )}
         </>
       }
       footer={
         <>
-          {finding.status === 'converted' ? (
+          {shown.status === 'converted' ? (
             <Button variant="secondary" disabled={pending} onClick={onGotoBoard}>
               <MoveIcon size={15} />
               Go to task
             </Button>
           ) : (
             <Button
-              disabled={pending || finding.status === 'dismissed'}
-              onClick={() => onConvert(finding.id)}
+              disabled={pending || shown.status === 'dismissed'}
+              onClick={() => onConvert(shown.id)}
             >
               <MoveIcon size={15} />
               Convert to task
             </Button>
           )}
 
-          {finding.status === 'dismissed' ? (
+          {shown.status === 'dismissed' ? (
             <Button
               variant="ghost"
               disabled={pending}
-              onClick={() => onRestore(finding.id)}
+              onClick={() => onRestore(shown.id)}
             >
               <RetryIcon size={15} />
               Restore
             </Button>
           ) : (
-            finding.status !== 'converted' && (
+            shown.status !== 'converted' && (
               <Button
                 variant="ghost"
                 disabled={pending}
-                onClick={() => onDismiss(finding.id)}
+                onClick={() => onDismiss(shown.id)}
               >
                 <TrashIcon size={15} />
                 Dismiss
@@ -100,25 +120,25 @@ export function ConventionDetailPanel({
       }
     >
       <DetailSection title="What">
-        <Markdown>{finding.description}</Markdown>
+        <Markdown>{shown.description}</Markdown>
       </DetailSection>
 
-      {finding.rationale !== null && (
+      {shown.rationale !== null && (
         <DetailSection title="Why it matters">
-          <Markdown>{finding.rationale}</Markdown>
+          <Markdown>{shown.rationale}</Markdown>
         </DetailSection>
       )}
 
-      {finding.suggestion !== null && (
-        <DetailSection title={finding.kind === 'gap' ? 'Change to adopt' : 'Rule to codify'}>
-          <Markdown>{finding.suggestion}</Markdown>
+      {shown.suggestion !== null && (
+        <DetailSection title={shown.kind === 'gap' ? 'Change to adopt' : 'Rule to codify'}>
+          <Markdown>{shown.suggestion}</Markdown>
         </DetailSection>
       )}
 
-      {finding.evidence.length > 0 && (
+      {shown.evidence.length > 0 && (
         <DetailSection title="Evidence">
           <ul className="flex flex-col gap-1">
-            {finding.evidence.map((e) => {
+            {shown.evidence.map((e) => {
               const label = formatLocation(e, { withSymbol: true }) ?? e.file;
               return (
                 <li key={label}>
@@ -132,10 +152,10 @@ export function ConventionDetailPanel({
         </DetailSection>
       )}
 
-      {finding.tags.length > 0 && (
+      {shown.tags.length > 0 && (
         <DetailSection title="Tags">
           <div className="flex flex-wrap gap-1.5">
-            {finding.tags.map((t) => (
+            {shown.tags.map((t) => (
               <span
                 key={t}
                 className="rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"

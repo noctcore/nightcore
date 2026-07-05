@@ -12,6 +12,7 @@ const meta = {
   title: 'UI/DetailPanelShell',
   component: DetailPanelShell,
   args: {
+    open: true,
     label: 'Example finding',
     title: 'An example finding title',
     onClose: fn(),

@@ -84,6 +84,7 @@ export interface NewTaskFormState {
 
 /** State, submit, and keyboard handling for the create-task dialog. */
 export function useNewTaskForm({
+  open,
   onCreate,
   onClose,
 }: NewTaskFormProps): NewTaskFormState {
@@ -117,6 +118,27 @@ export function useNewTaskForm({
       alive = false;
     };
   }, []);
+
+  // The dialog now stays mounted across close so its exit can animate — reset the
+  // draft each time it opens, otherwise a cancelled draft would reappear on reopen.
+  // (Branches are loaded data, not draft state, so they persist.)
+  useEffect(() => {
+    if (!open) return;
+    setTitle('');
+    setDescription('');
+    setKind('build');
+    setRunMode('main');
+    setBranch('');
+    setBaseBranch('');
+    setPermissionMode(null);
+    setModel(null);
+    setEffort(null);
+    setMaxTurns('');
+    setMaxBudget('');
+    setAttachments([]);
+    setAttachError(null);
+    setError(null);
+  }, [open]);
 
   const canSubmit = title.trim().length > 0 && !busy;
 

@@ -7,6 +7,7 @@ import {
   IconButton,
   Modal,
   Spinner,
+  useLastPresent,
 } from '@/components/ui';
 
 import { useCreatePrDialog } from './CreatePRDialog.hooks';
@@ -27,13 +28,16 @@ const LABEL_CLASS = 'font-mono text-[10px] uppercase tracking-[0.1em] text-muted
  *  an explicit click. */
 export function CreatePRDialog({ open, task, onCreate, onClose }: CreatePRDialogProps) {
   const v = useCreatePrDialog({ open, task, onCreate, onClose });
-  if (!open || task === null) return null;
+  // Retain the task across the exit animation so the header doesn't blank when the
+  // parent clears `prDialogTaskId` on close (the dialog now stays mounted to animate).
+  const shownTask = useLastPresent(task);
 
-  const branch = task.branch ?? `nc/${task.id}`;
+  const branch = shownTask !== null ? shownTask.branch ?? `nc/${shownTask.id}` : '';
   const baseLabel = v.base.trim().length > 0 ? v.base.trim() : 'the project base';
 
   return (
     <Modal
+      open={open && shownTask !== null}
       label="Create pull request"
       panelClassName="w-full max-w-md overflow-hidden rounded-[14px] border border-border bg-popover shadow-2xl"
       onClose={v.requestClose}

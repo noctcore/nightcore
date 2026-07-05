@@ -3,7 +3,19 @@ import '../src/styles.css';
 import type { Preview } from '@storybook/react-vite';
 import React from 'react';
 
+import { MotionProvider } from '../src/components/ui/motion';
 import { nightcoreTheme } from './nightcore-theme';
+
+/**
+ * Provide the motion/react runtime (LazyMotion + reduced-motion config) to every
+ * story, mirroring App.tsx, so components that render `m.*` / `AnimatePresence`
+ * have their feature bundle and animate in Storybook exactly as they do in the app.
+ * Under the Vitest gate these animations are made instant via
+ * `MotionGlobalConfig.skipAnimations` (see .storybook/vitest.setup.ts); this
+ * decorator only supplies the provider.
+ */
+const withMotion = (Story: React.ComponentType) =>
+  React.createElement(MotionProvider, null, React.createElement(Story));
 
 /**
  * Wrap every story in the cosmic-dark surface. The tokens live on :root in
@@ -28,7 +40,7 @@ const withTheme = (Story: React.ComponentType) =>
   );
 
 const preview: Preview = {
-  decorators: [withTheme],
+  decorators: [withMotion, withTheme],
   parameters: {
     backgrounds: { disable: true },
     // Brand the Docs pages with the same cosmic-dark theme as the manager

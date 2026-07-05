@@ -39,6 +39,7 @@ const GIT_TEXT: Record<'valid' | 'invalid' | 'checking', string> = {
  * collected here but badged as a not-yet-built affordance.
  */
 export function NewProjectDialog({
+  open,
   models,
   onChooseFolder,
   onCreate,
@@ -48,7 +49,7 @@ export function NewProjectDialog({
   onInitGit,
 }: NewProjectDialogProps) {
   const { name, model, concurrency, canCreate, busy, setName, setModel, setConcurrency, create } =
-    useNewProjectDialog({ models, onCreate, folder, gitState });
+    useNewProjectDialog({ open, models, onCreate, folder, gitState });
 
   // Esc / click-outside close — but never while a create is in flight, to guard
   // against double-submit. The shared Modal adds the focus trap + restore.
@@ -56,6 +57,7 @@ export function NewProjectDialog({
 
   return (
     <Modal
+      open={open}
       label="New project"
       onClose={close}
       overlayClassName="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm"

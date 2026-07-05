@@ -12,6 +12,7 @@ import {
   PlusIcon,
   RetryIcon,
   TrashIcon,
+  useLastPresent,
 } from '@/components/ui';
 
 import { PROPOSAL_KIND_META } from '../harness.constants';
@@ -21,6 +22,7 @@ import type { ProposalDetailPanelProps } from './ProposalDetailPanel.types';
  *  agent-task prompt, the verify command, any suggested gauntlet check + bundled
  *  artifacts, and the apply / convert / dismiss / restore / go-to-task lifecycle actions. */
 export function ProposalDetailPanel({
+  open,
   proposal,
   pending,
   onClose,
@@ -30,35 +32,53 @@ export function ProposalDetailPanel({
   onRestore,
   onGotoBoard,
 }: ProposalDetailPanelProps) {
-  const meta = PROPOSAL_KIND_META[proposal.kind];
+  // Retain the last proposal so the sheet keeps its content while it animates out.
+  const shown = useLastPresent(proposal);
+  if (shown === null) {
+    return (
+      <DetailPanelShell
+        open={false}
+        label=""
+        onClose={onClose}
+        title=""
+        badges={null}
+        footer={null}
+      >
+        {null}
+      </DetailPanelShell>
+    );
+  }
+
+  const meta = PROPOSAL_KIND_META[shown.kind];
   // An `apply-artifacts` proposal bundles safe file writes → it can be applied directly
   // (the deterministic half of propose-then-convert); an `agent-task` has no artifacts.
   const canApply =
-    proposal.kind === 'apply-artifacts' && proposal.artifactIds.length > 0;
-  const applied = proposal.status === 'applied';
-  const dismissed = proposal.status === 'dismissed';
+    shown.kind === 'apply-artifacts' && shown.artifactIds.length > 0;
+  const applied = shown.status === 'applied';
+  const dismissed = shown.status === 'dismissed';
 
   return (
     <DetailPanelShell
-      label={proposal.title}
+      open={open}
+      label={shown.title}
       onClose={onClose}
-      title={proposal.title}
+      title={shown.title}
       badges={
         <>
           <span className="inline-flex items-center rounded-md border border-primary/40 bg-primary/[0.1] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-primary">
             {meta.label}
           </span>
           <span className="font-mono text-[10px] text-muted-foreground">{meta.hint}</span>
-          {proposal.confidence !== null && (
+          {shown.confidence !== null && (
             <span className="font-mono text-[10px] text-muted-foreground">
-              {Math.round(proposal.confidence * 100)}% confidence
+              {Math.round(shown.confidence * 100)}% confidence
             </span>
           )}
         </>
       }
       footer={
         <>
-          {proposal.status === 'converted' ? (
+          {shown.status === 'converted' ? (
             <Button variant="secondary" disabled={pending} onClick={onGotoBoard}>
               <MoveIcon size={15} />
               Go to task
@@ -73,7 +93,7 @@ export function ProposalDetailPanel({
               {canApply && (
                 <Button
                   disabled={pending || dismissed}
-                  onClick={() => onApply(proposal.id)}
+                  onClick={() => onApply(shown.id)}
                 >
                   <PlusIcon size={15} />
                   Apply bundle
@@ -82,7 +102,7 @@ export function ProposalDetailPanel({
               <Button
                 variant={canApply ? 'secondary' : undefined}
                 disabled={pending || dismissed}
-                onClick={() => onConvert(proposal.id)}
+                onClick={() => onConvert(shown.id)}
               >
                 <MoveIcon size={15} />
                 Convert to task
@@ -94,18 +114,18 @@ export function ProposalDetailPanel({
             <Button
               variant="ghost"
               disabled={pending}
-              onClick={() => onRestore(proposal.id)}
+              onClick={() => onRestore(shown.id)}
             >
               <RetryIcon size={15} />
               Restore
             </Button>
           ) : (
-            proposal.status !== 'converted' &&
+            shown.status !== 'converted' &&
             !applied && (
               <Button
                 variant="ghost"
                 disabled={pending}
-                onClick={() => onDismiss(proposal.id)}
+                onClick={() => onDismiss(shown.id)}
               >
                 <TrashIcon size={15} />
                 Dismiss
@@ -116,47 +136,47 @@ export function ProposalDetailPanel({
       }
     >
       <DetailSection title="What">
-        <Markdown>{proposal.description}</Markdown>
+        <Markdown>{shown.description}</Markdown>
       </DetailSection>
 
-      {proposal.rationale !== null && (
+      {shown.rationale !== null && (
         <DetailSection title="Why it matters">
-          <Markdown>{proposal.rationale}</Markdown>
+          <Markdown>{shown.rationale}</Markdown>
         </DetailSection>
       )}
 
-      {proposal.prompt !== null && (
+      {shown.prompt !== null && (
         <DetailSection title="Task for the agent">
-          <Markdown>{proposal.prompt}</Markdown>
+          <Markdown>{shown.prompt}</Markdown>
         </DetailSection>
       )}
 
-      {proposal.verifyCommand !== null && (
+      {shown.verifyCommand !== null && (
         <DetailSection title="Verify with">
-          <CodeBlock code={proposal.verifyCommand} language="bash" />
+          <CodeBlock code={shown.verifyCommand} language="bash" />
         </DetailSection>
       )}
 
-      {proposal.harnessCheck !== null && (
+      {shown.harnessCheck !== null && (
         <DetailSection title="Suggested Structure-Lock check">
           <p className="text-[12px] text-muted-foreground">
             After this lands, arm{' '}
             <code className="rounded border border-border bg-white/[0.04] px-1 py-0.5 font-mono text-[11.5px] text-foreground">
-              {proposal.harnessCheck.command}
+              {shown.harnessCheck.command}
             </code>{' '}
             (kind{' '}
-            <span className="font-mono text-foreground">{proposal.harnessCheck.kind}</span>)
+            <span className="font-mono text-foreground">{shown.harnessCheck.kind}</span>)
             so the gauntlet enforces it on every future task.
           </p>
         </DetailSection>
       )}
 
-      {proposal.artifactIds.length > 0 && (
-        <DetailSection title={`Bundles ${proposal.artifactIds.length} artifact(s)`}>
+      {shown.artifactIds.length > 0 && (
+        <DetailSection title={`Bundles ${shown.artifactIds.length} artifact(s)`}>
           <p className="text-[12px] text-muted-foreground">
             <span className="font-semibold text-foreground">Apply bundle</span> writes all{' '}
-            {proposal.artifactIds.length}{' '}
-            {proposal.artifactIds.length === 1 ? 'artifact' : 'artifacts'} to disk directly
+            {shown.artifactIds.length}{' '}
+            {shown.artifactIds.length === 1 ? 'artifact' : 'artifacts'} to disk directly
             (no agent, no cost), through the same hardened path as the Artifacts tab.
           </p>
         </DetailSection>

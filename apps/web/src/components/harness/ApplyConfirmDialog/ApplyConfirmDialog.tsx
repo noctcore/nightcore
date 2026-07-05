@@ -1,4 +1,4 @@
-import { Button, Kbd, Modal, Spinner } from '@/components/ui';
+import { Button, Kbd, Modal, Spinner, useLastPresent } from '@/components/ui';
 
 import { ARTIFACT_KIND_META, WRITE_MODE_META } from '../harness.constants';
 import type { ApplyConfirmDialogProps } from './ApplyConfirmDialog.types';
@@ -25,37 +25,52 @@ function explainApplyError(error: string): string {
  *  overwrite") is surfaced inline rather than swallowed. Enter is inert while
  *  applying so a held key can't re-trigger the write. */
 export function ApplyConfirmDialog({
+  open,
   artifact,
   applying,
   error,
   onConfirm,
   onCancel,
 }: ApplyConfirmDialogProps) {
-  const mode = WRITE_MODE_META[artifact.writeMode];
-  const isCreate = artifact.writeMode === 'create';
+  // Retain the target artifact + inline error across the exit animation so the
+  // panel doesn't blank/crash when the parent clears its pending-apply state on
+  // close. Callbacks stay live (the parent's current handlers).
+  const shown = useLastPresent(open ? { artifact, error } : null);
+  const artifactVM = shown?.artifact ?? artifact;
+  const shownError = shown?.error ?? error;
+
+  const mode = artifactVM !== null ? WRITE_MODE_META[artifactVM.writeMode] : undefined;
+  const isCreate = artifactVM?.writeMode === 'create';
 
   return (
     <Modal
+      open={open}
       role="alertdialog"
-      label={`Apply ${artifact.title}`}
+      label={artifactVM !== null ? `Apply ${artifactVM.title}` : 'Apply artifact'}
       initialFocus="[data-confirm]"
       onClose={onCancel}
       onEnter={applying ? undefined : onConfirm}
     >
       <div className="flex flex-col gap-3 px-5 pb-4 pt-5">
         <h2 className="text-base font-semibold text-foreground">Apply this artifact?</h2>
-        <p className="text-[13px] leading-relaxed text-muted-foreground">
-          Write{' '}
-          <code className="break-all rounded border border-border bg-white/[0.04] px-1 py-0.5 font-mono text-[12px] text-foreground">
-            {artifact.targetPath}
-          </code>{' '}
-          (
-          <span className="font-mono text-foreground">{mode?.label ?? artifact.writeMode}</span>
-          {mode !== undefined ? ` — ${mode.hint}` : ''}) into the project.
-        </p>
-        <p className="text-[12px] text-muted-foreground">
-          {ARTIFACT_KIND_META[artifact.kind].label} · {artifact.title}
-        </p>
+        {artifactVM !== null && (
+          <>
+            <p className="text-[13px] leading-relaxed text-muted-foreground">
+              Write{' '}
+              <code className="break-all rounded border border-border bg-white/[0.04] px-1 py-0.5 font-mono text-[12px] text-foreground">
+                {artifactVM.targetPath}
+              </code>{' '}
+              (
+              <span className="font-mono text-foreground">
+                {mode?.label ?? artifactVM.writeMode}
+              </span>
+              {mode !== undefined ? ` — ${mode.hint}` : ''}) into the project.
+            </p>
+            <p className="text-[12px] text-muted-foreground">
+              {ARTIFACT_KIND_META[artifactVM.kind].label} · {artifactVM.title}
+            </p>
+          </>
+        )}
         {isCreate && (
           <p className="rounded-md border border-border bg-white/[0.02] px-3 py-2 text-[12px] text-muted-foreground">
             Creates a <span className="font-medium text-foreground">new file</span>. If a
@@ -63,12 +78,12 @@ export function ApplyConfirmDialog({
             replace it manually instead.
           </p>
         )}
-        {error !== null && (
+        {shownError !== null && (
           <p
             role="alert"
             className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-[12.5px] text-destructive"
           >
-            {explainApplyError(error)}
+            {explainApplyError(shownError)}
           </p>
         )}
       </div>

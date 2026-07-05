@@ -74,6 +74,7 @@ const meta = {
   title: 'Board/ProviderConfigPanel',
   component: ProviderConfigPanel,
   args: {
+    open: true,
     projectPath: '/proj',
     projectName: 'nightcore',
     onClose: fn(),

@@ -9,6 +9,9 @@ export interface ProviderConfigData {
 
 /** Props for `ProviderConfigPanel`. */
 export interface ProviderConfigPanelProps {
+  /** Presence flag — the sheet animates in/out. Keep it always-mounted and toggle
+   *  `open` instead of `{cond && <ProviderConfigPanel/>}`. */
+  open: boolean;
   /** The project the inspector reads against. `path` resolves the snapshot;
    *  `name` titles the panel. */
   projectPath: string;

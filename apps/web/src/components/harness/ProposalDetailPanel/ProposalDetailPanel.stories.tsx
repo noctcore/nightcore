@@ -33,6 +33,7 @@ const meta = {
   component: ProposalDetailPanel,
   parameters: { layout: 'fullscreen' },
   args: {
+    open: true,
     proposal: proposal(),
     pending: false,
     onClose: fn(),

@@ -26,8 +26,11 @@ export interface ProviderConfigState {
 }
 
 /** Fetch the provider-config snapshot for `projectPath`, exposing loading/error
- *  and a `reload` for the retry affordance. Refetches when the path changes. */
+ *  and a `reload` for the retry affordance. Fetches when the panel opens and
+ *  refetches when the path changes — the panel now stays mounted while closed (to
+ *  animate its exit), so the fetch is gated on `open` to avoid a closed-panel read. */
 export function useProviderConfig(
+  open: boolean,
   projectPath: string,
   data: ProviderConfigData,
 ): ProviderConfigState {
@@ -58,7 +61,10 @@ export function useProviderConfig(
     };
   }, [data, projectPath]);
 
-  useEffect(() => load(), [load]);
+  useEffect(() => {
+    if (!open) return;
+    return load();
+  }, [load, open]);
 
   const reload = useCallback(() => {
     load();

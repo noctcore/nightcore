@@ -1,4 +1,4 @@
-import { AlertIcon, Button, Modal, Spinner } from '@/components/ui';
+import { AlertIcon, Button, Modal, Spinner, useLastPresent } from '@/components/ui';
 
 import {
   discardConfirmLabel,
@@ -24,10 +24,15 @@ export function DiscardDialog({
   onConfirm,
   onClose,
 }: DiscardDialogProps) {
-  if (!open) return null;
+  // Retain the display content across the exit animation so the panel doesn't
+  // blank when the parent clears its state on close. Callbacks stay live.
+  const shown =
+    useLastPresent(open ? { branch, changedFiles, error } : null) ??
+    { branch, changedFiles, error };
 
   return (
     <Modal
+      open={open}
       role="alertdialog"
       label="Discard worktree"
       initialFocus="[data-cancel]"
@@ -37,18 +42,18 @@ export function DiscardDialog({
         <h2 className="text-base font-semibold text-foreground">Discard worktree</h2>
         <p className="text-[13px] leading-relaxed text-muted-foreground">
           This permanently removes the worktree for{' '}
-          <span className="font-medium text-foreground">{branch ?? 'this task'}</span> and deletes
-          its branch. Uncommitted changes are lost.
+          <span className="font-medium text-foreground">{shown.branch ?? 'this task'}</span> and
+          deletes its branch. Uncommitted changes are lost.
         </p>
-        {hasUncommittedChanges(changedFiles) && (
+        {hasUncommittedChanges(shown.changedFiles) && (
           <p className="flex items-center gap-1.5 text-[12px] font-medium text-warning">
             <AlertIcon size={13} className="shrink-0" />
-            {changedFiles} uncommitted file(s) will be lost.
+            {shown.changedFiles} uncommitted file(s) will be lost.
           </p>
         )}
-        {hasDiscardError(error) && (
+        {hasDiscardError(shown.error) && (
           <p className="rounded-[8px] border border-destructive/40 bg-destructive/[0.12] px-3 py-2 text-[12px] text-destructive">
-            {error}
+            {shown.error}
           </p>
         )}
       </div>
@@ -63,7 +68,7 @@ export function DiscardDialog({
               <span>Discarding…</span>
             </>
           ) : (
-            discardConfirmLabel(error)
+            discardConfirmLabel(shown.error)
           )}
         </Button>
       </div>

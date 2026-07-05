@@ -60,3 +60,16 @@ export const SelectsItem: Story = {
     await expect(canvas.queryByRole('menu')).toBeNull();
   },
 };
+
+/** Play test: Escape closes the menu and `AnimatePresence` removes the panel from
+ *  the DOM after its exit animation (instant under the Vitest gate). Exercises the
+ *  motion presence added to the popover — enter on open, exit on close. */
+export const ClosesOnEscape: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: 'Open menu' }));
+    await expect(canvas.getByRole('menu')).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    await expect(canvas.queryByRole('menu')).toBeNull();
+  },
+};

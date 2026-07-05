@@ -30,6 +30,7 @@ const meta = {
   component: ApplyConfirmDialog,
   parameters: { layout: 'fullscreen' },
   args: {
+    open: true,
     artifact: ARTIFACT,
     applying: false,
     error: null,

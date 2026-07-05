@@ -5,21 +5,27 @@ import { render } from 'vitest-browser-react';
 import { IconButton } from './IconButton';
 import { DotsIcon } from './icons';
 import { Menu } from './Menu';
+import { MotionProvider } from './motion';
 
 function setup(onRename = vi.fn(), onRemove = vi.fn()) {
+  // MotionProvider mirrors the app root so the popover's `m.*` / `AnimatePresence`
+  // enter/exit run exactly as they do live (made instant under the gate via
+  // `MotionGlobalConfig.skipAnimations`).
   return render(
-    <Menu
-      label="Project menu"
-      trigger={
-        <IconButton label="Open menu">
-          <DotsIcon size={16} />
-        </IconButton>
-      }
-      items={[
-        { label: 'Rename', onClick: onRename },
-        { label: 'Remove', onClick: onRemove, destructive: true },
-      ]}
-    />,
+    <MotionProvider>
+      <Menu
+        label="Project menu"
+        trigger={
+          <IconButton label="Open menu">
+            <DotsIcon size={16} />
+          </IconButton>
+        }
+        items={[
+          { label: 'Rename', onClick: onRename },
+          { label: 'Remove', onClick: onRemove, destructive: true },
+        ]}
+      />
+    </MotionProvider>,
   );
 }
 
@@ -51,23 +57,25 @@ test('closes when focus leaves the menu (Tab-out)', async () => {
   // Tabbing off the last menuitem moves focus to a control outside the menu; the
   // focus-out handler closes it so focus is never stranded behind the open panel.
   const screen = render(
-    <div>
-      <Menu
-        label="Project menu"
-        trigger={
-          <IconButton label="Open menu">
-            <DotsIcon size={16} />
-          </IconButton>
-        }
-        items={[
-          { label: 'Rename', onClick: vi.fn() },
-          { label: 'Remove', onClick: vi.fn(), destructive: true },
-        ]}
-      />
-      <button type="button" data-testid="after">
-        after
-      </button>
-    </div>,
+    <MotionProvider>
+      <div>
+        <Menu
+          label="Project menu"
+          trigger={
+            <IconButton label="Open menu">
+              <DotsIcon size={16} />
+            </IconButton>
+          }
+          items={[
+            { label: 'Rename', onClick: vi.fn() },
+            { label: 'Remove', onClick: vi.fn(), destructive: true },
+          ]}
+        />
+        <button type="button" data-testid="after">
+          after
+        </button>
+      </div>
+    </MotionProvider>,
   );
   await screen.getByRole('button', { name: 'Open menu' }).click();
   await expect.element(screen.getByRole('menu')).toBeInTheDocument();

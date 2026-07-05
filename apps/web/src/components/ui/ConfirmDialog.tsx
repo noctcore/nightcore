@@ -3,11 +3,14 @@ import { type ReactNode } from 'react';
 
 import { Button } from './Button';
 import { Kbd } from './Kbd';
-import { Modal } from './Modal';
+import { Modal, useLastPresent } from './Modal';
 import { Spinner } from './Spinner';
 
 /** Props for {@link ConfirmDialog}. */
 export interface ConfirmDialogProps {
+  /** Presence flag — the dialog animates in/out. Keep it always-mounted and toggle
+   *  `open` instead of `{cond && <ConfirmDialog/>}`. */
+  open: boolean;
   /** Heading shown at the top of the dialog. */
   title: string;
   /** Body — a short sentence (string) or richer content (node). */
@@ -33,6 +36,7 @@ export interface ConfirmDialogProps {
  *  primitive, so it gets the focus trap + focus-restore-to-opener for free; Esc /
  *  click-outside cancel; Enter confirms; the confirm button takes initial focus. */
 export function ConfirmDialog({
+  open,
   title,
   message,
   confirmLabel = 'Confirm',
@@ -42,35 +46,44 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  // Retain the display content across the exit animation so the panel doesn't
+  // blank when the parent clears its confirmation state on close. Callbacks stay
+  // live (the parent's current handlers); only the rendered content is retained.
+  const shown =
+    useLastPresent(
+      open ? { title, message, confirmLabel, cancelLabel, destructive, busy } : null,
+    ) ?? { title, message, confirmLabel, cancelLabel, destructive, busy };
+
   return (
     <Modal
+      open={open}
       role="alertdialog"
-      label={title}
+      label={shown.title}
       initialFocus="[data-confirm]"
       onClose={onCancel}
       // Enter is inert while the action is in flight so a held key can't re-fire it.
-      onEnter={busy ? undefined : onConfirm}
+      onEnter={shown.busy ? undefined : onConfirm}
     >
       <div className="flex flex-col gap-2 px-5 pb-4 pt-5">
-        <h2 className="text-base font-semibold text-foreground">{title}</h2>
-        <div className="text-[13px] leading-relaxed text-muted-foreground">{message}</div>
+        <h2 className="text-base font-semibold text-foreground">{shown.title}</h2>
+        <div className="text-[13px] leading-relaxed text-muted-foreground">{shown.message}</div>
       </div>
       <div className="flex items-center justify-end gap-2 border-t border-border bg-black/15 px-5 py-3.5">
         <span className="mr-auto flex items-center gap-1 text-xs text-muted-foreground">
           <Kbd>↵</Kbd> to confirm
         </span>
-        <Button variant="ghost" disabled={busy} onClick={onCancel}>
-          {cancelLabel}
+        <Button variant="ghost" disabled={shown.busy} onClick={onCancel}>
+          {shown.cancelLabel}
         </Button>
         <Button
           data-confirm
-          variant={destructive ? 'danger' : 'primary'}
-          disabled={busy}
-          aria-busy={busy}
+          variant={shown.destructive ? 'danger' : 'primary'}
+          disabled={shown.busy}
+          aria-busy={shown.busy}
           onClick={onConfirm}
         >
-          {busy ? <Spinner size={14} /> : null}
-          {confirmLabel}
+          {shown.busy ? <Spinner size={14} /> : null}
+          {shown.confirmLabel}
         </Button>
       </div>
     </Modal>

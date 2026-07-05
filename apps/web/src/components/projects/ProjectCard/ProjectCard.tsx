@@ -114,37 +114,36 @@ export function ProjectCard({ project, onOpen, onRename, onDelete }: ProjectCard
         <span>{project.activity}</span>
       </div>
 
-      {card.overlay === 'rename' && (
-        <RenameDialog
-          value={card.draftName}
-          canSubmit={card.canRename}
-          onChange={card.setDraftName}
-          onSubmit={card.submitRename}
-          onCancel={card.closeOverlay}
-        />
-      )}
+      <RenameDialog
+        open={card.overlay === 'rename'}
+        value={card.draftName}
+        canSubmit={card.canRename}
+        onChange={card.setDraftName}
+        onSubmit={card.submitRename}
+        onCancel={card.closeOverlay}
+      />
 
-      {card.overlay === 'confirm-remove' && (
-        <ConfirmDialog
-          title="Remove project?"
-          message={
-            <>
-              <span className="font-medium text-foreground">{project.name}</span> will
-              be removed from Nightcore. This does not delete the repository or any
-              files on disk — only its entry here.
-            </>
-          }
-          confirmLabel="Remove"
-          destructive
-          onConfirm={card.confirmRemove}
-          onCancel={card.closeOverlay}
-        />
-      )}
+      <ConfirmDialog
+        open={card.overlay === 'confirm-remove'}
+        title="Remove project?"
+        message={
+          <>
+            <span className="font-medium text-foreground">{project.name}</span> will be
+            removed from Nightcore. This does not delete the repository or any files on
+            disk — only its entry here.
+          </>
+        }
+        confirmLabel="Remove"
+        destructive
+        onConfirm={card.confirmRemove}
+        onCancel={card.closeOverlay}
+      />
     </Card>
   );
 }
 
 interface RenameDialogProps {
+  open: boolean;
   value: string;
   canSubmit: boolean;
   onChange: (value: string) => void;
@@ -155,9 +154,10 @@ interface RenameDialogProps {
 /** A small centered dialog to edit a project's display name. Built on the shared
  *  `<Modal>` primitive (focus trap + restore-to-opener); Esc / click-outside
  *  cancel; ↵ submits when the name is valid. Mirrors the app's dialog chrome. */
-function RenameDialog({ value, canSubmit, onChange, onSubmit, onCancel }: RenameDialogProps) {
+function RenameDialog({ open, value, canSubmit, onChange, onSubmit, onCancel }: RenameDialogProps) {
   return (
     <Modal
+      open={open}
       label="Rename project"
       onClose={onCancel}
       onEnter={canSubmit ? onSubmit : undefined}

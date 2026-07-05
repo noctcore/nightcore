@@ -10,6 +10,8 @@ import {
   useState,
 } from 'react';
 
+import { AnimatePresence, m, popover } from './motion';
+
 /** A single selectable row in a {@link Menu}. */
 export interface MenuItem {
   label: string;
@@ -104,16 +106,21 @@ export function Menu({ trigger, label, items, align = 'right' }: MenuProps) {
   return (
     <div ref={rootRef} className="relative inline-flex">
       {triggerNode}
-      {open && (
-        <div
-          role="menu"
-          aria-label={label}
-          className={`absolute top-full z-20 mt-1 min-w-[160px] overflow-hidden rounded-[10px] border border-border bg-popover py-1 shadow-2xl ${
-            align === 'right' ? 'right-0' : 'left-0'
-          }`}
-          style={{ animation: 'nc-rise .14s cubic-bezier(.22,1,.36,1)' }}
-        >
-          {items.map((item, index) => (
+      <AnimatePresence>
+        {open && (
+          <m.div
+            role="menu"
+            aria-label={label}
+            variants={popover}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            style={{ transformOrigin: align === 'right' ? 'top right' : 'top left' }}
+            className={`absolute top-full z-20 mt-1 min-w-[160px] overflow-hidden rounded-[10px] border border-border bg-popover py-1 shadow-2xl ${
+              align === 'right' ? 'right-0' : 'left-0'
+            }`}
+          >
+            {items.map((item, index) => (
             <button
               key={item.label}
               ref={(el) => {
@@ -137,8 +144,9 @@ export function Menu({ trigger, label, items, align = 'right' }: MenuProps) {
               {item.label}
             </button>
           ))}
-        </div>
-      )}
+          </m.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -47,7 +47,7 @@ export function ProjectsView({
           action={<Button onClick={onNewProject}>Add your first project</Button>}
         />
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(320px,100%),1fr))] gap-4">
           {summaries.map((project) => (
             <ProjectCard
               key={project.id}

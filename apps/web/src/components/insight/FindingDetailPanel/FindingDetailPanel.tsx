@@ -9,6 +9,7 @@ import {
   MoveIcon,
   RetryIcon,
   TrashIcon,
+  useLastPresent,
 } from '@/components/ui';
 import { formatLocation } from '@/lib/formatters';
 
@@ -31,6 +32,7 @@ function inferLanguage(finding: InsightFinding): string {
 /** The finding detail sheet: full description, rationale, grounded location,
  *  suggested fix, before/after, affected files, and the lifecycle actions. */
 export function FindingDetailPanel({
+  open,
   finding,
   pending,
   onClose,
@@ -39,17 +41,35 @@ export function FindingDetailPanel({
   onRestore,
   onGotoBoard,
 }: FindingDetailPanelProps) {
-  const sev = SEVERITY_META[finding.severity];
-  const Meta = CATEGORY_META[finding.category];
+  // Retain the last finding so the sheet keeps its content while it animates out.
+  const shown = useLastPresent(finding);
+  if (shown === null) {
+    return (
+      <DetailPanelShell
+        open={false}
+        label=""
+        onClose={onClose}
+        title=""
+        badges={null}
+        footer={null}
+      >
+        {null}
+      </DetailPanelShell>
+    );
+  }
+
+  const sev = SEVERITY_META[shown.severity];
+  const Meta = CATEGORY_META[shown.category];
   const Icon = Meta.icon;
-  const loc = formatLocation(finding.location, { withSymbol: true });
-  const lang = inferLanguage(finding);
+  const loc = formatLocation(shown.location, { withSymbol: true });
+  const lang = inferLanguage(shown);
 
   return (
     <DetailPanelShell
-      label={finding.title}
+      open={open}
+      label={shown.title}
       onClose={onClose}
-      title={finding.title}
+      title={shown.title}
       badges={
         <>
           <span
@@ -62,47 +82,47 @@ export function FindingDetailPanel({
             {Meta.label}
           </span>
           <span className="font-mono text-[10px] text-muted-foreground">
-            {EFFORT_META[finding.effort].label} effort
+            {EFFORT_META[shown.effort].label} effort
           </span>
-          {finding.confidence !== null && (
+          {shown.confidence !== null && (
             <span className="font-mono text-[10px] text-muted-foreground">
-              {Math.round(finding.confidence * 100)}% confidence
+              {Math.round(shown.confidence * 100)}% confidence
             </span>
           )}
         </>
       }
       footer={
         <>
-          {finding.status === 'converted' ? (
+          {shown.status === 'converted' ? (
             <Button variant="secondary" disabled={pending} onClick={onGotoBoard}>
               <MoveIcon size={15} />
               Go to task
             </Button>
           ) : (
             <Button
-              disabled={pending || finding.status === 'dismissed'}
-              onClick={() => onConvert(finding.id)}
+              disabled={pending || shown.status === 'dismissed'}
+              onClick={() => onConvert(shown.id)}
             >
               <MoveIcon size={15} />
               Convert to task
             </Button>
           )}
 
-          {finding.status === 'dismissed' ? (
+          {shown.status === 'dismissed' ? (
             <Button
               variant="ghost"
               disabled={pending}
-              onClick={() => onRestore(finding.id)}
+              onClick={() => onRestore(shown.id)}
             >
               <RetryIcon size={15} />
               Restore
             </Button>
           ) : (
-            finding.status !== 'converted' && (
+            shown.status !== 'converted' && (
               <Button
                 variant="ghost"
                 disabled={pending}
-                onClick={() => onDismiss(finding.id)}
+                onClick={() => onDismiss(shown.id)}
               >
                 <TrashIcon size={15} />
                 Dismiss
@@ -113,7 +133,7 @@ export function FindingDetailPanel({
       }
     >
       <DetailSection title="What">
-        <Markdown>{finding.description}</Markdown>
+        <Markdown>{shown.description}</Markdown>
       </DetailSection>
 
       {loc !== null && (
@@ -122,37 +142,37 @@ export function FindingDetailPanel({
         </DetailSection>
       )}
 
-      {finding.rationale !== null && (
+      {shown.rationale !== null && (
         <DetailSection title="Why it matters">
-          <Markdown>{finding.rationale}</Markdown>
+          <Markdown>{shown.rationale}</Markdown>
         </DetailSection>
       )}
 
-      {finding.suggestion !== null && (
+      {shown.suggestion !== null && (
         <DetailSection title="Suggested fix">
-          <Markdown>{finding.suggestion}</Markdown>
+          <Markdown>{shown.suggestion}</Markdown>
         </DetailSection>
       )}
 
-      {finding.codeBefore !== null && (
+      {shown.codeBefore !== null && (
         <DetailSection title="Before">
-          <CodeBlock code={finding.codeBefore} language={lang} />
+          <CodeBlock code={shown.codeBefore} language={lang} />
         </DetailSection>
       )}
-      {finding.codeAfter !== null && (
+      {shown.codeAfter !== null && (
         <DetailSection title="After">
           <CodeBlock
-            code={finding.codeAfter}
+            code={shown.codeAfter}
             language={lang}
             className="border-success/30 bg-success/[0.06]"
           />
         </DetailSection>
       )}
 
-      {finding.affectedFiles.length > 0 && (
+      {shown.affectedFiles.length > 0 && (
         <DetailSection title="Affected files">
           <ul className="flex flex-col gap-1">
-            {finding.affectedFiles.map((f) => (
+            {shown.affectedFiles.map((f) => (
               <li key={f}>
                 <code className="font-mono text-[11.5px] text-muted-foreground">
                   {f}
@@ -163,10 +183,10 @@ export function FindingDetailPanel({
         </DetailSection>
       )}
 
-      {finding.tags.length > 0 && (
+      {shown.tags.length > 0 && (
         <DetailSection title="Tags">
           <div className="flex flex-wrap gap-1.5">
-            {finding.tags.map((t) => (
+            {shown.tags.map((t) => (
               <span
                 key={t}
                 className="rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
