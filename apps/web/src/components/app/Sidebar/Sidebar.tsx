@@ -1,4 +1,5 @@
 import {
+  AnimatePresence,
   BellIcon,
   BrandMark,
   ChevronDownIcon,
@@ -9,7 +10,9 @@ import {
   IconButton,
   IconTile,
   Kbd,
+  m,
   PlusIcon,
+  popover,
   StatusDot,
 } from '@/components/ui';
 
@@ -95,14 +98,19 @@ export function Sidebar({
           )}
         </button>
 
+        <AnimatePresence>
         {switcherOpen && (
-          <div
+          <m.div
+            variants={popover}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            style={{ transformOrigin: collapsed ? 'left center' : 'top center' }}
             className={
               collapsed
                 ? 'absolute left-full top-0 z-40 ml-2 w-64 rounded-xl border border-border bg-popover p-1.5 shadow-2xl'
                 : 'absolute left-3 right-3 top-full z-40 mt-1.5 rounded-xl border border-border bg-popover p-1.5 shadow-2xl'
             }
-            style={{ animation: collapsed ? 'nc-slide .14s ease' : 'nc-rise .14s ease' }}
           >
             {collapsed && (
               <div className="px-2.5 pb-1 pt-1 font-mono text-[9.5px] uppercase tracking-[0.18em] text-muted-foreground">
@@ -141,8 +149,9 @@ export function Sidebar({
               <PlusIcon size={14} />
               New project
             </button>
-          </div>
+          </m.div>
         )}
+        </AnimatePresence>
       </div>
 
       {/* workspace nav */}
