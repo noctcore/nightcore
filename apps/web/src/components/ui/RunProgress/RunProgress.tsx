@@ -2,6 +2,7 @@
 import { formatCostUsd, formatElapsed } from '@/lib/formatters';
 
 import { CheckIcon, ChevronRightIcon } from '../icons';
+import { fadeRise, m, stagger } from '../motion';
 import { StatusDot } from '../StatusDot';
 import { useElapsedMs } from './RunProgress.hooks';
 import type {
@@ -113,8 +114,18 @@ export function RunProgress({
           </span>
         </div>
 
-        {/* One row per category. */}
-        <div className="divide-y divide-border">
+        {/* One row per category. The list re-runs a staggered fade-rise keyed on
+            the DISCRETE finished-count — never raw token/stream state (the
+            run-screen hard rule): each time a lens completes, the rows cascade in,
+            a progress heartbeat that reinforces "still alive". `MotionConfig
+            reducedMotion="user"` collapses the transform to a plain opacity fade. */}
+        <m.div
+          key={finished}
+          variants={stagger}
+          initial="initial"
+          animate="animate"
+          className="divide-y divide-border"
+        >
           {categories.map((category) => {
             const state = categoryState[category.key] ?? 'pending';
             const count = findingCounts[category.key] ?? 0;
@@ -160,8 +171,9 @@ export function RunProgress({
             );
 
             return clickable ? (
-              <button
+              <m.button
                 key={category.key}
+                variants={fadeRise}
                 type="button"
                 onClick={() => onOpenCategory?.(category.key)}
                 className={`group ${rowClass} transition-colors hover:bg-white/[0.03]`}
@@ -174,17 +186,22 @@ export function RunProgress({
                   aria-hidden
                   className="-ml-1 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
                 />
-              </button>
+              </m.button>
             ) : (
-              <div key={category.key} className={rowClass} aria-busy={state === 'running'}>
+              <m.div
+                key={category.key}
+                variants={fadeRise}
+                className={rowClass}
+                aria-busy={state === 'running'}
+              >
                 {content}
                 {/* Reserve the chevron's footprint so trailing text right-aligns
                     consistently with the clickable (finished) rows. */}
                 <span aria-hidden className="-ml-1 w-3.5 shrink-0" />
-              </div>
+              </m.div>
             );
           })}
-        </div>
+        </m.div>
 
         {/* Synthesis row (Harness only) — kills the dead-zone after every lens reads "done". */}
         {synthesizing && (
