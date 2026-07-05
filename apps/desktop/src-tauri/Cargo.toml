@@ -37,7 +37,7 @@ tokio = { version = "1.52", features = [
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["ansi", "env-filter"] }
 tracing-appender = "0.2"
-which = "6.0"
+which = "8.0"
 # `open_external`'s https-only validation (PR arc, phase 1): parse + normalize a
 # URL before it reaches the platform browser opener. Already in the tree via
 # tauri, so this adds no new transitive code.
