@@ -42,6 +42,7 @@ export {
   Layers as LayersIcon,
   Lock as LockIcon,
   FileText as LogsIcon,
+  GitMerge as MergeIcon,
   ArrowRightLeft as MoveIcon,
   Paperclip as PaperclipIcon,
   Gauge as PerfIcon,

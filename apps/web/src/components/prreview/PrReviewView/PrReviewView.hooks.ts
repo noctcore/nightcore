@@ -50,6 +50,7 @@ import {
 } from '../prreview-runs';
 import { usePrReviewRuns } from '../prreview-runs.hooks';
 import { EMPTY_REVIEW_STREAM, type ReviewStream } from '../prreview-stream';
+import type { PrStatusActions } from '../PrStatusBlock';
 import {
   type PrNumberStatusView,
   usePrStatusByNumber,
@@ -294,10 +295,29 @@ export interface PrReviewViewModel {
   pushArmedFix: PrFixState | null;
   pushing: boolean;
   pushError: string | null;
+  /** Whether the push also posts the summary comment on the PR (the push
+   *  dialog's checkbox — sticky across pushes, default on). */
+  pushPostComment: boolean;
+  setPushPostComment: (next: boolean) => void;
   /** Confirm + await the push (plain push, never force). */
   confirmPush: () => void;
   /** Cancel the gate. A no-op while a push is in flight. */
   cancelPush: () => void;
+  // --- Status-block remediation gates (Fix CI / Resolve conflicts) ---
+  /** Which remediation ConfirmDialog is armed, or null (closed). */
+  fixActionArmed: 'ci' | 'conflicts' | null;
+  /** True while the armed action is in flight (checks read / merge / dispatch). */
+  fixActionBusy: boolean;
+  /** This PR's last fix-start rejection — rendered inline in the armed dialog
+   *  (the shared per-PR fix-error slot, same as the address gate's). */
+  fixActionError: string | null;
+  /** Confirm + await the armed action (starts the paid fix session). */
+  confirmFixAction: () => void;
+  /** Cancel the gate. A no-op while the action is in flight. */
+  cancelFixAction: () => void;
+  /** The status block's remediation actions, threaded through the workspace
+   *  (undefined when no PR is selected). */
+  statusActions: PrStatusActions | undefined;
 }
 
 /** Resolve the entire PR workspace into a single view model: the persistent
@@ -365,6 +385,17 @@ export function usePrReviewView({
   const [pushing, setPushing] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
   const pushInFlight = useRef(false);
+  // The push dialog's "post a summary comment" opt-in — STICKY across pushes
+  // (a per-user preference more than a per-push decision), default on.
+  const [pushPostComment, setPushPostComment] = useState(true);
+  // Status-block remediation gates (Fix CI / Resolve conflicts): which action's
+  // ConfirmDialog is armed, the in-flight flag, and its ref twin (synchronous
+  // re-entrancy check — the address gate's discipline).
+  const [fixActionArmed, setFixActionArmed] = useState<'ci' | 'conflicts' | null>(
+    null,
+  );
+  const [fixActionBusy, setFixActionBusy] = useState(false);
+  const fixActionInFlight = useRef(false);
 
   // Project-switch reset, synchronously before paint (the render-adjust
   // pattern): the selection belongs to the previous project's PR numbers.
@@ -382,6 +413,7 @@ export function usePrReviewView({
     setAddressArmed(false);
     setPushFixId(null);
     setPushError(null);
+    setFixActionArmed(null);
   }
 
   // The viewer login, once per mount. A rejection leaves `null` — fail-open.
@@ -812,6 +844,23 @@ export function usePrReviewView({
       ? compareRuns(displayRun.findings, previousRun.findings)
       : null;
   const fixRunning = prFix !== null && prFix.status === 'running';
+  // The status block's remediation actions: inert while ANY fix activity is
+  // live for this PR — a running/committing fix session, an armed action in
+  // flight, or an address dispatch (the backend refuses those atomically; the
+  // UI just says why up front).
+  const fixBusy =
+    (prFix !== null &&
+      (prFix.status === 'running' || prFix.status === 'committing')) ||
+    fixActionBusy ||
+    addressing;
+  const statusActions: PrStatusActions | undefined =
+    selectedPr === null
+      ? undefined
+      : {
+          onFixCi: () => setFixActionArmed('ci'),
+          onResolveConflicts: () => setFixActionArmed('conflicts'),
+          fixBusy,
+        };
   /** Only OPEN selected findings feed the fix prompt (converted stay postable
    *  but are already tracked as tasks; dismissed never make the selection). */
   const selectedOpenFindings = useMemo(
@@ -874,13 +923,24 @@ export function usePrReviewView({
   const confirmPush = useCallback(() => {
     if (pushFixId === null || pushInFlight.current) return;
     const fixId = pushFixId;
+    const postComment = pushPostComment;
     pushInFlight.current = true;
     setPushing(true);
     setPushError(null);
     void (async () => {
       try {
-        await fixes.push(fixId);
-        toast.push({ tone: 'success', title: 'Fix pushed to the PR branch' });
+        const warning = await fixes.push(fixId, postComment);
+        // A resolved WARNING means the push landed but the opt-in summary
+        // comment didn't — say exactly that (info, not error: nothing is lost).
+        if (typeof warning === 'string' && warning.length > 0) {
+          toast.push({
+            tone: 'info',
+            title: 'Fix pushed — summary comment failed',
+            description: warning,
+          });
+        } else {
+          toast.push({ tone: 'success', title: 'Fix pushed to the PR branch' });
+        }
         setPushFixId(null);
       } catch (err) {
         // Surface BOTH inline (kept dialog) and via toast (the useToast
@@ -893,7 +953,48 @@ export function usePrReviewView({
         pushInFlight.current = false;
       }
     })();
-  }, [pushFixId, fixes, toast]);
+  }, [pushFixId, pushPostComment, fixes, toast]);
+
+  // --- Status-block remediation gates (Fix CI / Resolve conflicts) --------
+  const cancelFixAction = useCallback(() => {
+    // Inert while the action is in flight (the dialog's Cancel is disabled too).
+    if (fixActionInFlight.current) return;
+    setFixActionArmed(null);
+  }, []);
+
+  const confirmFixAction = useCallback(() => {
+    if (fixActionArmed === null || fixActionInFlight.current) return;
+    // The armed dialog belongs to the CURRENT selection (selectPr closes it),
+    // so the state capture is the right PR.
+    const prNumber = selectedPr;
+    if (prNumber === null) return;
+    const action = fixActionArmed;
+    fixActionInFlight.current = true;
+    setFixActionBusy(true);
+    void (async () => {
+      try {
+        const { fixId, error } =
+          action === 'ci'
+            ? await fixes.fixCi(prNumber)
+            : await fixes.resolveConflicts(prNumber);
+        // Success closes the gate (the fix strip takes over via nc:pr-fix). A
+        // rejection keeps the dialog open — the per-PR fix error renders inline
+        // there — AND toasts (the address-gate discipline).
+        if (fixId !== null) setFixActionArmed(null);
+        else if (error !== null) {
+          toast.error(
+            action === 'ci'
+              ? 'Could not start the CI fix'
+              : 'Could not resolve the conflicts',
+            error,
+          );
+        }
+      } finally {
+        setFixActionBusy(false);
+        fixActionInFlight.current = false;
+      }
+    })();
+  }, [fixActionArmed, selectedPr, fixes, toast]);
 
   // --- Navigation + run actions ------------------------------------------
   const selectPr = useCallback(
@@ -914,6 +1015,7 @@ export function usePrReviewView({
       setAddressArmed(false);
       setPushFixId(null);
       setPushError(null);
+      setFixActionArmed(null);
     },
     [resetFindingUi],
   );
@@ -1030,6 +1132,7 @@ export function usePrReviewView({
       setAddressArmed(false);
       setPushFixId(null);
       setPushError(null);
+      setFixActionArmed(null);
     },
     onOpenItem: (target) => setSelectedId(target.itemId),
   });
@@ -1184,7 +1287,15 @@ export function usePrReviewView({
     pushArmedFix,
     pushing,
     pushError,
+    pushPostComment,
+    setPushPostComment,
     confirmPush,
     cancelPush,
+    fixActionArmed,
+    fixActionBusy,
+    fixActionError: addressError,
+    confirmFixAction,
+    cancelFixAction,
+    statusActions,
   };
 }

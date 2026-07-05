@@ -62,6 +62,7 @@ function run(over: Partial<PrReviewRun> = {}): PrReviewRun {
 function fix(over: Partial<PrFixState> = {}): PrFixState {
   return {
     id: 'prfix-1',
+    kind: 'findings',
     runId: 'run-1',
     prNumber: 7,
     branch: 'feat/x',

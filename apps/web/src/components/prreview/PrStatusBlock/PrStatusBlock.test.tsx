@@ -137,3 +137,78 @@ test('the Refresh control re-fetches the status', async () => {
   await expect.element(screen.getByText('Clean against base')).toBeInTheDocument();
   expect(calls).toBe(2);
 });
+
+test('the merge-readiness badge leads the badge row', async () => {
+  invoke.mockImplementation((cmd: unknown) =>
+    cmd === 'pr_status_by_number'
+      ? Promise.resolve(makeStatus({ checksFailed: 0, checksPending: 0 }))
+      : Promise.resolve(undefined),
+  );
+  const screen = render(<PrStatusBlock prNumber={128} />);
+  // REVIEW_REQUIRED with green checks → "Needs review".
+  await expect
+    .element(screen.getByText('Needs review', { exact: true }))
+    .toBeInTheDocument();
+});
+
+test('remediation buttons render from the status and arm their gates', async () => {
+  invoke.mockImplementation((cmd: unknown) =>
+    cmd === 'pr_status_by_number'
+      ? Promise.resolve(makeStatus({ mergeable: 'CONFLICTING', checksFailed: 1 }))
+      : Promise.resolve(undefined),
+  );
+  const onFixCi = vi.fn();
+  const onResolveConflicts = vi.fn();
+  const screen = render(
+    <PrStatusBlock
+      prNumber={128}
+      actions={{ onFixCi, onResolveConflicts, fixBusy: false }}
+    />,
+  );
+  await screen.getByRole('button', { name: /fix ci/i }).click();
+  expect(onFixCi).toHaveBeenCalledTimes(1);
+  await screen.getByRole('button', { name: /resolve conflicts/i }).click();
+  expect(onResolveConflicts).toHaveBeenCalledTimes(1);
+});
+
+test('remediation buttons hide without their trigger states or the actions prop', async () => {
+  invoke.mockImplementation((cmd: unknown) =>
+    cmd === 'pr_status_by_number'
+      ? Promise.resolve(makeStatus({ mergeable: 'MERGEABLE', checksFailed: 0 }))
+      : Promise.resolve(undefined),
+  );
+  const screen = render(
+    <PrStatusBlock
+      prNumber={128}
+      actions={{ onFixCi: vi.fn(), onResolveConflicts: vi.fn(), fixBusy: false }}
+    />,
+  );
+  await expect.element(screen.getByText(/base: main/)).toBeInTheDocument();
+  expect(screen.container.textContent).not.toMatch(/Fix CI/);
+  expect(screen.container.textContent).not.toMatch(/Resolve conflicts/);
+});
+
+test('busy remediation buttons are inert but focusable, with the reason wired', async () => {
+  invoke.mockImplementation((cmd: unknown) =>
+    cmd === 'pr_status_by_number'
+      ? Promise.resolve(makeStatus({ checksFailed: 1 }))
+      : Promise.resolve(undefined),
+  );
+  const onFixCi = vi.fn();
+  const screen = render(
+    <PrStatusBlock
+      prNumber={128}
+      actions={{ onFixCi, onResolveConflicts: vi.fn(), fixBusy: true }}
+    />,
+  );
+  const button = screen.getByRole('button', { name: /fix ci/i });
+  await expect.element(button).toHaveAttribute('aria-disabled', 'true');
+  await expect.element(button).toHaveAttribute('aria-describedby');
+  // Playwright refuses to click aria-disabled controls (actionability) — that
+  // refusal is itself the guard working. Fire a NATIVE click to prove the
+  // handler guard holds even without the actionability layer.
+  screen.container
+    .querySelector<HTMLButtonElement>('button[aria-disabled="true"]')
+    ?.click();
+  expect(onFixCi).not.toHaveBeenCalled();
+});

@@ -49,6 +49,7 @@ function emit(state: unknown) {
 function fixState(over: Partial<PrFixState> = {}): PrFixState {
   return {
     id: 'fix-1',
+    kind: 'findings',
     runId: 'run-1',
     prNumber: 42,
     branch: 'feat/x',
@@ -265,9 +266,61 @@ test('push and cancel invoke their commands with the fix id', async () => {
   invoke.mockImplementation(() => Promise.resolve([]));
   const api = await mountHook();
 
-  await api().push('fix-1');
-  expect(invoke).toHaveBeenCalledWith('push_pr_fix', { fixId: 'fix-1' });
+  await api().push('fix-1', true);
+  expect(invoke).toHaveBeenCalledWith('push_pr_fix', {
+    fixId: 'fix-1',
+    postComment: true,
+  });
+  await api().push('fix-1', false);
+  expect(invoke).toHaveBeenCalledWith('push_pr_fix', {
+    fixId: 'fix-1',
+    postComment: false,
+  });
 
   await api().cancel('fix-2');
   expect(invoke).toHaveBeenCalledWith('cancel_pr_fix', { fixId: 'fix-2' });
+});
+
+test('fixCi and resolveConflicts run the shared start discipline', async () => {
+  invoke.mockImplementation((cmd: string) => {
+    if (cmd === 'fix_pr_ci') return Promise.resolve('fix-ci-1');
+    if (cmd === 'resolve_pr_conflicts') return Promise.resolve('fix-con-1');
+    return Promise.resolve([]);
+  });
+  const api = await mountHook();
+
+  await expect(api().fixCi(42)).resolves.toEqual({
+    fixId: 'fix-ci-1',
+    error: null,
+  });
+  expect(invoke).toHaveBeenCalledWith('fix_pr_ci', { prNumber: 42 });
+
+  await expect(api().resolveConflicts(43)).resolves.toEqual({
+    fixId: 'fix-con-1',
+    error: null,
+  });
+  expect(invoke).toHaveBeenCalledWith('resolve_pr_conflicts', { prNumber: 43 });
+});
+
+test('fixCi is guarded out while a fix is already running for the PR', async () => {
+  invoke.mockImplementation(() => Promise.resolve([]));
+  const api = await mountHook();
+  emit(fixState({ id: 'fix-live', prNumber: 42, status: 'running' }));
+  await vi.waitFor(() => expect(api().fixForPr(42)?.id).toBe('fix-live'));
+
+  await expect(api().fixCi(42)).resolves.toEqual({ fixId: null, error: null });
+  expect(invoke).not.toHaveBeenCalledWith('fix_pr_ci', { prNumber: 42 });
+});
+
+test('a fixCi rejection lands in the per-PR error slot', async () => {
+  invoke.mockImplementation((cmd: string) =>
+    cmd === 'fix_pr_ci'
+      ? Promise.reject(new Error('no failing checks'))
+      : Promise.resolve([]),
+  );
+  const api = await mountHook();
+  const outcome = await api().fixCi(42);
+  expect(outcome).toEqual({ fixId: null, error: 'no failing checks' });
+  // The error state lands on the NEXT render — wait for the re-sinked api.
+  await vi.waitFor(() => expect(api().fixErrors.get(42)).toBe('no failing checks'));
 });

@@ -903,7 +903,7 @@ export async function postReviewToGithub(
   });
 }
 
-// --- PR fix (address review findings) --------------------------------------
+// --- PR fix (address findings / fix CI / resolve conflicts) -----------------
 
 /** Run a fix agent over the SELECTED findings of a review run, on the PR's own
  *  branch. Returns the fix id the `nc:pr-fix` snapshots correlate by. The session
@@ -918,11 +918,32 @@ export async function addressReviewFindings(
   return invoke<string>('address_review_findings', { runId, findingIds });
 }
 
+/** Run a fix agent over the PR's FAILING CI CHECKS, on the PR's own branch (the
+ *  same arc as {@link addressReviewFindings} — auto-commit, then the human-gated
+ *  push). Refuses when the PR has no failing checks. Rejects outside Tauri. */
+export async function fixPrCi(prNumber: number): Promise<string> {
+  return invoke<string>('fix_pr_ci', { prNumber });
+}
+
+/** Merge the PR's base branch into its checkout and — when the merge stops on
+ *  conflicts — run a fix agent that resolves them (a CLEAN merge skips the agent
+ *  and parks the merge commit at `awaiting_push` directly). Refuses when the
+ *  branch is already up to date with base. Rejects outside Tauri. */
+export async function resolvePrConflicts(prNumber: number): Promise<string> {
+  return invoke<string>('resolve_pr_conflicts', { prNumber });
+}
+
 /** Push an `awaiting_push` fix's branch to origin — THE human-gated external side
  *  effect of the fix arc (plain push, never force; a diverged remote fails loudly).
+ *  `postComment` additionally posts a summary comment on the PR explaining how the
+ *  fix addressed its targets; the comment is best-effort — when it fails AFTER a
+ *  successful push, the resolved string is that warning (null = nothing to warn).
  *  Raw `invoke` so a gh/git failure surfaces to the caller. Rejects outside Tauri. */
-export async function pushPrFix(fixId: string): Promise<void> {
-  await invoke<void>('push_pr_fix', { fixId });
+export async function pushPrFix(
+  fixId: string,
+  postComment: boolean,
+): Promise<string | null> {
+  return invoke<string | null>('push_pr_fix', { fixId, postComment });
 }
 
 /** Every registered fix, newest first. The registry is in-memory Rust-side — an

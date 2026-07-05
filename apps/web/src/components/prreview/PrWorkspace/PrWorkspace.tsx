@@ -42,6 +42,7 @@ export function PrWorkspace({
   lifecycle,
   statusView,
   statusOverride,
+  statusActions,
   changedFilesOverride,
 }: PrWorkspaceProps) {
   const date = pr !== null ? formatPrDate(pr.createdAt) : null;
@@ -231,7 +232,12 @@ export function PrWorkspace({
       {/* Live GitHub status (fetch on selection + manual refresh, no polling).
           The app lifts the fetch into the view model and passes it as `view`;
           stories/tests use the `override` seam. */}
-      <PrStatusBlock prNumber={prNumber} view={statusView} override={statusOverride} />
+      <PrStatusBlock
+        prNumber={prNumber}
+        view={statusView}
+        override={statusOverride}
+        actions={statusActions}
+      />
 
       {/* Description (untrusted markdown → sanitized), collapsible when long. */}
       {pr !== null && (

@@ -109,6 +109,7 @@ function makeStatus(over: Partial<PrStatus> = {}): PrStatus {
 function makeFix(over: Partial<PrFixState> = {}): PrFixState {
   return {
     id: 'prfix-1',
+    kind: 'findings',
     runId: 'run-10',
     prNumber: 42,
     branch: 'feat/x',
@@ -383,8 +384,10 @@ test('pushing a fix gates through the ConfirmDialog and fires push_pr_fix on con
   await vi.waitFor(() =>
     expect(invoke.mock.calls.filter((c) => c[0] === 'push_pr_fix')).toHaveLength(1),
   );
+  // The summary-comment opt-in defaults ON and rides with the push.
   expect(invoke.mock.calls.find((c) => c[0] === 'push_pr_fix')?.[1]).toEqual({
     fixId: 'prfix-1',
+    postComment: true,
   });
 });
 

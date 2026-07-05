@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { fn } from 'storybook/test';
 
 import type { PrStatus } from '@/lib/bridge';
 
@@ -50,6 +51,45 @@ export const Merged: Story = {
       checksFailed: 0,
       checksPending: 0,
     },
+  },
+};
+
+/** A clean, approved, green-checks PR — the "Ready to merge" readiness badge. */
+export const ReadyToMerge: Story = {
+  args: {
+    override: {
+      ...SAMPLE,
+      mergeStateStatus: 'CLEAN',
+      reviewDecision: 'APPROVED',
+      checksPassed: 7,
+      checksFailed: 0,
+      checksPending: 0,
+    },
+  },
+};
+
+/** Conflicts + failing checks with the remediation actions wired: both the
+ *  "Resolve conflicts" and "Fix CI" human-gate buttons render on their rows. */
+export const NeedsRemediation: Story = {
+  args: {
+    override: {
+      ...SAMPLE,
+      mergeable: 'CONFLICTING',
+      mergeStateStatus: 'DIRTY',
+      checksPassed: 3,
+      checksFailed: 2,
+      checksPending: 0,
+    },
+    actions: { onFixCi: fn(), onResolveConflicts: fn(), fixBusy: false },
+  },
+};
+
+/** The same remediation surface while a fix is already in flight — the buttons
+ *  stay focusable but inert (aria-disabled + the sr-only reason). */
+export const RemediationBusy: Story = {
+  args: {
+    ...NeedsRemediation.args,
+    actions: { onFixCi: fn(), onResolveConflicts: fn(), fixBusy: true },
   },
 };
 

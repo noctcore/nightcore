@@ -413,6 +413,7 @@ function isPrFixState(value: unknown): value is PrFixState {
   if (
     !hasKeys(value, [
       'id',
+      'kind',
       'prNumber',
       'branch',
       'status',
@@ -426,6 +427,7 @@ function isPrFixState(value: unknown): value is PrFixState {
   }
   return (
     typeof value.id === 'string' &&
+    typeof value.kind === 'string' &&
     typeof value.prNumber === 'number' &&
     typeof value.branch === 'string' &&
     typeof value.status === 'string' &&

@@ -12,16 +12,19 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   addressReviewFindings,
   cancelPrFix,
+  fixPrCi,
   listPrFixes,
   onPrFixEvent,
   type PrFixState,
   type PrFixStatus,
   pushPrFix,
+  resolvePrConflicts,
 } from '@/lib/bridge';
 
-/** One `address` outcome: `fixId` set on success; `error` carries a rejection
- *  message (also recorded per-PR in `fixErrors`, but plumbed here so the caller
- *  can toast it synchronously); both `null` when guarded out. */
+/** One fix-start outcome (`address` / `fixCi` / `resolveConflicts`): `fixId`
+ *  set on success; `error` carries a rejection message (also recorded per-PR in
+ *  `fixErrors`, but plumbed here so the caller can toast it synchronously);
+ *  both `null` when guarded out. */
 export interface AddressOutcome {
   fixId: string | null;
   error: string | null;
@@ -65,9 +68,18 @@ export interface UsePrFixesResult {
     runId: string,
     findingIds: string[],
   ) => Promise<AddressOutcome>;
-  /** Push an `awaiting_push` fix's branch — the human-gated publish. Rejects on
-   *  failure so the caller's confirm gate can surface the error inline. */
-  push: (fixId: string) => Promise<void>;
+  /** Start a fix run over the PR's FAILING CI checks — the same guard discipline
+   *  and outcome shape as `address` (no review run required). */
+  fixCi: (prNumber: number) => Promise<AddressOutcome>;
+  /** Merge the PR's base into its checkout and resolve the conflicts (a clean
+   *  merge skips the agent and parks at `awaiting_push` directly) — the same
+   *  guard discipline and outcome shape as `address`. */
+  resolveConflicts: (prNumber: number) => Promise<AddressOutcome>;
+  /** Push an `awaiting_push` fix's branch — the human-gated publish.
+   *  `postComment` also posts the summary comment on the PR (best-effort: a
+   *  comment failure resolves as a warning string; `null` = no warning).
+   *  Rejects on push failure so the caller's confirm gate can surface it. */
+  push: (fixId: string, postComment: boolean) => Promise<string | null>;
   /** Cancel a running fix (it lands as `failed("cancelled")` on the channel).
    *  Rejects on failure so the caller can surface it. */
   cancel: (fixId: string) => Promise<void>;
@@ -174,19 +186,17 @@ export function usePrFixes(hasProject: boolean): UsePrFixesResult {
     [fixes, dismissedIds],
   );
 
-  const address = useCallback(
+  /** The shared start discipline every fix kind runs through. Guard the SAME
+   *  PR against a double-start: synchronously via the in-flight ref (the
+   *  double-click window), and against the rendered map (a fix already
+   *  running). The backend additionally refuses a second running fix per PR
+   *  atomically in its registry. */
+  const startFix = useCallback(
     async (
       prNumber: number,
-      runId: string,
-      findingIds: string[],
+      invoke: () => Promise<string>,
     ): Promise<AddressOutcome> => {
-      if (!hasProject || runId.length === 0 || findingIds.length === 0) {
-        return { fixId: null, error: null };
-      }
-      // Guard the SAME PR against a double-start: synchronously via the
-      // in-flight ref (the double-click window), and against the rendered map
-      // (a fix already running). The backend additionally refuses a second
-      // running fix per PR atomically in its registry.
+      if (!hasProject) return { fixId: null, error: null };
       if (addressingPrs.current.has(prNumber)) return { fixId: null, error: null };
       for (const fix of fixesRef.current.values()) {
         if (fix.prNumber === prNumber && fix.status === 'running') {
@@ -195,7 +205,7 @@ export function usePrFixes(hasProject: boolean): UsePrFixesResult {
       }
       addressingPrs.current.add(prNumber);
       try {
-        const fixId = await addressReviewFindings(runId, findingIds);
+        const fixId = await invoke();
         setFixErrors((prev) => {
           if (!prev.has(prNumber)) return prev;
           const next = new Map(prev);
@@ -214,8 +224,32 @@ export function usePrFixes(hasProject: boolean): UsePrFixesResult {
     [hasProject],
   );
 
-  const push = useCallback(async (fixId: string) => {
-    await pushPrFix(fixId);
+  const address = useCallback(
+    async (
+      prNumber: number,
+      runId: string,
+      findingIds: string[],
+    ): Promise<AddressOutcome> => {
+      if (runId.length === 0 || findingIds.length === 0) {
+        return { fixId: null, error: null };
+      }
+      return startFix(prNumber, () => addressReviewFindings(runId, findingIds));
+    },
+    [startFix],
+  );
+
+  const fixCi = useCallback(
+    (prNumber: number) => startFix(prNumber, () => fixPrCi(prNumber)),
+    [startFix],
+  );
+
+  const resolveConflicts = useCallback(
+    (prNumber: number) => startFix(prNumber, () => resolvePrConflicts(prNumber)),
+    [startFix],
+  );
+
+  const push = useCallback(async (fixId: string, postComment: boolean) => {
+    return pushPrFix(fixId, postComment);
   }, []);
 
   const cancel = useCallback(async (fixId: string) => {
@@ -226,5 +260,15 @@ export function usePrFixes(hasProject: boolean): UsePrFixesResult {
     setDismissedIds((prev) => new Set(prev).add(fixId));
   }, []);
 
-  return { fixes, fixErrors, fixForPr, address, push, cancel, dismiss };
+  return {
+    fixes,
+    fixErrors,
+    fixForPr,
+    address,
+    fixCi,
+    resolveConflicts,
+    push,
+    cancel,
+    dismiss,
+  };
 }

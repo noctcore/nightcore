@@ -5,8 +5,16 @@ import { render } from 'vitest-browser-react';
 import { FixRunCard } from './FixRunCard';
 import * as stories from './FixRunCard.stories';
 
-const { Running, Committing, AwaitingPush, AwaitingPushBusy, Pushed, Failed } =
-  composeStories(stories);
+const {
+  Running,
+  RunningCi,
+  RunningConflicts,
+  Committing,
+  AwaitingPush,
+  AwaitingPushBusy,
+  Pushed,
+  Failed,
+} = composeStories(stories);
 
 test('running renders a status live region with count + branch and a cancel action', async () => {
   const screen = render(<Running />);
@@ -51,22 +59,60 @@ test('an unknown future status renders nothing (forward-compatible fallthrough)'
   await expect.element(screen.getByRole('alert')).not.toBeInTheDocument();
 });
 
-test('awaiting_push renders the summary as INERT text (markup stays literal), the push affordance, and the local-commit note', async () => {
+test('kind-aware running lines: ci names checks, conflicts names files', async () => {
+  const ci = render(<RunningCi />);
+  await expect
+    .element(ci.getByText('Fixing 2 failing checks on fix/worktree-isolation'))
+    .toBeInTheDocument();
+  ci.unmount();
+  const conflicts = render(<RunningConflicts />);
+  await expect
+    .element(
+      conflicts.getByText('Resolving 4 conflicted files on fix/worktree-isolation'),
+    )
+    .toBeInTheDocument();
+});
+
+test('awaiting_push renders the summary as SANITIZED markdown, the push affordance, and the local-commit note', async () => {
   const screen = render(<AwaitingPush />);
   // The awaiting card is a status live region too, with the sr-only PR context.
   await expect
     .element(screen.getByRole('status'))
     .toHaveTextContent(/PR #128 fix awaiting push/);
-  // Model text is never rendered as Markdown — the `**handle**` marks survive.
-  await expect
-    .element(screen.getByText(/\*\*handle\*\* the None case/))
-    .toBeInTheDocument();
+  // Model markdown renders through the sanitizing Markdown primitive: the
+  // `**handle**` marks become a <strong>, the `- ` lines become list items.
+  const strong = screen.container.querySelector('.nc-markdown strong');
+  expect(strong?.textContent).toBe('handle');
+  expect(screen.container.querySelectorAll('.nc-markdown li').length).toBe(2);
   await expect
     .element(screen.getByRole('button', { name: /^push to pr$/i }))
     .toBeEnabled();
   await expect
     .element(screen.getByText(/already committed locally on the branch/i))
     .toBeInTheDocument();
+});
+
+test('a hostile summary is sanitized: scripts and handlers are stripped', async () => {
+  const screen = render(
+    <FixRunCard
+      fix={{
+        ...AwaitingPush.args!.fix!,
+        summary:
+          'ok <img src=x onerror="window.__pwned=1"> <script>window.__pwned=2</script>',
+      }}
+      pushing={false}
+      onCancel={vi.fn()}
+      onRequestPush={vi.fn()}
+      onReReview={vi.fn()}
+      onDismiss={vi.fn()}
+    />,
+  );
+  await expect.element(screen.getByRole('status')).toBeInTheDocument();
+  expect(screen.container.querySelector('.nc-markdown script')).toBeNull();
+  expect(
+    screen.container.querySelector('.nc-markdown img')?.getAttribute('onerror') ?? null,
+  ).toBeNull();
+  expect((window as unknown as { __pwned?: number }).__pwned).toBeUndefined();
 });
 
 test('an in-flight push disables the push button', async () => {

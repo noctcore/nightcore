@@ -3,6 +3,7 @@
 import type { PrChangedFile, PrStatus, PrSummary } from '@/lib/bridge';
 
 import type { ReviewLifecycle } from '../prreview-lifecycle';
+import type { PrStatusActions } from '../PrStatusBlock';
 import type { PrNumberStatusView } from '../PrStatusBlock/PrStatusBlock.hooks';
 import type { ReviewSectionProps } from '../ReviewSection';
 
@@ -32,6 +33,9 @@ export interface PrWorkspaceProps {
   statusView?: PrNumberStatusView;
   /** Story/test seam passed through to the status block (suppresses its fetch). */
   statusOverride?: PrStatus | null;
+  /** The status block's remediation actions (Fix CI / Resolve conflicts) —
+   *  human gates armed in the view model. Absent ⇒ the buttons don't render. */
+  statusActions?: PrStatusActions;
   /** Story/test seam for the changed-file expander (suppresses its on-expand
    *  gh fetch). Absent ⇒ the expander fetches lazily on first open. */
   changedFilesOverride?: ChangedFilesOverride;

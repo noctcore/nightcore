@@ -6,6 +6,7 @@
  *  anything: every run keeps streaming in the run registry. */
 import {
   Button,
+  Checkbox,
   ConfirmDialog,
   EmptyState,
   FolderIcon,
@@ -113,6 +114,7 @@ export function PrReviewView(props: PrReviewViewProps) {
                 review={view.review}
                 lifecycle={view.lifecycle}
                 statusView={view.statusView}
+                statusActions={view.statusActions}
               />
             )}
           </main>
@@ -213,7 +215,9 @@ export function PrReviewView(props: PrReviewViewProps) {
       )}
 
       {/* Push-fix human gate: THE external side effect of the fix arc. The
-          dialog names the branch + PR and warns it publishes the commits. */}
+          dialog names the branch + PR, warns it publishes the commits, and
+          carries the summary-comment opt-in (the comment embeds the fix
+          session's summary shown on the card). */}
       {view.pushArmedFix !== null && (
         <ConfirmDialog
           title={`Push fix to PR #${view.pushArmedFix.prNumber}?`}
@@ -222,7 +226,7 @@ export function PrReviewView(props: PrReviewViewProps) {
           onConfirm={view.confirmPush}
           onCancel={view.cancelPush}
           message={
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-3">
               <span>
                 Push the fix commit on{' '}
                 <span className="font-mono text-foreground">
@@ -234,12 +238,73 @@ export function PrReviewView(props: PrReviewViewProps) {
                 </span>
                 ? This publishes the commits to the pull request on GitHub.
               </span>
+              <Checkbox
+                checked={view.pushPostComment}
+                onChange={view.setPushPostComment}
+                disabled={view.pushing}
+                label="Also post a summary comment describing how the fix addressed its targets"
+              />
               {view.pushError !== null && (
                 <span
                   role="alert"
                   className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-[12.5px] text-destructive"
                 >
                   {view.pushError}
+                </span>
+              )}
+            </div>
+          }
+        />
+      )}
+
+      {/* Status-block remediation gates: starting a PAID agent session (CI fix
+          / conflict resolution) never auto-fires — same discipline as the
+          address gate. The dialog explains what the agent will do; the fix
+          strip and push gate then take over. */}
+      {view.fixActionArmed !== null && view.selectedPr !== null && (
+        <ConfirmDialog
+          title={
+            view.fixActionArmed === 'ci'
+              ? `Fix failing CI on PR #${view.selectedPr}?`
+              : `Resolve conflicts on PR #${view.selectedPr}?`
+          }
+          confirmLabel={
+            view.fixActionArmed === 'ci' ? 'Start CI fix agent' : 'Start resolve agent'
+          }
+          busy={view.fixActionBusy}
+          onConfirm={view.confirmFixAction}
+          onCancel={view.cancelFixAction}
+          message={
+            <div className="flex flex-col gap-2">
+              <span>
+                {view.fixActionArmed === 'ci' ? (
+                  <>
+                    Run a fix agent on{' '}
+                    <span className="font-mono text-foreground">
+                      PR #{view.selectedPr}
+                    </span>
+                    &apos;s branch to reproduce and fix its failing CI checks? It
+                    will commit to the branch; pushing stays a separate manual
+                    step.
+                  </>
+                ) : (
+                  <>
+                    Merge the base branch into{' '}
+                    <span className="font-mono text-foreground">
+                      PR #{view.selectedPr}
+                    </span>
+                    &apos;s checkout and resolve the conflicts? A clean merge
+                    skips the agent; either way pushing stays a separate manual
+                    step.
+                  </>
+                )}
+              </span>
+              {view.fixActionError !== null && (
+                <span
+                  role="alert"
+                  className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-[12.5px] text-destructive"
+                >
+                  {view.fixActionError}
                 </span>
               )}
             </div>

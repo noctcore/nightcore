@@ -8,6 +8,7 @@ import { FixRunCard } from './FixRunCard';
 function fixState(over: Partial<PrFixState> = {}): PrFixState {
   return {
     id: 'prfix-1',
+    kind: 'findings',
     runId: 'run-1',
     prNumber: 128,
     branch: 'fix/worktree-isolation',
@@ -47,6 +48,16 @@ type Story = StoryObj<typeof meta>;
 
 export const Running: Story = {};
 
+/** A ci-kind fix in flight — the running line names the failing checks. */
+export const RunningCi: Story = {
+  args: { fix: fixState({ kind: 'ci', runId: null, findingCount: 2 }) },
+};
+
+/** A conflicts-kind fix in flight — the running line names the conflicted files. */
+export const RunningConflicts: Story = {
+  args: { fix: fixState({ kind: 'conflicts', runId: null, findingCount: 4 }) },
+};
+
 /** The session finished and its commit is being written — the transient state
  *  between running and awaiting_push. No actions render. */
 export const Committing: Story = {
@@ -54,7 +65,8 @@ export const Committing: Story = {
 };
 
 /** The session finished and auto-committed; the push is the human's call. The
- *  summary is model text — rendered inert, so markup must stay literal. */
+ *  summary is model markdown — rendered through the SANITIZING Markdown
+ *  primitive (bold/lists/inline code style like the PR description). */
 export const AwaitingPush: Story = {
   args: {
     fix: fixState({

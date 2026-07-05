@@ -81,3 +81,33 @@ export function checksSummary(
   if (passed === 0 && failed === 0 && pending === 0) return null;
   return { passed, failed, pending };
 }
+
+/** The single merge-readiness call for an OPEN PR — the at-a-glance badge
+ *  answering "can this merge right now, and if not, what's in the way?".
+ *  Severity-ordered: conflicts > failing checks > changes requested > draft >
+ *  running checks > review required > ready. `null` when the PR isn't open
+ *  (the state badge already says Merged/Closed) or when GitHub hasn't computed
+ *  mergeability yet (`UNKNOWN` must not guess). */
+export function mergeReadiness(status: PrStatus): PrBadge | null {
+  if (status.state !== 'OPEN') return null;
+  if (status.mergeable === 'CONFLICTING') {
+    return { label: 'Conflicts — needs resolution', className: BADGE_DANGER };
+  }
+  if (status.checksFailed > 0) {
+    return { label: 'Needs fixing — checks failing', className: BADGE_DANGER };
+  }
+  if (status.reviewDecision === 'CHANGES_REQUESTED') {
+    return { label: 'Needs fixing — changes requested', className: BADGE_DANGER };
+  }
+  if (status.isDraft) {
+    return { label: 'Draft — not ready', className: BADGE_NEUTRAL };
+  }
+  if (status.checksPending > 0) {
+    return { label: 'Checks running', className: BADGE_WARNING };
+  }
+  if (status.reviewDecision === 'REVIEW_REQUIRED') {
+    return { label: 'Needs review', className: BADGE_WARNING };
+  }
+  if (status.mergeable === 'UNKNOWN') return null;
+  return { label: 'Ready to merge', className: BADGE_SUCCESS };
+}

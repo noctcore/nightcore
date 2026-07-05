@@ -88,6 +88,7 @@ const TIMELINE: TimelineStep[] = [
 function fixState(over: Partial<PrFixState> = {}): PrFixState {
   return {
     id: 'prfix-1',
+    kind: 'findings',
     runId: 'run-1',
     prNumber: 128,
     branch: 'fix/token-logging',

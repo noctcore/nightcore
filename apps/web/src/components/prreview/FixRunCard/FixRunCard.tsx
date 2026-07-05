@@ -5,13 +5,16 @@
  *  Non-failed cards are `role="status"` live regions (failed keeps
  *  `role="alert"`) so lifecycle flips are announced; the per-card context rides
  *  as sr-only text, never as `aria-label` on a generic div. The summary is
- *  MODEL TEXT — rendered inert (`whitespace-pre-wrap`), never through Markdown.
- *  An unknown future status renders nothing (forward-compatible). */
+ *  MODEL TEXT rendered through the sanitizing `Markdown` primitive (marked +
+ *  DOMPurify + hardened anchors) — the same treatment as assistant turns and
+ *  the untrusted PR description, never raw HTML. An unknown future status
+ *  renders nothing (forward-compatible). */
 import {
   AlertIcon,
   Button,
   CheckIcon,
   CloseIcon,
+  Markdown,
   RefactorIcon,
   RetryIcon,
   Spinner,
@@ -91,10 +94,15 @@ export function FixRunCard({
           </Button>
         </div>
         {fix.summary !== null && fix.summary.trim().length > 0 && (
-          // Model-authored result text: inert plain text, never Markdown.
-          <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-muted-foreground">
-            {fix.summary}
-          </p>
+          // Model-authored result text through the SANITIZING Markdown
+          // primitive (headings/lists/inline code render; scripts/handlers
+          // are stripped, anchors hardened) — scrollable past a screenful so
+          // a long summary never swallows the card's actions.
+          <div className="max-h-[420px] overflow-y-auto">
+            <Markdown className="text-[12.5px] text-muted-foreground">
+              {fix.summary}
+            </Markdown>
+          </div>
         )}
         <p className="text-[11.5px] text-muted-foreground/70">{LOCAL_COMMIT_NOTE}</p>
       </div>
