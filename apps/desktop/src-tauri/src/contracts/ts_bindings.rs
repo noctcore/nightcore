@@ -51,6 +51,8 @@ fn export_all_bindings() {
         TaskStatus,
     };
     use crate::workflow::pr::{PrDraft, PrSupport};
+    use crate::workflow::pr_changed_files::PrChangedFile;
+    use crate::workflow::pr_comments::{PrCommentTriage, PrCommentTriageClass};
     use crate::workflow::pr_fix::PrFixState;
     use crate::workflow::pr_list::{PrLabel, PrSummary};
     use crate::workflow::pr_status::PrStatus;
@@ -147,8 +149,14 @@ fn export_all_bindings() {
         // PR arc (phase 4): open-PR summaries + labels for the PR Review picker.
         PrLabel,
         PrSummary,
+        // PR Review: a PR's changed-file list (path + line deltas) for the detail pane.
+        PrChangedFile,
         // PR arc: the address-review-findings fix runner's registry snapshot.
         PrFixState,
+        // PR arc (phase 3): the pre-dispatch AI triage of review threads + its class
+        // enum (`export_all` on the row writes the nested enum too).
+        PrCommentTriage,
+        PrCommentTriageClass,
     );
 }
 
@@ -228,7 +236,10 @@ mod tests {
             "PrStatus.ts",
             "PrSummary.ts",
             "PrLabel.ts",
+            "PrChangedFile.ts",
             "PrFixState.ts",
+            "PrCommentTriage.ts",
+            "PrCommentTriageClass.ts",
         ] {
             assert!(
                 dir.join(file).exists(),

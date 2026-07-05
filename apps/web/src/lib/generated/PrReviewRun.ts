@@ -18,4 +18,32 @@ status: string,
 /**
  * The lenses requested for this run (wire strings).
  */
-lenses: Array<string>, model: string, createdAt: number, updatedAt: number, costUsd: number, durationMs: number, usage: InsightUsage, findings: Array<StoredReviewFinding>, error: string | null, };
+lenses: Array<string>, model: string, createdAt: number, updatedAt: number, costUsd: number, durationMs: number, usage: InsightUsage, findings: Array<StoredReviewFinding>, error: string | null, 
+/**
+ * The synthesis pass's overall merge recommendation (wire `MergeVerdict` string:
+ * `ready` | `merge_with_changes` | `needs_revision` | `blocked`). Stamped from the
+ * `pr-review-completed` event alongside the findings. Additive + optional (fail-open):
+ * absent when the synthesis pass errored/was skipped, or from an older engine.
+ */
+verdict: string | null, 
+/**
+ * The synthesis pass's short justification for `verdict`; present only when it is.
+ */
+verdictReasoning: string | null, 
+/**
+ * The PR head commit SHA this run reviewed, captured at start (`gh pr view
+ * --json headRefOid`). Lets the UI flag the review STALE once the PR advances past
+ * it. Best-effort: `None` when the head-oid fetch failed or from an older run.
+ */
+headSha: string | null, 
+/**
+ * The review verdict last posted to GitHub from this run (the `approve` /
+ * `request-changes` / `comment` string), stamped best-effort by
+ * `post_review_to_github`. `None` until a post succeeds.
+ */
+postedVerdict: string | null, 
+/**
+ * Epoch-ms of the last successful GitHub post for this run; paired with
+ * `posted_verdict`. `None` until a post succeeds.
+ */
+postedAt: number | null, };
