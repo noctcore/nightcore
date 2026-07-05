@@ -123,6 +123,13 @@ pub(crate) const SCORECARD_EVENT: &str = "nc:scorecard";
 /// notice on this channel.
 pub(crate) const PRREVIEW_EVENT: &str = "nc:pr-review";
 
+/// The Tauri event carrying one pr-fix state snapshot (`PrFixState`, the
+/// address-review-findings runner in [`crate::workflow::pr_fix`]). Unlike the
+/// scan channels this carries the FULL state on every change (registered /
+/// committed-awaiting-push / pushed / failed), not a raw engine event — the web
+/// reconciles via `list_pr_fixes` and folds these snapshots.
+pub(crate) const PRFIX_EVENT: &str = "nc:pr-fix";
+
 /// The maximum byte length of a single NDJSON line accepted from the sidecar's
 /// stdout. Legitimate events (lifecycle, deltas, even large tool-result content)
 /// sit far below this; the bound exists only to stop a newline-free multi-GB

@@ -19,6 +19,7 @@ pub(crate) mod merge;
 pub(crate) mod plan_approval;
 pub(crate) mod pr;
 pub(crate) mod pr_comments;
+pub(crate) mod pr_fix;
 pub(crate) mod pr_list;
 pub(crate) mod pr_msg;
 pub(crate) mod pr_review_post;

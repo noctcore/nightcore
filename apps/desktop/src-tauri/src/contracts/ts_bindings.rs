@@ -51,6 +51,7 @@ fn export_all_bindings() {
         TaskStatus,
     };
     use crate::workflow::pr::{PrDraft, PrSupport};
+    use crate::workflow::pr_fix::PrFixState;
     use crate::workflow::pr_list::{PrLabel, PrSummary};
     use crate::workflow::pr_status::PrStatus;
     use crate::worktree::{
@@ -146,6 +147,8 @@ fn export_all_bindings() {
         // PR arc (phase 4): open-PR summaries + labels for the PR Review picker.
         PrLabel,
         PrSummary,
+        // PR arc: the address-review-findings fix runner's registry snapshot.
+        PrFixState,
     );
 }
 
@@ -225,6 +228,7 @@ mod tests {
             "PrStatus.ts",
             "PrSummary.ts",
             "PrLabel.ts",
+            "PrFixState.ts",
         ] {
             assert!(
                 dir.join(file).exists(),

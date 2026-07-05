@@ -69,6 +69,24 @@ fn push_pr_updates_blocking(app: &AppHandle, id: &str) -> Result<(), String> {
     let task = store
         .get(id)
         .ok_or_else(|| format!("no task with id {id}"))?;
+    // Fix-arc cross-guards. (1) Never push while a PR-fix session (or its
+    // auto-commit) works this task's checkout — the push would race the fix's
+    // edits/commit on the same branch. (2) Never push while a fix for this PR
+    // sits at its own HUMAN push gate: this plain push would ship the fix's
+    // branch commit without the user's explicit approval — push or dismiss the
+    // fix from the PR workspace first.
+    let fix_registry = app
+        .try_state::<crate::workflow::pr_fix::PrFixRegistry>()
+        .ok_or_else(|| "pr-fix registry unavailable".to_string())?;
+    crate::workflow::pr_fix::refuse_while_fix_running(
+        &fix_registry,
+        task.pr_number,
+        id,
+        "pushing updates",
+    )?;
+    if let Some(pr_number) = task.pr_number {
+        crate::workflow::pr_fix::refuse_while_fix_pending_push(&fix_registry, pr_number)?;
+    }
     let project = require_project(app)?;
     let project_path = PathBuf::from(&project.path);
     check_push_preconditions(&task)?;

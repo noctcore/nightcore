@@ -65,6 +65,25 @@ pub(crate) async fn submit_run(
         }
     };
 
+    // Fix-arc dispatch guard: never launch a task INTO a checkout a live PR-fix
+    // session (or its auto-commit) is editing — two agents concurrently writing
+    // one worktree corrupt each other's work. A fix holds no slot, so the slot
+    // lease can't see it; the registry's running entry is the probe. Routed
+    // through `fail_run` like every other post-lease setup failure (slot
+    // released, task marked failed, breaker fed only on the auto-loop path).
+    if let Some(fix) = resolved.as_ref().and_then(|r| {
+        app.state::<crate::workflow::pr_fix::PrFixRegistry>()
+            .running_for_dir(&r.path)
+    }) {
+        let msg = format!(
+            "a PR fix ({}) for PR #{} is running in this task's worktree — wait for it to \
+             finish or cancel it from the PR workspace before running the task",
+            fix.id, fix.pr_number
+        );
+        fail_run(app, task_id, &msg, feed_breaker);
+        return Err(msg);
+    }
+
     // A fresh worktree checkout has no `node_modules` of its own, and package-local
     // (non-hoisted) deps never resolve upward past the worktree root — so the agent
     // can't run the project's real checks and the review-time gauntlet red-fails on
@@ -269,6 +288,36 @@ mod tests {
         assert!(
             feed_breaker_on_failure(&breaker, true),
             "2nd auto-loop failure trips — only auto-loop failures advanced the window"
+        );
+    }
+
+    #[test]
+    fn dispatch_refuses_a_worktree_held_by_a_running_pr_fix() {
+        // Concurrency guard: a task must never launch INTO a checkout a live
+        // PR-fix session is editing (a fix holds no slot, so the lease can't
+        // see it — the registry probe is the only fence). The probe needs a
+        // full `AppHandle`, so this is a source-level guard: it must sit
+        // between cwd resolution and the dispatch, and its refusal must route
+        // through `fail_run` like every other post-lease setup failure (slot
+        // released, task marked failed, breaker fed only on the auto-loop path).
+        let src = include_str!("submit.rs");
+        let resolve = src
+            .find("resolve_worktree(app, task_id)")
+            .expect("the cwd resolution site exists");
+        let probe = src
+            .find("running_for_dir")
+            .expect("the pr-fix registry probe exists");
+        let dispatch = src
+            .find(".start_session(")
+            .expect("the dispatch site exists");
+        assert!(
+            resolve < probe && probe < dispatch,
+            "the probe runs after cwd resolution and before dispatch"
+        );
+        let window = &src[probe..dispatch];
+        assert!(
+            window.contains("fail_run(app, task_id, &msg, feed_breaker)"),
+            "the refusal feeds fail_run like every post-lease setup failure"
         );
     }
 
