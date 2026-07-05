@@ -227,6 +227,8 @@ pub fn run() {
             workflow::pr_comments::address_pr_comments,
             workflow::pr_comments::triage_pr_comments,
             workflow::pr_fix::address_review_findings,
+            workflow::pr_fix::fix_pr_ci,
+            workflow::pr_fix::resolve_pr_conflicts,
             workflow::pr_fix::push_pr_fix,
             workflow::pr_fix::list_pr_fixes,
             workflow::pr_fix::cancel_pr_fix,

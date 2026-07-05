@@ -122,7 +122,7 @@ pub(super) fn managed_checkout(
     project_path: &Path,
     pr_number: u64,
 ) -> Result<(PathBuf, String), String> {
-    let branch = fetch_head_ref_with(project_path, GH_BINARY, pr_number, GH_HEAD_TIMEOUT)?;
+    let branch = fetch_pr_refs_with(project_path, GH_BINARY, pr_number, GH_HEAD_TIMEOUT)?.head;
     // Validate at ingestion (defence in depth — every git seam below re-fences
     // with `--end-of-options` too).
     validate_ref(&branch)?;
@@ -195,14 +195,23 @@ fn add_branch_worktree(project_path: &Path, dir: &Path, branch: &str) -> Result<
     git_run(project_path, &args).map(|_| ())
 }
 
-/// Read the PR's head branch (+ fork-ness) via bounded `gh pr view`.
+/// The PR's branch endpoints, read together from one `gh pr view`: the head
+/// branch the fix checkout works on, and the base branch the conflicts arc
+/// merges from.
+#[derive(Debug)]
+pub(super) struct PrRefs {
+    pub(super) head: String,
+    pub(super) base: String,
+}
+
+/// Read the PR's head + base branches (+ fork-ness) via bounded `gh pr view`.
 /// Binary-parameterized — the fake-`gh` test seam (the PR-arc fixture pattern).
-pub(super) fn fetch_head_ref_with(
+pub(super) fn fetch_pr_refs_with(
     dir: &Path,
     binary: &str,
     pr_number: u64,
     deadline: Duration,
-) -> Result<String, String> {
+) -> Result<PrRefs, String> {
     probe_gh(binary, "install it to check out the PR branch")?;
     let number_arg = pr_number.to_string();
     let out = run_gh_bounded(
@@ -213,7 +222,7 @@ pub(super) fn fetch_head_ref_with(
             "view",
             &number_arg,
             "--json",
-            "headRefName,isCrossRepository",
+            "headRefName,baseRefName,isCrossRepository",
         ],
         None,
         deadline,
@@ -222,21 +231,22 @@ pub(super) fn fetch_head_ref_with(
     if !out.status.success() {
         return Err(map_gh_failure(binary, "pr view", &out));
     }
-    parse_head_ref(&out.stdout)
+    parse_pr_refs(&out.stdout)
 }
 
-/// Parse the `gh pr view --json headRefName,isCrossRepository` body, REFUSING a
-/// fork PR. Fail-closed by shape: both fields are required (a body missing
-/// `isCrossRepository` is a parse error, never silently "not a fork"). Pure —
-/// unit-tested.
-pub(super) fn parse_head_ref(stdout: &str) -> Result<String, String> {
+/// Parse the `gh pr view --json headRefName,baseRefName,isCrossRepository`
+/// body, REFUSING a fork PR. Fail-closed by shape: every field is required (a
+/// body missing `isCrossRepository` is a parse error, never silently "not a
+/// fork"). Pure — unit-tested.
+pub(super) fn parse_pr_refs(stdout: &str) -> Result<PrRefs, String> {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
-    struct HeadView {
+    struct RefsView {
         head_ref_name: String,
+        base_ref_name: String,
         is_cross_repository: bool,
     }
-    let view: HeadView = serde_json::from_str(stdout.trim())
+    let view: RefsView = serde_json::from_str(stdout.trim())
         .map_err(|e| format!("`gh pr view` returned unparseable JSON: {e}"))?;
     if view.is_cross_repository {
         return Err(
@@ -245,11 +255,15 @@ pub(super) fn parse_head_ref(stdout: &str) -> Result<String, String> {
                 .to_string(),
         );
     }
-    let branch = view.head_ref_name.trim().to_string();
-    if branch.is_empty() {
+    let head = view.head_ref_name.trim().to_string();
+    if head.is_empty() {
         return Err("`gh pr view` reported an empty head branch".to_string());
     }
-    Ok(branch)
+    let base = view.base_ref_name.trim().to_string();
+    if base.is_empty() {
+        return Err("`gh pr view` reported an empty base branch".to_string());
+    }
+    Ok(PrRefs { head, base })
 }
 
 // ── Local git plumbing ─────────────────────────────────────────────────────────

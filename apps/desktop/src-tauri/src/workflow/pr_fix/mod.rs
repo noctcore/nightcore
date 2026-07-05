@@ -1,7 +1,9 @@
-//! The "address review findings" fix runner (the PR arc's fix sibling of the
-//! PR-review scan): run one agent fix session on a PR's branch from selected
-//! [`crate::store::pr_review`] findings, auto-commit whatever it produced, and
-//! expose a HUMAN-GATED push.
+//! The PR fix runner (the PR arc's fix sibling of the PR-review scan): run one
+//! agent fix session on a PR's branch — addressing selected
+//! [`crate::store::pr_review`] findings (`findings`), the PR's failing CI
+//! checks (`ci`), or its merge conflicts against base (`conflicts`) —
+//! auto-commit whatever it produced, and expose a HUMAN-GATED push (optionally
+//! posting a summary comment on the PR).
 //!
 //! Deliberately NOT a board task. A pr-fix has no backlog row, no verification
 //! gate, and no slot: its lifecycle is `running → awaiting_push → pushed` (or
@@ -31,8 +33,11 @@
 //! untrusted review text fenced, plain push only, and the push is human-gated.
 
 mod checkout;
+mod ci;
 mod command;
+mod comment;
 mod complete;
+mod conflicts;
 mod prompt;
 mod state;
 

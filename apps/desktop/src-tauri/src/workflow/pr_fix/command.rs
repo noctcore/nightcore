@@ -1,7 +1,10 @@
-//! The four pr-fix `#[tauri::command]`s: [`address_review_findings`] (checkout →
-//! fenced prompt → fix session), [`push_pr_fix`] (the human-gated plain push),
-//! [`list_pr_fixes`] (web reconcile), and [`cancel_pr_fix`] (interrupt the live
-//! session).
+//! The pr-fix `#[tauri::command]`s: the three fix STARTERS —
+//! [`address_review_findings`] (selected review findings), [`fix_pr_ci`] (the
+//! PR's failing checks), [`resolve_pr_conflicts`] (merge the base + resolve
+//! conflicts) — each `checkout → fenced prompt → fix session`, plus
+//! [`push_pr_fix`] (the human-gated plain push, optionally posting a summary
+//! comment), [`list_pr_fixes`] (web reconcile), and [`cancel_pr_fix`]
+//! (interrupt the live session).
 //!
 //! LEASE SEMANTICS (deliberate, mirrors `address_pr_comments`): the shared
 //! PR-arc `pr_in_flight` `TaskLease` is RAII and held only across the SETUP
@@ -27,16 +30,24 @@ use crate::task::{now_ms, TaskKind};
 use crate::workflow::merge::{
     commit_in_flight, lease_held, merge_in_flight, require_project, TaskLease,
 };
-use crate::workflow::pr::pr_in_flight;
+use crate::workflow::pr::{pr_in_flight, GH_BINARY};
 use crate::worktree;
 
-use super::checkout::{managed_checkout, managed_lease_id, reusable_task_checkout};
-use super::complete::emit_state;
-use super::prompt::build_fix_prompt;
-use super::state::{
-    mint_fix_id, PrFixRegistry, PrFixState, STATUS_AWAITING_PUSH, STATUS_FAILED, STATUS_PUSHED,
-    STATUS_RUNNING,
+use super::checkout::{
+    fetch_pr_refs_with, managed_checkout, managed_lease_id, reusable_task_checkout,
 };
+use super::ci::{fetch_failing_checks_with, GH_CHECKS_TIMEOUT};
+use super::complete::emit_state;
+use super::conflicts::{abort_merge_best_effort, merge_base_into, MergeOutcome};
+use super::prompt::{build_ci_prompt, build_conflicts_prompt, build_fix_prompt};
+use super::state::{
+    mint_fix_id, PrFixRegistry, PrFixState, KIND_CI, KIND_CONFLICTS, KIND_FINDINGS,
+    STATUS_AWAITING_PUSH, STATUS_FAILED, STATUS_PUSHED, STATUS_RUNNING,
+};
+
+/// Wall-clock bound on the `gh pr view` refs read for the conflicts arc (a
+/// single-object view moves no data).
+const GH_REFS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// Select the named findings out of a review run (order = the run's order,
 /// duplicates in `finding_ids` collapse naturally). Errs when NONE resolve — a
@@ -92,41 +103,31 @@ fn refuse_while_sibling_in_flight(lease_id: &str, before_what: &str) -> Result<(
     Ok(())
 }
 
-/// Run a fix session over selected PR-review findings, on the PR's branch.
-/// Deliberately NOT a board task: the fix's lifecycle lives in the in-memory
-/// [`PrFixRegistry`] (restart loses the registry entry, never the work — the
-/// auto-commit survives in the checkout). Returns the fix id; progress arrives
-/// as full [`PrFixState`] snapshots on `nc:pr-fix`.
-#[tauri::command]
-pub async fn address_review_findings(
-    app: AppHandle,
-    run_id: String,
-    finding_ids: Vec<String>,
-) -> Result<String, String> {
-    // ── Selection (in-memory reads; nothing mutated yet). ──
-    let run = app
-        .state::<PrReviewStore>()
-        .get(&run_id)
-        .ok_or_else(|| format!("no PR review run with id {run_id}"))?;
-    let findings = select_findings(&run, &finding_ids)?;
-    let pr_number = run.pr_number;
+/// A resolved fix checkout: where the session runs, which branch it works, the
+/// `pr_in_flight` key its setup leased, and the held RAII lease itself (dropped
+/// when the starting command returns — see the module-doc LEASE SEMANTICS).
+struct FixCheckout {
+    dir: PathBuf,
+    branch: String,
+    lease_id: String,
+    _lease: TaskLease,
+}
 
-    // Cheap early refusal for a duplicate fix on this PR; the ATOMIC guard is
-    // `insert_running` below (same lock as the insert).
-    let registry = app.state::<PrFixRegistry>();
-    registry.refuse_running_for_pr(pr_number)?;
-
-    let project = require_project(&app)?;
-    let project_path = PathBuf::from(&project.path);
-
-    // ── Checkout resolution: (a) reuse a task worktree tracking this PR (refused
-    // while the task's OWN session is live on it — the slot/status probe), else
-    // (b) a managed checkout of the PR head branch. ──
+/// Resolve the checkout every fix STARTER shares: (a) reuse a task worktree
+/// tracking this PR (refused while the task's OWN session is live on it — the
+/// slot/status probe), else (b) a managed checkout of the PR head branch under
+/// `.nightcore/pr-fix/pr-<n>` — acquiring the setup-window lease, refusing
+/// sibling terminal actions, and best-effort provisioning deps so the session's
+/// own check runs resolve package-local deps.
+async fn resolve_fix_checkout(
+    app: &AppHandle,
+    project_path: &Path,
+    pr_number: u64,
+) -> Result<FixCheckout, String> {
     let orch = app.state::<crate::orchestration::coordinator::Orchestrator>();
-    let reuse =
-        reusable_task_checkout(&app.state::<TaskStore>(), &project_path, pr_number, |id| {
-            orch.slots.is_leased(id)
-        })?;
+    let reuse = reusable_task_checkout(&app.state::<TaskStore>(), project_path, pr_number, |id| {
+        orch.slots.is_leased(id)
+    })?;
     let lease_id = match &reuse {
         Some(checkout) => checkout.lease_id.clone(),
         None => managed_lease_id(pr_number),
@@ -134,8 +135,8 @@ pub async fn address_review_findings(
 
     // Setup-window lease (see the module-doc LEASE SEMANTICS): serializes this
     // setup against the task-scoped PR actions (create/push/finalize/address)
-    // on the same checkout, dropped when the command returns.
-    let _lease = TaskLease::acquire(pr_in_flight(), &lease_id)
+    // on the same checkout, dropped when the starting command returns.
+    let lease = TaskLease::acquire(pr_in_flight(), &lease_id)
         .ok_or_else(|| "a PR action for this pull request is already in progress".to_string())?;
     refuse_while_sibling_in_flight(&lease_id, "starting a PR fix")?;
 
@@ -144,7 +145,7 @@ pub async fn address_review_findings(
         None => {
             // `gh` + `git fetch` + `git worktree add` — blocking network/disk
             // work, kept off the UI thread (the WKWebView rule).
-            let checkout_path = project_path.clone();
+            let checkout_path = project_path.to_path_buf();
             tauri::async_runtime::spawn_blocking(move || {
                 managed_checkout(&checkout_path, pr_number)
             })
@@ -169,34 +170,64 @@ pub async fn address_review_findings(
         }
     }
 
-    let prompt = build_fix_prompt(pr_number, &branch, &findings);
+    Ok(FixCheckout {
+        dir,
+        branch,
+        lease_id,
+        _lease: lease,
+    })
+}
 
-    // ── Register (atomic same-PR guard) + emit, then dispatch. ──
+/// Assemble a fresh [`PrFixState`] for a starting fix.
+#[allow(clippy::too_many_arguments)]
+fn new_fix_state(
+    kind: &str,
+    run_id: Option<String>,
+    pr_number: u64,
+    branch: &str,
+    dir: &Path,
+    finding_count: u32,
+    status: &str,
+    summary: Option<String>,
+) -> PrFixState {
     let now = now_ms();
-    let state = PrFixState {
+    PrFixState {
         id: mint_fix_id(),
-        run_id: run_id.clone(),
+        kind: kind.to_string(),
+        run_id,
         pr_number,
-        branch: branch.clone(),
+        branch: branch.to_string(),
         dir: dir.to_string_lossy().to_string(),
-        status: STATUS_RUNNING.to_string(),
-        summary: None,
+        status: status.to_string(),
+        summary,
         error: None,
-        finding_count: findings.len() as u32,
+        finding_count,
         created_at: now,
         updated_at: now,
-    };
-    registry.insert_running(state.clone(), &lease_id)?;
-    emit_state(&app, &state);
+    }
+}
+
+/// Register a `running` fix (the atomic same-PR guard) + emit, dispatch its
+/// session, and close the cancel-vs-dispatch window. Returns the fix id.
+async fn register_and_dispatch(
+    app: &AppHandle,
+    state: PrFixState,
+    lease_id: &str,
+    prompt: String,
+) -> Result<String, String> {
+    let registry = app.state::<PrFixRegistry>();
+    let dir = PathBuf::from(&state.dir);
+    registry.insert_running(state.clone(), lease_id)?;
+    emit_state(app, &state);
     let fix_id = state.id.clone();
 
-    if let Err(e) = dispatch_fix_session(&app, &fix_id, prompt, &dir).await {
+    if let Err(e) = dispatch_fix_session(app, &fix_id, prompt, &dir).await {
         // Dispatch failure: mark failed + emit so the UI never shows a phantom
         // running fix; the lease releases on return (RAII).
         if let Some(failed) = registry
             .mark_failed_if_running(&fix_id, format!("could not start the fix session: {e}"))
         {
-            emit_state(&app, &failed);
+            emit_state(app, &failed);
         }
         return Err(e);
     }
@@ -224,12 +255,208 @@ pub async fn address_review_findings(
     tracing::info!(
         target: "nightcore::prfix",
         fix_id = %fix_id,
-        pr_number,
-        findings = findings.len(),
-        branch = %branch,
+        pr_number = state.pr_number,
+        kind = %state.kind,
+        targets = state.finding_count,
+        branch = %state.branch,
         "pr-fix session dispatched"
     );
     Ok(fix_id)
+}
+
+/// Run a fix session over selected PR-review findings, on the PR's branch.
+/// Deliberately NOT a board task: the fix's lifecycle lives in the in-memory
+/// [`PrFixRegistry`] (restart loses the registry entry, never the work — the
+/// auto-commit survives in the checkout). Returns the fix id; progress arrives
+/// as full [`PrFixState`] snapshots on `nc:pr-fix`.
+#[tauri::command]
+pub async fn address_review_findings(
+    app: AppHandle,
+    run_id: String,
+    finding_ids: Vec<String>,
+) -> Result<String, String> {
+    // ── Selection (in-memory reads; nothing mutated yet). ──
+    let run = app
+        .state::<PrReviewStore>()
+        .get(&run_id)
+        .ok_or_else(|| format!("no PR review run with id {run_id}"))?;
+    let findings = select_findings(&run, &finding_ids)?;
+    let pr_number = run.pr_number;
+
+    // Cheap early refusal for a duplicate fix on this PR; the ATOMIC guard is
+    // `insert_running` inside `register_and_dispatch` (same lock as the insert).
+    app.state::<PrFixRegistry>()
+        .refuse_running_for_pr(pr_number)?;
+
+    let project = require_project(&app)?;
+    let project_path = PathBuf::from(&project.path);
+    let checkout = resolve_fix_checkout(&app, &project_path, pr_number).await?;
+
+    let prompt = build_fix_prompt(pr_number, &checkout.branch, &findings);
+    let state = new_fix_state(
+        KIND_FINDINGS,
+        Some(run_id),
+        pr_number,
+        &checkout.branch,
+        &checkout.dir,
+        findings.len() as u32,
+        STATUS_RUNNING,
+        None,
+    );
+    register_and_dispatch(&app, state, &checkout.lease_id, prompt).await
+}
+
+/// Run a fix session over the PR's FAILING CI checks, on the PR's branch. Reads
+/// the failing checks from `gh pr checks` (refusing when none are failing —
+/// nothing to burn a paid session on), then follows the exact
+/// [`address_review_findings`] arc: checkout → fenced prompt → registered
+/// session → auto-commit → human-gated push.
+#[tauri::command]
+pub async fn fix_pr_ci(app: AppHandle, pr_number: u64) -> Result<String, String> {
+    if pr_number == 0 {
+        return Err("no PR number to fix CI for (a positive integer is required)".to_string());
+    }
+    app.state::<PrFixRegistry>()
+        .refuse_running_for_pr(pr_number)?;
+    let project = require_project(&app)?;
+    let project_path = PathBuf::from(&project.path);
+
+    // Read the failing checks BEFORE any checkout work — a PR with green checks
+    // refuses cheaply. Blocking `gh` network work, off the UI thread.
+    let checks_dir = project_path.clone();
+    let checks = tauri::async_runtime::spawn_blocking(move || {
+        fetch_failing_checks_with(&checks_dir, GH_BINARY, pr_number, GH_CHECKS_TIMEOUT)
+    })
+    .await
+    .map_err(|e| format!("reading the PR's checks failed to run: {e}"))??;
+    if checks.is_empty() {
+        return Err(format!(
+            "PR #{pr_number} has no failing checks — nothing to fix (refresh the status if \
+             GitHub shows otherwise)"
+        ));
+    }
+
+    let checkout = resolve_fix_checkout(&app, &project_path, pr_number).await?;
+    let prompt = build_ci_prompt(pr_number, &checkout.branch, &checks);
+    let state = new_fix_state(
+        KIND_CI,
+        None,
+        pr_number,
+        &checkout.branch,
+        &checkout.dir,
+        checks.len() as u32,
+        STATUS_RUNNING,
+        None,
+    );
+    register_and_dispatch(&app, state, &checkout.lease_id, prompt).await
+}
+
+/// Resolve the PR's merge conflicts against its base branch: merge
+/// `refs/remotes/origin/<base>` into the PR checkout, and — when the merge
+/// stops on conflicts — run a fix session that resolves the conflicted files
+/// (the auto-commit then CONCLUDES the in-progress merge). A merge that
+/// completes cleanly needs no session at all: the merge commit parks straight
+/// at `awaiting_push`. A branch already up to date with base refuses (there is
+/// nothing to resolve).
+#[tauri::command]
+pub async fn resolve_pr_conflicts(app: AppHandle, pr_number: u64) -> Result<String, String> {
+    if pr_number == 0 {
+        return Err(
+            "no PR number to resolve conflicts for (a positive integer is required)".to_string(),
+        );
+    }
+    let registry = app.state::<PrFixRegistry>();
+    registry.refuse_running_for_pr(pr_number)?;
+    let project = require_project(&app)?;
+    let project_path = PathBuf::from(&project.path);
+
+    // Head + base + fork refusal in ONE bounded `gh pr view` (the conflicts arc
+    // is the only starter that needs the BASE ref).
+    let refs_dir = project_path.clone();
+    let refs = tauri::async_runtime::spawn_blocking(move || {
+        fetch_pr_refs_with(&refs_dir, GH_BINARY, pr_number, GH_REFS_TIMEOUT)
+    })
+    .await
+    .map_err(|e| format!("reading the pull request failed to run: {e}"))??;
+
+    let checkout = resolve_fix_checkout(&app, &project_path, pr_number).await?;
+
+    // Fetch the base (so its remote-tracking ref is current) and attempt the
+    // merge — blocking network/git work.
+    let base = refs.base.clone();
+    let fetch_root = project_path.clone();
+    let merge_dir = checkout.dir.clone();
+    let outcome = tauri::async_runtime::spawn_blocking(move || {
+        crate::worktree::fetch_base(&fetch_root, &base)?;
+        merge_base_into(&merge_dir, &base)
+    })
+    .await
+    .map_err(|e| format!("the merge failed to run: {e}"))??;
+
+    match outcome {
+        MergeOutcome::AlreadyUpToDate => Err(format!(
+            "PR #{pr_number}'s branch already contains `{}` — no conflicts to resolve \
+             (refresh the status if GitHub still shows conflicts)",
+            refs.base
+        )),
+        MergeOutcome::Clean => {
+            // The merge committed cleanly — no session to run. Park the fix at
+            // its human push gate directly. If the atomic insert refuses (a
+            // racing fix registered first), the local merge commit stays on the
+            // branch in the checkout — unpushed and harmless (a re-run then
+            // reports "already up to date").
+            let state = new_fix_state(
+                KIND_CONFLICTS,
+                None,
+                pr_number,
+                &checkout.branch,
+                &checkout.dir,
+                0,
+                STATUS_AWAITING_PUSH,
+                Some(format!(
+                    "Merged `origin/{}` cleanly — no conflicting hunks. The merge commit is \
+                     ready to push.",
+                    refs.base
+                )),
+            );
+            registry.insert_running(state.clone(), &checkout.lease_id)?;
+            emit_state(&app, &state);
+            tracing::info!(
+                target: "nightcore::prfix",
+                fix_id = %state.id,
+                pr_number,
+                base = %refs.base,
+                "base merged cleanly; merge commit awaiting push"
+            );
+            Ok(state.id)
+        }
+        MergeOutcome::Conflicted(files) => {
+            let prompt = build_conflicts_prompt(pr_number, &checkout.branch, &refs.base, &files);
+            let state = new_fix_state(
+                KIND_CONFLICTS,
+                None,
+                pr_number,
+                &checkout.branch,
+                &checkout.dir,
+                files.len() as u32,
+                STATUS_RUNNING,
+                None,
+            );
+            let dir = checkout.dir.clone();
+            match register_and_dispatch(&app, state, &checkout.lease_id, prompt).await {
+                Ok(fix_id) => Ok(fix_id),
+                Err(e) => {
+                    // The checkout sits mid-merge and no session will resolve it
+                    // — abort so it is never left wedged. Blocking git, but a
+                    // local-only op.
+                    let _ =
+                        tauri::async_runtime::spawn_blocking(move || abort_merge_best_effort(&dir))
+                            .await;
+                    Err(e)
+                }
+            }
+        }
+    }
 }
 
 /// Start the fix session: correlation id = the FIX id (the reader intercept's
@@ -283,17 +510,32 @@ fn fix_guardrails(app: &AppHandle, fix_id: &str) -> crate::provider::Guardrails 
 /// Push an `awaiting_push` fix's branch to origin — the HUMAN GATE. Plain push,
 /// NEVER `--force` (the abort-not-force philosophy; a diverged remote fails
 /// loudly). Re-acquires the same `pr_in_flight` lease id the setup used.
+///
+/// `post_comment` (the push dialog's checkbox) additionally posts one summary
+/// comment on the PR explaining how the fix addressed its targets. The comment
+/// is BEST-EFFORT: the push has already landed when it runs, so a comment
+/// failure returns `Ok(Some(warning))` — never a push "failure".
 #[tauri::command]
-pub async fn push_pr_fix(app: AppHandle, fix_id: String) -> Result<(), String> {
+pub async fn push_pr_fix(
+    app: AppHandle,
+    fix_id: String,
+    post_comment: Option<bool>,
+) -> Result<Option<String>, String> {
     // The push talks to the network (up to 120s) — blocking-pool work.
-    tauri::async_runtime::spawn_blocking(move || push_pr_fix_blocking(&app, &fix_id))
-        .await
-        .map_err(|e| format!("push PR fix failed to run: {e}"))?
+    tauri::async_runtime::spawn_blocking(move || {
+        push_pr_fix_blocking(&app, &fix_id, post_comment.unwrap_or(false))
+    })
+    .await
+    .map_err(|e| format!("push PR fix failed to run: {e}"))?
 }
 
 /// The blocking body of [`push_pr_fix`]: lookup → precondition → lease →
-/// re-check → bounded push → `pushed` + emit.
-fn push_pr_fix_blocking(app: &AppHandle, fix_id: &str) -> Result<(), String> {
+/// re-check → bounded push → `pushed` + emit → (optional) summary comment.
+fn push_pr_fix_blocking(
+    app: &AppHandle,
+    fix_id: &str,
+    post_comment: bool,
+) -> Result<Option<String>, String> {
     let registry = app
         .try_state::<PrFixRegistry>()
         .ok_or_else(|| "pr-fix registry unavailable".to_string())?;
@@ -328,7 +570,30 @@ fn push_pr_fix_blocking(app: &AppHandle, fix_id: &str) -> Result<(), String> {
     })?;
     tracing::info!(target: "nightcore::prfix", fix_id, pr_number = updated.pr_number, branch = %updated.branch, "pr-fix pushed to origin");
     emit_state(app, &updated);
-    Ok(())
+
+    // The opt-in summary comment — AFTER the push landed and the state settled,
+    // so a comment failure can only ever be a warning on a successful push.
+    if post_comment {
+        let dir = Path::new(&updated.dir);
+        let body = super::comment::compose_push_comment(
+            &updated,
+            super::comment::head_short_sha(dir).as_deref(),
+        );
+        if let Err(e) = super::comment::post_push_comment_with(
+            dir,
+            GH_BINARY,
+            updated.pr_number,
+            &body,
+            super::comment::GH_COMMENT_TIMEOUT,
+        ) {
+            tracing::warn!(target: "nightcore::prfix", fix_id, pr_number = updated.pr_number, error = %e, "pushed, but the summary comment failed");
+            return Ok(Some(format!(
+                "the fix was pushed, but posting the summary comment failed: {e}"
+            )));
+        }
+        tracing::info!(target: "nightcore::prfix", fix_id, pr_number = updated.pr_number, "summary comment posted");
+    }
+    Ok(None)
 }
 
 /// Every registered fix, newest first — the web's reconcile read (pure
@@ -397,6 +662,18 @@ pub async fn cancel_pr_fix(
 
     if let Some(updated) = registry.mark_failed_if_running(&fix_id, "cancelled".to_string()) {
         emit_state(&app, &updated);
+    }
+    // A cancelled CONFLICTS fix leaves its checkout mid-merge (MERGE_HEAD +
+    // conflict markers) — abort it so later checkout ops aren't wedged behind
+    // a merge the user explicitly walked away from. Best-effort, local git.
+    if state.kind == KIND_CONFLICTS {
+        let dir = PathBuf::from(&state.dir);
+        let _ = tauri::async_runtime::spawn_blocking(move || {
+            if super::conflicts::merge_in_progress(&dir) {
+                abort_merge_best_effort(&dir);
+            }
+        })
+        .await;
     }
     tracing::info!(target: "nightcore::prfix", fix_id = %fix_id, "pr-fix cancelled");
     Ok(())
