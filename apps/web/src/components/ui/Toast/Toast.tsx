@@ -46,7 +46,7 @@ function ToastStack() {
           key={toast.id}
           role={toast.tone === 'error' ? 'alert' : 'status'}
           className={`pointer-events-auto flex items-start gap-2 rounded-[10px] border px-3 py-2.5 shadow-2xl backdrop-blur-sm ${TONE_STYLE[toast.tone]}`}
-          style={{ animation: 'nc-rise .18s cubic-bezier(.22,1,.36,1)' }}
+          style={{ animation: 'nc-rise var(--nc-motion-fast) var(--nc-ease-out-quint)' }}
         >
           <ToneIcon tone={toast.tone} />
           <div className="min-w-0 flex-1">

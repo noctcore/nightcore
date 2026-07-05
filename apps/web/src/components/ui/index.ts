@@ -36,6 +36,7 @@ export type { ModalProps } from './Modal';
 export { Modal, useModal } from './Modal';
 export { ModelEffortPicker } from './ModelEffortPicker';
 export type { ModelEffortPickerProps } from './ModelEffortPicker/ModelEffortPicker.types';
+export * from './motion';
 export type { NumberFieldProps } from './NumberField';
 export { NumberField } from './NumberField';
 export { Pill } from './Pill';
