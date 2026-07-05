@@ -19,6 +19,14 @@ on:
 permissions:
   contents: read
 
+# A superseded PR push cancels the previous in-flight run for that ref (a
+# frozen web-coverage step used to sit for 35+ minutes until someone noticed).
+# Pushes to main keep per-commit runs: the group key includes the run id there,
+# so nothing shares a group and nothing is cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # macOS-only lane for the Seatbelt (OS write-containment) proof. The
   # containment-enforcement tests in packages/engine/src/session/sandbox.test.ts
@@ -32,6 +40,9 @@ jobs:
   macos-sandbox:
     name: seatbelt containment (macOS engine tests)
     runs-on: macos-latest
+    # Normal run is ~1 min; macOS minutes bill at 10× so a wedged run is the
+    # most expensive way to find out something hung.
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -51,6 +62,11 @@ jobs:
   bun-checks:
     name: lint · typecheck · test (Bun workspace)
     runs-on: ubuntu-latest
+    # Whole job is ~5 min green. The backstop exists because Vitest browser
+    # mode can freeze silently (see the web-coverage step below) and GitHub's
+    # default job timeout is 6 HOURS. Sized ~2.5× green so a slow runner
+    # doesn't red a legitimate run.
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -77,12 +93,27 @@ jobs:
       # (tools/coverage/check-node-coverage.ts), web via Vitest istanbul
       # thresholds (apps/web/vitest.config.ts). Plugin runs on vitest.
       - run: bun run test:node:coverage
+      # ~3 min green. Step-scoped timeout because this is the step with a known
+      # silent-freeze mode: if Vite's dep optimizer discovers a dependency
+      # mid-run in a browser project, the "optimized dependencies changed"
+      # reload kills the in-flight test page and the vitest server waits on
+      # that file forever with zero output. `react-dom/client` is pre-bundled
+      # against exactly that (vitest.config.ts + .storybook/main.ts); the
+      # timeout turns any residual hang (e.g. a newly-added dep — the vitest
+      # warning names the culprit verbatim in the step log) into a fast red
+      # instead of a job-timeout burn.
       - run: bun run test:web:coverage
+        timeout-minutes: 7
       - run: bun run test:plugin
 
   rust-checks:
     name: cargo test · clippy · fmt · ts-rs drift (Rust core)
     runs-on: ubuntu-latest
+    # ~4 min with a warm cargo cache, but a cold cache (toolchain bump,
+    # lockfile change, cache eviction) rebuilds the whole Tauri dep tree —
+    # the ceiling is sized for that, not the warm path. If a legitimate cold
+    # build ever trips this, bump it once rather than removing it.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
