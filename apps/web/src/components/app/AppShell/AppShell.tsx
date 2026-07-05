@@ -9,10 +9,12 @@ import {
   Button,
   ConfirmDialog,
   EmptyState,
+  fadeRise,
   FolderIcon,
   GearIcon,
   GithubIcon,
   InsightIcon,
+  m,
   PerfIcon,
   VerifiedIcon,
 } from '@/components/ui';
@@ -199,6 +201,24 @@ export function AppShell() {
           <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
             {browserPreviewBanner}
 
+            {/* View-transition seam: the in-<main> view chain cross-fades on `view`
+                change (AnimatePresence keyed on the AppView string, mode="wait" so the
+                outgoing view finishes exiting before the next enters). `initial={false}`
+                skips the animation on first paint. Each lazy view keeps its own
+                <Suspense> INSIDE this keyed container, so a not-yet-loaded chunk shows
+                its fallback within the entering view rather than flashing over the
+                exiting one. The projects↔board full-screen swap (outer ternary) is
+                intentionally NOT keyed here. */}
+            <AnimatePresence mode="wait" initial={false}>
+              <m.div
+                key={view}
+                variants={fadeRise}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                className="flex min-h-0 flex-1 flex-col"
+              >
+
             {view === 'board' && (
           <div className="flex min-h-0 flex-1">
             <div className="flex min-w-0 flex-1 flex-col">
@@ -358,6 +378,8 @@ export function AppShell() {
           />
           </Suspense>
         )}
+              </m.div>
+            </AnimatePresence>
           </main>
         </div>
       )}
