@@ -96,20 +96,26 @@ function worktreeTitle(tab: WorktreeTab): string {
 interface WorktreeTabButtonProps {
   tab: WorktreeTab;
   selected: boolean;
+  /** Whether this tab is the tablist's single roving-tabindex entry (`tabIndex=0`).
+   *  Normally the selected tab holds the entry, but when the active worktree has
+   *  collapsed into the overflow select no inline tab is `selected`; the switcher then
+   *  points this at Main so the tablist always keeps exactly one keyboard entry point
+   *  (and a way back to the main board). Defaults to `selected` when omitted. */
+  rovingEntry?: boolean;
   onSelect: () => void;
 }
 
 /** A single switcher tab: the Main or branch
  *  label with a task-count chip and a monitor cluster — a pulsing running dot, a
  *  dirty marker, and an ahead-of-base count. */
-export function WorktreeTabButton({ tab, selected, onSelect }: WorktreeTabButtonProps) {
+export function WorktreeTabButton({ tab, selected, rovingEntry, onSelect }: WorktreeTabButtonProps) {
   const isMain = tab.branch === null;
   return (
     <button
       type="button"
       role="tab"
       aria-selected={selected}
-      tabIndex={selected ? 0 : -1}
+      tabIndex={(rovingEntry ?? selected) ? 0 : -1}
       onKeyDown={rovingKeydown}
       onClick={onSelect}
       title={worktreeTitle(tab)}
@@ -133,6 +139,9 @@ export function WorktreeTabButton({ tab, selected, onSelect }: WorktreeTabButton
 interface WorktreeTabWithActionsProps {
   tab: WorktreeTab;
   selected: boolean;
+  /** Whether the inner tab is the tablist's roving-tabindex entry (see
+   *  {@link WorktreeTabButtonProps.rovingEntry}). */
+  rovingEntry?: boolean;
   onSelect: () => void;
   /** Discard this worktree's checkout + branch; omit to hide the actions menu. */
   onRemove?: (tab: WorktreeTab) => void;
@@ -146,12 +155,18 @@ interface WorktreeTabWithActionsProps {
 export function WorktreeTabWithActions({
   tab,
   selected,
+  rovingEntry,
   onSelect,
   onRemove,
 }: WorktreeTabWithActionsProps) {
   return (
     <div className="flex items-center">
-      <WorktreeTabButton tab={tab} selected={selected} onSelect={onSelect} />
+      <WorktreeTabButton
+        tab={tab}
+        selected={selected}
+        rovingEntry={rovingEntry}
+        onSelect={onSelect}
+      />
       {onRemove !== undefined && (
         <Menu
           label={`Actions for ${tab.label}`}

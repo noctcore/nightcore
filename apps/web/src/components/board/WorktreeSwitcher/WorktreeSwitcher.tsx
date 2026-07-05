@@ -32,6 +32,11 @@ export function WorktreeSwitcher({
   if (tabs.length <= 1) return null;
 
   const { inline, collapsed } = partitionWorktreeTabs(tabs);
+  // Roving-tabindex entry: a tablist must always keep exactly one `tabIndex=0` tab.
+  // Normally that's the active tab, but when the active worktree has collapsed into
+  // the overflow select no inline tab is selected — fall back to the first inline tab
+  // (always Main) so a keyboard user can still Tab to it and return to the main board.
+  const activeIsInline = inline.some((tab) => tab.branch === active);
 
   return (
     <div
@@ -43,12 +48,14 @@ export function WorktreeSwitcher({
         <LayersIcon size={12} />
         Worktree
       </span>
-      {inline.map((tab) =>
-        tab.branch === null ? (
+      {inline.map((tab, index) => {
+        const rovingEntry = activeIsInline ? tab.branch === active : index === 0;
+        return tab.branch === null ? (
           <WorktreeTabButton
             key="__main__"
             tab={tab}
             selected={active === null}
+            rovingEntry={rovingEntry}
             onSelect={() => onSelect(null)}
           />
         ) : (
@@ -56,11 +63,12 @@ export function WorktreeSwitcher({
             key={tab.branch}
             tab={tab}
             selected={active === tab.branch}
+            rovingEntry={rovingEntry}
             onSelect={() => onSelect(tab.branch)}
             onRemove={onRemoveWorktree}
           />
-        ),
-      )}
+        );
+      })}
       {collapsed.length > 0 && (
         <WorktreeCollapsedSelect tabs={collapsed} active={active} onSelect={onSelect} />
       )}

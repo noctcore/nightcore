@@ -23,6 +23,7 @@ import * as stories from './WorktreeSwitcher.stories';
 
 const {
   MainSelected,
+  WorktreeSelected,
   FallbackToTaskBranches,
   HiddenWhenOnlyMain,
   ManyWorktreesCollapsed,
@@ -270,4 +271,31 @@ test('the active collapsed worktree is reflected in the trigger and its row', as
   await expect
     .element(screen.getByRole('option', { name: /nc\/rate-limiter/i, selected: true }))
     .toBeInTheDocument();
+});
+
+test('the Main tab stays keyboard-focusable when a collapsed worktree is active', async () => {
+  const onSelect = vi.fn();
+  const screen = render(<CollapsedWorktreeSelected onSelect={onSelect} />);
+  const main = screen.getByRole('tab', { name: /^main/i });
+  // Roving-tabindex invariant: with the active worktree folded into the overflow
+  // select, Main is the tablist's sole inline tab and must remain the `tabIndex=0`
+  // entry point — otherwise a keyboard-only user could Tab to the select trigger but
+  // never reach Main to return to the main board (Main is not a dropdown option).
+  await expect.element(main).toHaveAttribute('tabindex', '0');
+  const el = main.element() as HTMLElement;
+  el.focus();
+  await expect.element(main).toHaveFocus();
+  // …and activating it returns to the main board.
+  el.click();
+  expect(onSelect).toHaveBeenCalledWith(null);
+});
+
+test('inline selection keeps the roving entry on the active worktree, not Main', async () => {
+  // Regression guard for the collapsed fix: below the threshold every tab is inline,
+  // so the single `tabIndex=0` entry must sit on the SELECTED worktree, with Main at -1.
+  const screen = render(<WorktreeSelected />);
+  await expect
+    .element(screen.getByRole('tab', { name: /nc\/api-client/i }))
+    .toHaveAttribute('tabindex', '0');
+  await expect.element(screen.getByRole('tab', { name: /^main/i })).toHaveAttribute('tabindex', '-1');
 });
