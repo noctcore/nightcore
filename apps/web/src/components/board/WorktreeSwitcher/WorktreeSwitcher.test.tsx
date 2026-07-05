@@ -1,18 +1,34 @@
 import { composeStories } from '@storybook/react-vite';
+import { userEvent } from '@vitest/browser/context';
 import { expect, test, vi } from 'vitest';
 import { render, renderHook } from 'vitest-browser-react';
 
 import {
   MAIN_MODE_TASK,
+  MANY_WORKTREE_TASKS,
+  MANY_WORKTREES,
   ORPHAN_BRANCH_TASK,
   PENDING_WORKTREE_TASK,
   TASKS_BY_STATUS,
   WORKTREES,
 } from '../_fixtures';
-import { filterTasksByWorktree, useWorktreeTabs } from './WorktreeSwitcher.hooks';
+import {
+  COLLAPSE_THRESHOLD,
+  filterTasksByWorktree,
+  partitionWorktreeTabs,
+  summarizeCollapsed,
+  useWorktreeTabs,
+} from './WorktreeSwitcher.hooks';
 import * as stories from './WorktreeSwitcher.stories';
 
-const { MainSelected, FallbackToTaskBranches, HiddenWhenOnlyMain } = composeStories(stories);
+const {
+  MainSelected,
+  WorktreeSelected,
+  FallbackToTaskBranches,
+  HiddenWhenOnlyMain,
+  ManyWorktreesCollapsed,
+  CollapsedWorktreeSelected,
+} = composeStories(stories);
 
 test('renders a Main tab plus one tab per live worktree', async () => {
   const screen = render(<MainSelected />);
@@ -136,4 +152,150 @@ test('invariant: every task is reachable via exactly the tabs, none filtered out
   // And the tab counts sum to the total (no task counted in zero tabs).
   const summed = result.current.reduce((n, tab) => n + tab.taskCount, 0);
   expect(summed).toBe(tasks.length);
+});
+
+test('useWorktreeTabs: a worktree tab carries its task titles for search', () => {
+  const { result } = renderHook(() => useWorktreeTabs(MANY_WORKTREE_TASKS, MANY_WORKTREES));
+  const api = result.current.find((t) => t.branch === 'nc/api-client');
+  expect(api?.taskTitles).toEqual(['Generate API client']);
+});
+
+// --- Overflow / collapse partition -------------------------------------------
+
+test('partitionWorktreeTabs: keeps every tab inline at or below the threshold', () => {
+  const { result } = renderHook(() => useWorktreeTabs([MAIN_MODE_TASK], WORKTREES));
+  // Main + two live worktrees = 3 tabs (<= COLLAPSE_THRESHOLD).
+  expect(result.current.length).toBeLessThanOrEqual(COLLAPSE_THRESHOLD);
+  const { inline, collapsed } = partitionWorktreeTabs(result.current);
+  expect(inline).toEqual(result.current);
+  expect(collapsed).toEqual([]);
+});
+
+test('partitionWorktreeTabs: pins Main inline and collapses the worktrees above it', () => {
+  const { result } = renderHook(() => useWorktreeTabs(MANY_WORKTREE_TASKS, MANY_WORKTREES));
+  expect(result.current.length).toBeGreaterThan(COLLAPSE_THRESHOLD);
+  const { inline, collapsed } = partitionWorktreeTabs(result.current);
+  // Only Main stays inline; every worktree (active included) collapses.
+  expect(inline.map((t) => t.branch)).toEqual([null]);
+  expect(collapsed.every((t) => t.branch !== null)).toBe(true);
+  expect(inline.length + collapsed.length).toBe(result.current.length);
+});
+
+test('summarizeCollapsed: aggregates the count, running, and diverged state', () => {
+  const { result } = renderHook(() => useWorktreeTabs(MANY_WORKTREE_TASKS, MANY_WORKTREES));
+  const { collapsed } = partitionWorktreeTabs(result.current);
+  const summary = summarizeCollapsed(collapsed);
+  expect(summary.count).toBe(6);
+  expect(summary.anyRunning).toBe(true);
+  // Two worktrees run a task (nc/api-client in_progress, nc/search-index verifying).
+  expect(summary.runningCount).toBe(2);
+  // Two worktrees have diverged (nc/rate-limiter 3/1, nc/search-index 5/4).
+  expect(summary.divergedCount).toBe(2);
+});
+
+// --- Overflow / collapse rendering + interaction -----------------------------
+
+test('above the threshold, Main stays a tab while the worktrees collapse into a select', async () => {
+  const screen = render(<ManyWorktreesCollapsed />);
+  await expect.element(screen.getByRole('tab', { name: /^main/i })).toBeInTheDocument();
+  // A collapsed worktree is no longer an inline tab…
+  expect(screen.getByRole('tab', { name: /nc\/api-client/i }).query()).toBeNull();
+  // …it lives behind the aggregate trigger instead.
+  await expect
+    .element(screen.getByRole('button', { name: /worktrees/i }))
+    .toBeInTheDocument();
+});
+
+test('opening the collapsed select lists every collapsed worktree as an option', async () => {
+  const screen = render(<ManyWorktreesCollapsed />);
+  await screen.getByRole('button', { name: /worktrees/i }).click();
+  await expect.element(screen.getByRole('listbox', { name: /worktrees/i })).toBeInTheDocument();
+  await expect
+    .element(screen.getByRole('option', { name: /nc\/api-client/i }))
+    .toBeInTheDocument();
+  await expect
+    .element(screen.getByRole('option', { name: /nc\/search-index/i }))
+    .toBeInTheDocument();
+});
+
+test('the collapsed list filters by task title, not just branch name', async () => {
+  const screen = render(<ManyWorktreesCollapsed />);
+  await screen.getByRole('button', { name: /worktrees/i }).click();
+  // "pipeline" appears only in nc/telemetry's task title, not in any branch name.
+  await screen.getByRole('combobox', { name: /search worktrees/i }).fill('pipeline');
+  await expect
+    .element(screen.getByRole('option', { name: /nc\/telemetry/i }))
+    .toBeInTheDocument();
+  expect(screen.getByRole('option', { name: /nc\/api-client/i }).query()).toBeNull();
+});
+
+test('the collapsed list shows an empty state when nothing matches', async () => {
+  const screen = render(<ManyWorktreesCollapsed />);
+  await screen.getByRole('button', { name: /worktrees/i }).click();
+  await screen.getByRole('combobox', { name: /search worktrees/i }).fill('zzz-nope');
+  await expect.element(screen.getByText('No matching worktrees')).toBeInTheDocument();
+});
+
+test('selecting a collapsed worktree reports its branch', async () => {
+  const onSelect = vi.fn();
+  const screen = render(<ManyWorktreesCollapsed onSelect={onSelect} />);
+  await screen.getByRole('button', { name: /worktrees/i }).click();
+  await screen.getByRole('option', { name: /nc\/rate-limiter/i }).click();
+  expect(onSelect).toHaveBeenCalledWith('nc/rate-limiter');
+});
+
+test('arrow-down + Enter picks a worktree from the collapsed list', async () => {
+  const onSelect = vi.fn();
+  const screen = render(<ManyWorktreesCollapsed onSelect={onSelect} />);
+  await screen.getByRole('button', { name: /worktrees/i }).click();
+  // The first row is pre-highlighted, so ArrowDown lands on the second worktree.
+  await userEvent.keyboard('{ArrowDown}{Enter}');
+  expect(onSelect).toHaveBeenCalledWith('nc/auth-guard');
+});
+
+test('Escape closes the collapsed panel', async () => {
+  const screen = render(<ManyWorktreesCollapsed />);
+  await screen.getByRole('button', { name: /worktrees/i }).click();
+  await expect.element(screen.getByRole('listbox', { name: /worktrees/i })).toBeInTheDocument();
+  await userEvent.keyboard('{Escape}');
+  expect(screen.container.querySelector('[role="listbox"]')).toBeNull();
+});
+
+test('the active collapsed worktree is reflected in the trigger and its row', async () => {
+  const screen = render(<CollapsedWorktreeSelected />);
+  // The trigger label reflects the active selection instead of the neutral count.
+  await expect
+    .element(screen.getByRole('button', { name: /nc\/rate-limiter/i }))
+    .toBeInTheDocument();
+  await screen.getByRole('button', { name: /nc\/rate-limiter/i }).click();
+  await expect
+    .element(screen.getByRole('option', { name: /nc\/rate-limiter/i, selected: true }))
+    .toBeInTheDocument();
+});
+
+test('the Main tab stays keyboard-focusable when a collapsed worktree is active', async () => {
+  const onSelect = vi.fn();
+  const screen = render(<CollapsedWorktreeSelected onSelect={onSelect} />);
+  const main = screen.getByRole('tab', { name: /^main/i });
+  // Roving-tabindex invariant: with the active worktree folded into the overflow
+  // select, Main is the tablist's sole inline tab and must remain the `tabIndex=0`
+  // entry point — otherwise a keyboard-only user could Tab to the select trigger but
+  // never reach Main to return to the main board (Main is not a dropdown option).
+  await expect.element(main).toHaveAttribute('tabindex', '0');
+  const el = main.element() as HTMLElement;
+  el.focus();
+  await expect.element(main).toHaveFocus();
+  // …and activating it returns to the main board.
+  el.click();
+  expect(onSelect).toHaveBeenCalledWith(null);
+});
+
+test('inline selection keeps the roving entry on the active worktree, not Main', async () => {
+  // Regression guard for the collapsed fix: below the threshold every tab is inline,
+  // so the single `tabIndex=0` entry must sit on the SELECTED worktree, with Main at -1.
+  const screen = render(<WorktreeSelected />);
+  await expect
+    .element(screen.getByRole('tab', { name: /nc\/api-client/i }))
+    .toHaveAttribute('tabindex', '0');
+  await expect.element(screen.getByRole('tab', { name: /^main/i })).toHaveAttribute('tabindex', '-1');
 });
