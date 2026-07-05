@@ -12,7 +12,9 @@
 //!   `ls-files -z`, `status --porcelain`). No I/O, unit-tested in place.
 //! - [`run`] — the git subprocess runners built on `platform::git_command`.
 //! - [`gh`] — the `gh` (GitHub CLI) seam + the checked / JSON orchestration wrappers.
+//! - [`query`] — small reusable git READS (tracked-file listing, changed files).
 
 pub(crate) mod gh;
 pub(crate) mod parse;
+pub(crate) mod query;
 pub(crate) mod run;

@@ -86,18 +86,10 @@ struct FileFacts {
 /// capped at [`MAX_PARSED_FILES`]. `None` when `root` is not a git repo (or git
 /// itself fails) — the caller omits the section.
 fn tracked_source_files(root: &Path) -> Option<Vec<String>> {
-    let output = crate::platform::git_command(root)
-        .args(["ls-files", "-z"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let listing = String::from_utf8_lossy(&output.stdout);
-    let mut files: Vec<String> = crate::git::parse::parse_ls_files_z(&listing)
+    let mut files: Vec<String> = crate::git::query::list_tracked_files(root, &[])
+        .ok()?
         .into_iter()
         .filter(|p| lang_for(p).is_some())
-        .map(str::to_string)
         .collect();
     // Path-sort BEFORE the cap so the parsed subset is stable across runs.
     files.sort();
