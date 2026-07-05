@@ -167,12 +167,7 @@ fn refresh_index(dir: &Path) {
     let _ = git_status_success(dir, &["update-index", "--refresh"]);
 }
 
-/// Parse `git rev-list --left-right --count <base>...HEAD` output (`"<behind>\t<ahead>"`)
-/// into `(behind, ahead)`: the left count is commits reachable from `base` but not
-/// HEAD (behind), the right is HEAD-only (ahead). `None` on malformed output.
-fn parse_left_right_count(s: &str) -> Option<(u32, u32)> {
-    let mut parts = s.split_whitespace();
-    let behind = parts.next()?.parse::<u32>().ok()?;
-    let ahead = parts.next()?.parse::<u32>().ok()?;
-    Some((behind, ahead))
-}
+// The `rev-list --left-right --count` parser now lives in the shared
+// `crate::git::parse` module. Re-bound here (private) so the submodules that
+// reach it as `super::parse_left_right_count` resolve unchanged.
+use crate::git::parse::parse_left_right_count;

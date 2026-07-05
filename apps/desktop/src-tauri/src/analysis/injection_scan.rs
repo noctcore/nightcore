@@ -136,7 +136,7 @@ pub fn scan_project(root: &Path) -> Result<Vec<InjectionFlag>, String> {
     }
     let listing = String::from_utf8_lossy(&output.stdout);
     let mut flags = Vec::new();
-    for rel in listing.split('\0').filter(|p| !p.is_empty()) {
+    for rel in crate::git::parse::parse_ls_files_z(&listing) {
         let path = root.join(rel);
         let Ok(meta) = std::fs::metadata(&path) else {
             continue;

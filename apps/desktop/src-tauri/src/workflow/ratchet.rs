@@ -162,7 +162,7 @@ fn recount(dir: &Path) -> Result<RatchetCounts, String> {
     }
     let listing = String::from_utf8_lossy(&out.stdout);
     let mut total = RatchetCounts::default();
-    for rel in listing.split('\0').filter(|p| !p.is_empty()) {
+    for rel in crate::git::parse::parse_ls_files_z(&listing) {
         let Ok(src) = std::fs::read_to_string(dir.join(rel)) else {
             continue;
         };

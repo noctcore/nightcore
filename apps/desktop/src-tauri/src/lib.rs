@@ -16,6 +16,7 @@ mod analysis;
 mod commands;
 mod contracts;
 mod engine_api;
+mod git;
 mod infra;
 mod orchestration;
 mod provider;

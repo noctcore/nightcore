@@ -95,17 +95,12 @@ fn load_budget(project_root: &Path) -> Option<DiffBudget> {
 }
 
 /// Sum `git diff --numstat` output into totals. Each row is one changed file;
-/// binary rows (`-\t-\tpath`) contribute one file and zero lines. Pure.
+/// binary rows (`-\t-\tpath`) contribute one file and zero lines. Pure — the
+/// per-row parse is shared with the worktree diff readers via `git::parse`.
 fn parse_numstat_totals(numstat: &str) -> DiffMeasure {
     let mut measure = DiffMeasure::default();
-    for line in numstat.lines() {
-        let mut f = line.splitn(3, '\t');
-        let add = f.next().unwrap_or("0").parse::<u64>().unwrap_or(0);
-        let del = f.next().unwrap_or("0").parse::<u64>().unwrap_or(0);
-        if f.next().filter(|p| !p.is_empty()).is_none() {
-            continue; // malformed / blank row — not a file
-        }
-        measure.changed_lines += add + del;
+    for row in crate::git::parse::parse_numstat(numstat) {
+        measure.changed_lines += row.additions + row.deletions;
         measure.changed_files += 1;
     }
     measure

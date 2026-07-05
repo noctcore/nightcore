@@ -94,9 +94,9 @@ fn tracked_source_files(root: &Path) -> Option<Vec<String>> {
         return None;
     }
     let listing = String::from_utf8_lossy(&output.stdout);
-    let mut files: Vec<String> = listing
-        .split('\0')
-        .filter(|p| !p.is_empty() && lang_for(p).is_some())
+    let mut files: Vec<String> = crate::git::parse::parse_ls_files_z(&listing)
+        .into_iter()
+        .filter(|p| lang_for(p).is_some())
         .map(str::to_string)
         .collect();
     // Path-sort BEFORE the cap so the parsed subset is stable across runs.

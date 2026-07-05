@@ -295,14 +295,6 @@ fn list_worktree_statuses_reports_branch_dirty_and_ahead() {
 }
 
 #[test]
-fn parse_left_right_count_reads_behind_then_ahead() {
-    assert_eq!(parse_left_right_count("3\t5"), Some((3, 5)));
-    assert_eq!(parse_left_right_count("0 0"), Some((0, 0)));
-    assert_eq!(parse_left_right_count(""), None);
-    assert_eq!(parse_left_right_count("nope"), None);
-}
-
-#[test]
 fn merge_integrates_the_branch_into_base() {
     let Some((_tmp, repo)) = temp_repo() else {
         return;
