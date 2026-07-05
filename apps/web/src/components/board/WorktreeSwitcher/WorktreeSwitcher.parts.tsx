@@ -1,5 +1,6 @@
-/** Presentational sub-parts for the WorktreeSwitcher: the per-tab button. */
-import { BoardIcon, BranchIcon } from '@/components/ui';
+/** Presentational sub-parts for the WorktreeSwitcher: the per-tab button and its
+ *  actions menu. */
+import { BoardIcon, BranchIcon, DotsIcon, IconButton, Menu, TrashIcon } from '@/components/ui';
 import { rovingKeydown } from '@/lib/roving-keydown';
 
 import type { WorktreeTab } from './WorktreeSwitcher.types';
@@ -91,5 +92,51 @@ export function WorktreeTabButton({ tab, selected, onSelect }: WorktreeTabButton
         </span>
       )}
     </button>
+  );
+}
+
+/** Props for a worktree tab paired with its actions menu. */
+interface WorktreeTabWithActionsProps {
+  tab: WorktreeTab;
+  selected: boolean;
+  onSelect: () => void;
+  /** Discard this worktree's checkout + branch; omit to hide the actions menu. */
+  onRemove?: (tab: WorktreeTab) => void;
+}
+
+/** A worktree tab paired with its actions menu. The kebab is a SIBLING of the
+ *  `role="tab"` button (never nested — that would bury an interactive inside the
+ *  tab), and only renders when a remove handler is supplied. Its one item,
+ *  "Remove worktree", discards the checkout + branch (the switcher's first action
+ *  affordance). */
+export function WorktreeTabWithActions({
+  tab,
+  selected,
+  onSelect,
+  onRemove,
+}: WorktreeTabWithActionsProps) {
+  return (
+    <div className="flex items-center">
+      <WorktreeTabButton tab={tab} selected={selected} onSelect={onSelect} />
+      {onRemove !== undefined && (
+        <Menu
+          label={`Actions for ${tab.label}`}
+          align="left"
+          trigger={
+            <IconButton label={`Worktree actions for ${tab.label}`} className="ml-0.5">
+              <DotsIcon size={14} />
+            </IconButton>
+          }
+          items={[
+            {
+              label: 'Remove worktree',
+              icon: <TrashIcon size={14} />,
+              destructive: true,
+              onClick: () => onRemove(tab),
+            },
+          ]}
+        />
+      )}
+    </div>
   );
 }

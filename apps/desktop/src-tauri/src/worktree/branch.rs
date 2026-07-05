@@ -136,6 +136,34 @@ pub fn push_branch(dir: &Path, branch: &str) -> Result<(), String> {
     .map(|_| ())
 }
 
+/// Whether `branch` is FULLY MERGED into `base` — its tip is an ancestor of
+/// `base`, so `base` already contains every commit on `branch` and re-merging it
+/// would be a no-op (`git merge-base --is-ancestor <branch> <base>`, exit 0 =
+/// merged). Read-only. Used by refresh reconciliation to reclaim a worktree whose
+/// branch already landed — e.g. a PR merged on the remote after `finalize` refused
+/// to clean up, once the base has been pulled — with NOTHING to lose. Both refs
+/// are validated + option-fenced. Conservative on the safe side: any unresolvable
+/// ref (a missing branch, a git failure) reads as "not merged" so a spurious
+/// removal can never happen.
+pub fn is_branch_merged(project_path: &Path, branch: &str, base: &str) -> bool {
+    if branch.is_empty() || base.is_empty() {
+        return false;
+    }
+    if validate_ref(branch).is_err() || validate_ref(base).is_err() {
+        return false;
+    }
+    git_status_success(
+        project_path,
+        &[
+            "merge-base",
+            "--is-ancestor",
+            "--end-of-options",
+            branch,
+            base,
+        ],
+    )
+}
+
 /// Delete a specific `branch` (best-effort). Refuses to delete the project's current
 /// base branch / `HEAD` — a safety guard (Aperant) so a bad or user-supplied branch
 /// value can never delete the user's working branch. The guard matches on *identity*,

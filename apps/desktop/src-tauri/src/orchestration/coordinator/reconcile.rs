@@ -71,6 +71,117 @@ pub fn reconcile_worktrees(app: &AppHandle) {
     }
 }
 
+/// Reconcile stale worktree POINTERS against what is actually on disk — the
+/// on-demand refresh (`refresh_worktrees`) and a light boot pass. Two independent
+/// cleanups, BOTH skipped for a task holding a live slot lease so a running
+/// checkout is never pulled out from under it:
+///
+///  1. **Ghost pointer** (always): a task carries a `branch` chip but has no
+///     worktree dir on disk — discarded, merged-and-cleaned, or removed
+///     out-of-band. Clear `task.branch` so the task falls back to the Main tab
+///     instead of stranding a dead worktree tab that nothing can select. The
+///     synthesized-tab derivation (web) trusts `task.branch`, so clearing the
+///     pointer is what actually drops the ghost tab.
+///
+///  2. **Merged leftover** (only when `prune_merged`, i.e. the explicit refresh):
+///     a live worktree whose branch is already FULLY merged into base AND is
+///     clean has nothing left to integrate — reclaim the checkout + branch (e.g. a
+///     PR merged on the remote after `finalize` refused to clean up, once base was
+///     pulled). Never forced: a dirty or not-fully-merged worktree is left
+///     untouched (abort-not-force), and `delete_branch_named` still refuses base.
+///
+/// Emits `nc:task` per reconciled task. Returns how many task pointers it cleared.
+pub fn reconcile_stale_worktree_state(app: &AppHandle, prune_merged: bool) -> usize {
+    let Some(project) = app.state::<ProjectStore>().active() else {
+        return 0;
+    };
+    let project_path = PathBuf::from(&project.path);
+    let store = app.state::<TaskStore>();
+    let orch = app.try_state::<super::Orchestrator>();
+    let base = worktree::base_branch(&project_path);
+    let mut cleared = 0usize;
+
+    for task in store.list() {
+        let Some(branch) = task.branch.clone() else {
+            continue; // no branch chip → nothing to reconcile
+        };
+        // Never probe or touch a running task's worktree — the slot lease is
+        // authoritative (mirrors `discard_worktree`'s guard). Fast-path out before
+        // the git status/ancestry reads.
+        if orch.as_ref().is_some_and(|o| o.slots.is_leased(&task.id)) {
+            continue;
+        }
+        let dir = worktree::worktree_path(&project_path, &task.id);
+        let dir_exists = dir.exists();
+        // The two git reads (dirty + merged) are only needed to consider reclaiming
+        // a LIVE worktree under an explicit refresh; skip them otherwise. A dirty
+        // worktree is never reclaimed, so only probe ancestry when clean.
+        let (dirty, merged) = if dir_exists && prune_merged {
+            let dirty = worktree::worktree_status(&dir, &task.id, &base).dirty;
+            let merged = !dirty && worktree::is_branch_merged(&project_path, &branch, &base);
+            (dirty, merged)
+        } else {
+            (false, false)
+        };
+
+        match stale_pointer_action(dir_exists, prune_merged, dirty, merged) {
+            PointerAction::Keep => continue,
+            PointerAction::ClearGhost => {}
+            PointerAction::ReclaimMerged => {
+                // Clean + fully merged: reclaim the checkout and its branch (guarded
+                // `remove`/`delete_branch_named`) — nothing to lose. Abort-not-force.
+                let _ = worktree::remove(&project_path, &task.id);
+                let _ = worktree::delete_branch_named(&project_path, &branch);
+            }
+        }
+        match store.mutate(&task.id, |t| t.branch = None) {
+            Ok(updated) => {
+                cleared += 1;
+                let _ = app.emit(TASK_EVENT, &updated);
+            }
+            Err(e) => {
+                tracing::warn!(target: "nightcore", task_id = %task.id, error = %e, "failed to clear a stale worktree pointer");
+            }
+        }
+    }
+    if cleared > 0 {
+        tracing::info!(target: "nightcore", cleared, prune_merged, "reconciled stale worktree pointers");
+    }
+    cleared
+}
+
+/// What [`reconcile_stale_worktree_state`] does to ONE task's stale worktree
+/// pointer, once the running-task (slot-lease) fast-path has been cleared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PointerAction {
+    /// Leave the pointer (and any worktree) untouched.
+    Keep,
+    /// Clear `task.branch` only — a ghost chip with no worktree dir behind it.
+    ClearGhost,
+    /// Remove the merged worktree + branch, then clear `task.branch`.
+    ReclaimMerged,
+}
+
+/// The pure decision behind [`reconcile_stale_worktree_state`] for one branchful,
+/// unleased task: no dir ⇒ ghost pointer to clear; a live worktree that is clean +
+/// fully merged (only under an explicit `prune_merged` refresh) ⇒ reclaim; anything
+/// else ⇒ keep. `dirty`/`merged` are only meaningful when `dir_exists`. No I/O, so
+/// it is unit-testable like [`reconcile_task_inner`].
+fn stale_pointer_action(
+    dir_exists: bool,
+    prune_merged: bool,
+    dirty: bool,
+    merged: bool,
+) -> PointerAction {
+    if !dir_exists {
+        return PointerAction::ClearGhost;
+    }
+    if prune_merged && !dirty && merged {
+        return PointerAction::ReclaimMerged;
+    }
+    PointerAction::Keep
+}
+
 /// How a crash-stranded task was recovered at boot, returned by the pure inner so
 /// callers (and tests) can assert and log per-task.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -225,6 +336,48 @@ mod tests {
             t.error.as_deref(),
             Some("earlier failure detail\nInterrupted by restart — requeued."),
             "the note is appended, not clobbering prior context"
+        );
+    }
+
+    #[test]
+    fn stale_pointer_ghost_is_cleared_regardless_of_prune_flag() {
+        // A branch chip with no worktree dir behind it is always a ghost to clear —
+        // whether or not merged-pruning is on (dirty/merged are meaningless here).
+        for prune in [false, true] {
+            assert_eq!(
+                stale_pointer_action(false, prune, false, false),
+                PointerAction::ClearGhost,
+                "a missing worktree dir is always a ghost pointer (prune={prune})"
+            );
+        }
+    }
+
+    #[test]
+    fn stale_pointer_reclaims_only_clean_merged_under_refresh() {
+        // A live worktree is reclaimed ONLY on an explicit refresh (prune_merged),
+        // ONLY when clean AND fully merged — nothing to lose.
+        assert_eq!(
+            stale_pointer_action(true, true, false, true),
+            PointerAction::ReclaimMerged,
+            "clean + merged + refresh ⇒ reclaim"
+        );
+        // A dirty worktree is never reclaimed (abort-not-force)…
+        assert_eq!(
+            stale_pointer_action(true, true, true, true),
+            PointerAction::Keep,
+            "dirty ⇒ keep even if merged"
+        );
+        // …nor a not-fully-merged one…
+        assert_eq!(
+            stale_pointer_action(true, true, false, false),
+            PointerAction::Keep,
+            "clean but unmerged ⇒ keep"
+        );
+        // …nor at boot (prune_merged off), where a live worktree is always kept.
+        assert_eq!(
+            stale_pointer_action(true, false, false, true),
+            PointerAction::Keep,
+            "boot pass never reclaims a live worktree"
         );
     }
 

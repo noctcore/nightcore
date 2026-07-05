@@ -10,6 +10,9 @@ export interface WorktreeTab {
   branch: string | null;
   /** Display label — "Main" for the main tab, else the branch name. */
   label: string;
+  /** The task ids grouped under this tab — the discard targets for the tab's
+   *  "Remove worktree" action (v1 is one-per-branch). Empty for the Main tab. */
+  taskIds: string[];
   /** Count of tasks grouped under this tab (Main = run-mode-main tasks). */
   taskCount: number;
   /** How many of this tab's tasks are actively running (in_progress/verifying). */
@@ -35,4 +38,7 @@ export interface WorktreeSwitcherProps {
   active: ActiveWorktree;
   /** Select a tab (sets the active worktree + filters the board). */
   onSelect: (active: ActiveWorktree) => void;
+  /** Remove a worktree tab (discard its checkout + branch). When omitted, the
+   *  per-tab actions menu is not rendered. Never called for the Main tab. */
+  onRemoveWorktree?: (tab: WorktreeTab) => void;
 }

@@ -7,9 +7,11 @@ import {
   BranchIcon,
   Button,
   CloseIcon,
+  IconButton,
   ImageIcon,
   Kbd,
   PlusIcon,
+  RefreshIcon,
   SearchIcon,
   SlidersIcon,
   Toolbar,
@@ -59,6 +61,8 @@ function BoardImpl({
   worktrees,
   activeWorktree,
   onSelectWorktree,
+  onRemoveWorktree,
+  onRefreshWorktrees,
   concurrency,
   autoMode,
   autoCommitOnVerified,
@@ -178,6 +182,13 @@ function BoardImpl({
               autoCommitOnVerified={autoCommitOnVerified}
               onAutoCommitChange={onAutoCommitChange}
             />
+            <IconButton
+              label="Refresh board & worktrees"
+              onClick={onRefreshWorktrees}
+              className="border border-border bg-white/[0.02] p-2 hover:border-white/20"
+            >
+              <RefreshIcon size={15} className="text-muted-foreground" />
+            </IconButton>
             <button
               type="button"
               onClick={bgPanel.show}
@@ -222,6 +233,7 @@ function BoardImpl({
         worktrees={worktrees}
         active={activeWorktree}
         onSelect={onSelectWorktree}
+        onRemoveWorktree={onRemoveWorktree}
       />
 
       {banner.visible && breaker !== null && (
