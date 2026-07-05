@@ -205,6 +205,61 @@ describe('dedupePrReviewFindings', () => {
     expect(out).toHaveLength(2);
     expect(out.map((f) => f.fingerprint)).toEqual(['fp-a', 'fp-b']);
   });
+
+  test('collapses the same file+title across lenses and records the corroborator', () => {
+    const out = dedupePrReviewFindings([
+      finding({
+        lens: 'logic',
+        severity: 'low',
+        title: 'Race',
+        id: 'logic-1',
+        fingerprint: 'l1',
+      }),
+      finding({
+        lens: 'security',
+        severity: 'high',
+        title: 'Race',
+        id: 'sec-1',
+        fingerprint: 's1',
+      }),
+    ]);
+    expect(out).toHaveLength(1);
+    const survivor = out[0] as ReviewFinding;
+    // Higher-severity instance wins the survivor slot…
+    expect(survivor.severity).toBe('high');
+    expect(survivor.lens).toBe('security');
+    // …and the OTHER reporting lens is recorded rather than lost.
+    expect(survivor.corroboratedBy).toEqual(['logic']);
+    // The survivor keeps its own lens-scoped fingerprint (the dismissed-history key).
+    expect(survivor.fingerprint).toBe('s1');
+  });
+
+  test('records multiple corroborating lenses, sorted, excluding the survivor lens', () => {
+    const out = dedupePrReviewFindings([
+      finding({ lens: 'structure', severity: 'critical', title: 'Dup', id: 's', fingerprint: 'a' }),
+      finding({ lens: 'tests', severity: 'low', title: 'Dup', id: 't', fingerprint: 'b' }),
+      finding({ lens: 'logic', severity: 'medium', title: 'Dup', id: 'l', fingerprint: 'c' }),
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.lens).toBe('structure'); // critical wins
+    expect(out[0]?.corroboratedBy).toEqual(['logic', 'tests']); // sorted, minus structure
+  });
+
+  test('a same-lens duplicate merges without a corroboratedBy (no other lens)', () => {
+    const out = dedupePrReviewFindings([
+      finding({ lens: 'security', severity: 'low', title: 'X', id: 'a', fingerprint: 'a' }),
+      finding({ lens: 'security', severity: 'high', title: 'X', id: 'b', fingerprint: 'b' }),
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.severity).toBe('high');
+    expect(out[0]?.corroboratedBy).toBeUndefined();
+  });
+
+  test('a lone finding carries no corroboratedBy', () => {
+    const out = dedupePrReviewFindings([finding({ title: 'solo' })]);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.corroboratedBy).toBeUndefined();
+  });
 });
 
 describe('reviewSeverityRank', () => {

@@ -153,21 +153,31 @@ export function groundPrReviewFindings(
 }
 
 /**
- * Cross-lens dedup: when two lens passes surface the same issue, keep ONE — the
- * higher-severity instance. The dedup key IS the `fingerprint` (`lens | file |
- * title`), so it can never diverge from the dismissed-history key: a finding the user
- * dismissed in a prior run matches the same survivor here. Order-stable on first
- * appearance. (Note: because the fingerprint includes the lens, two different lenses
- * only collide when they independently produce the identical file+title — rare, but
- * then the higher-severity reading wins.)
+ * Cross-lens dedup + corroboration: when two lens passes surface the SAME issue, keep
+ * ONE — the higher-severity instance — and record the OTHER reporting lenses on the
+ * survivor's `corroboratedBy` so the cross-lens agreement signal survives the merge
+ * instead of being silently dropped. The grouping key is lens-INDEPENDENT
+ * (`normalized-file | normalized-title`): the per-finding `fingerprint` is lens-scoped
+ * (`lens | file | title`), so keying on it would keep two lenses' readings of one issue
+ * as separate findings and there would be nothing to corroborate. Order-stable on first
+ * appearance; on a severity tie the first-seen finding wins (lens fan-out order is
+ * deterministic). The survivor RETAINS its own lens-scoped `fingerprint`, which is what
+ * the Rust store keys dismissed/converted-history on — so history still matches a real
+ * fingerprint; only genuine cross-lens duplicates now collapse.
  */
 export function dedupePrReviewFindings(
   findings: ReviewFinding[],
 ): ReviewFinding[] {
   const byKey = new Map<string, ReviewFinding>();
+  // Every lens that reported an issue under a key, so the survivor can list its
+  // corroborators (the reporting lenses beyond its own).
+  const lensesByKey = new Map<string, Set<ReviewLens>>();
   const order: string[] = [];
   for (const finding of findings) {
-    const key = finding.fingerprint;
+    const key = `${normalizeFile(finding.file)}|${normalizeTitle(finding.title)}`;
+    const lenses = lensesByKey.get(key) ?? new Set<ReviewLens>();
+    lenses.add(finding.lens);
+    lensesByKey.set(key, lenses);
     const existing = byKey.get(key);
     if (existing === undefined) {
       byKey.set(key, finding);
@@ -180,5 +190,13 @@ export function dedupePrReviewFindings(
         : existing;
     byKey.set(key, winner);
   }
-  return order.map((key) => byKey.get(key) as ReviewFinding);
+  return order.map((key) => {
+    const winner = byKey.get(key) as ReviewFinding;
+    const corroborators = [...(lensesByKey.get(key) as Set<ReviewLens>)]
+      .filter((lens) => lens !== winner.lens)
+      .sort();
+    return corroborators.length > 0
+      ? { ...winner, corroboratedBy: corroborators }
+      : winner;
+  });
 }

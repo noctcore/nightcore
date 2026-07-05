@@ -330,8 +330,10 @@ const STRUCT_NAMES: Record<string, string> = {
   'allowTools|askTools|denyBashPatterns|denyReadPaths|disallowedTools|protectedPaths':
     'HarnessPolicy',
   // PR Review: one grounded review finding over the PR diff (severity reuses the
-  // Insight `FindingSeverity` enum; lens is `ReviewLens`).
-  'body|file|fingerprint|id|lens|line|severity|suggestedFix|title': 'ReviewFinding',
+  // Insight `FindingSeverity` enum; lens is `ReviewLens`). `corroboratedBy` is the
+  // optional cross-lens corroboration set (other lenses that found the same issue).
+  'body|corroboratedBy|file|fingerprint|id|lens|line|severity|suggestedFix|title':
+    'ReviewFinding',
   // Structured error taxonomy carried alongside a `session-failed`'s `message`
   // (the auto-loop + breaker branch on `category`).
   'category|message|retriable': 'ErrorDetail',
@@ -383,6 +385,8 @@ const ENUM_NAMES: Record<string, string> = {
   // (`info|low|medium|high|critical`) reuses `FindingSeverity` above — an identical
   // value-set collapses to one generated Rust enum, so only the lens is new here.
   'security|logic|structure|tests|contracts': 'ReviewLens',
+  // The overall merge recommendation the synthesis pass emits on `pr-review-completed`.
+  'ready|merge_with_changes|needs_revision|blocked': 'MergeVerdict',
 };
 
 function registerInlineEnum(
