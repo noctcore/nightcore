@@ -253,6 +253,8 @@ export function AppShell() {
                   worktrees={board.worktrees}
                   activeWorktree={board.activeWorktree}
                   onSelectWorktree={board.setActiveWorktree}
+                  onRemoveWorktree={board.handleRemoveWorktree}
+                  onRefreshWorktrees={board.handleRefreshWorktrees}
                   concurrency={autoLoop.concurrency}
                   autoMode={autoLoop.autoMode}
                   autoCommitOnVerified={settings.settings?.autoCommitOnVerified ?? false}
@@ -315,7 +317,11 @@ export function AppShell() {
 
         {view === 'worktrees' && (
           <Suspense fallback={<RouteFallback />}>
-            <WorktreeView worktrees={board.worktrees} tasks={tasks} />
+            <WorktreeView
+              worktrees={board.worktrees}
+              tasks={tasks}
+              onRefresh={board.handleRefreshWorktrees}
+            />
           </Suspense>
         )}
 

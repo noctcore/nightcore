@@ -2,7 +2,7 @@
 import type { BoardAppearance, Task, WorktreeInfo } from '@/lib/bridge';
 
 import type { PickedBackgroundImage } from '../BoardBackgroundPanel';
-import type { ActiveWorktree } from '../WorktreeSwitcher';
+import type { ActiveWorktree, WorktreeTab } from '../WorktreeSwitcher';
 
 /** A tripped circuit breaker: the autonomous loop paused after consecutive
  *  failures. Drives the board's dismissable Resume banner. */
@@ -39,6 +39,10 @@ export interface BoardProps {
   activeWorktree: ActiveWorktree;
   /** Select a worktree tab (sets the active worktree + filters the board). */
   onSelectWorktree: (active: ActiveWorktree) => void;
+  /** Remove a worktree tab (discard its checkout + branch from the switcher). */
+  onRemoveWorktree: (tab: WorktreeTab) => void;
+  /** Reconcile + re-read board/worktree state on demand (header Refresh control). */
+  onRefreshWorktrees: () => void;
   /** Live max-concurrency (from `nc:loop`, falling back to persisted settings). */
   concurrency: number;
   /** Whether the autonomous loop is running (reflects `nc:loop`, not local state). */

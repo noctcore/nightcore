@@ -14,6 +14,7 @@ const meta = {
     worktrees: WORKTREES,
     active: null,
     onSelect: fn(),
+    onRemoveWorktree: fn(),
   },
   decorators: [
     (Story) => (
@@ -55,5 +56,17 @@ export const SelectsMain: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole('tab', { name: /^main/i }));
     await expect(args.onSelect).toHaveBeenCalledWith(null);
+  },
+};
+
+/** Play test: the per-tab actions menu's "Remove worktree" item reports the tab. */
+export const RemovesWorktree: Story = {
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: /worktree actions for nc\/api-client/i }));
+    await userEvent.click(canvas.getByRole('menuitem', { name: /remove worktree/i }));
+    await expect(args.onRemoveWorktree).toHaveBeenCalledWith(
+      expect.objectContaining({ branch: 'nc/api-client', taskIds: expect.arrayContaining(['t-running']) }),
+    );
   },
 };

@@ -23,6 +23,8 @@ const meta = {
     worktrees: [],
     activeWorktree: null,
     onSelectWorktree: fn(),
+    onRemoveWorktree: fn(),
+    onRefreshWorktrees: fn(),
     concurrency: 3,
     autoMode: false,
     autoCommitOnVerified: false,

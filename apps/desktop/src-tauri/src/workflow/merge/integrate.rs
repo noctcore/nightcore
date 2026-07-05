@@ -158,6 +158,13 @@ fn merge_task_blocking(app: &AppHandle, id: &str) -> Result<(), String> {
             let updated = store.mutate(id, |t| {
                 t.merged = true;
                 t.conflict = false;
+                // Cleanup deleted the worktree + branch, so the `branch` chip is now
+                // stale — clear it so the merged task's worktree tab drops instead of
+                // lingering as a ghost. Left intact when cleanup is off (the worktree
+                // + branch persist for inspection).
+                if cleanup {
+                    t.branch = None;
+                }
             })?;
             let _ = app.emit(TASK_EVENT, &updated);
             Ok(())

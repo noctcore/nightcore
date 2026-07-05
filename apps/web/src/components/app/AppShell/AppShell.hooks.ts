@@ -7,6 +7,7 @@ import {
   type PickedBackgroundImage,
   type TaskDetailActions,
   type TaskTranscript,
+  type WorktreeTab,
 } from '@/components/board';
 import { useToast } from '@/components/ui';
 import {
@@ -21,6 +22,7 @@ import {
   createTask,
   type CreateTaskOptions,
   deleteTask,
+  discardWorktree,
   type GauntletResult,
   isTauri,
   mergeTask,
@@ -92,6 +94,14 @@ export type BoardController = ReturnType<typeof useBoard> & {
   activeWorktree: ActiveWorktree;
   /** Select a worktree tab (sets the active worktree + filters the board). */
   setActiveWorktree: (active: ActiveWorktree) => void;
+  /** Remove a worktree tab from the board: discard its task's checkout + branch
+   *  (running-guarded backend), reset the selection to Main if it was active, and
+   *  let the `nc:task` echo drop the tab. Tolerant of an already-gone dir. */
+  handleRemoveWorktree: (tab: WorktreeTab) => void;
+  /** Explicit "Refresh": reconcile worktrees server-side (prune orphans, clear
+   *  ghost pointers, reclaim merged) AND re-pull tasks, recovering from stale
+   *  board/worktree state without an app restart. */
+  handleRefreshWorktrees: () => void;
   handleCreate: (
     title: string,
     description: string,
@@ -538,6 +548,49 @@ export function useAppShell(): AppShellState {
     [action, toast],
   );
 
+  // Remove a worktree straight from its switcher tab: discard the checkout + branch
+  // for every task the tab groups (v1 is one-per-branch). The backend refuses a
+  // running task and clears `task.branch` on success, so the `nc:task` echo drops
+  // the tab; we only need to bounce the selection off a tab that's about to vanish.
+  const handleRemoveWorktree = useCallback(
+    (tab: WorktreeTab) => {
+      if (tab.branch === null) return; // the Main tab is not removable
+      if (tab.taskIds.length === 0) {
+        toast.error('Could not remove worktree', 'No task is linked to this worktree.');
+        return;
+      }
+      if (worktrees.active === tab.branch) worktrees.setActive(null);
+      void Promise.allSettled(tab.taskIds.map((id) => discardWorktree(id))).then((results) => {
+        const failed = results.find((r) => r.status === 'rejected');
+        if (failed !== undefined) {
+          const err = (failed as PromiseRejectedResult).reason;
+          console.error('discard_worktree failed', err);
+          toast.error('Could not remove worktree', err);
+          return;
+        }
+        toast.push({ tone: 'success', title: 'Worktree removed' });
+      });
+    },
+    // `active` is a value (re-identify when it changes); `setActive` is a stable
+    // setter — so this handler stays stable except on a tab-selection change.
+    [worktrees.active, worktrees.setActive, toast],
+  );
+
+  // The explicit board/Worktrees "Refresh": reconcile worktrees server-side AND
+  // re-pull tasks, so any stale state (a merged/removed worktree's ghost tab)
+  // resolves without an app restart. Depends only on the two stable callbacks so
+  // it doesn't re-identify each render and defeat `memo(Board)`.
+  const handleRefreshWorktrees = useCallback(() => {
+    board.reseed();
+    void worktrees.reconcile().then(
+      () => toast.push({ tone: 'success', title: 'Worktrees refreshed' }),
+      (err) => {
+        console.error('refresh_worktrees failed', err);
+        toast.error('Could not refresh worktrees', err);
+      },
+    );
+  }, [board.reseed, worktrees.reconcile, toast]);
+
   // Not-yet-run field edits collapse into one factory: each optimistically
   // patches the field, persists via `update_task`, and ROLLS BACK to the prior
   // value on failure (mirroring handleMoveTask) so a rejected edit can't leave the
@@ -783,6 +836,8 @@ export function useAppShell(): AppShellState {
       worktrees: worktrees.worktrees,
       activeWorktree: worktrees.active,
       setActiveWorktree: worktrees.setActive,
+      handleRemoveWorktree,
+      handleRefreshWorktrees,
       handleCreate,
       handleRun,
       handleCancel,

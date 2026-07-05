@@ -719,6 +719,74 @@ fn fetch_base_and_merge_ff_only_reject_dash_refs() {
 }
 
 #[test]
+fn is_branch_merged_reflects_ancestry() {
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    let base = base_branch(&repo);
+
+    // A branch sitting at base's tip is trivially merged (ancestor of base).
+    assert!(run_in(&repo, &["branch", "merged-at-base"]));
+    assert!(
+        is_branch_merged(&repo, "merged-at-base", &base),
+        "a branch at base's tip is fully merged"
+    );
+
+    // A branch carrying its own commit is NOT yet merged…
+    assert!(run_in(&repo, &["checkout", "-q", "-b", "ahead-branch"]));
+    std::fs::write(repo.join("feature.txt"), "x").expect("write feature");
+    assert!(run_in(&repo, &["add", "."]));
+    assert!(run_in(&repo, &["commit", "-q", "-m", "feature"]));
+    assert!(run_in(&repo, &["checkout", "-q", &base]));
+    assert!(
+        !is_branch_merged(&repo, "ahead-branch", &base),
+        "an ahead branch is not merged until it lands in base"
+    );
+
+    // …until it lands in base.
+    assert!(run_in(&repo, &["merge", "-q", "--no-edit", "ahead-branch"]));
+    assert!(
+        is_branch_merged(&repo, "ahead-branch", &base),
+        "once merged into base it reads as merged"
+    );
+
+    // A bogus / option-shaped / missing ref is never "merged" (conservative).
+    assert!(!is_branch_merged(&repo, "--all", &base));
+    assert!(!is_branch_merged(&repo, "does-not-exist", &base));
+    assert!(!is_branch_merged(&repo, "ahead-branch", ""));
+}
+
+#[test]
+fn remove_after_manual_dir_deletion_frees_the_branch() {
+    // Today's manual-removal case: a worktree dir deleted out-of-band (`rm -rf`)
+    // leaves git admin refs that keep its branch "checked out" — so a later branch
+    // delete would fail and strand the branch (and its board tab). `remove` must
+    // tolerate the missing dir AND prune the admin refs so the branch deletes.
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    let dir = allocate(&repo, "gone-task").expect("allocate");
+    let branch = branch_name("gone-task");
+    assert!(
+        run_in(&repo, &["rev-parse", "--verify", "--quiet", &branch]),
+        "the worktree branch exists after allocate"
+    );
+
+    // Simulate the manual `rm -rf` of the checkout (git admin refs remain).
+    std::fs::remove_dir_all(&dir).expect("manual rm of the worktree dir");
+    assert!(!dir.exists());
+
+    // `remove` tolerates the gone dir (idempotent) and prunes the stale admin refs…
+    remove(&repo, "gone-task").expect("remove tolerates an already-gone dir");
+    // …so the branch is no longer treated as checked out and deletes cleanly.
+    delete_branch_named(&repo, &branch).expect("branch deletes after the prune");
+    assert!(
+        !run_in(&repo, &["rev-parse", "--verify", "--quiet", &branch]),
+        "the stranded branch is gone after discard"
+    );
+}
+
+#[test]
 fn base_diff_reports_committed_changes_and_rejects_dash_base() {
     let Some((_tmp, repo)) = temp_repo() else {
         return;

@@ -38,6 +38,30 @@ test('selecting a worktree tab reports its branch', async () => {
   expect(onSelect).toHaveBeenCalledWith('nc/auth-guard');
 });
 
+test('the per-tab actions menu fires onRemoveWorktree with the tab', async () => {
+  const onRemoveWorktree = vi.fn();
+  const screen = render(<MainSelected onRemoveWorktree={onRemoveWorktree} />);
+  await screen
+    .getByRole('button', { name: /worktree actions for nc\/api-client/i })
+    .click();
+  await screen.getByRole('menuitem', { name: /remove worktree/i }).click();
+  expect(onRemoveWorktree).toHaveBeenCalledWith(
+    expect.objectContaining({ branch: 'nc/api-client' }),
+  );
+});
+
+test('the Main tab has no actions menu (not removable)', async () => {
+  const screen = render(<MainSelected />);
+  // The kebab exists for worktree tabs…
+  await expect
+    .element(screen.getByRole('button', { name: /worktree actions for nc\/api-client/i }))
+    .toBeInTheDocument();
+  // …but never for Main.
+  expect(
+    screen.container.querySelector('[aria-label="Worktree actions for Main"]'),
+  ).toBeNull();
+});
+
 test('filterTasksByWorktree: Main keeps run-mode-main tasks', () => {
   const tasks = [MAIN_MODE_TASK, TASKS_BY_STATUS.in_progress];
   expect(filterTasksByWorktree(tasks, null)).toEqual([MAIN_MODE_TASK]);
@@ -60,6 +84,16 @@ test('useWorktreeTabs: a branchless worktree task lands on Main with the right c
   expect(main?.taskCount).toBe(2);
   // A pending task with no branch spawns no phantom worktree tab.
   expect(result.current.filter((tab) => tab.branch !== null)).toEqual([]);
+});
+
+test('useWorktreeTabs: a worktree tab carries its task ids (Main carries none)', () => {
+  const tasks = [MAIN_MODE_TASK, TASKS_BY_STATUS.in_progress];
+  const { result } = renderHook(() => useWorktreeTabs(tasks, WORKTREES));
+  const api = result.current.find((t) => t.branch === 'nc/api-client');
+  // The tab exposes the discard targets for its "Remove worktree" action.
+  expect(api?.taskIds).toContain('t-running');
+  const main = result.current.find((t) => t.branch === null);
+  expect(main?.taskIds).toEqual([]);
 });
 
 test('useWorktreeTabs: a task branch with no live worktree dir still gets a tab', () => {

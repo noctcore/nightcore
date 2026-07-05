@@ -124,9 +124,12 @@ fn worktree_diff_blocking(app: &AppHandle, id: &str) -> Result<WorktreeDiff, Str
 
 /// Discard a task's worktree and its branch — a safe cleanup distinct from deleting
 /// the task. Removes the worktree dir (robustly), then deletes its branch (guarded
-/// so the base branch can never be deleted), and clears any conflict/error flag.
-/// Refuses while the task is actively running. Idempotent + best-effort; emits
-/// `nc:task`.
+/// so the base branch can never be deleted), clears any conflict/error flag, and
+/// clears the task's `branch` pointer so its board/worktree tab drops (the task
+/// itself stays, falling back to the Main tab). Refuses while the task is actively
+/// running. Idempotent + tolerant: when the worktree dir is ALREADY gone from disk
+/// (a manual `rm`), `remove` prunes git's stale admin refs so the branch still
+/// deletes cleanly rather than erroring. Best-effort; emits `nc:task`.
 #[tauri::command]
 pub async fn discard_worktree(app: AppHandle, id: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || discard_worktree_blocking(&app, &id))
@@ -156,6 +159,9 @@ fn discard_worktree_blocking(app: &AppHandle, id: &str) -> Result<(), String> {
     worktree::remove(&project, id)?;
     let _ = worktree::delete_branch_named(&project, &task_branch(&task));
     let updated = store.mutate(id, |t| {
+        // Clear the branch pointer so the switcher's synthesized tab drops (the
+        // task returns to the Main tab); the task record itself is preserved.
+        t.branch = None;
         t.conflict = false;
         t.error = None;
     })?;

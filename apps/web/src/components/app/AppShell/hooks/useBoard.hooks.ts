@@ -29,21 +29,24 @@ export function useBoard(toast: ToastApi) {
   // monotonic generation drops out-of-order responses: switching project A→B fires
   // two `listTasks()` calls, and if A's resolves last it would otherwise show A's
   // tasks under B. Only the newest reseed (and a still-mounted view) may apply.
+  // Lifted to a stable callback (not effect-local) so the explicit board Refresh
+  // can re-pull tasks on demand through the same guard.
   const reseedGen = useRef(0);
+  const aliveRef = useRef(true);
+  const reseed = useCallback(() => {
+    const myGen = ++reseedGen.current;
+    void listTasks()
+      .then((seed) => {
+        if (aliveRef.current && myGen === reseedGen.current) setTasks(seed);
+      })
+      .catch((err) => {
+        if (!aliveRef.current || myGen !== reseedGen.current) return;
+        console.error('list_tasks failed', err);
+        toast.error('Could not load tasks', err);
+      });
+  }, [toast]);
   useEffect(() => {
-    let alive = true;
-    const reseed = () => {
-      const myGen = ++reseedGen.current;
-      void listTasks()
-        .then((seed) => {
-          if (alive && myGen === reseedGen.current) setTasks(seed);
-        })
-        .catch((err) => {
-          if (!alive || myGen !== reseedGen.current) return;
-          console.error('list_tasks failed', err);
-          toast.error('Could not load tasks', err);
-        });
-    };
+    aliveRef.current = true;
     reseed();
     const unlisten = onProjectEvent(({ type }) => {
       if (type === 'activated' || type === 'deleted') {
@@ -53,10 +56,10 @@ export function useBoard(toast: ToastApi) {
       }
     });
     return () => {
-      alive = false;
+      aliveRef.current = false;
       void unlisten.then((fn) => fn());
     };
-  }, []);
+  }, [reseed]);
 
   useEffect(() => {
     const unlisten = onTaskEvent((task) => {
@@ -158,5 +161,5 @@ export function useBoard(toast: ToastApi) {
     };
   }, [selectedId, toast]);
 
-  return { tasks, setTasks, streams, setStreams, selectedId, setSelectedId };
+  return { tasks, setTasks, streams, setStreams, selectedId, setSelectedId, reseed };
 }

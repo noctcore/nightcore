@@ -490,6 +490,16 @@ export async function listWorktrees(): Promise<WorktreeInfo[]> {
   return tauriInvoke<WorktreeInfo[]>('list_worktrees', {}, []);
 }
 
+/** Explicitly reconcile + re-read the active project's worktrees (the board /
+ *  Worktrees "Refresh" control). Server-side this prunes orphaned worktrees, clears
+ *  ghost branch pointers, and reclaims fully-merged clean worktrees — recovering
+ *  from any stale state without an app restart — then returns the fresh statuses.
+ *  Emits `nc:task` per reconciled task so the board re-renders. Returns `[]` outside
+ *  Tauri (browser preview). */
+export async function refreshWorktrees(): Promise<WorktreeInfo[]> {
+  return tauriInvoke<WorktreeInfo[]>('refresh_worktrees', {}, []);
+}
+
 /** The active project's branches (local + remote-tracking) for the branch picker:
  *  name, remote flag, current flag, upstream, ahead/behind. Returns `[]` outside
  *  Tauri (browser preview) so the picker degrades to free-form entry. */
