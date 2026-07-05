@@ -211,6 +211,20 @@ pub fn run() {
             sidecar::restore_review_finding,
             sidecar::convert_review_finding_to_task,
             sidecar::delete_pr_review_run,
+            // Issue Triage (GitHub issue intake + validation). Read seams, the
+            // read-only validation start/cancel, the store lifecycle, and the two
+            // human-gated actions (post comment / convert to task).
+            sidecar::list_project_issues,
+            sidecar::fetch_project_issue_detail,
+            sidecar::start_issue_validation,
+            sidecar::cancel_issue_validation,
+            sidecar::list_issue_validations,
+            sidecar::get_issue_validation,
+            sidecar::delete_issue_validation,
+            sidecar::mark_issue_validation_viewed,
+            sidecar::preview_issue_comment,
+            sidecar::post_issue_validation_comment,
+            sidecar::convert_issue_validation_to_task,
             workflow::pr_review_post::post_review_to_github,
             workflow::pr_list::list_open_prs,
             workflow::pr_changed_files::pr_changed_files,
