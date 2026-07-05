@@ -22,6 +22,11 @@ export interface ReviewFindingView {
   body: string;
   suggestedFix: string | null;
   fingerprint: string;
+  /** Review lenses OTHER than `lens` that independently surfaced this same issue
+   *  (the cross-lens dedup populates it). Always an array — empty when only the
+   *  reporting lens found it. Drives the corroboration chip on the finding card
+   *  and the fuller "also surfaced by…" line in the detail panel. */
+  corroboratedBy: ReviewLens[];
   status: FindingStatus;
   linkedTaskId: string | null;
 }

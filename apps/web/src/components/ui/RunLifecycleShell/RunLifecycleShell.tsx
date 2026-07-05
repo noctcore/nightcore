@@ -52,10 +52,16 @@ export function RunLifecycleShell({
         </div>
       )}
 
+      {/* The body is itself a flex column so a screen root declaring
+          `min-h-0 flex-1` (the configure/results screens of every consumer)
+          actually receives a constrained height — without `flex` here those
+          declarations are inert, the screen grows past the viewport, and its
+          inner `overflow-y-auto` panes never engage (the unscrollable-PR-view
+          dogfood bug). `h-full` screen roots (Harness) resolve either way. */}
       <div
         ref={bodyRef}
         tabIndex={-1}
-        className="min-h-0 flex-1 outline-none transition-opacity duration-150 ease-out"
+        className="flex min-h-0 flex-1 flex-col outline-none transition-opacity duration-150 ease-out"
         style={{ opacity }}
       >
         {children}

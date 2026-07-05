@@ -15,6 +15,7 @@ function finding(over: Partial<ReviewFindingView> = {}): ReviewFindingView {
     body: 'The handler kicks off an async write without awaiting it, so a rejected write is swallowed and the user never sees the failure.',
     suggestedFix: 'await save();',
     fingerprint: 'fp1',
+    corroboratedBy: [],
     status: 'open',
     linkedTaskId: null,
     ...over,
@@ -47,4 +48,10 @@ export const Converted: Story = {
 
 export const Dismissed: Story = {
   args: { finding: finding({ status: 'dismissed' }) },
+};
+
+/** Other lenses independently surfaced the same issue — the fuller "also
+ *  surfaced by…" line renders under the body. */
+export const Corroborated: Story = {
+  args: { finding: finding({ corroboratedBy: ['security', 'tests'] }) },
 };

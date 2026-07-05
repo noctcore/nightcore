@@ -195,6 +195,14 @@ describe('normalizers', () => {
     expect(f.suggestedFix).toBeNull();
   });
 
+  it('wireToFinding carries corroboratedBy through, defaulting absent to []', () => {
+    expect(wireToFinding(wireFinding()).corroboratedBy).toEqual([]);
+    expect(
+      wireToFinding(wireFinding({ corroboratedBy: ['security', 'tests'] }))
+        .corroboratedBy,
+    ).toEqual(['security', 'tests']);
+  });
+
   it('storedToFinding narrows the persisted string fields to unions', () => {
     const stored: StoredReviewFinding = {
       id: 'f1',
@@ -206,12 +214,33 @@ describe('normalizers', () => {
       body: 'b',
       suggestedFix: null,
       fingerprint: 'fp',
+      corroboratedBy: null,
       status: 'dismissed',
       linkedTaskId: null,
     };
     const f = storedToFinding(stored);
     expect(f.lens).toBe('security');
     expect(f.status).toBe('dismissed');
+    // A null corroboratedBy coerces to [] (older engine / uncorroborated).
+    expect(f.corroboratedBy).toEqual([]);
+  });
+
+  it('storedToFinding narrows the corroboratedBy wire strings to the lens union', () => {
+    const stored: StoredReviewFinding = {
+      id: 'f1',
+      lens: 'security',
+      severity: 'high',
+      file: 'src/a.ts',
+      line: null,
+      title: 't',
+      body: 'b',
+      suggestedFix: null,
+      fingerprint: 'fp',
+      corroboratedBy: ['logic', 'tests'],
+      status: 'open',
+      linkedTaskId: null,
+    };
+    expect(storedToFinding(stored).corroboratedBy).toEqual(['logic', 'tests']);
   });
 
   it('streamFromRun projects a completed persisted run into the stream shape', () => {
@@ -229,6 +258,11 @@ describe('normalizers', () => {
       usage: { inputTokens: 10, outputTokens: 5 },
       findings: [],
       error: null,
+      verdict: null,
+      verdictReasoning: null,
+      headSha: null,
+      postedVerdict: null,
+      postedAt: null,
     };
     const s = streamFromRun(run);
     expect(s.status).toBe('completed');

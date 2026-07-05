@@ -91,6 +91,19 @@ fn finalize_merged_pr_blocking(app: &AppHandle, id: &str) -> Result<(), String> 
         .try_state::<crate::orchestration::coordinator::Orchestrator>()
         .ok_or_else(|| "orchestrator unavailable".to_string())?;
     refuse_finalize_under_live_session(orch.slots.is_leased(id), task.status)?;
+    // Fix-arc cross-guard: the live-session probe above only sees the TASK's own
+    // sessions (slot/status) — a PR-fix session reusing this task's worktree
+    // holds no slot, so it needs its own refusal. The cleanup below would
+    // force-delete the worktree out from under it.
+    let fix_registry = app
+        .try_state::<crate::workflow::pr_fix::PrFixRegistry>()
+        .ok_or_else(|| "pr-fix registry unavailable".to_string())?;
+    crate::workflow::pr_fix::refuse_while_fix_running(
+        &fix_registry,
+        task.pr_number,
+        id,
+        "finalizing",
+    )?;
     let project = require_project(app)?;
     let project_path = PathBuf::from(&project.path);
     let cleanup = app

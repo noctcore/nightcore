@@ -17,6 +17,14 @@ file: string,
  */
 line: number | null, title: string, body: string, suggestedFix: string | null, fingerprint: string, 
 /**
+ * Review lenses OTHER than `lens` that independently surfaced this same issue —
+ * carried through from the wire finding's `corroboratedBy` (the cross-lens dedup
+ * populates it) so the corroborating signal survives persistence. Wire strings
+ * (the web casts them), like `lens`/`severity`. Additive + optional: absent when
+ * only the reporting lens found it, or from an older engine that never emits it.
+ */
+corroboratedBy: Array<string> | null, 
+/**
  * Lifecycle: `open` | `dismissed` | `converted`.
  */
 status: string, 

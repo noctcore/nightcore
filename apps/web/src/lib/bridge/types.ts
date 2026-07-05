@@ -32,6 +32,8 @@ export type { McpServerTransport } from '../generated/McpServerTransport';
 export type { MergePreview } from '../generated/MergePreview';
 export type { MergePreviewStatus } from '../generated/MergePreviewStatus';
 export type { PrComment } from '../generated/PrComment';
+export type { PrCommentTriage } from '../generated/PrCommentTriage';
+export type { PrCommentTriageClass } from '../generated/PrCommentTriageClass';
 export type { PrDraft } from '../generated/PrDraft';
 export type { Project } from '../generated/Project';
 export type { ProviderConfigSection } from '../generated/ProviderConfigSection';
@@ -130,6 +132,12 @@ export type { ReviewFinding, ReviewLens, ReviewSeverity } from '@nightcore/contr
 // Open-PR summaries + labels for the PR Review config picker (ts-rs from `workflow/pr_list.rs`).
 export type { PrLabel } from '../generated/PrLabel';
 export type { PrSummary } from '../generated/PrSummary';
+// One changed file (path + line deltas) for the workspace's changed-file expander
+// (ts-rs from `workflow/pr_changed_files.rs`).
+export type { PrChangedFile } from '../generated/PrChangedFile';
+// Address-review-findings fix snapshots (ts-rs from `workflow/pr_fix/state.rs`):
+// the full state emitted on every `nc:pr-fix` change and listed by `list_pr_fixes`.
+export type { PrFixState } from '../generated/PrFixState';
 
 /** The kind preset a task runs under and the four UI permission modes are
  *  generated FROM the Rust enums (`TaskKind` / `PermissionMode` in

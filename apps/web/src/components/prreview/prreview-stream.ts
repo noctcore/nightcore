@@ -94,6 +94,8 @@ export function wireToFinding(f: ReviewFinding): ReviewFindingView {
     body: f.body,
     suggestedFix: f.suggestedFix ?? null,
     fingerprint: f.fingerprint,
+    // Absent when only the reporting lens found it (or an older engine) → [].
+    corroboratedBy: f.corroboratedBy ?? [],
     status: 'open',
     linkedTaskId: null,
   };
@@ -112,6 +114,8 @@ export function storedToFinding(f: StoredReviewFinding): ReviewFindingView {
     body: f.body,
     suggestedFix: f.suggestedFix,
     fingerprint: f.fingerprint,
+    // Persisted as wire strings (like `lens`); null when uncorroborated → [].
+    corroboratedBy: (f.corroboratedBy as ReviewLens[] | null) ?? [],
     status: f.status as FindingStatus,
     linkedTaskId: f.linkedTaskId,
   };

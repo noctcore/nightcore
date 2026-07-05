@@ -681,4 +681,49 @@ mod tests {
             "newest run kept"
         );
     }
+
+    #[test]
+    fn prune_never_evicts_a_running_run() {
+        // Under per-PR (not per-store) single-flight, several `running` runs can
+        // coexist; evicting one mid-flight would strand its live scan (terminal
+        // events land on a run the store no longer knows). The OLDEST run being
+        // `running` must survive the prune — a settled sibling ages out instead.
+        let (store, _tmp) = store();
+        let mut live = run("live", vec![]);
+        live.status = "running".into();
+        live.created_at = 0; // the oldest by age — the old prune's first victim
+        store.upsert(&live).unwrap();
+        for i in 1..=(MAX_RUNS + 5) {
+            let mut r = run(&format!("r{i}"), vec![]);
+            r.created_at = i as u64;
+            store.upsert(&r).unwrap();
+        }
+        assert_eq!(
+            store.get("live").expect("the running run survived").status,
+            "running"
+        );
+        assert_eq!(store.list().len(), MAX_RUNS, "the cap still holds");
+        assert!(
+            store.get("r1").is_none(),
+            "the oldest SETTLED run was pruned instead"
+        );
+    }
+
+    #[test]
+    fn prune_evicts_nothing_when_every_run_is_running() {
+        // The absurd all-running case: liveness beats the cap — prune none
+        // rather than kill a live scan.
+        let (store, _tmp) = store();
+        for i in 0..(MAX_RUNS + 2) {
+            let mut r = run(&format!("r{i}"), vec![]);
+            r.status = "running".into();
+            r.created_at = i as u64;
+            store.upsert(&r).unwrap();
+        }
+        assert_eq!(
+            store.list().len(),
+            MAX_RUNS + 2,
+            "no running run was evicted"
+        );
+    }
 }

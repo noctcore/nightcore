@@ -1,37 +1,31 @@
-/** Top-level PR Review component: renders the CONFIGURE / RUNNING / RESULTS
- *  lifecycle, the finding detail panel, and the human-gated post-review toolbar +
- *  ConfirmDialog from the `usePrReviewView` model. */
+/** Top-level PR Review surface: a PERMANENT two-panel workspace — the project's
+ *  open PRs on the left (with live per-PR run badges), the selected PR's
+ *  workspace (header / status / description / registry-driven review section)
+ *  on the right — plus the finding detail panel and the human-gated post-review
+ *  ConfirmDialog from the `usePrReviewView` model. Selecting a PR never cancels
+ *  anything: every run keeps streaming in the run registry. */
 import {
   Button,
   ConfirmDialog,
   EmptyState,
   FolderIcon,
   GithubIcon,
-  HistoryIcon,
-  Menu,
-  MoveIcon,
   RetryIcon,
-  RunLifecycleShell,
-  RunProgress,
-  StopIcon,
+  Spinner,
 } from '@/components/ui';
 
 import { FindingDetailPanel } from '../FindingDetailPanel';
+import { PrPicker } from '../PrPicker';
 import { VERDICT_META } from '../prreview.constants';
-import type { ReviewVerdict } from '../prreview.types';
-import { ReviewFindings } from '../ReviewFindings';
-import { RunControls } from '../RunControls';
+import { useResizablePanelWidth } from '../prreview-resize.hooks';
+import { PrWorkspace } from '../PrWorkspace';
 import { usePrReviewView } from './PrReviewView.hooks';
 import type { PrReviewViewProps } from './PrReviewView.types';
 
-/** The three post-review verdict buttons, in display order. */
-const VERDICTS: ReviewVerdict[] = ['approve', 'request-changes', 'comment'];
-
-/** The PR Review surface as a three-screen lifecycle (CONFIGURE / RUNNING /
- *  RESULTS) wrapped in the shared `RunLifecycleShell`, driven by `stream.status`
- *  plus an explicit "New run" reconfigure override. */
 export function PrReviewView(props: PrReviewViewProps) {
   const view = usePrReviewView(props);
+  // The persisted, keyboard-accessible split between the list rail and the panel.
+  const panel = useResizablePanelWidth();
 
   if (!view.hasProject) {
     return (
@@ -43,182 +37,87 @@ export function PrReviewView(props: PrReviewViewProps) {
     );
   }
 
-  const title = (
-    <span className="flex items-center gap-2">
-      <GithubIcon size={16} />
-      PR Review
-    </span>
-  );
-
-  const actions = (
-    <>
-      {view.hasHistory && (
-        <Menu
-          label="Run history"
-          items={view.runHistory}
-          align="right"
-          trigger={
-            <Button variant="ghost">
-              <HistoryIcon size={14} />
-              History
-            </Button>
-          }
-        />
-      )}
-      {view.phase === 'results' && (
-        <Button variant="ghost" onClick={view.startNewRun}>
-          <RetryIcon size={14} />
-          New run
-        </Button>
-      )}
-    </>
-  );
-
-  const summary =
-    view.stream.status === 'running' ? (
-      <span>{view.summary}</span>
-    ) : (
-      <button
-        type="button"
-        onClick={view.startNewRun}
-        className="transition-colors hover:text-foreground"
-      >
-        {view.summary}
-        <span className="sr-only"> — reconfigure run</span>
-      </button>
-    );
-
   const verdictMeta = view.postVerdict !== null ? VERDICT_META[view.postVerdict] : null;
 
   return (
     <>
-      <RunLifecycleShell
-        title={title}
-        subtitle={view.projectName ?? 'Pull-request review'}
-        phase={view.phase}
-        summary={summary}
-        actions={actions}
-      >
-        {view.phase === 'configure' && (
-          <div className="flex min-h-0 flex-1 flex-col">
-            {view.startError !== null && (
-              <p className="border-b border-destructive/40 bg-destructive/[0.1] px-6 py-2 text-[12.5px] text-destructive">
-                {view.startError}
-              </p>
-            )}
-            <RunControls
-              config={view.config}
-              isStarting={view.isStarting}
-              onReview={view.onReview}
-            />
+      <div className="flex h-full min-h-0 flex-col">
+        {/* Header bar: title + project + the Refresh-PRs action. */}
+        <header className="flex items-center justify-between gap-4 border-b border-border px-6 py-3">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <h2 className="flex items-center gap-2 truncate text-sm font-semibold text-foreground">
+              <GithubIcon size={16} />
+              PR Review
+            </h2>
+            <span className="truncate text-[12px] text-muted-foreground">
+              {view.projectName ?? 'Pull-request review'}
+            </span>
           </div>
-        )}
+          <Button
+            variant="ghost"
+            onClick={view.refreshPrs}
+            disabled={view.prsLoading}
+            aria-busy={view.prsLoading}
+          >
+            {view.prsLoading ? <Spinner size={14} /> : <RetryIcon size={14} />}
+            Refresh PRs
+          </Button>
+        </header>
 
-        {view.phase === 'running' && (
-          <div className="flex min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto w-full max-w-[820px] px-6 py-7">
-              <RunProgress
-                status={view.stream.status}
-                categories={view.progressCategories}
-                categoryState={view.stream.lensState}
-                findingCounts={view.findingCounts}
-                unitLabel="lenses"
-                costUsd={view.stream.costUsd}
-                usage={view.stream.usage}
-                durationMs={view.stream.durationMs}
+        {/* The permanent two-panel body, split by a draggable persisted divider.
+            While dragging, the shell shows the resize cursor + suppresses text
+            selection so the drag reads clean. */}
+        <div
+          className={`flex min-h-0 flex-1 overflow-hidden ${
+            panel.dragging ? 'cursor-col-resize select-none' : ''
+          }`}
+        >
+          <aside
+            style={{ width: panel.width }}
+            className="flex min-h-0 shrink-0 flex-col overflow-hidden"
+          >
+            <PrPicker
+              prs={view.prs}
+              loading={view.prsLoading}
+              error={view.prsError}
+              value={view.selectedPr}
+              onChange={view.selectPr}
+              onRefresh={view.refreshPrs}
+              statuses={view.prRowStatuses}
+              findingCounts={view.prFindingCounts}
+              hasMore={view.prsHasMore}
+              onLoadMore={view.loadMorePrs}
+              loadingMore={view.prsLoadingMore}
+            />
+          </aside>
+          {/* Draggable / keyboard-accessible divider (double-click resets). */}
+          <div
+            {...panel.separatorProps}
+            className={`shrink-0 cursor-col-resize self-stretch transition-colors focus:outline-none focus-visible:bg-primary/60 ${
+              panel.dragging ? 'w-1 bg-primary/50' : 'w-px bg-border hover:w-1 hover:bg-primary/40'
+            }`}
+          />
+          <main className="min-h-0 flex-1 overflow-y-auto">
+            {view.selectedPr === null || view.review === null ? (
+              <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+                <GithubIcon size={44} className="text-muted-foreground/40" />
+                <p className="text-sm text-muted-foreground">
+                  Select a pull request to review
+                </p>
+              </div>
+            ) : (
+              <PrWorkspace
+                prNumber={view.selectedPr}
+                pr={view.selectedSummary}
+                onOpenExternal={view.onOpenExternal}
+                review={view.review}
+                lifecycle={view.lifecycle}
+                statusView={view.statusView}
               />
-              <div className="mt-5 flex justify-end">
-                <Button variant="danger" onClick={view.onCancel}>
-                  <StopIcon size={15} />
-                  Cancel review
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {view.phase === 'results' && (
-          <div className="flex min-h-0 flex-1 flex-col">
-            {view.stream.status === 'failed' &&
-              (view.stream.failureReason === 'aborted' ? (
-                <div className="px-6 pt-5">
-                  <div className="rounded-[10px] border border-border bg-white/[0.02] px-4 py-3 text-[12.5px] text-muted-foreground">
-                    Review cancelled. Any findings gathered before you stopped are
-                    shown below.
-                  </div>
-                </div>
-              ) : (
-                <div className="px-6 pt-5">
-                  <div className="rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-4 py-3 text-[12.5px] text-destructive">
-                    {view.stream.error ?? 'Review failed.'}
-                  </div>
-                </div>
-              ))}
-
-            {view.stream.status === 'completed' && (
-              <div className="flex flex-wrap items-center gap-3 border-b border-border px-6 py-3">
-                <Button
-                  aria-busy={view.bulkConverting}
-                  aria-disabled={view.openCount === 0 || view.bulkConverting}
-                  onClick={view.convertAll}
-                  variant="secondary"
-                  className={
-                    view.openCount === 0 || view.bulkConverting
-                      ? 'cursor-not-allowed opacity-40'
-                      : undefined
-                  }
-                >
-                  <MoveIcon size={15} />
-                  {view.bulkConverting
-                    ? `Converting… ${view.bulkProgress.done}/${view.bulkProgress.total}`
-                    : `Convert all to tasks (${view.openCount})`}
-                </Button>
-                {view.bulkError !== null && (
-                  <span className="text-[12px] text-destructive">
-                    {view.bulkError}
-                  </span>
-                )}
-
-                {/* Post-review toolbar: the three human-gated verdicts. Each opens
-                    the ConfirmDialog — none auto-fires. */}
-                <div className="ml-auto flex items-center gap-2">
-                  <span className="font-mono text-[11px] text-muted-foreground">
-                    {view.selectedCount} selected
-                  </span>
-                  {VERDICTS.map((verdict) => {
-                    const meta = VERDICT_META[verdict];
-                    const Icon = meta.icon;
-                    return (
-                      <Button
-                        key={verdict}
-                        variant={meta.destructive ? 'danger' : 'secondary'}
-                        disabled={!view.canPost}
-                        onClick={() => view.requestPost(verdict)}
-                      >
-                        <Icon size={15} />
-                        {meta.label}
-                      </Button>
-                    );
-                  })}
-                </div>
-
-                <span role="status" aria-live="polite" className="sr-only">
-                  {view.bulkStatusMessage}
-                </span>
-              </div>
             )}
-
-            <ReviewFindings
-              findings={view.gridFindings}
-              skeletonCount={view.skeletonCount}
-              emptyMessage={view.emptyMessage}
-              selection={view.selection}
-              onToggleSelect={view.onToggleSelect}
-              onOpen={view.openFinding}
-            />
-          </div>
-        )}
-      </RunLifecycleShell>
+          </main>
+        </div>
+      </div>
 
       {view.selected !== null && (
         <FindingDetailPanel
@@ -249,7 +148,7 @@ export function PrReviewView(props: PrReviewViewProps) {
                 </span>{' '}
                 on{' '}
                 <span className="font-mono text-foreground">
-                  PR #{view.stream.prNumber}
+                  PR #{view.postPrNumber}
                 </span>{' '}
                 with{' '}
                 <span className="font-semibold text-foreground">
@@ -269,6 +168,78 @@ export function PrReviewView(props: PrReviewViewProps) {
                   className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-[12.5px] text-destructive"
                 >
                   {view.postError}
+                </span>
+              )}
+            </div>
+          }
+        />
+      )}
+
+      {/* Address-findings human gate: starting a PAID agent session that will
+          COMMIT to the PR branch never auto-fires. Pushing stays a separate,
+          separately-gated manual step. */}
+      {view.addressArmed && (
+        <ConfirmDialog
+          title={`Address findings on PR #${view.addressPrNumber}?`}
+          confirmLabel="Start fix agent"
+          busy={view.addressing}
+          onConfirm={view.confirmAddress}
+          onCancel={view.cancelAddress}
+          message={
+            <div className="flex flex-col gap-2">
+              <span>
+                Run a fix agent on{' '}
+                <span className="font-mono text-foreground">
+                  PR #{view.addressPrNumber}
+                </span>
+                &apos;s branch addressing{' '}
+                <span className="font-semibold text-foreground">
+                  {view.addressCount}
+                </span>{' '}
+                selected {view.addressCount === 1 ? 'finding' : 'findings'}? It
+                will commit to the branch; pushing stays a separate manual step.
+              </span>
+              {view.addressError !== null && (
+                <span
+                  role="alert"
+                  className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-[12.5px] text-destructive"
+                >
+                  {view.addressError}
+                </span>
+              )}
+            </div>
+          }
+        />
+      )}
+
+      {/* Push-fix human gate: THE external side effect of the fix arc. The
+          dialog names the branch + PR and warns it publishes the commits. */}
+      {view.pushArmedFix !== null && (
+        <ConfirmDialog
+          title={`Push fix to PR #${view.pushArmedFix.prNumber}?`}
+          confirmLabel={`Push to PR #${view.pushArmedFix.prNumber}`}
+          busy={view.pushing}
+          onConfirm={view.confirmPush}
+          onCancel={view.cancelPush}
+          message={
+            <div className="flex flex-col gap-2">
+              <span>
+                Push the fix commit on{' '}
+                <span className="font-mono text-foreground">
+                  {view.pushArmedFix.branch}
+                </span>{' '}
+                to{' '}
+                <span className="font-mono text-foreground">
+                  PR #{view.pushArmedFix.prNumber}
+                </span>
+                ? This publishes the commits to the pull request on GitHub.
+              </span>
+              {view.pushError !== null && (
+                <span
+                  role="alert"
+                  className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-[12.5px] text-destructive"
+                >
+                  {view.pushError}
                 </span>
               )}
             </div>

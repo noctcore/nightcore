@@ -69,6 +69,7 @@ export function makePrStatus(overrides: Partial<PrStatus> = {}): PrStatus {
     checksFailed: 0,
     checksPending: 0,
     baseRefName: 'main',
+    headRefOid: 'a1b2c3d4',
     url: 'https://github.com/acme/nightcore/pull/123',
     number: 123,
     unpushedCommits: 0,

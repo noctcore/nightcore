@@ -124,6 +124,20 @@ pub(crate) fn commit_task_blocking(app: &AppHandle, id: &str) -> Result<(), Stri
     // Stage everything first, then bail before generation if the tree is clean.
     worktree::stage_all(&dir)?;
     if !worktree::has_staged_changes(&dir) {
+        // A worktree task with a clean tree is already commit-complete — its work
+        // was committed pre-review (or by the agent as it went). Record that
+        // instead of erroring: `committed` is what unlocks Merge / Create PR, and
+        // "nothing to commit" would wedge the task one click short of them. Main
+        // mode keeps the error — the shared root's cleanliness says nothing about
+        // this task's work being committed.
+        if task.run_mode.is_worktree() {
+            let updated = store.mutate(id, |t| {
+                t.committed = true;
+                t.conflict = false;
+            })?;
+            let _ = app.emit(TASK_EVENT, &updated);
+            return Ok(());
+        }
         return Err("nothing to commit".to_string());
     }
 

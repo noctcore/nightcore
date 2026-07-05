@@ -4,7 +4,7 @@ import { render } from 'vitest-browser-react';
 
 import * as stories from './FindingDetailPanel.stories';
 
-const { Open, Converted } = composeStories(stories);
+const { Open, Converted, Corroborated } = composeStories(stories);
 
 test('renders the finding title, inert body, and grounded location', async () => {
   const screen = render(<Open />);
@@ -29,6 +29,17 @@ test('a converted finding offers a go-to-task action instead of convert', async 
   const screen = render(<Converted onGotoBoard={onGotoBoard} />);
   await screen.getByRole('button', { name: /go to task/i }).click();
   expect(onGotoBoard).toHaveBeenCalledTimes(1);
+});
+
+test('renders the corroboration line when other lenses agree', async () => {
+  const screen = render(<Corroborated />);
+  await expect
+    .element(
+      screen.getByText(
+        /also independently surfaced by the security and tests lenses/i,
+      ),
+    )
+    .toBeInTheDocument();
 });
 
 test('renders the suggested fix as a syntax-highlighted code block', async () => {

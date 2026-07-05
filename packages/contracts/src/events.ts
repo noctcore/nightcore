@@ -14,7 +14,11 @@ import {
   FindingSchema,
 } from './insight.js';
 import { IssueValidationResultSchema } from './issue-triage.js';
-import { ReviewFindingSchema, ReviewLensSchema } from './pr-review.js';
+import {
+  MergeVerdictSchema,
+  ReviewFindingSchema,
+  ReviewLensSchema,
+} from './pr-review.js';
 import { ProviderConfigSnapshotSchema } from './provider-config.js';
 import {
   ScorecardDimensionSchema,
@@ -659,6 +663,13 @@ export const PrReviewCompletedEvent = z.object({
   findings: z.array(ReviewFindingSchema),
   lensesRun: z.number().int().nonnegative(),
   ...runTotals,
+  /** The synthesis pass's overall merge recommendation for the PR. Additive +
+   *  optional (FAIL-OPEN): a synthesis pass that errors/times-out/cancels completes
+   *  the run WITHOUT it, and an older engine that never runs the pass omits it. */
+  verdict: MergeVerdictSchema.optional(),
+  /** The synthesis pass's short (~120-word) justification for {@link verdict}. Present
+   *  only when `verdict` is; same fail-open/additive posture. */
+  verdictReasoning: z.string().optional(),
 });
 
 /** The run failed before completing (could not start, or aborted). `reason` is a free

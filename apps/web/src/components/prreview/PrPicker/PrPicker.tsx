@@ -1,15 +1,20 @@
-/** The PR Review list pane (left side of the master-detail): the project's open
- *  PRs as selectable cards, with a filter box that doubles as a manual-number
- *  entry for PRs not in the list (closed / old / beyond the cap). */
+/** The PR Review list pane (left rail of the permanent two-panel workspace): the
+ *  project's open PRs as selectable cards — each carrying its live run badges
+ *  (reviewing spinner / open-finding count) — with a filter box that doubles as a
+ *  manual-number entry for PRs not in the list (closed / old / beyond the cap). */
 import {
   BranchIcon,
+  Button,
   GithubIcon,
   RetryIcon,
   SearchIcon,
   Spinner,
+  StatusDot,
   TagIcon,
 } from '@/components/ui';
 
+import { PrFilterBar } from '../PrFilterBar';
+import { lifecycleToneClasses } from '../prreview-lifecycle';
 import { usePrPicker } from './PrPicker.hooks';
 import type { PrPickerProps } from './PrPicker.types';
 
@@ -21,8 +26,28 @@ export function PrPicker({
   onChange,
   onRefresh,
   disabled = false,
+  statuses = {},
+  findingCounts = {},
+  hasMore = false,
+  onLoadMore,
+  loadingMore = false,
 }: PrPickerProps) {
-  const { query, setQuery, rows, manualNumber, hasQuery } = usePrPicker(prs, value);
+  const {
+    query,
+    setQuery,
+    rows,
+    manualNumber,
+    hasQuery,
+    authors,
+    selectedAuthors,
+    setSelectedAuthors,
+    selectedStatuses,
+    setSelectedStatuses,
+    sort,
+    setSort,
+    hasActiveFilters,
+    resetAll,
+  } = usePrPicker(prs, value, statuses);
   const showEmpty = !loading && rows.length === 0 && manualNumber === null;
 
   return (
@@ -68,6 +93,24 @@ export function PrPicker({
         />
       </div>
 
+      {/* Filter bar: author + lifecycle-status multi-selects, sort, and the
+          reset-all (which also clears the text box). Only meaningful once PRs
+          have loaded. */}
+      {prs.length > 0 && (
+        <PrFilterBar
+          authors={authors}
+          selectedAuthors={selectedAuthors}
+          onAuthorsChange={setSelectedAuthors}
+          selectedStatuses={selectedStatuses}
+          onStatusesChange={setSelectedStatuses}
+          sort={sort}
+          onSortChange={setSort}
+          hasActiveFilters={hasActiveFilters}
+          onReset={resetAll}
+          disabled={disabled}
+        />
+      )}
+
       {error !== null && (
         <div
           role="alert"
@@ -103,7 +146,11 @@ export function PrPicker({
             aria-label="Open pull requests"
             className="flex flex-col gap-2"
           >
-            {rows.map(({ pr, selected }) => (
+            {rows.map(({ pr, selected }) => {
+              const status = statuses[pr.number] ?? null;
+              const tone = status !== null ? lifecycleToneClasses(status.tone) : null;
+              const count = findingCounts[pr.number] ?? 0;
+              return (
               <li key={pr.number} role="presentation">
                 <button
                   type="button"
@@ -129,6 +176,31 @@ export function PrPicker({
                         Draft
                       </span>
                     )}
+                    {/* Review-position badges: a status dot + short label from
+                        the per-PR lifecycle, plus the open-finding count. Plain
+                        text (visible + sr-only suffix), never aria-label on a
+                        generic span — the badge text is part of the option's
+                        accessible name. not_reviewed shows only a bare row. */}
+                    <span className="ml-auto inline-flex shrink-0 items-center gap-2">
+                      {status !== null &&
+                        status.state !== 'not_reviewed' &&
+                        tone !== null && (
+                          <span
+                            className={`inline-flex items-center gap-1.5 text-[10.5px] font-medium ${tone.text}`}
+                          >
+                            <StatusDot colorClass={tone.dot} pulse={status.pulse} />
+                            {status.shortLabel}
+                          </span>
+                        )}
+                      {count > 0 && (
+                        <span className="inline-flex items-center rounded-full border border-warning/40 bg-warning/[0.1] px-1.5 py-px font-mono text-[10px] font-semibold text-warning">
+                          {count}
+                          <span className="sr-only">
+                            {count === 1 ? ' open finding' : ' open findings'}
+                          </span>
+                        </span>
+                      )}
+                    </span>
                   </span>
                   <span className="truncate text-[13.5px] font-medium text-foreground">
                     {pr.title || '(no title)'}
@@ -147,10 +219,20 @@ export function PrPicker({
                         {pr.labels.length}
                       </span>
                     )}
+                    {/* Compact diff stats from the extended summary (additions in
+                        the success tone, deletions destructive). Hidden only when
+                        gh reported neither — a genuine 0/0 still reads as a size. */}
+                    {(pr.additions > 0 || pr.deletions > 0) && (
+                      <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 font-mono text-[10.5px]">
+                        <span className="text-success">+{pr.additions}</span>
+                        <span className="text-destructive">-{pr.deletions}</span>
+                      </span>
+                    )}
                   </span>
                 </button>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
 
@@ -171,6 +253,23 @@ export function PrPicker({
             </span>
             <span className="text-[11.5px] text-muted-foreground">— not in the list</span>
           </button>
+        )}
+
+        {/* Load-more footer: only once some PRs are loaded and no filter is
+            narrowing the view (a filtered subset already hides rows, so "load
+            more" there would confuse). Refetches at a doubled cap; the existing
+            rows stay put while it runs. Mirrors the reference's footer row. */}
+        {onLoadMore !== undefined && rows.length > 0 && !hasActiveFilters && (
+          <div className="flex justify-center py-2">
+            {hasMore ? (
+              <Button variant="ghost" onClick={onLoadMore} disabled={disabled || loadingMore}>
+                {loadingMore ? <Spinner size={13} /> : <RetryIcon size={13} />}
+                {loadingMore ? 'Loading more…' : 'Load more'}
+              </Button>
+            ) : (
+              <span className="text-[11px] text-muted-foreground/60">All pull requests loaded</span>
+            )}
+          </div>
         )}
       </div>
     </div>

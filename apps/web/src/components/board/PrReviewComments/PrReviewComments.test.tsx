@@ -21,6 +21,8 @@ import {
   type PrReviewCommentsView,
   reviewStateBadge,
   threadAnchor,
+  triageClassChip,
+  triageForIndex,
   usePrReviewComments,
 } from './PrReviewComments.hooks';
 
@@ -254,6 +256,99 @@ test('usePrReviewComments fetches on mount and refetches on refresh', async () =
   await screen.getByRole('button', { name: 'refresh' }).click();
   await expect.element(screen.getByText('count:2')).toBeInTheDocument();
   expect(invoke.mock.calls.filter(([c]) => c === 'list_pr_comments').length).toBe(2);
+});
+
+test('Triage classifies the threads and renders a class chip with its note tooltip', async () => {
+  invoke.mockImplementation((cmd: unknown) =>
+    cmd === 'triage_pr_comments'
+      ? Promise.resolve([{ index: 0, class: 'false_positive', note: 'the concern does not apply' }])
+      : Promise.resolve(undefined),
+  );
+  // Default fixture: one inline thread → the Triage button is present.
+  const screen = renderComments(makeView(makePrReviewComments()));
+  await screen.getByRole('button', { name: /triage/i }).click();
+  // The thread now carries a class chip; its note rides as the tooltip.
+  await expect.element(screen.getByText('False positive')).toBeInTheDocument();
+  await expect
+    .element(screen.getByTitle('the concern does not apply'))
+    .toBeInTheDocument();
+  expect(invoke.mock.calls.filter(([c]) => c === 'triage_pr_comments').length).toBe(1);
+});
+
+test('hides the Triage button when there are no threads to classify', async () => {
+  // Reviews present but zero inline threads → nothing to triage.
+  const screen = renderComments(
+    makeView(
+      makePrReviewComments({
+        threads: [],
+        reviews: [{ author: 'octo', state: 'COMMENTED', body: 'note' }],
+      }),
+    ),
+  );
+  await expect.element(screen.getByRole('button', { name: 'Refresh' })).toBeInTheDocument();
+  expect(screen.container.querySelector('button[title^="Classify"]')).toBeNull();
+});
+
+test('triageClassChip maps each class to its label + tone', () => {
+  expect(triageClassChip('actionable').label).toBe('Actionable');
+  expect(triageClassChip('actionable').className).toContain('warning');
+  expect(triageClassChip('false_positive').label).toBe('False positive');
+  expect(triageClassChip('false_positive').className).toContain('muted');
+  expect(triageClassChip('already_addressed').label).toBe('Addressed');
+  expect(triageClassChip('already_addressed').className).toContain('success');
+  expect(triageClassChip('question').label).toBe('Question');
+  expect(triageClassChip('question').className).toContain('primary');
+});
+
+test('triageForIndex finds a thread verdict or returns undefined', () => {
+  const verdicts = [
+    { index: 0, class: 'actionable' as const, note: '' },
+    { index: 1, class: 'question' as const, note: 'ask on the PR' },
+  ];
+  expect(triageForIndex(verdicts, 1)?.class).toBe('question');
+  expect(triageForIndex(verdicts, 5)).toBeUndefined();
+  expect(triageForIndex(null, 0)).toBeUndefined();
+});
+
+test('a changed thread set (a refresh) invalidates the index-aligned triage chips', async () => {
+  invoke.mockImplementation((cmd: unknown) =>
+    cmd === 'triage_pr_comments'
+      ? Promise.resolve([{ index: 0, class: 'false_positive', note: 'n/a' }])
+      : Promise.resolve(undefined),
+  );
+  const threadA = makePrReviewComments({
+    threads: [
+      { path: 'src/a.ts', line: 1, isOutdated: false, comments: [{ author: 'r', body: 'A' }] },
+    ],
+    reviews: [],
+  });
+  const screen = renderComments(makeView(threadA));
+  await screen.getByRole('button', { name: /triage/i }).click();
+  await expect.element(screen.getByText('False positive')).toBeInTheDocument();
+
+  // A Refresh brings a DIFFERENT thread set (the old thread resolved, a new one
+  // landed). The verdicts index-align to the threads, so they no longer apply —
+  // the chip must clear rather than mis-attach to the now-different thread.
+  const threadB = makePrReviewComments({
+    threads: [
+      { path: 'src/z.ts', line: 9, isOutdated: false, comments: [{ author: 'r', body: 'Z' }] },
+    ],
+    reviews: [],
+  });
+  screen.rerender(
+    <PrReviewComments task={TASK} view={makeView(threadB)} onAddressComments={async () => {}} />,
+  );
+  await expect.element(screen.getByText('src/z.ts:9')).toBeInTheDocument();
+  await expect.element(screen.getByText('False positive')).not.toBeInTheDocument();
+});
+
+test('a fetch error is announced via role="alert"', async () => {
+  const screen = renderComments(
+    makeView(makePrReviewComments(), { error: 'gh: rate limited' }),
+  );
+  const alert = screen.getByText('gh: rate limited');
+  await expect.element(alert).toBeInTheDocument();
+  await expect.element(alert).toHaveAttribute('role', 'alert');
 });
 
 test('usePrReviewComments resets its payload on a task switch', async () => {

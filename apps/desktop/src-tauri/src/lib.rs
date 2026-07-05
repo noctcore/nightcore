@@ -118,6 +118,10 @@ pub fn run() {
             let provider_handle = std::sync::Arc::clone(&orchestrator.provider);
             app.manage(orchestrator);
             app.manage(provider_handle);
+            // The pr-fix registry (workflow::pr_fix): in-memory v1 — a restart
+            // forgets the entries but never the work (the auto-commit survives
+            // on the PR branch in its checkout).
+            app.manage(workflow::pr_fix::PrFixRegistry::default());
             app.manage(std::sync::Arc::new(orchestration::EngineHandle)
                 as std::sync::Arc<dyn engine_api::EngineApi>);
             app.manage(log_guard);
@@ -199,6 +203,7 @@ pub fn run() {
             sidecar::delete_pr_review_run,
             workflow::pr_review_post::post_review_to_github,
             workflow::pr_list::list_open_prs,
+            workflow::pr_changed_files::pr_changed_files,
             transcript::read_transcript,
             plan_approval::approve_task,
             plan_approval::reject_task,
@@ -212,12 +217,20 @@ pub fn run() {
             workflow::pr::draft_pr_message,
             workflow::pr::create_pr_task,
             workflow::pr::open_external,
+            workflow::pr::viewer_login,
             workflow::pr_status::pr_status,
+            workflow::pr_status::pr_status_by_number,
             workflow::pr_status::push_pr_updates,
             workflow::pr_status::finalize_merged_pr,
             workflow::pr_status::pull_base_ff,
             workflow::pr_comments::list_pr_comments,
             workflow::pr_comments::address_pr_comments,
+            workflow::pr_comments::triage_pr_comments,
+            workflow::pr_fix::address_review_findings,
+            workflow::pr_fix::push_pr_fix,
+            workflow::pr_fix::list_pr_fixes,
+            workflow::pr_fix::cancel_pr_fix,
+            workflow::pr_fix::dismiss_pr_fix,
             gauntlet::run_gauntlet,
             workflow::ratchet::snapshot_ratchet_baseline,
             analysis::injection_scan::scan_injection_surface,

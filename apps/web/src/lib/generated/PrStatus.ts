@@ -37,6 +37,11 @@ checksPassed: number, checksFailed: number, checksPending: number,
  */
 baseRefName: string, 
 /**
+ * The PR head commit SHA (`headRefOid`), empty when gh omits it. Lets the UI
+ * detect a PR-review run gone STALE — the PR advanced past the head it reviewed.
+ */
+headRefOid: string, 
+/**
  * The gh-reported PR page URL (never the raw git remote URL, which can
  * embed credentials and must not cross the IPC boundary).
  */

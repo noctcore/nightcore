@@ -10,7 +10,9 @@ use super::command::{
     refuse_address_while_sibling_in_flight, require_pr_number,
 };
 use super::fetch::{fetch_review_comments_with, parse_review_comments};
-use super::{PrComment, PrReviewComments, PrReviewSummary, PrThread};
+use super::{
+    PrComment, PrCommentTriage, PrCommentTriageClass, PrReviewComments, PrReviewSummary, PrThread,
+};
 use crate::task::{RunMode, Task};
 use crate::workflow::merge::{commit_in_flight, merge_in_flight, TaskLease};
 use crate::workflow::pr::pr_in_flight;
@@ -193,8 +195,16 @@ fn build_fix_prompt_fences_untrusted_bodies_and_keeps_trusted_framing() {
             body: "Please handle the empty state.".into(),
         }],
     };
-    let prompt = build_fix_prompt(&task, &comments);
+    // An empty triage slice = every thread actionable = the pre-triage rendering,
+    // so no per-thread `triage:` MARKER appears (the preamble references triage in
+    // the abstract, but the marker prefixes "triage: likely"/"triage: this is" do
+    // not). The marking cases are covered separately.
+    let prompt = build_fix_prompt(&task, &comments, &[]);
 
+    assert!(
+        !prompt.contains("triage: likely") && !prompt.contains("triage: this is"),
+        "an all-actionable (empty) triage marks no thread: {prompt}"
+    );
     assert!(
         prompt.contains("<analysis-finding>"),
         "the untrusted fence wraps the bodies: {prompt}"
@@ -245,11 +255,80 @@ fn build_fix_prompt_labels_a_file_level_thread_generally() {
         }],
         reviews: vec![],
     };
-    let prompt = build_fix_prompt(&task, &comments);
+    let prompt = build_fix_prompt(&task, &comments, &[]);
     assert!(
         prompt.contains("(general):, outdated"),
         "a pathless outdated thread is labeled generally: {prompt}"
     );
+}
+
+#[test]
+fn build_fix_prompt_marks_non_actionable_threads_and_leaves_actionable_ones_bare() {
+    // Three threads whose triage spans the vocabulary: an actionable one (no
+    // marker), a false-positive, and a question. All are STILL included — triage
+    // only annotates, the agent verifies.
+    let task = Task::new("t".into(), String::new()).with_run_mode(RunMode::Worktree);
+    let thread = |body: &str| PrThread {
+        path: Some("src/x.rs".into()),
+        line: Some(1),
+        is_outdated: false,
+        comments: vec![PrComment {
+            author: "rev".into(),
+            body: body.into(),
+        }],
+    };
+    let comments = PrReviewComments {
+        threads: vec![
+            thread("really fix this"),
+            thread("this is wrong, no change needed"),
+            thread("why did you do it this way?"),
+        ],
+        reviews: vec![],
+    };
+    let triage = vec![
+        PrCommentTriage {
+            index: 0,
+            class: PrCommentTriageClass::Actionable,
+            note: "real".into(),
+        },
+        PrCommentTriage {
+            index: 1,
+            class: PrCommentTriageClass::FalsePositive,
+            note: "mistaken".into(),
+        },
+        PrCommentTriage {
+            index: 2,
+            class: PrCommentTriageClass::Question,
+            note: "asking".into(),
+        },
+    ];
+    let prompt = build_fix_prompt(&task, &comments, &triage);
+
+    // The two non-actionable threads carry their distinct markers; the actionable
+    // one carries none (the false-positive / already-addressed markers both open
+    // "triage: likely", so exactly one such marker means the actionable thread is
+    // bare and no already-addressed marker leaked in).
+    assert_eq!(
+        prompt.matches("triage: likely").count(),
+        1,
+        "only the false-positive thread opens a 'triage: likely' marker: {prompt}"
+    );
+    assert!(
+        prompt.contains("triage: likely a FALSE POSITIVE"),
+        "the false-positive marker is present"
+    );
+    assert!(
+        prompt.contains("triage: this is a QUESTION — it needs an ANSWER in the PR reply"),
+        "a question is routed to a PR reply, not a code change"
+    );
+    assert!(
+        !prompt.contains("ALREADY ADDRESSED"),
+        "no already-addressed marker with no such thread"
+    );
+    // The bodies are all still present — triage never drops a thread.
+    assert!(prompt.contains("really fix this"));
+    assert!(prompt.contains("this is wrong, no change needed"));
+    assert!(prompt.contains("why did you do it this way?"));
 }
 
 // ── Preconditions (pure) ───────────────────────────────────────────────

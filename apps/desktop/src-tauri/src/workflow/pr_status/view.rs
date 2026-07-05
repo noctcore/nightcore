@@ -24,7 +24,7 @@ pub(super) const GH_VIEW_TIMEOUT: Duration = Duration::from_secs(60);
 /// The `--json` field list for `gh pr view` — the exact shared-contract set the
 /// status card renders.
 pub(super) const PR_VIEW_FIELDS: &str =
-    "number,url,state,isDraft,mergeable,mergeStateStatus,reviewDecision,baseRefName,statusCheckRollup";
+    "number,url,state,isDraft,mergeable,mergeStateStatus,reviewDecision,baseRefName,headRefOid,statusCheckRollup";
 
 /// A point-in-time snapshot of a task's GitHub PR for the status card. All
 /// GitHub-vocabulary fields are plain strings passed through from `gh` (NO enum
@@ -52,6 +52,9 @@ pub struct PrStatus {
     pub checks_pending: u32,
     /// The PR's base branch on GitHub.
     pub base_ref_name: String,
+    /// The PR head commit SHA (`headRefOid`), empty when gh omits it. Lets the UI
+    /// detect a PR-review run gone STALE — the PR advanced past the head it reviewed.
+    pub head_ref_oid: String,
     /// The gh-reported PR page URL (never the raw git remote URL, which can
     /// embed credentials and must not cross the IPC boundary).
     pub url: String,
@@ -85,6 +88,8 @@ pub(super) struct GhPrView {
     pub(super) review_decision: Option<String>,
     #[serde(default)]
     pub(super) base_ref_name: Option<String>,
+    #[serde(default)]
+    pub(super) head_ref_oid: Option<String>,
     /// Kept as raw JSON: the entries come in TWO shapes (CheckRun vs
     /// StatusContext) whose fields drift across gh versions — [`count_checks`]
     /// classifies them tolerantly instead of a strict deserialization.
@@ -109,6 +114,7 @@ impl GhPrView {
             checks_failed,
             checks_pending,
             base_ref_name: self.base_ref_name.unwrap_or_default(),
+            head_ref_oid: self.head_ref_oid.unwrap_or_default(),
             url: self.url,
             number: self.number,
             unpushed_commits,

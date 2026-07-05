@@ -36,4 +36,14 @@ url: string, labels: Array<PrLabel>,
  * The PR description (untrusted markdown) — the web renders it through the
  * SANITIZING `Markdown` primitive, never raw.
  */
-body: string, };
+body: string, 
+/**
+ * Total lines added across the PR (gh vocabulary), for a size badge. `0` when gh
+ * omits it.
+ */
+additions: number, 
+/**
+ * Total lines removed across the PR (gh vocabulary), for a size badge. `0` when gh
+ * omits it.
+ */
+deletions: number, };

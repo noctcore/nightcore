@@ -95,3 +95,46 @@ export function runStatusOf(run: PrReviewRun | null): RunStatus {
   if (run.status === 'failed') return 'failed';
   return 'completed';
 }
+
+/** The synthesis pass's overall merge recommendation, in the wire `MergeVerdict`
+ *  form (distinct from the POST {@link ReviewVerdict} — this is the AI's read on
+ *  the PR, not a GitHub review event). */
+export type MergeVerdict = 'ready' | 'merge_with_changes' | 'needs_revision' | 'blocked';
+
+/** Display meta for one merge verdict: the badge label + its semantic chip
+ *  classes (border + bg + text tokens). */
+export interface MergeVerdictMeta {
+  label: string;
+  badgeClass: string;
+}
+
+/** Resolve a run's `verdict` string to its badge meta, or `null` for an
+ *  unknown/absent value (the surface renders nothing — the same fail-open
+ *  posture the wire field carries). `ready` reads success, the two
+ *  merge-with-caveats verdicts warn, `blocked` is destructive. */
+export function mergeVerdictMeta(verdict: string): MergeVerdictMeta | null {
+  switch (verdict) {
+    case 'ready':
+      return {
+        label: 'Ready to merge',
+        badgeClass: 'border-success/40 bg-success/[0.12] text-success',
+      };
+    case 'merge_with_changes':
+      return {
+        label: 'Merge with changes',
+        badgeClass: 'border-warning/40 bg-warning/[0.12] text-warning',
+      };
+    case 'needs_revision':
+      return {
+        label: 'Needs revision',
+        badgeClass: 'border-warning/40 bg-warning/[0.12] text-warning',
+      };
+    case 'blocked':
+      return {
+        label: 'Blocked',
+        badgeClass: 'border-destructive/40 bg-destructive/[0.12] text-destructive',
+      };
+    default:
+      return null;
+  }
+}

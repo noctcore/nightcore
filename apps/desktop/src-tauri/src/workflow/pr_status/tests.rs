@@ -14,6 +14,7 @@ use super::finalize::{
 };
 use super::pull::{pull_base_ff_core, resolve_pull_base};
 use super::push::{check_push_preconditions, refuse_push_while_sibling_in_flight};
+use super::status::fetch_status_by_number;
 use super::view::{count_checks, fetch_pr_view_with, require_pr_number, GhPrView, PR_VIEW_FIELDS};
 use crate::store::TaskStore;
 use crate::task::{RunMode, Task, TaskStatus};
@@ -97,6 +98,10 @@ fn gh_view_deserializes_minimal_and_null_padded_payloads() {
     assert_eq!(status.review_decision, "");
     assert_eq!(status.base_ref_name, "");
     assert_eq!(
+        status.head_ref_oid, "",
+        "absent headRefOid degrades to empty"
+    );
+    assert_eq!(
         (
             status.checks_passed,
             status.checks_failed,
@@ -132,6 +137,7 @@ fn pr_status_serializes_camel_case() {
         merge_state_status: Some("CLEAN".into()),
         review_decision: Some("APPROVED".into()),
         base_ref_name: Some("main".into()),
+        head_ref_oid: Some("abc123".into()),
         status_check_rollup: None,
     }
     .into_status(Some(4));
@@ -146,6 +152,7 @@ fn pr_status_serializes_camel_case() {
         r#""checksFailed":0"#,
         r#""checksPending":0"#,
         r#""baseRefName":"main""#,
+        r#""headRefOid":"abc123""#,
         r#""number":12"#,
         r#""unpushedCommits":4"#,
     ] {
@@ -163,6 +170,7 @@ fn pr_status_serializes_camel_case() {
         merge_state_status: None,
         review_decision: None,
         base_ref_name: None,
+        head_ref_oid: None,
         status_check_rollup: None,
     }
     .into_status(None);
@@ -426,7 +434,7 @@ fn fetch_pr_view_parses_a_success_and_carries_the_contract_argv() {
          echo '{\"number\":42,\"url\":\"https://github.com/acme/widget/pull/42\",\
          \"state\":\"OPEN\",\"isDraft\":true,\"mergeable\":\"MERGEABLE\",\
          \"mergeStateStatus\":\"BLOCKED\",\"reviewDecision\":\"REVIEW_REQUIRED\",\
-         \"baseRefName\":\"develop\",\"statusCheckRollup\":[\
+         \"baseRefName\":\"develop\",\"headRefOid\":\"cafef00d\",\"statusCheckRollup\":[\
          {\"status\":\"COMPLETED\",\"conclusion\":\"SUCCESS\"},\
          {\"state\":\"FAILURE\"},\
          {\"status\":\"IN_PROGRESS\"}]}'";
@@ -446,6 +454,10 @@ fn fetch_pr_view_parses_a_success_and_carries_the_contract_argv() {
     assert_eq!(status.merge_state_status, "BLOCKED");
     assert_eq!(status.review_decision, "REVIEW_REQUIRED");
     assert_eq!(status.base_ref_name, "develop");
+    assert_eq!(
+        status.head_ref_oid, "cafef00d",
+        "the head oid passes through"
+    );
     assert_eq!(
         (
             status.checks_passed,
@@ -523,6 +535,85 @@ fn fetch_pr_view_times_out_a_hung_gh() {
     assert!(
         start.elapsed() < Duration::from_secs(5),
         "the kill returns promptly, not after the child's sleep"
+    );
+}
+
+// ── fetch_status_by_number (the workspace-scoped by-number variant) ────
+
+#[test]
+#[cfg(unix)]
+fn fetch_status_by_number_never_carries_an_unpushed_count() {
+    // The by-number variant has no task and thus no local branch mapping: the
+    // count must be the explicit-unknown `None` — a fake `Some(0)` would read
+    // as "all pushed" in the UI. Same substrate, same argv contract.
+    let tmp = tempfile::TempDir::new().expect("temp dir");
+    let body = "printf '%s\\n' \"$@\" > args.txt\n\
+         echo '{\"number\":31,\"url\":\"https://github.com/acme/widget/pull/31\",\
+         \"state\":\"OPEN\",\"isDraft\":false,\"mergeable\":\"MERGEABLE\",\
+         \"mergeStateStatus\":\"CLEAN\",\"reviewDecision\":\"APPROVED\",\
+         \"baseRefName\":\"main\",\"statusCheckRollup\":[\
+         {\"status\":\"COMPLETED\",\"conclusion\":\"SUCCESS\"}]}'";
+    let script = fake_gh(tmp.path(), body);
+    let status = fetch_status_by_number(
+        tmp.path(),
+        script.to_str().expect("utf8 path"),
+        31,
+        Duration::from_secs(10),
+    )
+    .expect("status fetches");
+    assert_eq!(status.number, 31);
+    assert_eq!(status.state, "OPEN");
+    assert_eq!(status.review_decision, "APPROVED");
+    assert_eq!(status.checks_passed, 1);
+    assert_eq!(
+        status.unpushed_commits, None,
+        "an arbitrary PR's unpushed count is unknowable, never a fake 0"
+    );
+
+    // Same `pr view <n> --json <fields>` substrate as the task-scoped sibling.
+    let args = std::fs::read_to_string(tmp.path().join("args.txt")).expect("args.txt");
+    let args: Vec<&str> = args.lines().collect();
+    for expected in ["pr", "view", "31", "--json", PR_VIEW_FIELDS] {
+        assert!(
+            args.contains(&expected),
+            "argv missing {expected}: {args:?}"
+        );
+    }
+}
+
+#[test]
+fn fetch_status_by_number_rejects_zero_before_any_spawn() {
+    // The binary is deliberately bogus: number validation runs FIRST, so the
+    // outcome is the validation error — proof no probe/spawn ran.
+    let tmp = tempfile::TempDir::new().expect("temp dir");
+    let err = fetch_status_by_number(
+        tmp.path(),
+        "definitely-not-a-real-binary-xyz",
+        0,
+        Duration::from_secs(1),
+    )
+    .expect_err("PR 0 is rejected");
+    assert!(err.contains("valid PR number"), "err: {err}");
+}
+
+#[test]
+#[cfg(unix)]
+fn fetch_status_by_number_surfaces_the_substrate_failure_verbatim() {
+    let tmp = tempfile::TempDir::new().expect("temp dir");
+    let script = fake_gh(
+        tmp.path(),
+        "echo 'GraphQL: Could not resolve to a PullRequest' >&2\nexit 1",
+    );
+    let err = fetch_status_by_number(
+        tmp.path(),
+        script.to_str().expect("utf8 path"),
+        99999,
+        Duration::from_secs(10),
+    )
+    .expect_err("an unknown PR maps to Err");
+    assert!(
+        err.contains("Could not resolve"),
+        "gh's stderr is verbatim: {err}"
     );
 }
 

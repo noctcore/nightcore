@@ -51,6 +51,12 @@ pub struct StoredReviewFinding {
     pub body: String,
     pub suggested_fix: Option<String>,
     pub fingerprint: String,
+    /// Review lenses OTHER than `lens` that independently surfaced this same issue —
+    /// carried through from the wire finding's `corroboratedBy` (the cross-lens dedup
+    /// populates it) so the corroborating signal survives persistence. Wire strings
+    /// (the web casts them), like `lens`/`severity`. Additive + optional: absent when
+    /// only the reporting lens found it, or from an older engine that never emits it.
+    pub corroborated_by: Option<Vec<String>>,
     /// Lifecycle: `open` | `dismissed` | `converted`.
     pub status: String,
     /// The board task this finding was converted into, if any.
@@ -81,6 +87,16 @@ impl StoredReviewFinding {
             body,
             suggested_fix: s("suggestedFix"),
             fingerprint,
+            // `corroboratedBy` arrives as an array of lens wire strings; keep the string
+            // members and drop any non-string element rather than failing the whole finding.
+            corroborated_by: v
+                .get("corroboratedBy")
+                .and_then(Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|x| x.as_str().map(str::to_string))
+                        .collect()
+                }),
             status: "open".to_string(),
             linked_task_id: None,
         })
@@ -135,6 +151,24 @@ pub struct PrReviewRun {
     #[serde(default)]
     pub findings: Vec<StoredReviewFinding>,
     pub error: Option<String>,
+    /// The synthesis pass's overall merge recommendation (wire `MergeVerdict` string:
+    /// `ready` | `merge_with_changes` | `needs_revision` | `blocked`). Stamped from the
+    /// `pr-review-completed` event alongside the findings. Additive + optional (fail-open):
+    /// absent when the synthesis pass errored/was skipped, or from an older engine.
+    pub verdict: Option<String>,
+    /// The synthesis pass's short justification for `verdict`; present only when it is.
+    pub verdict_reasoning: Option<String>,
+    /// The PR head commit SHA this run reviewed, captured at start (`gh pr view
+    /// --json headRefOid`). Lets the UI flag the review STALE once the PR advances past
+    /// it. Best-effort: `None` when the head-oid fetch failed or from an older run.
+    pub head_sha: Option<String>,
+    /// The review verdict last posted to GitHub from this run (the `approve` /
+    /// `request-changes` / `comment` string), stamped best-effort by
+    /// `post_review_to_github`. `None` until a post succeeds.
+    pub posted_verdict: Option<String>,
+    /// Epoch-ms of the last successful GitHub post for this run; paired with
+    /// `posted_verdict`. `None` until a post succeeds.
+    pub posted_at: Option<u64>,
 }
 
 /// The PR Review run store: a [`RunStore`] over [`PrReviewRun`]. The generic run-level
@@ -305,6 +339,7 @@ mod tests {
             body: "b".into(),
             suggested_fix: None,
             fingerprint: fp.to_string(),
+            corroborated_by: None,
             status: "open".into(),
             linked_task_id: None,
         }
@@ -325,6 +360,11 @@ mod tests {
             usage: InsightUsage::default(),
             findings,
             error: None,
+            verdict: None,
+            verdict_reasoning: None,
+            head_sha: None,
+            posted_verdict: None,
+            posted_at: None,
         }
     }
 
@@ -340,6 +380,57 @@ mod tests {
         // Reload from disk reconstructs the run.
         let reloaded = PrReviewStore::load_from(tmp.path().join("pr-reviews"));
         assert_eq!(reloaded.get("r1").unwrap().findings[0].fingerprint, "fp1");
+    }
+
+    #[test]
+    fn verdict_staleness_and_posted_fields_round_trip_through_disk() {
+        let (store, tmp) = store();
+        let mut r = run("r1", vec![finding("f1", "fp1")]);
+        r.verdict = Some("merge_with_changes".into());
+        r.verdict_reasoning = Some("two minor nits".into());
+        r.head_sha = Some("deadbeef".into());
+        r.posted_verdict = Some("comment".into());
+        r.posted_at = Some(1_700_000_000_000);
+        r.findings[0].corroborated_by = Some(vec!["logic".into(), "performance".into()]);
+        store.upsert(&r).unwrap();
+
+        let reloaded = PrReviewStore::load_from(tmp.path().join("pr-reviews"));
+        let got = reloaded.get("r1").expect("run reloads");
+        assert_eq!(got.verdict.as_deref(), Some("merge_with_changes"));
+        assert_eq!(got.verdict_reasoning.as_deref(), Some("two minor nits"));
+        assert_eq!(got.head_sha.as_deref(), Some("deadbeef"));
+        assert_eq!(got.posted_verdict.as_deref(), Some("comment"));
+        assert_eq!(got.posted_at, Some(1_700_000_000_000));
+        assert_eq!(
+            got.findings[0].corroborated_by.as_deref(),
+            Some(["logic".to_string(), "performance".to_string()].as_slice())
+        );
+    }
+
+    #[test]
+    fn deserializes_a_pre_verdict_run_file_additively() {
+        // A run JSON written BEFORE the verdict/staleness/posted/corroboration fields
+        // existed (none of them present) must still load — the new Option fields default
+        // to None, and a finding without `corroboratedBy` loads too. Guards the
+        // serde-ADDITIVE contract for on-disk `.nightcore/pr-reviews/<id>.json` files.
+        let json = serde_json::json!({
+            "id": "r1", "projectPath": "/proj", "prNumber": 42, "status": "completed",
+            "lenses": ["security"], "model": "m", "createdAt": 1, "updatedAt": 1,
+            "costUsd": 0.0, "durationMs": 0,
+            "usage": { "inputTokens": 0, "outputTokens": 0 },
+            "findings": [{
+                "id": "f1", "lens": "security", "severity": "high", "file": "a.ts",
+                "title": "t", "body": "b", "fingerprint": "fp", "status": "open"
+            }],
+            "error": null
+        });
+        let run: PrReviewRun = serde_json::from_value(json).expect("legacy run loads");
+        assert!(run.verdict.is_none());
+        assert!(run.verdict_reasoning.is_none());
+        assert!(run.head_sha.is_none());
+        assert!(run.posted_verdict.is_none());
+        assert!(run.posted_at.is_none());
+        assert!(run.findings[0].corroborated_by.is_none());
     }
 
     #[test]
@@ -362,6 +453,22 @@ mod tests {
         assert_eq!(f.suggested_fix.as_deref(), Some("parameterize it"));
         assert_eq!(f.status, "open");
         assert!(f.linked_task_id.is_none());
+        assert!(f.corroborated_by.is_none(), "absent corroboration ⇒ None");
+    }
+
+    #[test]
+    fn from_wire_parses_corroborating_lenses() {
+        let v = serde_json::json!({
+            "id": "x", "lens": "security", "severity": "high",
+            "file": "a.ts", "title": "t", "body": "b", "fingerprint": "fp",
+            "corroboratedBy": ["logic", "performance", 42]
+        });
+        let f = StoredReviewFinding::from_wire(&v).expect("parse");
+        // The dedup's corroborating lenses survive; a non-string element is dropped, not fatal.
+        assert_eq!(
+            f.corroborated_by.as_deref(),
+            Some(["logic".to_string(), "performance".to_string()].as_slice())
+        );
     }
 
     #[test]
@@ -383,6 +490,95 @@ mod tests {
         let f = StoredReviewFinding::from_wire(&v).expect("parse");
         assert!(f.line.is_none());
         assert!(f.suggested_fix.is_none());
+    }
+
+    /// A `running` run for `pr_number` (the shape `start_pr_review` persists up front).
+    fn running_run(id: &str, pr_number: u64) -> PrReviewRun {
+        let mut r = run(id, vec![]);
+        r.pr_number = pr_number;
+        r.status = "running".into();
+        r
+    }
+
+    #[test]
+    fn upsert_if_idle_when_rejects_a_running_run_for_the_same_pr() {
+        let (store, _tmp) = store();
+        store
+            .upsert_if_idle_when(&running_run("r1", 7), |r| r.pr_number == 7, "busy")
+            .unwrap();
+        // A second start for the SAME PR is the duplicate-spend case — refused.
+        let err = store
+            .upsert_if_idle_when(&running_run("r2", 7), |r| r.pr_number == 7, "busy #7")
+            .unwrap_err();
+        assert_eq!(err, "busy #7");
+        assert!(
+            store.get("r2").is_none(),
+            "the losing run is never inserted"
+        );
+    }
+
+    #[test]
+    fn upsert_if_idle_when_allows_a_concurrent_run_for_a_different_pr() {
+        let (store, _tmp) = store();
+        store
+            .upsert_if_idle_when(&running_run("r1", 7), |r| r.pr_number == 7, "busy")
+            .unwrap();
+        // A DIFFERENT PR does not conflict: both reviews run concurrently.
+        store
+            .upsert_if_idle_when(&running_run("r2", 8), |r| r.pr_number == 8, "busy")
+            .unwrap();
+        assert_eq!(store.get("r1").unwrap().status, "running");
+        assert_eq!(store.get("r2").unwrap().status, "running");
+        // And a completed run for yet another PR never blocks anything.
+        assert!(store
+            .upsert_if_idle_when(&running_run("r3", 9), |r| r.pr_number == 9, "busy")
+            .is_ok());
+    }
+
+    #[test]
+    fn upsert_if_idle_still_rejects_any_running_run() {
+        // The blanket guard the OTHER scan stores rely on is unchanged: any
+        // `running` run — whatever its pr_number — blocks a store-wide insert.
+        let (store, _tmp) = store();
+        store.upsert(&running_run("r1", 7)).unwrap();
+        let err = store
+            .upsert_if_idle(&running_run("r2", 8), "busy")
+            .unwrap_err();
+        assert_eq!(err, "busy");
+    }
+
+    #[test]
+    fn upsert_if_idle_when_is_atomic_under_racing_starts_for_the_same_pr() {
+        // Two racing `start_pr_review` calls for the SAME PR: the conflict check and
+        // the insert share ONE `runs` lock, so exactly one may win — the invariant
+        // the store-wide guard had, preserved under the scoped predicate.
+        let (store, _tmp) = store();
+        let store = std::sync::Arc::new(store);
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let threads: Vec<_> = (0..2)
+            .map(|i| {
+                let store = std::sync::Arc::clone(&store);
+                let barrier = std::sync::Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    let r = running_run(&format!("race-{i}"), 7);
+                    barrier.wait();
+                    store
+                        .upsert_if_idle_when(&r, |o| o.pr_number == 7, "busy")
+                        .is_ok()
+                })
+            })
+            .collect();
+        let wins = threads
+            .into_iter()
+            .map(|t| t.join().expect("thread"))
+            .filter(|&won| won)
+            .count();
+        assert_eq!(wins, 1, "exactly one racing start may pass the guard");
+        assert_eq!(
+            store.list().len(),
+            1,
+            "the loser inserted nothing (no phantom run)"
+        );
     }
 
     #[test]

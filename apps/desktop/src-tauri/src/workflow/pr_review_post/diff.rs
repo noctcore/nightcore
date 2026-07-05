@@ -6,6 +6,8 @@
 use std::path::Path;
 use std::time::Duration;
 
+use serde_json::Value;
+
 use super::GH_TIMEOUT;
 use crate::workflow::pr::{map_gh_failure, probe_gh, run_gh_bounded, GH_BINARY};
 
@@ -85,4 +87,47 @@ pub(super) fn fetch_pr_diff_with(
         .collect();
 
     Ok((diff, changed_files))
+}
+
+/// Resolve a PR's head commit SHA (`gh pr view <n> --json headRefOid`) so a PR-review
+/// run can be stamped with the head it reviewed — the UI then flags the run STALE once
+/// the PR advances past it. `pub(crate)` production entry point; called BEST-EFFORT off
+/// the UI thread (a failure here must not fail an already-fetched review).
+pub(crate) fn fetch_pr_head_oid(dir: &Path, pr_number: u64) -> Result<String, String> {
+    fetch_pr_head_oid_with(dir, GH_BINARY, pr_number, GH_TIMEOUT)
+}
+
+/// Binary-parameterized head-oid fetch — the fake-`gh` injection seam. `gh pr view <n>
+/// --json headRefOid` prints `{"headRefOid":"<sha>"}`; an absent field degrades to an
+/// empty string (the caller treats empty as "no marker"). `pr_number` is a `u64`
+/// rendered decimal (injection-safe).
+pub(super) fn fetch_pr_head_oid_with(
+    dir: &Path,
+    binary: &str,
+    pr_number: u64,
+    deadline: Duration,
+) -> Result<String, String> {
+    if pr_number == 0 {
+        return Err("enter a valid PR number (a positive integer)".to_string());
+    }
+    probe_gh(binary, "install it to review pull requests")?;
+    let number = pr_number.to_string();
+    let out = run_gh_bounded(
+        dir,
+        binary,
+        &["pr", "view", &number, "--json", "headRefOid"],
+        None,
+        deadline,
+        "timed out reading the PR head from GitHub — check your network and try again",
+    )?;
+    if !out.status.success() {
+        return Err(map_gh_failure(binary, "pr view", &out));
+    }
+    let value: Value = serde_json::from_str(out.stdout.trim())
+        .map_err(|e| format!("`{binary} pr view` returned unparseable JSON: {e}"))?;
+    Ok(value
+        .get("headRefOid")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string())
 }

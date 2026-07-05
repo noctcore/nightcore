@@ -1,11 +1,24 @@
 /** State + derivation helpers for the PrStatusCard: the fetch-on-mount /
- *  manual-refresh status state, the confirm-gated mutation flow, and the pure
- *  gh-vocabulary → friendly-label mappers. NO polling — a fetch happens on
+ *  manual-refresh status state, the confirm-gated mutation flow, and the
+ *  task-coupled visibility/copy helpers. The pure gh-vocabulary →
+ *  friendly-label mappers live in `@/lib/pr-status` (shared with the PR Review
+ *  workspace) and are re-exported below. NO polling — a fetch happens on
  *  mount, on the Refresh button, and after a successful push; that's it. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { PrStatus, Task } from '@/lib/bridge';
 import { prStatus } from '@/lib/bridge';
+
+// The pure gh-vocabulary → friendly-label mappers are hoisted to `lib/pr-status`
+// (shared with the PR Review workspace); re-exported here so the card shell and
+// its tests keep one import site.
+export type { PrBadge } from '@/lib/pr-status';
+export {
+  checksSummary,
+  mergeStateLine,
+  prStateBadge,
+  reviewDecisionBadge,
+} from '@/lib/pr-status';
 
 /** Everything the card shell renders the status block from. */
 export interface PrStatusView {
@@ -172,80 +185,6 @@ export function usePrConfirm(
   }, [arming, taskId, refresh, onPushUpdates, onFinalize, onPullBase]);
 
   return { arming, arm, cancel, confirm };
-}
-
-/** A badge's label + tone classes (the TaskDetail chip vocabulary). */
-export interface PrBadge {
-  label: string;
-  className: string;
-}
-
-const BADGE_NEUTRAL = 'border-border bg-white/[0.04] text-muted-foreground';
-const BADGE_SUCCESS = 'border-success/40 bg-success/[0.12] text-success';
-const BADGE_WARNING = 'border-warning/40 bg-warning/[0.12] text-warning';
-const BADGE_DANGER = 'border-destructive/40 bg-destructive/[0.12] text-destructive';
-const BADGE_PRIMARY = 'border-primary/40 bg-primary/[0.12] text-primary';
-
-/** The PR state badge. Draft wins over Open (a draft PR reports state OPEN);
- *  unknown gh vocabulary passes through raw with a neutral tone. */
-export function prStateBadge(status: PrStatus): PrBadge {
-  if (status.state === 'OPEN') {
-    return status.isDraft
-      ? { label: 'Draft', className: BADGE_NEUTRAL }
-      : { label: 'Open', className: BADGE_SUCCESS };
-  }
-  if (status.state === 'MERGED') return { label: 'Merged', className: BADGE_PRIMARY };
-  if (status.state === 'CLOSED') return { label: 'Closed', className: BADGE_DANGER };
-  return { label: status.state, className: BADGE_NEUTRAL };
-}
-
-/** The review-decision badge, or `null` when GitHub reports none (`""`).
- *  Unknown vocabulary passes through raw with a neutral tone. */
-export function reviewDecisionBadge(status: PrStatus): PrBadge | null {
-  switch (status.reviewDecision) {
-    case '':
-      return null;
-    case 'APPROVED':
-      return { label: 'Approved', className: BADGE_SUCCESS };
-    case 'CHANGES_REQUESTED':
-      return { label: 'Changes requested', className: BADGE_DANGER };
-    case 'REVIEW_REQUIRED':
-      return { label: 'Review required', className: BADGE_WARNING };
-    default:
-      return { label: status.reviewDecision, className: BADGE_NEUTRAL };
-  }
-}
-
-/** Friendly text for the known `mergeStateStatus` vocabulary. */
-const MERGE_STATE_TEXT: Record<string, string> = {
-  CLEAN: 'Clean against base',
-  BEHIND: 'Behind base',
-  BLOCKED: 'Blocked — reviews or required checks outstanding',
-  DIRTY: 'Conflicts with base',
-  UNSTABLE: 'Mergeable — non-required checks failing',
-  DRAFT: 'Draft — not ready to merge',
-};
-
-/** One line summarizing `mergeable` + `mergeStateStatus` for an OPEN PR;
- *  `null` when the PR is merged/closed (the line is meaningless then). Unknown
- *  vocabulary degrades to the raw strings rather than guessing. */
-export function mergeStateLine(status: PrStatus): string | null {
-  if (status.state !== 'OPEN') return null;
-  if (status.mergeable === 'CONFLICTING') return 'Conflicts with base';
-  if (status.mergeable === 'UNKNOWN') return 'Merge state not computed yet';
-  const known = MERGE_STATE_TEXT[status.mergeStateStatus];
-  if (known !== undefined) return known;
-  return `${status.mergeable} · ${status.mergeStateStatus}`;
-}
-
-/** The check-run counts, or `null` when all are zero (the line hides — a repo
- *  without CI shouldn't render a dead `0 passed` row). */
-export function checksSummary(
-  status: PrStatus,
-): { passed: number; failed: number; pending: number } | null {
-  const { checksPassed: passed, checksFailed: failed, checksPending: pending } = status;
-  if (passed === 0 && failed === 0 && pending === 0) return null;
-  return { passed, failed, pending };
 }
 
 /** Push-updates visibility: an OPEN PR with local commits its upstream lacks.

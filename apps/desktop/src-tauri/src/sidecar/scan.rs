@@ -57,6 +57,12 @@ use super::ensure_reader;
 /// them by their historical paths. The store is reached as managed [`tauri::State`]
 /// (resolved by type, so its binding name is irrelevant) and must expose the
 /// [`RunStore`](crate::store::run_store::RunStore) `list`/`get`/`remove` surface.
+///
+/// Two arms: the full surface (list/get/delete + the shared dispatch-only cancel),
+/// and a cancel-less surface for a kind whose cancel needs feature-specific store
+/// marking before the dispatch (PR review's setup-window cancel — see
+/// `cancel_pr_review`) and so stays hand-written. The full arm recurses into the
+/// cancel-less one, so the three shared commands exist in exactly one place.
 macro_rules! scan_lifecycle_commands {
     (
         store: $Store:ty,
@@ -66,6 +72,34 @@ macro_rules! scan_lifecycle_commands {
         delete: $delete:ident,
         cancel: $cancel:ident,
         cancel_command: $cancel_variant:ident,
+        item: $item:literal $(,)?
+    ) => {
+        scan_lifecycle_commands! {
+            store: $Store,
+            run: $Run,
+            list: $list,
+            get: $get,
+            delete: $delete,
+            item: $item,
+        }
+
+        #[doc = concat!("Cancel an in-flight ", $item, " run (aborts every pass).")]
+        #[tauri::command]
+        pub async fn $cancel(app: tauri::AppHandle, run_id: String) -> Result<(), String> {
+            use tauri::Manager;
+            let provider = app.state::<std::sync::Arc<crate::provider::SidecarProvider>>();
+            let command = crate::contracts::SurfaceCommand::$cancel_variant {
+                run_id: run_id.clone(),
+            };
+            provider.dispatch_command(command).await
+        }
+    };
+    (
+        store: $Store:ty,
+        run: $Run:ty,
+        list: $list:ident,
+        get: $get:ident,
+        delete: $delete:ident,
         item: $item:literal $(,)?
     ) => {
         #[doc = concat!("All ", $item, " runs for the active project (newest first).")]
@@ -87,17 +121,6 @@ macro_rules! scan_lifecycle_commands {
         #[tauri::command]
         pub fn $delete(store: tauri::State<'_, $Store>, run_id: String) -> Result<(), String> {
             store.remove(&run_id)
-        }
-
-        #[doc = concat!("Cancel an in-flight ", $item, " run (aborts every pass).")]
-        #[tauri::command]
-        pub async fn $cancel(app: tauri::AppHandle, run_id: String) -> Result<(), String> {
-            use tauri::Manager;
-            let provider = app.state::<std::sync::Arc<crate::provider::SidecarProvider>>();
-            let command = crate::contracts::SurfaceCommand::$cancel_variant {
-                run_id: run_id.clone(),
-            };
-            provider.dispatch_command(command).await
         }
     };
 }

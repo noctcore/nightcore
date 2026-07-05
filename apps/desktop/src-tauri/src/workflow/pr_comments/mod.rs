@@ -22,14 +22,16 @@
 //! server-side and never cross the wire.
 //!
 //! Split by concern: [`contract`] holds the serde/ts-rs wire types, [`fetch`] the
-//! `gh api graphql` seam + its tolerant deserialization/classification, and
-//! [`command`] the two `#[tauri::command]`s + their pure guards and fix-prompt
-//! builder. The facade preserves the historical `crate::workflow::pr_comments::*`
-//! paths (`list_pr_comments`/`address_pr_comments` + the wire types).
+//! `gh api graphql` seam + its tolerant deserialization/classification, [`triage`]
+//! the fail-open AI classification of the fetched threads (the `claude -p`
+//! one-shot), and [`command`] the three `#[tauri::command]`s + their pure guards
+//! and fix-prompt builder. The facade preserves the historical
+//! `crate::workflow::pr_comments::*` paths (the commands + the wire types).
 
 mod command;
 mod contract;
 mod fetch;
+mod triage;
 
 #[cfg(test)]
 mod tests;

@@ -28,8 +28,8 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// Outside Tauri the bridge returns its fallbacks (no runs, a no-op event
-// listener), so this renders the idle project view.
+// Outside Tauri the bridge returns its fallbacks (no PRs, no runs, a no-op
+// event listener), so this renders the empty two-panel workspace.
 export const Idle: Story = {};
 
 export const NoProject: Story = {

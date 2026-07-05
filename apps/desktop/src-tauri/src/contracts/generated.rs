@@ -527,6 +527,10 @@ pub enum NightcoreEvent {
         duration_ms: f64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         usage: Option<SessionCompletedUsage>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        verdict: Option<MergeVerdict>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        verdict_reasoning: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
     PrReviewFailed {
@@ -977,6 +981,15 @@ pub enum McpServerTransport {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MergeVerdict {
+    Ready,
+    MergeWithChanges,
+    NeedsRevision,
+    Blocked,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "behavior", rename_all = "lowercase")]
 pub enum PermissionDecision {
@@ -1152,6 +1165,8 @@ pub struct ReviewFinding {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub suggested_fix: Option<String>,
     pub fingerprint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub corroborated_by: Option<Vec<ReviewLens>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

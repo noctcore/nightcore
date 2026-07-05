@@ -65,6 +65,45 @@ pub(crate) async fn submit_run(
         }
     };
 
+    // Fix-arc dispatch guard: never launch a task INTO a checkout a live PR-fix
+    // session (or its auto-commit) is editing — two agents concurrently writing
+    // one worktree corrupt each other's work. A fix holds no slot, so the slot
+    // lease can't see it; the registry's running entry is the probe. Routed
+    // through `fail_run` like every other post-lease setup failure (slot
+    // released, task marked failed, breaker fed only on the auto-loop path).
+    if let Some(fix) = resolved.as_ref().and_then(|r| {
+        app.state::<crate::workflow::pr_fix::PrFixRegistry>()
+            .running_for_dir(&r.path)
+    }) {
+        let msg = format!(
+            "a PR fix ({}) for PR #{} is running in this task's worktree — wait for it to \
+             finish or cancel it from the PR workspace before running the task",
+            fix.id, fix.pr_number
+        );
+        fail_run(app, task_id, &msg, feed_breaker);
+        return Err(msg);
+    }
+
+    // A fresh worktree checkout has no `node_modules` of its own, and package-local
+    // (non-hoisted) deps never resolve upward past the worktree root — so the agent
+    // can't run the project's real checks and the review-time gauntlet red-fails on
+    // `Cannot find module` (the empirical dogfood failure: a spurious
+    // ChangesRequested that burned a paid fix cycle). Provision the worktree's deps
+    // from its committed lockfile BEFORE dispatch, off the async runtime (a cold
+    // install can take seconds). Best-effort: a failed install must not fail the
+    // run — the agent may not need JS deps at all, and PR-create still hard-gates
+    // on its own provisioning.
+    if let Some(r) = resolved.as_ref().filter(|r| r.is_worktree) {
+        let dir = r.path.clone();
+        let tid = task_id.to_string();
+        let _ = tauri::async_runtime::spawn_blocking(move || {
+            if let Err(e) = worktree::provision_deps(&dir) {
+                tracing::warn!(target: "nightcore", task_id = %tid, error = %e, "worktree dep provisioning failed; continuing without it");
+            }
+        })
+        .await;
+    }
+
     // Only a worktree-mode run carries a `nc/<taskId>` branch chip; a `main`-mode
     // run edits the project's current branch directly, so it has no chip.
     let is_worktree = resolved.as_ref().map(|r| r.is_worktree).unwrap_or(false);
@@ -249,6 +288,36 @@ mod tests {
         assert!(
             feed_breaker_on_failure(&breaker, true),
             "2nd auto-loop failure trips — only auto-loop failures advanced the window"
+        );
+    }
+
+    #[test]
+    fn dispatch_refuses_a_worktree_held_by_a_running_pr_fix() {
+        // Concurrency guard: a task must never launch INTO a checkout a live
+        // PR-fix session is editing (a fix holds no slot, so the lease can't
+        // see it — the registry probe is the only fence). The probe needs a
+        // full `AppHandle`, so this is a source-level guard: it must sit
+        // between cwd resolution and the dispatch, and its refusal must route
+        // through `fail_run` like every other post-lease setup failure (slot
+        // released, task marked failed, breaker fed only on the auto-loop path).
+        let src = include_str!("submit.rs");
+        let resolve = src
+            .find("resolve_worktree(app, task_id)")
+            .expect("the cwd resolution site exists");
+        let probe = src
+            .find("running_for_dir")
+            .expect("the pr-fix registry probe exists");
+        let dispatch = src
+            .find(".start_session(")
+            .expect("the dispatch site exists");
+        assert!(
+            resolve < probe && probe < dispatch,
+            "the probe runs after cwd resolution and before dispatch"
+        );
+        let window = &src[probe..dispatch];
+        assert!(
+            window.contains("fail_run(app, task_id, &msg, feed_breaker)"),
+            "the refusal feeds fail_run like every post-lease setup failure"
         );
     }
 

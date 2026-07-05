@@ -104,6 +104,13 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
         return;
     };
 
+    // PR-fix probe (workflow::pr_fix): a fix session correlates by its FIX id (a
+    // PrFixRegistry key, never a task id). Resolved ONCE here and consulted by
+    // the stream/transcript suppression and every routing arm below.
+    let is_pr_fix = app
+        .state::<crate::workflow::pr_fix::PrFixRegistry>()
+        .contains(&task_id);
+
     // Perf: forward the event to the webview AND persist it to the transcript while
     // serializing the event body EXACTLY ONCE. This is the hottest core path —
     // assistant text-delta events stream per token during a run, and payloads can be
@@ -114,22 +121,29 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
     // transcript (M4.7 §C — persisted so a reload/HMR no longer blanks the stream).
     // Both are best-effort and secret-safe (the wire events carry tool inputs but
     // never tokens); a serialize/write failure never breaks the live stream.
-    match serde_json::value::to_raw_value(&event) {
-        Ok(raw) => {
-            let _ = app.emit(
-                SESSION_EVENT,
-                TaggedSessionEvent {
-                    task_id: &task_id,
-                    event: &raw,
-                },
-            );
-            crate::transcript::append_line(&store, &task_id, raw.get());
-        }
-        // Re-serializing a just-parsed `Value` effectively cannot fail; if it somehow
-        // does, drop this one event from the stream/transcript rather than killing the
-        // reader (routing decisions below still run on the parsed event).
-        Err(e) => {
-            tracing::warn!(target: "nightcore", task_id, error = %e, "cannot serialize session event; dropping from stream/transcript");
+    //
+    // PR-fix intercept: a fix session's stream is SKIPPED entirely — no board
+    // surface renders `nc:session` keyed by a `prfix-*` id (the emit would be
+    // dead traffic), and a transcript file keyed by the fix id has no task-scoped
+    // GC to ever delete it (the leak). The routing arms below still run.
+    if !is_pr_fix {
+        match serde_json::value::to_raw_value(&event) {
+            Ok(raw) => {
+                let _ = app.emit(
+                    SESSION_EVENT,
+                    TaggedSessionEvent {
+                        task_id: &task_id,
+                        event: &raw,
+                    },
+                );
+                crate::transcript::append_line(&store, &task_id, raw.get());
+            }
+            // Re-serializing a just-parsed `Value` effectively cannot fail; if it somehow
+            // does, drop this one event from the stream/transcript rather than killing the
+            // reader (routing decisions below still run on the parsed event).
+            Err(e) => {
+                tracing::warn!(target: "nightcore", task_id, error = %e, "cannot serialize session event; dropping from stream/transcript");
+            }
         }
     }
 
@@ -141,6 +155,37 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
     if event_type == "permission-required" {
         if let Some(request_id) = event.get("requestId").and_then(Value::as_str) {
             let tool_name = event.get("toolName").and_then(Value::as_str).unwrap_or("");
+            // PR-fix intercept (workflow::pr_fix): no board surface renders a
+            // prompt keyed by a `prfix-*` id, so relaying would park the session
+            // on a spinner NO ONE can answer — forever. FAIL-CLOSED: deny at
+            // once through the same per-request seam `deny_parked_permissions`
+            // resolves through, and let the session adapt (the dontAsk shape).
+            // Covers the ExitPlanMode plan gate too — a fix has no task row to
+            // park `waiting_approval` on. Deliberately NOT registered in the
+            // engine permission registry (nothing would ever drain it) and NOT
+            // emitted to the web.
+            if is_pr_fix {
+                tracing::warn!(target: "nightcore::prfix", fix_id = %task_id, tool = tool_name, "denying a pr-fix session's permission request (unattended run)");
+                if let Some(sid) = session_id {
+                    use crate::provider::{PermissionDecision, Provider};
+                    if let Err(e) = provider
+                        .decide_permission(
+                            sid,
+                            request_id,
+                            PermissionDecision::Deny {
+                                message: "Nightcore: PR-fix sessions run unattended — this \
+                                          permission request was denied; continue without the \
+                                          tool call if possible."
+                                    .to_string(),
+                            },
+                        )
+                        .await
+                    {
+                        tracing::warn!(target: "nightcore::prfix", fix_id = %task_id, error = %e, "failed to deny a pr-fix permission request");
+                    }
+                }
+                return;
+            }
             // Relay by tool NAME only — never the input args (paths/commands/secrets).
             tracing::info!(target: "nightcore", task_id, tool = tool_name, "relaying permission request");
             engine.permissions_register(app, &task_id, request_id);
@@ -159,6 +204,27 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
     // is no Rust-side registry to drain on cancel). Relay the prompt to the board.
     if event_type == "question-required" {
         if let Some(request_id) = event.get("requestId").and_then(Value::as_str) {
+            // PR-fix intercept: same fail-closed rule as `permission-required` —
+            // no surface renders an `nc:question` keyed by a fix id, so CANCEL
+            // the SDK dialog at once (the engine settles it as cancelled)
+            // instead of parking the session forever. Not emitted to the web.
+            if is_pr_fix {
+                tracing::warn!(target: "nightcore::prfix", fix_id = %task_id, "cancelling a pr-fix session's ask-user-question (unattended run)");
+                if let Some(sid) = session_id {
+                    use crate::provider::Provider;
+                    if let Err(e) = provider
+                        .send_answer(
+                            sid,
+                            request_id,
+                            crate::contracts::AnswerQuestionAnswerUnion::Cancel {},
+                        )
+                        .await
+                    {
+                        tracing::warn!(target: "nightcore::prfix", fix_id = %task_id, error = %e, "failed to cancel a pr-fix ask-user-question");
+                    }
+                }
+                return;
+            }
             tracing::info!(target: "nightcore", task_id, "relaying ask-user-question request");
             emit_question_prompt(app, &task_id, request_id, &event);
         }
@@ -185,6 +251,14 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
         "session-started" | "session-ready" => {
             if let Some(sid) = session_id {
                 tracing::info!(target: "nightcore", task_id, session_id = sid, "session ready");
+                // PR-fix intercept (workflow::pr_fix): a fix session correlates by
+                // its FIX id, which has no task row to stamp. The provider
+                // correlation map already carries the binding cancel needs
+                // (`session_for`), so skip the task-store stamp instead of logging
+                // a spurious mutate failure for a nonexistent task.
+                if is_pr_fix {
+                    return;
+                }
                 // SDK-guardrails (resume): persist the SDK session UUID carried by
                 // `session-ready` so a later relaunch can reattach via
                 // `Options.resume`. The UUID is bookkeeping, not a secret — captured
@@ -214,6 +288,27 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
                 .and_then(Value::as_str)
                 .map(|s| s.to_string());
             let cost = event.get("costUsd").and_then(Value::as_f64);
+            // PR-fix intercept (workflow::pr_fix): a pr-fix session's correlation
+            // id is a PrFixRegistry key, NOT a task id — route its completion to
+            // the pr-fix arc (auto-commit → awaiting_push) BEFORE the task-store
+            // routing below, which would otherwise misread the missing task as a
+            // fresh build completion. The commit is blocking git work, so it is
+            // offloaded off the reader exactly like the gate battery. A pr-fix
+            // run holds no slot and feeds no breaker, so `finish_run` bookkeeping
+            // is deliberately NOT involved; the correlation binding is dropped
+            // here (the terminal handlers below do the same via their paths).
+            if is_pr_fix {
+                if let Some(sid) = session_id {
+                    provider.forget(sid);
+                }
+                let app = app.clone();
+                let fix_id = task_id.clone();
+                tauri::async_runtime::spawn(async move {
+                    crate::workflow::pr_fix::handle_fix_completed(&app, &fix_id, result, cost)
+                        .await;
+                });
+                return;
+            }
             // Decompose §B: the engine includes a validated `proposedSubtasks` array
             // on a `decompose` run's completion (absent for every other kind). Build
             // the core-owned `ProposedSubtask`s here — `from_wire` MINTS each one's
@@ -277,6 +372,18 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
                 .get("message")
                 .and_then(Value::as_str)
                 .map(|s| s.to_string());
+            // PR-fix intercept (workflow::pr_fix): same routing rule as the
+            // session-completed arm — a fix session's failure marks its
+            // PrFixState failed and must never touch the task store, the circuit
+            // breaker, or a slot (a pr-fix run leases none). A cancel already
+            // marked it failed("cancelled"), in which case this is a no-op.
+            if is_pr_fix {
+                if let Some(sid) = session_id {
+                    provider.forget(sid);
+                }
+                crate::workflow::pr_fix::handle_fix_failed(app, &task_id, message);
+                return;
+            }
             let was_verifying =
                 store.get(&task_id).map(|t| t.status) == Some(TaskStatus::Verifying);
 
@@ -396,6 +503,102 @@ mod tests {
             "type": "session-failed", "sessionId": 1, "reason": "runner-crash", "message": "boom"
         });
         assert!(!is_fatal_setup_failure(&crash));
+    }
+
+    #[test]
+    fn pr_fix_permission_prompt_is_denied_never_relayed() {
+        // Contract guard: no board surface renders an `nc:permission` (or the
+        // plan gate) keyed by a `prfix-*` id — relaying would park the session
+        // on a prompt no one can ever answer. The permission-required arm must
+        // fail-closed DENY (via the per-request `decide_permission` seam) BEFORE
+        // any of the relay paths (register / plan gate / emit). The arm needs a
+        // full `AppHandle`, so this is a source-level guard (like the offload
+        // test below).
+        let src = include_str!("reader.rs");
+        let arm_at = src
+            .find("if event_type == \"permission-required\"")
+            .expect("the permission-required arm exists");
+        let arm_end = src[arm_at..]
+            .find("if event_type == \"question-required\"")
+            .map(|rel| arm_at + rel)
+            .unwrap_or(src.len());
+        let arm = &src[arm_at..arm_end];
+        let guard = arm
+            .find("if is_pr_fix")
+            .expect("the pr-fix intercept exists in the permission arm");
+        let deny = arm
+            .find("PermissionDecision::Deny")
+            .expect("the intercept denies the request");
+        let register = arm
+            .find("permissions_register")
+            .expect("the relay path registers the request");
+        let emit = arm
+            .find("emit_permission_prompt")
+            .expect("the relay path emits nc:permission");
+        let plan_gate = arm
+            .find("handle_plan_gate")
+            .expect("the plan gate lives in this arm");
+        assert!(guard < deny, "the intercept denies inside the guard");
+        assert!(
+            deny < register && deny < emit && deny < plan_gate,
+            "the fail-closed deny must run BEFORE every relay path (incl. the plan gate)"
+        );
+    }
+
+    #[test]
+    fn pr_fix_question_prompt_is_cancelled_never_relayed() {
+        // Same fail-closed rule for `question-required`: cancel the SDK dialog
+        // at once instead of emitting an `nc:question` no surface renders.
+        let src = include_str!("reader.rs");
+        let arm_at = src
+            .find("if event_type == \"question-required\"")
+            .expect("the question-required arm exists");
+        let arm_end = src[arm_at..]
+            .find("\"session-completed\" | \"session-failed\"")
+            .map(|rel| arm_at + rel)
+            .unwrap_or(src.len());
+        let arm = &src[arm_at..arm_end];
+        let guard = arm
+            .find("if is_pr_fix")
+            .expect("the pr-fix intercept exists in the question arm");
+        let cancel = arm
+            .find("AnswerQuestionAnswerUnion::Cancel")
+            .expect("the intercept cancels the dialog");
+        let emit = arm
+            .find("emit_question_prompt")
+            .expect("the relay path emits nc:question");
+        assert!(
+            guard < cancel && cancel < emit,
+            "the fail-closed cancel must run BEFORE the relay emit"
+        );
+    }
+
+    #[test]
+    fn pr_fix_stream_and_transcript_are_suppressed() {
+        // Leak guard: a fix session's `nc:session` emit is dead traffic (no
+        // surface renders a `prfix-*` taskId) and its transcript file has no
+        // task-scoped GC to ever delete it. The single emit+append block must
+        // sit under the `!is_pr_fix` guard.
+        let src = include_str!("reader.rs");
+        let guard = src
+            .find("if !is_pr_fix {")
+            .expect("the stream-suppression guard exists");
+        let arm_end = src
+            .find("if event_type == \"permission-required\"")
+            .expect("the next routing arm bounds the block");
+        assert!(guard < arm_end, "the guard precedes the routing arms");
+        let guarded = &src[guard..arm_end];
+        // Assembled needle so this test's own source can't satisfy the count.
+        let append = concat!("crate::transcript::", "append_line");
+        assert!(
+            guarded.contains(append),
+            "the transcript append is inside the guard"
+        );
+        assert_eq!(
+            src.matches(append).count(),
+            1,
+            "no unguarded transcript append exists elsewhere in the reader"
+        );
     }
 
     #[test]

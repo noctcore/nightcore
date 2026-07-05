@@ -5,8 +5,8 @@
  *  comment bodies are UNTRUSTED external text; nothing here interprets them. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import type { PrReviewComments, Task } from '@/lib/bridge';
-import { listPrComments } from '@/lib/bridge';
+import type { PrCommentTriage, PrReviewComments, Task } from '@/lib/bridge';
+import { listPrComments, triagePrComments } from '@/lib/bridge';
 
 /** Everything the section shell renders the comments block from. Mirrors
  *  `PrStatusView`: the payload is stamped with a local receive-time (the
@@ -173,6 +173,7 @@ export const BADGE_NEUTRAL = 'border-border bg-white/[0.04] text-muted-foregroun
 const BADGE_SUCCESS = 'border-success/40 bg-success/[0.12] text-success';
 const BADGE_WARNING = 'border-warning/40 bg-warning/[0.12] text-warning';
 const BADGE_DANGER = 'border-destructive/40 bg-destructive/[0.12] text-destructive';
+const BADGE_PRIMARY = 'border-primary/40 bg-primary/[0.12] text-primary';
 
 /** The review-state badge for a top-level summary. Unknown gh vocabulary passes
  *  through raw with a neutral tone (the UI degrades on drift, no enum fork). */
@@ -234,4 +235,123 @@ export function threadAnchor(path: string | null, line: number | null): string {
 /** Format the web-side receive timestamp for the "Refreshed …" footer line. */
 export function formatRefreshedAt(ts: number): string {
   return new Date(ts).toLocaleTimeString();
+}
+
+/** On-demand AI-triage state for the thread class chips. `triage` is `null` until
+ *  the button runs once; `run` (re-)fires the classification. Read-only + cheap,
+ *  so no confirm gate — the button copy names the cost instead. Owned locally by
+ *  the section (not lifted): the verdicts are ephemeral advisory UI. */
+export interface TriageView {
+  /** The last classification (one entry per thread, aligned by `index`), or null
+   *  before the first run. Survives a failed re-run. */
+  triage: PrCommentTriage[] | null;
+  /** True while a triage pass is in flight (the button disables + spins). */
+  triaging: boolean;
+  /** The last triage failure, shown inline; a later run clears it. */
+  error: string | null;
+  /** Run (or re-run) the classification for the current task. */
+  run: () => void;
+}
+
+/** Classify the task's PR threads on demand. An epoch-gated effect (0 = never
+ *  run) gives the same stale-guard + task-switch reset as `usePrReviewComments`:
+ *  a pending pass from task A must never annotate task B's threads. The verdicts
+ *  align to the displayed threads by positional `index`, so a CHANGED thread set
+ *  (a Refresh that resolves/adds a thread) invalidates them too — `comments` is
+ *  passed in so a changed thread identity clears the now-misaligned chips. */
+export function useTriage(
+  taskId: string,
+  comments: PrReviewComments | null = null,
+): TriageView {
+  const [triage, setTriage] = useState<PrCommentTriage[] | null>(null);
+  const [triaging, setTriaging] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Bumping the epoch (re-)runs the triage effect; 0 means "not requested yet".
+  const [epoch, setEpoch] = useState(0);
+
+  // A stable identity of the displayed thread set. Because verdicts index-align
+  // to the threads, ANY change to that set (a resolved thread, a new comment, a
+  // reorder — e.g. after Refresh) would mis-chip the current threads with the
+  // pre-refresh verdicts. Derived from the anchors + comment counts so it only
+  // turns over when the threads actually change — a no-op refresh (identical
+  // threads) keeps the chips rather than forcing a re-run of the paid triage.
+  const threadsToken = useMemo(
+    () =>
+      comments === null
+        ? ''
+        : comments.threads
+            .map((t) => `${t.path ?? ''} ${t.line ?? ''} ${t.comments.length}`)
+            .join('|'),
+    [comments],
+  );
+
+  // Task-switch OR thread-set-change reset (render-adjust, before paint): the
+  // hook instance survives both, so task A's verdicts — or a pre-refresh thread
+  // set's — would chip the current threads until re-triaged. Reset synchronously
+  // — an effect-time reset would flash the stale chips.
+  const key = `${taskId} ${threadsToken}`;
+  const [lastKey, setLastKey] = useState(key);
+  if (lastKey !== key) {
+    setLastKey(key);
+    setTriage(null);
+    setError(null);
+    setTriaging(false);
+    setEpoch(0);
+  }
+
+  useEffect(() => {
+    if (epoch === 0) return; // not requested yet — nothing to fetch
+    let stale = false;
+    setTriaging(true);
+    setError(null);
+    triagePrComments(taskId).then(
+      (next) => {
+        if (stale) return;
+        setTriage(next);
+        setTriaging(false);
+      },
+      (err: unknown) => {
+        if (stale) return;
+        console.error('triage_pr_comments failed', err);
+        // Keep the last good verdicts visible; the error line rides beside them.
+        setError(errorText(err));
+        setTriaging(false);
+      },
+    );
+    return () => {
+      stale = true;
+    };
+  }, [taskId, epoch]);
+
+  const run = useCallback(() => setEpoch((n) => n + 1), []);
+  return { triage, triaging, error, run };
+}
+
+/** The triage class chip's label + tone. Tones follow the task spec: actionable →
+ *  warning, false_positive → muted, already_addressed → success, question →
+ *  primary. A `default` keeps the UI degrading gracefully if the wire vocabulary
+ *  ever grows past the four the backend normalizes to. */
+export function triageClassChip(cls: PrCommentTriage['class']): PrCommentBadge {
+  switch (cls) {
+    case 'actionable':
+      return { label: 'Actionable', className: BADGE_WARNING };
+    case 'false_positive':
+      return { label: 'False positive', className: BADGE_NEUTRAL };
+    case 'already_addressed':
+      return { label: 'Addressed', className: BADGE_SUCCESS };
+    case 'question':
+      return { label: 'Question', className: BADGE_PRIMARY };
+    default:
+      return { label: 'Triaged', className: BADGE_NEUTRAL };
+  }
+}
+
+/** The triage verdict for the thread at `index`, or undefined when triage has not
+ *  run (`triage === null`) or did not cover that thread (a sparse pass). */
+export function triageForIndex(
+  triage: PrCommentTriage[] | null,
+  index: number,
+): PrCommentTriage | undefined {
+  if (triage === null) return undefined;
+  return triage.find((t) => t.index === index);
 }

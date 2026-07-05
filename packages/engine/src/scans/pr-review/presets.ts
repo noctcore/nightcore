@@ -130,6 +130,18 @@ export const PR_VALIDATOR_PERSONA = [
   'diff does not support.',
 ].join(' ');
 
+/** The merge-verdict synthesis persona — the same read-only reviewer, now asked to
+ *  ADJUDICATE one overall merge recommendation from the FINAL findings rather than
+ *  produce or vet findings. The literal word "ADJUDICATING" lets a test fake route this
+ *  session distinctly (mirrors the validator persona's "VALIDATING" marker). */
+export const PR_VERDICT_PERSONA = [
+  PR_REVIEWER_PERSONA,
+  'You are now ADJUDICATING the overall MERGE VERDICT for this pull request from its',
+  'final list of findings: weigh their severity and spread into ONE recommendation of',
+  'whether the PR can merge. You still never write or run anything — you return only a',
+  'single JSON verdict object.',
+].join(' ');
+
 /**
  * Build the strict-JSON output contract appended to every lens pass. Describes the
  * exact shape the engine parses — it forces `lens` (the pass owns it, not the model),

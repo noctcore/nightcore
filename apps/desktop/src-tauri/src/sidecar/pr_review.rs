@@ -30,17 +30,81 @@ use super::scan::{
 };
 use super::PRREVIEW_EVENT;
 
-// The four store-agnostic lifecycle commands (list / get / delete / cancel), stamped
-// from the shared scan macro instead of hand-copied per feature.
+// The three store-agnostic lifecycle commands (list / get / delete), stamped from
+// the shared scan macro. Cancel is HAND-WRITTEN below (the macro's cancel-less
+// arm): a PR-review cancel must mark the persisted run failed("cancelled") BEFORE
+// dispatching the engine cancel, because `start_pr_review`'s setup window (the
+// bounded `gh` diff fetch) runs before the engine ever hears about the run.
 scan_lifecycle_commands! {
     store: PrReviewStore,
     run: PrReviewRun,
     list: list_pr_review_runs,
     get: get_pr_review_run,
     delete: delete_pr_review_run,
-    cancel: cancel_pr_review,
-    cancel_command: CancelPrReview,
     item: "pr review",
+}
+
+/// Stamp `failed(<reason>)` on a run ONLY while it is still `running` — the
+/// idempotent mark shared by [`cancel_pr_review`] and the `pr-review-failed`
+/// terminal arm. Returns whether THIS call stamped it. A run that already
+/// settled (completed with findings, or failed("cancelled") by the cancel
+/// command) is left untouched: a late abort terminal must never overwrite the
+/// user's cancellation reason or clobber a completed run's status.
+fn mark_failed_if_running(store: &PrReviewStore, run_id: &str, reason: &str) -> bool {
+    use crate::store::run_store::Edit;
+    store
+        .edit_run(run_id, |run| {
+            if run.status != "running" {
+                return Ok(Edit::Skip(false));
+            }
+            run.status = "failed".to_string();
+            run.error = Some(reason.to_string());
+            Ok(Edit::Commit(true))
+        })
+        .map(|(stamped, _)| stamped)
+        .unwrap_or(false)
+}
+
+/// Cancel an in-flight PR review run (aborts every lens pass). Hand-written
+/// rather than the macro's dispatch-only cancel: a cancel can land during
+/// `start_pr_review`'s SETUP window — the blocking diff fetch runs BEFORE the
+/// engine hears about the run — where the engine-side cancel is a silent no-op
+/// and the run would spin `running` forever. Mark the store run
+/// failed("cancelled") FIRST (the start path's pre-dispatch re-check observes
+/// the mark and aborts instead of dispatching), then dispatch the engine cancel
+/// for the already-dispatched case; its later `pr-review-failed (aborted)`
+/// terminal is a no-op against the already-settled run.
+#[tauri::command]
+pub async fn cancel_pr_review(
+    app: AppHandle,
+    pr_review_store: State<'_, PrReviewStore>,
+    run_id: String,
+) -> Result<(), String> {
+    let stamped = mark_failed_if_running(&pr_review_store, &run_id, "cancelled");
+    if stamped {
+        tracing::info!(target: "nightcore", run_id = %run_id, "pr review cancelled (store marked)");
+    }
+    let provider = app.state::<std::sync::Arc<crate::provider::SidecarProvider>>();
+    provider
+        .dispatch_command(SurfaceCommand::CancelPrReview {
+            run_id: run_id.clone(),
+        })
+        .await
+}
+
+/// The pre-dispatch re-check closing `start_pr_review`'s cancel window: the diff
+/// fetch can block for up to the bounded `gh` timeout, and a cancel landing in
+/// that window has no engine session to abort — it marks the store run
+/// failed("cancelled") instead. Refuse the dispatch unless the run is still
+/// `running` (a deleted run refuses too). Pure — unit-tested.
+fn check_still_running_before_dispatch(status: Option<&str>) -> Result<(), String> {
+    match status {
+        Some("running") => Ok(()),
+        Some(status) => Err(format!(
+            "the review was cancelled before dispatch (status: {status})"
+        )),
+        None => Err("the review run was deleted before dispatch".to_string()),
+    }
 }
 
 /// Start a PR Review run over a pull request of the active project. Validates the PR
@@ -91,12 +155,22 @@ pub async fn start_pr_review(
         usage: InsightUsage::default(),
         findings: Vec::new(),
         error: None,
+        verdict: None,
+        verdict_reasoning: None,
+        head_sha: None,
+        posted_verdict: None,
+        posted_at: None,
     };
-    // Single-flight: reject a second concurrent review for this project (a stray
-    // History/"New run" click mid-run) instead of launching another paid scan.
-    pr_review_store.upsert_if_idle(
+    // Single-flight PER PR: reject a second concurrent review of the SAME pull request
+    // (a stray History/"New run" click mid-run) instead of launching another paid scan.
+    // Reviews of DIFFERENT PRs may run concurrently — the engine already bounds session
+    // concurrency; this guard exists only to stop duplicate spend on one PR.
+    pr_review_store.upsert_if_idle_when(
         &run,
-        "a PR review is already running for this project — wait for it to finish or cancel it first",
+        |r| r.pr_number == pr_number,
+        &format!(
+            "a review for PR #{pr_number} is already running — wait for it to finish or cancel it first"
+        ),
     )?;
 
     // Resolve the PR diff + changed files off the UI thread (`gh` talks to the network,
@@ -104,13 +178,19 @@ pub async fn start_pr_review(
     // sessions never touch the network.
     let fetch_path = project_path.clone();
     let fetched = tauri::async_runtime::spawn_blocking(move || {
-        crate::workflow::pr_review_post::fetch_pr_diff(std::path::Path::new(&fetch_path), pr_number)
+        let dir = std::path::Path::new(&fetch_path);
+        let (diff, changed_files) = crate::workflow::pr_review_post::fetch_pr_diff(dir, pr_number)?;
+        // Also capture the PR head oid for staleness detection — BEST-EFFORT: a failure
+        // here must not fail the whole (already-fetched) review, so it becomes `None` and
+        // the run simply carries no reviewed-head marker.
+        let head_sha = crate::workflow::pr_review_post::fetch_pr_head_oid(dir, pr_number).ok();
+        Ok::<_, String>((diff, changed_files, head_sha))
     })
     .await
     .map_err(|e| format!("PR diff fetch failed to run: {e}"));
 
-    let (diff, changed_files) = match fetched.and_then(|inner| inner) {
-        Ok(pair) => pair,
+    let (diff, changed_files, head_sha) = match fetched.and_then(|inner| inner) {
+        Ok(triple) => triple,
         Err(msg) => {
             // Mark the run failed so it doesn't look stuck, then surface the error.
             let _ = pr_review_store.mutate(&run_id, |r| {
@@ -120,6 +200,19 @@ pub async fn start_pr_review(
             return Err(msg);
         }
     };
+
+    // Stamp the reviewed head so the UI can flag the run stale once the PR advances past
+    // it. Best-effort: skip an empty/absent oid, and ignore a store error (staleness is
+    // an optional signal, never a reason to fail the review).
+    if let Some(sha) = head_sha.filter(|s| !s.is_empty()) {
+        let _ = pr_review_store.mutate(&run_id, |r| r.head_sha = Some(sha));
+    }
+
+    // Cancel-during-setup guard: re-read the run — a cancel (or delete) that
+    // landed during the blocking diff fetch above already settled it, and
+    // dispatching anyway would launch a paid scan the UI shows as cancelled
+    // (with no engine session the cancel could ever have aborted).
+    check_still_running_before_dispatch(pr_review_store.get(&run_id).map(|r| r.status).as_deref())?;
 
     // Ensure the sidecar is up, then dispatch the review command; on failure the shared
     // helper persists the run's failed-state (so it doesn't look stuck).
@@ -289,16 +382,34 @@ pub(crate) async fn handle_pr_review_event(app: &AppHandle, event_type: &str, ev
             let tel = ScanTelemetry::from_event(event);
             let count = findings.len();
 
+            // The synthesis pass's overall merge recommendation + its justification ride
+            // the terminal event as wire strings. Additive + optional (FAIL-OPEN): a run
+            // whose synthesis pass errored/was skipped, or an older engine, omits them.
+            let verdict = event
+                .get("verdict")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            let verdict_reasoning = event
+                .get("verdictReasoning")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+
             // The shared finalizer owns the idempotency guard, the status/telemetry stamp,
             // and the by-fingerprint in-run lifecycle carry-forward; we inject only the
-            // item-collection selector.
+            // item-collection selector — and, inside its is-finalized guard, stamp the
+            // run-level verdict so a late/duplicate terminal (or one racing a cancel) never
+            // attaches a verdict to an already-settled run.
             let finalized = finalize_scan_items(
                 pr_review_store.inner(),
                 "pr-review",
                 run_id,
                 &tel,
                 findings,
-                |run| &mut run.findings,
+                move |run| {
+                    run.verdict = verdict;
+                    run.verdict_reasoning = verdict_reasoning;
+                    &mut run.findings
+                },
             );
             if finalized {
                 tracing::info!(target: "nightcore", run_id, findings = count, cost_usd = tel.cost_usd, "pr review completed");
@@ -306,11 +417,12 @@ pub(crate) async fn handle_pr_review_event(app: &AppHandle, event_type: &str, ev
         }
         "pr-review-failed" => {
             let reason = failure_reason(event);
-            let _ = pr_review_store.mutate(run_id, |run| {
-                run.status = "failed".to_string();
-                run.error = Some(reason.clone());
-            });
-            tracing::info!(target: "nightcore", run_id, reason, "pr review ended (failed/aborted)");
+            // Guard: only a RUNNING run takes the failed stamp — a late abort/
+            // failure terminal must not overwrite a run that already settled
+            // (completed with findings, or failed("cancelled") by the cancel
+            // command racing the terminal).
+            let stamped = mark_failed_if_running(&pr_review_store, run_id, &reason);
+            tracing::info!(target: "nightcore", run_id, reason, stamped, "pr review ended (failed/aborted)");
         }
         // Intermediate lifecycle events: forwarded above for the live UI, and logged here
         // (mirroring the analysis handler) so a long review's progress reaches the terminal.
@@ -360,6 +472,88 @@ mod tests {
     use super::*;
     use crate::store::pr_review::StoredReviewFinding;
 
+    fn review_run(id: &str, status: &str) -> PrReviewRun {
+        PrReviewRun {
+            id: id.to_string(),
+            project_path: "/proj".to_string(),
+            pr_number: 7,
+            status: status.to_string(),
+            lenses: vec!["security".to_string()],
+            model: String::new(),
+            created_at: 1,
+            updated_at: 1,
+            cost_usd: 0.0,
+            duration_ms: 0,
+            usage: InsightUsage::default(),
+            findings: Vec::new(),
+            error: None,
+            verdict: None,
+            verdict_reasoning: None,
+            head_sha: None,
+            posted_verdict: None,
+            posted_at: None,
+        }
+    }
+
+    fn review_store() -> (PrReviewStore, tempfile::TempDir) {
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let store = PrReviewStore::load_from(tmp.path().join("pr-reviews"));
+        (store, tmp)
+    }
+
+    #[test]
+    fn mark_failed_if_running_stamps_only_running_runs() {
+        let (store, _tmp) = review_store();
+        store.upsert(&review_run("r1", "running")).expect("seed");
+
+        // A running run takes the stamp exactly once.
+        assert!(mark_failed_if_running(&store, "r1", "cancelled"));
+        let got = store.get("r1").expect("run");
+        assert_eq!(got.status, "failed");
+        assert_eq!(got.error.as_deref(), Some("cancelled"));
+        // The engine's later abort terminal is a no-op — the user's cancellation
+        // reason survives (the cancel-vs-terminal race, both orders).
+        assert!(!mark_failed_if_running(&store, "r1", "aborted"));
+        assert_eq!(
+            store.get("r1").expect("run").error.as_deref(),
+            Some("cancelled")
+        );
+
+        // A completed run is never clobbered by a late failure terminal.
+        store.upsert(&review_run("r2", "completed")).expect("seed");
+        assert!(!mark_failed_if_running(&store, "r2", "aborted"));
+        assert_eq!(store.get("r2").expect("run").status, "completed");
+
+        // An unknown run is a tolerant no-op.
+        assert!(!mark_failed_if_running(&store, "ghost", "x"));
+    }
+
+    #[test]
+    fn setup_window_cancel_prevents_dispatch() {
+        let (store, _tmp) = review_store();
+        store.upsert(&review_run("r1", "running")).expect("seed");
+        // Still running → the dispatch proceeds.
+        assert!(
+            check_still_running_before_dispatch(store.get("r1").map(|r| r.status).as_deref())
+                .is_ok()
+        );
+
+        // A cancel lands during the blocking diff fetch (the setup window): the
+        // engine has no session to abort, so the store mark is all it can do —
+        // the pre-dispatch re-check must then refuse to launch the paid scan.
+        assert!(mark_failed_if_running(&store, "r1", "cancelled"));
+        let err = check_still_running_before_dispatch(store.get("r1").map(|r| r.status).as_deref())
+            .expect_err("cancelled before dispatch must refuse");
+        assert!(err.contains("cancelled"), "explains the refusal: {err}");
+
+        // A run deleted mid-setup refuses too.
+        store.remove("r1").expect("delete");
+        assert!(
+            check_still_running_before_dispatch(store.get("r1").map(|r| r.status).as_deref())
+                .is_err()
+        );
+    }
+
     fn minimal_finding() -> StoredReviewFinding {
         StoredReviewFinding {
             id: "security-1".to_string(),
@@ -371,6 +565,7 @@ mod tests {
             body: "req.body.id flows straight into the SQL string.".to_string(),
             suggested_fix: None,
             fingerprint: "fp-abc".to_string(),
+            corroborated_by: None,
             status: "open".to_string(),
             linked_task_id: None,
         }

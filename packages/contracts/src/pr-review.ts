@@ -41,6 +41,21 @@ export const ReviewSeveritySchema = z.enum([
 ]);
 export type ReviewSeverity = z.infer<typeof ReviewSeveritySchema>;
 
+/** The overall MERGE VERDICT the synthesis pass assigns to the whole PR after every
+ *  lens + the adversarial validator have run — one coarse recommendation spanning all
+ *  findings, ordered mergeable → blocked. Emitted additively + optionally on the wire
+ *  (see the `pr-review-completed` event): a run whose synthesis pass errors/times-out/
+ *  cancels completes WITHOUT it (fail-open), and an older engine that never runs the
+ *  pass simply omits it. Named `MergeVerdictSchema` (NOT `...Command/Event/Query`) so
+ *  the `zod-schema-naming` rule does not fire — same carve-out as the finding schema. */
+export const MergeVerdictSchema = z.enum([
+  'ready',
+  'merge_with_changes',
+  'needs_revision',
+  'blocked',
+]);
+export type MergeVerdict = z.infer<typeof MergeVerdictSchema>;
+
 /**
  * One grounded PR-review finding. Flat (codegen can't do a tagged union inside a
  * struct). Lifecycle fields (status, linkedTaskId) are NOT here — owned Rust-side by
@@ -65,5 +80,10 @@ export const ReviewFindingSchema = z.object({
   /** Stable content fingerprint (lens + normalized file + title) for dedup +
    *  dismissed-history across re-runs. */
   fingerprint: z.string(),
+  /** Review lenses OTHER than {@link ReviewFindingSchema.shape.lens} that independently
+   *  surfaced this same issue — populated by the cross-lens dedup when it collapses
+   *  duplicate findings, so the corroborating signal survives the merge instead of
+   *  being dropped. Additive + optional; absent when only the reporting lens found it. */
+  corroboratedBy: z.array(ReviewLensSchema).optional(),
 });
 export type ReviewFinding = z.infer<typeof ReviewFindingSchema>;

@@ -57,6 +57,7 @@ import {
   prReviewPreset,
 } from './presets.js';
 import { validatePrReviewFindings } from './validator.js';
+import { synthesizePrVerdict } from './verdict.js';
 
 /** The `start-pr-review` command variant (the zod schema is exported as a value, so
  *  the engine narrows the union for the type). */
@@ -203,11 +204,15 @@ export class PrReviewScanManager extends ScanManager<
   }
 
   /**
-   * Diff-ground across all lenses → cross-lens dedup → adversarial validator pass →
-   * complete. The validator is FAIL-OPEN: any error keeps every finding (we never lose
-   * a real finding to a flaky validator). It runs silently (no event in the declared
-   * `pr-review-*` family — only logs) and its usage/cost fold into the run totals. A
-   * late cancel (mid-validation) surfaces `pr-review-failed`.
+   * Diff-ground across all lenses → cross-lens dedup (+corroboration) → adversarial
+   * validator pass → merge-verdict synthesis pass → complete. Both tail passes are
+   * FAIL-OPEN and run silently (no event in the declared `pr-review-*` family — only
+   * logs), and their usage/cost fold into the run totals:
+   *  - the VALIDATOR keeps every finding on any error (we never lose a real finding to a
+   *    flaky validator); a late cancel (mid-validation) surfaces `pr-review-failed`.
+   *  - the VERDICT synthesis (after the validator, on the final survivors) never blocks:
+   *    any error/timeout/cancel completes the run WITHOUT the verdict fields — so unlike
+   *    the validator, a cancel here does NOT surface `pr-review-failed`.
    */
   protected async finalize(
     args: FinalizeArgs<StartPrReview, ReviewLens, ReviewFinding, PrReviewContext>,
@@ -253,6 +258,39 @@ export class PrReviewScanManager extends ScanManager<
     }
 
     const survivors = validation.findings;
+
+    // ONE additional read-only synthesis pass over the FINAL findings — the same
+    // containment/machinery as the validator — that adjudicates an overall merge verdict.
+    // FAIL-OPEN: any error/timeout/cancel completes WITHOUT the verdict fields and never
+    // blocks (so, unlike the validator, a cancel here does not fail the run).
+    this.deps.logger?.info(
+      `[pr-review] verdict: started — adjudicating ${survivors.length} findings`,
+    );
+    const verdictStartedAt = Date.now();
+    const verdict = await synthesizePrVerdict({
+      findings: survivors,
+      lensesRun: itemsRun,
+      changedFiles: context.changedFiles,
+      command,
+      config: this.deps.config,
+      apiKeyFallback: this.deps.apiKeyFallback,
+      ...(this.deps.logger !== undefined ? { logger: this.deps.logger } : {}),
+      runnerFactory: this.runnerFactory,
+      runners: run.runners,
+      isCancelled: () => run.cancelled,
+    });
+    totalCost += verdict.costUsd;
+    addUsage(totalUsage, verdict.usage);
+    this.deps.logger?.info(
+      `[pr-review] verdict: completed — ${verdict.verdict ?? 'none'}, ${fmtCost(verdict.costUsd)}, ${fmtSecs(Date.now() - verdictStartedAt)}`,
+    );
+    if (verdict.error !== undefined && verdict.error !== 'cancelled') {
+      this.deps.logger?.warn(
+        'pr-review verdict degraded; completing without a verdict (fail-open)',
+        { runId: command.runId, error: verdict.error },
+      );
+    }
+
     const durationMs = Date.now() - startedAt;
     this.deps.emit({
       type: 'pr-review-completed',
@@ -262,9 +300,13 @@ export class PrReviewScanManager extends ScanManager<
       costUsd: totalCost,
       durationMs,
       usage: totalUsage,
+      ...(verdict.verdict !== undefined ? { verdict: verdict.verdict } : {}),
+      ...(verdict.reasoning !== undefined
+        ? { verdictReasoning: verdict.reasoning }
+        : {}),
     });
     this.deps.logger?.info(
-      `[pr-review] review completed — ${survivors.length} findings across ${itemsRun.length} lenses, ${fmtCost(totalCost)}, ${fmtElapsed(durationMs)}`,
+      `[pr-review] review completed — ${survivors.length} findings across ${itemsRun.length} lenses${verdict.verdict !== undefined ? ` · verdict ${verdict.verdict}` : ''}, ${fmtCost(totalCost)}, ${fmtElapsed(durationMs)}`,
     );
     this.changedFilesByRun.delete(command.runId);
   }

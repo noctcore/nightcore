@@ -74,6 +74,20 @@ fn merge_task_blocking(app: &AppHandle, id: &str) -> Result<(), String> {
     let task = store
         .get(id)
         .ok_or_else(|| format!("no task with id {id}"))?;
+    // Fix-arc cross-guard: never merge while a PR-fix session (or its auto-
+    // commit) works this task's checkout — the merge's cleanup would delete the
+    // worktree out from under the live session. The `pr_in_flight` refusal above
+    // only covers the fix's SETUP/PUSH windows; the registry's running entry
+    // covers the session's whole runtime.
+    let fix_registry = app
+        .try_state::<crate::workflow::pr_fix::PrFixRegistry>()
+        .ok_or_else(|| "pr-fix registry unavailable".to_string())?;
+    crate::workflow::pr_fix::refuse_while_fix_running(
+        &fix_registry,
+        task.pr_number,
+        id,
+        "merging",
+    )?;
     let project = require_project(app)?;
     let project_path = std::path::PathBuf::from(&project.path);
 

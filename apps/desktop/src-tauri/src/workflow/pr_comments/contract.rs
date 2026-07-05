@@ -61,3 +61,38 @@ pub struct PrReviewComments {
     pub threads: Vec<PrThread>,
     pub reviews: Vec<PrReviewSummary>,
 }
+
+/// How the AI triage pass classified one review thread. OUR vocabulary (not
+/// GitHub's), so a closed enum is correct — every model answer is NORMALIZED into
+/// one of these at parse time (an unknown/garbage class is folded to
+/// [`Actionable`](PrCommentTriageClass::Actionable) — the fail-open floor), so the
+/// wire value is always one of the four.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(TS))]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(test, ts(export, export_to = "PrCommentTriageClass.ts"))]
+pub enum PrCommentTriageClass {
+    /// A real change is needed — the default, and the fail-open floor.
+    Actionable,
+    /// The reviewer is mistaken or the concern does not apply.
+    FalsePositive,
+    /// The code already does what the reviewer asks.
+    AlreadyAddressed,
+    /// The reviewer is asking something that needs a REPLY, not a code change.
+    Question,
+}
+
+/// One thread's AI triage verdict, aligned to `PrReviewComments.threads` by
+/// `index` (0-based). `note` is the model's short (capped) rationale — advisory
+/// UI copy only, never fed back to an agent as instructions. Fail-open by
+/// construction: a triage pass that fails end-to-end returns every thread as
+/// [`PrCommentTriageClass::Actionable`] with an empty note.
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "PrCommentTriage.ts"))]
+pub struct PrCommentTriage {
+    pub index: u32,
+    pub class: PrCommentTriageClass,
+    pub note: String,
+}

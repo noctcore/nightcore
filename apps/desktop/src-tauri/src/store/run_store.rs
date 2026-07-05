@@ -174,14 +174,36 @@ impl<R: PersistedRun> RunStore<R> {
 
     /// Insert a fresh run ONLY if no other run is currently `running` — the single-flight
     /// guard that stops a second concurrent (paid) scan from launching for this project
-    /// (e.g. picking "New run" or a history entry while a scan streams). Atomic: the
-    /// running-check and the insert happen under ONE `runs` lock, so two racing `start_*`
-    /// commands (Tauri runs them on a thread pool) can't both pass. Returns `Err(busy_msg)`
-    /// when a run is already active. A run stuck `running` from a crashed process is cleared
-    /// by [`reap_running`] at the next boot.
+    /// (e.g. picking "New run" or a history entry while a scan streams). The
+    /// store-wide (`|_| true`) case of [`RunStore::upsert_if_idle_when`]; scan kinds
+    /// whose runs never overlap keep this blanket guard.
     pub fn upsert_if_idle(&self, run: &R, busy_msg: &str) -> Result<(), String> {
+        self.upsert_if_idle_when(run, |_| true, busy_msg)
+    }
+
+    /// Insert a fresh run ONLY if no `running` run matches `conflicts` — the scoped
+    /// single-flight guard for kinds whose runs may legitimately overlap (PR reviews
+    /// serialize per `pr_number`, not per store, so two DIFFERENT PRs can review
+    /// concurrently while a duplicate start on the SAME PR is still refused). Atomic:
+    /// the running-check and the insert happen under ONE `runs` lock, so two racing
+    /// `start_*` commands (Tauri runs them on a thread pool) can't both pass — the
+    /// same invariant whichever predicate a kind uses. Returns `Err(busy_msg)` when a
+    /// conflicting run is already active. A run stuck `running` from a crashed process
+    /// is cleared by [`reap_running`] at the next boot.
+    pub fn upsert_if_idle_when<F>(
+        &self,
+        run: &R,
+        conflicts: F,
+        busy_msg: &str,
+    ) -> Result<(), String>
+    where
+        F: Fn(&R) -> bool,
+    {
         let mut guard = crate::sync::lock_or_recover(&self.runs);
-        if guard.values().any(|r| r.status() == "running") {
+        if guard
+            .values()
+            .any(|r| r.status() == "running" && conflicts(r))
+        {
             return Err(busy_msg.to_string());
         }
         self.persist(run)?;
@@ -191,14 +213,22 @@ impl<R: PersistedRun> RunStore<R> {
     }
 
     /// Drop the oldest runs (by `created_at`) beyond [`MAX_RUNS`], deleting their files.
-    /// Called under the `runs` lock from `upsert_if_idle`. Best-effort on the file delete
+    /// Called under the `runs` lock from `upsert_if_idle_when`. Best-effort on the file delete
     /// (a failed unlink is logged, not fatal — the in-memory cap still holds).
+    ///
+    /// A `running` run is NEVER evicted: kinds whose runs may legitimately overlap
+    /// (PR reviews serialize per PR, not per store) can hold several concurrent
+    /// `running` entries, and pruning one mid-flight would strand its live scan —
+    /// terminal events land on a run the store no longer knows (and its findings
+    /// vanish from the UI). Only settled runs age out; in the absurd case where
+    /// 50+ runs are all `running`, nothing is pruned (the cap yields to liveness).
     fn prune_locked(&self, guard: &mut MutexGuard<'_, HashMap<String, R>>) {
         if guard.len() <= MAX_RUNS {
             return;
         }
         let mut by_age: Vec<(String, u64)> = guard
             .values()
+            .filter(|r| r.status() != "running")
             .map(|r| (r.id().to_string(), r.created_at()))
             .collect();
         by_age.sort_by_key(|(_, created)| *created);

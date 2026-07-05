@@ -96,10 +96,25 @@ const ONE_FINDING = JSON.stringify([
 const isValidator = (cfg: SessionRunnerConfig): boolean =>
   cfg.appendSystemPrompt?.includes('VALIDATING') ?? false;
 
-/** Lens → canned findings; validator → drop nothing (`[]`). */
+/** The merge-verdict synthesis pass is routed by its distinct "ADJUDICATING" persona
+ *  marker (the lens/validator personas never contain it). */
+const isVerdict = (cfg: SessionRunnerConfig): boolean =>
+  cfg.appendSystemPrompt?.includes('ADJUDICATING') ?? false;
+
+/** A clean verdict object the fake returns for the synthesis session. */
+const VERDICT_JSON = JSON.stringify({
+  verdict: 'merge_with_changes',
+  reasoning: 'small non-blocking fixes then merge',
+});
+
+/** Lens → canned findings; validator → drop nothing (`[]`); verdict → a clean object. */
 function cannedFactory(): PrReviewRunnerFactory {
   return (cfg: SessionRunnerConfig, emit) => ({
     async run() {
+      if (isVerdict(cfg)) {
+        await completing(VERDICT_JSON)(emit);
+        return;
+      }
       await completing(isValidator(cfg) ? '[]' : ONE_FINDING)(emit);
     },
     async interrupt() {},
@@ -170,6 +185,10 @@ describe('PrReviewScanManager — diff-relative grounding', () => {
     ]);
     const factory: PrReviewRunnerFactory = (cfg, emit) => ({
       async run() {
+        if (isVerdict(cfg)) {
+          await completing(VERDICT_JSON)(emit);
+          return;
+        }
         await completing(isValidator(cfg) ? '[]' : offDiff)(emit);
       },
       async interrupt() {},
@@ -201,6 +220,10 @@ describe('PrReviewScanManager — corrective retry', () => {
     let lensCalls = 0;
     const factory: PrReviewRunnerFactory = (cfg: SessionRunnerConfig, emit) => ({
       async run() {
+        if (isVerdict(cfg)) {
+          await completing(VERDICT_JSON)(emit);
+          return;
+        }
         if (isValidator(cfg)) {
           await completing('[]')(emit);
           return;
@@ -235,6 +258,10 @@ describe('PrReviewScanManager — validator', () => {
     const droppedId = `security-${reviewFingerprint('security', 'src/a.ts', 'Bug')}`;
     const factory: PrReviewRunnerFactory = (cfg, emit) => ({
       async run() {
+        if (isVerdict(cfg)) {
+          await completing(VERDICT_JSON)(emit);
+          return;
+        }
         await completing(
           isValidator(cfg) ? JSON.stringify([droppedId]) : ONE_FINDING,
         )(emit);
@@ -266,6 +293,10 @@ describe('PrReviewScanManager — validator', () => {
   test('FAIL-OPEN: a validator that throws still completes with all findings', async () => {
     const factory: PrReviewRunnerFactory = (cfg, emit) => ({
       async run() {
+        if (isVerdict(cfg)) {
+          await completing(VERDICT_JSON)(emit);
+          return;
+        }
         if (isValidator(cfg)) throw new Error('validator exploded');
         await completing(ONE_FINDING)(emit);
       },
@@ -287,6 +318,70 @@ describe('PrReviewScanManager — validator', () => {
       completed?.type === 'pr-review-completed' && completed.findings,
     ).toHaveLength(1);
     // A crashed validator must never surface as a run failure.
+    expect(events.some((e) => e.type === 'pr-review-failed')).toBe(false);
+  });
+});
+
+describe('PrReviewScanManager — merge verdict', () => {
+  test('folds the synthesis verdict + reasoning onto pr-review-completed', async () => {
+    const factory: PrReviewRunnerFactory = (cfg, emit) => ({
+      async run() {
+        if (isVerdict(cfg)) {
+          await completing(
+            JSON.stringify({
+              verdict: 'needs_revision',
+              reasoning: 'fix the dropped-error bug before merge',
+            }),
+          )(emit);
+          return;
+        }
+        await completing(isValidator(cfg) ? '[]' : ONE_FINDING)(emit);
+      },
+      async interrupt() {},
+    });
+    const { emit, done } = collect();
+    const manager = new PrReviewScanManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      runnerFactory: factory,
+    });
+
+    manager.start(startCommand(['security']));
+    const events = await done;
+    const completed = events.find((e) => e.type === 'pr-review-completed');
+    if (completed?.type !== 'pr-review-completed') throw new Error('no completed');
+    expect(completed.verdict).toBe('needs_revision');
+    expect(completed.verdictReasoning).toBe(
+      'fix the dropped-error bug before merge',
+    );
+  });
+
+  test('FAIL-OPEN: a synthesis pass that throws completes WITHOUT verdict fields', async () => {
+    const factory: PrReviewRunnerFactory = (cfg, emit) => ({
+      async run() {
+        if (isVerdict(cfg)) throw new Error('verdict exploded');
+        await completing(isValidator(cfg) ? '[]' : ONE_FINDING)(emit);
+      },
+      async interrupt() {},
+    });
+    const { emit, done } = collect();
+    const manager = new PrReviewScanManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      runnerFactory: factory,
+    });
+
+    manager.start(startCommand(['security']));
+    const events = await done;
+    const completed = events.find((e) => e.type === 'pr-review-completed');
+    if (completed?.type !== 'pr-review-completed') throw new Error('no completed');
+    // A crashed synthesis must never lose the run: it completes with its findings,
+    // just without the (optional) verdict fields, and never surfaces a failure.
+    expect(completed.verdict).toBeUndefined();
+    expect(completed.verdictReasoning).toBeUndefined();
+    expect(completed.findings).toHaveLength(1);
     expect(events.some((e) => e.type === 'pr-review-failed')).toBe(false);
   });
 });
@@ -345,6 +440,10 @@ describe('PrReviewScanManager — duplicate start', () => {
     });
     const factory: PrReviewRunnerFactory = (cfg: SessionRunnerConfig, emit) => ({
       async run() {
+        if (isVerdict(cfg)) {
+          await completing(VERDICT_JSON)(emit);
+          return;
+        }
         if (!isValidator(cfg)) await gate;
         await completing(isValidator(cfg) ? '[]' : ONE_FINDING)(emit);
       },
