@@ -82,6 +82,18 @@ export default defineConfig({
       {
         plugins: [react(), tailwind()],
         resolve: { alias },
+        // Force `react-dom/client` into Vite's FIRST dependency-optimize pass.
+        // `vitest-browser-react`'s `render()` imports `react-dom/client`
+        // (`createRoot`), but @vitejs/plugin-react's auto-include only covers
+        // `react` / `react-dom` / the jsx runtimes — NOT the `/client` subpath. So
+        // the initial scan misses it and the first test that actually renders
+        // discovers it mid-run, which makes Vite log "optimized dependencies
+        // changed. reloading" and reload the page WHILE other test modules are
+        // still loading. Those in-flight `?v=<hash>` module URLs then 404 with
+        // "Failed to fetch dynamically imported module" — a nondeterministic
+        // whole-suite flake (a different `.test.tsx` file fails each CI run).
+        // Pre-bundling it here means no second optimize pass, so no mid-run reload.
+        optimizeDeps: { include: ['react-dom/client'] },
         test: {
           name: 'unit',
           include: ['src/**/*.test.tsx'],
