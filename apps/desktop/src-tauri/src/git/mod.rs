@@ -10,5 +10,7 @@
 //! Submodules:
 //! - [`parse`] — pure porcelain parsers (`--numstat`, `rev-list --left-right`,
 //!   `ls-files -z`, `status --porcelain`). No I/O, unit-tested in place.
+//! - [`run`] — the git subprocess runners built on `platform::git_command`.
 
 pub(crate) mod parse;
+pub(crate) mod run;

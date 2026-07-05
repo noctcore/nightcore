@@ -34,12 +34,13 @@ pub fn append_anti_gaming_check(
     ledger: Option<&Path>,
 ) {
     let base = crate::worktree::base_branch(project_root);
-    let Some(merge_base) = git_stdout(review_dir, &["merge-base", &base, "HEAD"]) else {
+    let Some(merge_base) = crate::git::run::git_stdout(review_dir, &["merge-base", &base, "HEAD"])
+    else {
         tracing::warn!(target: "nightcore::anti_gaming", base = %base, dir = %review_dir.display(), "could not resolve merge-base; skipping anti-gaming sweep");
         return;
     };
     let range = format!("{merge_base}..HEAD");
-    let Some(diff) = git_stdout(review_dir, &["diff", "--no-color", &range]) else {
+    let Some(diff) = crate::git::run::git_stdout(review_dir, &["diff", "--no-color", &range]) else {
         tracing::warn!(target: "nightcore::anti_gaming", range = %range, dir = %review_dir.display(), "git diff failed; skipping anti-gaming sweep");
         return;
     };
@@ -69,16 +70,4 @@ pub fn append_anti_gaming_check(
     if result.failed_check.is_none() {
         result.failed_check = Some(CHECK_NAME.to_string());
     }
-}
-
-/// Run git in `dir` for stdout, `None` on any failure (spawn or non-zero exit) —
-/// the caller treats every `None` as "skip the sweep", never as a gate failure.
-/// Routed through `platform::git_command` (env-scrubbed, the isolation posture
-/// every git spawn in the crate shares).
-fn git_stdout(dir: &Path, args: &[&str]) -> Option<String> {
-    let out = crate::platform::git_command(dir).args(args).output().ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }

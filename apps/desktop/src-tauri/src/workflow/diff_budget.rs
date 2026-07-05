@@ -53,12 +53,14 @@ struct DiffMeasure {
 pub fn evaluate(project_root: &Path, review_dir: &Path) -> Option<String> {
     let budget = load_budget(project_root)?;
     let base = crate::worktree::base_branch(project_root);
-    let Some(merge_base) = git_stdout(review_dir, &["merge-base", &base, "HEAD"]) else {
+    let Some(merge_base) = crate::git::run::git_stdout(review_dir, &["merge-base", &base, "HEAD"])
+    else {
         tracing::warn!(target: "nightcore::diff_budget", base = %base, dir = %review_dir.display(), "could not resolve merge-base; skipping diff budget");
         return None;
     };
     let range = format!("{merge_base}..HEAD");
-    let Some(numstat) = git_stdout(review_dir, &["diff", "--numstat", "--no-renames", &range])
+    let Some(numstat) =
+        crate::git::run::git_stdout(review_dir, &["diff", "--numstat", "--no-renames", &range])
     else {
         tracing::warn!(target: "nightcore::diff_budget", range = %range, dir = %review_dir.display(), "git diff --numstat failed; skipping diff budget");
         return None;
@@ -134,17 +136,6 @@ fn breach_message(budget: &DiffBudget, measure: &DiffMeasure) -> Option<String> 
         "diff budget exceeded: {} — review scope before verifying",
         parts.join(", ")
     ))
-}
-
-/// Run git in `dir` for stdout, `None` on any failure — callers treat every
-/// `None` as "skip the gate". Routed through the env-scrubbed
-/// `platform::git_command` like every git spawn in the crate.
-fn git_stdout(dir: &Path, args: &[&str]) -> Option<String> {
-    let out = crate::platform::git_command(dir).args(args).output().ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
 #[cfg(test)]

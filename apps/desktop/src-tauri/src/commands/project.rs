@@ -76,23 +76,6 @@ fn reject_sensitive_root(dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Best-effort current branch via `git rev-parse --abbrev-ref HEAD`.
-fn current_branch(path: &str) -> Option<String> {
-    let out = crate::platform::git_command(Path::new(path))
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let branch = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if branch.is_empty() {
-        None
-    } else {
-        Some(branch)
-    }
-}
-
 /// Emit `nc:project` with the registry snapshot and the (optional) subject project.
 fn emit_project_event(
     app: &AppHandle,
@@ -170,7 +153,14 @@ pub fn create_project(
     std::fs::create_dir_all(nightcore.join("tasks"))
         .map_err(|e| format!("failed to scaffold .nightcore: {e}"))?;
 
-    let project = Project::new(name, path.clone(), current_branch(&path));
+    // The project's recorded branch is the main checkout's current branch — the
+    // STRICT worktree resolver (no `main` fallback; a detached HEAD reads as
+    // `None`, not the literal `"HEAD"`).
+    let project = Project::new(
+        name,
+        path.clone(),
+        crate::worktree::current_branch(Path::new(&path)),
+    );
     store.add(project.clone())?;
     let activated = store.set_active(&project.id)?;
     retarget_tasks(&app, &store);
