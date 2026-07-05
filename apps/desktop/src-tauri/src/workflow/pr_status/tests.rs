@@ -98,6 +98,10 @@ fn gh_view_deserializes_minimal_and_null_padded_payloads() {
     assert_eq!(status.review_decision, "");
     assert_eq!(status.base_ref_name, "");
     assert_eq!(
+        status.head_ref_oid, "",
+        "absent headRefOid degrades to empty"
+    );
+    assert_eq!(
         (
             status.checks_passed,
             status.checks_failed,
@@ -133,6 +137,7 @@ fn pr_status_serializes_camel_case() {
         merge_state_status: Some("CLEAN".into()),
         review_decision: Some("APPROVED".into()),
         base_ref_name: Some("main".into()),
+        head_ref_oid: Some("abc123".into()),
         status_check_rollup: None,
     }
     .into_status(Some(4));
@@ -147,6 +152,7 @@ fn pr_status_serializes_camel_case() {
         r#""checksFailed":0"#,
         r#""checksPending":0"#,
         r#""baseRefName":"main""#,
+        r#""headRefOid":"abc123""#,
         r#""number":12"#,
         r#""unpushedCommits":4"#,
     ] {
@@ -164,6 +170,7 @@ fn pr_status_serializes_camel_case() {
         merge_state_status: None,
         review_decision: None,
         base_ref_name: None,
+        head_ref_oid: None,
         status_check_rollup: None,
     }
     .into_status(None);
@@ -427,7 +434,7 @@ fn fetch_pr_view_parses_a_success_and_carries_the_contract_argv() {
          echo '{\"number\":42,\"url\":\"https://github.com/acme/widget/pull/42\",\
          \"state\":\"OPEN\",\"isDraft\":true,\"mergeable\":\"MERGEABLE\",\
          \"mergeStateStatus\":\"BLOCKED\",\"reviewDecision\":\"REVIEW_REQUIRED\",\
-         \"baseRefName\":\"develop\",\"statusCheckRollup\":[\
+         \"baseRefName\":\"develop\",\"headRefOid\":\"cafef00d\",\"statusCheckRollup\":[\
          {\"status\":\"COMPLETED\",\"conclusion\":\"SUCCESS\"},\
          {\"state\":\"FAILURE\"},\
          {\"status\":\"IN_PROGRESS\"}]}'";
@@ -447,6 +454,10 @@ fn fetch_pr_view_parses_a_success_and_carries_the_contract_argv() {
     assert_eq!(status.merge_state_status, "BLOCKED");
     assert_eq!(status.review_decision, "REVIEW_REQUIRED");
     assert_eq!(status.base_ref_name, "develop");
+    assert_eq!(
+        status.head_ref_oid, "cafef00d",
+        "the head oid passes through"
+    );
     assert_eq!(
         (
             status.checks_passed,

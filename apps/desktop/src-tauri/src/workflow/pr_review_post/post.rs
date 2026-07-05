@@ -10,7 +10,9 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 
 use super::GH_TIMEOUT;
+use crate::store::pr_review::PrReviewStore;
 use crate::store::TaskStore;
+use crate::task::now_ms;
 use crate::workflow::merge::require_project;
 use crate::workflow::pr::{map_gh_failure, probe_gh, run_gh_bounded, GhOutput, GH_BINARY};
 
@@ -130,6 +132,10 @@ pub(super) fn map_post_review_failure(binary: &str, event: &str, out: &GhOutput)
 /// human gate lives on the web side (a ConfirmDialog); here we just do the work. The
 /// `body` + comment text are OUR OWN findings (trusted); this never echoes raw foreign
 /// diff text. Runs off the UI thread (the network `gh` spawn must not block the WKWebView).
+///
+/// `run_id` is the OPTIONAL originating PR-review run: when present, a successful post
+/// stamps that run's `postedVerdict`/`postedAt` (best-effort — the web may omit it, e.g.
+/// a post composed outside a stored run).
 #[tauri::command]
 pub async fn post_review_to_github(
     app: AppHandle,
@@ -137,22 +143,32 @@ pub async fn post_review_to_github(
     verdict: String,
     body: String,
     comments: Vec<InlineComment>,
+    run_id: Option<String>,
 ) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        post_review_blocking(&app, pr_number, &verdict, &body, &comments)
+        post_review_blocking(
+            &app,
+            pr_number,
+            &verdict,
+            &body,
+            &comments,
+            run_id.as_deref(),
+        )
     })
     .await
     .map_err(|e| format!("post review failed to run: {e}"))?
 }
 
 /// The blocking body of [`post_review_to_github`]: resolve the active project (its root
-/// is the `gh` cwd, which resolves `{owner}`/`{repo}`), then post.
+/// is the `gh` cwd, which resolves `{owner}`/`{repo}`), post, then (on success) stamp the
+/// originating run's posted marker.
 fn post_review_blocking(
     app: &AppHandle,
     pr_number: u64,
     verdict: &str,
     body: &str,
     comments: &[InlineComment],
+    run_id: Option<&str>,
 ) -> Result<(), String> {
     // Touch the task store so a mis-wired managed state surfaces here rather than as a
     // confusing gh failure (parity with the sibling PR commands' state discipline).
@@ -162,5 +178,30 @@ fn post_review_blocking(
     tracing::info!(target: "nightcore::pr", pr_number, verdict, comments = comments.len(), "posting PR review to GitHub");
     post_review_with(
         &dir, GH_BINARY, pr_number, verdict, body, comments, GH_TIMEOUT,
-    )
+    )?;
+
+    // The post SUCCEEDED — record it on the originating run so the UI shows what was last
+    // posted. Best-effort: a missing run id, unavailable store, or unknown run must not
+    // turn a succeeded post into a failure, so any problem is warned, never propagated.
+    if let Some(run_id) = run_id {
+        stamp_posted(app, run_id, verdict);
+    }
+    Ok(())
+}
+
+/// Best-effort stamp of a successful post onto its PR-review run (`postedVerdict` +
+/// `postedAt`). Never returns an error: staleness/posted markers are additive UI signals,
+/// and the post has already landed on GitHub — a store hiccup must not surface as a
+/// (misleading) post failure.
+fn stamp_posted(app: &AppHandle, run_id: &str, verdict: &str) {
+    let Some(store) = app.try_state::<PrReviewStore>() else {
+        tracing::warn!(target: "nightcore::pr", run_id, "PR review store unavailable — posted marker not recorded");
+        return;
+    };
+    if let Err(e) = store.mutate(run_id, |run| {
+        run.posted_verdict = Some(verdict.to_string());
+        run.posted_at = Some(now_ms());
+    }) {
+        tracing::warn!(target: "nightcore::pr", run_id, error = %e, "failed to record posted marker (post already succeeded)");
+    }
 }
