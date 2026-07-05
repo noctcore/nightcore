@@ -18,6 +18,7 @@ pub(crate) mod kind;
 pub(crate) mod merge;
 pub(crate) mod plan_approval;
 pub(crate) mod pr;
+pub(crate) mod pr_changed_files;
 pub(crate) mod pr_comments;
 pub(crate) mod pr_fix;
 pub(crate) mod pr_list;

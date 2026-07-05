@@ -155,6 +155,11 @@ pub async fn start_pr_review(
         usage: InsightUsage::default(),
         findings: Vec::new(),
         error: None,
+        verdict: None,
+        verdict_reasoning: None,
+        head_sha: None,
+        posted_verdict: None,
+        posted_at: None,
     };
     // Single-flight PER PR: reject a second concurrent review of the SAME pull request
     // (a stray History/"New run" click mid-run) instead of launching another paid scan.
@@ -173,13 +178,19 @@ pub async fn start_pr_review(
     // sessions never touch the network.
     let fetch_path = project_path.clone();
     let fetched = tauri::async_runtime::spawn_blocking(move || {
-        crate::workflow::pr_review_post::fetch_pr_diff(std::path::Path::new(&fetch_path), pr_number)
+        let dir = std::path::Path::new(&fetch_path);
+        let (diff, changed_files) = crate::workflow::pr_review_post::fetch_pr_diff(dir, pr_number)?;
+        // Also capture the PR head oid for staleness detection — BEST-EFFORT: a failure
+        // here must not fail the whole (already-fetched) review, so it becomes `None` and
+        // the run simply carries no reviewed-head marker.
+        let head_sha = crate::workflow::pr_review_post::fetch_pr_head_oid(dir, pr_number).ok();
+        Ok::<_, String>((diff, changed_files, head_sha))
     })
     .await
     .map_err(|e| format!("PR diff fetch failed to run: {e}"));
 
-    let (diff, changed_files) = match fetched.and_then(|inner| inner) {
-        Ok(pair) => pair,
+    let (diff, changed_files, head_sha) = match fetched.and_then(|inner| inner) {
+        Ok(triple) => triple,
         Err(msg) => {
             // Mark the run failed so it doesn't look stuck, then surface the error.
             let _ = pr_review_store.mutate(&run_id, |r| {
@@ -189,6 +200,13 @@ pub async fn start_pr_review(
             return Err(msg);
         }
     };
+
+    // Stamp the reviewed head so the UI can flag the run stale once the PR advances past
+    // it. Best-effort: skip an empty/absent oid, and ignore a store error (staleness is
+    // an optional signal, never a reason to fail the review).
+    if let Some(sha) = head_sha.filter(|s| !s.is_empty()) {
+        let _ = pr_review_store.mutate(&run_id, |r| r.head_sha = Some(sha));
+    }
 
     // Cancel-during-setup guard: re-read the run — a cancel (or delete) that
     // landed during the blocking diff fetch above already settled it, and
@@ -364,16 +382,34 @@ pub(crate) async fn handle_pr_review_event(app: &AppHandle, event_type: &str, ev
             let tel = ScanTelemetry::from_event(event);
             let count = findings.len();
 
+            // The synthesis pass's overall merge recommendation + its justification ride
+            // the terminal event as wire strings. Additive + optional (FAIL-OPEN): a run
+            // whose synthesis pass errored/was skipped, or an older engine, omits them.
+            let verdict = event
+                .get("verdict")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            let verdict_reasoning = event
+                .get("verdictReasoning")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+
             // The shared finalizer owns the idempotency guard, the status/telemetry stamp,
             // and the by-fingerprint in-run lifecycle carry-forward; we inject only the
-            // item-collection selector.
+            // item-collection selector — and, inside its is-finalized guard, stamp the
+            // run-level verdict so a late/duplicate terminal (or one racing a cancel) never
+            // attaches a verdict to an already-settled run.
             let finalized = finalize_scan_items(
                 pr_review_store.inner(),
                 "pr-review",
                 run_id,
                 &tel,
                 findings,
-                |run| &mut run.findings,
+                move |run| {
+                    run.verdict = verdict;
+                    run.verdict_reasoning = verdict_reasoning;
+                    &mut run.findings
+                },
             );
             if finalized {
                 tracing::info!(target: "nightcore", run_id, findings = count, cost_usd = tel.cost_usd, "pr review completed");
@@ -451,6 +487,11 @@ mod tests {
             usage: InsightUsage::default(),
             findings: Vec::new(),
             error: None,
+            verdict: None,
+            verdict_reasoning: None,
+            head_sha: None,
+            posted_verdict: None,
+            posted_at: None,
         }
     }
 
@@ -524,6 +565,7 @@ mod tests {
             body: "req.body.id flows straight into the SQL string.".to_string(),
             suggested_fix: None,
             fingerprint: "fp-abc".to_string(),
+            corroborated_by: None,
             status: "open".to_string(),
             linked_task_id: None,
         }

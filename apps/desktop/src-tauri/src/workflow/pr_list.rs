@@ -20,11 +20,24 @@ use super::pr::{map_gh_failure, probe_gh, run_gh_bounded, GH_BINARY};
 
 const GH_LIST_TIMEOUT: Duration = Duration::from_secs(60);
 /// The `--json` field set the master-detail picker renders. `author` and `labels`
-/// are nested; `body`/`url` feed the detail pane. All single-query fields (no N+1).
+/// are nested; `body`/`url` feed the detail pane; `additions`/`deletions` the size badge.
+/// All single-query fields (no N+1).
 const PR_LIST_FIELDS: &str =
-    "number,title,state,headRefName,author,isDraft,createdAt,updatedAt,url,labels,body";
-/// A generous ceiling; the picker also accepts a typed number for PRs beyond it.
-const PR_LIST_LIMIT: &str = "50";
+    "number,title,state,headRefName,author,isDraft,createdAt,updatedAt,url,labels,body,additions,deletions";
+/// Default cap on the list when the caller passes no limit; the picker also accepts a
+/// typed number for PRs beyond it.
+const PR_LIST_DEFAULT_LIMIT: u64 = 50;
+/// Hard ceiling on a caller-requested limit — a defensive clamp so "load more" can't ask
+/// for an unbounded `gh` fetch / IPC payload.
+const PR_LIST_MAX_LIMIT: u64 = 200;
+
+/// Resolve the requested list limit: the caller's value clamped to `1..=PR_LIST_MAX_LIMIT`,
+/// or the default when omitted (a `Some(0)` clamps up to 1, never a zero-row query). Pure.
+fn resolve_limit(limit: Option<u64>) -> u64 {
+    limit
+        .unwrap_or(PR_LIST_DEFAULT_LIMIT)
+        .clamp(1, PR_LIST_MAX_LIMIT)
+}
 
 /// One label on a pull request (GitHub-assigned name + 6-hex color, no `#`). The
 /// web validates the color before use — never trust it as raw CSS.
@@ -66,6 +79,12 @@ pub struct PrSummary {
     /// The PR description (untrusted markdown) — the web renders it through the
     /// SANITIZING `Markdown` primitive, never raw.
     pub body: String,
+    /// Total lines added across the PR (gh vocabulary), for a size badge. `0` when gh
+    /// omits it.
+    pub additions: u32,
+    /// Total lines removed across the PR (gh vocabulary), for a size badge. `0` when gh
+    /// omits it.
+    pub deletions: u32,
 }
 
 /// The `gh pr list --json` row shape. Everything beyond `number` is optional with
@@ -94,6 +113,10 @@ struct GhPrListItem {
     labels: Vec<GhLabel>,
     #[serde(default)]
     body: Option<String>,
+    #[serde(default)]
+    additions: Option<u32>,
+    #[serde(default)]
+    deletions: Option<u32>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -134,6 +157,8 @@ impl GhPrListItem {
                 })
                 .collect(),
             body: self.body.unwrap_or_default(),
+            additions: self.additions.unwrap_or(0),
+            deletions: self.deletions.unwrap_or(0),
         }
     }
 }
@@ -150,13 +175,16 @@ fn parse_pr_list(stdout: &str) -> Result<Vec<PrSummary>, String> {
     Ok(items.into_iter().map(GhPrListItem::into_summary).collect())
 }
 
-/// The bounded seam — `binary`-parameterized so tests inject a fake `gh`.
+/// The bounded seam — `binary`-parameterized so tests inject a fake `gh`. `limit` is the
+/// already-resolved (clamped) row cap.
 fn list_open_prs_with(
     dir: &Path,
     binary: &str,
+    limit: u64,
     deadline: Duration,
 ) -> Result<Vec<PrSummary>, String> {
     probe_gh(binary, "install it to list pull requests")?;
+    let limit_arg = limit.to_string();
     let out = run_gh_bounded(
         dir,
         binary,
@@ -166,7 +194,7 @@ fn list_open_prs_with(
             "--state",
             "open",
             "--limit",
-            PR_LIST_LIMIT,
+            &limit_arg,
             "--json",
             PR_LIST_FIELDS,
         ],
@@ -180,17 +208,20 @@ fn list_open_prs_with(
     parse_pr_list(&out.stdout)
 }
 
-fn list_open_prs_blocking(app: &AppHandle) -> Result<Vec<PrSummary>, String> {
+fn list_open_prs_blocking(app: &AppHandle, limit: u64) -> Result<Vec<PrSummary>, String> {
     let project = require_project(app)?;
     let dir = std::path::PathBuf::from(&project.path);
-    list_open_prs_with(&dir, GH_BINARY, GH_LIST_TIMEOUT)
+    list_open_prs_with(&dir, GH_BINARY, limit, GH_LIST_TIMEOUT)
 }
 
 /// List the active project's open pull requests for the PR Review picker. Runs off
-/// the UI thread (the network `gh` spawn must not block the WKWebView).
+/// the UI thread (the network `gh` spawn must not block the WKWebView). `limit` is
+/// OPTIONAL (the web may omit it): defaults to [`PR_LIST_DEFAULT_LIMIT`] and clamps to
+/// `1..=PR_LIST_MAX_LIMIT` so "load more" stays bounded.
 #[tauri::command]
-pub async fn list_open_prs(app: AppHandle) -> Result<Vec<PrSummary>, String> {
-    tauri::async_runtime::spawn_blocking(move || list_open_prs_blocking(&app))
+pub async fn list_open_prs(app: AppHandle, limit: Option<u64>) -> Result<Vec<PrSummary>, String> {
+    let limit = resolve_limit(limit);
+    tauri::async_runtime::spawn_blocking(move || list_open_prs_blocking(&app, limit))
         .await
         .map_err(|e| format!("list pull requests failed to run: {e}"))?
 }
@@ -206,7 +237,7 @@ mod tests {
              "author": {"login": "alice"}, "isDraft": false, "createdAt": "2026-07-01T09:00:00Z",
              "updatedAt": "2026-07-02T10:00:00Z", "url": "https://github.com/o/r/pull/42",
              "labels": [{"name": "bug", "color": "d73a4a"}, {"name": "p2", "color": "fbca04"}],
-             "body": "Repro steps here"},
+             "body": "Repro steps here", "additions": 120, "deletions": 34},
             {"number": 41, "author": null}
         ]"#;
         let prs = parse_pr_list(json).expect("parses");
@@ -220,12 +251,42 @@ mod tests {
         assert_eq!(prs[0].labels.len(), 2);
         assert_eq!(prs[0].labels[0].name, "bug");
         assert_eq!(prs[0].labels[0].color, "d73a4a");
+        assert_eq!((prs[0].additions, prs[0].deletions), (120, 34));
         // A row missing everything but `number` degrades gracefully, not drops.
         assert_eq!(prs[1].number, 41);
         assert_eq!(prs[1].author, "unknown");
         assert_eq!(prs[1].title, "");
         assert_eq!(prs[1].state, "OPEN"); // defaulted
         assert!(prs[1].labels.is_empty());
+        assert_eq!(
+            (prs[1].additions, prs[1].deletions),
+            (0, 0),
+            "absent line deltas degrade to zero"
+        );
+    }
+
+    #[test]
+    fn resolve_limit_defaults_and_clamps() {
+        assert_eq!(
+            resolve_limit(None),
+            PR_LIST_DEFAULT_LIMIT,
+            "omitted ⇒ default"
+        );
+        assert_eq!(
+            resolve_limit(Some(100)),
+            100,
+            "an in-range value passes through"
+        );
+        assert_eq!(
+            resolve_limit(Some(0)),
+            1,
+            "zero clamps up to one (never a 0-row query)"
+        );
+        assert_eq!(
+            resolve_limit(Some(10_000)),
+            PR_LIST_MAX_LIMIT,
+            "an over-ceiling value clamps to the max"
+        );
     }
 
     #[test]
@@ -261,12 +322,13 @@ mod tests {
         let script = fake_gh(
             tmp.path(),
             "printf '%s\\n' \"$@\" >> args.txt\n\
-             printf '[{\"number\":7,\"title\":\"t\",\"state\":\"OPEN\",\"headRefName\":\"b\",\"author\":{\"login\":\"bob\"},\"isDraft\":true,\"createdAt\":\"c\",\"updatedAt\":\"x\",\"url\":\"https://gh/7\",\"labels\":[],\"body\":\"desc\"}]'\n\
+             printf '[{\"number\":7,\"title\":\"t\",\"state\":\"OPEN\",\"headRefName\":\"b\",\"author\":{\"login\":\"bob\"},\"isDraft\":true,\"createdAt\":\"c\",\"updatedAt\":\"x\",\"url\":\"https://gh/7\",\"labels\":[],\"body\":\"desc\",\"additions\":5,\"deletions\":2}]'\n\
              exit 0",
         );
         let prs = list_open_prs_with(
             tmp.path(),
             script.to_str().expect("utf8 path"),
+            75,
             GH_LIST_TIMEOUT,
         )
         .expect("list succeeds");
@@ -284,12 +346,18 @@ mod tests {
                 url: "https://gh/7".into(),
                 labels: vec![],
                 body: "desc".into(),
+                additions: 5,
+                deletions: 2,
             }]
         );
         let args = std::fs::read_to_string(tmp.path().join("args.txt")).expect("args");
         assert!(args.contains("list"), "invokes `gh pr list`");
         assert!(args.contains("--state\nopen"), "requests only open PRs");
         assert!(args.contains(PR_LIST_FIELDS), "asks for the picker fields");
+        assert!(
+            args.contains("--limit\n75"),
+            "passes the resolved row limit"
+        );
     }
 
     #[test]
@@ -303,6 +371,7 @@ mod tests {
         let err = list_open_prs_with(
             tmp.path(),
             script.to_str().expect("utf8 path"),
+            50,
             GH_LIST_TIMEOUT,
         )
         .expect_err("a failing gh is an error");

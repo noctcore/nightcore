@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use super::diff::{cap_diff, fetch_pr_diff_with, PR_DIFF_CAP};
+use super::diff::{cap_diff, fetch_pr_diff_with, fetch_pr_head_oid_with, PR_DIFF_CAP};
 use super::post::{build_review_payload, post_review_with, review_event, InlineComment};
 use super::GH_TIMEOUT;
 use crate::workflow::pr::GH_BINARY;
@@ -348,5 +348,74 @@ fn fetch_pr_diff_with_rejects_zero_pr_number() {
     let tmp = tempfile::TempDir::new().expect("temp dir");
     let err =
         fetch_pr_diff_with(tmp.path(), GH_BINARY, 0, GH_TIMEOUT).expect_err("pr 0 is rejected");
+    assert!(err.contains("valid PR number"), "err: {err}");
+}
+
+#[test]
+#[cfg(unix)]
+fn fetch_pr_head_oid_with_reads_the_head_ref_oid_and_uses_pr_view() {
+    let tmp = tempfile::TempDir::new().expect("temp dir");
+    let script = fake_gh(
+        tmp.path(),
+        "printf '%s\\n' \"$@\" >> args.txt\nprintf '{\"headRefOid\":\"deadbeefcafe\"}'\nexit 0",
+    );
+    let sha = fetch_pr_head_oid_with(
+        tmp.path(),
+        script.to_str().expect("utf8 path"),
+        7,
+        GH_TIMEOUT,
+    )
+    .expect("head oid fetch succeeds");
+    assert_eq!(sha, "deadbeefcafe");
+    let args = std::fs::read_to_string(tmp.path().join("args.txt")).expect("args");
+    // `gh pr view <n> --json headRefOid` with the decimal number (injection-safe).
+    assert!(args.contains("view"), "uses pr view: {args}");
+    assert!(args.contains("headRefOid"), "asks for headRefOid: {args}");
+    assert!(args.contains("7"), "passes the decimal number: {args}");
+}
+
+#[test]
+#[cfg(unix)]
+fn fetch_pr_head_oid_with_absent_field_degrades_to_empty() {
+    // A view response missing headRefOid (gh drift) yields "" — the caller reads that as
+    // "no reviewed-head marker", never an error that would fail the whole review.
+    let tmp = tempfile::TempDir::new().expect("temp dir");
+    let script = fake_gh(tmp.path(), "printf '{}'\nexit 0");
+    let sha = fetch_pr_head_oid_with(
+        tmp.path(),
+        script.to_str().expect("utf8 path"),
+        7,
+        GH_TIMEOUT,
+    )
+    .expect("empty object still parses");
+    assert_eq!(sha, "");
+}
+
+#[test]
+#[cfg(unix)]
+fn fetch_pr_head_oid_with_surfaces_stderr_on_failure() {
+    let tmp = tempfile::TempDir::new().expect("temp dir");
+    let script = fake_gh(
+        tmp.path(),
+        "echo 'gh: no pull requests found for branch' >&2\nexit 1",
+    );
+    let err = fetch_pr_head_oid_with(
+        tmp.path(),
+        script.to_str().expect("utf8 path"),
+        5,
+        GH_TIMEOUT,
+    )
+    .expect_err("a failed view is an Err");
+    assert!(
+        err.contains("no pull requests found"),
+        "verbatim stderr: {err}"
+    );
+}
+
+#[test]
+fn fetch_pr_head_oid_with_rejects_zero_pr_number() {
+    let tmp = tempfile::TempDir::new().expect("temp dir");
+    let err =
+        fetch_pr_head_oid_with(tmp.path(), GH_BINARY, 0, GH_TIMEOUT).expect_err("pr 0 is rejected");
     assert!(err.contains("valid PR number"), "err: {err}");
 }

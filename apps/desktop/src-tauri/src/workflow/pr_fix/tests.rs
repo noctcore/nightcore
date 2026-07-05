@@ -29,6 +29,7 @@ fn finding(id: &str, body: &str, fix: Option<&str>) -> StoredReviewFinding {
         body: body.to_string(),
         suggested_fix: fix.map(str::to_string),
         fingerprint: format!("fp-{id}"),
+        corroborated_by: None,
         status: "open".to_string(),
         linked_task_id: None,
     }
@@ -49,6 +50,11 @@ fn review_run(id: &str, pr_number: u64, findings: Vec<StoredReviewFinding>) -> P
         usage: InsightUsage::default(),
         findings,
         error: None,
+        verdict: None,
+        verdict_reasoning: None,
+        head_sha: None,
+        posted_verdict: None,
+        posted_at: None,
     }
 }
 
