@@ -16,7 +16,7 @@ use super::{
     ISSUE_COMMENTS_MAX, ISSUE_COMMENT_BODY_MAX_LEN,
 };
 use crate::contracts::IssueComment;
-use crate::workflow::pr::{map_gh_failure, probe_gh, run_gh_bounded, GH_BINARY};
+use crate::git::gh::{map_gh_failure, probe_gh, run_gh_bounded, GH_BINARY};
 
 /// One issue's detail: its (capped) body plus the first page of (capped) comments. The
 /// Rust-seam shape the web casts; NOT part of the engine NDJSON protocol.

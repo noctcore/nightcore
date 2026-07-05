@@ -7,7 +7,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use super::{cap_text, ISSUE_PR_DIFF_MAX_LEN};
-use crate::workflow::pr::{probe_gh, run_gh_bounded, GH_BINARY};
+use crate::git::gh::{probe_gh, run_gh_bounded, GH_BINARY};
 
 /// Production entry point: fetch PR `pr_number`'s capped diff in `dir`, or `None` on
 /// any failure (missing `gh`, network timeout, non-zero exit). BEST-EFFORT by design —

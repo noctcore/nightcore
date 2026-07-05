@@ -16,8 +16,8 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use super::GH_TIMEOUT;
+use crate::git::gh::{map_gh_failure, probe_gh, run_gh_bounded, GhOutput, GH_BINARY};
 use crate::store::issue_triage::StoredIssueValidationResult;
-use crate::workflow::pr::{map_gh_failure, probe_gh, run_gh_bounded, GhOutput, GH_BINARY};
 
 /// Format epoch-ms as a `YYYY-MM-DD` UTC date, without a date dependency (Howard
 /// Hinnant's civil-from-days algorithm — the same one `store::project` uses). Pure so

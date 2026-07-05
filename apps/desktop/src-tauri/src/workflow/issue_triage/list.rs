@@ -16,7 +16,7 @@ use super::{
     ISSUE_LABELS_MAX, ISSUE_LINKED_PRS_MAX, ISSUE_TITLE_MAX_LEN,
 };
 use crate::contracts::IssueLinkedPrContext;
-use crate::workflow::pr::{map_gh_failure, probe_gh, run_gh_bounded, GH_BINARY};
+use crate::git::gh::{map_gh_failure, probe_gh, run_gh_bounded, GH_BINARY};
 
 /// One issue as it appears in the list view — the Rust-seam mirror of the zod
 /// `IssueSummarySchema` (serializes to its exact camelCase shape; the web casts it).
