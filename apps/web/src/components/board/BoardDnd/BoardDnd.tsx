@@ -2,6 +2,8 @@
 import { closestCorners,DndContext, DragOverlay } from '@dnd-kit/core';
 import { memo } from 'react';
 
+import { DURATION, EASE, m } from '@/components/ui';
+
 import { TaskCard } from '../TaskCard';
 import { useBoardDnd } from './BoardDnd.hooks';
 import type { BoardDndProps } from './BoardDnd.types';
@@ -37,7 +39,16 @@ function BoardDndImpl({ tasks, onMoveTask, children }: BoardDndProps) {
       {children}
       <DragOverlay>
         {activeTask !== null ? (
-          <TaskCard task={activeTask} selected={false} preview onSelect={NOOP} />
+          // Pickup lift: the overlay clone scales up on grab (transform only — the
+          // source card keeps its `opacity-40` pattern, and dnd-kit still owns the
+          // pointer-follow transform on the overlay wrapper around this element).
+          <m.div
+            initial={{ scale: 1 }}
+            animate={{ scale: 1.03 }}
+            transition={{ duration: DURATION.fast, ease: EASE.outQuint }}
+          >
+            <TaskCard task={activeTask} selected={false} preview onSelect={NOOP} />
+          </m.div>
         ) : null}
       </DragOverlay>
     </DndContext>

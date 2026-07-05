@@ -1,9 +1,10 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   type ActiveWorktree,
   EMPTY_TRANSCRIPT,
   isActive,
+  type PickedBackgroundImage,
   type TaskDetailActions,
   type TaskTranscript,
 } from '@/components/board';
@@ -11,6 +12,7 @@ import { useToast } from '@/components/ui';
 import {
   acceptReview,
   approveTask,
+  type BoardAppearance,
   cancelTask,
   commitTask,
   convertAllSubtasks,
@@ -126,6 +128,9 @@ export type BoardController = ReturnType<typeof useBoard> & {
   handleMerge: (id: string) => void;
   /** The task id the Create PR dialog is open for (`null` = closed). */
   prDialogTaskId: string | null;
+  /** True once the Create PR dialog has first opened — keeps the lazy dialog
+   *  mounted thereafter so its close animation can play. */
+  prDialogMounted: boolean;
   /** Close the Create PR dialog. */
   closePrDialog: () => void;
   /** The guarded push + `gh pr create` mutation the dialog confirms. Rejects
@@ -171,6 +176,21 @@ export type BoardController = ReturnType<typeof useBoard> & {
   requestClear: (statuses: TaskStatus[]) => void;
 };
 
+/** The Board header's project-scoped chrome handlers (appearance/background +
+ *  the auto-commit Auto Mode option), pre-assembled into one referentially stable
+ *  group so `memo(Board)` bails on a stream flush instead of re-reconciling the
+ *  board + all six columns each frame from four fresh inline arrows. */
+export interface BoardChromeActions {
+  /** Persist a board-appearance knob change for the active project. */
+  onChangeAppearance: (next: BoardAppearance) => void;
+  /** Persist a newly picked background image for the active project. */
+  onPickBackground: (image: PickedBackgroundImage) => Promise<void> | void;
+  /** Clear the active project's background image. */
+  onClearBackground: () => Promise<void> | void;
+  /** Persist the auto-commit-on-verified Auto Mode option (global setting). */
+  onAutoCommitChange: (next: boolean) => void;
+}
+
 /** Everything the shell renders from: the per-domain hook results (routing,
  *  registry, settings, auto-loop, New Project flow) plus the board controller
  *  augmented with the cross-hook action handlers and derived board state. */
@@ -181,6 +201,9 @@ export interface AppShellState {
   autoLoop: ReturnType<typeof useAutoLoop>;
   newProject: ReturnType<typeof useNewProjectFlow>;
   board: BoardController;
+  /** The Board header's project-scoped appearance + auto-commit handlers,
+   *  memoized so the four wirings stay referentially stable across stream flushes. */
+  appearance: BoardChromeActions;
   /** The shared destructive-delete confirmation (card trash + column Clear),
    *  rendered by AppShell as a single `ConfirmDialog`. */
   confirm: ReturnType<typeof useDestructiveConfirm>;
@@ -228,6 +251,16 @@ export function useAppShell(): AppShellState {
   const worktrees = useWorktrees();
   const createPr = useCreatePr(action, toast);
   const prLifecycle = usePrLifecycle(action, toast);
+
+  // Latch the Create PR dialog mounted once it first opens. The dialog is a lazy
+  // (worktree-chunk) overlay that now OWNS its close animation via `<Modal open>`,
+  // so it must outlive `prDialogTaskId → null` to animate out. Keying the mount on
+  // this one-way latch keeps the chunk loading on demand (first open), not at
+  // startup, while letting the dialog stay mounted (rendering nothing when closed).
+  const [prDialogMounted, setPrDialogMounted] = useState(false);
+  useEffect(() => {
+    if (createPr.prDialogTaskId !== null) setPrDialogMounted(true);
+  }, [createPr.prDialogTaskId]);
 
   // The real concurrent-run count (tasks default to concurrency 3), not a boolean.
   // The sidebar footer reads this to show "N running"; `anyRunning` is the derived
@@ -701,12 +734,40 @@ export function useAppShell(): AppShellState {
     ],
   );
 
+  // The Board header's four project-scoped chrome handlers, memoized as one stable
+  // group. They close over the active project id and the (individually stable)
+  // settings mutators, so their identity turns over only on a project switch or a
+  // settings-callback change — never on a per-frame `nc:session` flush. Passing four
+  // fresh inline arrows from AppShell.tsx instead defeated `memo(Board)` and
+  // re-reconciled the board + all six columns on every streamed frame.
+  const activeProjectId = registry.active?.id ?? null;
+  const {
+    update: applySettings,
+    setBackground: applyBackground,
+    clearBackground: applyClearBackground,
+  } = settings;
+  const appearance = useMemo<BoardChromeActions>(
+    () => ({
+      onChangeAppearance: (next) => {
+        if (activeProjectId === null) return;
+        applySettings({ projectId: activeProjectId, boardAppearance: next });
+      },
+      onPickBackground: (image) =>
+        activeProjectId === null ? undefined : applyBackground(activeProjectId, image),
+      onClearBackground: () =>
+        activeProjectId === null ? undefined : applyClearBackground(activeProjectId),
+      onAutoCommitChange: (next) => applySettings({ autoCommitOnVerified: next }),
+    }),
+    [activeProjectId, applySettings, applyBackground, applyClearBackground],
+  );
+
   return {
     routing,
     registry,
     settings,
     autoLoop,
     newProject,
+    appearance,
     board: {
       ...board,
       anyRunning,
@@ -739,6 +800,7 @@ export function useAppShell(): AppShellState {
       handleCommit,
       handleMerge,
       prDialogTaskId: createPr.prDialogTaskId,
+      prDialogMounted,
       closePrDialog: createPr.closePrDialog,
       handleCreatePr: createPr.create,
       handleChangeKind,

@@ -7,6 +7,7 @@ import {
   IconTile,
   Modal,
   Spinner,
+  useLastPresent,
 } from '@/components/ui';
 
 import { diffStatusMeta } from './DiffViewDialog.hooks';
@@ -27,13 +28,15 @@ export function DiffViewDialog({
   onClose,
   title = 'Changed files',
 }: DiffViewDialogProps) {
-  if (!open) return null;
-
-  const files = diff?.files ?? [];
+  // Retain the diff across the exit animation so the list doesn't blank when the
+  // parent clears it on close. `loading`/`onClose`/`title` stay live.
+  const shownDiff = useLastPresent(diff);
+  const files = shownDiff?.files ?? [];
   const isEmpty = !loading && files.length === 0;
 
   return (
     <Modal
+      open={open}
       label={title}
       onClose={onClose}
       overlayClassName="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm"
@@ -45,9 +48,12 @@ export function DiffViewDialog({
         </IconTile>
         <div className="min-w-0 flex-1">
           <div className="text-base font-semibold text-foreground">{title}</div>
-          {diff !== null && diff.summary.length > 0 && (
-            <div className="truncate font-mono text-[11.5px] text-muted-foreground" title={diff.summary}>
-              {diff.summary}
+          {shownDiff !== null && shownDiff.summary.length > 0 && (
+            <div
+              className="truncate font-mono text-[11.5px] text-muted-foreground"
+              title={shownDiff.summary}
+            >
+              {shownDiff.summary}
             </div>
           )}
         </div>

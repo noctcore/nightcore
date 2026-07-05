@@ -34,6 +34,10 @@ const TAURI_GROUP = [
 const TAURI_MESSAGE =
   'Only lib/bridge/ may import @tauri-apps/* (api + plugins). Route Tauri commands/events through the bridge seam.';
 
+const MOTION_GROUP = ['motion', 'motion/*'];
+const MOTION_MESSAGE =
+  'lib/** is the framework-neutral data/util leaf BELOW the rendering layer — it must not import motion (a layer inversion, and lib/generated/** is ts-rs codegen). Motion lives in components/ui/motion; features import motion primitives from @/components/ui.';
+
 /**
  * The SDK ban from the base config. Repeated here because `no-restricted-imports`
  * does not merge: these per-file web blocks override the broad `apps/**` block,
@@ -102,10 +106,55 @@ const uiPurityBlock = {
 };
 
 /**
+ * Block 3 — lib/** except the bridge seam: forbid motion (layer inversion). These
+ * files are already covered by tauriSeamBlock (SDK + Tauri bans); since
+ * `no-restricted-imports` does NOT merge, this later-matching block repeats those
+ * bans so they stay in force alongside the new motion ban.
+ */
+const libMotionBlock = {
+  files: [`${WEB}/lib/**/*.{ts,tsx}`],
+  ignores: [`${WEB}/lib/bridge/**`],
+  rules: {
+    'no-restricted-imports': [
+      'error',
+      {
+        paths: [SDK_PATH],
+        patterns: [
+          { group: TAURI_GROUP, message: TAURI_MESSAGE },
+          { group: MOTION_GROUP, message: MOTION_MESSAGE },
+        ],
+      },
+    ],
+  },
+};
+
+/**
+ * Block 4 — lib/bridge/**: the Tauri seam MAY import @tauri-apps/* (so no Tauri
+ * ban), but it must not import motion either. Bridge is not matched by
+ * tauriSeamBlock (which ignores it), so this is a purely additive motion ban.
+ */
+const libBridgeMotionBlock = {
+  files: [`${WEB}/lib/bridge/**/*.{ts,tsx}`],
+  rules: {
+    'no-restricted-imports': [
+      'error',
+      {
+        patterns: [{ group: MOTION_GROUP, message: MOTION_MESSAGE }],
+      },
+    ],
+  },
+};
+
+/**
  * The flat-config blocks enforcing the frontend layer boundaries.
  * Spread into the root eslint.config.mjs.
  * @type {import('eslint').Linter.Config[]}
  */
-export const layerRules = [tauriSeamBlock, uiPurityBlock];
+export const layerRules = [
+  tauriSeamBlock,
+  uiPurityBlock,
+  libMotionBlock,
+  libBridgeMotionBlock,
+];
 
 export default layerRules;

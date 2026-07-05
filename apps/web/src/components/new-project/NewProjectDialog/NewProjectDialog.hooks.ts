@@ -1,5 +1,5 @@
 /** Form state and create logic for the new-project dialog. */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import type { NewProjectDialogProps } from './NewProjectDialog.types';
 
@@ -19,12 +19,13 @@ export interface NewProjectDialogState {
 
 type UseNewProjectDialogArgs = Pick<
   NewProjectDialogProps,
-  'models' | 'onCreate' | 'folder' | 'gitState'
+  'open' | 'models' | 'onCreate' | 'folder' | 'gitState'
 >;
 
 /** Form state and the create handler for the new-project dialog. Creation is
  *  gated on a chosen folder, a non-empty name, and a valid git repo. */
 export function useNewProjectDialog({
+  open,
   models,
   onCreate,
   folder = null,
@@ -34,6 +35,15 @@ export function useNewProjectDialog({
   const [model, setModel] = useState(models[0] ?? '');
   const [concurrency, setConcurrency] = useState(3);
   const [busy, setBusy] = useState(false);
+
+  // The dialog now stays mounted across close so its exit can animate — reset the
+  // form each time it opens, otherwise a cancelled draft would reappear on reopen.
+  useEffect(() => {
+    if (!open) return;
+    setName('');
+    setModel(models[0] ?? '');
+    setConcurrency(3);
+  }, [open, models]);
 
   // Esc / click-outside (suppressed while busy) and the focus trap live in the
   // shared `<Modal>` the dialog renders through — the double-submit guard is

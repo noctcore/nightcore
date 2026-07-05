@@ -11,7 +11,9 @@ import {
   Modal,
   PlusIcon,
   RetryIcon,
+  slideIn,
   TrashIcon,
+  useLastPresent,
 } from '@/components/ui';
 
 import {
@@ -37,6 +39,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
  *  and the Apply / Dismiss / Restore lifecycle actions. Apply opens the confirm
  *  dialog upstream (this only signals intent). */
 export function ArtifactDetailPanel({
+  open,
   artifact,
   pending,
   onClose,
@@ -45,34 +48,42 @@ export function ArtifactDetailPanel({
   onRestore,
   onArm,
 }: ArtifactDetailPanelProps) {
-  const mode = WRITE_MODE_META[artifact.writeMode];
-  const applied = artifact.status === 'applied';
+  // Retain the selected artifact across the exit animation so the sheet doesn't
+  // blank/crash when the parent clears its selection on close. Callbacks stay live.
+  const art = useLastPresent(open ? artifact : null) ?? artifact;
+
+  const mode = art !== null ? WRITE_MODE_META[art.writeMode] : undefined;
+  const applied = art?.status === 'applied';
   // An applied ESLint-class artifact can be armed as a project gauntlet check so it
   // actually runs (an applied plugin is otherwise inert — never loaded by the repo's
   // own eslint config). Docs/lint-meta artifacts aren't eslint-runnable ⇒ no arm.
-  const canArm = applied && onArm !== undefined && isEslintArmableKind(artifact.kind);
+  const canArm =
+    applied && onArm !== undefined && art !== null && isEslintArmableKind(art.kind);
 
   return (
     <Modal
-      label={artifact.title}
+      open={open}
+      label={art?.title ?? 'Artifact'}
       onClose={onClose}
       overlayClassName="fixed inset-0 z-20 flex justify-end bg-black/60 backdrop-blur-sm"
       panelClassName="flex h-full w-full max-w-2xl flex-col overflow-hidden border-l border-border bg-popover shadow-2xl"
-      panelStyle={{ animation: 'nc-sheet-in .28s cubic-bezier(.22,1,.36,1)' }}
+      panelVariants={slideIn}
     >
+      {art !== null && (
+        <>
       {/* Header */}
       <div className="flex items-start gap-3 border-b border-border px-5 py-4">
         <div className="flex flex-1 flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center rounded-md border border-primary/40 bg-primary/[0.1] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-primary">
-              {ARTIFACT_KIND_META[artifact.kind].label}
+              {ARTIFACT_KIND_META[art.kind].label}
             </span>
             <span className="inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-              {artifact.writeMode}
+              {art.writeMode}
             </span>
-            {artifact.groupTitle !== null && (
+            {art.groupTitle !== null && (
               <span className="font-mono text-[10px] text-muted-foreground">
-                {artifact.groupTitle}
+                {art.groupTitle}
               </span>
             )}
             {applied && (
@@ -83,7 +94,7 @@ export function ArtifactDetailPanel({
             )}
           </div>
           <h2 className="text-[15px] font-semibold leading-snug text-foreground">
-            {artifact.title}
+            {art.title}
           </h2>
         </div>
         <IconButton label="Close" onClick={onClose}>
@@ -95,7 +106,7 @@ export function ArtifactDetailPanel({
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-5">
         <Section title="Target">
           <code className="break-all rounded-md border border-border bg-white/[0.03] px-2 py-1 font-mono text-[11.5px] text-foreground">
-            {artifact.appliedPath ?? artifact.targetPath}
+            {art.appliedPath ?? art.targetPath}
           </code>
           {mode !== undefined && (
             <p className="text-[12px] text-muted-foreground">
@@ -105,19 +116,19 @@ export function ArtifactDetailPanel({
         </Section>
 
         <Section title="What">
-          <Markdown>{artifact.description}</Markdown>
+          <Markdown>{art.description}</Markdown>
         </Section>
 
-        {artifact.rationale !== null && (
+        {art.rationale !== null && (
           <Section title="Why it enforces">
-            <Markdown>{artifact.rationale}</Markdown>
+            <Markdown>{art.rationale}</Markdown>
           </Section>
         )}
 
-        {artifact.sourceFindings.length > 0 && (
+        {art.sourceFindings.length > 0 && (
           <Section title="Enforces conventions">
             <div className="flex flex-wrap gap-1.5">
-              {artifact.sourceFindings.map((f) => (
+              {art.sourceFindings.map((f) => (
                 <span
                   key={f}
                   className="rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
@@ -130,7 +141,7 @@ export function ArtifactDetailPanel({
         )}
 
         <Section title="Content">
-          <CodeBlock code={artifact.content} language={artifact.language ?? undefined} />
+          <CodeBlock code={art.content} language={art.language ?? undefined} />
         </Section>
       </div>
 
@@ -143,8 +154,8 @@ export function ArtifactDetailPanel({
           </Button>
         ) : (
           <Button
-            disabled={pending || artifact.status === 'dismissed'}
-            onClick={() => onApply(artifact.id)}
+            disabled={pending || art.status === 'dismissed'}
+            onClick={() => onApply(art.id)}
           >
             <PlusIcon size={15} />
             Apply
@@ -155,18 +166,18 @@ export function ArtifactDetailPanel({
           <Button
             variant="secondary"
             disabled={pending}
-            onClick={() => onArm?.(artifact.id)}
+            onClick={() => onArm?.(art.id)}
           >
             <LockIcon size={15} />
             Arm gauntlet check
           </Button>
         )}
 
-        {artifact.status === 'dismissed' ? (
+        {art.status === 'dismissed' ? (
           <Button
             variant="ghost"
             disabled={pending}
-            onClick={() => onRestore(artifact.id)}
+            onClick={() => onRestore(art.id)}
           >
             <RetryIcon size={15} />
             Restore
@@ -176,7 +187,7 @@ export function ArtifactDetailPanel({
             <Button
               variant="ghost"
               disabled={pending}
-              onClick={() => onDismiss(artifact.id)}
+              onClick={() => onDismiss(art.id)}
             >
               <TrashIcon size={15} />
               Dismiss
@@ -184,6 +195,8 @@ export function ArtifactDetailPanel({
           )
         )}
       </div>
+        </>
+      )}
     </Modal>
   );
 }

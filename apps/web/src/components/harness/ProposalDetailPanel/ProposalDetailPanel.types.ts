@@ -4,7 +4,10 @@ import type { HarnessProposalVM } from '../harness.types';
 /** Props for {@link ProposalDetailPanel}: the proposal to show, a `pending` flag that
  *  disables the lifecycle actions, and the close/convert/dismiss/restore handlers. */
 export interface ProposalDetailPanelProps {
-  proposal: HarnessProposalVM;
+  /** Presence flag — the sheet slides in/out. Keep it always-mounted and toggle
+   *  `open` instead of `{selected && <ProposalDetailPanel/>}`. */
+  open: boolean;
+  proposal: HarnessProposalVM | null;
   pending: boolean;
   onClose: () => void;
   /** Convert the proposal into a board task. */

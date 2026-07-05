@@ -11,6 +11,7 @@ import {
   Modal,
   RetryIcon,
   Skeleton,
+  slideIn,
   SparkIcon,
   TerminalIcon,
 } from '@/components/ui';
@@ -276,23 +277,26 @@ function ProviderConfigSkeleton() {
  * with no new UI branches.
  */
 export function ProviderConfigPanel({
+  open,
   projectPath,
   projectName,
   onClose,
   data = LIVE_PROVIDER_CONFIG_DATA,
 }: ProviderConfigPanelProps) {
   const { snapshot, loading, error, reload } = useProviderConfig(
+    open,
     projectPath,
     data,
   );
 
   return (
     <Modal
+      open={open}
       label="Provider configuration"
       onClose={onClose}
       overlayClassName="fixed inset-0 z-20 flex justify-end bg-black/60 backdrop-blur-sm"
       panelClassName="flex h-full w-full max-w-md flex-col overflow-hidden border-l border-border bg-popover shadow-2xl"
-      panelStyle={{ animation: 'nc-sheet-in .28s cubic-bezier(.22,1,.36,1)' }}
+      panelVariants={slideIn}
     >
       <div className="flex items-center gap-3 border-b border-border px-5 py-4">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/[0.12] text-primary">

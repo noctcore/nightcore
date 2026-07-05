@@ -5,12 +5,14 @@ import {
   AlertIcon,
   BoltIcon,
   BranchIcon,
+  Button,
   CloseIcon,
   ImageIcon,
   Kbd,
   PlusIcon,
   SearchIcon,
   SlidersIcon,
+  Toolbar,
 } from '@/components/ui';
 
 import { AutoModeOptions } from '../AutoModeOptions';
@@ -82,7 +84,11 @@ function BoardImpl({
   onConcurrencyChange,
   onResume,
 }: BoardProps) {
-  const { search, setSearch, columns } = useBoardView(tasks, activeWorktree);
+  const { search, setSearch, columns, clearHandlers } = useBoardView(
+    tasks,
+    activeWorktree,
+    onClearColumn,
+  );
   const banner = useBreakerBanner(breaker);
   const inspector = useInspector();
   const bgPanel = useBoardBackgroundPanel();
@@ -123,10 +129,10 @@ function BoardImpl({
             </div>
           </div>
 
-          <div className="ml-auto flex items-center gap-2.5">
+          <Toolbar label="Board actions" className="ml-auto">
             <div
               title="Max parallel runs"
-              className="flex items-center gap-2.5 rounded-[9px] border border-border bg-white/[0.02] px-3 py-1.5"
+              className="flex shrink-0 items-center gap-2.5 rounded-[9px] border border-border bg-white/[0.02] px-3 py-1.5"
             >
               <AgentsIcon size={15} className="text-muted-foreground" />
               <input
@@ -181,25 +187,20 @@ function BoardImpl({
             >
               <ImageIcon size={15} className="text-muted-foreground" />
             </button>
-            <button
-              type="button"
+            <Button
+              variant="secondary"
               onClick={inspector.show}
               title="Inspect the provider configuration for this project"
-              className="flex items-center gap-2 rounded-[9px] border border-border bg-white/[0.02] px-3.5 py-1.5 text-[12.5px] font-semibold text-foreground transition-colors hover:border-white/20"
             >
               <SlidersIcon size={14} className="text-muted-foreground" />
               Provider
-            </button>
-            <button
-              type="button"
-              onClick={onNewTask}
-              className="flex items-center gap-1.5 rounded-[9px] bg-primary px-3.5 py-2 text-[12.5px] font-semibold text-primary-foreground transition-[filter] hover:brightness-110"
-            >
+            </Button>
+            <Button onClick={onNewTask}>
               <PlusIcon size={14} />
               New task
               <Kbd>N</Kbd>
-            </button>
-          </div>
+            </Button>
+          </Toolbar>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -226,13 +227,13 @@ function BoardImpl({
       {banner.visible && breaker !== null && (
         <div className="flex items-center gap-3 border-b border-destructive/40 bg-destructive/[0.12] px-[22px] py-2.5">
           <AlertIcon size={15} className="shrink-0 text-destructive" />
-          <span className="text-[12.5px] text-foreground">
+          <span className="min-w-0 text-[12.5px] text-foreground">
             Auto Mode paused after {breaker.failureThreshold} consecutive failures.
           </span>
           <button
             type="button"
             onClick={onResume}
-            className="ml-auto flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1 text-[12px] font-semibold text-primary-foreground transition-[filter] hover:brightness-110"
+            className="ml-auto flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-1 text-[12px] font-semibold text-primary-foreground transition-[filter] hover:brightness-110"
           >
             <BoltIcon size={13} />
             Resume
@@ -241,7 +242,7 @@ function BoardImpl({
             type="button"
             aria-label="Dismiss"
             onClick={banner.dismiss}
-            className="flex items-center justify-center rounded-lg p-1 text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground"
+            className="flex shrink-0 items-center justify-center rounded-lg p-1 text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground"
           >
             <CloseIcon size={14} />
           </button>
@@ -274,31 +275,29 @@ function BoardImpl({
               onCommit={onCommit}
               onMerge={onMerge}
               isActionPending={isActionPending}
-              onClear={() => onClearColumn(def.statuses)}
+              onClear={clearHandlers[def.key]}
             />
           ))}
         </div>
       </BoardDnd>
     </div>
 
-      {inspector.open && (
-        <ProviderConfigPanel
-          projectName={projectName}
-          projectPath={projectPath}
-          onClose={inspector.hide}
-        />
-      )}
+      <ProviderConfigPanel
+        open={inspector.open}
+        projectName={projectName}
+        projectPath={projectPath}
+        onClose={inspector.hide}
+      />
 
-      {bgPanel.open && (
-        <BoardBackgroundPanel
-          appearance={appearance.appearance}
-          backgroundUrl={appearance.backgroundUrl}
-          onChangeAppearance={onChangeAppearance}
-          onPickImage={onPickBackground}
-          onClearImage={onClearBackground}
-          onClose={bgPanel.hide}
-        />
-      )}
+      <BoardBackgroundPanel
+        open={bgPanel.open}
+        appearance={appearance.appearance}
+        backgroundUrl={appearance.backgroundUrl}
+        onChangeAppearance={onChangeAppearance}
+        onPickImage={onPickBackground}
+        onClearImage={onClearBackground}
+        onClose={bgPanel.hide}
+      />
     </>
   );
 }

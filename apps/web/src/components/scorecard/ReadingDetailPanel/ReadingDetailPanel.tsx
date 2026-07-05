@@ -7,6 +7,7 @@ import {
   DetailSection,
   Markdown,
   MoveIcon,
+  useLastPresent,
 } from '@/components/ui';
 import { formatLocation } from '@/lib/formatters';
 
@@ -17,22 +18,41 @@ import type { ReadingDetailPanelProps } from './ReadingDetailPanel.types';
  *  raise it, the grounded evidence, and the single "Harden this" action that mints a
  *  Build task running the dimension's audit slash-command. No dismiss/restore. */
 export function ReadingDetailPanel({
+  open,
   reading,
   pending,
   onClose,
   onHarden,
   onGotoBoard,
 }: ReadingDetailPanelProps) {
-  const Meta = DIMENSION_META[reading.dimension];
+  // Retain the last reading so the sheet keeps its content while it animates out.
+  const shown = useLastPresent(reading);
+  if (shown === null) {
+    return (
+      <DetailPanelShell
+        open={false}
+        label=""
+        onClose={onClose}
+        title=""
+        badges={null}
+        footer={null}
+      >
+        {null}
+      </DetailPanelShell>
+    );
+  }
+
+  const Meta = DIMENSION_META[shown.dimension];
   const Icon = Meta.icon;
-  const grade = GRADE_META[reading.grade];
-  const loc = formatLocation(reading.location, { withSymbol: true });
+  const grade = GRADE_META[shown.grade];
+  const loc = formatLocation(shown.location, { withSymbol: true });
 
   return (
     <DetailPanelShell
-      label={`${Meta.label}: ${reading.grade}`}
+      open={open}
+      label={`${Meta.label}: ${shown.grade}`}
       onClose={onClose}
-      title={reading.title}
+      title={shown.title}
       headerLead={
         <span
           className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] border font-mono text-[24px] font-bold leading-none ${grade.chip} ${grade.tone}`}
@@ -46,15 +66,15 @@ export function ReadingDetailPanel({
             <Icon size={11} />
             {Meta.label}
           </span>
-          {reading.confidence !== null && (
+          {shown.confidence !== null && (
             <span className="font-mono text-[10px] text-muted-foreground">
-              {Math.round(reading.confidence * 100)}% confidence
+              {Math.round(shown.confidence * 100)}% confidence
             </span>
           )}
         </>
       }
       footer={
-        reading.status === 'converted' ? (
+        shown.status === 'converted' ? (
           <Button
             variant="secondary"
             disabled={pending}
@@ -64,7 +84,7 @@ export function ReadingDetailPanel({
             Go to task
           </Button>
         ) : (
-          <Button disabled={pending} onClick={() => onHarden(reading.id)}>
+          <Button disabled={pending} onClick={() => onHarden(shown.id)}>
             <BuildIcon size={15} />
             Harden this
           </Button>
@@ -72,7 +92,7 @@ export function ReadingDetailPanel({
       }
     >
       <DetailSection title="Assessment">
-        <Markdown>{reading.summary}</Markdown>
+        <Markdown>{shown.summary}</Markdown>
       </DetailSection>
 
       {loc !== null && (
@@ -81,22 +101,22 @@ export function ReadingDetailPanel({
         </DetailSection>
       )}
 
-      {reading.rationale !== null && (
+      {shown.rationale !== null && (
         <DetailSection title="To raise the grade">
-          <Markdown>{reading.rationale}</Markdown>
+          <Markdown>{shown.rationale}</Markdown>
         </DetailSection>
       )}
 
-      {reading.suggestion !== null && (
+      {shown.suggestion !== null && (
         <DetailSection title="Suggested action">
-          <Markdown>{reading.suggestion}</Markdown>
+          <Markdown>{shown.suggestion}</Markdown>
         </DetailSection>
       )}
 
-      {reading.findings.length > 0 && (
+      {shown.findings.length > 0 && (
         <DetailSection title="Evidence">
           <ul className="flex flex-col gap-1.5">
-            {reading.findings.map((ev, i) => (
+            {shown.findings.map((ev, i) => (
               <li
                 key={`${ev.detail}-${i}`}
                 className="text-[12.5px] leading-relaxed text-muted-foreground"
@@ -116,10 +136,10 @@ export function ReadingDetailPanel({
         </DetailSection>
       )}
 
-      {reading.affectedFiles.length > 0 && (
+      {shown.affectedFiles.length > 0 && (
         <DetailSection title="Affected files">
           <ul className="flex flex-col gap-1">
-            {reading.affectedFiles.map((f) => (
+            {shown.affectedFiles.map((f) => (
               <li key={f}>
                 <code className="font-mono text-[11.5px] text-muted-foreground">
                   {f}
@@ -130,10 +150,10 @@ export function ReadingDetailPanel({
         </DetailSection>
       )}
 
-      {reading.tags.length > 0 && (
+      {shown.tags.length > 0 && (
         <DetailSection title="Tags">
           <div className="flex flex-wrap gap-1.5">
-            {reading.tags.map((t) => (
+            {shown.tags.map((t) => (
               <span
                 key={t}
                 className="rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"

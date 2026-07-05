@@ -13,6 +13,7 @@ const meta = {
   component: BoardBackgroundPanel,
   parameters: { layout: 'fullscreen' },
   args: {
+    open: true,
     appearance: DEFAULT_APPEARANCE,
     backgroundUrl: null,
     onChangeAppearance: fn(),

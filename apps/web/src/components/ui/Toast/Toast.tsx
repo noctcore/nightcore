@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 import { IconButton } from '../IconButton';
 import { AlertIcon, CheckIcon, CloseIcon } from '../icons';
+import { AnimatePresence, m, slideIn } from '../motion';
 import { ToastContext, useToast, useToastState } from './Toast.hooks';
 import type { ToastTone } from './Toast.types';
 
@@ -31,37 +32,45 @@ function ToneIcon({ tone }: { tone: ToastTone }) {
   return <AlertIcon size={14} className="mt-0.5 shrink-0" />;
 }
 
-/** The stacked toast list, pinned bottom-right above every overlay. */
+/** The stacked toast list, pinned bottom-right above every overlay. Each toast
+ *  slides in from the right and reverses on dismiss via `AnimatePresence` (the
+ *  `slideIn` variant — transform + opacity only, no `layout`, so the stack reflows
+ *  instantly). The region stays mounted even when empty so `AnimatePresence` can
+ *  still run the LAST toast's exit animation. */
 function ToastStack() {
   const { toasts, dismiss } = useToast();
-  if (toasts.length === 0) return null;
   return (
     <div
       role="region"
       aria-label="Notifications"
       className="pointer-events-none fixed bottom-4 right-4 z-[100] flex w-full max-w-sm flex-col gap-2"
     >
-      {toasts.map((toast) => (
-        <div
-          key={toast.id}
-          role={toast.tone === 'error' ? 'alert' : 'status'}
-          className={`pointer-events-auto flex items-start gap-2 rounded-[10px] border px-3 py-2.5 shadow-2xl backdrop-blur-sm ${TONE_STYLE[toast.tone]}`}
-          style={{ animation: 'nc-rise .18s cubic-bezier(.22,1,.36,1)' }}
-        >
-          <ToneIcon tone={toast.tone} />
-          <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-semibold text-foreground">{toast.title}</p>
-            {toast.description !== undefined && toast.description.length > 0 && (
-              <p className="mt-0.5 break-words font-mono text-[11.5px] text-muted-foreground">
-                {toast.description}
-              </p>
-            )}
-          </div>
-          <IconButton label="Dismiss notification" onClick={() => dismiss(toast.id)}>
-            <CloseIcon size={14} />
-          </IconButton>
-        </div>
-      ))}
+      <AnimatePresence initial={false}>
+        {toasts.map((toast) => (
+          <m.div
+            key={toast.id}
+            role={toast.tone === 'error' ? 'alert' : 'status'}
+            variants={slideIn}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            className={`pointer-events-auto flex items-start gap-2 rounded-[10px] border px-3 py-2.5 shadow-2xl backdrop-blur-sm ${TONE_STYLE[toast.tone]}`}
+          >
+            <ToneIcon tone={toast.tone} />
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-semibold text-foreground">{toast.title}</p>
+              {toast.description !== undefined && toast.description.length > 0 && (
+                <p className="mt-0.5 break-words font-mono text-[11.5px] text-muted-foreground">
+                  {toast.description}
+                </p>
+              )}
+            </div>
+            <IconButton label="Dismiss notification" onClick={() => dismiss(toast.id)}>
+              <CloseIcon size={14} />
+            </IconButton>
+          </m.div>
+        ))}
+      </AnimatePresence>
     </div>
   );
 }

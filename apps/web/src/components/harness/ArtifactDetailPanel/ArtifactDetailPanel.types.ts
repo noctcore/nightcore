@@ -2,8 +2,12 @@
 import type { ProposedArtifactVM } from '../harness.types';
 
 export interface ArtifactDetailPanelProps {
-  /** The artifact whose detail the sheet renders. */
-  artifact: ProposedArtifactVM;
+  /** Presence flag — the sheet animates in/out. Keep it always-mounted and toggle
+   *  `open` instead of `{cond && <ArtifactDetailPanel/>}`. */
+  open: boolean;
+  /** The artifact whose detail the sheet renders (or `null` while closed — the
+   *  last one is retained across the exit animation). */
+  artifact: ProposedArtifactVM | null;
   /** True while a lifecycle action is in flight — disables the footer buttons. */
   pending: boolean;
   /** Close the sheet (Esc, click-outside, or the close button). */

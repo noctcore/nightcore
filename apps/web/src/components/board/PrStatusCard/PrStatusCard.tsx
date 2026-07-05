@@ -177,13 +177,14 @@ export function PrStatusCard({
         </p>
       )}
 
-      {confirm.arming !== null && status !== null && (
-        <ConfirmDialog
-          {...confirmCopy(confirm.arming, status, task)}
-          onConfirm={confirm.confirm}
-          onCancel={confirm.cancel}
-        />
-      )}
+      <ConfirmDialog
+        open={confirm.arming !== null && status !== null}
+        {...(confirm.arming !== null && status !== null
+          ? confirmCopy(confirm.arming, status, task)
+          : { title: '', message: null })}
+        onConfirm={confirm.confirm}
+        onCancel={confirm.cancel}
+      />
     </section>
   );
 }

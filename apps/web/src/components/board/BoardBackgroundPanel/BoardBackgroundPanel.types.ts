@@ -9,6 +9,9 @@ export interface PickedBackgroundImage {
 }
 
 export interface BoardBackgroundPanelProps {
+  /** Presence flag — the sheet animates in/out. Keep it always-mounted and toggle
+   *  `open` instead of `{cond && <BoardBackgroundPanel/>}`. */
+  open: boolean;
   /** The project's resolved board-appearance knobs (the panel's control values). */
   appearance: BoardAppearance;
   /** The current background image as a `data:` URL, or `null` when none is set. */

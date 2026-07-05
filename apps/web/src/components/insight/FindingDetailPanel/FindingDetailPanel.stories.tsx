@@ -32,6 +32,7 @@ const meta = {
   component: FindingDetailPanel,
   parameters: { layout: 'fullscreen' },
   args: {
+    open: true,
     finding: finding(),
     pending: false,
     onClose: fn(),

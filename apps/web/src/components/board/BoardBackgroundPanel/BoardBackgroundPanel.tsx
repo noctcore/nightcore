@@ -8,6 +8,7 @@ import {
   IconButton,
   ImageIcon,
   Modal,
+  slideIn,
   TrashIcon,
   UploadIcon,
 } from '@/components/ui';
@@ -53,6 +54,7 @@ function OpacityRow({
 }
 
 export function BoardBackgroundPanel({
+  open,
   appearance,
   backgroundUrl,
   onChangeAppearance,
@@ -67,11 +69,12 @@ export function BoardBackgroundPanel({
 
   return (
     <Modal
+      open={open}
       label="Board background settings"
       onClose={onClose}
       overlayClassName="fixed inset-0 z-20 flex justify-end bg-black/60 backdrop-blur-sm"
       panelClassName="flex h-full w-full max-w-md flex-col overflow-hidden border-l border-border bg-popover shadow-2xl"
-      panelStyle={{ animation: 'nc-sheet-in .28s cubic-bezier(.22,1,.36,1)' }}
+      panelVariants={slideIn}
     >
       <div className="flex items-start gap-3 border-b border-border px-5 py-4">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/[0.12] text-primary">

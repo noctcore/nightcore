@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest';
 import { render } from 'vitest-browser-react';
 
+import { MotionProvider } from '../motion';
 import { ToastProvider } from './Toast';
 import { useToast } from './Toast.hooks';
 
@@ -17,9 +18,11 @@ function Trigger() {
 
 function renderHarness() {
   return render(
-    <ToastProvider>
-      <Trigger />
-    </ToastProvider>,
+    <MotionProvider>
+      <ToastProvider>
+        <Trigger />
+      </ToastProvider>
+    </MotionProvider>,
   );
 }
 

@@ -8,6 +8,7 @@ const meta = {
   component: NewTaskForm,
   parameters: { layout: 'fullscreen' },
   args: {
+    open: true,
     onCreate: fn(async () => {}),
     onClose: fn(),
   },

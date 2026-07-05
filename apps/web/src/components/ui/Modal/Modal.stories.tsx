@@ -8,6 +8,7 @@ const meta = {
   title: 'UI/Modal',
   component: Modal,
   args: {
+    open: true,
     label: 'Example dialog',
     onClose: fn(),
   },
@@ -48,5 +49,14 @@ export const InitialFocus: Story = {
     const canvas = within(canvasElement);
     const confirm = canvas.getByRole('button', { name: 'Confirm' });
     await expect(confirm).toHaveFocus();
+  },
+};
+
+/** Presence: with `open={false}`, Modal owns its presence and renders no dialog —
+ *  the same prop drives the enter/exit choreography in the app. */
+export const Closed: Story = {
+  args: { ...Default.args, open: false },
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.querySelector('[role="dialog"]')).toBeNull();
   },
 };

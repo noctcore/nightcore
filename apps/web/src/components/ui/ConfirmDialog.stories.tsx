@@ -8,6 +8,7 @@ const meta = {
   component: ConfirmDialog,
   parameters: { layout: 'fullscreen' },
   args: {
+    open: true,
     title: 'Remove project?',
     message:
       'This removes the project from Nightcore. Files on disk are left untouched.',

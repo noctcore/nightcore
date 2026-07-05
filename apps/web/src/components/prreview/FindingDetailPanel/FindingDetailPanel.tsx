@@ -11,6 +11,7 @@ import {
   MoveIcon,
   RetryIcon,
   TrashIcon,
+  useLastPresent,
 } from '@/components/ui';
 import type { ReviewLens } from '@/lib/bridge';
 
@@ -36,6 +37,7 @@ function formatLensList(lenses: ReviewLens[]): string {
 /** The finding detail sheet: the inert body, grounded location, suggested fix, and
  *  the lifecycle actions (convert / dismiss / restore). */
 export function FindingDetailPanel({
+  open,
   finding,
   pending,
   onClose,
@@ -44,18 +46,36 @@ export function FindingDetailPanel({
   onRestore,
   onGotoBoard,
 }: FindingDetailPanelProps) {
-  const sev = SEVERITY_META[finding.severity];
-  const Meta = LENS_META[finding.lens];
+  // Retain the last finding so the sheet keeps its content while it animates out.
+  const shown = useLastPresent(finding);
+  if (shown === null) {
+    return (
+      <DetailPanelShell
+        open={false}
+        label=""
+        onClose={onClose}
+        title=""
+        badges={null}
+        footer={null}
+      >
+        {null}
+      </DetailPanelShell>
+    );
+  }
+
+  const sev = SEVERITY_META[shown.severity];
+  const Meta = LENS_META[shown.lens];
   const Icon = Meta.icon;
   const loc =
-    finding.line !== null ? `${finding.file}:${finding.line}` : finding.file;
-  const lang = inferLanguage(finding);
+    shown.line !== null ? `${shown.file}:${shown.line}` : shown.file;
+  const lang = inferLanguage(shown);
 
   return (
     <DetailPanelShell
-      label={finding.title}
+      open={open}
+      label={shown.title}
       onClose={onClose}
-      title={finding.title}
+      title={shown.title}
       badges={
         <>
           <span
@@ -71,36 +91,36 @@ export function FindingDetailPanel({
       }
       footer={
         <>
-          {finding.status === 'converted' ? (
+          {shown.status === 'converted' ? (
             <Button variant="secondary" disabled={pending} onClick={onGotoBoard}>
               <MoveIcon size={15} />
               Go to task
             </Button>
           ) : (
             <Button
-              disabled={pending || finding.status === 'dismissed'}
-              onClick={() => onConvert(finding.id)}
+              disabled={pending || shown.status === 'dismissed'}
+              onClick={() => onConvert(shown.id)}
             >
               <MoveIcon size={15} />
               Convert to task
             </Button>
           )}
 
-          {finding.status === 'dismissed' ? (
+          {shown.status === 'dismissed' ? (
             <Button
               variant="ghost"
               disabled={pending}
-              onClick={() => onRestore(finding.id)}
+              onClick={() => onRestore(shown.id)}
             >
               <RetryIcon size={15} />
               Restore
             </Button>
           ) : (
-            finding.status !== 'converted' && (
+            shown.status !== 'converted' && (
               <Button
                 variant="ghost"
                 disabled={pending}
-                onClick={() => onDismiss(finding.id)}
+                onClick={() => onDismiss(shown.id)}
               >
                 <TrashIcon size={15} />
                 Dismiss
@@ -113,18 +133,18 @@ export function FindingDetailPanel({
       <DetailSection title="What">
         {/* Model-authored body — rendered as inert text, never as HTML/Markdown. */}
         <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground">
-          {finding.body}
+          {shown.body}
         </p>
       </DetailSection>
 
       {/* Corroboration: the fuller counterpart to the card's "also:" chip —
           which OTHER lenses independently surfaced this same issue. */}
-      {finding.corroboratedBy.length > 0 && (
+      {shown.corroboratedBy.length > 0 && (
         <DetailSection title="Corroboration">
           <p className="text-[13px] leading-relaxed text-muted-foreground">
             Also independently surfaced by the{' '}
-            {formatLensList(finding.corroboratedBy)}{' '}
-            {finding.corroboratedBy.length === 1 ? 'lens' : 'lenses'}.
+            {formatLensList(shown.corroboratedBy)}{' '}
+            {shown.corroboratedBy.length === 1 ? 'lens' : 'lenses'}.
           </p>
         </DetailSection>
       )}
@@ -133,9 +153,9 @@ export function FindingDetailPanel({
         <DetailLocation>{loc}</DetailLocation>
       </DetailSection>
 
-      {finding.suggestedFix !== null && (
+      {shown.suggestedFix !== null && (
         <DetailSection title="Suggested fix">
-          <CodeBlock code={finding.suggestedFix} language={lang} />
+          <CodeBlock code={shown.suggestedFix} language={lang} />
         </DetailSection>
       )}
     </DetailPanelShell>

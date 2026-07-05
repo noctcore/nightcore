@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
+import { MotionProvider } from '../motion';
 import { Modal } from './Modal';
 
 function Body() {
@@ -15,10 +16,18 @@ function Body() {
   );
 }
 
+/** Every render goes through MotionProvider (LazyMotion + reduced-motion config),
+ *  mirroring the app root, so the panel's `m.*` / `AnimatePresence` behave exactly
+ *  as they do live. Motion is made instant under the gate via
+ *  `MotionGlobalConfig.skipAnimations` (see .storybook/vitest.setup.ts). */
+function renderModal(ui: React.ReactElement) {
+  return render(<MotionProvider>{ui}</MotionProvider>);
+}
+
 test('Escape routes to onClose', async () => {
   const onClose = vi.fn();
-  render(
-    <Modal label="Trap demo" onClose={onClose}>
+  renderModal(
+    <Modal open label="Trap demo" onClose={onClose}>
       <Body />
     </Modal>,
   );
@@ -27,8 +36,8 @@ test('Escape routes to onClose', async () => {
 });
 
 test('initial focus lands on the requested element', async () => {
-  const screen = render(
-    <Modal label="Trap demo" onClose={vi.fn()} initialFocus="[data-last]">
+  const screen = renderModal(
+    <Modal open label="Trap demo" onClose={vi.fn()} initialFocus="[data-last]">
       <Body />
     </Modal>,
   );
@@ -36,8 +45,8 @@ test('initial focus lands on the requested element', async () => {
 });
 
 test('Tab from the last focusable wraps to the first (focus trap)', async () => {
-  const screen = render(
-    <Modal label="Trap demo" onClose={vi.fn()} initialFocus="[data-last]">
+  const screen = renderModal(
+    <Modal open label="Trap demo" onClose={vi.fn()} initialFocus="[data-last]">
       <Body />
     </Modal>,
   );
@@ -47,8 +56,8 @@ test('Tab from the last focusable wraps to the first (focus trap)', async () => 
 });
 
 test('Shift+Tab from the first focusable wraps to the last (focus trap)', async () => {
-  const screen = render(
-    <Modal label="Trap demo" onClose={vi.fn()} initialFocus="[data-first]">
+  const screen = renderModal(
+    <Modal open label="Trap demo" onClose={vi.fn()} initialFocus="[data-first]">
       <Body />
     </Modal>,
   );
@@ -56,30 +65,54 @@ test('Shift+Tab from the first focusable wraps to the last (focus trap)', async 
   await expect.element(screen.getByText('Last')).toHaveFocus();
 });
 
-/** A harness that mounts/unmounts the Modal so we can assert focus returns to the
- *  opener button — the restore-to-opener behavior the per-dialog copies lacked. */
-function RestoreHarness() {
+test('renders no dialog while closed', async () => {
+  const screen = renderModal(
+    <Modal open={false} label="Trap demo" onClose={vi.fn()}>
+      <Body />
+    </Modal>,
+  );
+  // Presence is owned by `open`: when false, AnimatePresence renders nothing.
+  expect(screen.container.querySelector('[role="dialog"]')).toBeNull();
+});
+
+/** A controlled harness that toggles `open` so we exercise Modal's own presence:
+ *  the dialog enters when `open` flips true and its `AnimatePresence` removes it
+ *  after the exit when `open` flips false (instant under the gate). */
+function PresenceHarness() {
   const [open, setOpen] = useState(false);
   return (
     <>
       <button data-opener onClick={() => setOpen(true)}>
         Open
       </button>
-      {open && (
-        <Modal label="Restore demo" onClose={() => setOpen(false)}>
-          <div className="p-4">
-            <button data-close onClick={() => setOpen(false)}>
-              Close
-            </button>
-          </div>
-        </Modal>
-      )}
+      <Modal open={open} label="Presence demo" onClose={() => setOpen(false)}>
+        <div className="p-4">
+          <button data-close onClick={() => setOpen(false)}>
+            Close
+          </button>
+        </div>
+      </Modal>
     </>
   );
 }
 
+test('animates presence: the panel mounts on open and is removed on close', async () => {
+  const screen = renderModal(<PresenceHarness />);
+  // Closed to start — Modal stays mounted but renders no dialog.
+  expect(screen.container.querySelector('[role="dialog"]')).toBeNull();
+
+  await screen.getByRole('button', { name: 'Open' }).click();
+  await expect.element(screen.getByRole('dialog', { name: 'Presence demo' })).toBeInTheDocument();
+
+  await userEvent.keyboard('{Escape}');
+  // AnimatePresence runs the exit (instant under the gate) then removes the panel.
+  await expect
+    .element(screen.getByRole('dialog', { name: 'Presence demo' }))
+    .not.toBeInTheDocument();
+});
+
 test('restores focus to the opener when closed', async () => {
-  const screen = render(<RestoreHarness />);
+  const screen = renderModal(<PresenceHarness />);
   const opener = screen.getByRole('button', { name: 'Open' });
   await opener.click();
   // While open, focus is inside the dialog (on the Close button).

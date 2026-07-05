@@ -7,6 +7,7 @@ import {
   Kbd,
   Modal,
   ModelEffortPicker,
+  slideIn,
   Spinner,
 } from '@/components/ui';
 import { imageDataUrl, MAX_IMAGES_PER_TASK } from '@/lib/attachments';
@@ -23,7 +24,7 @@ const LABEL_CLASS =
   'font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground';
 
 /** The create-task dialog reached from the board's "New task" affordance. */
-export function NewTaskForm({ onCreate, onClose }: NewTaskFormProps) {
+export function NewTaskForm({ open, onCreate, onClose }: NewTaskFormProps) {
   const {
     title,
     description,
@@ -58,16 +59,17 @@ export function NewTaskForm({ onCreate, onClose }: NewTaskFormProps) {
     submit,
     onDescKeyDown,
     onDescPaste,
-  } = useNewTaskForm({ onCreate, onClose });
+  } = useNewTaskForm({ open, onCreate, onClose });
 
   return (
     <Modal
+      open={open}
       label="New task"
       initialFocus="#nt-title"
       onClose={onClose}
       overlayClassName="fixed inset-0 z-20 flex justify-end bg-black/60 backdrop-blur-sm"
       panelClassName="flex h-full w-full max-w-lg flex-col overflow-hidden border-l border-border bg-popover shadow-2xl"
-      panelStyle={{ animation: 'nc-sheet-in .28s cubic-bezier(.22,1,.36,1)' }}
+      panelVariants={slideIn}
     >
         <div className="flex items-center gap-3 border-b border-border px-5 py-4">
           <h2 className="flex-1 text-base font-semibold text-foreground">New task</h2>
