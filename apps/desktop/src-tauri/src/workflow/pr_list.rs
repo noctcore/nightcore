@@ -19,8 +19,6 @@ use super::merge::require_project;
 use crate::git::gh::{run_gh_checked, GhCall, GH_BINARY, PR_LIST_FIELDS};
 
 const GH_LIST_TIMEOUT: Duration = Duration::from_secs(60);
-/// The `--json` field set the master-detail picker renders. `author` and `labels`
-/// are nested; `body`/`url` feed the detail pane; `additions`/`deletions` the size badge.
 /// Default cap on the list when the caller passes no limit; the picker also accepts a
 /// typed number for PRs beyond it.
 const PR_LIST_DEFAULT_LIMIT: u64 = 50;

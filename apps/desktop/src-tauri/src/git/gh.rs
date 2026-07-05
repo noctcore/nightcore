@@ -27,6 +27,8 @@ pub(crate) const GH_BINARY: &str = "gh";
 // the UI renders lives in a single place.
 
 /// All single-query fields for the PR picker list (`gh pr list --json`, no N+1).
+/// `author` and `labels` are nested; `body`/`url` feed the detail pane;
+/// `additions`/`deletions` the size badge.
 pub(crate) const PR_LIST_FIELDS: &str =
     "number,title,state,headRefName,author,isDraft,createdAt,updatedAt,url,labels,body,additions,deletions";
 
@@ -222,7 +224,11 @@ mod tests {
             "timed out",
         )
         .expect("fake gh runs");
-        assert!(out.status.success(), "fake gh exited non-zero: {}", out.stderr);
+        assert!(
+            out.status.success(),
+            "fake gh exited non-zero: {}",
+            out.stderr
+        );
         assert!(
             out.stdout.contains("PROMPT=0"),
             "gh runner must pin GIT_TERMINAL_PROMPT=0 (env-scrub applied): {}",

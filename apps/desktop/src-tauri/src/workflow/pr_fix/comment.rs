@@ -78,15 +78,7 @@ pub(super) fn compose_push_comment(state: &PrFixState, short_sha: Option<&str>) 
 /// comment's autolinking commit reference. Best-effort — `None` never blocks
 /// the comment.
 pub(super) fn head_short_sha(dir: &Path) -> Option<String> {
-    let out = crate::platform::git_command(dir)
-        .args(["rev-parse", "--short=10", "HEAD"])
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let sha = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    (!sha.is_empty()).then_some(sha)
+    crate::git::run::git_stdout(dir, &["rev-parse", "--short=10", "HEAD"]).filter(|s| !s.is_empty())
 }
 
 /// POST one issue comment on the PR via `gh api … --input -` (the issues

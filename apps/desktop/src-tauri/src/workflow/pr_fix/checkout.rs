@@ -22,9 +22,10 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
+use crate::git::gh::{run_gh_checked, GhCall, GH_BINARY};
+use crate::git::run::{git, git_status_success};
 use crate::store::TaskStore;
 use crate::task::TaskStatus;
-use crate::git::gh::{run_gh_checked, GhCall, GH_BINARY};
 use crate::worktree::{self, validate_ref};
 
 /// Wall-clock bound on the `gh pr view` head-branch read. A single-object view
@@ -165,7 +166,7 @@ pub(super) fn managed_checkout(
 fn add_branch_worktree(project_path: &Path, dir: &Path, branch: &str) -> Result<(), String> {
     let dir_str = dir.to_string_lossy().to_string();
     let local_ref = format!("refs/heads/{branch}");
-    let local_exists = git_ok(
+    let local_exists = git_status_success(
         project_path,
         &[
             "rev-parse",
@@ -192,7 +193,7 @@ fn add_branch_worktree(project_path: &Path, dir: &Path, branch: &str) -> Result<
             &remote_ref,
         ]
     };
-    git_run(project_path, &args).map(|_| ())
+    git(project_path, &args).map(|_| ())
 }
 
 /// The PR's branch endpoints, read together from one `gh pr view`: the head
@@ -263,33 +264,4 @@ pub(super) fn parse_pr_refs(stdout: &str) -> Result<PrRefs, String> {
         return Err("`gh pr view` reported an empty base branch".to_string());
     }
     Ok(PrRefs { head, base })
-}
-
-// ── Local git plumbing ─────────────────────────────────────────────────────────
-// The worktree module's `git` spawner is private to its tree; like the sibling
-// workflow modules (diff_budget, ratchet, anti_gaming) these route through
-// `crate::platform::git_command` — the env-scrubbed isolation chokepoint — with
-// the same trimmed stdout/stderr mapping.
-
-/// Run a git subcommand in `repo`, returning trimmed stdout on success or the
-/// trimmed stderr as the error.
-fn git_run(repo: &Path, args: &[&str]) -> Result<String, String> {
-    let out = crate::platform::git_command(repo)
-        .args(args)
-        .output()
-        .map_err(|e| format!("failed to run git (is `git` on PATH?): {e}"))?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
-    } else {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
-    }
-}
-
-/// Run a git subcommand purely for its exit status (predicate-style calls).
-fn git_ok(repo: &Path, args: &[&str]) -> bool {
-    crate::platform::git_command(repo)
-        .args(args)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
 }
