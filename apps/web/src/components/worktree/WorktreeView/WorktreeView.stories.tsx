@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { fn } from 'storybook/test';
 
 import { ToastProvider } from '@/components/ui';
 import type { Task, WorktreeInfo } from '@/lib/bridge';
@@ -36,7 +37,7 @@ const TASKS = [
 const meta = {
   title: 'Worktree/WorktreeView',
   component: WorktreeView,
-  args: { worktrees: WORKTREES, tasks: TASKS },
+  args: { worktrees: WORKTREES, tasks: TASKS, onRefresh: fn() },
   decorators: [
     (Story) => (
       <ToastProvider>

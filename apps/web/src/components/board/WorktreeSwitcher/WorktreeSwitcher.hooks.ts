@@ -56,6 +56,7 @@ export function useWorktreeTabs(tasks: Task[], worktrees: WorktreeInfo[]): Workt
     const mainTab: WorktreeTab = {
       branch: null,
       label: 'Main',
+      taskIds: [],
       taskCount: mainTasks.length,
       runningCount: mainTasks.filter(isRunning).length,
       dirty: false,
@@ -75,9 +76,14 @@ export function useWorktreeTabs(tasks: Task[], worktrees: WorktreeInfo[]): Workt
 
     const worktreeTabs = source.map((worktree): WorktreeTab => {
       const branchTasks = tasks.filter((task) => task.branch === worktree.branch);
+      // Discard targets for the tab's "Remove worktree" action: the union of the
+      // live worktree's owning task ids and every task grouped on this branch
+      // (v1 is one-per-branch, so this is normally a single id).
+      const taskIds = [...new Set([...worktree.taskIds, ...branchTasks.map((t) => t.id)])];
       return {
         branch: worktree.branch,
         label: worktree.branch,
+        taskIds,
         taskCount: branchTasks.length,
         runningCount: branchTasks.filter(isRunning).length,
         dirty: worktree.dirty,

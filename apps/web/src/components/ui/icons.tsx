@@ -51,6 +51,7 @@ export {
   MessageCircleQuestion as QuestionIcon,
   Wrench as RefactorIcon,
   Sparkles as RefineIcon,
+  RefreshCw as RefreshIcon,
   Microscope as ResearchIcon,
   RotateCcw as RetryIcon,
   Search as SearchIcon,

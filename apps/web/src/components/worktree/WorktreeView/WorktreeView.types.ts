@@ -9,4 +9,7 @@ export interface WorktreeViewProps {
   worktrees: WorktreeInfo[];
   /** The project's tasks, for resolving friendly titles + branch names. */
   tasks: Task[];
+  /** Reconcile + re-read board/worktree state on demand (the Refresh control):
+   *  prune orphans, clear ghost pointers, reclaim merged worktrees. */
+  onRefresh: () => void;
 }
