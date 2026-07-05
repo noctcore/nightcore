@@ -130,6 +130,15 @@ pub fn run() {
             // Startup reconciliation: prune orphaned worktrees from the active
             // project whose tasks no longer exist (best-effort, never blocks).
             orchestration::coordinator::reconcile_worktrees(&app.handle().clone());
+            // …then clear ghost worktree POINTERS (a task with a stale `branch`
+            // chip but no worktree dir left on disk) so a merged/discarded/removed
+            // worktree can't strand a dead tab on the board across a restart.
+            // Pointer-clear only (no merged-worktree pruning at boot — that stays
+            // an explicit user action via `refresh_worktrees`).
+            orchestration::coordinator::reconcile_stale_worktree_state(
+                &app.handle().clone(),
+                false,
+            );
             // Then recover crash-stranded tasks: an `InProgress`/`Verifying` task
             // whose run died with the process is re-queued (or re-reviewed) so the
             // auto-loop can pick it up again instead of stranding it forever.
@@ -261,6 +270,7 @@ pub fn run() {
             orchestration::coordinator::resume_auto_loop,
             orchestration::coordinator::set_max_concurrency_cmd,
             orchestration::coordinator::list_worktrees,
+            orchestration::coordinator::refresh_worktrees,
             commands::worktree::list_branches,
             commands::worktree::merge_preview,
             commands::worktree::worktree_diff,

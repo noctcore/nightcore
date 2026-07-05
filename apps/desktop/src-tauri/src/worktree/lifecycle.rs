@@ -148,7 +148,15 @@ pub fn remove(project_path: &Path, task_id: &str) -> Result<(), String> {
         ));
     }
     if !dir.exists() {
-        return Ok(()); // already gone
+        // The dir was removed out-of-band (a manual `rm -rf`, a crash, an older
+        // build). Git still holds stale admin refs under `.git/worktrees/<name>`
+        // that keep the branch marked "checked out" there — so a subsequent
+        // `delete_branch_named` would fail with "branch is checked out at …" and
+        // leave the branch (and its board tab) stranded. Prune the admin refs so
+        // the branch is freely deletable and the tab fully clears. Best-effort and
+        // confined to git's own admin state; can never touch the user's checkout.
+        let _ = git(project_path, &["worktree", "prune"]);
+        return Ok(()); // dir already gone; stale admin refs pruned
     }
     let dir_str = dir.to_string_lossy().to_string();
     // `--force` because the agent's run leaves uncommitted edits in the worktree;
