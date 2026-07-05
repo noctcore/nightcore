@@ -2,7 +2,6 @@
 //! drained-output envelope, and the deadline-bounded runner. Phase-2/3
 //! (`pr_status`, `pr_comments`) reach these through the `pr` facade.
 
-use std::io::Write;
 use std::path::Path;
 use std::process::Stdio;
 
@@ -60,7 +59,7 @@ pub(crate) fn run_gh_bounded(
     deadline: std::time::Duration,
     timeout_msg: &str,
 ) -> Result<GhOutput, String> {
-    let mut child = match crate::platform::std_command(binary)
+    let child = match crate::platform::std_command(binary)
         .args(args)
         .current_dir(dir)
         .stdin(if stdin_payload.is_some() {
@@ -87,39 +86,16 @@ pub(crate) fn run_gh_bounded(
         }
     };
 
-    // Feed stdin from a detached thread so a large body can't deadlock against
-    // a child that is also writing output (dropping the handle closes the pipe).
-    if let (Some(payload), Some(mut stdin)) = (stdin_payload, child.stdin.take()) {
-        let payload = payload.as_bytes().to_vec();
-        std::thread::spawn(move || {
-            let _ = stdin.write_all(&payload);
-        });
+    // Feed stdin + drain both pipes + bound the wait via the shared runner core
+    // (the drained-pipe/deadline/kill mechanics `git_with_deadline` and the claude
+    // one-shot share). The spawn above stays bespoke (gh's own cwd + error mapping).
+    match crate::git::run::drain_and_wait(child, stdin_payload.map(str::as_bytes), deadline) {
+        Ok(Some(out)) => Ok(GhOutput {
+            status: out.status,
+            stdout: out.stdout,
+            stderr: out.stderr,
+        }),
+        Ok(None) => Err(timeout_msg.to_string()),
+        Err(e) => Err(format!("`{binary}` did not finish: {e}")),
     }
-
-    // Drain stdout AND stderr on threads so neither pipe can fill and block the
-    // child; join after the bounded wait (the claude_oneshot discipline).
-    fn drain<R: std::io::Read + Send + 'static>(
-        pipe: Option<R>,
-    ) -> std::thread::JoinHandle<String> {
-        std::thread::spawn(move || {
-            let mut buf = String::new();
-            if let Some(mut p) = pipe {
-                let _ = p.read_to_string(&mut buf);
-            }
-            buf
-        })
-    }
-    let stdout = drain(child.stdout.take());
-    let stderr = drain(child.stderr.take());
-
-    let status = match crate::proc::wait_with_deadline(&mut child, deadline) {
-        Ok(Some(status)) => status,
-        Ok(None) => return Err(timeout_msg.to_string()),
-        Err(e) => return Err(format!("`{binary}` did not finish: {e}")),
-    };
-    Ok(GhOutput {
-        status,
-        stdout: stdout.join().unwrap_or_default(),
-        stderr: stderr.join().unwrap_or_default(),
-    })
 }

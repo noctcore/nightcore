@@ -20,9 +20,8 @@
 //! flag or the CLI swallows it as tool names. A wall-clock timeout kills a hung
 //! child.
 
-use std::io::{Read, Write};
 use std::process::Stdio;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// Hard wall-clock bound on the `claude -p` child. Haiku typically answers in a few
 /// seconds; this only fires on a genuine hang, after which the caller falls back to
@@ -53,7 +52,7 @@ pub(crate) fn run_claude_with(
     // words as tool names (verified against claude 2.1.195) — the instruction is lost
     // and the model answers from stdin alone, silently producing a garbage message.
     // Keeping `--disallowed-tools` last bounds the variadic to its one comma value.
-    let mut child = crate::platform::std_command(binary)
+    let child = crate::platform::std_command(binary)
         .arg("-p")
         .arg(instruction)
         .args([
@@ -75,7 +74,8 @@ pub(crate) fn run_claude_with(
         .stdout(Stdio::piped())
         // stderr is discarded, not piped: an undrained stderr pipe could fill its OS
         // buffer (claude can be chatty with warnings) and block the child on write
-        // forever — stalling the caller until the timeout. We never read stderr.
+        // forever — stalling the caller until the timeout. We never read stderr, and
+        // the shared runner drains a `null` stderr to an empty string.
         .stderr(Stdio::null())
         .spawn()
         .map_err(|e| {
@@ -83,53 +83,22 @@ pub(crate) fn run_claude_with(
         })
         .ok()?;
 
-    // Feed stdin from a detached thread so a large diff can't deadlock against a
-    // child that is also writing stdout (dropping the handle closes the pipe / EOF).
-    if let Some(mut stdin) = child.stdin.take() {
-        let payload = stdin_payload.as_bytes().to_vec();
-        std::thread::spawn(move || {
-            let _ = stdin.write_all(&payload);
-        });
-    }
-
-    // Drain stdout on a thread for the same reason; join it after the child exits.
-    let mut stdout = child.stdout.take()?;
-    let reader = std::thread::spawn(move || {
-        let mut buf = String::new();
-        let _ = stdout.read_to_string(&mut buf);
-        buf
-    });
-
-    // Poll for exit with a wall-clock bound; kill a child that overruns it.
-    let start = Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) => {
-                if start.elapsed() > GEN_TIMEOUT {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    tracing::warn!(target: "nightcore::oneshot", "`claude` one-shot generation timed out; falling back");
-                    return None;
-                }
-                std::thread::sleep(Duration::from_millis(100));
-            }
-            // Symmetric with the timeout branch: reap the child and close its pipes
-            // (unblocking the stdin-writer and stdout-reader threads) before bailing.
-            Err(_) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return None;
-            }
+    // Feed stdin + drain stdout (stderr is null → drained to "") + bound the wait via
+    // the shared runner core — the same drained-pipe/deadline/kill mechanics the git
+    // and gh bounded runners use. The least-privilege spawn above stays bespoke; only
+    // the plumbing is shared. Each arm maps to the best-effort fall-back (None).
+    match crate::git::run::drain_and_wait(child, Some(stdin_payload.as_bytes()), GEN_TIMEOUT) {
+        Ok(Some(out)) if out.status.success() => Some(out.stdout),
+        Ok(Some(out)) => {
+            tracing::warn!(target: "nightcore::oneshot", code = ?out.status.code(), "`claude` exited non-zero for one-shot generation; falling back");
+            None
         }
-    };
-
-    let out = reader.join().ok()?;
-    if !status.success() {
-        tracing::warn!(target: "nightcore::oneshot", code = ?status.code(), "`claude` exited non-zero for one-shot generation; falling back");
-        return None;
+        Ok(None) => {
+            tracing::warn!(target: "nightcore::oneshot", "`claude` one-shot generation timed out; falling back");
+            None
+        }
+        Err(_) => None,
     }
-    Some(out)
 }
 
 /// Borrow at most `max` bytes of `s`, ending on a char boundary (so a multi-byte
