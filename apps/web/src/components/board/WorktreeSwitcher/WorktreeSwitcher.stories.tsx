@@ -1,16 +1,25 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
 
-import { MAIN_MODE_TASK, TASKS_BY_STATUS, WORKTREES } from '../_fixtures';
+import {
+  MAIN_MODE_TASK,
+  MANY_WORKTREE_TASKS,
+  MANY_WORKTREES,
+  TASKS_BY_STATUS,
+  WORKTREES,
+} from '../_fixtures';
 import { WorktreeSwitcher } from './WorktreeSwitcher';
 
-const ALL_TASKS = [MAIN_MODE_TASK, ...Object.values(TASKS_BY_STATUS)];
+// A below-threshold task set: Main + two live worktrees (nc/api-client,
+// nc/auth-guard) → 3 tabs, so the default stories exercise the inline path. The
+// overflow/collapse path has its own stories driven by MANY_WORKTREES.
+const INLINE_TASKS = [MAIN_MODE_TASK, TASKS_BY_STATUS.in_progress, TASKS_BY_STATUS.done];
 
 const meta = {
   title: 'Board/WorktreeSwitcher',
   component: WorktreeSwitcher,
   args: {
-    tasks: ALL_TASKS,
+    tasks: INLINE_TASKS,
     worktrees: WORKTREES,
     active: null,
     onSelect: fn(),
@@ -68,5 +77,46 @@ export const RemovesWorktree: Story = {
     await expect(args.onRemoveWorktree).toHaveBeenCalledWith(
       expect.objectContaining({ branch: 'nc/api-client', taskIds: expect.arrayContaining(['t-running']) }),
     );
+  },
+};
+
+// --- Overflow / collapse path ------------------------------------------------
+
+/** Above the threshold (Main + 6 worktrees): Main stays an inline tab and the six
+ *  worktrees fold into the searchable collapsed select, whose trigger aggregates
+ *  the count, a running spinner (two worktrees are live), and a diverged badge. */
+export const ManyWorktreesCollapsed: Story = {
+  args: { tasks: MANY_WORKTREE_TASKS, worktrees: MANY_WORKTREES },
+};
+
+/** A collapsed worktree is the active selection → the trigger reflects its branch
+ *  label + active styling, and its row is marked selected inside the panel. */
+export const CollapsedWorktreeSelected: Story = {
+  args: { tasks: MANY_WORKTREE_TASKS, worktrees: MANY_WORKTREES, active: 'nc/rate-limiter' },
+};
+
+/** Play test: open the collapsed select, filter by task title, and pick a row. */
+export const CollapsedSearchAndSelect: Story = {
+  args: { tasks: MANY_WORKTREE_TASKS, worktrees: MANY_WORKTREES },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: /worktrees/i }));
+    const search = canvas.getByRole('combobox', { name: /search worktrees/i });
+    // "rate limiter" is the task title on nc/rate-limiter — search hits titles too.
+    await userEvent.type(search, 'rate limiter');
+    await userEvent.click(canvas.getByRole('option', { name: /nc\/rate-limiter/i }));
+    await expect(args.onSelect).toHaveBeenCalledWith('nc/rate-limiter');
+  },
+};
+
+/** Play test: the collapsed select is keyboard-navigable — the first row is
+ *  pre-highlighted, so ArrowDown moves to the second worktree and Enter picks it. */
+export const CollapsedKeyboardSelect: Story = {
+  args: { tasks: MANY_WORKTREE_TASKS, worktrees: MANY_WORKTREES },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: /worktrees/i }));
+    await userEvent.keyboard('{ArrowDown}{Enter}');
+    await expect(args.onSelect).toHaveBeenCalledWith('nc/auth-guard');
   },
 };

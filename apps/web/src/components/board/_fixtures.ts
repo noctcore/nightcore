@@ -235,6 +235,117 @@ export const WORKTREES: WorktreeInfo[] = [
   },
 ];
 
+/** A larger worktree set (6) that trips the switcher's collapse threshold, mixing
+ *  clean / dirty / ahead / behind / diverged states so the collapsed select's
+ *  aggregate (running spinner + diverged badge) and per-row chips have something
+ *  to show. Branches match {@link MANY_WORKTREE_TASKS} so the select is searchable
+ *  by task title, and two carry a running task so the aggregate spinner appears. */
+export const MANY_WORKTREES: WorktreeInfo[] = [
+  {
+    branch: 'nc/api-client',
+    path: '~/dev/nightcore/.worktrees/nc-api-client',
+    taskIds: ['mw-api'],
+    dirty: true,
+    aheadOfBase: 2,
+    behindOfBase: 0,
+    changedFiles: 3,
+  },
+  {
+    branch: 'nc/auth-guard',
+    path: '~/dev/nightcore/.worktrees/nc-auth-guard',
+    taskIds: ['mw-auth'],
+    dirty: false,
+    aheadOfBase: 1,
+    behindOfBase: 0,
+    changedFiles: 0,
+  },
+  {
+    branch: 'nc/rate-limiter',
+    path: '~/dev/nightcore/.worktrees/nc-rate-limiter',
+    taskIds: ['mw-rate'],
+    dirty: true,
+    aheadOfBase: 3,
+    behindOfBase: 1,
+    changedFiles: 4,
+  },
+  {
+    branch: 'nc/dark-mode',
+    path: '~/dev/nightcore/.worktrees/nc-dark-mode',
+    taskIds: ['mw-dark'],
+    dirty: false,
+    aheadOfBase: 0,
+    behindOfBase: 0,
+    changedFiles: 0,
+  },
+  {
+    branch: 'nc/telemetry',
+    path: '~/dev/nightcore/.worktrees/nc-telemetry',
+    taskIds: ['mw-tel'],
+    dirty: true,
+    aheadOfBase: 0,
+    behindOfBase: 2,
+    changedFiles: 1,
+  },
+  {
+    branch: 'nc/search-index',
+    path: '~/dev/nightcore/.worktrees/nc-search-index',
+    taskIds: ['mw-search'],
+    dirty: false,
+    aheadOfBase: 5,
+    behindOfBase: 4,
+    changedFiles: 0,
+  },
+];
+
+/** Tasks pinned to the {@link MANY_WORKTREES} branches — two are actively running
+ *  (in_progress / verifying) so the collapsed select's aggregate spinner + per-row
+ *  running dot render, and each carries a searchable title. */
+export const MANY_WORKTREE_TASKS: Task[] = [
+  makeTask({
+    id: 'mw-api',
+    title: 'Generate API client',
+    status: 'in_progress',
+    runMode: 'worktree',
+    branch: 'nc/api-client',
+  }),
+  makeTask({
+    id: 'mw-auth',
+    title: 'Wire up auth guard',
+    status: 'done',
+    runMode: 'worktree',
+    branch: 'nc/auth-guard',
+    verified: true,
+  }),
+  makeTask({
+    id: 'mw-rate',
+    title: 'Add rate limiter middleware',
+    status: 'backlog',
+    runMode: 'worktree',
+    branch: 'nc/rate-limiter',
+  }),
+  makeTask({
+    id: 'mw-dark',
+    title: 'Add dark-mode toggle',
+    status: 'backlog',
+    runMode: 'worktree',
+    branch: 'nc/dark-mode',
+  }),
+  makeTask({
+    id: 'mw-tel',
+    title: 'Ship telemetry pipeline',
+    status: 'backlog',
+    runMode: 'worktree',
+    branch: 'nc/telemetry',
+  }),
+  makeTask({
+    id: 'mw-search',
+    title: 'Build search index',
+    status: 'verifying',
+    runMode: 'worktree',
+    branch: 'nc/search-index',
+  }),
+];
+
 /** A passing readiness-gauntlet result (typecheck → lint → test all green). */
 export const GAUNTLET_PASSED: GauntletResult = {
   passed: true,
