@@ -1,7 +1,11 @@
-//! [`pr_status`] — the read-only `gh pr view` snapshot command. No lease, no
-//! mutation; on-demand only (mount + manual refresh, no polling daemon).
+//! [`pr_status`] / [`pr_status_by_number`] — the read-only `gh pr view`
+//! snapshot commands. No lease, no mutation; on-demand only (mount + manual
+//! refresh, no polling daemon). The task-scoped variant resolves the task's
+//! recorded PR (and its worktree's unpushed count); the by-number variant
+//! snapshots an ARBITRARY PR of the active project's repo.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
 
@@ -53,4 +57,47 @@ fn pr_status_blocking(app: &AppHandle, id: &str) -> Result<PrStatus, String> {
     };
     let view = fetch_pr_view_with(&dir, GH_BINARY, number, GH_VIEW_TIMEOUT)?;
     Ok(view.into_status(unpushed_commits))
+}
+
+/// Fetch the live GitHub status of an ARBITRARY pull request of the active
+/// project by number (see [`PrStatus`]) — the workspace-scoped sibling of the
+/// task-scoped [`pr_status`], for PRs no board task tracks. Same read-only
+/// posture: NO lease, on-demand only.
+#[tauri::command]
+pub async fn pr_status_by_number(app: AppHandle, number: u64) -> Result<PrStatus, String> {
+    // `gh` talks to the network (up to 60s) — blocking work that must not run
+    // on the UI thread (the WKWebView rule).
+    tauri::async_runtime::spawn_blocking(move || pr_status_by_number_blocking(&app, number))
+        .await
+        .map_err(|e| format!("PR status failed to run: {e}"))?
+}
+
+/// The blocking body of [`pr_status_by_number`]: resolve the active project
+/// (its root is the `gh` cwd, which resolves the repo) and fetch. No task, so
+/// no worktree lookup — the fetch runs from the project root.
+fn pr_status_by_number_blocking(app: &AppHandle, number: u64) -> Result<PrStatus, String> {
+    let project = require_project(app)?;
+    let dir = PathBuf::from(&project.path);
+    fetch_status_by_number(&dir, GH_BINARY, number, GH_VIEW_TIMEOUT)
+}
+
+/// The by-number fetch over the shared [`fetch_pr_view_with`] substrate.
+/// Binary-parameterized — the fake-`gh` test seam, like the substrate itself.
+/// `unpushed_commits` is ALWAYS `None`: an arbitrary PR has no task and thus no
+/// local-branch mapping, so the count is genuinely undeterminable — `None`
+/// ("cannot determine") is honest where a fake `Some(0)` would read as "all
+/// pushed" in the UI.
+pub(super) fn fetch_status_by_number(
+    dir: &Path,
+    binary: &str,
+    number: u64,
+    deadline: Duration,
+) -> Result<PrStatus, String> {
+    // Reject an invalid PR number before any probe/spawn (the sibling seams'
+    // cheap-fail rule — see `fetch_pr_diff_with`).
+    if number == 0 {
+        return Err("enter a valid PR number (a positive integer)".to_string());
+    }
+    let view = fetch_pr_view_with(dir, binary, number, deadline)?;
+    Ok(view.into_status(None))
 }

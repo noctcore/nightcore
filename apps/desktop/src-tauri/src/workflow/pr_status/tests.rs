@@ -14,6 +14,7 @@ use super::finalize::{
 };
 use super::pull::{pull_base_ff_core, resolve_pull_base};
 use super::push::{check_push_preconditions, refuse_push_while_sibling_in_flight};
+use super::status::fetch_status_by_number;
 use super::view::{count_checks, fetch_pr_view_with, require_pr_number, GhPrView, PR_VIEW_FIELDS};
 use crate::store::TaskStore;
 use crate::task::{RunMode, Task, TaskStatus};
@@ -523,6 +524,85 @@ fn fetch_pr_view_times_out_a_hung_gh() {
     assert!(
         start.elapsed() < Duration::from_secs(5),
         "the kill returns promptly, not after the child's sleep"
+    );
+}
+
+// ── fetch_status_by_number (the workspace-scoped by-number variant) ────
+
+#[test]
+#[cfg(unix)]
+fn fetch_status_by_number_never_carries_an_unpushed_count() {
+    // The by-number variant has no task and thus no local branch mapping: the
+    // count must be the explicit-unknown `None` — a fake `Some(0)` would read
+    // as "all pushed" in the UI. Same substrate, same argv contract.
+    let tmp = tempfile::TempDir::new().expect("temp dir");
+    let body = "printf '%s\\n' \"$@\" > args.txt\n\
+         echo '{\"number\":31,\"url\":\"https://github.com/acme/widget/pull/31\",\
+         \"state\":\"OPEN\",\"isDraft\":false,\"mergeable\":\"MERGEABLE\",\
+         \"mergeStateStatus\":\"CLEAN\",\"reviewDecision\":\"APPROVED\",\
+         \"baseRefName\":\"main\",\"statusCheckRollup\":[\
+         {\"status\":\"COMPLETED\",\"conclusion\":\"SUCCESS\"}]}'";
+    let script = fake_gh(tmp.path(), body);
+    let status = fetch_status_by_number(
+        tmp.path(),
+        script.to_str().expect("utf8 path"),
+        31,
+        Duration::from_secs(10),
+    )
+    .expect("status fetches");
+    assert_eq!(status.number, 31);
+    assert_eq!(status.state, "OPEN");
+    assert_eq!(status.review_decision, "APPROVED");
+    assert_eq!(status.checks_passed, 1);
+    assert_eq!(
+        status.unpushed_commits, None,
+        "an arbitrary PR's unpushed count is unknowable, never a fake 0"
+    );
+
+    // Same `pr view <n> --json <fields>` substrate as the task-scoped sibling.
+    let args = std::fs::read_to_string(tmp.path().join("args.txt")).expect("args.txt");
+    let args: Vec<&str> = args.lines().collect();
+    for expected in ["pr", "view", "31", "--json", PR_VIEW_FIELDS] {
+        assert!(
+            args.contains(&expected),
+            "argv missing {expected}: {args:?}"
+        );
+    }
+}
+
+#[test]
+fn fetch_status_by_number_rejects_zero_before_any_spawn() {
+    // The binary is deliberately bogus: number validation runs FIRST, so the
+    // outcome is the validation error — proof no probe/spawn ran.
+    let tmp = tempfile::TempDir::new().expect("temp dir");
+    let err = fetch_status_by_number(
+        tmp.path(),
+        "definitely-not-a-real-binary-xyz",
+        0,
+        Duration::from_secs(1),
+    )
+    .expect_err("PR 0 is rejected");
+    assert!(err.contains("valid PR number"), "err: {err}");
+}
+
+#[test]
+#[cfg(unix)]
+fn fetch_status_by_number_surfaces_the_substrate_failure_verbatim() {
+    let tmp = tempfile::TempDir::new().expect("temp dir");
+    let script = fake_gh(
+        tmp.path(),
+        "echo 'GraphQL: Could not resolve to a PullRequest' >&2\nexit 1",
+    );
+    let err = fetch_status_by_number(
+        tmp.path(),
+        script.to_str().expect("utf8 path"),
+        99999,
+        Duration::from_secs(10),
+    )
+    .expect_err("an unknown PR maps to Err");
+    assert!(
+        err.contains("Could not resolve"),
+        "gh's stderr is verbatim: {err}"
     );
 }
 

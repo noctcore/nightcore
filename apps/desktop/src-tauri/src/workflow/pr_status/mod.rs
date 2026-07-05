@@ -1,9 +1,12 @@
 //! PR status tracking + the remote-merge closeout (PR arc, phase 2 — design §4).
 //!
-//! Four commands over the phase-1 seams ([`crate::workflow::pr`]):
+//! The commands over the phase-1 seams ([`crate::workflow::pr`]):
 //! - [`pr_status`] — read-only `gh pr view` snapshot ([`PrStatus`]) fetched on
 //!   demand (mount + manual refresh, NO background polling), plus a LOCAL
 //!   unpushed-commits count. No lease — it mutates nothing.
+//!   [`pr_status_by_number`] is its workspace-scoped sibling for PRs no board
+//!   task tracks: same substrate + posture, but `unpushed_commits` is always
+//!   `None` (an arbitrary PR has no local branch mapping).
 //! - [`push_pr_updates`] — re-push the task branch (plain push, never
 //!   `--force`) so review-round fixes reach the open PR. Human-gated in the UI.
 //! - [`finalize_merged_pr`] — close the loop on a PR merged ON GitHub: verify
