@@ -62,11 +62,10 @@ jobs:
   bun-checks:
     name: lint · typecheck · test (Bun workspace)
     runs-on: ubuntu-latest
-    # Whole job is ~5 min green. The backstop exists because Vitest browser
-    # mode can freeze silently (see the web-coverage step below) and GitHub's
-    # default job timeout is 6 HOURS. Sized ~2.5× green so a slow runner
-    # doesn't red a legitimate run.
-    timeout-minutes: 12
+    # ~1 min green. The web tier (the longest single step in CI) runs in the
+    # parallel web-coverage job below so lint/type/test feedback isn't
+    # serialized behind a 3-minute browser suite.
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -80,31 +79,87 @@ jobs:
       # guard) and agent-contract-parity. This is the "lint-meta fails CI" gate.
       - run: bun run lint
       - run: bun run typecheck
-      # Vitest browser mode (apps/web) drives Playwright's own chromium build,
-      # which runners don't ship. --with-deps adds the distro shared libraries.
+      # The node + plugin JS/TS tiers. The web tier runs in web-coverage; the
+      # Rust tier in rust-checks. The node tier runs under a coverage floor so
+      # a new module can't ship untested (tools/coverage/check-node-coverage.ts).
+      # Plugin runs on vitest.
+      - run: bun run test:node:coverage
+      - run: bun run test:plugin
+
+  web-coverage:
+    name: vitest browser coverage (apps/web)
+    runs-on: ubuntu-latest
+    # ~3 min green (browser suite + coverage floor via Vitest istanbul
+    # thresholds, apps/web/vitest.config.ts).
+    timeout-minutes: 10
+    steps:
+      # ubuntu-24.04 runners advertise ~14GB free but real headroom varies VM
+      # to VM: run 28756795439 ENOSPC'd 70% through this suite while the rerun
+      # on an identical image version passed. The suite itself writes <100MB
+      # (measured locally) — the margin is eaten by the preinstalled toolchains,
+      # so drop the two big unused ones (~7GB for ~20s; the Android SDK is
+      # bigger still but takes a minute to rm, not worth it). df lines bracket
+      # the cleanup so a future ENOSPC is diagnosable from this log.
+      - name: Free runner disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
+          df -h /
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      # apps/web resolves @nightcore/contracts + session-fold through their
+      # package.json exports (./dist/index.js), so a fresh checkout must build
+      # the dep chain before vite can serve the tests — the same reason the
+      # macOS job runs `tsc -b packages/engine`. (bun-checks gets this for free
+      # from `bun run typecheck`, which is a root `tsc -b`.)
+      - run: bunx tsc -b apps/web
+      # Vitest browser mode drives Playwright's own chromium build, which
+      # runners don't ship. The ~100MB browser download is cached keyed on
+      # bun.lock; on an exact hit only the distro shared libraries are
+      # (re)installed (playwright install-deps), which is the cheap half of
+      # `playwright install --with-deps`.
+      - name: Cache Playwright chromium
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: playwright-${{ runner.os }}-
       # Run from apps/web so the isolated workspace layout resolves the
       # playwright package (it is apps/web's dep, not the root's).
       - name: Install Playwright chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: bunx playwright install --with-deps chromium
         working-directory: apps/web
-      # The JS/TS tiers (node + web + plugin). The Rust tier runs in rust-checks.
-      # The node and web tiers run under a coverage floor so a new module/
-      # component can't ship untested: node via Bun coverage
-      # (tools/coverage/check-node-coverage.ts), web via Vitest istanbul
-      # thresholds (apps/web/vitest.config.ts). Plugin runs on vitest.
-      - run: bun run test:node:coverage
-      # ~3 min green. Step-scoped timeout because this is the step with a known
-      # silent-freeze mode: if Vite's dep optimizer discovers a dependency
-      # mid-run in a browser project, the "optimized dependencies changed"
-      # reload kills the in-flight test page and the vitest server waits on
-      # that file forever with zero output. `react-dom/client` is pre-bundled
-      # against exactly that (vitest.config.ts + .storybook/main.ts); the
-      # timeout turns any residual hang (e.g. a newly-added dep — the vitest
-      # warning names the culprit verbatim in the step log) into a fast red
-      # instead of a job-timeout burn.
+      - name: Install Playwright system deps (browser cached)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: bunx playwright install-deps chromium
+        working-directory: apps/web
+      # Vite dep-optimize + vitest processed-module cache. A warm cache shaves
+      # vitest startup and shrinks the mid-run dep-discovery window (the
+      # silent-freeze mode documented on the coverage step). Restored after
+      # bun install so the install can't clobber it; vite revalidates the
+      # bundle hashes itself, so a stale restore just re-optimizes at startup.
+      - name: Cache Vite/Vitest cache dir
+        uses: actions/cache@v4
+        with:
+          path: apps/web/node_modules/.vite
+          key: vite-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: vite-${{ runner.os }}-
+      # Step-scoped timeout because this is the step with a known silent-freeze
+      # mode: if Vite's dep optimizer discovers a dependency mid-run in a
+      # browser project, the "optimized dependencies changed" reload kills the
+      # in-flight test page and the vitest server waits on that file forever
+      # with zero output. `react-dom/client` is pre-bundled against exactly
+      # that (vitest.config.ts + .storybook/main.ts); the timeout turns any
+      # residual hang (e.g. a newly-added dep — the vitest warning names the
+      # culprit verbatim in the step log) into a fast red instead of a
+      # job-timeout burn.
       - run: bun run test:web:coverage
         timeout-minutes: 7
-      - run: bun run test:plugin
 
   rust-checks:
     name: cargo test · clippy · fmt · ts-rs drift (Rust core)
@@ -129,10 +184,14 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri
       # Tauri v2 needs the WebKitGTK / GTK system libraries to compile on Linux.
+      # --no-install-recommends skips the icon-theme/doc payload the GTK stack
+      # recommends (~half the 55s install); the -dev packages hard-Depend on
+      # everything the build actually links. If a future toolchain bump fails
+      # with a missing-library error here, drop the flag before digging deeper.
       - name: Install Tauri system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev \
             libgtk-3-dev \
             libayatana-appindicator3-dev \
