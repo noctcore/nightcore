@@ -291,6 +291,73 @@ mod tests {
         );
     }
 
+    /// The `issue-validation-completed` run-totals tail (`costUsd` required,
+    /// `durationMs` `#[serde(default)]`, `usage` optional) and its nested
+    /// `IssueValidationResult` (with several `skip_serializing_if`/`default` optionals)
+    /// are exercised by the ALL-PRESENT representative fixture. This locks the INVERSE
+    /// — a MINIMAL completed event: `durationMs` omitted (→ 0), `usage` omitted (→
+    /// None), and a result with every optional absent — so the serde `default`/`skip`
+    /// paths are proven against a real payload (matching the TS needs_clarification
+    /// case the fixtures file can't carry, since it holds one payload per variant).
+    #[test]
+    fn issue_validation_completed_minimal_round_trips() {
+        let wire = serde_json::json!({
+            "type": "issue-validation-completed",
+            "runId": "run-iv-min",
+            "issueNumber": 7,
+            "result": {
+                "issueKind": "question",
+                "verdict": "needs_clarification",
+                "confidence": "low",
+                "reasoning": "insufficient detail"
+            },
+            "costUsd": 0.0
+        });
+        let event: NightcoreEvent =
+            serde_json::from_value(wire).expect("minimal completed event deserializes");
+        match &event {
+            NightcoreEvent::IssueValidationCompleted {
+                cost_usd,
+                duration_ms,
+                usage,
+                result,
+                ..
+            } => {
+                assert_eq!(*cost_usd, 0.0);
+                assert_eq!(*duration_ms, 0.0, "durationMs #[serde(default)] fills 0 when omitted");
+                assert!(usage.is_none(), "absent usage deserializes to None");
+                assert!(result.related_files.is_empty(), "relatedFiles defaults to []");
+                assert!(result.missing_info.is_empty(), "missingInfo defaults to []");
+                assert!(result.bug_confirmed.is_none());
+                assert!(result.estimated_complexity.is_none());
+                assert!(result.proposed_plan.is_none());
+                assert!(result.pr_analysis.is_none());
+            }
+            other => panic!("expected IssueValidationCompleted, got {other:?}"),
+        }
+
+        // Re-serialize: durationMs materializes as 0.0 (default, no skip); the absent
+        // optionals stay omitted (skip_serializing_if); the #[serde(default)] Vecs are
+        // always present as [].
+        let reser = serde_json::to_value(&event).expect("re-serializes");
+        let obj = reser.as_object().expect("event is an object");
+        assert_eq!(obj.get("costUsd").and_then(Value::as_f64), Some(0.0));
+        assert_eq!(obj.get("durationMs").and_then(Value::as_f64), Some(0.0));
+        assert!(!obj.contains_key("usage"), "absent usage stays omitted, not null");
+        let result = obj
+            .get("result")
+            .and_then(Value::as_object)
+            .expect("result is an object");
+        for absent in ["bugConfirmed", "estimatedComplexity", "proposedPlan", "prAnalysis"] {
+            assert!(
+                !result.contains_key(absent),
+                "absent optional `{absent}` must stay omitted, not null"
+            );
+        }
+        assert_eq!(result.get("relatedFiles"), Some(&serde_json::json!([])));
+        assert_eq!(result.get("missingInfo"), Some(&serde_json::json!([])));
+    }
+
     /// Parity guard for the DOUBLE-DEFINED `TaskKind`.
     ///
     /// `TaskKind` is authored three times with no mechanical cross-check between

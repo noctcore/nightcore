@@ -874,7 +874,6 @@ pub struct IssueLinkedPrContext {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IssuePrAnalysis {
-    #[serde(rename = "hasOpenPR")]
     pub has_open_pr: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pr_number: Option<u64>,

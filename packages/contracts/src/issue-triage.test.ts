@@ -10,6 +10,9 @@ import {
   NightcoreEventSchema,
 } from './events.js';
 import {
+  ISSUE_BODY_MAX_LEN,
+  ISSUE_COMMENTS_MAX,
+  ISSUE_PR_DIFF_MAX_LEN,
   IssueCommentSchema,
   IssueSummarySchema,
   type IssueValidationResult,
@@ -31,7 +34,7 @@ describe('IssueValidationResultSchema round-trips', () => {
       proposedPlan: '1. Guard the empty state.\n2. Render the projects view.',
       missingInfo: [],
       prAnalysis: {
-        hasOpenPR: true,
+        hasOpenPr: true,
         prNumber: 130,
         prFixesIssue: true,
         prSummary: 'PR #130 adds the missing guard.',
@@ -115,12 +118,12 @@ describe('IssueValidationResultSchema rejections', () => {
     expect(
       IssueValidationResultSchema.safeParse({
         ...base,
-        prAnalysis: { hasOpenPR: false, recommendation: 'close_it' },
+        prAnalysis: { hasOpenPr: false, recommendation: 'close_it' },
       }).success,
     ).toBe(false);
   });
 
-  test('rejects a prAnalysis missing its hasOpenPR flag', () => {
+  test('rejects a prAnalysis missing its hasOpenPr flag', () => {
     expect(
       IssueValidationResultSchema.safeParse({
         ...base,
@@ -131,7 +134,7 @@ describe('IssueValidationResultSchema rejections', () => {
 });
 
 describe('IssueSummarySchema / IssueCommentSchema', () => {
-  test('accepts a summary and defaults labels + linkedPRs to empty', () => {
+  test('accepts a summary and defaults labels + linkedPrs to empty', () => {
     const parsed = IssueSummarySchema.parse({
       number: 7,
       title: 'Something broke',
@@ -142,7 +145,7 @@ describe('IssueSummarySchema / IssueCommentSchema', () => {
       commentCount: 0,
     });
     expect(parsed.labels).toEqual([]);
-    expect(parsed.linkedPRs).toEqual([]);
+    expect(parsed.linkedPrs).toEqual([]);
   });
 
   test('preserves linked PRs including a merged state', () => {
@@ -155,9 +158,9 @@ describe('IssueSummarySchema / IssueCommentSchema', () => {
       createdAt: '2026-07-01T10:00:00Z',
       updatedAt: '2026-07-02T10:00:00Z',
       commentCount: 2,
-      linkedPRs: [{ number: 9, title: 'Fix it', state: 'merged' }],
+      linkedPrs: [{ number: 9, title: 'Fix it', state: 'merged' }],
     });
-    expect(parsed.linkedPRs[0]).toEqual({
+    expect(parsed.linkedPrs[0]).toEqual({
       number: 9,
       title: 'Fix it',
       state: 'merged',
@@ -294,6 +297,60 @@ describe('SurfaceCommandSchema — issue-validation commands', () => {
       }).success,
     ).toBe(false);
   });
+
+  test('enforces the untrusted-content size caps at the contract boundary', () => {
+    const base = {
+      type: 'start-issue-validation' as const,
+      runId: 'run-iv-cap',
+      projectPath: '/proj',
+      issueNumber: 9,
+      issueTitle: 't',
+      issueBody: 'b',
+      issueAuthor: 'a',
+    };
+    // A body exactly at the cap is accepted; one byte over is rejected — the cap is
+    // structural, not prose-only, so a regression fails this test.
+    expect(
+      SurfaceCommandSchema.safeParse({
+        ...base,
+        issueBody: 'x'.repeat(ISSUE_BODY_MAX_LEN),
+      }).success,
+    ).toBe(true);
+    expect(
+      SurfaceCommandSchema.safeParse({
+        ...base,
+        issueBody: 'x'.repeat(ISSUE_BODY_MAX_LEN + 1),
+      }).success,
+    ).toBe(false);
+    // Too many comments is rejected (the aggregate array cap bounds the multiplied
+    // untrusted surface independently of any Rust-side cap).
+    const oneComment = {
+      id: 'c',
+      author: 'a',
+      body: 'hi',
+      createdAt: '2026-07-01T10:00:00Z',
+    };
+    expect(
+      SurfaceCommandSchema.safeParse({
+        ...base,
+        comments: Array.from({ length: ISSUE_COMMENTS_MAX + 1 }, () => oneComment),
+      }).success,
+    ).toBe(false);
+    // An oversized linked-PR diff is rejected.
+    expect(
+      SurfaceCommandSchema.safeParse({
+        ...base,
+        linkedPrs: [
+          {
+            number: 1,
+            title: 'x',
+            state: 'open',
+            diff: 'd'.repeat(ISSUE_PR_DIFF_MAX_LEN + 1),
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe('NightcoreEventSchema — issue-validation events', () => {
@@ -324,6 +381,34 @@ describe('NightcoreEventSchema — issue-validation events', () => {
       costUsd: 0.06,
       durationMs: 8200,
     },
+    // A completed event carrying the optional `usage` block plus a full prAnalysis,
+    // so the whole spread `...runTotals` tail (costUsd + durationMs + usage) and the
+    // nested result compose round-trip under the stronger `toEqual` assertion below.
+    {
+      type: 'issue-validation-completed',
+      runId: 'run-iv2',
+      issueNumber: 200,
+      result: {
+        issueKind: 'feature_request',
+        verdict: 'valid',
+        confidence: 'medium',
+        reasoning: 'A reasonable enhancement.',
+        relatedFiles: [],
+        missingInfo: [],
+        prAnalysis: {
+          hasOpenPr: false,
+          recommendation: 'no_pr',
+        },
+      },
+      costUsd: 0.12,
+      durationMs: 15000,
+      usage: {
+        inputTokens: 3000,
+        outputTokens: 700,
+        cacheReadTokens: 100,
+        cacheCreationTokens: 50,
+      },
+    },
     {
       type: 'issue-validation-failed',
       runId: 'run-iv1',
@@ -338,10 +423,14 @@ describe('NightcoreEventSchema — issue-validation events', () => {
     },
   ];
 
-  for (const event of valid) {
-    test(`accepts an ${event.type} event`, () => {
-      const parsed = NightcoreEventSchema.parse(event);
-      expect(parsed).toMatchObject({ type: event.type });
+  for (const [i, event] of valid.entries()) {
+    // `toEqual(event)` is strictly stronger than `toMatchObject({ type })`: every
+    // event here supplies all its fields (no default would mutate the value), so the
+    // full payload — including the completed event's nested `result` + spread
+    // `runTotals` (costUsd/durationMs/usage) — must survive the round-trip, not just
+    // the discriminator.
+    test(`accepts and preserves event #${i} (${event.type})`, () => {
+      expect(NightcoreEventSchema.parse(event)).toEqual(event);
     });
   }
 
@@ -355,5 +444,71 @@ describe('NightcoreEventSchema — issue-validation events', () => {
         costUsd: 0,
       }).success,
     ).toBe(false);
+  });
+
+  test('rejects an issue-validation-completed missing its costUsd run total', () => {
+    // `costUsd` is required (no default) on the shared `runTotals` tail — the Rust
+    // `IssueValidationCompleted` variant's `cost_usd: f64` is a required field, so a
+    // payload omitting it must fail zod (and would fail serde) rather than silently
+    // cross-tier drift.
+    expect(
+      NightcoreEventSchema.safeParse({
+        type: 'issue-validation-completed',
+        runId: 'run-iv1',
+        issueNumber: 128,
+        result: {
+          issueKind: 'bug_report',
+          verdict: 'valid',
+          confidence: 'high',
+          reasoning: 'confirmed',
+        },
+        durationMs: 8200,
+      }).success,
+    ).toBe(false);
+  });
+
+  test('rejects an issue-validation-completed with a negative durationMs', () => {
+    // `durationMs` is `.nonnegative().default(0)`: absent → 0, but a present negative
+    // value is rejected (it mirrors Rust `#[serde(default)] duration_ms: f64`).
+    expect(
+      NightcoreEventSchema.safeParse({
+        type: 'issue-validation-completed',
+        runId: 'run-iv1',
+        issueNumber: 128,
+        result: {
+          issueKind: 'bug_report',
+          verdict: 'valid',
+          confidence: 'high',
+          reasoning: 'confirmed',
+        },
+        costUsd: 0.06,
+        durationMs: -1,
+      }).success,
+    ).toBe(false);
+  });
+
+  test('a completed event omitting durationMs + usage still round-trips (defaults applied)', () => {
+    // The minimal run-totals shape: no `durationMs` (→ 0 default) and no `usage`
+    // (→ omitted). This is the exact cross-tier shape the Rust serde `#[serde(default)]`
+    // duration_ms + optional usage must accept (see the Rust conformance test).
+    const parsed = NightcoreEventSchema.parse({
+      type: 'issue-validation-completed',
+      runId: 'run-iv3',
+      issueNumber: 9,
+      result: {
+        issueKind: 'question',
+        verdict: 'needs_clarification',
+        confidence: 'low',
+        reasoning: 'insufficient detail',
+      },
+      costUsd: 0,
+    });
+    if (parsed.type !== 'issue-validation-completed') throw new Error('unreachable');
+    expect(parsed.durationMs).toBe(0);
+    expect(parsed.usage).toBeUndefined();
+    // The nested result's array fields also fall to their defaults.
+    expect(parsed.result.relatedFiles).toEqual([]);
+    expect(parsed.result.missingInfo).toEqual([]);
+    expect(parsed.result.prAnalysis).toBeUndefined();
   });
 });

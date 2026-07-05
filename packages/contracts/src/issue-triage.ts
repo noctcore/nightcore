@@ -23,12 +23,47 @@ import { z } from 'zod';
  * `untrusted_block` prompt framing (engine) and the untrusted-content UI framing
  * (web). Do not add a field that implies any of this text is safe to trust.
  *
+ * Two properties the consumer slices MUST preserve (asserted here so they aren't
+ * lost between slices):
+ *   1. The `untrusted_block` wrapper must be DELIMITER-SAFE — attacker content that
+ *      embeds the block's own open/close marker must not be able to break out of the
+ *      wrapper (a classic wrapper-escape). The engine slice owns a test for this.
+ *   2. The GitHub logins (`issueAuthor`, `IssueComment.author`) are DISPLAY-ONLY.
+ *      An attacker chooses their own login, so these must NEVER feed a trust or
+ *      privilege decision (e.g. treating `author === 'maintainer'` as authoritative).
+ *
+ * SIZE: the attacker-controlled string/array fields carry explicit `.max(...)` bounds
+ * (see the `ISSUE_*_MAX*` caps below) so the contract — the enforced trust boundary
+ * the sidecar and model sit behind — rejects a pathological multi-megabyte payload at
+ * parse time rather than relying solely on the (prose-asserted) Rust-side cap. The
+ * Rust core keeps its own cap too (defense-in-depth).
+ *
  * NAMING: the eslint `zod-schema-naming` rule (error on contracts) requires every
  * exported schema be PascalCase ending `Schema`, paired with `export type X`. The
  * discriminated-union MEMBERS that back the engine protocol live in `commands.ts` /
  * `events.ts` and carry the `Command` / `Event` role suffix instead; this module has
- * only data shapes, so every export ends `Schema`.
+ * only data shapes, so every export ends `Schema`. The `PR` acronym is spelled
+ * `Pr`/`pr` everywhere (camelCase-consistent: `linkedPrs`, `hasOpenPr`, `prNumber`)
+ * so no field needs a bespoke serde rename in the generated Rust mirror.
  */
+
+/**
+ * Defense-in-depth size caps on the ATTACKER-CONTROLLED GitHub text this module
+ * carries inline into a validation session. Sized to GitHub's own field limits plus
+ * headroom, so they never reject a legitimate issue — only a pathological payload
+ * crafted to inflate memory / token cost / context-window pressure. The Rust `gh`
+ * seam caps before injecting too; these bounds make the cap structural (a regression
+ * fails a schema test) instead of prose-only.
+ */
+export const ISSUE_TITLE_MAX_LEN = 1_024;
+export const ISSUE_BODY_MAX_LEN = 65_536;
+export const ISSUE_COMMENT_BODY_MAX_LEN = 65_536;
+/** A linked PR's capped `gh pr diff` output. Larger than a body (a diff spans many
+ *  files) but still bounded so a crafted giant diff can't flood the session. */
+export const ISSUE_PR_DIFF_MAX_LEN = 1_048_576;
+export const ISSUE_LABELS_MAX = 100;
+export const ISSUE_COMMENTS_MAX = 100;
+export const ISSUE_LINKED_PRS_MAX = 50;
 
 /** Lifecycle state of a GitHub issue. */
 export const IssueStateSchema = z.enum(['open', 'closed']);
@@ -89,7 +124,7 @@ export type IssuePrRecommendation = z.infer<typeof IssuePrRecommendationSchema>;
  *  fetch carried only into the engine on {@link IssueLinkedPrContextSchema}. */
 export const IssueLinkedPrSchema = z.object({
   number: z.number().int().positive(),
-  title: z.string(),
+  title: z.string().max(ISSUE_TITLE_MAX_LEN),
   state: IssuePrStateSchema,
 });
 export type IssueLinkedPr = z.infer<typeof IssueLinkedPrSchema>;
@@ -102,10 +137,11 @@ export type IssueLinkedPr = z.infer<typeof IssueLinkedPrSchema>;
  *  the engine NDJSON protocol, so it is not mirrored into `generated.rs`. */
 export const IssueSummarySchema = z.object({
   number: z.number().int().positive(),
-  title: z.string(),
+  title: z.string().max(ISSUE_TITLE_MAX_LEN),
   state: IssueStateSchema,
-  labels: z.array(z.string()).default([]),
-  /** The issue author's GitHub login. */
+  labels: z.array(z.string()).max(ISSUE_LABELS_MAX).default([]),
+  /** The issue author's GitHub login. Display-only (an attacker chooses their own
+   *  login) — never a trust/privilege input. */
   author: z.string(),
   /** ISO-8601 creation time (GitHub `created_at`). */
   createdAt: z.string(),
@@ -113,7 +149,10 @@ export const IssueSummarySchema = z.object({
    *  it is newer than a stored validation's `validatedAt`. */
   updatedAt: z.string(),
   commentCount: z.number().int().nonnegative(),
-  linkedPRs: z.array(IssueLinkedPrSchema).default([]),
+  /** PRs linked to this issue (list-view badges). Named `linkedPrs` to match the
+   *  engine command's `StartIssueValidationCommand.linkedPrs` — one concept, one
+   *  camelCase spelling across both representations. */
+  linkedPrs: z.array(IssueLinkedPrSchema).max(ISSUE_LINKED_PRS_MAX).default([]),
 });
 export type IssueSummary = z.infer<typeof IssueSummarySchema>;
 
@@ -123,9 +162,12 @@ export type IssueSummary = z.infer<typeof IssueSummarySchema>;
 export const IssueCommentSchema = z.object({
   /** GitHub comment id (string; GitHub node/REST ids exceed a safe JS integer). */
   id: z.string(),
-  /** The comment author's GitHub login. */
+  /** The comment author's GitHub login. Display-only (an attacker chooses their own
+   *  login) — never a trust/privilege input. */
   author: z.string(),
-  body: z.string(),
+  /** The comment markdown (untrusted); capped so a giant comment can't flood the
+   *  session context. */
+  body: z.string().max(ISSUE_COMMENT_BODY_MAX_LEN),
   /** ISO-8601 creation time. */
   createdAt: z.string(),
 });
@@ -135,12 +177,10 @@ export type IssueComment = z.infer<typeof IssueCommentSchema>;
  *  Rust `gh` seam pre-fetches `gh pr diff <n>` and caps it — the read-only session
  *  never shells out. `title` and `diff` are attacker-controlled (untrusted). This
  *  shape IS part of the engine command, so it is mirrored into `generated.rs`. */
-export const IssueLinkedPrContextSchema = z.object({
-  number: z.number().int().positive(),
-  title: z.string(),
-  state: IssuePrStateSchema,
-  /** The capped `gh pr diff <n>` output; absent when no diff was fetchable. */
-  diff: z.string().optional(),
+export const IssueLinkedPrContextSchema = IssueLinkedPrSchema.extend({
+  /** The capped `gh pr diff <n>` output (untrusted); absent when no diff was
+   *  fetchable. Bounded so a crafted giant diff can't flood the session context. */
+  diff: z.string().max(ISSUE_PR_DIFF_MAX_LEN).optional(),
 });
 export type IssueLinkedPrContext = z.infer<typeof IssueLinkedPrContextSchema>;
 
@@ -149,8 +189,12 @@ export type IssueLinkedPrContext = z.infer<typeof IssueLinkedPrContextSchema>;
  *  had a linked PR to reason about. `prSummary` is model prose derived from an
  *  untrusted diff (untrusted). */
 export const IssuePrAnalysisSchema = z.object({
-  /** True when the issue has an OPEN linked PR the analysis considered. */
-  hasOpenPR: z.boolean(),
+  /** True when the issue has an OPEN linked PR the analysis considered. This boolean
+   *  is AUTHORITATIVE; `recommendation: 'no_pr'` is a UI hint that may lag it (this
+   *  is LLM output, so a loose/fail-open shape is intentional — the model may not
+   *  localize a `prNumber` even when a PR exists). Consumers key off `hasOpenPr`, not
+   *  the redundant `no_pr` enum value. */
+  hasOpenPr: z.boolean(),
   /** The PR the analysis focused on, when localizable. */
   prNumber: z.number().int().positive().optional(),
   /** The model's judgement of whether that PR fixes the issue. */

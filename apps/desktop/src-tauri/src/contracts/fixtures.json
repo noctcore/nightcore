@@ -923,7 +923,7 @@
         "proposedPlan": "1. Guard the empty state in App.tsx.\n2. Render ProjectsView when no project is active.",
         "missingInfo": [],
         "prAnalysis": {
-          "hasOpenPR": true,
+          "hasOpenPr": true,
           "prNumber": 130,
           "prFixesIssue": true,
           "prSummary": "PR #130 adds the missing guard and covers the empty-project case.",

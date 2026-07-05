@@ -9,6 +9,11 @@ import {
 import { ConventionCategorySchema, HarnessPolicySchema } from './harness.js';
 import { AnalysisScopeSchema, FindingCategorySchema } from './insight.js';
 import {
+  ISSUE_BODY_MAX_LEN,
+  ISSUE_COMMENTS_MAX,
+  ISSUE_LABELS_MAX,
+  ISSUE_LINKED_PRS_MAX,
+  ISSUE_TITLE_MAX_LEN,
   IssueCommentSchema,
   IssueLinkedPrContextSchema,
 } from './issue-triage.js';
@@ -332,23 +337,29 @@ export const StartIssueValidationCommand = z.object({
   type: z.literal('start-issue-validation'),
   /** Correlation id (also the persisted run id) assigned by the Rust core. */
   runId: z.string(),
-  /** Absolute project root the validation session runs in (read-only). */
+  /** Absolute project root the validation session runs in (read-only: Read/Glob/
+   *  Grep/LS). NOT normalized/allowlisted by the contract — read confinement is
+   *  enforced at RUNTIME by the engine's PreToolUse workspace-confinement gate (the
+   *  same bypass-proof seam the scan siblings rely on), not here. */
   projectPath: z.string(),
   /** The issue number being validated (a positive integer). */
   issueNumber: z.number().int().positive(),
-  /** The issue title (GitHub-sourced, untrusted). */
-  issueTitle: z.string(),
-  /** The issue body markdown (GitHub-sourced, untrusted). */
-  issueBody: z.string(),
-  /** The issue author's GitHub login. */
+  /** The issue title (GitHub-sourced, untrusted; length-capped). */
+  issueTitle: z.string().max(ISSUE_TITLE_MAX_LEN),
+  /** The issue body markdown (GitHub-sourced, untrusted; length-capped so an
+   *  oversized body can't flood the NDJSON protocol / session prompt). */
+  issueBody: z.string().max(ISSUE_BODY_MAX_LEN),
+  /** The issue author's GitHub login. Display-only (an attacker chooses their own
+   *  login) — never a trust/privilege input. */
   issueAuthor: z.string(),
-  /** The issue's labels (GitHub-sourced); help classify kind. */
-  labels: z.array(z.string()).default([]),
-  /** The issue's comments, capped to the first page by the Rust core (untrusted). */
-  comments: z.array(IssueCommentSchema).default([]),
+  /** The issue's labels (GitHub-sourced); help classify kind. Count-capped. */
+  labels: z.array(z.string()).max(ISSUE_LABELS_MAX).default([]),
+  /** The issue's comments, capped to the first page by the Rust core (untrusted).
+   *  Count-capped here too so the boundary bounds the aggregate independently. */
+  comments: z.array(IssueCommentSchema).max(ISSUE_COMMENTS_MAX).default([]),
   /** Linked PRs plus their capped diffs, pre-fetched by the Rust `gh` seam and
-   *  injected as untrusted context (the session never shells out). */
-  linkedPrs: z.array(IssueLinkedPrContextSchema).default([]),
+   *  injected as untrusted context (the session never shells out). Count-capped. */
+  linkedPrs: z.array(IssueLinkedPrContextSchema).max(ISSUE_LINKED_PRS_MAX).default([]),
   /** Model override for the session; absent ⇒ inherit the resolved config. */
   model: z.string().optional(),
   /** Reasoning effort for the session; absent ⇒ inherit. */

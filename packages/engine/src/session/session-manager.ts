@@ -163,6 +163,13 @@ export class SessionManager {
     // session-id-keyed, so narrow them out here before the `command.sessionId`
     // lookup below (which every remaining command has). Inert until the manager
     // exists: logged, then dropped.
+    //
+    // TODO(issue-triage slice 2/5 — engine manager): replace this drop with a
+    // `this.issueValidations.dispatch(command)` delegation to the real manager (the
+    // sibling of `ScanRouter`), which will emit the `issue-validation-*` events. Keep
+    // the log-and-drop-never-throw contract for any command that reaches the engine
+    // before its manager is wired — no UI emits these in slice 1/5, so dropping is
+    // safe and the drop-not-throw behavior is locked by a session-manager test.
     if (
       command.type === 'start-issue-validation' ||
       command.type === 'cancel-issue-validation'
