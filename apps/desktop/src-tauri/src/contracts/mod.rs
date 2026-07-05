@@ -324,9 +324,15 @@ mod tests {
                 ..
             } => {
                 assert_eq!(*cost_usd, 0.0);
-                assert_eq!(*duration_ms, 0.0, "durationMs #[serde(default)] fills 0 when omitted");
+                assert_eq!(
+                    *duration_ms, 0.0,
+                    "durationMs #[serde(default)] fills 0 when omitted"
+                );
                 assert!(usage.is_none(), "absent usage deserializes to None");
-                assert!(result.related_files.is_empty(), "relatedFiles defaults to []");
+                assert!(
+                    result.related_files.is_empty(),
+                    "relatedFiles defaults to []"
+                );
                 assert!(result.missing_info.is_empty(), "missingInfo defaults to []");
                 assert!(result.bug_confirmed.is_none());
                 assert!(result.estimated_complexity.is_none());
@@ -343,12 +349,20 @@ mod tests {
         let obj = reser.as_object().expect("event is an object");
         assert_eq!(obj.get("costUsd").and_then(Value::as_f64), Some(0.0));
         assert_eq!(obj.get("durationMs").and_then(Value::as_f64), Some(0.0));
-        assert!(!obj.contains_key("usage"), "absent usage stays omitted, not null");
+        assert!(
+            !obj.contains_key("usage"),
+            "absent usage stays omitted, not null"
+        );
         let result = obj
             .get("result")
             .and_then(Value::as_object)
             .expect("result is an object");
-        for absent in ["bugConfirmed", "estimatedComplexity", "proposedPlan", "prAnalysis"] {
+        for absent in [
+            "bugConfirmed",
+            "estimatedComplexity",
+            "proposedPlan",
+            "prAnalysis",
+        ] {
             assert!(
                 !result.contains_key(absent),
                 "absent optional `{absent}` must stay omitted, not null"
