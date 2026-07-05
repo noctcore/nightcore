@@ -95,6 +95,14 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
         return;
     }
 
+    // The Issue Triage `issue-validation-*` family correlates by `runId` (no `sessionId`)
+    // and is owned by a separate channel + store, so it is routed BEFORE session-id
+    // correlation (which would otherwise drop it for lacking a sessionId).
+    if event_type.starts_with("issue-validation-") {
+        super::issue_triage::handle_issue_validation_event(app, event_type, &event).await;
+        return;
+    }
+
     let session_id = event.get("sessionId").and_then(Value::as_u64);
 
     // Correlate the event to its task. The first sighting of a session id binds it

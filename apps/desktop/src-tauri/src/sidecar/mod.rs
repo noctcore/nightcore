@@ -21,6 +21,7 @@ mod commands;
 mod convert;
 mod harness;
 mod insight;
+mod issue_triage;
 mod permission;
 mod pr_review;
 mod provider_config;
@@ -53,6 +54,9 @@ pub(crate) use scorecard::*;
 // The PR Review commands + the reader-side `pr-review-*` handler (glob so the
 // `#[tauri::command]` macro siblings resolve through `sidecar::*` for `generate_handler!`).
 pub(crate) use pr_review::*;
+// The Issue Triage commands + the reader-side `issue-validation-*` handler (glob so the
+// `#[tauri::command]` macro siblings resolve through `sidecar::*` for `generate_handler!`).
+pub(crate) use issue_triage::*;
 pub(crate) use verification::dispatch_reviewer_for;
 // The PR-comment fix-build dispatcher (PR arc, phase 3): `workflow::pr_comments`
 // reaches it as `crate::sidecar::dispatch_pr_comment_fix`, a peer of the reviewer.
@@ -122,6 +126,13 @@ pub(crate) const SCORECARD_EVENT: &str = "nc:scorecard";
 /// completion. `convert_review_finding_to_task` also emits a `pr-review-finding-converted`
 /// notice on this channel.
 pub(crate) const PRREVIEW_EVENT: &str = "nc:pr-review";
+
+/// The Tauri event carrying one streamed Issue Triage `issue-validation-*` event. Like
+/// `nc:pr-review`, the payload is the raw `NightcoreEvent` (it carries its own `runId`);
+/// the Issues view folds the stream and reconciles against the persisted validation on
+/// completion. `convert_issue_validation_to_task` also emits an
+/// `issue-validation-converted` notice on this channel.
+pub(crate) const ISSUE_TRIAGE_EVENT: &str = "nc:issue-triage";
 
 /// The Tauri event carrying one pr-fix state snapshot (`PrFixState`, the
 /// address-review-findings runner in [`crate::workflow::pr_fix`]). Unlike the
