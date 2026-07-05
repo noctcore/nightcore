@@ -146,6 +146,31 @@ pub enum SurfaceCommand {
     },
     #[serde(rename_all = "camelCase")]
     CancelPrReview { run_id: String },
+    #[serde(rename_all = "camelCase")]
+    StartIssueValidation {
+        run_id: String,
+        project_path: String,
+        issue_number: u64,
+        issue_title: String,
+        issue_body: String,
+        issue_author: String,
+        #[serde(default)]
+        labels: Vec<String>,
+        #[serde(default)]
+        comments: Vec<IssueComment>,
+        #[serde(default)]
+        linked_prs: Vec<IssueLinkedPrContext>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        effort: Option<EffortLevel>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_turns: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_budget_usd: Option<f64>,
+    },
+    #[serde(rename_all = "camelCase")]
+    CancelIssueValidation { run_id: String },
 }
 
 // === Surface → engine queries (Rust SERIALIZES these; replies arrive as the
@@ -519,6 +544,37 @@ pub enum NightcoreEvent {
         finding_id: String,
         task_id: String,
     },
+    #[serde(rename_all = "camelCase")]
+    IssueValidationStarted {
+        run_id: String,
+        issue_number: u64,
+        model: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    IssueValidationProgress { run_id: String, message: String },
+    #[serde(rename_all = "camelCase")]
+    IssueValidationCompleted {
+        run_id: String,
+        issue_number: u64,
+        result: IssueValidationResult,
+        cost_usd: f64,
+        #[serde(default)]
+        duration_ms: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        usage: Option<SessionCompletedUsage>,
+    },
+    #[serde(rename_all = "camelCase")]
+    IssueValidationFailed {
+        run_id: String,
+        reason: String,
+        message: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    IssueValidationConverted {
+        run_id: String,
+        issue_number: u64,
+        task_id: String,
+    },
 }
 
 // === Referenced enums and nested structs ===
@@ -771,6 +827,110 @@ pub enum ImageFormat {
     Jpeg,
     Webp,
     Gif,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IssueComment {
+    pub id: String,
+    pub author: String,
+    pub body: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IssueComplexity {
+    Trivial,
+    Simple,
+    Moderate,
+    Complex,
+    VeryComplex,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum IssueConfidence {
+    High,
+    Medium,
+    Low,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IssueKind {
+    BugReport,
+    FeatureRequest,
+    Question,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IssueLinkedPrContext {
+    pub number: u64,
+    pub title: String,
+    pub state: IssuePrState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diff: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IssuePrAnalysis {
+    pub has_open_pr: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pr_number: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pr_fixes_issue: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pr_summary: Option<String>,
+    pub recommendation: IssuePrRecommendation,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IssuePrRecommendation {
+    WaitForMerge,
+    PrNeedsWork,
+    NoPr,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum IssuePrState {
+    Open,
+    Closed,
+    Merged,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IssueValidationResult {
+    pub issue_kind: IssueKind,
+    pub verdict: IssueVerdict,
+    pub confidence: IssueConfidence,
+    pub reasoning: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bug_confirmed: Option<bool>,
+    #[serde(default)]
+    pub related_files: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimated_complexity: Option<IssueComplexity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposed_plan: Option<String>,
+    #[serde(default)]
+    pub missing_info: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pr_analysis: Option<IssuePrAnalysis>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IssueVerdict {
+    Valid,
+    Invalid,
+    NeedsClarification,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

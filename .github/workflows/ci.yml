@@ -38,6 +38,14 @@ jobs:
         with:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
+      # The `@nightcore/*` workspace deps resolve through their package.json
+      # `exports` (`./dist/index.js`), so a fresh checkout must BUILD the dep
+      # chain before `bun test` can import them — otherwise bun reports
+      # `Cannot find module '@nightcore/contracts'` and the whole suite errors
+      # out (same reason apps/sidecar/scripts/compile.ts runs `tsc -b` first).
+      # Scoped to `packages/engine`'s project references (contracts, storage,
+      # shared) to keep premium macOS minutes small.
+      - run: bunx tsc -b packages/engine
       - run: bun test packages/engine
 
   bun-checks:

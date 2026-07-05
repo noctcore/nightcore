@@ -3,7 +3,11 @@ import { describe, expect, test } from 'bun:test';
 
 import { z } from 'zod';
 
-import { def, numberRustType } from './gen-rust-contracts.ts';
+import {
+  assertEnumNamesInjective,
+  def,
+  numberRustType,
+} from './gen-rust-contracts.ts';
 
 /**
  * Canary for the load-bearing numeric mapping in the zod → Rust contract emitter
@@ -57,5 +61,39 @@ describe('numberRustType fails loud on an unrecognized check shape', () => {
     // wrong (throwing on `checks.length === 0` would break every f64 field).
     expect(numberRustType({ checks: [] }, 'plain.field')).toBe('f64');
     expect(numberRustType({}, 'plain.field')).toBe('f64');
+  });
+});
+
+/**
+ * The zod → Rust enum registry (`ENUM_NAMES`) is keyed by joined value-set and maps
+ * to a canonical Rust name. A generic triple like `high|medium|low` (IssueConfidence)
+ * is exactly the kind of value-set likely to recur; if a future enum's value-set
+ * resolved to an ALREADY-CLAIMED name the codegen would emit two `pub enum <Name>`
+ * decls (the second silently clobbering the first) and collapse two distinct enums
+ * into one type. `assertEnumNamesInjective` fails that LOUD at codegen time.
+ */
+describe('assertEnumNamesInjective guards the enum registry', () => {
+  test('the live ENUM_NAMES registry is injective (no name claimed twice)', () => {
+    // The real registry must pass — every canonical name is backed by one value-set.
+    expect(() => assertEnumNamesInjective()).not.toThrow();
+  });
+
+  test('throws when two distinct value-sets map to the same Rust enum name', () => {
+    expect(() =>
+      assertEnumNamesInjective({
+        'high|medium|low': 'IssueConfidence',
+        // A different value-set that (wrongly) reuses the IssueConfidence name.
+        'hot|warm|cold': 'IssueConfidence',
+      }),
+    ).toThrow(/two distinct value-sets to "IssueConfidence"/);
+  });
+
+  test('does NOT throw when every name is unique', () => {
+    expect(() =>
+      assertEnumNamesInjective({
+        'a|b': 'AlphaBeta',
+        'high|medium|low': 'IssueConfidence',
+      }),
+    ).not.toThrow();
   });
 });

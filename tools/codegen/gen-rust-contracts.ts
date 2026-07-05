@@ -269,6 +269,11 @@ interface EmitCtx {
   /** Maps a set of enum string values (joined) → the Rust enum name already
    *  declared for them, so identical inline enums collapse to one type. */
   enumByValues: Map<string, string>;
+  /** The inverse of {@link enumByValues}: the Rust enum name → the value-set that
+   *  claimed it. Guards against two DISTINCT value-sets resolving to the same Rust
+   *  name (which would emit two `pub enum <Name>` decls, the second silently
+   *  clobbering the first). See {@link registerInlineEnum}. */
+  enumNameToValues: Map<string, string>;
   /** Maps a nested union signature (`discriminator:tag|tag`) → its Rust enum name,
    *  so identical nested unions collapse to one type. */
   unionByTags: Map<string, string>;
@@ -334,6 +339,17 @@ const STRUCT_NAMES: Record<string, string> = {
   // optional cross-lens corroboration set (other lenses that found the same issue).
   'body|corroboratedBy|file|fingerprint|id|lens|line|severity|suggestedFix|title':
     'ReviewFinding',
+  // Issue Triage: the nested structs reachable from the engine command/event unions.
+  // One issue comment carried into the validation session (untrusted).
+  'author|body|createdAt|id': 'IssueComment',
+  // One linked PR plus its capped diff, injected as untrusted validation context.
+  'diff|number|state|title': 'IssueLinkedPrContext',
+  // The linked-PR analysis nested inside the verdict result.
+  'hasOpenPr|prFixesIssue|prNumber|prSummary|recommendation': 'IssuePrAnalysis',
+  // The single structured verdict emitted by a validation (payload of
+  // `issue-validation-completed`).
+  'bugConfirmed|confidence|estimatedComplexity|issueKind|missingInfo|prAnalysis|proposedPlan|reasoning|relatedFiles|verdict':
+    'IssueValidationResult',
   // Structured error taxonomy carried alongside a `session-failed`'s `message`
   // (the auto-loop + breaker branch on `category`).
   'category|message|retriable': 'ErrorDetail',
@@ -387,7 +403,41 @@ const ENUM_NAMES: Record<string, string> = {
   'security|logic|structure|tests|contracts': 'ReviewLens',
   // The overall merge recommendation the synthesis pass emits on `pr-review-completed`.
   'ready|merge_with_changes|needs_revision|blocked': 'MergeVerdict',
+  // Issue Triage enums. Only the value-sets reachable from the engine command/event
+  // unions are emitted: `IssuePrState` (via the linked-PR context on the start
+  // command), and the four verdict-result enums (via `issue-validation-completed`).
+  // `IssueState` (`open|closed`) is web/gh-only (never on the wire) so it is absent.
+  'open|closed|merged': 'IssuePrState',
+  'bug_report|feature_request|question|unknown': 'IssueKind',
+  'valid|invalid|needs_clarification': 'IssueVerdict',
+  'high|medium|low': 'IssueConfidence',
+  'trivial|simple|moderate|complex|very_complex': 'IssueComplexity',
+  'wait_for_merge|pr_needs_work|no_pr': 'IssuePrRecommendation',
 };
+
+/** Guard the {@link ENUM_NAMES} registry: it must be an INJECTION — each canonical
+ *  Rust enum name backed by exactly ONE value-set. If two distinct value-sets map to
+ *  the same name the codegen would emit duplicate `pub enum <Name>` declarations (the
+ *  second silently clobbering the first) and collapse two semantically-distinct enums
+ *  into one Rust type. A generic triple like `high|medium|low` is exactly the kind of
+ *  value-set likely to recur, so this throws at codegen time rather than shipping a
+ *  wrong mirror. Exported for the `gen-rust-contracts.test.ts` canary. */
+export function assertEnumNamesInjective(
+  names: Record<string, string> = ENUM_NAMES,
+): void {
+  const byName = new Map<string, string>();
+  for (const [sig, name] of Object.entries(names)) {
+    const prior = byName.get(name);
+    if (prior !== undefined) {
+      throw new Error(
+        `ENUM_NAMES maps two distinct value-sets to "${name}": "${prior}" and ` +
+          `"${sig}". Give one a distinct Rust enum name so the codegen can't collapse ` +
+          `two semantically-distinct enums into one type.`,
+      );
+    }
+    byName.set(name, sig);
+  }
+}
 
 function registerInlineEnum(
   schema: AnyZod,
@@ -404,7 +454,24 @@ function registerInlineEnum(
   }
   const name =
     ENUM_NAMES[sig] ?? `${pascal(fieldPath.replace(/\[\]/g, 'Item'))}Enum`;
+  // Collision guard: a Rust enum name must be backed by exactly ONE value-set. Two
+  // DISTINCT value-sets resolving to the same name would emit two `pub enum <Name>`
+  // decls (the second silently clobbering the first in `ctx.decls`), collapsing two
+  // semantically-distinct enums into one type. A generic triple like `high|medium|low`
+  // (IssueConfidence) is exactly the kind of value-set likely to recur, so fail LOUD
+  // at codegen time rather than ship a wrong mirror. (An IDENTICAL value-set is a
+  // legitimate collapse — e.g. FindingSeverity/ReviewSeverity — and is handled by the
+  // `enumByValues` dedup above, so it never reaches here.)
+  const priorSig = ctx.enumNameToValues.get(name);
+  if (priorSig !== undefined && priorSig !== sig) {
+    throw new Error(
+      `enum name "${name}" is claimed by two different value-sets ` +
+        `("${priorSig}" and "${sig}") — give one a distinct name in ENUM_NAMES so the ` +
+        `codegen can't collapse two semantically-distinct enums into one Rust type.`,
+    );
+  }
   ctx.enumByValues.set(sig, name);
+  ctx.enumNameToValues.set(name, sig);
 
   // Choose the serde rename strategy that reproduces the exact wire strings.
   // If every value already matches Rust's PascalCase→? we still emit explicit
@@ -684,9 +751,14 @@ function emitRust(): string {
   const ctx: EmitCtx = {
     decls: new Map(),
     enumByValues: new Map(),
+    enumNameToValues: new Map(),
     unionByTags: new Map(),
     structByFields: new Map(),
   };
+  // Static guard on the ENUM_NAMES registry itself: it must be an injection (each
+  // canonical Rust name backed by exactly one value-set), so a duplicate name can't
+  // silently collapse two value-sets before emission even begins.
+  assertEnumNamesInjective();
 
   // Emit the three tagged unions first; field emission populates `ctx.decls` with
   // every referenced enum and nested struct as a side effect.
@@ -868,6 +940,41 @@ const COMMAND_INPUTS: Record<string, unknown> = {
     maxConcurrency: 3,
   },
   'cancel-pr-review': { type: 'cancel-pr-review', runId: 'run-pr1' },
+  'start-issue-validation': {
+    type: 'start-issue-validation',
+    runId: 'run-iv1',
+    projectPath: '/proj',
+    issueNumber: 128,
+    issueTitle: 'Crash when opening an empty project',
+    issueBody:
+      'Steps: open Nightcore with no projects configured → white screen.',
+    issueAuthor: 'octocat',
+    labels: ['bug', 'crash'],
+    comments: [
+      {
+        id: 'ic-1',
+        author: 'maintainer',
+        body: 'Can you attach the log file?',
+        createdAt: '2026-07-01T10:00:00Z',
+      },
+    ],
+    linkedPrs: [
+      {
+        number: 130,
+        title: 'Guard the empty-project render path',
+        state: 'open',
+        diff: 'diff --git a/apps/web/src/App.tsx b/apps/web/src/App.tsx\n@@ -1,3 +1,5 @@\n+ if (!project) return <ProjectsView />;\n',
+      },
+    ],
+    model: 'claude-opus-4-8',
+    effort: 'high',
+    maxTurns: 40,
+    maxBudgetUsd: 2,
+  },
+  'cancel-issue-validation': {
+    type: 'cancel-issue-validation',
+    runId: 'run-iv1',
+  },
 };
 
 /** A representative raw input per query variant (the request/reply stream). */
@@ -1438,6 +1545,65 @@ const EVENT_INPUTS: Record<string, unknown> = {
     runId: 'run-pr1',
     findingId: 'security-1',
     taskId: 'task-9',
+  },
+  'issue-validation-started': {
+    type: 'issue-validation-started',
+    runId: 'run-iv1',
+    issueNumber: 128,
+    model: 'claude-opus-4-8',
+  },
+  'issue-validation-progress': {
+    type: 'issue-validation-progress',
+    runId: 'run-iv1',
+    message: 'Investigating related files…',
+  },
+  'issue-validation-completed': {
+    type: 'issue-validation-completed',
+    runId: 'run-iv1',
+    issueNumber: 128,
+    result: {
+      issueKind: 'bug_report',
+      verdict: 'valid',
+      confidence: 'high',
+      reasoning:
+        'The empty-project path renders before the guard, so an undefined project deref crashes.',
+      bugConfirmed: true,
+      relatedFiles: [
+        'apps/web/src/App.tsx',
+        'apps/web/src/components/projects/ProjectsView/ProjectsView.tsx',
+      ],
+      estimatedComplexity: 'simple',
+      proposedPlan:
+        '1. Guard the empty state in App.tsx.\n2. Render ProjectsView when no project is active.',
+      missingInfo: [],
+      prAnalysis: {
+        hasOpenPr: true,
+        prNumber: 130,
+        prFixesIssue: true,
+        prSummary: 'PR #130 adds the missing guard and covers the empty-project case.',
+        recommendation: 'wait_for_merge',
+      },
+    },
+    costUsd: 0.06,
+    durationMs: 8200,
+    usage: {
+      inputTokens: 3000,
+      outputTokens: 700,
+      cacheReadTokens: 100,
+      cacheCreationTokens: 50,
+    },
+  },
+  'issue-validation-failed': {
+    type: 'issue-validation-failed',
+    runId: 'run-iv1',
+    reason: 'aborted',
+    message: 'cancelled by user',
+  },
+  'issue-validation-converted': {
+    type: 'issue-validation-converted',
+    runId: 'run-iv1',
+    issueNumber: 128,
+    taskId: 'task-42',
   },
   'query-result': {
     type: 'query-result',
