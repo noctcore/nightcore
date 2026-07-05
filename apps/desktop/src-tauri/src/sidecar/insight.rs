@@ -41,33 +41,6 @@ scan_lifecycle_commands! {
     item: "insight",
 }
 
-/// Resolve the changed files for `diff` scope: tracked changes vs `HEAD` plus
-/// untracked-but-not-ignored files. Best-effort — a non-repo / git failure yields
-/// an empty list (the passes then fall back to exploring the whole repo).
-fn changed_files(project_path: &str) -> Vec<String> {
-    let mut files: Vec<String> = Vec::new();
-    let collect = |args: &[&str], out: &mut Vec<String>| {
-        if let Ok(o) = crate::platform::git_command(std::path::Path::new(project_path))
-            .args(args)
-            .output()
-        {
-            if o.status.success() {
-                for line in String::from_utf8_lossy(&o.stdout).lines() {
-                    let line = line.trim();
-                    if !line.is_empty() {
-                        out.push(line.to_string());
-                    }
-                }
-            }
-        }
-    };
-    collect(&["diff", "--name-only", "HEAD"], &mut files);
-    collect(&["ls-files", "--others", "--exclude-standard"], &mut files);
-    files.sort();
-    files.dedup();
-    files
-}
-
 /// Start an Insight analysis run over the active project. Creates the persisted run
 /// (status `running`), dispatches the `start-analysis` command, and returns the
 /// `runId` the `analysis-*` events correlate by.
@@ -123,7 +96,8 @@ pub async fn start_analysis(
     // focuses the passes on these files).
     let changed = match scope {
         AnalysisScope::Diff => {
-            let files = changed_files(&project_path);
+            let files =
+                crate::git::query::changed_files_vs_head(std::path::Path::new(&project_path));
             (!files.is_empty()).then_some(files)
         }
         AnalysisScope::Repo => None,

@@ -153,16 +153,9 @@ fn read_baseline(project_root: &Path) -> Option<RatchetCounts> {
 /// `dir` (git pathspecs match at any depth). Unreadable/non-UTF-8 files are
 /// skipped — a binary that sneaked into the pathspec must not sink the count.
 fn recount(dir: &Path) -> Result<RatchetCounts, String> {
-    let out = crate::platform::git_command(dir)
-        .args(["ls-files", "-z", "--", "*.ts", "*.tsx"])
-        .output()
-        .map_err(|e| format!("failed to run git (is `git` on PATH?): {e}"))?;
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
-    }
-    let listing = String::from_utf8_lossy(&out.stdout);
+    let files = crate::git::query::list_tracked_files(dir, &["*.ts", "*.tsx"])?;
     let mut total = RatchetCounts::default();
-    for rel in crate::git::parse::parse_ls_files_z(&listing) {
+    for rel in &files {
         let Ok(src) = std::fs::read_to_string(dir.join(rel)) else {
             continue;
         };

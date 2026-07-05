@@ -124,20 +124,9 @@ pub fn detect(text: &str) -> Vec<String> {
 /// content an agent inherits from the repo). Unreadable/binary/oversized files
 /// are skipped silently — a scan must never fail the project open.
 pub fn scan_project(root: &Path) -> Result<Vec<InjectionFlag>, String> {
-    let output = crate::platform::git_command(root)
-        .args(["ls-files", "-z"])
-        .output()
-        .map_err(|e| format!("git ls-files failed to launch: {e}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "git ls-files failed (exit {:?})",
-            output.status.code()
-        ));
-    }
-    let listing = String::from_utf8_lossy(&output.stdout);
     let mut flags = Vec::new();
-    for rel in crate::git::parse::parse_ls_files_z(&listing) {
-        let path = root.join(rel);
+    for rel in crate::git::query::list_tracked_files(root, &[])? {
+        let path = root.join(&rel);
         let Ok(meta) = std::fs::metadata(&path) else {
             continue;
         };
@@ -154,10 +143,7 @@ pub fn scan_project(root: &Path) -> Result<Vec<InjectionFlag>, String> {
         let text = String::from_utf8_lossy(&bytes);
         let reasons = detect(&text);
         if !reasons.is_empty() {
-            flags.push(InjectionFlag {
-                path: rel.to_string(),
-                reasons,
-            });
+            flags.push(InjectionFlag { path: rel, reasons });
         }
     }
     Ok(flags)
