@@ -9,7 +9,14 @@ import { type EventCallback, listen, type UnlistenFn } from '@tauri-apps/api/eve
 import { NightcoreEventSchema, QuestionItemSchema } from '@nightcore/contracts';
 
 import { isTauri } from './internal';
-import type { LoopEnvelope, NcEvent, Project, QuestionItem, Task } from './types';
+import type {
+  LoopEnvelope,
+  NcEvent,
+  PrFixState,
+  Project,
+  QuestionItem,
+  Task,
+} from './types';
 
 /** `nc:session` payload: a streamed engine event tagged with its task. */
 export interface SessionEnvelope {
@@ -377,6 +384,64 @@ export async function onPrReviewEvent(
   handler: (event: PrReviewEvent) => void,
 ): Promise<UnlistenFn> {
   return subscribeChannel('nc:pr-review', parsePrReviewEvent, handler);
+}
+
+// --- PR fix (address review findings) --------------------------------------
+
+/** The KNOWN pr-fix lifecycle statuses (running → committing → awaiting_push →
+ *  pushed, or failed) — the generated `PrFixState.status` field is a plain
+ *  `string` (Rust emits it as a free string), so this web-local union names the
+ *  states the UI renders explicitly. Consumers switch on these members and fall
+ *  through on anything else (the FixRunCard pattern): the narrower below
+ *  deliberately accepts ANY string status, matching the un-narrowed
+ *  `list_pr_fixes` path, so a newer backend status is never dropped on the
+ *  event path while the list path lets it through. */
+export type PrFixStatus =
+  | 'running'
+  | 'committing'
+  | 'awaiting_push'
+  | 'pushed'
+  | 'failed';
+
+/** Narrow an unknown `nc:pr-fix` payload to a `PrFixState` snapshot defensively.
+ *  Every state change emits the FULL state, so the fields the fix registry hook
+ *  and the fix card actually read are all checked (`summary`/`error` are
+ *  nullable; `status` is any string — forward-compatible with statuses newer
+ *  than this build, like the list path). INTENTIONALLY PARTIAL like `isTask`:
+ *  `runId`/`dir`/`createdAt` ride along untyped-checked. */
+function isPrFixState(value: unknown): value is PrFixState {
+  if (
+    !hasKeys(value, [
+      'id',
+      'prNumber',
+      'branch',
+      'status',
+      'summary',
+      'error',
+      'findingCount',
+      'updatedAt',
+    ])
+  ) {
+    return false;
+  }
+  return (
+    typeof value.id === 'string' &&
+    typeof value.prNumber === 'number' &&
+    typeof value.branch === 'string' &&
+    typeof value.status === 'string' &&
+    (value.summary === null || typeof value.summary === 'string') &&
+    (value.error === null || typeof value.error === 'string') &&
+    typeof value.findingCount === 'number' &&
+    typeof value.updatedAt === 'number'
+  );
+}
+
+/** Subscribe to `nc:pr-fix` full-state snapshots (one per fix lifecycle change).
+ *  Returns an unlisten function (a no-op outside Tauri). */
+export async function onPrFixEvent(
+  handler: (state: PrFixState) => void,
+): Promise<UnlistenFn> {
+  return subscribeChannel('nc:pr-fix', (v) => (isPrFixState(v) ? v : null), handler);
 }
 
 // --- Readiness Scorecard (Profile) ----------------------------------------

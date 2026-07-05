@@ -130,6 +130,9 @@ export type { ReviewFinding, ReviewLens, ReviewSeverity } from '@nightcore/contr
 // Open-PR summaries + labels for the PR Review config picker (ts-rs from `workflow/pr_list.rs`).
 export type { PrLabel } from '../generated/PrLabel';
 export type { PrSummary } from '../generated/PrSummary';
+// Address-review-findings fix snapshots (ts-rs from `workflow/pr_fix/state.rs`):
+// the full state emitted on every `nc:pr-fix` change and listed by `list_pr_fixes`.
+export type { PrFixState } from '../generated/PrFixState';
 
 /** The kind preset a task runs under and the four UI permission modes are
  *  generated FROM the Rust enums (`TaskKind` / `PermissionMode` in

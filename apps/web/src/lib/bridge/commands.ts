@@ -41,6 +41,7 @@ import type {
   NcEvent,
   PermissionMode,
   PrDraft,
+  PrFixState,
   Project,
   ProviderConfigSnapshot,
   PrReviewComments,
@@ -383,6 +384,22 @@ export async function openExternal(url: string): Promise<void> {
  *  instead of a fabricated status. */
 export async function prStatus(id: string): Promise<PrStatus | null> {
   return tauriInvoke<PrStatus | null>('pr_status', { id }, null);
+}
+
+/** Fetch the live status of an arbitrary PR by NUMBER (no task linkage — the
+ *  per-PR workspace surface). Mirrors {@link prStatus}: a bounded `gh pr view`,
+ *  on-demand only (fetch on mount + manual refresh; NO polling), read-only (no
+ *  lease). Resolves `null` outside Tauri (browser preview) so the surface shows
+ *  its unavailable note instead of a fabricated status. */
+export async function prStatusByNumber(number: number): Promise<PrStatus | null> {
+  return tauriInvoke<PrStatus | null>('pr_status_by_number', { number }, null);
+}
+
+/** The GitHub login the user's `gh` CLI is authenticated as, for "your PRs"
+ *  filtering in the PR workspace. Read-only, on-demand. Resolves `null` outside
+ *  Tauri (browser preview) — the surface skips viewer-scoped affordances. */
+export async function viewerLogin(): Promise<string | null> {
+  return tauriInvoke<string | null>('viewer_login', {}, null);
 }
 
 /** Re-push the task branch to its remote (plain push — never `--force`) so an
@@ -852,6 +869,41 @@ export async function postReviewToGithub(
   comments: ReviewInlineComment[],
 ): Promise<void> {
   await invoke<void>('post_review_to_github', { prNumber, verdict, body, comments });
+}
+
+// --- PR fix (address review findings) --------------------------------------
+
+/** Run a fix agent over the SELECTED findings of a review run, on the PR's own
+ *  branch. Returns the fix id the `nc:pr-fix` snapshots correlate by. The session
+ *  auto-commits on completion and parks at `awaiting_push` — {@link pushPrFix} is
+ *  the separate human-gated publish. Uses raw `invoke` (like {@link startPrReview})
+ *  so a refusal (fork PR / missing checkout / a fix already running on this PR)
+ *  surfaces to the caller. Rejects outside Tauri. */
+export async function addressReviewFindings(
+  runId: string,
+  findingIds: string[],
+): Promise<string> {
+  return invoke<string>('address_review_findings', { runId, findingIds });
+}
+
+/** Push an `awaiting_push` fix's branch to origin — THE human-gated external side
+ *  effect of the fix arc (plain push, never force; a diverged remote fails loudly).
+ *  Raw `invoke` so a gh/git failure surfaces to the caller. Rejects outside Tauri. */
+export async function pushPrFix(fixId: string): Promise<void> {
+  await invoke<void>('push_pr_fix', { fixId });
+}
+
+/** Every registered fix, newest first. The registry is in-memory Rust-side — an
+ *  app restart forgets entries (the commit survives on the branch). `[]` outside
+ *  Tauri. */
+export async function listPrFixes(): Promise<PrFixState[]> {
+  return tauriInvoke<PrFixState[]>('list_pr_fixes', {}, []);
+}
+
+/** Cancel a running fix (interrupts the session; the fix lands as
+ *  `failed("cancelled")` on `nc:pr-fix`). No-op outside Tauri. */
+export async function cancelPrFix(fixId: string): Promise<void> {
+  await tauriInvoke<void>('cancel_pr_fix', { fixId }, undefined);
 }
 
 // --- Readiness Scorecard (Profile) ----------------------------------------
