@@ -13,6 +13,7 @@ pub(crate) mod board_background;
 pub(crate) mod harness;
 pub(crate) mod harness_policy;
 pub(crate) mod insight;
+pub(crate) mod issue_triage;
 pub(crate) mod ledger;
 pub(crate) mod pr_review;
 pub(crate) mod project;
