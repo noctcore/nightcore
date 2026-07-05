@@ -1,0 +1,147 @@
+name: Bug Report
+description: Report something broken in Nightcore
+title: '[Bug]: '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Fill in as much detail as you can —
+        it helps us reproduce and fix it faster.
+
+        **Security issues:** do not use this form. See [SECURITY.md](../../SECURITY.md).
+
+  - type: dropdown
+    id: operating-system
+    attributes:
+      label: Operating System
+      description: What OS are you on?
+      options:
+        - macOS
+        - Windows
+        - Linux
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: run-mode
+    attributes:
+      label: Run Mode
+      description: How are you running Nightcore?
+      options:
+        - Desktop (Tauri — `bun run desktop`)
+        - Web preview only (`bun run web` — sidecar disabled)
+        - Sidecar / headless (`bun run sidecar` or scripts)
+      default: 0
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: App version from Settings → About, or the git commit SHA you built from.
+      placeholder: 'v0.1.0 or abc1234'
+    validations:
+      required: true
+
+  - type: input
+    id: bun-version
+    attributes:
+      label: Bun version
+      description: Output of `bun --version`
+      placeholder: '1.1.x'
+    validations:
+      required: false
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where did it happen?
+      description: Which part of Nightcore was involved?
+      options:
+        - Kanban Board / tasks
+        - Auto Mode / agent runs
+        - Verification / merge / PR
+        - Insight scan
+        - Harness scan
+        - Scorecard scan
+        - Worktrees view
+        - PR Review
+        - Settings / Policy
+        - Desktop shell / sidecar startup
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Bug description
+      description: What went wrong?
+      placeholder: Describe the bug...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open project at '…'
+        2. Create a Build task with '…'
+        3. Click Run / enable Auto Mode
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      placeholder: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual behavior
+      placeholder: What actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Drag and drop images here or paste URLs.
+      placeholder: Optional — UI errors, task drawer, verification output, etc.
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Task logs from the UI, sidecar stderr, or Tauri devtools console. Redact paths/tokens.
+      placeholder: Paste logs here...
+      render: shell
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Task kind, run mode (Main vs Worktree), model, project type (monorepo, Rust, etc.).
+      placeholder: Anything else that might help...
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and did not find a duplicate
+          required: true
+        - label: I am not reporting a security vulnerability (see SECURITY.md)
+          required: true
+        - label: I filled in the required fields above
+          required: true

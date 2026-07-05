@@ -1,0 +1,104 @@
+name: Feature Request
+description: Suggest a new feature or improvement for Nightcore
+title: '[Feature]: '
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement. Describe the **workflow problem** first —
+        implementation details are optional.
+
+  - type: dropdown
+    id: feature-area
+    attributes:
+      label: Feature area
+      description: Which part of Nightcore does this relate to?
+      options:
+        - Kanban Board / task workflow
+        - Task kinds (Build, TDD, Research, Decompose)
+        - Auto Mode / concurrency / dependencies
+        - Verification gauntlet / reviewer
+        - Insight scan
+        - Harness / structure-lock
+        - Scorecard
+        - Worktrees / git
+        - PR Review / GitHub integration
+        - Settings / Policy / MCP
+        - Rust core / sidecar / engine
+        - UI/UX
+        - Documentation
+        - Performance
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority (for you)
+      description: How much would this help your workflow?
+      options:
+        - Nice to have
+        - Would improve my workflow
+        - Critical for my use case
+      default: 0
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem-statement
+    attributes:
+      label: Problem statement
+      description: What problem are you trying to solve?
+      placeholder: I'm trying to … but currently …
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed solution
+      description: What would you like Nightcore to do?
+      placeholder: Describe the behavior you want.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives-considered
+    attributes:
+      label: Alternatives considered
+      description: Workarounds, other tools, or simpler approaches you tried.
+      placeholder: Optional
+
+  - type: textarea
+    id: use-cases
+    attributes:
+      label: Use cases
+      placeholder: |
+        1. When I …
+        2. As someone who …
+        3. In a project where …
+
+  - type: textarea
+    id: mockups
+    attributes:
+      label: Mockups / screenshots
+      description: Wireframes or examples from other tools that illustrate the idea.
+      placeholder: Drag and drop images here or paste URLs
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      placeholder: Links to decision docs, related issues, or AutoMaker parity notes
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and did not find this request already
+          required: true
+        - label: I described the problem and a proposed direction (not just a one-liner)
+          required: true

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Nightcore">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#12091f"/>
+      <stop offset="100%" stop-color="#0a0612"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c4a8ff"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="moon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ddd6fe"/>
+      <stop offset="100%" stop-color="#a78bfa"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <circle cx="64" cy="64" r="46" fill="none" stroke="url(#ring)" stroke-width="2" opacity="0.55"/>
+  <circle cx="64" cy="64" r="36" fill="#1a0f2e" stroke="#7c3aed" stroke-width="1.5" opacity="0.9"/>
+  <path
+    d="M78 38c-12 2-21 13-21 26s9 24 21 26c-16-4-27-18-27-34s11-30 27-34z"
+    fill="url(#moon)"
+  />
+  <circle cx="72" cy="52" r="4" fill="#f5f3ff"/>
+  <circle cx="52" cy="78" r="2.5" fill="#c4b5fd" opacity="0.8"/>
+  <circle cx="76" cy="78" r="2.5" fill="#c4b5fd" opacity="0.8"/>
+</svg>
