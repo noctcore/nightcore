@@ -31,7 +31,7 @@ export function Button({
   return (
     <button
       type={type}
-      className={`inline-flex items-center justify-center gap-1.5 rounded-[9px] px-4 py-1.5 text-sm font-semibold transition-[filter,background,border-color,transform] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40 ${VARIANTS[variant]} ${className ?? ''}`}
+      className={`inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] px-4 py-1.5 text-sm font-semibold transition-[filter,background,border-color,transform] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40 ${VARIANTS[variant]} ${className ?? ''}`}
       {...rest}
     >
       {children}

@@ -18,7 +18,7 @@ export function IconButton({ children, onClick, label, className }: IconButtonPr
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`flex items-center justify-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground ${className ?? ''}`}
+      className={`flex shrink-0 items-center justify-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground ${className ?? ''}`}
     >
       {children}
     </button>

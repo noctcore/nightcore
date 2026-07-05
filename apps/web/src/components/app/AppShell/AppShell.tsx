@@ -96,8 +96,18 @@ const NO_QUESTIONS: QuestionPrompt[] = [];
  *  and TaskDetail overlays. All state lives in `useAppShell`; this is a thin
  *  presentational host wiring views to the live registry, settings, and board. */
 export function AppShell() {
-  const { routing, registry, settings, autoLoop, newProject, board, confirm, showSplash, isTauri } =
-    useAppShell();
+  const {
+    routing,
+    registry,
+    settings,
+    autoLoop,
+    newProject,
+    appearance,
+    board,
+    confirm,
+    showSplash,
+    isTauri,
+  } = useAppShell();
   const { view, switcherOpen, collapsed, newProjectOpen } = routing;
   const { projects, active } = registry;
   const { tasks, selected, selectedId, setSelectedId, anyRunning, runningCount } = board;
@@ -216,11 +226,9 @@ export function AppShell() {
                   backgroundVersion={
                     settings.settings?.projectOverrides[active.id]?.boardBackground?.version ?? null
                   }
-                  onChangeAppearance={(next) =>
-                    settings.update({ projectId: active.id, boardAppearance: next })
-                  }
-                  onPickBackground={(image) => settings.setBackground(active.id, image)}
-                  onClearBackground={() => settings.clearBackground(active.id)}
+                  onChangeAppearance={appearance.onChangeAppearance}
+                  onPickBackground={appearance.onPickBackground}
+                  onClearBackground={appearance.onClearBackground}
                   worktrees={board.worktrees}
                   activeWorktree={board.activeWorktree}
                   onSelectWorktree={board.setActiveWorktree}
@@ -245,9 +253,7 @@ export function AppShell() {
                   onMerge={board.handleMerge}
                   isActionPending={board.isActionPending}
                   onToggleAutoMode={autoLoop.toggleAutoMode}
-                  onAutoCommitChange={(next) =>
-                    settings.update({ autoCommitOnVerified: next })
-                  }
+                  onAutoCommitChange={appearance.onAutoCommitChange}
                   onConcurrencyChange={autoLoop.changeConcurrency}
                   onResume={autoLoop.resume}
                 />

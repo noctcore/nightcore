@@ -182,7 +182,7 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
   const pending = (action: string): boolean => isActionPending?.(action, task.id) ?? false;
 
   return (
-    <aside className="nc-drawer-enter flex h-full w-[28rem] shrink-0 flex-col border-l border-border bg-popover">
+    <aside className="nc-drawer-enter flex h-full w-[min(28rem,60vw)] shrink-0 flex-col border-l border-border bg-popover">
       <header className="flex items-start justify-between gap-3 border-b border-border bg-card px-4 py-3.5">
         <div className="min-w-0">
           <div className="flex items-center gap-2">

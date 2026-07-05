@@ -15,7 +15,7 @@ export interface SegmentedProps {
 export function Segmented({ options, value, onChange, disabled }: SegmentedProps): ReactNode {
   return (
     <div
-      className={`inline-flex rounded-lg border border-border bg-black/20 p-0.5 ${disabled ? 'opacity-40' : ''}`}
+      className={`inline-flex shrink-0 rounded-lg border border-border bg-black/20 p-0.5 ${disabled ? 'opacity-40' : ''}`}
     >
       {options.map(([v, label]) => (
         <button
@@ -23,7 +23,7 @@ export function Segmented({ options, value, onChange, disabled }: SegmentedProps
           type="button"
           disabled={disabled}
           onClick={() => onChange(v)}
-          className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors disabled:cursor-not-allowed ${
+          className={`shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors disabled:cursor-not-allowed ${
             v === value
               ? 'bg-primary/[0.18] text-primary'
               : 'text-muted-foreground enabled:hover:text-foreground'

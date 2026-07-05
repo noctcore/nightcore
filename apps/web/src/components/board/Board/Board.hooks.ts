@@ -51,12 +51,16 @@ export function matchesQuery(task: Task, query: string): boolean {
   return `${task.title} ${task.description}`.toLowerCase().includes(q);
 }
 
-/** The Board view hook's result: the search query, its setter, and the
- *  worktree-scoped, keyword-filtered, grouped columns. */
+/** The Board view hook's result: the search query, its setter, the
+ *  worktree-scoped, keyword-filtered, grouped columns, and one stable clear-handler
+ *  per column key. */
 export interface BoardViewState {
   search: string;
   setSearch: (value: string) => void;
   columns: BoardColumn[];
+  /** Stable `onClear` per column key, so a fresh `() => onClearColumn(statuses)`
+   *  closure per Board render never defeats `memo(Column)`. */
+  clearHandlers: Record<string, () => void>;
 }
 
 /** Board view state: the search query plus the derived filtered/grouped columns.
@@ -64,7 +68,11 @@ export interface BoardViewState {
  *  tasks, a worktree tab shows its branch's tasks — then keyword-filtered. The
  *  blocked-task set is computed by the backend and passed in as a prop (it depends
  *  on the full registry + run state, not just the visible cards). */
-export function useBoardView(tasks: Task[], activeWorktree: ActiveWorktree): BoardViewState {
+export function useBoardView(
+  tasks: Task[],
+  activeWorktree: ActiveWorktree,
+  onClearColumn: (statuses: Task['status'][]) => void,
+): BoardViewState {
   const [search, setSearch] = useState('');
   // Decouple the O(n log n) filter/group/sort from each keystroke. The input stays
   // controlled on `search` (updated urgently, so typing never lags), while the
@@ -80,10 +88,22 @@ export function useBoardView(tasks: Task[], activeWorktree: ActiveWorktree): Boa
     return groupTasksByColumn(visible);
   }, [tasks, activeWorktree, deferredSearch]);
 
+  // One stable clear-handler per column, keyed on the static COLUMNS definitions and
+  // rebuilt only when `onClearColumn` changes (it never does — `requestClear` is a
+  // `useCallback([])`). A fresh `() => onClearColumn(def.statuses)` per render would
+  // defeat every `memo(Column)` on any Board re-render, re-reconciling all six
+  // columns even when only one column's task list changed.
+  const clearHandlers = useMemo(() => {
+    const handlers: Record<string, () => void> = {};
+    for (const def of COLUMNS) handlers[def.key] = () => onClearColumn(def.statuses);
+    return handlers;
+  }, [onClearColumn]);
+
   return {
     search,
     setSearch: useCallback((value: string) => setSearch(value), []),
     columns,
+    clearHandlers,
   };
 }
 
