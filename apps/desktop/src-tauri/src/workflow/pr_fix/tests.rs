@@ -5,14 +5,17 @@
 use std::path::Path;
 
 use super::checkout::{
-    fetch_head_ref_with, managed_lease_id, parse_head_ref, pr_fix_dir, refuse_busy_task_checkout,
+    fetch_pr_refs_with, managed_lease_id, parse_pr_refs, pr_fix_dir, refuse_busy_task_checkout,
 };
+use super::ci::{parse_failing_checks, FailingCheck};
 use super::command::{check_push_preconditions, select_findings};
-use super::prompt::build_fix_prompt;
+use super::comment::compose_push_comment;
+use super::complete::commit_message;
+use super::prompt::{build_ci_prompt, build_conflicts_prompt, build_fix_prompt};
 use super::state::{
     mint_fix_id, refuse_while_fix_pending_push, refuse_while_fix_running, PrFixRegistry,
-    PrFixState, FIX_ID_PREFIX, STATUS_AWAITING_PUSH, STATUS_COMMITTING, STATUS_FAILED,
-    STATUS_PUSHED, STATUS_RUNNING,
+    PrFixState, FIX_ID_PREFIX, KIND_CI, KIND_CONFLICTS, KIND_FINDINGS, STATUS_AWAITING_PUSH,
+    STATUS_COMMITTING, STATUS_FAILED, STATUS_PUSHED, STATUS_RUNNING,
 };
 use crate::store::insight::InsightUsage;
 use crate::store::pr_review::{PrReviewRun, StoredReviewFinding};
@@ -61,7 +64,8 @@ fn review_run(id: &str, pr_number: u64, findings: Vec<StoredReviewFinding>) -> P
 fn fix_state(id: &str, pr_number: u64, status: &str) -> PrFixState {
     PrFixState {
         id: id.to_string(),
-        run_id: "run-1".to_string(),
+        kind: KIND_FINDINGS.to_string(),
+        run_id: Some("run-1".to_string()),
         pr_number,
         branch: "nc/task-1".to_string(),
         dir: "/proj/.nightcore/pr-fix/pr-7".to_string(),
@@ -551,13 +555,14 @@ fn completion_handler_claims_before_the_blocking_commit() {
 
 #[test]
 fn dispatch_recheck_interrupts_a_cancelled_during_dispatch_fix() {
-    // Source-level guard: after a successful dispatch, `address_review_findings`
-    // must re-check the registry and interrupt (or evict the pending launch)
-    // when a cancel raced the insert→dispatch window — nothing else can ever
-    // observe that just-launched session.
+    // Source-level guard: after a successful dispatch, `register_and_dispatch`
+    // (the shared starter tail all three fix kinds run through) must re-check
+    // the registry and interrupt (or evict the pending launch) when a cancel
+    // raced the insert→dispatch window — nothing else can ever observe that
+    // just-launched session.
     let src = include_str!("command.rs");
     let dispatch = src
-        .find("dispatch_fix_session(&app, &fix_id")
+        .find("dispatch_fix_session(app, &fix_id")
         .expect("the dispatch site exists");
     let tail = &src[dispatch..];
     let recheck = tail
@@ -715,19 +720,24 @@ fn push_preconditions_require_awaiting_push() {
     }
 }
 
-// ── Fork-PR refusal + head-branch parse ────────────────────────────────────────
+// ── Fork-PR refusal + head/base-branch parse ───────────────────────────────────
 
 #[test]
-fn parse_head_ref_reads_the_branch_of_a_same_repo_pr() {
-    let branch = parse_head_ref(r#"{"headRefName":"feature/login","isCrossRepository":false}"#)
-        .expect("same-repo PR parses");
-    assert_eq!(branch, "feature/login");
+fn parse_pr_refs_reads_both_branches_of_a_same_repo_pr() {
+    let refs = parse_pr_refs(
+        r#"{"headRefName":"feature/login","baseRefName":"main","isCrossRepository":false}"#,
+    )
+    .expect("same-repo PR parses");
+    assert_eq!(refs.head, "feature/login");
+    assert_eq!(refs.base, "main");
 }
 
 #[test]
-fn parse_head_ref_refuses_a_fork_pr() {
-    let err = parse_head_ref(r#"{"headRefName":"feature/login","isCrossRepository":true}"#)
-        .expect_err("fork PRs must be refused");
+fn parse_pr_refs_refuses_a_fork_pr() {
+    let err = parse_pr_refs(
+        r#"{"headRefName":"feature/login","baseRefName":"main","isCrossRepository":true}"#,
+    )
+    .expect_err("fork PRs must be refused");
     assert!(err.contains("fork"), "explains the fork refusal: {err}");
     assert!(
         err.contains("manually"),
@@ -736,19 +746,24 @@ fn parse_head_ref_refuses_a_fork_pr() {
 }
 
 #[test]
-fn parse_head_ref_is_fail_closed_on_malformed_or_partial_bodies() {
+fn parse_pr_refs_is_fail_closed_on_malformed_or_partial_bodies() {
     // Garbage → a clear parse message.
-    let err = parse_head_ref("not json").expect_err("garbage refused");
+    let err = parse_pr_refs("not json").expect_err("garbage refused");
     assert!(err.contains("unparseable"), "clear parse error: {err}");
     // A body MISSING isCrossRepository must not silently read as "not a fork".
     assert!(
-        parse_head_ref(r#"{"headRefName":"x"}"#).is_err(),
+        parse_pr_refs(r#"{"headRefName":"x","baseRefName":"main"}"#).is_err(),
         "missing fork-ness field is a parse error, never fail-open"
     );
-    // An empty branch is refused too.
+    // Empty branches are refused too — both ends.
     assert!(
-        parse_head_ref(r#"{"headRefName":"","isCrossRepository":false}"#).is_err(),
+        parse_pr_refs(r#"{"headRefName":"","baseRefName":"main","isCrossRepository":false}"#)
+            .is_err(),
         "an empty head branch is refused"
+    );
+    assert!(
+        parse_pr_refs(r#"{"headRefName":"x","baseRefName":"","isCrossRepository":false}"#).is_err(),
+        "an empty base branch is refused"
     );
 }
 
@@ -824,20 +839,21 @@ fn fake_gh(dir: &Path, body: &str) -> std::path::PathBuf {
 
 #[test]
 #[cfg(unix)]
-fn fetch_head_ref_with_parses_a_success_and_carries_the_exact_argv() {
+fn fetch_pr_refs_with_parses_a_success_and_carries_the_exact_argv() {
     let tmp = tempfile::TempDir::new().expect("temp dir");
     let script = fake_gh(
         tmp.path(),
-        "printf '%s\\n' \"$@\" > args.txt\necho '{\"headRefName\":\"feature/x\",\"isCrossRepository\":false}'",
+        "printf '%s\\n' \"$@\" > args.txt\necho '{\"headRefName\":\"feature/x\",\"baseRefName\":\"main\",\"isCrossRepository\":false}'",
     );
-    let branch = fetch_head_ref_with(
+    let refs = fetch_pr_refs_with(
         tmp.path(),
         script.to_str().expect("utf8 path"),
         42,
         std::time::Duration::from_secs(10),
     )
-    .expect("head branch parses");
-    assert_eq!(branch, "feature/x");
+    .expect("refs parse");
+    assert_eq!(refs.head, "feature/x");
+    assert_eq!(refs.base, "main");
 
     let args = std::fs::read_to_string(tmp.path().join("args.txt")).expect("args.txt");
     let args: Vec<&str> = args.lines().collect();
@@ -848,7 +864,7 @@ fn fetch_head_ref_with_parses_a_success_and_carries_the_exact_argv() {
             "view",
             "42",
             "--json",
-            "headRefName,isCrossRepository"
+            "headRefName,baseRefName,isCrossRepository"
         ],
         "the exact bounded-gh argv"
     );
@@ -856,13 +872,13 @@ fn fetch_head_ref_with_parses_a_success_and_carries_the_exact_argv() {
 
 #[test]
 #[cfg(unix)]
-fn fetch_head_ref_with_surfaces_gh_stderr_on_failure() {
+fn fetch_pr_refs_with_surfaces_gh_stderr_on_failure() {
     let tmp = tempfile::TempDir::new().expect("temp dir");
     let script = fake_gh(
         tmp.path(),
         "echo 'no pull requests found for number 42' >&2\nexit 1",
     );
-    let err = fetch_head_ref_with(
+    let err = fetch_pr_refs_with(
         tmp.path(),
         script.to_str().expect("utf8 path"),
         42,
@@ -877,13 +893,13 @@ fn fetch_head_ref_with_surfaces_gh_stderr_on_failure() {
 
 #[test]
 #[cfg(unix)]
-fn fetch_head_ref_with_refuses_a_fork_through_the_real_spawn() {
+fn fetch_pr_refs_with_refuses_a_fork_through_the_real_spawn() {
     let tmp = tempfile::TempDir::new().expect("temp dir");
     let script = fake_gh(
         tmp.path(),
-        "echo '{\"headRefName\":\"feature/x\",\"isCrossRepository\":true}'",
+        "echo '{\"headRefName\":\"feature/x\",\"baseRefName\":\"main\",\"isCrossRepository\":true}'",
     );
-    let err = fetch_head_ref_with(
+    let err = fetch_pr_refs_with(
         tmp.path(),
         script.to_str().expect("utf8 path"),
         42,
@@ -891,4 +907,321 @@ fn fetch_head_ref_with_refuses_a_fork_through_the_real_spawn() {
     )
     .expect_err("fork PRs are refused");
     assert!(err.contains("fork"), "the fork refusal: {err}");
+}
+
+// ── Failing-check parse (the ci kind) ──────────────────────────────────────────
+
+#[test]
+fn parse_failing_checks_keeps_only_the_failing_bucket() {
+    let body = r#"[
+        {"bucket":"pass","name":"lint","workflow":"CI","description":""},
+        {"bucket":"fail","name":"cargo test","workflow":"CI","description":"Failing after 1m"},
+        {"bucket":"pending","name":"deploy","workflow":"CD","description":""},
+        {"bucket":"fail","name":"seatbelt","workflow":"CI","description":""}
+    ]"#;
+    let checks = parse_failing_checks(body).expect("well-formed body parses");
+    assert_eq!(
+        checks,
+        vec![
+            FailingCheck {
+                name: "cargo test".to_string(),
+                workflow: "CI".to_string(),
+                description: "Failing after 1m".to_string(),
+            },
+            FailingCheck {
+                name: "seatbelt".to_string(),
+                workflow: "CI".to_string(),
+                description: String::new(),
+            },
+        ]
+    );
+}
+
+#[test]
+fn parse_failing_checks_tolerates_missing_optional_fields_and_refuses_garbage() {
+    // workflow/description are defaulted — a row carrying only bucket+name parses.
+    let checks = parse_failing_checks(r#"[{"bucket":"fail","name":"x"}]"#).expect("parses");
+    assert_eq!(checks.len(), 1);
+    assert!(parse_failing_checks("nope").is_err(), "garbage refused");
+}
+
+// ── CI + conflicts prompt fencing ──────────────────────────────────────────────
+
+#[test]
+fn ci_prompt_fences_every_check_and_keeps_the_counter_outside() {
+    let checks = vec![
+        FailingCheck {
+            name: "cargo test · clippy".to_string(),
+            workflow: "CI".to_string(),
+            description: "exit 101".to_string(),
+        },
+        FailingCheck {
+            name: "lint".to_string(),
+            workflow: "CI".to_string(),
+            description: String::new(),
+        },
+    ];
+    let prompt = build_ci_prompt(8, "nc/task-1", &checks);
+    assert!(prompt.contains("#8"), "names the PR");
+    assert!(prompt.contains("`nc/task-1`"), "names the branch");
+    assert_eq!(
+        prompt.matches("<analysis-finding>").count(),
+        2,
+        "each check rides its own fence (check names are repo-controlled text)"
+    );
+    let counter = prompt
+        .find("--- Failing check 1 ---")
+        .expect("counter line");
+    let fence = prompt.find("<analysis-finding>").expect("fence");
+    assert!(counter < fence, "trusted framing precedes the fence");
+    assert!(
+        prompt.contains("Do NOT commit"),
+        "carries the shared closing instruction"
+    );
+}
+
+#[test]
+fn conflicts_prompt_fences_the_file_list_and_forbids_merge_abort() {
+    let files = vec!["src/a.rs".to_string(), "web/b.ts".to_string()];
+    let prompt = build_conflicts_prompt(8, "nc/task-1", "main", &files);
+    assert!(prompt.contains("#8"), "names the PR");
+    assert!(prompt.contains("`origin/main`"), "names the merged base");
+    assert_eq!(
+        prompt.matches("<analysis-finding>").count(),
+        1,
+        "the file list rides one fence (paths are repo-controlled text)"
+    );
+    let fence = prompt.find("<analysis-finding>").expect("fence");
+    assert!(
+        prompt[fence..].contains("src/a.rs") && prompt[fence..].contains("web/b.ts"),
+        "the conflicted files are inside the fence"
+    );
+    assert!(
+        prompt.contains("Do NOT run `git merge --abort`"),
+        "forbids aborting the in-progress merge"
+    );
+}
+
+// ── Kind-aware commit messages ─────────────────────────────────────────────────
+
+#[test]
+fn commit_message_names_each_kind() {
+    let mut state = fix_state("prfix-1", 7, STATUS_COMMITTING);
+    assert_eq!(
+        commit_message(&state),
+        "fix: address PR review findings (PR #7)"
+    );
+    state.kind = KIND_CI.to_string();
+    assert_eq!(
+        commit_message(&state),
+        "fix: address failing CI checks (PR #7)"
+    );
+    state.kind = KIND_CONFLICTS.to_string();
+    assert_eq!(
+        commit_message(&state),
+        "merge: resolve conflicts with base (PR #7)"
+    );
+}
+
+// ── The pushed-fix summary comment ─────────────────────────────────────────────
+
+#[test]
+fn push_comment_carries_kind_header_count_branch_sha_and_summary() {
+    let mut state = fix_state("prfix-1", 7, STATUS_PUSHED);
+    state.finding_count = 3;
+    state.summary = Some("## Summary\n\n- fixed the guard".to_string());
+    let body = compose_push_comment(&state, Some("abc1234def"));
+    assert!(
+        body.starts_with("### 🌙 Nightcore — review fixes pushed"),
+        "kind-aware header: {body}"
+    );
+    assert!(
+        body.contains("Addressed **3** review findings on `nc/task-1`"),
+        "count + branch: {body}"
+    );
+    assert!(
+        body.contains("head abc1234def"),
+        "the pushed head sha (bare, so GitHub autolinks it): {body}"
+    );
+    assert!(
+        body.contains("- fixed the guard"),
+        "the session summary rides verbatim: {body}"
+    );
+    assert!(
+        body.trim_end().ends_with("_Posted from Nightcore._"),
+        "the house footer: {body}"
+    );
+}
+
+#[test]
+fn push_comment_adapts_to_ci_and_conflicts_kinds_and_tolerates_no_sha() {
+    let mut state = fix_state("prfix-1", 7, STATUS_PUSHED);
+    state.kind = KIND_CI.to_string();
+    state.finding_count = 1;
+    state.summary = None;
+    let ci = compose_push_comment(&state, None);
+    assert!(ci.contains("CI fixes pushed"), "{ci}");
+    assert!(ci.contains("Addressed **1** failing check on"), "{ci}");
+    assert!(!ci.contains("head "), "no sha line when unknown: {ci}");
+
+    state.kind = KIND_CONFLICTS.to_string();
+    state.finding_count = 0;
+    let conflicts = compose_push_comment(&state, None);
+    assert!(
+        conflicts.contains("merge conflicts resolved"),
+        "{conflicts}"
+    );
+    assert!(
+        conflicts.contains("Pushed to `nc/task-1`."),
+        "a zero-target fix (clean merge) still names the branch: {conflicts}"
+    );
+}
+
+// ── Conflict resolution plumbing (real git, scratch repos) ─────────────────────
+
+/// Build a scratch repo with an `origin` remote whose `main` diverges from the
+/// local `pr` branch: both edit line one of `file.txt` differently. Returns the
+/// checkout dir (on branch `pr`, with `refs/remotes/origin/main` present).
+#[cfg(unix)]
+fn conflicted_repo(tmp: &Path) -> std::path::PathBuf {
+    use std::process::Command;
+    let run = |dir: &Path, args: &[&str]| {
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .output()
+            .expect("git runs");
+        assert!(
+            out.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    let origin = tmp.join("origin");
+    std::fs::create_dir_all(&origin).expect("mkdir origin");
+    run(&origin, &["init", "-b", "main"]);
+    run(&origin, &["config", "user.email", "t@t"]);
+    run(&origin, &["config", "user.name", "t"]);
+    std::fs::write(origin.join("file.txt"), "base\n").expect("write");
+    run(&origin, &["add", "-A"]);
+    run(&origin, &["commit", "-m", "base"]);
+
+    let clone = tmp.join("clone");
+    run(
+        tmp,
+        &[
+            "clone",
+            origin.to_str().expect("utf8"),
+            clone.to_str().expect("utf8"),
+        ],
+    );
+    run(&clone, &["config", "user.email", "t@t"]);
+    run(&clone, &["config", "user.name", "t"]);
+    // The PR branch edits line one…
+    run(&clone, &["checkout", "-b", "pr"]);
+    std::fs::write(clone.join("file.txt"), "pr change\n").expect("write");
+    run(&clone, &["add", "-A"]);
+    run(&clone, &["commit", "-m", "pr edit"]);
+    // …and origin/main moves the SAME line (the conflict), via the origin repo.
+    std::fs::write(origin.join("file.txt"), "main change\n").expect("write");
+    run(&origin, &["add", "-A"]);
+    run(&origin, &["commit", "-m", "main edit"]);
+    run(&clone, &["fetch", "origin"]);
+    clone
+}
+
+#[test]
+#[cfg(unix)]
+fn merge_base_into_classifies_conflicts_and_leaves_the_merge_in_progress() {
+    use super::conflicts::{merge_base_into, merge_in_progress, MergeOutcome};
+    let tmp = tempfile::TempDir::new().expect("temp dir");
+    let clone = conflicted_repo(tmp.path());
+
+    let outcome = merge_base_into(&clone, "main").expect("merge classifies");
+    assert_eq!(
+        outcome,
+        MergeOutcome::Conflicted(vec!["file.txt".to_string()]),
+        "the conflicted file is named"
+    );
+    assert!(
+        merge_in_progress(&clone),
+        "MERGE_HEAD present — the session commits INTO the in-progress merge"
+    );
+    let content = std::fs::read_to_string(clone.join("file.txt")).expect("read");
+    assert!(content.contains("<<<<<<<"), "markers in the working tree");
+}
+
+#[test]
+#[cfg(unix)]
+fn merge_base_into_reports_already_up_to_date_and_clean_merges() {
+    use super::conflicts::{merge_base_into, merge_in_progress, MergeOutcome};
+    let tmp = tempfile::TempDir::new().expect("temp dir");
+    let clone = conflicted_repo(tmp.path());
+
+    // Resolve the conflict by hand and conclude the merge → a re-merge is
+    // "already up to date".
+    let _ = merge_base_into(&clone, "main").expect("first merge conflicts");
+    std::fs::write(clone.join("file.txt"), "resolved\n").expect("write");
+    let run = |args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .args(args)
+            .current_dir(&clone)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .output()
+            .expect("git runs");
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    run(&["add", "-A"]);
+    run(&["commit", "-m", "resolve"]);
+    assert_eq!(
+        merge_base_into(&clone, "main").expect("re-merge classifies"),
+        MergeOutcome::AlreadyUpToDate
+    );
+    assert!(!merge_in_progress(&clone), "no merge left behind");
+}
+
+#[test]
+#[cfg(unix)]
+fn abort_merge_best_effort_unwinds_a_conflicted_merge() {
+    use super::conflicts::{abort_merge_best_effort, merge_base_into, merge_in_progress};
+    let tmp = tempfile::TempDir::new().expect("temp dir");
+    let clone = conflicted_repo(tmp.path());
+    let _ = merge_base_into(&clone, "main").expect("merge conflicts");
+    assert!(merge_in_progress(&clone));
+    abort_merge_best_effort(&clone);
+    assert!(!merge_in_progress(&clone), "MERGE_HEAD gone after abort");
+    let content = std::fs::read_to_string(clone.join("file.txt")).expect("read");
+    assert_eq!(content, "pr change\n", "the pre-merge content is restored");
+}
+
+#[test]
+fn files_with_markers_flags_only_unresolved_content() {
+    use super::conflicts::files_with_markers;
+    let tmp = tempfile::TempDir::new().expect("temp dir");
+    std::fs::write(
+        tmp.path().join("unresolved.txt"),
+        "a\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> main\n",
+    )
+    .expect("write");
+    std::fs::write(tmp.path().join("resolved.txt"), "clean content\n").expect("write");
+    // A markdown setext heading's ======= line alone must NOT read as a marker.
+    std::fs::write(tmp.path().join("setext.md"), "Title\n=======\nbody\n").expect("write");
+
+    let files = vec![
+        "unresolved.txt".to_string(),
+        "resolved.txt".to_string(),
+        "setext.md".to_string(),
+        "deleted.txt".to_string(), // resolution-by-deletion is legitimate
+    ];
+    assert_eq!(
+        files_with_markers(tmp.path(), &files),
+        vec!["unresolved.txt".to_string()]
+    );
 }

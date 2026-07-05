@@ -5,13 +5,16 @@
 //! (the human gate); [`handle_fix_failed`] marks it failed. Both emit the full
 //! updated [`PrFixState`] on `nc:pr-fix`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Emitter, Manager};
 
+use super::conflicts::{
+    abort_merge_best_effort, files_with_markers, merge_in_progress, unmerged_paths,
+};
 use super::state::{
-    PrFixRegistry, PrFixState, STATUS_AWAITING_PUSH, STATUS_COMMITTING, STATUS_FAILED,
-    STATUS_RUNNING,
+    PrFixRegistry, PrFixState, KIND_CI, KIND_CONFLICTS, STATUS_AWAITING_PUSH, STATUS_COMMITTING,
+    STATUS_FAILED, STATUS_RUNNING,
 };
 
 /// Emit the full state snapshot on the `nc:pr-fix` channel (the web reconciles
@@ -59,14 +62,21 @@ pub(crate) async fn handle_fix_completed(
 
     // The auto-commit is blocking git work — run it on the blocking pool (the
     // reader already offloaded us off its task, but this thread is still a
-    // shared async worker).
+    // shared async worker). A CONFLICTS fix validates the resolution FIRST:
+    // the commit's `git add -A` would happily stage half-resolved files (with
+    // their markers) as "resolved", so leftover markers refuse the commit.
     let dir = PathBuf::from(&state.dir);
-    let message = format!("fix: address PR review findings (PR #{})", state.pr_number);
-    let committed =
-        tauri::async_runtime::spawn_blocking(move || crate::worktree::commit_in(&dir, &message))
-            .await
-            .map_err(|e| format!("commit failed to run: {e}"))
-            .and_then(|inner| inner);
+    let message = commit_message(&state);
+    let is_conflicts = state.kind == KIND_CONFLICTS;
+    let committed = tauri::async_runtime::spawn_blocking(move || {
+        if is_conflicts {
+            validate_conflicts_resolved(&dir)?;
+        }
+        crate::worktree::commit_in(&dir, &message)
+    })
+    .await
+    .map_err(|e| format!("commit failed to run: {e}"))
+    .and_then(|inner| inner);
 
     let updated = match committed {
         Ok(created) => {
@@ -106,15 +116,58 @@ pub(crate) async fn handle_fix_completed(
     }
 }
 
+/// The kind-aware auto-commit message.
+pub(super) fn commit_message(state: &PrFixState) -> String {
+    match state.kind.as_str() {
+        KIND_CI => format!("fix: address failing CI checks (PR #{})", state.pr_number),
+        KIND_CONFLICTS => format!(
+            "merge: resolve conflicts with base (PR #{})",
+            state.pr_number
+        ),
+        _ => format!("fix: address PR review findings (PR #{})", state.pr_number),
+    }
+}
+
+/// Refuse committing a `conflicts` fix whose still-unmerged files carry
+/// leftover conflict markers. The checkout is deliberately left MID-MERGE with
+/// the agent's partial work intact (aborting would destroy it) — the error
+/// tells the user where to finish by hand.
+fn validate_conflicts_resolved(dir: &Path) -> Result<(), String> {
+    let unmerged = unmerged_paths(dir)?;
+    let leftover = files_with_markers(dir, &unmerged);
+    if leftover.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "conflict markers remain in {} — the partial resolution was kept in `{}`; finish \
+         resolving there by hand (then commit), or run `git merge --abort` to discard it",
+        leftover.join(", "),
+        dir.display()
+    ))
+}
+
 /// A pr-fix session failed (or was aborted): mark the fix failed and emit. A
 /// no-op when the fix already left `running` — the cancel command marks
 /// `failed("cancelled")` eagerly, so the session's own later
-/// `session-failed (aborted)` terminal lands here as a silent duplicate.
+/// `session-failed (aborted)` terminal lands here as a silent duplicate (the
+/// cancel path also owns that flow's merge-abort cleanup).
 pub(crate) fn handle_fix_failed(app: &AppHandle, fix_id: &str, message: Option<String>) {
     let registry = app.state::<PrFixRegistry>();
     let error = message.unwrap_or_else(|| "the fix session failed".to_string());
     if let Some(state) = registry.mark_failed_if_running(fix_id, error) {
         tracing::warn!(target: "nightcore::prfix", fix_id, error = %state.error.as_deref().unwrap_or(""), "pr-fix session failed");
         emit_state(app, &state);
+        // A DIED conflicts session leaves its checkout mid-merge with unresolved
+        // markers and no agent coming back — abort so the checkout isn't wedged.
+        // (Distinct from the completion path's marker refusal, which keeps the
+        // finished agent's partial work.) Fire-and-forget local git.
+        if state.kind == KIND_CONFLICTS {
+            let dir = PathBuf::from(&state.dir);
+            tauri::async_runtime::spawn_blocking(move || {
+                if merge_in_progress(&dir) {
+                    abort_merge_best_effort(&dir);
+                }
+            });
+        }
     }
 }

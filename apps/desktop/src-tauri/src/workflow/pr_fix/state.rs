@@ -36,6 +36,16 @@ pub(crate) const STATUS_AWAITING_PUSH: &str = "awaiting_push";
 pub(crate) const STATUS_PUSHED: &str = "pushed";
 pub(crate) const STATUS_FAILED: &str = "failed";
 
+/// The pr-fix KINDS (plain strings on the wire, like the statuses): what the
+/// fix session is asked to do. `findings` = address selected review findings;
+/// `ci` = fix the PR's failing CI checks; `conflicts` = resolve the branch's
+/// merge conflicts against its base. The kind drives the prompt, the auto-commit
+/// message, and the completion validation (a `conflicts` fix refuses to commit
+/// leftover conflict markers).
+pub(crate) const KIND_FINDINGS: &str = "findings";
+pub(crate) const KIND_CI: &str = "ci";
+pub(crate) const KIND_CONFLICTS: &str = "conflicts";
+
 /// Mint a fresh pr-fix id (`prfix-<uuid>`). The prefix keeps it disjoint from
 /// task ids in the provider's session↔id correlation map, which is what lets the
 /// reader intercept route a fix session away from the task-store paths.
@@ -43,10 +53,11 @@ pub(super) fn mint_fix_id() -> String {
     format!("{FIX_ID_PREFIX}{}", uuid::Uuid::new_v4())
 }
 
-/// One address-review-findings fix run: which PR/branch/checkout it works on and
-/// where it is in the running → committing → awaiting_push → pushed lifecycle
-/// (or `failed`). Emitted whole on `nc:pr-fix` on every change; `list_pr_fixes`
-/// returns the full set for web reconcile.
+/// One pr-fix run — address findings, fix failing CI, or resolve base conflicts
+/// (`kind`) — which PR/branch/checkout it works on and where it is in the
+/// running → committing → awaiting_push → pushed lifecycle (or `failed`).
+/// Emitted whole on `nc:pr-fix` on every change; `list_pr_fixes` returns the
+/// full set for web reconcile.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[cfg_attr(test, derive(TS))]
 #[serde(rename_all = "camelCase")]
@@ -54,8 +65,11 @@ pub(super) fn mint_fix_id() -> String {
 pub struct PrFixState {
     /// The fix id (`prfix-<uuid>`) — also the session's correlation id.
     pub id: String,
-    /// The PR-review run the findings were selected from.
-    pub run_id: String,
+    /// What this fix does: `findings` | `ci` | `conflicts`.
+    pub kind: String,
+    /// The PR-review run the findings were selected from (`findings` kind only —
+    /// a CI/conflicts fix has no originating review run).
+    pub run_id: Option<String>,
     /// The pull request being fixed.
     pub pr_number: u64,
     /// The PR head branch the checkout is on (validated ref; what gets pushed).
@@ -69,7 +83,8 @@ pub struct PrFixState {
     pub summary: Option<String>,
     /// The failure reason, when `failed`.
     pub error: Option<String>,
-    /// How many findings the fix prompt carried.
+    /// How many findings the fix prompt carried (`findings` kind), or how many
+    /// failing checks / conflicted files it targets (`ci` / `conflicts`).
     pub finding_count: u32,
     pub created_at: u64,
     pub updated_at: u64,
@@ -172,7 +187,9 @@ impl PrFixRegistry {
         blocking_conflict(&lock_or_recover(&self.0), pr_number).map_or(Ok(()), Err)
     }
 
-    /// Register a fresh `running` fix. Under ONE lock: refuses when another fix
+    /// Register a fresh fix — normally `running`; the conflicts arc's clean-merge
+    /// short-circuit registers straight at `awaiting_push` (no session to run).
+    /// Under ONE lock: refuses when another fix
     /// for the same PR is still `running`/`committing` (the duplicate-spend
     /// TOCTOU two racing commands would otherwise hit) or parked `awaiting_push`
     /// (its unpushed branch commit would be silently buried by a second fix on
