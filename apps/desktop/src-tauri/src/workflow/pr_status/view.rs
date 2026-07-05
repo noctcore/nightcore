@@ -13,18 +13,13 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use crate::task::Task;
-use crate::workflow::pr::{map_gh_failure, probe_gh, run_gh_bounded};
+use crate::git::gh::{run_gh_json, GhCall, PR_VIEW_FIELDS};
 
 /// Wall-clock bound on the read-only `gh pr view` spawns (status + the finalize
 /// re-verification). Tighter than the create/push bound — a view moves no data,
 /// so a black-holed GitHub should fail the refresh fast, not pin a blocking
 /// thread for two minutes.
 pub(super) const GH_VIEW_TIMEOUT: Duration = Duration::from_secs(60);
-
-/// The `--json` field list for `gh pr view` — the exact shared-contract set the
-/// status card renders.
-pub(super) const PR_VIEW_FIELDS: &str =
-    "number,url,state,isDraft,mergeable,mergeStateStatus,reviewDecision,baseRefName,headRefOid,statusCheckRollup";
 
 /// A point-in-time snapshot of a task's GitHub PR for the status card. All
 /// GitHub-vocabulary fields are plain strings passed through from `gh` (NO enum
@@ -196,21 +191,18 @@ pub(super) fn fetch_pr_view_with(
     number: u64,
     deadline: Duration,
 ) -> Result<GhPrView, String> {
-    probe_gh(binary, "install it to track pull requests")?;
     let number_arg = number.to_string();
-    let out = run_gh_bounded(
+    run_gh_json(GhCall {
         dir,
         binary,
-        &["pr", "view", &number_arg, "--json", PR_VIEW_FIELDS],
-        None,
+        args: &["pr", "view", &number_arg, "--json", PR_VIEW_FIELDS],
+        action: "install it to track pull requests",
+        subcmd: "pr view",
+        stdin: None,
         deadline,
-        "timed out reading the pull request from GitHub — check your network and try again",
-    )?;
-    if !out.status.success() {
-        return Err(map_gh_failure(binary, "pr view", &out));
-    }
-    serde_json::from_str(out.stdout.trim())
-        .map_err(|e| format!("`{binary} pr view` returned unparseable JSON: {e}"))
+        timeout_msg:
+            "timed out reading the pull request from GitHub — check your network and try again",
+    })
 }
 
 /// The task's recorded PR number, or a clear refusal — the shared precondition

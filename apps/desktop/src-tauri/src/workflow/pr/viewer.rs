@@ -16,7 +16,7 @@ use std::time::Duration;
 use serde_json::Value;
 use tauri::AppHandle;
 
-use super::gh::{probe_gh, run_gh_bounded, GH_BINARY};
+use crate::git::gh::{run_gh_checked, GhCall, GH_BINARY};
 use crate::workflow::merge::require_project;
 
 /// Wall-clock bound on the `gh api user` spawn. Tighter than the view/create
@@ -52,20 +52,21 @@ pub(super) fn fetch_viewer_login_with(
     binary: &str,
     deadline: Duration,
 ) -> Option<String> {
-    probe_gh(binary, "install it to identify the signed-in GitHub user").ok()?;
-    let out = run_gh_bounded(
+    // Fail-open: every error mode (missing gh, spawn, timeout, non-zero exit)
+    // collapses to `None` via `.ok()?` so no caller can surface an error for this
+    // cosmetic lookup.
+    let stdout = run_gh_checked(GhCall {
         dir,
         binary,
-        &["api", "user"],
-        None,
+        args: &["api", "user"],
+        action: "install it to identify the signed-in GitHub user",
+        subcmd: "api user",
+        stdin: None,
         deadline,
-        "timed out reading the signed-in GitHub user",
-    )
+        timeout_msg: "timed out reading the signed-in GitHub user",
+    })
     .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    parse_viewer_login(&out.stdout)
+    parse_viewer_login(&stdout)
 }
 
 /// The blocking body of [`viewer_login`]: serve the cache, else fetch and cache

@@ -10,7 +10,7 @@
 //!   formatting) via `gh api …/reviews --input -`, body on STDIN.
 //!
 //! Safety posture (the PR-arc rules, unchanged): every `gh` child bounded by a
-//! deadline via [`crate::workflow::pr::run_gh_bounded`]; `gh` is the seam and stores no
+//! deadline via [`crate::git::gh::run_gh_checked`]; `gh` is the seam and stores no
 //! tokens; `pr_number` is a `u64` (decimal, injection-safe); the review body + comment
 //! text is Nightcore-authored (our own findings) — trusted — so raw foreign diff text is
 //! never echoed back into a comment. `{owner}`/`{repo}` are `gh` placeholders resolved

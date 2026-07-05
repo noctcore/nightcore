@@ -11,6 +11,8 @@
 //! - [`parse`] — pure porcelain parsers (`--numstat`, `rev-list --left-right`,
 //!   `ls-files -z`, `status --porcelain`). No I/O, unit-tested in place.
 //! - [`run`] — the git subprocess runners built on `platform::git_command`.
+//! - [`gh`] — the `gh` (GitHub CLI) seam + the checked / JSON orchestration wrappers.
 
+pub(crate) mod gh;
 pub(crate) mod parse;
 pub(crate) mod run;

@@ -14,7 +14,7 @@ use crate::store::pr_review::PrReviewStore;
 use crate::store::TaskStore;
 use crate::task::now_ms;
 use crate::workflow::merge::require_project;
-use crate::workflow::pr::{map_gh_failure, probe_gh, run_gh_bounded, GhOutput, GH_BINARY};
+use crate::git::gh::{map_gh_failure, probe_gh, run_gh_bounded, GhOutput, GH_BINARY};
 
 /// The GitHub review verdict, mapped to the `gh` API `event` enum. The web sends the
 /// kebab form (`approve` / `request-changes` / `comment`); the uppercase `gh` forms are

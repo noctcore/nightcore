@@ -7,7 +7,7 @@ use tauri::AppHandle;
 #[cfg(test)]
 use ts_rs::TS;
 
-use super::gh::GH_BINARY;
+use crate::git::gh::GH_BINARY;
 use crate::workflow::merge::require_project;
 use crate::worktree;
 

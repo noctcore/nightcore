@@ -24,7 +24,6 @@
 mod capability;
 mod create;
 mod draft;
-mod gh;
 mod open;
 mod parse;
 mod viewer;
@@ -32,14 +31,15 @@ mod viewer;
 // Facade: preserve the historical `crate::workflow::pr::*` paths after the
 // god-file split so external call sites keep resolving unchanged — the
 // `#[tauri::command]` registrations in `lib.rs` (`pr_support`/`draft_pr_message`/
-// `create_pr_task`/`open_external`/`viewer_login`), the ts-rs imports in `contracts::ts_bindings`
-// (`PrSupport`/`PrDraft`), and the phase-2/3 siblings' `super::pr::{GH_BINARY,
-// run_gh_bounded, pr_in_flight}` seam. Glob re-exports mirror the
+// `create_pr_task`/`open_external`/`viewer_login`), the ts-rs imports in
+// `contracts::ts_bindings` (`PrSupport`/`PrDraft`), and the `pr_in_flight` PR-lease
+// guard the phase-2/3 siblings + merge consult. The `gh` seam moved OUT to
+// `crate::git::gh` (git + gh execution now share one home), so consumers import
+// it from there, not through this facade. Glob re-exports mirror the
 // `coordinator`/`sidecar` facades.
 pub(crate) use capability::*;
 pub(crate) use create::*;
 pub(crate) use draft::*;
-pub(crate) use gh::*;
 pub(crate) use open::*;
 pub(crate) use viewer::*;
 // `parse` is intra-`pr` only (consumed by `create`); no facade re-export.

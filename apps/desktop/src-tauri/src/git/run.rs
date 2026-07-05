@@ -8,8 +8,8 @@
 //! [`drain_and_wait`] is the ONE bounded-subprocess core shared by the three
 //! network/hang-prone runners that used to each re-implement the drained-pipe +
 //! deadline + kill dance: the git `git_with_deadline` here, the `gh` seam
-//! (`git::gh` / `workflow::pr::gh`), and the `claude -p` one-shot
-//! (`workflow::claude_oneshot`). It owns ONLY the drain/deadline/kill mechanics —
+//! (`git::gh`), and the `claude -p` one-shot (`workflow::claude_oneshot`). It owns
+//! ONLY the drain/deadline/kill mechanics —
 //! each caller keeps its own env-configured spawn (so the git-env chokepoint, the
 //! gh credential path, and claude's least-privilege arg building all stay
 //! bespoke) and its own outcome mapping.

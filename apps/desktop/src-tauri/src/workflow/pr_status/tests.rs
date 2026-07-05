@@ -15,7 +15,8 @@ use super::finalize::{
 use super::pull::{pull_base_ff_core, resolve_pull_base};
 use super::push::{check_push_preconditions, refuse_push_while_sibling_in_flight};
 use super::status::fetch_status_by_number;
-use super::view::{count_checks, fetch_pr_view_with, require_pr_number, GhPrView, PR_VIEW_FIELDS};
+use super::view::{count_checks, fetch_pr_view_with, require_pr_number, GhPrView};
+use crate::git::gh::PR_VIEW_FIELDS;
 use crate::store::TaskStore;
 use crate::task::{RunMode, Task, TaskStatus};
 use crate::workflow::merge::{acquire_root_lease, commit_in_flight, merge_in_flight, TaskLease};

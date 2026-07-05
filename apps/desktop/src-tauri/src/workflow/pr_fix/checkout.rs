@@ -24,7 +24,7 @@ use serde::Deserialize;
 
 use crate::store::TaskStore;
 use crate::task::TaskStatus;
-use crate::workflow::pr::{map_gh_failure, probe_gh, run_gh_bounded, GH_BINARY};
+use crate::git::gh::{run_gh_checked, GhCall, GH_BINARY};
 use crate::worktree::{self, validate_ref};
 
 /// Wall-clock bound on the `gh pr view` head-branch read. A single-object view
@@ -212,26 +212,25 @@ pub(super) fn fetch_pr_refs_with(
     pr_number: u64,
     deadline: Duration,
 ) -> Result<PrRefs, String> {
-    probe_gh(binary, "install it to check out the PR branch")?;
     let number_arg = pr_number.to_string();
-    let out = run_gh_bounded(
+    let stdout = run_gh_checked(GhCall {
         dir,
         binary,
-        &[
+        args: &[
             "pr",
             "view",
             &number_arg,
             "--json",
             "headRefName,baseRefName,isCrossRepository",
         ],
-        None,
+        action: "install it to check out the PR branch",
+        subcmd: "pr view",
+        stdin: None,
         deadline,
-        "timed out reading the pull request from GitHub — check your network and try again",
-    )?;
-    if !out.status.success() {
-        return Err(map_gh_failure(binary, "pr view", &out));
-    }
-    parse_pr_refs(&out.stdout)
+        timeout_msg:
+            "timed out reading the pull request from GitHub — check your network and try again",
+    })?;
+    parse_pr_refs(&stdout)
 }
 
 /// Parse the `gh pr view --json headRefName,baseRefName,isCrossRepository`
