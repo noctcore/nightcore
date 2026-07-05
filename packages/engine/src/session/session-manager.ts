@@ -150,34 +150,14 @@ export class SessionManager {
       return;
     }
     // The `runId`-keyed scan command families (analysis / harness / scorecard /
-    // pr-review) belong to the ScanRouter; it owns the dedicated managers, each of
-    // which fans out its own read-only passes and emits its `<family>-*` events.
+    // pr-review / issue-validation) belong to the ScanRouter; it owns the dedicated
+    // managers, each of which runs its own read-only session(s) and emits its
+    // `<family>-*` events. Issue-triage validation is a single-pass member of this
+    // set (slice 2/5 wired its engine manager into the router), so narrowing it here
+    // keeps it out of the `command.sessionId` lookup below (it carries a `runId`, not
+    // a `sessionId`).
     if (this.scans.handles(command)) {
       this.scans.dispatch(command);
-      return;
-    }
-    // Issue Triage validation (`start-/cancel-issue-validation`) is a `runId`-keyed
-    // read-only session family whose engine manager lands in a later Issue Triage
-    // slice. Its contracts ship first (slice 1/5), so the command union already
-    // carries these members — but like the scan families above they are NOT
-    // session-id-keyed, so narrow them out here before the `command.sessionId`
-    // lookup below (which every remaining command has). Inert until the manager
-    // exists: logged, then dropped.
-    //
-    // TODO(issue-triage slice 2/5 — engine manager): replace this drop with a
-    // `this.issueValidations.dispatch(command)` delegation to the real manager (the
-    // sibling of `ScanRouter`), which will emit the `issue-validation-*` events. Keep
-    // the log-and-drop-never-throw contract for any command that reaches the engine
-    // before its manager is wired — no UI emits these in slice 1/5, so dropping is
-    // safe and the drop-not-throw behavior is locked by a session-manager test.
-    if (
-      command.type === 'start-issue-validation' ||
-      command.type === 'cancel-issue-validation'
-    ) {
-      this.logger?.debug('issue-validation command received before engine wiring', {
-        type: command.type,
-        runId: command.runId,
-      });
       return;
     }
 

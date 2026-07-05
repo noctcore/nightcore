@@ -645,8 +645,9 @@ describe('SessionManager.handleQuery — SDK session store', () => {
   });
 });
 
-describe('SessionManager issue-validation commands (inert pre-manager)', () => {
-  /** Minimal Logger whose `debug` is a spy; `child` returns itself. */
+describe('SessionManager issue-validation commands (routed to the scan router)', () => {
+  /** Minimal Logger whose `debug` is a spy; `child` returns itself so the
+   *  ScanRouter's `logger.child('issue-triage')` shares the same recorder. */
   function makeDebugSpyLogger() {
     const debug = mock(() => {});
     const logger = {
@@ -661,50 +662,54 @@ describe('SessionManager issue-validation commands (inert pre-manager)', () => {
     return { logger, debug };
   }
 
-  test('drops start-/cancel-issue-validation: never throws, spawns no session, debug-logged', async () => {
+  test('cancel-issue-validation is caught by the scan router before the sessionId lookup: safe no-op, no interactive session, not mislogged as an unknown session, never throws', async () => {
     const { logger, debug } = makeDebugSpyLogger();
     const manager = new SessionManager(makeConfig(), logger);
 
-    // Mirrors the 'unknown session id is dropped, not thrown' case: the runId-keyed
-    // issue-validation family is narrowed out before the sessionId lookup, logged,
-    // and dropped — it must resolve to undefined and never spawn a runner.
-    await expect(
-      manager.dispatch({
-        type: 'start-issue-validation',
-        runId: 'run-iv1',
-        projectPath: '/proj',
-        issueNumber: 128,
-        issueTitle: 'Crash when opening an empty project',
-        issueBody: 'white screen with no projects',
-        issueAuthor: 'octocat',
-      }),
-    ).resolves.toBeUndefined();
+    // Slice 2/5 wired the Issue-triage engine manager into the ScanRouter, so the
+    // runId-keyed `*-issue-validation` family is now recognized by `scans.handles()`
+    // and delegated to that manager BEFORE the `command.sessionId` lookup (these carry
+    // a `runId`, not a `sessionId`). A cancel for a run that isn't active is a safe
+    // no-op: it must resolve to undefined and spawn no interactive session. (The full
+    // start → verdict flow is covered hermetically in `scans/issue-triage/manager.test.ts`
+    // with a fake runner — a real start dispatched at THIS level would spawn an SDK
+    // session, which is exactly what the supervisor must not do.)
     await expect(
       manager.dispatch({ type: 'cancel-issue-validation', runId: 'run-iv1' }),
     ).resolves.toBeUndefined();
 
-    // No runner was created for either command.
-    expect(manager.activeCount).toBe(0);
+    // Routed, not dropped: because the scan-router branch swallowed it first, the
+    // `command for unknown session dropped` debug (the sessionId-lookup miss path)
+    // must NOT have fired for this runId-keyed command.
+    const mislogged = debug.mock.calls.find(
+      (c) => typeof c[0] === 'string' && c[0].includes('unknown session'),
+    );
+    expect(mislogged).toBeUndefined();
 
-    // Both were observably logged (log-and-drop, not a silent black hole).
-    const startCall = debug.mock.calls.find(
+    // No interactive session was spawned for the runId-keyed command.
+    expect(manager.activeCount).toBe(0);
+  });
+
+  test('a genuinely session-keyed command for a missing session DOES reach the sessionId lookup and is dropped — pinning the precedence the cancel case relies on', async () => {
+    const { logger, debug } = makeDebugSpyLogger();
+    const manager = new SessionManager(makeConfig(), logger);
+
+    // Contrast that keeps the assertion above honest: a `sessionId`-keyed command for
+    // a session that does not exist is NOT caught by `scans.handles()`, so it falls
+    // through to the lookup and is logged as dropped. This proves the cancel case
+    // skipped that branch by being routed early — not because the log simply never fires.
+    await expect(
+      manager.dispatch({ type: 'interrupt', sessionId: 9999 }),
+    ).resolves.toBeUndefined();
+
+    const droppedLog = debug.mock.calls.find(
       (c) =>
         typeof c[0] === 'string' &&
-        c[0].includes('issue-validation command') &&
-        (c[1] as { type?: string })?.type === 'start-issue-validation',
+        c[0].includes('unknown session') &&
+        (c[1] as { sessionId?: number })?.sessionId === 9999,
     );
-    expect(startCall).toBeDefined();
-    expect(startCall?.[1]).toMatchObject({
-      type: 'start-issue-validation',
-      runId: 'run-iv1',
-    });
-    const cancelCall = debug.mock.calls.find(
-      (c) =>
-        typeof c[0] === 'string' &&
-        c[0].includes('issue-validation command') &&
-        (c[1] as { type?: string })?.type === 'cancel-issue-validation',
-    );
-    expect(cancelCall).toBeDefined();
+    expect(droppedLog).toBeDefined();
+    expect(manager.activeCount).toBe(0);
   });
 });
 

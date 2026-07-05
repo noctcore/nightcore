@@ -1,14 +1,15 @@
 /**
- * The scan-orchestration collaborator: owns the four batch-scan managers
- * (Insight / Harness / Scorecard / PR-review) and routes their `runId`-keyed
- * `start-*` / `cancel-*` command families to the right manager. Split out of
- * {@link SessionManager} so the session supervisor owns interactive session
+ * The scan-orchestration collaborator: owns the five run-based analysis managers
+ * (Insight / Harness / Scorecard / PR-review / Issue-triage) and routes their
+ * `runId`-keyed `start-*` / `cancel-*` command families to the right manager. Split
+ * out of {@link SessionManager} so the session supervisor owns interactive session
  * lifecycle only — adding a scan family (or changing scan dispatch) touches this
  * router, not the supervisor.
  *
- * Every scan family is keyed by `runId` (not a session id), fans out its own
- * internal read-only passes, and emits its own `<family>-*` event stream through
- * the shared `emit` sink the constructor is handed.
+ * Every scan family is keyed by `runId` (not a session id), runs its own read-only
+ * session(s) — the four batch scans fan out multiple passes; Issue-triage runs a
+ * single validation pass — and emits its own `<family>-*` event stream through the
+ * shared `emit` sink the constructor is handed.
  */
 import type {
   Config,
@@ -19,6 +20,7 @@ import type { Logger } from '@nightcore/shared';
 
 import { HarnessManager } from './harness/manager.js';
 import { AnalysisManager } from './insight/manager.js';
+import { IssueTriageScanManager } from './issue-triage/manager.js';
 import { PrReviewScanManager } from './pr-review/manager.js';
 import { ScorecardManager } from './scorecard/manager.js';
 
@@ -35,7 +37,9 @@ export type ScanCommand = Extract<
       | 'start-scorecard'
       | 'cancel-scorecard'
       | 'start-pr-review'
-      | 'cancel-pr-review';
+      | 'cancel-pr-review'
+      | 'start-issue-validation'
+      | 'cancel-issue-validation';
   }
 >;
 
@@ -53,6 +57,7 @@ export class ScanRouter {
   private readonly harness: HarnessManager;
   private readonly scorecard: ScorecardManager;
   private readonly prReview: PrReviewScanManager;
+  private readonly issueTriage: IssueTriageScanManager;
 
   constructor(options: ScanRouterOptions) {
     const { config, apiKeyFallback, emit, logger } = options;
@@ -80,6 +85,12 @@ export class ScanRouter {
       emit,
       ...(logger !== undefined ? { logger: logger.child('pr-review') } : {}),
     });
+    this.issueTriage = new IssueTriageScanManager({
+      config,
+      apiKeyFallback,
+      emit,
+      ...(logger !== undefined ? { logger: logger.child('issue-triage') } : {}),
+    });
   }
 
   /** Whether `command` belongs to a scan family this router owns. Narrows the type
@@ -94,6 +105,8 @@ export class ScanRouter {
       case 'cancel-scorecard':
       case 'start-pr-review':
       case 'cancel-pr-review':
+      case 'start-issue-validation':
+      case 'cancel-issue-validation':
         return true;
       default:
         return false;
@@ -104,9 +117,10 @@ export class ScanRouter {
    * Route a scan command to its dedicated manager. Precondition: `handles(command)`
    * — the exhaustive switch mirrors the family list so the two can never drift.
    *
-   * Insight analysis, Harness convention scans, the Readiness Scorecard, and PR
-   * Review are each keyed by `runId` (not a session id): the owning manager fans
-   * out its own read-only passes and emits its `<family>-*` event family.
+   * Insight analysis, Harness convention scans, the Readiness Scorecard, PR Review,
+   * and Issue-triage validation are each keyed by `runId` (not a session id): the
+   * owning manager runs its own read-only session(s) and emits its `<family>-*` event
+   * family (the first four fan out multiple passes; Issue-triage runs a single pass).
    */
   dispatch(command: ScanCommand): void {
     switch (command.type) {
@@ -133,6 +147,12 @@ export class ScanRouter {
         return;
       case 'cancel-pr-review':
         this.prReview.cancel(command.runId);
+        return;
+      case 'start-issue-validation':
+        this.issueTriage.start(command);
+        return;
+      case 'cancel-issue-validation':
+        this.issueTriage.cancel(command.runId);
         return;
     }
   }
