@@ -456,4 +456,49 @@ mod tests {
              contracts task_kind enum + as_wire(); one site was missed."
         );
     }
+
+    /// Single-source guard for the `nc:*` Tauri event channel names (issue #44).
+    ///
+    /// Channel names are authored ONCE — the `@nightcore/contracts` `CHANNELS`
+    /// registry — and emitted into [`generated::NIGHTCORE_CHANNELS`](super::generated)
+    /// by `tools/codegen/gen-rust-contracts.ts` (so a rename in the source reds the
+    /// `codegen-drift` gate). The runtime consts, however, are scattered across five
+    /// modules (`sidecar`, `store/task`, `commands`, `orchestration`, `workflow/pr_fix`)
+    /// because each lives beside its emitter. This test maps every registry symbol to
+    /// its runtime const and asserts the whole set agrees with the generated registry,
+    /// so a channel renamed, added, or removed on ONLY one tier fails here. The web
+    /// tier can't drift — its bridge subscribes via `CHANNELS.*` directly.
+    #[test]
+    fn channel_consts_match_generated_registry() {
+        use std::collections::BTreeMap;
+
+        let registry: BTreeMap<&str, &str> = NIGHTCORE_CHANNELS.iter().copied().collect();
+
+        // Every runtime `*_EVENT` const, keyed by its `CHANNELS` registry symbol.
+        let runtime: BTreeMap<&str, &str> = [
+            ("session", crate::sidecar::SESSION_EVENT),
+            ("permission", crate::sidecar::PERMISSION_EVENT),
+            ("question", crate::sidecar::QUESTION_EVENT),
+            ("insight", crate::sidecar::INSIGHT_EVENT),
+            ("harness", crate::sidecar::HARNESS_EVENT),
+            ("scorecard", crate::sidecar::SCORECARD_EVENT),
+            ("prReview", crate::sidecar::PRREVIEW_EVENT),
+            ("issueTriage", crate::sidecar::ISSUE_TRIAGE_EVENT),
+            ("task", crate::task::TASK_EVENT),
+            ("project", crate::commands::project::PROJECT_EVENT),
+            ("loop", crate::orchestration::coordinator::LOOP_EVENT),
+            ("prFix", crate::workflow::pr_fix::PRFIX_EVENT),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(
+            runtime, registry,
+            "the scattered Rust nc:* channel consts drifted from the \
+             @nightcore/contracts CHANNELS registry (generated::NIGHTCORE_CHANNELS): a \
+             channel was renamed, added, or removed on only one tier. Update CHANNELS, \
+             run `bun run codegen:contracts`, and fix the matching *_EVENT const so the \
+             registry, the runtime consts, and the web bridge all agree."
+        );
+    }
 }

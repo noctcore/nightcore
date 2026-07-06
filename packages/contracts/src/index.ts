@@ -1,5 +1,6 @@
 // @nightcore/contracts — the spine. Zod schemas + inferred types for every
 // cross-boundary shape in the harness. Depends on nothing app-specific.
+export * from './channels.js';
 export * from './commands.js';
 export * from './config.js';
 export * from './events.js';

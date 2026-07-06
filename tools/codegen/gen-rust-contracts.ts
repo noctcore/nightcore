@@ -41,6 +41,7 @@ import { z } from 'zod';
 // pass. Bun runs the contract TS directly and resolves the internal `./*.js`
 // specifiers to their `.ts` sources, so the relative source entry works as-is.
 import {
+  CHANNELS,
   NightcoreEventSchema,
   SurfaceCommandSchema,
   SurfaceQuerySchema,
@@ -744,6 +745,36 @@ function emitTaggedUnion(
 }
 
 // ---------------------------------------------------------------------------
+// nc:* channel registry
+// ---------------------------------------------------------------------------
+
+/** The `@nightcore/contracts` `CHANNELS` registry as a stable, sorted list of
+ *  `[registrySymbol, wireName]` pairs. Emitted into `generated.rs` as
+ *  `NIGHTCORE_CHANNELS`; the Rust `contracts/mod.rs` conformance test asserts each
+ *  scattered `*_EVENT` const equals its entry, so a channel renamed on either tier
+ *  reds `cargo test`. Exported for the codegen unit test. */
+export function buildChannels(): Array<[string, string]> {
+  return Object.entries(CHANNELS).sort(([a], [b]) => a.localeCompare(b));
+}
+
+/** Render the `NIGHTCORE_CHANNELS` const from the sorted channel pairs. */
+function renderChannels(entries: Array<[string, string]>): string {
+  const rows = entries
+    .map(([sym, name]) => `    (${JSON.stringify(sym)}, ${JSON.stringify(name)}),`)
+    .join('\n');
+  return [
+    '/// Every `nc:*` Tauri event channel name, keyed by its `@nightcore/contracts`',
+    '/// `CHANNELS` registry symbol — the single source. The conformance test in',
+    '/// `contracts/mod.rs` asserts each scattered Rust `*_EVENT` const equals its',
+    '/// entry here, so a channel renamed/added/removed on either tier fails',
+    '/// `cargo test` (and a rename in the zod source also reds `codegen-drift`).',
+    'pub const NIGHTCORE_CHANNELS: &[(&str, &str)] = &[',
+    rows,
+    '];',
+  ].join('\n');
+}
+
+// ---------------------------------------------------------------------------
 // Top-level emit
 // ---------------------------------------------------------------------------
 
@@ -804,6 +835,11 @@ function emitRust(): string {
     '// === Referenced enums and nested structs ===',
     '',
     supporting,
+    '',
+    '// === Event channel registry (nc:*) — single-sourced from `CHANNELS`; the',
+    '//     conformance test in `contracts/mod.rs` ties every `*_EVENT` const to it ===',
+    '',
+    renderChannels(buildChannels()),
     '',
   ].join('\n');
 
