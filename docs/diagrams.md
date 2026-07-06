@@ -198,9 +198,10 @@ flowchart TD
 | Web IPC boundary | `apps/web/src/lib/bridge.ts` |
 | Rust core / orchestration | `apps/desktop/src-tauri/src/{main.rs, lib.rs, orchestration/*, store/*, workflow/*}` |
 | Sidecar bridge | `apps/sidecar/src/index.ts` |
-| Supervisor & runner | `packages/engine/src/session/{session-manager,session-runner}.ts` |
-| SDK boundary | `packages/engine/src/session/sdk-adapter.ts` |
-| Permission & risk | `packages/engine/src/policy/{permission-layer,tool-registry}.ts` |
+| Supervisor | `packages/engine/src/session/session-manager.ts` |
+| Claude provider (SDK boundary, runner) | `packages/engine/src/providers/claude/{claude-agent-provider,session-runner,sdk-adapter}.ts` |
+| Provider seam (neutral) | `packages/engine/src/providers/agent-provider.ts` |
+| Permission & risk | `packages/engine/src/providers/claude/permission-layer.ts`, `packages/engine/src/policy/tool-registry.ts` |
 | Spine (unions) | `packages/contracts/src/{events,commands,config}.ts` |
 | zod → Rust codegen | `tools/codegen/gen-rust-contracts.ts` → `src-tauri/src/contracts/generated.rs` |
 | Rust → web codegen | ts-rs (`cargo test`) → `apps/web/src/lib/generated/` |

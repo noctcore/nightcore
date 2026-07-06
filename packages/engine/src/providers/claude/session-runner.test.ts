@@ -1,5 +1,5 @@
 /// <reference types="bun" />
-import { describe, expect, mock, test } from 'bun:test';
+import { afterAll, describe, expect, mock, test } from 'bun:test';
 
 import type {
   McpServerEntry,
@@ -7,6 +7,16 @@ import type {
   PermissionPolicy,
   SettingSource,
 } from '@nightcore/contracts';
+
+// bun's `mock.module` is a PROCESS-GLOBAL, permanent registry override with no
+// built-in un-mock, so a partial stub here would leak into any later test file
+// that imports the real module (notably `resolve-claude-binary.test.ts`, which
+// asserts the real memoization). Capture the real module before stubbing and
+// re-register it in afterAll so this file's stub is scoped to this file.
+const realResolveClaudeBinary = { ...(await import('./resolve-claude-binary.js')) };
+afterAll(() => {
+  mock.module('./resolve-claude-binary.js', () => realResolveClaudeBinary);
+});
 
 /**
  * The Claude CLI is a REQUIRED, user-installed prerequisite — Nightcore does not

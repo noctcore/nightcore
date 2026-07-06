@@ -2,7 +2,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 
 import type { Config, NightcoreEvent } from '@nightcore/contracts';
 
@@ -94,7 +94,20 @@ mock.module('@anthropic-ai/claude-agent-sdk', () => ({
 // seam. `checkClaudeCliVersion` is stubbed to `undefined` too: its real body
 // `spawnSync`s `<binary> --version`, so leaving it live would spawn a real
 // subprocess — this keeps the suite fully hermetic (no CLI, no child process).
-mock.module('./resolve-claude-binary.js', () => ({
+// bun's `mock.module` is a permanent, process-global override; capture the real
+// module first and re-register it in afterAll so this partial stub can't leak
+// into `providers/claude/resolve-claude-binary.test.ts` (which asserts the real
+// memoization) when it runs after this file.
+const realResolveClaudeBinary = {
+  ...(await import('../providers/claude/resolve-claude-binary.js')),
+};
+afterAll(() => {
+  mock.module(
+    '../providers/claude/resolve-claude-binary.js',
+    () => realResolveClaudeBinary,
+  );
+});
+mock.module('../providers/claude/resolve-claude-binary.js', () => ({
   resolveClaudeBinary: () => '/usr/local/bin/claude',
   checkClaudeCliVersion: () => undefined,
 }));

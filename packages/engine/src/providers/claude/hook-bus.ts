@@ -12,14 +12,14 @@ import {
   compileHarnessPolicy,
   evaluateHarnessPolicy,
   type HarnessPolicyVerdict,
-} from './harness-policy.js';
+} from '../../policy/harness-policy.js';
 import {
   DEFAULT_DESTRUCTIVE_RULES,
   evaluateToolDeny,
   type ToolDenyRule,
   type ToolDenyVerdict,
-} from './tool-deny-policy.js';
-import { evaluateWorkspaceConfinement } from './workspace-confinement.js';
+} from '../../policy/tool-deny-policy.js';
+import { evaluateWorkspaceConfinement } from '../../policy/workspace-confinement.js';
 
 /**
  * Registers a small set of SDK hooks and re-emits them to local observers.

@@ -1,9 +1,9 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
 
-import type { Query } from '../session/sdk-adapter.js';
-import type { SessionRunner } from '../session/session-runner.js';
 import { ProviderConfigReader } from './provider-config.js';
+import type { Query } from './sdk-adapter.js';
+import type { SessionRunner } from './session-runner.js';
 
 /**
  * Unit-test the `ProviderConfigReader` mapping + per-section tri-state WITHOUT a

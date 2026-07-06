@@ -22,12 +22,12 @@ import type {
 import { createMonotonicCounter, type Logger } from '@nightcore/shared';
 import { SessionStore } from '@nightcore/storage';
 
-import { ProviderConfigReader } from '../providers/provider-config.js';
+import { resolveKindPreset } from '../providers/claude/kind-presets.js';
+import { ProviderConfigReader } from '../providers/claude/provider-config.js';
+import type { ModelInfo } from '../providers/claude/sdk-adapter.js';
+import { type SDKSessionInfo, SessionApi, type SessionMessage } from '../providers/claude/session-api.js';
+import { SessionRunner } from '../providers/claude/session-runner.js';
 import { ScanRouter } from '../scans/scan-router.js';
-import { resolveKindPreset } from './kind-presets.js';
-import type { ModelInfo } from './sdk-adapter.js';
-import { type SDKSessionInfo, SessionApi, type SessionMessage } from './session-api.js';
-import { SessionRunner } from './session-runner.js';
 
 /**
  * Map an SDK `ModelInfo` to a contract `ModelDescriptor`. Pure so it can be

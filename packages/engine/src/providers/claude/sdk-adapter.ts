@@ -43,7 +43,7 @@ import type {
   TaskKind,
 } from '@nightcore/contracts';
 
-import { getBoolean, getObject, getString } from '../util/field-extract.js';
+import { getBoolean, getObject, getString } from '../../util/field-extract.js';
 import { parseSubtasks, subtasksFromStructuredOutput } from './decompose.js';
 
 export type {

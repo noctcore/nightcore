@@ -13,10 +13,11 @@ import type {
 } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
 
-import { HookBus } from '../policy/hook-bus.js';
-import { type ApprovalDecision,PermissionLayer } from '../policy/permission-layer.js';
-import { ASK_USER_QUESTION_DIALOG,QuestionLayer } from '../policy/question-layer.js';
-import { ToolRegistry } from '../policy/tool-registry.js';
+import { ToolRegistry } from '../../policy/tool-registry.js';
+import { SessionLedger } from '../../session/session-ledger.js';
+import { HookBus } from './hook-bus.js';
+import { type ApprovalDecision,PermissionLayer } from './permission-layer.js';
+import { ASK_USER_QUESTION_DIALOG,QuestionLayer } from './question-layer.js';
 import { checkClaudeCliVersion, resolveClaudeBinary } from './resolve-claude-binary.js';
 import { prepareWriteSandbox } from './sandbox.js';
 import {
@@ -34,7 +35,6 @@ import {
   type SlashCommand,
   translateMessage,
 } from './sdk-adapter.js';
-import { SessionLedger } from './session-ledger.js';
 import {
   buildUserMessageContent,
   SessionOptionsBuilder,

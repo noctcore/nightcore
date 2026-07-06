@@ -22,7 +22,7 @@
 import type { ProposedSubtask } from '@nightcore/contracts';
 import { ProposedSubtaskSchema } from '@nightcore/contracts';
 
-import { extractJson, toRawArray } from '../util/json-extract.js';
+import { extractJson, toRawArray } from '../../util/json-extract.js';
 
 export type { ProposedSubtask };
 

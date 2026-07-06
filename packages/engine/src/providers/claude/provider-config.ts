@@ -26,14 +26,14 @@ import type {
 } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
 
+import { getString } from '../../util/field-extract.js';
 import type {
   AgentInfo,
   McpServerStatus,
   SDKControlInitializeResponse,
   SlashCommand,
-} from '../session/sdk-adapter.js';
-import type { SessionRunner } from '../session/session-runner.js';
-import { getString } from '../util/field-extract.js';
+} from './sdk-adapter.js';
+import type { SessionRunner } from './session-runner.js';
 
 /** Today's only provider. A second provider supplies its own id/label and may
  *  return `unsupported` sections — the inspector renders them with zero new

@@ -1,5 +1,5 @@
 /// <reference types="bun" />
-import { describe, expect, mock, test } from 'bun:test';
+import { afterAll, describe, expect, mock, test } from 'bun:test';
 
 import type {
   PermissionMode,
@@ -11,7 +11,15 @@ import type {
  * `SessionOptionsBuilder.base()` calls `resolveClaudeBinary()`; stub it so these
  * tests assert the option composition without depending on a `claude` being
  * installed on the test machine.
+ *
+ * bun's `mock.module` is a permanent, process-global override; capture the real
+ * module first and re-register it in afterAll so this partial stub can't leak
+ * into `resolve-claude-binary.test.ts` (which asserts the real memoization).
  */
+const realResolveClaudeBinary = { ...(await import('./resolve-claude-binary.js')) };
+afterAll(() => {
+  mock.module('./resolve-claude-binary.js', () => realResolveClaudeBinary);
+});
 let resolvedClaudePath: string | undefined;
 mock.module('./resolve-claude-binary.js', () => ({
   resolveClaudeBinary: () => resolvedClaudePath,
@@ -19,7 +27,7 @@ mock.module('./resolve-claude-binary.js', () => ({
 
 // Imported AFTER the mock is registered so the builder picks up the stub.
 const { SessionOptionsBuilder } = await import('./session-options.js');
-const { ASK_USER_QUESTION_DIALOG } = await import('../policy/question-layer.js');
+const { ASK_USER_QUESTION_DIALOG } = await import('./question-layer.js');
 type SessionRunnerConfig = import('./session-options.js').SessionRunnerConfig;
 type SessionRunOptionsRuntime =
   import('./session-options.js').SessionRunOptionsRuntime;

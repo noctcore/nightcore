@@ -31,7 +31,7 @@ import type { Logger } from '@nightcore/shared';
 import {
   SessionRunner,
   type SessionRunnerConfig,
-} from '../../session/session-runner.js';
+} from '../../providers/claude/session-runner.js';
 import { buildRepoInventory } from './inventory.js';
 import { makeHeartbeat } from './observability.js';
 import { runPool } from './pool.js';
