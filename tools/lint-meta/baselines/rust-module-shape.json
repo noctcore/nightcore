@@ -1,9 +1,1 @@
-{
-  "manifest:apps/desktop/src-tauri/src/orchestration/coordinator/mod.rs": 14,
-  "manifest:apps/desktop/src-tauri/src/sidecar/mod.rs": 8,
-  "manifest:apps/desktop/src-tauri/src/store/mod.rs": 9,
-  "manifest:apps/desktop/src-tauri/src/workflow/issue_triage/mod.rs": 19,
-  "size:apps/desktop/src-tauri/src/analysis/repo_map.rs": 636,
-  "size:apps/desktop/src-tauri/src/sidecar/issue_triage.rs": 425,
-  "size:apps/desktop/src-tauri/src/workflow/pr_fix/command.rs": 465
-}
+{}
