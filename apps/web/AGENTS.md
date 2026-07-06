@@ -9,6 +9,7 @@ Guardrails enforced by `@nightcore/eslint-plugin` (scoped in the root `eslint.co
 - `components/ui/**` is the ONLY exemption: stateless single-element shadcn primitives are flat PascalCase files. A composite `ui` widget with its own types/state gets its own folder and the full sibling set.
 - State lives in the colocated `.hooks.ts`, never in the component body (`nightcore/no-state-in-component-body`).
 - A component file stays a thin shell: the per-file hook budget is capped (`nightcore/max-hooks-per-file`) — lift extra state/effects into the colocated `.hooks.ts` or a child component.
+- File size is governed by TWO coupled caps — never "fix" one without the other: lint-meta `web-file-size-ratchet` caps every web source at 400 raw lines (today's offenders frozen in `tools/lint-meta/baselines/web-file-size-ratchet.json`, a one-way shrinking ratchet), and ESLint core `max-lines` at 500 gives in-editor feedback on component `.tsx` + `.hooks.ts` files (7 pre-existing offenders carved out at a frozen 1400 in `eslint.config.mjs`). New files never join the baseline or the carve-out; a refactor that shrinks an offender under the cap must also delete its baseline/carve-out entry.
 
 ## Feature isolation & layering
 - A component in one feature folder MUST NOT import another feature's internals (`nightcore/no-cross-feature-imports`). Shared code goes to `@/lib`, `@/hooks`, or `components/ui`. Only the `app` composition root may cross feature boundaries.

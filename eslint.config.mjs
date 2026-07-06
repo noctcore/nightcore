@@ -230,6 +230,53 @@ export default tseslint.config(
       'nightcore/no-cross-feature-imports': 'off',
     },
   },
+  // File-size governance (issue #50) — the in-editor half of a two-cap split:
+  //   * ESLint core `max-lines` at 500 (HERE) = blunt feedback while typing;
+  //   * lint-meta `web-file-size-ratchet` at 400 (ciCritical, baselined) = the
+  //     tightening story for ALL web sources.
+  // The two caps move together — never "fix" one without the other. Phase-in is
+  // a freeze-at-worst carve-out block (below) + the committed ratchet baseline,
+  // NEVER 'warn' (`no-warn-severity` is ciCritical).
+  {
+    files: ['apps/web/src/components/**/*.tsx'],
+    ignores: ['apps/web/src/components/**/*.{stories,test}.tsx'],
+    rules: {
+      'max-lines': [
+        'error',
+        { max: 500, skipBlankLines: false, skipComments: false },
+      ],
+    },
+  },
+  {
+    files: ['apps/web/src/**/*.hooks.ts'],
+    rules: {
+      'max-lines': [
+        'error',
+        { max: 500, skipBlankLines: false, skipComments: false },
+      ],
+    },
+  },
+  // Freeze-at-worst carve-out: the 7 pre-existing offenders may not grow past
+  // 1400 lines (worst today: PrReviewView.hooks.ts at ~1300). Each refactor
+  // that lands deletes its file from this list AND its
+  // baselines/web-file-size-ratchet.json entry — the list only shrinks.
+  {
+    files: [
+      'apps/web/src/components/app/AppShell/AppShell.hooks.ts',
+      'apps/web/src/components/board/TaskDetail/TaskDetail.tsx',
+      'apps/web/src/components/harness/HarnessView/HarnessView.hooks.ts',
+      'apps/web/src/components/insight/InsightView/InsightView.hooks.ts',
+      'apps/web/src/components/issues/IssueTriageView/IssueTriageView.hooks.ts',
+      'apps/web/src/components/prreview/PrReviewView/PrReviewView.hooks.ts',
+      'apps/web/src/components/settings/SettingsView/SettingsView.tsx',
+    ],
+    rules: {
+      'max-lines': [
+        'error',
+        { max: 1400, skipBlankLines: false, skipComments: false },
+      ],
+    },
+  },
   // Accessibility gate (a11y). Enforces accessible-name, keyboard-handler, and
   // role/ARIA invariants on the React surface in CI — so a future raw clickable
   // div, an unlabelled control, or a custom interactive missing keyboard support

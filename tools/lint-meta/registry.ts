@@ -14,6 +14,7 @@ import { scanFamilyParityRule } from './rules/scan-family-parity';
 import { testRunnerSegregationRule } from './rules/test-runner-segregation';
 import { testWorkspaceEnrollmentRule } from './rules/test-workspace-enrollment';
 import { uiPrimitiveShapeRule } from './rules/ui-primitive-shape';
+import { webFileSizeRatchetRule } from './rules/web-file-size-ratchet';
 import { workspaceGraphParityRule } from './rules/workspace-graph-parity';
 import type { IMetaRule } from './types';
 
@@ -34,6 +35,7 @@ export const META_RULES: IMetaRule[] = [
   agentsDocPresenceRule,
   uiPrimitiveShapeRule,
   scanFamilyParityRule,
+  webFileSizeRatchetRule,
   rustModuleShapeRule,
   rustLayerRankRule,
   rustCommandPlacementRule,
