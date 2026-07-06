@@ -9,6 +9,7 @@ export * from './insight.js';
 export * from './issue-triage.js';
 export * from './models.js';
 export * from './pr-review.js';
+export * from './provider.js';
 export * from './provider-config.js';
 export * from './scorecard.js';
 export * from './session.js';

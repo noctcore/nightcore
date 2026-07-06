@@ -414,6 +414,16 @@ const ENUM_NAMES: Record<string, string> = {
   'high|medium|low': 'IssueConfidence',
   'trivial|simple|moderate|complex|very_complex': 'IssueComplexity',
   'wait_for_merge|pr_needs_work|no_pr': 'IssuePrRecommendation',
+  // Provider abstraction (issue #18, Phase 0) — the agent-provider capability
+  // contract's enums. FORWARD-DECLARATIONS: `ProviderCapabilities` is not yet wire
+  // reachable (no command/event/query references it), so the emitter does not walk
+  // these value-sets and `generated.rs` carries no `AutonomyLevel`/`CostTelemetry`
+  // yet. Pre-registering the canonical Rust names here (per the house rule: adding
+  // an enum touches zod + Rust + ENUM_NAMES) means a later wiring phase emits them
+  // without a rename. `AutonomyLevel` is the promoted settings-layer vocabulary
+  // (distinct value-set from the SDK `PermissionMode` above, so no collision).
+  'bypass|auto-accept|ask|plan': 'AutonomyLevel',
+  'full|tokens-only|none': 'CostTelemetry',
 };
 
 /** Guard the {@link ENUM_NAMES} registry: it must be an INJECTION — each canonical
