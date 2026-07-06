@@ -22,7 +22,11 @@ import type {
   StartSessionParams,
 } from '../agent-provider.js';
 import { assertHooksInvariant } from '../agent-provider.js';
-import { CLAUDE_CAPABILITIES, permissionModeToAutonomy } from './capabilities.js';
+import {
+  autonomyToPermissionMode,
+  CLAUDE_CAPABILITIES,
+  permissionModeToAutonomy,
+} from './capabilities.js';
 import { resolveKindPreset } from './kind-presets.js';
 import type { SessionRunnerConfig } from './session-options.js';
 import { SessionRunner } from './session-runner.js';
@@ -42,11 +46,9 @@ export class ClaudeAgentProvider implements AgentProvider {
    *  throws today — the PreToolUse confinement is always enforceable — but the check
    *  runs the real path so a future degraded provider is caught at the same seam. */
   preflight(request: PreflightRequest): void {
-    assertHooksInvariant(
-      this.capabilities(),
-      permissionModeToAutonomy(request.permissionMode),
-      { osSandboxed: request.osSandboxed },
-    );
+    assertHooksInvariant(this.capabilities(), request.autonomy, {
+      osSandboxed: request.osSandboxed,
+    });
   }
 
   startSession(
@@ -57,18 +59,22 @@ export class ClaudeAgentProvider implements AgentProvider {
     // Resolve the task kind to its agent preset (system prompt + tool restrictions +
     // a DEFAULT permission mode). Absent kind ⇒ `build` ⇒ an empty preset.
     const preset = resolveKindPreset(params.kind);
-    // Permission-mode precedence: an explicit command override wins, then the kind's
-    // default, then the provider's configured session default.
+    // Autonomy precedence: an explicit command override (neutral vocabulary, lowered
+    // to the SDK mode HERE at the provider boundary) wins, then the kind's default,
+    // then the provider's configured session default (both already SDK modes).
     const permissionMode =
-      params.permissionModeOverride ??
+      (params.autonomyOverride !== undefined
+        ? autonomyToPermissionMode(params.autonomyOverride)
+        : undefined) ??
       preset.permissionMode ??
       this.config.permissions.mode;
 
     // Fail-closed hooks invariant BEFORE the runner is built: an elevated autonomy on
     // a provider that can't enforce the PreToolUse gate is refused, never silently
     // downgraded. Claude passes; a degraded provider throws AutonomyNotPermittedError.
+    // The invariant is evaluated in neutral terms (the resolved SDK mode → autonomy).
     this.preflight({
-      permissionMode,
+      autonomy: permissionModeToAutonomy(permissionMode),
       osSandboxed: params.sandboxWrites === true,
     });
 

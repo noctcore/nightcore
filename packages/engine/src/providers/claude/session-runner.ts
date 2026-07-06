@@ -6,6 +6,7 @@
  * crashes into `session-failed` events rather than throwing.
  */
 import type {
+  AutonomyLevel,
   ModelDescriptor,
   NightcoreEvent,
   PermissionMode,
@@ -18,6 +19,7 @@ import type { Logger } from '@nightcore/shared';
 import { ToolRegistry } from '../../policy/tool-registry.js';
 import { SessionLedger } from '../../session/session-ledger.js';
 import type { AgentSession } from '../agent-provider.js';
+import { autonomyToPermissionMode } from './capabilities.js';
 import { HookBus } from './hook-bus.js';
 import { toModelDescriptor } from './mappers.js';
 import { type ApprovalDecision,PermissionLayer } from './permission-layer.js';
@@ -420,13 +422,13 @@ export class SessionRunner implements AgentSession {
   }
 
   /**
-   * The neutral {@link AgentSession} autonomy control. Phase 1 carries the wire
-   * `PermissionMode` vocabulary through unchanged: for Claude this is a thin bridge
-   * onto the SDK `setPermissionMode` control request (the provider owns the mapping
-   * to the neutral `AutonomyLevel`; Phase 3 swaps the parameter). No behavior change.
+   * The neutral {@link AgentSession} autonomy control. Takes the wire's neutral
+   * {@link AutonomyLevel} vocabulary and lowers it to the SDK `setPermissionMode`
+   * control request via {@link autonomyToPermissionMode} — the Claude provider owns
+   * the mapping, so the supervisor never touches an SDK mode string.
    */
-  async setAutonomy(mode: PermissionMode): Promise<void> {
-    await this.setPermissionMode(mode);
+  async setAutonomy(autonomy: AutonomyLevel): Promise<void> {
+    await this.setPermissionMode(autonomyToPermissionMode(autonomy));
   }
 
   /**

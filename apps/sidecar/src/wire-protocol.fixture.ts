@@ -64,7 +64,12 @@ class ScriptedManager implements SidecarManager {
 
     const sessionId = this.nextSessionId++;
     const model = command.model ?? 'claude-sonnet-4-6';
-    const permissionMode = command.permissionMode ?? 'bypassPermissions';
+    // The wire command now carries the neutral `autonomy` vocabulary; the
+    // `session-started` event still reports the resolved SDK permission mode, and
+    // this scripted harness doesn't run a real provider, so it reports the studio's
+    // default unattended mode. (The `autonomy` override, if any, is otherwise a
+    // no-op for this fixture's round-trip.)
+    const permissionMode = 'bypassPermissions';
 
     this.emit({ type: 'session-started', sessionId, prompt: command.prompt, model, permissionMode });
 

@@ -188,7 +188,7 @@ mod tests {
             prompt: "p".into(),
             model: None,
             effort: None,
-            permission_mode: None,
+            autonomy: None,
             cwd: None,
             kind: None,
             max_turns: None,
@@ -211,7 +211,7 @@ mod tests {
         for absent in [
             "model",
             "effort",
-            "permissionMode",
+            "autonomy",
             "cwd",
             "kind",
             "maxTurns",

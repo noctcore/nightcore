@@ -7,7 +7,7 @@
  * stdio protocol:
  *
  *   stdin   ← one JSON `SurfaceCommand` per line  (start-session, send-input,
- *             approve-permission, interrupt, set-model, set-permission-mode)
+ *             approve-permission, interrupt, set-model, set-autonomy)
  *   stdout  → one JSON `NightcoreEvent` per line   (session lifecycle, assistant
  *             deltas, tool use, permission requests, completion)
  *   stderr  → human-readable logs only (never part of the protocol)

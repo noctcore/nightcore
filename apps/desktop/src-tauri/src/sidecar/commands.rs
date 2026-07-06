@@ -1,6 +1,6 @@
 //! The `#[tauri::command]` entry points for the sidecar: the manual `run_task`
 //! single-run path, `cancel_task`, the `respond_permission` relay, and the
-//! command-only helpers (`resolve_permission_mode`, `build_guardrails`) shared with
+//! command-only helpers (`resolve_autonomy`, `build_guardrails`) shared with
 //! the coordinator's auto-loop launch.
 
 use std::sync::Arc;
@@ -31,21 +31,25 @@ pub async fn run_task(app: AppHandle, id: String) -> Result<(), String> {
     engine.submit_run(&app, &id, false).await
 }
 
-/// The SDK permission mode for the next run (M4.7 §A4). Precedence:
+/// The neutral autonomy ceiling for the next run (issue #18, Phase 3). Precedence:
 ///   task override → project override → global default.
-/// `task_override` is the task's own `permission_mode` (a UI string like `bypass`/
-/// `ask`); when present it wins and is mapped through the same
-/// [`crate::settings::sdk_permission_mode`] table so a task can opt OUT of global
-/// bypass. Absent ⇒ fall back to the settings resolution (project, else global).
+/// `task_override` is the task's own `permission_mode` (a neutral value like
+/// `bypass`/`ask`); when present it wins and is parsed through the same
+/// [`crate::settings::parse_autonomy`] table so a task can opt OUT of global bypass.
+/// Absent ⇒ fall back to the settings resolution (project, else global). The value
+/// travels the wire as-is; the Claude provider lowers it to an SDK permission mode.
 /// Shared by the manual `run_task` path and the coordinator's auto-loop launch.
-pub fn resolve_permission_mode(app: &AppHandle, task_override: Option<&str>) -> Option<String> {
-    use crate::settings::{sdk_permission_mode, SettingsStore};
+pub fn resolve_autonomy(
+    app: &AppHandle,
+    task_override: Option<&str>,
+) -> Option<crate::contracts::AutonomyLevel> {
+    use crate::settings::{parse_autonomy, SettingsStore};
     if let Some(raw) = task_override {
-        return Some(sdk_permission_mode(raw));
+        return Some(parse_autonomy(raw));
     }
     let settings = app.state::<SettingsStore>();
     let project_id = app.state::<ProjectStore>().active().map(|p| p.id);
-    Some(settings.sdk_permission_mode(project_id.as_deref()))
+    Some(settings.autonomy(project_id.as_deref()))
 }
 
 /// Build the per-session `start-session` config for a build run from its task: the
@@ -140,7 +144,7 @@ pub fn resolve_ledger_path(app: &AppHandle, task_id: &str) -> Option<String> {
 /// The Pre-flight Context Pack (Lock, feature #4) to inject for a run in the active
 /// project: the curated `<project>/.nightcore/context.md`, gated on the per-project
 /// `context_pack_enabled` toggle (project-override → global, the SAME precedence
-/// `resolve_permission_mode`/`resolve_mcp_servers` use). `None` when no project is
+/// `resolve_autonomy`/`resolve_mcp_servers` use). `None` when no project is
 /// active, the toggle is off, or no `context.md` exists — each yielding the
 /// pre-feature shape (no pack injected). Shared by the build path, reviewer, and
 /// fix sub-runs so every session in a project starts on the same rails.
@@ -156,7 +160,7 @@ pub fn resolve_context_pack(app: &AppHandle) -> Option<String> {
 
 /// The enabled external MCP servers to inject for a run in the active project,
 /// resolved project-override → global by the settings store (the SAME
-/// project→global precedence `resolve_permission_mode` uses). Only enabled entries
+/// project→global precedence `resolve_autonomy` uses). Only enabled entries
 /// are returned; an empty list ⇒ inject none. Shared by the manual `run_task` path,
 /// the coordinator auto-loop launch, and the reviewer/fix sub-runs so every session
 /// in a project sees the same configured servers.

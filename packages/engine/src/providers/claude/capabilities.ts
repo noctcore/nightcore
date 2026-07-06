@@ -72,3 +72,29 @@ export function permissionModeToAutonomy(mode: PermissionMode): AutonomyLevel {
       return 'ask';
   }
 }
+
+/**
+ * Map a neutral {@link AutonomyLevel} onto the SDK `PermissionMode` the Claude
+ * runner drives. This is the Phase-3 wire-intake direction: the NDJSON protocol now
+ * carries the neutral autonomy vocabulary, and this is the ONLY place it is lowered
+ * back to an SDK permission-mode string — the inverse of {@link
+ * permissionModeToAutonomy}, localized to `providers/claude/`.
+ *
+ * The four autonomy ceilings map to their canonical SDK modes: `bypass →
+ * bypassPermissions`, `auto-accept → acceptEdits`, `ask → default`, `plan → plan`.
+ * The SDK-only `dontAsk`/`auto` modes are unreachable from the neutral vocabulary
+ * (the engine's own reviewer/scan paths still request them directly in SDK terms),
+ * so they are deliberately not produced here. Exhaustive by design.
+ */
+export function autonomyToPermissionMode(autonomy: AutonomyLevel): PermissionMode {
+  switch (autonomy) {
+    case 'bypass':
+      return 'bypassPermissions';
+    case 'auto-accept':
+      return 'acceptEdits';
+    case 'ask':
+      return 'default';
+    case 'plan':
+      return 'plan';
+  }
+}

@@ -59,9 +59,10 @@ export interface StartSessionParams {
   model: string;
   /** The reasoning effort, when the surface/config chose one. */
   effort?: EffortLevel;
-  /** A per-command autonomy override; absent ⇒ the kind preset's default, then the
-   *  provider's configured default, applies. */
-  permissionModeOverride?: PermissionMode;
+  /** A per-command autonomy override, in the neutral wire vocabulary; absent ⇒ the
+   *  kind preset's default, then the provider's configured default, applies. The
+   *  Claude provider lowers it to an SDK permission mode at its boundary. */
+  autonomyOverride?: AutonomyLevel;
   /** The run's working directory (worktree-isolated; the confinement root). */
   cwd: string;
   /** The task kind (selects the provider's persona/tool preset + result post-processing). */
@@ -87,13 +88,12 @@ export interface StartSessionParams {
 
 /**
  * The fail-closed autonomy check the supervisor runs before a session is built.
- * Carries the effective permission mode (the wire vocabulary Phase 1 still uses)
- * plus whether OS write containment is active; the provider maps the mode to a
- * neutral {@link AutonomyLevel} and applies {@link assertHooksInvariant}.
+ * Carries the effective neutral {@link AutonomyLevel} the run would use plus whether
+ * OS write containment is active; the provider applies {@link assertHooksInvariant}.
  */
 export interface PreflightRequest {
-  /** The effective permission mode the run would use. */
-  permissionMode: PermissionMode;
+  /** The effective autonomy ceiling the run would use (neutral vocabulary). */
+  autonomy: AutonomyLevel;
   /** Whether OS-level write containment is active for the run. */
   osSandboxed: boolean;
 }
@@ -118,10 +118,10 @@ export interface AgentSession {
   interrupt(): Promise<void>;
   /** Switch the live session's model. */
   setModel(model: string): Promise<void>;
-  /** Set the live session's autonomy ceiling. Phase 1 carries the wire
-   *  `PermissionMode` vocabulary (the provider bridges it to its own primitive);
-   *  Phase 3 swaps this parameter to the neutral {@link AutonomyLevel}. */
-  setAutonomy(mode: PermissionMode): Promise<void>;
+  /** Set the live session's autonomy ceiling, in the neutral {@link AutonomyLevel}
+   *  vocabulary the wire carries; the provider bridges it to its own primitive (for
+   *  Claude, an SDK `setPermissionMode` control request). */
+  setAutonomy(autonomy: AutonomyLevel): Promise<void>;
   /** Resolve a parked interactive permission request from a surface command. */
   approvePermission(requestId: string, decision: PermissionDecision): boolean;
   /** Resolve a parked AskUserQuestion dialog from a surface command. */

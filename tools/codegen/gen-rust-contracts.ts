@@ -870,7 +870,7 @@ const COMMAND_INPUTS: Record<string, unknown> = {
     prompt: 'do the thing',
     model: 'claude-opus-4-8',
     effort: 'high',
-    permissionMode: 'acceptEdits',
+    autonomy: 'auto-accept',
     cwd: '/tmp/work',
     kind: 'build',
     maxTurns: 200,
@@ -915,10 +915,10 @@ const COMMAND_INPUTS: Record<string, unknown> = {
   'send-input': { type: 'send-input', sessionId: 1, text: 'more input' },
   interrupt: { type: 'interrupt', sessionId: 2 },
   'set-model': { type: 'set-model', sessionId: 3, model: 'claude-sonnet-4-6' },
-  'set-permission-mode': {
-    type: 'set-permission-mode',
+  'set-autonomy': {
+    type: 'set-autonomy',
     sessionId: 4,
-    mode: 'plan',
+    autonomy: 'plan',
   },
   'approve-permission': {
     type: 'approve-permission',

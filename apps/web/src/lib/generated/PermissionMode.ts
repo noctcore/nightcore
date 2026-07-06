@@ -2,12 +2,14 @@
 
 /**
  * The four UI permission modes (M4.7 §A1) the surface offers per task and as the
- * resolved project/global default. This is the STUDIO vocabulary — distinct from
- * the engine's SDK `permissionMode` (`@nightcore/contracts` `PermissionMode`),
- * which these map to via [`crate::settings::sdk_permission_mode`]. It exists
- * purely to narrow the generated TS for the `permission_mode` fields (the Rust
- * store keeps them as free `Option<String>` so a legacy/unknown value still
- * loads); the wire strings are these kebab/word forms verbatim.
+ * resolved project/global default. This is the STUDIO vocabulary — which issue #18
+ * promoted to the neutral wire [`AutonomyLevel`](crate::contracts::AutonomyLevel);
+ * the resolver [`parse_autonomy`](crate::settings::parse_autonomy) maps these
+ * strings onto it, and the Claude provider lowers that to an SDK permission mode
+ * engine-side. It exists purely to narrow the generated TS for the
+ * `permission_mode` fields (the Rust store keeps them as free `Option<String>` so a
+ * legacy/unknown value still loads); the wire strings are these kebab/word forms
+ * verbatim.
  *
  * This type exists ONLY to drive the Rust→TS codegen (the `#[ts(as = "…")]`
  * narrowing on the `permission_mode` fields), so it is `cfg(test)`-only — the

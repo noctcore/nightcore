@@ -14,8 +14,8 @@ import type {
 } from '../providers/agent-provider.js';
 import { assertHooksInvariant } from '../providers/agent-provider.js';
 import {
+  autonomyToPermissionMode,
   CLAUDE_CAPABILITIES,
-  permissionModeToAutonomy,
 } from '../providers/claude/capabilities.js';
 
 /**
@@ -373,11 +373,12 @@ describe('SessionManager task kinds (M4)', () => {
       type: 'start-session',
       prompt: 'review the diff',
       kind: 'review',
-      permissionMode: 'plan',
+      autonomy: 'plan',
     });
     await done;
 
-    // The review preset defaults to `dontAsk`, but an explicit command mode wins.
+    // The review preset defaults to `dontAsk`, but an explicit command autonomy
+    // wins (lowered to the SDK `plan` mode at the provider boundary).
     expect(queryOptions.at(-1)!.permissionMode).toBe('plan');
   });
 });
@@ -838,19 +839,17 @@ describe('SessionManager fail-closed autonomy invariant', () => {
       };
     }
     preflight(request: PreflightRequest): void {
-      assertHooksInvariant(
-        this.capabilities(),
-        permissionModeToAutonomy(request.permissionMode),
-        { osSandboxed: request.osSandboxed },
-      );
+      assertHooksInvariant(this.capabilities(), request.autonomy, {
+        osSandboxed: request.osSandboxed,
+      });
     }
     startSession(params: StartSessionParams): AgentSession {
-      const mode = params.permissionModeOverride ?? 'default';
+      const autonomy = params.autonomyOverride ?? 'ask';
       this.preflight({
-        permissionMode: mode,
+        autonomy,
         osSandboxed: params.sandboxWrites === true,
       });
-      return { ...STUB_SESSION, permissionMode: mode };
+      return { ...STUB_SESSION, permissionMode: autonomyToPermissionMode(autonomy) };
     }
     createProbeSession(): AgentSession {
       return STUB_SESSION;
@@ -875,7 +874,7 @@ describe('SessionManager fail-closed autonomy invariant', () => {
     await manager.dispatch({
       type: 'start-session',
       prompt: 'x',
-      permissionMode: 'bypassPermissions',
+      autonomy: 'bypass',
     });
 
     const failed = events.find(isFailed);
@@ -896,7 +895,7 @@ describe('SessionManager fail-closed autonomy invariant', () => {
     await manager.dispatch({
       type: 'start-session',
       prompt: 'x',
-      permissionMode: 'default',
+      autonomy: 'ask',
     });
 
     expect(events.some((e) => e.type === 'session-started')).toBe(true);
@@ -915,7 +914,7 @@ describe('SessionManager fail-closed autonomy invariant', () => {
     await manager.dispatch({
       type: 'start-session',
       prompt: 'x',
-      permissionMode: 'bypassPermissions',
+      autonomy: 'bypass',
       sandboxWrites: true,
     });
 

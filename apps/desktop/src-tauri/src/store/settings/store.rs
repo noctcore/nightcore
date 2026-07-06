@@ -53,15 +53,16 @@ impl SettingsStore {
         f(&crate::sync::lock_or_recover(&self.settings))
     }
 
-    /// The effective permission mode for a project (its override, else the global),
-    /// mapped to the engine's SDK `permissionMode` (see [`sdk_permission_mode`]).
-    pub fn sdk_permission_mode(&self, project_id: Option<&str>) -> String {
+    /// The effective autonomy ceiling for a project (its override, else the global),
+    /// parsed to the neutral wire [`AutonomyLevel`] (see [`parse_autonomy`]). The
+    /// Claude provider lowers it to an SDK permission mode at its own boundary.
+    pub fn autonomy(&self, project_id: Option<&str>) -> crate::contracts::AutonomyLevel {
         self.with_settings(|settings| {
             let raw = project_id
                 .and_then(|id| settings.project_overrides.get(id))
                 .and_then(|ov| ov.permission_mode.as_deref())
                 .unwrap_or(&settings.permission_mode);
-            sdk_permission_mode(raw)
+            parse_autonomy(raw)
         })
     }
 

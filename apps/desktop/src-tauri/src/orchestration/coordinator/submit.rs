@@ -145,8 +145,7 @@ pub(crate) async fn submit_run(
     );
 
     use crate::provider::Provider;
-    let permission_mode =
-        crate::sidecar::resolve_permission_mode(app, task.permission_mode.as_deref());
+    let autonomy = crate::sidecar::resolve_autonomy(app, task.permission_mode.as_deref());
     // SDK-guardrails: forward the per-task autonomy ceilings and, when a prior SDK
     // session id is persisted, resume it so a crashed/restarted build reattaches
     // instead of starting cold (the recovery path). Also injects the project's
@@ -166,7 +165,7 @@ pub(crate) async fn submit_run(
             task.model.clone(),
             task.effort.clone(),
             cwd,
-            permission_mode,
+            autonomy,
             task.kind.as_wire(),
             images,
             guardrails,

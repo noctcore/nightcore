@@ -5,7 +5,7 @@
       "prompt": "do the thing",
       "model": "claude-opus-4-8",
       "effort": "high",
-      "permissionMode": "acceptEdits",
+      "autonomy": "auto-accept",
       "cwd": "/tmp/work",
       "kind": "build",
       "maxTurns": 200,
@@ -74,10 +74,10 @@
       "type": "set-model",
       "model": "claude-sonnet-4-6"
     },
-    "set-permission-mode": {
+    "set-autonomy": {
       "sessionId": 4,
-      "type": "set-permission-mode",
-      "mode": "plan"
+      "type": "set-autonomy",
+      "autonomy": "plan"
     },
     "approve-permission": {
       "sessionId": 5,

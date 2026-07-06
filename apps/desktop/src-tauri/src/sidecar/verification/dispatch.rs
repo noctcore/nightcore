@@ -15,8 +15,8 @@ use crate::task::{Task, TaskKind};
 use crate::worktree;
 
 use crate::sidecar::commands::{
-    resolve_context_pack, resolve_harness_policy, resolve_ledger_path, resolve_mcp_servers,
-    resolve_permission_mode, resolve_sandbox_writes,
+    resolve_autonomy, resolve_context_pack, resolve_harness_policy, resolve_ledger_path,
+    resolve_mcp_servers, resolve_sandbox_writes,
 };
 
 /// The bounded auto-fix budget for the verification gate (M4 §B). On a
@@ -144,7 +144,7 @@ pub(crate) async fn dispatch_pr_fix_build(
 ) -> Result<(), String> {
     crate::sidecar::ensure_reader(app).await?;
     let provider = app.state::<std::sync::Arc<SidecarProvider>>();
-    let permission_mode = resolve_permission_mode(app, None);
+    let autonomy = resolve_autonomy(app, None);
     provider
         .start_session(
             fix_id,
@@ -153,7 +153,7 @@ pub(crate) async fn dispatch_pr_fix_build(
             None,
             None,
             Some(dir.to_path_buf()),
-            permission_mode,
+            autonomy,
             TaskKind::Build.as_wire(),
             // No image attachments: the fix works from the findings text.
             Vec::new(),
@@ -195,7 +195,7 @@ async fn dispatch_build_fix(
     let provider = app.state::<std::sync::Arc<SidecarProvider>>();
     let store = app.state::<TaskStore>();
     let task = store.get(task_id).ok_or("task vanished before fix")?;
-    let permission_mode = resolve_permission_mode(app, task.permission_mode.as_deref());
+    let autonomy = resolve_autonomy(app, task.permission_mode.as_deref());
     provider
         .start_session(
             task_id,
@@ -203,7 +203,7 @@ async fn dispatch_build_fix(
             task.model.clone(),
             task.effort.clone(),
             Some(worktree_dir.to_path_buf()),
-            permission_mode,
+            autonomy,
             TaskKind::Build.as_wire(),
             // Image attachments ride the MAIN build session only; the fix-build works
             // from the reviewer's change list over the existing diff.

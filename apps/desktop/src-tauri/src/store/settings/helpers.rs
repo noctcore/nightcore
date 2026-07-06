@@ -3,25 +3,41 @@
 
 use std::path::Path;
 
+use crate::contracts::AutonomyLevel;
+
 use super::model::Settings;
 
-/// Map a Nightcore permission-mode setting to the engine's SDK `permissionMode`
-/// (M4.7 §A1):
-///   `bypass` → `bypassPermissions` (no prompts; the engine sets
-///   `allowDangerouslySkipPermissions`), `auto-accept` → `acceptEdits`,
-///   `ask` → `default` (prompt on dangerous), `plan` → `plan`.
-/// An unrecognized value resolves to `bypassPermissions` — the studio's default
-/// is unattended operation (the autonomous-studio choice; a task that wants
-/// prompts sets `ask`/`plan` explicitly).
-pub fn sdk_permission_mode(raw: &str) -> String {
+/// Parse a stored Nightcore autonomy setting string into the neutral wire
+/// [`AutonomyLevel`] the `start-session` command now carries (issue #18, Phase 3).
+/// The settings vocabulary IS the neutral vocabulary (`bypass | auto-accept | ask |
+/// plan`), so this is a fail-safe parse — NOT a mapping to SDK modes; that lowering
+/// now happens inside the Claude provider on the engine side.
+///
+/// An unrecognized value resolves to `bypass` — the studio's default is unattended
+/// operation (the autonomous-studio choice; a task that wants prompts sets
+/// `ask`/`plan` explicitly). Kept fail-safe (never an error) so a legacy or
+/// hand-edited settings value can't wedge a launch.
+pub fn parse_autonomy(raw: &str) -> AutonomyLevel {
     match raw {
-        "bypass" => "bypassPermissions",
-        "auto-accept" => "acceptEdits",
-        "plan" => "plan",
-        "ask" => "default",
-        _ => "bypassPermissions",
+        "auto-accept" => AutonomyLevel::AutoAccept,
+        "ask" => AutonomyLevel::Ask,
+        "plan" => AutonomyLevel::Plan,
+        // "bypass" and any unrecognized/legacy value → unattended default.
+        _ => AutonomyLevel::Bypass,
     }
-    .to_string()
+}
+
+/// The canonical wire string for an [`AutonomyLevel`] — the inverse of
+/// [`parse_autonomy`], matching the codegen'd serde `kebab-case` rename verbatim.
+/// Used where a plain string is needed for display (the provider-config inspector);
+/// keeping it a total match means it can never diverge from the enum silently.
+pub fn autonomy_wire_str(autonomy: AutonomyLevel) -> &'static str {
+    match autonomy {
+        AutonomyLevel::Bypass => "bypass",
+        AutonomyLevel::AutoAccept => "auto-accept",
+        AutonomyLevel::Ask => "ask",
+        AutonomyLevel::Plan => "plan",
+    }
 }
 
 /// Canonicalize a stored model id to an SDK long id (the value the engine sends

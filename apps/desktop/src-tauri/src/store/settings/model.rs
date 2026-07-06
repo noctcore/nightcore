@@ -25,9 +25,11 @@ pub struct Settings {
     /// 1..=6. The auto-loop enforces it as the slot-pool cap; a global change
     /// resizes the live pool to match.
     pub max_concurrency: u8,
-    /// "bypass" | "auto-accept" | "ask" | "plan" (M4.7 §A1). Maps to the engine's
-    /// SDK `permissionMode` via [`sdk_permission_mode`]. Default is `bypass` (an
-    /// autonomous studio runs without prompts; a per-task override re-enables them).
+    /// "bypass" | "auto-accept" | "ask" | "plan" — the neutral autonomy vocabulary
+    /// (issue #18). Parsed to the wire [`AutonomyLevel`](crate::contracts::AutonomyLevel)
+    /// via [`parse_autonomy`]; the Claude provider lowers THAT to an SDK permission
+    /// mode engine-side. Default is `bypass` (an autonomous studio runs without
+    /// prompts; a per-task override re-enables them).
     pub permission_mode: String,
     /// M2 toggle: remove a task's worktree after it merges. Read at
     /// `merge.rs`/`coordinator.rs`; editable from the Worktrees settings page.

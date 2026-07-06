@@ -149,7 +149,7 @@ describe('ClaudeAgentProvider', () => {
   test('preflight NEVER refuses Claude — bypass without a sandbox is fine', () => {
     expect(() =>
       provider.preflight({
-        permissionMode: 'bypassPermissions',
+        autonomy: 'bypass',
         osSandboxed: false,
       }),
     ).not.toThrow();
@@ -162,7 +162,7 @@ describe('ClaudeAgentProvider', () => {
         prompt: 'hi',
         model: 'claude-opus-4-8',
         cwd: '/tmp',
-        permissionModeOverride: 'plan',
+        autonomyOverride: 'plan',
       },
       () => {},
     );

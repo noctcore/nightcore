@@ -78,8 +78,9 @@ pub async fn approve_task(app: AppHandle, id: String) -> Result<(), String> {
     )
     .await?;
 
-    // Switch the live session to acceptEdits so the approved build proceeds without
-    // re-prompting on every edit.
+    // Switch the live session to auto-accept so the approved build proceeds without
+    // re-prompting on every edit (the neutral autonomy the Claude provider lowers to
+    // the SDK `acceptEdits` mode).
     let orch = app.state::<Orchestrator>();
     let store = app.state::<TaskStore>();
     if let Some(session_id) = orch
@@ -88,7 +89,7 @@ pub async fn approve_task(app: AppHandle, id: String) -> Result<(), String> {
         .or_else(|| store.get(&id).and_then(|t| t.session_id))
     {
         orch.provider
-            .set_permission_mode(session_id, "acceptEdits")
+            .set_autonomy(session_id, crate::contracts::AutonomyLevel::AutoAccept)
             .await?;
     }
     Ok(())

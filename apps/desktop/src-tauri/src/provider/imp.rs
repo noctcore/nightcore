@@ -17,9 +17,9 @@ use tokio::sync::oneshot;
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::contracts::{
-    AnswerQuestionAnswerUnion, EffortLevel, PermissionDecision as WirePermissionDecision,
-    PermissionMode as WirePermissionMode, SurfaceCommand, SurfaceQuery, TaskKind as WireTaskKind,
-    WireImage,
+    AnswerQuestionAnswerUnion, AutonomyLevel, EffortLevel,
+    PermissionDecision as WirePermissionDecision, SurfaceCommand, SurfaceQuery,
+    TaskKind as WireTaskKind, WireImage,
 };
 
 /// How long a session query waits for its correlated `query-result` reply before
@@ -102,7 +102,7 @@ impl Provider for SidecarProvider {
         model: Option<String>,
         effort: Option<String>,
         cwd: Option<PathBuf>,
-        permission_mode: Option<String>,
+        autonomy: Option<AutonomyLevel>,
         kind: &str,
         images: Vec<WireImage>,
         guardrails: Guardrails,
@@ -127,10 +127,10 @@ impl Provider for SidecarProvider {
                 Some(e) => Some(parse_wire_enum::<EffortLevel>("effort", &e)?),
                 None => None,
             },
-            permission_mode: match permission_mode {
-                Some(m) => Some(parse_wire_enum::<WirePermissionMode>("permissionMode", &m)?),
-                None => None,
-            },
+            // `autonomy` is already the typed neutral enum (parsed at the settings
+            // resolver boundary), so it travels the wire as-is; the engine lowers it
+            // to an SDK permission mode inside the Claude provider.
+            autonomy,
             cwd: cwd.map(|p| p.to_string_lossy().to_string()),
             kind: Some(parse_wire_enum::<WireTaskKind>("kind", kind)?),
             max_turns: guardrails.max_turns.map(u64::from),
@@ -191,10 +191,10 @@ impl Provider for SidecarProvider {
         Ok(())
     }
 
-    async fn set_permission_mode(&self, session_id: u64, mode: &str) -> Result<(), String> {
-        let command = serde_json::to_value(SurfaceCommand::SetPermissionMode {
+    async fn set_autonomy(&self, session_id: u64, autonomy: AutonomyLevel) -> Result<(), String> {
+        let command = serde_json::to_value(SurfaceCommand::SetAutonomy {
             session_id,
-            mode: parse_wire_enum::<WirePermissionMode>("mode", mode)?,
+            autonomy,
         })
         .map_err(|e| e.to_string())?;
         let mut guard = self.stdin.lock().await;

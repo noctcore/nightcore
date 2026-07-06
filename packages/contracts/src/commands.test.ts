@@ -15,7 +15,7 @@ describe('SurfaceCommandSchema round-trips', () => {
       type: 'start-session',
       prompt: 'do a thing',
       model: 'claude-sonnet-4-6',
-      permissionMode: 'acceptEdits',
+      autonomy: 'auto-accept',
       cwd: '/work',
     },
     {
@@ -28,7 +28,7 @@ describe('SurfaceCommandSchema round-trips', () => {
     { type: 'send-input', sessionId: 1, text: 'more' },
     { type: 'interrupt', sessionId: 1 },
     { type: 'set-model', sessionId: 1, model: 'claude-haiku-4-5' },
-    { type: 'set-permission-mode', sessionId: 1, mode: 'plan' },
+    { type: 'set-autonomy', sessionId: 1, autonomy: 'plan' },
     {
       type: 'approve-permission',
       sessionId: 1,
@@ -77,11 +77,11 @@ describe('SurfaceCommandSchema rejections', () => {
     expect(result.success).toBe(false);
   });
 
-  test('rejects a start-session with an invalid permission mode', () => {
+  test('rejects a start-session with an invalid autonomy level', () => {
     const result = SurfaceCommandSchema.safeParse({
       type: 'start-session',
       prompt: 'x',
-      permissionMode: 'yolo',
+      autonomy: 'yolo',
     });
     expect(result.success).toBe(false);
   });

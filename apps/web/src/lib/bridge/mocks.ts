@@ -52,7 +52,9 @@ export const MOCK_PROVIDER_CONFIG: ProviderConfigSnapshot = {
     error: 'probe timed out',
   },
   model: DEFAULT_MODEL_ID,
-  permissionMode: 'acceptEdits',
+  // The inspector surfaces Nightcore's neutral autonomy vocabulary (issue #18),
+  // the same vocabulary the per-task/settings pickers speak.
+  permissionMode: 'auto-accept',
   outputStyle: 'default',
   extrasStatus: 'supported',
 };

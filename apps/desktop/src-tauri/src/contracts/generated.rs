@@ -25,7 +25,7 @@ pub enum SurfaceCommand {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         effort: Option<EffortLevel>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        permission_mode: Option<PermissionMode>,
+        autonomy: Option<AutonomyLevel>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         cwd: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -56,9 +56,9 @@ pub enum SurfaceCommand {
     #[serde(rename_all = "camelCase")]
     SetModel { session_id: u64, model: String },
     #[serde(rename_all = "camelCase")]
-    SetPermissionMode {
+    SetAutonomy {
         session_id: u64,
-        mode: PermissionMode,
+        autonomy: AutonomyLevel,
     },
     #[serde(rename_all = "camelCase")]
     ApprovePermission {
@@ -610,6 +610,15 @@ pub enum AnswerQuestionAnswerUnion {
 pub enum ArtifactWriteMode {
     Create,
     MergeSection,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AutonomyLevel {
+    Bypass,
+    AutoAccept,
+    Ask,
+    Plan,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

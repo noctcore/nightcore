@@ -190,12 +190,13 @@ pub async fn get_provider_config(
     let snapshot: crate::contracts::ProviderConfigSnapshot =
         serde_json::from_value(snapshot.clone()).map_err(|e| e.to_string())?;
     let mut view = to_view(snapshot);
-    // Nightcore owns Options.permissionMode — the value it passes to the SDK is
-    // what the SDK will actually use, so the Settings-resolved value is
-    // authoritative. The engine probe does not surface it (the SDK init response
-    // carries model/outputStyle but not permissionMode), so we populate it
-    // directly from the same resolver that wires each run.
-    view.permission_mode = crate::sidecar::commands::resolve_permission_mode(&app, None);
+    // Nightcore owns the autonomy the run launches with — the value it passes on
+    // the wire is what the provider will use, so the Settings-resolved value is
+    // authoritative. The engine probe does not surface it, so we populate it
+    // directly from the same resolver that wires each run. Shown as the neutral
+    // autonomy vocabulary (issue #18) — the vocabulary the web picker also speaks.
+    view.permission_mode = crate::sidecar::commands::resolve_autonomy(&app, None)
+        .map(|a| crate::settings::autonomy_wire_str(a).to_string());
     Ok(view)
 }
 
@@ -332,7 +333,7 @@ mod tests {
                 subagents: None,
             },
             model: Some("claude-opus-4-8".into()),
-            permission_mode: Some("acceptEdits".into()),
+            permission_mode: Some("auto-accept".into()),
             output_style: Some("default".into()),
             extras_status: ConfigSectionStatus::Supported,
         };
@@ -360,8 +361,8 @@ mod tests {
     /// When the engine probe snapshot has `permission_mode: None` (the probe cannot
     /// know it — the SDK init response doesn't carry it), `to_view` produces a view
     /// with `permission_mode: None`. The `get_provider_config` handler then
-    /// overwrites it via `resolve_permission_mode` so the inspector shows the
-    /// Nightcore-resolved value that actually controls each run.
+    /// overwrites it via `resolve_autonomy` so the inspector shows the
+    /// Nightcore-resolved neutral autonomy that actually controls each run.
     #[test]
     fn permission_mode_is_none_from_engine_snapshot() {
         let section = ProviderConfigSection {
@@ -387,7 +388,7 @@ mod tests {
         assert!(
             view.permission_mode.is_none(),
             "to_view forwards the probe's absent permission_mode; the handler \
-             overrides it from resolve_permission_mode post-mapping"
+             overrides it from resolve_autonomy post-mapping"
         );
     }
 
