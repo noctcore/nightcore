@@ -11,6 +11,7 @@
 pub(crate) mod attachments;
 pub(crate) mod board_background;
 pub(crate) mod harness;
+pub(crate) mod harness_manifest;
 pub(crate) mod harness_policy;
 pub(crate) mod insight;
 pub(crate) mod issue_triage;

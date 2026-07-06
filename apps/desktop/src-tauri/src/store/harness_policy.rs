@@ -26,18 +26,11 @@
 //! - Array entries are salvaged per-entry: non-string entries are warn-and-skipped
 //!   (a single typo never sinks the whole policy).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde_json::Value;
 
 use crate::contracts::HarnessPolicy;
-
-/// The per-project structure-lock manifest: `<path>/.nightcore/harness.json`.
-/// Kept in lockstep with the gauntlet's `CONFIG_REL_PATH` and the apply writer's
-/// `MANIFEST_REL_PATH` (one file, three deliberately separate readers/writer).
-fn manifest_file(project_path: &str) -> PathBuf {
-    Path::new(project_path).join(".nightcore/harness.json")
-}
 
 /// The string entries of `value[key]`, warn-and-skipping non-string entries.
 /// Absent / non-array ⇒ empty (a policy section may declare only one list).
@@ -65,7 +58,8 @@ fn string_entries(policy: &Value, key: &str) -> Vec<String> {
 /// policy layer should be armed (no manifest, malformed manifest, or
 /// `policy.enabled: false`). See the module header for the full semantics.
 pub fn read_policy(project_path: &str) -> Option<HarnessPolicy> {
-    let raw = match std::fs::read_to_string(manifest_file(project_path)) {
+    let path = super::harness_manifest::manifest_file(Path::new(project_path));
+    let raw = match std::fs::read_to_string(path) {
         Ok(raw) => raw,
         // A plain absent file is the pre-feature shape (no manifest → no layer),
         // silent by design. Any OTHER IO error (EACCES/EIO on a present file) is a

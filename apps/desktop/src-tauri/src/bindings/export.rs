@@ -23,7 +23,7 @@ use ts_rs::TS;
 /// codegen fails the test rather than silently skipping a type.
 fn export_all_bindings() {
     use crate::analysis::injection_scan::InjectionFlag;
-    use crate::commands::policy::{HarnessPolicyFile, HarnessPolicyPatch, PolicyDiffBudget};
+    use crate::store::harness_manifest::{HarnessPolicyFile, HarnessPolicyPatch, PolicyDiffBudget};
     use crate::gauntlet::{GauntletResult, GauntletStep};
     use crate::orchestration::coordinator::LoopSnapshot;
     use crate::project::Project;

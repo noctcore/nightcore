@@ -26,7 +26,10 @@ const SECTION_END: &str = "<!-- nightcore:harness:end -->";
 /// so an injected proposal that could author it freely would author the gate that is
 /// supposed to police injected proposals. It is therefore never model-authored: the caller
 /// (`apply_harness_artifact`) hands us a Rust-built check entry and we merge it here.
-const MANIFEST_REL_PATH: &str = ".nightcore/harness.json";
+/// The spelling itself lives on the single manifest seam
+/// ([`crate::store::harness_manifest`] — audit #35); this alias keeps the allowlist
+/// local and auditable.
+const MANIFEST_REL_PATH: &str = crate::store::harness_manifest::MANIFEST_REL_PATH;
 
 /// In-repo execution sinks: directories whose contents run AUTOMATICALLY (CI
 /// pipelines, git hooks, editor/agent config). Containing a write to the repo root

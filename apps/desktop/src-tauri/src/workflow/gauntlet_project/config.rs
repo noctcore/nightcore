@@ -8,10 +8,6 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-/// The relative path of the per-project structure-lock config, written by the
-/// lint-plugin generator (feature #2) alongside the generated plugin.
-const CONFIG_REL_PATH: &str = ".nightcore/harness.json";
-
 /// The kind of structure-lock check, mirroring the `.nightcore/harness.json`
 /// `kind` vocabulary. Deserialized kebab-case so the on-disk config reads
 /// naturally (`"lint-plugin"`, `"dependency-cruiser"`, `"coverage-threshold"`,
@@ -104,7 +100,9 @@ pub(super) struct PlannedCheck {
 /// an empty vec for every "skip" path (absent file, malformed JSON, missing
 /// `checks` array, all-disabled), so the gate trivially passes in those cases.
 pub(super) fn load_checks(dir: &Path) -> Vec<PlannedCheck> {
-    let path = dir.join(CONFIG_REL_PATH);
+    // The per-project structure-lock config, resolved through the single
+    // manifest seam (`store::harness_manifest` — audit #35).
+    let path = crate::store::harness_manifest::manifest_file(dir);
     // ABSENT ⇒ skip all (the opt-out for a whole project). A read error other than
     // "not found" is treated the same way (warn-and-skip), never a hard failure.
     let Ok(raw) = std::fs::read_to_string(&path) else {
