@@ -1,15 +1,30 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
 
-import { TASKS_BY_STATUS } from '../_fixtures';
+import { makeTaskActions, TASKS_BY_STATUS } from '../_fixtures';
+import { TaskActionsProvider } from '../actions';
 import { Column } from '../Column';
 import { BoardDnd } from './BoardDnd';
+import type { BoardDndProps } from './BoardDnd.types';
 
 const TASKS = [TASKS_BY_STATUS.backlog, TASKS_BY_STATUS.done];
 
+/** One stable no-op action group — the cards (and the drag-overlay preview card)
+ *  read their handlers from `TaskActionsContext` now, not props. */
+const STORY_ACTIONS = makeTaskActions();
+
+/** The story fixture: the drag context wrapped in the provider its cards require. */
+function BoardDndFixture(props: BoardDndProps) {
+  return (
+    <TaskActionsProvider actions={STORY_ACTIONS}>
+      <BoardDnd {...props} />
+    </TaskActionsProvider>
+  );
+}
+
 const meta = {
   title: 'Board/BoardDnd',
-  component: BoardDnd,
+  component: BoardDndFixture,
   args: {
     tasks: TASKS,
     onMoveTask: fn(),
@@ -21,7 +36,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof BoardDnd>;
+} satisfies Meta<typeof BoardDndFixture>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -30,8 +45,6 @@ const columnArgs = {
   selectedId: null,
   blockedIds: new Set<string>(),
   logCounts: {},
-  onSelect: fn(),
-  onMoveTask: fn(),
 };
 
 /** Two droppable columns with draggable cards, inside the board's drag context.

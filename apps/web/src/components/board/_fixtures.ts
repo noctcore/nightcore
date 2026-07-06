@@ -13,16 +13,22 @@ import type {
 import type { TaskDetailActions } from './actions';
 
 /** Build a grouped task-actions fixture for `TaskActionsProvider` in stories and
- *  tests: the three required handlers stubbed as no-ops, with any subset
- *  overridden (typically a spy for the handler under test). */
+ *  tests: the required handlers stubbed as no-ops, with any subset overridden
+ *  (typically a spy for the handler under test). Explicitly-`undefined` overrides
+ *  are dropped so a fixture wrapper can forward optional story args verbatim
+ *  without clobbering the required no-op base. */
 export function makeTaskActions(
   overrides: Partial<TaskDetailActions> = {},
 ): TaskDetailActions {
+  const defined = Object.fromEntries(
+    Object.entries(overrides).filter(([, value]) => value !== undefined),
+  ) as Partial<TaskDetailActions>;
   return {
+    onSelect: () => {},
     onRun: () => {},
     onCancel: () => {},
     onDelete: () => {},
-    ...overrides,
+    ...defined,
   };
 }
 

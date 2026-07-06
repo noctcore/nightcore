@@ -8,9 +8,6 @@ import { TaskCard } from '../TaskCard';
 import { useBoardDnd } from './BoardDnd.hooks';
 import type { BoardDndProps } from './BoardDnd.types';
 
-/** Inert select for the non-interactive drag-overlay preview. */
-const NOOP = (): void => {};
-
 /** Drag-and-drop context for the board's columns. Wraps the columns row in a
  *  @dnd-kit `<DndContext>` — a pointer sensor with a 6px activation threshold (so
  *  card selection and the per-status action buttons still click through) plus a
@@ -47,7 +44,7 @@ function BoardDndImpl({ tasks, onMoveTask, children }: BoardDndProps) {
             animate={{ scale: 1.03 }}
             transition={{ duration: DURATION.fast, ease: EASE.outQuint }}
           >
-            <TaskCard task={activeTask} selected={false} preview onSelect={NOOP} />
+            <TaskCard task={activeTask} selected={false} preview />
           </m.div>
         ) : null}
       </DragOverlay>

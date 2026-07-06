@@ -35,20 +35,13 @@ function ColumnImpl({
   logCounts,
   dropStatus,
   emptyText = 'Nothing here yet',
-  onSelect,
-  onRun,
-  onCancel,
-  onDelete,
-  onMoveTask,
-  onApprove,
-  onRefine,
-  onCommit,
-  onMerge,
   onClear,
-  isActionPending,
 }: ColumnProps) {
   const showClear = clearable === true && tasks.length > 0;
-  const interactive = onMoveTask !== undefined;
+  // Interactivity tracks the drop wiring: the board passes `dropStatus` exactly
+  // when it owns a live DnD context, so eligible cards drag only where a drop
+  // could resolve. Presentational stories omit it → non-draggable cards.
+  const interactive = dropStatus !== undefined;
   const { setDropRef, setScrollRef, isOver, droppable, virtualizer } = useColumn(dropStatus, tasks);
   return (
     <div
@@ -110,15 +103,6 @@ function ColumnImpl({
                     needsApproval={promptIds?.has(task.id) ?? false}
                     logCount={logCounts[task.id] ?? 0}
                     draggable={interactive && canDragStatus(task.status)}
-                    onSelect={onSelect}
-                    onRun={onRun}
-                    onCancel={onCancel}
-                    onDelete={onDelete}
-                    onApprove={onApprove}
-                    onRefine={onRefine}
-                    onCommit={onCommit}
-                    onMerge={onMerge}
-                    isActionPending={isActionPending}
                   />
                 </div>
               );

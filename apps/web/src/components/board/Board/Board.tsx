@@ -71,18 +71,9 @@ function BoardImpl({
   logCounts,
   blockedIds,
   promptIds,
-  onSelect,
   onNewTask,
-  onRun,
-  onCancel,
-  onDelete,
   onMoveTask,
   onClearColumn,
-  onApprove,
-  onRefine,
-  onCommit,
-  onMerge,
-  isActionPending,
   onToggleAutoMode,
   onAutoCommitChange,
   onConcurrencyChange,
@@ -277,16 +268,6 @@ function BoardImpl({
               logCounts={logCounts}
               dropStatus={def.statuses[0]}
               emptyText={search.trim() !== '' ? 'No matches' : EMPTY_TEXT[def.key]}
-              onSelect={onSelect}
-              onRun={onRun}
-              onCancel={onCancel}
-              onDelete={onDelete}
-              onMoveTask={onMoveTask}
-              onApprove={onApprove}
-              onRefine={onRefine}
-              onCommit={onCommit}
-              onMerge={onMerge}
-              isActionPending={isActionPending}
               onClear={clearHandlers[def.key]}
             />
           ))}

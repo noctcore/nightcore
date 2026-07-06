@@ -12,7 +12,8 @@ export interface BreakerInfo {
 }
 
 /** Props for the Board: the tasks, project/worktree context, loop state, and the
- *  full set of card/header action handlers (owned by the shell). */
+ *  header action handlers (owned by the shell). The per-card action handlers come
+ *  from `TaskActionsContext` — consumed by `TaskCard` itself, not drilled. */
 export interface BoardProps {
   tasks: Task[];
   /** Active project id — scopes the per-project board background/appearance. */
@@ -59,22 +60,11 @@ export interface BoardProps {
   blockedIds: Set<string>;
   /** Task ids with a parked permission prompt — drives the card's pulse. */
   promptIds: Set<string>;
-  onSelect: (id: string) => void;
   onNewTask: () => void;
-  onRun: (id: string) => void;
-  onCancel: (id: string) => void;
-  onDelete: (id: string) => void;
   /** Drag a card to another column → set its status (rejected into In Progress). */
   onMoveTask: (id: string, status: Task['status']) => void;
   /** Clear all tasks in a column (Verified/Failed). */
   onClearColumn: (statuses: Task['status'][]) => void;
-  /** Waiting Approval card actions. */
-  onApprove: (id: string) => void;
-  onRefine: (id: string) => void;
-  /** Verified card actions. */
-  onCommit: (id: string) => void;
-  onMerge: (id: string) => void;
-  isActionPending?: (action: string, id: string) => boolean;
   /** Start/stop the autonomous loop (the header Auto Mode toggle). */
   onToggleAutoMode: () => void;
   /** Persist the auto-commit-on-verified Auto Mode option (the gear popover). */

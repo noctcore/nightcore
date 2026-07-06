@@ -10,6 +10,7 @@ import type { SessionCardProps } from './SessionCard.types';
  *  this through `TaskActionsProvider` so the editable card surfaces its pickers
  *  (the card renders pickers only when every `onChange*` is wired). */
 const actions: TaskDetailActions = {
+  onSelect: fn(),
   onRun: fn(),
   onCancel: fn(),
   onDelete: fn(),

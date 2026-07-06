@@ -1,8 +1,11 @@
-/** Props for the TaskCard component. */
+/** Props for the TaskCard component. The card's action handlers (`onSelect` /
+ *  `onRun` / `onCancel` / `onDelete` / `onApprove` / `onRefine` / `onCommit` /
+ *  `onMerge` / `isActionPending`) come from `TaskActionsContext`
+ *  (`useTaskActions()`), not props — only the task + presentational flags travel
+ *  down the Board → Column → TaskCard chain. */
 import type { Task } from '@/lib/bridge';
 
-/** Props for a single task card: the task, its presentational flags, and the
- *  optional bridge action handlers wired by the board. */
+/** Props for a single task card: the task and its presentational flags. */
 export interface TaskCardProps {
   task: Task;
   selected: boolean;
@@ -21,19 +24,4 @@ export interface TaskCardProps {
    *  draggable under a distinct id (never the live source's) to avoid clobbering
    *  the source's @dnd-kit node registration mid-drag. */
   preview?: boolean;
-  /** Open the detail drawer (also the card's click target). */
-  onSelect: (id: string) => void;
-  /** Real bridge actions. Absent in pure presentational stories. */
-  onRun?: (id: string) => void;
-  onCancel?: (id: string) => void;
-  onDelete?: (id: string) => void;
-  /** Waiting Approval actions (Approve / Refine). */
-  onApprove?: (id: string) => void;
-  onRefine?: (id: string) => void;
-  /** Verified actions (Commit / Merge). */
-  onCommit?: (id: string) => void;
-  onMerge?: (id: string) => void;
-  /** Whether a named action is in-flight for this card's task (drives disabled
-   *  state on buttons while the backend command is pending). */
-  isActionPending?: (action: string, id: string) => boolean;
 }

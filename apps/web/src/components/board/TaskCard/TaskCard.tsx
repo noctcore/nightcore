@@ -20,6 +20,7 @@ import {
   VerifiedIcon,
 } from '@/components/ui';
 
+import { useTaskActions } from '../actions';
 import { formatCost, modelDisplayName, modelDotColor } from '../status';
 import { useElapsed, useTaskDraggable } from './TaskCard.hooks';
 import type { TaskCardProps } from './TaskCard.types';
@@ -63,8 +64,10 @@ const ACTION_DISABLED = 'flex-1 border border-border bg-white/[0.04] text-muted-
  *
  *  Memoized: a board-wide `nc:session` delta re-renders the Board → Columns,
  *  but a card whose own props (its task object + primitive flags) are unchanged
- *  skips re-rendering. The handler props are stable `useCallback`s and `logCount`
- *  is a primitive, so only the one card whose stream count changed re-renders. */
+ *  skips re-rendering. The action handlers arrive via `TaskActionsContext` (one
+ *  referentially stable group — a context update, not a prop, so it cannot
+ *  defeat this memo on a flush) and `logCount` is a primitive, so only the one
+ *  card whose stream count changed re-renders. */
 function TaskCardImpl({
   task,
   selected,
@@ -73,16 +76,18 @@ function TaskCardImpl({
   logCount = 0,
   draggable = false,
   preview = false,
-  onSelect,
-  onRun,
-  onCancel,
-  onDelete,
-  onApprove,
-  onRefine,
-  onCommit,
-  onMerge,
-  isActionPending,
 }: TaskCardProps) {
+  const {
+    onSelect,
+    onRun,
+    onCancel,
+    onDelete,
+    onApprove,
+    onRefine,
+    onCommit,
+    onMerge,
+    isActionPending,
+  } = useTaskActions();
   const running = task.status === 'in_progress';
   const verifying = task.status === 'verifying';
   const elapsed = useElapsed(task.updatedAt, running || verifying);

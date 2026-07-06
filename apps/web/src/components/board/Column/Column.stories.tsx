@@ -1,22 +1,32 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
 
-import { TASKS_BY_STATUS } from '../_fixtures';
+import { makeTaskActions, TASKS_BY_STATUS } from '../_fixtures';
+import { TaskActionsProvider } from '../actions';
 import { Column } from './Column';
+import type { ColumnProps } from './Column.types';
+
+/** One stable no-op action group for every column story — the cards inside read
+ *  their handlers from `TaskActionsContext` now, not props. */
+const STORY_ACTIONS = makeTaskActions();
+
+/** The story fixture: the column wrapped in the provider its cards require. */
+function ColumnFixture(props: ColumnProps) {
+  return (
+    <TaskActionsProvider actions={STORY_ACTIONS}>
+      <Column {...props} />
+    </TaskActionsProvider>
+  );
+}
 
 const meta = {
   title: 'Board/Column',
-  component: Column,
+  component: ColumnFixture,
   args: {
     dotColor: 'oklch(80% .14 75)',
     selectedId: null,
     blockedIds: new Set<string>(),
     logCounts: {},
-    onSelect: fn(),
-    onRun: fn(),
-    onCancel: fn(),
-    onDelete: fn(),
-    onMoveTask: fn(),
     onClear: fn(),
   },
   decorators: [
@@ -26,7 +36,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof Column>;
+} satisfies Meta<typeof ColumnFixture>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

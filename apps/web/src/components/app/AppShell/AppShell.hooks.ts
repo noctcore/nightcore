@@ -718,6 +718,7 @@ export function useAppShell(): AppShellState {
   const closeDetail = useCallback(() => setSelectedId(null), [setSelectedId]);
   const detailActions = useMemo<TaskDetailActions>(
     () => ({
+      onSelect: setSelectedId,
       onRun: handleRun,
       onCancel: handleCancel,
       onDelete: confirm.requestDelete,
@@ -750,8 +751,13 @@ export function useAppShell(): AppShellState {
       onResumeSession: handleResumeSession,
       onRenameSession: handleRenameSession,
       onTagSession: handleTagSession,
+      // Re-identifies only when the guard's pending set transitions — the same
+      // cadence the guarded handlers above already turn over on, so including it
+      // here adds no extra churn to this object's identity.
+      isActionPending: action.isPending,
     }),
     [
+      setSelectedId,
       handleRun,
       handleCancel,
       confirm.requestDelete,
@@ -784,6 +790,7 @@ export function useAppShell(): AppShellState {
       handleResumeSession,
       handleRenameSession,
       handleTagSession,
+      action.isPending,
     ],
   );
 

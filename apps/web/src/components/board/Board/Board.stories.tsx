@@ -3,12 +3,27 @@ import { expect, fireEvent, fn, userEvent, within } from 'storybook/test';
 
 import type { Task } from '@/lib/bridge';
 
-import { BLOCKED_TASK, TASKS_BY_STATUS, WORKTREES } from '../_fixtures';
+import { BLOCKED_TASK, makeTaskActions, TASKS_BY_STATUS, WORKTREES } from '../_fixtures';
+import { TaskActionsProvider } from '../actions';
 import { Board } from './Board';
+import type { BoardProps } from './Board.types';
+
+/** One stable no-op action group for every board story — the cards inside read
+ *  their handlers from `TaskActionsContext` now, not Board props. */
+const STORY_ACTIONS = makeTaskActions();
+
+/** The story fixture: the board wrapped in the provider its cards require. */
+function BoardFixture(props: BoardProps) {
+  return (
+    <TaskActionsProvider actions={STORY_ACTIONS}>
+      <Board {...props} />
+    </TaskActionsProvider>
+  );
+}
 
 const meta = {
   title: 'Board/Board',
-  component: Board,
+  component: BoardFixture,
   parameters: { layout: 'fullscreen' },
   args: {
     projectId: 'proj-1',
@@ -33,17 +48,9 @@ const meta = {
     logCounts: { 't-running': 7 },
     blockedIds: new Set<string>(),
     promptIds: new Set<string>(),
-    onSelect: fn(),
     onNewTask: fn(),
-    onRun: fn(),
-    onCancel: fn(),
-    onDelete: fn(),
     onMoveTask: fn(),
     onClearColumn: fn(),
-    onApprove: fn(),
-    onRefine: fn(),
-    onCommit: fn(),
-    onMerge: fn(),
     onToggleAutoMode: fn(),
     onAutoCommitChange: fn(),
     onConcurrencyChange: fn(),
@@ -56,7 +63,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof Board>;
+} satisfies Meta<typeof BoardFixture>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

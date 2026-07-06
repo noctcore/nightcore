@@ -26,6 +26,9 @@ import type {
  *  the drawer degrades the matching control to a no-op / hidden state when one is
  *  absent (e.g. the History section only renders once resume/rename/tag are wired). */
 export interface TaskDetailActions {
+  /** Open a task: select it on the board and open its detail drawer. The shell
+   *  wires the (stable) selection setter, so this never churns on a flush. */
+  onSelect: (id: string) => void;
   onRun: (id: string) => void;
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
@@ -92,6 +95,12 @@ export interface TaskDetailActions {
   onRenameSession?: (sdkSessionId: string, title: string) => void;
   /** Tag a past session, or clear its tag with `null`. */
   onTagSession?: (sdkSessionId: string, tag: string | null) => void;
+  /** True while a guarded action (`run`/`approve`/`commit`/…) is in flight for
+   *  the task, so the matching button disables itself between the click and the
+   *  `nc:task` echo. Identity turns over only when the guard's pending set
+   *  transitions (a click starting/settling) — never on a stream flush — so it
+   *  is volatility-safe in this context. Defaults to never-pending. */
+  isActionPending?: (action: string, id: string) => boolean;
 }
 
 /** Carries the shell's grouped task actions to the TaskDetail drawer subtree.

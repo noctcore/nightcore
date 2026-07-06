@@ -26,6 +26,7 @@ import type { TaskDetailProps } from './TaskDetail.types';
  *  sub-components) read from `TaskActionsContext`. Stories override individual
  *  handlers by spreading this and replacing one entry. */
 const actions: TaskDetailActions = {
+  onSelect: fn(),
   onRun: fn(),
   onCancel: fn(),
   onDelete: fn(),
