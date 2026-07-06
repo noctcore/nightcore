@@ -55,3 +55,8 @@ pub(crate) use state::{refuse_while_fix_pending_push, refuse_while_fix_running, 
 // runtime code reaches the state through the registry.
 #[allow(unused_imports)]
 pub(crate) use state::PrFixState;
+// The `nc:pr-fix` channel const lives here beside its one emitter; re-exported so
+// the cfg(test) nc:* channel conformance test (`contracts::mod`) can tie it to the
+// `@nightcore/contracts` `CHANNELS` registry. Runtime code uses the local const.
+#[allow(unused_imports)]
+pub(crate) use complete::PRFIX_EVENT;

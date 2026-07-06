@@ -6,7 +6,7 @@
  */
 import { type EventCallback, listen, type UnlistenFn } from '@tauri-apps/api/event';
 
-import { NightcoreEventSchema, QuestionItemSchema } from '@nightcore/contracts';
+import { CHANNELS, NightcoreEventSchema, QuestionItemSchema } from '@nightcore/contracts';
 
 import { isTauri } from './internal';
 import type {
@@ -174,14 +174,14 @@ function subscribeChannel<T>(
 export async function onTaskEvent(
   handler: (task: Task) => void,
 ): Promise<UnlistenFn> {
-  return subscribeChannel('nc:task', (v) => (isTask(v) ? v : null), handler);
+  return subscribeChannel(CHANNELS.task, (v) => (isTask(v) ? v : null), handler);
 }
 
 /** Subscribe to `nc:session` streamed events. Returns an unlisten function. */
 export async function onSessionEvent(
   handler: (envelope: SessionEnvelope) => void,
 ): Promise<UnlistenFn> {
-  return subscribeChannel('nc:session', parseSessionEnvelope, handler);
+  return subscribeChannel(CHANNELS.session, parseSessionEnvelope, handler);
 }
 
 /** Narrow an unknown payload to a `ProjectEnvelope` defensively. The handler reads
@@ -202,7 +202,7 @@ function isProjectEnvelope(value: unknown): value is ProjectEnvelope {
 export async function onProjectEvent(
   handler: (envelope: ProjectEnvelope) => void,
 ): Promise<UnlistenFn> {
-  return subscribeChannel('nc:project', (v) => (isProjectEnvelope(v) ? v : null), handler);
+  return subscribeChannel(CHANNELS.project, (v) => (isProjectEnvelope(v) ? v : null), handler);
 }
 
 /** Narrow an unknown payload to a `LoopEnvelope` defensively. The handler reads
@@ -224,7 +224,7 @@ function isLoopEnvelope(value: unknown): value is LoopEnvelope {
 export async function onLoopEvent(
   handler: (envelope: LoopEnvelope) => void,
 ): Promise<UnlistenFn> {
-  return subscribeChannel('nc:loop', (v) => (isLoopEnvelope(v) ? v : null), handler);
+  return subscribeChannel(CHANNELS.loop, (v) => (isLoopEnvelope(v) ? v : null), handler);
 }
 
 /** Narrow an unknown payload to a `PermissionPrompt` defensively. The prompt UI
@@ -246,7 +246,7 @@ function isPermissionPrompt(value: unknown): value is PermissionPrompt {
 export async function onPermissionEvent(
   handler: (prompt: PermissionPrompt) => void,
 ): Promise<UnlistenFn> {
-  return subscribeChannel('nc:permission', (v) => (isPermissionPrompt(v) ? v : null), handler);
+  return subscribeChannel(CHANNELS.permission, (v) => (isPermissionPrompt(v) ? v : null), handler);
 }
 
 /** Narrow an unknown payload to a `QuestionPrompt` defensively. The dock reads
@@ -266,7 +266,7 @@ function isQuestionPrompt(value: unknown): value is QuestionPrompt {
 export async function onQuestionEvent(
   handler: (prompt: QuestionPrompt) => void,
 ): Promise<UnlistenFn> {
-  return subscribeChannel('nc:question', (v) => (isQuestionPrompt(v) ? v : null), handler);
+  return subscribeChannel(CHANNELS.question, (v) => (isQuestionPrompt(v) ? v : null), handler);
 }
 
 // --- Insight (codebase analysis) ------------------------------------------
@@ -343,7 +343,7 @@ function parseInsightEvent(value: unknown): InsightEvent | null {
 export async function onInsightEvent(
   handler: (event: InsightEvent) => void,
 ): Promise<UnlistenFn> {
-  return subscribeChannel('nc:insight', parseInsightEvent, handler);
+  return subscribeChannel(CHANNELS.insight, parseInsightEvent, handler);
 }
 
 // --- PR Review (fourth scan sibling) --------------------------------------
@@ -383,7 +383,7 @@ function parsePrReviewEvent(value: unknown): PrReviewEvent | null {
 export async function onPrReviewEvent(
   handler: (event: PrReviewEvent) => void,
 ): Promise<UnlistenFn> {
-  return subscribeChannel('nc:pr-review', parsePrReviewEvent, handler);
+  return subscribeChannel(CHANNELS.prReview, parsePrReviewEvent, handler);
 }
 
 // --- Issue Triage (GitHub issue intake + validation) ----------------------
@@ -422,7 +422,7 @@ function parseIssueTriageEvent(value: unknown): IssueTriageEvent | null {
 export async function onIssueTriageEvent(
   handler: (event: IssueTriageEvent) => void,
 ): Promise<UnlistenFn> {
-  return subscribeChannel('nc:issue-triage', parseIssueTriageEvent, handler);
+  return subscribeChannel(CHANNELS.issueTriage, parseIssueTriageEvent, handler);
 }
 
 // --- PR fix (address review findings) --------------------------------------
@@ -482,7 +482,7 @@ function isPrFixState(value: unknown): value is PrFixState {
 export async function onPrFixEvent(
   handler: (state: PrFixState) => void,
 ): Promise<UnlistenFn> {
-  return subscribeChannel('nc:pr-fix', (v) => (isPrFixState(v) ? v : null), handler);
+  return subscribeChannel(CHANNELS.prFix, (v) => (isPrFixState(v) ? v : null), handler);
 }
 
 // --- Readiness Scorecard (Profile) ----------------------------------------
@@ -530,7 +530,7 @@ function parseScorecardEvent(value: unknown): ScorecardEvent | null {
 export async function onScorecardEvent(
   handler: (event: ScorecardEvent) => void,
 ): Promise<UnlistenFn> {
-  return subscribeChannel('nc:scorecard', parseScorecardEvent, handler);
+  return subscribeChannel(CHANNELS.scorecard, parseScorecardEvent, handler);
 }
 
 // --- Harness (codebase convention auditor) --------------------------------
@@ -693,5 +693,5 @@ function parseHarnessEvent(value: unknown): HarnessEvent | null {
 export async function onHarnessEvent(
   handler: (event: HarnessEvent) => void,
 ): Promise<UnlistenFn> {
-  return subscribeChannel('nc:harness', parseHarnessEvent, handler);
+  return subscribeChannel(CHANNELS.harness, parseHarnessEvent, handler);
 }

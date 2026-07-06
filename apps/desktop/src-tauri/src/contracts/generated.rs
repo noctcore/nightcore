@@ -1393,3 +1393,26 @@ pub enum WorkspaceTool {
     Single,
     Unknown,
 }
+
+// === Event channel registry (nc:*) — single-sourced from `CHANNELS`; the
+//     conformance test in `contracts/mod.rs` ties every `*_EVENT` const to it ===
+
+/// Every `nc:*` Tauri event channel name, keyed by its `@nightcore/contracts`
+/// `CHANNELS` registry symbol — the single source. The conformance test in
+/// `contracts/mod.rs` asserts each scattered Rust `*_EVENT` const equals its
+/// entry here, so a channel renamed/added/removed on either tier fails
+/// `cargo test` (and a rename in the zod source also reds `codegen-drift`).
+pub const NIGHTCORE_CHANNELS: &[(&str, &str)] = &[
+    ("harness", "nc:harness"),
+    ("insight", "nc:insight"),
+    ("issueTriage", "nc:issue-triage"),
+    ("loop", "nc:loop"),
+    ("permission", "nc:permission"),
+    ("prFix", "nc:pr-fix"),
+    ("project", "nc:project"),
+    ("prReview", "nc:pr-review"),
+    ("question", "nc:question"),
+    ("scorecard", "nc:scorecard"),
+    ("session", "nc:session"),
+    ("task", "nc:task"),
+];

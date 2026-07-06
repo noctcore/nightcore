@@ -3,8 +3,10 @@ import { describe, expect, test } from 'bun:test';
 
 import { z } from 'zod';
 
+import { CHANNELS } from '../../packages/contracts/src/index.ts';
 import {
   assertEnumNamesInjective,
+  buildChannels,
   def,
   numberRustType,
 } from './gen-rust-contracts.ts';
@@ -17,6 +19,18 @@ import {
  * mapping to zod's internal check AST so a dependency bump that reshapes it fails
  * HERE, loudly, instead of silently downgrading every bounded integer to f64.
  */
+describe('buildChannels emits the nc:* registry deterministically', () => {
+  test('returns every CHANNELS entry, sorted by registry symbol', () => {
+    const pairs = buildChannels();
+    // Same size and content as the source registry.
+    expect(pairs.length).toBe(Object.keys(CHANNELS).length);
+    expect(Object.fromEntries(pairs)).toEqual(CHANNELS);
+    // Stable order (the emitted Rust must be deterministic for `--check`).
+    const syms = pairs.map(([sym]) => sym);
+    expect(syms).toEqual([...syms].sort((a, b) => a.localeCompare(b)));
+  });
+});
+
 describe('numberRustType maps zod number shapes to Rust numerics', () => {
   const cases: Array<[string, z.ZodType, string]> = [
     // Safe-int with a non-negative lower bound → unsigned.
