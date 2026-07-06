@@ -215,6 +215,28 @@ impl PersistedRun for ScorecardRun {
     fn set_updated_at(&mut self, updated_at: u64) {
         self.updated_at = updated_at;
     }
+    fn is_finalized(&self) -> bool {
+        self.status == "completed" && !self.readings.is_empty()
+    }
+    fn set_telemetry(
+        &mut self,
+        cost_usd: f64,
+        duration_ms: u64,
+        input_tokens: u64,
+        output_tokens: u64,
+    ) {
+        self.cost_usd = cost_usd;
+        self.duration_ms = duration_ms;
+        self.usage = InsightUsage {
+            input_tokens,
+            output_tokens,
+        };
+    }
+    fn accumulate_usage(&mut self, cost_usd: f64, input_tokens: u64, output_tokens: u64) {
+        self.cost_usd += cost_usd;
+        self.usage.input_tokens += input_tokens;
+        self.usage.output_tokens += output_tokens;
+    }
 }
 
 impl ScorecardStore {
@@ -264,29 +286,18 @@ impl ScorecardStore {
         input_tokens: u64,
         output_tokens: u64,
     ) -> Result<(), String> {
-        self.mutate(run_id, |run| {
-            if run.status != "running" {
-                return;
-            }
-            run.cost_usd += cost_usd;
-            run.usage.input_tokens += input_tokens;
-            run.usage.output_tokens += output_tokens;
-            if run.readings.iter().any(|r| r.id == reading.id) {
-                return;
-            }
-            let mut reading = reading;
-            if let Some((status, link)) = run
-                .readings
-                .iter()
-                .find(|r| r.fingerprint == reading.fingerprint && r.status != "open")
-                .map(|r| (r.status.clone(), r.linked_task_id.clone()))
-            {
-                reading.status = status;
-                reading.linked_task_id = link;
-            }
-            run.readings.push(reading);
-        })
-        .map(|_| ())
+        // The single-item case of the shared accumulate. Scorecard has no cross-run
+        // dismissed carry (every grade is a fresh snapshot), so the dismissed set is
+        // empty; the in-run fingerprint carry behaves identically.
+        self.accumulate_items(
+            run_id,
+            vec![reading],
+            &std::collections::HashSet::new(),
+            cost_usd,
+            input_tokens,
+            output_tokens,
+            |run| &mut run.readings,
+        )
     }
 
     /// Atomically link a reading to a task: under ONE lock, if the reading is already

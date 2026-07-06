@@ -11,15 +11,14 @@
 //!   - the `start_*` head — request validation + run-header resolution
 //!     ([`begin_scan_run`]) and the dispatch tail ([`dispatch_scan_command`]);
 //!   - the finalizer core — the idempotency guard and the status/telemetry stamp,
-//!     unified in [`finalize_completed`] over the [`ScanRun`] / [`ScanStore`] traits,
-//!     plus the shared wire helpers ([`ScanTelemetry`], [`failure_reason`], [`wire_str`]).
+//!     unified in [`finalize_completed`] over the store-layer
+//!     [`PersistedRun`] trait (the former `ScanRun`/`ScanStore` pair was folded into
+//!     it — audit #34), plus the shared wire helpers ([`ScanTelemetry`],
+//!     [`failure_reason`], [`wire_str`]).
 //!
 //! Each feature injects only the parts that genuinely diverge: its run-struct shape
 //! (scope vs dimensions vs profile/artifacts/synthesizing) and the `merge` closure that
 //! rebuilds items from the wire event and reconciles in-run/cross-run lifecycle onto them.
-//! The narrow [`ScanStore`] trait names JUST the `mutate(id, |run| …)` operation the
-//! finalizer needs — deliberately not the full store trait (the store-trait refactor is a
-//! separate finding) — so this unification lands without restructuring the three stores.
 
 use std::collections::{HashMap, HashSet};
 
@@ -29,11 +28,7 @@ use serde_json::Value;
 use crate::contracts::SurfaceCommand;
 use crate::project::Project;
 use crate::provider::SidecarProvider;
-use crate::store::harness::{HarnessRun, HarnessStore, HarnessUsage};
-use crate::store::insight::{InsightRun, InsightStore, InsightUsage};
-use crate::store::pr_review::{PrReviewRun, PrReviewStore};
-use crate::store::run_store::LifecycleItem;
-use crate::store::scorecard::{ScorecardRun, ScorecardStore};
+use crate::store::run_store::{LifecycleItem, PersistedRun, RunStore};
 use crate::store::TaskStore;
 use crate::task::{now_ms, TaskStatus};
 
@@ -225,176 +220,43 @@ where
     result
 }
 
-/// A persisted scan run that can be finalized on its terminal `*-completed` event.
-/// Implemented by `InsightRun`, `ScorecardRun`, and `HarnessRun` so [`finalize_completed`]
-/// can own the two store-agnostic halves of every completion arm — the idempotency guard
-/// and the status/telemetry stamp — while each feature injects only its item rebuild and
-/// lifecycle reconciliation.
-pub(crate) trait ScanRun {
-    /// Whether this run has ALREADY been finalized with results — the idempotency guard a
-    /// duplicate `*-completed` must honor. Once a run is `completed` AND carries results,
-    /// re-applying the terminal event would clobber the user's in-run lifecycle edits
-    /// (dismiss / convert / apply). Deduplicated here so a fix to the guard lands in ONE
-    /// place instead of three (the maintenance hazard this refactor exists to remove).
-    fn is_finalized(&self) -> bool;
-
-    /// Stamp the shared terminal state onto the run: `status = "completed"`, the
-    /// cost/duration/token telemetry, and clear `error`. Feature-specific items
-    /// (findings/readings/artifacts) and extras (harness's `profile` / `synthesizing`) are
-    /// applied by the caller's `merge` closure BEFORE this runs.
-    fn stamp_completion(&mut self, tel: &ScanTelemetry);
-}
-
-impl ScanRun for InsightRun {
-    fn is_finalized(&self) -> bool {
-        self.status == "completed" && !self.findings.is_empty()
-    }
-    fn stamp_completion(&mut self, tel: &ScanTelemetry) {
-        self.status = "completed".to_string();
-        self.cost_usd = tel.cost_usd;
-        self.duration_ms = tel.duration_ms;
-        self.usage = InsightUsage {
-            input_tokens: tel.input_tokens,
-            output_tokens: tel.output_tokens,
-        };
-        self.error = None;
-    }
-}
-
-impl ScanRun for ScorecardRun {
-    fn is_finalized(&self) -> bool {
-        self.status == "completed" && !self.readings.is_empty()
-    }
-    fn stamp_completion(&mut self, tel: &ScanTelemetry) {
-        self.status = "completed".to_string();
-        self.cost_usd = tel.cost_usd;
-        self.duration_ms = tel.duration_ms;
-        // Scorecard reuses `InsightUsage` for its token totals.
-        self.usage = InsightUsage {
-            input_tokens: tel.input_tokens,
-            output_tokens: tel.output_tokens,
-        };
-        self.error = None;
-    }
-}
-
-impl ScanRun for HarnessRun {
-    fn is_finalized(&self) -> bool {
-        // A clean repo finalizes with zero findings but proposed artifacts (synthesis runs
-        // regardless), so the guard checks BOTH collections — findings-only would miss that
-        // case and let a duplicate completion clobber the applied artifacts.
-        self.status == "completed" && (!self.findings.is_empty() || !self.artifacts.is_empty())
-    }
-    fn stamp_completion(&mut self, tel: &ScanTelemetry) {
-        self.status = "completed".to_string();
-        self.cost_usd = tel.cost_usd;
-        self.duration_ms = tel.duration_ms;
-        self.usage = HarnessUsage {
-            input_tokens: tel.input_tokens,
-            output_tokens: tel.output_tokens,
-        };
-        self.error = None;
-    }
-}
-
-impl ScanRun for PrReviewRun {
-    fn is_finalized(&self) -> bool {
-        self.status == "completed" && !self.findings.is_empty()
-    }
-    fn stamp_completion(&mut self, tel: &ScanTelemetry) {
-        self.status = "completed".to_string();
-        self.cost_usd = tel.cost_usd;
-        self.duration_ms = tel.duration_ms;
-        // PR Review reuses `InsightUsage` for its token totals.
-        self.usage = InsightUsage {
-            input_tokens: tel.input_tokens,
-            output_tokens: tel.output_tokens,
-        };
-        self.error = None;
-    }
-}
-
-/// A scan store whose runs can be mutated by id — the ONE operation [`finalize_completed`]
-/// needs. Each feature store already exposes `mutate(id, |run| …)` under a single lock;
-/// this trait just names that shape so the finalizer is generic over all three. It is
-/// intentionally minimal (not the full per-store surface — that broader store trait is a
-/// separate finding), so unifying the finalizer doesn't wait on restructuring the stores.
-pub(crate) trait ScanStore {
-    type Run: ScanRun;
-    fn mutate_run<F>(&self, run_id: &str, f: F) -> Result<Self::Run, String>
-    where
-        F: FnOnce(&mut Self::Run);
-}
-
-impl ScanStore for InsightStore {
-    type Run = InsightRun;
-    fn mutate_run<F>(&self, run_id: &str, f: F) -> Result<InsightRun, String>
-    where
-        F: FnOnce(&mut InsightRun),
-    {
-        self.mutate(run_id, f)
-    }
-}
-
-impl ScanStore for ScorecardStore {
-    type Run = ScorecardRun;
-    fn mutate_run<F>(&self, run_id: &str, f: F) -> Result<ScorecardRun, String>
-    where
-        F: FnOnce(&mut ScorecardRun),
-    {
-        self.mutate(run_id, f)
-    }
-}
-
-impl ScanStore for HarnessStore {
-    type Run = HarnessRun;
-    fn mutate_run<F>(&self, run_id: &str, f: F) -> Result<HarnessRun, String>
-    where
-        F: FnOnce(&mut HarnessRun),
-    {
-        self.mutate(run_id, f)
-    }
-}
-
-impl ScanStore for PrReviewStore {
-    type Run = PrReviewRun;
-    fn mutate_run<F>(&self, run_id: &str, f: F) -> Result<PrReviewRun, String>
-    where
-        F: FnOnce(&mut PrReviewRun),
-    {
-        self.mutate(run_id, f)
-    }
-}
-
 /// Finalize a scan run on its terminal `*-completed` event — the store-agnostic core every
 /// feature's completion arm shares. Under the store's single mutate lock it: (1) runs the
-/// shared idempotency guard ([`ScanRun::is_finalized`]) so a duplicate terminal event is a
-/// no-op; (2) applies `merge` — the ONLY per-feature piece — which reconciles the caller's
-/// already-parsed items (in-run / cross-run lifecycle) and assigns them onto the run; then
-/// (3) stamps the shared status + telemetry ([`ScanRun::stamp_completion`]).
+/// shared idempotency guard ([`PersistedRun::is_finalized`]) so a duplicate terminal event
+/// is a no-op; (2) applies `merge` — the ONLY per-feature piece — which reconciles the
+/// caller's already-parsed items (in-run / cross-run lifecycle) and assigns them onto the
+/// run; then (3) stamps the shared status + telemetry (`completed`, cleared error,
+/// [`PersistedRun::set_telemetry`]).
 ///
 /// Returns `true` when the persist succeeded — the caller then logs its feature-shaped
 /// completion line (findings vs readings vs findings+artifacts) — and `false` when it
 /// failed, in which case the shared warn is logged here. A guard short-circuit still
 /// persists successfully and returns `true`, matching the pre-refactor behavior of logging
 /// completion even for a duplicate terminal event.
-pub(crate) fn finalize_completed<S, F>(
-    store: &S,
+pub(crate) fn finalize_completed<R, F>(
+    store: &RunStore<R>,
     feature: &'static str,
     run_id: &str,
     tel: &ScanTelemetry,
     merge: F,
 ) -> bool
 where
-    S: ScanStore,
-    F: FnOnce(&mut S::Run),
+    R: PersistedRun,
+    F: FnOnce(&mut R),
 {
-    match store.mutate_run(run_id, |run| {
+    match store.mutate(run_id, |run| {
         if run.is_finalized() {
             return;
         }
         merge(run);
-        run.stamp_completion(tel);
+        run.set_status("completed");
+        run.set_telemetry(
+            tel.cost_usd,
+            tel.duration_ms,
+            tel.input_tokens,
+            tel.output_tokens,
+        );
+        run.set_error(None);
     }) {
         Ok(_) => true,
         Err(e) => {
@@ -452,8 +314,8 @@ pub(crate) fn reconcile_scan_history<I: LifecycleItem>(
 /// to a peeked item DURING the run) by fingerprint so the wholesale replace doesn't reset it
 /// to `open`, then stamps completion. `select` picks the run's item `Vec`. Returns
 /// [`finalize_completed`]'s persisted flag for the caller's feature-shaped log line.
-pub(crate) fn finalize_scan_items<S, I, Sel>(
-    store: &S,
+pub(crate) fn finalize_scan_items<R, I, Sel>(
+    store: &RunStore<R>,
     feature: &'static str,
     run_id: &str,
     tel: &ScanTelemetry,
@@ -461,9 +323,9 @@ pub(crate) fn finalize_scan_items<S, I, Sel>(
     select: Sel,
 ) -> bool
 where
-    S: ScanStore,
+    R: PersistedRun,
     I: LifecycleItem,
-    Sel: FnOnce(&mut S::Run) -> &mut Vec<I>,
+    Sel: FnOnce(&mut R) -> &mut Vec<I>,
 {
     finalize_completed(store, feature, run_id, tel, move |run| {
         let dest = select(run);
@@ -534,7 +396,7 @@ pub(crate) fn begin_scan_run(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::insight::StoredFinding;
+    use crate::store::insight::{InsightRun, InsightUsage, StoredFinding};
     use serde_json::json;
 
     #[test]
@@ -625,7 +487,9 @@ mod tests {
     }
 
     #[test]
-    fn stamp_completion_sets_status_telemetry_and_clears_error() {
+    fn completion_stamp_sets_status_telemetry_and_clears_error() {
+        // The exact stamp `finalize_completed` applies on a terminal event
+        // (status → completed, telemetry overwritten, stale error cleared).
         let mut run = running_insight_run();
         run.error = Some("transient dispatch error".to_string());
         let tel = ScanTelemetry {
@@ -634,7 +498,14 @@ mod tests {
             input_tokens: 10,
             output_tokens: 3,
         };
-        run.stamp_completion(&tel);
+        run.set_status("completed");
+        run.set_telemetry(
+            tel.cost_usd,
+            tel.duration_ms,
+            tel.input_tokens,
+            tel.output_tokens,
+        );
+        run.set_error(None);
         assert_eq!(run.status, "completed");
         assert_eq!(run.cost_usd, 1.5);
         assert_eq!(run.duration_ms, 900);

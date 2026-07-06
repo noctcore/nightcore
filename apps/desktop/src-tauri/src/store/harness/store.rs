@@ -5,7 +5,8 @@
 //! mutators in the sibling `status` module are Harness-specific.
 
 use super::wire::{
-    HarnessRun, StoredConventionFinding, StoredHarnessProposal, StoredProposedArtifact,
+    HarnessRun, HarnessUsage, StoredConventionFinding, StoredHarnessProposal,
+    StoredProposedArtifact,
 };
 use crate::store::run_store::{PersistedRun, RunStore};
 
@@ -36,6 +37,31 @@ impl PersistedRun for HarnessRun {
     }
     fn set_updated_at(&mut self, updated_at: u64) {
         self.updated_at = updated_at;
+    }
+    fn is_finalized(&self) -> bool {
+        // A clean repo finalizes with zero findings but proposed artifacts (synthesis
+        // runs regardless), so the guard checks BOTH collections — findings-only would
+        // miss that case and let a duplicate completion clobber the applied artifacts.
+        self.status == "completed" && (!self.findings.is_empty() || !self.artifacts.is_empty())
+    }
+    fn set_telemetry(
+        &mut self,
+        cost_usd: f64,
+        duration_ms: u64,
+        input_tokens: u64,
+        output_tokens: u64,
+    ) {
+        self.cost_usd = cost_usd;
+        self.duration_ms = duration_ms;
+        self.usage = HarnessUsage {
+            input_tokens,
+            output_tokens,
+        };
+    }
+    fn accumulate_usage(&mut self, cost_usd: f64, input_tokens: u64, output_tokens: u64) {
+        self.cost_usd += cost_usd;
+        self.usage.input_tokens += input_tokens;
+        self.usage.output_tokens += output_tokens;
     }
 }
 
@@ -82,40 +108,14 @@ impl HarnessStore {
         input_tokens: u64,
         output_tokens: u64,
     ) -> Result<(), String> {
-        self.mutate(run_id, |run| {
-            if run.status != "running" {
-                return;
-            }
-            // Carry BOTH the status AND any linked task id forward, so a fingerprint
-            // converted earlier this scan doesn't lose its link when a later lens
-            // re-delivers it (mirrors `InsightStore::accumulate_findings`).
-            let prior: std::collections::HashMap<String, (String, Option<String>)> = run
-                .findings
-                .iter()
-                .filter(|f| f.status != "open")
-                .map(|f| {
-                    (
-                        f.fingerprint.clone(),
-                        (f.status.clone(), f.linked_task_id.clone()),
-                    )
-                })
-                .collect();
-            for mut f in findings {
-                if run.findings.iter().any(|e| e.id == f.id) {
-                    continue;
-                }
-                if let Some((status, link)) = prior.get(&f.fingerprint) {
-                    f.status = status.clone();
-                    f.linked_task_id = link.clone();
-                } else if dismissed.contains(&f.fingerprint) {
-                    f.status = "dismissed".to_string();
-                }
-                run.findings.push(f);
-            }
-            run.cost_usd += cost_usd;
-            run.usage.input_tokens += input_tokens;
-            run.usage.output_tokens += output_tokens;
-        })
-        .map(|_| ())
+        self.accumulate_items(
+            run_id,
+            findings,
+            dismissed,
+            cost_usd,
+            input_tokens,
+            output_tokens,
+            |run| &mut run.findings,
+        )
     }
 }

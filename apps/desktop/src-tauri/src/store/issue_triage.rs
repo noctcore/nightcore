@@ -209,6 +209,31 @@ impl PersistedRun for IssueValidationRun {
     fn set_updated_at(&mut self, updated_at: u64) {
         self.updated_at = updated_at;
     }
+    fn is_finalized(&self) -> bool {
+        // One verdict per run: completed AND carrying its result. (The issue-triage
+        // finalizer is single-verdict and lives in `sidecar::issue_triage`; this guard
+        // keeps the trait honest for the shared machinery.)
+        self.status == "completed" && self.result.is_some()
+    }
+    fn set_telemetry(
+        &mut self,
+        cost_usd: f64,
+        duration_ms: u64,
+        input_tokens: u64,
+        output_tokens: u64,
+    ) {
+        self.cost_usd = cost_usd;
+        self.duration_ms = duration_ms;
+        self.usage = InsightUsage {
+            input_tokens,
+            output_tokens,
+        };
+    }
+    fn accumulate_usage(&mut self, cost_usd: f64, input_tokens: u64, output_tokens: u64) {
+        self.cost_usd += cost_usd;
+        self.usage.input_tokens += input_tokens;
+        self.usage.output_tokens += output_tokens;
+    }
 }
 
 impl IssueValidationStore {

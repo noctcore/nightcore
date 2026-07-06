@@ -14,10 +14,10 @@
 //! [`RunStore::edit_run`] (mutating) and [`RunStore::read`] (read-only), so the
 //! atomic-write and lock-ordering invariants are never re-implemented per feature.
 //!
-//! NB: the sibling `crate::sidecar::scan` module owns a *different* `ScanRun` / `ScanStore`
-//! pair — the terminal-event finalizer over already-loaded runs. This module is the
-//! store-layer refactor that module's docs anticipated ("the store-trait refactor is a
-//! separate finding"); the two abstractions are intentionally distinct and non-colliding.
+//! [`PersistedRun`] is also the shape the sidecar-side terminal-event finalizer
+//! (`crate::sidecar::scan::finalize_completed`) operates over — the formerly separate
+//! `ScanRun`/`ScanStore` pair was folded in here (audit #34), so one trait covers both
+//! the store CRUD and the completion stamp.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -53,6 +53,26 @@ pub trait PersistedRun: Clone + Serialize + DeserializeOwned {
     fn set_status(&mut self, status: &str);
     fn set_error(&mut self, error: Option<String>);
     fn set_updated_at(&mut self, updated_at: u64);
+
+    /// Whether this run has ALREADY been finalized with results — the idempotency
+    /// guard a duplicate terminal `*-completed` event must honor. Once a run is
+    /// `completed` AND carries results, re-applying the terminal event would clobber
+    /// the user's in-run lifecycle edits (dismiss / convert / apply). Deduplicated
+    /// here (folded in from the former `sidecar::scan::ScanRun` — audit #34) so a fix
+    /// to the guard lands in ONE place instead of five.
+    fn is_finalized(&self) -> bool;
+
+    /// Overwrite the run's terminal telemetry (cost / duration / token totals) from
+    /// the authoritative `*-completed` event. Status/error stamping stays with the
+    /// caller ([`set_status`](Self::set_status) / [`set_error`](Self::set_error));
+    /// this only maps the shared telemetry onto the run's own usage struct.
+    fn set_telemetry(&mut self, cost_usd: f64, duration_ms: u64, input_tokens: u64, output_tokens: u64);
+
+    /// ADD one intermediate pass's spend onto the run's totals (the mid-run
+    /// accumulate path, so a cancelled run still shows what it spent). The terminal
+    /// event overwrites these via [`set_telemetry`](Self::set_telemetry) when the
+    /// run completes cleanly.
+    fn accumulate_usage(&mut self, cost_usd: f64, input_tokens: u64, output_tokens: u64);
 }
 
 /// The disposition an [`RunStore::edit_run`] closure returns. `Commit` bumps
@@ -391,6 +411,71 @@ impl<R: PersistedRun> RunStore<R> {
             Ok(Edit::Commit(LinkOutcome::Linked))
         })?;
         Ok(outcome)
+    }
+
+    /// Merge one intermediate pass's items into a still-`running` run so a cancel or
+    /// crash keeps the partial results already paid for — and so mid-run
+    /// dismiss/convert on a peeked item has persisted items to act on. A no-op once
+    /// the run leaves `running`: the terminal `*-completed` event is authoritative
+    /// and owns the final, deduped set. A newly-arrived item inherits any in-run
+    /// lifecycle already applied to an item sharing its fingerprint, else the
+    /// cross-run `dismissed` set; an item whose id is already present is skipped
+    /// (idempotent re-delivery). Cost/usage accumulate so a cancelled run still shows
+    /// what it spent (the terminal event overwrites these totals when the run
+    /// completes cleanly). The single audited home of the mid-run accumulate —
+    /// formerly four byte-identical per-store copies (audit #34); `select` picks the
+    /// item collection out of the run (findings / readings).
+    // The arg list IS the accumulate wire surface (id + items + carry set + the three
+    // spend counters + selector); bundling the counters into a struct would add a type
+    // for exactly one caller family without removing any call-site noise.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn accumulate_items<I, S>(
+        &self,
+        run_id: &str,
+        items: Vec<I>,
+        dismissed: &HashSet<String>,
+        cost_usd: f64,
+        input_tokens: u64,
+        output_tokens: u64,
+        select: S,
+    ) -> Result<(), String>
+    where
+        I: LifecycleItem,
+        S: FnOnce(&mut R) -> &mut Vec<I>,
+    {
+        self.mutate(run_id, |run| {
+            if run.status() != "running" {
+                return;
+            }
+            run.accumulate_usage(cost_usd, input_tokens, output_tokens);
+            let existing = select(run);
+            // Carry BOTH the status AND any linked task id forward, so a fingerprint
+            // converted earlier this run doesn't lose its link when a later pass
+            // re-delivers it.
+            let prior: HashMap<String, (String, Option<String>)> = existing
+                .iter()
+                .filter(|i| i.status() != "open")
+                .map(|i| {
+                    (
+                        i.fingerprint().to_string(),
+                        (i.status().to_string(), i.linked_task_id().map(str::to_string)),
+                    )
+                })
+                .collect();
+            for mut item in items {
+                if existing.iter().any(|e| e.id() == item.id()) {
+                    continue;
+                }
+                if let Some((status, link)) = prior.get(item.fingerprint()) {
+                    item.set_status(status);
+                    item.set_linked_task_id(link.clone());
+                } else if dismissed.contains(item.fingerprint()) {
+                    item.set_status("dismissed");
+                }
+                existing.push(item);
+            }
+        })
+        .map(|_| ())
     }
 
     /// Every fingerprint a user has CONVERTED to a task across all runs (optionally
