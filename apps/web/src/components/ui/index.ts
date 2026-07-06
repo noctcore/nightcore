@@ -53,6 +53,13 @@ export type { ModalProps } from './Modal';
 export { Modal, useLastPresent, useModal } from './Modal';
 export { ModelEffortPicker } from './ModelEffortPicker';
 export type { ModelEffortPickerProps } from './ModelEffortPicker/ModelEffortPicker.types';
+export type {
+  ModelCatalogData,
+  ModelCatalogState,
+  ModelSelection,
+  ModelSelectProps,
+} from './ModelSelect';
+export { ModelSelect, STATIC_MODEL_CATALOG_DATA, useModelCatalog } from './ModelSelect';
 export * from './motion';
 export type { NumberFieldProps } from './NumberField';
 export { NumberField } from './NumberField';
