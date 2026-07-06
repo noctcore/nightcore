@@ -447,8 +447,7 @@ fn is_stale_terminal(event_session: Option<u64>, current_session: Option<u64>) -
 /// `authentication` reason is still treated as fatal — so a broken credential
 /// stops the loop regardless of engine version.
 fn is_fatal_setup_failure(event: &Value) -> bool {
-    use crate::contracts::ErrorCategory;
-    use crate::orchestration::breaker::trips_breaker_immediately;
+    use crate::contracts::{trips_breaker_immediately, ErrorCategory};
 
     let category: Option<ErrorCategory> = event
         .get("detail")
