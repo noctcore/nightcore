@@ -10,6 +10,7 @@ import { useId } from 'react';
 import {
   Button,
   CheckIcon,
+  chipClass,
   GithubIcon,
   HistoryIcon,
   Menu,
@@ -29,7 +30,6 @@ import { ReviewFindings } from '../ReviewFindings';
 import { ReviewPosition } from '../ReviewPosition';
 import { ReviewTimeline } from '../ReviewTimeline';
 import {
-  chipClass,
   FIX_RUNNING_TITLE,
   OWN_PR_TITLE,
   sectionStatusMessage,

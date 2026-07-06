@@ -13,19 +13,6 @@ export const OWN_PR_TITLE =
 export const FIX_RUNNING_TITLE =
   'A fix agent is already running for this PR — wait for it to finish';
 
-/** Shared chip classes for the lens toggle buttons. */
-const CHIP =
-  'rounded-[10px] border px-3 py-1.5 text-[12.5px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50';
-
-/** Lens chip classes for the selected/unselected states. */
-export function chipClass(selected: boolean): string {
-  return `${CHIP} ${
-    selected
-      ? 'border-primary/60 bg-primary/[0.1] text-foreground'
-      : 'border-border bg-white/[0.02] text-muted-foreground hover:border-white/20'
-  }`;
-}
-
 /** The section's persistent sr-only live-region line: announces the run-state
  *  transitions (running → completed/failed) that the old RunLifecycleShell
  *  screens used to announce by swapping whole views. Empty in config mode and

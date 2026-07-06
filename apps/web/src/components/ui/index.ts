@@ -39,6 +39,12 @@ export { IconTile } from './IconTile';
 export type { ImageDropzoneItem, ImageDropzoneProps } from './ImageDropzone';
 export { ImageDropzone } from './ImageDropzone';
 export { Kbd } from './Kbd';
+export type {
+  LensChipDescriptor,
+  LensChipGridProps,
+  ScanConfigFormProps,
+} from './LensChipGrid';
+export { chipClass, LensChipGrid, ScanConfigForm } from './LensChipGrid';
 export type { MarkdownProps } from './Markdown';
 export { Markdown, renderMarkdown } from './Markdown';
 export type { MenuItem, MenuProps } from './Menu';
