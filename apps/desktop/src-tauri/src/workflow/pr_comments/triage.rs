@@ -1,7 +1,7 @@
 //! AI triage of fetched review threads BEFORE the fix agent dispatches: classify
 //! each unresolved inline thread as `actionable` / `false_positive` /
 //! `already_addressed` / `question` via the shared `claude -p` one-shot
-//! ([`crate::workflow::claude_oneshot`]), so the UI can chip each thread and the
+//! ([`crate::workflow::oneshot`]), so the UI can chip each thread and the
 //! address-comments prompt can explicitly mark the non-actionable ones.
 //!
 //! **Trusted framing OUTSIDE, untrusted bodies INSIDE the fence** — the exact
@@ -18,7 +18,7 @@
 //! the fix agent already handles when triage does not run at all.
 
 use super::{PrCommentTriage, PrCommentTriageClass, PrReviewComments};
-use crate::workflow::claude_oneshot::{run_claude_with, strip_code_fence};
+use crate::workflow::oneshot::{run_oneshot_with, strip_code_fence};
 
 /// Max characters of the model's per-thread rationale carried to the UI. A note
 /// longer than this is the model rambling; it is a tooltip, not prose.
@@ -75,7 +75,7 @@ pub(super) fn triage_threads_with(
     }
 
     let payload = build_triage_payload(comments);
-    let Some(raw) = run_claude_with(binary, TRIAGE_INSTRUCTION, &payload) else {
+    let Some(raw) = run_oneshot_with(binary, TRIAGE_INSTRUCTION, &payload) else {
         tracing::warn!(
             target: "nightcore::pr_triage",
             threads = count,

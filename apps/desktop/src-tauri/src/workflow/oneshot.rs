@@ -32,16 +32,16 @@ const GEN_TIMEOUT: Duration = Duration::from_secs(30);
 /// the context, and return its stdout — or `None` on spawn failure, non-zero exit,
 /// or timeout. The child runs with every tool disallowed and external MCP
 /// suppressed, so it can never read or modify anything beyond its stdin.
-pub(crate) fn run_claude(instruction: &str, stdin_payload: &str) -> Option<String> {
-    run_claude_with("claude", instruction, stdin_payload)
+pub(crate) fn run_oneshot(instruction: &str, stdin_payload: &str) -> Option<String> {
+    run_oneshot_with("claude", instruction, stdin_payload)
 }
 
-/// Binary-parameterized [`run_claude`] — the injection seam the tests drive with a
+/// Binary-parameterized [`run_oneshot`] — the injection seam the tests drive with a
 /// fake script to exercise the real spawn + exit-code/timeout path (mirrors the
-/// `run_gh_bounded` binary parameter). Production callers use [`run_claude`], which
+/// `run_gh_bounded` binary parameter). Production callers use [`run_oneshot`], which
 /// passes the resolved `claude`; the whole posture (least privilege, stdin-fed
 /// context, the 30s bound) is identical.
-pub(crate) fn run_claude_with(
+pub(crate) fn run_oneshot_with(
     binary: &str,
     instruction: &str,
     stdin_payload: &str,

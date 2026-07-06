@@ -1,10 +1,10 @@
-//! Wall-clock-bounded child waiting (the `claude_oneshot` poll pattern, shared).
+//! Wall-clock-bounded child waiting (the `oneshot` poll pattern, shared).
 //!
 //! `std::process` has no deadline on `wait`/`wait_with_output`, so a child that
 //! never exits — a `git push` against a black-holed origin, a hung `gh` — pins
 //! its blocking thread (and any lease the caller holds) forever. This helper is
 //! the reusable form of the try_wait poll-with-deadline + kill loop that
-//! `workflow::claude_oneshot` proved out: callers spawn the child themselves
+//! `workflow::oneshot` proved out: callers spawn the child themselves
 //! (keeping their own env/cwd/pipe setup — e.g. the git-env isolation
 //! chokepoint), drain its pipes on threads, and bound the wait here.
 
@@ -23,7 +23,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(50);
 ///
 /// The caller must take/drain the child's piped output on separate threads
 /// BEFORE calling this (a full pipe buffer would otherwise deadlock the child),
-/// exactly as `claude_oneshot::run_claude` does.
+/// exactly as `oneshot::run_oneshot` does.
 pub(crate) fn wait_with_deadline(
     child: &mut Child,
     deadline: Duration,
