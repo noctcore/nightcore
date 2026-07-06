@@ -4,10 +4,11 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 
 import type { Task } from '@/lib/bridge';
+import { useWorktreesContext } from '@/lib/worktrees-context';
 
+import type { BreakerInfo } from '../chrome';
 import { type ColumnDef,COLUMNS } from '../status';
-import { type ActiveWorktree,filterTasksByWorktree } from '../WorktreeSwitcher';
-import type { BreakerInfo } from './Board.types';
+import { filterTasksByWorktree } from '../WorktreeSwitcher';
 
 /** A board column paired with the tasks currently grouped into it. */
 export interface BoardColumn {
@@ -65,14 +66,16 @@ export interface BoardViewState {
 
 /** Board view state: the search query plus the derived filtered/grouped columns.
  *  Tasks are first scoped to the active worktree — Main shows run-mode-main
- *  tasks, a worktree tab shows its branch's tasks — then keyword-filtered. The
- *  blocked-task set is computed by the backend and passed in as a prop (it depends
- *  on the full registry + run state, not just the visible cards). */
+ *  tasks, a worktree tab shows its branch's tasks; the selection is read from the
+ *  shared `WorktreesContext` (the same value the switcher sets) — then
+ *  keyword-filtered. The blocked-task set is computed by the backend and passed
+ *  in as a prop (it depends on the full registry + run state, not just the
+ *  visible cards). */
 export function useBoardView(
   tasks: Task[],
-  activeWorktree: ActiveWorktree,
   onClearColumn: (statuses: Task['status'][]) => void,
 ): BoardViewState {
+  const { activeWorktree } = useWorktreesContext();
   const [search, setSearch] = useState('');
   // Decouple the O(n log n) filter/group/sort from each keystroke. The input stays
   // controlled on `search` (updated urgently, so typing never lags), while the
@@ -117,12 +120,6 @@ export function useDisclosure(): { open: boolean; show: () => void; hide: () => 
     show: useCallback(() => setOpen(true), []),
     hide: useCallback(() => setOpen(false), []),
   };
-}
-
-/** Open/close state for the read-only provider-config inspector (the header
- *  entry point owns its own toggle; the panel is a self-contained sheet). */
-export function useInspector(): { open: boolean; show: () => void; hide: () => void } {
-  return useDisclosure();
 }
 
 /** Whether to show the circuit-breaker banner: visible while a breaker is set

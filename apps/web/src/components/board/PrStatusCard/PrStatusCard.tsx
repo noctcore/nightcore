@@ -12,6 +12,7 @@ import {
   UploadIcon,
 } from '@/components/ui';
 
+import { useTaskActions } from '../actions';
 import {
   canFinalize,
   canPullBase,
@@ -34,13 +35,17 @@ const BADGE_BASE =
 export function PrStatusCard({
   task,
   view: liftedView,
-  onOpenPr,
-  onPushUpdates,
-  onFinalize,
-  onPullBase,
   isActionPending,
   statusOverride,
 }: PrStatusCardProps) {
+  // The PR-lifecycle mutations + the open-in-browser chip come from the shared
+  // task-actions context (the shell's guarded handlers).
+  const {
+    onOpenPr,
+    onPushPrUpdates: onPushUpdates,
+    onFinalizePr: onFinalize,
+    onPullBaseFf: onPullBase,
+  } = useTaskActions();
   // Self-fetch ONLY when no lifted view is provided (stories/tests): the app
   // path lifts `usePrStatus` into TaskDetail so the footer shares the fetched
   // state — the hook here stays mounted (rules of hooks) but inert.

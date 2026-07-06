@@ -1,3 +1,3 @@
 export { TaskDetail } from './TaskDetail';
 export { deriveTaskDetailView, type TaskDetailView } from './TaskDetail.hooks';
-export type { TaskDetailActions, TaskDetailProps } from './TaskDetail.types';
+export type { TaskDetailProps } from './TaskDetail.types';

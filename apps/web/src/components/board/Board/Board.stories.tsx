@@ -1,14 +1,98 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fireEvent, fn, userEvent, within } from 'storybook/test';
 
-import type { Task } from '@/lib/bridge';
+import type { Task, WorktreeInfo } from '@/lib/bridge';
+import {
+  type ActiveWorktree,
+  type RemovableWorktreeTab,
+  WorktreesProvider,
+} from '@/lib/worktrees-context';
 
-import { BLOCKED_TASK, TASKS_BY_STATUS, WORKTREES } from '../_fixtures';
+import { BLOCKED_TASK, makeTaskActions, TASKS_BY_STATUS, WORKTREES } from '../_fixtures';
+import { TaskActionsProvider } from '../actions';
+import { BoardChromeProvider, type BoardChromeValue } from '../chrome';
 import { Board } from './Board';
+import type { BoardProps } from './Board.types';
+
+/** One stable no-op action group for every board story — the cards inside read
+ *  their handlers from `TaskActionsContext` now, not Board props. */
+const STORY_ACTIONS = makeTaskActions();
+
+/** The board-chrome cluster (appearance + auto-loop) the board + its BoardHeader
+ *  consume from `BoardChromeContext` — surfaced as story ARGS so plays and tests
+ *  keep overriding individual fields (`autoMode`, `breaker`, the handlers) per
+ *  render, exactly as they did when these were Board props. */
+type ChromeArgs = Partial<BoardChromeValue>;
+
+/** The story fixture: the board wrapped in the three providers it now requires —
+ *  task actions for the cards, the board-chrome cluster for the header/banner, and
+ *  the worktrees slice for the switcher + the board's worktree filter. The chrome +
+ *  worktree clusters stay story ARGS so plays and tests keep overriding them. */
+function BoardFixture({
+  worktrees,
+  activeWorktree,
+  onSelectWorktree,
+  onRemoveWorktree,
+  onRefreshWorktrees,
+  appearanceOverride = null,
+  backgroundVersion = null,
+  onChangeAppearance,
+  onPickBackground,
+  onClearBackground,
+  concurrency = 3,
+  autoMode = false,
+  autoCommitOnVerified = false,
+  breaker = null,
+  onToggleAutoMode,
+  onAutoCommitChange,
+  onConcurrencyChange,
+  onResume,
+  ...props
+}: BoardProps & {
+  worktrees: WorktreeInfo[];
+  activeWorktree: ActiveWorktree;
+  onSelectWorktree?: (active: ActiveWorktree) => void;
+  onRemoveWorktree?: (tab: RemovableWorktreeTab) => void;
+  onRefreshWorktrees?: () => void;
+} & ChromeArgs) {
+  return (
+    <TaskActionsProvider actions={STORY_ACTIONS}>
+      <BoardChromeProvider
+        value={{
+          appearanceOverride,
+          backgroundVersion,
+          onChangeAppearance: onChangeAppearance ?? (() => {}),
+          onPickBackground: onPickBackground ?? (() => {}),
+          onClearBackground: onClearBackground ?? (() => {}),
+          concurrency,
+          autoMode,
+          autoCommitOnVerified,
+          breaker,
+          onToggleAutoMode: onToggleAutoMode ?? (() => {}),
+          onAutoCommitChange: onAutoCommitChange ?? (() => {}),
+          onConcurrencyChange: onConcurrencyChange ?? (() => {}),
+          onResume: onResume ?? (() => {}),
+        }}
+      >
+        <WorktreesProvider
+          value={{
+            worktrees,
+            activeWorktree,
+            setActiveWorktree: onSelectWorktree ?? (() => {}),
+            removeWorktree: onRemoveWorktree ?? (() => {}),
+            refreshWorktrees: onRefreshWorktrees ?? (() => {}),
+          }}
+        >
+          <Board {...props} />
+        </WorktreesProvider>
+      </BoardChromeProvider>
+    </TaskActionsProvider>
+  );
+}
 
 const meta = {
   title: 'Board/Board',
-  component: Board,
+  component: BoardFixture,
   parameters: { layout: 'fullscreen' },
   args: {
     projectId: 'proj-1',
@@ -33,17 +117,9 @@ const meta = {
     logCounts: { 't-running': 7 },
     blockedIds: new Set<string>(),
     promptIds: new Set<string>(),
-    onSelect: fn(),
     onNewTask: fn(),
-    onRun: fn(),
-    onCancel: fn(),
-    onDelete: fn(),
     onMoveTask: fn(),
     onClearColumn: fn(),
-    onApprove: fn(),
-    onRefine: fn(),
-    onCommit: fn(),
-    onMerge: fn(),
     onToggleAutoMode: fn(),
     onAutoCommitChange: fn(),
     onConcurrencyChange: fn(),
@@ -56,7 +132,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof Board>;
+} satisfies Meta<typeof BoardFixture>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

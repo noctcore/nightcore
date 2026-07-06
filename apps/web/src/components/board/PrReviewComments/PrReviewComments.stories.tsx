@@ -3,9 +3,11 @@ import { expect, fn, userEvent, within } from 'storybook/test';
 
 import type { PrReviewComments as PrReviewCommentsPayload } from '@/lib/bridge';
 
-import { makePrReviewComments, makeTask } from '../_fixtures';
+import { makePrReviewComments, makeTask, makeTaskActions } from '../_fixtures';
+import { TaskActionsProvider } from '../actions';
 import { PrReviewComments } from './PrReviewComments';
 import type { PrReviewCommentsView } from './PrReviewComments.hooks';
+import type { PrReviewCommentsProps } from './PrReviewComments.types';
 
 /** The canonical PR'd task: a done + verified + committed worktree task whose PR
  *  exists but is not yet merged locally. */
@@ -39,9 +41,27 @@ function view(
   };
 }
 
+/** The story fixture: the section wrapped in the `TaskActionsProvider` it now
+ *  reads the address-comments dispatch from. The handler stays a story ARG so
+ *  plays and tests keep overriding it per render. */
+function PrReviewCommentsFixture({
+  onAddressComments,
+  ...props
+}: PrReviewCommentsProps & {
+  onAddressComments?: (id: string) => Promise<void>;
+}) {
+  return (
+    <TaskActionsProvider
+      actions={makeTaskActions({ onAddressPrComments: onAddressComments })}
+    >
+      <PrReviewComments {...props} />
+    </TaskActionsProvider>
+  );
+}
+
 const meta = {
   title: 'Board/PrReviewComments',
-  component: PrReviewComments,
+  component: PrReviewCommentsFixture,
   args: {
     task: PR_TASK,
     view: view(makePrReviewComments()),
@@ -54,7 +74,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof PrReviewComments>;
+} satisfies Meta<typeof PrReviewCommentsFixture>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

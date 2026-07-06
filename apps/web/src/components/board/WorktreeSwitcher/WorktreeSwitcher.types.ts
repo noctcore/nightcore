@@ -1,10 +1,12 @@
 /** Prop and tab types for the WorktreeSwitcher component. */
 import type { ChangeEvent, FocusEvent, KeyboardEvent, RefObject } from 'react';
 
-import type { Task, WorktreeInfo } from '@/lib/bridge';
+import type { Task } from '@/lib/bridge';
 
-/** The active worktree selection: a branch name, or `null` for the Main tab. */
-export type ActiveWorktree = string | null;
+// The selection type is canonical in the shared worktrees context (`lib/` —
+// both the board and worktree features consume it); re-exported here so the
+// switcher's own consumers keep importing it from the module they already use.
+export type { ActiveWorktree } from '@/lib/worktrees-context';
 
 /** One tab in the switcher: the Main tab (`branch: null`) or a worktree tab. */
 export interface WorktreeTab {
@@ -106,18 +108,10 @@ export interface WorktreeCollapsedSelectView {
   selectBranch: (branch: string | null) => void;
 }
 
-/** Props for the worktree switcher: the project's tasks, live worktrees, the
- *  active selection, and the select handler. */
+/** Props for the worktree switcher. The live worktrees, the active selection,
+ *  and the select/remove handlers come from the shared `WorktreesContext`
+ *  (`useWorktreesContext()`), not props — only the project's tasks travel down. */
 export interface WorktreeSwitcherProps {
   /** All tasks for the active project (used for grouping + the Main count). */
   tasks: Task[];
-  /** Live worktrees from `listWorktrees`; empty falls back to task branches. */
-  worktrees: WorktreeInfo[];
-  /** The currently selected tab (`null` = Main). */
-  active: ActiveWorktree;
-  /** Select a tab (sets the active worktree + filters the board). */
-  onSelect: (active: ActiveWorktree) => void;
-  /** Remove a worktree tab (discard its checkout + branch). When omitted, the
-   *  per-tab actions menu is not rendered. Never called for the Main tab. */
-  onRemoveWorktree?: (tab: WorktreeTab) => void;
 }

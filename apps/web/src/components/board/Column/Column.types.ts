@@ -1,8 +1,9 @@
-/** Props for the Column component. */
+/** Props for the Column component. The card action handlers come from
+ *  `TaskActionsContext` (consumed by `TaskCard` itself), so the column carries
+ *  only its header chrome, the tasks it renders, and the drop-target status. */
 import type { Task } from '@/lib/bridge';
 
-/** Props for a single board column: its header chrome, the tasks it renders, the
- *  drop target status, and the card action handlers it forwards. */
+/** Props for a single board column. */
 export interface ColumnProps {
   title: string;
   tasks: Task[];
@@ -20,23 +21,12 @@ export interface ColumnProps {
   /** Streamed log-line counts per task id (for the running card's Logs badge). */
   logCounts: Record<string, number>;
   /** The @dnd-kit droppable id for this column — the status a card dropped here
-   *  moves to. `in_progress` (the In Progress column) is a non-droppable target. */
+   *  moves to. `in_progress` (the In Progress column) is a non-droppable target.
+   *  Also the column's interactivity flag: the board passes it only when it owns
+   *  a live DnD context (`onMoveTask` at `BoardDnd`), so eligible cards render
+   *  draggable exactly when a drop could resolve; presentational stories omit it
+   *  and cards render non-draggable. */
   dropStatus?: Task['status'];
   emptyText?: string;
-  onSelect: (id: string) => void;
-  onRun?: (id: string) => void;
-  onCancel?: (id: string) => void;
-  onDelete?: (id: string) => void;
-  /** Present when the board is interactive — gates whether eligible cards are
-   *  draggable. The cross-column move itself resolves at the board's `onDragEnd`,
-   *  not here. Absent in presentational stories (cards render non-draggable). */
-  onMoveTask?: (id: string, status: Task['status']) => void;
-  /** Waiting Approval card actions. */
-  onApprove?: (id: string) => void;
-  onRefine?: (id: string) => void;
-  /** Verified card actions. */
-  onCommit?: (id: string) => void;
-  onMerge?: (id: string) => void;
   onClear?: () => void;
-  isActionPending?: (action: string, id: string) => boolean;
 }

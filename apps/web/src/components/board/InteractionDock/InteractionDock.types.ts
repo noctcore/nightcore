@@ -1,8 +1,7 @@
-import type {
-  PermissionPrompt,
-  QuestionAnswer,
-  QuestionPrompt,
-} from '@/lib/bridge';
+/** Prop types for the InteractionDock. The permission/question relay handlers
+ *  come from `TaskActionsContext` (`onRespondPermission` / `onAnswerQuestion`),
+ *  not props. */
+import type { PermissionPrompt, QuestionPrompt } from '@/lib/bridge';
 
 export interface InteractionDockProps {
   /** The task whose parked interactions this dock surfaces. */
@@ -11,16 +10,4 @@ export interface InteractionDockProps {
   permissionPrompts: PermissionPrompt[];
   /** Parked AskUserQuestion prompts for the task (pick/answer). */
   questionPrompts: QuestionPrompt[];
-  /** Relay a permission decision up to the board. */
-  onRespondPermission: (
-    taskId: string,
-    requestId: string,
-    decision: 'allow' | 'deny',
-  ) => void;
-  /** Relay a question answer up to the board. */
-  onAnswerQuestion: (
-    taskId: string,
-    requestId: string,
-    answer: QuestionAnswer,
-  ) => void;
 }

@@ -1,5 +1,6 @@
 import { Button, CheckIcon, MoveIcon, Spinner } from '@/components/ui';
 
+import { useTaskActions } from '../actions';
 import { deriveProposedSubtasksView } from './ProposedSubtasksPanel.hooks';
 import type { ProposedSubtasksPanelProps } from './ProposedSubtasksPanel.types';
 
@@ -9,16 +10,17 @@ import type { ProposedSubtasksPanelProps } from './ProposedSubtasksPanel.types';
  *  "task" badge (the child appears on the board via the `nc:task` echo). When the
  *  run finished with NO proposals it renders an explicit notice (plus the failure
  *  reason when one is set) instead of nothing, so a decompose that produced no
- *  convertible work — or failed its structured-output contract — says so. Pure
- *  presentational — selection/convert state is owned by the board controller. */
+ *  convertible work — or failed its structured-output contract — says so. The
+ *  convert handlers come from `TaskActionsContext`; convert state is owned by the
+ *  board controller. */
 export function ProposedSubtasksPanel({
   taskId,
   subtasks,
-  onConvert,
-  onConvertAll,
   pending = false,
   error = null,
 }: ProposedSubtasksPanelProps) {
+  const { onConvertSubtask: onConvert, onConvertAllSubtasks: onConvertAll } =
+    useTaskActions();
   const { openCount, convertedCount, total, allConverted } =
     deriveProposedSubtasksView(subtasks);
 

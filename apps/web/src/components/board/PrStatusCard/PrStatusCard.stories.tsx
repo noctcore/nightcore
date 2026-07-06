@@ -1,8 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
 
-import { makePrStatus, makeTask } from '../_fixtures';
+import { makePrStatus, makeTask, makeTaskActions } from '../_fixtures';
+import { TaskActionsProvider } from '../actions';
 import { PrStatusCard } from './PrStatusCard';
+import type { PrStatusCardProps } from './PrStatusCard.types';
 
 /** The canonical PR'd task: done + verified + committed worktree task whose PR
  *  exists but is not yet merged locally. */
@@ -18,9 +20,38 @@ const PR_TASK = makeTask({
   prNumber: 123,
 });
 
+/** The story fixture: the card wrapped in the `TaskActionsProvider` it now reads
+ *  its PR-lifecycle handlers from. The handlers stay story ARGS so plays and
+ *  tests keep overriding them per render. */
+function PrStatusCardFixture({
+  onOpenPr,
+  onPushUpdates,
+  onFinalize,
+  onPullBase,
+  ...props
+}: PrStatusCardProps & {
+  onOpenPr?: (url: string) => void;
+  onPushUpdates?: (id: string) => Promise<void>;
+  onFinalize?: (id: string) => Promise<void>;
+  onPullBase?: (id: string) => Promise<void>;
+}) {
+  return (
+    <TaskActionsProvider
+      actions={makeTaskActions({
+        onOpenPr,
+        onPushPrUpdates: onPushUpdates,
+        onFinalizePr: onFinalize,
+        onPullBaseFf: onPullBase,
+      })}
+    >
+      <PrStatusCard {...props} />
+    </TaskActionsProvider>
+  );
+}
+
 const meta = {
   title: 'Board/PrStatusCard',
-  component: PrStatusCard,
+  component: PrStatusCardFixture,
   args: {
     task: PR_TASK,
     onOpenPr: fn(),
@@ -37,7 +68,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof PrStatusCard>;
+} satisfies Meta<typeof PrStatusCardFixture>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

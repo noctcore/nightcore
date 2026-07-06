@@ -1,4 +1,5 @@
 import { LayersIcon } from '@/components/ui';
+import { useWorktreesContext } from '@/lib/worktrees-context';
 
 import { partitionWorktreeTabs, useWorktreeTabs } from './WorktreeSwitcher.hooks';
 import {
@@ -10,23 +11,24 @@ import type { WorktreeSwitcherProps } from './WorktreeSwitcher.types';
 
 /** The worktree switcher: a segment bar above the board with a Main
  *  tab plus one tab per live worktree. Selecting a tab sets the active worktree
- *  (lifted to the shell) and filters the board to that worktree's tasks. Each
- *  worktree tab carries an actions menu (kebab) whose "Remove worktree" item
- *  discards that checkout + branch — the tab's first action affordance.
+ *  (owned by the shell, shared via `WorktreesContext`) and filters the board to
+ *  that worktree's tasks. Each worktree tab carries an actions menu (kebab)
+ *  whose "Remove worktree" item discards that checkout + branch — the tab's
+ *  first action affordance.
  *
  *  Overflow-aware: at or below `COLLAPSE_THRESHOLD` tabs every tab renders inline
  *  exactly as before; above it, Main stays inline and the worktrees fold into a
  *  searchable {@link WorktreeCollapsedSelect} (whose trigger reflects the active
  *  selection) so the row never wraps into clutter. The tab list is derived in
- *  `useWorktreeTabs`, the inline vs collapsed split in `partitionWorktreeTabs`;
- *  selection is owned by the caller. Renders nothing when only the Main tab exists. */
-export function WorktreeSwitcher({
-  tasks,
-  worktrees,
-  active,
-  onSelect,
-  onRemoveWorktree,
-}: WorktreeSwitcherProps) {
+ *  `useWorktreeTabs`, the inline vs collapsed split in `partitionWorktreeTabs`.
+ *  Renders nothing when only the Main tab exists. */
+export function WorktreeSwitcher({ tasks }: WorktreeSwitcherProps) {
+  const {
+    worktrees,
+    activeWorktree: active,
+    setActiveWorktree: onSelect,
+    removeWorktree: onRemoveWorktree,
+  } = useWorktreesContext();
   const tabs = useWorktreeTabs(tasks, worktrees);
 
   if (tabs.length <= 1) return null;

@@ -1,11 +1,23 @@
 /** Public surface of the board feature: components, the status vocabulary, and
  *  the session-stream folding helpers. */
+export {
+  TaskActionsContext,
+  TaskActionsProvider,
+  type TaskDetailActions,
+  useTaskActions,
+} from './actions';
 export type { AutoModeOptionsProps } from './AutoModeOptions';
 export { AutoModeOptions } from './AutoModeOptions';
-export type { BreakerInfo } from './Board';
 export { Board } from './Board';
 export type { PickedBackgroundImage } from './BoardBackgroundPanel';
 export { BoardDnd } from './BoardDnd';
+export {
+  BoardChromeContext,
+  BoardChromeProvider,
+  type BoardChromeValue,
+  type BreakerInfo,
+  useBoardChrome,
+} from './chrome';
 export { Column } from './Column';
 export { GauntletResults } from './GauntletResults';
 export { InteractionDock } from './InteractionDock';
@@ -65,7 +77,6 @@ export {
   VERDICT_TEXT,
 } from './status';
 export { TaskCard } from './TaskCard';
-export type { TaskDetailActions } from './TaskDetail';
 export { TaskDetail } from './TaskDetail';
 export { TaskStatusDot } from './TaskStatusDot';
 export { WorkModePicker } from './WorkModePicker';

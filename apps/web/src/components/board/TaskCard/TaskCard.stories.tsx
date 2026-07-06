@@ -1,12 +1,62 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
 
-import { BLOCKED_TASK, MAIN_MODE_TASK, TASKS_BY_STATUS } from '../_fixtures';
+import { BLOCKED_TASK, MAIN_MODE_TASK, makeTaskActions, TASKS_BY_STATUS } from '../_fixtures';
+import { TaskActionsProvider, type TaskDetailActions } from '../actions';
 import { TaskCard } from './TaskCard';
+import type { TaskCardProps } from './TaskCard.types';
+
+/** The story fixture: the card wrapped in the `TaskActionsProvider` it now reads
+ *  its action handlers from. The handlers stay story ARGS so plays and tests keep
+ *  overriding them per render. */
+function TaskCardFixture({
+  onSelect,
+  onRun,
+  onCancel,
+  onDelete,
+  onApprove,
+  onRefine,
+  onCommit,
+  onMerge,
+  isActionPending,
+  ...props
+}: TaskCardProps &
+  Partial<
+    Pick<
+      TaskDetailActions,
+      | 'onSelect'
+      | 'onRun'
+      | 'onCancel'
+      | 'onDelete'
+      | 'onApprove'
+      | 'onRefine'
+      | 'onCommit'
+      | 'onMerge'
+      | 'isActionPending'
+    >
+  >) {
+  return (
+    <TaskActionsProvider
+      actions={makeTaskActions({
+        onSelect,
+        onRun,
+        onCancel,
+        onDelete,
+        onApprove,
+        onRefine,
+        onCommit,
+        onMerge,
+        isActionPending,
+      })}
+    >
+      <TaskCard {...props} />
+    </TaskActionsProvider>
+  );
+}
 
 const meta = {
   title: 'Board/TaskCard',
-  component: TaskCard,
+  component: TaskCardFixture,
   args: {
     selected: false,
     onSelect: fn(),
@@ -25,7 +75,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof TaskCard>;
+} satisfies Meta<typeof TaskCardFixture>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

@@ -16,6 +16,7 @@ import {
 } from '@/components/ui';
 import { sourceRefLabel } from '@/lib/source-ref';
 
+import { useTaskActions } from '../actions';
 import { ActivityLog } from '../ActivityLog';
 import { GauntletResults } from '../GauntletResults';
 import { InteractionDock } from '../InteractionDock';
@@ -61,7 +62,6 @@ export function TaskDetail({
   prStatus,
   prReviewComments,
   onClose,
-  actions,
   isActionPending,
   onOpenSourceRef,
 }: TaskDetailProps) {
@@ -103,7 +103,6 @@ export function TaskDetail({
         prStatusView={prStatusView}
         prReviewCommentsView={prReviewCommentsView}
         onClose={onClose}
-        actions={actions}
         isActionPending={isActionPending}
         onOpenSourceRef={onOpenSourceRef}
       />
@@ -125,7 +124,10 @@ function TaskActivity({ isRunning }: { isRunning: boolean }) {
  *  NOT depend on the per-frame stream. Memoized so a stream flush (which re-renders
  *  the outer `TaskDetail`) bails here: every prop is referentially stable across
  *  flushes. Every section is its own sibling component, and the ~25 action
- *  callbacks travel as one grouped `actions` object. */
+ *  callbacks arrive as one grouped, referentially stable object via
+ *  `TaskActionsContext` (a context update — not a prop — so it cannot defeat
+ *  this memo on a stream flush; the shell's `detailActions` only re-identifies
+ *  on a real guard/prompt/toast change). */
 const TaskDetailChrome = memo(function TaskDetailChrome({
   task,
   cost,
@@ -143,10 +145,10 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
   prStatusView,
   prReviewCommentsView,
   onClose,
-  actions,
   isActionPending,
   onOpenSourceRef,
 }: TaskDetailChromeProps) {
+  const actions = useTaskActions();
   const mergeable = canMerge(task, gauntlet);
   // Freshly-fetched PR state (from the lifted status view): a PR already
   // merged ON GitHub must not arm the local Merge — the worktree branch was
@@ -257,13 +259,7 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
         {hasResult && (
           <div className="space-y-3">
             <GroupLabel>Result</GroupLabel>
-            <ReviewPanel
-              task={task}
-              onAccept={actions.onAcceptReview}
-              onReject={actions.onRejectReview}
-              onRerun={actions.onRerunVerification}
-              pending={pending}
-            />
+            <ReviewPanel task={task} pending={pending} />
             {isDoneColumn && actions.onRunGauntlet !== undefined && (
               <GauntletResults
                 result={gauntlet}
@@ -289,10 +285,6 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
               key={task.id}
               task={task}
               view={prStatusView}
-              onOpenPr={actions.onOpenPr}
-              onPushUpdates={actions.onPushPrUpdates}
-              onFinalize={actions.onFinalizePr}
-              onPullBase={actions.onPullBaseFf}
               isActionPending={isActionPending}
             />
           </div>
@@ -313,7 +305,6 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
               key={task.id}
               task={task}
               view={prReviewCommentsView}
-              onAddressComments={actions.onAddressPrComments}
               isActionPending={isActionPending}
             />
           </div>
@@ -331,8 +322,6 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
               <ProposedSubtasksPanel
                 taskId={task.id}
                 subtasks={task.proposedSubtasks}
-                onConvert={actions.onConvertSubtask}
-                onConvertAll={actions.onConvertAllSubtasks}
                 pending={pending('convertSubtask') || pending('convertAllSubtasks')}
                 error={task.error}
               />
@@ -355,7 +344,7 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
           {(task.attachments.length > 0 || kindEditable) && (
             <TaskAttachments task={task} editable={kindEditable} />
           )}
-          <SessionCard task={task} kindEditable={kindEditable} actions={actions} />
+          <SessionCard task={task} kindEditable={kindEditable} />
         </div>
 
         {/* Activity — every session's logs, grouped (build, verification, …).
@@ -375,7 +364,6 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
               // Resume requires no run in flight (the run path leases a slot), so
               // gate it the same way the footer Run button is gated.
               canResume={!anyRunning && !isRunning && task.status !== 'verifying'}
-              actions={actions}
             />
           </div>
         )}
@@ -390,8 +378,6 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
           taskId={task.id}
           permissionPrompts={prompts}
           questionPrompts={questions}
-          onRespondPermission={actions.onRespondPermission}
-          onAnswerQuestion={actions.onAnswerQuestion ?? (() => {})}
         />
       )}
 

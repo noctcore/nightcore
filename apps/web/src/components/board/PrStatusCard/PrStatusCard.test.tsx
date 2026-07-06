@@ -13,7 +13,8 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }));
 import type { PrStatus, Task } from '@/lib/bridge';
 import { finalizeMergedPr, pullBaseFf, pushPrUpdates } from '@/lib/bridge';
 
-import { makePrStatus, makeTask } from '../_fixtures';
+import { makePrStatus, makeTask, makeTaskActions } from '../_fixtures';
+import { TaskActionsProvider } from '../actions';
 import { PrStatusCard } from './PrStatusCard';
 import {
   canFinalize,
@@ -52,17 +53,22 @@ function calls(cmd: string): number {
   return invoke.mock.calls.filter(([c]) => c === cmd).length;
 }
 
-/** Render the card with production-like wiring: handlers relay to the bridge
- *  (the AppShell adds guarding/toasts on top — tested in usePrLifecycle). */
+/** Production-like handler wiring: handlers relay to the bridge (the AppShell
+ *  adds guarding/toasts on top — tested in usePrLifecycle). Provided through
+ *  `TaskActionsProvider`, matching the app's context seam. */
+const BRIDGE_ACTIONS = makeTaskActions({
+  onOpenPr: () => {},
+  onPushPrUpdates: (id) => pushPrUpdates(id),
+  onFinalizePr: (id) => finalizeMergedPr(id),
+  onPullBaseFf: (id) => pullBaseFf(id),
+});
+
+/** Render the card inside the provider the app wraps it with. */
 function renderCard(task: Task = TASK) {
   return render(
-    <PrStatusCard
-      task={task}
-      onOpenPr={() => {}}
-      onPushUpdates={(id) => pushPrUpdates(id)}
-      onFinalize={(id) => finalizeMergedPr(id)}
-      onPullBase={(id) => pullBaseFf(id)}
-    />,
+    <TaskActionsProvider actions={BRIDGE_ACTIONS}>
+      <PrStatusCard task={task} />
+    </TaskActionsProvider>,
   );
 }
 
@@ -335,13 +341,9 @@ test('switching tasks never leaks the previous task&apos;s status, badges, or ac
   await expect.element(screen.getByRole('button', { name: /finalize/i })).toBeInTheDocument();
 
   screen.rerender(
-    <PrStatusCard
-      task={taskB}
-      onOpenPr={() => {}}
-      onPushUpdates={(id) => pushPrUpdates(id)}
-      onFinalize={(id) => finalizeMergedPr(id)}
-      onPullBase={(id) => pullBaseFf(id)}
-    />,
+    <TaskActionsProvider actions={BRIDGE_ACTIONS}>
+      <PrStatusCard task={taskB} />
+    </TaskActionsProvider>,
   );
   // B's fetch is pending forever: the card must show ITS pending state, not
   // A's merged snapshot or armed actions.

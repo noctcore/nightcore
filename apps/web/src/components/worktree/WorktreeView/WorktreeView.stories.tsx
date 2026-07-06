@@ -3,8 +3,10 @@ import { fn } from 'storybook/test';
 
 import { ToastProvider } from '@/components/ui';
 import type { Task, WorktreeInfo } from '@/lib/bridge';
+import { WorktreesProvider } from '@/lib/worktrees-context';
 
 import { WorktreeView } from './WorktreeView';
+import type { WorktreeViewProps } from './WorktreeView.types';
 
 const WORKTREES: WorktreeInfo[] = [
   {
@@ -34,9 +36,32 @@ const TASKS = [
   { id: 't2', title: 'Auth guard', branch: 'nc/auth-guard' },
 ] as unknown as Task[];
 
+/** The story fixture: the view wrapped in the `WorktreesProvider` it now reads
+ *  the live list + Refresh handler from. Those stay story ARGS so plays and
+ *  tests keep overriding them per render. */
+function WorktreeViewFixture({
+  worktrees,
+  onRefresh,
+  ...props
+}: WorktreeViewProps & { worktrees: WorktreeInfo[]; onRefresh?: () => void }) {
+  return (
+    <WorktreesProvider
+      value={{
+        worktrees,
+        activeWorktree: null,
+        setActiveWorktree: () => {},
+        removeWorktree: () => {},
+        refreshWorktrees: onRefresh ?? (() => {}),
+      }}
+    >
+      <WorktreeView {...props} />
+    </WorktreesProvider>
+  );
+}
+
 const meta = {
   title: 'Worktree/WorktreeView',
-  component: WorktreeView,
+  component: WorktreeViewFixture,
   args: { worktrees: WORKTREES, tasks: TASKS, onRefresh: fn() },
   decorators: [
     (Story) => (
@@ -47,7 +72,7 @@ const meta = {
       </ToastProvider>
     ),
   ],
-} satisfies Meta<typeof WorktreeView>;
+} satisfies Meta<typeof WorktreeViewFixture>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

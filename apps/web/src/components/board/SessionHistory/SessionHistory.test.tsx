@@ -2,7 +2,7 @@ import { composeStories } from '@storybook/react-vite';
 import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
-import { SESSIONS } from '../_fixtures';
+import { SESSIONS } from '../_fixtures.sessions';
 import {
   extractMessageText,
   formatTimestamp,

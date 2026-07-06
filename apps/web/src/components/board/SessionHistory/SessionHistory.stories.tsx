@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
 
-import { SESSION_MESSAGES,SESSIONS } from '../_fixtures';
+import { SESSION_MESSAGES, SESSIONS } from '../_fixtures.sessions';
 import { SessionHistory } from './SessionHistory';
 import type { SessionHistoryData } from './SessionHistory.types';
 

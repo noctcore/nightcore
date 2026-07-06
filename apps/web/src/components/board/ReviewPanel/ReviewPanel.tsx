@@ -1,15 +1,21 @@
 /** Reviewer-verdict and structure-lock panel for a verified/parked task. */
 import { Button, CheckIcon, Markdown, RetryIcon, Spinner, VerifiedIcon } from '@/components/ui';
 
+import { useTaskActions } from '../actions';
 import { VERDICT_LABEL, VERDICT_TEXT } from '../status';
 import { deriveReviewPanelView, MAX_FIX_ATTEMPTS } from './ReviewPanel.hooks';
 import type { ReviewPanelProps } from './ReviewPanel.types';
 
 /** The verification review panel: renders the reviewer's verdict text with
  *  its parsed verdict, the auto-fix budget note, and — for a parked verification
- *  `waiting_approval` — Accept / Reject / Rerun controls. Pure presentational;
- *  the bridge actions are owned by the detail panel. */
-export function ReviewPanel({ task, onAccept, onReject, onRerun, pending }: ReviewPanelProps) {
+ *  `waiting_approval` — Accept / Reject / Rerun controls. The bridge actions come
+ *  from `TaskActionsContext` (owned by the shell). */
+export function ReviewPanel({ task, pending }: ReviewPanelProps) {
+  const {
+    onAcceptReview: onAccept,
+    onRejectReview: onReject,
+    onRerunVerification: onRerun,
+  } = useTaskActions();
   const busy = (action: string): boolean => pending?.(action) ?? false;
   const lock = task.structureLockResult;
   const lockFailed = lock !== null && !lock.passed;

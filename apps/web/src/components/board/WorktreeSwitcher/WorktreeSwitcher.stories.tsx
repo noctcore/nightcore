@@ -1,6 +1,13 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
 
+import type { WorktreeInfo } from '@/lib/bridge';
+import {
+  type ActiveWorktree,
+  type RemovableWorktreeTab,
+  WorktreesProvider,
+} from '@/lib/worktrees-context';
+
 import {
   MAIN_MODE_TASK,
   MANY_WORKTREE_TASKS,
@@ -9,15 +16,46 @@ import {
   WORKTREES,
 } from '../_fixtures';
 import { WorktreeSwitcher } from './WorktreeSwitcher';
+import type { WorktreeSwitcherProps } from './WorktreeSwitcher.types';
 
 // A below-threshold task set: Main + two live worktrees (nc/api-client,
 // nc/auth-guard) → 3 tabs, so the default stories exercise the inline path. The
 // overflow/collapse path has its own stories driven by MANY_WORKTREES.
 const INLINE_TASKS = [MAIN_MODE_TASK, TASKS_BY_STATUS.in_progress, TASKS_BY_STATUS.done];
 
+/** The story fixture: the switcher wrapped in the `WorktreesProvider` it now
+ *  reads its list/selection/handlers from. Those stay story ARGS so plays and
+ *  tests keep overriding them per render. */
+function WorktreeSwitcherFixture({
+  worktrees,
+  active,
+  onSelect,
+  onRemoveWorktree,
+  ...props
+}: WorktreeSwitcherProps & {
+  worktrees: WorktreeInfo[];
+  active: ActiveWorktree;
+  onSelect?: (active: ActiveWorktree) => void;
+  onRemoveWorktree?: (tab: RemovableWorktreeTab) => void;
+}) {
+  return (
+    <WorktreesProvider
+      value={{
+        worktrees,
+        activeWorktree: active,
+        setActiveWorktree: onSelect ?? (() => {}),
+        removeWorktree: onRemoveWorktree ?? (() => {}),
+        refreshWorktrees: () => {},
+      }}
+    >
+      <WorktreeSwitcher {...props} />
+    </WorktreesProvider>
+  );
+}
+
 const meta = {
   title: 'Board/WorktreeSwitcher',
-  component: WorktreeSwitcher,
+  component: WorktreeSwitcherFixture,
   args: {
     tasks: INLINE_TASKS,
     worktrees: WORKTREES,
@@ -32,7 +70,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof WorktreeSwitcher>;
+} satisfies Meta<typeof WorktreeSwitcherFixture>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

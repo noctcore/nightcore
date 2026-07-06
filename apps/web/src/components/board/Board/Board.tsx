@@ -1,30 +1,14 @@
 import { memo } from 'react';
 
-import {
-  AgentsIcon,
-  AlertIcon,
-  BoltIcon,
-  BranchIcon,
-  Button,
-  CloseIcon,
-  IconButton,
-  ImageIcon,
-  Kbd,
-  PlusIcon,
-  RefreshIcon,
-  SearchIcon,
-  SlidersIcon,
-  Toolbar,
-} from '@/components/ui';
+import { AlertIcon, BoltIcon, CloseIcon } from '@/components/ui';
 
-import { AutoModeOptions } from '../AutoModeOptions';
-import { BoardBackgroundPanel } from '../BoardBackgroundPanel';
 import { BoardDnd } from '../BoardDnd';
+import { BoardHeader } from '../BoardHeader';
+import { useBoardChrome } from '../chrome';
 import { Column } from '../Column';
-import { ProviderConfigPanel } from '../ProviderConfigPanel';
 import { WorktreeSwitcher } from '../WorktreeSwitcher';
-import { useBoardAppearance, useBoardBackgroundPanel } from './Board.appearance.hooks';
-import { useBoardView, useBreakerBanner, useInspector } from './Board.hooks';
+import { useBoardAppearance } from './Board.appearance.hooks';
+import { useBoardView, useBreakerBanner } from './Board.hooks';
 import type { BoardProps } from './Board.types';
 
 const EMPTY_TEXT: Record<string, string> = {
@@ -36,70 +20,42 @@ const EMPTY_TEXT: Record<string, string> = {
   failed: 'No failures',
 };
 
-/** The Kanban board: a header (title + count chip, project path/branch subtitle,
- *  search, the live concurrency slider + Auto Mode toggle) over the five columns,
- *  plus a circuit-breaker Resume banner when the autonomous loop has paused after
- *  consecutive failures. Search lives in the board's view hook; the loop state
- *  and bridge actions are owned by the shell and passed down.
+/** The Kanban board: the `BoardHeader` band (title, toolbar, search) over the
+ *  five columns, plus a circuit-breaker Resume banner when the autonomous loop
+ *  has paused after consecutive failures. Search lives in the board's view hook;
+ *  the header/banner chrome (appearance + auto-loop) arrives via
+ *  `BoardChromeContext`, the worktree cluster via `WorktreesContext`, and the
+ *  per-card actions via `TaskActionsContext` (consumed by `TaskCard`).
  *
  *  Memoized (perf): the shell re-renders AppShell on every coalesced `nc:session`
  *  flush, but the Board's props are referentially stable (the `on*` handlers are
  *  `useCallback`s in `useAppShell`, and `logCounts` is identity-stabilized on the
- *  tool-count values) — so the board only re-renders when its tasks/selection/
- *  loop state actually change, not on every stream delta. */
+ *  tool-count values) and all three context values are shell-memoized low-churn
+ *  groups — so the board only re-renders when its tasks/selection/loop state
+ *  actually change, not on every stream delta. */
 function BoardImpl({
   tasks,
   projectId,
   projectName,
   projectPath,
   projectBranch,
-  appearanceOverride,
-  backgroundVersion,
-  onChangeAppearance,
-  onPickBackground,
-  onClearBackground,
-  worktrees,
-  activeWorktree,
-  onSelectWorktree,
-  onRemoveWorktree,
-  onRefreshWorktrees,
-  concurrency,
-  autoMode,
-  autoCommitOnVerified,
-  breaker,
   selectedId,
   logCounts,
   blockedIds,
   promptIds,
-  onSelect,
   onNewTask,
-  onRun,
-  onCancel,
-  onDelete,
   onMoveTask,
   onClearColumn,
-  onApprove,
-  onRefine,
-  onCommit,
-  onMerge,
-  isActionPending,
-  onToggleAutoMode,
-  onAutoCommitChange,
-  onConcurrencyChange,
-  onResume,
 }: BoardProps) {
-  const { search, setSearch, columns, clearHandlers } = useBoardView(
-    tasks,
-    activeWorktree,
-    onClearColumn,
-  );
+  // The appearance knobs style the whole board surface (this container) while
+  // the header's Background panel edits them; the breaker cluster drives the
+  // banner below the switcher. Both ride the low-churn chrome context.
+  const { appearanceOverride, backgroundVersion, breaker, onResume } = useBoardChrome();
+  const { search, setSearch, columns, clearHandlers } = useBoardView(tasks, onClearColumn);
   const banner = useBreakerBanner(breaker);
-  const inspector = useInspector();
-  const bgPanel = useBoardBackgroundPanel();
   const appearance = useBoardAppearance(projectId, appearanceOverride, backgroundVersion);
 
   return (
-    <>
     <div
       className="nc-board-appearance flex h-full min-h-0 flex-col"
       style={appearance.view.style}
@@ -112,129 +68,19 @@ function BoardImpl({
           style={{ backgroundImage: `url("${appearance.backgroundUrl}")` }}
         />
       )}
-      <div className="flex flex-col gap-3.5 border-b border-border px-[22px] pb-3.5 pt-[18px]">
-        <div className="flex flex-wrap items-start gap-x-5 gap-y-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-[21px] font-semibold tracking-tight">Kanban Board</h1>
-              <span className="rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-                {tasks.length} tasks
-              </span>
-            </div>
-            <div className="mt-1.5 flex items-center gap-2 font-mono text-[11.5px] text-muted-foreground">
-              <span className="truncate">{projectPath}</span>
-              {projectBranch !== null && (
-                <>
-                  <span className="opacity-40">·</span>
-                  <BranchIcon size={11} />
-                  <span>{projectBranch}</span>
-                </>
-              )}
-            </div>
-          </div>
-
-          <Toolbar label="Board actions" className="ml-auto">
-            <div
-              title="Max parallel runs"
-              className="flex shrink-0 items-center gap-2.5 rounded-[9px] border border-border bg-white/[0.02] px-3 py-1.5"
-            >
-              <AgentsIcon size={15} className="text-muted-foreground" />
-              <input
-                type="range"
-                aria-label="Max concurrency"
-                min={1}
-                max={6}
-                value={concurrency}
-                onChange={(e) => onConcurrencyChange(Number(e.target.value))}
-                className="w-[84px] accent-primary"
-              />
-              <span className="w-2.5 font-mono text-xs font-semibold">{concurrency}</span>
-            </div>
-            <button
-              type="button"
-              onClick={onToggleAutoMode}
-              aria-pressed={autoMode}
-              title={autoMode ? 'Stop Auto Mode' : 'Start Auto Mode'}
-              className={`flex items-center gap-2.5 rounded-[9px] border px-3.5 py-1.5 text-[12.5px] font-semibold text-foreground transition-colors ${
-                autoMode
-                  ? 'border-primary/55 bg-primary/[0.12]'
-                  : 'border-border bg-white/[0.02] hover:border-white/20'
-              }`}
-            >
-              <BoltIcon
-                size={14}
-                className={autoMode ? 'text-primary' : 'text-muted-foreground'}
-              />
-              <span>Auto Mode</span>
-              <span
-                className={`relative h-[17px] w-[30px] rounded-full transition-colors ${
-                  autoMode ? 'bg-primary' : 'bg-white/[0.12]'
-                }`}
-              >
-                <span
-                  className={`absolute top-0.5 h-[13px] w-[13px] rounded-full bg-white transition-transform ${
-                    autoMode ? 'left-[14px]' : 'left-0.5'
-                  }`}
-                />
-              </span>
-            </button>
-            <AutoModeOptions
-              autoCommitOnVerified={autoCommitOnVerified}
-              onAutoCommitChange={onAutoCommitChange}
-            />
-            <IconButton
-              label="Refresh board & worktrees"
-              onClick={onRefreshWorktrees}
-              className="border border-border bg-white/[0.02] p-2 hover:border-white/20"
-            >
-              <RefreshIcon size={15} className="text-muted-foreground" />
-            </IconButton>
-            <button
-              type="button"
-              onClick={bgPanel.show}
-              title="Customize the board background"
-              aria-label="Board background settings"
-              className="flex items-center justify-center rounded-[9px] border border-border bg-white/[0.02] p-2 text-foreground transition-colors hover:border-white/20"
-            >
-              <ImageIcon size={15} className="text-muted-foreground" />
-            </button>
-            <Button
-              variant="secondary"
-              onClick={inspector.show}
-              title="Inspect the provider configuration for this project"
-            >
-              <SlidersIcon size={14} className="text-muted-foreground" />
-              Provider
-            </Button>
-            <Button onClick={onNewTask}>
-              <PlusIcon size={14} />
-              New task
-              <Kbd>N</Kbd>
-            </Button>
-          </Toolbar>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex min-w-[220px] max-w-[420px] flex-1 items-center gap-2.5 rounded-[9px] border border-border bg-white/[0.02] px-3 py-2">
-            <SearchIcon size={15} className="text-muted-foreground" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              aria-label="Search tasks"
-              placeholder="Search tasks by keyword…"
-              className="flex-1 bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground"
-            />
-          </div>
-        </div>
-      </div>
-
-      <WorktreeSwitcher
-        tasks={tasks}
-        worktrees={worktrees}
-        active={activeWorktree}
-        onSelect={onSelectWorktree}
-        onRemoveWorktree={onRemoveWorktree}
+      <BoardHeader
+        taskCount={tasks.length}
+        projectName={projectName}
+        projectPath={projectPath}
+        projectBranch={projectBranch}
+        search={search}
+        onSearchChange={setSearch}
+        onNewTask={onNewTask}
+        appearance={appearance.appearance}
+        backgroundUrl={appearance.backgroundUrl}
       />
+
+      <WorktreeSwitcher tasks={tasks} />
 
       {banner.visible && breaker !== null && (
         <div className="flex items-center gap-3 border-b border-destructive/40 bg-destructive/[0.12] px-[22px] py-2.5">
@@ -277,40 +123,12 @@ function BoardImpl({
               logCounts={logCounts}
               dropStatus={def.statuses[0]}
               emptyText={search.trim() !== '' ? 'No matches' : EMPTY_TEXT[def.key]}
-              onSelect={onSelect}
-              onRun={onRun}
-              onCancel={onCancel}
-              onDelete={onDelete}
-              onMoveTask={onMoveTask}
-              onApprove={onApprove}
-              onRefine={onRefine}
-              onCommit={onCommit}
-              onMerge={onMerge}
-              isActionPending={isActionPending}
               onClear={clearHandlers[def.key]}
             />
           ))}
         </div>
       </BoardDnd>
     </div>
-
-      <ProviderConfigPanel
-        open={inspector.open}
-        projectName={projectName}
-        projectPath={projectPath}
-        onClose={inspector.hide}
-      />
-
-      <BoardBackgroundPanel
-        open={bgPanel.open}
-        appearance={appearance.appearance}
-        backgroundUrl={appearance.backgroundUrl}
-        onChangeAppearance={onChangeAppearance}
-        onPickImage={onPickBackground}
-        onClearImage={onClearBackground}
-        onClose={bgPanel.hide}
-      />
-    </>
   );
 }
 

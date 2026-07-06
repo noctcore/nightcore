@@ -3,7 +3,10 @@ import { expect, fn, userEvent, within } from 'storybook/test';
 
 import type { ProposedSubtask } from '@/lib/bridge';
 
+import { makeTaskActions } from '../_fixtures';
+import { TaskActionsProvider } from '../actions';
 import { ProposedSubtasksPanel } from './ProposedSubtasksPanel';
+import type { ProposedSubtasksPanelProps } from './ProposedSubtasksPanel.types';
 
 const open = (id: string, title: string, prompt: string): ProposedSubtask => ({
   id,
@@ -24,9 +27,32 @@ const converted = (s: ProposedSubtask, taskId: string): ProposedSubtask => ({
   linkedTaskId: taskId,
 });
 
+/** The story fixture: the panel wrapped in the `TaskActionsProvider` it now
+ *  reads the convert handlers from. The handlers stay story ARGS so plays and
+ *  tests keep overriding them per render. */
+function ProposedSubtasksPanelFixture({
+  onConvert,
+  onConvertAll,
+  ...props
+}: ProposedSubtasksPanelProps & {
+  onConvert?: (parentId: string, subtaskId: string) => void;
+  onConvertAll?: (parentId: string) => void;
+}) {
+  return (
+    <TaskActionsProvider
+      actions={makeTaskActions({
+        onConvertSubtask: onConvert,
+        onConvertAllSubtasks: onConvertAll,
+      })}
+    >
+      <ProposedSubtasksPanel {...props} />
+    </TaskActionsProvider>
+  );
+}
+
 const meta = {
   title: 'Board/ProposedSubtasksPanel',
-  component: ProposedSubtasksPanel,
+  component: ProposedSubtasksPanelFixture,
   args: {
     taskId: 'task-decompose-1',
     subtasks: SUBTASKS,
@@ -40,7 +66,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof ProposedSubtasksPanel>;
+} satisfies Meta<typeof ProposedSubtasksPanelFixture>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

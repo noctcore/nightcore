@@ -1,4 +1,5 @@
 import { Button, RefreshIcon } from '@/components/ui';
+import { useWorktreesContext } from '@/lib/worktrees-context';
 
 import { DiffViewDialog } from '../DiffViewDialog';
 import { DiscardDialog } from '../DiscardDialog';
@@ -12,13 +13,18 @@ import type { WorktreeViewProps } from './WorktreeView.types';
  *  drives. A thin shell — all data + dialog orchestration lives in
  *  `useWorktreeView` (no state in the component body). A header Refresh reconciles
  *  + re-reads state on demand so stale entries never require an app restart. */
-export function WorktreeView({ worktrees, tasks, onRefresh }: WorktreeViewProps) {
+export function WorktreeView({ tasks }: WorktreeViewProps) {
+  const { worktrees, refreshWorktrees } = useWorktreesContext();
   const v = useWorktreeView(tasks, worktrees);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto p-5">
       <div className="mb-4 flex items-center justify-end">
-        <Button variant="secondary" onClick={onRefresh} title="Reconcile + re-read worktree state">
+        <Button
+          variant="secondary"
+          onClick={refreshWorktrees}
+          title="Reconcile + re-read worktree state"
+        >
           <RefreshIcon size={14} className="text-muted-foreground" />
           Refresh
         </Button>

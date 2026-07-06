@@ -1,6 +1,12 @@
 import { lazy, Suspense } from 'react';
 
-import { Board, EMPTY_TRANSCRIPT, NewTaskForm } from '@/components/board';
+import {
+  Board,
+  BoardChromeProvider,
+  EMPTY_TRANSCRIPT,
+  NewTaskForm,
+  TaskActionsProvider,
+} from '@/components/board';
 import { NewProjectDialog } from '@/components/new-project';
 import {
   AnimatePresence,
@@ -20,6 +26,7 @@ import {
   VerifiedIcon,
 } from '@/components/ui';
 import type { PermissionPrompt, QuestionPrompt } from '@/lib/bridge';
+import { WorktreesProvider } from '@/lib/worktrees-context';
 
 import { Sidebar } from '../Sidebar';
 import { Splash } from '../Splash';
@@ -108,10 +115,12 @@ export function AppShell() {
     routing,
     registry,
     settings,
-    autoLoop,
     newProject,
-    appearance,
+    chrome,
     board,
+    drawer,
+    prDialog,
+    worktrees,
     confirm,
     showSplash,
     isTauri,
@@ -169,7 +178,14 @@ export function AppShell() {
   );
 
   return (
-    <>
+    // The shell's grouped task actions, the shared worktrees slice, and the board
+    // chrome cluster travel by context (not props). All three provider values are
+    // referentially stable across `nc:session` stream flushes (the `detailActions`,
+    // `useWorktreesValue`, and `useBoardChromeValue` memos), so none churns its
+    // consumers per-frame.
+    <TaskActionsProvider actions={drawer.detailActions}>
+    <WorktreesProvider value={worktrees}>
+    <BoardChromeProvider value={chrome}>
       {showProjects ? (
         <div className="flex h-full w-full flex-col overflow-hidden bg-background text-foreground">
           {browserPreviewBanner}
@@ -246,44 +262,13 @@ export function AppShell() {
                   projectName={active.name}
                   projectPath={active.path}
                   projectBranch={active.branch}
-                  appearanceOverride={
-                    settings.settings?.projectOverrides[active.id]?.boardAppearance ?? null
-                  }
-                  backgroundVersion={
-                    settings.settings?.projectOverrides[active.id]?.boardBackground?.version ?? null
-                  }
-                  onChangeAppearance={appearance.onChangeAppearance}
-                  onPickBackground={appearance.onPickBackground}
-                  onClearBackground={appearance.onClearBackground}
-                  worktrees={board.worktrees}
-                  activeWorktree={board.activeWorktree}
-                  onSelectWorktree={board.setActiveWorktree}
-                  onRemoveWorktree={board.handleRemoveWorktree}
-                  onRefreshWorktrees={board.handleRefreshWorktrees}
-                  concurrency={autoLoop.concurrency}
-                  autoMode={autoLoop.autoMode}
-                  autoCommitOnVerified={settings.settings?.autoCommitOnVerified ?? false}
-                  breaker={autoLoop.breaker}
                   selectedId={selectedId}
                   logCounts={board.logCounts}
                   blockedIds={board.blockedIds}
                   promptIds={board.promptIds}
-                  onSelect={setSelectedId}
                   onNewTask={routing.openNewTask}
-                  onRun={board.handleRun}
-                  onCancel={board.handleCancel}
-                  onDelete={board.requestDelete}
                   onMoveTask={board.handleMoveTask}
                   onClearColumn={board.requestClear}
-                  onApprove={board.handleApprove}
-                  onRefine={board.handleRefine}
-                  onCommit={board.handleCommit}
-                  onMerge={board.handleMerge}
-                  isActionPending={board.isActionPending}
-                  onToggleAutoMode={autoLoop.toggleAutoMode}
-                  onAutoCommitChange={appearance.onAutoCommitChange}
-                  onConcurrencyChange={autoLoop.changeConcurrency}
-                  onResume={autoLoop.resume}
                 />
               )}
             </div>
@@ -297,20 +282,18 @@ export function AppShell() {
                 <Suspense fallback={null}>
                   <TaskDetail
                     task={selected}
-                    stream={board.streams[selected.id] ?? EMPTY_TRANSCRIPT}
+                    stream={drawer.streams[selected.id] ?? EMPTY_TRANSCRIPT}
                     anyRunning={anyRunning}
-                    prompts={board.prompts[selected.id] ?? NO_PROMPTS}
-                    questions={board.questions[selected.id] ?? NO_QUESTIONS}
-                    gauntlet={board.gauntletResults[selected.id] ?? null}
-                    gauntletRunning={board.gauntletRunning.has(selected.id)}
-                    onClose={board.closeDetail}
-                    // The drawer's ~25 action callbacks travel as one grouped object,
-                    // pre-assembled once in the `board` controller (`detailActions`) so
-                    // its identity is stable across the per-frame stream flush. Delete
-                    // routes through the confirm-gated `requestDelete` (matching the
-                    // card/column deletes).
-                    actions={board.detailActions}
-                    isActionPending={board.isActionPending}
+                    prompts={drawer.prompts[selected.id] ?? NO_PROMPTS}
+                    questions={drawer.questions[selected.id] ?? NO_QUESTIONS}
+                    gauntlet={drawer.gauntletResults[selected.id] ?? null}
+                    gauntletRunning={drawer.gauntletRunning.has(selected.id)}
+                    onClose={drawer.closeDetail}
+                    // The drawer's ~25 action callbacks arrive via the
+                    // TaskActionsProvider above (one grouped, referentially stable
+                    // object — `detailActions`). Delete routes through the
+                    // confirm-gated `requestDelete` (matching the card/column deletes).
+                    isActionPending={drawer.isActionPending}
                     // Provenance chip → the originating scan run/item (routing concern).
                     onOpenSourceRef={routing.gotoSourceRef}
                   />
@@ -322,11 +305,7 @@ export function AppShell() {
 
         {view === 'worktrees' && (
           <Suspense fallback={<RouteFallback />}>
-            <WorktreeView
-              worktrees={board.worktrees}
-              tasks={tasks}
-              onRefresh={board.handleRefreshWorktrees}
-            />
+            <WorktreeView tasks={tasks} />
           </Suspense>
         )}
 
@@ -433,13 +412,13 @@ export function AppShell() {
       {/* The Create PR human gate: opened from the drawer's Create PR button;
           the mutation (push + `gh pr create`) only fires from its confirm. Mounted
           once first opened (a one-way latch) so the lazy dialog can animate closed. */}
-      {board.prDialogMounted && (
+      {prDialog.prDialogMounted && (
         <Suspense fallback={null}>
           <CreatePRDialog
-            open={board.prDialogTaskId !== null}
-            task={tasks.find((t) => t.id === board.prDialogTaskId) ?? null}
-            onCreate={board.handleCreatePr}
-            onClose={board.closePrDialog}
+            open={prDialog.prDialogTaskId !== null}
+            task={tasks.find((t) => t.id === prDialog.prDialogTaskId) ?? null}
+            onCreate={prDialog.handleCreatePr}
+            onClose={prDialog.closePrDialog}
           />
         </Suspense>
       )}
@@ -471,6 +450,8 @@ export function AppShell() {
         onConfirm={confirm.confirm}
         onCancel={confirm.cancel}
       />
-    </>
+    </BoardChromeProvider>
+    </WorktreesProvider>
+    </TaskActionsProvider>
   );
 }

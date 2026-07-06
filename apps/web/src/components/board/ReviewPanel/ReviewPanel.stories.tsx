@@ -3,15 +3,44 @@ import { expect, fn, userEvent, within } from 'storybook/test';
 
 import {
   makeTask,
+  makeTaskActions,
   SAMPLE_REVIEW_CHANGES,
   SAMPLE_REVIEW_PASS,
   STRUCTURE_LOCK_FAILED,
 } from '../_fixtures';
+import { TaskActionsProvider } from '../actions';
 import { ReviewPanel } from './ReviewPanel';
+import type { ReviewPanelProps } from './ReviewPanel.types';
+
+/** The story fixture: the panel wrapped in the `TaskActionsProvider` it now reads
+ *  Accept / Reject / Rerun from. The handlers stay story ARGS so plays and tests
+ *  keep overriding them per render. */
+function ReviewPanelFixture({
+  onAccept,
+  onReject,
+  onRerun,
+  ...props
+}: ReviewPanelProps & {
+  onAccept?: (id: string) => void;
+  onReject?: (id: string) => void;
+  onRerun?: (id: string) => void;
+}) {
+  return (
+    <TaskActionsProvider
+      actions={makeTaskActions({
+        onAcceptReview: onAccept,
+        onRejectReview: onReject,
+        onRerunVerification: onRerun,
+      })}
+    >
+      <ReviewPanel {...props} />
+    </TaskActionsProvider>
+  );
+}
 
 const meta = {
   title: 'Board/ReviewPanel',
-  component: ReviewPanel,
+  component: ReviewPanelFixture,
   args: {
     onAccept: fn(),
     onReject: fn(),
@@ -24,7 +53,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof ReviewPanel>;
+} satisfies Meta<typeof ReviewPanelFixture>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

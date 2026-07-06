@@ -1,18 +1,12 @@
-/** Board custom-appearance hooks (Custom Background feature): the background-panel
- *  disclosure toggle and the appearance loader. Split out of `Board.hooks.ts` to
- *  keep each hooks file focused (and under the per-file hook cap). */
+/** Board custom-appearance hooks (Custom Background feature): the appearance
+ *  loader. Split out of `Board.hooks.ts` to keep each hooks file focused (and
+ *  under the per-file hook cap). The background-panel disclosure moved to
+ *  `BoardHeader.hooks.ts` with the header extraction. */
 import { useEffect, useMemo, useState } from 'react';
 
 import { type BoardAppearance,readBoardBackground } from '@/lib/bridge';
 
 import { type AppearanceView,appearanceView, normalizeAppearance } from '../appearance';
-import { useDisclosure } from './Board.hooks';
-
-/** Open/close state for the Board Background settings sheet (same disclosure shape
- *  as the inspector — its own header button toggles it). */
-export function useBoardBackgroundPanel(): { open: boolean; show: () => void; hide: () => void } {
-  return useDisclosure();
-}
 
 /** Load + expose the active project's board appearance: normalizes the raw override
  *  to a complete/clamped appearance, derives the CSS variables / data attributes, and

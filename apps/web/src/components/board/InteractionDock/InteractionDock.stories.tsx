@@ -1,11 +1,40 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
 
+import type { QuestionAnswer } from '@/lib/bridge';
+
+import { makeTaskActions } from '../_fixtures';
+import { TaskActionsProvider } from '../actions';
 import { InteractionDock } from './InteractionDock';
+import type { InteractionDockProps } from './InteractionDock.types';
+
+/** The story fixture: the dock wrapped in the `TaskActionsProvider` it now reads
+ *  its relay handlers from. The handlers stay story ARGS so plays and tests keep
+ *  overriding them per render. */
+function InteractionDockFixture({
+  onRespondPermission,
+  onAnswerQuestion,
+  ...props
+}: InteractionDockProps & {
+  onRespondPermission?: (
+    taskId: string,
+    requestId: string,
+    decision: 'allow' | 'deny',
+  ) => void;
+  onAnswerQuestion?: (taskId: string, requestId: string, answer: QuestionAnswer) => void;
+}) {
+  return (
+    <TaskActionsProvider
+      actions={makeTaskActions({ onRespondPermission, onAnswerQuestion })}
+    >
+      <InteractionDock {...props} />
+    </TaskActionsProvider>
+  );
+}
 
 const meta = {
   title: 'Board/InteractionDock',
-  component: InteractionDock,
+  component: InteractionDockFixture,
   args: {
     taskId: 't-running',
     onRespondPermission: fn(),
@@ -18,7 +47,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof InteractionDock>;
+} satisfies Meta<typeof InteractionDockFixture>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

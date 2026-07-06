@@ -1,5 +1,6 @@
 import { Badge, BellIcon } from '@/components/ui';
 
+import { useTaskActions } from '../actions';
 import { PermissionPrompt } from '../PermissionPrompt';
 import { QuestionPrompt } from '../QuestionPrompt';
 import { interactionCount } from './InteractionDock.hooks';
@@ -10,15 +11,15 @@ import type { InteractionDockProps } from './InteractionDock.types';
  * blocked on — permission approvals and AskUserQuestion prompts — so the user
  * never has to scroll the activity log to find the action. Rendered as a `shrink-0`
  * sibling BELOW the detail panel's scrollable content, so it stays put while the
- * log streams. Renders nothing when there's nothing to act on.
+ * log streams. Renders nothing when there's nothing to act on. The relay handlers
+ * come from `TaskActionsContext`; an unwired one degrades to a no-op.
  */
 export function InteractionDock({
   taskId,
   permissionPrompts,
   questionPrompts,
-  onRespondPermission,
-  onAnswerQuestion,
 }: InteractionDockProps) {
+  const { onRespondPermission, onAnswerQuestion } = useTaskActions();
   const total = interactionCount(permissionPrompts, questionPrompts);
   if (total === 0) return null;
 
@@ -41,7 +42,7 @@ export function InteractionDock({
           <QuestionPrompt
             key={prompt.requestId}
             prompt={prompt}
-            onAnswer={(requestId, answer) => onAnswerQuestion(taskId, requestId, answer)}
+            onAnswer={(requestId, answer) => onAnswerQuestion?.(taskId, requestId, answer)}
           />
         ))}
         {permissionPrompts.map((prompt) => (
@@ -49,7 +50,7 @@ export function InteractionDock({
             key={prompt.requestId}
             prompt={prompt}
             onRespond={(requestId, decision) =>
-              onRespondPermission(taskId, requestId, decision)
+              onRespondPermission?.(taskId, requestId, decision)
             }
           />
         ))}

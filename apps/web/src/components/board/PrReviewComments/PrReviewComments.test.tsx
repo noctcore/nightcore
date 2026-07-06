@@ -12,7 +12,8 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }));
 
 import type { PrReviewComments as PrReviewCommentsPayload, Task } from '@/lib/bridge';
 
-import { makePrReviewComments, makeTask } from '../_fixtures';
+import { makePrReviewComments, makeTask, makeTaskActions } from '../_fixtures';
+import { TaskActionsProvider } from '../actions';
 import { PrReviewComments } from './PrReviewComments';
 import {
   actionableCount,
@@ -54,14 +55,17 @@ function makeView(
   };
 }
 
-/** Render the section with a constructed view + a stub address handler. */
+/** Render the section with a constructed view + a stub address handler, wrapped
+ *  in the provider the app supplies the handler through. */
 function renderComments(
   view: PrReviewCommentsView,
   task: Task = TASK,
   onAddressComments: (id: string) => Promise<void> = async () => {},
 ) {
   return render(
-    <PrReviewComments task={task} view={view} onAddressComments={onAddressComments} />,
+    <TaskActionsProvider actions={makeTaskActions({ onAddressPrComments: onAddressComments })}>
+      <PrReviewComments task={task} view={view} />
+    </TaskActionsProvider>,
   );
 }
 
@@ -336,7 +340,9 @@ test('a changed thread set (a refresh) invalidates the index-aligned triage chip
     reviews: [],
   });
   screen.rerender(
-    <PrReviewComments task={TASK} view={makeView(threadB)} onAddressComments={async () => {}} />,
+    <TaskActionsProvider actions={makeTaskActions({ onAddressPrComments: async () => {} })}>
+      <PrReviewComments task={TASK} view={makeView(threadB)} />
+    </TaskActionsProvider>,
   );
   await expect.element(screen.getByText('src/z.ts:9')).toBeInTheDocument();
   await expect.element(screen.getByText('False positive')).not.toBeInTheDocument();

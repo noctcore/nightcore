@@ -2,13 +2,22 @@ import { composeStories } from '@storybook/react-vite';
 import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
+import type { PermissionPrompt, QuestionPrompt } from '@/lib/bridge';
+
 import {
   GAUNTLET_FAILED,
   GAUNTLET_PASSED,
   makeTask,
+  makeTaskActions,
   SAMPLE_REVIEW_CHANGES,
 } from '../_fixtures';
-import { EMPTY_STREAM } from '../session-stream';
+import { TaskActionsProvider } from '../actions';
+import {
+  EMPTY_STREAM,
+  type TaskTranscript,
+  type TimelineEntry,
+} from '../session-stream';
+import { TaskDetail } from './TaskDetail';
 import {
   canCreatePr,
   canMerge,
@@ -459,6 +468,73 @@ test('a finalized task swaps Finalize for the base fast-forward offer', async ()
   await screen.getByRole('button', { name: 'Update base branch' }).click();
   await screen.getByRole('alertdialog').getByRole('button', { name: 'Update base' }).click();
   await vi.waitFor(() => expect(onPullBaseFf).toHaveBeenCalledWith('t-done'));
+});
+
+test('TaskDetailChrome bails on a stream flush while the activity log updates', async () => {
+  // The volatility contract behind the context split: a per-frame `nc:session`
+  // flush hands TaskDetail a FRESH transcript object, which must re-render ONLY
+  // the context-fed activity subtree — the memoized TaskDetailChrome (title,
+  // config, footer) must bail. `isActionPending` is the probe: the chrome's
+  // footer calls it during render (the Run button's pending checks), so a stable
+  // call count across the flush proves the chrome did not re-render.
+  const isActionPending = vi.fn(() => false);
+  const task = makeTask({ id: 't-flush', status: 'backlog' });
+  const actions = makeTaskActions();
+  const onClose = () => {};
+  // Stable empty prompt arrays — the shell passes stable fallbacks for exactly
+  // this reason (a fresh `[]` per render would defeat the chrome memo itself).
+  const noPrompts: PermissionPrompt[] = [];
+  const noQuestions: QuestionPrompt[] = [];
+  const transcriptOf = (entries: TimelineEntry[]): TaskTranscript => ({
+    sessions: [
+      {
+        index: 1,
+        sdkSessionId: null,
+        model: null,
+        prompt: null,
+        phase: 'build',
+        stream: { ...EMPTY_STREAM, entries },
+      },
+    ],
+    toolCount: 0,
+  });
+  const drawer = (stream: TaskTranscript) => (
+    <TaskActionsProvider actions={actions}>
+      <TaskDetail
+        task={task}
+        stream={stream}
+        anyRunning={false}
+        prompts={noPrompts}
+        questions={noQuestions}
+        gauntlet={null}
+        gauntletRunning={false}
+        prSupport={null}
+        onClose={onClose}
+        isActionPending={isActionPending}
+      />
+    </TaskActionsProvider>
+  );
+
+  const screen = render(
+    drawer(transcriptOf([{ kind: 'text', id: 1, markdown: 'first delta', closed: true }])),
+  );
+  await expect.element(screen.getByText('first delta')).toBeInTheDocument();
+  const callsAfterMount = isActionPending.mock.calls.length;
+  expect(callsAfterMount).toBeGreaterThan(0);
+
+  // The flush: a brand-new transcript object carrying one more entry.
+  screen.rerender(
+    drawer(
+      transcriptOf([
+        { kind: 'text', id: 1, markdown: 'first delta', closed: true },
+        { kind: 'text', id: 2, markdown: 'second delta', closed: false },
+      ]),
+    ),
+  );
+  // The activity subtree DID update through TaskStreamContext…
+  await expect.element(screen.getByText('second delta')).toBeInTheDocument();
+  // …while the chrome bailed: its footer probes never ran again.
+  expect(isActionPending.mock.calls.length).toBe(callsAfterMount);
 });
 
 test('deriveTaskDetailView splits review-parked from plan-parked on task.review', () => {

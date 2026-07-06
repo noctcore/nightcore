@@ -2,13 +2,15 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
 
 import { makeTask,SAMPLE_REVIEW_PASS } from '../_fixtures';
-import type { TaskDetailActions } from '../TaskDetail';
+import { TaskActionsProvider, type TaskDetailActions } from '../actions';
 import { SessionCard } from './SessionCard';
+import type { SessionCardProps } from './SessionCard.types';
 
-/** The full grouped-action object with every handler stubbed — stories pass this
- *  so the editable card surfaces its pickers (the card renders pickers only when
- *  every `onChange*` is wired). */
+/** The full grouped-action object with every handler stubbed — stories provide
+ *  this through `TaskActionsProvider` so the editable card surfaces its pickers
+ *  (the card renders pickers only when every `onChange*` is wired). */
 const actions: TaskDetailActions = {
+  onSelect: fn(),
   onRun: fn(),
   onCancel: fn(),
   onDelete: fn(),
@@ -35,9 +37,23 @@ const actions: TaskDetailActions = {
   onTagSession: fn(),
 };
 
+/** The story fixture: the card wrapped in the `TaskActionsProvider` it now reads
+ *  its edit handlers from. `actions` stays a story ARG so plays and tests keep
+ *  overriding individual handlers per render. */
+function SessionCardFixture({
+  actions,
+  ...props
+}: SessionCardProps & { actions: TaskDetailActions }) {
+  return (
+    <TaskActionsProvider actions={actions}>
+      <SessionCard {...props} />
+    </TaskActionsProvider>
+  );
+}
+
 const meta = {
   title: 'Board/SessionCard',
-  component: SessionCard,
+  component: SessionCardFixture,
   args: { actions },
   decorators: [
     (Story) => (
@@ -46,7 +62,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof SessionCard>;
+} satisfies Meta<typeof SessionCardFixture>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

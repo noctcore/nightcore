@@ -11,6 +11,7 @@ import {
 import type { Task } from '@/lib/bridge';
 import { parseNumericCommit } from '@/lib/numeric-field';
 
+import { type TaskDetailActions, useTaskActions } from '../actions';
 import { KindPicker } from '../KindPicker';
 import { PermissionModePicker } from '../PermissionModePicker';
 import { SessionHistory } from '../SessionHistory';
@@ -20,7 +21,6 @@ import {
   PERMISSION_MODE_LABEL,
   RUN_MODE_LABEL,
 } from '../status';
-import type { TaskDetailActions } from '../TaskDetail';
 import { WorkModePicker } from '../WorkModePicker';
 import { summarizeSession,useHistoryCard, useSessionCard } from './SessionCard.hooks';
 import type { HistoryCardProps, SessionCardProps } from './SessionCard.types';
@@ -222,7 +222,7 @@ function ReadonlySessionBody({ task }: { task: Task }) {
  *  config pickers (editable) or read-only pills (post-run). Opens on mount when the
  *  task is still editable so a fresh backlog/ready task surfaces its config without
  *  a click; otherwise collapsed. */
-export function SessionCard({ task, kindEditable, actions }: SessionCardProps) {
+export function SessionCard({ task, kindEditable }: SessionCardProps) {
   const { open, toggle } = useSessionCard(kindEditable);
   const {
     onChangeKind,
@@ -232,7 +232,7 @@ export function SessionCard({ task, kindEditable, actions }: SessionCardProps) {
     onChangeEffort,
     onChangeMaxTurns,
     onChangeMaxBudget,
-  } = actions;
+  } = useTaskActions();
 
   // A task is editable here only while still pre-run (`kindEditable`) AND the
   // shell wired every edit handler (it always passes them together).
@@ -300,8 +300,9 @@ export function SessionCard({ task, kindEditable, actions }: SessionCardProps) {
  *  Only rendered for a task that has run (`task.sdkSessionId != null`) and only
  *  when the shell wired the resume/rename/tag handlers. `SessionHistory` owns its
  *  own fetch lifecycle, so the body mounts (and fetches) only once expanded. */
-export function HistoryCard({ task, canResume, actions }: HistoryCardProps) {
+export function HistoryCard({ task, canResume }: HistoryCardProps) {
   const { open, toggle } = useHistoryCard();
+  const actions = useTaskActions();
   // The parent only renders this card once these handlers are wired, so the
   // non-null assertions hold; they keep the leaf control props non-optional.
   const onResume = actions.onResumeSession!;

@@ -11,6 +11,7 @@ import {
   SAMPLE_REVIEW_PASS,
   TASKS_BY_STATUS,
 } from '../_fixtures';
+import { TaskActionsProvider, type TaskDetailActions } from '../actions';
 import {
   EMPTY_STREAM,
   type SessionGroup,
@@ -19,12 +20,13 @@ import {
   type TaskTranscript,
 } from '../session-stream';
 import { TaskDetail } from './TaskDetail';
-import type { TaskDetailActions } from './TaskDetail.types';
+import type { TaskDetailProps } from './TaskDetail.types';
 
 /** Every drawer action stubbed — the grouped `actions` object the drawer (and its
- *  sub-components) destructure from. Stories override individual handlers by
- *  spreading this and replacing one entry. */
+ *  sub-components) read from `TaskActionsContext`. Stories override individual
+ *  handlers by spreading this and replacing one entry. */
 const actions: TaskDetailActions = {
+  onSelect: fn(),
   onRun: fn(),
   onCancel: fn(),
   onDelete: fn(),
@@ -92,9 +94,23 @@ function transcript(
   return { sessions, toolCount: sessions.reduce((n, s) => n + s.stream.toolCount, 0) };
 }
 
+/** The story fixture: the drawer wrapped in the `TaskActionsProvider` it now
+ *  requires. `actions` stays a story ARG (not a decorator constant) so plays and
+ *  tests keep overriding individual handlers per render. */
+function TaskDetailFixture({
+  actions,
+  ...props
+}: TaskDetailProps & { actions: TaskDetailActions }) {
+  return (
+    <TaskActionsProvider actions={actions}>
+      <TaskDetail {...props} />
+    </TaskActionsProvider>
+  );
+}
+
 const meta = {
   title: 'Board/TaskDetail',
-  component: TaskDetail,
+  component: TaskDetailFixture,
   parameters: { layout: 'fullscreen' },
   args: {
     anyRunning: false,
@@ -114,7 +130,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof TaskDetail>;
+} satisfies Meta<typeof TaskDetailFixture>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

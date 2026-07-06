@@ -9,6 +9,7 @@
  *  state/effects live in `PrReviewComments.hooks.ts`. */
 import { BuildIcon, Button, ConfirmDialog, RetryIcon, SparkIcon, Spinner } from '@/components/ui';
 
+import { useTaskActions } from '../actions';
 import {
   actionableCount,
   addressConfirmCopy,
@@ -25,12 +26,10 @@ import {
 } from './PrReviewComments.hooks';
 import type { PrReviewCommentsProps } from './PrReviewComments.types';
 
-export function PrReviewComments({
-  task,
-  view,
-  onAddressComments,
-  isActionPending,
-}: PrReviewCommentsProps) {
+export function PrReviewComments({ task, view, isActionPending }: PrReviewCommentsProps) {
+  // The guarded address-comments dispatch comes from the shared task-actions
+  // context (absent ⇒ the Address button stays a dead control).
+  const { onAddressPrComments: onAddressComments } = useTaskActions();
   const confirm = useAddressConfirm(task.id, onAddressComments);
   const { comments } = view;
   // Pass the comments so the triage verdicts (which index-align to the threads)
