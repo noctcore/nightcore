@@ -5,8 +5,9 @@
 use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::infra::untrusted::untrusted_block;
 use crate::sidecar::convert::convert_to_task;
-use crate::sidecar::{untrusted_block, ISSUE_TRIAGE_EVENT};
+use crate::sidecar::ISSUE_TRIAGE_EVENT;
 use crate::store::issue_triage::{
     IssueValidationRun, IssueValidationStore, StoredIssueValidationResult,
 };
