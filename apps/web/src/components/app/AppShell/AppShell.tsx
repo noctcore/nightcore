@@ -118,6 +118,8 @@ export function AppShell() {
     newProject,
     chrome,
     board,
+    drawer,
+    prDialog,
     worktrees,
     confirm,
     showSplash,
@@ -176,11 +178,12 @@ export function AppShell() {
   );
 
   return (
-    // The shell's grouped task actions and the shared worktrees slice travel by
-    // context (not props). Both provider values are referentially stable across
-    // `nc:session` stream flushes (see the `detailActions` / `worktreesContext`
-    // memos in `AppShell.hooks.ts`), so neither churns its consumers per-frame.
-    <TaskActionsProvider actions={board.detailActions}>
+    // The shell's grouped task actions, the shared worktrees slice, and the board
+    // chrome cluster travel by context (not props). All three provider values are
+    // referentially stable across `nc:session` stream flushes (the `detailActions`,
+    // `useWorktreesValue`, and `useBoardChromeValue` memos), so none churns its
+    // consumers per-frame.
+    <TaskActionsProvider actions={drawer.detailActions}>
     <WorktreesProvider value={worktrees}>
     <BoardChromeProvider value={chrome}>
       {showProjects ? (
@@ -279,18 +282,18 @@ export function AppShell() {
                 <Suspense fallback={null}>
                   <TaskDetail
                     task={selected}
-                    stream={board.streams[selected.id] ?? EMPTY_TRANSCRIPT}
+                    stream={drawer.streams[selected.id] ?? EMPTY_TRANSCRIPT}
                     anyRunning={anyRunning}
-                    prompts={board.prompts[selected.id] ?? NO_PROMPTS}
-                    questions={board.questions[selected.id] ?? NO_QUESTIONS}
-                    gauntlet={board.gauntletResults[selected.id] ?? null}
-                    gauntletRunning={board.gauntletRunning.has(selected.id)}
-                    onClose={board.closeDetail}
+                    prompts={drawer.prompts[selected.id] ?? NO_PROMPTS}
+                    questions={drawer.questions[selected.id] ?? NO_QUESTIONS}
+                    gauntlet={drawer.gauntletResults[selected.id] ?? null}
+                    gauntletRunning={drawer.gauntletRunning.has(selected.id)}
+                    onClose={drawer.closeDetail}
                     // The drawer's ~25 action callbacks arrive via the
                     // TaskActionsProvider above (one grouped, referentially stable
                     // object — `detailActions`). Delete routes through the
                     // confirm-gated `requestDelete` (matching the card/column deletes).
-                    isActionPending={board.isActionPending}
+                    isActionPending={drawer.isActionPending}
                     // Provenance chip → the originating scan run/item (routing concern).
                     onOpenSourceRef={routing.gotoSourceRef}
                   />
@@ -409,13 +412,13 @@ export function AppShell() {
       {/* The Create PR human gate: opened from the drawer's Create PR button;
           the mutation (push + `gh pr create`) only fires from its confirm. Mounted
           once first opened (a one-way latch) so the lazy dialog can animate closed. */}
-      {board.prDialogMounted && (
+      {prDialog.prDialogMounted && (
         <Suspense fallback={null}>
           <CreatePRDialog
-            open={board.prDialogTaskId !== null}
-            task={tasks.find((t) => t.id === board.prDialogTaskId) ?? null}
-            onCreate={board.handleCreatePr}
-            onClose={board.closePrDialog}
+            open={prDialog.prDialogTaskId !== null}
+            task={tasks.find((t) => t.id === prDialog.prDialogTaskId) ?? null}
+            onCreate={prDialog.handleCreatePr}
+            onClose={prDialog.closePrDialog}
           />
         </Suspense>
       )}
