@@ -4,6 +4,7 @@
  * invoking a live backend, so the board renders with representative data. Kept
  * separate from the command logic so the fallback fixtures are reviewable on their own.
  */
+import { PROVIDER_LABEL } from '../provider';
 import type {
   AppInfo,
   BoardBackgroundRef,
@@ -24,7 +25,7 @@ export const DEFAULT_REPO_URL = 'https://github.com/Shironex/nightcore';
  *  branches are visible without a live SDK probe. */
 export const MOCK_PROVIDER_CONFIG: ProviderConfigSnapshot = {
   providerId: 'claude',
-  providerLabel: 'Claude',
+  providerLabel: PROVIDER_LABEL,
   projectPath: '~/dev/nightcore',
   mcp: {
     status: 'supported',

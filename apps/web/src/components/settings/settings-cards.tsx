@@ -21,7 +21,13 @@ import {
   SparkIcon,
   Toggle,
 } from '@/components/ui';
-import { type AppInfo, DEFAULT_REPO_URL, type Settings, type SettingsPatch } from '@/lib/bridge';
+import {
+  type AppInfo,
+  DEFAULT_REPO_URL,
+  PROVIDER_LABEL,
+  type Settings,
+  type SettingsPatch,
+} from '@/lib/bridge';
 import {
   effortOptionsForModel,
   isEffortSupported,
@@ -272,12 +278,12 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
       return [
         {
           icon: <BoltIcon size={18} />,
-          title: 'Claude',
+          title: PROVIDER_LABEL,
           subtitle: 'Local CLI authentication for running agents.',
           rows: [
             {
               label: 'Status',
-              hint: 'Authenticated via the local Claude CLI',
+              hint: `Authenticated via the local ${PROVIDER_LABEL} CLI`,
               control: (
                 <span className="flex items-center gap-2 text-[12.5px] font-semibold text-success">
                   <span className="h-[7px] w-[7px] rounded-full bg-success" />

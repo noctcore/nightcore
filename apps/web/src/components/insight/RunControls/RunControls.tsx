@@ -6,7 +6,7 @@ import {
   ModelEffortPicker,
   ScanConfigForm,
 } from '@/components/ui';
-import type { AnalysisScope } from '@/lib/bridge';
+import { type AnalysisScope, PROVIDER_LABEL } from '@/lib/bridge';
 
 import { ALL_CATEGORIES, CATEGORY_META, SCOPE_META } from '../insight.constants';
 import type { RunControlsProps } from './RunControls.types';
@@ -71,7 +71,7 @@ export function RunControls({ config, isStarting, onAnalyze }: RunControlsProps)
       hint={
         <>
           Scans the whole {scope === 'diff' ? 'diff' : 'repo'} across {lensCount}{' '}
-          {lensCount === 1 ? 'lens' : 'lenses'} · ~Claude {model ?? 'default'} · cost
+          {lensCount === 1 ? 'lens' : 'lenses'} · ~{PROVIDER_LABEL} {model ?? 'default'} · cost
           depends on repo size.
         </>
       }

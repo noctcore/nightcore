@@ -1,5 +1,6 @@
 /** Interactive AskUserQuestion prompt shown in the interaction dock. */
 import { Button, CheckIcon, Kbd, QuestionIcon } from '@/components/ui';
+import { PROVIDER_LABEL } from '@/lib/bridge';
 
 import { useQuestionAnswers } from './QuestionPromptCard.hooks';
 import type { QuestionPromptCardProps } from './QuestionPromptCard.types';
@@ -43,7 +44,7 @@ export function QuestionPromptCard({ prompt, onAnswer }: QuestionPromptCardProps
       <div className="flex items-center gap-2">
         <QuestionIcon size={14} className="shrink-0 text-info" aria-hidden />
         <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-info">
-          Claude asked
+          {PROVIDER_LABEL} asked
         </span>
       </div>
 

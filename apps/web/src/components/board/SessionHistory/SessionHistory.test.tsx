@@ -3,11 +3,7 @@ import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
 import { SESSIONS } from '../_fixtures.sessions';
-import {
-  extractMessageText,
-  formatTimestamp,
-  sessionTitle,
-} from './SessionHistory.hooks';
+import { formatTimestamp, sessionTitle } from './SessionHistory.hooks';
 import * as stories from './SessionHistory.stories';
 
 const { Default, Empty, ResumeDisabled } = composeStories(stories);
@@ -67,22 +63,6 @@ test('sessionTitle prefers the custom title, then summary, then first prompt', (
       orphaned: false,
     }),
   ).toBe('Session abcdef12');
-});
-
-test('extractMessageText joins text blocks and tolerates a string content', () => {
-  expect(extractMessageText({ role: 'user', content: 'hi there' })).toBe('hi there');
-  expect(
-    extractMessageText({
-      role: 'assistant',
-      content: [
-        { type: 'text', text: 'one' },
-        { type: 'tool_use', id: 't', name: 'Bash', input: {} },
-        { type: 'text', text: 'two' },
-      ],
-    }),
-  ).toBe('one\n\ntwo');
-  // A pure tool-use turn has no text.
-  expect(extractMessageText({ role: 'assistant', content: [{ type: 'tool_use' }] })).toBe('');
 });
 
 test('formatTimestamp returns empty for a missing/invalid value', () => {

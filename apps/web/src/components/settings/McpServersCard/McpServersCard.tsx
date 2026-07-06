@@ -11,7 +11,7 @@ import {
   TrashIcon,
   useLastPresent,
 } from '@/components/ui';
-import type { McpServerEntry } from '@/lib/bridge';
+import { type McpServerEntry, PROVIDER_LABEL } from '@/lib/bridge';
 
 import { useMcpServersCard } from './McpServersCard.hooks';
 import type {
@@ -273,7 +273,7 @@ export function McpServersCard({ servers, onChange }: McpServersCardProps) {
           <h2 className="text-lg font-semibold tracking-tight">External MCP servers</h2>
           <p className="mt-0.5 text-[12.5px] leading-snug text-muted-foreground">
             Extra Model Context Protocol servers injected into agent sessions, on top
-            of your native Claude config. Tools run under the session permission mode.
+            of your native {PROVIDER_LABEL} config. Tools run under the session permission mode.
           </p>
         </div>
         <Button variant="secondary" onClick={openAdd} className="shrink-0">

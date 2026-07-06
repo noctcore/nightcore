@@ -41,28 +41,6 @@ export function formatTimestamp(ms: number | null | undefined): string {
   });
 }
 
-/** Extract readable text from one transcript message's raw Anthropic `message`
- *  JSON (`{ role, content }`, where `content` is a string or an array of blocks).
- *  Joins every text block; returns an empty string when there is no text (e.g. a
- *  pure tool-use turn), so the caller can fall back to a type label. Pure. */
-export function extractMessageText(message: Record<string, unknown>): string {
-  const content = message.content;
-  if (typeof content === 'string') return content;
-  if (!Array.isArray(content)) return '';
-  const parts: string[] = [];
-  for (const block of content) {
-    if (
-      typeof block === 'object' &&
-      block !== null &&
-      (block as { type?: unknown }).type === 'text' &&
-      typeof (block as { text?: unknown }).text === 'string'
-    ) {
-      parts.push((block as { text: string }).text);
-    }
-  }
-  return parts.join('\n\n');
-}
-
 /** The load lifecycle for a task's session history. Fetches on mount (and whenever
  *  the task changes) through the injected data seam, degrading to an empty list on
  *  error (the bridge already returns `[]` outside Tauri). `reload` re-fetches after

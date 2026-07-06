@@ -11,9 +11,9 @@ import {
   TagIcon,
 } from '@/components/ui';
 import type { SessionInfo, SessionMessage } from '@/lib/bridge';
+import { extractMessageText } from '@/lib/transcript';
 
 import {
-  extractMessageText,
   formatTimestamp,
   LIVE_SESSION_DATA,
   sessionTitle,

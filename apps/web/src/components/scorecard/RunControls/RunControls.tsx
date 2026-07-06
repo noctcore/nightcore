@@ -3,6 +3,7 @@
  *  Grade CTA. A controlled, purely-presentational view of the lifted `config`
  *  state. The live readout + Cancel live on the RUNNING screen (RunProgress). */
 import { ModelEffortPicker, PerfIcon, ScanConfigForm } from '@/components/ui';
+import { PROVIDER_LABEL } from '@/lib/bridge';
 
 import { ALL_DIMENSIONS, DIMENSION_META } from '../scorecard.constants';
 import type { RunControlsProps } from './RunControls.types';
@@ -41,7 +42,7 @@ export function RunControls({ config, isStarting, onGrade }: RunControlsProps) {
       hint={
         <>
           Grades the whole repo across {dimCount}{' '}
-          {dimCount === 1 ? 'dimension' : 'dimensions'} · ~Claude {model ?? 'default'} ·
+          {dimCount === 1 ? 'dimension' : 'dimensions'} · ~{PROVIDER_LABEL} {model ?? 'default'} ·
           cost depends on repo size.
         </>
       }

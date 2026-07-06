@@ -11,6 +11,7 @@ import {
   Spinner,
   VerifiedIcon,
 } from '@/components/ui';
+import { PROVIDER_LABEL } from '@/lib/bridge';
 import { MODEL_OPTIONS } from '@/lib/models';
 
 import { ALL_CATEGORIES, CATEGORY_META } from '../harness.constants';
@@ -57,7 +58,7 @@ export function RunControls({ config, isStarting, onScan }: RunControlsProps) {
       hint={
         <>
           Scans the whole repo across {lensCount} {lensCount === 1 ? 'lens' : 'lenses'}{' '}
-          · ~Claude {modelLabel(config.model)} · cost depends on repo size.
+          · ~{PROVIDER_LABEL} {modelLabel(config.model)} · cost depends on repo size.
         </>
       }
     />

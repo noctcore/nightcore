@@ -22,6 +22,7 @@ import {
   Spinner,
   StopIcon,
 } from '@/components/ui';
+import { PROVIDER_LABEL } from '@/lib/bridge';
 
 import { FixRunCard } from '../FixRunCard';
 import { ALL_LENSES, LENS_META, VERDICT_META } from '../prreview.constants';
@@ -189,7 +190,7 @@ export function ReviewSection({
             <p className="text-[12px] text-muted-foreground">
               Reviews the PR diff across {lensCount}{' '}
               {lensCount === 1 ? 'lens' : 'lenses'} — no checkout, read-only ·
-              ~Claude {config.model ?? 'default'}.
+              ~{PROVIDER_LABEL} {config.model ?? 'default'}.
             </p>
           </div>
         </div>

@@ -13,6 +13,7 @@
  *   - `./internal` — the shared `isTauri` / `tauriInvoke` helpers
  * Call sites import from `@/lib/bridge` unchanged.
  */
+export { PROVIDER_LABEL } from '../provider';
 export * from './commands';
 export * from './events';
 export { isTauri } from './internal';
