@@ -8,9 +8,9 @@ use super::checkout::{
     fetch_pr_refs_with, managed_lease_id, parse_pr_refs, pr_fix_dir, refuse_busy_task_checkout,
 };
 use super::ci::{parse_failing_checks, FailingCheck};
-use super::command::{check_push_preconditions, select_findings};
 use super::comment::compose_push_comment;
 use super::complete::commit_message;
+use super::dispatch::{check_push_preconditions, select_findings};
 use super::prompt::{build_ci_prompt, build_conflicts_prompt, build_fix_prompt};
 use super::state::{
     mint_fix_id, refuse_while_fix_pending_push, refuse_while_fix_running, PrFixRegistry,
@@ -560,7 +560,7 @@ fn dispatch_recheck_interrupts_a_cancelled_during_dispatch_fix() {
     // the registry and interrupt (or evict the pending launch) when a cancel
     // raced the insert→dispatch window — nothing else can ever observe that
     // just-launched session.
-    let src = include_str!("command.rs");
+    let src = include_str!("dispatch.rs");
     let dispatch = src
         .find("dispatch_fix_session(app, &fix_id")
         .expect("the dispatch site exists");

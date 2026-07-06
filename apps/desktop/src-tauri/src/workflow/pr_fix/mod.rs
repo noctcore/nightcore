@@ -38,6 +38,7 @@ mod command;
 mod comment;
 mod complete;
 mod conflicts;
+mod dispatch;
 mod prompt;
 mod state;
 
