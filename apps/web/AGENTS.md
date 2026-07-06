@@ -12,7 +12,8 @@ Guardrails enforced by `@nightcore/eslint-plugin` (scoped in the root `eslint.co
 
 ## Feature isolation & layering
 - A component in one feature folder MUST NOT import another feature's internals (`nightcore/no-cross-feature-imports`). Shared code goes to `@/lib`, `@/hooks`, or `components/ui`. Only the `app` composition root may cross feature boundaries.
-- `components/ui` primitives are dependency-graph leaves: they accept data via props and MUST NOT import any feature folder or `@tauri-apps/*`.
+- `components/ui` primitives are dependency-graph leaves: they accept data via props and MUST NOT import any feature folder or `@tauri-apps/*`. The banned feature list is derived from the `components/` directory tree at lint time — every feature folder is covered automatically.
+- `lib/**` is the framework-neutral leaf BELOW the rendering layer: it MUST NOT import `@/components/**` (or `motion`) — not even `components/ui`. Data flows upward from lib to components, never back down.
 
 ## The single Tauri seam
 - ONLY `apps/web/src/lib/bridge.ts` may import `@tauri-apps/api` / `@tauri-apps/plugin-*`. Every other module talks to the Rust core through `bridge.ts` — never call `invoke()`/`listen()` directly.

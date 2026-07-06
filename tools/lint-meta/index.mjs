@@ -1,4 +1,7 @@
 // @ts-check
+import { readdirSync } from 'node:fs';
+import { fileURLToPath, URL } from 'node:url';
+
 /**
  * tools/lint-meta — frontend layer-boundary enforcement for apps/web.
  *
@@ -38,6 +41,15 @@ const MOTION_GROUP = ['motion', 'motion/*'];
 const MOTION_MESSAGE =
   'lib/** is the framework-neutral data/util leaf BELOW the rendering layer — it must not import motion (a layer inversion, and lib/generated/** is ts-rs codegen). Motion lives in components/ui/motion; features import motion primitives from @/components/ui.';
 
+const COMPONENTS_GROUP = [
+  '@/components',
+  '@/components/*',
+  '@/components/**',
+  '**/components/**',
+];
+const COMPONENTS_MESSAGE =
+  'lib/ is the framework-neutral leaf below the rendering layer — it must not import components';
+
 /**
  * The SDK ban from the base config. Repeated here because `no-restricted-imports`
  * does not merge: these per-file web blocks override the broad `apps/**` block,
@@ -49,25 +61,26 @@ const SDK_PATH = {
     'Surfaces must not import the Claude Agent SDK directly. Go through @nightcore/engine.',
 };
 
+/**
+ * Feature folders under components/ — derived from the directory tree at
+ * config-load time (every directory except `ui`), so new features are covered
+ * automatically without touching this file.
+ */
+const FEATURE_DIRS = readdirSync(
+  fileURLToPath(new URL(`../../${WEB}/components`, import.meta.url)),
+  { withFileTypes: true },
+)
+  .filter((entry) => entry.isDirectory() && entry.name !== 'ui')
+  .map((entry) => entry.name)
+  .sort();
+
 /** Patterns matching any feature folder under components/, in alias + relative form. */
-const FEATURE_GROUPS = [
-  '**/components/board',
-  '**/components/board/**',
-  '**/components/projects',
-  '**/components/projects/**',
-  '**/components/settings',
-  '**/components/settings/**',
-  '**/components/new-project',
-  '**/components/new-project/**',
-  '@/components/board',
-  '@/components/board/**',
-  '@/components/projects',
-  '@/components/projects/**',
-  '@/components/settings',
-  '@/components/settings/**',
-  '@/components/new-project',
-  '@/components/new-project/**',
-];
+const FEATURE_GROUPS = FEATURE_DIRS.flatMap((feature) => [
+  `**/components/${feature}`,
+  `**/components/${feature}/**`,
+  `@/components/${feature}`,
+  `@/components/${feature}/**`,
+]);
 
 /** Block 1 — every web file except the lib/bridge/ seam: forbid the Tauri API. */
 const tauriSeamBlock = {
@@ -122,6 +135,7 @@ const libMotionBlock = {
         patterns: [
           { group: TAURI_GROUP, message: TAURI_MESSAGE },
           { group: MOTION_GROUP, message: MOTION_MESSAGE },
+          { group: COMPONENTS_GROUP, message: COMPONENTS_MESSAGE },
         ],
       },
     ],
@@ -139,7 +153,10 @@ const libBridgeMotionBlock = {
     'no-restricted-imports': [
       'error',
       {
-        patterns: [{ group: MOTION_GROUP, message: MOTION_MESSAGE }],
+        patterns: [
+          { group: MOTION_GROUP, message: MOTION_MESSAGE },
+          { group: COMPONENTS_GROUP, message: COMPONENTS_MESSAGE },
+        ],
       },
     ],
   },
