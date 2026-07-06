@@ -13,6 +13,7 @@
  * sibling `prreview-runs.hooks.ts`.
  */
 import type { PrReviewEvent, PrReviewRun } from '@/lib/bridge';
+import { patchStreamItem } from '@/lib/scan-run';
 
 import {
   EMPTY_REVIEW_STREAM,
@@ -61,14 +62,17 @@ export function foldRegistry(
     const next = new Map(prev);
     next.set(event.runId, {
       ...entry,
-      stream: {
-        ...entry.stream,
-        findings: entry.stream.findings.map((f) =>
-          f.id === event.findingId
-            ? { ...f, status: 'converted', linkedTaskId: event.taskId }
-            : f,
-        ),
-      },
+      stream: patchStreamItem(entry.stream, {
+        runId: event.runId,
+        itemId: event.findingId,
+        items: (s) => s.findings,
+        write: (s, findings) => ({ ...s, findings }),
+        patch: (f) => ({
+          ...f,
+          status: 'converted' as const,
+          linkedTaskId: event.taskId,
+        }),
+      }),
     });
     return next;
   }

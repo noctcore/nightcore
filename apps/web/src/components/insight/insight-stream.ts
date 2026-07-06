@@ -14,11 +14,10 @@ import type {
   StoredFinding,
 } from '@/lib/bridge';
 import {
-  addUsage,
+  makeScanFold,
+  normalizeLocation,
   runStatusFromPersisted,
-  seedStepState,
   seedStepStateFromRun,
-  settleStepState,
 } from '@/lib/scan-run';
 
 import type {
@@ -80,14 +79,7 @@ export function wireToFinding(f: Finding): InsightFinding {
     title: f.title,
     description: f.description,
     rationale: f.rationale ?? null,
-    location: f.location
-      ? {
-          file: f.location.file,
-          startLine: f.location.startLine ?? null,
-          endLine: f.location.endLine ?? null,
-          symbol: f.location.symbol ?? null,
-        }
-      : null,
+    location: normalizeLocation(f.location),
     suggestion: f.suggestion ?? null,
     codeBefore: f.codeBefore ?? null,
     codeAfter: f.codeAfter ?? null,
@@ -147,61 +139,64 @@ export function streamFromRun(run: InsightRun): InsightStream {
   };
 }
 
-/** Fold one `analysis-*` event into the live stream. */
-export function foldInsight(
-  prev: InsightStream,
-  event: AnalysisEvent,
-): InsightStream {
-  switch (event.type) {
-    case 'analysis-started':
-      return {
-        ...EMPTY_INSIGHT_STREAM,
-        runId: event.runId,
-        status: 'running',
-        scope: event.scope,
-        model: event.model,
-        requestedCategories: event.categories,
-        categoryState: seedStepState(event.categories),
-      };
-    case 'analysis-category-started':
-      return {
-        ...prev,
-        categoryState: { ...prev.categoryState, [event.category]: 'running' },
-      };
-    case 'analysis-category-completed': {
-      const incoming = event.findings.map(wireToFinding);
-      // Replace this category's optimistic findings with the completed batch.
-      const others = prev.findings.filter((f) => f.category !== event.category);
-      return {
-        ...prev,
-        categoryState: {
-          ...prev.categoryState,
-          [event.category]: event.error ? 'error' : 'done',
-        },
-        findings: [...others, ...incoming],
-        costUsd: prev.costUsd + event.costUsd,
-        usage: addUsage(prev.usage, event.usage),
-      };
+/** Fold one `analysis-*` event into the live stream (the shared scan skeleton;
+ *  see `makeScanFold` in `@/lib/scan-run`). */
+export const foldInsight = makeScanFold<
+  AnalysisEvent,
+  InsightStream,
+  InsightFinding,
+  FindingCategory,
+  AnalysisFailureReason
+>({
+  empty: EMPTY_INSIGHT_STREAM,
+  steps: {
+    state: (s) => s.categoryState,
+    requested: (s) => s.requestedCategories,
+  },
+  items: { read: (s) => s.findings, stepOf: (f) => f.category },
+  write: (s, patch) => ({
+    ...s,
+    ...patch.core,
+    ...(patch.stepState === undefined
+      ? undefined
+      : { categoryState: patch.stepState }),
+    ...(patch.requestedSteps === undefined
+      ? undefined
+      : { requestedCategories: patch.requestedSteps }),
+    ...(patch.items === undefined ? undefined : { findings: patch.items }),
+    ...patch.extra,
+  }),
+  classify: (event) => {
+    switch (event.type) {
+      case 'analysis-started':
+        return {
+          kind: 'started',
+          runId: event.runId,
+          model: event.model,
+          steps: event.categories,
+          seed: { scope: event.scope },
+        };
+      case 'analysis-category-started':
+        return { kind: 'step-started', step: event.category };
+      case 'analysis-category-completed':
+        return {
+          kind: 'step-completed',
+          step: event.category,
+          items: event.findings.map(wireToFinding),
+          errored: Boolean(event.error),
+          costUsd: event.costUsd,
+          usage: event.usage,
+        };
+      case 'analysis-completed':
+        return {
+          kind: 'completed',
+          items: event.findings.map(wireToFinding),
+          costUsd: event.costUsd,
+          usage: event.usage,
+          durationMs: event.durationMs,
+        };
+      case 'analysis-failed':
+        return { kind: 'failed', message: event.message, reason: event.reason };
     }
-    case 'analysis-completed':
-      return {
-        ...prev,
-        status: 'completed',
-        findings: event.findings.map(wireToFinding),
-        costUsd: event.costUsd,
-        usage: event.usage ?? prev.usage,
-        durationMs: event.durationMs,
-        categoryState: settleStepState(
-          prev.requestedCategories,
-          prev.categoryState,
-        ),
-      };
-    case 'analysis-failed':
-      return {
-        ...prev,
-        status: 'failed',
-        error: event.message,
-        failureReason: event.reason,
-      };
-  }
-}
+  },
+});

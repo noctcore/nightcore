@@ -23,7 +23,7 @@ import type {
   StoredIssuePrAnalysis,
   StoredIssueValidationResult,
 } from '@/lib/bridge';
-import { runStatusFromPersisted } from '@/lib/scan-run';
+import { makeScanFold, runStatusFromPersisted } from '@/lib/scan-run';
 
 import type {
   IssuePrAnalysisView,
@@ -156,43 +156,57 @@ export function streamFromRun(run: IssueValidationRun): IssueTriageStream {
   };
 }
 
-/** Fold one `issue-validation-*` event into the live stream. `issue-validation-converted`
- *  is a no-op here (it is applied as a side effect in the view hook's `onEvent`). */
-export function foldIssueTriage(
-  prev: IssueTriageStream,
-  event: IssueTriageEvent,
-): IssueTriageStream {
-  switch (event.type) {
-    case 'issue-validation-started':
-      return {
-        ...EMPTY_ISSUE_TRIAGE_STREAM,
-        runId: event.runId,
-        issueNumber: event.issueNumber,
-        status: 'running',
-        model: event.model,
-      };
-    case 'issue-validation-progress':
-      return { ...prev, progressMessage: event.message };
-    case 'issue-validation-completed':
-      return {
-        ...prev,
-        status: 'completed',
-        issueNumber: event.issueNumber,
-        result: wireToVerdict(event.result),
-        costUsd: event.costUsd,
-        usage: event.usage ?? prev.usage,
-        durationMs: event.durationMs,
-        error: null,
-        failureReason: null,
-      };
-    case 'issue-validation-failed':
-      return {
-        ...prev,
-        status: 'failed',
-        error: event.message,
-        failureReason: event.reason,
-      };
-    case 'issue-validation-converted':
-      return prev;
-  }
-}
+/** Fold one `issue-validation-*` event into the live stream (the shared scan
+ *  skeleton; see `makeScanFold` in `@/lib/scan-run`). Issue Triage is step-less
+ *  and item-less — ONE read-only session per run — so the `steps` / `items`
+ *  bindings are omitted and the single verdict rides the `extra` seams.
+ *  `issue-validation-converted` is a no-op here (it is applied as a side effect
+ *  in the view hook's `onEvent`). */
+export const foldIssueTriage = makeScanFold<
+  IssueTriageEvent,
+  IssueTriageStream,
+  never,
+  string,
+  string
+>({
+  empty: EMPTY_ISSUE_TRIAGE_STREAM,
+  write: (s, patch) => ({
+    ...s,
+    ...patch.core,
+    ...patch.extra,
+  }),
+  classify: (event) => {
+    switch (event.type) {
+      case 'issue-validation-started':
+        return {
+          kind: 'started',
+          runId: event.runId,
+          model: event.model,
+          seed: { issueNumber: event.issueNumber },
+        };
+      case 'issue-validation-progress':
+        return {
+          kind: 'apply',
+          next: (prev) => ({ ...prev, progressMessage: event.message }),
+        };
+      case 'issue-validation-completed':
+        return {
+          kind: 'completed',
+          costUsd: event.costUsd,
+          usage: event.usage,
+          durationMs: event.durationMs,
+          // A completed run authoritatively clears any prior failure state.
+          extra: {
+            issueNumber: event.issueNumber,
+            result: wireToVerdict(event.result),
+            error: null,
+            failureReason: null,
+          },
+        };
+      case 'issue-validation-failed':
+        return { kind: 'failed', message: event.message, reason: event.reason };
+      case 'issue-validation-converted':
+        return { kind: 'ignore' };
+    }
+  },
+});

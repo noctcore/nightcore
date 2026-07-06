@@ -24,9 +24,10 @@ import {
   startAnalysis,
   type Task,
 } from '@/lib/bridge';
-import { deriveRunPhase, seedStepState } from '@/lib/scan-run';
+import { deriveRunPhase, patchStreamItem, seedStepState } from '@/lib/scan-run';
 import { useBulkConvert } from '@/lib/useBulkConvert';
 import { usePreselectNavigation } from '@/lib/usePreselectNavigation';
+import { useScanItemActions } from '@/lib/useScanItemActions';
 import { useScanRun } from '@/lib/useScanRun';
 
 import type { CategoryTab } from '../CategoryTabs';
@@ -74,16 +75,13 @@ export function useInsight(hasProject: boolean): UseInsightResult {
     onEvent: (event, { activeRunId, setStream, refreshRuns, reconcile }) => {
       if (event.type === 'finding-converted') {
         setStream((prev) =>
-          prev.runId === event.runId
-            ? {
-                ...prev,
-                findings: prev.findings.map((f) =>
-                  f.id === event.findingId
-                    ? { ...f, status: 'converted', linkedTaskId: event.taskId }
-                    : f,
-                ),
-              }
-            : prev,
+          patchStreamItem(prev, {
+            runId: event.runId,
+            itemId: event.findingId,
+            items: (s) => s.findings,
+            write: (s, findings) => ({ ...s, findings }),
+            patch: (f) => ({ ...f, status: 'converted' as const, linkedTaskId: event.taskId }),
+          }),
         );
         void refreshRuns();
         return;
@@ -128,43 +126,25 @@ export function useInsight(hasProject: boolean): UseInsightResult {
     [hasProject, runStart],
   );
 
-  const dismiss = useCallback(
-    async (findingId: string) => {
-      if (stream.runId === null) return;
-      const run = await dismissFinding(stream.runId, findingId);
-      if (run !== null) setStream(streamFromRun(run));
-      await refreshRuns();
+  // The shared dismiss/restore/convert triple over the findings list.
+  const { dismiss, restore, convert } = useScanItemActions<
+    InsightRun,
+    InsightStream,
+    InsightFinding
+  >({
+    runId: stream.runId,
+    setStream,
+    refreshRuns,
+    streamFromRun,
+    items: (s) => s.findings,
+    writeItems: (s, findings) => ({ ...s, findings }),
+    dismissItem: dismissFinding,
+    restoreItem: restoreFinding,
+    convert: {
+      run: convertFindingToTask,
+      mark: (f, taskId) => ({ ...f, status: 'converted' as const, linkedTaskId: taskId }),
     },
-    [stream.runId, setStream, refreshRuns],
-  );
-
-  const restore = useCallback(
-    async (findingId: string) => {
-      if (stream.runId === null) return;
-      const run = await restoreFinding(stream.runId, findingId);
-      if (run !== null) setStream(streamFromRun(run));
-      await refreshRuns();
-    },
-    [stream.runId, setStream, refreshRuns],
-  );
-
-  const convert = useCallback(
-    async (findingId: string): Promise<Task | null> => {
-      if (stream.runId === null) return null;
-      const task = await convertFindingToTask(stream.runId, findingId);
-      setStream((prev) => ({
-        ...prev,
-        findings: prev.findings.map((f) =>
-          f.id === findingId
-            ? { ...f, status: 'converted', linkedTaskId: task.id }
-            : f,
-        ),
-      }));
-      await refreshRuns();
-      return task;
-    },
-    [stream.runId, setStream, refreshRuns],
-  );
+  });
 
   return {
     stream,

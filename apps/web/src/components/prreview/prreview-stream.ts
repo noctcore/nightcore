@@ -14,11 +14,9 @@ import type {
   StoredReviewFinding,
 } from '@/lib/bridge';
 import {
-  addUsage,
+  makeScanFold,
   runStatusFromPersisted,
-  seedStepState,
   seedStepStateFromRun,
-  settleStepState,
 } from '@/lib/scan-run';
 
 import type {
@@ -144,61 +142,65 @@ export function streamFromRun(run: PrReviewRun): ReviewStream {
   };
 }
 
-/** Fold one `pr-review-*` lens event into the live stream. */
-export function foldReview(
-  prev: ReviewStream,
-  event: PrReviewLensEvent,
-): ReviewStream {
-  switch (event.type) {
-    case 'pr-review-started':
-      return {
-        ...EMPTY_REVIEW_STREAM,
-        // The started event omits the PR number — preserve the optimistically-set
-        // one so the post-review toolbar keeps its target across the reset.
-        prNumber: prev.prNumber,
-        runId: event.runId,
-        status: 'running',
-        model: event.model,
-        requestedLenses: event.lenses,
-        lensState: seedStepState(event.lenses),
-      };
-    case 'pr-review-lens-started':
-      return {
-        ...prev,
-        lensState: { ...prev.lensState, [event.lens]: 'running' },
-      };
-    case 'pr-review-lens-completed': {
-      const incoming = event.findings.map(wireToFinding);
-      // Replace this lens's optimistic findings with the completed batch.
-      const others = prev.findings.filter((f) => f.lens !== event.lens);
-      return {
-        ...prev,
-        lensState: {
-          ...prev.lensState,
-          [event.lens]: event.error ? 'error' : 'done',
-        },
-        findings: [...others, ...incoming],
-        costUsd: prev.costUsd + event.costUsd,
-        usage: addUsage(prev.usage, event.usage),
-      };
+/** Fold one `pr-review-*` lens event into the live stream (the shared scan
+ *  skeleton; see `makeScanFold` in `@/lib/scan-run`). */
+export const foldReview = makeScanFold<
+  PrReviewLensEvent,
+  ReviewStream,
+  ReviewFindingView,
+  ReviewLens,
+  PrReviewFailureReason
+>({
+  empty: EMPTY_REVIEW_STREAM,
+  steps: {
+    state: (s) => s.lensState,
+    requested: (s) => s.requestedLenses,
+  },
+  items: { read: (s) => s.findings, stepOf: (f) => f.lens },
+  write: (s, patch) => ({
+    ...s,
+    ...patch.core,
+    ...(patch.stepState === undefined ? undefined : { lensState: patch.stepState }),
+    ...(patch.requestedSteps === undefined
+      ? undefined
+      : { requestedLenses: patch.requestedSteps }),
+    ...(patch.items === undefined ? undefined : { findings: patch.items }),
+    ...patch.extra,
+  }),
+  classify: (event, prev) => {
+    switch (event.type) {
+      case 'pr-review-started':
+        return {
+          kind: 'started',
+          runId: event.runId,
+          model: event.model,
+          steps: event.lenses,
+          // The started event omits the PR number — preserve the optimistically-
+          // set one so the post-review toolbar keeps its target across the reset.
+          seed: { prNumber: prev.prNumber },
+        };
+      case 'pr-review-lens-started':
+        return { kind: 'step-started', step: event.lens };
+      case 'pr-review-lens-completed':
+        return {
+          kind: 'step-completed',
+          step: event.lens,
+          items: event.findings.map(wireToFinding),
+          errored: Boolean(event.error),
+          costUsd: event.costUsd,
+          usage: event.usage,
+        };
+      case 'pr-review-completed':
+        return {
+          kind: 'completed',
+          // The completed event carries the final cross-lens-deduped set.
+          items: event.findings.map(wireToFinding),
+          costUsd: event.costUsd,
+          usage: event.usage,
+          durationMs: event.durationMs,
+        };
+      case 'pr-review-failed':
+        return { kind: 'failed', message: event.message, reason: event.reason };
     }
-    case 'pr-review-completed':
-      return {
-        ...prev,
-        status: 'completed',
-        // The completed event carries the final cross-lens-deduped set.
-        findings: event.findings.map(wireToFinding),
-        costUsd: event.costUsd,
-        usage: event.usage ?? prev.usage,
-        durationMs: event.durationMs,
-        lensState: settleStepState(prev.requestedLenses, prev.lensState),
-      };
-    case 'pr-review-failed':
-      return {
-        ...prev,
-        status: 'failed',
-        error: event.message,
-        failureReason: event.reason,
-      };
-  }
-}
+  },
+});

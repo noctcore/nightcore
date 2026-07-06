@@ -24,11 +24,10 @@ import type {
   StoredRepoProfile,
 } from '@/lib/bridge';
 import {
-  addUsage,
+  makeScanFold,
+  normalizeLocation,
   runStatusFromPersisted,
-  seedStepState,
   seedStepStateFromRun,
-  settleStepState,
 } from '@/lib/scan-run';
 
 import type {
@@ -107,12 +106,7 @@ export function wireToConventionFinding(f: ConventionFinding): ConventionFinding
     title: f.title,
     description: f.description,
     rationale: f.rationale ?? null,
-    evidence: (f.evidence ?? []).map((e) => ({
-      file: e.file,
-      startLine: e.startLine ?? null,
-      endLine: e.endLine ?? null,
-      symbol: e.symbol ?? null,
-    })),
+    evidence: (f.evidence ?? []).map((e) => normalizeLocation(e)),
     suggestion: f.suggestion ?? null,
     tags: f.tags ?? [],
     confidence: f.confidence ?? null,
@@ -307,79 +301,96 @@ export function streamFromRun(run: HarnessRun): HarnessStream {
   };
 }
 
-/** Fold one `harness-*` scan event into the live stream. */
-export function foldHarness(
-  prev: HarnessStream,
-  event: HarnessScanEvent,
-): HarnessStream {
-  switch (event.type) {
-    case 'harness-scan-started':
-      return {
-        ...EMPTY_HARNESS_STREAM,
-        runId: event.runId,
-        status: 'running',
-        model: event.model,
-        requestedCategories: event.categories,
-        categoryState: seedStepState(event.categories),
-      };
-    case 'harness-profile-ready':
-      return { ...prev, profile: wireToProfile(event.profile) };
-    case 'harness-category-started':
-      return {
-        ...prev,
-        categoryState: { ...prev.categoryState, [event.category]: 'running' },
-      };
-    case 'harness-category-completed': {
-      const incoming = event.findings.map(wireToConventionFinding);
-      // Replace this lens's optimistic findings with the completed batch.
-      const others = prev.findings.filter((f) => f.category !== event.category);
-      return {
-        ...prev,
-        categoryState: {
-          ...prev.categoryState,
-          [event.category]: event.error ? 'error' : 'done',
-        },
-        findings: [...others, ...incoming],
-        costUsd: prev.costUsd + event.costUsd,
-        usage: addUsage(prev.usage, event.usage),
-      };
+/** Fold one `harness-*` scan event into the live stream (the shared scan
+ *  skeleton; see `makeScanFold` in `@/lib/scan-run`). Harness's two extra hops
+ *  (`profile-ready`, `synthesis-started`/`proposals-ready`) ride the `apply`
+ *  escape hatch; the terminals additionally settle `synthesizing`. */
+export const foldHarness = makeScanFold<
+  HarnessScanEvent,
+  HarnessStream,
+  ConventionFindingVM,
+  ConventionCategory,
+  HarnessFailureReason
+>({
+  empty: EMPTY_HARNESS_STREAM,
+  steps: {
+    state: (s) => s.categoryState,
+    requested: (s) => s.requestedCategories,
+  },
+  items: { read: (s) => s.findings, stepOf: (f) => f.category },
+  write: (s, patch) => ({
+    ...s,
+    ...patch.core,
+    ...(patch.stepState === undefined
+      ? undefined
+      : { categoryState: patch.stepState }),
+    ...(patch.requestedSteps === undefined
+      ? undefined
+      : { requestedCategories: patch.requestedSteps }),
+    ...(patch.items === undefined ? undefined : { findings: patch.items }),
+    ...patch.extra,
+  }),
+  classify: (event) => {
+    switch (event.type) {
+      case 'harness-scan-started':
+        return {
+          kind: 'started',
+          runId: event.runId,
+          model: event.model,
+          steps: event.categories,
+        };
+      case 'harness-profile-ready':
+        return {
+          kind: 'apply',
+          next: (prev) => ({ ...prev, profile: wireToProfile(event.profile) }),
+        };
+      case 'harness-category-started':
+        return { kind: 'step-started', step: event.category };
+      case 'harness-category-completed':
+        return {
+          kind: 'step-completed',
+          step: event.category,
+          items: event.findings.map(wireToConventionFinding),
+          errored: Boolean(event.error),
+          costUsd: event.costUsd,
+          usage: event.usage,
+        };
+      case 'harness-synthesis-started':
+        // Every lens has settled; the serial synthesis tail is now running. Flip
+        // the flag so RunProgress can show the synthesis row instead of a frozen,
+        // all-"done" board.
+        return { kind: 'apply', next: (prev) => ({ ...prev, synthesizing: true }) };
+      case 'harness-proposals-ready':
+        return {
+          kind: 'apply',
+          next: (prev) => ({
+            ...prev,
+            artifacts: event.artifacts.map(wireToArtifact),
+            proposals: event.proposals.map(wireToProposal),
+            synthesizing: false,
+          }),
+        };
+      case 'harness-scan-completed':
+        return {
+          kind: 'completed',
+          items: event.findings.map(wireToConventionFinding),
+          costUsd: event.costUsd,
+          usage: event.usage,
+          durationMs: event.durationMs,
+          extra: {
+            synthesizing: false,
+            profile: wireToProfile(event.profile),
+            artifacts: event.artifacts.map(wireToArtifact),
+            proposals: event.proposals.map(wireToProposal),
+          },
+        };
+      case 'harness-scan-failed':
+        return {
+          kind: 'failed',
+          message: event.message,
+          reason: event.reason,
+          extra: { synthesizing: false },
+        };
     }
-    case 'harness-synthesis-started':
-      // Every lens has settled; the serial synthesis tail is now running. Flip
-      // the flag so RunProgress can show the synthesis row instead of a frozen,
-      // all-"done" board.
-      return { ...prev, synthesizing: true };
-    case 'harness-proposals-ready':
-      return {
-        ...prev,
-        artifacts: event.artifacts.map(wireToArtifact),
-        proposals: event.proposals.map(wireToProposal),
-        synthesizing: false,
-      };
-    case 'harness-scan-completed':
-      return {
-        ...prev,
-        status: 'completed',
-        synthesizing: false,
-        profile: wireToProfile(event.profile),
-        findings: event.findings.map(wireToConventionFinding),
-        artifacts: event.artifacts.map(wireToArtifact),
-        proposals: event.proposals.map(wireToProposal),
-        costUsd: event.costUsd,
-        usage: event.usage ?? prev.usage,
-        durationMs: event.durationMs,
-        categoryState: settleStepState(
-          prev.requestedCategories,
-          prev.categoryState,
-        ),
-      };
-    case 'harness-scan-failed':
-      return {
-        ...prev,
-        status: 'failed',
-        synthesizing: false,
-        error: event.message,
-        failureReason: event.reason,
-      };
-  }
-}
+  },
+});

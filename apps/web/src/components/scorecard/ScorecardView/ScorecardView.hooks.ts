@@ -19,8 +19,9 @@ import {
   startScorecard,
   type Task,
 } from '@/lib/bridge';
-import { deriveRunPhase, seedStepState } from '@/lib/scan-run';
+import { deriveRunPhase, patchStreamItem, seedStepState } from '@/lib/scan-run';
 import { usePreselectNavigation } from '@/lib/usePreselectNavigation';
+import { useScanItemActions } from '@/lib/useScanItemActions';
 import { useScanRun } from '@/lib/useScanRun';
 
 import type { DimensionRow } from '../DimensionGrid';
@@ -65,16 +66,17 @@ function useScorecard(hasProject: boolean): UseScorecardResult {
     onEvent: (event, { activeRunId, setStream, refreshRuns, reconcile }) => {
       if (event.type === 'reading-converted') {
         setStream((prev) =>
-          prev.runId === event.runId
-            ? {
-                ...prev,
-                readings: prev.readings.map((r) =>
-                  r.id === event.readingId
-                    ? { ...r, status: 'converted', linkedTaskId: event.taskId }
-                    : r,
-                ),
-              }
-            : prev,
+          patchStreamItem(prev, {
+            runId: event.runId,
+            itemId: event.readingId,
+            items: (s) => s.readings,
+            write: (s, readings) => ({ ...s, readings }),
+            patch: (r) => ({
+              ...r,
+              status: 'converted' as const,
+              linkedTaskId: event.taskId,
+            }),
+          }),
         );
         void refreshRuns();
         return;
@@ -116,23 +118,24 @@ function useScorecard(hasProject: boolean): UseScorecardResult {
     [hasProject, runStart],
   );
 
-  const harden = useCallback(
-    async (readingId: string): Promise<Task | null> => {
-      if (stream.runId === null) return null;
-      const task = await convertReadingToTask(stream.runId, readingId);
-      setStream((prev) => ({
-        ...prev,
-        readings: prev.readings.map((r) =>
-          r.id === readingId
-            ? { ...r, status: 'converted', linkedTaskId: task.id }
-            : r,
-        ),
-      }));
-      await refreshRuns();
-      return task;
+  // The shared item-action triple over the readings list; Scorecard only wires
+  // `convert` (its "harden" action) — readings have no dismiss/restore lifecycle.
+  const { convert: harden } = useScanItemActions<
+    ScorecardRun,
+    ScorecardStream,
+    ScorecardReadingView
+  >({
+    runId: stream.runId,
+    setStream,
+    refreshRuns,
+    streamFromRun,
+    items: (s) => s.readings,
+    writeItems: (s, readings) => ({ ...s, readings }),
+    convert: {
+      run: convertReadingToTask,
+      mark: (r, taskId) => ({ ...r, status: 'converted' as const, linkedTaskId: taskId }),
     },
-    [stream.runId, setStream, refreshRuns],
-  );
+  });
 
   return {
     stream,

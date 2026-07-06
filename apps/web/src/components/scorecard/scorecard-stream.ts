@@ -13,11 +13,10 @@ import type {
   StoredReading,
 } from '@/lib/bridge';
 import {
-  addUsage,
+  makeScanFold,
+  normalizeLocation,
   runStatusFromPersisted,
-  seedStepState,
   seedStepStateFromRun,
-  settleStepState,
 } from '@/lib/scan-run';
 
 /** The live wire evidence shape (an element of a contract `ScorecardReading.findings`). */
@@ -73,14 +72,7 @@ export const EMPTY_SCORECARD_STREAM: ScorecardStream = {
 function evidenceToView(e: WireEvidence): ScorecardEvidenceView {
   return {
     detail: e.detail,
-    location: e.location
-      ? {
-          file: e.location.file,
-          startLine: e.location.startLine ?? null,
-          endLine: e.location.endLine ?? null,
-          symbol: e.location.symbol ?? null,
-        }
-      : null,
+    location: normalizeLocation(e.location),
   };
 }
 
@@ -94,14 +86,7 @@ export function wireToReading(r: ScorecardReading): ScorecardReadingView {
     title: r.title,
     summary: r.summary,
     rationale: r.rationale ?? null,
-    location: r.location
-      ? {
-          file: r.location.file,
-          startLine: r.location.startLine ?? null,
-          endLine: r.location.endLine ?? null,
-          symbol: r.location.symbol ?? null,
-        }
-      : null,
+    location: normalizeLocation(r.location),
     suggestion: r.suggestion ?? null,
     affectedFiles: r.affectedFiles ?? [],
     tags: r.tags ?? [],
@@ -123,27 +108,13 @@ export function storedToReading(r: StoredReading): ScorecardReadingView {
     title: r.title,
     summary: r.summary,
     rationale: r.rationale,
-    location: r.location
-      ? {
-          file: r.location.file,
-          startLine: r.location.startLine ?? null,
-          endLine: r.location.endLine ?? null,
-          symbol: r.location.symbol ?? null,
-        }
-      : null,
+    location: normalizeLocation(r.location),
     suggestion: r.suggestion,
     affectedFiles: r.affectedFiles,
     tags: r.tags,
     findings: r.findings.map((e) => ({
       detail: e.detail,
-      location: e.location
-        ? {
-            file: e.location.file,
-            startLine: e.location.startLine ?? null,
-            endLine: e.location.endLine ?? null,
-            symbol: e.location.symbol ?? null,
-          }
-        : null,
+      location: normalizeLocation(e.location),
     })),
     confidence: r.confidence,
     fingerprint: r.fingerprint,
@@ -172,60 +143,64 @@ export function streamFromRun(run: ScorecardRun): ScorecardStream {
   };
 }
 
-/** Fold one `scorecard-*` event into the live stream. */
-export function foldScorecard(
-  prev: ScorecardStream,
-  event: ScorecardWireEvent,
-): ScorecardStream {
-  switch (event.type) {
-    case 'scorecard-started':
-      return {
-        ...EMPTY_SCORECARD_STREAM,
-        runId: event.runId,
-        status: 'running',
-        model: event.model,
-        requestedDimensions: event.dimensions,
-        dimensionState: seedStepState(event.dimensions),
-      };
-    case 'scorecard-dimension-started':
-      return {
-        ...prev,
-        dimensionState: { ...prev.dimensionState, [event.dimension]: 'running' },
-      };
-    case 'scorecard-dimension-completed': {
-      // Replace this dimension's reading (if it graded) with the completed one.
-      const others = prev.readings.filter((r) => r.dimension !== event.dimension);
-      const incoming = event.reading ? [wireToReading(event.reading)] : [];
-      return {
-        ...prev,
-        dimensionState: {
-          ...prev.dimensionState,
-          [event.dimension]: event.error ? 'error' : 'done',
-        },
-        readings: [...others, ...incoming],
-        costUsd: prev.costUsd + event.costUsd,
-        usage: addUsage(prev.usage, event.usage),
-      };
+/** Fold one `scorecard-*` event into the live stream (the shared scan skeleton;
+ *  see `makeScanFold` in `@/lib/scan-run`). */
+export const foldScorecard = makeScanFold<
+  ScorecardWireEvent,
+  ScorecardStream,
+  ScorecardReadingView,
+  ScorecardDimension,
+  ScorecardFailureReason
+>({
+  empty: EMPTY_SCORECARD_STREAM,
+  steps: {
+    state: (s) => s.dimensionState,
+    requested: (s) => s.requestedDimensions,
+  },
+  items: { read: (s) => s.readings, stepOf: (r) => r.dimension },
+  write: (s, patch) => ({
+    ...s,
+    ...patch.core,
+    ...(patch.stepState === undefined
+      ? undefined
+      : { dimensionState: patch.stepState }),
+    ...(patch.requestedSteps === undefined
+      ? undefined
+      : { requestedDimensions: patch.requestedSteps }),
+    ...(patch.items === undefined ? undefined : { readings: patch.items }),
+    ...patch.extra,
+  }),
+  classify: (event) => {
+    switch (event.type) {
+      case 'scorecard-started':
+        return {
+          kind: 'started',
+          runId: event.runId,
+          model: event.model,
+          steps: event.dimensions,
+        };
+      case 'scorecard-dimension-started':
+        return { kind: 'step-started', step: event.dimension };
+      case 'scorecard-dimension-completed':
+        return {
+          kind: 'step-completed',
+          step: event.dimension,
+          // Replace this dimension's reading (if it graded) with the completed one.
+          items: event.reading ? [wireToReading(event.reading)] : [],
+          errored: Boolean(event.error),
+          costUsd: event.costUsd,
+          usage: event.usage,
+        };
+      case 'scorecard-completed':
+        return {
+          kind: 'completed',
+          items: event.readings.map(wireToReading),
+          costUsd: event.costUsd,
+          usage: event.usage,
+          durationMs: event.durationMs,
+        };
+      case 'scorecard-failed':
+        return { kind: 'failed', message: event.message, reason: event.reason };
     }
-    case 'scorecard-completed':
-      return {
-        ...prev,
-        status: 'completed',
-        readings: event.readings.map(wireToReading),
-        costUsd: event.costUsd,
-        usage: event.usage ?? prev.usage,
-        durationMs: event.durationMs,
-        dimensionState: settleStepState(
-          prev.requestedDimensions,
-          prev.dimensionState,
-        ),
-      };
-    case 'scorecard-failed':
-      return {
-        ...prev,
-        status: 'failed',
-        error: event.message,
-        failureReason: event.reason,
-      };
-  }
-}
+  },
+});

@@ -33,9 +33,10 @@ import {
   type Task,
 } from '@/lib/bridge';
 import { EFFORT_OPTIONS, MODEL_OPTIONS } from '@/lib/models';
-import { deriveRunPhase, seedStepState } from '@/lib/scan-run';
+import { deriveRunPhase, patchStreamItem, seedStepState } from '@/lib/scan-run';
 import { usePreselectNavigation } from '@/lib/usePreselectNavigation';
 import type { RunConfig } from '@/lib/useRunConfig';
+import { useScanItemActions } from '@/lib/useScanItemActions';
 import { useScanRun } from '@/lib/useScanRun';
 
 import type { CategoryTab } from '../CategoryTabs';
@@ -111,52 +112,42 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
     onEvent: (event, { activeRunId, setStream, refreshRuns, reconcile }) => {
       if (event.type === 'artifact-applied') {
         setStream((prev) =>
-          prev.runId === event.runId
-            ? {
-                ...prev,
-                artifacts: prev.artifacts.map((a) =>
-                  a.id === event.artifactId
-                    ? { ...a, status: 'applied', appliedPath: event.path }
-                    : a,
-                ),
-              }
-            : prev,
+          patchStreamItem(prev, {
+            runId: event.runId,
+            itemId: event.artifactId,
+            items: (s) => s.artifacts,
+            write: (s, artifacts) => ({ ...s, artifacts }),
+            patch: (a) => ({ ...a, status: 'applied' as const, appliedPath: event.path }),
+          }),
         );
         void refreshRuns();
         return;
       }
       if (event.type === 'finding-converted') {
-        // Matches on stream.runId (NOT the activeRunId gate below) so a convert against
-        // a displayed-but-not-live run still updates in place — mirrors Insight.
+        // patchStreamItem matches on stream.runId (NOT the activeRunId gate below)
+        // so a convert against a displayed-but-not-live run still updates in place
+        // — mirrors Insight.
         setStream((prev) =>
-          prev.runId === event.runId
-            ? {
-                ...prev,
-                findings: prev.findings.map((f) =>
-                  f.id === event.findingId
-                    ? { ...f, status: 'converted', linkedTaskId: event.taskId }
-                    : f,
-                ),
-              }
-            : prev,
+          patchStreamItem(prev, {
+            runId: event.runId,
+            itemId: event.findingId,
+            items: (s) => s.findings,
+            write: (s, findings) => ({ ...s, findings }),
+            patch: (f) => ({ ...f, status: 'converted' as const, linkedTaskId: event.taskId }),
+          }),
         );
         void refreshRuns();
         return;
       }
       if (event.type === 'proposal-converted') {
-        // Matches on stream.runId (like finding-converted) so a convert against a
-        // displayed-but-not-live run still updates in place.
         setStream((prev) =>
-          prev.runId === event.runId
-            ? {
-                ...prev,
-                proposals: prev.proposals.map((p) =>
-                  p.id === event.proposalId
-                    ? { ...p, status: 'converted', linkedTaskId: event.taskId }
-                    : p,
-                ),
-              }
-            : prev,
+          patchStreamItem(prev, {
+            runId: event.runId,
+            itemId: event.proposalId,
+            items: (s) => s.proposals,
+            write: (s, proposals) => ({ ...s, proposals }),
+            patch: (p) => ({ ...p, status: 'converted' as const, linkedTaskId: event.taskId }),
+          }),
         );
         void refreshRuns();
         return;
@@ -164,16 +155,15 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
       if (event.type === 'proposal-applied') {
         // The bundle's per-artifact writes each emit their own `artifact-applied`
         // notice (which flips the artifact rows); this one flips the PROPOSAL to
-        // applied. Matches on stream.runId so a displayed-but-not-live run updates too.
+        // applied.
         setStream((prev) =>
-          prev.runId === event.runId
-            ? {
-                ...prev,
-                proposals: prev.proposals.map((p) =>
-                  p.id === event.proposalId ? { ...p, status: 'applied' } : p,
-                ),
-              }
-            : prev,
+          patchStreamItem(prev, {
+            runId: event.runId,
+            itemId: event.proposalId,
+            items: (s) => s.proposals,
+            write: (s, proposals) => ({ ...s, proposals }),
+            patch: (p) => ({ ...p, status: 'applied' as const }),
+          }),
         );
         void refreshRuns();
         return;
@@ -224,86 +214,48 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
     [hasProject, runStart],
   );
 
-  const dismissFinding = useCallback(
-    async (findingId: string) => {
-      if (stream.runId === null) return;
-      const run = await dismissHarnessFinding(stream.runId, findingId);
-      if (run !== null) setStream(streamFromRun(run));
-      await refreshRuns();
+  // The shared dismiss/restore/convert triple, instantiated per item family.
+  // The convert mark is optimistic (the command returns a Task, not the updated
+  // run); refreshRuns reconciles history, and the `finding-converted` /
+  // `proposal-converted` notices idempotently apply the same flip for any other
+  // open view.
+  const {
+    dismiss: dismissFinding,
+    restore: restoreFinding,
+    convert: convertFinding,
+  } = useScanItemActions<HarnessRun, HarnessStream, ConventionFindingVM>({
+    runId: stream.runId,
+    setStream,
+    refreshRuns,
+    streamFromRun,
+    items: (s) => s.findings,
+    writeItems: (s, findings) => ({ ...s, findings }),
+    dismissItem: dismissHarnessFinding,
+    restoreItem: restoreHarnessFinding,
+    convert: {
+      run: convertHarnessFindingToTask,
+      mark: (f, taskId) => ({ ...f, status: 'converted' as const, linkedTaskId: taskId }),
     },
-    [stream.runId, setStream, refreshRuns],
-  );
+  });
 
-  const restoreFinding = useCallback(
-    async (findingId: string) => {
-      if (stream.runId === null) return;
-      const run = await restoreHarnessFinding(stream.runId, findingId);
-      if (run !== null) setStream(streamFromRun(run));
-      await refreshRuns();
+  const {
+    dismiss: dismissProposal,
+    restore: restoreProposal,
+    convert: convertProposal,
+  } = useScanItemActions<HarnessRun, HarnessStream, HarnessProposalVM>({
+    runId: stream.runId,
+    setStream,
+    refreshRuns,
+    streamFromRun,
+    items: (s) => s.proposals,
+    writeItems: (s, proposals) => ({ ...s, proposals }),
+    dismissItem: dismissHarnessProposal,
+    restoreItem: restoreHarnessProposal,
+    convert: {
+      run: convertHarnessProposal,
+      mark: (p, taskId) => ({ ...p, status: 'converted' as const, linkedTaskId: taskId }),
     },
-    [stream.runId, setStream, refreshRuns],
-  );
-
-  const convertFinding = useCallback(
-    async (findingId: string): Promise<Task | null> => {
-      if (stream.runId === null) return null;
-      const task = await convertHarnessFindingToTask(stream.runId, findingId);
-      // Optimistic flip from the returned task id (the command returns a Task, not the
-      // updated run); refreshRuns reconciles history. The `finding-converted` notice
-      // above idempotently applies the same flip for any other open view.
-      setStream((prev) => ({
-        ...prev,
-        findings: prev.findings.map((f) =>
-          f.id === findingId
-            ? { ...f, status: 'converted', linkedTaskId: task.id }
-            : f,
-        ),
-      }));
-      await refreshRuns();
-      return task;
-    },
-    [stream.runId, setStream, refreshRuns],
-  );
-
-  const dismissProposal = useCallback(
-    async (proposalId: string) => {
-      if (stream.runId === null) return;
-      const run = await dismissHarnessProposal(stream.runId, proposalId);
-      if (run !== null) setStream(streamFromRun(run));
-      await refreshRuns();
-    },
-    [stream.runId, setStream, refreshRuns],
-  );
-
-  const restoreProposal = useCallback(
-    async (proposalId: string) => {
-      if (stream.runId === null) return;
-      const run = await restoreHarnessProposal(stream.runId, proposalId);
-      if (run !== null) setStream(streamFromRun(run));
-      await refreshRuns();
-    },
-    [stream.runId, setStream, refreshRuns],
-  );
-
-  const convertProposal = useCallback(
-    async (proposalId: string): Promise<Task | null> => {
-      if (stream.runId === null) return null;
-      const task = await convertHarnessProposal(stream.runId, proposalId);
-      // Optimistic flip from the returned task id; the `proposal-converted` notice
-      // idempotently applies the same flip for any other open view.
-      setStream((prev) => ({
-        ...prev,
-        proposals: prev.proposals.map((p) =>
-          p.id === proposalId
-            ? { ...p, status: 'converted', linkedTaskId: task.id }
-            : p,
-        ),
-      }));
-      await refreshRuns();
-      return task;
-    },
-    [stream.runId, setStream, refreshRuns],
-  );
+  });
 
   const applyProposal = useCallback(
     async (proposalId: string) => {
@@ -323,25 +275,18 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
     [stream.runId, setStream, refreshRuns],
   );
 
-  const dismissArtifact = useCallback(
-    async (artifactId: string) => {
-      if (stream.runId === null) return;
-      const run = await dismissHarnessArtifact(stream.runId, artifactId);
-      if (run !== null) setStream(streamFromRun(run));
-      await refreshRuns();
-    },
-    [stream.runId, setStream, refreshRuns],
-  );
-
-  const restoreArtifact = useCallback(
-    async (artifactId: string) => {
-      if (stream.runId === null) return;
-      const run = await restoreHarnessArtifact(stream.runId, artifactId);
-      if (run !== null) setStream(streamFromRun(run));
-      await refreshRuns();
-    },
-    [stream.runId, setStream, refreshRuns],
-  );
+  const { dismiss: dismissArtifact, restore: restoreArtifact } =
+    useScanItemActions<HarnessRun, HarnessStream, ProposedArtifactVM>({
+      runId: stream.runId,
+      setStream,
+      refreshRuns,
+      streamFromRun,
+      items: (s) => s.artifacts,
+      writeItems: (s, artifacts) => ({ ...s, artifacts }),
+      dismissItem: dismissHarnessArtifact,
+      restoreItem: restoreHarnessArtifact,
+      // Artifacts have no convert-to-task; `applyArtifact` below is their write path.
+    });
 
   const applyArtifact = useCallback(
     async (artifactId: string) => {
