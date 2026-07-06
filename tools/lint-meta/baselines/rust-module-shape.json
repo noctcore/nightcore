@@ -1,6 +1,5 @@
 {
   "manifest:apps/desktop/src-tauri/src/orchestration/coordinator/mod.rs": 14,
-  "manifest:apps/desktop/src-tauri/src/provider/mod.rs": 6,
   "manifest:apps/desktop/src-tauri/src/sidecar/mod.rs": 26,
   "manifest:apps/desktop/src-tauri/src/store/mod.rs": 9,
   "manifest:apps/desktop/src-tauri/src/workflow/issue_triage/mod.rs": 19,

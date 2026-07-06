@@ -4,10 +4,17 @@
 
 use super::*;
 
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use serde_json::Value;
 use tokio::io::AsyncWriteExt;
+use tokio::process::ChildStdin;
+use tokio::sync::oneshot;
+use tokio::sync::Mutex as AsyncMutex;
 
 use crate::contracts::{
     AnswerQuestionAnswerUnion, EffortLevel, PermissionDecision as WirePermissionDecision,
