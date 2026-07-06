@@ -6,13 +6,14 @@ use std::path::PathBuf;
 
 use tauri::{AppHandle, Manager};
 
+use crate::git::validate_ref;
 use crate::store::TaskStore;
 use crate::task::Task;
 use crate::workflow::merge::{
     commit_in_flight, lease_held, merge_in_flight, require_project, TaskLease,
 };
 use crate::workflow::pr::pr_in_flight;
-use crate::worktree::{self, validate_ref};
+use crate::worktree;
 
 /// The push-updates precondition: the task must already carry a PR (the create
 /// path is the only minter of `pr_url`, so this also implies worktree mode).

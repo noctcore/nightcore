@@ -10,8 +10,9 @@
 //! wire types, [`detect`] the tooling probe, [`run`] the sequential runner +
 //! failure-output truncation, and [`command`] the `#[tauri::command]` entry
 //! point. The facade re-exports preserve the historical `crate::gauntlet::*`
-//! paths (`run`/`empty_pass`/`tail_output`/`GauntletResult`/`GauntletStep`/
-//! `run_gauntlet`) so external call sites resolve unchanged.
+//! paths (`run`/`empty_pass`/`GauntletResult`/`GauntletStep`/`run_gauntlet`) so
+//! external call sites resolve unchanged. The shared output-truncation helper now
+//! lives in `crate::infra::text::tail_output` (issue #17 phase A.3).
 
 mod command;
 mod contract;

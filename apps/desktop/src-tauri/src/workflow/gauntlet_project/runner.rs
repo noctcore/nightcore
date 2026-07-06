@@ -6,7 +6,7 @@
 use std::path::Path;
 
 use super::config::load_checks;
-use crate::gauntlet::tail_output;
+use crate::infra::text::tail_output;
 use crate::store::types::{StepStatus, StructureLockCheck, StructureLockResult};
 
 /// Run the structure-lock gauntlet over a directory: load the enabled checks from

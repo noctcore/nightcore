@@ -24,9 +24,10 @@ use serde::Deserialize;
 
 use crate::git::gh::{run_gh_checked, GhCall, GH_BINARY};
 use crate::git::run::{git, git_status_success};
+use crate::git::validate_ref;
 use crate::store::TaskStore;
 use crate::task::TaskStatus;
-use crate::worktree::{self, validate_ref};
+use crate::worktree;
 
 /// Wall-clock bound on the `gh pr view` head-branch read. A single-object view
 /// moves no data, so a black-holed GitHub fails fast (the `GH_VIEW_TIMEOUT`

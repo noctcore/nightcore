@@ -8,8 +8,8 @@
 use std::path::Path;
 use std::time::Duration;
 
-use super::path::validate_ref;
 use super::{git, git_status_success, git_with_deadline, parse_left_right_count};
+use crate::git::validate_ref;
 
 /// Wall-clock bound on the network-facing `git push`. Generous — a slow first
 /// push of a big branch is legitimate — but finite, so a black-holed origin

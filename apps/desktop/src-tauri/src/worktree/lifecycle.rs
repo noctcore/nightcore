@@ -9,7 +9,8 @@
 use std::path::{Path, PathBuf};
 
 use super::git;
-use super::path::{branch_name, is_under, validate_ref, worktree_path, worktrees_base};
+use super::path::{branch_name, is_under, worktree_path, worktrees_base};
+use crate::git::validate_ref;
 
 /// Create a worktree + branch for `task_id` off the current `HEAD`. Idempotent in
 /// the sense that an existing worktree dir is reused (returns its path) rather than

@@ -27,7 +27,7 @@
 //! session, pre-review) and PR-push (`pr.rs`, which pushes an already-committed
 //! branch) are not yet gated — a diff-range scan there is a larger change.
 //! - **No raw secret values, ever**: `--redact` makes gitleaks mask matched
-//!   values in its own output, and only a bounded [`crate::gauntlet::tail_output`]
+//!   values in its own output, and only a bounded [`crate::infra::text::tail_output`]
 //!   of that already-redacted text reaches the error string. The report body is
 //!   never written to the tracing log (same posture as the gauntlets).
 //! - **Repo policy is respected implicitly**: gitleaks auto-loads the target
@@ -97,7 +97,7 @@ fn scan_staged_with(dir: &Path, binary: &str) -> ScanOutcome {
                 "gitleaks reported findings in the staged changes"
             );
             ScanOutcome::Findings {
-                summary: crate::gauntlet::tail_output(&out.stdout, &out.stderr),
+                summary: crate::infra::text::tail_output(&out.stdout, &out.stderr),
             }
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {

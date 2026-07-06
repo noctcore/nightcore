@@ -12,11 +12,12 @@ use super::parse::{parse_pr_url, parse_pr_view};
 use crate::gauntlet;
 use crate::gauntlet_project;
 use crate::git::gh::{map_gh_failure, run_gh_bounded, GH_BINARY};
+use crate::git::validate_ref;
 use crate::store::types::StructureLockResult;
 use crate::store::TaskStore;
 use crate::task::{Task, TASK_EVENT};
 use crate::workflow::merge::{require_project, TaskLease};
-use crate::worktree::{self, validate_ref};
+use crate::worktree;
 
 /// Wall-clock bound on every network-facing `gh` spawn (create + view). Same
 /// rationale as the push deadline: generous, but finite — a black-holed GitHub

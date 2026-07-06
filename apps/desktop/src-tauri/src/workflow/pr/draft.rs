@@ -7,10 +7,11 @@ use tauri::{AppHandle, Manager};
 #[cfg(test)]
 use ts_rs::TS;
 
+use crate::git::validate_ref;
 use crate::store::TaskStore;
 use crate::workflow::merge::require_project;
 use crate::workflow::pr_msg;
-use crate::worktree::{self, validate_ref};
+use crate::worktree;
 
 /// An AI-drafted (or deterministically fallen-back) PR title + markdown body,
 /// pre-filled into the editable create dialog — never posted directly.

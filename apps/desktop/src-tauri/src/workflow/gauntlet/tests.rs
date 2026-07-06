@@ -7,7 +7,8 @@ use std::process::Command;
 
 use super::contract::{GauntletResult, GauntletStep};
 use super::detect::{detect_steps, PlannedStep};
-use super::run::{run, tail_output};
+use super::run::run;
+use crate::infra::text::tail_output;
 use crate::store::types::StepStatus;
 
 /// A temp dir with a `package.json` whose `scripts` are the given (name,

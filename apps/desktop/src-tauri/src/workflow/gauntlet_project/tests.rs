@@ -9,7 +9,7 @@ use super::config::{load_checks, HarnessCheckKind, PlannedCheck};
 use super::runner::{
     append_task_verify_command, empty_pass, fix_instruction, run, run_from, VERIFY_COMMAND_CHECK,
 };
-use crate::gauntlet::tail_output;
+use crate::infra::text::tail_output;
 use crate::store::types::{StepStatus, StructureLockCheck, StructureLockResult};
 
 /// Write a `.nightcore/harness.json` with the given raw body into a fresh temp

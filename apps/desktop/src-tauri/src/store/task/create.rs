@@ -68,11 +68,11 @@ pub(crate) fn build_new_task(
         task.branch = inputs
             .branch
             .filter(|b| !b.trim().is_empty())
-            .filter(|b| crate::worktree::validate_ref(b).is_ok());
+            .filter(|b| crate::git::validate_ref(b).is_ok());
         task.base_branch = inputs
             .base_branch
             .filter(|b| !b.trim().is_empty())
-            .filter(|b| crate::worktree::validate_ref(b).is_ok());
+            .filter(|b| crate::git::validate_ref(b).is_ok());
     }
     // P0: an explicit per-task model/effort wins; absent ⇒ stamp the resolved
     // Settings default (an SDK long id) so changing "Default model" in Settings

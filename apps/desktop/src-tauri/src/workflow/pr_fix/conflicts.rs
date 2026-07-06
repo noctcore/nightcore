@@ -12,7 +12,7 @@
 
 use std::path::Path;
 
-use crate::worktree::validate_ref;
+use crate::git::validate_ref;
 
 /// What `git merge refs/remotes/origin/<base>` did to the checkout.
 #[derive(Debug, PartialEq)]

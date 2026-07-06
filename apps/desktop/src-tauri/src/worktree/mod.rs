@@ -58,7 +58,7 @@ pub use commit::{commit, commit_staged, has_staged_changes, stage_all, staged_di
 pub use diff::{base_diff, worktree_diff, WorktreeDiff};
 pub use lifecycle::{allocate, allocate_branch, reconcile, remove};
 pub use merge::{merge_branch, merge_preview, MergeOutcome, MergePreview};
-pub use path::{branch_name, validate_ref, worktree_path};
+pub use path::{branch_name, worktree_path};
 pub use provision::provision_deps;
 pub use status::{is_worktree_clean, list_worktree_statuses, WorktreeStatus};
 

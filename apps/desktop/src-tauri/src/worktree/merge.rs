@@ -8,9 +8,9 @@
 use std::path::Path;
 
 use super::diff::{diff_numstat, DiffFileStat};
-use super::path::validate_ref;
 use super::status::is_worktree_clean;
 use super::{git, parse_left_right_count};
+use crate::git::validate_ref;
 
 /// Merge `branch` into `base` in the project's main checkout — ONLY via `git merge`
 /// (never `--force`/reset). Refuses a dirty base. A genuine conflict (the merge left

@@ -95,9 +95,9 @@ pub struct WorktreeDiff {
 /// (`git diff <base>...HEAD`) — the authoritative payload for PR drafting (PR
 /// arc, phase 1). Validates `base` before it is spliced into the range argument
 /// (the combined `<base>...HEAD` positional cannot begin with `-` once `base`
-/// passes [`validate_ref`]).
+/// passes [`crate::git::validate_ref`]).
 pub fn base_diff(dir: &Path, base: &str) -> Result<String, String> {
-    super::path::validate_ref(base)?;
+    crate::git::validate_ref(base)?;
     git(dir, &["diff", &format!("{base}...HEAD")])
 }
 

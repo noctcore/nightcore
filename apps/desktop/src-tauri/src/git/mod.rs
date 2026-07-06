@@ -18,6 +18,12 @@
 pub(crate) mod gh;
 pub(crate) mod parse;
 pub(crate) mod query;
+pub(crate) mod refname;
 pub(crate) mod run;
 #[cfg(test)]
 pub(crate) mod testutil;
+
+// The historical `crate::worktree::validate_ref` call-site shape is preserved as
+// `crate::git::validate_ref` by re-exporting the ref validator at the module root
+// (issue #17 phase A.3 moved its home from `worktree::path` to `git::refname`).
+pub(crate) use refname::validate_ref;

@@ -8,11 +8,6 @@ use super::detect::detect_steps;
 use super::{GauntletResult, GauntletStep};
 use crate::store::types::StepStatus;
 
-/// How much of a failing step's output to retain for the UI. Bounded so a noisy
-/// failure can't bloat the event payload; truncated from the tail (the part that
-/// usually names the failure).
-const TAIL_LIMIT: usize = 4000;
-
 /// Run the gauntlet over a worktree directory: detect the steps, run them
 /// sequentially, and stop at the first non-zero exit. A project with no detected
 /// tooling passes trivially.
@@ -65,7 +60,7 @@ pub fn run(dir: &Path) -> GauntletResult {
                     command,
                     status: StepStatus::Failed,
                     exit_code: out.status.code(),
-                    output: Some(tail_output(&out.stdout, &out.stderr)),
+                    output: Some(crate::infra::text::tail_output(&out.stdout, &out.stderr)),
                 });
             }
             Err(e) => {
@@ -90,28 +85,6 @@ pub fn run(dir: &Path) -> GauntletResult {
         passed,
         steps,
         failed_step,
-    }
-}
-
-/// Combine stdout+stderr and keep the last [`TAIL_LIMIT`] bytes (the part that
-/// usually names the failure), as UTF-8-lossy text. Shared with the Structure-Lock
-/// Gauntlet (`gauntlet_project`) so both gates truncate identically.
-pub(crate) fn tail_output(stdout: &[u8], stderr: &[u8]) -> String {
-    let mut combined = String::new();
-    combined.push_str(&String::from_utf8_lossy(stdout));
-    if !stderr.is_empty() {
-        combined.push('\n');
-        combined.push_str(&String::from_utf8_lossy(stderr));
-    }
-    if combined.len() > TAIL_LIMIT {
-        let start = combined.len() - TAIL_LIMIT;
-        // Snap to a char boundary so we never slice mid-codepoint.
-        let start = (start..combined.len())
-            .find(|&i| combined.is_char_boundary(i))
-            .unwrap_or(combined.len());
-        format!("…{}", &combined[start..])
-    } else {
-        combined
     }
 }
 

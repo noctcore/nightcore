@@ -73,7 +73,7 @@ fn merge_preview_blocking(
     // silently degraded preview that the actual (validating) merge would then reject.
     let base = resolve_preview_base(base, task.base_branch.as_deref(), &project)?;
     // The resolved branch is validated too, mirroring `merge_branch`'s two-ref check.
-    worktree::validate_ref(&branch)?;
+    crate::git::validate_ref(&branch)?;
     Ok(worktree::merge_preview(&project, &branch, &base))
 }
 
@@ -89,7 +89,7 @@ fn resolve_preview_base(
     let base = explicit
         .or_else(|| task_base.map(str::to_string))
         .unwrap_or_else(|| worktree::base_branch(project));
-    worktree::validate_ref(&base)?;
+    crate::git::validate_ref(&base)?;
     Ok(base)
 }
 

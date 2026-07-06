@@ -91,7 +91,7 @@ pub fn provision_deps(dir: &Path) -> Result<(), String> {
         .code()
         .map(|c| c.to_string())
         .unwrap_or_else(|| "signal".to_string());
-    let tail = crate::gauntlet::tail_output(&output.stdout, &output.stderr);
+    let tail = crate::infra::text::tail_output(&output.stdout, &output.stderr);
     Err(format!(
         "failed to install worktree dependencies (`{program} {}` exited {code}) — \
          the readiness gauntlet can't run without them:\n{tail}",
