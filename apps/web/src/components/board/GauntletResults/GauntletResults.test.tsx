@@ -39,9 +39,9 @@ test('names the failed structure-lock check', async () => {
     .toBeInTheDocument();
 });
 
-test('fires onRun when Run checks is clicked', async () => {
-  const onRun = vi.fn();
-  const screen = render(<NotRunYet onRun={onRun} />);
+test('fires onRunChecks when Run checks is clicked', async () => {
+  const onRunChecks = vi.fn();
+  const screen = render(<NotRunYet onRunChecks={onRunChecks} />);
   await screen.getByRole('button', { name: /run checks/i }).click();
-  expect(onRun).toHaveBeenCalled();
+  expect(onRunChecks).toHaveBeenCalled();
 });

@@ -14,6 +14,8 @@ export const recommendedRules: TSESLint.FlatConfig.Rules = {
   'nightcore/max-hook-return-surface': 'off',
   'nightcore/max-props-per-component': 'off',
   'nightcore/no-prop-drilling': 'off',
+  'nightcore/enforce-context-consumption': 'off',
+  'nightcore/context-value-must-be-memoized': 'off',
   'nightcore/no-deep-package-imports': 'off',
   'nightcore/zod-schema-naming': 'off',
   'nightcore/wire-message-naming': 'off',

@@ -11,7 +11,7 @@ import type { GauntletResultsProps } from './GauntletResults.types';
 export function GauntletResults({
   result,
   running,
-  onRun,
+  onRunChecks,
   structureLock = null,
 }: GauntletResultsProps) {
   const lockChecks = structureLock?.checks ?? [];
@@ -35,7 +35,7 @@ export function GauntletResults({
           className="ml-auto"
           disabled={running}
           aria-busy={running}
-          onClick={onRun}
+          onClick={onRunChecks}
         >
           {running ? <Spinner size={14} /> : <ChecksIcon size={14} />}
           {running ? 'Running…' : 'Run checks'}

@@ -26,6 +26,87 @@ const COMPOSITION_ROOT_GLOBS = COMPOSITION_ROOT_FEATURES.map(
 // arch rules target component contracts, not domain models.
 const FEATURE_ROOT_FILES = 'apps/web/src/components/*/*.ts';
 
+// The board's scoped-context registry for `nightcore/enforce-context-consumption`
+// (issue #56). Each entry lists the drilled prop surface a board context REPLACED:
+// re-declaring any of these names as a prop in a board component (or a `*Props`
+// member) is a re-thread — consume the context (`useTaskActions` /
+// `useBoardChrome` / `useWorktreesContext`) instead. The `providedProps` lists are
+// curated to the CONTEXT-EXCLUSIVE names: props a controlled leaf still owns by
+// design (AutoModeOptions' `autoCommitOnVerified` / `onAutoCommitChange`,
+// BoardBackgroundPanel's `onChangeAppearance`, and BoardChrome's `onResume` — a
+// name the SessionHistory session-resume prop reuses) and the deliberately
+// dual-threaded stable `isActionPending` are intentionally left OUT, so the tree
+// wires at 0 violations while the drilled clusters stay locked in.
+const BOARD_CONTEXT_REGISTRY = {
+  contexts: [
+    {
+      hook: 'useTaskActions',
+      scope: 'board',
+      providedProps: [
+        'onSelect',
+        'onRun',
+        'onCancel',
+        'onDelete',
+        'onRespondPermission',
+        'onAnswerQuestion',
+        'onApprove',
+        'onReject',
+        'onRefine',
+        'onChangeKind',
+        'onChangeRunMode',
+        'onChangePermissionMode',
+        'onChangeModel',
+        'onChangeEffort',
+        'onChangeMaxTurns',
+        'onChangeMaxBudget',
+        'onAcceptReview',
+        'onRejectReview',
+        'onRerunVerification',
+        'onRunGauntlet',
+        'onConvertSubtask',
+        'onConvertAllSubtasks',
+        'onMerge',
+        'onCommit',
+        'onCreatePr',
+        'onOpenPr',
+        'onPushPrUpdates',
+        'onFinalizePr',
+        'onPullBaseFf',
+        'onAddressPrComments',
+        'onResumeSession',
+        'onRenameSession',
+        'onTagSession',
+      ],
+    },
+    {
+      hook: 'useBoardChrome',
+      scope: 'board',
+      providedProps: [
+        'appearanceOverride',
+        'backgroundVersion',
+        'onPickBackground',
+        'onClearBackground',
+        'concurrency',
+        'autoMode',
+        'breaker',
+        'onToggleAutoMode',
+        'onConcurrencyChange',
+      ],
+    },
+    {
+      hook: 'useWorktreesContext',
+      scope: 'board',
+      providedProps: [
+        'worktrees',
+        'activeWorktree',
+        'setActiveWorktree',
+        'removeWorktree',
+        'refreshWorktrees',
+      ],
+    },
+  ],
+};
+
 /**
  * Flat config. The `no-restricted-imports` blocks encode the layer-dependency
  * rules from the architecture doc (§3 table): surfaces and capability packages
@@ -225,6 +306,23 @@ export default tseslint.config(
       'nightcore/max-hook-return-surface': 'error',
       'nightcore/max-props-per-component': 'error',
       'nightcore/no-prop-drilling': 'error',
+    },
+  },
+  // Context lock-in (issue #56), scoped to `board` — the feature whose drilled
+  // prop bundles the scoped contexts (TaskActionsContext / BoardChromeContext /
+  // WorktreesContext) replaced. `enforce-context-consumption` flags any
+  // context-provided name re-declared as a board prop (registry above);
+  // `context-value-must-be-memoized` keeps a board Provider's `value` a stable
+  // reference (`TaskStreamContext.Provider` is the per-frame stream seam the
+  // board's memo economy hinges on). Both ship 'off' in recommended and are
+  // wired ON only here. Stories/tests are scaffolding (they render the providers
+  // with fixture values), not shells, so they are excluded.
+  {
+    files: ['apps/web/src/components/board/**/*.{ts,tsx}'],
+    ignores: ['apps/web/src/components/board/**/*.{stories,test}.{ts,tsx}'],
+    rules: {
+      'nightcore/enforce-context-consumption': ['error', BOARD_CONTEXT_REGISTRY],
+      'nightcore/context-value-must-be-memoized': 'error',
     },
   },
   // Freeze-at-worst carve-out for `nightcore/max-props-per-component` (issue

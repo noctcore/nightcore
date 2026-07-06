@@ -15,7 +15,7 @@ const meta = {
   args: {
     result: null,
     running: false,
-    onRun: fn(),
+    onRunChecks: fn(),
   },
   decorators: [
     (Story) => (
@@ -54,6 +54,6 @@ export const RunsChecks: Story = {
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole('button', { name: /run checks/i }));
-    await expect(args.onRun).toHaveBeenCalled();
+    await expect(args.onRunChecks).toHaveBeenCalled();
   },
 };
