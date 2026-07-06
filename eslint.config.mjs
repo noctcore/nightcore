@@ -217,6 +217,24 @@ export default tseslint.config(
       // ui = shadcn primitives (the cross-feature escape hatch, skipped dir).
       'nightcore/no-cross-feature-imports': ['error', { sharedFeatures: ['ui'] }],
       'nightcore/max-hooks-per-file': 'error',
+      'nightcore/max-props-per-component': 'error',
+    },
+  },
+  // Freeze-at-worst carve-out for `nightcore/max-props-per-component` (issue
+  // #51): the 6 pre-existing wide props contracts (Board 39, Column 22,
+  // TaskDetailChrome 19, TaskCard 16, Sidebar 16, TaskDetail 14) may not grow
+  // past 40. The board refactor deletes entries from this list — it only
+  // shrinks; severity stays `error` (`no-warn-severity` is ciCritical).
+  {
+    files: [
+      'apps/web/src/components/app/Sidebar/Sidebar.types.ts',
+      'apps/web/src/components/board/Board/Board.types.ts',
+      'apps/web/src/components/board/Column/Column.types.ts',
+      'apps/web/src/components/board/TaskCard/TaskCard.types.ts',
+      'apps/web/src/components/board/TaskDetail/TaskDetail.types.ts',
+    ],
+    rules: {
+      'nightcore/max-props-per-component': ['error', { max: 40 }],
     },
   },
   // Composition roots (the app shell) wire features together by design, so the
