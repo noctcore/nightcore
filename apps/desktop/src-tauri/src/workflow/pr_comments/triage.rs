@@ -18,7 +18,7 @@
 //! the fix agent already handles when triage does not run at all.
 
 use super::{PrCommentTriage, PrCommentTriageClass, PrReviewComments};
-use crate::workflow::oneshot::{run_oneshot_with, strip_code_fence};
+use crate::workflow::oneshot::{resolve_oneshot_binary, run_oneshot_with, strip_code_fence};
 
 /// Max characters of the model's per-thread rationale carried to the UI. A note
 /// longer than this is the model rambling; it is a tooltip, not prose.
@@ -53,9 +53,10 @@ struct RawTriageRow {
 }
 
 /// Classify the payload's inline threads via the shared one-shot. Production entry
-/// point — delegates to [`triage_threads_with`] with the resolved `claude`.
+/// point — delegates to [`triage_threads_with`] with the resolved one-shot binary
+/// (honoring the `NIGHTCORE_AGENT_PATH`/`NIGHTCORE_CLAUDE_PATH` overrides, #18).
 pub(super) fn triage_threads(comments: &PrReviewComments) -> Vec<PrCommentTriage> {
-    triage_threads_with(comments, "claude")
+    triage_threads_with(comments, &resolve_oneshot_binary())
 }
 
 /// Binary-parameterized [`triage_threads`] — the seam the tests drive with a fake
