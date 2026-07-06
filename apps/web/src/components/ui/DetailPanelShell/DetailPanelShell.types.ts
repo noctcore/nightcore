@@ -18,4 +18,6 @@ export interface DetailPanelShellProps {
   children: ReactNode;
   /** The footer action row (lifecycle buttons). */
   footer: ReactNode;
+  /** Widen the sheet (`max-w-2xl` instead of `max-w-lg`) for full-file previews. */
+  wide?: boolean;
 }

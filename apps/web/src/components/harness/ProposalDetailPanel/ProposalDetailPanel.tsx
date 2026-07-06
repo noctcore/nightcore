@@ -1,21 +1,22 @@
 /** The ProposalDetailPanel sheet for a single task-shaped harness proposal, composed
- *  from the shared DetailPanelShell. The convert action mints a Build task (carrying the
- *  proposal's verifyCommand onto the task's gauntlet check). */
+ *  from the shared GroundedFindingBody. The convert action mints a Build task (carrying
+ *  the proposal's verifyCommand onto the task's gauntlet check). */
 import {
   Button,
   CheckIcon,
   CodeBlock,
-  DetailPanelShell,
   DetailSection,
+  GroundedFindingBody,
+  type GroundedFindingView,
   Markdown,
   MoveIcon,
   PlusIcon,
   RetryIcon,
   TrashIcon,
-  useLastPresent,
 } from '@/components/ui';
 
 import { PROPOSAL_KIND_META } from '../harness.constants';
+import type { HarnessProposalVM } from '../harness.types';
 import type { ProposalDetailPanelProps } from './ProposalDetailPanel.types';
 
 /** The proposal detail sheet: kind + confidence chrome, description, rationale, the
@@ -32,38 +33,17 @@ export function ProposalDetailPanel({
   onRestore,
   onGotoBoard,
 }: ProposalDetailPanelProps) {
-  // Retain the last proposal so the sheet keeps its content while it animates out.
-  const shown = useLastPresent(proposal);
-  if (shown === null) {
-    return (
-      <DetailPanelShell
-        open={false}
-        label=""
-        onClose={onClose}
-        title=""
-        badges={null}
-        footer={null}
-      >
-        {null}
-      </DetailPanelShell>
-    );
-  }
-
-  const meta = PROPOSAL_KIND_META[shown.kind];
-  // An `apply-artifacts` proposal bundles safe file writes → it can be applied directly
-  // (the deterministic half of propose-then-convert); an `agent-task` has no artifacts.
-  const canApply =
-    shown.kind === 'apply-artifacts' && shown.artifactIds.length > 0;
-  const applied = shown.status === 'applied';
-  const dismissed = shown.status === 'dismissed';
-
-  return (
-    <DetailPanelShell
-      open={open}
-      label={shown.title}
-      onClose={onClose}
-      title={shown.title}
-      badges={
+  const render = (shown: HarnessProposalVM): GroundedFindingView => {
+    const meta = PROPOSAL_KIND_META[shown.kind];
+    // An `apply-artifacts` proposal bundles safe file writes → it can be applied directly
+    // (the deterministic half of propose-then-convert); an `agent-task` has no artifacts.
+    const canApply =
+      shown.kind === 'apply-artifacts' && shown.artifactIds.length > 0;
+    const applied = shown.status === 'applied';
+    const dismissed = shown.status === 'dismissed';
+    return {
+      title: shown.title,
+      badges: (
         <>
           <span className="inline-flex items-center rounded-md border border-primary/40 bg-primary/[0.1] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-primary">
             {meta.label}
@@ -75,8 +55,8 @@ export function ProposalDetailPanel({
             </span>
           )}
         </>
-      }
-      footer={
+      ),
+      footer: (
         <>
           {shown.status === 'converted' ? (
             <Button variant="secondary" disabled={pending} onClick={onGotoBoard}>
@@ -133,54 +113,63 @@ export function ProposalDetailPanel({
             )
           )}
         </>
-      }
-    >
-      <DetailSection title="What">
-        <Markdown>{shown.description}</Markdown>
-      </DetailSection>
+      ),
+      sections: {
+        description: shown.description,
+        rationale: shown.rationale,
+        extra: (
+          <>
+            {shown.prompt !== null && (
+              <DetailSection title="Task for the agent">
+                <Markdown>{shown.prompt}</Markdown>
+              </DetailSection>
+            )}
 
-      {shown.rationale !== null && (
-        <DetailSection title="Why it matters">
-          <Markdown>{shown.rationale}</Markdown>
-        </DetailSection>
-      )}
+            {shown.verifyCommand !== null && (
+              <DetailSection title="Verify with">
+                <CodeBlock code={shown.verifyCommand} language="bash" />
+              </DetailSection>
+            )}
 
-      {shown.prompt !== null && (
-        <DetailSection title="Task for the agent">
-          <Markdown>{shown.prompt}</Markdown>
-        </DetailSection>
-      )}
+            {shown.harnessCheck !== null && (
+              <DetailSection title="Suggested Structure-Lock check">
+                <p className="text-[12px] text-muted-foreground">
+                  After this lands, arm{' '}
+                  <code className="rounded border border-border bg-white/[0.04] px-1 py-0.5 font-mono text-[11.5px] text-foreground">
+                    {shown.harnessCheck.command}
+                  </code>{' '}
+                  (kind{' '}
+                  <span className="font-mono text-foreground">
+                    {shown.harnessCheck.kind}
+                  </span>
+                  ) so the gauntlet enforces it on every future task.
+                </p>
+              </DetailSection>
+            )}
 
-      {shown.verifyCommand !== null && (
-        <DetailSection title="Verify with">
-          <CodeBlock code={shown.verifyCommand} language="bash" />
-        </DetailSection>
-      )}
+            {shown.artifactIds.length > 0 && (
+              <DetailSection title={`Bundles ${shown.artifactIds.length} artifact(s)`}>
+                <p className="text-[12px] text-muted-foreground">
+                  <span className="font-semibold text-foreground">Apply bundle</span>{' '}
+                  writes all {shown.artifactIds.length}{' '}
+                  {shown.artifactIds.length === 1 ? 'artifact' : 'artifacts'} to disk
+                  directly (no agent, no cost), through the same hardened path as the
+                  Artifacts tab.
+                </p>
+              </DetailSection>
+            )}
+          </>
+        ),
+      },
+    };
+  };
 
-      {shown.harnessCheck !== null && (
-        <DetailSection title="Suggested Structure-Lock check">
-          <p className="text-[12px] text-muted-foreground">
-            After this lands, arm{' '}
-            <code className="rounded border border-border bg-white/[0.04] px-1 py-0.5 font-mono text-[11.5px] text-foreground">
-              {shown.harnessCheck.command}
-            </code>{' '}
-            (kind{' '}
-            <span className="font-mono text-foreground">{shown.harnessCheck.kind}</span>)
-            so the gauntlet enforces it on every future task.
-          </p>
-        </DetailSection>
-      )}
-
-      {shown.artifactIds.length > 0 && (
-        <DetailSection title={`Bundles ${shown.artifactIds.length} artifact(s)`}>
-          <p className="text-[12px] text-muted-foreground">
-            <span className="font-semibold text-foreground">Apply bundle</span> writes all{' '}
-            {shown.artifactIds.length}{' '}
-            {shown.artifactIds.length === 1 ? 'artifact' : 'artifacts'} to disk directly
-            (no agent, no cost), through the same hardened path as the Artifacts tab.
-          </p>
-        </DetailSection>
-      )}
-    </DetailPanelShell>
+  return (
+    <GroundedFindingBody
+      open={open}
+      item={proposal}
+      onClose={onClose}
+      render={render}
+    />
   );
 }

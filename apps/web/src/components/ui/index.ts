@@ -22,6 +22,17 @@ export type { DetailPanelShellProps } from './DetailPanelShell';
 export { DetailLocation, DetailPanelShell, DetailSection } from './DetailPanelShell';
 export { EmptyState } from './EmptyState';
 export { FieldValue } from './FieldValue';
+export type {
+  GroundedFindingBodyProps,
+  GroundedFindingSections,
+  GroundedFindingView,
+  GroundedLifecycleFooterProps,
+} from './GroundedFindingBody';
+export {
+  GroundedFindingBody,
+  GroundedLifecycleFooter,
+  inferLanguageFromFile,
+} from './GroundedFindingBody';
 export { IconButton } from './IconButton';
 export * from './icons';
 export { IconTile } from './IconTile';

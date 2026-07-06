@@ -19,6 +19,7 @@ export function DetailPanelShell({
   title,
   children,
   footer,
+  wide = false,
 }: DetailPanelShellProps) {
   return (
     <Modal
@@ -26,7 +27,7 @@ export function DetailPanelShell({
       label={label}
       onClose={onClose}
       overlayClassName="fixed inset-0 z-20 flex justify-end bg-black/60 backdrop-blur-sm"
-      panelClassName="flex h-full w-full max-w-lg flex-col overflow-hidden border-l border-border bg-popover shadow-2xl"
+      panelClassName={`flex h-full w-full ${wide ? 'max-w-2xl' : 'max-w-lg'} flex-col overflow-hidden border-l border-border bg-popover shadow-2xl`}
       panelVariants={slideIn}
     >
       {/* Header */}
