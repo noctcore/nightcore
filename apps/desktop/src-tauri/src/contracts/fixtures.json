@@ -269,6 +269,10 @@
     "get-capabilities": {
       "requestId": "q-7",
       "type": "get-capabilities"
+    },
+    "get-models": {
+      "requestId": "q-8",
+      "type": "get-models"
     }
   },
   "events": {
@@ -1029,6 +1033,19 @@
         "outputStyle": "default",
         "extrasStatus": "supported"
       },
+      "models": [
+        {
+          "value": "claude-opus-4-8",
+          "displayName": "Claude Opus 4.8",
+          "description": "Most capable; deep reasoning and long-horizon work.",
+          "supportsEffort": true,
+          "supportedEffortLevels": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      ],
       "error": "none"
     }
   }

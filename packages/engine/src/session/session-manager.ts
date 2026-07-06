@@ -291,6 +291,19 @@ export class SessionManager {
           capabilities: this.provider.capabilities(),
         };
       }
+      case 'get-models': {
+        // Provider-dynamic: the model catalog (ids + per-model effort levels) fetched
+        // from the SDK at runtime, not hardcoded. Reuses a live session's query or
+        // spins a transient probe; `listModels()` degrades to `[]` on any error, so
+        // the reply is always `ok: true` (issue #80).
+        return {
+          type: 'query-result',
+          requestId,
+          ok: true,
+          kind: 'models',
+          models: await this.listModels(),
+        };
+      }
     }
   }
 

@@ -26,6 +26,7 @@ import {
   IssueValidationProgressEvent,
   IssueValidationStartedEvent,
 } from './issue-triage.js';
+import { ModelDescriptorSchema } from './models.js';
 import {
   PrReviewCompletedEvent,
   PrReviewFailedEvent,
@@ -401,6 +402,7 @@ export const QueryResultEvent = z.object({
     'ack',
     'provider-config',
     'capabilities',
+    'models',
   ]),
   /** Populated for `kind: 'sessions'`. */
   sessions: z.array(SessionInfoSchema).optional(),
@@ -412,6 +414,9 @@ export const QueryResultEvent = z.object({
   providerConfig: ProviderConfigSnapshotSchema.optional(),
   /** Populated for `kind: 'capabilities'`: the provider's static capability descriptor. */
   capabilities: ProviderCapabilitiesSchema.optional(),
+  /** Populated for `kind: 'models'`: the provider's dynamic model catalog (each id
+   *  plus its supported effort levels), for the surface's `/model` picker. */
+  models: z.array(ModelDescriptorSchema).optional(),
   /** Set when `ok` is false: a short failure reason. */
   error: z.string().optional(),
 });

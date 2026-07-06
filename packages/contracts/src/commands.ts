@@ -489,6 +489,19 @@ export const GetCapabilitiesQuery = z.object({
   type: z.literal('get-capabilities'),
 });
 
+/** Read the active provider's DYNAMIC model catalog — the engine's `listModels()`
+ *  output (each {@link ModelDescriptorSchema}: the id passed to `setModel()`, a
+ *  display name, and the per-model effort levels) a surface renders its `/model`
+ *  picker from (issue #80). Like `get-capabilities` the engine answers from the
+ *  active provider, but the list is provider-DYNAMIC — fetched from the SDK at
+ *  runtime, not hardcoded — so a new model appears without a Nightcore release. No
+ *  project dir: the provider spins a transient probe when no session is live and
+ *  degrades to `[]` on any error (never a failed reply). */
+export const GetModelsQuery = z.object({
+  ...requestTarget,
+  type: z.literal('get-models'),
+});
+
 /** The discriminated union of every request/reply surface → engine query, keyed by `type`. */
 export const SurfaceQuerySchema = z.discriminatedUnion('type', [
   ListSessionsQuery,
@@ -498,5 +511,6 @@ export const SurfaceQuerySchema = z.discriminatedUnion('type', [
   TagSessionQuery,
   GetProviderConfigQuery,
   GetCapabilitiesQuery,
+  GetModelsQuery,
 ]);
 export type SurfaceQuery = z.infer<typeof SurfaceQuerySchema>;

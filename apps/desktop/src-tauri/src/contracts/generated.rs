@@ -236,6 +236,8 @@ pub enum SurfaceQuery {
     },
     #[serde(rename_all = "camelCase")]
     GetCapabilities { request_id: String },
+    #[serde(rename_all = "camelCase")]
+    GetModels { request_id: String },
 }
 
 // === Engine → surface events (Rust DESERIALIZES / forwards these) ===
@@ -356,6 +358,8 @@ pub enum NightcoreEvent {
         provider_config: Option<ProviderConfigSnapshot>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         capabilities: Option<ProviderCapabilities>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        models: Option<Vec<ModelDescriptor>>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
@@ -1024,6 +1028,18 @@ pub enum MergeVerdict {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelDescriptor {
+    pub value: String,
+    pub display_name: String,
+    pub description: String,
+    #[serde(default)]
+    pub supports_effort: bool,
+    #[serde(default)]
+    pub supported_effort_levels: Vec<EffortLevel>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "behavior", rename_all = "lowercase")]
 pub enum PermissionDecision {
     #[serde(rename_all = "camelCase")]
@@ -1145,6 +1161,7 @@ pub enum QueryResultKindEnum {
     Ack,
     ProviderConfig,
     Capabilities,
+    Models,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -18,7 +18,8 @@ use tokio::sync::oneshot;
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::contracts::{
-    AnswerQuestionAnswerUnion, AutonomyLevel, ProviderCapabilities, SurfaceQuery, WireImage,
+    AnswerQuestionAnswerUnion, AutonomyLevel, ModelDescriptor, ProviderCapabilities, SurfaceQuery,
+    WireImage,
 };
 
 /// A driveable agent backend. Today: the Bun Claude sidecar. Later: a Codex
@@ -146,6 +147,31 @@ pub trait Provider: Send + Sync {
             .get("capabilities")
             .ok_or("capabilities reply missing its descriptor")?;
         serde_json::from_value(caps.clone()).map_err(|e| e.to_string())
+    }
+
+    /// Read the provider's DYNAMIC model catalog — the engine's `listModels()`
+    /// output (each [`ModelDescriptor`]: the id passed to `setModel()`, a display
+    /// name, and the per-model effort levels) a surface renders its `/model` picker
+    /// from (issue #80). Default-implemented over [`Provider::query`] with a
+    /// `get-models` `SurfaceQuery`, so the Bun sidecar inherits it unchanged: the
+    /// engine answers from the active provider's runtime `listModels()`, so the Rust
+    /// core SINGLE-SOURCES the truthful catalog from the engine rather than a
+    /// hardcoded family list. A future provider that can't self-report overrides this
+    /// method — WITHOUT a `match provider` branch. Returns the codegen'd descriptors.
+    // Deliberate provider-seam API (the dynamic-catalog override point); no Rust
+    // consumer wires it yet, mirroring `capabilities`/`provider_config` above.
+    #[allow(dead_code)]
+    async fn list_models(&self) -> Result<Vec<ModelDescriptor>, String> {
+        let reply = self
+            .query(SurfaceQuery::GetModels {
+                // `requestId` is overwritten by `query` with a fresh uuid.
+                request_id: String::new(),
+            })
+            .await?;
+        let models = reply
+            .get("models")
+            .ok_or("models reply missing its descriptor list")?;
+        serde_json::from_value(models.clone()).map_err(|e| e.to_string())
     }
 
     /// Fulfill a pending query reply. Called by the reader on a `query-result`

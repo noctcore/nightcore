@@ -317,6 +317,12 @@ const STRUCT_NAMES: Record<string, string> = {
   // slot of a `query-result`, so the Rust core single-sources it from the engine.
   'autonomyLevels|costTelemetry|id|label|supportsAskUserQuestion|supportsEffort|supportsFileCheckpointing|supportsHooks|supportsMcp|supportsPlanMode|supportsSessionResume|supportsSessionStore|supportsSettingSources|supportsStructuredOutput':
     'ProviderCapabilities',
+  // The dynamic model-catalog descriptor (issue #80) — carried on the `models` slot
+  // of a `query-result` (the engine's `listModels()` output), so the Rust core
+  // single-sources the catalog from the engine. `EffortLevel` (above) is reused for
+  // `supportedEffortLevels[]`.
+  'description|displayName|supportedEffortLevels|supportsEffort|value':
+    'ModelDescriptor',
   // Insight (codebase analysis) shapes.
   'endLine|file|startLine|symbol': 'FindingLocation',
   'affectedFiles|category|codeAfter|codeBefore|confidence|description|effort|fingerprint|id|location|rationale|severity|suggestion|tags|title':
@@ -1089,6 +1095,10 @@ const QUERY_INPUTS: Record<string, unknown> = {
     type: 'get-capabilities',
     requestId: 'q-7',
   },
+  'get-models': {
+    type: 'get-models',
+    requestId: 'q-8',
+  },
 };
 
 /** A representative raw input per event variant. */
@@ -1732,6 +1742,15 @@ const EVENT_INPUTS: Record<string, unknown> = {
       outputStyle: 'default',
       extrasStatus: 'supported',
     },
+    models: [
+      {
+        value: 'claude-opus-4-8',
+        displayName: 'Claude Opus 4.8',
+        description: 'Most capable; deep reasoning and long-horizon work.',
+        supportsEffort: true,
+        supportedEffortLevels: ['low', 'medium', 'high'],
+      },
+    ],
     error: 'none',
   },
 };
