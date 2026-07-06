@@ -6,6 +6,8 @@ import { decisionRegisterIntegrityRule } from './rules/decision-register-integri
 import { layerRankRule } from './rules/layer-rank';
 import { noWarnSeverityRule } from './rules/no-warn-severity';
 import { packageShapeRule } from './rules/package-shape';
+import { rustCommandPlacementRule } from './rules/rust-command-placement';
+import { rustEngineSeamRule } from './rules/rust-engine-seam';
 import { rustLayerRankRule } from './rules/rust-layer-rank';
 import { rustModuleShapeRule } from './rules/rust-module-shape';
 import { testRunnerSegregationRule } from './rules/test-runner-segregation';
@@ -32,4 +34,6 @@ export const META_RULES: IMetaRule[] = [
   uiPrimitiveShapeRule,
   rustModuleShapeRule,
   rustLayerRankRule,
+  rustCommandPlacementRule,
+  rustEngineSeamRule,
 ];
