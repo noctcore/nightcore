@@ -4,6 +4,7 @@ import { agentsDocPresenceRule } from './rules/agents-doc-presence';
 import { codegenDriftRule } from './rules/codegen-drift';
 import { decisionRegisterIntegrityRule } from './rules/decision-register-integrity';
 import { layerRankRule } from './rules/layer-rank';
+import { noClonedComponentFoldersRule } from './rules/no-cloned-component-folders';
 import { noWarnSeverityRule } from './rules/no-warn-severity';
 import { packageShapeRule } from './rules/package-shape';
 import { rustCommandPlacementRule } from './rules/rust-command-placement';
@@ -35,6 +36,7 @@ export const META_RULES: IMetaRule[] = [
   agentsDocPresenceRule,
   uiPrimitiveShapeRule,
   scanFamilyParityRule,
+  noClonedComponentFoldersRule,
   webFileSizeRatchetRule,
   rustModuleShapeRule,
   rustLayerRankRule,
