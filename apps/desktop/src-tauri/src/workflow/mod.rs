@@ -8,7 +8,6 @@
 //! are addressed as `crate::workflow::*` directly).
 
 pub(crate) mod anti_gaming;
-pub(crate) mod claude_oneshot;
 pub(crate) mod commit_msg;
 pub(crate) mod contract_budget;
 pub(crate) mod diff_budget;
@@ -17,6 +16,7 @@ pub(crate) mod gauntlet_project;
 pub(crate) mod issue_triage;
 pub(crate) mod kind;
 pub(crate) mod merge;
+pub(crate) mod oneshot;
 pub(crate) mod plan_approval;
 pub(crate) mod pr;
 pub(crate) mod pr_changed_files;

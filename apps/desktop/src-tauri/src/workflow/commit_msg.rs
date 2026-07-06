@@ -12,13 +12,13 @@
 //!
 //! The CLI spawn itself (print mode, ALL tools disallowed, stdin-fed context,
 //! the positional-prompt-before-variadic-flag arg-order gotcha, the 30s
-//! timeout) lives in the shared [`super::claude_oneshot`] core, which the PR
+//! timeout) lives in the shared [`super::oneshot`] core, which the PR
 //! drafter ([`super::pr_msg`]) reuses; this module owns only the commit-shaped
 //! instruction, payload, and sanitize pass.
 
 use std::path::Path;
 
-use super::claude_oneshot::{cap, run_claude, strip_code_fence};
+use super::oneshot::{cap, run_oneshot, strip_code_fence};
 use crate::store::TaskStore;
 use crate::task::Task;
 
@@ -50,7 +50,7 @@ pub fn generate_for(store: &TaskStore, dir: &Path, task: &Task) -> Option<String
     }
     let digest = crate::transcript::digest(store, &task.id, DIGEST_CAP);
     let payload = build_payload(&task.title, &task.description, &digest, &diff);
-    let raw = run_claude(INSTRUCTION, &payload)?;
+    let raw = run_oneshot(INSTRUCTION, &payload)?;
     sanitize(&raw)
 }
 

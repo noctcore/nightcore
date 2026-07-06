@@ -1,7 +1,7 @@
 //! PR title/body drafting via the shared `claude -p` one-shot (PR arc, phase 1).
 //!
 //! The PR twin of [`super::commit_msg`], built on the same
-//! [`super::claude_oneshot`] core (least-privilege posture: ALL tools
+//! [`super::oneshot`] core (least-privilege posture: ALL tools
 //! disallowed, context on stdin, 30s timeout). Best-effort by the same
 //! contract: any failure — no `claude`, non-zero exit, timeout, unusable
 //! output, no committed diff — collapses to `None`, and the command falls back
@@ -11,7 +11,7 @@
 
 use std::path::Path;
 
-use super::claude_oneshot::{cap, run_claude, strip_code_fence};
+use super::oneshot::{cap, run_oneshot, strip_code_fence};
 use super::pr::PrDraft;
 use crate::store::TaskStore;
 use crate::task::Task;
@@ -53,7 +53,7 @@ pub fn draft_for(store: &TaskStore, dir: &Path, task: &Task, base: &str) -> Opti
     }
     let digest = crate::transcript::digest(store, &task.id, DIGEST_CAP);
     let payload = build_payload(&task.title, &task.description, base, &digest, &diff);
-    let raw = run_claude(INSTRUCTION, &payload)?;
+    let raw = run_oneshot(INSTRUCTION, &payload)?;
     sanitize(&raw)
 }
 
