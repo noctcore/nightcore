@@ -34,6 +34,7 @@ import {
   PrReviewLensStartedEvent,
   PrReviewStartedEvent,
 } from './pr-review.js';
+import { ProviderCapabilitiesSchema } from './provider.js';
 import { ProviderConfigSnapshotSchema } from './provider-config.js';
 import {
   ScorecardCompletedEvent,
@@ -399,6 +400,7 @@ export const QueryResultEvent = z.object({
     'messages',
     'ack',
     'provider-config',
+    'capabilities',
   ]),
   /** Populated for `kind: 'sessions'`. */
   sessions: z.array(SessionInfoSchema).optional(),
@@ -408,6 +410,8 @@ export const QueryResultEvent = z.object({
   messages: z.array(SessionMessageSchema).optional(),
   /** Populated for `kind: 'provider-config'`: the read-only inspector snapshot. */
   providerConfig: ProviderConfigSnapshotSchema.optional(),
+  /** Populated for `kind: 'capabilities'`: the provider's static capability descriptor. */
+  capabilities: ProviderCapabilitiesSchema.optional(),
   /** Set when `ok` is false: a short failure reason. */
   error: z.string().optional(),
 });

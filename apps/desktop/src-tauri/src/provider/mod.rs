@@ -27,6 +27,7 @@
 //! (child process resolution).
 
 mod correlation;
+mod factory;
 mod imp;
 mod spawn;
 mod types;
@@ -39,6 +40,7 @@ mod types;
 // `pub(super)`, re-bound below so the sibling impls reach it as `super::Correlation`.
 #[allow(unused_imports)]
 pub use correlation::*;
+pub use factory::*;
 pub use imp::*;
 #[allow(unused_imports)]
 pub use spawn::*;

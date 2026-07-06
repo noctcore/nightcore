@@ -669,6 +669,23 @@ describe('SessionManager.handleQuery — SDK session store', () => {
     expect(result).toEqual({ type: 'query-result', requestId: 'q7', ok: true, kind: 'ack' });
     expect(sessionFnStubs.tagSession.mock.calls[0]?.slice(0, 2)).toEqual(['u', null]);
   });
+
+  test('get-capabilities answers with the provider descriptor, single-sourced', async () => {
+    // Provider-static: the reply is the provider's own truthful capability matrix
+    // (issue #18), so the Rust core can single-source it from the engine.
+    const manager = new SessionManager(makeConfig());
+    const result = await manager.handleQuery({
+      type: 'get-capabilities',
+      requestId: 'q8',
+    });
+    expect(result).toEqual({
+      type: 'query-result',
+      requestId: 'q8',
+      ok: true,
+      kind: 'capabilities',
+      capabilities: CLAUDE_CAPABILITIES,
+    });
+  });
 });
 
 describe('SessionManager issue-validation commands (routed to the scan router)', () => {

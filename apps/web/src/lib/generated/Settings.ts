@@ -22,6 +22,16 @@ maxConcurrency: number,
  */
 permissionMode: string, 
 /**
+ * The agent provider that backs runs (issue #18). A lowercase provider id
+ * (`claude` today); the orchestrator's provider factory maps it to an
+ * implementation at construction. Global-only — a provider swap is a whole-
+ * studio choice, not per-project. Serde-additive: a settings file written before
+ * this field loads as `"claude"`, and an unknown id falls back to `claude` with
+ * a loud warning (the factory's explicit-error arm is for a future second
+ * provider, never a silent wrong backend).
+ */
+provider: string, 
+/**
  * M2 toggle: remove a task's worktree after it merges. Read at
  * `merge.rs`/`coordinator.rs`; editable from the Worktrees settings page.
  */

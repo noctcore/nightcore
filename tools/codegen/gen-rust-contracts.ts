@@ -312,6 +312,10 @@ const STRUCT_NAMES: Record<string, string> = {
   'error|mcpServers|skills|status|subagents': 'ProviderConfigSection',
   'extrasStatus|mcp|model|outputStyle|permissionMode|projectPath|providerId|providerLabel|skills|subagents':
     'ProviderConfigSnapshot',
+  // The provider capability descriptor (issue #18) — carried on the `capabilities`
+  // slot of a `query-result`, so the Rust core single-sources it from the engine.
+  'autonomyLevels|costTelemetry|id|label|supportsAskUserQuestion|supportsEffort|supportsFileCheckpointing|supportsHooks|supportsMcp|supportsPlanMode|supportsSessionResume|supportsSessionStore|supportsSettingSources|supportsStructuredOutput':
+    'ProviderCapabilities',
   // Insight (codebase analysis) shapes.
   'endLine|file|startLine|symbol': 'FindingLocation',
   'affectedFiles|category|codeAfter|codeBefore|confidence|description|effort|fingerprint|id|location|rationale|severity|suggestion|tags|title':
@@ -1066,6 +1070,10 @@ const QUERY_INPUTS: Record<string, unknown> = {
     type: 'get-provider-config',
     requestId: 'q-6',
     dir: '/proj',
+  },
+  'get-capabilities': {
+    type: 'get-capabilities',
+    requestId: 'q-7',
   },
 };
 

@@ -75,6 +75,7 @@ export const MOCK_SETTINGS: Settings = {
   defaultEffort: 'medium',
   maxConcurrency: 3,
   permissionMode: 'auto-accept',
+  provider: 'claude',
   cleanupWorktrees: true,
   notifyOnComplete: false,
   defaultRunMode: 'main',

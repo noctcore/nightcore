@@ -17,7 +17,9 @@ use tokio::process::ChildStdin;
 use tokio::sync::oneshot;
 use tokio::sync::Mutex as AsyncMutex;
 
-use crate::contracts::{AnswerQuestionAnswerUnion, AutonomyLevel, SurfaceQuery, WireImage};
+use crate::contracts::{
+    AnswerQuestionAnswerUnion, AutonomyLevel, ProviderCapabilities, SurfaceQuery, WireImage,
+};
 
 /// A driveable agent backend. Today: the Bun Claude sidecar. Later: a Codex
 /// sidecar speaking the same protocol — selected by config, not by branching in
@@ -120,6 +122,30 @@ pub trait Provider: Send + Sync {
             dir,
         };
         self.query(query).await
+    }
+
+    /// Read the provider's static [`ProviderCapabilities`] descriptor — the
+    /// capability matrix the UI/orchestration degrade from (issue #18). Default-
+    /// implemented over [`Provider::query`] with a `get-capabilities` `SurfaceQuery`,
+    /// so the Bun sidecar inherits it unchanged: the engine answers straight from the
+    /// active provider's own `capabilities()`, so the Rust core SINGLE-SOURCES the
+    /// truthful descriptor from the engine rather than duplicating the matrix here. A
+    /// future provider that can't self-report overrides this method — WITHOUT a
+    /// `match provider` branch in the core. Returns the codegen'd descriptor.
+    // Deliberate provider-seam API (the capability-degradation override point); no
+    // Rust consumer wires it yet, mirroring `provider_config` above.
+    #[allow(dead_code)]
+    async fn capabilities(&self) -> Result<ProviderCapabilities, String> {
+        let reply = self
+            .query(SurfaceQuery::GetCapabilities {
+                // `requestId` is overwritten by `query` with a fresh uuid.
+                request_id: String::new(),
+            })
+            .await?;
+        let caps = reply
+            .get("capabilities")
+            .ok_or("capabilities reply missing its descriptor")?;
+        serde_json::from_value(caps.clone()).map_err(|e| e.to_string())
     }
 
     /// Fulfill a pending query reply. Called by the reader on a `query-result`

@@ -10,6 +10,7 @@ const settings: Settings = {
   defaultEffort: 'high',
   maxConcurrency: 3,
   permissionMode: 'auto-accept',
+  provider: 'claude',
   cleanupWorktrees: true,
   notifyOnComplete: false,
   defaultRunMode: 'main',

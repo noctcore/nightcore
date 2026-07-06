@@ -17,6 +17,7 @@ function settingsWith(projectId: string, appearance: BoardAppearance): Settings 
     defaultEffort: 'medium',
     maxConcurrency: 3,
     permissionMode: 'bypass',
+    provider: 'claude',
     cleanupWorktrees: true,
     notifyOnComplete: false,
     defaultRunMode: 'main',

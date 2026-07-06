@@ -129,13 +129,28 @@ pub struct Orchestrator {
 }
 
 impl Orchestrator {
-    /// Build the hub. The provider is configured to spawn `bun run <entry>` in the
-    /// workspace root, matching M1.
-    pub fn new(entry: PathBuf, cwd: PathBuf, max_concurrency: usize) -> Self {
+    /// Build the hub. The provider is chosen by the `provider` setting through the
+    /// ONE [`build_provider`](crate::provider::build_provider) factory (issue #18) and
+    /// configured to spawn `bun run <entry>` in the workspace root, matching M1. An
+    /// unknown id logs a loud warning and falls back to the default Claude provider
+    /// through the SAME factory (never a silent wrong backend, never a bricked
+    /// launch on a typo'd setting).
+    pub fn new(entry: PathBuf, cwd: PathBuf, max_concurrency: usize, provider_id: &str) -> Self {
+        let provider = crate::provider::build_provider(provider_id, entry.clone(), cwd.clone())
+            .unwrap_or_else(|e| {
+                tracing::warn!(
+                    target: "nightcore",
+                    provider = %provider_id,
+                    error = %e,
+                    "unknown provider setting; falling back to the default Claude provider"
+                );
+                crate::provider::build_provider(crate::provider::CLAUDE_PROVIDER_ID, entry, cwd)
+                    .expect("the default Claude provider always builds")
+            });
         Self {
             slots: SlotManager::new(max_concurrency),
             breaker: CircuitBreaker::default(),
-            provider: Arc::new(SidecarProvider::new(entry, cwd)),
+            provider,
             auto: AutoLoop::default(),
             permissions: PendingPermissions::default(),
             kick: Notify::new(),

@@ -479,6 +479,16 @@ export const GetProviderConfigQuery = z.object({
   dir: z.string().optional(),
 });
 
+/** Read the active provider's static {@link ProviderCapabilities} descriptor — the
+ *  capability matrix the UI/orchestration degrade from (issue #18). Unlike
+ *  `get-provider-config` this is provider-static (no project dir, no probe): the
+ *  engine answers straight from the provider's `capabilities()`, so the Rust core
+ *  single-sources the truthful descriptor from the engine instead of duplicating it. */
+export const GetCapabilitiesQuery = z.object({
+  ...requestTarget,
+  type: z.literal('get-capabilities'),
+});
+
 /** The discriminated union of every request/reply surface → engine query, keyed by `type`. */
 export const SurfaceQuerySchema = z.discriminatedUnion('type', [
   ListSessionsQuery,
@@ -487,5 +497,6 @@ export const SurfaceQuerySchema = z.discriminatedUnion('type', [
   RenameSessionQuery,
   TagSessionQuery,
   GetProviderConfigQuery,
+  GetCapabilitiesQuery,
 ]);
 export type SurfaceQuery = z.infer<typeof SurfaceQuerySchema>;

@@ -73,6 +73,8 @@ mod tests {
         assert_eq!(s.max_concurrency, 3);
         // M4.7 §A1: bypass is the studio default.
         assert_eq!(s.permission_mode, "bypass");
+        // Issue #18: Claude is the only shipped provider / the default.
+        assert_eq!(s.provider, "claude");
         assert!(s.cleanup_worktrees);
         assert!(!s.notify_on_complete);
         assert!(s.project_overrides.is_empty());
@@ -276,6 +278,9 @@ mod tests {
         let store = SettingsStore::load_from(dir);
         assert_eq!(store.get().default_run_mode, "main");
         assert_eq!(store.default_run_mode(None), crate::task::RunMode::Main);
+        // Issue #18: the same legacy file (no `provider` key) loads the serde-additive
+        // default `claude` — an existing settings file is never broken by the field.
+        assert_eq!(store.get().provider, "claude");
     }
 
     #[test]

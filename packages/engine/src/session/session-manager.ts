@@ -282,6 +282,18 @@ export class SessionManager {
           providerConfig,
         };
       }
+      case 'get-capabilities': {
+        // Provider-static: answer straight from the provider's descriptor (no probe,
+        // no project dir), so the Rust core single-sources the truthful capability
+        // matrix from the engine instead of duplicating it (issue #18).
+        return {
+          type: 'query-result',
+          requestId,
+          ok: true,
+          kind: 'capabilities',
+          capabilities: this.provider.capabilities(),
+        };
+      }
     }
   }
 

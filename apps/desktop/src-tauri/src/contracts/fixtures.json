@@ -265,6 +265,10 @@
       "requestId": "q-6",
       "type": "get-provider-config",
       "dir": "/proj"
+    },
+    "get-capabilities": {
+      "requestId": "q-7",
+      "type": "get-capabilities"
     }
   },
   "events": {
