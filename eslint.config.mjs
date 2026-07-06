@@ -215,7 +215,12 @@ export default tseslint.config(
       'nightcore/component-folder-structure': 'error',
       'nightcore/no-state-in-component-body': 'error',
       // ui = shadcn primitives (the cross-feature escape hatch, skipped dir).
-      'nightcore/no-cross-feature-imports': ['error', { sharedFeatures: ['ui'] }],
+      // Type-only cross-feature imports are banned too (issue #55): type-level
+      // coupling ripples exactly like runtime coupling, and the tree is clean.
+      'nightcore/no-cross-feature-imports': [
+        'error',
+        { sharedFeatures: ['ui'], allowTypeImports: false },
+      ],
       'nightcore/max-hooks-per-file': 'error',
       'nightcore/max-hook-return-surface': 'error',
       'nightcore/max-props-per-component': 'error',
@@ -237,6 +242,21 @@ export default tseslint.config(
     ],
     rules: {
       'nightcore/max-props-per-component': ['error', { max: 40 }],
+    },
+  },
+  // Feature-root data/util modules (`components/<feature>/*.ts` — streams,
+  // status folds, fixtures, barrels) are NOT component shells, so the
+  // structural rules (folder structure, state-in-body) don't apply — but they
+  // ARE feature code (issue #55): they may not import another feature's
+  // internals (type-only included) and their hook exports are budgeted.
+  {
+    files: [FEATURE_ROOT_FILES],
+    rules: {
+      'nightcore/no-cross-feature-imports': [
+        'error',
+        { sharedFeatures: ['ui'], allowTypeImports: false },
+      ],
+      'nightcore/max-hooks-per-file': 'error',
     },
   },
   // Freeze-at-worst carve-out for `nightcore/max-hook-return-surface` (issue
