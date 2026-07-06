@@ -4,7 +4,6 @@
   "manifest:apps/desktop/src-tauri/src/store/mod.rs": 9,
   "manifest:apps/desktop/src-tauri/src/workflow/issue_triage/mod.rs": 19,
   "size:apps/desktop/src-tauri/src/analysis/repo_map.rs": 636,
-  "size:apps/desktop/src-tauri/src/sidecar/harness/commands.rs": 486,
   "size:apps/desktop/src-tauri/src/sidecar/issue_triage.rs": 425,
   "size:apps/desktop/src-tauri/src/workflow/pr_fix/command.rs": 490
 }

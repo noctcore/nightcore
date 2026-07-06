@@ -23,6 +23,7 @@
 
 mod apply;
 mod commands;
+mod convert;
 mod events;
 
 // Module facade: preserve the historical `crate::sidecar::harness::*` paths after the
@@ -31,6 +32,10 @@ mod events;
 // `generate_handler!`, and `sidecar/reader.rs` calls `super::harness::handle_harness_event`.
 // Mirrors the glob-reexport pattern in `sidecar/mod.rs`.
 pub use commands::*;
+// The convert-to-task handlers (finding + proposal) live in `convert` (issue #17
+// phase D); re-exported so `sidecar::convert_harness_finding_to_task` /
+// `sidecar::convert_harness_proposal` resolve for `generate_handler!`.
+pub use convert::*;
 // `handle_harness_event` is crate-internal (`pub(crate)`), so re-export at crate visibility:
 // a `pub` glob over a non-`pub` item warns "doesn't reexport anything with visibility `pub`".
 pub(crate) use events::*;
