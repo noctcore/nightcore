@@ -134,7 +134,11 @@ mod tests {
     use std::path::PathBuf;
 
     fn provider() -> SidecarProvider {
-        SidecarProvider::new(PathBuf::from("/tmp/entry.ts"), PathBuf::from("/tmp"))
+        SidecarProvider::new(
+            PathBuf::from("/tmp/entry.ts"),
+            PathBuf::from("/tmp"),
+            "claude".to_string(),
+        )
     }
 
     #[test]

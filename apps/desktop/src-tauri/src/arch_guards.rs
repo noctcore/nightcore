@@ -171,6 +171,36 @@ mod tests {
         );
     }
 
+    #[test]
+    fn orchestration_never_branches_on_a_provider_id() {
+        // Issue #18 acceptance (Phase 4): capability degradation fires from each
+        // provider's `ProviderCapabilities` descriptor, NEVER a `match provider` in
+        // orchestration. The one provider-id → implementation mapping lives in
+        // `provider::build_provider` (a different subtree); the coordinator only
+        // passes the configured id THROUGH to that factory. So no provider-id string
+        // literal or comparison may appear anywhere under `orchestration/`. Needles
+        // are `concat!`-hidden per the file convention. Referencing the
+        // `CLAUDE_PROVIDER_ID` *const* in the factory-fallback is fine — that is not a
+        // quoted literal, so it is not a branch.
+        let forbidden: Vec<String> = [
+            concat!("\"", "claude", "\"").to_string(),
+            concat!("\"", "codex", "\"").to_string(),
+            concat!("\"", "gemini", "\"").to_string(),
+            "provider_id ==".to_string(),
+            ".provider ==".to_string(),
+            concat!("mat", "ch provider").to_string(),
+        ]
+        .to_vec();
+        let found = offences("orchestration", &forbidden);
+        assert!(
+            found.is_empty(),
+            "orchestration must not branch on a provider id — route provider \
+             selection through provider::build_provider, and degrade from the \
+             ProviderCapabilities descriptor (issue #18). Offending line(s):\n{}",
+            found.join("\n")
+        );
+    }
+
     // --- Sync-command allowlist ratchet (audit #38, follows #32) ----------------
 
     /// The blessed synchronous `#[tauri::command]`s. Every entry is a cheap

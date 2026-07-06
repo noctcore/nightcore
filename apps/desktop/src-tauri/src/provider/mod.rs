@@ -59,7 +59,11 @@ mod tests {
     use super::*;
 
     fn provider() -> SidecarProvider {
-        SidecarProvider::new(PathBuf::from("/tmp/entry.ts"), PathBuf::from("/tmp"))
+        SidecarProvider::new(
+            PathBuf::from("/tmp/entry.ts"),
+            PathBuf::from("/tmp"),
+            "claude".to_string(),
+        )
     }
 
     // Session↔task correlation behaviors are unit-tested co-located with their code

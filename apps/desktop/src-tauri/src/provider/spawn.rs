@@ -86,6 +86,7 @@ impl SidecarProvider {
             if let Some(bin) = Self::release_sidecar_path() {
                 let mut cmd = Command::new(bin);
                 cmd.current_dir(&self.cwd);
+                self.inject_provider(&mut cmd);
                 return cmd;
             }
             tracing::warn!(
@@ -101,7 +102,18 @@ impl SidecarProvider {
             .arg("run")
             .arg(&self.entry)
             .current_dir(&self.cwd);
+        self.inject_provider(&mut cmd);
         cmd
+    }
+
+    /// Pass the selected agent-provider id to the sidecar via the `NIGHTCORE_PROVIDER`
+    /// env override (issue #18). The engine's `resolveConfig` reads it as the
+    /// highest-precedence provider source, so its factory constructs the matching
+    /// implementation (`codex` → the degraded Codex spike). Set for every provider,
+    /// including `claude`, so the child's provider is always explicit — no secret or
+    /// prompt is ever placed in the environment.
+    fn inject_provider(&self, cmd: &mut Command) {
+        cmd.env("NIGHTCORE_PROVIDER", &self.provider_id);
     }
 
     /// Spawn the sidecar child, store its stdin writer, and return its stdout +

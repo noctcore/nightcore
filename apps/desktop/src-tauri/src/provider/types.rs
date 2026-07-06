@@ -234,6 +234,12 @@ pub struct SidecarProvider {
     pub(super) pending_replies: Mutex<HashMap<String, oneshot::Sender<Value>>>,
     pub(super) entry: PathBuf,
     pub(super) cwd: PathBuf,
+    /// The agent-provider id this sidecar backs (issue #18). Every provider is the
+    /// SAME Bun sidecar today (no second binary ships in the spike), so the id is
+    /// passed to the child via the `NIGHTCORE_PROVIDER` env override and the
+    /// ENGINE-side factory selects the implementation (`claude` → Claude, `codex` →
+    /// the degraded Codex spike). The Rust seam stays a single transport.
+    pub(super) provider_id: String,
 }
 
 /// Session↔task correlation: the live `sessionId → taskId` map plus the

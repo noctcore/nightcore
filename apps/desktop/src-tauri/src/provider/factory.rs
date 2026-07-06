@@ -1,42 +1,56 @@
 //! The config-driven provider factory (issue #18).
 //!
 //! The ONE place a provider id → implementation mapping lives, so orchestration
-//! never `match provider`es. Today `claude` is the only arm — the Bun sidecar
-//! [`SidecarProvider`]; a future Codex/Gemini provider adds an arm here plus its own
-//! sidecar binary, never a branch in the coordinator. An unknown id is an explicit
-//! `Err` so a typo or a not-yet-implemented provider surfaces loudly; the caller
-//! decides whether to fail hard or fall back (the orchestrator falls back to the
-//! default Claude provider through this SAME factory).
+//! never `match provider`es. Every provider is the SAME Bun [`SidecarProvider`]
+//! transport today — no second sidecar binary ships in the Phase-4 spike, so the
+//! selected id is threaded to the child via the `NIGHTCORE_PROVIDER` env override and
+//! the ENGINE-side factory constructs the matching implementation (`claude` → the
+//! Claude provider, `codex` → the degraded Codex spike). A future NATIVE second
+//! sidecar binary would add an arm here that spawns a different entry; until then the
+//! arms differ only by the provider id passed through. An unknown id is an explicit
+//! `Err` so a typo can never silently run the wrong backend; the orchestrator falls
+//! back to the default Claude provider through this SAME factory.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::SidecarProvider;
 
-/// The stable id of the Claude Agent provider — the only shipped implementation.
+/// The stable id of the Claude Agent provider — the default implementation.
 /// Single-sourced here so the settings default ([`crate::settings`]) and the factory
 /// arm below can't drift.
 pub const CLAUDE_PROVIDER_ID: &str = "claude";
 
-/// Build the provider named by `provider_id`, configured to spawn `bun run <entry>`
-/// in `cwd` (the M1 shape). This is the single provider-selection point: `claude` →
-/// the Bun [`SidecarProvider`]; any other id is an explicit `Err` so a typo or a
-/// not-yet-implemented provider can never silently run the wrong backend.
+/// The stable id of the Codex provider — the Phase-4 second-provider spike. Shares
+/// the Bun sidecar transport; the ENGINE-side factory maps it to the degraded
+/// `CodexAgentProvider` (no hooks / reduced autonomy / `unsupported` sections).
+pub const CODEX_PROVIDER_ID: &str = "codex";
+
+/// Build the provider named by `provider_id`, configured to spawn the sidecar in
+/// `cwd` (the M1 shape). This is the single provider-selection point: the recognized
+/// ids (`claude`, `codex`) build the Bun [`SidecarProvider`] carrying that id through
+/// to the engine; any other id is an explicit `Err` so a typo or a not-yet-wired
+/// provider can never silently run the wrong backend.
 ///
-/// Returns the concrete `SidecarProvider` because every shipped provider is a
-/// sidecar speaking the one NDJSON protocol today; the `Arc<dyn Provider>`
-/// generalization is deferred until a second arm actually needs it (Phase 4), when
-/// the orchestrator's provider field also becomes trait-object-typed.
+/// Returns the concrete `SidecarProvider` because every provider is a sidecar
+/// speaking the one NDJSON protocol today — the codex arm differs only by the
+/// provider id it passes to the engine, not by transport. The `Arc<dyn Provider>`
+/// generalization is deferred until a NATIVE second sidecar binary actually needs a
+/// different concrete type.
 pub fn build_provider(
     provider_id: &str,
     entry: PathBuf,
     cwd: PathBuf,
 ) -> Result<Arc<SidecarProvider>, String> {
     match provider_id {
-        CLAUDE_PROVIDER_ID => Ok(Arc::new(SidecarProvider::new(entry, cwd))),
+        CLAUDE_PROVIDER_ID | CODEX_PROVIDER_ID => Ok(Arc::new(SidecarProvider::new(
+            entry,
+            cwd,
+            provider_id.to_string(),
+        ))),
         other => Err(format!(
             "unknown provider `{other}`: no such agent-provider implementation \
-             (issue #18 ships only `{CLAUDE_PROVIDER_ID}`)"
+             (issue #18 wires `{CLAUDE_PROVIDER_ID}` and the `{CODEX_PROVIDER_ID}` spike)"
         )),
     }
 }
@@ -52,9 +66,24 @@ mod tests {
     #[test]
     fn builds_the_claude_provider() {
         let (entry, cwd) = paths();
-        assert!(
-            build_provider(CLAUDE_PROVIDER_ID, entry, cwd).is_ok(),
-            "the shipped `claude` arm must build"
+        let provider = build_provider(CLAUDE_PROVIDER_ID, entry, cwd)
+            .expect("the default `claude` arm must build");
+        assert_eq!(
+            provider.provider_id, CLAUDE_PROVIDER_ID,
+            "the claude arm threads its id through to the engine"
+        );
+    }
+
+    #[test]
+    fn builds_the_codex_provider_spike() {
+        // The second-provider spike shares the sidecar transport; only the id it
+        // passes to the engine (via NIGHTCORE_PROVIDER) differs.
+        let (entry, cwd) = paths();
+        let provider = build_provider(CODEX_PROVIDER_ID, entry, cwd)
+            .expect("the `codex` spike arm must build");
+        assert_eq!(
+            provider.provider_id, CODEX_PROVIDER_ID,
+            "the codex arm threads `codex` through so the engine factory picks it"
         );
     }
 
@@ -62,10 +91,10 @@ mod tests {
     fn unknown_provider_is_an_explicit_error() {
         // `SidecarProvider` is not `Debug`, so match rather than `expect_err`.
         let (entry, cwd) = paths();
-        match build_provider("codex", entry, cwd) {
+        match build_provider("gemini", entry, cwd) {
             Ok(_) => panic!("an unknown provider id must be an explicit error"),
             Err(err) => assert!(
-                err.contains("codex") && err.contains("unknown provider"),
+                err.contains("gemini") && err.contains("unknown provider"),
                 "the error names the offending id: {err}"
             ),
         }

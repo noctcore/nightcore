@@ -42,13 +42,19 @@ impl SidecarProvider {
     /// A provider that will spawn the sidecar in `cwd` on first use. In debug
     /// builds (`tauri dev`) this is `bun run <entry>` against the TypeScript source;
     /// in release builds it is the compiled binary bundled next to the app.
-    pub fn new(entry: PathBuf, cwd: PathBuf) -> Self {
+    ///
+    /// `provider_id` is threaded to the sidecar via the `NIGHTCORE_PROVIDER` env
+    /// override so the engine-side factory selects the implementation (issue #18);
+    /// it is the SAME transport for every provider today (one Bun sidecar, no second
+    /// binary in the spike).
+    pub fn new(entry: PathBuf, cwd: PathBuf, provider_id: String) -> Self {
         Self {
             stdin: AsyncMutex::new(None),
             correlation: Mutex::new(Correlation::default()),
             pending_replies: Mutex::new(HashMap::new()),
             entry,
             cwd,
+            provider_id,
         }
     }
 
