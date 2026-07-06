@@ -264,7 +264,7 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
               <GauntletResults
                 result={gauntlet}
                 running={gauntletRunning}
-                onRun={() => actions.onRunGauntlet!(task.id)}
+                onRunChecks={() => actions.onRunGauntlet!(task.id)}
                 structureLock={task.structureLockResult}
               />
             )}

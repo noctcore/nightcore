@@ -1,4 +1,6 @@
 import { componentFolderStructureRule } from './component-folder-structure';
+import { contextValueMustBeMemoizedRule } from './context-value-must-be-memoized';
+import { enforceContextConsumptionRule } from './enforce-context-consumption';
 import { maxHookReturnSurfaceRule } from './max-hook-return-surface';
 import { maxHooksPerFileRule } from './max-hooks-per-file';
 import { maxPropsPerComponentRule } from './max-props-per-component';
@@ -20,6 +22,11 @@ export const rules = {
   'max-hook-return-surface': maxHookReturnSurfaceRule,
   'max-props-per-component': maxPropsPerComponentRule,
   'no-prop-drilling': noPropDrillingRule,
+  // Context lock-in: once a scoped context replaces a drilled prop bundle, keep
+  // it replaced (`enforce-context-consumption`), and keep its provider value a
+  // stable reference (`context-value-must-be-memoized`).
+  'enforce-context-consumption': enforceContextConsumptionRule,
+  'context-value-must-be-memoized': contextValueMustBeMemoizedRule,
   // Cross-package layering: consume @nightcore/<pkg> via its barrel only.
   'no-deep-package-imports': noDeepPackageImportsRule,
   // Contracts naming: exported zod schema = `*Schema` + sibling inferred type.
