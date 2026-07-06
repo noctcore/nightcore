@@ -6,9 +6,10 @@
  *
  * Provider-neutral (issue #18): it constructs and drives sessions through the
  * {@link AgentProvider} seam and speaks only `NightcoreEvent` / contract types — no
- * Claude Agent SDK shape reaches this file. The provider is injectable (defaulting to
- * {@link ClaudeAgentProvider}) so a config-driven factory (Phase 4) and the
- * fail-closed gate-battery test can swap the implementation.
+ * Claude Agent SDK shape reaches this file, and it never branches on the provider id.
+ * The provider is injectable, defaulting to the config-driven {@link buildProvider}
+ * factory (the ONE engine-side provider-selection point), so a second provider slots
+ * in with no edit here and the fail-closed gate-battery test can swap the impl.
  */
 import { EventEmitter } from 'node:events';
 
@@ -31,12 +32,12 @@ import type {
   StartSessionParams,
 } from '../providers/agent-provider.js';
 import { AutonomyNotPermittedError } from '../providers/agent-provider.js';
-import { ClaudeAgentProvider } from '../providers/claude/claude-agent-provider.js';
 import {
   toWireSessionInfo,
   toWireSessionMessage,
 } from '../providers/claude/mappers.js';
 import { SessionApi } from '../providers/claude/session-api.js';
+import { buildProvider } from '../providers/provider-factory.js';
 import { ScanRouter } from '../scans/scan-router.js';
 
 interface ManagedSession {
@@ -69,9 +70,9 @@ export class SessionManager {
   constructor(
     private readonly config: Config,
     private readonly logger?: Logger,
-    /** The agent provider that constructs + drives sessions. Injectable so a
-     *  config-driven factory (Phase 4) and the fail-closed gate-battery test can
-     *  swap it; defaults to the Claude implementation. */
+    /** The agent provider that constructs + drives sessions. Injectable so the
+     *  fail-closed gate-battery test can swap it; defaults to the config-driven
+     *  {@link buildProvider} factory (the sole provider-selection point). */
     provider?: AgentProvider,
   ) {
     this.store = new SessionStore(config.paths.sessions, logger);
@@ -79,11 +80,7 @@ export class SessionManager {
     this.apiKeyFallback = Boolean(process.env.ANTHROPIC_API_KEY);
     this.provider =
       provider ??
-      new ClaudeAgentProvider(
-        config,
-        { apiKeyFallback: this.apiKeyFallback },
-        logger,
-      );
+      buildProvider(config, { apiKeyFallback: this.apiKeyFallback }, logger);
     // Scan orchestration is a separate concern: the router owns the four scan
     // managers and their dispatch, emitting through this supervisor's event sink.
     this.scans = new ScanRouter({
