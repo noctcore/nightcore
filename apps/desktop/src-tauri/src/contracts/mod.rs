@@ -22,6 +22,24 @@
 mod generated;
 pub use generated::*;
 
+/// Whether a failure of this structured [`ErrorCategory`] should trip the breaker
+/// IMMEDIATELY rather than accumulate toward the sliding-window threshold. A
+/// fatal-setup cause won't fix itself by running more tasks — auth is broken for
+/// every task under the same credential, and a full disk fails every write — so
+/// the loop stops at once instead of burning two more tasks proving the point.
+/// Transient causes (rate-limit, runner-crash, unknown) keep the tolerant window
+/// so a single blip doesn't pause the board. `aborted`/`resource-exhausted` never
+/// reach this decision as breaker-feeding failures (they're handled upstream), but
+/// are classified conservatively as non-immediate for exhaustiveness.
+///
+/// Co-located here beside its only input type ([`ErrorCategory`], a rank-1
+/// contract) so BOTH the sidecar reader and the orchestration breaker import it
+/// DOWNWARD — keeping the `Arc<dyn EngineApi>` seam free of a sidecar→orchestration
+/// back-edge.
+pub(crate) fn trips_breaker_immediately(category: ErrorCategory) -> bool {
+    matches!(category, ErrorCategory::Auth | ErrorCategory::DiskFull)
+}
+
 // The inverse direction: Rust serde structs → the web's TS bindings (`ts-rs`).
 // Test-only — the `#[ts(export)]` codegen + its drift guard run under `cargo test`,
 // never in the shipped binary.
@@ -32,6 +50,20 @@ mod ts_bindings;
 mod tests {
     use super::*;
     use serde_json::Value;
+
+    /// The category-based branch the sidecar reader and the orchestration breaker
+    /// both key off: `auth` and `disk-full` stop the loop at once; every transient
+    /// category stays windowed. Lives beside [`trips_breaker_immediately`] now that
+    /// the classifier is a rank-1 contract, not an orchestration import.
+    #[test]
+    fn category_branch_decides_immediate_vs_windowed() {
+        assert!(trips_breaker_immediately(ErrorCategory::Auth));
+        assert!(trips_breaker_immediately(ErrorCategory::DiskFull));
+        assert!(!trips_breaker_immediately(ErrorCategory::RateLimit));
+        assert!(!trips_breaker_immediately(ErrorCategory::RunnerCrash));
+        assert!(!trips_breaker_immediately(ErrorCategory::Unknown));
+        assert!(!trips_breaker_immediately(ErrorCategory::ResourceExhausted));
+    }
 
     /// The fixtures emitted alongside `generated.rs`: one wire payload per
     /// command/event variant, produced by parsing a representative input through

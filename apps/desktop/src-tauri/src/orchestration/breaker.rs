@@ -16,21 +16,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use crate::contracts::ErrorCategory;
-
-/// Whether a failure of this structured [`ErrorCategory`] should trip the breaker
-/// IMMEDIATELY rather than accumulate toward the sliding-window threshold. A
-/// fatal-setup cause won't fix itself by running more tasks — auth is broken for
-/// every task under the same credential, and a full disk fails every write — so
-/// the loop stops at once instead of burning two more tasks proving the point.
-/// Transient causes (rate-limit, runner-crash, unknown) keep the tolerant window
-/// so a single blip doesn't pause the board. `aborted`/`resource-exhausted` never
-/// reach this decision as breaker-feeding failures (they're handled upstream), but
-/// are classified conservatively as non-immediate for exhaustiveness.
-pub fn trips_breaker_immediately(category: ErrorCategory) -> bool {
-    matches!(category, ErrorCategory::Auth | ErrorCategory::DiskFull)
-}
-
 /// Default consecutive-failure threshold before the loop pauses (design §6).
 pub const DEFAULT_THRESHOLD: usize = 3;
 /// Default sliding window for counting failures (design §6).
@@ -206,18 +191,6 @@ mod tests {
         assert!(cb.is_paused(), "the loop is paused immediately");
         // Already paused: a second fatal hit does not re-report the trip.
         assert!(!cb.record_fatal_failure());
-    }
-
-    #[test]
-    fn category_branch_decides_immediate_vs_windowed() {
-        // The real category-based branch the reader/finish_run key off: auth and
-        // disk-full stop the loop at once; transient categories stay windowed.
-        assert!(trips_breaker_immediately(ErrorCategory::Auth));
-        assert!(trips_breaker_immediately(ErrorCategory::DiskFull));
-        assert!(!trips_breaker_immediately(ErrorCategory::RateLimit));
-        assert!(!trips_breaker_immediately(ErrorCategory::RunnerCrash));
-        assert!(!trips_breaker_immediately(ErrorCategory::Unknown));
-        assert!(!trips_breaker_immediately(ErrorCategory::ResourceExhausted));
     }
 
     #[test]
