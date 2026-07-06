@@ -30,7 +30,7 @@ import {
 } from '@/lib/bridge';
 import { patchStreamItem, seedStepState } from '@/lib/scan-run';
 import { useScanItemActions } from '@/lib/useScanItemActions';
-import { useScanRun } from '@/lib/useScanRun';
+import type { ScanRunApi, ScanRunConfig } from '@/lib/useScanRun';
 
 import type {
   ConventionFindingVM,
@@ -79,11 +79,18 @@ export interface UseHarnessResult {
   armCheck: (name: string, kind: string, command: string) => Promise<void>;
 }
 
-/** Drive the Harness data layer: live `harness-*` fold for the active run,
- *  authoritative reconciliation against the persisted run on completion, and the
- *  finding/artifact lifecycle actions. */
-export function useHarness(hasProject: boolean): UseHarnessResult {
-  const scan = useScanRun<HarnessEvent, HarnessRun, HarnessStream>({
+/** The Harness run-lifecycle config for the shared {@link useScanRun}: the bridge
+ *  seams, the persisted→live projection, and the live-event body (the `harness-*`
+ *  fold plus the single-item `*-converted` / `*-applied` / `check-armed` side
+ *  effects). Extracted so the `useScanRun` call itself lives in
+ *  `HarnessView.hooks.ts` — the scan-family-parity home — while this data-layer
+ *  wiring stays encapsulated here. */
+export function harnessScanConfig(): ScanRunConfig<
+  HarnessEvent,
+  HarnessRun,
+  HarnessStream
+> {
+  return {
     emptyStream: EMPTY_HARNESS_STREAM,
     listRuns: listHarnessRuns,
     getRun: getHarnessRun,
@@ -171,7 +178,17 @@ export function useHarness(hasProject: boolean): UseHarnessResult {
         void reconcile(event.runId);
       }
     },
-  });
+  };
+}
+
+/** Drive the Harness data layer over the shared run-lifecycle {@link scan}: the
+ *  scan launch and the finding / proposal / artifact lifecycle actions. The
+ *  `useScanRun` call itself lives in `HarnessView.hooks.ts` (parity home); it is
+ *  wired from {@link harnessScanConfig} and passed in here. */
+export function useHarness(
+  scan: ScanRunApi<HarnessRun, HarnessStream>,
+  hasProject: boolean,
+): UseHarnessResult {
   const { stream, setStream, runStart, refreshRuns } = scan;
 
   const start = useCallback(

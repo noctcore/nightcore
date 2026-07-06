@@ -23,12 +23,13 @@ import {
 import { sortBySeverityThenStatus } from '@/lib/severity';
 import { usePreselectNavigation } from '@/lib/usePreselectNavigation';
 import { useScanResultsView } from '@/lib/useScanResultsView';
+import { useScanRun } from '@/lib/useScanRun';
 
 import type { CategoryTab } from '../CategoryTabs';
 import { ALL_CATEGORIES, CATEGORY_META } from '../harness.constants';
 import type { ConventionFindingVM } from '../harness.types';
 import { useHarnessApply } from '../harness-apply.hooks';
-import { useHarness } from '../harness-data.hooks';
+import { harnessScanConfig, useHarness } from '../harness-data.hooks';
 import { useHarnessProposals } from '../harness-proposals.hooks';
 import { useRunConfig } from '../RunControls/RunControls.hooks';
 import type {
@@ -50,7 +51,11 @@ export function useHarnessView({
   onPreselectConsumed,
 }: HarnessViewProps): HarnessViewModel {
   const hasProject = projectPath !== null;
-  const harness = useHarness(hasProject);
+  // The shared scan run-lifecycle (see scan-family-parity): the `useScanRun` call
+  // lives here in the view-hooks file; `useHarness` layers the launch + item
+  // lifecycle actions over the resulting run API.
+  const scan = useScanRun(harnessScanConfig());
+  const harness = useHarness(scan, hasProject);
   const { stream } = harness;
 
   const toast = useToast();

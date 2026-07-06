@@ -3,15 +3,12 @@
   "apps/web/src/components/board/ProviderConfigPanel/ProviderConfigPanel.tsx": 422,
   "apps/web/src/components/board/TaskDetail/TaskDetail.tsx": 526,
   "apps/web/src/components/board/_fixtures.ts": 446,
-  "apps/web/src/components/harness/HarnessView/HarnessView.hooks.ts": 981,
   "apps/web/src/components/harness/HarnessView/HarnessView.tsx": 425,
-  "apps/web/src/components/insight/InsightView/InsightView.hooks.ts": 512,
+  "apps/web/src/components/insight/InsightView/InsightView.hooks.ts": 430,
   "apps/web/src/components/issues/IssueTriageView/IssueTriageView.hooks.ts": 506,
-  "apps/web/src/components/prreview/PrReviewView/PrReviewView.hooks.ts": 1301,
   "apps/web/src/components/prreview/ReviewFindings/ReviewFindings.tsx": 413,
   "apps/web/src/components/prreview/prreview-lifecycle.ts": 468,
   "apps/web/src/components/settings/McpServersCard/McpServersCard.tsx": 402,
   "apps/web/src/components/settings/SettingsView/SettingsView.tsx": 596,
-  "apps/web/src/lib/bridge/commands.ts": 1322,
   "apps/web/src/lib/bridge/events.ts": 697
 }
