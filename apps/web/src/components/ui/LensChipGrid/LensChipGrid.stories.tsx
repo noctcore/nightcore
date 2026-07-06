@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { fn } from 'storybook/test';
 
 import { BugIcon, LayersIcon, LockIcon, PerfIcon } from '../icons';
+import { ModelEffortPicker } from '../ModelEffortPicker';
 import { ScanConfigForm } from './LensChipGrid';
 import type { ScanConfigFormProps } from './LensChipGrid.types';
 
@@ -29,10 +30,14 @@ const meta = {
     onToggle: fn(),
     onSelectAll: fn(),
     onSelectNone: fn(),
-    model: null,
-    effort: null,
-    onChangeModel: fn(),
-    onChangeEffort: fn(),
+    picker: (
+      <ModelEffortPicker
+        model={null}
+        effort={null}
+        onChangeModel={fn()}
+        onChangeEffort={fn()}
+      />
+    ),
     canRun: true,
     isStarting: false,
     onRun: fn(),

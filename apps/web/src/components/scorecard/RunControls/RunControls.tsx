@@ -2,7 +2,7 @@
  *  shared ScanConfigForm — model/effort plus the dimension chip grid and the big
  *  Grade CTA. A controlled, purely-presentational view of the lifted `config`
  *  state. The live readout + Cancel live on the RUNNING screen (RunProgress). */
-import { PerfIcon, ScanConfigForm } from '@/components/ui';
+import { ModelEffortPicker, PerfIcon, ScanConfigForm } from '@/components/ui';
 
 import { ALL_DIMENSIONS, DIMENSION_META } from '../scorecard.constants';
 import type { RunControlsProps } from './RunControls.types';
@@ -19,10 +19,14 @@ export function RunControls({ config, isStarting, onGrade }: RunControlsProps) {
 
   return (
     <ScanConfigForm
-      model={model}
-      effort={config.effort}
-      onChangeModel={config.setModel}
-      onChangeEffort={config.setEffort}
+      picker={
+        <ModelEffortPicker
+          model={model}
+          effort={config.effort}
+          onChangeModel={config.setModel}
+          onChangeEffort={config.setEffort}
+        />
+      }
       heading={`Dimensions (${dimCount}/${ALL_DIMENSIONS.length})`}
       chips={CHIPS}
       selected={config.selected}

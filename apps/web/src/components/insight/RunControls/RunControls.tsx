@@ -1,6 +1,11 @@
 /** The Insight CONFIGURE screen: the run-configuration form, composed from the
  *  shared ScanConfigForm with the repo/diff scope radio as its extra section. */
-import { chipClass, InsightIcon, ScanConfigForm } from '@/components/ui';
+import {
+  chipClass,
+  InsightIcon,
+  ModelEffortPicker,
+  ScanConfigForm,
+} from '@/components/ui';
 import type { AnalysisScope } from '@/lib/bridge';
 
 import { ALL_CATEGORIES, CATEGORY_META, SCOPE_META } from '../insight.constants';
@@ -22,10 +27,14 @@ export function RunControls({ config, isStarting, onAnalyze }: RunControlsProps)
 
   return (
     <ScanConfigForm
-      model={model}
-      effort={config.effort}
-      onChangeModel={config.setModel}
-      onChangeEffort={config.setEffort}
+      picker={
+        <ModelEffortPicker
+          model={model}
+          effort={config.effort}
+          onChangeModel={config.setModel}
+          onChangeEffort={config.setEffort}
+        />
+      }
       beforeChips={
         <div className="flex flex-col gap-1.5">
           <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">

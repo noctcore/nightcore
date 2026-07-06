@@ -22,11 +22,10 @@ export interface LensChipGridProps<K extends string = string> {
 
 export interface ScanConfigFormProps<K extends string = string>
   extends LensChipGridProps<K> {
-  /** Model/effort overrides, threaded to the shared ModelEffortPicker. */
-  model: string | null;
-  effort: string | null;
-  onChangeModel: (model: string | null) => void;
-  onChangeEffort: (effort: string | null) => void;
+  /** The model/effort picker, composed by the family so this shell stays a
+   *  layout owner instead of a wire for the picker's four props. Each family
+   *  renders its own `<ModelEffortPicker …/>` into this slot. */
+  picker: ReactNode;
   /** Slot between the picker and the chip grid (e.g. Insight's scope radio). */
   beforeChips?: ReactNode;
   /** Whether the run action is currently permitted (≥1 chip, project open). */

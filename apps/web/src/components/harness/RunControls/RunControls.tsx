@@ -5,7 +5,12 @@
  *  pre-fills on a new run. Harness always scans the whole repo, so there is no
  *  scope picker. The live readout + Cancel live on the RUNNING screen
  *  (RunProgress). */
-import { ScanConfigForm, Spinner, VerifiedIcon } from '@/components/ui';
+import {
+  ModelEffortPicker,
+  ScanConfigForm,
+  Spinner,
+  VerifiedIcon,
+} from '@/components/ui';
 import { MODEL_OPTIONS } from '@/lib/models';
 
 import { ALL_CATEGORIES, CATEGORY_META } from '../harness.constants';
@@ -28,10 +33,14 @@ export function RunControls({ config, isStarting, onScan }: RunControlsProps) {
   return (
     <ScanConfigForm
       scrollable={false}
-      model={config.model}
-      effort={config.effort}
-      onChangeModel={config.setModel}
-      onChangeEffort={config.setEffort}
+      picker={
+        <ModelEffortPicker
+          model={config.model}
+          effort={config.effort}
+          onChangeModel={config.setModel}
+          onChangeEffort={config.setEffort}
+        />
+      }
       heading={`Lenses (${lensCount}/${ALL_CATEGORIES.length})`}
       chips={CHIPS}
       selected={config.selected}

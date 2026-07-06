@@ -3,11 +3,10 @@
  * `RunControls` forms (Insight / Scorecard / Harness) and the PR-Review lens
  * row: the selected/unselected chip classes ({@link chipClass}), the lens chip
  * grid with its All/None header ({@link LensChipGrid}), and the full form shell
- * ({@link ScanConfigForm}) — heading, ModelEffortPicker, an extra-section slot,
- * the chip grid, and the primary CTA + cost hint.
+ * ({@link ScanConfigForm}) — heading, a model/effort picker slot, an
+ * extra-section slot, the chip grid, and the primary CTA + cost hint.
  */
 import { Button } from '../Button';
-import { ModelEffortPicker } from '../ModelEffortPicker';
 import { Spinner } from '../Spinner';
 import type {
   LensChipGridProps,
@@ -82,15 +81,12 @@ export function LensChipGrid<K extends string>({
   );
 }
 
-/** The full CONFIGURE form: heading, model/effort picker, an optional extra
- *  section (Insight's scope radio), the lens chip grid, and the primary CTA
- *  with its cost hint. A controlled, purely-presentational view of the lifted
- *  run-config state. */
+/** The full CONFIGURE form: heading, a model/effort picker slot, an optional
+ *  extra section (Insight's scope radio), the lens chip grid, and the primary
+ *  CTA with its cost hint. A controlled, purely-presentational view of the
+ *  lifted run-config state. */
 export function ScanConfigForm<K extends string>({
-  model,
-  effort,
-  onChangeModel,
-  onChangeEffort,
+  picker,
   beforeChips,
   canRun,
   isStarting,
@@ -107,13 +103,8 @@ export function ScanConfigForm<K extends string>({
     <div className="mx-auto flex w-full max-w-[720px] flex-col gap-7 px-6 py-10">
       <span className={SECTION_LABEL}>Run config</span>
 
-      {/* Model + effort (reuses the shared picker for parity) */}
-      <ModelEffortPicker
-        model={model}
-        effort={effort}
-        onChangeModel={onChangeModel}
-        onChangeEffort={onChangeEffort}
-      />
+      {/* Model + effort — the family composes the shared picker into this slot */}
+      {picker}
 
       {beforeChips}
 
