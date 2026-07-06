@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { ProviderIdSchema } from './provider.js';
+
 /** Core configuration, permission, model, and MCP-server contract shapes. */
 
 /**
@@ -119,6 +121,14 @@ export type LogLevel = z.infer<typeof LogLevelSchema>;
  * defaults → `~/.nightcore/config.json` → `./.nightcore/config.json`.
  */
 export const ConfigSchema = z.object({
+  /** The agent provider that backs sessions (issue #18). A lowercase provider slug
+   *  (`claude` today; `codex` is the Phase-4 spike). The engine's config-driven
+   *  provider factory maps it to an {@link ProviderCapabilities}-carrying
+   *  implementation; an unknown id falls back to Claude. Serde-additive: a config
+   *  file written before this field resolves to `claude`. The Rust core injects the
+   *  studio-wide `provider` setting to the sidecar via the `NIGHTCORE_PROVIDER` env
+   *  override, so this stays the single engine-side selection input. */
+  provider: ProviderIdSchema.default('claude'),
   /** Default model for new sessions. Free string to allow any SDK-supported id. */
   model: z.string().default('claude-opus-4-8'),
   /** Default reasoning effort for new sessions. Omitted = let the model decide
@@ -160,6 +170,7 @@ export type Config = z.infer<typeof ConfigSchema>;
  * defaults, which silently dropped inherited allow/deny lists.)
  */
 export const ConfigFileSchema = z.object({
+  provider: ProviderIdSchema.optional(),
   model: z.string().optional(),
   effort: EffortLevelSchema.optional(),
   permissions: z

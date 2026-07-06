@@ -124,6 +124,42 @@ describe('resolveConfig precedence', () => {
   });
 });
 
+// The agent provider (issue #18): file-configurable, env-overridable, defaults to
+// Claude. The Rust core injects its studio-wide `provider` setting via the
+// `NIGHTCORE_PROVIDER` env override so a provider swap needs no config-file edit.
+describe('resolveConfig provider selection', () => {
+  const ENV_KEY = 'NIGHTCORE_PROVIDER';
+  let saved: string | undefined;
+  beforeEach(() => {
+    saved = process.env[ENV_KEY];
+    delete process.env[ENV_KEY];
+  });
+  afterEach(() => {
+    if (saved === undefined) delete process.env[ENV_KEY];
+    else process.env[ENV_KEY] = saved;
+  });
+
+  test('defaults to claude when nothing sets it', () => {
+    expect(resolveConfig({ home, cwd: project }).provider).toBe('claude');
+  });
+
+  test('a config file selects the provider', () => {
+    writeHomeConfig(JSON.stringify({ provider: 'codex' }));
+    expect(resolveConfig({ home, cwd: project }).provider).toBe('codex');
+  });
+
+  test('the NIGHTCORE_PROVIDER env override wins over the config file', () => {
+    writeHomeConfig(JSON.stringify({ provider: 'claude' }));
+    process.env[ENV_KEY] = 'codex';
+    expect(resolveConfig({ home, cwd: project }).provider).toBe('codex');
+  });
+
+  test('an empty/whitespace env override is ignored (inherits the file/default)', () => {
+    process.env[ENV_KEY] = '   ';
+    expect(resolveConfig({ home, cwd: project }).provider).toBe('claude');
+  });
+});
+
 describe('mergeLayers is key-driven, not hand-enumerated', () => {
   // Guards the regression class this refactor closed: a NEW field added to
   // `ConfigFileSchema` must layer (last-defined-wins, absent-inherits) with no

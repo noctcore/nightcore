@@ -89,8 +89,17 @@ export function resolveConfig(options: ResolveConfigOptions = {}): Config {
     path.join(projectDir(cwd), CONFIG_FILENAME),
   );
 
+  // The Rust core's studio-wide `provider` setting reaches the engine through the
+  // `NIGHTCORE_PROVIDER` env override (the sidecar spawn injects it — issue #18
+  // Phase 4). It is the highest-precedence provider source so a provider swap in the
+  // desktop settings takes effect without touching a config file; an unset/empty var
+  // inherits the config-file value, then the `claude` default. Consistent with the
+  // binary-resolution env overrides (`NIGHTCORE_AGENT_PATH`/`NIGHTCORE_CLAUDE_PATH`).
+  const providerOverride = process.env.NIGHTCORE_PROVIDER?.trim();
+
   return ConfigSchema.parse({
     ...merged,
+    ...(providerOverride ? { provider: providerOverride } : {}),
     paths: {
       home,
       project: hasProjectConfig ? projectDir(cwd) : undefined,
