@@ -13,23 +13,18 @@
  * (mirrors the Insight findings pipeline: `extractJson` → coerce to array → validate
  * each element → drop anything that can't satisfy the schema).
  *
- * Kept pure (only zod + the shared extractor, no SDK import) and tolerant by design —
- * malformed or empty input yields `[]`, never throws — so a decompose run can never
- * crash the session-completed emit.
+ * Kept pure (only the contract schema + the shared extractor, no SDK import) and
+ * tolerant by design — malformed or empty input yields `[]`, never throws — so a
+ * decompose run can never crash the session-completed emit. The element schema is
+ * the contract `ProposedSubtaskSchema` — the SAME zod object the wire event
+ * validates — so parser and wire shape can never drift.
  */
-import { z } from 'zod';
+import type { ProposedSubtask } from '@nightcore/contracts';
+import { ProposedSubtaskSchema } from '@nightcore/contracts';
 
 import { extractJson, toRawArray } from '../util/json-extract.js';
 
-/** One proposed sub-task: a short imperative `title` + a self-contained `prompt`.
- *  This IS the element shape of the optional `proposedSubtasks` array on the
- *  `session-completed` event. */
-const ProposedSubtaskSchema = z.object({
-  title: z.string(),
-  prompt: z.string(),
-});
-
-export type ProposedSubtask = z.infer<typeof ProposedSubtaskSchema>;
+export type { ProposedSubtask };
 
 /**
  * The SDK `Options.outputFormat` for a decompose session — a JSON-Schema request

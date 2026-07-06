@@ -194,6 +194,16 @@ export const TokenUsageSchema = z.object({
 });
 export type TokenUsage = z.infer<typeof TokenUsageSchema>;
 
+/** One proposed sub-task from a `decompose`-kind session: a short imperative
+ *  `title` + a self-contained `prompt`. Single-sourced HERE so the wire shape
+ *  (`SessionCompletedEvent.proposedSubtasks`) and the engine's decompose parser
+ *  validate against the SAME schema and can never drift. */
+export const ProposedSubtaskSchema = z.object({
+  title: z.string(),
+  prompt: z.string(),
+});
+export type ProposedSubtask = z.infer<typeof ProposedSubtaskSchema>;
+
 /** Session reached a successful terminal state. */
 export const SessionCompletedEvent = z.object({
   ...base,
@@ -208,12 +218,10 @@ export const SessionCompletedEvent = z.object({
   usage: TokenUsageSchema.optional(),
   /** Sub-task proposals parsed from the agent's final result text. Populated ONLY
    *  for `decompose`-kind sessions — the engine extracts a JSON array from the
-   *  result and validates each `{ title, prompt }` against this shape (dropping
+   *  result and validates each item against {@link ProposedSubtaskSchema} (dropping
    *  blank-title items), mirroring how Insight turns a session into findings.
    *  Absent for every other kind. */
-  proposedSubtasks: z
-    .array(z.object({ title: z.string(), prompt: z.string() }))
-    .optional(),
+  proposedSubtasks: z.array(ProposedSubtaskSchema).optional(),
 });
 
 /**
