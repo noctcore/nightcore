@@ -22,6 +22,12 @@ use ts_rs::TS;
 
 use crate::store::types::StructureLockResult;
 
+/// The Tauri event carrying a single task to the webview. The UI upserts its
+/// board state by `task.id`, so every create/update/status change re-emits this.
+/// Re-exported by `super` via `pub use model::*` so `crate::task::TASK_EVENT`
+/// resolves unchanged (issue #17 phase D — keeps `task/mod.rs` a manifest).
+pub const TASK_EVENT: &str = "nc:task";
+
 /// Where a task sits in its lifecycle. `ready` and `waiting_approval` are
 /// reserved in M1 (defined, not yet produced): the auto-loop and interactive
 /// approval that drive them arrive in M2.

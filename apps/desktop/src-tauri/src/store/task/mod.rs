@@ -29,7 +29,3 @@ pub use model::*;
 // so re-export it crate-visible.
 pub(crate) use create::*;
 pub use patch::*;
-
-/// The Tauri event carrying a single task to the webview. The UI upserts its
-/// board state by `task.id`, so every create/update/status change re-emits this.
-pub const TASK_EVENT: &str = "nc:task";

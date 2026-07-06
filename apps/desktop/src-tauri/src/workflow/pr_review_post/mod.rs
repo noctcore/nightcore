@@ -21,18 +21,15 @@
 //! `crate::workflow::pr_review_post::{fetch_pr_diff, post_review_to_github,
 //! InlineComment, PR_DIFF_CAP}` paths.
 
-use std::time::Duration;
-
 mod diff;
 mod post;
+mod timeout;
 
 #[cfg(test)]
 mod tests;
 
 pub(crate) use diff::*;
 pub(crate) use post::*;
-
-/// Wall-clock bound on every network-facing PR-review `gh` spawn (diff fetch + post).
-/// Same rationale as the create/status bounds: generous but finite — a black-holed
-/// GitHub must error out, not pin the blocking thread.
-pub(super) const GH_TIMEOUT: Duration = Duration::from_secs(120);
+// The shared `gh` timeout lives in `timeout.rs`; re-bound (private) so the diff +
+// post submodules reach it as `super::GH_TIMEOUT` (issue #17 phase D).
+use timeout::GH_TIMEOUT;

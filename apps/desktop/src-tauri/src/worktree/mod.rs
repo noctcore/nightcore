@@ -33,11 +33,10 @@
 //! The path/branch computation is pure and unit-tested; the git side is exercised
 //! by tests (in `tests.rs`) that build a real temp repo when `git` is available.
 
-use std::path::Path;
-
 mod branch;
 mod commit;
 mod diff;
+mod index;
 mod lifecycle;
 mod merge;
 mod path;
@@ -86,14 +85,10 @@ pub use status::worktree_status;
 // that read `crate::platform::git_command` directly for their custom handling.)
 use crate::git::run::{git, git_status_success, git_with_deadline};
 
-/// Best-effort `git update-index --refresh` in `dir` to clear git's stale stat
-/// cache. Without it, a worktree that was only `stat`-touched (a build that wrote
-/// then restored a file's mtime) can report a false-positive "uncommitted changes"
-/// in `git status`. Errors are deliberately swallowed — it is a pure optimization
-/// and must never fail a higher-level read (Aperant `refreshGitIndex`).
-fn refresh_index(dir: &Path) {
-    let _ = git_status_success(dir, &["update-index", "--refresh"]);
-}
+// `refresh_index` (the git stat-cache refresh) now lives in `index.rs`. Re-bound
+// here (private) so the submodules that reach it as `super::refresh_index` resolve
+// unchanged (issue #17 phase D — keeps this module a manifest).
+use index::refresh_index;
 
 // The `rev-list --left-right --count` parser now lives in the shared
 // `crate::git::parse` module. Re-bound here (private) so the submodules that
