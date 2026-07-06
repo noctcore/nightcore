@@ -6,6 +6,7 @@ import { decisionRegisterIntegrityRule } from './rules/decision-register-integri
 import { layerRankRule } from './rules/layer-rank';
 import { noWarnSeverityRule } from './rules/no-warn-severity';
 import { packageShapeRule } from './rules/package-shape';
+import { rustLayerRankRule } from './rules/rust-layer-rank';
 import { rustModuleShapeRule } from './rules/rust-module-shape';
 import { testRunnerSegregationRule } from './rules/test-runner-segregation';
 import { testWorkspaceEnrollmentRule } from './rules/test-workspace-enrollment';
@@ -30,4 +31,5 @@ export const META_RULES: IMetaRule[] = [
   agentsDocPresenceRule,
   uiPrimitiveShapeRule,
   rustModuleShapeRule,
+  rustLayerRankRule,
 ];

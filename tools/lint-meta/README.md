@@ -47,6 +47,7 @@ bun run lint:meta   # == bun run tools/lint-meta/cli.ts
 | `agents-doc-presence` | every deployable surface / public boundary ships an `AGENTS.md` |
 | `ui-primitive-shape` | a `components/ui` primitive that graduates to a folder must ship `<Name>.test.tsx` + `<Name>.stories.tsx` |
 | `rust-module-shape` | desktop Rust `mod.rs` is a manifest (declarations + re-exports only) + no code file exceeds 400 code lines (excluding `#[cfg(test)]` blocks); advisory until the phase-C ratchet grandfathers today's offenders, then enforced |
+| `rust-layer-rank` | desktop Rust `crate::X` imports point strictly DOWN a 6-tier rank (contracts/infra/sync/engine_api → git → store/worktree/provider → analysis → engine SCC → commands), facades resolved + `#[cfg(test)]` stripped; the orchestration/sidecar/workflow SCC is co-tier except the banned `sidecar → orchestration` |
 
 The registry (`registry.ts`) is the source of truth if this table drifts.
 

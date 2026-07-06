@@ -1,5 +1,6 @@
 // @ts-check
-import type { IMetaCtx, IMetaRule, IViolation } from '../types';
+import { rustSourceFiles, stripCfgTestModBlocks } from '../rust-source';
+import type { IMetaRule, IViolation } from '../types';
 
 /**
  * `rust-module-shape` — the desktop Rust crate's module hygiene (issue #17).
@@ -36,64 +37,22 @@ import type { IMetaCtx, IMetaRule, IViolation } from '../types';
  * while the frozen offenders pass until their split lands (phase D).
  */
 
-const SRC = 'apps/desktop/src-tauri/src';
 const HARD_CAP = 400;
 const ADVISORY_CAP = 350;
 
-/** Every `.rs` file under the desktop crate src (Bun glob — no brace-alternation). */
-export function rustSourceFiles(ctx: IMetaCtx): string[] {
-  return ctx.glob(`${SRC}/**/*.rs`);
-}
-
 /**
  * CODE LINES of a Rust source: physical lines minus blank lines, `//`-style
- * comment-only lines, and every line inside a `#[cfg(test)] mod … { … }` block
- * (matched by brace depth to its close or EOF). A `#[cfg(test)]` on a non-mod item
- * (a `use`/`fn`) is NOT excluded — only whole test MODULES are.
+ * comment-only lines, and every line inside a `#[cfg(test)] mod … { … }` block.
+ * A `#[cfg(test)]` on a non-mod item (a `use`/`fn`) is NOT excluded — only whole
+ * test MODULES are (via the shared [`stripCfgTestModBlocks`]).
  */
 export function countCodeLines(text: string): number {
-  const lines = text.split('\n');
-  let code = 0;
-  let i = 0;
-  while (i < lines.length) {
-    const trimmed = lines[i].trim();
-    // A `#[cfg(test)] mod … { … }` block: find the item the attribute guards,
-    // skipping intervening attrs/comments/blanks. Only a MODULE with an inline
-    // body (`{`) is excluded; a `#[cfg(test)] mod foo;` decl or a cfg-test
-    // `use`/`fn` falls through and is counted normally.
-    if (trimmed === '#[cfg(test)]' || trimmed.startsWith('#[cfg(test)]')) {
-      let j = i + 1;
-      while (
-        j < lines.length &&
-        (lines[j].trim() === '' ||
-          lines[j].trim().startsWith('//') ||
-          lines[j].trim().startsWith('#['))
-      ) {
-        j++;
-      }
-      if (j < lines.length && /^\s*(pub(\([^)]*\))?\s+)?mod\s+\w+/.test(lines[j]) && lines[j].includes('{')) {
-        // Skip from the attribute line through the matching close brace.
-        let depth = 0;
-        let k = j;
-        let opened = false;
-        while (k < lines.length) {
-          for (const ch of lines[k]) {
-            if (ch === '{') {
-              depth++;
-              opened = true;
-            } else if (ch === '}') depth--;
-          }
-          if (opened && depth <= 0) break;
-          k++;
-        }
-        i = k + 1;
-        continue;
-      }
-    }
-    if (trimmed !== '' && !trimmed.startsWith('//')) code++;
-    i++;
-  }
-  return code;
+  return stripCfgTestModBlocks(text)
+    .split('\n')
+    .filter((l) => {
+      const t = l.trim();
+      return t !== '' && !t.startsWith('//');
+    }).length;
 }
 
 /** A disallowed top-level item found in a `mod.rs`: its 1-indexed line + keyword. */
