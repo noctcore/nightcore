@@ -32,4 +32,11 @@ export interface IMetaRule {
   /** When true, a violation fails CI (exit non-zero). */
   ciCritical?: boolean;
   run(ctx: IMetaCtx): IViolation[];
+  /**
+   * Ratcheting rules implement this to snapshot the CURRENT offenders as a frozen
+   * baseline (a flat `metric-key → number` map). `cli.ts --update-baseline` writes
+   * the return value to `baselines/<id>.json`; `run` then grandfathers any offender
+   * still within its recorded value (see `baseline.ts`). Omit for strict rules.
+   */
+  baseline?(ctx: IMetaCtx): Record<string, number>;
 }

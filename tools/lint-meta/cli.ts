@@ -5,10 +5,11 @@
  * non-zero when any `ciCritical` rule reports one (or a rule throws).
  */
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { Glob } from 'bun';
 
+import { serializeBaseline } from './baseline';
 import { META_RULES } from './registry';
 import type { IMetaCtx } from './types';
 
@@ -41,6 +42,24 @@ const ctx: IMetaCtx = {
     }
   },
 };
+
+// `--update-baseline`: regenerate every ratcheting rule's committed baseline from
+// the current tree, then exit. Run after a legitimate paydown (a god-file split)
+// to lower the frozen debt — never to raise it past a real regression.
+if (process.argv.includes('--update-baseline')) {
+  const dir = path.join(ROOT, 'tools/lint-meta/baselines');
+  mkdirSync(dir, { recursive: true });
+  for (const rule of META_RULES) {
+    if (!rule.baseline) continue;
+    const map = rule.baseline(ctx);
+    const file = path.join(dir, `${rule.id}.json`);
+    writeFileSync(file, serializeBaseline(map));
+    console.log(
+      `updated baseline: tools/lint-meta/baselines/${rule.id}.json (${Object.keys(map).length} entries)`,
+    );
+  }
+  process.exit(0);
+}
 
 let criticalCount = 0;
 let totalCount = 0;

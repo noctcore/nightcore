@@ -46,12 +46,37 @@ bun run lint:meta   # == bun run tools/lint-meta/cli.ts
 | `decision-register-integrity` | every path cited in `docs/decisions/INDEX.md` resolves and the register stays drift-free |
 | `agents-doc-presence` | every deployable surface / public boundary ships an `AGENTS.md` |
 | `ui-primitive-shape` | a `components/ui` primitive that graduates to a folder must ship `<Name>.test.tsx` + `<Name>.stories.tsx` |
-| `rust-module-shape` | desktop Rust `mod.rs` is a manifest (declarations + re-exports only) + no code file exceeds 400 code lines (excluding `#[cfg(test)]` blocks); advisory until the phase-C ratchet grandfathers today's offenders, then enforced |
+| `rust-module-shape` | desktop Rust `mod.rs` is a manifest (declarations + re-exports only) + no code file exceeds 400 code lines (excluding `#[cfg(test)]` blocks); enforced, with today's offenders grandfathered by a shrinking ratchet (`baselines/rust-module-shape.json`) — a new/grown offender fails |
 | `rust-layer-rank` | desktop Rust `crate::X` imports point strictly DOWN a 6-tier rank (contracts/infra/sync/engine_api → git → store/worktree/provider → analysis → engine SCC → commands), facades resolved + `#[cfg(test)]` stripped; the orchestration/sidecar/workflow SCC is co-tier except the banned `sidecar → orchestration` |
 | `rust-command-placement` | no `#[tauri::command]` in the desktop leaf tier (`contracts`/`infra`/`sync`/`git`/`engine_api`/`store`/`worktree`/`provider`) — handlers live in `commands/` or a feature module |
 | `rust-engine-seam` | nothing under `sidecar/**` references `crate::orchestration::` — the sidecar reaches the engine only through `Arc<dyn EngineApi>` |
 
 The registry (`registry.ts`) is the source of truth if this table drifts.
+
+## Ratchet baselines (`baselines/`)
+
+Some rules can't ship strict on day one because real, pre-existing offenders
+exist (e.g. desktop Rust god-files over the `rust-module-shape` size cap). Rather
+than weaken the rule, those offenders are **grandfathered** by a committed
+`baselines/<rule-id>.json` — a flat `key → number` map freezing each offender at
+its current metric. The ratchet is one-way (`baseline.ts`):
+
+- a recorded offender **within** its frozen metric passes (grandfathered);
+- a **new** offender, or a recorded one that **grew**, fails CI;
+- as each offender is fixed, its entry is deleted (or lowered) — never raised.
+
+A ratcheting rule implements the optional `baseline(ctx)` method (returns the
+current offender map). Regenerate every baseline after a legitimate paydown with:
+
+```bash
+bun run lint:meta -- --update-baseline   # rewrites baselines/<rule-id>.json
+```
+
+Distinct from the ratchet are **permanent exemptions** encoded IN the rule
+(`rust-module-shape` never counts `contracts/generated.rs`, `store/run_store.rs`,
+`sidecar/harness/apply.rs`) — intentionally-whole files, not debt to pay down. The
+baseline/ratchet mechanism is generic (`loadBaseline` / `isGrandfathered` /
+`serializeBaseline` in `baseline.ts`) so other size/count ratchets can reuse it.
 
 ## `layerRules` — the ESLint helper (secondary)
 

@@ -1,6 +1,7 @@
 // @ts-check
-import { rustSourceFiles, stripCfgTestModBlocks } from '../rust-source';
-import type { IMetaRule, IViolation } from '../types';
+import { isGrandfathered, loadBaseline } from '../baseline';
+import { rustSourceFiles, SRC, stripCfgTestModBlocks } from '../rust-source';
+import type { IMetaCtx, IMetaRule, IViolation } from '../types';
 
 /**
  * `rust-module-shape` — the desktop Rust crate's module hygiene (issue #17).
@@ -27,18 +28,59 @@ import type { IMetaRule, IViolation } from '../types';
  *     signal); 350..=400 = a non-blocking advisory emitted as a LOG line (never a
  *     returned violation, so it can never fail the gate).
  *
- * PHASED GATING — this rule ships `ciCritical: false` (advisory) in phase B.1:
- * the crate still has real god-files over 400 (`analysis/repo_map.rs` ~805,
- * `sidecar/mod.rs`, `workflow/pr_fix/command.rs` ~682, …) and `mod.rs` files still
- * holding logic (`store/mod.rs`'s `TaskStore` impl, `sidecar/mod.rs`), so every
- * finding here is informational for now. Phase C adds the `baselines/` ratchet that
- * grandfathers today's offenders + the permanent exemptions, then flips this rule
- * to `ciCritical: true` so a NEW over-cap file or a NEW mod.rs-with-logic fails CI
- * while the frozen offenders pass until their split lands (phase D).
+ * RATCHET (phase C) — this rule is `ciCritical: true`. Today's real god-files
+ * (`analysis/repo_map.rs` 636, `workflow/pr_fix/command.rs` 490, …) and
+ * logic-bearing `mod.rs` (`store/mod.rs`, `sidecar/mod.rs`, …) are grandfathered by
+ * `baselines/rust-module-shape.json`: a recorded offender within its frozen metric
+ * passes; a NEW over-cap file, or a recorded one that GREW, FAILS. As each split
+ * lands (phase D) its baseline entry is deleted — the debt only shrinks.
+ * Regenerate the baseline with `bun run lint:meta -- --update-baseline`.
+ *
+ * PERMANENT EXEMPTIONS (never counted, never baselined): `contracts/generated.rs`
+ * (codegen), `store/run_store.rs` (one cohesive audited generic), and
+ * `sidecar/harness/apply.rs` (a security-critical defence-in-depth chain its own
+ * module doc says not to tidy). These differ from the ratchet baseline — they are
+ * intentionally-whole files, not debt to pay down.
  */
 
 const HARD_CAP = 400;
 const ADVISORY_CAP = 350;
+
+/**
+ * Files never measured for size and never baselined — intentionally-whole by
+ * design, NOT debt (see the module doc). Distinct from the shrinking ratchet.
+ */
+const PERMANENT_EXEMPT = new Set([
+  `${SRC}/contracts/generated.rs`,
+  `${SRC}/store/run_store.rs`,
+  `${SRC}/sidecar/harness/apply.rs`,
+]);
+
+const sizeKey = (file: string): string => `size:${file}`;
+const manifestKey = (file: string): string => `manifest:${file}`;
+
+/**
+ * The current offender map (over-cap sizes + logic-bearing `mod.rs`), namespaced
+ * `size:<file>` / `manifest:<file>`, EXCLUDING permanent exemptions. Shared by
+ * `run` (what to grandfather) and `baseline` (what to freeze) so the two can never
+ * disagree.
+ */
+function currentOffenders(ctx: IMetaCtx): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const file of rustSourceFiles(ctx)) {
+    if (file.endsWith('/tests.rs')) continue;
+    const text = ctx.read(file);
+    if (text === null) continue;
+    if (file.endsWith('/mod.rs')) {
+      const n = manifestOffenses(text).length;
+      if (n > 0) map[manifestKey(file)] = n;
+    }
+    if (PERMANENT_EXEMPT.has(file)) continue;
+    const code = countCodeLines(text);
+    if (code > HARD_CAP) map[sizeKey(file)] = code;
+  }
+  return map;
+}
 
 /**
  * CODE LINES of a Rust source: physical lines minus blank lines, `//`-style
@@ -133,46 +175,57 @@ function stripLineComment(line: string): string {
 export const rustModuleShapeRule: IMetaRule = {
   id: 'rust-module-shape',
   category: 'source-text',
-  // Advisory in phase B.1 (god-files + logic-bearing mod.rs still exist). Phase C
-  // adds the ratchet baseline + permanent exemptions and flips this to `true`.
-  ciCritical: false,
+  ciCritical: true,
   description:
-    "Desktop Rust: mod.rs is a manifest (declarations + re-exports only) and no code file exceeds 400 code lines (excluding #[cfg(test)] blocks). Advisory until the phase-C ratchet grandfathers today's offenders.",
+    "Desktop Rust: mod.rs is a manifest (declarations + re-exports only) and no code file exceeds 400 code lines (excluding #[cfg(test)] blocks). Today's offenders are grandfathered by baselines/rust-module-shape.json; a new/grown offender fails.",
+  baseline(ctx) {
+    return currentOffenders(ctx);
+  },
   run(ctx) {
+    const baseline = loadBaseline(ctx, 'rust-module-shape');
     const violations: IViolation[] = [];
     for (const file of rustSourceFiles(ctx)) {
+      if (file.endsWith('/tests.rs')) continue;
       const text = ctx.read(file);
       if (text === null) continue;
 
-      // MANIFEST — mod.rs files only. One summary violation per file (the phase-C
-      // ratchet baselines the offense COUNT, so a file may shed items but never
-      // gain them).
+      // MANIFEST — mod.rs files only. One summary violation per file; the ratchet
+      // freezes the offense COUNT, so a file may shed items but never gain them.
       if (file.endsWith('/mod.rs')) {
         const offenses = manifestOffenses(text);
         if (offenses.length > 0) {
-          const where = offenses
-            .map((o) => `${o.keyword}@${o.line}`)
-            .join(', ');
-          violations.push({
-            file,
-            rule: 'rust-module-shape',
-            message: `mod.rs is a manifest but holds ${offenses.length} top-level item(s) that belong in sibling files, re-exported (house pattern: worktree/mod.rs): ${where}. Only mod/use declarations, docs, and attributes belong in a mod.rs.`,
-          });
+          if (isGrandfathered(baseline, manifestKey(file), offenses.length)) {
+            console.error(
+              `[grandfathered] rust-module-shape (${file}): ${offenses.length} mod.rs item(s) frozen by baseline — split them (phase D) to ratchet down.`,
+            );
+          } else {
+            const where = offenses.map((o) => `${o.keyword}@${o.line}`).join(', ');
+            violations.push({
+              file,
+              rule: 'rust-module-shape',
+              message: `mod.rs is a manifest but holds ${offenses.length} top-level item(s) that belong in sibling files, re-exported (house pattern: worktree/mod.rs): ${where}. Only mod/use declarations, docs, and attributes belong in a mod.rs.`,
+            });
+          }
         }
       }
 
-      // SIZE CAP — every .rs except sibling tests.rs files.
-      if (file.endsWith('/tests.rs')) continue;
+      // SIZE CAP — every .rs except permanent exemptions.
+      if (PERMANENT_EXEMPT.has(file)) continue;
       const code = countCodeLines(text);
       if (code > HARD_CAP) {
-        violations.push({
-          file,
-          rule: 'rust-module-shape',
-          message: `code file exceeds the ${HARD_CAP}-line hard cap: ${code} code lines (excluding #[cfg(test)] blocks + blank/comment lines). Split into flat siblings under a thin mod.rs (house pattern: worktree/).`,
-        });
+        if (isGrandfathered(baseline, sizeKey(file), code)) {
+          console.error(
+            `[grandfathered] rust-module-shape (${file}): ${code} code lines frozen by baseline (cap ${HARD_CAP}) — split to ratchet down.`,
+          );
+        } else {
+          violations.push({
+            file,
+            rule: 'rust-module-shape',
+            message: `code file exceeds the ${HARD_CAP}-line hard cap: ${code} code lines (excluding #[cfg(test)] blocks + blank/comment lines). Split into flat siblings under a thin mod.rs (house pattern: worktree/).`,
+          });
+        }
       } else if (code > ADVISORY_CAP) {
-        // Non-blocking advisory: a LOG line, never a returned violation, so it can
-        // never fail the gate even after this rule flips to ciCritical in phase C.
+        // Non-blocking advisory: a LOG line, never a returned violation.
         console.error(
           `[advisory] rust-module-shape (${file}): ${code} code lines — approaching the ${HARD_CAP}-line hard cap.`,
         );
