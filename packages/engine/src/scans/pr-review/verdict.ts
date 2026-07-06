@@ -12,15 +12,16 @@
  * the caller completes the run WITHOUT the verdict fields and logs. It only ever
  * produces a verdict when it gets a clean, parseable one of the four allowed values.
  *
- * Machinery mirrors {@link validatePrReviewFindings}: an injectable `runnerFactory` (so
- * tests drive it with a fake — no SDK, no subprocess), an optional shared `runners` set +
- * `isCancelled` probe so the orchestrator can interrupt it mid-flight and fold it into
- * cancel, and the module's strict-parse + one-corrective-retry pattern.
+ * The session scaffold (runner spin + heartbeat + cancel probe + one corrective retry)
+ * is the shared {@link runTailSession}; this module keeps only the verdict's prompt
+ * builder and strict parse. Like the validator it accepts an injectable
+ * `runnerFactory` (so tests drive it with a fake — no SDK, no subprocess), an optional
+ * shared `runners` set + `isCancelled` probe so the orchestrator can interrupt it
+ * mid-flight and fold it into cancel.
  */
 import type {
   Config,
   MergeVerdict,
-  NightcoreEvent,
   ReviewFinding,
   ReviewLens,
   SurfaceCommand,
@@ -31,12 +32,11 @@ import type { Logger } from '@nightcore/shared';
 
 import { getString } from '../../util/field-extract.js';
 import { extractJson } from '../shared/findings.js';
-import {
-  addUsage,
-  makeHeartbeat,
-  type ScanRunnerFactory,
-  type ScanSessionRunner,
+import type {
+  ScanRunnerFactory,
+  ScanSessionRunner,
 } from '../shared/scan-manager.js';
+import { runTailSession } from '../shared/tail-session.js';
 import {
   PR_REVIEW_ALLOWED_TOOLS,
   PR_REVIEW_DISALLOWED_TOOLS,
@@ -44,22 +44,6 @@ import {
 } from './presets.js';
 
 type StartPrReview = Extract<SurfaceCommand, { type: 'start-pr-review' }>;
-
-/** The stable failure reason carried by a `session-failed` event. */
-type SessionFailedReason = Extract<
-  NightcoreEvent,
-  { type: 'session-failed' }
->['reason'];
-
-/** Per-pass turn ceiling for the synthesis session (it inspects then answers). */
-const DEFAULT_MAX_TURNS = 40;
-
-const EMPTY_USAGE: TokenUsage = {
-  inputTokens: 0,
-  outputTokens: 0,
-  cacheReadTokens: 0,
-  cacheCreationTokens: 0,
-};
 
 /** The strict-JSON reminder appended to the ONE corrective synthesis retry. */
 const VERDICT_RETRY_REMINDER =
@@ -99,13 +83,6 @@ export interface SynthesizePrVerdictResult {
   error?: string;
 }
 
-/** The terminal outcome of one synthesis session spin. */
-interface VerdictSessionOutcome {
-  result?: string;
-  error?: string;
-  reason?: SessionFailedReason;
-}
-
 /**
  * Run the synthesis pass and return the overall merge verdict. Never throws — every
  * failure mode degrades to NO verdict (fail-open) so a flaky pass never blocks the run's
@@ -114,119 +91,62 @@ interface VerdictSessionOutcome {
 export async function synthesizePrVerdict(
   args: SynthesizePrVerdictArgs,
 ): Promise<SynthesizePrVerdictResult> {
-  const usage: TokenUsage = { ...EMPTY_USAGE };
-  let costUsd = 0;
+  const tail = await runTailSession<{ verdict: MergeVerdict; reasoning?: string }>({
+    prompt: buildVerdictPrompt(args),
+    persona: PR_VERDICT_PERSONA,
+    tools: {
+      allowed: PR_REVIEW_ALLOWED_TOOLS,
+      disallowed: PR_REVIEW_DISALLOWED_TOOLS,
+    },
+    command: args.command,
+    config: args.config,
+    apiKeyFallback: args.apiKeyFallback,
+    ...(args.logger !== undefined ? { logger: args.logger } : {}),
+    runnerFactory: args.runnerFactory,
+    ...(args.runners !== undefined ? { runners: args.runners } : {}),
+    ...(args.isCancelled !== undefined ? { isCancelled: args.isCancelled } : {}),
+    label: 'pr-review:verdict',
+    retryReminder: VERDICT_RETRY_REMINDER,
+    parse: (raw) => {
+      const parsed = parseVerdict(raw);
+      // A missing/invalid verdict drives the retry even when the JSON itself parsed —
+      // an out-of-set verdict must never be surfaced.
+      return parsed?.verdict !== undefined
+        ? {
+            value: {
+              verdict: parsed.verdict,
+              ...(parsed.reasoning !== undefined
+                ? { reasoning: parsed.reasoning }
+                : {}),
+            },
+          }
+        : { error: 'no merge verdict in synthesis output' };
+    },
+  });
 
-  if (args.isCancelled?.()) {
-    return { usage, costUsd, error: 'cancelled' };
-  }
-
-  // Throttled progress so the (serial) synthesis tail shows life in the terminal instead
-  // of running silent — its events never reach the wire.
-  const heartbeat = makeHeartbeat(args.logger, '[pr-review:verdict]');
-  const basePrompt = buildVerdictPrompt(args);
-
-  // Spin one synthesis session for `prompt`, accumulating usage/cost into the shared
-  // totals. Factored out so the corrective retry reuses the exact runner config.
-  const runSession = async (
-    prompt: string,
-  ): Promise<VerdictSessionOutcome> => {
-    let result: string | undefined;
-    let error: string | undefined;
-    let reason: SessionFailedReason | undefined;
-    const effort = args.command.effort ?? args.config.effort;
-    const runner = args.runnerFactory(
-      {
-        sessionId: -1,
-        prompt,
-        model: args.command.model ?? args.config.model,
-        ...(effort ? { effort } : {}),
-        permissionMode: 'dontAsk',
-        permissionPolicy: args.config.permissions,
-        cwd: args.command.projectPath,
-        apiKeyFallback: args.apiKeyFallback,
-        settingSources: args.config.settingSources,
-        todoFeatureEnabled: false,
-        appendSystemPrompt: PR_VERDICT_PERSONA,
-        allowedTools: [...PR_REVIEW_ALLOWED_TOOLS],
-        disallowedTools: [...PR_REVIEW_DISALLOWED_TOOLS],
-        maxTurns: DEFAULT_MAX_TURNS,
-      },
-      (event) => {
-        if (event.type === 'session-completed') {
-          result = event.result;
-          costUsd += event.costUsd;
-          if (event.usage !== undefined) addUsage(usage, event.usage);
-        } else if (event.type === 'session-failed') {
-          error = event.message;
-          reason = event.reason;
-        } else {
-          heartbeat(event);
-        }
-      },
-      args.logger?.child('pr-review-verdict'),
-    );
-
-    args.runners?.add(runner);
-    try {
-      await runner.run();
-    } finally {
-      args.runners?.delete(runner);
-    }
-    return { result, error, reason };
-  };
-
-  try {
-    const first = await runSession(basePrompt);
-    if (args.isCancelled?.()) {
-      return { usage, costUsd, error: 'cancelled' };
-    }
-    if (first.result === undefined) {
-      // Session failed → no verdict.
-      return {
-        usage,
-        costUsd,
-        error:
-          first.error ??
-          (first.reason !== undefined ? `verdict ${first.reason}` : 'no result'),
-      };
-    }
-
-    let parsed = parseVerdict(first.result);
-    if (parsed?.verdict === undefined) {
-      // One corrective retry with the strict-JSON reminder (mirrors the lens passes).
-      args.logger?.debug('pr-review verdict produced no valid JSON; retrying', {
-        runId: args.command.runId,
-      });
-      const retry = await runSession(`${basePrompt}${VERDICT_RETRY_REMINDER}`);
-      if (args.isCancelled?.()) {
-        return { usage, costUsd, error: 'cancelled' };
-      }
-      if (retry.result !== undefined) {
-        parsed = parseVerdict(retry.result) ?? parsed;
-      }
-    }
-    if (parsed?.verdict === undefined) {
-      // Still no clean verdict → fail-open: complete WITHOUT verdict fields.
-      return { usage, costUsd, error: 'no merge verdict in synthesis output' };
-    }
-
-    return {
-      verdict: parsed.verdict,
-      ...(parsed.reasoning !== undefined ? { reasoning: parsed.reasoning } : {}),
-      usage,
-      costUsd,
-    };
-  } catch (error) {
+  if (tail.crashed === true) {
     // FAIL-OPEN: a thrown runner (or any unexpected error) must never block completion —
     // drop the verdict and surface the error to the caller's log.
-    args.logger?.warn('pr-review verdict crashed; completing without a verdict', error);
+    args.logger?.warn(
+      'pr-review verdict crashed; completing without a verdict',
+      tail.crashError,
+    );
+  }
+  if (tail.value === undefined) {
+    // Session failed / unparseable-after-retry / cancelled / crashed → no verdict.
     return {
-      usage,
-      costUsd,
-      error: error instanceof Error ? error.message : String(error),
+      usage: tail.usage,
+      costUsd: tail.costUsd,
+      ...(tail.error !== undefined ? { error: tail.error } : {}),
     };
   }
+
+  return {
+    verdict: tail.value.verdict,
+    ...(tail.value.reasoning !== undefined ? { reasoning: tail.value.reasoning } : {}),
+    usage: tail.usage,
+    costUsd: tail.costUsd,
+  };
 }
 
 /**

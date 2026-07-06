@@ -11,14 +11,15 @@
  * keeps every finding and logs. It only ever REMOVES findings when it gets a clean,
  * parseable drop-list, and even then only ids that were actually in the candidate set.
  *
- * Like a {@link ScanManager} pass it accepts an injectable `runnerFactory` (so tests
- * drive it with a fake runner — no SDK, no subprocess) plus an optional `runners` set +
- * `isCancelled` probe so the orchestrator can interrupt it mid-flight and fold it into
- * cancel. Mirrors the Harness `synthesizeHarness` shape.
+ * The session scaffold (runner spin + heartbeat + cancel probe + one corrective
+ * retry) is the shared {@link runTailSession}; this module keeps only the validator's
+ * prompt builder and drop-list parse. Like a {@link ScanManager} pass it accepts an
+ * injectable `runnerFactory` (so tests drive it with a fake runner — no SDK, no
+ * subprocess) plus an optional `runners` set + `isCancelled` probe so the orchestrator
+ * can interrupt it mid-flight and fold it into cancel.
  */
 import type {
   Config,
-  NightcoreEvent,
   ReviewFinding,
   SurfaceCommand,
   TokenUsage,
@@ -28,11 +29,11 @@ import type { Logger } from '@nightcore/shared';
 import { getStringArray } from '../../util/field-extract.js';
 import { extractJson } from '../shared/findings.js';
 import {
-  addUsage,
-  makeHeartbeat,
+  EMPTY_USAGE,
   type ScanRunnerFactory,
   type ScanSessionRunner,
 } from '../shared/scan-manager.js';
+import { runTailSession } from '../shared/tail-session.js';
 import {
   PR_REVIEW_ALLOWED_TOOLS,
   PR_REVIEW_DISALLOWED_TOOLS,
@@ -40,22 +41,6 @@ import {
 } from './presets.js';
 
 type StartPrReview = Extract<SurfaceCommand, { type: 'start-pr-review' }>;
-
-/** The stable failure reason carried by a `session-failed` event. */
-type SessionFailedReason = Extract<
-  NightcoreEvent,
-  { type: 'session-failed' }
->['reason'];
-
-/** Per-pass turn ceiling for the validator session (it inspects then answers). */
-const DEFAULT_MAX_TURNS = 40;
-
-const EMPTY_USAGE: TokenUsage = {
-  inputTokens: 0,
-  outputTokens: 0,
-  cacheReadTokens: 0,
-  cacheCreationTokens: 0,
-};
 
 /** The strict-JSON reminder appended to the ONE corrective validator retry. */
 const VALIDATOR_RETRY_REMINDER =
@@ -96,13 +81,6 @@ export interface ValidatePrReviewResult {
   error?: string;
 }
 
-/** The terminal outcome of one validator session spin. */
-interface ValidatorSessionOutcome {
-  result?: string;
-  error?: string;
-  reason?: SessionFailedReason;
-}
-
 /**
  * Run the validator and return the surviving findings. Never throws — every failure
  * mode degrades to keeping ALL findings (fail-open) so a real finding is never lost to
@@ -111,137 +89,65 @@ interface ValidatorSessionOutcome {
 export async function validatePrReviewFindings(
   args: ValidatePrReviewArgs,
 ): Promise<ValidatePrReviewResult> {
-  const usage: TokenUsage = { ...EMPTY_USAGE };
-  let costUsd = 0;
-
   // Nothing to vet — do not pay for a session.
   if (args.findings.length === 0) {
-    return { findings: [], usage, costUsd, droppedIds: [] };
-  }
-  if (args.isCancelled?.()) {
-    return {
-      findings: args.findings,
-      usage,
-      costUsd,
-      droppedIds: [],
-      error: 'cancelled',
-    };
+    return { findings: [], usage: { ...EMPTY_USAGE }, costUsd: 0, droppedIds: [] };
   }
 
-  // Throttled progress so the (serial) validator tail shows life in the terminal
-  // instead of running silent — its events never reach the wire.
-  const heartbeat = makeHeartbeat(args.logger, '[pr-review:validator]');
-  const basePrompt = buildValidatorPrompt(args);
+  const tail = await runTailSession<string[]>({
+    prompt: buildValidatorPrompt(args),
+    persona: PR_VALIDATOR_PERSONA,
+    tools: {
+      allowed: PR_REVIEW_ALLOWED_TOOLS,
+      disallowed: PR_REVIEW_DISALLOWED_TOOLS,
+    },
+    command: args.command,
+    config: args.config,
+    apiKeyFallback: args.apiKeyFallback,
+    ...(args.logger !== undefined ? { logger: args.logger } : {}),
+    runnerFactory: args.runnerFactory,
+    ...(args.runners !== undefined ? { runners: args.runners } : {}),
+    ...(args.isCancelled !== undefined ? { isCancelled: args.isCancelled } : {}),
+    label: 'pr-review:validator',
+    retryReminder: VALIDATOR_RETRY_REMINDER,
+    parse: (raw) => {
+      const ids = parseDropIds(raw);
+      return ids === undefined
+        ? { error: 'no JSON drop-list in validator output' }
+        : { value: ids };
+    },
+  });
 
-  // Spin one validator session for `prompt`, accumulating usage/cost into the shared
-  // totals. Factored out so the corrective retry reuses the exact runner config.
-  const runSession = async (
-    prompt: string,
-  ): Promise<ValidatorSessionOutcome> => {
-    let result: string | undefined;
-    let error: string | undefined;
-    let reason: SessionFailedReason | undefined;
-    const effort = args.command.effort ?? args.config.effort;
-    const runner = args.runnerFactory(
-      {
-        sessionId: -1,
-        prompt,
-        model: args.command.model ?? args.config.model,
-        ...(effort ? { effort } : {}),
-        permissionMode: 'dontAsk',
-        permissionPolicy: args.config.permissions,
-        cwd: args.command.projectPath,
-        apiKeyFallback: args.apiKeyFallback,
-        settingSources: args.config.settingSources,
-        todoFeatureEnabled: false,
-        appendSystemPrompt: PR_VALIDATOR_PERSONA,
-        allowedTools: [...PR_REVIEW_ALLOWED_TOOLS],
-        disallowedTools: [...PR_REVIEW_DISALLOWED_TOOLS],
-        maxTurns: DEFAULT_MAX_TURNS,
-      },
-      (event) => {
-        if (event.type === 'session-completed') {
-          result = event.result;
-          costUsd += event.costUsd;
-          if (event.usage !== undefined) addUsage(usage, event.usage);
-        } else if (event.type === 'session-failed') {
-          error = event.message;
-          reason = event.reason;
-        } else {
-          heartbeat(event);
-        }
-      },
-      args.logger?.child('pr-review-validator'),
-    );
-
-    args.runners?.add(runner);
-    try {
-      await runner.run();
-    } finally {
-      args.runners?.delete(runner);
-    }
-    return { result, error, reason };
-  };
-
-  try {
-    const first = await runSession(basePrompt);
-    if (args.isCancelled?.()) {
-      return { findings: args.findings, usage, costUsd, droppedIds: [], error: 'cancelled' };
-    }
-    if (first.result === undefined) {
-      // Session failed → keep everything.
-      return {
-        findings: args.findings,
-        usage,
-        costUsd,
-        droppedIds: [],
-        error:
-          first.error ??
-          (first.reason !== undefined ? `validator ${first.reason}` : 'no result'),
-      };
-    }
-
-    let dropIds = parseDropIds(first.result);
-    if (dropIds === undefined) {
-      // One corrective retry with the strict-JSON reminder (mirrors the lens passes).
-      args.logger?.debug('pr-review validator produced no JSON; retrying', {
-        runId: args.command.runId,
-      });
-      const retry = await runSession(`${basePrompt}${VALIDATOR_RETRY_REMINDER}`);
-      if (args.isCancelled?.()) {
-        return { findings: args.findings, usage, costUsd, droppedIds: [], error: 'cancelled' };
-      }
-      if (retry.result !== undefined) dropIds = parseDropIds(retry.result);
-    }
-    if (dropIds === undefined) {
-      // Still unparseable → fail-open: keep all findings.
-      return {
-        findings: args.findings,
-        usage,
-        costUsd,
-        droppedIds: [],
-        error: 'no JSON drop-list in validator output',
-      };
-    }
-
-    // Only ever drop ids that were actually in the candidate set — the validator can
-    // never invent an id or drop something it was not shown.
-    const known = new Set(args.findings.map((f) => f.id));
-    const drop = new Set(dropIds.filter((id) => known.has(id)));
-    const survivors = args.findings.filter((f) => !drop.has(f.id));
-    return { findings: survivors, usage, costUsd, droppedIds: [...drop] };
-  } catch (error) {
+  if (tail.crashed === true) {
     // FAIL-OPEN: a thrown runner (or any unexpected error) must never lose real
     // findings — keep them all and surface the error to the caller's log.
-    args.logger?.warn('pr-review validator crashed; keeping all findings', error);
+    args.logger?.warn(
+      'pr-review validator crashed; keeping all findings',
+      tail.crashError,
+    );
+  }
+  if (tail.value === undefined) {
+    // Session failed / unparseable-after-retry / cancelled / crashed → keep everything.
     return {
       findings: args.findings,
-      usage,
-      costUsd,
+      usage: tail.usage,
+      costUsd: tail.costUsd,
       droppedIds: [],
-      error: error instanceof Error ? error.message : String(error),
+      ...(tail.error !== undefined ? { error: tail.error } : {}),
     };
   }
+
+  // Only ever drop ids that were actually in the candidate set — the validator can
+  // never invent an id or drop something it was not shown.
+  const known = new Set(args.findings.map((f) => f.id));
+  const drop = new Set(tail.value.filter((id) => known.has(id)));
+  const survivors = args.findings.filter((f) => !drop.has(f.id));
+  return {
+    findings: survivors,
+    usage: tail.usage,
+    costUsd: tail.costUsd,
+    droppedIds: [...drop],
+  };
 }
 
 /**
