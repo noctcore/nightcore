@@ -326,16 +326,16 @@ export default tseslint.config(
     },
   },
   // Freeze-at-worst carve-out for `nightcore/max-props-per-component` (issue
-  // #51): the 6 pre-existing wide props contracts (Board 39, Column 22,
-  // TaskDetailChrome 19, TaskCard 16, Sidebar 16, TaskDetail 14) may not grow
-  // past 40. The board refactor deletes entries from this list — it only
-  // shrinks; severity stays `error` (`no-warn-severity` is ciCritical).
+  // #51). The board refactor (scoped contexts) retired the wide Board (39→12),
+  // Column (22→12), and TaskCard (16→7) contracts — they now pass the default
+  // (12) and were removed from this list (issue #57). Two pre-existing wide
+  // contracts remain and may not grow past 40: Sidebar (16 — the shell's
+  // nav/project/awaiting-input surface) and TaskDetail (TaskDetailProps 13 /
+  // TaskDetailChromeProps 18 — the drawer plus its memoized chrome shell). The
+  // list only shrinks; severity stays `error` (`no-warn-severity` is ciCritical).
   {
     files: [
       'apps/web/src/components/app/Sidebar/Sidebar.types.ts',
-      'apps/web/src/components/board/Board/Board.types.ts',
-      'apps/web/src/components/board/Column/Column.types.ts',
-      'apps/web/src/components/board/TaskCard/TaskCard.types.ts',
       'apps/web/src/components/board/TaskDetail/TaskDetail.types.ts',
     ],
     rules: {
@@ -358,14 +358,14 @@ export default tseslint.config(
     },
   },
   // Freeze-at-worst carve-out for `nightcore/max-hook-return-surface` (issue
-  // #53): the 7 pre-existing god-controller returns (HarnessView 77, AppShell
-  // 54, PrReviewView 54, IssueTriageView 44, InsightView 40, NewTaskForm 33,
-  // ScorecardView 23) may not grow past 80. The board-state + web-struct
-  // refactors dismantle these controllers and delete entries — the list only
-  // shrinks; severity stays `error` (`no-warn-severity` is ciCritical).
+  // #53). The AppShell controller split dropped its hook return under the default
+  // (20), so AppShell.hooks.ts was removed from this list (issue #57). Six
+  // pre-existing god-controller returns remain and may not grow past 80:
+  // HarnessView 77, PrReviewView 54, IssueTriageView 44, InsightView 40,
+  // NewTaskForm 33, ScorecardView 23. The list only shrinks; severity stays
+  // `error` (`no-warn-severity` is ciCritical).
   {
     files: [
-      'apps/web/src/components/app/AppShell/AppShell.hooks.ts',
       'apps/web/src/components/board/NewTaskForm/NewTaskForm.hooks.ts',
       'apps/web/src/components/harness/HarnessView/HarnessView.hooks.ts',
       'apps/web/src/components/insight/InsightView/InsightView.hooks.ts',
@@ -377,16 +377,17 @@ export default tseslint.config(
       'nightcore/max-hook-return-surface': ['error', { max: 80 }],
     },
   },
-  // Carve-out for `nightcore/no-prop-drilling` (issue #52): the pre-existing
-  // forwarded-bundle chains (Board→Column 14, Column→TaskCard 9,
-  // TaskDetail→TaskDetailChrome 9, ValidateControls→ModelEffortPicker 4,
-  // WorktreeManager→WorktreeRow 4). The board refactor dismantles these chains
-  // and deletes entries from this list — it only shrinks. `off` is the only
-  // legal suppression (`no-warn-severity` is ciCritical).
+  // Carve-out for `nightcore/no-prop-drilling` (issue #52). The board refactor
+  // dismantled the Column→TaskCard chain — Column.tsx no longer forwards a
+  // bundle (its card handlers arrive via TaskActionsContext), so it was removed
+  // from this list (issue #57). Four forwarded-bundle chains remain: Board
+  // (→BoardHeader 4, →Column 4), TaskDetail→TaskDetailChrome 8,
+  // ValidateControls→ModelEffortPicker 4, WorktreeManager→WorktreeRow 4. The
+  // list only shrinks; `off` is the only legal suppression (`no-warn-severity`
+  // is ciCritical).
   {
     files: [
       'apps/web/src/components/board/Board/Board.tsx',
-      'apps/web/src/components/board/Column/Column.tsx',
       'apps/web/src/components/board/TaskDetail/TaskDetail.tsx',
       'apps/web/src/components/issues/ValidateControls/ValidateControls.tsx',
       'apps/web/src/components/worktree/WorktreeManager/WorktreeManager.tsx',
@@ -432,19 +433,18 @@ export default tseslint.config(
       ],
     },
   },
-  // Freeze-at-worst carve-out: the 7 pre-existing offenders may not grow past
-  // 1400 lines (worst today: PrReviewView.hooks.ts at ~1300). Each refactor
-  // that lands deletes its file from this list AND its
-  // baselines/web-file-size-ratchet.json entry — the list only shrinks.
+  // Freeze-at-worst carve-out over the core `max-lines` 500 cap. Five refactored
+  // offenders (AppShell.hooks.ts 254, HarnessView.hooks.ts 291,
+  // InsightView.hooks.ts 430, PrReviewView.hooks.ts 230, SettingsView.tsx 254)
+  // dropped under 500 and were removed from this list (issue #57). Two remain
+  // over 500 and may not grow past 1400: TaskDetail.tsx (526) and
+  // IssueTriageView.hooks.ts (506). The list only shrinks. (Note: the separate
+  // 400-line web-file-size ratchet baseline is a distinct cap — InsightView.hooks.ts
+  // and IssueTriageView.hooks.ts still hold ratchet baseline entries at >400.)
   {
     files: [
-      'apps/web/src/components/app/AppShell/AppShell.hooks.ts',
       'apps/web/src/components/board/TaskDetail/TaskDetail.tsx',
-      'apps/web/src/components/harness/HarnessView/HarnessView.hooks.ts',
-      'apps/web/src/components/insight/InsightView/InsightView.hooks.ts',
       'apps/web/src/components/issues/IssueTriageView/IssueTriageView.hooks.ts',
-      'apps/web/src/components/prreview/PrReviewView/PrReviewView.hooks.ts',
-      'apps/web/src/components/settings/SettingsView/SettingsView.tsx',
     ],
     rules: {
       'max-lines': [
