@@ -8,9 +8,8 @@ import {
   effortOptionsForModel,
   isAdaptiveModel,
   isEffortSupported,
-  MODEL_OPTIONS,
-  type ModelOption,
   modelOptionFor,
+  staticModelDescriptors,
 } from '@/lib/models';
 
 import { providerLabel, resolveProviderForModel } from '../ProviderIcon';
@@ -25,25 +24,15 @@ import type {
   SelectedSummary,
 } from './ModelSelect.types';
 
-/** Shape a web `ModelOption` as the contract `ModelDescriptor` the catalog trades
- *  in, so the static fallback is the same currency the live `listModels()` seam
- *  returns — B5 swaps the loader without a component change. */
-function optionToDescriptor(option: ModelOption): ModelDescriptor {
-  return {
-    value: option.id,
-    displayName: option.label,
-    description: option.description,
-    supportsEffort: option.supportsEffort,
-    supportedEffortLevels: option.supportedEfforts,
-  };
-}
-
 /** The static catalog seam — resolves synchronously from the curated
- *  `@/lib/models` stand-in, so the picker lands in `ready` with no loading flash.
- *  B5 replaces this with an `async` bridge loader once the live seam lands. */
+ *  `@/lib/models` stand-in (shaped via the shared {@link staticModelDescriptors}),
+ *  so the picker lands in `ready` with no loading flash. The live `async` bridge
+ *  loader (`ModelSelectField`'s `LIVE_MODEL_CATALOG_DATA`) returns the same
+ *  `ModelDescriptor[]` currency, so a surface swaps the seam without touching this
+ *  presentational component. */
 export const STATIC_MODEL_CATALOG_DATA: ModelCatalogData = {
   mode: 'sync',
-  read: () => MODEL_OPTIONS.map(optionToDescriptor),
+  read: staticModelDescriptors,
 };
 
 /**

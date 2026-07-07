@@ -8,6 +8,7 @@
 export * from './commands/harness';
 export * from './commands/insight';
 export * from './commands/issues';
+export * from './commands/models';
 export * from './commands/pr';
 export * from './commands/pr-review';
 export * from './commands/projects';

@@ -6,13 +6,16 @@
  */
 import { KnownModelSchema } from '@nightcore/contracts';
 
+import { staticModelDescriptors } from '../models';
 import { PROVIDER_LABEL } from '../provider';
 import type {
   AppInfo,
   BoardBackgroundRef,
   HarnessPolicyFile,
   InjectionFlag,
+  ModelDescriptor,
   Project,
+  ProviderCapabilities,
   ProviderConfigSnapshot,
   Settings,
 } from './types';
@@ -63,6 +66,32 @@ export const MOCK_PROVIDER_CONFIG: ProviderConfigSnapshot = {
   permissionMode: 'auto-accept',
   outputStyle: 'default',
   extrasStatus: 'supported',
+};
+
+/** The browser-preview model catalog (`list_models` fallback outside Tauri) — the
+ *  curated static descriptors, the same `ModelDescriptor[]` currency the live seam
+ *  returns, so the picker renders in Storybook/preview without the engine. */
+export const MOCK_MODEL_CATALOG: ModelDescriptor[] = staticModelDescriptors();
+
+/** The browser-preview capability descriptor (`get_capabilities` fallback outside
+ *  Tauri). Claude's full support matrix — the picker's effort row + the surfaces'
+ *  cost lines both stay visible in preview. Also the fail-open default the live
+ *  wrapper falls back to when the capabilities read fails. */
+export const MOCK_CAPABILITIES: ProviderCapabilities = {
+  id: 'claude',
+  label: PROVIDER_LABEL,
+  autonomyLevels: ['bypass', 'auto-accept', 'ask', 'plan'],
+  supportsHooks: true,
+  supportsMcp: true,
+  supportsPlanMode: true,
+  supportsStructuredOutput: true,
+  supportsSessionResume: true,
+  supportsFileCheckpointing: true,
+  supportsAskUserQuestion: true,
+  supportsSettingSources: true,
+  supportsSessionStore: true,
+  supportsEffort: true,
+  costTelemetry: 'full',
 };
 
 /** A mock project so Storybook/browser preview shows a populated switcher. */

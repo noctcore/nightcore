@@ -48,6 +48,10 @@ export interface ModelSelectProps {
   disabled?: boolean;
   /** Accessible name for the combobox (and the listbox). Defaults to "Model". */
   ariaLabel?: string;
+  /** Whether to render the reasoning-effort row. Defaults to `true`; the live
+   *  wrapper gates it on the active provider's `supportsEffort` capability so a
+   *  provider with no effort control (e.g. a future one) hides the row entirely. */
+  showEffort?: boolean;
 }
 
 /** One selectable model row in the listbox, pre-assigned its flat keyboard-nav

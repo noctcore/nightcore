@@ -51,6 +51,9 @@ export type { MenuItem, MenuProps } from './Menu';
 export { Menu } from './Menu';
 export type { ModalProps } from './Modal';
 export { Modal, useLastPresent, useModal } from './Modal';
+/** @deprecated Migrated to `ModelSelectField` / `ModelSelect` (B5). This thin
+ *  adapter re-exports the combobox picker for one deprecation cycle, then is
+ *  deleted. Prefer `ModelSelectField` (live-wired) for new surfaces. */
 export { ModelEffortPicker } from './ModelEffortPicker';
 export type { ModelEffortPickerProps } from './ModelEffortPicker/ModelEffortPicker.types';
 export type {
@@ -60,6 +63,13 @@ export type {
   ModelSelectProps,
 } from './ModelSelect';
 export { ModelSelect, STATIC_MODEL_CATALOG_DATA, useModelCatalog } from './ModelSelect';
+export type { ModelSelectFieldProps } from './ModelSelectField';
+export {
+  LIVE_MODEL_CATALOG_DATA,
+  ModelSelectField,
+  useProviderCapabilities,
+  useShowCostLine,
+} from './ModelSelectField';
 export * from './motion';
 export type { NumberFieldProps } from './NumberField';
 export { NumberField } from './NumberField';

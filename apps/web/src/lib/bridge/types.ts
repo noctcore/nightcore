@@ -76,6 +76,15 @@ export type {
   FindingEffort,
   FindingSeverity,
 } from '@nightcore/contracts';
+// The dynamic model catalog (`list_models`) + the active provider's capability
+// descriptor (`get_capabilities`) come straight from the zod contract — the same
+// wire shapes the engine emits, so the picker reads live descriptors/capabilities
+// without a hand-mirrored interface.
+export type {
+  CostTelemetry,
+  ModelDescriptor,
+  ProviderCapabilities,
+} from '@nightcore/contracts';
 // Readiness Scorecard (Profile) persisted shapes (ts-rs from `store/scorecard.rs`).
 export type { ScorecardEvidence } from '../generated/ScorecardEvidence';
 export type { ScorecardRun } from '../generated/ScorecardRun';

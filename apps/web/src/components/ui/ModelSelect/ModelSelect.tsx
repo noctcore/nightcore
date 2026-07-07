@@ -28,6 +28,7 @@ export function ModelSelect({
   catalog,
   disabled = false,
   ariaLabel,
+  showEffort = true,
 }: ModelSelectProps) {
   const v = useModelSelect({ value, onChange, catalog, disabled });
   const label = ariaLabel ?? 'Model';
@@ -110,7 +111,7 @@ export function ModelSelect({
         )}
       </div>
 
-      <EffortRow effort={v.effort} disabled={disabled} onPick={v.selectEffort} />
+      {showEffort && <EffortRow effort={v.effort} disabled={disabled} onPick={v.selectEffort} />}
     </div>
   );
 }

@@ -15,6 +15,7 @@
 // stand-in shaped like the descriptor: when the seam opens, the picker can swap
 // to live descriptors without a component change.
 
+import type { ModelDescriptor } from '@nightcore/contracts';
 import { type EffortLevel, type KnownModel,KnownModelSchema } from '@nightcore/contracts';
 
 /** Capability/cost tier shown as a badge on the model option. */
@@ -105,6 +106,21 @@ export const MODEL_OPTIONS: ModelOption[] = WEB_MODELS.map((id) => ({
   id: KnownModelSchema.parse(id),
   ...MODEL_META[id],
 }));
+
+/** The curated `MODEL_OPTIONS` reshaped as the contract `ModelDescriptor[]` the
+ *  model catalog trades in — the SAME currency the live `listModels()` bridge seam
+ *  returns. Single-sources the static fallback used by both the ModelSelect sync
+ *  seam and the browser-preview `listModels` mock, so the picker can swap the
+ *  loader (static → live) without a shape change. Pure. */
+export function staticModelDescriptors(): ModelDescriptor[] {
+  return MODEL_OPTIONS.map((option) => ({
+    value: option.id,
+    displayName: option.label,
+    description: option.description,
+    supportsEffort: option.supportsEffort,
+    supportedEffortLevels: option.supportedEfforts,
+  }));
+}
 
 /** A selectable reasoning-effort level — the SDK effort set. */
 export interface EffortOption {
