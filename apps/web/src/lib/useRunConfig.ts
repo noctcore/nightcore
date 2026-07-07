@@ -2,7 +2,12 @@
  *  Insight and Harness views. */
 import { useMemo, useState } from 'react';
 
-/** Values used to pre-fill the form on "New run" (from the last/loaded run). */
+/** Values used to pre-fill the form on "New run" (from the last/loaded run).
+ *  Item 6 (B5) — scan-config is INTENTIONALLY excluded from the `providerId`
+ *  round-trip that Task/Settings selections carry: the model/effort selection here
+ *  is ephemeral `useState` (below), never persisted, and prefill carries only
+ *  `model` — a scan's provider is re-derivable from the model id at pick time, so
+ *  there is no saved selection whose provider would need to round-trip. */
 export interface RunConfigPrefill<C extends string> {
   model?: string | null;
   categories?: C[];

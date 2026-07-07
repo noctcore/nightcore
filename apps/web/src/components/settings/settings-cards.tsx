@@ -98,7 +98,10 @@ function resolveModelValue(model: string): string {
 /** The default-model control. With a single provider (today) a compact `Segmented`
  *  row is clearest; once the live catalog reports >1 provider it adopts the
  *  provider-grouped `ModelSelect` combobox, which scales past a wide chip row (B5).
- *  The default effort is a separate Settings row, so the combobox hides its own. */
+ *  The default effort is a separate Settings row, so the combobox hides its own.
+ *  Item 6 (B5): Settings keeps NO per-selection provider stamp — the default
+ *  model's provider is the authoritative global `settings.provider`, not a
+ *  Task-style `providerId` (needed only where a pick has no provider context). */
 function DefaultModelControl({ value, onPick }: { value: string; onPick: (m: string) => void }) {
   const catalog = useModelCatalog(LIVE_MODEL_CATALOG_DATA);
   const providers =
@@ -112,7 +115,9 @@ function DefaultModelControl({ value, onPick }: { value: string; onPick: (m: str
         showEffort={false}
         catalog={catalog}
         value={{ model: value, effort: null }}
-        // Settings has no "Inherit" default — ignore the synthetic null row.
+        // Ignore the synthetic null row (no "Inherit" default) and drop
+        // `sel.providerId` on purpose — `settings.provider` owns the default
+        // model's provider (see the doc-comment above). Item 6 (B5).
         onChange={(sel) => sel.model !== null && onPick(sel.model)}
       />
     );
