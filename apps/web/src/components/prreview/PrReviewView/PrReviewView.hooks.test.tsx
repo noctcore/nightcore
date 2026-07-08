@@ -17,8 +17,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }));
 
 import { ToastProvider } from '@/components/ui';
-import type { PrSummary, StoredReviewFinding } from '@/lib/bridge';
-import type { PrReviewRun } from '@/lib/generated/PrReviewRun';
+import type { PrReviewRun, PrSummary, StoredReviewFinding } from '@/lib/bridge';
 import type { ScanTarget } from '@/lib/source-ref';
 
 import { type PrReviewViewModel, usePrReviewView } from './PrReviewView.hooks';
@@ -160,14 +159,14 @@ test('review section transitions config → running → results as the run strea
   const model = await mountView();
 
   // No run known for PR 42 → the section opens in CONFIG.
-  model().selectPr(42);
-  await vi.waitFor(() => expect(model().review?.mode).toBe('config'));
+  model().list.selectPr(42);
+  await vi.waitFor(() => expect(model().workspace.review?.mode).toBe('config'));
 
   // Review → the optimistic running entry lands → RUNNING.
-  model().review!.configure.onReview();
-  await vi.waitFor(() => expect(model().review?.mode).toBe('running'));
-  expect(model().review?.stream?.runId).toBe('run-1');
-  expect(model().runningPrs).toContain(42);
+  model().workspace.review!.configure.onReview();
+  await vi.waitFor(() => expect(model().workspace.review?.mode).toBe('running'));
+  expect(model().workspace.review?.stream?.runId).toBe('run-1');
+  expect(model().list.runningPrs).toContain(42);
 
   // The terminal event reconciles against the (now persisted) run → RESULTS.
   stored = [persistedRun({ id: 'run-1', findings: [storedFinding()] })];
@@ -179,8 +178,8 @@ test('review section transitions config → running → results as the run strea
     costUsd: 0,
     durationMs: 5,
   });
-  await vi.waitFor(() => expect(model().review?.mode).toBe('results'));
-  expect(model().review?.results.gridFindings.map((f) => f.id)).toEqual(['sf1']);
+  await vi.waitFor(() => expect(model().workspace.review?.mode).toBe('results'));
+  expect(model().workspace.review?.results.gridFindings.map((f) => f.id)).toEqual(['sf1']);
 });
 
 test('completing a run auto-selects ALL open findings; a user None survives a re-fold', async () => {
@@ -192,10 +191,10 @@ test('completing a run auto-selects ALL open findings; a user None survives a re
   });
   const model = await mountView();
 
-  model().selectPr(42);
-  await vi.waitFor(() => expect(model().review?.mode).toBe('config'));
-  model().review!.configure.onReview();
-  await vi.waitFor(() => expect(model().review?.mode).toBe('running'));
+  model().list.selectPr(42);
+  await vi.waitFor(() => expect(model().workspace.review?.mode).toBe('config'));
+  model().workspace.review!.configure.onReview();
+  await vi.waitFor(() => expect(model().workspace.review?.mode).toBe('running'));
 
   // Terminal event reconciles against a run carrying two open findings.
   stored = [
@@ -219,12 +218,12 @@ test('completing a run auto-selects ALL open findings; a user None survives a re
   // On the transition to completed the whole OPEN set seeds the selection —
   // even the low finding reaches the contributor.
   await vi.waitFor(() =>
-    expect([...model().review!.results.selection].sort()).toEqual(['a', 'b']),
+    expect([...model().workspace.review!.results.selection].sort()).toEqual(['a', 'b']),
   );
 
   // The user clears the selection (quick-select None).
-  model().review!.results.onSelectionChange(new Set());
-  await vi.waitFor(() => expect(model().review!.results.selection.size).toBe(0));
+  model().workspace.review!.results.onSelectionChange(new Set());
+  await vi.waitFor(() => expect(model().workspace.review!.results.selection.size).toBe(0));
 
   // A re-fold of the SAME run (reconcile now brings a third finding) must NOT
   // re-stomp: auto-select fires at most once per run, so None stands.
@@ -248,10 +247,10 @@ test('completing a run auto-selects ALL open findings; a user None survives a re
   });
   // The reconcile lands (grid grows to 3), proving the effect re-ran…
   await vi.waitFor(() =>
-    expect(model().review!.results.gridFindings.length).toBe(3),
+    expect(model().workspace.review!.results.gridFindings.length).toBe(3),
   );
   // …yet the selection is still empty — the user's None was not overwritten.
-  expect(model().review!.results.selection.size).toBe(0);
+  expect(model().workspace.review!.results.selection.size).toBe(0);
 });
 
 test('a rejected re-run over completed results stays in CONFIG so the error is seen', async () => {
@@ -266,37 +265,37 @@ test('a rejected re-run over completed results stays in CONFIG so the error is s
   });
   const model = await mountView();
 
-  model().selectPr(42);
+  model().list.selectPr(42);
   // The mount reconcile projected the completed run → RESULTS.
-  await vi.waitFor(() => expect(model().review?.mode).toBe('results'));
+  await vi.waitFor(() => expect(model().workspace.review?.mode).toBe('results'));
 
   // "New review" → prefilled CONFIG over the existing results.
-  model().review!.results.onNewReview();
-  await vi.waitFor(() => expect(model().review?.mode).toBe('config'));
-  expect(model().review?.configure.onBackToResults).not.toBeNull();
+  model().workspace.review!.results.onNewReview();
+  await vi.waitFor(() => expect(model().workspace.review?.mode).toBe('config'));
+  expect(model().workspace.review?.configure.onBackToResults).not.toBeNull();
 
   // Rejected start: the per-PR error surfaces and the section STAYS in config.
-  model().review!.configure.onReview();
+  model().workspace.review!.configure.onReview();
   await vi.waitFor(() =>
-    expect(model().review?.configure.startError).toBe('gh: authentication required'),
+    expect(model().workspace.review?.configure.startError).toBe('gh: authentication required'),
   );
-  expect(model().review?.mode).toBe('config');
+  expect(model().workspace.review?.mode).toBe('config');
 });
 
 test('switching PRs mid-run cancels nothing: both PRs keep their streams', async () => {
   mockCommands({ start_pr_review: () => 'run-42' });
   const model = await mountView();
 
-  model().selectPr(42);
-  await vi.waitFor(() => expect(model().review?.mode).toBe('config'));
-  model().review!.configure.onReview();
-  await vi.waitFor(() => expect(model().review?.mode).toBe('running'));
+  model().list.selectPr(42);
+  await vi.waitFor(() => expect(model().workspace.review?.mode).toBe('config'));
+  model().workspace.review!.configure.onReview();
+  await vi.waitFor(() => expect(model().workspace.review?.mode).toBe('running'));
 
   // Switch to PR 7: its panel is fresh CONFIG, while 42 keeps running.
-  model().selectPr(7);
-  await vi.waitFor(() => expect(model().selectedPr).toBe(7));
-  expect(model().review?.mode).toBe('config');
-  expect(model().runningPrs).toContain(42);
+  model().list.selectPr(7);
+  await vi.waitFor(() => expect(model().list.selectedPr).toBe(7));
+  expect(model().workspace.review?.mode).toBe('config');
+  expect(model().list.runningPrs).toContain(42);
 
   // A live lens event for 42's run keeps folding while PR 7 is selected.
   emit({
@@ -318,10 +317,10 @@ test('switching PRs mid-run cancels nothing: both PRs keep their streams', async
   });
 
   // Switching back shows the still-running stream with the folded finding.
-  model().selectPr(42);
-  await vi.waitFor(() => expect(model().review?.mode).toBe('running'));
+  model().list.selectPr(42);
+  await vi.waitFor(() => expect(model().workspace.review?.mode).toBe('running'));
   await vi.waitFor(() =>
-    expect(model().review?.stream?.findings.map((f) => f.title)).toEqual([
+    expect(model().workspace.review?.stream?.findings.map((f) => f.title)).toEqual([
       'Streamed while away',
     ]),
   );
@@ -340,23 +339,23 @@ test('history is per-PR; selecting a past run flags it and backToLatest returns'
   });
   const model = await mountView();
 
-  model().selectPr(42);
+  model().list.selectPr(42);
   // Only PR 42's two runs appear, newest first, labeled `<date> · K findings`.
-  await vi.waitFor(() => expect(model().review?.history.items).toHaveLength(2));
-  expect(model().review!.history.items[0]!.label).toContain('1 finding');
-  expect(model().review!.history.items[1]!.label).toContain('0 findings');
-  expect(model().review?.history.viewingPastRun).toBe(false);
-  expect(model().review?.stream?.runId).toBe('run-a');
+  await vi.waitFor(() => expect(model().workspace.review?.history.items).toHaveLength(2));
+  expect(model().workspace.review!.history.items[0]!.label).toContain('1 finding');
+  expect(model().workspace.review!.history.items[1]!.label).toContain('0 findings');
+  expect(model().workspace.review?.history.viewingPastRun).toBe(false);
+  expect(model().workspace.review?.stream?.runId).toBe('run-a');
 
   // Selecting the older run projects ITS stream with the past-run flag.
-  model().review!.history.items[1]!.onClick();
-  await vi.waitFor(() => expect(model().review?.stream?.runId).toBe('run-a2'));
-  expect(model().review?.history.viewingPastRun).toBe(true);
+  model().workspace.review!.history.items[1]!.onClick();
+  await vi.waitFor(() => expect(model().workspace.review?.stream?.runId).toBe('run-a2'));
+  expect(model().workspace.review?.history.viewingPastRun).toBe(true);
 
   // Back to latest.
-  model().review!.history.onBackToLatest();
-  await vi.waitFor(() => expect(model().review?.stream?.runId).toBe('run-a'));
-  expect(model().review?.history.viewingPastRun).toBe(false);
+  model().workspace.review!.history.onBackToLatest();
+  await vi.waitFor(() => expect(model().workspace.review?.stream?.runId).toBe('run-a'));
+  expect(model().workspace.review?.history.viewingPastRun).toBe(false);
 });
 
 test('preselect selects the run’s PR and opens the named finding', async () => {
@@ -369,9 +368,9 @@ test('preselect selects the run’s PR and opens the named finding', async () =>
     itemId: 'sf1',
   });
 
-  await vi.waitFor(() => expect(model().selectedPr).toBe(42));
-  await vi.waitFor(() => expect(model().selected?.id).toBe('sf1'));
-  expect(model().review?.mode).toBe('results');
+  await vi.waitFor(() => expect(model().list.selectedPr).toBe(42));
+  await vi.waitFor(() => expect(model().finding.selected?.id).toBe('sf1'));
+  expect(model().workspace.review?.mode).toBe('results');
 });
 
 test('the own-PR guard arms from viewerLogin and fails open when login is null', async () => {
@@ -382,9 +381,9 @@ test('the own-PR guard arms from viewerLogin and fails open when login is null',
     get_pr_review_run: () => persistedRun({ findings: [storedFinding()] }),
   });
   const model = await mountView();
-  model().selectPr(42);
+  model().list.selectPr(42);
   await vi.waitFor(() =>
-    expect(model().review?.results.toolbar.ownPr).toBe(true),
+    expect(model().workspace.review?.results.toolbar.ownPr).toBe(true),
   );
 });
 
@@ -395,17 +394,17 @@ test('switching PRs closes the post gate (verdict + error)', async () => {
     get_pr_review_run: () => run,
   });
   const model = await mountView();
-  model().selectPr(42);
-  await vi.waitFor(() => expect(model().review?.mode).toBe('results'));
+  model().list.selectPr(42);
+  await vi.waitFor(() => expect(model().workspace.review?.mode).toBe('results'));
 
-  model().review!.results.toolbar.requestPost('approve');
-  await vi.waitFor(() => expect(model().postVerdict).toBe('approve'));
+  model().workspace.review!.results.toolbar.requestPost('approve');
+  await vi.waitFor(() => expect(model().post.postVerdict).toBe('approve'));
 
   // The armed verdict targeted PR 42's displayed run — a switch must not carry
   // the open dialog over to PR 7.
-  model().selectPr(7);
-  await vi.waitFor(() => expect(model().postVerdict).toBeNull());
-  expect(model().postError).toBeNull();
+  model().list.selectPr(7);
+  await vi.waitFor(() => expect(model().post.postVerdict).toBeNull());
+  expect(model().post.postError).toBeNull();
 });
 
 test('a preselect landing while a gate dialog is open closes all three gates', async () => {
@@ -424,10 +423,10 @@ test('a preselect landing while a gate dialog is open closes all three gates', a
     expect(model).toBeDefined();
     expect(listeners.has('nc:pr-review')).toBe(true);
   });
-  model!.selectPr(42);
-  await vi.waitFor(() => expect(model!.review?.mode).toBe('results'));
-  model!.review!.results.toolbar.requestPost('approve');
-  await vi.waitFor(() => expect(model!.postVerdict).toBe('approve'));
+  model!.list.selectPr(42);
+  await vi.waitFor(() => expect(model!.workspace.review?.mode).toBe('results'));
+  model!.workspace.review!.results.toolbar.requestPost('approve');
+  await vi.waitFor(() => expect(model!.post.postVerdict).toBe('approve'));
 
   // The provenance navigation bypasses selectPr — it must still close every
   // human gate armed against the previous selection.
@@ -444,11 +443,11 @@ test('a preselect landing while a gate dialog is open closes all three gates', a
       />
     </ToastProvider>,
   );
-  await vi.waitFor(() => expect(model!.selected?.id).toBe('sf1'));
-  expect(model!.postVerdict).toBeNull();
-  expect(model!.postError).toBeNull();
-  expect(model!.addressArmed).toBe(false);
-  expect(model!.pushArmedFix).toBeNull();
+  await vi.waitFor(() => expect(model!.finding.selected?.id).toBe('sf1'));
+  expect(model!.post.postVerdict).toBeNull();
+  expect(model!.post.postError).toBeNull();
+  expect(model!.address.addressArmed).toBe(false);
+  expect(model!.fix.pushArmedFix).toBeNull();
 });
 
 test('a failed dismiss restores the finding into the post selection', async () => {
@@ -463,27 +462,27 @@ test('a failed dismiss restores the finding into the post selection', async () =
       }),
   });
   const model = await mountView();
-  model().selectPr(42);
-  await vi.waitFor(() => expect(model().review?.mode).toBe('results'));
+  model().list.selectPr(42);
+  await vi.waitFor(() => expect(model().workspace.review?.mode).toBe('results'));
 
   // The run completed with one open finding → auto-selected into the post set.
   await vi.waitFor(() =>
-    expect(model().review?.results.selection.has('sf1')).toBe(true),
+    expect(model().workspace.review?.results.selection.has('sf1')).toBe(true),
   );
 
   // Dismiss deselects optimistically while the RPC is in flight…
-  model().onDismiss('sf1');
+  model().finding.onDismiss('sf1');
   await vi.waitFor(() =>
-    expect(model().review?.results.selection.has('sf1')).toBe(false),
+    expect(model().workspace.review?.results.selection.has('sf1')).toBe(false),
   );
 
   // …and the rejected RPC rolls the deselect back: the finding is still open
   // and postable, so silently shrinking the selection would be a lie.
   rejectDismiss(new Error('store write failed'));
   await vi.waitFor(() =>
-    expect(model().review?.results.selection.has('sf1')).toBe(true),
+    expect(model().workspace.review?.results.selection.has('sf1')).toBe(true),
   );
-  expect(model().pending).toBe(false);
+  expect(model().finding.pending).toBe(false);
 });
 
 test('a rejected address toasts the failure besides the inline error, keeping the gate open', async () => {
@@ -505,20 +504,20 @@ test('a rejected address toasts the failure besides the inline error, keeping th
     expect(model).toBeDefined();
     expect(listeners.has('nc:pr-review')).toBe(true);
   });
-  model!.selectPr(42);
-  await vi.waitFor(() => expect(model!.review?.mode).toBe('results'));
+  model!.list.selectPr(42);
+  await vi.waitFor(() => expect(model!.workspace.review?.mode).toBe('results'));
   // The single open finding auto-selects on completion → addressCount 1.
-  await vi.waitFor(() => expect(model!.addressCount).toBe(1));
+  await vi.waitFor(() => expect(model!.address.addressCount).toBe(1));
 
-  model!.review!.results.toolbar.requestAddress();
-  await vi.waitFor(() => expect(model!.addressArmed).toBe(true));
-  model!.confirmAddress();
+  model!.workspace.review!.results.toolbar.requestAddress();
+  await vi.waitFor(() => expect(model!.address.addressArmed).toBe(true));
+  model!.address.confirmAddress();
 
   await vi.waitFor(() =>
-    expect(model!.addressError).toBe('the PR head is on a fork'),
+    expect(model!.address.addressError).toBe('the PR head is on a fork'),
   );
   // The gate stays open for retry/cancel AND the failure toasts (post/push parity).
-  expect(model!.addressArmed).toBe(true);
+  expect(model!.address.addressArmed).toBe(true);
   await expect
     .element(screen.getByText('Could not start the fix agent'))
     .toBeInTheDocument();
@@ -532,9 +531,9 @@ test('own-PR guard fails open when the viewer login is unknown', async () => {
     get_pr_review_run: () => persistedRun({ findings: [storedFinding()] }),
   });
   const model = await mountView();
-  model().selectPr(42);
-  await vi.waitFor(() => expect(model().review?.mode).toBe('results'));
-  expect(model().review?.results.toolbar.ownPr).toBe(false);
+  model().list.selectPr(42);
+  await vi.waitFor(() => expect(model().workspace.review?.mode).toBe('results'));
+  expect(model().workspace.review?.results.toolbar.ownPr).toBe(false);
 });
 
 test('a failed "Load more" keeps the already-loaded rows instead of wiping the list', async () => {
@@ -551,16 +550,16 @@ test('a failed "Load more" keeps the already-loaded rows instead of wiping the l
   const model = await mountView();
 
   // The initial fetch fills the cap, so the picker offers "Load more".
-  await vi.waitFor(() => expect(model().prs.length).toBe(50));
-  expect(model().prsHasMore).toBe(true);
+  await vi.waitFor(() => expect(model().list.prs.length).toBe(50));
+  expect(model().list.prsHasMore).toBe(true);
 
   // A load-more failure must NOT drop the rows already on screen — the loading-
   // more contract is "rows stay put". The error surfaces beside the kept list.
-  model().loadMorePrs();
-  await vi.waitFor(() => expect(model().prsError).toBe('gh: could not fetch more'));
-  expect(model().prs.length).toBe(50);
+  model().list.loadMorePrs();
+  await vi.waitFor(() => expect(model().list.prsError).toBe('gh: could not fetch more'));
+  expect(model().list.prs.length).toBe(50);
   // …but the footer stops offering more (the doubled cap didn't land).
-  expect(model().prsHasMore).toBe(false);
+  expect(model().list.prsHasMore).toBe(false);
 });
 
 test('a successful post reloads the run so the Posted lifecycle surfaces at once', async () => {
@@ -580,21 +579,21 @@ test('a successful post reloads the run so the Posted lifecycle surfaces at once
     },
   });
   const model = await mountView();
-  model().selectPr(42);
-  await vi.waitFor(() => expect(model().review?.mode).toBe('results'));
+  model().list.selectPr(42);
+  await vi.waitFor(() => expect(model().workspace.review?.mode).toBe('results'));
   // The single open finding auto-selects on completion → the post gate can arm.
   await vi.waitFor(() =>
-    expect(model().review?.results.selection.has('sf1')).toBe(true),
+    expect(model().workspace.review?.results.selection.has('sf1')).toBe(true),
   );
 
-  model().review!.results.toolbar.requestPost('approve');
-  await vi.waitFor(() => expect(model().postVerdict).toBe('approve'));
-  model().confirmPost();
+  model().workspace.review!.results.toolbar.requestPost('approve');
+  await vi.waitFor(() => expect(model().post.postVerdict).toBe('approve'));
+  model().post.confirmPost();
 
   // The reload surfaces the server stamp with no further interaction: the status
   // line reads Posted and the timeline gains its "Posted to GitHub" node.
-  await vi.waitFor(() => expect(model().lifecycle?.state).toBe('posted'));
+  await vi.waitFor(() => expect(model().workspace.lifecycle?.state).toBe('posted'));
   expect(
-    model().review!.results.timeline.some((s) => s.label === 'Posted to GitHub'),
+    model().workspace.review!.results.timeline.some((s) => s.label === 'Posted to GitHub'),
   ).toBe(true);
 });

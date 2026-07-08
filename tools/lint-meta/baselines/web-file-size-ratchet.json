@@ -7,7 +7,6 @@
   "apps/web/src/components/insight/InsightView/InsightView.hooks.ts": 430,
   "apps/web/src/components/issues/IssueTriageView/IssueTriageView.hooks.ts": 506,
   "apps/web/src/components/prreview/ReviewFindings/ReviewFindings.tsx": 413,
-  "apps/web/src/components/prreview/prreview-lifecycle.ts": 468,
   "apps/web/src/components/settings/McpServersCard/McpServersCard.tsx": 402,
   "apps/web/src/lib/bridge/events.ts": 697
 }

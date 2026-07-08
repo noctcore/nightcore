@@ -52,7 +52,10 @@ export function buildReviewSectionProps({
 }: BuildReviewSectionArgs): ReviewSectionProps | null {
   if (selectedPr === null) return null;
   // Capture the narrowable locals so the fix-strip closures keep prFix non-null.
-  const { displayStream, displayRun, prFix } = section;
+  const { streams, position } = section;
+  const displayStream = streams.displayStream;
+  const displayRun = streams.displayRun;
+  const prFix = position.prFix;
   const openFindings = (displayStream?.findings ?? []).filter(
     (f) => f.status === 'open',
   );
@@ -60,7 +63,7 @@ export function buildReviewSectionProps({
   return {
     prNumber: selectedPr,
     mode: section.mode,
-    stream: section.mode === 'running' ? section.runningStream : displayStream,
+    stream: section.mode === 'running' ? streams.runningStream : displayStream,
     configure: {
       config,
       isStarting: section.isStarting,
@@ -70,13 +73,13 @@ export function buildReviewSectionProps({
         reconfiguring && displayStream !== null ? navigation.backToResults : null,
     },
     running: {
-      categories: section.progressCategories,
-      findingCounts: section.lensFindingCounts,
+      categories: section.ui.progressCategories,
+      findingCounts: section.ui.lensFindingCounts,
       onCancel: navigation.onCancelRun,
     },
     results: {
       gridFindings: selection.gridFindings,
-      emptyMessage: section.emptyMessage,
+      emptyMessage: section.ui.emptyMessage,
       // A completed run with nothing to show earns the celebratory clean
       // state; idle / failed / cancelled keep the neutral message.
       emptyVariant: displayStream?.status === 'completed' ? 'clean' : 'neutral',
@@ -99,9 +102,9 @@ export function buildReviewSectionProps({
         postedFeedback: gates.postedFeedback,
         addressCount,
         canAddress,
-        fixRunning: section.fixRunning,
+        fixRunning: position.fixRunning,
         requestAddress: gates.requestAddress,
-        addressError: section.addressError,
+        addressError: section.targets.addressError,
       },
       // The PR's fix strip: plain closures over `prFix` (fresh per render; the
       // card is inert chrome, so memoizing buys nothing). The push button ARMS
@@ -114,7 +117,6 @@ export function buildReviewSectionProps({
               pushing: gates.pushing && gates.pushFixId === prFix.id,
               onCancel: () => {
                 void fixes.cancel(prFix.id).catch((err: unknown) => {
-                  console.error('cancel_pr_fix failed', err);
                   toast.error('Could not cancel the fix', err);
                 });
               },
@@ -124,22 +126,22 @@ export function buildReviewSectionProps({
               onReReview: navigation.onReview,
               onDismiss: () => fixes.dismiss(prFix.id),
             },
-      timeline: section.timeline,
+      timeline: position.timeline,
       // The review-position layer for the displayed run (ReviewPosition
       // self-hides when empty — a running/failed run carries no verdict, no
       // reconciliation, no follow-up).
       position: {
         verdict: displayRun?.verdict ?? null,
         verdictReasoning: displayRun?.verdictReasoning ?? null,
-        reconciliation: section.reconciliation,
-        stale: section.stale,
-        followup: section.followup,
+        reconciliation: position.reconciliation,
+        stale: position.stale,
+        followup: position.followup,
         onReReview: navigation.onReview,
       },
     },
     history: {
       items: navigation.historyItems,
-      viewingPastRun: section.viewingPastRun,
+      viewingPastRun: streams.viewingPastRun,
       onBackToLatest: navigation.backToLatest,
     },
   };

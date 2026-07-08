@@ -18,15 +18,13 @@ import {
 import { FindingDetailPanel } from '../FindingDetailPanel';
 import { PrPicker } from '../PrPicker';
 import { VERDICT_META } from '../prreview.constants';
-import { useResizablePanelWidth } from '../prreview-resize.hooks';
 import { PrWorkspace } from '../PrWorkspace';
 import { usePrReviewView } from './PrReviewView.hooks';
 import type { PrReviewViewProps } from './PrReviewView.types';
 
 export function PrReviewView(props: PrReviewViewProps) {
   const view = usePrReviewView(props);
-  // The persisted, keyboard-accessible split between the list rail and the panel.
-  const panel = useResizablePanelWidth();
+  const { panel } = view;
 
   if (!view.hasProject) {
     return (
@@ -38,7 +36,7 @@ export function PrReviewView(props: PrReviewViewProps) {
     );
   }
 
-  const verdictMeta = view.postVerdict !== null ? VERDICT_META[view.postVerdict] : null;
+  const verdictMeta = view.post.postVerdict !== null ? VERDICT_META[view.post.postVerdict] : null;
 
   return (
     <>
@@ -56,11 +54,11 @@ export function PrReviewView(props: PrReviewViewProps) {
           </div>
           <Button
             variant="ghost"
-            onClick={view.refreshPrs}
-            disabled={view.prsLoading}
-            aria-busy={view.prsLoading}
+            onClick={view.list.refreshPrs}
+            disabled={view.list.prsLoading}
+            aria-busy={view.list.prsLoading}
           >
-            {view.prsLoading ? <Spinner size={14} /> : <RetryIcon size={14} />}
+            {view.list.prsLoading ? <Spinner size={14} /> : <RetryIcon size={14} />}
             Refresh PRs
           </Button>
         </header>
@@ -78,17 +76,17 @@ export function PrReviewView(props: PrReviewViewProps) {
             className="flex min-h-0 shrink-0 flex-col overflow-hidden"
           >
             <PrPicker
-              prs={view.prs}
-              loading={view.prsLoading}
-              error={view.prsError}
-              value={view.selectedPr}
-              onChange={view.selectPr}
-              onRefresh={view.refreshPrs}
-              statuses={view.prRowStatuses}
-              findingCounts={view.prFindingCounts}
-              hasMore={view.prsHasMore}
-              onLoadMore={view.loadMorePrs}
-              loadingMore={view.prsLoadingMore}
+              prs={view.list.prs}
+              loading={view.list.prsLoading}
+              error={view.list.prsError}
+              value={view.list.selectedPr}
+              onChange={view.list.selectPr}
+              onRefresh={view.list.refreshPrs}
+              statuses={view.list.prRowStatuses}
+              findingCounts={view.list.prFindingCounts}
+              hasMore={view.list.prsHasMore}
+              onLoadMore={view.list.loadMorePrs}
+              loadingMore={view.list.prsLoadingMore}
             />
           </aside>
           {/* Draggable / keyboard-accessible divider (double-click resets). */}
@@ -99,7 +97,7 @@ export function PrReviewView(props: PrReviewViewProps) {
             }`}
           />
           <main className="min-h-0 flex-1 overflow-y-auto">
-            {view.selectedPr === null || view.review === null ? (
+            {view.list.selectedPr === null || view.workspace.review === null ? (
               <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
                 <GithubIcon size={44} className="text-muted-foreground/40" />
                 <p className="text-sm text-muted-foreground">
@@ -108,13 +106,13 @@ export function PrReviewView(props: PrReviewViewProps) {
               </div>
             ) : (
               <PrWorkspace
-                prNumber={view.selectedPr}
-                pr={view.selectedSummary}
-                onOpenExternal={view.onOpenExternal}
-                review={view.review}
-                lifecycle={view.lifecycle}
-                statusView={view.statusView}
-                statusActions={view.statusActions}
+                prNumber={view.list.selectedPr}
+                pr={view.workspace.selectedSummary}
+                onOpenExternal={view.workspace.onOpenExternal}
+                review={view.workspace.review}
+                lifecycle={view.workspace.lifecycle}
+                statusView={view.workspace.statusView}
+                statusActions={view.fix.statusActions}
               />
             )}
           </main>
@@ -122,24 +120,24 @@ export function PrReviewView(props: PrReviewViewProps) {
       </div>
 
       <FindingDetailPanel
-        open={view.selected !== null}
-        finding={view.selected}
-        pending={view.pending}
-        onClose={view.closeFinding}
-        onConvert={view.onConvert}
-        onDismiss={view.onDismiss}
-        onRestore={view.onRestore}
-        onGotoBoard={view.onGotoBoard}
+        open={view.finding.selected !== null}
+        finding={view.finding.selected}
+        pending={view.finding.pending}
+        onClose={view.finding.closeFinding}
+        onConvert={view.finding.onConvert}
+        onDismiss={view.finding.onDismiss}
+        onRestore={view.finding.onRestore}
+        onGotoBoard={view.finding.onGotoBoard}
       />
 
       <ConfirmDialog
-        open={view.postVerdict !== null && verdictMeta !== null}
+        open={view.post.postVerdict !== null && verdictMeta !== null}
         title={verdictMeta?.confirmTitle ?? ''}
         confirmLabel={verdictMeta?.confirmLabel ?? 'Confirm'}
         destructive={verdictMeta?.destructive ?? false}
-        busy={view.posting}
-        onConfirm={view.confirmPost}
-        onCancel={view.cancelPost}
+        busy={view.post.posting}
+        onConfirm={view.post.confirmPost}
+        onCancel={view.post.cancelPost}
         message={
           verdictMeta !== null ? (
             <div className="flex flex-col gap-2">
@@ -150,26 +148,26 @@ export function PrReviewView(props: PrReviewViewProps) {
                 </span>{' '}
                 on{' '}
                 <span className="font-mono text-foreground">
-                  PR #{view.postPrNumber}
+                  PR #{view.post.postPrNumber}
                 </span>{' '}
                 with{' '}
                 <span className="font-semibold text-foreground">
-                  {view.selectedCount}
+                  {view.post.selectedCount}
                 </span>{' '}
-                selected {view.selectedCount === 1 ? 'finding' : 'findings'}
-                {view.selectedInlineCount > 0
-                  ? ` (${view.selectedInlineCount} inline ${
-                      view.selectedInlineCount === 1 ? 'comment' : 'comments'
+                selected {view.post.selectedCount === 1 ? 'finding' : 'findings'}
+                {view.post.selectedInlineCount > 0
+                  ? ` (${view.post.selectedInlineCount} inline ${
+                      view.post.selectedInlineCount === 1 ? 'comment' : 'comments'
                     })`
                   : ''}
                 ?
               </span>
-              {view.postError !== null && (
+              {view.post.postError !== null && (
                 <span
                   role="alert"
                   className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-[12.5px] text-destructive"
                 >
-                  {view.postError}
+                  {view.post.postError}
                 </span>
               )}
             </div>
@@ -181,32 +179,32 @@ export function PrReviewView(props: PrReviewViewProps) {
           COMMIT to the PR branch never auto-fires. Pushing stays a separate,
           separately-gated manual step. */}
       <ConfirmDialog
-        open={view.addressArmed}
-        title={`Address findings on PR #${view.addressPrNumber}?`}
+        open={view.address.addressArmed}
+        title={`Address findings on PR #${view.address.addressPrNumber}?`}
         confirmLabel="Start fix agent"
-        busy={view.addressing}
-        onConfirm={view.confirmAddress}
-        onCancel={view.cancelAddress}
+        busy={view.address.addressing}
+        onConfirm={view.address.confirmAddress}
+        onCancel={view.address.cancelAddress}
         message={
           <div className="flex flex-col gap-2">
               <span>
                 Run a fix agent on{' '}
                 <span className="font-mono text-foreground">
-                  PR #{view.addressPrNumber}
+                  PR #{view.address.addressPrNumber}
                 </span>
                 &apos;s branch addressing{' '}
                 <span className="font-semibold text-foreground">
-                  {view.addressCount}
+                  {view.address.addressCount}
                 </span>{' '}
-                selected {view.addressCount === 1 ? 'finding' : 'findings'}? It
+                selected {view.address.addressCount === 1 ? 'finding' : 'findings'}? It
                 will commit to the branch; pushing stays a separate manual step.
               </span>
-              {view.addressError !== null && (
+              {view.address.addressError !== null && (
                 <span
                   role="alert"
                   className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-[12.5px] text-destructive"
                 >
-                  {view.addressError}
+                  {view.address.addressError}
                 </span>
               )}
             </div>
@@ -218,40 +216,40 @@ export function PrReviewView(props: PrReviewViewProps) {
           carries the summary-comment opt-in (the comment embeds the fix
           session's summary shown on the card). */}
       <ConfirmDialog
-        open={view.pushArmedFix !== null}
-        title={view.pushArmedFix !== null ? `Push fix to PR #${view.pushArmedFix.prNumber}?` : ''}
+        open={view.fix.pushArmedFix !== null}
+        title={view.fix.pushArmedFix !== null ? `Push fix to PR #${view.fix.pushArmedFix.prNumber}?` : ''}
         confirmLabel={
-          view.pushArmedFix !== null ? `Push to PR #${view.pushArmedFix.prNumber}` : ''
+          view.fix.pushArmedFix !== null ? `Push to PR #${view.fix.pushArmedFix.prNumber}` : ''
         }
-        busy={view.pushing}
-        onConfirm={view.confirmPush}
-        onCancel={view.cancelPush}
+        busy={view.fix.pushing}
+        onConfirm={view.fix.confirmPush}
+        onCancel={view.fix.cancelPush}
         message={
-          view.pushArmedFix !== null ? (
+          view.fix.pushArmedFix !== null ? (
             <div className="flex flex-col gap-3">
               <span>
                 Push the fix commit on{' '}
                 <span className="font-mono text-foreground">
-                  {view.pushArmedFix.branch}
+                  {view.fix.pushArmedFix.branch}
                 </span>{' '}
                 to{' '}
                 <span className="font-mono text-foreground">
-                  PR #{view.pushArmedFix.prNumber}
+                  PR #{view.fix.pushArmedFix.prNumber}
                 </span>
                 ? This publishes the commits to the pull request on GitHub.
               </span>
               <Checkbox
-                checked={view.pushPostComment}
-                onChange={view.setPushPostComment}
-                disabled={view.pushing}
+                checked={view.fix.pushPostComment}
+                onChange={view.fix.setPushPostComment}
+                disabled={view.fix.pushing}
                 label="Also post a summary comment describing how the fix addressed its targets"
               />
-              {view.pushError !== null && (
+              {view.fix.pushError !== null && (
                 <span
                   role="alert"
                   className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-[12.5px] text-destructive"
                 >
-                  {view.pushError}
+                  {view.fix.pushError}
                 </span>
               )}
             </div>
@@ -264,26 +262,26 @@ export function PrReviewView(props: PrReviewViewProps) {
           address gate. The dialog explains what the agent will do; the fix
           strip and push gate then take over. */}
       <ConfirmDialog
-        open={view.fixActionArmed !== null && view.selectedPr !== null}
+        open={view.fix.fixActionArmed !== null && view.list.selectedPr !== null}
         title={
-          view.fixActionArmed === 'ci'
-            ? `Fix failing CI on PR #${view.selectedPr}?`
-            : `Resolve conflicts on PR #${view.selectedPr}?`
+          view.fix.fixActionArmed === 'ci'
+            ? `Fix failing CI on PR #${view.list.selectedPr}?`
+            : `Resolve conflicts on PR #${view.list.selectedPr}?`
         }
         confirmLabel={
-          view.fixActionArmed === 'ci' ? 'Start CI fix agent' : 'Start resolve agent'
+          view.fix.fixActionArmed === 'ci' ? 'Start CI fix agent' : 'Start resolve agent'
         }
-        busy={view.fixActionBusy}
-        onConfirm={view.confirmFixAction}
-        onCancel={view.cancelFixAction}
+        busy={view.fix.fixActionBusy}
+        onConfirm={view.fix.confirmFixAction}
+        onCancel={view.fix.cancelFixAction}
         message={
           <div className="flex flex-col gap-2">
               <span>
-                {view.fixActionArmed === 'ci' ? (
+                {view.fix.fixActionArmed === 'ci' ? (
                   <>
                     Run a fix agent on{' '}
                     <span className="font-mono text-foreground">
-                      PR #{view.selectedPr}
+                      PR #{view.list.selectedPr}
                     </span>
                     &apos;s branch to reproduce and fix its failing CI checks? It
                     will commit to the branch; pushing stays a separate manual
@@ -293,7 +291,7 @@ export function PrReviewView(props: PrReviewViewProps) {
                   <>
                     Merge the base branch into{' '}
                     <span className="font-mono text-foreground">
-                      PR #{view.selectedPr}
+                      PR #{view.list.selectedPr}
                     </span>
                     &apos;s checkout and resolve the conflicts? A clean merge
                     skips the agent; either way pushing stays a separate manual
@@ -301,12 +299,12 @@ export function PrReviewView(props: PrReviewViewProps) {
                   </>
                 )}
               </span>
-              {view.fixActionError !== null && (
+              {view.fix.fixActionError !== null && (
                 <span
                   role="alert"
                   className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-[12.5px] text-destructive"
                 >
-                  {view.fixActionError}
+                  {view.fix.fixActionError}
                 </span>
               )}
             </div>

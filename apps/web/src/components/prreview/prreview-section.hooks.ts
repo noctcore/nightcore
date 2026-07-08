@@ -40,10 +40,8 @@ import {
 } from './prreview-runs';
 import type { PrRunView, UsePrReviewRunsResult } from './prreview-runs.hooks';
 import { EMPTY_REVIEW_STREAM, type ReviewStream } from './prreview-stream';
-import {
-  type PrNumberStatusView,
-  usePrStatusByNumber,
-} from './PrStatusBlock/PrStatusBlock.hooks';
+import type { PrNumberStatusView } from './PrStatusBlock';
+import { usePrStatusByNumber } from './PrStatusBlock/PrStatusBlock.hooks';
 import type { ReviewSectionMode } from './ReviewSection';
 
 /** The navigation state the section projects against (owned by the composition). */
@@ -70,42 +68,53 @@ export interface PrReviewSectionConfig {
 export interface PrReviewSectionApi {
   prView: PrRunView | null;
   statusView: PrNumberStatusView;
-  latestStream: ReviewStream | null;
-  latestRun: PrReviewRun | null;
-  /** The stream the right panel displays (history selection wins, else latest). */
-  displayStream: ReviewStream | null;
-  displayRunId: string | null;
-  /** The persisted run behind the DISPLAYED stream (source of its merge verdict). */
-  displayRun: PrReviewRun | null;
-  viewingPastRun: boolean;
-  isStarting: boolean;
-  startError: string | null;
-  mode: ReviewSectionMode;
-  /** The stream the RUNNING branch renders (live run or seeded synthetic). */
-  runningStream: ReviewStream | null;
-  /** The displayed run's id when it is running (drives per-run cancel), else null. */
-  runningRunId: string | null;
-  runningPrs: readonly number[];
-  prRowStatuses: Readonly<Record<number, ReviewLifecycle>>;
-  prFindingCounts: Readonly<Record<number, number>>;
   selectedSummary: PrSummary | null;
   ownPr: boolean;
-  progressCategories: RunProgressCategory[];
-  lensFindingCounts: Record<string, number>;
-  emptyMessage: string;
-  prFix: PrFixState | null;
-  lifecycle: ReviewLifecycle | null;
-  reconciliation: string[];
-  stale: boolean;
-  timeline: TimelineStep[];
-  followup: FollowupComparison | null;
-  fixRunning: boolean;
-  /** The displayed run's PR — the post target. */
-  postPrNumber: number | null;
-  /** The address target (the displayed run's PR, else the selected PR). */
-  addressPrNumber: number | null;
-  /** This PR's last address rejection (from the fix registry), or null. */
-  addressError: string | null;
+  mode: ReviewSectionMode;
+  isStarting: boolean;
+  startError: string | null;
+  /** Stream projections (live, display, running). */
+  streams: {
+    latestStream: ReviewStream | null;
+    latestRun: PrReviewRun | null;
+    /** The stream the right panel displays (history selection wins, else latest). */
+    displayStream: ReviewStream | null;
+    displayRunId: string | null;
+    /** The persisted run behind the DISPLAYED stream (source of its merge verdict). */
+    displayRun: PrReviewRun | null;
+    viewingPastRun: boolean;
+    /** The stream the RUNNING branch renders (live run or seeded synthetic). */
+    runningStream: ReviewStream | null;
+    /** The displayed run's id when it is running (drives per-run cancel), else null. */
+    runningRunId: string | null;
+    runningPrs: readonly number[];
+  };
+  rowData: {
+    prRowStatuses: Readonly<Record<number, ReviewLifecycle>>;
+    prFindingCounts: Readonly<Record<number, number>>;
+  };
+  ui: {
+    progressCategories: RunProgressCategory[];
+    lensFindingCounts: Record<string, number>;
+    emptyMessage: string;
+  };
+  position: {
+    prFix: PrFixState | null;
+    lifecycle: ReviewLifecycle | null;
+    reconciliation: string[];
+    stale: boolean;
+    timeline: TimelineStep[];
+    followup: FollowupComparison | null;
+    fixRunning: boolean;
+  };
+  targets: {
+    /** The displayed run's PR — the post target. */
+    postPrNumber: number | null;
+    /** The address target (the displayed run's PR, else the selected PR). */
+    addressPrNumber: number | null;
+    /** This PR's last address rejection (from the fix registry), or null. */
+    addressError: string | null;
+  };
 }
 
 /** Project the selected PR's review-section slice out of the run registry. */
@@ -132,7 +141,9 @@ export function usePrReviewSection({
         // Coerce a void resolution (mock/browser seams) to the null sentinel.
         if (!cancelled) setLogin(l ?? null);
       },
-      (err: unknown) => console.error('viewer_login failed (guard fails open)', err),
+      () => {
+        // Swallow: guard intentionally fails open; UI state already handles missing login.
+      },
     );
     return () => {
       cancelled = true;
@@ -318,34 +329,44 @@ export function usePrReviewSection({
   return {
     prView,
     statusView,
-    latestStream,
-    latestRun,
-    displayStream,
-    displayRunId,
-    displayRun,
-    viewingPastRun,
-    isStarting,
-    startError,
-    mode,
-    runningStream,
-    runningRunId,
-    runningPrs,
-    prRowStatuses,
-    prFindingCounts,
     selectedSummary,
     ownPr,
-    progressCategories,
-    lensFindingCounts,
-    emptyMessage,
-    prFix,
-    lifecycle,
-    reconciliation,
-    stale,
-    timeline,
-    followup,
-    fixRunning,
-    postPrNumber,
-    addressPrNumber,
-    addressError,
+    mode,
+    isStarting,
+    startError,
+    streams: {
+      latestStream,
+      latestRun,
+      displayStream,
+      displayRunId,
+      displayRun,
+      viewingPastRun,
+      runningStream,
+      runningRunId,
+      runningPrs,
+    },
+    rowData: {
+      prRowStatuses,
+      prFindingCounts,
+    },
+    ui: {
+      progressCategories,
+      lensFindingCounts,
+      emptyMessage,
+    },
+    position: {
+      prFix,
+      lifecycle,
+      reconciliation,
+      stale,
+      timeline,
+      followup,
+      fixRunning,
+    },
+    targets: {
+      postPrNumber,
+      addressPrNumber,
+      addressError,
+    },
   };
 }

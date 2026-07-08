@@ -20,6 +20,7 @@ import { usePrFixes } from '../prreview-fixes.hooks';
 import { usePrReviewGates } from '../prreview-gates.hooks';
 import { usePrReviewNavigation } from '../prreview-navigation.hooks';
 import { useOpenPrs } from '../prreview-open-prs.hooks';
+import { useResizablePanelWidth } from '../prreview-resize.hooks';
 import { usePrReviewRuns } from '../prreview-runs.hooks';
 import { buildReviewSectionProps } from '../prreview-section';
 import { usePrReviewSection } from '../prreview-section.hooks';
@@ -83,17 +84,17 @@ export function usePrReviewView({
   });
   const selection = usePrFindingSelection({
     projectPath,
-    displayRunId: section.displayRunId,
-    displayStream: section.displayStream,
+    displayRunId: section.streams.displayRunId,
+    displayStream: section.streams.displayStream,
     selectRun: runs.selectRun,
     refreshRuns: runs.refreshRuns,
   });
   const gates = usePrReviewGates({
     projectPath,
-    postPrNumber: section.postPrNumber,
-    addressPrNumber: section.addressPrNumber,
+    postPrNumber: section.targets.postPrNumber,
+    addressPrNumber: section.targets.addressPrNumber,
     selectedPr,
-    displayRunId: section.displayRunId,
+    displayRunId: section.streams.displayRunId,
     selectedFindings: selection.selectedFindings,
     selectedOpenFindings: selection.selectedOpenFindings,
     selectRun: runs.selectRun,
@@ -109,8 +110,8 @@ export function usePrReviewView({
     setStartingPrs,
     runs,
     config,
-    displayStream: section.displayStream,
-    runningRunId: section.runningRunId,
+    displayStream: section.streams.displayStream,
+    runningRunId: section.streams.runningRunId,
     prHistory: section.prView?.history ?? [],
     resetFindingUi: selection.resetFindingUi,
     setSelectedId: selection.setSelectedId,
@@ -119,26 +120,30 @@ export function usePrReviewView({
     onPreselectConsumed,
   });
 
+  // The persisted, keyboard-accessible split between the list rail and the panel.
+  // Lifted here so the .tsx body stays a thin shell (no hook calls).
+  const panel = useResizablePanelWidth();
+
   // --- Cross-slice derived values (need both the section + the selection/gates) --
   const addressCount = selection.selectedOpenFindings.length;
   const canPost =
-    section.displayStream?.status === 'completed' &&
-    section.displayStream.prNumber !== null &&
+    section.streams.displayStream?.status === 'completed' &&
+    section.streams.displayStream.prNumber !== null &&
     selection.selectedCount > 0;
   // Own-PR is deliberately NOT guarded: fixing your own PR is the normal case.
   const canAddress =
-    section.displayStream?.status === 'completed' &&
-    section.displayRunId !== null &&
+    section.streams.displayStream?.status === 'completed' &&
+    section.streams.displayRunId !== null &&
     addressCount > 0 &&
-    !section.fixRunning;
+    !section.position.fixRunning;
   // The status block's remediation actions are inert while ANY fix activity is
   // live for this PR — a running/committing fix session, an armed action in
   // flight, or an address dispatch (the backend refuses those atomically; the
   // UI just says why up front).
   const fixBusy =
-    (section.prFix !== null &&
-      (section.prFix.status === 'running' ||
-        section.prFix.status === 'committing')) ||
+    (section.position.prFix !== null &&
+      (section.position.prFix.status === 'running' ||
+        section.position.prFix.status === 'committing')) ||
     gates.fixActionBusy ||
     gates.addressing;
   const statusActions: PrStatusActions | undefined =
@@ -170,61 +175,73 @@ export function usePrReviewView({
   return {
     hasProject,
     projectName,
-    prs: openPrs.prs,
-    prsLoading: openPrs.loading,
-    prsLoadingMore: openPrs.loadingMore,
-    prsHasMore: openPrs.hasMore,
-    prsError: openPrs.error,
-    refreshPrs: openPrs.refresh,
-    loadMorePrs: openPrs.loadMore,
-    selectedPr,
-    selectPr: navigation.selectPr,
-    runningPrs: section.runningPrs,
-    prRowStatuses: section.prRowStatuses,
-    prFindingCounts: section.prFindingCounts,
-    selectedSummary: section.selectedSummary,
-    lifecycle: section.lifecycle,
-    statusView: section.statusView,
-    onOpenExternal: (url: string) =>
-      void openExternal(url).catch((err: unknown) => {
-        console.error('open_external failed', err);
-        toast.error('Could not open the pull request', err);
-      }),
-    review,
-    selected: selection.selected,
-    closeFinding: () => selection.setSelectedId(null),
-    pending: selection.pending,
-    onConvert: selection.onConvert,
-    onDismiss: selection.onDismiss,
-    onRestore: selection.onRestore,
-    onGotoBoard,
-    postVerdict: gates.postVerdict,
-    posting: gates.posting,
-    postError: gates.postError,
-    postPrNumber: section.postPrNumber,
-    selectedCount: selection.selectedCount,
-    selectedInlineCount: selection.selectedInlineCount,
-    confirmPost: gates.confirmPost,
-    cancelPost: gates.cancelPost,
-    addressArmed: gates.addressArmed,
-    addressing: gates.addressing,
-    addressError: section.addressError,
-    addressPrNumber: section.addressPrNumber,
-    addressCount,
-    confirmAddress: gates.confirmAddress,
-    cancelAddress: gates.cancelAddress,
-    pushArmedFix,
-    pushing: gates.pushing,
-    pushError: gates.pushError,
-    pushPostComment: gates.pushPostComment,
-    setPushPostComment: gates.setPushPostComment,
-    confirmPush: gates.confirmPush,
-    cancelPush: gates.cancelPush,
-    fixActionArmed: gates.fixActionArmed,
-    fixActionBusy: gates.fixActionBusy,
-    fixActionError: section.addressError,
-    confirmFixAction: gates.confirmFixAction,
-    cancelFixAction: gates.cancelFixAction,
-    statusActions,
+    list: {
+      prs: openPrs.prs,
+      prsLoading: openPrs.loading,
+      prsLoadingMore: openPrs.loadingMore,
+      prsHasMore: openPrs.hasMore,
+      prsError: openPrs.error,
+      refreshPrs: openPrs.refresh,
+      loadMorePrs: openPrs.loadMore,
+      selectedPr,
+      selectPr: navigation.selectPr,
+      runningPrs: section.streams.runningPrs,
+      prRowStatuses: section.rowData.prRowStatuses,
+      prFindingCounts: section.rowData.prFindingCounts,
+    },
+    panel,
+    workspace: {
+      selectedSummary: section.selectedSummary,
+      lifecycle: section.position.lifecycle,
+      statusView: section.statusView,
+      onOpenExternal: (url: string) =>
+        void openExternal(url).catch((err: unknown) => {
+          toast.error('Could not open the pull request', err);
+        }),
+      review,
+    },
+    finding: {
+      selected: selection.selected,
+      closeFinding: () => selection.setSelectedId(null),
+      pending: selection.pending,
+      onConvert: selection.onConvert,
+      onDismiss: selection.onDismiss,
+      onRestore: selection.onRestore,
+      onGotoBoard,
+    },
+    post: {
+      postVerdict: gates.postVerdict,
+      posting: gates.posting,
+      postError: gates.postError,
+      postPrNumber: section.targets.postPrNumber,
+      selectedCount: selection.selectedCount,
+      selectedInlineCount: selection.selectedInlineCount,
+      confirmPost: gates.confirmPost,
+      cancelPost: gates.cancelPost,
+    },
+    address: {
+      addressArmed: gates.addressArmed,
+      addressing: gates.addressing,
+      addressError: section.targets.addressError,
+      addressPrNumber: section.targets.addressPrNumber,
+      addressCount,
+      confirmAddress: gates.confirmAddress,
+      cancelAddress: gates.cancelAddress,
+    },
+    fix: {
+      pushArmedFix,
+      pushing: gates.pushing,
+      pushError: gates.pushError,
+      pushPostComment: gates.pushPostComment,
+      setPushPostComment: gates.setPushPostComment,
+      confirmPush: gates.confirmPush,
+      cancelPush: gates.cancelPush,
+      fixActionArmed: gates.fixActionArmed,
+      fixActionBusy: gates.fixActionBusy,
+      fixActionError: section.targets.addressError,
+      confirmFixAction: gates.confirmFixAction,
+      cancelFixAction: gates.cancelFixAction,
+      statusActions,
+    },
   };
 }
