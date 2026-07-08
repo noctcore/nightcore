@@ -7,6 +7,7 @@ import {
   popover,
   ProjectContextMenu,
   ProjectIcon,
+  ProjectPathLabel,
 } from '@/components/ui';
 import { useProjectIconProps } from '@/components/ui/ProjectIcon/ProjectIcon.hooks';
 
@@ -19,16 +20,18 @@ function ProjectSwitcherRow({ project, onPick, onEdit, onRemove }: ProjectSwitch
       <button
         type="button"
         onClick={onPick}
-        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-white/[0.04]"
+        className="group/path-trigger flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-white/[0.04]"
       >
         <IconTile size="sm" className="h-[22px] w-[22px] rounded-md">
           <ProjectIcon {...iconProps} size={14} />
         </IconTile>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[12.5px] font-medium">{project.name}</span>
-          <span className="block truncate font-mono text-[9.5px] text-muted-foreground">
-            {project.path}
-          </span>
+          <ProjectPathLabel
+            path={project.path}
+            focusable={false}
+            className="font-mono text-[9.5px] text-muted-foreground"
+          />
         </span>
       </button>
     </ProjectContextMenu>

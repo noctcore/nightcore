@@ -9,6 +9,7 @@ import {
   IconButton,
   Menu,
   ProjectIcon,
+  ProjectPathLabel,
   StatusDot,
   TrashIcon,
 } from '@/components/ui';
@@ -36,7 +37,7 @@ export function ProjectCard({ project, onOpen, onEdit, onDelete }: ProjectCardPr
         <button
           type="button"
           onClick={() => onOpen(project.id)}
-          className="flex min-w-0 flex-1 items-start gap-3 text-left"
+          className="group/path-trigger flex min-w-0 flex-1 items-start gap-3 text-left"
         >
           <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px] border border-border bg-white/[0.03]">
             <ProjectIcon {...iconProps} size={18} />
@@ -51,9 +52,11 @@ export function ProjectCard({ project, onOpen, onEdit, onDelete }: ProjectCardPr
                 </Badge>
               )}
             </span>
-            <span className="mt-0.5 block truncate font-mono text-[11px] text-muted-foreground">
-              {project.path}
-            </span>
+            <ProjectPathLabel
+              path={project.path}
+              focusable={false}
+              className="mt-0.5 font-mono text-[11px] text-muted-foreground"
+            />
           </span>
         </button>
         {hasMenu && (

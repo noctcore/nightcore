@@ -85,6 +85,12 @@ export { ProjectContextMenu } from './ProjectContextMenu';
 export type { ProjectContextMenuProps } from './ProjectContextMenu/ProjectContextMenu.types';
 export { ProjectIcon } from './ProjectIcon';
 export type { ProjectIconProps } from './ProjectIcon/ProjectIcon.types';
+export type { ProjectPathLabelProps } from './ProjectPathLabel';
+export {
+  compactProjectPath,
+  friendlyProjectPath,
+  ProjectPathLabel,
+} from './ProjectPathLabel';
 export type {
   KnownProviderId,
   ProviderGlyph,

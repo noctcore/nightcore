@@ -7,6 +7,7 @@ import {
   ImageIcon,
   Kbd,
   PlusIcon,
+  ProjectPathLabel,
   RefreshIcon,
   SearchIcon,
   SlidersIcon,
@@ -70,7 +71,7 @@ export function BoardHeader({
               </span>
             </div>
             <div className="mt-1.5 flex items-center gap-2 font-mono text-[11.5px] text-muted-foreground">
-              <span className="truncate">{projectPath}</span>
+              <ProjectPathLabel path={projectPath} />
               {projectBranch !== null && (
                 <>
                   <span className="opacity-40">·</span>
