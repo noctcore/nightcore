@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
+import { expect, fn, userEvent, waitFor } from 'storybook/test';
 
 import type { Task } from '@/lib/bridge';
 
+import { portaledSurface } from '../../../../.storybook/test-utils';
 import { makeTask } from '../../board/_fixtures';
 import { CreatePRDialog } from './CreatePRDialog';
 
@@ -43,8 +44,8 @@ export const Closed: Story = { args: { open: false } };
 /** Play test: outside Tauri the drafter degrades to the task's own title and
  *  description, pre-filling both fields without blocking the dialog. */
 export const PrefillsFromFallback: Story = {
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async () => {
+    const canvas = portaledSurface();
     const title = canvas.getByLabelText('Title');
     await waitFor(() => expect(title).toHaveValue('Wire up auth guard'));
     await expect(canvas.getByLabelText('Body')).toHaveValue(
@@ -56,8 +57,8 @@ export const PrefillsFromFallback: Story = {
 /** Play test: the confirm footer states exactly what leaves the machine, and
  *  confirming relays the edited values (base + draft flag included). */
 export const EditsAndCreates: Story = {
-  play: async ({ args, canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async ({ args }) => {
+    const canvas = portaledSurface();
     const title = canvas.getByLabelText('Title');
     await waitFor(() => expect(title).toHaveValue('Wire up auth guard'));
 
@@ -85,8 +86,8 @@ export const EditsAndCreates: Story = {
 
 /** Play test: Cancel dismisses without creating. */
 export const Cancels: Story = {
-  play: async ({ args, canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async ({ args }) => {
+    const canvas = portaledSurface();
     await userEvent.click(canvas.getByRole('button', { name: 'Cancel' }));
     await expect(args.onClose).toHaveBeenCalled();
     await expect(args.onCreate).not.toHaveBeenCalled();

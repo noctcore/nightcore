@@ -30,7 +30,7 @@ test('renders the grade badge and the evidence', async () => {
     .element(screen.getByText(/trusts req.body.id/i))
     .toBeInTheDocument();
   // The big grade badge shows the letter.
-  expect(screen.container.textContent).toContain('C');
+  await expect.element(screen.getByText('C', { exact: true })).toBeInTheDocument();
 });
 
 test('fires onHarden with the reading id from the "Harden this" button', async () => {

@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
+import { expect, fn, userEvent, waitFor } from 'storybook/test';
 
+import { portaledSurface } from '../../../../.storybook/test-utils';
 import { NewProjectDialog } from './NewProjectDialog';
 
 const meta = {
@@ -38,8 +39,8 @@ export const NotAGitRepo: Story = {
 /** Play test: create stays disabled until a folder + name + valid git repo. */
 export const CreatesProject: Story = {
   args: { folder: '~/dev/my-project', gitState: 'valid' },
-  play: async ({ args, canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async ({ args }) => {
+    const canvas = portaledSurface();
     const create = canvas.getByRole('button', { name: /create project/i });
     // Folder present but name empty → still disabled.
     await expect(create).toBeDisabled();

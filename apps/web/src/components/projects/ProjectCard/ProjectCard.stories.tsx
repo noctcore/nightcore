@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
 
+import { portaledSurface } from '../../../../.storybook/test-utils';
 import { ProjectCard } from './ProjectCard';
 import type { ProjectSummary } from './ProjectCard.types';
 
@@ -53,7 +54,7 @@ export const ConfirmRemove: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole('button', { name: 'Project menu' }));
     await userEvent.click(canvas.getByRole('menuitem', { name: /remove/i }));
-    await expect(canvas.getByRole('alertdialog', { name: /remove project/i })).toBeInTheDocument();
+    await expect(portaledSurface().getByRole('alertdialog', { name: /remove project/i })).toBeInTheDocument();
   },
 };
 

@@ -3,6 +3,7 @@ import { expect, fn, userEvent, within } from 'storybook/test';
 
 import type { PrReviewComments as PrReviewCommentsPayload } from '@/lib/bridge';
 
+import { portaledSurface } from '../../../../.storybook/test-utils';
 import { makePrReviewComments, makeTask, makeTaskActions } from '../_fixtures';
 import { TaskActionsProvider } from '../actions';
 import { PrReviewComments } from './PrReviewComments';
@@ -181,8 +182,11 @@ export const AddressConfirmGate: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole('button', { name: 'Address comments' }));
     await expect(args.onAddressComments).not.toHaveBeenCalled();
-    const dialog = within(canvas.getByRole('alertdialog'));
-    await userEvent.click(dialog.getByRole('button', { name: 'Address comments' }));
+    await userEvent.click(
+      within(portaledSurface().getByRole('alertdialog')).getByRole('button', {
+        name: 'Address comments',
+      }),
+    );
     await expect(args.onAddressComments).toHaveBeenCalledWith('t-pr');
   },
 };

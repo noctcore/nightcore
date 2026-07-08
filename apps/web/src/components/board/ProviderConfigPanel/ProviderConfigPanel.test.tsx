@@ -30,8 +30,7 @@ test('renders a degraded (unavailable) section as a soft error with retry', asyn
   const screen = render(<Default />);
   await expect.element(screen.getByText('probe timed out')).toBeInTheDocument();
   // The per-section retry button exists alongside the error.
-  const retries = screen.container.querySelectorAll('button');
-  expect(retries.length).toBeGreaterThan(0);
+  await expect.element(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
 });
 
 test('renders an unsupported section as "Not available for this provider"', async () => {

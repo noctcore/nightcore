@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
 
+import { portaledSurface } from '../../../../.storybook/test-utils';
 import { makePrStatus, makeTask, makeTaskActions } from '../_fixtures';
 import { TaskActionsProvider } from '../actions';
 import { PrStatusCard } from './PrStatusCard';
@@ -160,7 +161,7 @@ export const PushUpdatesConfirmGate: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Push updates (2)' }));
     await expect(args.onPushUpdates).not.toHaveBeenCalled();
     // The dialog's confirm button carries the exact label (no count suffix).
-    await userEvent.click(canvas.getByRole('button', { name: 'Push updates' }));
+    await userEvent.click(portaledSurface().getByRole('button', { name: 'Push updates' }));
     await expect(args.onPushUpdates).toHaveBeenCalledWith('t-pr');
   },
 };

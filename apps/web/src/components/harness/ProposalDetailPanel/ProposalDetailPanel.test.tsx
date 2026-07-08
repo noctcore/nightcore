@@ -57,6 +57,5 @@ test('an applied proposal shows an Applied state with no apply/convert action', 
   const screen = render(<Applied />);
   await expect
     .element(screen.getByRole('button', { name: 'Applied' }))
-    .toBeInTheDocument();
-  expect(screen.container.querySelector('button:disabled')).not.toBeNull();
+    .toBeDisabled();
 });

@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, fn, userEvent, within } from 'storybook/test';
+import { expect, fn, userEvent } from 'storybook/test';
 
+import { portaledSurface } from '../../../../.storybook/test-utils';
 import { DiscardDialog } from './DiscardDialog';
 
 const meta = {
@@ -36,8 +37,8 @@ export const WithError: Story = {
 
 /** Play test: clicking Discard invokes onConfirm and does NOT close. */
 export const ConfirmsOnClick: Story = {
-  play: async ({ canvasElement, args }) => {
-    const canvas = within(canvasElement);
+  play: async ({ args }) => {
+    const canvas = portaledSurface();
     await userEvent.click(canvas.getByRole('button', { name: 'Discard' }));
     await expect(args.onConfirm).toHaveBeenCalled();
     await expect(args.onClose).not.toHaveBeenCalled();
@@ -46,8 +47,8 @@ export const ConfirmsOnClick: Story = {
 
 /** Play test: clicking Cancel invokes onClose. */
 export const CancelsOnClick: Story = {
-  play: async ({ canvasElement, args }) => {
-    const canvas = within(canvasElement);
+  play: async ({ args }) => {
+    const canvas = portaledSurface();
     await userEvent.click(canvas.getByRole('button', { name: 'Cancel' }));
     await expect(args.onClose).toHaveBeenCalled();
   },
@@ -56,8 +57,8 @@ export const CancelsOnClick: Story = {
 /** Play test: an error flips the confirm button to "Retry", which still confirms. */
 export const RetriesOnError: Story = {
   args: { error: 'fatal: worktree is locked' },
-  play: async ({ canvasElement, args }) => {
-    const canvas = within(canvasElement);
+  play: async ({ args }) => {
+    const canvas = portaledSurface();
     await expect(canvas.getByText('fatal: worktree is locked')).toBeInTheDocument();
     await userEvent.click(canvas.getByRole('button', { name: 'Retry' }));
     await expect(args.onConfirm).toHaveBeenCalled();
@@ -67,8 +68,8 @@ export const RetriesOnError: Story = {
 /** Play test: uncommitted changes surface the amber data-loss warning. */
 export const WarnsOnUncommitted: Story = {
   args: { changedFiles: 2 },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async () => {
+    const canvas = portaledSurface();
     await expect(canvas.getByText(/2 uncommitted file\(s\) will be lost\./i)).toBeInTheDocument();
   },
 };

@@ -260,7 +260,7 @@ test('Escape and backdrop clicks are no-ops while the create is submitting', asy
   expect(onClose).not.toHaveBeenCalled();
 
   // The backdrop click routes through the same gate.
-  const backdrop = screen.container.querySelector('[role="presentation"]');
+  const backdrop = document.body.querySelector('[role="presentation"]');
   (backdrop as HTMLElement).click();
   await expect.element(screen.getByLabelText('Title')).toBeInTheDocument();
   expect(onClose).not.toHaveBeenCalled();

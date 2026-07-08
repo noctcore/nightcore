@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, fn, userEvent, within } from 'storybook/test';
+import { expect, fn, userEvent } from 'storybook/test';
 
 import type { WorktreeDiff } from '@/lib/bridge';
 
+import { portaledSurface } from '../../../../.storybook/test-utils';
 import { DiffViewDialog } from './DiffViewDialog';
 
 const sampleDiff: WorktreeDiff = {
@@ -60,8 +61,8 @@ export const Closed: Story = {
 
 /** Play test: every changed file path is listed. */
 export const ListsFiles: Story = {
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async () => {
+    const canvas = portaledSurface();
     await expect(canvas.getByText('apps/web/src/lib/diff.ts')).toBeInTheDocument();
     await expect(canvas.getByText('scratch/notes.md')).toBeInTheDocument();
   },
@@ -69,8 +70,8 @@ export const ListsFiles: Story = {
 
 /** Play test: clicking the close affordance invokes onClose. */
 export const ClosesOnButton: Story = {
-  play: async ({ args, canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async ({ args }) => {
+    const canvas = portaledSurface();
     await userEvent.click(canvas.getByRole('button', { name: /close/i }));
     await expect(args.onClose).toHaveBeenCalled();
   },
@@ -79,8 +80,8 @@ export const ClosesOnButton: Story = {
 /** Play test: the empty diff renders the empty state. */
 export const ShowsEmptyState: Story = {
   args: { diff: { files: [], summary: '', additions: 0, deletions: 0 } },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async () => {
+    const canvas = portaledSurface();
     await expect(canvas.getByText('No changed files')).toBeInTheDocument();
   },
 };
@@ -88,8 +89,8 @@ export const ShowsEmptyState: Story = {
 /** Play test: nothing renders while closed. */
 export const RendersNothingClosed: Story = {
   args: { open: false },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async () => {
+    const canvas = portaledSurface();
     await expect(canvas.queryByRole('dialog')).toBeNull();
   },
 };

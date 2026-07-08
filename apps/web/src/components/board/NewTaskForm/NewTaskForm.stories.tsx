@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
 
+import { portaledSurface } from '../../../../.storybook/test-utils';
 import { NewTaskForm } from './NewTaskForm';
 
 const meta = {
@@ -22,8 +23,8 @@ export const Default: Story = {};
 /** Play test: the create button is gated on a title, then fires onCreate with
  *  the default `build` kind. */
 export const CreatesTask: Story = {
-  play: async ({ args, canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async ({ args }) => {
+    const canvas = portaledSurface();
     const create = canvas.getByRole('button', { name: /create task/i });
     // Disabled with an empty title.
     await expect(create).toBeDisabled();
@@ -53,8 +54,8 @@ export const CreatesTask: Story = {
 
 /** Play test: picking the Research kind threads it through onCreate. */
 export const CreatesResearchTask: Story = {
-  play: async ({ args, canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async ({ args }) => {
+    const canvas = portaledSurface();
     await userEvent.type(canvas.getByLabelText('Title'), 'Survey caching options');
     await userEvent.click(canvas.getByRole('radio', { name: /research/i }));
     await userEvent.click(canvas.getByRole('button', { name: /create task/i }));
@@ -76,8 +77,8 @@ export const CreatesResearchTask: Story = {
 
 /** Play test: choosing the Worktree run mode threads it through onCreate. */
 export const CreatesWorktreeTask: Story = {
-  play: async ({ args, canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async ({ args }) => {
+    const canvas = portaledSurface();
     await userEvent.type(canvas.getByLabelText('Title'), 'Isolate the risky refactor');
     await userEvent.click(canvas.getByRole('radio', { name: 'Worktree' }));
     await userEvent.click(canvas.getByRole('button', { name: /create task/i }));
@@ -97,8 +98,8 @@ export const CreatesWorktreeTask: Story = {
 /** Play test: per-task permission / model / effort overrides thread
  *  through onCreate as the options object. */
 export const CreatesWithOverrides: Story = {
-  play: async ({ args, canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async ({ args }) => {
+    const canvas = portaledSurface();
     await userEvent.type(canvas.getByLabelText('Title'), 'Apply a migration');
     await userEvent.click(canvas.getByRole('radio', { name: /^plan$/i }));
     // The model picker is now the live-wired combobox: open it and pick Sonnet,
@@ -128,8 +129,8 @@ export const CreatesWithOverrides: Story = {
 /** Play test: per-task autonomy ceilings (SDK guardrails) thread through
  *  onCreate as numeric options; a blank field stays `null` (inherit). */
 export const CreatesWithLimits: Story = {
-  play: async ({ args, canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async ({ args }) => {
+    const canvas = portaledSurface();
     await userEvent.type(canvas.getByLabelText('Title'), 'Bounded autonomous run');
     await userEvent.type(canvas.getByLabelText('Max turns'), '40');
     await userEvent.type(canvas.getByLabelText('Max budget (USD)'), '2.5');

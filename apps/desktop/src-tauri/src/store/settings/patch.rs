@@ -9,7 +9,7 @@ use crate::task::RunMode;
 #[cfg(test)]
 use ts_rs::TS;
 
-use super::model::{BoardAppearance, BoardBackgroundRef, McpServerEntry, Settings};
+use super::model::{resolve_sidebar_style, BoardAppearance, BoardBackgroundRef, McpServerEntry, Settings};
 
 /// A per-project override: any subset of the run-shaping fields. Absent fields
 /// fall back to the global value.
@@ -268,7 +268,7 @@ impl Settings {
             self.context_pack_enabled = v;
         }
         if let Some(v) = patch.sidebar_style {
-            self.sidebar_style = Some(v);
+            self.sidebar_style = Some(resolve_sidebar_style(Some(v.as_str())).to_string());
         }
     }
 }

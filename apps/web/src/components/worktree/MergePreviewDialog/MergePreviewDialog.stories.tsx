@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, fn, userEvent, within } from 'storybook/test';
+import { expect, fn, userEvent } from 'storybook/test';
 
 import type { MergePreview } from '@/lib/bridge';
 
+import { portaledSurface } from '../../../../.storybook/test-utils';
 import { MergePreviewDialog } from './MergePreviewDialog';
 
 const FILES: MergePreview['files'] = [
@@ -88,8 +89,8 @@ export const Merging: Story = { args: { merging: true } };
 
 /** Play test: a ready preview enables Merge, and clicking it fires onMerge. */
 export const MergesWhenReady: Story = {
-  play: async ({ args, canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async ({ args }) => {
+    const canvas = portaledSurface();
     const merge = canvas.getByRole('button', { name: 'Merge' });
     await expect(merge).toBeEnabled();
     await userEvent.click(merge);
@@ -100,8 +101,8 @@ export const MergesWhenReady: Story = {
 /** Play test: conflicts disable Merge, list the conflicting files, and show guidance. */
 export const ConflictsBlockMerge: Story = {
   args: { preview: conflictsPreview },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async () => {
+    const canvas = portaledSurface();
     await expect(canvas.getByRole('button', { name: 'Merge' })).toBeDisabled();
     await expect(canvas.getByText(/2 conflicts — resolve before merging/i)).toBeInTheDocument();
     await expect(canvas.getByText('apps/web/src/store/types.ts')).toBeInTheDocument();
@@ -114,8 +115,8 @@ export const ConflictsBlockMerge: Story = {
 /** Play test: while loading we show the conflict-check spinner copy and no Merge. */
 export const ShowsLoading: Story = {
   args: { preview: null, loading: true },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async () => {
+    const canvas = portaledSurface();
     await expect(canvas.getByText(/Checking for conflicts…/i)).toBeInTheDocument();
     await expect(canvas.getByRole('button', { name: 'Merge' })).toBeDisabled();
   },
@@ -123,8 +124,8 @@ export const ShowsLoading: Story = {
 
 /** Play test: View full diff link fires onViewDiff. */
 export const ViewsDiff: Story = {
-  play: async ({ args, canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async ({ args }) => {
+    const canvas = portaledSurface();
     await userEvent.click(canvas.getByRole('button', { name: 'View full diff' }));
     await expect(args.onViewDiff).toHaveBeenCalled();
   },

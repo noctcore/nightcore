@@ -3,6 +3,7 @@ import { expect, fn, userEvent, within } from 'storybook/test';
 
 import type { McpServerEntry } from '@/lib/bridge';
 
+import { portaledSurface } from '../../../../.storybook/test-utils';
 import { McpServersCard } from './McpServersCard';
 
 const servers: McpServerEntry[] = [
@@ -71,10 +72,11 @@ export const AddsAnHttpServer: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole('button', { name: /add server/i }));
-    await userEvent.type(canvas.getByLabelText('Server name'), 'linear');
-    await userEvent.click(canvas.getByRole('button', { name: 'HTTP' }));
-    await userEvent.type(canvas.getByLabelText('URL'), 'https://mcp.linear.app/sse');
-    await userEvent.click(canvas.getByRole('button', { name: /^Add$/ }));
+    const modal = portaledSurface();
+    await userEvent.type(modal.getByLabelText('Server name'), 'linear');
+    await userEvent.click(modal.getByRole('button', { name: 'HTTP' }));
+    await userEvent.type(modal.getByLabelText('URL'), 'https://mcp.linear.app/sse');
+    await userEvent.click(modal.getByRole('button', { name: /^Add$/ }));
     await expect(args.onChange).toHaveBeenCalledTimes(1);
     const call = (args.onChange as ReturnType<typeof fn>).mock.calls[0];
     const next = (call?.[0] ?? []) as McpServerEntry[];
