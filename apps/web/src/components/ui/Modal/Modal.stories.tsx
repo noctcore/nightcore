@@ -45,9 +45,8 @@ export const EscapeCloses: Story = {
 /** Play test: focus lands on the element matched by `initialFocus`. */
 export const InitialFocus: Story = {
   args: { ...Default.args, initialFocus: '[data-confirm]' },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const confirm = canvas.getByRole('button', { name: 'Confirm' });
+  play: async () => {
+    const confirm = within(document.body).getByRole('button', { name: 'Confirm' });
     await expect(confirm).toHaveFocus();
   },
 };

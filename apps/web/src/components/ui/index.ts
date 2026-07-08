@@ -10,12 +10,12 @@ export type {
   CategoryTabsShellProps,
 } from './CategoryTabsShell';
 export { CategoryTabsShell } from './CategoryTabsShell';
-export type { CheckboxProps } from './Checkbox';
 export { Checkbox } from './Checkbox';
+export type { CheckboxProps } from './Checkbox/Checkbox.types';
 export type { CodeBlockProps } from './CodeBlock';
 export { CodeBlock } from './CodeBlock';
-export type { ConfirmDialogProps } from './ConfirmDialog';
 export { ConfirmDialog } from './ConfirmDialog';
+export type { ConfirmDialogProps } from './ConfirmDialog/ConfirmDialog.types';
 export type { DetailCardGridProps, DetailCardProps } from './DetailCardGrid';
 export { DetailCard, DetailCardGrid } from './DetailCardGrid';
 export type { DetailPanelShellProps } from './DetailPanelShell';
@@ -45,10 +45,10 @@ export type {
   ScanConfigFormProps,
 } from './LensChipGrid';
 export { chipClass, LensChipGrid, ScanConfigForm } from './LensChipGrid';
-export type { MarkdownProps } from './Markdown';
 export { Markdown } from './Markdown';
-export type { MenuItem, MenuProps } from './Menu';
+export type { MarkdownProps } from './Markdown/Markdown.types';
 export { Menu } from './Menu';
+export type { MenuItem, MenuProps } from './Menu/Menu.types';
 export type { ModalProps } from './Modal';
 export { Modal, useLastPresent, useModal } from './Modal';
 /** @deprecated Migrated to `ModelSelectField` / `ModelSelect` (B5). This thin
@@ -71,8 +71,8 @@ export {
   useShowCostLine,
 } from './ModelSelectField';
 export * from './motion';
-export type { NumberFieldProps } from './NumberField';
 export { NumberField } from './NumberField';
+export type { NumberFieldProps } from './NumberField/NumberField.types';
 export { Pill } from './Pill';
 export type {
   KnownProviderId,
@@ -101,15 +101,15 @@ export type {
   RunProgressUsage,
 } from './RunProgress';
 export { RunProgress } from './RunProgress';
-export type { SegmentedProps } from './Segmented';
 export { Segmented } from './Segmented';
+export type { SegmentedProps } from './Segmented/Segmented.types';
 export { Skeleton } from './Skeleton';
 export { Spinner } from './Spinner';
 export { StatusDot } from './StatusDot';
 export type { Toast, ToastApi, ToastTone } from './Toast';
 export { ToastProvider, useToast } from './Toast';
-export type { ToggleProps } from './Toggle';
 export { Toggle } from './Toggle';
+export type { ToggleProps } from './Toggle/Toggle.types';
 export type { ToolbarProps } from './Toolbar';
 export { Toolbar } from './Toolbar';
 export type { ToolbarOptionProps } from './ToolbarOption';
