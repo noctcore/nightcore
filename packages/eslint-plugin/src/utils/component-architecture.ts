@@ -4,12 +4,12 @@ import micromatch from 'micromatch';
 
 /*
  * Shared helpers for the frontend component-architecture rules. Nightcore's
- * layout is `apps/web/src/components/<feature>/<Name>/<Name>.tsx` — a
- * folder-per-component directly under `components/<feature>/`, with no
- * `features/` segment and no nested `components/` segment. Path logic anchors on
- * the `components/` segment rather than an absolute prefix, so a rule behaves
- * identically whether ESLint runs from the repo root or per-package, and on both
- * POSIX and Windows separators.
+ * layout is `apps/web/src/components/<feature>/.../<Name>/<Name>.tsx` — a
+ * folder-per-component anywhere under a feature, with no `features/` segment and
+ * no nested `components/` segment. Path logic anchors on the `components/`
+ * segment rather than an absolute prefix, so a rule behaves identically whether
+ * ESLint runs from the repo root or per-package, and on both POSIX and Windows
+ * separators.
  */
 
 /** The directory segment that roots every feature: `components`. */

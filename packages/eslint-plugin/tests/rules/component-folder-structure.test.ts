@@ -12,6 +12,12 @@ ruleTester.run('component-folder-structure', componentFolderStructureRule, {
       code: COMPONENT,
       filename: 'tests/fixtures/components/board/Complete/Complete.tsx',
     },
+    // Nested component folders are still component folders and must be checked.
+    {
+      code: COMPONENT,
+      filename:
+        'tests/fixtures/components/onboarding/Onboarding/steps/DeepStep/DeepStep.tsx',
+    },
     // Kebab-case file is not a component entry file — skipped.
     {
       code: COMPONENT,
@@ -38,6 +44,13 @@ ruleTester.run('component-folder-structure', componentFolderStructureRule, {
     {
       code: COMPONENT,
       filename: 'tests/fixtures/components/board/Widget/Widget.tsx',
+      errors: [{ messageId: 'missingSiblings' }],
+    },
+    // A nested component folder on disk is also gated by the sibling set.
+    {
+      code: COMPONENT,
+      filename:
+        'tests/fixtures/components/onboarding/Onboarding/steps/ShallowStep/ShallowStep.tsx',
       errors: [{ messageId: 'missingSiblings' }],
     },
   ],

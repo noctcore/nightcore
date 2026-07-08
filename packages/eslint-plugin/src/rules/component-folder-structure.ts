@@ -22,12 +22,13 @@ type RuleOptions = [ComponentFolderStructureOptions];
 type MessageIds = 'missingSiblings';
 
 /*
- * A component entry file (`<Name>/<Name>.tsx` under `components/<feature>/`) must
- * ship its sibling set on disk so logic, types, story, and test always travel
- * with the component. The default set is the colocated `.hooks.ts`, `.types.ts`,
- * `.stories.tsx`, `.test.tsx`, and the `index.ts` barrel — so every component
- * folder carries BOTH a story and a test by construction. `components/ui/**`
- * keeps the lighter shadcn convention and is excluded via `ignorePaths`.
+ * A component entry file (`<Name>/<Name>.tsx` anywhere under
+ * `components/<feature>/`) must ship its sibling set on disk so logic, types,
+ * story, and test always travel with the component. The default set is the
+ * colocated `.hooks.ts`, `.types.ts`, `.stories.tsx`, `.test.tsx`, and the
+ * `index.ts` barrel — so every component folder carries BOTH a story and a test
+ * by construction. `components/ui/**` keeps the lighter shadcn convention and is
+ * excluded via `ignorePaths`.
  */
 const DEFAULT_IGNORE_PATHS: readonly string[] = ['**/components/ui/**'];
 
@@ -56,7 +57,7 @@ export const componentFolderStructureRule = createRule<RuleOptions, MessageIds>(
     type: 'problem',
     docs: {
       description:
-        'A component `<Name>/<Name>.tsx` under `components/<feature>/` must have its sibling set (`.hooks.ts`, `.types.ts`, `.stories.tsx`, `.test.tsx`, `index.ts`) present on disk.',
+        'A component `<Name>/<Name>.tsx` under `components/<feature>/...` must have its sibling set (`.hooks.ts`, `.types.ts`, `.stories.tsx`, `.test.tsx`, `index.ts`) present on disk.',
     },
     schema: [optionSchema],
     messages: {
