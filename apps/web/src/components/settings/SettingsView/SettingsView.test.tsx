@@ -74,3 +74,11 @@ test('navigates between settings pages via the left nav', async () => {
   await screen.getByRole('button', { name: /permissions/i }).click();
   await expect.element(screen.getByText('Tool permissions')).toBeInTheDocument();
 });
+
+test('runs onboarding from the About page', async () => {
+  const onRestartOnboarding = vi.fn();
+  const screen = render(<Global onRestartOnboarding={onRestartOnboarding} />);
+  await screen.getByRole('button', { name: /about/i }).click();
+  await screen.getByRole('button', { name: /run onboarding/i }).click();
+  expect(onRestartOnboarding).toHaveBeenCalled();
+});

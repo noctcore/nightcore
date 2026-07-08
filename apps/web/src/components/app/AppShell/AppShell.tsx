@@ -8,6 +8,7 @@ import {
   TaskActionsProvider,
 } from '@/components/board';
 import { NewProjectDialog } from '@/components/new-project';
+import { Onboarding } from '@/components/onboarding';
 import {
   AnimatePresence,
   Button,
@@ -105,6 +106,7 @@ export function AppShell() {
     worktrees,
     confirm,
     editProject,
+    onboarding,
     showSplash,
     isTauri,
   } = useAppShell();
@@ -130,6 +132,29 @@ export function AppShell() {
   // caps the load with a timeout so a wedged backend can't hang the splash forever.)
   if (showSplash || !registry.loaded) {
     return <Splash bootLine="loading workspace…" />;
+  }
+
+  if (onboarding.show) {
+    return (
+      <Onboarding
+        folder={newProject.folder}
+        gitState={newProject.gitState}
+        onChooseFolder={newProject.pickFolder}
+        onInitGit={newProject.initGit}
+        onCreateProject={async (name) => {
+          if (newProject.folder === null) return;
+          await newProject.create(newProject.folder, name);
+        }}
+        onSkip={() => {
+          onboarding.dismiss();
+          routing.goto('projects');
+        }}
+        onComplete={() => {
+          onboarding.dismiss();
+          routing.goto('board');
+        }}
+      />
+    );
   }
 
   // The Projects surface is full-screen and chrome-free: shown when explicitly
@@ -370,6 +395,7 @@ export function AppShell() {
             activeProjectName={active?.name ?? null}
             activeProjectPath={active?.path ?? null}
             onUpdate={settings.update}
+            onRestartOnboarding={onboarding.restart}
           />
           </Suspense>
         )}

@@ -112,6 +112,7 @@ export function SettingsView({
   activeProjectName,
   activeProjectPath = null,
   onUpdate,
+  onRestartOnboarding,
 }: SettingsViewProps) {
   const {
     page,
@@ -133,6 +134,7 @@ export function SettingsView({
     patchGlobal,
     activeProjectPath,
     appInfo,
+    onRestartOnboarding,
   });
   const note = PAGE_NOTES[page];
 

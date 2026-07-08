@@ -1,0 +1,106 @@
+import {
+  AlertIcon,
+  CheckIcon,
+  FolderIcon,
+  Spinner,
+} from '@/components/ui';
+
+import type { OnboardingProps } from '../../Onboarding.types';
+import { useProjectStep } from './ProjectStep.hooks';
+import type { ProjectStepProps } from './ProjectStep.types';
+
+export function ProjectStep({ props, view }: ProjectStepProps) {
+  const { folderPicked } = useProjectStep(props);
+  return (
+    <div className="flex flex-col gap-3.5">
+      <div>
+        <h1 className="text-[19px] font-semibold tracking-tight">First project</h1>
+        <p className="mt-1 text-[12.5px] text-muted-foreground">
+          Point Nightcore at a git repo. Each project gets its own board, worktrees,
+          and settings.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={() => void props.onChooseFolder()}
+        className={`flex w-full items-center gap-3 rounded-[12px] border border-dashed px-3.5 py-3 text-left transition-colors ${
+          folderPicked
+            ? 'border-border bg-white/[0.025]'
+            : 'border-primary/50 bg-primary/[0.05] hover:bg-primary/[0.08]'
+        }`}
+      >
+        <div className="flex size-[30px] shrink-0 items-center justify-center rounded-[8px] bg-primary/15 text-primary">
+          <FolderIcon size={16} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div
+            className={`text-[12.5px] font-semibold ${
+              folderPicked ? 'text-foreground' : 'text-muted-foreground'
+            }`}
+          >
+            {folderPicked ? 'Repository selected' : 'Choose repository folder'}
+          </div>
+          <div className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
+            {props.folder ?? 'No folder selected'}
+          </div>
+        </div>
+        <span className="shrink-0 text-[12px] font-semibold text-primary">
+          {folderPicked ? 'Change' : 'Choose'}
+        </span>
+      </button>
+      {folderPicked && (
+        <>
+          <GitStatus gitState={props.gitState} onInitGit={props.onInitGit} />
+          <label className="block">
+            <span className="mb-1.5 block text-[11px] font-semibold text-muted-foreground">
+              Project name
+            </span>
+            <input
+              value={view.projectName}
+              onChange={(event) => view.setProjectName(event.target.value)}
+              className="w-full rounded-[9px] border border-border bg-black/25 px-3 py-2.5 text-[13px] text-foreground outline-none focus:border-primary"
+              placeholder="my-project"
+            />
+          </label>
+        </>
+      )}
+    </div>
+  );
+}
+
+function GitStatus({
+  gitState,
+  onInitGit,
+}: Pick<OnboardingProps, 'gitState' | 'onInitGit'>) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {gitState === 'valid' && (
+        <span className="flex items-center gap-1.5 rounded-[6px] border border-success/30 bg-success/[0.06] px-2 py-1 font-mono text-[10px] text-success">
+          <CheckIcon size={11} />
+          git repo detected
+        </span>
+      )}
+      {gitState === 'checking' && (
+        <span className="flex items-center gap-1.5 rounded-[6px] border border-border bg-white/[0.03] px-2 py-1 font-mono text-[10px] text-muted-foreground">
+          <Spinner size={11} />
+          checking git
+        </span>
+      )}
+      {gitState === 'invalid' && (
+        <span className="flex items-center gap-1.5 rounded-[6px] border border-warning/35 bg-warning/[0.08] px-2 py-1 font-mono text-[10px] text-warning">
+          <AlertIcon size={11} />
+          not a git repo
+        </span>
+      )}
+      {gitState === 'invalid' && onInitGit !== undefined && (
+        <button
+          type="button"
+          onClick={() => void onInitGit()}
+          className="rounded-[6px] border border-border px-2 py-1 text-[10px] font-semibold text-primary"
+        >
+          git init
+        </button>
+      )}
+    </div>
+  );
+}

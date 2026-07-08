@@ -131,13 +131,22 @@ export interface CardContext {
   patchGlobal: (patch: SettingsPatch) => void;
   activeProjectPath: string | null;
   appInfo: AppInfo | null;
+  onRestartOnboarding: () => void;
 }
 
 /** Build the card set for a settings page. The run-shaping controls (model,
  *  effort, concurrency, permission mode) are live; everything else is
  *  presentational (a not-yet-built page or a light scaffold). */
 export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardProps[] {
-  const { effective, settings, patchScoped, patchGlobal, activeProjectPath, appInfo } = ctx;
+  const {
+    effective,
+    settings,
+    patchScoped,
+    patchGlobal,
+    activeProjectPath,
+    appInfo,
+    onRestartOnboarding,
+  } = ctx;
   switch (page) {
     case 'models':
       return [
@@ -379,6 +388,6 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
         },
       ];
     case 'about':
-      return buildAboutCards(appInfo);
+      return buildAboutCards(appInfo, onRestartOnboarding);
   }
 }

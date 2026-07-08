@@ -1,12 +1,15 @@
 /** About settings cards — split from settings-cards for file-size ratchet. */
-import { BookIcon, Pill, RepoLink } from '@/components/ui';
+import { BookIcon, Button, Pill, RepoLink } from '@/components/ui';
 import type { AppInfo } from '@/lib/bridge';
 import { DEFAULT_REPO_URL } from '@/lib/bridge';
 
 import type { SettingsCardProps } from './SettingsCard';
 
 /** Build the About page cards. */
-export function buildAboutCards(appInfo: AppInfo | null): SettingsCardProps[] {
+export function buildAboutCards(
+  appInfo: AppInfo | null,
+  onRestartOnboarding: () => void,
+): SettingsCardProps[] {
   const version = appInfo?.version ?? '—';
   const repo = appInfo?.repository ?? DEFAULT_REPO_URL;
   const repoLabel = repo.replace(/^https?:\/\//, '');
@@ -18,6 +21,15 @@ export function buildAboutCards(appInfo: AppInfo | null): SettingsCardProps[] {
       rows: [
         { label: 'Version', control: <Pill>v{version}</Pill> },
         { label: 'Repository', hint: repoLabel, control: <RepoLink href={repo} /> },
+        {
+          label: 'Onboarding',
+          hint: 'Run the setup checklist and project picker again.',
+          control: (
+            <Button variant="secondary" onClick={onRestartOnboarding}>
+              Run onboarding
+            </Button>
+          ),
+        },
       ],
     },
   ];

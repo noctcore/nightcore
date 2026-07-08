@@ -292,6 +292,7 @@ pub fn run() {
             commands::project::read_project_icon,
             commands::project::is_git_repo,
             commands::project::git_init,
+            commands::onboarding::check_onboarding_prerequisites,
             commands::settings::get_settings,
             commands::settings::update_settings,
             commands::settings::app_info,

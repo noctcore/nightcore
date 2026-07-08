@@ -8,6 +8,24 @@ import type { NightcoreEvent } from '@nightcore/contracts';
 
 export type { SessionStatus } from '@nightcore/contracts';
 
+export interface ToolCheck {
+  id: string;
+  label: string;
+  installed: boolean;
+  authenticated: boolean | null;
+  path: string | null;
+  version: string | null;
+  detail: string;
+  fixHint: string;
+  fixCommand: string;
+}
+
+export interface OnboardingPrerequisites {
+  claude: ToolCheck;
+  gh: ToolCheck;
+  git: ToolCheck;
+}
+
 // --- Generated IPC types (Rust→TS codegen) --------------------------------
 //
 // These types are GENERATED from the Rust serde structs by `ts-rs` (run via

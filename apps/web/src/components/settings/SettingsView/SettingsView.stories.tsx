@@ -36,6 +36,7 @@ const meta = {
     activeProjectName: 'nightcore',
     activeProjectPath: '~/dev/nightcore',
     onUpdate: fn(),
+    onRestartOnboarding: fn(),
   },
 } satisfies Meta<typeof SettingsView>;
 
@@ -81,5 +82,15 @@ export const ToggleNotifications: Story = {
       canvas.getByRole('switch', { name: /native notifications on task complete/i }),
     );
     await expect(args.onUpdate).toHaveBeenCalledWith({ notifyOnComplete: true });
+  },
+};
+
+/** Play test: the About page can re-open the onboarding flow. */
+export const RestartOnboarding: Story = {
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: /about/i }));
+    await userEvent.click(canvas.getByRole('button', { name: /run onboarding/i }));
+    await expect(args.onRestartOnboarding).toHaveBeenCalled();
   },
 };

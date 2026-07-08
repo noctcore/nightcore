@@ -40,6 +40,7 @@ export {
   History as HistoryIcon,
   Image as ImageIcon,
   Lightbulb as InsightIcon,
+  KeyRound as KeyIcon,
   Layers as LayersIcon,
   Lock as LockIcon,
   FileText as LogsIcon,

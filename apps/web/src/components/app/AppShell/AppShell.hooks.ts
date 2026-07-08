@@ -27,6 +27,7 @@ import { useEditProject } from './hooks/useEditProject.hooks';
 import { useGauntlet } from './hooks/useGauntlet.hooks';
 import { useGlobalErrorToast } from './hooks/useGlobalErrorToast.hooks';
 import { useNewProjectFlow } from './hooks/useNewProjectFlow.hooks';
+import { useOnboardingGate } from './hooks/useOnboardingGate.hooks';
 import { usePermissions, useQuestions } from './hooks/useParkedPrompts.hooks';
 import { usePrLifecycle } from './hooks/usePrLifecycle.hooks';
 import { useProjectRegistry } from './hooks/useProjectRegistry.hooks';
@@ -121,6 +122,7 @@ export interface AppShellState {
    *  rendered by AppShell as a single `ConfirmDialog`. */
   confirm: BoardActions['confirm'];
   editProject: ReturnType<typeof useEditProject>;
+  onboarding: ReturnType<typeof useOnboardingGate>;
   showSplash: boolean;
   isTauri: boolean;
 }
@@ -147,6 +149,7 @@ export function useAppShell(): AppShellState {
   const showSplash = useSplash();
   const routing = useRouting();
   const registry = useProjectRegistry(toast);
+  const onboarding = useOnboardingGate(registry.projects.length);
   const editProject = useEditProject(toast);
   const settings = useSettingsData(toast);
   const persistConcurrency = useCallback(
@@ -252,6 +255,7 @@ export function useAppShell(): AppShellState {
     worktrees,
     confirm: boardActions.confirm,
     editProject,
+    onboarding,
     showSplash,
     isTauri: isTauri(),
   };
