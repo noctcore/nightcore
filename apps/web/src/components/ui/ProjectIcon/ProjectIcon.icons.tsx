@@ -1,0 +1,107 @@
+/** Curated Lucide icons for project presets — the single map ProjectIcon and
+ *  IconPicker share. Feature code must not import `lucide-react` directly. */
+import type { LucideIcon } from 'lucide-react';
+import {
+  Bot,
+  Box,
+  Boxes,
+  Brain,
+  Code,
+  Cpu,
+  Database,
+  FileCode,
+  FlaskConical,
+  Folder,
+  FolderCode,
+  FolderGit,
+  FolderKanban,
+  FolderOpen,
+  GitBranch,
+  Globe,
+  Hammer,
+  Heart,
+  Layers,
+  LayoutGrid,
+  Lightbulb,
+  Package,
+  Palette,
+  Rocket,
+  Server,
+  Sparkles,
+  Star,
+  Terminal,
+  Zap,
+} from 'lucide-react';
+
+/** Lucide export names available in the icon picker (sorted for display). */
+export const PROJECT_ICON_NAMES = [
+  'Bot',
+  'Box',
+  'Boxes',
+  'Brain',
+  'Code',
+  'Cpu',
+  'Database',
+  'FileCode',
+  'FlaskConical',
+  'Folder',
+  'FolderCode',
+  'FolderGit',
+  'FolderKanban',
+  'FolderOpen',
+  'GitBranch',
+  'Globe',
+  'Hammer',
+  'Heart',
+  'Layers',
+  'LayoutGrid',
+  'Lightbulb',
+  'Package',
+  'Palette',
+  'Rocket',
+  'Server',
+  'Sparkles',
+  'Star',
+  'Terminal',
+  'Zap',
+] as const;
+
+export type ProjectIconName = (typeof PROJECT_ICON_NAMES)[number];
+
+const MAP: Record<ProjectIconName, LucideIcon> = {
+  Bot,
+  Box,
+  Boxes,
+  Brain,
+  Code,
+  Cpu,
+  Database,
+  FileCode,
+  FlaskConical,
+  Folder,
+  FolderCode,
+  FolderGit,
+  FolderKanban,
+  FolderOpen,
+  GitBranch,
+  Globe,
+  Hammer,
+  Heart,
+  Layers,
+  LayoutGrid,
+  Lightbulb,
+  Package,
+  Palette,
+  Rocket,
+  Server,
+  Sparkles,
+  Star,
+  Terminal,
+  Zap,
+};
+
+/** Resolve a Lucide export name to its component, or `null` when unknown. */
+export function projectIconComponent(name: string | null | undefined): LucideIcon | null {
+  if (name === null || name === undefined || name.length === 0) return null;
+  return (MAP as Record<string, LucideIcon>)[name] ?? null;
+}

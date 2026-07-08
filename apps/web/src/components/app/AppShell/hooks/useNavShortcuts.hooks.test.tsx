@@ -5,8 +5,8 @@ import type { NavItem } from '../AppShell.types';
 import { useNavShortcuts } from './useNavShortcuts.hooks';
 
 const NAV: NavItem[] = [
-  { view: 'board', label: 'Kanban Board', hint: 'K', icon: null },
-  { view: 'settings', label: 'Settings', hint: 'S', icon: null },
+  { view: 'board', label: 'Kanban Board', hint: 'K', icon: null, group: 'project' },
+  { view: 'settings', label: 'Settings', hint: 'S', icon: null, group: 'settings' },
 ];
 
 function Harness({

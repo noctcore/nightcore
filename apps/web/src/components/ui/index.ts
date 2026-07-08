@@ -20,6 +20,11 @@ export type { DetailCardGridProps, DetailCardProps } from './DetailCardGrid';
 export { DetailCard, DetailCardGrid } from './DetailCardGrid';
 export type { DetailPanelShellProps } from './DetailPanelShell';
 export { DetailLocation, DetailPanelShell, DetailSection } from './DetailPanelShell';
+export { EditProjectDialog } from './EditProjectDialog';
+export type {
+  EditProjectDialogProps,
+  EditProjectSaveArgs,
+} from './EditProjectDialog/EditProjectDialog.types';
 export { EmptyState } from './EmptyState';
 export { FieldValue } from './FieldValue';
 export type {
@@ -34,6 +39,8 @@ export {
   inferLanguageFromFile,
 } from './GroundedFindingBody';
 export { IconButton } from './IconButton';
+export { IconPicker } from './IconPicker';
+export type { IconPickerProps } from './IconPicker/IconPicker.types';
 export * from './icons';
 export { IconTile } from './IconTile';
 export type { ImageDropzoneItem, ImageDropzoneProps } from './ImageDropzone';
@@ -74,6 +81,10 @@ export * from './motion';
 export { NumberField } from './NumberField';
 export type { NumberFieldProps } from './NumberField/NumberField.types';
 export { Pill } from './Pill';
+export { ProjectContextMenu } from './ProjectContextMenu';
+export type { ProjectContextMenuProps } from './ProjectContextMenu/ProjectContextMenu.types';
+export { ProjectIcon } from './ProjectIcon';
+export type { ProjectIconProps } from './ProjectIcon/ProjectIcon.types';
 export type {
   KnownProviderId,
   ProviderGlyph,

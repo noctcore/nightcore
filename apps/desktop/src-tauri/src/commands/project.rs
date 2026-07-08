@@ -181,6 +181,8 @@ pub fn create_project(
     let nightcore = dir.join(".nightcore");
     std::fs::create_dir_all(nightcore.join("tasks"))
         .map_err(|e| format!("failed to scaffold .nightcore: {e}"))?;
+    std::fs::create_dir_all(nightcore.join("images"))
+        .map_err(|e| format!("failed to scaffold .nightcore/images: {e}"))?;
 
     // The project's recorded branch is the main checkout's current branch — the
     // STRICT worktree resolver (no `main` fallback; a detached HEAD reads as
@@ -298,6 +300,135 @@ pub fn rename_project(
     let project = store.rename(&id, name)?;
     emit_project_event(&app, &store, "renamed", Some(&project));
     Ok(project)
+}
+
+/// Partial update for a project: optional `name` and/or Lucide `icon`. Setting
+/// `icon` clears any custom image path (and removes the on-disk file). Emits
+/// `nc:project { type: "updated" }`.
+#[tauri::command]
+pub fn update_project(
+    app: AppHandle,
+    store: State<'_, ProjectStore>,
+    id: String,
+    name: Option<String>,
+    icon: Option<String>,
+) -> Result<Project, String> {
+    if let Some(ref n) = name {
+        if n.trim().is_empty() {
+            return Err("project name cannot be empty".to_string());
+        }
+    }
+    let project = store.get(&id)?;
+    if icon.is_some() {
+        if let Some(ref rel) = project.custom_icon_path {
+            if let Err(e) = crate::store::project_icon::remove_file(&project.path, rel) {
+                tracing::warn!(target: "nightcore::project", project_id = %id, error = %e, "failed to remove custom icon on preset switch");
+            }
+        }
+    }
+    let name_ref = name.as_deref().map(str::trim);
+    let icon_patch = icon.as_deref().map(Some);
+    let updated = store.update(
+        &id,
+        name_ref,
+        if icon.is_some() { icon_patch } else { None },
+    )?;
+    emit_project_event(&app, &store, "updated", Some(&updated));
+    Ok(updated)
+}
+
+/// Set a Lucide preset icon on a project; clears any custom image. Emits `updated`.
+#[tauri::command]
+pub fn set_project_icon(
+    app: AppHandle,
+    store: State<'_, ProjectStore>,
+    id: String,
+    icon: String,
+) -> Result<Project, String> {
+    let project = store.get(&id)?;
+    if let Some(ref rel) = project.custom_icon_path {
+        if let Err(e) = crate::store::project_icon::remove_file(&project.path, rel) {
+            tracing::warn!(target: "nightcore::project", project_id = %id, error = %e, "failed to remove custom icon on preset set");
+        }
+    }
+    let updated = store.update(&id, None, Some(Some(&icon)))?;
+    emit_project_event(&app, &store, "updated", Some(&updated));
+    Ok(updated)
+}
+
+/// Persist a base64 custom icon under `.nightcore/images/` and point the project
+/// at it. Clears any Lucide preset. Emits `updated`.
+#[tauri::command]
+pub async fn save_project_icon(
+    app: AppHandle,
+    id: String,
+    format: String,
+    data: String,
+    filename: Option<String>,
+) -> Result<Project, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        save_project_icon_blocking(&app, &id, &format, &data, filename.as_deref())
+    })
+    .await
+    .map_err(|e| format!("save project icon failed to run: {e}"))?
+}
+
+fn save_project_icon_blocking(
+    app: &AppHandle,
+    id: &str,
+    format: &str,
+    data: &str,
+    filename: Option<&str>,
+) -> Result<Project, String> {
+    let store = app
+        .try_state::<ProjectStore>()
+        .ok_or_else(|| "project store unavailable".to_string())?;
+    let project = store.get(id)?;
+    let rel = crate::store::project_icon::persist(&project.path, format, data, filename)?;
+    if let Some(old) = project.custom_icon_path.as_deref() {
+        if old != rel {
+            let _ = crate::store::project_icon::remove_file(&project.path, old);
+        }
+    }
+    let updated = store.set_custom_icon_path(id, &rel)?;
+    emit_project_event(app, &store, "updated", Some(&updated));
+    Ok(updated)
+}
+
+/// Remove custom icon bytes and clear both icon fields. Emits `updated`.
+#[tauri::command]
+pub fn clear_project_icon(
+    app: AppHandle,
+    store: State<'_, ProjectStore>,
+    id: String,
+) -> Result<Project, String> {
+    let project = store.get(&id)?;
+    if let Some(ref rel) = project.custom_icon_path {
+        if let Err(e) = crate::store::project_icon::remove_file(&project.path, rel) {
+            tracing::warn!(target: "nightcore::project", project_id = %id, error = %e, "failed to remove custom icon file on clear");
+        }
+    }
+    let updated = store.clear_icon_fields(&id)?;
+    emit_project_event(&app, &store, "updated", Some(&updated));
+    Ok(updated)
+}
+
+/// Read a project's custom icon as a `data:` URL, or `None` when it has no custom
+/// image (Lucide presets are rendered client-side).
+#[tauri::command]
+pub fn read_project_icon(
+    store: State<'_, ProjectStore>,
+    id: String,
+) -> Result<Option<String>, String> {
+    let project = store.get(&id)?;
+    let rel = match project.custom_icon_path.as_deref() {
+        Some(r) => r,
+        None => return Ok(None),
+    };
+    Ok(Some(crate::store::project_icon::read_data_url(
+        &project.path,
+        rel,
+    )?))
 }
 
 /// Whether `path` is a git repository. Read-only: an invalid / non-existent /

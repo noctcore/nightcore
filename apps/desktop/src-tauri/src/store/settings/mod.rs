@@ -378,6 +378,23 @@ mod tests {
     }
 
     #[test]
+    fn legacy_settings_without_sidebar_style_loads_as_none() {
+        let tmp = TempDir::new().expect("temp dir");
+        let dir = tmp.path().join("config");
+        std::fs::create_dir_all(&dir).unwrap();
+        let legacy = r#"{"defaultModel":"claude-opus-4-8","defaultEffort":"medium",
+            "maxConcurrency":3,"permissionMode":"bypass","cleanupWorktrees":true,
+            "notifyOnComplete":false,"defaultRunMode":"main","projectOverrides":{}}"#;
+        std::fs::write(dir.join("settings.json"), legacy).unwrap();
+        let store = SettingsStore::load_from(dir);
+        assert!(store.get().sidebar_style.is_none());
+        assert_eq!(
+            super::model::resolve_sidebar_style(store.get().sidebar_style.as_deref()),
+            "unified"
+        );
+    }
+
+    #[test]
     fn context_pack_enabled_resolves_project_then_global() {
         let (store, _tmp) = temp_store();
         // Global default is on for every project without an own override.

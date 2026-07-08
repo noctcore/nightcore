@@ -1,5 +1,4 @@
 import { composeStories } from '@storybook/react-vite';
-import { userEvent } from '@vitest/browser/context';
 import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
@@ -38,13 +37,10 @@ test('Remove routes through a confirmation before deleting', async () => {
   expect(onDelete).toHaveBeenCalledWith('nightcore');
 });
 
-test('Rename submits the edited name', async () => {
-  const onRename = vi.fn();
-  const screen = render(<Live onRename={onRename} />);
+test('Edit project invokes onEdit', async () => {
+  const onEdit = vi.fn();
+  const screen = render(<Live onEdit={onEdit} />);
   await screen.getByRole('button', { name: 'Project menu' }).click();
-  await screen.getByRole('menuitem', { name: 'Rename' }).click();
-  const input = screen.getByLabelText('Project name');
-  await userEvent.fill(input.element() as HTMLInputElement, 'renamed-core');
-  await screen.getByRole('button', { name: 'Save' }).click();
-  expect(onRename).toHaveBeenCalledWith('nightcore', 'renamed-core');
+  await screen.getByRole('menuitem', { name: 'Edit project' }).click();
+  expect(onEdit).toHaveBeenCalled();
 });

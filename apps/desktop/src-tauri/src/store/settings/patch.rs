@@ -182,6 +182,10 @@ pub struct SettingsPatch {
     /// in that project's override; without one, the global default.
     #[cfg_attr(test, ts(optional))]
     pub context_pack_enabled: Option<bool>,
+    /// Sidebar layout: `"unified"` or `"classic"`. Global-only (ignored for a
+    /// per-project override target). Serde-additive.
+    #[cfg_attr(test, ts(optional))]
+    pub sidebar_style: Option<String>,
     /// Custom Background: the project's COMPLETE next board-appearance knob set.
     /// Requires a `projectId` (board appearance is per-project only — a patch with no
     /// `projectId` ignores this field). The panel always sends the full object, so
@@ -262,6 +266,9 @@ impl Settings {
         // booleans, serde maps absent/null to `None`, so an omitted key is a no-op.
         if let Some(v) = patch.context_pack_enabled {
             self.context_pack_enabled = v;
+        }
+        if let Some(v) = patch.sidebar_style {
+            self.sidebar_style = Some(v);
         }
     }
 }

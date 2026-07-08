@@ -47,6 +47,8 @@ export function useProjectSummaries({
         id: p.id,
         name: p.name,
         path: p.path,
+        icon: p.icon,
+        customIconPath: p.customIconPath,
         running: runningProjectIds.includes(p.id),
         stats: statsFor(p.id === activeId ? activeTasks : []),
         activity: activityLabel(p.lastActiveAt),

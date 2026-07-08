@@ -52,18 +52,13 @@ export interface QuestionPrompt {
  *  a new event variant is added to the Rust emitter, add it here first; the
  *  `satisfies` on `PROJECT_EVENT_TYPES` below will then force a compile error until
  *  the array is updated to match. */
-export type ProjectEventType = 'created' | 'deleted' | 'activated' | 'renamed';
+export type ProjectEventType = 'created' | 'deleted' | 'activated' | 'renamed' | 'updated';
 
 /** Runtime membership array for `ProjectEventType`. Must stay exhaustive: the
  *  `satisfies` clause makes adding a variant to `ProjectEventType` above without
  *  adding it here a compile error. The guard uses this array directly — no
  *  hand-enumerated strings at the call site. */
-const PROJECT_EVENT_TYPES = [
-  'created',
-  'deleted',
-  'activated',
-  'renamed',
-] as const satisfies readonly ProjectEventType[];
+const PROJECT_EVENT_TYPES = ['created', 'deleted', 'activated', 'renamed', 'updated'] as const satisfies readonly ProjectEventType[];
 
 /** `nc:project` payload: a registry change plus the full registry snapshot.
  *  `renamed` carries the updated project (name changed; active pointer unchanged). */

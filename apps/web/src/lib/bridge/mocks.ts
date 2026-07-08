@@ -102,6 +102,8 @@ export const MOCK_PROJECT: Project = {
   branch: 'main',
   createdAt: '2026-06-21T00:00:00Z',
   lastActiveAt: '2026-06-21T00:00:00Z',
+  icon: null,
+  customIconPath: null,
 };
 
 /** The default settings used outside Tauri (browser preview). */
@@ -120,6 +122,7 @@ export const MOCK_SETTINGS: Settings = {
   contextPackEnabled: true,
   autoCommitOnVerified: false,
   sandboxSessions: false,
+  sidebarStyle: null,
   projectOverrides: {},
 };
 

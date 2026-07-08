@@ -101,6 +101,11 @@ autoCommitOnVerified: boolean,
  */
 sandboxSessions: boolean, 
 /**
+ * Sidebar layout preference: `"unified"` (default) or `"classic"`. Serde-additive:
+ * legacy settings load as `None` and resolve to unified at read time.
+ */
+sidebarStyle: string | null, 
+/**
  * Per-project overrides keyed by project id.
  */
 projectOverrides: { [key in string]: SettingsOverride }, };

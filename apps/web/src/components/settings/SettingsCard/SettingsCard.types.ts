@@ -6,6 +6,8 @@ export interface SettingsRow {
   label: string;
   hint?: string;
   control: ReactNode;
+  /** When true, the control renders below the label/hint at full width. */
+  stacked?: boolean;
 }
 
 /** Props for the grouped settings card. */

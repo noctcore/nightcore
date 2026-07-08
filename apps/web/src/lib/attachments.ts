@@ -94,6 +94,24 @@ function fileToBase64(file: File): Promise<string> {
  *  because animated-gif wallpaper is commonly bigger. The server re-validates. */
 export const MAX_BACKGROUND_BYTES = 15 * 1024 * 1024;
 
+/** Max bytes for a project icon (decoded). Mirrors Rust `project_icon::MAX_ICON_BYTES`. */
+export const MAX_ICON_BYTES = 5 * 1024 * 1024;
+
+/** Validate + read a File into a project-icon payload. Throws on bad type/size. */
+export async function fileToProjectIcon(
+  file: File,
+): Promise<{ format: ImageFormat; data: string; filename: string }> {
+  const format = formatFromMime(file.type);
+  if (format === null) {
+    throw new Error(`"${file.name}" is not a supported image (${ACCEPTED_IMAGE_LABEL}).`);
+  }
+  if (file.size > MAX_ICON_BYTES) {
+    throw new Error(`"${file.name}" is larger than 5 MB.`);
+  }
+  const data = await fileToBase64(file);
+  return { format, data, filename: file.name };
+}
+
 /** Validate + read a File into a board-background payload (`{ format, data }`).
  *  Throws an Error with a user-facing message when the type or size is rejected.
  *  Reuses the shared base64 reader; the cap is the background-specific 15 MB (vs.

@@ -28,7 +28,9 @@ export function SettingsCard({
         {rows.map((row, i) => (
           <div
             key={row.label}
-            className={`flex items-center gap-4 py-3.5 ${i > 0 ? 'border-t border-border' : ''}`}
+            className={`py-3.5 ${i > 0 ? 'border-t border-border' : ''} ${
+              row.stacked ? 'flex flex-col gap-4' : 'flex items-center gap-4'
+            }`}
           >
             <div className="min-w-0 flex-1">
               <div className="text-[13.5px] font-medium">{row.label}</div>
@@ -38,7 +40,7 @@ export function SettingsCard({
                 </div>
               )}
             </div>
-            <div className="shrink-0">{row.control}</div>
+            <div className={row.stacked ? 'w-full' : 'shrink-0'}>{row.control}</div>
           </div>
         ))}
       </div>

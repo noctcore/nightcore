@@ -10,20 +10,11 @@ import {
 import { NewProjectDialog } from '@/components/new-project';
 import {
   AnimatePresence,
-  BoardIcon,
-  BranchIcon,
-  BugIcon,
   Button,
-  ConfirmDialog,
   EmptyState,
   fadeRise,
   FolderIcon,
-  GearIcon,
-  GithubIcon,
-  InsightIcon,
   m,
-  PerfIcon,
-  VerifiedIcon,
 } from '@/components/ui';
 import type { PermissionPrompt, QuestionPrompt } from '@/lib/bridge';
 import { WorktreesProvider } from '@/lib/worktrees-context';
@@ -31,8 +22,9 @@ import { WorktreesProvider } from '@/lib/worktrees-context';
 import { Sidebar } from '../Sidebar';
 import { Splash } from '../Splash';
 import { useAppShell } from './AppShell.hooks';
-import type { NavItem } from './AppShell.types';
+import { AppShellOverlays } from './AppShellOverlays';
 import { useNavShortcuts } from './hooks/useNavShortcuts.hooks';
+import { APP_SHELL_NAV } from './nav.constants';
 
 // Off-first-paint route views are code-split (client-bundle): the entry chunk
 // only needs Splash + Sidebar + Board, so the Settings/Projects surfaces and the
@@ -88,16 +80,6 @@ function RouteFallback() {
 // Projects is no longer a workspace nav item — the sidebar brand/logo is its entry
 // point (and the shell shows it full-screen, without the sidebar). The remaining
 // items route within an open project.
-const NAV: NavItem[] = [
-  { view: 'board', label: 'Kanban Board', hint: 'K', icon: <BoardIcon size={16} /> },
-  { view: 'worktrees', label: 'Worktrees', hint: 'W', icon: <BranchIcon size={16} /> },
-  { view: 'insight', label: 'Insight', hint: 'I', icon: <InsightIcon size={16} /> },
-  { view: 'scorecard', label: 'Scorecard', hint: 'R', icon: <PerfIcon size={16} /> },
-  { view: 'harness', label: 'Harness', hint: 'H', icon: <VerifiedIcon size={16} /> },
-  { view: 'prreview', label: 'PR Review', hint: 'P', icon: <GithubIcon size={16} /> },
-  { view: 'issuetriage', label: 'Issue Triage', hint: 'T', icon: <BugIcon size={16} /> },
-  { view: 'settings', label: 'Settings', hint: 'S', icon: <GearIcon size={16} /> },
-];
 
 const MODELS = ['Opus 4.8', 'Sonnet 4.8', 'Haiku 4.5'];
 
@@ -122,11 +104,14 @@ export function AppShell() {
     prDialog,
     worktrees,
     confirm,
+    editProject,
     showSplash,
     isTauri,
   } = useAppShell();
   const { view, switcherOpen, collapsed, newProjectOpen } = routing;
   const { projects, active } = registry;
+  const sidebarStyle =
+    settings.settings?.sidebarStyle === 'classic' ? 'classic' : 'unified';
   const { tasks, selected, selectedId, setSelectedId, anyRunning, runningCount } = board;
 
   const runningProjectIds = anyRunning && active !== null ? [active.id] : [];
@@ -136,7 +121,7 @@ export function AppShell() {
   // surface (view==='projects' or no active project).
   const shortcutsEnabled =
     !showSplash && registry.loaded && view !== 'projects' && active !== null;
-  useNavShortcuts(NAV, routing.goto, shortcutsEnabled);
+  useNavShortcuts(APP_SHELL_NAV, routing.goto, shortcutsEnabled);
 
   // Hold the splash until the registry has loaded — in EVERY environment, not just
   // Tauri — so the first real paint already knows whether to land on full-screen
@@ -170,6 +155,10 @@ export function AppShell() {
           registry.activate(id);
           routing.goto('board');
         }}
+        onEdit={(id) => {
+          const p = projects.find((x) => x.id === id);
+          if (p !== undefined) editProject.openEdit(p);
+        }}
         onRename={registry.rename}
         onDelete={registry.remove}
         onNewProject={routing.openNewProject}
@@ -194,21 +183,25 @@ export function AppShell() {
       ) : (
         <div className="flex h-full w-full overflow-hidden bg-background text-foreground">
           <Sidebar
-            projects={projects}
-            active={active}
+            switcher={{
+              projects,
+              active,
+              switcherOpen,
+              onToggleSwitcher: routing.toggleSwitcher,
+              onPickProject: registry.activate,
+              onNewProject: routing.openNewProject,
+              onEditProject: editProject.openEdit,
+            }}
             view={view}
-            nav={NAV}
+            nav={APP_SHELL_NAV}
             collapsed={collapsed}
-            switcherOpen={switcherOpen}
+            sidebarStyle={sidebarStyle}
             runningCount={runningCount}
             awaitingInputCount={board.promptIds.size}
             version="v0.1.0"
             onToggleCollapsed={routing.toggleCollapsed}
-            onToggleSwitcher={routing.toggleSwitcher}
             onNavigate={routing.goto}
             onGotoProjects={() => routing.goto('projects')}
-            onPickProject={registry.activate}
-            onNewProject={routing.openNewProject}
             onGotoAwaitingInput={() => {
               // Select the first task parked awaiting input and open its board
               // drawer (where the InteractionDock renders the prompt to act on).
@@ -423,33 +416,7 @@ export function AppShell() {
         </Suspense>
       )}
 
-      <ConfirmDialog
-        open={confirm.pendingDelete !== null}
-        title="Delete this task?"
-        message="This task and its run history will be removed. This can't be undone."
-        confirmLabel="Delete"
-        destructive
-        onConfirm={confirm.confirm}
-        onCancel={confirm.cancel}
-      />
-
-      <ConfirmDialog
-        open={confirm.pendingClear !== null}
-        title={
-          confirm.pendingClear !== null
-            ? `Delete all ${confirm.pendingClear.count} tasks in ${confirm.pendingClear.columnTitle}?`
-            : ''
-        }
-        message={
-          confirm.pendingClear !== null
-            ? `Every task in ${confirm.pendingClear.columnTitle} will be removed. This can't be undone.`
-            : ''
-        }
-        confirmLabel="Delete all"
-        destructive
-        onConfirm={confirm.confirm}
-        onCancel={confirm.cancel}
-      />
+      <AppShellOverlays confirm={confirm} editProject={editProject} />
     </BoardChromeProvider>
     </WorktreesProvider>
     </TaskActionsProvider>

@@ -7,7 +7,6 @@ import {
   AgentsIcon,
   BellIcon,
   BoltIcon,
-  BookIcon,
   BranchIcon,
   FieldValue,
   FolderIcon,
@@ -17,8 +16,6 @@ import {
   LockIcon,
   ModelSelect,
   NumberField,
-  Pill,
-  RepoLink,
   resolveProviderForModel,
   Segmented,
   SparkIcon,
@@ -27,7 +24,6 @@ import {
 } from '@/components/ui';
 import {
   type AppInfo,
-  DEFAULT_REPO_URL,
   PROVIDER_LABEL,
   type Settings,
   type SettingsPatch,
@@ -39,6 +35,8 @@ import {
   modelOptionFor,
 } from '@/lib/models';
 
+import { buildAboutCards } from './settings-about-cards';
+import { buildInterfaceCards } from './settings-interface-cards';
 import type { SettingsCardProps } from './SettingsCard';
 import type { EffectiveSettings } from './SettingsView/SettingsView.hooks';
 import type { SettingsPage } from './SettingsView/SettingsView.types';
@@ -307,6 +305,8 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
           ],
         },
       ];
+    case 'interface':
+      return buildInterfaceCards(settings, patchGlobal);
     case 'providers':
       return [
         {
@@ -378,21 +378,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
           ],
         },
       ];
-    case 'about': {
-      const version = appInfo?.version ?? '—';
-      const repo = appInfo?.repository ?? DEFAULT_REPO_URL;
-      const repoLabel = repo.replace(/^https?:\/\//, '');
-      return [
-        {
-          icon: <BookIcon size={18} />,
-          title: 'Nightcore',
-          subtitle: 'Autonomous Claude dev studio — a rewrite of AutoMaker.',
-          rows: [
-            { label: 'Version', control: <Pill>v{version}</Pill> },
-            { label: 'Repository', hint: repoLabel, control: <RepoLink href={repo} /> },
-          ],
-        },
-      ];
-    }
+    case 'about':
+      return buildAboutCards(appInfo);
   }
 }

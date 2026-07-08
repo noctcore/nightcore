@@ -20,4 +20,13 @@ createdAt: string,
 /**
  * ISO8601 of the last activation, or `None` if never activated.
  */
-lastActiveAt: string | null, };
+lastActiveAt: string | null, 
+/**
+ * Lucide export name for a preset icon (e.g. `"FolderCode"`). Serde-additive:
+ * legacy registry entries load as `None`.
+ */
+icon: string | null, 
+/**
+ * Repo-relative path to a custom image under `.nightcore/images/`. Serde-additive.
+ */
+customIconPath: string | null, };

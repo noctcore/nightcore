@@ -13,6 +13,7 @@ export function ProjectsView({
   activeTasks,
   runningProjectIds,
   onOpen,
+  onEdit,
   onRename,
   onDelete,
   onNewProject,
@@ -53,6 +54,7 @@ export function ProjectsView({
               key={project.id}
               project={project}
               onOpen={onOpen}
+              onEdit={() => onEdit(project.id)}
               onRename={onRename}
               onDelete={onDelete}
             />

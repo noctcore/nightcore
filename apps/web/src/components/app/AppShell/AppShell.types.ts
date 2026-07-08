@@ -13,6 +13,9 @@ export type AppView =
 
 import type { ReactNode } from 'react';
 
+/** Sidebar nav section ids — main groups plus footer-placed settings. */
+export type NavGroupId = 'project' | 'tools' | 'settings';
+
 /** A nav entry in the sidebar workspace section. */
 export interface NavItem {
   view: AppView;
@@ -20,4 +23,5 @@ export interface NavItem {
   /** Single-letter keyboard hint shown as a Kbd chip. */
   hint: string;
   icon: ReactNode;
+  group: NavGroupId;
 }

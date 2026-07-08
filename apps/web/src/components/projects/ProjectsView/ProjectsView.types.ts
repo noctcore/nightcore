@@ -10,8 +10,9 @@ export interface ProjectsViewProps {
   activeTasks: Task[];
   runningProjectIds: string[];
   onOpen: (id: string) => void;
-  /** Rename a project (registry-only; files on disk untouched). */
-  onRename: (id: string, name: string) => void;
+  onEdit: (id: string) => void;
+  /** @deprecated Prefer {@link onEdit}. */
+  onRename?: (id: string, name: string) => void;
   /** Remove a project from Nightcore (registry-only; files on disk untouched). */
   onDelete: (id: string) => void;
   onNewProject: () => void;

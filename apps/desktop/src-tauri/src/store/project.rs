@@ -34,6 +34,13 @@ pub struct Project {
     pub created_at: String,
     /// ISO8601 of the last activation, or `None` if never activated.
     pub last_active_at: Option<String>,
+    /// Lucide export name for a preset icon (e.g. `"FolderCode"`). Serde-additive:
+    /// legacy registry entries load as `None`.
+    #[serde(default)]
+    pub icon: Option<String>,
+    /// Repo-relative path to a custom image under `.nightcore/images/`. Serde-additive.
+    #[serde(default)]
+    pub custom_icon_path: Option<String>,
 }
 
 impl Project {
@@ -45,6 +52,8 @@ impl Project {
             branch,
             created_at: now_iso8601(),
             last_active_at: None,
+            icon: None,
+            custom_icon_path: None,
         }
     }
 }
@@ -132,6 +141,77 @@ impl ProjectStore {
             self.persist_registry()?;
         }
         Ok(removed)
+    }
+
+    /// Look up a project by id (clone). Errors if unknown.
+    pub(crate) fn get(&self, id: &str) -> Result<Project, String> {
+        crate::sync::lock_or_recover(&self.projects)
+            .iter()
+            .find(|p| p.id == id)
+            .cloned()
+            .ok_or_else(|| format!("no project with id {id}"))
+    }
+
+    /// Patch `name` and/or Lucide `icon` on a project. Setting `icon` clears
+    /// `custom_icon_path` (the caller removes any on-disk custom file first).
+    /// Omitted patch fields are left unchanged. Errors if the id is unknown.
+    pub(crate) fn update(
+        &self,
+        id: &str,
+        name: Option<&str>,
+        icon: Option<Option<&str>>,
+    ) -> Result<Project, String> {
+        let project = {
+            let mut guard = crate::sync::lock_or_recover(&self.projects);
+            let project = guard
+                .iter_mut()
+                .find(|p| p.id == id)
+                .ok_or_else(|| format!("no project with id {id}"))?;
+            if let Some(name) = name {
+                project.name = name.to_string();
+            }
+            if let Some(icon) = icon {
+                project.icon = icon.map(str::to_string);
+                if icon.is_some() {
+                    project.custom_icon_path = None;
+                }
+            }
+            project.clone()
+        };
+        self.persist_registry()?;
+        Ok(project)
+    }
+
+    /// Set the custom icon path and clear the Lucide preset. Errors if unknown.
+    pub(crate) fn set_custom_icon_path(&self, id: &str, rel: &str) -> Result<Project, String> {
+        let project = {
+            let mut guard = crate::sync::lock_or_recover(&self.projects);
+            let project = guard
+                .iter_mut()
+                .find(|p| p.id == id)
+                .ok_or_else(|| format!("no project with id {id}"))?;
+            project.custom_icon_path = Some(rel.to_string());
+            project.icon = None;
+            project.clone()
+        };
+        self.persist_registry()?;
+        Ok(project)
+    }
+
+    /// Clear both icon fields. Errors if unknown.
+    pub(crate) fn clear_icon_fields(&self, id: &str) -> Result<Project, String> {
+        let project = {
+            let mut guard = crate::sync::lock_or_recover(&self.projects);
+            let project = guard
+                .iter_mut()
+                .find(|p| p.id == id)
+                .ok_or_else(|| format!("no project with id {id}"))?;
+            project.icon = None;
+            project.custom_icon_path = None;
+            project.clone()
+        };
+        self.persist_registry()?;
+        Ok(project)
     }
 
     /// Rename `id` to `name`, persist the registry, and return the updated
@@ -365,9 +445,42 @@ mod tests {
         let project = Project::new("p".into(), "/p".into(), None);
         let value = serde_json::to_value(&project).unwrap();
         let obj = value.as_object().unwrap();
-        for key in ["createdAt", "lastActiveAt"] {
+        for key in ["createdAt", "lastActiveAt", "customIconPath"] {
             assert!(obj.contains_key(key), "missing camelCase key {key}");
         }
+    }
+
+    #[test]
+    fn legacy_project_without_icon_fields_loads_as_none() {
+        let legacy = r#"{
+            "id": "p1",
+            "name": "legacy",
+            "path": "/repo/p",
+            "branch": null,
+            "createdAt": "2021-01-01T00:00:00Z",
+            "lastActiveAt": null
+        }"#;
+        let project: Project = serde_json::from_str(legacy).expect("parse legacy project");
+        assert!(project.icon.is_none());
+        assert!(project.custom_icon_path.is_none());
+    }
+
+    #[test]
+    fn update_patches_name_and_icon_and_clears_custom_path() {
+        let (store, _tmp) = temp_store();
+        let project = Project::new("p".into(), "/repo/p".into(), None);
+        let id = project.id.clone();
+        store.add(project).expect("add");
+        store
+            .set_custom_icon_path(&id, ".nightcore/images/x.png")
+            .expect("custom");
+
+        let updated = store
+            .update(&id, Some("new-name"), Some(Some("FolderCode")))
+            .expect("update");
+        assert_eq!(updated.name, "new-name");
+        assert_eq!(updated.icon.as_deref(), Some("FolderCode"));
+        assert!(updated.custom_icon_path.is_none());
     }
 
     #[test]

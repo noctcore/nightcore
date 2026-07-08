@@ -48,6 +48,11 @@ mcpServers?: Array<McpServerEntry>,
  */
 contextPackEnabled?: boolean, 
 /**
+ * Sidebar layout: `"unified"` or `"classic"`. Global-only (ignored for a
+ * per-project override target). Serde-additive.
+ */
+sidebarStyle?: string, 
+/**
  * Custom Background: the project's COMPLETE next board-appearance knob set.
  * Requires a `projectId` (board appearance is per-project only — a patch with no
  * `projectId` ignores this field). The panel always sends the full object, so

@@ -19,6 +19,7 @@ pub(crate) mod ledger;
 pub(crate) mod model_cache;
 pub(crate) mod pr_review;
 pub(crate) mod project;
+pub(crate) mod project_icon;
 pub(crate) mod run_store;
 pub(crate) mod scorecard;
 pub(crate) mod settings;

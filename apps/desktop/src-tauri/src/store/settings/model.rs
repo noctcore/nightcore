@@ -102,6 +102,10 @@ pub struct Settings {
     /// written before this field loads as `false`.
     #[serde(default)]
     pub sandbox_sessions: bool,
+    /// Sidebar layout preference: `"unified"` (default) or `"classic"`. Serde-additive:
+    /// legacy settings load as `None` and resolve to unified at read time.
+    #[serde(default)]
+    pub sidebar_style: Option<String>,
     /// Per-project overrides keyed by project id.
     pub project_overrides: HashMap<String, SettingsOverride>,
 }
@@ -355,7 +359,17 @@ impl Default for Settings {
             // Module #15: OS write containment is opt-in (experimental,
             // darwin-only) — sessions run unwrapped until the user enables it.
             sandbox_sessions: false,
+            sidebar_style: None,
             project_overrides: HashMap::new(),
         }
+    }
+}
+
+/// Resolve the persisted sidebar style (`"unified"` | `"classic"`). Unknown values
+/// fall back to `"unified"` so a typo can't wedge the shell.
+pub fn resolve_sidebar_style(style: Option<&str>) -> &'static str {
+    match style {
+        Some("classic") => "classic",
+        _ => "unified",
     }
 }

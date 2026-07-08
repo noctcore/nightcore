@@ -11,6 +11,7 @@ export type SettingsPage =
   | 'permissions'
   | 'constitution'
   | 'worktrees'
+  | 'interface'
   | 'providers'
   | 'hooks'
   | 'paths'

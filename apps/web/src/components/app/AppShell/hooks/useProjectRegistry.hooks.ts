@@ -56,6 +56,9 @@ export function useProjectRegistry(toast: ToastApi) {
       if (type === 'renamed' && project !== null) {
         setActive((cur) => (cur?.id === project.id ? project : cur));
       }
+      if (type === 'updated' && project !== null) {
+        setActive((cur) => (cur?.id === project.id ? project : cur));
+      }
     });
     return () => {
       void unlisten.then((fn) => fn());

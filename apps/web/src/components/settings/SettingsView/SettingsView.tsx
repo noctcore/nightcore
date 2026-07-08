@@ -7,6 +7,7 @@ import {
   BookIcon,
   BranchIcon,
   BrandMark,
+  DesignIcon,
   FolderIcon,
   IconTile,
   LockIcon,
@@ -69,6 +70,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'SYSTEM',
     items: [
+      { page: 'interface', label: 'Interface', icon: <DesignIcon size={16} /> },
       { page: 'paths', label: 'Paths', icon: <FolderIcon size={16} /> },
       { page: 'about', label: 'About', icon: <BookIcon size={16} /> },
     ],
@@ -90,6 +92,7 @@ const PAGE_HEADERS: Record<SettingsPage, PageHeader> = {
   worktrees: { title: 'Git worktrees', subtitle: 'ISOLATION', icon: <BranchIcon size={24} /> },
   providers: { title: 'Providers', subtitle: 'MODEL BACKENDS', icon: <BoltIcon size={24} /> },
   hooks: { title: 'Hooks & notifications', subtitle: 'EVENTS', icon: <BellIcon size={24} /> },
+  interface: { title: 'Interface', subtitle: 'LAYOUT', icon: <DesignIcon size={24} /> },
   paths: { title: 'Paths', subtitle: 'STORAGE', icon: <FolderIcon size={24} /> },
   about: { title: 'About', subtitle: 'NIGHTCORE', icon: <BrandMark size={36} /> },
 };
