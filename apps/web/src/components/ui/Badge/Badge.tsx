@@ -1,19 +1,6 @@
 /** Small monospace meta chip for labelling status and tags. */
-import type { ReactNode } from 'react';
 
-/**
- * Visual tone of a {@link Badge}.
- * - `neutral`: muted, low-emphasis tag.
- * - `primary`: accent-colored emphasis tag.
- */
-type BadgeTone = 'neutral' | 'primary';
-
-/** Props for {@link Badge}. */
-interface BadgeProps {
-  children: ReactNode;
-  tone?: BadgeTone;
-  className?: string;
-}
+import type { BadgeProps, BadgeTone } from './Badge.types';
 
 const TONES: Record<BadgeTone, string> = {
   neutral:

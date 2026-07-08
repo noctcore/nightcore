@@ -3,8 +3,7 @@
 import type { PrChangedFile, PrStatus, PrSummary } from '@/lib/bridge';
 
 import type { ReviewLifecycle } from '../prreview-lifecycle';
-import type { PrStatusActions } from '../PrStatusBlock';
-import type { PrNumberStatusView } from '../PrStatusBlock/PrStatusBlock.hooks';
+import type { PrNumberStatusView, PrStatusActions } from '../PrStatusBlock';
 import type { ReviewSectionProps } from '../ReviewSection';
 
 /** Story/test seam for the changed-file expander: supplies the files (and its

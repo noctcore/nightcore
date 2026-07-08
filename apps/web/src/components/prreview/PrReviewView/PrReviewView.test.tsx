@@ -15,13 +15,13 @@ import { composeStories } from '@storybook/react-vite';
 import { ToastProvider } from '@/components/ui';
 import type {
   PrFixState,
+  PrReviewRun,
   PrStatus,
   PrSummary,
   StoredReviewFinding,
 } from '@/lib/bridge';
-import type { PrReviewRun } from '@/lib/generated/PrReviewRun';
 
-import { OWN_PR_TITLE } from '../ReviewSection/ReviewSection.hooks';
+import { OWN_PR_TITLE } from '../prreview.constants';
 import { PrReviewView } from './PrReviewView';
 import * as stories from './PrReviewView.stories';
 

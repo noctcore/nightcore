@@ -1,7 +1,22 @@
 /** Types for the PR Review workspace status block. */
 import type { PrStatus } from '@/lib/bridge';
 
-import type { PrNumberStatusView } from './PrStatusBlock.hooks';
+/** Everything the status block renders from. */
+export interface PrNumberStatusView {
+  /** The last fetched status (kept across a failed refresh), or null. */
+  status: PrStatus | null;
+  /** True while a fetch is in flight (the Refresh control disables). */
+  fetching: boolean;
+  /** The last fetch failure, shown inline; a later refresh clears it. */
+  error: string | null;
+  /** True when the command resolved its outside-Tauri sentinel (browser
+   *  preview) — the block shows a quiet unavailable note instead of lying. */
+  unavailable: boolean;
+  /** Web-side receive timestamp of the last successful fetch. */
+  refreshedAt: number | null;
+  /** Re-fetch the status (the manual refresh affordance). */
+  refresh: () => void;
+}
 
 /** The status block's REMEDIATION actions: the human gates for launching a fix
  *  agent against what the status line reports (failing checks → "Fix CI";

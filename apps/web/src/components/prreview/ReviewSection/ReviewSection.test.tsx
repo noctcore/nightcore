@@ -2,7 +2,7 @@ import { composeStories } from '@storybook/react-vite';
 import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
-import { FIX_RUNNING_TITLE, OWN_PR_TITLE } from './ReviewSection.hooks';
+import { FIX_RUNNING_TITLE, OWN_PR_TITLE } from '../prreview.constants';
 import * as stories from './ReviewSection.stories';
 import type { ReviewSectionToolbarSlice } from './ReviewSection.types';
 

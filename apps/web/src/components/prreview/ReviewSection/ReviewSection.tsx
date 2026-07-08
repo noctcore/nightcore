@@ -26,15 +26,15 @@ import { PROVIDER_LABEL } from '@/lib/bridge';
 
 import { FixRunCard } from '../FixRunCard';
 import { ALL_LENSES, LENS_META, VERDICT_META } from '../prreview.constants';
-import type { ReviewVerdict } from '../prreview.types';
-import { ReviewFindings } from '../ReviewFindings';
-import { ReviewPosition } from '../ReviewPosition';
-import { ReviewTimeline } from '../ReviewTimeline';
 import {
   FIX_RUNNING_TITLE,
   OWN_PR_TITLE,
   sectionStatusMessage,
-} from './ReviewSection.hooks';
+} from '../prreview.constants';
+import type { ReviewVerdict } from '../prreview.types';
+import { ReviewFindings } from '../ReviewFindings';
+import { ReviewPosition } from '../ReviewPosition';
+import { ReviewTimeline } from '../ReviewTimeline';
 import type { ReviewSectionProps } from './ReviewSection.types';
 
 /** The three post-review verdict buttons, in display order. */

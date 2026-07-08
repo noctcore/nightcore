@@ -409,6 +409,7 @@ export default tseslint.config(
   //   * ESLint core `max-lines` at 500 (HERE) = blunt feedback while typing;
   //   * lint-meta `web-file-size-ratchet` at 400 (ciCritical, baselined) = the
   //     tightening story for ALL web sources.
+  // Cross-ref: rust-module-shape.ts (HARD_CAP=400) and web-file-size-ratchet.ts (CAP=400) use matching 400.
   // The two caps move together — never "fix" one without the other. Phase-in is
   // a freeze-at-worst carve-out block (below) + the committed ratchet baseline,
   // NEVER warn severity (`no-warn-severity` is ciCritical).
