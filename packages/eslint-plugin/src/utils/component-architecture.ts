@@ -33,7 +33,7 @@ export function isPascalCase(segment: string): boolean {
 /**
  * True for a single PascalCase `.tsx` basename (`TaskCard.tsx`). Sidecars carry
  * an extra dotted segment (`TaskCard.hooks.ts`, `.stories.tsx`, `.test.tsx`,
- * `.parts.tsx`) and are excluded, as are kebab-case files. This does not require
+ * `.parts.tsx`, `.utils.ts`) and are excluded, as are kebab-case files. This does not require
  * the folder-per-component layout.
  */
 export function isComponentFileName(filename: string): boolean {
@@ -99,7 +99,19 @@ export function isIgnoredPath(filename: string, ignorePaths: readonly string[]):
   return micromatch.isMatch(toPosix(filename), [...ignorePaths], { dot: true });
 }
 
-/** True for a feature data file whose hook count `max-hooks-per-file` bounds. */
+/** True for a feature data file whose hook count `max-hooks-per-file` bounds.
+ * (See max-hooks-per-file.test.ts for .utils.ts non-bucket positive case.)
+ */
 export function isHookBucketFile(filename: string): boolean {
   return /\.(queries|mutations|hooks)\.ts$/.test(getBasename(filename));
+}
+
+/**
+ * True for a pure-helpers sidecar using the dotted-role grammar:
+ * `<Name>.utils.ts` (component) or `<concern>.utils.ts` (feature-root kebab).
+ * These contain only pure, framework-free logic. See apps/web/AGENTS.md
+ * "Folder-per-component" and "Feature-root modules...".
+ */
+export function isUtilsFile(filename: string): boolean {
+  return /\.utils\.ts$/.test(getBasename(filename));
 }

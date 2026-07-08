@@ -1,6 +1,7 @@
 // @ts-check
 import { agentContractParityRule } from './rules/agent-contract-parity';
 import { agentsDocPresenceRule } from './rules/agents-doc-presence';
+import { canonicalHelpersSingleHomeRule } from './rules/canonical-helpers-single-home';
 import { codegenDriftRule } from './rules/codegen-drift';
 import { decisionRegisterIntegrityRule } from './rules/decision-register-integrity';
 import { layerRankRule } from './rules/layer-rank';
@@ -13,6 +14,7 @@ import { rustLayerRankRule } from './rules/rust-layer-rank';
 import { rustModuleShapeRule } from './rules/rust-module-shape';
 import { scanFamilyParityRule } from './rules/scan-family-parity';
 import { testRunnerSegregationRule } from './rules/test-runner-segregation';
+import { testSiblingEnforcementRule } from './rules/test-sibling-enforcement';
 import { testWorkspaceEnrollmentRule } from './rules/test-workspace-enrollment';
 import { uiPrimitiveShapeRule } from './rules/ui-primitive-shape';
 import { webFileSizeRatchetRule } from './rules/web-file-size-ratchet';
@@ -42,4 +44,6 @@ export const META_RULES: IMetaRule[] = [
   rustLayerRankRule,
   rustCommandPlacementRule,
   rustEngineSeamRule,
+  canonicalHelpersSingleHomeRule,
+  testSiblingEnforcementRule,
 ];

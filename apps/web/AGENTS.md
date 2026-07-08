@@ -3,9 +3,10 @@
 Guardrails enforced by `@nightcore/eslint-plugin` (scoped in the root `eslint.config.mjs`) and `tools/lint-meta`. Error or off, never warn.
 
 ## Folder-per-component
-- A feature component is a folder `components/<feature>/<Name>/` containing the full sibling set: `<Name>.tsx`, `<Name>.hooks.ts`, `<Name>.types.ts`, `<Name>.stories.tsx`, `<Name>.test.tsx`, `index.ts` (enforced by `nightcore/component-folder-structure`). A component is not done until all six exist and pass.
+- A feature component is a folder `components/<feature>/<Name>/` containing the full sibling set: `<Name>.tsx`, `<Name>.hooks.ts`, `<Name>.types.ts`, `<Name>.stories.tsx`, `<Name>.test.tsx`, `index.ts` (enforced by `nightcore/component-folder-structure`). A component is not done until all six exist and pass. Pure helpers belong in recommended `<Name>.utils.ts` (with paired `<Name>.utils.test.ts`) — see below.
 - The first path segment under `components/` IS the feature — there is NO `features/` wrapper and NO nested `components/` segment.
 - File names derive mechanically from the PascalCase component name: `<Name>.<role>.ts[x]`. The props type is `<Component>Props`, declared/exported from `<Component>.types.ts`, imported via `import type`.
+- Recommended pure-helper sibling: `<Name>.utils.ts` (and `<Name>.utils.test.ts` pairing) using the same dotted-role grammar. `.utils.ts` holds only pure helpers (no React, no side effects, no feature imports except sibling `.types.ts` for types). See "Feature-root modules, sidecars & hooks" below. (Not yet required by `component-folder-structure`.)
 - `components/ui/**` is the ONLY exemption: stateless single-element shadcn primitives are flat PascalCase files. A composite `ui` widget with its own types/state gets its own folder and the full sibling set.
 - State lives in the colocated `.hooks.ts`, never in the component body (`nightcore/no-state-in-component-body`).
 - A component file stays a thin shell: the per-file hook budget is capped (`nightcore/max-hooks-per-file`) — lift extra state/effects into the colocated `.hooks.ts` or a child component.
@@ -23,7 +24,7 @@ Guardrails enforced by `@nightcore/eslint-plugin` (scoped in the root `eslint.co
 
 ## Feature-root modules, sidecars & hooks (decided #31, enforced-by-convention)
 - A feature folder may hold shared modules at its root (beside the component folders). Name them by grammar, not ad hoc:
-  - **Role sidecars use a dotted role**, mirroring the component sibling grammar: `<base>.types.ts`, `<base>.constants.ts`, `<base>.hooks.ts`, `<base>.test.tsx` (e.g. `insight.types.ts`, `harness.constants.ts`, `prreview-runs.hooks.ts`).
+  - **Role sidecars use a dotted role**, mirroring the component sibling grammar: `<base>.types.ts`, `<base>.constants.ts`, `<base>.hooks.ts`, `<base>.utils.ts`, `<base>.test.tsx` (e.g. `insight.types.ts`, `harness.constants.ts`, `prreview-runs.hooks.ts`). `.utils.ts` + `.utils.test.ts` is the recommended pairing for pure helpers colocated with components or at feature root (see Folder-per-component). Purity contract: no React, no side effects, no feature imports except relative sibling types (e.g. `import type { Foo } from './Bar.types'`). `lib/` remains for cross-feature pure modules.
   - **Compound domain/data modules use kebab-dash and carry no role suffix**: `<feature>-<concern>.ts[x]` (e.g. `insight-stream.ts`, `prreview-lifecycle.ts`, `settings-cards.tsx`). The `-stream` fold modules are the canonical instance; `settings-cards.tsx` is the settings-card config split out of `SettingsView.tsx`.
   - The module prefix follows the feature/view concept. `board/`'s bare-noun roots (`status.ts`, `chrome.ts`, `actions.ts`, `appearance.ts`) and `issues/issue-triage.*` (prefixed after `IssueTriageView`, not the `issues` folder) predate this and are grandfathered — do not rename in flight; new roots follow the grammar above.
   - **Test-only fixtures** take an underscore prefix (`_fixtures.ts`) so they sort first and read as non-production surface.

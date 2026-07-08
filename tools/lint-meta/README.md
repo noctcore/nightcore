@@ -46,6 +46,8 @@ bun run lint:meta   # == bun run tools/lint-meta/cli.ts
 | `decision-register-integrity` | every path cited in `docs/decisions/INDEX.md` resolves and the register stays drift-free |
 | `agents-doc-presence` | every deployable surface / public boundary ships an `AGENTS.md` |
 | `ui-primitive-shape` | a `components/ui` primitive that graduates to a folder must ship `<Name>.test.tsx` + `<Name>.stories.tsx` |
+| `test-sibling-enforcement` | every `<base>.utils.ts` under `apps/web/src` must have sibling `<base>.utils.test.ts(x)` |
+| `canonical-helpers-single-home` | pure helpers must live in one canonical `.utils.ts` home (flag duplicates when pattern adopted) |
 | `scan-family-parity` | scan-view families build on the shared `lib/useScanRun` + `lib/scan-run` primitives (no local re-declarations of `deriveRunPhase`/`useScanRun`/`seedStepState`); a new `components/<f>/<f>-stream.ts` must be consciously enrolled |
 | `no-cloned-component-folders` | a component folder name exists under only ONE feature (`ui`/`app` excluded) — shared surfaces hoist to `components/ui`, divergent ones get a divergent name; today's clone groups (`RunControls` ×3, `CategoryTabs` ×2, `FindingDetailPanel` ×2) are frozen in a shrinking in-rule `ALLOWED_CLONES` allowlist (stale entries themselves fail) |
 | `web-file-size-ratchet` | `apps/web/src` source files stay ≤400 raw lines (tests/stories/codegen excluded); today's 17 offenders are grandfathered by a shrinking `baselines/web-file-size-ratchet.json` (stale/shrunk entries themselves fail — self-tightening); companion in-editor cap = ESLint core `max-lines` at 500 with a freeze-at-worst carve-out — the two move together |
