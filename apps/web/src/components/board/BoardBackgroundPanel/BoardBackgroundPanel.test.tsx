@@ -10,7 +10,6 @@ test('empty state shows the placeholder and a Choose Image button, no Clear', as
   const screen = render(<NoBackground />);
   await expect.element(screen.getByText('No custom background')).toBeInTheDocument();
   await expect.element(screen.getByRole('button', { name: 'Choose Image' })).toBeInTheDocument();
-  expect(screen.container.querySelector('button')).not.toBeNull();
   // No Clear button when there is no background.
   expect(screen.getByRole('button', { name: 'Clear' }).query()).toBeNull();
 });

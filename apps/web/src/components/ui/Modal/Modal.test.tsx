@@ -121,3 +121,22 @@ test('restores focus to the opener when closed', async () => {
   // After close, focus returns to the element that opened the dialog.
   await expect.element(opener).toHaveFocus();
 });
+
+test('portals the overlay to document.body so board flex layout is unaffected', async () => {
+  const screen = renderModal(
+    <div className="nc-board-appearance flex h-full min-h-0 flex-col">
+      <div data-board-host>Board content</div>
+      <Modal open label="Board sheet" onClose={vi.fn()}>
+        <Body />
+      </Modal>
+    </div>,
+  );
+
+  const dialog = screen.getByRole('dialog', { name: 'Board sheet' });
+  await expect.element(dialog).toBeInTheDocument();
+  expect(screen.container.querySelector('[role="dialog"]')).toBeNull();
+
+  const dialogEl = dialog.element();
+  expect(dialogEl.closest('[data-board-host]')).toBeNull();
+  expect(document.body.contains(dialogEl)).toBe(true);
+});

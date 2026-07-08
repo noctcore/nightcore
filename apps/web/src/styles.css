@@ -396,9 +396,9 @@ body {
  * translucency, borders, glassmorphism, and scrollbar hiding. Every effect is
  * scoped under the board root's `[data-board-appearance="on"]` and driven by the
  * inline CSS variables the board sets — so with the feature off (or every knob at
- * its default) the board renders exactly as it did before. The board's own modals
- * are rendered OUTSIDE `.nc-board-appearance`, so the stacking rules below never
- * touch them. */
+ * its default) the board renders exactly as it did before. Modal overlays are
+ * portaled to `document.body`; the `[role="presentation"]` exclusion below is a
+ * safety net if one is ever mounted inside the board root. */
 
 /* The board root anchors the absolutely-positioned background layer. */
 .nc-board-appearance {
@@ -419,7 +419,7 @@ body {
 
 /* Lift the real board content (header, switcher, banner, columns) above the
  * background layer by making each a positioned box painted after it. */
-.nc-board-appearance > :not(.nc-board-appearance__bg) {
+.nc-board-appearance > :not(.nc-board-appearance__bg):not([role='presentation']) {
   position: relative;
 }
 

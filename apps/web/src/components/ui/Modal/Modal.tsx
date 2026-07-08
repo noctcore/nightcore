@@ -1,5 +1,6 @@
 /** Shared focus-trapped modal dialog primitive. */
 import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 import { AnimatePresence, backdrop, m, scaleFade, type Variants } from '../motion';
 import { useModal } from './Modal.hooks';
@@ -49,7 +50,10 @@ const DEFAULT_PANEL =
  *
  *  Esc and click-outside close; Enter (when `onEnter` is set) confirms, except
  *  inside a textarea where Enter inserts a newline. Click-outside is suppressed
- *  when the click originates inside the panel. */
+ *  when the click originates inside the panel.
+ *
+ *  The overlay is portaled to `document.body` so ancestor flex/transform/stacking
+ *  rules (e.g. `.nc-board-appearance`) never participate in its layout. */
 export function Modal({
   open,
   label,
@@ -64,7 +68,7 @@ export function Modal({
 }: ModalProps) {
   const ref = useModal<HTMLDivElement>(onClose, initialFocus, open);
 
-  return (
+  const overlay = (
     <AnimatePresence>
       {open && (
         <m.div
@@ -104,4 +108,10 @@ export function Modal({
       )}
     </AnimatePresence>
   );
+
+  if (typeof document === 'undefined') {
+    return overlay;
+  }
+
+  return createPortal(overlay, document.body);
 }
