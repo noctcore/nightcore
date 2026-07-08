@@ -10,7 +10,6 @@ const meta = {
   parameters: { layout: 'fullscreen' },
   args: {
     open: true,
-    models: ['Opus 4.8', 'Sonnet 4.5', 'Haiku 4'],
     onChooseFolder: fn(),
     onCreate: fn(),
     onClose: fn(),

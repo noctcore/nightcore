@@ -1,9 +1,7 @@
 import { Button } from '../Button';
-import { IconPicker } from '../IconPicker/IconPicker';
-import { CloseIcon, UploadIcon } from '../icons/icons';
 import { Kbd } from '../Kbd';
 import { Modal } from '../Modal';
-import { ProjectIcon } from '../ProjectIcon/ProjectIcon';
+import { ProjectIconEditor } from '../ProjectIconEditor/ProjectIconEditor';
 import { useEditProjectDialog } from './EditProjectDialog.hooks';
 import type { EditProjectDialogProps } from './EditProjectDialog.types';
 
@@ -35,61 +33,28 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
             className={INPUT_CLASS}
           />
         </label>
-        <div className="flex flex-col gap-2">
-          <span className="text-[12.5px] font-medium text-muted-foreground">Icon</span>
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-[10px] border border-border bg-white/[0.03]">
-              <ProjectIcon
-                icon={dialog.pendingImage !== null ? null : dialog.icon}
-                imageUrl={dialog.previewUrl}
-                size={28}
-              />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="ghost" type="button" onClick={() => dialog.fileRef.current?.click()}>
-                <UploadIcon size={14} />
-                Upload
-              </Button>
-              {(dialog.pendingImage !== null || project.customIconPath !== null) &&
-                !dialog.clearCustom && (
-                  <Button
-                    variant="ghost"
-                    type="button"
-                    onClick={() => {
-                      dialog.setPendingImage(null);
-                      dialog.setClearCustom(true);
-                      if (dialog.fileRef.current) dialog.fileRef.current.value = '';
-                    }}
-                  >
-                    <CloseIcon size={14} />
-                    Remove image
-                  </Button>
-                )}
-            </div>
-            <input
-              ref={dialog.fileRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) void dialog.handleUpload(file);
-              }}
-            />
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            {dialog.acceptedLabel} · max 5 MB
-          </p>
-          <IconPicker
-            selectedIcon={dialog.pendingImage !== null ? null : dialog.icon}
-            onSelectIcon={(next) => {
-              dialog.setIcon(next);
-              dialog.setPendingImage(null);
-              dialog.setClearCustom(false);
-              if (dialog.fileRef.current) dialog.fileRef.current.value = '';
-            }}
-          />
-        </div>
+        <ProjectIconEditor
+          icon={dialog.icon}
+          imageUrl={dialog.previewUrl}
+          hasCustomImage={
+            dialog.pendingImage !== null ||
+            (project.customIconPath !== null && !dialog.clearCustom)
+          }
+          onIconChange={(next) => {
+            dialog.setIcon(next);
+            dialog.setPendingImage(null);
+            dialog.setClearCustom(project.customIconPath !== null);
+          }}
+          onImageChange={(image) => {
+            dialog.setPendingImage(image);
+            dialog.setIcon(null);
+            dialog.setClearCustom(false);
+          }}
+          onRemoveImage={() => {
+            dialog.setPendingImage(null);
+            dialog.setClearCustom(true);
+          }}
+        />
         {dialog.error !== null && (
           <p className="text-[12.5px] text-destructive" role="alert">
             {dialog.error}

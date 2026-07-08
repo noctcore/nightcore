@@ -4,12 +4,10 @@ import {
   CloseIcon,
   FolderIcon,
   IconButton,
-  IconPicker,
   IconTile,
   Modal,
-  ProjectIcon,
+  ProjectIconEditor,
   Spinner,
-  UploadIcon,
 } from '@/components/ui';
 
 import { useNewProjectDialog } from './NewProjectDialog.hooks';
@@ -35,14 +33,12 @@ const GIT_TEXT: Record<'valid' | 'invalid' | 'checking', string> = {
 
 /**
  * Modal for creating a project from a git repository. Lets the user choose a
- * folder, name the project, pick a default model, and set concurrency. Create is
+ * folder, name the project, and optionally choose an icon. Create is
  * gated until a folder is chosen, a name is entered, and the folder is a valid
- * git repo; when it isn't, a `git init` action is offered. Concurrency is
- * collected here but badged as a not-yet-built affordance.
+ * git repo; when it isn't, a `git init` action is offered.
  */
 export function NewProjectDialog({
   open,
-  models,
   onChooseFolder,
   onCreate,
   onClose,
@@ -50,18 +46,8 @@ export function NewProjectDialog({
   gitState = 'unknown',
   onInitGit,
 }: NewProjectDialogProps) {
-  const dialog = useNewProjectDialog({ open, models, onCreate, folder, gitState });
-  const {
-    name,
-    model,
-    concurrency,
-    canCreate,
-    busy,
-    setName,
-    setModel,
-    setConcurrency,
-    create,
-  } = dialog;
+  const dialog = useNewProjectDialog({ open, onCreate, folder, gitState });
+  const { name, canCreate, busy, setName, create } = dialog;
 
   // Esc / click-outside close — but never while a create is in flight, to guard
   // against double-submit. The shared Modal adds the focus trap + restore.
@@ -146,104 +132,21 @@ export function NewProjectDialog({
             />
           </div>
 
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className={FIELD_LABEL} htmlFor="np-model">
-                Default model
-              </label>
-              <select
-                id="np-model"
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                className={`${FIELD_INPUT} cursor-pointer appearance-none`}
-              >
-                {models.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="w-[120px]">
-              <label
-                htmlFor="np-concurrency"
-                className="mb-1.5 block text-[11.5px] font-semibold text-muted-foreground"
-              >
-                Concurrency
-              </label>
-              <input
-                id="np-concurrency"
-                type="number"
-                min={1}
-                max={6}
-                value={concurrency}
-                onChange={(e) => setConcurrency(Number(e.target.value))}
-                className={`${FIELD_INPUT} font-mono`}
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <span className={FIELD_LABEL}>Project icon</span>
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-[10px] border border-border bg-white/[0.03]">
-                <ProjectIcon
-                  icon={dialog.pendingImage !== null ? null : dialog.icon}
-                  imageUrl={dialog.pendingImage?.preview ?? null}
-                  size={28}
-                />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="ghost"
-                  type="button"
-                  onClick={() => dialog.fileRef.current?.click()}
-                >
-                  <UploadIcon size={14} />
-                  Upload
-                </Button>
-                {dialog.pendingImage !== null && (
-                  <Button
-                    variant="ghost"
-                    type="button"
-                    onClick={() => {
-                      dialog.setPendingImage(null);
-                      if (dialog.fileRef.current) dialog.fileRef.current.value = '';
-                    }}
-                  >
-                    <CloseIcon size={14} />
-                    Remove image
-                  </Button>
-                )}
-              </div>
-              <input
-                ref={dialog.fileRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void dialog.handleUpload(file);
-                }}
-              />
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              {dialog.acceptedLabel} · max 5 MB
-            </p>
-            <IconPicker
-              selectedIcon={dialog.pendingImage !== null ? null : dialog.icon}
-              onSelectIcon={(next) => {
-                dialog.setIcon(next);
-                dialog.setPendingImage(null);
-                if (dialog.fileRef.current) dialog.fileRef.current.value = '';
-              }}
-            />
-            {dialog.error !== null && (
-              <p className="text-[12.5px] text-destructive" role="alert">
-                {dialog.error}
-              </p>
-            )}
-          </div>
+          <ProjectIconEditor
+            label="Project icon"
+            icon={dialog.icon}
+            imageUrl={dialog.pendingImage?.preview ?? null}
+            hasCustomImage={dialog.pendingImage !== null}
+            onIconChange={(next) => {
+              dialog.setIcon(next);
+              dialog.setPendingImage(null);
+            }}
+            onImageChange={(image) => {
+              dialog.setPendingImage(image);
+              dialog.setIcon(null);
+            }}
+            onRemoveImage={() => dialog.setPendingImage(null)}
+          />
         </div>
 
         <div className="flex justify-end gap-2.5 border-t border-border bg-black/15 px-5 py-3.5">

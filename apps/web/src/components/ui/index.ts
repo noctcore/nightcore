@@ -85,6 +85,11 @@ export { ProjectContextMenu } from './ProjectContextMenu';
 export type { ProjectContextMenuProps } from './ProjectContextMenu/ProjectContextMenu.types';
 export { ProjectIcon } from './ProjectIcon';
 export type { ProjectIconProps } from './ProjectIcon/ProjectIcon.types';
+export { ProjectIconEditor } from './ProjectIconEditor';
+export type {
+  ProjectIconEditorProps,
+  ProjectIconImageDraft,
+} from './ProjectIconEditor/ProjectIconEditor.types';
 export type { ProjectPathLabelProps } from './ProjectPathLabel';
 export {
   compactProjectPath,

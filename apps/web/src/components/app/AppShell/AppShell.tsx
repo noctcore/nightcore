@@ -82,8 +82,6 @@ function RouteFallback() {
 // point (and the shell shows it full-screen, without the sidebar). The remaining
 // items route within an open project.
 
-const MODELS = ['Opus 4.8', 'Sonnet 4.8', 'Haiku 4.5'];
-
 // Stable empty fallbacks for a task with no parked prompts/questions — a fresh
 // `[]` per render would defeat the memoized TaskDetailChrome on every stream flush.
 const NO_PROMPTS: PermissionPrompt[] = [];
@@ -415,7 +413,6 @@ export function AppShell() {
 
       <NewProjectDialog
         open={newProjectOpen}
-        models={MODELS}
         folder={newProject.folder}
         gitState={newProject.gitState}
         onChooseFolder={newProject.pickFolder}

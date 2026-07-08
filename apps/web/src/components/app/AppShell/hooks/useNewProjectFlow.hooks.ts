@@ -82,8 +82,6 @@ export function useNewProjectFlow(onClose: () => void, toast: ToastApi) {
       create({
         folder,
         name,
-        model: '',
-        concurrency: 3,
         icon: null,
         customImage: null,
       }),

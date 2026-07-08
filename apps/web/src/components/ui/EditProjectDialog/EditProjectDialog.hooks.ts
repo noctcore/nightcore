@@ -1,24 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-
-import { ACCEPTED_IMAGE_LABEL, fileToProjectIcon } from '@/lib/attachments';
+import { useCallback, useEffect, useState } from 'react';
 
 import { useProjectIconProps } from '../ProjectIcon/ProjectIcon.hooks';
+import type { ProjectIconImageDraft } from '../ProjectIconEditor/ProjectIconEditor.types';
 import type { EditProjectDialogProps } from './EditProjectDialog.types';
 
 /** Local state for {@link EditProjectDialog}. */
 export function useEditProjectDialog({ project, open, onClose, onSave }: EditProjectDialogProps) {
   const [name, setName] = useState('');
   const [icon, setIcon] = useState<string | null>(null);
-  const [pendingImage, setPendingImage] = useState<{
-    format: string;
-    data: string;
-    filename: string;
-    preview: string;
-  } | null>(null);
+  const [pendingImage, setPendingImage] = useState<ProjectIconImageDraft | null>(null);
   const [clearCustom, setClearCustom] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const iconProps = useProjectIconProps(
     project ?? { id: '', icon: null, customIconPath: null },
@@ -42,21 +35,6 @@ export function useEditProjectDialog({ project, open, onClose, onSave }: EditPro
       icon !== project.icon ||
       pendingImage !== null ||
       clearCustom);
-
-  const handleUpload = useCallback(async (file: File) => {
-    try {
-      const payload = await fileToProjectIcon(file);
-      setPendingImage({
-        ...payload,
-        preview: `data:image/${payload.format};base64,${payload.data}`,
-      });
-      setIcon(null);
-      setClearCustom(false);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not read image.');
-    }
-  }, []);
 
   const submit = useCallback(async () => {
     if (project === null || !canSave) return;
@@ -89,11 +67,8 @@ export function useEditProjectDialog({ project, open, onClose, onSave }: EditPro
     setClearCustom,
     saving,
     error,
-    fileRef,
     previewUrl,
     canSave,
-    handleUpload,
     submit,
-    acceptedLabel: ACCEPTED_IMAGE_LABEL,
   };
 }
