@@ -3,7 +3,6 @@
 import {
   Button,
   ChevronLeftIcon,
-  ConfirmDialog,
   EmptyState,
   FolderIcon,
   HistoryIcon,
@@ -16,17 +15,14 @@ import {
   VerifiedIcon,
 } from '@/components/ui';
 
-import { ApplyConfirmDialog } from '../ApplyConfirmDialog';
-import { ArtifactDetailPanel } from '../ArtifactDetailPanel';
 import { CategoryTabs } from '../CategoryTabs';
-import { ConventionDetailPanel } from '../ConventionDetailPanel';
 import { ConventionGrid } from '../ConventionGrid';
 import { HarnessProposalList } from '../HarnessProposalList';
 import { PolicySection } from '../PolicySection';
 import { ProfileBanner } from '../ProfileBanner';
-import { ProposalDetailPanel } from '../ProposalDetailPanel';
 import { RunControls } from '../RunControls';
 import { TaskProposalList } from '../TaskProposalList';
+import { HarnessOverlays } from './HarnessOverlays';
 import type { HarnessSection, HarnessViewModel } from './HarnessView.hooks';
 import { useHarnessView } from './HarnessView.hooks';
 import type { HarnessViewProps } from './HarnessView.types';
@@ -320,106 +316,7 @@ export function HarnessView(props: HarnessViewProps) {
         )}
       </RunLifecycleShell>
 
-      <ConventionDetailPanel
-        open={view.selectedFinding !== null}
-        finding={view.selectedFinding}
-        pending={view.pending}
-        onClose={view.closeFinding}
-        onConvert={view.onConvertFinding}
-        onDismiss={view.onDismissFinding}
-        onRestore={view.onRestoreFinding}
-        onGotoBoard={view.onGotoBoard}
-      />
-
-      <ProposalDetailPanel
-        open={view.selectedProposal !== null}
-        proposal={view.selectedProposal}
-        pending={view.pending}
-        onClose={view.closeProposal}
-        onConvert={view.onConvertProposal}
-        onApply={view.onApplyProposal}
-        onDismiss={view.onDismissProposal}
-        onRestore={view.onRestoreProposal}
-        onGotoBoard={view.onGotoBoard}
-      />
-
-      <ArtifactDetailPanel
-        open={view.selectedArtifact !== null}
-        artifact={view.selectedArtifact}
-        pending={view.pending}
-        onClose={view.closeArtifact}
-        onApply={view.requestApply}
-        onDismiss={view.onDismissArtifact}
-        onRestore={view.onRestoreArtifact}
-        onArm={view.requestArm}
-      />
-
-      <ApplyConfirmDialog
-        open={view.applyTarget !== null}
-        artifact={view.applyTarget}
-        applying={view.applying}
-        error={view.applyError}
-        onConfirm={view.confirmApply}
-        onCancel={view.cancelApply}
-      />
-
-      <ConfirmDialog
-        open={view.armTarget !== null}
-        title="Arm this as a gauntlet check?"
-        confirmLabel="Arm check"
-        message={
-          <>
-            Add a Structure-Lock check to{' '}
-            <code className="rounded border border-border bg-white/[0.04] px-1 py-0.5 font-mono text-[12px] text-foreground">
-              .nightcore/harness.json
-            </code>{' '}
-            that runs before every task in this project (and again at merge). It will run:
-            <code className="mt-2 block break-all rounded border border-border bg-white/[0.04] px-2 py-1 font-mono text-[12px] text-foreground">
-              {view.armCommand}
-            </code>
-          </>
-        }
-        onConfirm={view.confirmArm}
-        onCancel={view.cancelArm}
-      />
-
-      <ConfirmDialog
-        open={view.applyProposalTarget !== null}
-        title="Apply this bundle to disk?"
-        confirmLabel={`Apply ${view.applyProposalPaths.length} ${
-          view.applyProposalPaths.length === 1 ? 'file' : 'files'
-        }`}
-        message={
-          view.applyProposalTarget !== null ? (
-            <>
-              Write {view.applyProposalPaths.length}{' '}
-              {view.applyProposalPaths.length === 1 ? 'artifact' : 'artifacts'} from{' '}
-              <span className="font-semibold text-foreground">
-                {view.applyProposalTarget.title}
-              </span>{' '}
-              directly into the project (no agent). Existing files are never clobbered by a{' '}
-              <code className="rounded border border-border bg-white/[0.04] px-1 py-0.5 font-mono text-[12px] text-foreground">
-                create
-              </code>{' '}
-              artifact.
-              {view.applyProposalPaths.length > 0 && (
-                <span className="mt-2 block space-y-0.5">
-                  {view.applyProposalPaths.map((path) => (
-                    <code
-                      key={path}
-                      className="block break-all rounded border border-border bg-white/[0.04] px-2 py-1 font-mono text-[12px] text-foreground"
-                    >
-                      {path}
-                    </code>
-                  ))}
-                </span>
-              )}
-            </>
-          ) : null
-        }
-        onConfirm={view.confirmApplyProposal}
-        onCancel={view.cancelApplyProposal}
-      />
+      <HarnessOverlays view={view} />
     </div>
   );
 }

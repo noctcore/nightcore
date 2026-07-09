@@ -1,7 +1,5 @@
 {
-  "apps/web/src/components/harness/HarnessView/HarnessView.tsx": 425,
   "apps/web/src/components/insight/InsightView/InsightView.hooks.ts": 430,
   "apps/web/src/components/issues/IssueTriageView/IssueTriageView.hooks.ts": 506,
-  "apps/web/src/components/prreview/ReviewFindings/ReviewFindings.tsx": 413,
   "apps/web/src/components/settings/McpServersCard/McpServersCard.tsx": 402
 }

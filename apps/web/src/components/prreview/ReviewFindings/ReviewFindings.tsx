@@ -8,28 +8,14 @@
  *  affordances span the grid via `col-span-full`). */
 import type { ReactNode } from 'react';
 
-import {
-  Checkbox,
-  CheckIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  DetailCard,
-  DetailCardGrid,
-  VerifiedIcon,
-} from '@/components/ui';
+import { CheckIcon, DetailCardGrid, VerifiedIcon } from '@/components/ui';
 import type { Severity } from '@/lib/severity';
 
-import { LENS_META, SEVERITY_META } from '../prreview.constants';
-import type { ReviewFindingView } from '../prreview.types';
-import type { GroupTriState, SeverityGroupView } from './ReviewFindings.hooks';
+import { SEVERITY_META } from '../prreview.constants';
+import { ReviewCard } from './ReviewFindingRow';
 import { useReviewFindings } from './ReviewFindings.hooks';
 import type { ReviewFindingsProps } from './ReviewFindings.types';
-
-/** Format a review finding's grounded location as `file:line` (or `file` when the
- *  finding is not line-localizable). */
-function formatReviewLocation(finding: ReviewFindingView): string {
-  return finding.line !== null ? `${finding.file}:${finding.line}` : finding.file;
-}
+import { SeverityGroupHeader } from './ReviewFindingsGroup';
 
 /** Shared chrome for the small quick-select buttons. */
 const QUICK_BTN =
@@ -112,172 +98,6 @@ function QuickSelectRow({
       >
         None
       </button>
-    </div>
-  );
-}
-
-/** The tri-state box glyph: filled check (all), a dash (some), or an empty box. */
-function GroupCheckboxBox({ triState }: { triState: GroupTriState }) {
-  const filled = triState !== 'unchecked';
-  return (
-    <span
-      aria-hidden
-      className={`flex h-[17px] w-[17px] shrink-0 items-center justify-center rounded-[5px] border transition-colors ${
-        filled
-          ? 'border-primary bg-primary text-primary-foreground'
-          : 'border-border bg-white/[0.02]'
-      }`}
-    >
-      {triState === 'checked' && <CheckIcon size={12} />}
-      {triState === 'indeterminate' && (
-        <span className="h-[2px] w-[9px] rounded-full bg-primary-foreground" />
-      )}
-    </span>
-  );
-}
-
-/** A collapsible severity group header: a tri-state checkbox (sweeps the group's
- *  open findings) beside a labelled collapse toggle carrying the group count. The
- *  two controls are siblings (never nested), so both stay keyboard-reachable. */
-function SeverityGroupHeader({
-  group,
-  onToggleExpand,
-  onToggleGroup,
-}: {
-  group: SeverityGroupView;
-  onToggleExpand: () => void;
-  onToggleGroup: () => void;
-}) {
-  const meta = SEVERITY_META[group.severity];
-  const Chevron = group.expanded ? ChevronDownIcon : ChevronRightIcon;
-  const ariaChecked: boolean | 'mixed' =
-    group.triState === 'checked'
-      ? true
-      : group.triState === 'indeterminate'
-        ? 'mixed'
-        : false;
-
-  return (
-    <div className="col-span-full flex items-center gap-2.5 pt-3 first:pt-0">
-      <button
-        type="button"
-        role="checkbox"
-        aria-checked={ariaChecked}
-        aria-label={`Select all open ${meta.label} findings`}
-        disabled={group.openCount === 0}
-        onClick={onToggleGroup}
-        className="rounded-[6px] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        <GroupCheckboxBox triState={group.triState} />
-      </button>
-      <button
-        type="button"
-        aria-expanded={group.expanded}
-        onClick={onToggleExpand}
-        className="flex flex-1 items-center gap-2 rounded-[6px] py-0.5 text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      >
-        <Chevron size={13} className="shrink-0 text-muted-foreground" />
-        <span
-          className={`font-mono text-[11px] font-semibold uppercase tracking-[0.08em] ${meta.tone}`}
-        >
-          {meta.label}
-        </span>
-        <span className="font-mono text-[11px] text-muted-foreground">
-          {group.findings.length}
-        </span>
-      </button>
-    </div>
-  );
-}
-
-/** One finding card: the selection checkbox above the shared card chrome
- *  (severity + lens badges, corroboration chip, grounded file:line, inert body). */
-function ReviewCard({
-  finding,
-  selected,
-  recurring,
-  onToggleSelect,
-  onOpen,
-}: {
-  finding: ReviewFindingView;
-  selected: boolean;
-  recurring: boolean;
-  onToggleSelect: (findingId: string) => void;
-  onOpen: (finding: ReviewFindingView) => void;
-}) {
-  const sev = SEVERITY_META[finding.severity];
-  const Meta = LENS_META[finding.lens];
-  const Icon = Meta.icon;
-  const dimmed = finding.status !== 'open';
-  const corroborated = finding.corroboratedBy.length > 0;
-
-  return (
-    <div className="flex flex-col gap-2">
-      {/* Selection lives OUTSIDE the DetailCard button (which is itself
-          interactive) so toggling it never opens the detail panel. Dismissed
-          findings can't be posted, so their checkbox is disabled. */}
-      <Checkbox
-        checked={selected}
-        onChange={() => onToggleSelect(finding.id)}
-        label="Include in review"
-        disabled={finding.status === 'dismissed'}
-      />
-      <DetailCard
-        onClick={() => onOpen(finding)}
-        dimmed={dimmed}
-        hoverTitle={
-          dimmed
-            ? finding.status === 'converted'
-              ? 'Converted to task'
-              : 'Dismissed'
-            : undefined
-        }
-        title={finding.title}
-        location={formatReviewLocation(finding)}
-        description={finding.body}
-        badges={
-          <>
-            <span
-              className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-semibold ${sev.chip} ${sev.tone}`}
-            >
-              {sev.label}
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-              <Icon size={11} />
-              {Meta.label}
-            </span>
-            {/* Corroboration: other lenses independently surfaced this issue —
-                a compact "also: security, tests" chip (fuller labels on hover). */}
-            {corroborated && (
-              <span
-                className="inline-flex items-center rounded-md border border-primary/25 bg-primary/[0.06] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
-                title={`Also surfaced by: ${finding.corroboratedBy
-                  .map((l) => LENS_META[l].label)
-                  .join(', ')}`}
-              >
-                also: {finding.corroboratedBy.join(', ')}
-              </span>
-            )}
-            {/* Carried over from the previous review (follow-up comparison) —
-                subtle, so it never competes with the severity/lens badges. */}
-            {recurring && finding.status === 'open' && (
-              <span className="inline-flex items-center rounded-md border border-warning/30 bg-warning/[0.08] px-1.5 py-0.5 font-mono text-[10px] font-medium text-warning/90">
-                still open
-              </span>
-            )}
-            {finding.status === 'converted' && (
-              <span className="ml-auto rounded-md bg-success/[0.12] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-success">
-                task
-              </span>
-            )}
-            {finding.status === 'dismissed' && (
-              <span className="ml-auto rounded-md bg-white/[0.05] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground">
-                dismissed
-              </span>
-            )}
-          </>
-        }
-      />
     </div>
   );
 }
