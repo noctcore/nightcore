@@ -365,5 +365,4 @@ mod tests {
     fn first_line_uses_fallback_for_empty_output() {
         assert_eq!(first_line_or(" \n\t", "fallback"), "fallback");
     }
-
 }
