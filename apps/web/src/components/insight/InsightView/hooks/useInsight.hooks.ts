@@ -41,6 +41,7 @@ export interface UseInsightResult {
     categories: FindingCategory[],
     model: string | null,
     effort: string | null,
+    providerId: string | null,
   ) => Promise<void>;
   cancel: () => Promise<void>;
   selectRun: (runId: string) => Promise<void>;
@@ -89,11 +90,13 @@ export function useInsight(hasProject: boolean): UseInsightResult {
       categories: FindingCategory[],
       model: string | null,
       effort: string | null,
+      providerId: string | null,
     ) => {
       await runStart(hasProject && categories.length > 0, async () => {
         const runId = await startAnalysis(scope, categories, {
           model,
           effort: effort as EffortLevel | null,
+          providerId,
         });
         // Optimistic running state until `analysis-started` lands.
         return {

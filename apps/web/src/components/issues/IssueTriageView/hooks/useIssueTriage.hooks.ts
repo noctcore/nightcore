@@ -38,6 +38,7 @@ export interface UseIssueTriageResult {
     detail: IssueDetail,
     model: string | null,
     effort: string | null,
+    providerId: string | null,
   ) => Promise<void>;
   cancel: () => Promise<void>;
   selectRun: (runId: string) => Promise<void>;
@@ -81,6 +82,7 @@ export function useIssueTriage(hasProject: boolean): UseIssueTriageResult {
       detail: IssueDetail,
       model: string | null,
       effort: string | null,
+      providerId: string | null,
     ) => {
       await runStart(hasProject, async () => {
         const runId = await startIssueValidation(
@@ -93,7 +95,7 @@ export function useIssueTriage(hasProject: boolean): UseIssueTriageResult {
             comments: detail.comments,
             linkedPrs: issue.linkedPrs,
           },
-          { model, effort: effort as EffortLevel | null },
+          { model, effort: effort as EffortLevel | null, providerId },
         );
         // Optimistic running state until `issue-validation-started` lands.
         return {

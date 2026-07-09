@@ -21,6 +21,7 @@ import {
 } from '../issue-triage.constants';
 import type { IssueValidationBadge } from '../IssueList/IssueList.types';
 import { computeIssueValidationBadges, useModelSelection } from '../useModelSelection';
+import type { ModelSelectionControls } from '../ValidateControls/ValidateControls.types';
 import {
   type ConvertDialogState,
   type PostDialogState,
@@ -30,150 +31,6 @@ import { useIssueTriage } from './hooks/useIssueTriage.hooks';
 import type { IssueTriageViewProps } from './IssueTriageView.types';
 import { errMessage, matchesFilter } from './IssueTriageView.utils';
 
-/** Coerce an unknown thrown value to a message string. */
-function errMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-/** The validation run-lifecycle for the single active/selected issue. */
-interface UseIssueTriageResult {
-  stream: IssueTriageStream;
-  runs: IssueValidationRun[];
-  isStarting: boolean;
-  startError: string | null;
-  activeRunId: MutableRefObject<string | null>;
-  start: (
-    issue: IssueSummary,
-    detail: IssueDetail,
-    model: string | null,
-    effort: string | null,
-    providerId: string | null,
-  ) => Promise<void>;
-  cancel: () => Promise<void>;
-  selectRun: (runId: string) => Promise<void>;
-  reset: () => void;
-  refreshRuns: () => Promise<IssueValidationRun[]>;
-  convert: (runId: string) => Promise<Task>;
-}
-
-/** Drive the validation lifecycle: live `issue-validation-*` fold for the active run,
- *  authoritative reconciliation on completion, single-flight start, cancel, and the
- *  convert side effect. Mirrors `useInsight`. */
-function useIssueTriage(hasProject: boolean): UseIssueTriageResult {
-  const scan = useScanRun<IssueTriageEvent, IssueValidationRun, IssueTriageStream>({
-    emptyStream: EMPTY_ISSUE_TRIAGE_STREAM,
-    listRuns: listIssueValidations,
-    getRun: getIssueValidation,
-    streamFromRun,
-    cancelRun: cancelIssueValidation,
-    subscribe: onIssueTriageEvent,
-    onEvent: (event, { activeRunId, setStream, refreshRuns, reconcile }) => {
-      if (event.type === 'issue-validation-converted') {
-        setStream((prev) =>
-          prev.runId === event.runId ? { ...prev, linkedTaskId: event.taskId } : prev,
-        );
-        void refreshRuns();
-        return;
-      }
-      // Lifecycle events only apply to the run currently displayed/driven.
-      if (event.runId !== activeRunId.current) return;
-      setStream((prev) => foldIssueTriage(prev, event));
-      if (event.type === 'issue-validation-completed' || event.type === 'issue-validation-failed') {
-        void reconcile(event.runId);
-      }
-    },
-  });
-  const { setStream, runStart, refreshRuns, activeRunId } = scan;
-
-  const start = useCallback(
-    async (
-      issue: IssueSummary,
-      detail: IssueDetail,
-      model: string | null,
-      effort: string | null,
-      providerId: string | null,
-    ) => {
-      await runStart(hasProject, async () => {
-        const runId = await startIssueValidation(
-          {
-            issueNumber: issue.number,
-            issueTitle: issue.title,
-            issueBody: detail.body,
-            issueAuthor: issue.author,
-            labels: issue.labels,
-            comments: detail.comments,
-            linkedPrs: issue.linkedPrs,
-          },
-          { model, effort: effort as EffortLevel | null, providerId },
-        );
-        // Optimistic running state until `issue-validation-started` lands.
-        return {
-          runId,
-          optimistic: {
-            ...EMPTY_ISSUE_TRIAGE_STREAM,
-            runId,
-            issueNumber: issue.number,
-            status: 'running',
-            model,
-          },
-        };
-      });
-    },
-    [hasProject, runStart],
-  );
-
-  const reset = useCallback(() => {
-    activeRunId.current = null;
-    setStream(EMPTY_ISSUE_TRIAGE_STREAM);
-  }, [activeRunId, setStream]);
-
-  const convert = useCallback(
-    async (runId: string): Promise<Task> => {
-      const task = await convertIssueValidationToTask(runId);
-      setStream((prev) => (prev.runId === runId ? { ...prev, linkedTaskId: task.id } : prev));
-      await refreshRuns();
-      return task;
-    },
-    [setStream, refreshRuns],
-  );
-
-  return {
-    stream: scan.stream,
-    runs: scan.runs,
-    isStarting: scan.isStarting,
-    startError: scan.startError,
-    activeRunId,
-    start,
-    cancel: scan.cancel,
-    selectRun: scan.selectRun,
-    reset,
-    refreshRuns,
-    convert,
-  };
-}
-
-/** Filter issues (client-side) by number, title, labels, and author. */
-function matchesFilter(issue: IssueSummary, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (q === '') return true;
-  if (`#${issue.number}`.includes(q)) return true;
-  if (issue.title.toLowerCase().includes(q)) return true;
-  if (issue.author.toLowerCase().includes(q)) return true;
-  return issue.labels.some((label) => label.toLowerCase().includes(q));
-}
-
-interface PostDialogState {
-  open: boolean;
-  body: string;
-  loading: boolean;
-  error: string | null;
-  posting: boolean;
-}
-
-interface ConvertDialogState {
-  open: boolean;
-  converting: boolean;
-  error: string | null;
-}
 /** Everything the IssueTriageView shell renders. `hasProject === false` is the only
  *  early-return branch; every other field is meaningful in the project view. */
 export interface IssueTriageViewModel {
@@ -197,12 +54,8 @@ export interface IssueTriageViewModel {
   detailError: string | null;
   // Validation lifecycle for the selected issue
   panelStream: IssueTriageStream;
-  model: string | null;
-  effort: string | null;
-  providerId: string | null;
-  onChangeModel: (model: string | null) => void;
-  onChangeEffort: (effort: string | null) => void;
-  onChangeProviderId: (providerId: string | null) => void;
+  /** Bundled model/effort/provider controls, passed straight into ValidateControls. */
+  modelSelection: ModelSelectionControls;
   canValidate: boolean;
   running: boolean;
   hasVerdict: boolean;

@@ -90,10 +90,7 @@ export function IssueTriageView(props: IssueTriageViewProps) {
 
                 <ValidateControls
                   stream={view.panelStream}
-                  model={view.model}
-                  effort={view.effort}
-                  onChangeModel={view.onChangeModel}
-                  onChangeEffort={view.onChangeEffort}
+                  modelSelection={view.modelSelection}
                   canValidate={view.canValidate}
                   isStarting={view.running}
                   hasVerdict={view.hasVerdict}

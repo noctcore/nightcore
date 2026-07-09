@@ -9,10 +9,14 @@ const meta = {
   component: ValidateControls,
   args: {
     stream: EMPTY_ISSUE_TRIAGE_STREAM,
-    model: null,
-    effort: null,
-    onChangeModel: fn(),
-    onChangeEffort: fn(),
+    modelSelection: {
+      model: null,
+      effort: null,
+      providerId: null,
+      onChangeModel: fn(),
+      onChangeEffort: fn(),
+      onChangeProviderId: fn(),
+    },
     canValidate: true,
     isStarting: false,
     hasVerdict: false,
