@@ -1,7 +1,4 @@
 {
-  "apps/web/src/components/board/ProviderConfigPanel/ProviderConfigPanel.tsx": 422,
-  "apps/web/src/components/board/TaskDetail/TaskDetail.tsx": 526,
-  "apps/web/src/components/board/_fixtures.ts": 446,
   "apps/web/src/components/harness/HarnessView/HarnessView.tsx": 425,
   "apps/web/src/components/insight/InsightView/InsightView.hooks.ts": 430,
   "apps/web/src/components/issues/IssueTriageView/IssueTriageView.hooks.ts": 506,

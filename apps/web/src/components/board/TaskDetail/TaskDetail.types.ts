@@ -110,3 +110,31 @@ export interface TaskDetailChromeProps {
   isActionPending?: (action: string, id: string) => boolean;
   onOpenSourceRef?: (sourceRef: string) => void;
 }
+
+/** Props for {@link TaskDetailHeader} — the derived scalars the drawer header
+ *  renders (status pill + cost + title + provenance chip + close). */
+export interface TaskDetailHeaderProps {
+  task: Task;
+  /** Aggregate run cost — live stream total, falling back to the persisted total. */
+  cost: number | null;
+  onClose: () => void;
+  onOpenSourceRef?: (sourceRef: string) => void;
+}
+
+/** Props for {@link TaskDetailFooter} — the per-status action bar. Takes the raw
+ *  inputs its button-eligibility derives from (`gauntlet`/`prSupport`/`prStatusView`)
+ *  plus the drawer's parked-state booleans and the shared `pending` probe; the
+ *  grouped board actions reach it via `TaskActionsContext`, not a prop. */
+export interface TaskDetailFooterProps {
+  task: Task;
+  gauntlet: GauntletResult | null;
+  prSupport: PrSupport | null;
+  prStatusView: PrStatusView;
+  planParked: boolean;
+  reviewParked: boolean;
+  isDoneColumn: boolean;
+  isRunning: boolean;
+  anyRunning: boolean;
+  /** True while the named action is mid-flight for this task (disables its button). */
+  pending: (action: string) => boolean;
+}

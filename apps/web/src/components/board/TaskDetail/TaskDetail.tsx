@@ -1,20 +1,6 @@
 import { memo } from 'react';
 
-import {
-  BranchIcon,
-  Button,
-  CheckIcon,
-  CloseIcon,
-  CommitIcon,
-  GithubIcon,
-  IconButton,
-  m,
-  Markdown,
-  RefineIcon,
-  slideIn,
-  Spinner,
-} from '@/components/ui';
-import { sourceRefLabel } from '@/lib/source-ref';
+import { m, Markdown, slideIn } from '@/components/ui';
 
 import { useTaskActions } from '../actions';
 import { ActivityLog } from '../ActivityLog';
@@ -25,20 +11,16 @@ import { PrReviewComments, usePrReviewComments } from '../PrReviewComments';
 import { PrStatusCard, usePrStatus } from '../PrStatusCard';
 import { ReviewPanel } from '../ReviewPanel';
 import { GroupLabel, HistoryCard, SessionCard } from '../SessionCard';
-import { formatCostUsd, STATUS_LABEL, STATUS_TEXT } from '../status';
 import { TaskAttachments } from '../TaskAttachments';
-import { TaskStatusDot } from '../TaskStatusDot';
 import {
-  canCreatePr,
-  canMerge,
-  createPrBlockedReason,
   deriveTaskDetailView,
-  prChipLabel,
   TaskStreamContext,
   usePrSupport,
   useTaskStreamSessions,
 } from './TaskDetail.hooks';
 import type { TaskDetailChromeProps, TaskDetailProps } from './TaskDetail.types';
+import { TaskDetailFooter } from './TaskDetailFooter';
+import { TaskDetailHeader } from './TaskDetailHeader';
 
 
 /** The logs / detail drawer. A thin coordinator over two halves: the static
@@ -149,12 +131,6 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
   onOpenSourceRef,
 }: TaskDetailChromeProps) {
   const actions = useTaskActions();
-  const mergeable = canMerge(task, gauntlet);
-  // Freshly-fetched PR state (from the lifted status view): a PR already
-  // merged ON GitHub must not arm the local Merge — the worktree branch was
-  // integrated remotely, and a local merge would re-apply it against a base
-  // that may already contain it. Finalize is the correct exit.
-  const remoteMerged = prStatusView.status?.state === 'MERGED';
   // Whether the Result band has anything to show (verdict and/or the Done-column
   // readiness gauntlet) — its label is suppressed otherwise so it never sits empty.
   const structureLockFailed =
@@ -172,15 +148,6 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
     actions.onResumeSession !== undefined &&
     actions.onRenameSession !== undefined &&
     actions.onTagSession !== undefined;
-  const mainMode = task.runMode === 'main';
-  // Create PR eligibility, surfaced explicitly (never a silent hide): an eligible
-  // task gets the enabled button; a worktree task that is not YET eligible gets a
-  // DISABLED button whose tooltip names the unmet condition; a task where a PR does
-  // not apply (main-mode / merged / already published) gets neither.
-  const prCreatable = canCreatePr(task, prSupport);
-  const prBlockedReason = createPrBlockedReason(task, prSupport);
-  // Provenance chip: where a converted task came from (scan finding/reading/proposal).
-  const provenance = sourceRefLabel(task.sourceRef);
   // True while the named action is mid-flight for this task — disables the button
   // so it can't double-fire before the `nc:task` echo lands.
   const pending = (action: string): boolean => isActionPending?.(action, task.id) ?? false;
@@ -193,49 +160,12 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
       exit="exit"
       className="flex h-full w-[min(28rem,60vw)] shrink-0 flex-col border-l border-border bg-popover"
     >
-      <header className="flex items-start justify-between gap-3 border-b border-border bg-card px-4 py-3.5">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <TaskStatusDot status={task.status} glow />
-            <span
-              className={`font-mono text-[11px] font-semibold uppercase tracking-[0.08em] ${
-                task.status === 'done' && !task.verified
-                  ? 'text-muted-foreground'
-                  : STATUS_TEXT[task.status]
-              }`}
-            >
-              {task.status === 'done' && task.verified ? 'Verified' : STATUS_LABEL[task.status]}
-            </span>
-            {cost !== null && (
-              <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-                · {formatCostUsd(cost)}
-              </span>
-            )}
-          </div>
-          <h2 className="mt-2 truncate text-base font-semibold text-foreground">
-            {task.title || 'Untitled task'}
-          </h2>
-          {provenance !== null && task.sourceRef !== null && (
-            onOpenSourceRef !== undefined ? (
-              <button
-                type="button"
-                onClick={() => onOpenSourceRef(task.sourceRef!)}
-                title="Open the originating scan item"
-                className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
-              >
-                From {provenance} ↗
-              </button>
-            ) : (
-              <span className="mt-1.5 inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-                From {provenance}
-              </span>
-            )
-          )}
-        </div>
-        <IconButton label="Close detail panel" onClick={onClose}>
-          <CloseIcon size={16} />
-        </IconButton>
-      </header>
+      <TaskDetailHeader
+        task={task}
+        cost={cost}
+        onClose={onClose}
+        onOpenSourceRef={onOpenSourceRef}
+      />
 
       <div className="flex flex-1 flex-col gap-4 overflow-auto px-4 py-4">
         {/* Needs attention — the plan-approval gate. Permission/question prompts
@@ -381,146 +311,18 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
         />
       )}
 
-      <footer className="flex items-center gap-2 border-t border-border bg-card px-4 py-3">
-        {planParked ? (
-          <>
-            <Button
-              onClick={() => actions.onApprove?.(task.id)}
-              disabled={pending('approve')}
-              aria-busy={pending('approve')}
-            >
-              {pending('approve') ? <Spinner /> : <CheckIcon size={14} />}
-              {pending('approve') ? 'Approving…' : 'Approve'}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => actions.onRefine?.(task.id)}
-              disabled={pending('refine')}
-              aria-busy={pending('refine')}
-            >
-              {pending('refine') ? <Spinner /> : <RefineIcon size={14} />}
-              {pending('refine') ? 'Refining…' : 'Refine'}
-            </Button>
-            <span className="flex-1" />
-            <Button
-              variant="danger"
-              onClick={() => actions.onReject?.(task.id)}
-              disabled={pending('reject')}
-              aria-busy={pending('reject')}
-            >
-              {pending('reject') ? <Spinner /> : null}
-              {pending('reject') ? 'Rejecting…' : 'Reject'}
-            </Button>
-          </>
-        ) : reviewParked ? (
-          <>
-            <span className="flex-1 text-xs text-muted-foreground">
-              Resolve the reviewer verdict above.
-            </span>
-            <Button variant="ghost" onClick={() => actions.onDelete(task.id)}>
-              Delete
-            </Button>
-          </>
-        ) : isDoneColumn ? (
-          <>
-            {task.merged ? (
-              <Button disabled title="Branch merged into the base">
-                <BranchIcon size={14} />
-                Merged
-              </Button>
-            ) : task.committed && mainMode ? (
-              <Button
-                disabled
-                title="Main-mode tasks edit the project directly — nothing to merge"
-              >
-                <CheckIcon size={14} />
-                Committed
-              </Button>
-            ) : task.committed ? (
-              <Button
-                onClick={() => actions.onMerge?.(task.id)}
-                disabled={!mergeable || remoteMerged || pending('merge')}
-                aria-busy={pending('merge')}
-                title={
-                  remoteMerged
-                    ? 'Merged on GitHub — use Finalize'
-                    : mergeable
-                      ? undefined
-                      : 'Merge needs a verified task and a passing gauntlet — run the checks first'
-                }
-              >
-                {pending('merge') ? <Spinner /> : <BranchIcon size={14} />}
-                {pending('merge') ? 'Merging…' : 'Merge'}
-              </Button>
-            ) : (
-              <Button
-                onClick={() => actions.onCommit?.(task.id)}
-                disabled={pending('commit')}
-                aria-busy={pending('commit')}
-              >
-                {pending('commit') ? <Spinner /> : <CommitIcon size={14} />}
-                {pending('commit') ? 'Committing…' : 'Commit'}
-              </Button>
-            )}
-            {/* The PR terminal action beside Merge: a `PR #<n>` chip linking out
-                once one exists, else Create PR when the full eligibility contract
-                holds (done + verified + committed + worktree + !merged + a green
-                `pr_support` probe). When a worktree task isn't yet eligible the
-                button stays visible but DISABLED, its tooltip naming the unmet
-                condition — so the user can always see why a PR can't be opened
-                rather than the button silently vanishing. */}
-            {task.prUrl !== undefined ? (
-              <Button
-                variant="secondary"
-                onClick={() => actions.onOpenPr?.(task.prUrl!)}
-                title="Open the pull request in your browser"
-              >
-                <GithubIcon size={13} />
-                {prChipLabel(task)} ↗
-              </Button>
-            ) : actions.onCreatePr !== undefined && (prCreatable || prBlockedReason !== null) ? (
-              <Button
-                variant="secondary"
-                onClick={() => actions.onCreatePr!(task.id)}
-                disabled={!prCreatable || pending('createPr')}
-                aria-busy={pending('createPr')}
-                title={prCreatable ? undefined : (prBlockedReason ?? undefined)}
-              >
-                {pending('createPr') ? <Spinner /> : <GithubIcon size={13} />}
-                Create PR
-              </Button>
-            ) : null}
-            <span className="flex-1" />
-            <Button variant="ghost" onClick={() => actions.onDelete(task.id)}>
-              Delete
-            </Button>
-          </>
-        ) : (
-          <>
-            {isRunning || task.status === 'verifying' ? (
-              <Button variant="danger" onClick={() => actions.onCancel(task.id)}>
-                Cancel run
-              </Button>
-            ) : (
-              <Button
-                onClick={() => actions.onRun(task.id)}
-                disabled={anyRunning || pending('run')}
-                aria-busy={pending('run')}
-                title={anyRunning ? 'Another task is already running' : undefined}
-              >
-                {pending('run') ? <Spinner /> : null}
-                {pending('run') ? 'Starting…' : 'Run'}
-              </Button>
-            )}
-            <span className="flex-1" />
-            {!isRunning && task.status !== 'verifying' && (
-              <Button variant="ghost" onClick={() => actions.onDelete(task.id)}>
-                Delete
-              </Button>
-            )}
-          </>
-        )}
-      </footer>
+      <TaskDetailFooter
+        task={task}
+        gauntlet={gauntlet}
+        prSupport={prSupport}
+        prStatusView={prStatusView}
+        planParked={planParked}
+        reviewParked={reviewParked}
+        isDoneColumn={isDoneColumn}
+        isRunning={isRunning}
+        anyRunning={anyRunning}
+        pending={pending}
+      />
     </m.aside>
   );
 });
