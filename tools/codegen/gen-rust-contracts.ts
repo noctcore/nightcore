@@ -315,7 +315,7 @@ const STRUCT_NAMES: Record<string, string> = {
     'ProviderConfigSnapshot',
   // The provider capability descriptor (issue #18) — carried on the `capabilities`
   // slot of a `query-result`, so the Rust core single-sources it from the engine.
-  'autonomyLevels|costTelemetry|id|label|supportsAskUserQuestion|supportsEffort|supportsFileCheckpointing|supportsHooks|supportsMcp|supportsPlanMode|supportsSessionResume|supportsSessionStore|supportsSettingSources|supportsStructuredOutput':
+  'autonomyLevels|costTelemetry|id|label|providesOwnWriteContainment|supportsAskUserQuestion|supportsEffort|supportsFileCheckpointing|supportsHooks|supportsMcp|supportsPlanMode|supportsSessionResume|supportsSessionStore|supportsSettingSources|supportsStructuredOutput':
     'ProviderCapabilities',
   // The dynamic model-catalog descriptor (issue #80) — carried on the `models` slot
   // of a `query-result` (the engine's `listModels()` output), so the Rust core
@@ -892,6 +892,7 @@ const COMMAND_INPUTS: Record<string, unknown> = {
   'start-session': {
     type: 'start-session',
     prompt: 'do the thing',
+    providerId: 'claude',
     model: 'claude-opus-4-8',
     effort: 'high',
     autonomy: 'auto-accept',

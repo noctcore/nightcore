@@ -17,6 +17,7 @@ import {
   autonomyToPermissionMode,
   CLAUDE_CAPABILITIES,
 } from '../providers/claude/capabilities.js';
+import type { ProviderRegistry } from '../providers/provider-factory.js';
 
 /**
  * The SDK boundary is stubbed so no live Claude model is ever spawned. Each
@@ -937,5 +938,79 @@ describe('SessionManager fail-closed autonomy invariant', () => {
 
     expect(events.some((e) => e.type === 'session-started')).toBe(true);
     expect(events.some(isFailed)).toBe(false);
+  });
+});
+
+describe('SessionManager provider registry routing', () => {
+  function provider(id: string, models: string[]): AgentProvider & { started: StartSessionParams[] } {
+    const started: StartSessionParams[] = [];
+    const session: AgentSession = {
+      permissionMode: 'default',
+      run: async () => {},
+      streamInput: () => {},
+      interrupt: async () => {},
+      setModel: async () => {},
+      setAutonomy: async () => {},
+      approvePermission: () => false,
+      answerQuestion: () => false,
+      listModels: async () =>
+        models.map((model) => ({
+          providerId: id,
+          value: model,
+          displayName: model,
+          description: `${id} model`,
+          supportsEffort: true,
+          supportedEffortLevels: ['low', 'medium', 'high'],
+        })),
+      probeConfig: async () => {
+        throw new Error('probe not used in this test');
+      },
+    };
+    return {
+      started,
+      capabilities: () => ({ ...CLAUDE_CAPABILITIES, id, label: id }),
+      preflight: () => {},
+      startSession: (params) => {
+        started.push(params);
+        return session;
+      },
+      createProbeSession: () => session,
+    };
+  }
+
+  test('start-session providerId selects the provider per run', async () => {
+    const claude = provider('claude', ['claude-opus-4-8']);
+    const codex = provider('codex', ['gpt-5-codex']);
+    const registry: ProviderRegistry = {
+      forSession: (id) => (id === 'codex' ? codex : claude),
+      all: () => [claude, codex],
+    };
+    const manager = new SessionManager(makeConfig(), undefined, registry);
+
+    await manager.dispatch({ type: 'start-session', prompt: 'a' });
+    await manager.dispatch({
+      type: 'start-session',
+      prompt: 'b',
+      providerId: 'codex',
+      model: 'gpt-5-codex',
+    });
+
+    expect(claude.started.map((p) => p.prompt)).toEqual(['a']);
+    expect(codex.started.map((p) => p.prompt)).toEqual(['b']);
+    expect(codex.started[0]?.model).toBe('gpt-5-codex');
+  });
+
+  test('listModels returns a merged catalog across registered providers', async () => {
+    const claude = provider('claude', ['claude-opus-4-8']);
+    const codex = provider('codex', ['gpt-5-codex']);
+    const manager = new SessionManager(makeConfig(), undefined, {
+      forSession: (id) => (id === 'codex' ? codex : claude),
+      all: () => [claude, codex],
+    });
+
+    await expect(manager.listModels()).resolves.toEqual([
+      expect.objectContaining({ providerId: 'claude', value: 'claude-opus-4-8' }),
+      expect.objectContaining({ providerId: 'codex', value: 'gpt-5-codex' }),
+    ]);
   });
 });

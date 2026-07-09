@@ -345,6 +345,7 @@ describe('AnalysisManager — usage/cost accumulation', () => {
         await completing(ONE_FINDING, 0.25, {
           inputTokens: 100,
           outputTokens: 20,
+          reasoningOutputTokens: 0,
           cacheReadTokens: 5,
           cacheCreationTokens: 1,
         })(emit);
@@ -369,6 +370,7 @@ describe('AnalysisManager — usage/cost accumulation', () => {
     expect(completed.usage).toEqual({
       inputTokens: 300,
       outputTokens: 60,
+      reasoningOutputTokens: 0,
       cacheReadTokens: 15,
       cacheCreationTokens: 3,
     });

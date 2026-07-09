@@ -12,7 +12,7 @@ import type {
 
 // --- Provider configuration inspector (read-only) -------------------------
 
-/** Read the active provider's RESOLVED configuration for a project — its MCP
+/** Read the default provider's RESOLVED configuration for a project — its MCP
  *  servers, skills, subagents, and scalar extras — for the read-only inspector.
  *  Omit `projectPath` to inspect the ACTIVE project (the board-header entry point);
  *  pass one to inspect another root. Each section degrades independently
@@ -132,4 +132,3 @@ export async function rerunVerification(id: string): Promise<void> {
 export async function runGauntlet(id: string): Promise<GauntletResult> {
   return tauriInvoke<GauntletResult>('run_gauntlet', { id }, { passed: true, steps: [] });
 }
-

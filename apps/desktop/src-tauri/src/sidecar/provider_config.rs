@@ -1,6 +1,6 @@
 //! The read-only provider-configuration inspector command.
 //!
-//! Surfaces how the active provider (today: Claude) is RESOLVED for the active
+//! Surfaces how the default provider is RESOLVED for the active
 //! project — its MCP servers, skills, subagents, and scalar extras (model /
 //! permission mode / output style) — over the request/reply NDJSON path. The
 //! command issues a `get-provider-config` [`SurfaceQuery`] through
@@ -156,7 +156,7 @@ fn reply_error(reply: &Value) -> String {
         .to_string()
 }
 
-/// Read the active provider's resolved configuration for a project (the read-only
+/// Read the default provider's resolved configuration for a project (the read-only
 /// inspector). `dir` defaults to the ACTIVE PROJECT root so the board-header entry
 /// is per-project with no argument; pass an explicit `dir` to inspect another root.
 /// Returns the snapshot (its sections degrade independently engine-side, so this
@@ -176,6 +176,7 @@ pub async fn get_provider_config(
         &app,
         SurfaceQuery::GetProviderConfig {
             request_id: String::new(),
+            provider_id: None,
             dir: Some(dir),
         },
     )

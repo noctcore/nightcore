@@ -96,6 +96,8 @@ export interface PreflightRequest {
   autonomy: AutonomyLevel;
   /** Whether OS-level write containment is active for the run. */
   osSandboxed: boolean;
+  /** Explicit opt-in for a provider's uncontained danger-full-access posture. */
+  uncontainedBypassOptIn?: boolean;
 }
 
 /**
@@ -202,10 +204,19 @@ export class AutonomyNotPermittedError extends Error {
 export function assertHooksInvariant(
   capabilities: ProviderCapabilities,
   autonomy: AutonomyLevel,
-  opts: { osSandboxed: boolean },
+  opts: { osSandboxed: boolean; uncontainedBypassOptIn?: boolean },
 ): void {
   if (
+    autonomy === 'bypass' &&
+    !capabilities.supportsHooks &&
+    !opts.osSandboxed &&
+    opts.uncontainedBypassOptIn !== true
+  ) {
+    throw new AutonomyNotPermittedError(capabilities.id, autonomy);
+  }
+  if (
     ELEVATED_AUTONOMY.has(autonomy) &&
+    autonomy !== 'bypass' &&
     !capabilities.supportsHooks &&
     !opts.osSandboxed
   ) {

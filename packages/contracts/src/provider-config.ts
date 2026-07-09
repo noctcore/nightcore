@@ -3,7 +3,7 @@ import { z } from 'zod';
 /**
  * `provider-config` — the read-only provider-configuration inspector contract.
  *
- * A snapshot of how the active provider (today: Claude) is resolved for the
+ * A snapshot of how a provider is resolved for the
  * CURRENT project — its MCP servers, skills, subagents, and a tight set of scalar
  * extras (model / permission mode / output style). The engine reads this from the
  * SDK's runtime control methods on a transient probe (resolved + scope-aware), not

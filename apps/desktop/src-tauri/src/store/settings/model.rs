@@ -31,13 +31,10 @@ pub struct Settings {
     /// mode engine-side. Default is `bypass` (an autonomous studio runs without
     /// prompts; a per-task override re-enables them).
     pub permission_mode: String,
-    /// The agent provider that backs runs (issue #18). A lowercase provider id
-    /// (`claude` today); the orchestrator's provider factory maps it to an
-    /// implementation at construction. Global-only — a provider swap is a whole-
-    /// studio choice, not per-project. Serde-additive: a settings file written before
-    /// this field loads as `"claude"`, and an unknown id falls back to `claude` with
-    /// a loud warning (the factory's explicit-error arm is for a future second
-    /// provider, never a silent wrong backend).
+    /// The default agent provider for inherited task model picks. A lowercase
+    /// provider id (`claude` / `codex`); explicit task-level `provider_id` wins, so
+    /// different tasks can run on different providers in the same sidecar process.
+    /// Serde-additive: a settings file written before this field loads as `"claude"`.
     #[serde(default = "default_provider")]
     pub provider: String,
     /// M2 toggle: remove a task's worktree after it merges. Read at
@@ -164,7 +161,7 @@ fn default_run_mode_value() -> String {
     "main".to_string()
 }
 
-/// The serde default for `provider` — the only shipped provider (issue #18). A
+/// The serde default for `provider` — the default shipped provider (issue #18). A
 /// settings file written before the field loads as `"claude"`. Kept a literal (not
 /// `crate::provider::CLAUDE_PROVIDER_ID`) because `store` may not import `provider`
 /// sideways (the layer-rank rule). The factory's `claude` arm is the id authority;

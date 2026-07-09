@@ -213,7 +213,7 @@ No package "builds but nothing imports."
 ## What to Keep (well-structured, do not change)
 
 - **The single-bridge boundary on the web** (`lib/bridge.ts`): every `invoke` and every `listen` goes through one module that also owns the `isTauri()` mock-fallback. This is exactly the right shape and is the reason the command surface is perfectly symmetric.
-- **The provider trait seam** (`m2/provider.rs`): the `Provider` trait + pending-launch FIFO correlation lets a future Codex sidecar be an additive binary, not a `match` branch. Clean abstraction, zero sidecar changes needed for N-concurrency.
+- **The provider trait seam** (`m2/provider.rs`): the `Provider` trait + pending-launch FIFO correlation keeps provider selection behind the existing sidecar/engine factory (D-009), not a Rust `match` branch. Clean abstraction, zero sidecar changes needed for N-concurrency.
 - **Dependency inversion in capability packages**: `tools`/`skills`/`mcp` depend on `contracts` only and re-declare SDK-shaped types structurally to stay SDK-free. Keep this.
 - **The clean DAG**: no circular deps, `contracts`/`shared` as leaves, `engine` as the sole hub. Don't let the core start importing engine internals — the sidecar boundary is what keeps that honest.
 - **Event-path runtime validation** at the web (`NightcoreEventSchema.safeParse`): this is the mitigation that makes the *event* half of the drift seam fail closed. Extend the same idea to commands/structs (see below) rather than removing it.

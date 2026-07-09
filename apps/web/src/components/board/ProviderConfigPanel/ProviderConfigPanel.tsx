@@ -1,4 +1,4 @@
-/** Read-only inspector sheet for the active provider's resolved configuration. */
+/** Read-only inspector sheet for the default provider's resolved configuration. */
 import type { ReactNode } from 'react';
 
 import {
@@ -271,7 +271,7 @@ function ProviderConfigSkeleton() {
 
 /**
  * The read-only provider-configuration inspector: a right-side sheet showing how
- * the active provider (today: Claude) is RESOLVED for the current project — its MCP
+ * the default provider is RESOLVED for the current project — its MCP
  * servers, skills, subagents, and scalar extras. Every section renders its own
  * tri-state, so a future provider that can't report a section degrades gracefully
  * with no new UI branches.

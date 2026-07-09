@@ -162,6 +162,7 @@ pub(crate) async fn submit_run(
         .start_session(
             task_id,
             task.prompt(),
+            task.provider_id.clone(),
             task.model.clone(),
             task.effort.clone(),
             cwd,

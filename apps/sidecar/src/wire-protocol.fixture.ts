@@ -122,6 +122,7 @@ class ScriptedManager implements SidecarManager {
         outputTokens: 1,
         cacheReadTokens: 0,
         cacheCreationTokens: 0,
+        reasoningOutputTokens: 0,
       },
     });
   }

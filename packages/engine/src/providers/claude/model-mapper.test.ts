@@ -19,6 +19,7 @@ describe('toModelDescriptor', () => {
       value: 'claude-opus-4-8',
       displayName: 'Opus 4.8',
       description: 'Most capable model.',
+      providerId: 'claude',
       supportsEffort: true,
       supportedEffortLevels: ['low', 'high', 'max'],
     });

@@ -1,4 +1,5 @@
 import { composeStories } from '@storybook/react-vite';
+import { userEvent } from '@vitest/browser/context';
 import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
@@ -9,7 +10,10 @@ const { Global, NoActiveProject } = composeStories(stories);
 test('updates a global setting with the SDK long id when scope is Global', async () => {
   const onUpdate = vi.fn();
   const screen = render(<Global onUpdate={onUpdate} />);
-  await screen.getByRole('button', { name: 'Sonnet' }).click();
+  const model = screen.getByRole('combobox', { name: 'Default model' });
+  await expect.element(model).toBeInTheDocument();
+  (model.element() as HTMLElement).focus();
+  await userEvent.keyboard('{ArrowDown}{ArrowDown}{Enter}');
   // The persisted value is the SDK long id, not the short label.
   expect(onUpdate).toHaveBeenCalledWith({ defaultModel: 'claude-sonnet-4-6' });
 });
@@ -39,7 +43,8 @@ test('routes the patch to a project override under the project scope', async () 
   const screen = render(<Global onUpdate={onUpdate} />);
   // Switch to the per-project scope (tab labelled with the project name).
   await screen.getByRole('button', { name: 'nightcore' }).click();
-  await screen.getByRole('button', { name: 'Opus' }).click();
+  await screen.getByRole('combobox', { name: 'Default model' }).click();
+  await screen.getByRole('option', { name: /Opus/ }).click();
   expect(onUpdate).toHaveBeenCalledWith({
     defaultModel: 'claude-opus-4-8',
     projectId: 'nightcore',

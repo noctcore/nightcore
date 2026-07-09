@@ -63,6 +63,7 @@ pub(crate) async fn dispatch_reviewer(
         .start_session(
             task_id,
             prompt,
+            task.provider_id.clone(),
             task.model.clone(),
             // The reviewer keeps its own policy (M4.7 §E): it inherits the task's
             // effort like the builder, a peer of the build run.
@@ -152,6 +153,7 @@ pub(crate) async fn dispatch_pr_fix_build(
             // Model/effort: core defaults (no task to inherit from).
             None,
             None,
+            None,
             Some(dir.to_path_buf()),
             autonomy,
             TaskKind::Build.as_wire(),
@@ -200,6 +202,7 @@ async fn dispatch_build_fix(
         .start_session(
             task_id,
             prompt,
+            task.provider_id.clone(),
             task.model.clone(),
             task.effort.clone(),
             Some(worktree_dir.to_path_buf()),

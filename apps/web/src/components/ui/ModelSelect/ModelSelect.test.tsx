@@ -26,6 +26,15 @@ const CODEX_MODEL: ModelDescriptor = {
   supportedEffortLevels: ['low', 'medium', 'high'],
 };
 
+const GPT_55: ModelDescriptor = {
+  providerId: 'codex',
+  value: 'gpt-5.5',
+  displayName: 'GPT-5.5',
+  description: 'Frontier model',
+  supportsEffort: true,
+  supportedEffortLevels: ['low', 'medium', 'high', 'xhigh'],
+};
+
 /** A catalog whose providers are interleaved in source order (Claude → Codex →
  *  Claude…), so the grouped display order differs from catalog-iteration order —
  *  the case that desyncs a naive source-order keyboard-nav index. Splicing the
@@ -174,6 +183,35 @@ test('the speed model does not offer the Max effort level', async () => {
   );
   const efforts = screen.getByRole('radiogroup', { name: /reasoning effort/i });
   expect(efforts.getByRole('radio', { name: /^max$/i }).query()).toBeNull();
+});
+
+test('dynamic Codex models use descriptor-provided effort levels', async () => {
+  const screen = render(
+    <ModelSelect
+      value={{ model: 'gpt-5.5', effort: null, providerId: 'codex' }}
+      onChange={vi.fn()}
+      catalog={{ status: 'ready', models: [GPT_55] }}
+    />,
+  );
+  const efforts = screen.getByRole('radiogroup', { name: /reasoning effort/i });
+  await expect.element(efforts.getByRole('radio', { name: /^extra high$/i })).toBeInTheDocument();
+  expect(efforts.getByRole('radio', { name: /^max$/i }).query()).toBeNull();
+});
+
+test('switching to a dynamic Codex model preserves a supported xhigh effort', async () => {
+  const onChange = vi.fn();
+  const screen = render(
+    <ModelSelect
+      value={{ model: 'claude-opus-4-8', effort: 'xhigh', providerId: 'claude' }}
+      onChange={onChange}
+      catalog={{ status: 'ready', models: [...STATIC_MODELS, GPT_55] }}
+    />,
+  );
+  await screen.getByRole('combobox', { name: /model/i }).click();
+  await screen.getByRole('option', { name: /gpt-5\.5/i }).click();
+  expect(onChange).toHaveBeenCalledWith(
+    expect.objectContaining({ model: 'gpt-5.5', effort: 'xhigh', providerId: 'codex' }),
+  );
 });
 
 test('picking an effort keeps the current model in the value object', async () => {

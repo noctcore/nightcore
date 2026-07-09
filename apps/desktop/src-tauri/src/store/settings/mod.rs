@@ -73,7 +73,7 @@ mod tests {
         assert_eq!(s.max_concurrency, 3);
         // M4.7 §A1: bypass is the studio default.
         assert_eq!(s.permission_mode, "bypass");
-        // Issue #18: Claude is the only shipped provider / the default.
+        // Issue #18: Claude is the shipped default provider.
         assert_eq!(s.provider, "claude");
         assert!(s.cleanup_worktrees);
         assert!(!s.notify_on_complete);
@@ -127,13 +127,12 @@ mod tests {
     fn default_model_id_is_provider_aware() {
         // B2 (issue #79/#80): a non-Claude provider must NOT fall through to a Claude
         // model. Claude (and any unrecognized id, which the factory runs on the Claude
-        // backend) → the contract default; Codex → an empty id ("inherit — the
-        // provider supplies its own default"), never a Claude model.
+        // backend) → the contract default; Codex → the Codex SDK default.
         assert_eq!(default_model_id("claude"), "claude-opus-4-8");
         assert_eq!(
             default_model_id("codex"),
-            "",
-            "Codex has no curated static catalog — it must not default to a Claude model"
+            "gpt-5-codex",
+            "Codex must not default to a Claude model"
         );
         // An unknown provider is treated as Claude by the factory (fallback), so a
         // Claude default is correct for it.
@@ -144,7 +143,7 @@ mod tests {
     fn canonical_model_id_passes_foreign_provider_ids_through() {
         // B2: `canonical_model_id` must NOT rewrite a non-Claude id into a Claude enum
         // value — a Codex model id matches no Claude family token and is returned
-        // verbatim, and the empty id a non-Claude provider defaults to stays empty.
+        // verbatim.
         assert_eq!(canonical_model_id("gpt-5-codex"), "gpt-5-codex");
         assert_eq!(canonical_model_id("o3"), "o3");
         assert_eq!(canonical_model_id(""), "");

@@ -13,17 +13,16 @@
 //! `settings.json` migration, because a stale on-disk catalog is worse than a cheap
 //! re-fetch, and the catalog is a function of the provider + live auth, not user config.
 //!
-//! ## The `(providerId, authState)` key
+//! ## The `(catalog/provider scope, authState)` key
 //!
-//! The cache is keyed by BOTH the active provider id AND an opaque auth-state
+//! The cache is keyed by BOTH the catalog/provider scope AND an opaque auth-state
 //! fingerprint. The auth-state component is REQUIRED, not incidental: the Codex model
 //! list is auth-FILTERED (the set of models `model/list` returns depends on the signed-in
 //! account/plan), so caching by provider alone would serve one account's models to
 //! another after a re-login. A different auth-state ⇒ a different key ⇒ a cache miss ⇒ a
-//! re-fetch, so the cache self-invalidates across the one provider dimension that changes
-//! at runtime (auth). The provider id changes only across an app restart (a provider swap
-//! is restart-gated), which starts this map empty anyway. The command layer owns how each
-//! fingerprint is computed (Codex reads its auth file's stamp; Claude is not auth-filtered
+//! re-fetch, so the cache self-invalidates across the provider dimension that changes
+//! at runtime (auth). The command layer owns how each fingerprint is computed (Codex
+//! reads its auth file's stamp; Claude is not auth-filtered
 //! so its fingerprint is a constant) — this module stays a dumb, provider-agnostic
 //! string-keyed TTL map.
 //!
@@ -50,10 +49,10 @@ use super::settings::known_model_id;
 /// keeps the picker snappy without pinning a genuinely stale list for a whole session.
 const MODEL_CACHE_TTL: Duration = Duration::from_secs(60 * 60);
 
-/// The cache key: the active provider id AND an opaque auth-state fingerprint. See the
+/// The cache key: catalog/provider scope AND an opaque auth-state fingerprint. See the
 /// module docs for why the auth-state component is required (the Codex list is
 /// auth-filtered). Two keys are equal iff BOTH components match, so a re-login (new
-/// fingerprint) or a provider swap (new id) is a natural cache miss.
+/// fingerprint) is a natural cache miss.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ModelCacheKey {
     pub provider_id: String,
@@ -61,7 +60,7 @@ pub struct ModelCacheKey {
 }
 
 impl ModelCacheKey {
-    /// Build a key from the active provider id and its auth-state fingerprint.
+    /// Build a key from the catalog/provider scope and its auth-state fingerprint.
     pub fn new(provider_id: impl Into<String>, auth_state: impl Into<String>) -> Self {
         Self {
             provider_id: provider_id.into(),
@@ -181,6 +180,7 @@ pub fn claude_static_catalog() -> Vec<ModelDescriptor> {
         .map(|model| {
             let (display_name, description, supported_effort_levels) = claude_model_meta(model);
             ModelDescriptor {
+                provider_id: Some("claude".to_string()),
                 // Single-sourced from the contract enum — never a Rust string literal.
                 value: known_model_id(model),
                 display_name: display_name.to_string(),
@@ -230,6 +230,7 @@ mod tests {
 
     fn descriptor(value: &str) -> ModelDescriptor {
         ModelDescriptor {
+            provider_id: None,
             value: value.to_string(),
             display_name: value.to_string(),
             description: String::new(),

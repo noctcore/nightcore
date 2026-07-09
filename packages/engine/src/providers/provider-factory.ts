@@ -16,9 +16,35 @@ import type { Config } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
 
 import type { AgentProvider } from './agent-provider.js';
+import { CLAUDE_PROVIDER_ID } from './claude/capabilities.js';
 import { ClaudeAgentProvider } from './claude/claude-agent-provider.js';
 import { CODEX_PROVIDER_ID } from './codex/capabilities.js';
 import { CodexAgentProvider } from './codex/codex-agent-provider.js';
+
+export interface ProviderRegistry {
+  forSession(providerId?: string): AgentProvider;
+  all(): AgentProvider[];
+}
+
+class StaticProviderRegistry implements ProviderRegistry {
+  constructor(
+    private readonly defaultProviderId: string,
+    private readonly providers: Record<string, AgentProvider>,
+  ) {}
+
+  forSession(providerId?: string): AgentProvider {
+    return (
+      this.providers[providerId ?? this.defaultProviderId] ??
+      this.providers[this.defaultProviderId] ??
+      this.providers[CLAUDE_PROVIDER_ID] ??
+      Object.values(this.providers)[0]!
+    );
+  }
+
+  all(): AgentProvider[] {
+    return Object.values(this.providers);
+  }
+}
 
 /** Construct the agent provider named by `config.provider`. The single engine-side
  *  provider-selection point (issue #18): `codex` → the degraded {@link
@@ -36,4 +62,22 @@ export function buildProvider(
     default:
       return new ClaudeAgentProvider(config, opts, logger);
   }
+}
+
+/** Build the multi-provider registry used by the sidecar process. A task's
+ *  `providerId` selects a provider per session; absent/unknown falls back to the
+ *  configured default, then Claude. */
+export function buildProviderRegistry(
+  config: Config,
+  opts: { apiKeyFallback: boolean },
+  logger?: Logger,
+  overrides: Record<string, AgentProvider> = {},
+): ProviderRegistry {
+  const providers: Record<string, AgentProvider> = {
+    [CLAUDE_PROVIDER_ID]: new ClaudeAgentProvider(config, opts, logger),
+    [CODEX_PROVIDER_ID]: new CodexAgentProvider(logger),
+    ...overrides,
+  };
+  const defaultProviderId = providers[config.provider] !== undefined ? config.provider : CLAUDE_PROVIDER_ID;
+  return new StaticProviderRegistry(defaultProviderId, providers);
 }

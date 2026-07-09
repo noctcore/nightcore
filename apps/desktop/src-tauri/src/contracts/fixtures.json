@@ -3,6 +3,7 @@
     "start-session": {
       "type": "start-session",
       "prompt": "do the thing",
+      "providerId": "claude",
       "model": "claude-opus-4-8",
       "effort": "high",
       "autonomy": "auto-accept",
@@ -377,7 +378,8 @@
         "inputTokens": 100,
         "outputTokens": 50,
         "cacheReadTokens": 10,
-        "cacheCreationTokens": 5
+        "cacheCreationTokens": 5,
+        "reasoningOutputTokens": 0
       }
     },
     "session-failed": {
@@ -446,7 +448,8 @@
         "inputTokens": 1200,
         "outputTokens": 300,
         "cacheReadTokens": 0,
-        "cacheCreationTokens": 0
+        "cacheCreationTokens": 0,
+        "reasoningOutputTokens": 0
       },
       "costUsd": 0.04
     },
@@ -481,7 +484,8 @@
         "inputTokens": 5000,
         "outputTokens": 1500,
         "cacheReadTokens": 200,
-        "cacheCreationTokens": 100
+        "cacheCreationTokens": 100,
+        "reasoningOutputTokens": 0
       }
     },
     "analysis-failed": {
@@ -570,7 +574,8 @@
         "inputTokens": 1200,
         "outputTokens": 300,
         "cacheReadTokens": 0,
-        "cacheCreationTokens": 0
+        "cacheCreationTokens": 0,
+        "reasoningOutputTokens": 0
       },
       "costUsd": 0.04
     },
@@ -717,7 +722,8 @@
         "inputTokens": 5000,
         "outputTokens": 1500,
         "cacheReadTokens": 200,
-        "cacheCreationTokens": 100
+        "cacheCreationTokens": 100,
+        "reasoningOutputTokens": 0
       }
     },
     "harness-scan-failed": {
@@ -780,7 +786,8 @@
         "inputTokens": 4000,
         "outputTokens": 800,
         "cacheReadTokens": 100,
-        "cacheCreationTokens": 50
+        "cacheCreationTokens": 50,
+        "reasoningOutputTokens": 0
       },
       "costUsd": 0.04
     },
@@ -815,7 +822,8 @@
         "inputTokens": 5000,
         "outputTokens": 1500,
         "cacheReadTokens": 200,
-        "cacheCreationTokens": 100
+        "cacheCreationTokens": 100,
+        "reasoningOutputTokens": 0
       }
     },
     "scorecard-failed": {
@@ -862,7 +870,8 @@
         "inputTokens": 1200,
         "outputTokens": 300,
         "cacheReadTokens": 0,
-        "cacheCreationTokens": 0
+        "cacheCreationTokens": 0,
+        "reasoningOutputTokens": 0
       },
       "costUsd": 0.04
     },
@@ -887,7 +896,8 @@
         "inputTokens": 5000,
         "outputTokens": 1500,
         "cacheReadTokens": 200,
-        "cacheCreationTokens": 100
+        "cacheCreationTokens": 100,
+        "reasoningOutputTokens": 0
       }
     },
     "pr-review-failed": {
@@ -944,7 +954,8 @@
         "inputTokens": 3000,
         "outputTokens": 700,
         "cacheReadTokens": 100,
-        "cacheCreationTokens": 50
+        "cacheCreationTokens": 50,
+        "reasoningOutputTokens": 0
       }
     },
     "issue-validation-failed": {

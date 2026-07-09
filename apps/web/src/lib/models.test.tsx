@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest';
 
 import {
+  codexStaticModelDescriptors,
   effortOptionsForModel,
   isAdaptiveModel,
   isEffortSupported,
@@ -22,9 +23,20 @@ test('MODEL_OPTIONS carry tier + effort metadata for every surfaced model', () =
 test('modelOptionFor resolves canonical, legacy, inherit, and unknown ids', () => {
   expect(modelOptionFor(null)).toBeNull();
   expect(modelOptionFor('claude-opus-4-8')?.id).toBe('claude-opus-4-8');
+  expect(modelOptionFor('gpt-5-codex')?.id).toBe('gpt-5-codex');
   expect(modelOptionFor('sonnet-4.6')?.id).toBe('claude-sonnet-4-6');
   expect(modelOptionFor('haiku-4.5')?.id).toBe('claude-haiku-4-5');
   expect(modelOptionFor('gpt-9')).toBeNull();
+});
+
+test('codexStaticModelDescriptors exposes the SDK-backed Codex default', () => {
+  expect(codexStaticModelDescriptors()).toEqual([
+    expect.objectContaining({
+      providerId: 'codex',
+      value: 'gpt-5-codex',
+      supportedEffortLevels: ['low', 'medium', 'high', 'xhigh'],
+    }),
+  ]);
 });
 
 test('effortOptionsForModel unlocks xhigh/max only for the premium model', () => {
@@ -33,6 +45,9 @@ test('effortOptionsForModel unlocks xhigh/max only for the premium model', () =>
 
   const haiku = effortOptionsForModel('claude-haiku-4-5').map((o) => o.id);
   expect(haiku).toEqual(['low', 'medium', 'high', 'none']);
+
+  const codex = effortOptionsForModel('gpt-5-codex').map((o) => o.id);
+  expect(codex).toEqual(['low', 'medium', 'high', 'xhigh', 'none']);
 });
 
 test('effortOptionsForModel falls back to the base set for Inherit / unknown', () => {

@@ -12,10 +12,11 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "dependencies": {
-    "@nightcore/contracts": "workspace:*",
-    "@nightcore/storage": "workspace:*",
-    "@nightcore/shared": "workspace:*",
     "@anthropic-ai/claude-agent-sdk": "0.3.190",
+    "@nightcore/contracts": "workspace:*",
+    "@nightcore/shared": "workspace:*",
+    "@nightcore/storage": "workspace:*",
+    "@openai/codex-sdk": "0.142.5",
     "zod": "4.4.3"
   }
 }

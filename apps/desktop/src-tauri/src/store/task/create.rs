@@ -288,12 +288,11 @@ mod tests {
     }
 
     #[test]
-    fn build_new_task_leaves_model_none_when_provider_has_no_static_default() {
+    fn build_new_task_leaves_model_none_when_default_model_is_empty() {
         use crate::settings::SettingsStore;
-        // B2 (issue #79/#80): a provider with no curated static catalog (e.g. Codex)
-        // resolves its default model to an empty id (see `settings::default_model_id`).
-        // A new task must keep `model: None` ("inherit — the provider supplies its own
-        // default") rather than stamping `Some("")` onto the wire.
+        // Legacy/hand-edited settings can still carry an empty default model. A new
+        // task must keep `model: None` ("inherit") rather than stamping `Some("")`
+        // onto the wire.
         let tmp = tempfile::TempDir::new().expect("temp dir");
         let settings = SettingsStore::load_from(tmp.path().join("config"));
         settings

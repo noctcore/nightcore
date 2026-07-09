@@ -197,7 +197,11 @@ export function foldSession(prev: SessionStream, event: NcEvent): SessionStream 
     }
     case 'session-completed':
       // The run ended — seal the trailing turn so it renders parsed markdown.
-      return { ...prev, costUsd: event.costUsd, entries: closeOpenText(prev.entries) };
+      return {
+        ...prev,
+        costUsd: event.costUsd ?? null,
+        entries: closeOpenText(prev.entries),
+      };
     case 'session-failed':
       return { ...prev, error: `${event.reason}: ${event.message}` };
     default:

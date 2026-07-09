@@ -21,6 +21,7 @@ import type { SDKSessionInfo, SessionMessage } from './session-api.js';
  */
 export function toModelDescriptor(info: ModelInfo): ModelDescriptor {
   return {
+    providerId: 'claude',
     value: info.value,
     displayName: info.displayName,
     description: info.description,

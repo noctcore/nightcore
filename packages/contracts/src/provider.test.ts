@@ -54,6 +54,7 @@ describe('ProviderCapabilitiesSchema', () => {
     label: 'Claude',
     autonomyLevels: ['bypass', 'auto-accept', 'ask', 'plan'],
     supportsHooks: true,
+    providesOwnWriteContainment: false,
     supportsMcp: true,
     supportsPlanMode: true,
     supportsStructuredOutput: true,
@@ -77,22 +78,40 @@ describe('ProviderCapabilitiesSchema', () => {
       'plan',
     ]);
     expect(parsed.costTelemetry).toBe('full');
+    expect(parsed.providesOwnWriteContainment).toBe(false);
   });
 
-  test('parses a degraded provider (no hooks, reduced autonomy, no cost)', () => {
-    const parsed = ProviderCapabilitiesSchema.parse({
+  test('parses a degraded provider with absent containment default', () => {
+    const withoutContainment: Record<string, unknown> = {
       ...claude,
-      id: 'codex',
-      label: 'Codex',
+      id: 'stub',
+      label: 'Stub',
       autonomyLevels: ['ask'],
       supportsHooks: false,
       supportsStructuredOutput: false,
       supportsAskUserQuestion: false,
       costTelemetry: 'none',
+    };
+    delete withoutContainment.providesOwnWriteContainment;
+    const parsed = ProviderCapabilitiesSchema.parse(withoutContainment);
+    expect(parsed.providesOwnWriteContainment).toBe(false);
+  });
+
+  test('parses a provider with native write containment and token-only cost', () => {
+    const parsed = ProviderCapabilitiesSchema.parse({
+      ...claude,
+      id: 'codex',
+      label: 'Codex',
+      autonomyLevels: ['auto-accept', 'ask', 'plan'],
+      supportsHooks: false,
+      providesOwnWriteContainment: true,
+      supportsAskUserQuestion: false,
+      costTelemetry: 'tokens-only',
     });
     expect(parsed.supportsHooks).toBe(false);
-    expect(parsed.autonomyLevels).toEqual(['ask']);
-    expect(parsed.costTelemetry).toBe('none');
+    expect(parsed.providesOwnWriteContainment).toBe(true);
+    expect(parsed.autonomyLevels).toEqual(['auto-accept', 'ask', 'plan']);
+    expect(parsed.costTelemetry).toBe('tokens-only');
   });
 
   test('every capability flag is required (no implicit false)', () => {

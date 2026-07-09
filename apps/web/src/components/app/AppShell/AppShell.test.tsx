@@ -41,6 +41,6 @@ test('routes to the Settings surface and shows the run-shaping controls', async 
     .element(screen.getByRole('heading', { name: 'Models & runs', level: 1 }))
     .toBeInTheDocument();
   await expect
-    .element(screen.getByRole('button', { name: 'Opus' }))
+    .element(screen.getByRole('combobox', { name: 'Default model' }))
     .toBeInTheDocument();
 });

@@ -53,7 +53,7 @@ all three in one Node process — we don't.
 | UI stack | **Rust + Tauri 2.11 + React 19 + Vite + Tailwind v4** | Mirrors `rin-client`; native core, web-tech UI. |
 | Where orchestration lives | **Rust core** | Performance + the architecture rigor that's the whole point of the rewrite. |
 | Agent SDK runtime | **TypeScript/Bun sidecar** | No Rust SDK. Reuses the already-built TS engine (`packages/engine` etc.) wholesale; full SDK parity (interrupt, setModel, callback hooks) vs. the Python SDK's gaps. |
-| Providers | **Keep a provider seam** (`AgentProvider` trait) | User wants Codex/others later. Cleaner than AutoMaker's in-proc classes — each provider is a separate sidecar process speaking one protocol. |
+| Providers | **Keep a provider seam** (`AgentProvider` trait) | User wants Codex/others. D-009 keeps provider selection in the engine provider factory behind one Bun sidecar, not as provider-specific sidecar binaries. |
 | Repo | **Same `nightcore` repo, fresh Rust tree** | TS state archived at tag `v0-ts-harness`; `packages/*` retained as the sidecar's brain. |
 | Auth | Inherit local `~/.claude` creds | Subscription auth; users self-setup `claude login`. Cannot embed a token (ToS). |
 

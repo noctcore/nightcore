@@ -4,12 +4,11 @@
  * the typed engine event stream. Delegates the `runId`-keyed scan command families
  * (analysis / harness / scorecard / pr-review) to a {@link ScanRouter} collaborator.
  *
- * Provider-neutral (issue #18): it constructs and drives sessions through the
+ * Provider-neutral (issue #18/#79): it constructs and drives sessions through the
  * {@link AgentProvider} seam and speaks only `NightcoreEvent` / contract types — no
- * Claude Agent SDK shape reaches this file, and it never branches on the provider id.
- * The provider is injectable, defaulting to the config-driven {@link buildProvider}
- * factory (the ONE engine-side provider-selection point), so a second provider slots
- * in with no edit here and the fail-closed gate-battery test can swap the impl.
+ * Claude Agent SDK shape reaches this file. Provider selection is delegated to a
+ * registry whose factory is the engine-side provider-selection point; the supervisor
+ * forwards the command's `providerId` without branching on provider behavior.
  */
 import { EventEmitter } from 'node:events';
 
@@ -37,7 +36,10 @@ import {
   toWireSessionMessage,
 } from '../providers/claude/mappers.js';
 import { SessionApi } from '../providers/claude/session-api.js';
-import { buildProvider } from '../providers/provider-factory.js';
+import {
+  buildProviderRegistry,
+  type ProviderRegistry,
+} from '../providers/provider-factory.js';
 import { ScanRouter } from '../scans/scan-router.js';
 
 interface ManagedSession {
@@ -64,23 +66,29 @@ export class SessionManager {
   private readonly store: SessionStore;
   private readonly apiKeyFallback: boolean;
   private readonly sessionApi: SessionApi;
-  private readonly provider: AgentProvider;
+  private readonly providers: ProviderRegistry;
   private readonly scans: ScanRouter;
 
   constructor(
     private readonly config: Config,
     private readonly logger?: Logger,
-    /** The agent provider that constructs + drives sessions. Injectable so the
-     *  fail-closed gate-battery test can swap it; defaults to the config-driven
-     *  {@link buildProvider} factory (the sole provider-selection point). */
-    provider?: AgentProvider,
+    /** Agent providers that construct + drive sessions. Injectable so the
+     *  fail-closed gate-battery test can swap them; defaults to the config-driven
+     *  registry factory (the sole provider-selection point). */
+    providers?: AgentProvider | ProviderRegistry,
   ) {
     this.store = new SessionStore(config.paths.sessions, logger);
     this.sessionApi = new SessionApi(logger?.child('session-api'));
     this.apiKeyFallback = Boolean(process.env.ANTHROPIC_API_KEY);
-    this.provider =
-      provider ??
-      buildProvider(config, { apiKeyFallback: this.apiKeyFallback }, logger);
+    this.providers =
+      providers === undefined
+        ? buildProviderRegistry(config, { apiKeyFallback: this.apiKeyFallback }, logger)
+        : 'forSession' in providers
+          ? providers
+          : {
+              forSession: () => providers,
+              all: () => [providers],
+            };
     // Scan orchestration is a separate concern: the router owns the four scan
     // managers and their dispatch, emitting through this supervisor's event sink.
     this.scans = new ScanRouter({
@@ -269,7 +277,10 @@ export class SessionManager {
         // provider shares ONE subprocess and degrades per section, so the snapshot
         // always resolves (`ok: true`).
         const projectPath = query.dir ?? process.cwd();
-        const session = this.firstLiveRunner() ?? this.makeProbeSession();
+        const session =
+          query.providerId === undefined
+            ? this.firstLiveRunner() ?? this.makeProbeSession()
+            : this.makeProbeSession(query.providerId);
         const providerConfig = await session.probeConfig(projectPath);
         return {
           type: 'query-result',
@@ -283,12 +294,13 @@ export class SessionManager {
         // Provider-static: answer straight from the provider's descriptor (no probe,
         // no project dir), so the Rust core single-sources the truthful capability
         // matrix from the engine instead of duplicating it (issue #18).
+        const provider = this.providers.forSession(query.providerId);
         return {
           type: 'query-result',
           requestId,
           ok: true,
           kind: 'capabilities',
-          capabilities: this.provider.capabilities(),
+          capabilities: provider.capabilities(),
         };
       }
       case 'get-models': {
@@ -323,8 +335,20 @@ export class SessionManager {
    */
   async listModels(): Promise<ModelDescriptor[]> {
     try {
-      const session = this.firstLiveRunner() ?? this.makeProbeSession();
-      return await session.listModels();
+      const models = await Promise.all(
+        this.providers.all().map(async (provider) => {
+          try {
+            return await provider.createProbeSession(this.logger?.child('model-probe')).listModels();
+          } catch (error) {
+            this.logger?.debug('provider listModels() failed; using empty list', {
+              providerId: provider.capabilities().id,
+              error,
+            });
+            return [];
+          }
+        }),
+      );
+      return models.flat();
     } catch (error) {
       this.logger?.debug('listModels() failed; returning empty list', error);
       return [];
@@ -339,14 +363,17 @@ export class SessionManager {
 
   /** A transient probe session (model list / provider-config inspection). It never
    *  runs a turn — the provider's probe spins and tears down its own query. */
-  private makeProbeSession(): AgentSession {
-    return this.provider.createProbeSession(this.logger?.child('model-probe'));
+  private makeProbeSession(providerId?: string): AgentSession {
+    return this.providers
+      .forSession(providerId)
+      .createProbeSession(this.logger?.child('model-probe'));
   }
 
   private startSession(
     command: Extract<SurfaceCommand, { type: 'start-session' }>,
   ): number {
     const id = this.nextSessionId();
+    const provider = this.providers.forSession(command.providerId);
     const model = command.model ?? this.config.model;
     const effort = command.effort ?? this.config.effort;
     const cwd = command.cwd ?? process.cwd();
@@ -402,7 +429,7 @@ export class SessionManager {
     // board shows it like any other failure and the concurrency slot is never taken.
     let runner: AgentSession;
     try {
-      runner = this.provider.startSession(
+      runner = provider.startSession(
         params,
         (event) => this.handleEvent(id, event),
         this.logger?.child(`session-${id}`),
@@ -484,13 +511,15 @@ export class SessionManager {
         break;
       case 'session-completed':
         session.record.endedAt = Date.now();
-        session.record.costUsd = event.costUsd;
+        if (event.costUsd !== undefined) {
+          session.record.costUsd = event.costUsd;
+        }
         session.record.status = 'completed';
         this.store.save(session.record);
         this.logger?.info('session completed', {
           id,
           model: session.record.model,
-          costUsd: event.costUsd,
+          costUsd: event.costUsd ?? null,
           numTurns: event.numTurns,
         });
         break;

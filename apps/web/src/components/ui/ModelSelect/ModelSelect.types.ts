@@ -1,7 +1,7 @@
 /** Props, seam, and view types for the ModelSelect combobox. */
 import type { FocusEvent, KeyboardEvent } from 'react';
 
-import type { ModelDescriptor, ProviderId } from '@nightcore/contracts';
+import type { EffortLevel, ModelDescriptor, ProviderId } from '@nightcore/contracts';
 import type { EffortOption } from '@/lib/models';
 
 import type { KnownProviderId } from '../ProviderIcon';
@@ -49,7 +49,7 @@ export interface ModelSelectProps {
   /** Accessible name for the combobox (and the listbox). Defaults to "Model". */
   ariaLabel?: string;
   /** Whether to render the reasoning-effort row. Defaults to `true`; the live
-   *  wrapper gates it on the active provider's `supportsEffort` capability so a
+   *  wrapper gates it on provider `supportsEffort` capability so a
    *  provider with no effort control (e.g. a future one) hides the row entirely. */
   showEffort?: boolean;
 }
@@ -65,6 +65,8 @@ export interface ModelRow {
   tier: string | null;
   /** The provider the model belongs to (for the row's brand glyph), or null. */
   provider: KnownProviderId | null;
+  /** Effort levels from the live descriptor, when this is a real model row. */
+  supportedEffortLevels: EffortLevel[];
   /** Position in the flat selectable list (Inherit → groups, in display order). */
   index: number;
   /** DOM id for the `role="option"` element. */

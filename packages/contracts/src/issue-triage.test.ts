@@ -405,6 +405,7 @@ describe('NightcoreEventSchema — issue-validation events', () => {
       usage: {
         inputTokens: 3000,
         outputTokens: 700,
+        reasoningOutputTokens: 0,
         cacheReadTokens: 100,
         cacheCreationTokens: 50,
       },

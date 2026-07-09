@@ -11,17 +11,12 @@ import {
   FieldValue,
   FolderIcon,
   GearIcon,
-  LayersIcon,
-  LIVE_MODEL_CATALOG_DATA,
   LockIcon,
-  ModelSelect,
   NumberField,
-  resolveProviderForModel,
   Segmented,
   SparkIcon,
   Toggle,
 } from '@/components/ui';
-import { useModelCatalog } from '@/components/ui/ModelSelect';
 import {
   type AppInfo,
   PROVIDER_LABEL,
@@ -29,42 +24,21 @@ import {
   type SettingsPatch,
 } from '@/lib/bridge';
 import {
-  effortOptionsForModel,
   isEffortSupported,
-  MODEL_OPTIONS,
-  modelOptionFor,
 } from '@/lib/models';
 
 import { buildAboutCards } from './settings-about-cards';
 import { buildInterfaceCards } from './settings-interface-cards';
+import {
+  DefaultModelControl,
+  defaultModelForProvider,
+  effortChoices,
+  highestEffortFor,
+  PROVIDERS,
+} from './settings-run-controls';
 import type { SettingsCardProps } from './SettingsCard';
 import type { EffectiveSettings } from './SettingsView/SettingsView.hooks';
 import type { SettingsPage } from './SettingsView/SettingsView.types';
-
-// The Settings model/effort options reuse the SAME canonical source as the
-// per-task picker (`MODEL_OPTIONS`/`EFFORT_OPTIONS`) so the persisted value is an
-// SDK long id (e.g. `claude-opus-4-8`) — the single source of truth for model ids.
-// The picker label stays friendly; the stored/sent value is the SDK id.
-const MODELS: [value: string, label: string][] = MODEL_OPTIONS.map((m) => [
-  m.id,
-  m.label.split(' ')[0] ?? m.label,
-]);
-
-/** The effort levels to offer in Settings, model-aware: the default model decides
- *  which levels apply (the premium tier unlocks the higher levels). The `none`
- *  sentinel is a per-task affordance, not a global default, so it is excluded. */
-function effortChoices(model: string): [value: string, label: string][] {
-  return effortOptionsForModel(model)
-    .filter((e) => e.id !== 'none')
-    .map((e) => [e.id, e.label]);
-}
-
-/** The highest effort level a model offers — the clamp target when the default
- *  model changes to one that can't honor the currently-stored effort. */
-function highestEffortFor(model: string): string {
-  const choices = effortChoices(model);
-  return choices.at(-1)?.[0] ?? 'high';
-}
 /** Selectable max-concurrency values as `[value, label]` pairs. */
 const CONCURRENCY: [value: string, label: string][] = [
   ['1', '1'],
@@ -85,43 +59,6 @@ const RUN_MODES: [value: string, label: string][] = [
   ['worktree', 'Worktree'],
 ];
 
-/** Which model option a stored value selects. Settings persist SDK long ids that
- *  match `MODEL_OPTIONS` directly; a legacy short id (`opus-4.8`) is matched by
- *  family so the segmented control highlights the right chip. Falls back to the
- *  raw value when unrecognized. */
-function resolveModelValue(model: string): string {
-  return modelOptionFor(model)?.id ?? model;
-}
-
-/** The default-model control. With a single provider (today) a compact `Segmented`
- *  row is clearest; once the live catalog reports >1 provider it adopts the
- *  provider-grouped `ModelSelect` combobox, which scales past a wide chip row (B5).
- *  The default effort is a separate Settings row, so the combobox hides its own.
- *  Item 6 (B5): Settings keeps NO per-selection provider stamp — the default
- *  model's provider is the authoritative global `settings.provider`, not a
- *  Task-style `providerId` (needed only where a pick has no provider context). */
-function DefaultModelControl({ value, onPick }: { value: string; onPick: (m: string) => void }) {
-  const catalog = useModelCatalog(LIVE_MODEL_CATALOG_DATA);
-  const providers =
-    catalog.status === 'ready'
-      ? new Set(catalog.models.map((m) => resolveProviderForModel(m.value) ?? 'other')).size
-      : 1;
-  if (providers > 1) {
-    return (
-      <ModelSelect
-        ariaLabel="Default model"
-        showEffort={false}
-        catalog={catalog}
-        value={{ model: value, effort: null }}
-        // Ignore the synthetic null row (no "Inherit" default) and drop
-        // `sel.providerId` on purpose — `settings.provider` owns the default
-        // model's provider (see the doc-comment above). Item 6 (B5).
-        onChange={(sel) => sel.model !== null && onPick(sel.model)}
-      />
-    );
-  }
-  return <Segmented options={MODELS} value={resolveModelValue(value)} onChange={onPick} />;
-}
 
 /** The data and patch callbacks `buildCards` needs to assemble each page's cards. */
 export interface CardContext {
@@ -160,6 +97,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
               hint: 'Used for new tasks',
               control: (
                 <DefaultModelControl
+                  provider={settings.provider}
                   value={effective.defaultModel}
                   onPick={(v) =>
                     patchScoped(
@@ -320,30 +258,43 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
       return [
         {
           icon: <BoltIcon size={18} />,
-          title: PROVIDER_LABEL,
-          subtitle: 'Local CLI authentication for running agents.',
+          title: 'Default provider',
+          subtitle: 'Choose what new tasks inherit when they do not pick a model.',
           rows: [
             {
-              label: 'Status',
-              hint: `Authenticated via the local ${PROVIDER_LABEL} CLI`,
+              label: 'Provider',
+              hint: 'Task-level model picks can use either provider',
+              control: (
+                <Segmented
+                  options={PROVIDERS}
+                  value={settings.provider}
+                  onChange={(provider) => {
+                    const defaultModel = defaultModelForProvider(provider);
+                    patchGlobal(
+                      isEffortSupported(defaultModel, settings.defaultEffort)
+                        ? { provider, defaultModel }
+                        : {
+                            provider,
+                            defaultModel,
+                            defaultEffort: highestEffortFor(defaultModel),
+                          },
+                    );
+                  }}
+                />
+              ),
+            },
+            {
+              label: 'Current selection',
+              hint:
+                settings.provider === 'codex'
+                  ? 'Uses CODEX_API_KEY or your local Codex login'
+                  : `Authenticated via the local ${PROVIDER_LABEL} CLI`,
               control: (
                 <span className="flex items-center gap-2 text-[12.5px] font-semibold text-success">
                   <span className="h-[7px] w-[7px] rounded-full bg-success" />
-                  Active
+                  {settings.provider === 'codex' ? 'Codex default' : 'Claude default'}
                 </span>
               ),
-            },
-          ],
-        },
-        {
-          icon: <LayersIcon size={18} />,
-          title: 'Other providers',
-          subtitle: 'The provider seam where Codex and others slot in.',
-          rows: [
-            {
-              label: 'Codex',
-              hint: 'Not yet available',
-              control: <span className="text-[12.5px] text-muted-foreground">Coming soon</span>,
             },
           ],
         },

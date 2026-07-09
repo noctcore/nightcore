@@ -1,12 +1,12 @@
 //! The provider seam (M2 §7 of the design doc).
 //!
-//! The seam between the Rust core and an agent backend is the **sidecar process
-//! boundary**: each provider is a separate sidecar speaking the one NDJSON
-//! `SurfaceCommand`/`NightcoreEvent` protocol. This trait is the Rust-side
-//! abstraction. M2 ships exactly one implementation ([`SidecarProvider`], wrapping
-//! the persistent Bun child); a Codex/other provider later is an additive sidecar
-//! binary + factory arm, never a `match provider` branch in the core. The core
-//! only ever consumes the normalized `NightcoreEvent` stream.
+//! The seam between the Rust core and an agent backend is the **sidecar transport
+//! boundary**: Rust speaks one NDJSON `SurfaceCommand`/`NightcoreEvent` protocol to
+//! the persistent Bun child, and the engine provider factory behind that bridge
+//! selects Claude, Codex, or a future backend. This trait is the Rust-side
+//! abstraction; new engine-side providers are additive without a `match provider`
+//! branch in the core. The core only ever consumes the normalized `NightcoreEvent`
+//! stream.
 //!
 //! ## Session ↔ task correlation
 //!

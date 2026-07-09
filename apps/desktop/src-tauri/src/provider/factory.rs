@@ -2,10 +2,10 @@
 //!
 //! The ONE place a provider id → implementation mapping lives, so orchestration
 //! never `match provider`es. Every provider is the SAME Bun [`SidecarProvider`]
-//! transport today — no second sidecar binary ships in the Phase-4 spike, so the
+//! transport today — no second sidecar binary ships for Codex, so the
 //! selected id is threaded to the child via the `NIGHTCORE_PROVIDER` env override and
 //! the ENGINE-side factory constructs the matching implementation (`claude` → the
-//! Claude provider, `codex` → the degraded Codex spike). A future NATIVE second
+//! Claude provider, `codex` → the Codex provider). A future NATIVE second
 //! sidecar binary would add an arm here that spawns a different entry; until then the
 //! arms differ only by the provider id passed through. An unknown id is an explicit
 //! `Err` so a typo can never silently run the wrong backend; the orchestrator falls
@@ -21,9 +21,8 @@ use super::SidecarProvider;
 /// arm below can't drift.
 pub const CLAUDE_PROVIDER_ID: &str = "claude";
 
-/// The stable id of the Codex provider — the Phase-4 second-provider spike. Shares
-/// the Bun sidecar transport; the ENGINE-side factory maps it to the degraded
-/// `CodexAgentProvider` (no hooks / reduced autonomy / `unsupported` sections).
+/// The stable id of the Codex provider. Shares the Bun sidecar transport; the
+/// ENGINE-side factory maps it to `CodexAgentProvider`.
 pub const CODEX_PROVIDER_ID: &str = "codex";
 
 /// Build the provider named by `provider_id`, configured to spawn the sidecar in
@@ -33,7 +32,7 @@ pub const CODEX_PROVIDER_ID: &str = "codex";
 /// provider can never silently run the wrong backend.
 ///
 /// Returns the concrete `SidecarProvider` because every provider is a sidecar
-/// speaking the one NDJSON protocol today — the codex arm differs only by the
+/// speaking the one NDJSON protocol today — the Codex arm differs only by the
 /// provider id it passes to the engine, not by transport. The `Arc<dyn Provider>`
 /// generalization is deferred until a NATIVE second sidecar binary actually needs a
 /// different concrete type.
@@ -50,7 +49,7 @@ pub fn build_provider(
         ))),
         other => Err(format!(
             "unknown provider `{other}`: no such agent-provider implementation \
-             (issue #18 wires `{CLAUDE_PROVIDER_ID}` and the `{CODEX_PROVIDER_ID}` spike)"
+             (issue #18/#79 wire `{CLAUDE_PROVIDER_ID}` and `{CODEX_PROVIDER_ID}`)"
         )),
     }
 }

@@ -17,6 +17,7 @@ export const TokenUsageSchema = z.object({
   outputTokens: z.number().int().nonnegative(),
   cacheReadTokens: z.number().int().nonnegative().default(0),
   cacheCreationTokens: z.number().int().nonnegative().default(0),
+  reasoningOutputTokens: z.number().int().nonnegative().default(0),
 });
 export type TokenUsage = z.infer<typeof TokenUsageSchema>;
 

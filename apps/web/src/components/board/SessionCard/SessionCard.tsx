@@ -7,6 +7,7 @@ import {
   ChevronDownIcon,
   HistoryIcon,
   ModelSelectField,
+  useProviderCapabilities,
 } from '@/components/ui';
 import type { Task } from '@/lib/bridge';
 import { parseNumericCommit } from '@/lib/numeric-field';
@@ -134,6 +135,7 @@ function EditableSessionBody({
   onChangeMaxTurns: NonNullable<TaskDetailActions['onChangeMaxTurns']>;
   onChangeMaxBudget: NonNullable<TaskDetailActions['onChangeMaxBudget']>;
 }) {
+  const capabilities = useProviderCapabilities();
   return (
     <>
       <SessionRow label="Kind">
@@ -149,6 +151,7 @@ function EditableSessionBody({
         <PermissionModePicker
           value={task.permissionMode}
           onChange={(mode) => onChangePermissionMode(task.id, mode)}
+          supportedAutonomyLevels={capabilities?.autonomyLevels}
         />
       </SessionRow>
       <SessionRow label="Model & effort">

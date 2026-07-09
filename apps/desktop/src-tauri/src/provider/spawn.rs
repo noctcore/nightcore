@@ -109,7 +109,7 @@ impl SidecarProvider {
     /// Pass the selected agent-provider id to the sidecar via the `NIGHTCORE_PROVIDER`
     /// env override (issue #18). The engine's `resolveConfig` reads it as the
     /// highest-precedence provider source, so its factory constructs the matching
-    /// implementation (`codex` → the degraded Codex spike). Set for every provider,
+    /// implementation (`codex` → the Codex SDK provider). Set for every provider,
     /// including `claude`, so the child's provider is always explicit — no secret or
     /// prompt is ever placed in the environment.
     fn inject_provider(&self, cmd: &mut Command) {

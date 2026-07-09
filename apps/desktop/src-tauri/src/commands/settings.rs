@@ -47,12 +47,10 @@ pub fn update_settings(
         .is_none()
         .then_some(patch.max_concurrency)
         .flatten();
-    // Capture the resolved global provider before the merge so a change to it can drop the
-    // provider-keyed model cache (issue #80). The model catalog is a function of the
-    // provider (+ auth), so a provider swap must invalidate it. Provider swaps are
-    // restart-gated today (no `provider` patch field), so this is the forward-looking seam
-    // — it fires the instant a live swap lands; the auth dimension already self-invalidates
-    // via the `(provider, auth-state)` cache key. Only global patches touch `provider`.
+    // Capture the resolved global provider before the merge so a change to the default
+    // provider can drop the provider/auth-keyed model cache. Explicit task provider
+    // picks still use the merged catalog; this clears stale fallback data for inherited
+    // defaults. Only global patches touch `provider`.
     let provider_before = patch.project_id.is_none().then(|| store.get().provider);
     let merged = store.update(patch)?;
     if let Some(n) = resize {

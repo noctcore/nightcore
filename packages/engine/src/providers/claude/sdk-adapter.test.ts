@@ -367,6 +367,7 @@ describe('translateMessage — result (terminal)', () => {
         usage: {
           inputTokens: 100,
           outputTokens: 50,
+          reasoningOutputTokens: 0,
           cacheReadTokens: 10,
           cacheCreationTokens: 5,
         },

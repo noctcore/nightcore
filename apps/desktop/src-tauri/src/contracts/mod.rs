@@ -22,6 +22,8 @@
 mod generated;
 pub use generated::*;
 
+pub type ModelDescriptor = QueryResultModelsItem;
+
 // The hand-written ts-rs `TaskKind` (the Rust→TS source for `TaskKind.ts` + the
 // type on `Task.kind`). Homed here — a wire/contract enum — but NOT glob-exported
 // at the module root: `pub use generated::*` already binds `contracts::TaskKind`
@@ -186,6 +188,7 @@ mod tests {
     fn absent_optionals_are_omitted_not_null() {
         let cmd = SurfaceCommand::StartSession {
             prompt: "p".into(),
+            provider_id: None,
             model: None,
             effort: None,
             autonomy: None,
@@ -266,12 +269,13 @@ mod tests {
         let event = NightcoreEvent::SessionCompleted {
             session_id: 3,
             result: "ok".into(),
-            cost_usd: 1.5,
+            cost_usd: Some(1.5),
             num_turns: 4,
             duration_ms: 0.0,
             usage: Some(SessionCompletedUsage {
                 input_tokens: 1,
                 output_tokens: 2,
+                reasoning_output_tokens: 0,
                 cache_read_tokens: 3,
                 cache_creation_tokens: 4,
             }),
@@ -292,6 +296,7 @@ mod tests {
                 "usage": {
                     "inputTokens": 1,
                     "outputTokens": 2,
+                    "reasoningOutputTokens": 0,
                     "cacheReadTokens": 3,
                     "cacheCreationTokens": 4
                 }

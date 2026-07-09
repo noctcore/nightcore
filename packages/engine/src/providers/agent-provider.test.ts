@@ -42,11 +42,23 @@ describe('assertHooksInvariant', () => {
   });
 
   test('permits elevated autonomy when the OS sandbox compensates', () => {
-    for (const autonomy of ['bypass', 'auto-accept'] as const) {
+    for (const autonomy of ['auto-accept'] as const) {
       expect(() =>
         assertHooksInvariant(DEGRADED, autonomy, { osSandboxed: true }),
       ).not.toThrow();
     }
+  });
+
+  test('bypass remains refused without explicit uncontained opt-in', () => {
+    expect(() =>
+      assertHooksInvariant(DEGRADED, 'bypass', { osSandboxed: false }),
+    ).toThrow(AutonomyNotPermittedError);
+    expect(() =>
+      assertHooksInvariant(DEGRADED, 'bypass', {
+        osSandboxed: false,
+        uncontainedBypassOptIn: true,
+      }),
+    ).not.toThrow();
   });
 
   test('never refuses non-elevated autonomy, even without hooks or a sandbox', () => {
@@ -128,6 +140,7 @@ describe('ClaudeAgentProvider', () => {
     const caps = provider.capabilities();
     expect(caps.id).toBe('claude');
     expect(caps.supportsHooks).toBe(true);
+    expect(caps.providesOwnWriteContainment).toBe(false);
     expect(caps.supportsMcp).toBe(true);
     expect(caps.supportsPlanMode).toBe(true);
     expect(caps.supportsStructuredOutput).toBe(true);

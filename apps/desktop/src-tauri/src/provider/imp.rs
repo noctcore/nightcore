@@ -65,16 +65,6 @@ impl SidecarProvider {
         self.stdin.lock().await.is_some()
     }
 
-    /// The agent-provider id this sidecar backs (`claude` / `codex` — issue #18). The
-    /// field is `pub(super)`; this public accessor lets the command layer key the model
-    /// cache by the RUNNING provider (the truthful source — an unknown configured id
-    /// falls back to `claude` at construction, so `settings.provider` can diverge from
-    /// what's actually backing runs). Constant for the app session: a provider swap is
-    /// restart-gated.
-    pub fn provider_id(&self) -> &str {
-        &self.provider_id
-    }
-
     /// Dispatch a run-scoped command (`start-analysis`/`cancel-analysis` for Insight,
     /// `start-harness-scan`/`cancel-harness-scan` for Harness) to the sidecar. Unlike
     /// `start_session`, these correlate by `runId` (carried in the command and echoed on
@@ -115,6 +105,7 @@ impl Provider for SidecarProvider {
         &self,
         task_id: &str,
         prompt: String,
+        provider_id: Option<String>,
         model: Option<String>,
         effort: Option<String>,
         cwd: Option<PathBuf>,
@@ -138,6 +129,7 @@ impl Provider for SidecarProvider {
         // camelCase; the typed enums reject any out-of-contract value here.
         let command = SurfaceCommand::StartSession {
             prompt,
+            provider_id,
             model,
             effort: match effort {
                 Some(e) => Some(parse_wire_enum::<EffortLevel>("effort", &e)?),

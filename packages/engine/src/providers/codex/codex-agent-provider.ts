@@ -1,25 +1,3 @@
-/**
- * The Codex implementation of the neutral {@link AgentProvider} seam (issue #18,
- * Phase 4 — the second-provider spike).
- *
- * This is a truthful STUB, not a working Codex integration: there is no Codex CLI
- * backend wired. Its whole job is to prove the seam holds for a REAL second provider
- * — that capability degradation fires cleanly with no `match provider` anywhere in
- * orchestration. It does three honest things:
- *
- *  1. advertises the DEGRADED {@link CODEX_CAPABILITIES} descriptor (no hooks / no
- *     MCP / no session store / no AskUserQuestion / no structured output / a reduced
- *     autonomy set / `costTelemetry: 'none'`);
- *  2. enforces the fail-closed hooks invariant in {@link preflight} — an elevated
- *     autonomy (`bypass` / `auto-accept`) on this no-hooks provider is REFUSED unless
- *     an OS sandbox compensates, so confinement is never silently dropped;
- *  3. returns a session that, when driven, emits a clear provider-unavailable
- *     failure rather than pretending to run, and reports every provider-config
- *     section as `unsupported` so the inspector degrades with zero new UI branches.
- *
- * Provider-neutral by construction: it imports NO SDK (the engine SDK-confinement
- * lint confines `@anthropic-ai/claude-agent-sdk` to `providers/claude/**`).
- */
 import type {
   AutonomyLevel,
   ModelDescriptor,
@@ -37,116 +15,188 @@ import type {
   SessionEventSink,
   StartSessionParams,
 } from '../agent-provider.js';
-import { assertHooksInvariant } from '../agent-provider.js';
+import {
+  assertHooksInvariant,
+  AutonomyNotPermittedError,
+} from '../agent-provider.js';
+import { DECOMPOSE_OUTPUT_FORMAT } from '../claude/decompose.js';
+import { resolveKindPreset } from '../claude/kind-presets.js';
 import {
   CODEX_CAPABILITIES,
   CODEX_PROVIDER_ID,
   CODEX_PROVIDER_LABEL,
 } from './capabilities.js';
+import { listCodexModels } from './model-catalog.js';
+import {
+  buildCodexOptions,
+  buildCodexThreadOptions,
+  codexBypassOptedIn,
+  codexPostureForAutonomy,
+} from './options.js';
+import {
+  checkCodexBinaryOverride,
+  resolveCodexBinaryOverride,
+} from './resolve-codex-binary.js';
+import {
+  Codex,
+  createCodexTranslationState,
+  translateCodexEvent,
+  type TurnOptions,
+} from './sdk-adapter.js';
 
-/** The message every driven Codex session fails with. The spike has no backend, so
- *  a session that clears preflight still cannot run — it degrades honestly instead
- *  of faking output. */
-const CODEX_UNAVAILABLE_MESSAGE =
-  'The Codex provider is a capability spike (issue #18): no Codex CLI backend is ' +
-  'wired, so sessions cannot run. Select the Claude provider to run tasks.';
-
-/** Map the neutral {@link AutonomyLevel} onto the nearest wire `PermissionMode` for
- *  the session record. Codex only ever reaches here with `ask`/`plan` (the elevated
- *  ceilings are refused in preflight before a session is built), so the two safe
- *  ceilings map to their canonical modes and anything else falls back to `default`. */
 function autonomyToRecordMode(autonomy: AutonomyLevel): PermissionMode {
-  return autonomy === 'plan' ? 'plan' : 'default';
+  switch (autonomy) {
+    case 'bypass':
+      return 'bypassPermissions';
+    case 'auto-accept':
+      return 'acceptEdits';
+    case 'plan':
+      return 'plan';
+    case 'ask':
+      return 'default';
+  }
 }
 
-/** An `unsupported` provider-config section — the tri-state the inspector renders as
- *  "Not available for this provider". */
-const UNSUPPORTED_SECTION: ProviderConfigSection = { status: 'unsupported' };
+const SUPPORTED_EMPTY_SECTION: ProviderConfigSection = { status: 'supported' };
 
-/**
- * The honest stub session. It never runs a model turn: {@link run} emits a terminal
- * `session-failed` (provider-unavailable) and resolves — the supervisor's
- * degrade-not-throw contract. Every other control is a safe no-op, and
- * {@link probeConfig} returns the fully-`unsupported` snapshot the inspector renders.
- */
-class CodexStubSession implements AgentSession {
+class CodexSession implements AgentSession {
   readonly permissionMode: PermissionMode;
+  private readonly abort = new AbortController();
 
   constructor(
-    private readonly sessionId: number,
-    autonomy: AutonomyLevel,
+    private readonly params: StartSessionParams,
+    private readonly autonomy: AutonomyLevel,
     private readonly emit: SessionEventSink,
     private readonly logger?: Logger,
   ) {
     this.permissionMode = autonomyToRecordMode(autonomy);
   }
 
-  /** Emit the provider-unavailable failure and resolve. Never rejects (the
-   *  supervisor converts crashes to events; the stub is failure-only by design). */
-  run(): Promise<void> {
-    this.logger?.warn('codex session cannot run: provider is a spike stub', {
-      sessionId: this.sessionId,
-    });
-    this.emit({
-      type: 'session-failed',
-      sessionId: this.sessionId,
-      reason: 'unknown',
-      message: CODEX_UNAVAILABLE_MESSAGE,
-    });
-    return Promise.resolve();
+  async run(): Promise<void> {
+    const codexPathOverride = resolveCodexBinaryOverride();
+    const overrideWarning = checkCodexBinaryOverride(codexPathOverride);
+    if (overrideWarning !== undefined) {
+      this.fail('runner-crash', overrideWarning);
+      return;
+    }
+
+    try {
+      const posture = codexPostureForAutonomy(this.autonomy, {
+        bypassOptedIn: codexBypassOptedIn(),
+      });
+      const preset = resolveKindPreset(this.params.kind);
+      const codex = new Codex(
+        buildCodexOptions({
+          ...(codexPathOverride !== undefined ? { codexPathOverride } : {}),
+          ...(this.params.mcpServers !== undefined
+            ? { mcpServers: this.params.mcpServers }
+            : {}),
+        }),
+      );
+      const threadOptions = buildCodexThreadOptions({
+        model: this.params.model,
+        ...(this.params.effort !== undefined
+          ? { effort: this.params.effort }
+          : {}),
+        cwd: this.params.cwd,
+        posture,
+      });
+      const thread =
+        this.params.resumeSessionId !== undefined
+          ? codex.resumeThread(this.params.resumeSessionId, threadOptions)
+          : codex.startThread(threadOptions);
+      const turnOptions: TurnOptions = {
+        signal: this.abort.signal,
+        ...(this.params.kind === 'decompose'
+          ? { outputSchema: DECOMPOSE_OUTPUT_FORMAT.schema }
+          : {}),
+      };
+      const input = [
+        this.params.appendContextPack,
+        preset.appendSystemPrompt,
+        this.params.prompt,
+      ]
+        .filter((part): part is string => part !== undefined && part.length > 0)
+        .join('\n\n');
+      const streamed = await thread.runStreamed(input, turnOptions);
+      const state = createCodexTranslationState({
+        sessionId: this.params.sessionId,
+        model: this.params.model,
+        ...(this.params.kind !== undefined ? { kind: this.params.kind } : {}),
+      });
+      for await (const event of streamed.events) {
+        const translated = translateCodexEvent(event, state);
+        for (const next of translated.events) this.emit(next);
+        if (translated.terminal) return;
+      }
+      this.fail('runner-crash', 'Codex stream ended without a terminal event.');
+    } catch (error) {
+      if (this.abort.signal.aborted) {
+        this.fail('aborted', 'Codex session interrupted.');
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger?.warn('codex session failed', { message });
+      this.fail('runner-crash', message);
+    }
   }
 
   streamInput(): void {
-    // No live turn to stream into — the session already failed.
+    // Codex SDK turns are one-shot; follow-up turn streaming is not wired yet.
   }
 
-  interrupt(): Promise<void> {
-    return Promise.resolve();
+  async interrupt(): Promise<void> {
+    this.abort.abort();
   }
 
-  setModel(): Promise<void> {
-    return Promise.resolve();
+  async setModel(): Promise<void> {
+    // Applies to the next session; Codex has no live setModel control.
   }
 
-  setAutonomy(): Promise<void> {
-    return Promise.resolve();
+  async setAutonomy(): Promise<void> {
+    // Applies to the next session; Codex has no live setAutonomy control.
   }
 
   approvePermission(): boolean {
-    // No parked permission requests: the stub never reaches a tool call.
     return false;
   }
 
   answerQuestion(): boolean {
-    // AskUserQuestion is unsupported (see CODEX_CAPABILITIES) — nothing to answer.
     return false;
   }
 
   listModels(): Promise<ModelDescriptor[]> {
-    // The spike advertises no models; the picker degrades to an empty list.
-    return Promise.resolve([]);
+    return listCodexModels(this.logger);
   }
 
   probeConfig(projectPath: string): Promise<ProviderConfigSnapshot> {
-    // Every section `unsupported` (a provider DECLINING, distinct from `unavailable`
-    // = probe couldn't start). The panel header reads "Codex configuration" and each
-    // section reads "Not available for this provider" — zero new UI branches.
     return Promise.resolve({
       providerId: CODEX_PROVIDER_ID,
       providerLabel: CODEX_PROVIDER_LABEL,
       projectPath,
-      mcp: UNSUPPORTED_SECTION,
-      skills: UNSUPPORTED_SECTION,
-      subagents: UNSUPPORTED_SECTION,
-      extrasStatus: 'unsupported',
+      mcp: SUPPORTED_EMPTY_SECTION,
+      skills: SUPPORTED_EMPTY_SECTION,
+      subagents: { status: 'unsupported' },
+      extrasStatus: 'supported',
+    });
+  }
+
+  private fail(
+    reason: Extract<
+      Parameters<SessionEventSink>[0],
+      { type: 'session-failed' }
+    >['reason'],
+    message: string,
+  ): void {
+    this.emit({
+      type: 'session-failed',
+      sessionId: this.params.sessionId,
+      reason,
+      message,
     });
   }
 }
 
-/**
- * One Codex provider. Constructed by the engine provider factory when the resolved
- * `config.provider` is `codex`; reused across sessions.
- */
 export class CodexAgentProvider implements AgentProvider {
   constructor(private readonly logger?: Logger) {}
 
@@ -154,12 +204,12 @@ export class CodexAgentProvider implements AgentProvider {
     return CODEX_CAPABILITIES;
   }
 
-  /** Fail-closed autonomy guard. Codex reports `supportsHooks: false`, so an elevated
-   *  autonomy without an OS sandbox throws {@link AutonomyNotPermittedError} here —
-   *  the real second-provider proof that confinement is never silently dropped. */
   preflight(request: PreflightRequest): void {
     assertHooksInvariant(this.capabilities(), request.autonomy, {
       osSandboxed: request.osSandboxed,
+      ...(request.uncontainedBypassOptIn !== undefined
+        ? { uncontainedBypassOptIn: request.uncontainedBypassOptIn }
+        : {}),
     });
   }
 
@@ -168,26 +218,34 @@ export class CodexAgentProvider implements AgentProvider {
     emit: SessionEventSink,
     logger?: Logger,
   ): AgentSession {
-    // Codex has no kind presets and no configured default; the effective autonomy is
-    // the command override, else `ask` (the safest of its reduced set). The invariant
-    // runs BEFORE the session is built: a `bypass`/`auto-accept` override is refused
-    // rather than downgraded.
     const autonomy: AutonomyLevel = params.autonomyOverride ?? 'ask';
+    const posture = codexPostureForAutonomy(autonomy, {
+      bypassOptedIn: codexBypassOptedIn(),
+    });
     this.preflight({
       autonomy,
-      osSandboxed: params.sandboxWrites === true,
+      osSandboxed: posture.contained && autonomy !== 'bypass',
+      ...(autonomy === 'bypass'
+        ? { uncontainedBypassOptIn: codexBypassOptedIn() }
+        : {}),
     });
-    return new CodexStubSession(
-      params.sessionId,
-      autonomy,
-      emit,
-      logger ?? this.logger,
-    );
+    if (autonomy === 'bypass' && !codexBypassOptedIn()) {
+      throw new AutonomyNotPermittedError(CODEX_PROVIDER_ID, autonomy);
+    }
+    return new CodexSession(params, autonomy, emit, logger ?? this.logger);
   }
 
   createProbeSession(logger?: Logger): AgentSession {
-    // Input-less probe (model list / provider-config inspection). It never runs a
-    // turn, so its autonomy is the benign `ask`.
-    return new CodexStubSession(-1, 'ask', () => {}, logger ?? this.logger);
+    return new CodexSession(
+      {
+        sessionId: -1,
+        prompt: '',
+        model: 'codex',
+        cwd: process.cwd(),
+      },
+      'ask',
+      () => {},
+      logger ?? this.logger,
+    );
   }
 }

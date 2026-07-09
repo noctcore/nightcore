@@ -58,6 +58,8 @@ export type WireImage = z.infer<typeof WireImageSchema>;
 export const StartSessionCommand = z.object({
   type: z.literal('start-session'),
   prompt: z.string(),
+  /** Provider to run this session on. Absent ⇒ inherit the engine default. */
+  providerId: z.string().optional(),
   /** Override the default model for this session. */
   model: z.string().optional(),
   /** Reasoning effort for this session. Effort has no live setter in the SDK, so
@@ -469,34 +471,36 @@ export const TagSessionQuery = z.object({
   dir: z.string().optional(),
 });
 
-/** Read the active provider's resolved configuration for a project (the read-only
+/** Read a provider's resolved configuration for a project (the read-only
  *  inspector). Unlike the session-store queries, this DOES spin a transient SDK
  *  probe (no model turn) to read scope-aware config via the SDK control methods.
+ *  `providerId` selects the provider to inspect; omit ⇒ the engine default.
  *  `dir` is the project root the resolution keys off; omit ⇒ the engine's cwd. */
 export const GetProviderConfigQuery = z.object({
   ...requestTarget,
   type: z.literal('get-provider-config'),
+  providerId: z.string().optional(),
   dir: z.string().optional(),
 });
 
-/** Read the active provider's static {@link ProviderCapabilities} descriptor — the
+/** Read a provider's static {@link ProviderCapabilities} descriptor — the
  *  capability matrix the UI/orchestration degrade from (issue #18). Unlike
  *  `get-provider-config` this is provider-static (no project dir, no probe): the
- *  engine answers straight from the provider's `capabilities()`, so the Rust core
- *  single-sources the truthful descriptor from the engine instead of duplicating it. */
+ *  engine answers straight from the selected provider's `capabilities()`, so the
+ *  Rust core single-sources the truthful descriptor from the engine instead of
+ *  duplicating it. `providerId` omitted ⇒ the engine default. */
 export const GetCapabilitiesQuery = z.object({
   ...requestTarget,
   type: z.literal('get-capabilities'),
+  providerId: z.string().optional(),
 });
 
-/** Read the active provider's DYNAMIC model catalog — the engine's `listModels()`
+/** Read the registered providers' DYNAMIC model catalog — the engine's `listModels()`
  *  output (each {@link ModelDescriptorSchema}: the id passed to `setModel()`, a
  *  display name, and the per-model effort levels) a surface renders its `/model`
- *  picker from (issue #80). Like `get-capabilities` the engine answers from the
- *  active provider, but the list is provider-DYNAMIC — fetched from the SDK at
- *  runtime, not hardcoded — so a new model appears without a Nightcore release. No
- *  project dir: the provider spins a transient probe when no session is live and
- *  degrades to `[]` on any error (never a failed reply). */
+ *  picker from (issue #80). The engine returns a merged provider catalog, fetched
+ *  from each provider at runtime where available, so Claude and Codex can be chosen
+ *  per task in the same sidecar process. */
 export const GetModelsQuery = z.object({
   ...requestTarget,
   type: z.literal('get-models'),

@@ -64,14 +64,8 @@ pub fn known_model_id(model: KnownModel) -> String {
 ///    provider factory treats an unrecognized id as Claude (it falls back to the
 ///    Claude backend with a loud warning — see `provider::factory`), so a Claude
 ///    model is the correct default for it.
-///  - `codex` → NO static default (an empty id). Codex has no curated `KnownModel`
-///    catalog — its list is fetched dynamically and is auth-filtered (see
-///    [`crate::store::model_cache`]) — and the Codex provider itself declares "no
-///    configured default", so pinning any concrete id here would be Nightcore
-///    asserting a catalog it does not own. An empty id means "inherit — the provider
-///    supplies its own default"; a live `list_models` catalog and any explicit user
-///    selection both supersede it. `create_task` keeps a task's model `None` when the
-///    resolved default is empty, so nothing stamps `Some("")` onto the wire.
+///  - `codex` → `gpt-5-codex`, the SDK-backed fallback/default used when no
+///    explicit dynamic Codex model has been selected yet.
 ///
 /// A new non-Claude provider that ships a static default adds an arm here; until then
 /// it inherits the Claude arm's default (harmless — an unwired provider runs on the
@@ -81,9 +75,7 @@ pub fn known_model_id(model: KnownModel) -> String {
 /// literal.
 pub fn default_model_id(provider: &str) -> String {
     match provider {
-        // Non-Claude providers with no curated static catalog: no default id. Empty
-        // ⇒ inherit the provider's own default (never a Claude model).
-        "codex" => String::new(),
+        "codex" => "gpt-5-codex".to_string(),
         // `claude` and any unrecognized id (the factory falls back to the Claude
         // backend) → the contract's first `KnownModel`.
         _ => known_model_id(KnownModel::ClaudeOpus48),
@@ -105,8 +97,8 @@ pub fn default_model_id(provider: &str) -> String {
 /// Deliberately a PASS-THROUGH for foreign-provider ids (issue #79/#80, B2): a Codex
 /// model id (`gpt-5-codex`, `o3`, …) matches none of the Claude family tokens and is
 /// returned verbatim — a non-Claude id is never rewritten into a Claude enum value.
-/// The empty id a non-Claude provider defaults to (see [`default_model_id`]) likewise
-/// passes straight through.
+/// An empty legacy id likewise passes straight through so the task creation layer
+/// can treat it as "inherit" instead of stamping `Some("")`.
 pub fn canonical_model_id(raw: &str) -> String {
     let lower = raw.to_ascii_lowercase();
     if lower.starts_with("claude-") {

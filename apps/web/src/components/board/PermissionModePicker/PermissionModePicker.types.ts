@@ -1,5 +1,5 @@
 /** Props for the PermissionModePicker component. */
-import type { PermissionMode } from '@/lib/bridge';
+import type { AutonomyLevel, PermissionMode } from '@/lib/bridge';
 
 /** Props for the permission-mode picker: the current override (`null` = inherit),
  *  the change handler, and a disabled flag. */
@@ -10,4 +10,6 @@ export interface PermissionModePickerProps {
   onChange: (value: PermissionMode | null) => void;
   /** Disable the whole control (e.g. once a task has started running). */
   disabled?: boolean;
+  /** Supported autonomy levels from the selected provider; absent = fail-open. */
+  supportedAutonomyLevels?: AutonomyLevel[];
 }

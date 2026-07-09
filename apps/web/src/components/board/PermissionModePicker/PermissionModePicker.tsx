@@ -1,7 +1,10 @@
 import { rovingKeydown } from '@/lib/roving-keydown';
 
-import { PERMISSION_MODE_OPTIONS } from '../status';
-import { permissionModeHint } from './PermissionModePicker.hooks';
+import {
+  normalizedPermissionValue,
+  permissionModeHint,
+  supportedPermissionOptions,
+} from './PermissionModePicker.hooks';
 import type { PermissionModePickerProps } from './PermissionModePicker.types';
 
 const CHIP =
@@ -11,28 +14,35 @@ const CHIP =
  *  UI modes (bypass / auto-accept / ask / plan). A sibling of KindPicker —
  *  segmented radios with a one-line explainer beneath. Pure presentational;
  *  selection state is owned by the form/detail panel. */
-export function PermissionModePicker({ value, onChange, disabled = false }: PermissionModePickerProps) {
+export function PermissionModePicker({
+  value,
+  onChange,
+  disabled = false,
+  supportedAutonomyLevels,
+}: PermissionModePickerProps) {
+  const options = supportedPermissionOptions(supportedAutonomyLevels);
+  const normalizedValue = normalizedPermissionValue(value, supportedAutonomyLevels);
   return (
     <div className="flex flex-col gap-1.5">
       <div role="radiogroup" aria-label="Permission mode" className="grid grid-cols-3 gap-2">
         <button
           type="button"
           role="radio"
-          aria-checked={value === null}
-          tabIndex={value === null ? 0 : -1}
+          aria-checked={normalizedValue === null}
+          tabIndex={normalizedValue === null ? 0 : -1}
           disabled={disabled}
           onKeyDown={rovingKeydown}
           onClick={() => onChange(null)}
           className={`${CHIP} ${
-            value === null
+            normalizedValue === null
               ? 'border-primary/60 bg-primary/[0.1] text-foreground'
               : 'border-border bg-white/[0.02] text-muted-foreground hover:border-white/20'
           }`}
         >
           Inherit
         </button>
-        {PERMISSION_MODE_OPTIONS.map((option) => {
-          const selected = option.mode === value;
+        {options.map((option) => {
+          const selected = option.mode === normalizedValue;
           return (
             <button
               key={option.mode}
@@ -54,7 +64,9 @@ export function PermissionModePicker({ value, onChange, disabled = false }: Perm
           );
         })}
       </div>
-      <p className="text-[11px] leading-snug text-muted-foreground">{permissionModeHint(value)}</p>
+      <p className="text-[11px] leading-snug text-muted-foreground">
+        {permissionModeHint(normalizedValue)}
+      </p>
     </div>
   );
 }

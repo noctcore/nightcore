@@ -145,7 +145,7 @@ export async function runTailSession<T>(
       (event) => {
         if (event.type === 'session-completed') {
           result = event.result;
-          costUsd += event.costUsd;
+          costUsd += event.costUsd ?? 0;
           if (event.usage !== undefined) addUsage(usage, event.usage);
         } else if (event.type === 'session-failed') {
           error = event.message;

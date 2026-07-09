@@ -228,7 +228,7 @@ export const SessionCompletedEvent = z.object({
   type: z.literal('session-completed'),
   /** The final result text from the SDK result message. */
   result: z.string(),
-  costUsd: z.number(),
+  costUsd: z.number().optional(),
   numTurns: z.number().int(),
   /** Wall-clock duration of the session in ms (SDK `duration_ms`). */
   durationMs: z.number().nonnegative().default(0),

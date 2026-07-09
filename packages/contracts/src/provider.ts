@@ -92,6 +92,8 @@ export const ProviderCapabilitiesSchema = z.object({
   autonomyLevels: z.array(AutonomyLevelSchema),
   /** PreToolUse hooks — the workspace-confinement + deny/ask/allow gate seam. */
   supportsHooks: z.boolean(),
+  /** Provider-native write containment that can compensate for missing hooks. */
+  providesOwnWriteContainment: z.boolean().default(false),
   /** MCP server configuration/inspection. */
   supportsMcp: z.boolean(),
   /** A dedicated plan/read-only mode. */

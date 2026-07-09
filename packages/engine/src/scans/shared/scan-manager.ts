@@ -49,6 +49,7 @@ export const EMPTY_USAGE: TokenUsage = {
   outputTokens: 0,
   cacheReadTokens: 0,
   cacheCreationTokens: 0,
+  reasoningOutputTokens: 0,
 };
 
 /** The strict-JSON reminder appended to the ONE corrective retry of an ARRAY-shaped
@@ -445,7 +446,7 @@ export abstract class ScanManager<
       (event) => {
         if (event.type === 'session-completed') {
           result = event.result;
-          costUsd = event.costUsd;
+          costUsd = event.costUsd ?? 0;
           if (event.usage !== undefined) usage = event.usage;
         } else if (event.type === 'session-failed') {
           error = event.message;

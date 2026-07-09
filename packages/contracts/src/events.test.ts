@@ -197,6 +197,49 @@ describe('NightcoreEventSchema round-trips', () => {
   }
 });
 
+describe('session telemetry additive defaults', () => {
+  test('session-completed accepts token-only providers with absent costUsd', () => {
+    const parsed = NightcoreEventSchema.parse({
+      type: 'session-completed',
+      sessionId: 9,
+      result: 'ok',
+      numTurns: 1,
+      durationMs: 10,
+      usage: {
+        inputTokens: 1,
+        outputTokens: 2,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        reasoningOutputTokens: 3,
+      },
+    });
+    expect(parsed.type).toBe('session-completed');
+    if (parsed.type === 'session-completed') {
+      expect(parsed.costUsd).toBeUndefined();
+    }
+  });
+
+  test('token usage defaults absent reasoning output tokens to zero', () => {
+    const parsed = NightcoreEventSchema.parse({
+      type: 'session-completed',
+      sessionId: 9,
+      result: 'ok',
+      numTurns: 1,
+      durationMs: 10,
+      usage: {
+        inputTokens: 1,
+        outputTokens: 2,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+      },
+    });
+    expect(parsed.type).toBe('session-completed');
+    if (parsed.type === 'session-completed') {
+      expect(parsed.usage?.reasoningOutputTokens).toBe(0);
+    }
+  });
+});
+
 describe('NightcoreEventSchema rejections', () => {
   test('rejects an unknown discriminant', () => {
     const result = NightcoreEventSchema.safeParse({

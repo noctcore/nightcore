@@ -33,6 +33,7 @@ export const CLAUDE_CAPABILITIES: ProviderCapabilities = {
   label: CLAUDE_PROVIDER_LABEL,
   autonomyLevels: ['bypass', 'auto-accept', 'ask', 'plan'],
   supportsHooks: true,
+  providesOwnWriteContainment: false,
   supportsMcp: true,
   supportsPlanMode: true,
   supportsStructuredOutput: true,

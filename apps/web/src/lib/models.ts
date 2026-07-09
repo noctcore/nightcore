@@ -10,13 +10,12 @@
 //
 // The per-model `supportsEffort` / `supportedEfforts` / `adaptive` fields mirror
 // the contract `ModelDescriptor` (packages/contracts/src/models.ts) that the
-// engine's `listModels()` already returns. The web can't reach `listModels()`
-// yet (it isn't exposed over the Tauri/IPC seam), so this is a curated static
-// stand-in shaped like the descriptor: when the seam opens, the picker can swap
-// to live descriptors without a component change.
+// engine's `listModels()` already returns. Browser-preview stories still use a
+// curated static stand-in, while the desktop bridge asks the sidecar for the live
+// merged provider catalog.
 
 import type { ModelDescriptor } from '@nightcore/contracts';
-import { type EffortLevel, type KnownModel,KnownModelSchema } from '@nightcore/contracts';
+import { type EffortLevel, type KnownModel, KnownModelSchema } from '@nightcore/contracts';
 
 /** Capability/cost tier shown as a badge on the model option. */
 export type ModelTier = 'Speed' | 'Balanced' | 'Premium';
@@ -91,9 +90,8 @@ const MODEL_META: Record<KnownModel, ModelMeta> = {
   },
 };
 
-/** The known Claude models the picker surfaces, in display order. The web offers a
- *  curated subset of the contract enum; a contract model not listed here is
- *  intentionally not offered (dynamic `listModels()` is not yet wired). */
+/** The known Claude models for browser-preview fallback, in display order. The
+ *  desktop picker uses the live `listModels()` bridge instead. */
 const WEB_MODELS: readonly KnownModel[] = [
   'claude-opus-4-8',
   'claude-sonnet-4-6',
@@ -107,19 +105,39 @@ export const MODEL_OPTIONS: ModelOption[] = WEB_MODELS.map((id) => ({
   ...MODEL_META[id],
 }));
 
+/** Codex's degraded fallback when app-server model discovery is unavailable. */
+export const CODEX_MODEL_OPTION: ModelOption = {
+  id: 'gpt-5-codex',
+  label: 'GPT-5 Codex',
+  tier: 'Premium',
+  description: 'Codex-optimized coding model',
+  supportsEffort: true,
+  supportedEfforts: ['low', 'medium', 'high', 'xhigh'],
+  adaptive: false,
+};
+
+function descriptorFromOption(option: ModelOption): ModelDescriptor {
+  return {
+    providerId: option.id.startsWith('claude-') ? 'claude' : 'codex',
+    value: option.id,
+    displayName: option.label,
+    description: option.description,
+    supportsEffort: option.supportsEffort,
+    supportedEffortLevels: option.supportedEfforts,
+  };
+}
+
 /** The curated `MODEL_OPTIONS` reshaped as the contract `ModelDescriptor[]` the
  *  model catalog trades in — the SAME currency the live `listModels()` bridge seam
  *  returns. Single-sources the static fallback used by both the ModelSelect sync
  *  seam and the browser-preview `listModels` mock, so the picker can swap the
  *  loader (static → live) without a shape change. Pure. */
 export function staticModelDescriptors(): ModelDescriptor[] {
-  return MODEL_OPTIONS.map((option) => ({
-    value: option.id,
-    displayName: option.label,
-    description: option.description,
-    supportsEffort: option.supportsEffort,
-    supportedEffortLevels: option.supportedEfforts,
-  }));
+  return MODEL_OPTIONS.map(descriptorFromOption);
+}
+
+export function codexStaticModelDescriptors(): ModelDescriptor[] {
+  return [descriptorFromOption(CODEX_MODEL_OPTION)];
 }
 
 /** A selectable reasoning-effort level — the SDK effort set. */
@@ -165,7 +183,7 @@ export const EFFORT_OPTIONS: EffortOption[] = [
  *  Returns `null` for Inherit (`null`) or an unrecognized id. Pure. */
 export function modelOptionFor(model: string | null): ModelOption | null {
   if (model === null) return null;
-  const exact = MODEL_OPTIONS.find((option) => option.id === model);
+  const exact = [...MODEL_OPTIONS, CODEX_MODEL_OPTION].find((option) => option.id === model);
   if (exact !== undefined) return exact;
   const family = model.toLowerCase();
   const match = MODEL_OPTIONS.find((option) => {
@@ -182,6 +200,10 @@ export function modelOptionFor(model: string | null): ModelOption | null {
 export function effortOptionsForModel(model: string | null): EffortOption[] {
   const option = modelOptionFor(model);
   const levels = option !== null && option.supportsEffort ? option.supportedEfforts : BASE_EFFORTS;
+  return effortOptionsForLevels(levels);
+}
+
+export function effortOptionsForLevels(levels: readonly EffortLevel[]): EffortOption[] {
   return [...levels.map((id) => ({ id, ...EFFORT_META[id] })), NONE_EFFORT];
 }
 
@@ -198,4 +220,12 @@ export function isAdaptiveModel(model: string | null): boolean {
 export function isEffortSupported(model: string | null, effort: string | null): boolean {
   if (effort === null || effort === 'none') return true;
   return effortOptionsForModel(model).some((option) => option.id === effort);
+}
+
+export function isEffortSupportedByLevels(
+  levels: readonly EffortLevel[],
+  effort: string | null,
+): boolean {
+  if (effort === null || effort === 'none') return true;
+  return levels.some((level) => level === effort);
 }

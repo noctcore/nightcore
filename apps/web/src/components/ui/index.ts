@@ -70,7 +70,7 @@ export type {
   ModelSelection,
   ModelSelectProps,
 } from './ModelSelect';
-export { ModelSelect } from './ModelSelect';
+export { ModelSelect, useModelCatalog } from './ModelSelect';
 export type { ModelSelectFieldProps } from './ModelSelectField';
 export {
   LIVE_MODEL_CATALOG_DATA,

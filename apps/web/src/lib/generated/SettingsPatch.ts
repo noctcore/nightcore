@@ -7,7 +7,12 @@ import type { RunMode } from "./RunMode";
  * A partial update. A `projectId` targets a per-project override; otherwise the
  * patch merges into the global block. Every field optional.
  */
-export type SettingsPatch = { projectId?: string, defaultModel?: string, defaultEffort?: string, maxConcurrency?: number, permissionMode?: string, cleanupWorktrees?: boolean, notifyOnComplete?: boolean, 
+export type SettingsPatch = { projectId?: string, defaultModel?: string, defaultEffort?: string, maxConcurrency?: number, permissionMode?: string, 
+/**
+ * Global default provider (`claude` / `codex`) for inherited task model picks.
+ * Explicit per-task `providerId` selections can use either registered provider.
+ */
+provider?: string, cleanupWorktrees?: boolean, notifyOnComplete?: boolean, 
 /**
  * Auto Mode option: toggle auto-commit-on-verified. Global-only (like
  * `cleanup_worktrees`/`notify_on_complete` — ignored for a per-project override

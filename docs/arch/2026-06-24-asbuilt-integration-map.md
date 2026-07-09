@@ -221,7 +221,7 @@ stdio NDJSON: WRITE one `SurfaceCommand` per line to stdin, READ one `NightcoreE
 - **The dual codegen spine.** zod is the single source of truth at the sidecar boundary; Rust serde is the source of truth at the Tauri boundary; both directions are generated with regenerate-and-diff guards + a conformance test. This is exactly the fix the prior map recommended, fully landed. Do not reintroduce hand-mirrored types.
 - **The single-bridge web boundary** (`lib/bridge.ts`): every `invoke`/`listen` plus the `isTauri()` mock fallback funnels through one module — the reason the command surface is perfectly symmetric.
 - **The SDK quarantine:** only `sdk-adapter.ts` imports the SDK runtime (`query`); `permission-layer.ts` imports SDK *types* only. The "one place the SDK lives" rule holds.
-- **The provider trait + pending-launch FIFO** (`m2/provider.rs`): a future Codex sidecar is an additive binary speaking the same NDJSON protocol, not a `match` branch.
+- **The provider trait + pending-launch FIFO** (`provider/`): provider selection is additive inside the engine provider factory behind the existing Bun sidecar (D-009), not a Rust `match` branch or a provider-specific sidecar binary.
 - **The dev/release sidecar split** (`provider.rs:219-240`): bundled binary in release, `bun run` in dev, graceful fallback with a warning. Closes the old packaging island cleanly.
 - **The clean DAG:** zero circular deps, `contracts`/`shared` as leaves, `engine` as sole hub.
 

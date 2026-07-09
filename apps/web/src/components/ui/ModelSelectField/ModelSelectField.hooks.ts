@@ -9,7 +9,7 @@ import { getCapabilities, listModels, type ProviderCapabilities } from '@/lib/br
 import type { ModelCatalogData } from '../ModelSelect';
 
 /** The LIVE catalog seam — the `async` variant of {@link ModelCatalogData} that
- *  loads the dynamic catalog from the running provider via the `list_models` bridge
+ *  loads the dynamic merged catalog via the `list_models` bridge
  *  command. A stable module const so `useModelCatalog` fetches once per mount (its
  *  effect keys on `data.mode`); outside Tauri the bridge degrades to the static
  *  catalog, so the picker still renders in preview. */
@@ -19,8 +19,8 @@ export const LIVE_MODEL_CATALOG_DATA: ModelCatalogData = {
 };
 
 /**
- * Fetch-once memo for the provider capability descriptor. Capabilities are
- * provider-static (constant for the session — a provider swap is restart-gated), so
+ * Fetch-once memo for the default provider capability descriptor. Capabilities are
+ * provider-static, so
  * a single probe is shared across every mounted picker/cost-line instead of one
  * engine round-trip per surface mount. Fail-OPEN: a failed read resolves to `null`
  * (not a throw), and every consumer treats `null` as "assume supported" so a
@@ -38,7 +38,7 @@ function loadCapabilitiesOnce(): Promise<ProviderCapabilities | null> {
 }
 
 /**
- * The active provider's capability descriptor, or `null` while it loads / when the
+ * The default provider's capability descriptor, or `null` while it loads / when the
  * probe failed (fail-open). Consumers gate optional UI on it — the effort row
  * (`supportsEffort`) and the cost lines (`costTelemetry`) — defaulting to "shown"
  * when it is `null`. The underlying probe is memoized module-wide, so many

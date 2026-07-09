@@ -147,6 +147,10 @@ pub struct SettingsPatch {
     pub max_concurrency: Option<u8>,
     #[cfg_attr(test, ts(optional))]
     pub permission_mode: Option<String>,
+    /// Global default provider (`claude` / `codex`) for inherited task model picks.
+    /// Explicit per-task `providerId` selections can use either registered provider.
+    #[cfg_attr(test, ts(optional))]
+    pub provider: Option<String>,
     #[cfg_attr(test, ts(optional))]
     pub cleanup_worktrees: Option<bool>,
     #[cfg_attr(test, ts(optional))]
@@ -225,6 +229,9 @@ impl Settings {
         }
         if let Some(v) = patch.permission_mode {
             self.permission_mode = v;
+        }
+        if let Some(v) = patch.provider {
+            self.provider = v;
         }
         if let Some(v) = patch.cleanup_worktrees {
             self.cleanup_worktrees = v;

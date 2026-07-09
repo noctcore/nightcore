@@ -9,8 +9,10 @@ import {
   ModelSelectField,
   slideIn,
   Spinner,
+  useProviderCapabilities,
 } from '@/components/ui';
 import { imageDataUrl, MAX_IMAGES_PER_TASK } from '@/lib/attachments';
+import { capabilitiesForProvider } from '@/lib/provider-capabilities';
 
 import { KindPicker } from '../KindPicker';
 import { PermissionModePicker } from '../PermissionModePicker';
@@ -25,6 +27,7 @@ const LABEL_CLASS =
 
 /** The create-task dialog reached from the board's "New task" affordance. */
 export function NewTaskForm({ open, onCreate, onClose }: NewTaskFormProps) {
+  const capabilities = useProviderCapabilities();
   const {
     title,
     description,
@@ -157,7 +160,13 @@ export function NewTaskForm({ open, onCreate, onClose }: NewTaskFormProps) {
           )}
           <div className="flex flex-col gap-1.5">
             <span className={LABEL_CLASS}>Permission mode</span>
-            <PermissionModePicker value={permissionMode} onChange={setPermissionMode} />
+            <PermissionModePicker
+              value={permissionMode}
+              onChange={setPermissionMode}
+              supportedAutonomyLevels={
+                capabilitiesForProvider(providerId, capabilities)?.autonomyLevels
+              }
+            />
           </div>
           <ModelSelectField
             value={{ model, effort, providerId }}

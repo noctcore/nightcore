@@ -5,9 +5,11 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import type { ModelDescriptor } from '@nightcore/contracts';
 import {
+  effortOptionsForLevels,
   effortOptionsForModel,
   isAdaptiveModel,
   isEffortSupported,
+  isEffortSupportedByLevels,
   modelOptionFor,
   staticModelDescriptors,
 } from '@/lib/models';
@@ -108,6 +110,7 @@ function buildGroups(
     description: 'Use the default model',
     tier: null,
     provider: null,
+    supportedEffortLevels: [],
     index: 0,
     id: `${baseId}-opt-inherit`,
   };
@@ -116,7 +119,7 @@ function buildGroups(
   const order: RowProvider[] = [];
   const buckets = new Map<RowProvider, PendingRow[]>();
   for (const descriptor of models) {
-    const provider = resolveProviderForModel(descriptor.value);
+    const provider = resolveProviderForModel(descriptor.value, descriptor.providerId);
     const meta = modelOptionFor(descriptor.value);
     const row: PendingRow = {
       value: descriptor.value,
@@ -124,6 +127,7 @@ function buildGroups(
       description: descriptor.description,
       tier: meta?.tier ?? null,
       provider,
+      supportedEffortLevels: descriptor.supportedEffortLevels,
     };
     const bucket = buckets.get(provider);
     if (bucket === undefined) {
@@ -214,14 +218,25 @@ export function useModelSelect({
 
   const effort: EffortRowView = {
     value: value.effort,
-    options: effortOptionsForModel(value.model),
+    options:
+      selectedRow.value !== null && selectedRow.supportedEffortLevels.length > 0
+        ? effortOptionsForLevels(selectedRow.supportedEffortLevels)
+        : effortOptionsForModel(value.model),
     adaptive: isAdaptiveModel(value.model),
-    activeLabel: modelOptionFor(value.model)?.label ?? null,
+    activeLabel: modelOptionFor(value.model)?.label ?? selectedRow.label,
   };
 
   function selectModel(next: string | null): void {
     const provider = next !== null ? resolveProviderForModel(next) : null;
-    const nextEffort = isEffortSupported(next, value.effort) ? value.effort : null;
+    const row = flatRows.find((candidate) => candidate.value === next);
+    const nextEffort =
+      row !== undefined && row.supportedEffortLevels.length > 0
+        ? isEffortSupportedByLevels(row.supportedEffortLevels, value.effort)
+          ? value.effort
+          : null
+        : isEffortSupported(next, value.effort)
+          ? value.effort
+          : null;
     onChange({ model: next, effort: nextEffort, providerId: provider ?? undefined });
     setOpen(false);
   }

@@ -50,6 +50,7 @@ pub trait Provider: Send + Sync {
         &self,
         task_id: &str,
         prompt: String,
+        provider_id: Option<String>,
         model: Option<String>,
         effort: Option<String>,
         cwd: Option<PathBuf>,
@@ -120,6 +121,7 @@ pub trait Provider: Send + Sync {
         let query = SurfaceQuery::GetProviderConfig {
             // `requestId` is overwritten by `query` with a fresh uuid.
             request_id: String::new(),
+            provider_id: None,
             dir,
         };
         self.query(query).await
@@ -129,7 +131,7 @@ pub trait Provider: Send + Sync {
     /// capability matrix the UI/orchestration degrade from (issue #18). Default-
     /// implemented over [`Provider::query`] with a `get-capabilities` `SurfaceQuery`,
     /// so the Bun sidecar inherits it unchanged: the engine answers straight from the
-    /// active provider's own `capabilities()`, so the Rust core SINGLE-SOURCES the
+    /// default provider's own `capabilities()`, so the Rust core SINGLE-SOURCES the
     /// truthful descriptor from the engine rather than duplicating the matrix here. A
     /// future provider that can't self-report overrides this method — WITHOUT a
     /// `match provider` branch in the core. Returns the codegen'd descriptor.
@@ -141,6 +143,7 @@ pub trait Provider: Send + Sync {
             .query(SurfaceQuery::GetCapabilities {
                 // `requestId` is overwritten by `query` with a fresh uuid.
                 request_id: String::new(),
+                provider_id: None,
             })
             .await?;
         let caps = reply
@@ -154,8 +157,8 @@ pub trait Provider: Send + Sync {
     /// name, and the per-model effort levels) a surface renders its `/model` picker
     /// from (issue #80). Default-implemented over [`Provider::query`] with a
     /// `get-models` `SurfaceQuery`, so the Bun sidecar inherits it unchanged: the
-    /// engine answers from the active provider's runtime `listModels()`, so the Rust
-    /// core SINGLE-SOURCES the truthful catalog from the engine rather than a
+    /// engine answers from the provider registry's runtime `listModels()`, so the Rust
+    /// core SINGLE-SOURCES the truthful merged catalog from the engine rather than a
     /// hardcoded family list. A future provider that can't self-report overrides this
     /// method — WITHOUT a `match provider` branch. Returns the codegen'd descriptors.
     // Deliberate provider-seam API (the dynamic-catalog override point); no Rust
@@ -260,11 +263,11 @@ pub struct SidecarProvider {
     pub(super) pending_replies: Mutex<HashMap<String, oneshot::Sender<Value>>>,
     pub(super) entry: PathBuf,
     pub(super) cwd: PathBuf,
-    /// The agent-provider id this sidecar backs (issue #18). Every provider is the
-    /// SAME Bun sidecar today (no second binary ships in the spike), so the id is
+    /// The agent-provider id this sidecar backs (issue #18/#79). Every provider is the
+    /// SAME Bun sidecar today (no second binary ships for Codex), so the id is
     /// passed to the child via the `NIGHTCORE_PROVIDER` env override and the
     /// ENGINE-side factory selects the implementation (`claude` → Claude, `codex` →
-    /// the degraded Codex spike). The Rust seam stays a single transport.
+    /// Codex). The Rust seam stays a single transport.
     pub(super) provider_id: String,
 }
 

@@ -94,11 +94,12 @@ export type {
   FindingEffort,
   FindingSeverity,
 } from '@nightcore/contracts';
-// The dynamic model catalog (`list_models`) + the active provider's capability
+// The dynamic model catalog (`list_models`) + provider capability
 // descriptor (`get_capabilities`) come straight from the zod contract — the same
 // wire shapes the engine emits, so the picker reads live descriptors/capabilities
 // without a hand-mirrored interface.
 export type {
+  AutonomyLevel,
   CostTelemetry,
   ModelDescriptor,
   ProviderCapabilities,

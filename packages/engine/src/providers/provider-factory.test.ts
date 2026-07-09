@@ -5,7 +5,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { type Config, ConfigSchema } from '@nightcore/contracts';
 
-import { buildProvider } from './provider-factory.js';
+import { buildProvider, buildProviderRegistry } from './provider-factory.js';
 
 /** A resolved config with a chosen provider (everything else defaulted). */
 function configFor(provider: string): Config {
@@ -18,7 +18,7 @@ function configFor(provider: string): Config {
 const OPTS = { apiKeyFallback: false } as const;
 
 describe('buildProvider (the single engine-side selection point)', () => {
-  test('config.provider = codex → the degraded Codex provider', () => {
+  test('config.provider = codex → the Codex provider', () => {
     const provider = buildProvider(configFor('codex'), OPTS);
     expect(provider.capabilities().id).toBe('codex');
     expect(provider.capabilities().supportsHooks).toBe(false);
@@ -41,6 +41,23 @@ describe('buildProvider (the single engine-side selection point)', () => {
   test('an unknown provider id falls back to Claude (fail-safe, never a wrong backend)', () => {
     const provider = buildProvider(configFor('gemini'), OPTS);
     expect(provider.capabilities().id).toBe('claude');
+  });
+});
+
+describe('buildProviderRegistry', () => {
+  test('registers both shipped providers for per-session selection', () => {
+    const registry = buildProviderRegistry(configFor('claude'), OPTS);
+    expect(registry.all().map((provider) => provider.capabilities().id)).toEqual([
+      'claude',
+      'codex',
+    ]);
+    expect(registry.forSession('codex').capabilities().id).toBe('codex');
+    expect(registry.forSession('claude').capabilities().id).toBe('claude');
+  });
+
+  test('unknown per-session provider falls back to the configured default', () => {
+    const registry = buildProviderRegistry(configFor('codex'), OPTS);
+    expect(registry.forSession('gemini').capabilities().id).toBe('codex');
   });
 });
 

@@ -2,9 +2,9 @@
 //!
 //! Serves the web's `/model` picker its catalog of selectable models — each a wire
 //! [`ModelDescriptor`] (id + display name + per-model effort levels). The catalog is
-//! DYNAMIC: it is fetched from the ACTIVE provider at runtime over the B0 `get-models`
-//! seam (engine → `listModels()`), never a hardcoded family list, so a new model appears
-//! without a Nightcore release. The result is cached per `(provider, auth-state)` for a
+//! DYNAMIC: it is fetched from the engine's provider registry at runtime over the B0
+//! `get-models` seam (engine → `listModels()`), never a hardcoded family list, so a new
+//! model appears without a Nightcore release. The result is cached per catalog/auth key for a
 //! ~1h TTL (see [`crate::store::model_cache`]) so a picker open doesn't spin a fresh
 //! engine probe — for Codex, a `codex app-server` JSON-RPC round trip — every time.
 //!
@@ -22,8 +22,8 @@
 //!   - **Claude** → [`claude_static_catalog`], the contract-`KnownModel`-derived static
 //!     list (values single-sourced from the zod spine; only display metadata is local).
 //!   - **Codex** → the last cached-good list for this exact `(provider, auth)` key, else
-//!     an honest error / call-to-action. Codex is auth-FILTERED, so there is no truthful
-//!     static list to invent — an empty fetch with no cache is a real "nothing to show".
+//!     the engine's degraded fallback (`gpt-5-codex`) if live app-server discovery is
+//!     unavailable.
 //!
 //! ## Codex fetch (engine-side; verified against the live binary)
 //!
@@ -39,34 +39,32 @@
 //! camelCase v2 shape and must NOT assume one casing wholesale.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use serde_json::Value;
 use tauri::{AppHandle, Manager};
 
-use crate::contracts::{ModelDescriptor, SurfaceQuery};
-use crate::provider::{SidecarProvider, CLAUDE_PROVIDER_ID, CODEX_PROVIDER_ID};
+use crate::contracts::{EffortLevel, ModelDescriptor, SurfaceQuery};
+use crate::provider::{CLAUDE_PROVIDER_ID, CODEX_PROVIDER_ID};
 use crate::store::{claude_static_catalog, ModelCache, ModelCacheKey};
 
 use super::query;
 
-/// Read the active provider's dynamic model catalog for the `/model` picker.
+const COMBINED_PROVIDER_KEY: &str = "all";
+
+/// Read the dynamic model catalog for the `/model` picker.
 ///
 /// Cached-or-fetch: returns the fresh cached catalog when one is within its ~1h TTL for
 /// the current `(provider, auth-state)`, otherwise fetches it live from the provider and
 /// caches a non-empty result. `refresh: Some(true)` forces a re-fetch, bypassing the
 /// fresh-cache read (but still single-flighted). On an empty/failed fetch, degrades to the
-/// per-provider fallback (Claude static list / Codex last-cached-good) or, for Codex with
-/// no cache, an honest error the picker surfaces as a call-to-action.
+/// per-provider fallback (Claude static list / Codex last-cached-good or SDK default).
 #[tauri::command]
 pub async fn list_models(
     app: AppHandle,
     refresh: Option<bool>,
 ) -> Result<Vec<ModelDescriptor>, String> {
     let refresh = refresh.unwrap_or(false);
-    // The RUNNING provider's id (constant for the session — a swap is restart-gated) plus
-    // its auth-state fingerprint form the cache key.
-    let provider_id = active_provider_id(&app);
+    let provider_id = COMBINED_PROVIDER_KEY.to_string();
     let key = ModelCacheKey::new(&provider_id, auth_state_for(&provider_id));
 
     let cache = app.state::<ModelCache>();
@@ -108,16 +106,7 @@ pub async fn list_models(
     }
 }
 
-/// The RUNNING provider's id (`claude` / `codex`), read from the managed provider — the
-/// truthful source (an unknown configured id falls back to `claude` at construction, so
-/// `settings.provider` can diverge from what's actually backing runs).
-fn active_provider_id(app: &AppHandle) -> String {
-    app.state::<Arc<SidecarProvider>>()
-        .provider_id()
-        .to_string()
-}
-
-/// Fetch the live catalog from the active provider over the B0 `get-models` seam. Routes
+/// Fetch the live merged catalog over the B0 `get-models` seam. Routes
 /// through the sidecar [`query`] transport (which lazily spawns the child + its reader),
 /// so this also starts the sidecar on first use. No project dir: the engine spins a
 /// transient probe when no session is live, so the picker works with no active project.
@@ -144,18 +133,22 @@ async fn fetch_models(app: &AppHandle) -> Result<Vec<ModelDescriptor>, String> {
         .map_err(|e| format!("malformed model descriptor list from the engine: {e}"))
 }
 
-/// The per-provider empty-result fallback. Never invents a catalog: Claude gets its
-/// contract-derived static list; Codex gets its last cached-good list for this exact key,
-/// else an honest call-to-action; an unknown id (unreachable — the factory rejects these)
-/// gets an honest error rather than a fabricated list.
+/// The empty-result fallback. The live catalog is provider-merged; when it is
+/// unavailable, serve a combined static fallback so the picker still exposes both
+/// shipped providers.
 fn fallback(
     provider_id: &str,
     key: &ModelCacheKey,
     cache: &ModelCache,
 ) -> Result<Vec<ModelDescriptor>, String> {
     match provider_id {
+        COMBINED_PROVIDER_KEY => Ok(cache.last_good(key).unwrap_or_else(|| {
+            let mut models = claude_static_catalog();
+            models.extend(codex_static_catalog());
+            models
+        })),
         CLAUDE_PROVIDER_ID => Ok(claude_static_catalog()),
-        CODEX_PROVIDER_ID => cache.last_good(key).ok_or_else(codex_unavailable_message),
+        CODEX_PROVIDER_ID => Ok(cache.last_good(key).unwrap_or_else(codex_static_catalog)),
         other => Err(format!(
             "no model catalog available for provider `{other}`, and no cached list to \
              fall back on"
@@ -163,18 +156,27 @@ fn fallback(
     }
 }
 
-/// The honest Codex "no models" call-to-action, surfaced by the picker. Covers both the
-/// signed-out case and the current spike state (no live backend), without over-promising.
-fn codex_unavailable_message() -> String {
-    "No Codex models are available yet. The Codex model list is fetched live from your \
-     signed-in account — run `codex login`, then retry. (Codex is currently a capability \
-     spike, so its live catalog may be empty until the backend is wired.)"
-        .to_string()
+/// The SDK-backed Codex fallback when app-server model discovery is unavailable.
+fn codex_static_catalog() -> Vec<ModelDescriptor> {
+    vec![ModelDescriptor {
+        provider_id: Some(CODEX_PROVIDER_ID.to_string()),
+        value: "gpt-5-codex".to_string(),
+        display_name: "GPT-5 Codex".to_string(),
+        description: "Codex-optimized coding model".to_string(),
+        supports_effort: true,
+        supported_effort_levels: vec![
+            EffortLevel::Low,
+            EffortLevel::Medium,
+            EffortLevel::High,
+            EffortLevel::Xhigh,
+        ],
+    }]
 }
 
 /// The auth-state fingerprint for `provider_id` — the auth component of the cache key.
 fn auth_state_for(provider_id: &str) -> String {
     match provider_id {
+        COMBINED_PROVIDER_KEY => format!("all:codex:{}", codex_auth_fingerprint()),
         // Codex's `model/list` is auth-FILTERED, so the fingerprint must track the
         // signed-in identity; a re-login changes it and re-fetches.
         CODEX_PROVIDER_ID => codex_auth_fingerprint(),
@@ -232,6 +234,7 @@ mod tests {
 
     fn descriptor(value: &str) -> ModelDescriptor {
         ModelDescriptor {
+            provider_id: None,
             value: value.to_string(),
             display_name: value.to_string(),
             description: String::new(),
@@ -275,12 +278,28 @@ mod tests {
     }
 
     #[test]
-    fn codex_fallback_errors_with_a_cta_when_no_cache() {
+    fn codex_fallback_serves_static_catalog_when_no_cache() {
         let cache = ModelCache::default();
         let key = ModelCacheKey::new(CODEX_PROVIDER_ID, "unauthed");
-        let err = fallback(CODEX_PROVIDER_ID, &key, &cache)
-            .expect_err("codex with no cache must be an honest error, not a fake list");
-        assert!(err.contains("codex login"), "the CTA names the fix: {err}");
+        let models =
+            fallback(CODEX_PROVIDER_ID, &key, &cache).expect("codex falls back to its SDK default");
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].value, "gpt-5-codex");
+    }
+
+    #[test]
+    fn combined_fallback_serves_both_shipped_providers() {
+        let cache = ModelCache::default();
+        let key = ModelCacheKey::new(COMBINED_PROVIDER_KEY, "all:codex:unauthed");
+        let models = fallback(COMBINED_PROVIDER_KEY, &key, &cache)
+            .expect("combined catalog has a static fallback");
+        assert!(models
+            .iter()
+            .any(|m| m.provider_id.as_deref() == Some("claude")));
+        assert!(models
+            .iter()
+            .any(|m| m.provider_id.as_deref() == Some("codex")));
+        assert!(models.iter().any(|m| m.value == "gpt-5-codex"));
     }
 
     #[test]
