@@ -77,6 +77,9 @@ export default defineConfig({
           name: 'storybook',
           setupFiles: ['./.storybook/vitest.setup.ts'],
           browser: chromium(),
+          // Retry transient browser load flakes (e.g. "Failed to fetch dynamically imported module"
+          // during re-optimize or port contention in CI).
+          retry: 1,
         },
       },
       {
@@ -98,6 +101,9 @@ export default defineConfig({
           name: 'unit',
           include: ['src/**/*.test.tsx'],
           setupFiles: ['./.storybook/vitest.setup.ts'],
+          // Retry transient browser load flakes (e.g. "Failed to fetch dynamically imported module"
+          // during re-optimize or port contention in CI).
+          retry: 1,
           browser: chromium(),
         },
       },
