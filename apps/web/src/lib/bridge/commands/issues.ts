@@ -58,7 +58,7 @@ export async function fetchProjectIssueDetail(issueNumber: number): Promise<Issu
  *  Tauri (no active project). */
 export async function startIssueValidation(
   input: StartIssueValidationInput,
-  options: { model?: string | null; effort?: EffortLevel | null } = {},
+  options: { model?: string | null; effort?: EffortLevel | null; providerId?: string | null } = {},
 ): Promise<string> {
   return invoke<string>('start_issue_validation', {
     issueNumber: input.issueNumber,
@@ -70,6 +70,7 @@ export async function startIssueValidation(
     linkedPrs: input.linkedPrs,
     model: options.model ?? null,
     effort: options.effort ?? null,
+    providerId: options.providerId ?? null,
   });
 }
 

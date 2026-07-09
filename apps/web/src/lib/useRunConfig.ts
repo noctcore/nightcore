@@ -3,13 +3,12 @@
 import { useMemo, useState } from 'react';
 
 /** Values used to pre-fill the form on "New run" (from the last/loaded run).
- *  Item 6 (B5) — scan-config is INTENTIONALLY excluded from the `providerId`
- *  round-trip that Task/Settings selections carry: the model/effort selection here
- *  is ephemeral `useState` (below), never persisted, and prefill carries only
- *  `model` — a scan's provider is re-derivable from the model id at pick time, so
- *  there is no saved selection whose provider would need to round-trip. */
+ *  Scan config carries providerId alongside model/effort (from ModelSelectField's
+ *  selection) so that codex vs claude choices can be respected / rejected for scans.
+ *  The selection itself is still ephemeral (not cross-session persisted). */
 export interface RunConfigPrefill<C extends string> {
   model?: string | null;
+  providerId?: string | null;
   categories?: C[];
 }
 
@@ -30,6 +29,8 @@ export interface RunConfig<C extends string> {
   setModel: (model: string | null) => void;
   effort: string | null;
   setEffort: (effort: string | null) => void;
+  providerId: string | null;
+  setProviderId: (providerId: string | null) => void;
   /** The currently-selected category set (membership test for the chips). */
   selected: Set<C>;
   /** Toggle one category in/out of the selected set. */
@@ -59,6 +60,7 @@ export function useRunConfig<C extends string>(
 ): RunConfig<C> {
   const [model, setModel] = useState<string | null>(null);
   const [effort, setEffort] = useState<string | null>(null);
+  const [providerId, setProviderId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<C>>(() => new Set(allCategories));
 
   const orderedSelected = useMemo(
@@ -72,6 +74,8 @@ export function useRunConfig<C extends string>(
     setModel,
     effort,
     setEffort,
+    providerId,
+    setProviderId,
     selected,
     toggle: (category) =>
       setSelected((prev) => {
@@ -82,8 +86,9 @@ export function useRunConfig<C extends string>(
       }),
     selectAll: () => setSelected(new Set(allCategories)),
     selectNone: () => setSelected(new Set()),
-    prefill: ({ model: nextModel, categories }) => {
+    prefill: ({ model: nextModel, providerId: nextProviderId, categories }) => {
       if (nextModel !== undefined) setModel(nextModel);
+      if (nextProviderId !== undefined) setProviderId(nextProviderId);
       if (categories !== undefined && categories.length > 0) {
         setSelected(new Set(categories));
       }

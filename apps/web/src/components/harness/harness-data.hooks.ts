@@ -55,6 +55,7 @@ export interface UseHarnessResult {
     categories: ConventionCategory[],
     model: string | null,
     effort: string | null,
+    providerId: string | null,
   ) => Promise<void>;
   cancel: () => Promise<void>;
   selectRun: (runId: string) => Promise<void>;
@@ -196,11 +197,13 @@ export function useHarness(
       categories: ConventionCategory[],
       model: string | null,
       effort: string | null,
+      providerId: string | null,
     ) => {
       await runStart(hasProject && categories.length > 0, async () => {
         const runId = await startHarnessScan(categories, {
           model,
           effort: effort as EffortLevel | null,
+          providerId,
         });
         // Optimistic running state until `harness-scan-started` lands.
         return {

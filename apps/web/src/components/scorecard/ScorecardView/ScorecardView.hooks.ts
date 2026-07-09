@@ -47,6 +47,7 @@ interface UseScorecardResult {
     dimensions: ScorecardDimension[],
     model: string | null,
     effort: string | null,
+    providerId: string | null,
   ) => Promise<void>;
   cancel: () => Promise<void>;
   selectRun: (runId: string) => Promise<void>;
@@ -97,11 +98,13 @@ function useScorecard(hasProject: boolean): UseScorecardResult {
       dimensions: ScorecardDimension[],
       model: string | null,
       effort: string | null,
+      providerId: string | null,
     ) => {
       await runStart(hasProject && dimensions.length > 0, async () => {
         const runId = await startScorecard(dimensions, {
           model,
           effort: effort as EffortLevel | null,
+          providerId,
         });
         return {
           runId,
@@ -320,7 +323,7 @@ export function useScorecardView({
     pending: view.pending,
     onGrade: () => {
       resetTransient();
-      void scorecard.start(config.orderedSelected, config.model, config.effort);
+      void scorecard.start(config.orderedSelected, config.model, config.effort, config.providerId);
     },
     onCancel: () => void scorecard.cancel(),
     startNewRun: () => {

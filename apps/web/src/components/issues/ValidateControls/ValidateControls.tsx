@@ -24,10 +24,7 @@ const VALIDATE_STEPS: RunProgressCategory[] = [
 /** The idle picker + launch button, or the running panel + cancel. */
 export function ValidateControls({
   stream,
-  model,
-  effort,
-  onChangeModel,
-  onChangeEffort,
+  modelSelection: { model, effort, providerId, onChangeModel, onChangeEffort, onChangeProviderId },
   canValidate,
   isStarting,
   hasVerdict,
@@ -77,10 +74,11 @@ export function ValidateControls({
           classifies the issue, grounds the related files, and proposes a plan.
         </p>
         <ModelSelectField
-          value={{ model, effort }}
+          value={{ model, effort, providerId }}
           onChange={(sel) => {
             onChangeModel(sel.model);
             onChangeEffort(sel.effort);
+            onChangeProviderId(sel.providerId ?? null);
           }}
           disabled={!canValidate}
         />

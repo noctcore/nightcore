@@ -18,13 +18,14 @@ import type {
 export async function startAnalysis(
   scope: AnalysisScope,
   categories: FindingCategory[],
-  options: { model?: string | null; effort?: EffortLevel | null } = {},
+  options: { model?: string | null; effort?: EffortLevel | null; providerId?: string | null } = {},
 ): Promise<string> {
   return invoke<string>('start_analysis', {
     scope,
     categories,
     model: options.model ?? null,
     effort: options.effort ?? null,
+    providerId: options.providerId ?? null,
   });
 }
 

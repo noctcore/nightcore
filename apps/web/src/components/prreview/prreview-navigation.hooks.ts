@@ -153,6 +153,7 @@ export function usePrReviewNavigation({
         const runId = await start(prNumber, config.orderedSelected, {
           model: config.model,
           effort: config.effort as EffortLevel | null,
+          providerId: config.providerId,
         });
         // Leave config only once the run actually starts — a rejected start
         // lands in the per-PR startErrors and config STAYS up so the banner is

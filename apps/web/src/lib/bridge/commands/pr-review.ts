@@ -33,13 +33,14 @@ export type ReviewVerdict = 'approve' | 'request-changes' | 'comment';
 export async function startPrReview(
   prNumber: number,
   lenses: ReviewLens[],
-  options: { model?: string | null; effort?: EffortLevel | null } = {},
+  options: { model?: string | null; effort?: EffortLevel | null; providerId?: string | null } = {},
 ): Promise<string> {
   return invoke<string>('start_pr_review', {
     prNumber,
     lenses,
     model: options.model ?? null,
     effort: options.effort ?? null,
+    providerId: options.providerId ?? null,
   });
 }
 

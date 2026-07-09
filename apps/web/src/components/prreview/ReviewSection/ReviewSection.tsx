@@ -165,10 +165,11 @@ export function ReviewSection({
           </div>
 
           <ModelSelectField
-            value={{ model: config.model, effort: config.effort }}
+            value={{ model: config.model, effort: config.effort, providerId: config.providerId }}
             onChange={(sel) => {
               config.setModel(sel.model);
               config.setEffort(sel.effort);
+              config.setProviderId(sel.providerId ?? null);
             }}
           />
 

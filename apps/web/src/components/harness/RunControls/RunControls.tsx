@@ -38,10 +38,11 @@ export function RunControls({ config, isStarting, onScan }: RunControlsProps) {
       scrollable={false}
       picker={
         <ModelSelectField
-          value={{ model: config.model, effort: config.effort }}
+          value={{ model: config.model, effort: config.effort, providerId: config.providerId }}
           onChange={(sel) => {
             config.setModel(sel.model);
             config.setEffort(sel.effort);
+            config.setProviderId(sel.providerId ?? null);
           }}
         />
       }
@@ -61,7 +62,7 @@ export function RunControls({ config, isStarting, onScan }: RunControlsProps) {
       hint={
         <>
           Scans the whole repo across {lensCount} {lensCount === 1 ? 'lens' : 'lenses'}{' '}
-          · ~{PROVIDER_LABEL} {modelLabel(config.model)}
+          · ~{config.providerId === 'codex' ? 'Codex' : PROVIDER_LABEL} {modelLabel(config.model)}
           {showCost && ' · cost depends on repo size'}.
         </>
       }

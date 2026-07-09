@@ -21,6 +21,7 @@ import { useBulkConvert } from '@/lib/useBulkConvert';
 import { usePreselectNavigation } from '@/lib/usePreselectNavigation';
 import { useScanResultsView } from '@/lib/useScanResultsView';
 
+import { buildProgressCategories } from '../buildProgressCategories';
 import type { CategoryTab } from '../CategoryTabs';
 import { ALL_CATEGORIES, CATEGORY_META } from '../insight.constants';
 import type { InsightFinding } from '../insight.types';
@@ -30,6 +31,123 @@ import type { InsightRunConfig } from '../RunControls/RunControls.types';
 import { useInsight } from './hooks/useInsight.hooks';
 import type { InsightViewProps } from './InsightView.types';
 
+export interface UseInsightResult {
+  stream: InsightStream;
+  runs: InsightRun[];
+  isStarting: boolean;
+  startError: string | null;
+  start: (
+    scope: AnalysisScope,
+    categories: FindingCategory[],
+    model: string | null,
+    effort: string | null,
+    providerId: string | null,
+  ) => Promise<void>;
+  cancel: () => Promise<void>;
+  selectRun: (runId: string) => Promise<void>;
+  dismiss: (findingId: string) => Promise<void>;
+  restore: (findingId: string) => Promise<void>;
+  convert: (findingId: string) => Promise<Task | null>;
+}
+/** Drive the Insight view: live `analysis-*` fold for the active run, authoritative
+ *  reconciliation against the persisted run on completion, and finding actions. */
+export function useInsight(hasProject: boolean): UseInsightResult {
+  const scan = useScanRun<InsightEvent, InsightRun, InsightStream>({
+    emptyStream: EMPTY_INSIGHT_STREAM,
+    listRuns: listInsightRuns,
+    getRun: getInsightRun,
+    streamFromRun,
+    cancelRun: cancelAnalysis,
+    subscribe: onInsightEvent,
+    onEvent: (event, { activeRunId, setStream, refreshRuns, reconcile }) => {
+      if (event.type === 'finding-converted') {
+        setStream((prev) =>
+          patchStreamItem(prev, {
+            runId: event.runId,
+            itemId: event.findingId,
+            items: (s) => s.findings,
+            write: (s, findings) => ({ ...s, findings }),
+            patch: (f) => ({ ...f, status: 'converted' as const, linkedTaskId: event.taskId }),
+          }),
+        );
+        void refreshRuns();
+        return;
+      }
+      // analysis-* events only apply to the run currently displayed/driven.
+      if (event.runId !== activeRunId.current) return;
+      setStream((prev) => foldInsight(prev, event));
+      if (event.type === 'analysis-completed' || event.type === 'analysis-failed') {
+        void reconcile(event.runId);
+      }
+    },
+  });
+  const { stream, setStream, runStart, refreshRuns } = scan;
+
+  const start = useCallback(
+    async (
+      scope: AnalysisScope,
+      categories: FindingCategory[],
+      model: string | null,
+      effort: string | null,
+      providerId: string | null,
+    ) => {
+      await runStart(hasProject && categories.length > 0, async () => {
+        const runId = await startAnalysis(scope, categories, {
+          model,
+          effort: effort as EffortLevel | null,
+          providerId,
+        });
+        // Optimistic running state until `analysis-started` lands.
+        return {
+          runId,
+          optimistic: {
+            ...EMPTY_INSIGHT_STREAM,
+            runId,
+            status: 'running',
+            scope,
+            model,
+            requestedCategories: categories,
+            categoryState: seedStepState(categories),
+          },
+        };
+      });
+    },
+    [hasProject, runStart],
+  );
+
+  // The shared dismiss/restore/convert triple over the findings list.
+  const { dismiss, restore, convert } = useScanItemActions<
+    InsightRun,
+    InsightStream,
+    InsightFinding
+  >({
+    runId: stream.runId,
+    setStream,
+    refreshRuns,
+    streamFromRun,
+    items: (s) => s.findings,
+    writeItems: (s, findings) => ({ ...s, findings }),
+    dismissItem: dismissFinding,
+    restoreItem: restoreFinding,
+    convert: {
+      run: convertFindingToTask,
+      mark: (f, taskId) => ({ ...f, status: 'converted' as const, linkedTaskId: taskId }),
+    },
+  });
+
+  return {
+    stream,
+    runs: scan.runs,
+    isStarting: scan.isStarting,
+    startError: scan.startError,
+    start,
+    cancel: scan.cancel,
+    selectRun: scan.selectRun,
+    dismiss,
+    restore,
+    convert,
+  };
+}
 /** Everything the InsightView shell renders. `hasProject === false` is the only
  *  early-return branch; every other field is meaningful in the project view. */
 export interface InsightViewModel {
@@ -168,14 +286,8 @@ export function useInsightView({
     [stream.findings, view.selectedId],
   );
 
-  // RunProgress feed: requested lenses → ordered descriptors + per-lens counts.
   const progressCategories: RunProgressCategory[] = useMemo(
-    () =>
-      stream.requestedCategories.map((c) => ({
-        key: c,
-        label: CATEGORY_META[c].label,
-        icon: CATEGORY_META[c].icon,
-      })),
+    () => buildProgressCategories(stream.requestedCategories),
     [stream.requestedCategories],
   );
 
@@ -261,6 +373,7 @@ export function useInsightView({
         config.orderedSelected,
         config.model,
         config.effort,
+        config.providerId,
       );
     },
     onCancel: () => void insight.cancel(),

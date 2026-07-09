@@ -39,6 +39,7 @@ import {
 export interface StartPrReviewOptions {
   model?: string | null;
   effort?: EffortLevel | null;
+  providerId?: string | null;
 }
 
 /** One PR's slice of the registry — what a workspace row/panel renders. */
@@ -179,6 +180,7 @@ export function usePrReviewRuns(hasProject: boolean): UsePrReviewRunsResult {
           startPrReview(prNumber, lenses, {
             model: options.model ?? null,
             effort: options.effort ?? null,
+            providerId: options.providerId ?? null,
           }),
         () =>
           latestRunForPr(registryRef.current, prNumber)?.status === 'running',

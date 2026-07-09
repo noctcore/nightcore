@@ -20,12 +20,13 @@ import type {
  *  `harness-*` events correlate by. Rejects outside Tauri (no active project). */
 export async function startHarnessScan(
   categories: ConventionCategory[],
-  options: { model?: string | null; effort?: EffortLevel | null } = {},
+  options: { model?: string | null; effort?: EffortLevel | null; providerId?: string | null } = {},
 ): Promise<string> {
   return invoke<string>('start_harness_scan', {
     categories,
     model: options.model ?? null,
     effort: options.effort ?? null,
+    providerId: options.providerId ?? null,
   });
 }
 

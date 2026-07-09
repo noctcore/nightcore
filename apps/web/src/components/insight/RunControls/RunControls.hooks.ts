@@ -24,9 +24,9 @@ export function useRunConfig(disabled: boolean): InsightRunConfig {
     scope,
     setScope,
     canAnalyze: base.canRun,
-    prefill: ({ scope: nextScope, model, categories }) => {
+    prefill: ({ scope: nextScope, model, providerId, categories }) => {
       if (nextScope != null) setScope(nextScope);
-      base.prefill({ model, categories });
+      base.prefill({ model, providerId, categories });
     },
   };
 }

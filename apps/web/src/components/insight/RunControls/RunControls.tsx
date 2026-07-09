@@ -31,10 +31,11 @@ export function RunControls({ config, isStarting, onAnalyze }: RunControlsProps)
     <ScanConfigForm
       picker={
         <ModelSelectField
-          value={{ model, effort: config.effort }}
+          value={{ model, effort: config.effort, providerId: config.providerId }}
           onChange={(sel) => {
             config.setModel(sel.model);
             config.setEffort(sel.effort);
+            config.setProviderId(sel.providerId ?? null);
           }}
         />
       }
@@ -74,7 +75,7 @@ export function RunControls({ config, isStarting, onAnalyze }: RunControlsProps)
       hint={
         <>
           Scans the whole {scope === 'diff' ? 'diff' : 'repo'} across {lensCount}{' '}
-          {lensCount === 1 ? 'lens' : 'lenses'} · ~{PROVIDER_LABEL} {model ?? 'default'}
+          {lensCount === 1 ? 'lens' : 'lenses'} · ~{config.providerId === 'codex' ? 'Codex' : PROVIDER_LABEL} {model ?? 'default'}
           {showCost && ' · cost depends on repo size'}.
         </>
       }

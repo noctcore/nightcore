@@ -15,12 +15,13 @@ import type {
  *  `scorecard-*` events correlate by. Rejects outside Tauri (no active project). */
 export async function startScorecard(
   dimensions: ScorecardDimension[],
-  options: { model?: string | null; effort?: EffortLevel | null } = {},
+  options: { model?: string | null; effort?: EffortLevel | null; providerId?: string | null } = {},
 ): Promise<string> {
   return invoke<string>('start_scorecard', {
     dimensions,
     model: options.model ?? null,
     effort: options.effort ?? null,
+    providerId: options.providerId ?? null,
   });
 }
 
