@@ -12,7 +12,7 @@ test('updates a global setting with the SDK long id when scope is Global', async
   const screen = render(<Global onUpdate={onUpdate} />);
   const model = screen.getByRole('combobox', { name: 'Default model' });
   await expect.element(model).toBeInTheDocument();
-  model.element().focus();
+  (model.element() as HTMLElement).focus();
   await userEvent.keyboard('{ArrowDown}{ArrowDown}{Enter}');
   // The persisted value is the SDK long id, not the short label.
   expect(onUpdate).toHaveBeenCalledWith({ defaultModel: 'claude-sonnet-4-6' });

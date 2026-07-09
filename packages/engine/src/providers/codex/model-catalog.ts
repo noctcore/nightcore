@@ -204,6 +204,7 @@ function fetchAppServerModels(executable: CodexExecutable): Promise<ModelDescrip
 }
 
 export function parseModelList(response: unknown): ModelDescriptor[] {
+  if (response === null || typeof response !== 'object') return [];
   const payload = response as CodexModelListResponse;
   if (!Array.isArray(payload.data)) return [];
   return payload.data

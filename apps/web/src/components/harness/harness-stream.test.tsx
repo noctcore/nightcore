@@ -74,6 +74,7 @@ const USAGE = {
   outputTokens: 50,
   cacheReadTokens: 0,
   cacheCreationTokens: 0,
+  reasoningOutputTokens: 0,
 };
 
 describe('foldHarness', () => {

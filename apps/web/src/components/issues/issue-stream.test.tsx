@@ -79,7 +79,13 @@ test('folds a completed event into the projected verdict + telemetry', () => {
     result: WIRE_RESULT,
     costUsd: 0.42,
     durationMs: 1234,
-    usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheCreationTokens: 0 },
+    usage: {
+      inputTokens: 10,
+      outputTokens: 5,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      reasoningOutputTokens: 0,
+    },
   });
   expect(next.status).toBe('completed');
   expect(next.costUsd).toBe(0.42);

@@ -148,9 +148,7 @@ fn fallback(
             models
         })),
         CLAUDE_PROVIDER_ID => Ok(claude_static_catalog()),
-        CODEX_PROVIDER_ID => Ok(cache
-            .last_good(key)
-            .unwrap_or_else(codex_static_catalog)),
+        CODEX_PROVIDER_ID => Ok(cache.last_good(key).unwrap_or_else(codex_static_catalog)),
         other => Err(format!(
             "no model catalog available for provider `{other}`, and no cached list to \
              fall back on"
@@ -283,8 +281,8 @@ mod tests {
     fn codex_fallback_serves_static_catalog_when_no_cache() {
         let cache = ModelCache::default();
         let key = ModelCacheKey::new(CODEX_PROVIDER_ID, "unauthed");
-        let models = fallback(CODEX_PROVIDER_ID, &key, &cache)
-            .expect("codex falls back to its SDK default");
+        let models =
+            fallback(CODEX_PROVIDER_ID, &key, &cache).expect("codex falls back to its SDK default");
         assert_eq!(models.len(), 1);
         assert_eq!(models[0].value, "gpt-5-codex");
     }
@@ -295,8 +293,12 @@ mod tests {
         let key = ModelCacheKey::new(COMBINED_PROVIDER_KEY, "all:codex:unauthed");
         let models = fallback(COMBINED_PROVIDER_KEY, &key, &cache)
             .expect("combined catalog has a static fallback");
-        assert!(models.iter().any(|m| m.provider_id.as_deref() == Some("claude")));
-        assert!(models.iter().any(|m| m.provider_id.as_deref() == Some("codex")));
+        assert!(models
+            .iter()
+            .any(|m| m.provider_id.as_deref() == Some("claude")));
+        assert!(models
+            .iter()
+            .any(|m| m.provider_id.as_deref() == Some("codex")));
         assert!(models.iter().any(|m| m.value == "gpt-5-codex"));
     }
 
