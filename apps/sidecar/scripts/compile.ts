@@ -1,20 +1,23 @@
 #!/usr/bin/env bun
 //! Triple-aware sidecar compile step for Tauri's `externalBin`.
 //!
-//! Tauri resolves a configured `externalBin: ["binaries/nightcore-sidecar"]` to a
-//! file named `binaries/nightcore-sidecar-<target-triple>` (`.exe` on Windows), and
-//! `tauri_build::build()` (run from `src-tauri/build.rs` on EVERY `cargo build`,
-//! including `tauri dev`) hard-errors if that exact file is missing. So this script
-//! must emit the triple-suffixed name, not a bare `nightcore-sidecar`.
+//! Tauri resolves `externalBin: ["binaries/nightcore-sidecar"]` to
+//! `binaries/nightcore-sidecar-<target-triple>` (`.exe` on Windows). `tauri_build`
+//! hard-errors if that file is missing, so this script must emit the suffixed name.
 //!
-//! The host triple is read from `rustc -vV`'s `host:` line — the same source the
-//! Tauri docs point at — so the artifact name matches whatever Tauri will look for
-//! on this host. Cross-compiling to a different triple is out of scope (it would
-//! need `--target` plumbed through here and a matching bun cross-compile target).
+//! By default the triple comes from `rustc -vV` (native dev/CI). Release CI sets
+//! `NIGHTCORE_SIDECAR_TARGET` when `tauri build --target …` cross-compiles (e.g.
+//! Intel macOS on `macos-latest` — `macos-13` runners are deprecated).
 
 import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+
+import {
+  bunCompileTarget,
+  resolveSidecarTriple,
+  sidecarExtension,
+} from "./compile.utils";
 
 const SIDECAR_ROOT = resolve(import.meta.dir, "..");
 const ENTRY = join(SIDECAR_ROOT, "src/index.ts");
@@ -31,29 +34,37 @@ function hostTargetTriple(): string {
   return match[1];
 }
 
-const triple = hostTargetTriple();
-const ext = triple.includes("-windows-") ? ".exe" : "";
+function targetOverride(): string | undefined {
+  const fromEnv = process.env.NIGHTCORE_SIDECAR_TARGET;
+  if (fromEnv?.trim()) return fromEnv.trim();
+  const idx = process.argv.indexOf("--target");
+  if (idx >= 0) {
+    const arg = process.argv[idx + 1];
+    if (arg?.trim()) return arg.trim();
+  }
+  return undefined;
+}
+
+const hostTriple = hostTargetTriple();
+const triple = resolveSidecarTriple(hostTriple, targetOverride());
+const ext = sidecarExtension(triple);
 const outfile = join(OUT_DIR, `nightcore-sidecar-${triple}${ext}`);
+const crossTarget = bunCompileTarget(triple, hostTriple);
 
 mkdirSync(dirname(outfile), { recursive: true });
 
-// The bundle resolves every `@nightcore/*` dep through its package.json
-// `exports` (`./dist/index.js`), so the workspace chain must be BUILT first:
-// a fresh checkout (CI's rust-checks job) has no dist/ at all — bun reports
-// that as `Could not resolve "@nightcore/…"` — and a stale local dist/ would
-// be bundled silently. `tsc -b` over this package's project references builds
-// exactly the dep closure. `--force` because incremental mode trusts
-// `.tsbuildinfo` even when dist/ was deleted out from under it, and a binary
-// we ship is worth a few seconds of deterministic rebuild.
 console.log("building workspace references (tsc -b --force)");
 execFileSync("bun", ["x", "tsc", "-b", "--force", "."], {
   stdio: "inherit",
   cwd: SIDECAR_ROOT,
 });
 
+const compileArgs = ["build", "--compile", "--outfile", outfile];
+if (crossTarget) {
+  compileArgs.push(`--target=${crossTarget}`);
+  console.log(`cross-compiling sidecar (${hostTriple} → ${triple}, bun ${crossTarget})`);
+}
+compileArgs.push(ENTRY);
+
 console.log(`compiling sidecar → ${outfile}`);
-execFileSync(
-  "bun",
-  ["build", "--compile", "--outfile", outfile, ENTRY],
-  { stdio: "inherit", cwd: SIDECAR_ROOT },
-);
+execFileSync("bun", compileArgs, { stdio: "inherit", cwd: SIDECAR_ROOT });

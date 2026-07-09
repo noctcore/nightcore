@@ -16,20 +16,32 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Option A: native runners per CPU arch (sidecar compile.ts is host-triple-only).
+          # macos-13 is deprecated (GitHub changelog 2025-09-19). Both macOS arches
+          # build on macos-latest per Tauri docs; sidecar cross-compile is handled
+          # via NIGHTCORE_SIDECAR_TARGET + compile.ts (Option B).
           - platform: macos-latest
             args: --target aarch64-apple-darwin
-          - platform: macos-13
+            sidecar_target: aarch64-apple-darwin
+            rust_targets: aarch64-apple-darwin
+          - platform: macos-latest
             args: --target x86_64-apple-darwin
+            sidecar_target: x86_64-apple-darwin
+            rust_targets: x86_64-apple-darwin
           - platform: windows-latest
             args: ''
+            sidecar_target: ''
+            rust_targets: ''
     runs-on: ${{ matrix.platform }}
+    env:
+      NIGHTCORE_SIDECAR_TARGET: ${{ matrix.sidecar_target }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: ./apps/desktop/src-tauri -> target
