@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { PrStatus } from '@/lib/bridge';
 import { prStatusByNumber } from '@/lib/bridge';
+
 import type { PrNumberStatusView } from './PrStatusBlock.types';
 
 /** Coerce a thrown value (Tauri rejections are commonly plain strings) into a
