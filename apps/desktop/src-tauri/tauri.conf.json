@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Nightcore",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "identifier": "dev.shirone.nightcore",
   "build": {
     "frontendDist": "../../web/dist",
@@ -30,9 +30,15 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": ["binaries/nightcore-sidecar"],
+    "createUpdaterArtifacts": true,
+    "externalBin": [
+      "binaries/nightcore-sidecar"
+    ],
     "category": "DeveloperTool",
     "copyright": "© 2026 Shirone",
+    "macOS": {
+      "signingIdentity": "-"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -40,5 +46,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhFMTY0OTI0REE0RDRBRkYKUldUL1NrM2FKRWtXamdtZW0rSlRBblE1RWRmckx6Z2N5aEE0OUUreGJabDVrbWc3MUlrUHBKMWoK",
+      "endpoints": [
+        "https://github.com/Shironex/nightcore/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

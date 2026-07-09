@@ -1,6 +1,6 @@
 [package]
 name = "nightcore"
-version = "0.0.0"
+version = "0.1.0"
 description = "Nightcore — an autonomous Claude dev studio"
 authors = ["Shirone"]
 edition = "2021"
@@ -18,6 +18,8 @@ tauri-build = { version = "2.6", features = [] }
 tauri = { version = "2.11.2", features = [] }
 tauri-plugin-dialog = "2.7"
 tauri-plugin-notification = "2.3"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 serde = { version = "1.0", features = ["derive"] }
 # `raw_value` lets the sidecar reader serialize each streamed session event ONCE
 # into a `RawValue` and share those bytes with both the webview envelope (emitted

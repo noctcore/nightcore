@@ -29,4 +29,6 @@ export interface SettingsViewProps {
   onUpdate: (patch: SettingsPatch) => void;
   /** Reopen the first-run setup flow from the About page. */
   onRestartOnboarding: () => void;
+  /** When false, the updater defers install until active runs finish. */
+  isAppIdle?: boolean;
 }

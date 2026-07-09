@@ -4,11 +4,13 @@ import type { AppInfo } from '@/lib/bridge';
 import { DEFAULT_REPO_URL } from '@/lib/bridge';
 
 import type { SettingsCardProps } from './SettingsCard';
+import { UpdateChecker } from './UpdateChecker';
 
 /** Build the About page cards. */
 export function buildAboutCards(
   appInfo: AppInfo | null,
   onRestartOnboarding: () => void,
+  isAppIdle: boolean,
 ): SettingsCardProps[] {
   const version = appInfo?.version ?? '—';
   const repo = appInfo?.repository ?? DEFAULT_REPO_URL;
@@ -20,6 +22,11 @@ export function buildAboutCards(
       subtitle: 'Autonomous Claude dev studio — a rewrite of AutoMaker.',
       rows: [
         { label: 'Version', control: <Pill>v{version}</Pill> },
+        {
+          label: 'Updates',
+          hint: 'Check GitHub Releases for a newer build.',
+          control: <UpdateChecker isAppIdle={isAppIdle} />,
+        },
         { label: 'Repository', hint: repoLabel, control: <RepoLink href={repo} /> },
         {
           label: 'Onboarding',

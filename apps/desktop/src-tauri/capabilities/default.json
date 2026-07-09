@@ -3,5 +3,11 @@
   "identifier": "default",
   "description": "Core webview permissions for the main window (invoke + event listen).",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-open", "notification:default"]
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "notification:default",
+    "updater:default",
+    "process:allow-restart"
+  ]
 }

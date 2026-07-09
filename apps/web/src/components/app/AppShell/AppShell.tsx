@@ -9,6 +9,7 @@ import {
 } from '@/components/board';
 import { NewProjectDialog } from '@/components/new-project';
 import { Onboarding } from '@/components/onboarding';
+import { useUpdateChecker } from '@/components/settings/UpdateChecker';
 import {
   AnimatePresence,
   Button,
@@ -114,6 +115,10 @@ export function AppShell() {
   const sidebarStyle =
     settings.settings?.sidebarStyle === 'classic' ? 'classic' : 'unified';
   const { tasks, selected, selectedId, setSelectedId, anyRunning, runningCount } = board;
+  const isAppIdle = runningCount === 0;
+
+  // Background update probe — idle-gated install stays in Settings → About.
+  useUpdateChecker({ isAppIdle, checkOnStartup: true });
 
   const runningProjectIds = anyRunning && active !== null ? [active.id] : [];
 
@@ -396,6 +401,7 @@ export function AppShell() {
             activeProjectPath={active?.path ?? null}
             onUpdate={settings.update}
             onRestartOnboarding={onboarding.restart}
+            isAppIdle={isAppIdle}
           />
           </Suspense>
         )}

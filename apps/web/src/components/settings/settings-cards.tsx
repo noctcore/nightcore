@@ -69,6 +69,7 @@ export interface CardContext {
   activeProjectPath: string | null;
   appInfo: AppInfo | null;
   onRestartOnboarding: () => void;
+  isAppIdle: boolean;
 }
 
 /** Build the card set for a settings page. The run-shaping controls (model,
@@ -339,6 +340,6 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
         },
       ];
     case 'about':
-      return buildAboutCards(appInfo, onRestartOnboarding);
+      return buildAboutCards(appInfo, onRestartOnboarding, ctx.isAppIdle);
   }
 }
