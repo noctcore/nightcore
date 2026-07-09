@@ -34,12 +34,13 @@ for (const target of TARGETS) {
     continue;
   }
 
-  const updated = raw.replace(/^version = ".*"$/m, `version = "${next}"`);
-  if (updated === raw) {
+  const versionRe = /^version = ".*"$/m;
+  if (!versionRe.test(raw)) {
     console.error(`Could not find version field in ${target.path}`);
     process.exit(1);
   }
-  writeFileSync(filePath, updated);
+  const updated = raw.replace(versionRe, `version = "${next}"`);
+  if (updated !== raw) writeFileSync(filePath, updated);
 }
 
 console.log(`Bumped release version to ${next} across ${TARGETS.length} manifests.`);
