@@ -9,6 +9,7 @@ import type {
   PrSupport,
   QuestionPrompt,
   Task,
+  TrustReport,
 } from '@/lib/bridge';
 
 import type { PrReviewCommentsView } from '../PrReviewComments';
@@ -44,6 +45,11 @@ export interface TaskDetailProps {
    *  directly (`null` ⇒ the unavailable note); omit it (the app shell does) to
    *  let the section fetch lazily. */
   prReviewComments?: PrReviewComments | null;
+  /** Story/test override for the Trust band's report fetch. When provided
+   *  (including `null`), the band's fetch-on-mount is skipped and this renders
+   *  directly (`null` ⇒ the unavailable note); omit it (the app shell does) to
+   *  let the band fetch lazily via `useTrustReport`. */
+  trustReport?: TrustReport | null;
   onClose: () => void;
   /** True while a guarded action (`run`/`approve`/`refine`/`reject`/`commit`/
    *  `merge`) is in flight for this task, so the matching footer button disables
@@ -106,6 +112,10 @@ export interface TaskDetailChromeProps {
    *  Review comments card below the PR status band. Memoized by the hook, so this
    *  memo still bails on stream flushes. */
   prReviewCommentsView: PrReviewCommentsView;
+  /** Story/test override for the Trust band's report fetch (forwarded to the band,
+   *  which owns the fetch via `useTrustReport`). `undefined` in the app ⇒ the band
+   *  fetches lazily; a fixture (or `null`) renders directly. */
+  trustReport?: TrustReport | null;
   onClose: () => void;
   isActionPending?: (action: string, id: string) => boolean;
   onOpenSourceRef?: (sourceRef: string) => void;

@@ -9,4 +9,5 @@ export * from './_fixtures.gauntlet';
 export * from './_fixtures.pr';
 export * from './_fixtures.review';
 export * from './_fixtures.task';
+export * from './_fixtures.trust';
 export * from './_fixtures.worktree';

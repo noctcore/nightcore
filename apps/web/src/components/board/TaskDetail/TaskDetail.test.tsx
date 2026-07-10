@@ -47,6 +47,7 @@ const {
   PrCommentsTracked,
   PrRemoteMerged,
   PrFinalized,
+  TrustBandTracked,
 } = composeStories(stories);
 
 test('shows a provenance chip for a task converted from a scan', async () => {
@@ -565,6 +566,25 @@ test('TaskDetailChrome bails on a stream flush while the activity log updates', 
   await expect.element(screen.getByText('second delta')).toBeInTheDocument();
   // …while the chrome bailed: its footer probes never ran again.
   expect(isActionPending.mock.calls.length).toBe(callsAfterMount);
+});
+
+test('renders the Trust band beside the Result band for a task that has run', async () => {
+  // The story passes the `trustReport` override (skipping the fetch) so the band
+  // renders populated: the Trust GroupLabel, the pass summary, and the export
+  // action all sit below the Result band's verdict.
+  const screen = render(<TrustBandTracked />);
+  await expect.element(screen.getByText('Result')).toBeInTheDocument();
+  await expect.element(screen.getByText('Trust')).toBeInTheDocument();
+  await expect.element(screen.getByText('✓ Verified')).toBeInTheDocument();
+  await expect
+    .element(screen.getByRole('button', { name: /^export$/i }))
+    .toBeInTheDocument();
+});
+
+test('no Trust band renders for a not-yet-run backlog task', async () => {
+  const screen = render(<EmptyBacklog />);
+  await expect.element(screen.getByText('Overview')).toBeInTheDocument();
+  expect(screen.getByText('Trust').query()).toBeNull();
 });
 
 test('deriveTaskDetailView splits review-parked from plan-parked on task.review', () => {

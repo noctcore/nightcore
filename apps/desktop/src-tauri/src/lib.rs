@@ -267,6 +267,7 @@ pub fn run() {
             commands::transcript::read_transcript,
             commands::trust::trust_report,
             commands::trust::trust_report_markdown,
+            commands::trust::write_trust_report,
             plan_approval::approve_task,
             plan_approval::reject_task,
             plan_approval::refine_task,

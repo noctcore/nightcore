@@ -10,6 +10,7 @@ import {
   SAMPLE_REVIEW_CHANGES,
   SAMPLE_REVIEW_PASS,
   TASKS_BY_STATUS,
+  TRUST_VERIFIED,
 } from '../_fixtures';
 import { TaskActionsProvider, type TaskDetailActions } from '../actions';
 import {
@@ -417,6 +418,16 @@ export const PrFinalized: Story = {
       prNumber: 123,
     }),
     prStatus: makePrStatus({ state: 'MERGED', reviewDecision: 'APPROVED' }),
+  },
+};
+
+/** A verified task carrying a populated Trust receipt (the story override seam):
+ *  the Trust band renders beside the Result band — the pass summary, the native
+ *  gauntlet/guardrail/flight sections, and the markdown export + preview. */
+export const TrustBandTracked: Story = {
+  args: {
+    ...Done.args,
+    trustReport: TRUST_VERIFIED,
   },
 };
 

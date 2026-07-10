@@ -12,6 +12,7 @@ import { PrStatusCard, usePrStatus } from '../PrStatusCard';
 import { ReviewPanel } from '../ReviewPanel';
 import { GroupLabel, HistoryCard, SessionCard } from '../SessionCard';
 import { TaskAttachments } from '../TaskAttachments';
+import { TrustReport } from '../TrustReport';
 import {
   deriveTaskDetailView,
   TaskStreamContext,
@@ -43,6 +44,7 @@ export function TaskDetail({
   prSupport,
   prStatus,
   prReviewComments,
+  trustReport,
   onClose,
   isActionPending,
   onOpenSourceRef,
@@ -84,6 +86,7 @@ export function TaskDetail({
         prSupport={resolvedPrSupport}
         prStatusView={prStatusView}
         prReviewCommentsView={prReviewCommentsView}
+        trustReport={trustReport}
         onClose={onClose}
         isActionPending={isActionPending}
         onOpenSourceRef={onOpenSourceRef}
@@ -126,6 +129,7 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
   prSupport,
   prStatusView,
   prReviewCommentsView,
+  trustReport,
   onClose,
   isActionPending,
   onOpenSourceRef,
@@ -198,6 +202,19 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
                 structureLock={task.structureLockResult}
               />
             )}
+          </div>
+        )}
+
+        {/* Trust — the per-task governance receipt (wayfinder #91): the merge-time
+            gauntlet/reviewer verdict, the guardrail ledger tiers, and the flight
+            summary, computed on demand. Shown once the task has run (`!kindEditable`)
+            so a fresh backlog task stays uncluttered; it renders what exists and
+            never blocks the drawer. Sits directly beside the Result band, where
+            verification lives, with one-click markdown export + preview. */}
+        {!kindEditable && (
+          <div className="space-y-3">
+            <GroupLabel>Trust</GroupLabel>
+            <TrustReport task={task} trustReport={trustReport} />
           </div>
         )}
 

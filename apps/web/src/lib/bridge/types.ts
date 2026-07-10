@@ -77,6 +77,16 @@ export type { Task } from '../generated/Task';
 export type { TaskAttachment } from '../generated/TaskAttachment';
 export type { TaskPatch } from '../generated/TaskPatch';
 export type { TaskStatus } from '../generated/TaskStatus';
+// Trust Report — the per-task governance receipt (ts-rs from `workflow/trust/
+// contract.rs`, wayfinder #91). One `TrustReport` aggregating the merge-time
+// gauntlet/reviewer truth, the guardrail ledger tiers, and the flight summary.
+export type { FlightSummary } from '../generated/FlightSummary';
+export type { GauntletTrust } from '../generated/GauntletTrust';
+export type { GuardrailEvent } from '../generated/GuardrailEvent';
+export type { GuardrailTrust } from '../generated/GuardrailTrust';
+export type { QuarantineEvent } from '../generated/QuarantineEvent';
+export type { TokenTotals } from '../generated/TokenTotals';
+export type { TrustReport } from '../generated/TrustReport';
 // User terminal (PTY) command-return shapes (ts-rs from `terminal/types.rs`). PR B
 // consumes the live-session descriptor; PR C's restore UI adds the persisted-
 // scrollback metadata (`PersistedTerminalInfo`) + replay bytes
