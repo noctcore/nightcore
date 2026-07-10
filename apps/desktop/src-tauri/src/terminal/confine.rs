@@ -22,6 +22,7 @@ use std::path::{Path, PathBuf};
 
 /// The Seatbelt interpreter — an absolute, SIP-protected path, never resolved via
 /// PATH (so a malicious `sandbox-exec` shim can't intercept the wrap).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const SANDBOX_EXEC: &str = "/usr/bin/sandbox-exec";
 
 /// What [`prepare`] hands back: the program + prefix args to launch INSTEAD of the
@@ -34,6 +35,7 @@ pub(crate) struct ConfinedLaunch {
 }
 
 /// Escape a path for a Seatbelt TinyScheme double-quoted string literal.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn seatbelt_string(p: &str) -> String {
     format!("\"{}\"", p.replace('\\', "\\\\").replace('"', "\\\""))
 }
@@ -42,6 +44,7 @@ fn seatbelt_string(p: &str) -> String {
 /// re-allowed only under each root (`subpath` — the root and everything beneath).
 /// Pure — no I/O — so it is unit-testable off a macOS host. Callers must pass
 /// CANONICALIZED roots (Seatbelt matches the kernel-resolved, symlink-free path).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn build_profile(writable_roots: &[String]) -> String {
     let mut lines = vec![
         "(version 1)".to_string(),
@@ -63,6 +66,7 @@ pub(crate) fn build_profile(writable_roots: &[String]) -> String {
 /// `<repo>/.git` or every `git` command in the terminal fails. Returns `None` for a
 /// normal checkout (its `.git` is a dir under cwd) or a non-repo cwd. The parent
 /// WORKING TREE is deliberately NOT allowed. Pure but for the `.git` file read.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn git_common_write_root(cwd: &Path) -> Option<PathBuf> {
     let dot_git = cwd.join(".git");
     if !dot_git.is_file() {
@@ -87,6 +91,7 @@ pub(crate) fn git_common_write_root(cwd: &Path) -> Option<PathBuf> {
 
 /// `canonicalize` that degrades to the lexical absolute path when the target can't
 /// be resolved — a not-yet-created optional root still gets a rule.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn realpath_or(p: &Path) -> String {
     std::fs::canonicalize(p)
         .unwrap_or_else(|_| p.to_path_buf())
