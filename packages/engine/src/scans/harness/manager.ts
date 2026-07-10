@@ -19,6 +19,7 @@ import type {
   HarnessProposal,
   ProposedArtifact,
   RepoProfile,
+  RuleCoverageGap,
   SurfaceCommand,
 } from '@nightcore/contracts';
 
@@ -36,11 +37,13 @@ import {
   type ScanSessionRunner,
   type SessionConfigParts,
 } from '../shared/scan-manager.js';
+import { computeCoverage } from './coverage.js';
 import {
   dedupeConventionFindings,
   groundConventionFindings,
   parseConventionFindings,
 } from './findings.js';
+import { extractRuleInventory } from './inventory.js';
 import {
   ANALYSIS_ALLOWED_TOOLS,
   ANALYSIS_DISALLOWED_TOOLS,
@@ -259,6 +262,45 @@ export class HarnessManager extends ScanManager<
       return;
     }
 
+    // ENFORCE-lite coverage: a deterministic rule-inventory pass + one cheap no-tool
+    // join, folded into the run totals. A BONUS signal — it fails open (a hiccup
+    // degrades to zero/`unenforced` coverage, never fails a scan with real findings).
+    const ruleInventory = extractRuleInventory(command.projectPath, {
+      packageDirs: context.profile.packages.map((p) => p.path),
+    });
+    this.deps.logger?.info(
+      `[harness] coverage: inventory ${ruleInventory.count} rules, ${ruleInventory.docClaims.length} doc claims`,
+    );
+    let coverage: RuleCoverageGap[] = [];
+    const coverageResult = await computeCoverage({
+      findings: deduped,
+      inventory: ruleInventory,
+      command,
+      config: this.deps.config,
+      apiKeyFallback: this.deps.apiKeyFallback,
+      ...(this.deps.logger !== undefined ? { logger: this.deps.logger } : {}),
+      runnerFactory: this.runnerFactory,
+      runners: run.runners,
+      isCancelled: () => run.cancelled,
+    });
+    totalCost += coverageResult.costUsd;
+    addUsage(totalUsage, coverageResult.usage);
+    coverage = coverageResult.coverage;
+    if (coverageResult.error !== undefined && coverageResult.error !== 'cancelled') {
+      this.deps.logger?.warn('harness coverage join degraded', {
+        runId: command.runId,
+        error: coverageResult.error,
+      });
+    }
+    this.deps.logger?.info(
+      `[harness] coverage: ${coverage.length} records (${coverage.filter((c) => c.status === 'enforced').length} enforced), ${fmtCost(coverageResult.costUsd)}`,
+    );
+
+    if (run.cancelled) {
+      this.emitFailed(command, 'aborted', this.cancelledMessage());
+      return;
+    }
+
     this.deps.emit({
       type: 'harness-proposals-ready',
       runId: command.runId,
@@ -274,6 +316,7 @@ export class HarnessManager extends ScanManager<
       findings: deduped,
       artifacts,
       proposals,
+      coverage,
       categoriesRun: itemsRun,
       costUsd: totalCost,
       durationMs,
