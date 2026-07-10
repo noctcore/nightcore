@@ -17,6 +17,8 @@
 //!    list/sessions-in-dir, project-scoped scrollback persist root.
 //!  - [`session`] — one PTY: `portable-pty` spawn + reader/coalescer threads +
 //!    write/resize/kill.
+//!  - [`shell`] — platform-aware shell resolution + interactive-launch flags (pure,
+//!    injectable; the Windows and Unix chains are both testable on any host).
 //!  - [`scrollback`] — the ~10k-line ring buffer + the output coalescer (both pure).
 //!  - [`persist`] — the on-disk `.nightcore/terminals/<id>.json` shape (v:1) + its
 //!    atomic write / read / list / age+stale-cwd prune.
@@ -29,6 +31,7 @@ pub(crate) mod persist;
 mod registry;
 mod scrollback;
 mod session;
+mod shell;
 mod types;
 
 pub use registry::TerminalRegistry;

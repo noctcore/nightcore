@@ -2,7 +2,7 @@ import '@xterm/xterm/css/xterm.css';
 
 import { Button, HistoryIcon, PlayIcon } from '@/components/ui';
 
-import { restoredIdentityLabel, restoredIdentityTitle } from '../terminal-shared';
+import { displayPath, restoredIdentityLabel, restoredIdentityTitle } from '../terminal-shared';
 import { useTerminalReadonlyPane } from './TerminalReadonlyPane.hooks';
 import type { TerminalReadonlyPaneProps } from './TerminalReadonlyPane.types';
 
@@ -22,7 +22,7 @@ function RestoredHeader({ shell, cwd }: { shell: string; cwd: string }) {
         ·
       </span>
       <span className="truncate font-mono text-muted-foreground/70">{shell}</span>
-      <span className="truncate font-mono text-muted-foreground/50">{cwd}</span>
+      <span className="truncate font-mono text-muted-foreground/50">{displayPath(cwd)}</span>
     </div>
   );
 }

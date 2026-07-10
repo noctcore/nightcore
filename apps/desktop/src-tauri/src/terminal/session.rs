@@ -25,6 +25,7 @@ use portable_pty::{native_pty_system, Child, ChildKiller, CommandBuilder, Master
 use super::confine;
 use super::persist::{self, PersistedScrollback};
 use super::scrollback::{CoalesceConfig, Coalescer, ScrollbackRing};
+use super::shell::{interactive_args, resolve_shell};
 use super::types::TerminalSessionInfo;
 
 /// The sink a session streams coalesced output batches into. The command layer
@@ -92,11 +93,17 @@ impl PtySession {
         sink: OutputSink,
         persist_dir: PathBuf,
     ) -> Result<Self, String> {
-        let shell = resolve_shell();
-        // wezterm#7893: a bad program path makes the child abort AFTER spawn returns
-        // Ok (the CLOEXEC exec-error pipe is swept). Pre-validate so an unusable
-        // shell surfaces as a spawn error, not a mystery immediate exit.
-        validate_shell_path(&shell)?;
+        // Platform-aware + existence-validated resolution (Unix `$SHELL`→zsh→bash→sh,
+        // Windows pwsh→powershell→%COMSPEC%→cmd). The resolver only ever returns an
+        // existing shell, which also covers the wezterm#7893 pre-validation (a bad
+        // program path aborts the child AFTER `spawn` returns Ok, once the CLOEXEC
+        // exec-error pipe is swept), so a missing shell surfaces as a named error
+        // here rather than a mystery immediate exit.
+        let shell = resolve_shell()?;
+        // Interactive flags are shell-family aware (POSIX shells get `-i`; pwsh gets
+        // `-NoLogo`; cmd.exe gets nothing) — an interactive, non-login shell sources
+        // the user's rc files for prompt/aliases without a full login profile.
+        let args = interactive_args(&shell);
 
         let mut cmd = if opts.confined {
             // Confinement is opt-in + macOS-only + fail-closed (see `confine`).
@@ -104,13 +111,15 @@ impl PtySession {
             let mut c = CommandBuilder::new(&launch.program);
             c.args(&launch.prefix_args);
             c.arg(&shell);
-            c.arg("-i");
+            for arg in &args {
+                c.arg(arg);
+            }
             c
         } else {
             let mut c = CommandBuilder::new(&shell);
-            // Interactive (not login) shell, VS-Code/omniscribe style: sources rc
-            // files for the user's prompt/aliases without a full login profile.
-            c.arg("-i");
+            for arg in &args {
+                c.arg(arg);
+            }
             c
         };
         cmd.cwd(&opts.cwd);
@@ -238,27 +247,6 @@ impl Drop for PtySession {
         // Never leave an orphan shell when the registry entry goes away (app exit,
         // reap, discard). A double-kill is harmless.
         self.kill();
-    }
-}
-
-/// Resolve the login shell: `$SHELL`, falling back to `/bin/zsh` (the macOS
-/// default). The path is validated by [`validate_shell_path`] before use.
-fn resolve_shell() -> String {
-    std::env::var("SHELL")
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| "/bin/zsh".to_string())
-}
-
-/// Reject a shell path that isn't a real file on disk (wezterm#7893 guard). Pure,
-/// so it unit-tests without mutating process env.
-fn validate_shell_path(shell: &str) -> Result<(), String> {
-    if std::path::Path::new(shell).is_file() {
-        Ok(())
-    } else {
-        Err(format!(
-            "shell {shell} does not exist — cannot open a terminal"
-        ))
     }
 }
 
@@ -469,16 +457,5 @@ mod tests {
             bytes.windows(11).any(|w| w == b"DONE_MARKER"),
             "the persisted scrollback contains the marker"
         );
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn invalid_shell_path_is_rejected() {
-        // The wezterm#7893 guard, tested on the pure validator (no process-env
-        // mutation, so it is parallel-safe): a non-existent shell errors, a real one
-        // passes. `/bin/sh` exists on every unix CI host.
-        let err = validate_shell_path("/no/such/shell/xyz").unwrap_err();
-        assert!(err.contains("does not exist"), "got: {err}");
-        assert!(validate_shell_path("/bin/sh").is_ok());
     }
 }

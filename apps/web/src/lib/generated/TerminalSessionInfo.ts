@@ -16,7 +16,8 @@ id: string,
  */
 cwd: string, 
 /**
- * The shell program launched (`$SHELL` or the `/bin/zsh` fallback).
+ * The shell program launched — resolved platform-aware (`$SHELL`, else the
+ * Unix zsh/bash/sh or Windows pwsh/powershell/cmd fallback chain).
  */
 shell: string, 
 /**

@@ -23,7 +23,8 @@ pub struct TerminalSessionInfo {
     pub id: String,
     /// The absolute working directory the shell was spawned in.
     pub cwd: String,
-    /// The shell program launched (`$SHELL` or the `/bin/zsh` fallback).
+    /// The shell program launched — resolved platform-aware (`$SHELL`, else the
+    /// Unix zsh/bash/sh or Windows pwsh/powershell/cmd fallback chain).
     pub shell: String,
     /// Whether this session runs inside the opt-in Seatbelt write-containment
     /// profile (macOS only). Drives the identity chrome (PR B).
