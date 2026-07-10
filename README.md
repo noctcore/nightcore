@@ -237,10 +237,15 @@ docs/        architecture, decisions, research
 
 ## Getting Started
 
+### Install
+
+Grab the latest release from the
+[releases page](https://github.com/Shironex/nightcore/releases/latest) —
+macOS (`.dmg`, Apple Silicon + Intel) and Windows (`setup.exe` / `.msi`)
+installers, with signed in-app auto-update built in.
+
 ### Prerequisites
 
-- **[Bun](https://bun.sh) ≥ 1.1** — sidecar and TS workspace
-- **Rust toolchain** — to build the Tauri core
 - **[Claude CLI](https://code.claude.com/docs/en/setup)** — installed and
   authenticated (Nightcore drives your local `claude` login; it does not bundle
   credentials or run a cloud backend):
@@ -250,9 +255,12 @@ docs/        architecture, decisions, research
   claude   # log in once
   ```
 
-### Quick start
+Building from source additionally needs:
 
-> No installable release yet — build from source:
+- **[Bun](https://bun.sh) ≥ 1.1** — sidecar and TS workspace
+- **Rust toolchain** — to build the Tauri core
+
+### Build from source
 
 ```bash
 git clone https://github.com/Shironex/nightcore.git
@@ -274,14 +282,13 @@ Claude CLI login.
 
 ## Status & roadmap
 
-**Alpha.** Functional and dogfooded daily — Nightcore's own backlog is built by
-Nightcore — but not production-ready. Expect breaking changes. Releases and
-auto-update are the top of the near-term roadmap and will land before broad
-distribution; until then, build from source.
+**Alpha** — [v0.1.0](https://github.com/Shironex/nightcore/releases/latest) is
+out with macOS/Windows installers and signed auto-update. Functional and
+dogfooded daily — Nightcore's own backlog is built by Nightcore — but not
+production-ready yet. Expect breaking changes.
 
 | Next up | |
 |---|---|
-| Installers + auto-update | signed releases, update channel |
 | Scan-view regroup | Understand → Harden → Enforce → Verify stages |
 | Deeper enforcement | convention-drift + rule-coverage detection |
 | Second provider | Codex, behind the existing `AgentProvider` seam |

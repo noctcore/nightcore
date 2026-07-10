@@ -66,8 +66,10 @@ Verdicts from the code-level analysis:
 
 1. **Views Phase 1: Harness split + Understand merge** (kirei-forge scale, multi-tier but
    persistence-free). Delivers the rethink you asked for as mostly a view/nav re-slice.
-2. **Releases + auto-update (issue #16).** The #1 adoption gap — every live competitor has
-   installers; Nightcore is build-from-source only. Precondition for any marketing.
+2. **Releases + auto-update — SHIPPED before this roadmap was written** (correction
+   2026-07-10): v0.1.0 released 2026-07-09 with macOS/Windows installers + signed
+   auto-update; the research missed it. Remaining work is release *cadence*, not the
+   pipeline.
 3. **README/positioning rewrite** around governed autonomy. Near-zero cost, highest
    strategic ROI while the niche is empty.
 

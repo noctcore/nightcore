@@ -75,7 +75,7 @@ Legend: ✅ strong · 🟡 partial · ❌ absent/none · — n/a
 | Auth model | local Claude CLI login (`~/.claude`), no broker | local Claude CLI | OAuth + multi-profile + API keys | per-agent CLI login | BYO Claude/Codex subscription | Anthropic API key or Pro/Max | any LiteLLM key |
 | DX niceties | scan family (Insight/Harness/Scorecard/Context-Pack), plan-approval, session-resume, drag+virtualized board | integrated terminal, 25+ themes, graph view, agent chat, AI profiles, memory, image attach | 12 terminals, memory layer, AI-merge, Linear, roadmap, changelog gen | terminal+dev-server per workspace, embedded browser+DevTools, inline comments | Linear pull-in, glance-at-all, "just works" simplicity | Pairing Mode (container→local IDE sync), auto issue-scan | 100+ models, event replay/recovery, cloud |
 | License | **MIT** | MIT | **AGPL-3.0** (commercial available) | Apache-2.0 | proprietary (free, BYO sub) | open source (Imbue) | MIT |
-| Releases / install | ❌ **no releases yet** (build from source) | releases (DMG/NSIS/AppImage/DEB/RPM) | ✅ signed releases + auto-update, VirusTotal | `npx vibe-kanban` one-liner | Mac App download | free beta download | pip / Docker / cloud |
+| Releases / install | ✅ **v0.1.0 shipped 2026-07-09** — macOS DMG (arm64+x64) + Windows exe/MSI, signed auto-update *(CORRECTION 2026-07-10: survey originally missed this)* | releases (DMG/NSIS/AppImage/DEB/RPM) | ✅ signed releases + auto-update, VirusTotal | `npx vibe-kanban` one-liner | Mac App download | free beta download | pip / Docker / cloud |
 | Momentum (2026-07) | 835 commits in ~3 wks (Jun 21→Jul 10), solo, alpha | **unmaintained** (last commit May 22) | active but PRs paused (3.0 rebuild, cloud pivot) | **sunsetting** (27.3k★, Bloop shut down) | growing, VC/YC (Melty Labs), used at Linear/Vercel/Notion/Stripe | active beta (Imbue) | very active, most-watched OSS agent, v1.7 |
 
 ### Cloud-SaaS async category (adjacent, not direct peers)
@@ -130,7 +130,9 @@ Ranked by roadmap impact within each bucket.
 
 ### WORSE (competitors clearly ahead — real gaps)
 
-9. **No releases / no installer / no auto-update.** Every serious competitor ships
+9. ~~No releases / no installer / no auto-update.~~ **CORRECTION (2026-07-10): wrong —
+   v0.1.0 shipped 2026-07-09** with macOS/Windows installers and signed auto-update;
+   this gap is CLOSED. Original (mistaken) text kept for the record: Every serious competitor ships
    installable binaries; Aperant even has signed + VirusTotal'd auto-updating
    builds and Vibe Kanban is a single `npx`. Nightcore is build-from-source only.
    This is the biggest *adoption* gap and is already tracked (issue #16).
@@ -184,7 +186,7 @@ Ranked by roadmap impact within each bucket.
 
 ### Close ADOPTION gaps (table-stakes that block users)
 
-4. **Ship releases + auto-update (issue #16).** This is the #1 adoption blocker;
+4. **~~Ship releases + auto-update (issue #16)~~ — DONE (v0.1.0, 2026-07-09; correction 2026-07-10).** This is the #1 adoption blocker;
    every live competitor has installers. Even a signed, minisign-verified alpha
    channel closes the gap. **Do this before broad marketing.**
 5. **Land the second provider (Codex) end-to-end.** Turns the AgentProvider seam
