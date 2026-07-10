@@ -2,7 +2,7 @@ import '@xterm/xterm/css/xterm.css';
 
 import { LockIcon, TerminalIcon } from '@/components/ui';
 
-import { identityLabel, identityTitle } from '../terminal-shared';
+import { displayPath, identityLabel, identityTitle } from '../terminal-shared';
 import { useTerminalPane } from './TerminalPane.hooks';
 import type { TerminalPaneProps } from './TerminalPane.types';
 
@@ -28,7 +28,7 @@ function IdentityHeader({ confined, shell, cwd }: { confined: boolean; shell: st
         ·
       </span>
       <span className="truncate font-mono text-muted-foreground">{shell}</span>
-      <span className="truncate font-mono text-muted-foreground/70">{cwd}</span>
+      <span className="truncate font-mono text-muted-foreground/70">{displayPath(cwd)}</span>
     </div>
   );
 }

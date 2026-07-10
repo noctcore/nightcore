@@ -27,6 +27,7 @@ import {
   atSessionCap,
   DEFAULT_TERMINAL_COLS,
   DEFAULT_TERMINAL_ROWS,
+  displayPath,
   supportsConfinedTerminal,
 } from '../terminal-shared';
 import type { UseTerminalViewInput } from './TerminalView.types';
@@ -46,8 +47,11 @@ function buildTargets(input: UseTerminalViewInput): TerminalTarget[] {
     targets.push({
       kind: 'repo',
       label: input.projectName ?? 'Repo root',
+      // `path` stays canonical — it is the spawn cwd (re-canonicalized server-side)
+      // and the fresh-shell restore-membership key. Only `detail` is prettified for
+      // display, so a Windows verbatim path (`\\?\X:\dev\nightcore`) shows cleanly.
       path: input.projectPath,
-      detail: input.projectPath,
+      detail: displayPath(input.projectPath),
     });
   }
   for (const wt of input.worktrees) {
