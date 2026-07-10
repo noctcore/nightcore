@@ -155,6 +155,22 @@ pub(crate) fn read_bytes(dir: &Path, id: &str) -> Option<Vec<u8>> {
     read_record(&session_file(dir, id)?).map(|r| r.decoded())
 }
 
+/// Delete one persisted session's scrollback file — the restore UI's "dismiss"
+/// action (PR C), so a read-only tab the user dismisses does not come back on the
+/// next relaunch. Idempotent: a missing file (or an unsafe id) is a no-op success.
+/// Best-effort; an unlink failure returns an error string the caller logs.
+pub(crate) fn delete(dir: &Path, id: &str) -> Result<(), String> {
+    let Some(path) = session_file(dir, id) else {
+        // An unsafe id can't name a file we wrote, so there is nothing to remove.
+        return Ok(());
+    };
+    match std::fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("delete persisted scrollback: {e}")),
+    }
+}
+
 fn read_record(path: &Path) -> Option<PersistedScrollback> {
     let bytes = std::fs::read(path).ok()?;
     serde_json::from_slice(&bytes).ok()
@@ -297,6 +313,24 @@ mod tests {
         );
         assert!(read(&dir, "gone").is_none());
         assert!(read(&dir, "old").is_none());
+    }
+
+    #[test]
+    fn delete_removes_the_file_and_is_idempotent() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("terminals");
+        write(
+            &dir,
+            &record("dismiss-me", tmp.path().to_str().unwrap(), b"x"),
+        )
+        .unwrap();
+        assert!(read(&dir, "dismiss-me").is_some());
+
+        delete(&dir, "dismiss-me").expect("delete succeeds");
+        assert!(read(&dir, "dismiss-me").is_none(), "the file is gone");
+        // Deleting again (or an unknown / unsafe id) is a no-op success.
+        delete(&dir, "dismiss-me").expect("delete is idempotent");
+        delete(&dir, "../escape").expect("an unsafe id is a no-op success");
     }
 
     #[test]

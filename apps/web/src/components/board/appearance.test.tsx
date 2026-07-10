@@ -29,6 +29,8 @@ function settingsWith(projectId: string, appearance: BoardAppearance): Settings 
     sandboxSessions: false,
     sidebarStyle: 'unified',
     preferredEditor: null,
+    terminalWebglEnabled: false,
+    terminalConfinedDefault: false,
     projectOverrides: { [projectId]: { boardAppearance: appearance } },
   };
 }

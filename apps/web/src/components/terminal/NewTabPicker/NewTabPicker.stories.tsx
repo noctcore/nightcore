@@ -30,13 +30,17 @@ const meta = {
     targets: TARGETS,
     onPick: fn(),
     onClose: fn(),
+    // macOS host by default so the confined checkbox is visible in the gallery.
+    confinedAvailable: true,
+    confined: false,
+    onConfinedChange: fn(),
   },
 } satisfies Meta<typeof NewTabPicker>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Repo root + two worktrees to choose from. */
+/** Repo root + two worktrees to choose from (macOS: confined checkbox shown). */
 export const Default: Story = {};
 
 /** No project open — an empty note instead of targets. */
@@ -49,6 +53,20 @@ export const CapReached: Story = {
 
 /** A spawn is in flight — targets are disabled and an "Opening…" note shows. */
 export const Busy: Story = { args: { busy: true } };
+
+/** The confined option is checked (macOS write-containment for the next spawn). */
+export const Confined: Story = { args: { confined: true } };
+
+/** Non-macOS host: the confined checkbox is not rendered at all. */
+export const NonMac: Story = { args: { confinedAvailable: false } };
+
+/** A fail-closed confined spawn refusal surfaced inline; the picker stays open. */
+export const ConfinedRefused: Story = {
+  args: {
+    confined: true,
+    error: 'refusing the confined spawn — its Seatbelt profile could not be assembled',
+  },
+};
 
 /** Play test: picking a target fires onPick with its absolute path. */
 export const PicksTarget: Story = {

@@ -166,3 +166,16 @@ pub async fn terminal_read_persisted(
     .await
     .map_err(|e| format!("terminal read_persisted failed to run: {e}"))?
 }
+
+/// Delete a persisted (dead) session's scrollback file — the restore UI's "dismiss"
+/// (PR C), so a dismissed read-only tab does not reappear on the next relaunch.
+/// Idempotent (a missing file is a no-op success).
+#[tauri::command]
+pub async fn terminal_delete_persisted(app: AppHandle, id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let dir = registry(&app)?.persist_dir();
+        crate::terminal::persist::delete(&dir, &id)
+    })
+    .await
+    .map_err(|e| format!("terminal delete_persisted failed to run: {e}"))?
+}

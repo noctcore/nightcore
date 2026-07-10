@@ -164,13 +164,18 @@ export const MOCK_SETTINGS: Settings = {
   sandboxSessions: false,
   sidebarStyle: null,
   preferredEditor: null,
+  terminalWebglEnabled: false,
+  terminalConfinedDefault: false,
   projectOverrides: {},
 };
 
-/** App metadata used outside Tauri (browser preview). */
+/** App metadata used outside Tauri (browser preview). `os` is `'macos'` so the
+ *  browser-preview / dogfood surfaces show the macOS-only terminal "Confined"
+ *  checkbox (the real value comes from `std::env::consts::OS` inside Tauri). */
 export const MOCK_APP_INFO: AppInfo = {
   version: '0.0.0',
   repository: DEFAULT_REPO_URL,
+  os: 'macos',
 };
 
 /** In-memory background images for browser preview / Storybook (no Tauri fs). Keyed

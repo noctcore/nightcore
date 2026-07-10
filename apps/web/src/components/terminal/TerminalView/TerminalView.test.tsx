@@ -2,26 +2,39 @@ import { composeStories } from '@storybook/react-vite';
 import { afterEach, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
-import type { TerminalSessionInfo } from '@/lib/bridge';
+import type { PersistedTerminalInfo, TerminalSessionInfo } from '@/lib/bridge';
 
 // Mock the session manager so the tab lifecycle is driven WITHOUT a real xterm /
 // PTY: `openSession` is controllable (resolve → a tab, reject → the cap error),
-// and attach is a no-op so the pane renders its chrome only.
+// and attach / renderer are no-ops so the pane renders its chrome only.
 const openSessionMock = vi.fn<(opts: unknown) => Promise<TerminalSessionInfo>>();
 const closeSessionMock = vi.fn<(id: string) => Promise<void>>(() => Promise.resolve());
 vi.mock('../terminal-session-manager', () => ({
   openSession: (opts: unknown) => openSessionMock(opts),
   closeSession: (id: string) => closeSessionMock(id),
   attachSession: () => () => {},
+  ensureRenderer: () => Promise.resolve(),
   hasSession: () => true,
   reconcileSessions: () => {},
 }));
 
-// Keep the real bridge (ToastProvider, types) but pin `listTerminals` to empty so
-// the view starts with no tabs.
+// Keep the real bridge (ToastProvider, types, getAppInfo → macOS mock) but make the
+// terminal listings controllable so restore + empty flows are driven per test.
+const listTerminalsMock = vi.fn<() => Promise<TerminalSessionInfo[]>>(() => Promise.resolve([]));
+const listPersistedMock = vi.fn<() => Promise<PersistedTerminalInfo[]>>(() => Promise.resolve([]));
 vi.mock('@/lib/bridge', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/bridge')>();
-  return { ...actual, listTerminals: () => Promise.resolve([]) };
+  return {
+    ...actual,
+    listTerminals: () => listTerminalsMock(),
+    listTerminalsPersisted: () => listPersistedMock(),
+    deleteTerminalPersisted: () => Promise.resolve(),
+    readTerminalPersisted: (id: string) =>
+      Promise.resolve({
+        info: { id, cwd: '', shell: '', confined: false, createdAt: 0, updatedAt: 0 },
+        dataBase64: '',
+      }),
+  };
 });
 
 import * as stories from './TerminalView.stories';
@@ -41,9 +54,17 @@ function fakeSession(id: string, cwd: string): TerminalSessionInfo {
   };
 }
 
+function persisted(id: string, cwd: string): PersistedTerminalInfo {
+  return { id, cwd, shell: '/bin/zsh', confined: false, createdAt: 0, updatedAt: 1 };
+}
+
 afterEach(() => {
   openSessionMock.mockReset();
   closeSessionMock.mockClear();
+  listTerminalsMock.mockReset();
+  listTerminalsMock.mockResolvedValue([]);
+  listPersistedMock.mockReset();
+  listPersistedMock.mockResolvedValue([]);
 });
 
 test('shows the empty state until a terminal is opened', async () => {
@@ -86,6 +107,32 @@ test('a spawn beyond the cap surfaces inline and does NOT crash the picker', asy
     .toBeInTheDocument();
 });
 
+test('checking Confined spawns confined; a fail-closed refusal surfaces inline', async () => {
+  const screen = render(<Empty />);
+
+  await screen.getByRole('button', { name: 'Open a terminal' }).click();
+  // macOS host (getAppInfo mock → os: 'macos'), so the confined checkbox renders.
+  await screen.getByText(/Confined \(writes limited to this folder\)/i).click();
+
+  // First: the fail-closed refusal path surfaces inline without closing the picker.
+  openSessionMock.mockRejectedValueOnce(
+    'refusing the confined spawn — its Seatbelt profile could not be assembled',
+  );
+  await screen.getByRole('button', { name: /nc\/api-client/ }).click();
+  await expect
+    .element(screen.getByText(/Seatbelt profile could not be assembled/i))
+    .toBeInTheDocument();
+  expect(openSessionMock).toHaveBeenLastCalledWith(expect.objectContaining({ confined: true }));
+
+  // Then: a successful confined spawn opens a confined tab.
+  openSessionMock.mockResolvedValueOnce({
+    ...fakeSession('c1', '/Users/dev/nightcore/.nightcore/worktrees/t1'),
+    confined: true,
+  });
+  await screen.getByRole('button', { name: /nc\/api-client/ }).click();
+  await expect.element(screen.getByText('Confined to this worktree')).toBeInTheDocument();
+});
+
 test('closing a tab confirms, then kills the session and returns to empty', async () => {
   openSessionMock.mockResolvedValueOnce(
     fakeSession('s1', '/Users/dev/nightcore/.nightcore/worktrees/t1'),
@@ -103,4 +150,35 @@ test('closing a tab confirms, then kills the session and returns to empty', asyn
 
   expect(closeSessionMock).toHaveBeenCalledWith('s1');
   await expect.element(screen.getByText('No terminals open')).toBeInTheDocument();
+});
+
+test('restores a persisted session read-only; fresh-shell is gated on the cwd being a valid target', async () => {
+  // A persisted session whose cwd IS a live worktree (restorable) and one whose cwd
+  // was removed (not a target → the fresh-shell action is disabled with a hint).
+  listPersistedMock.mockResolvedValue([
+    persisted('r1', '/Users/dev/nightcore/.nightcore/worktrees/t1'),
+    persisted('gone', '/Users/dev/nightcore/.nightcore/worktrees/removed'),
+  ]);
+  const screen = render(<Empty />);
+
+  // The restored tab replays read-only (no live sessions, so it is active on mount).
+  await expect.element(screen.getByText('Session ended — read-only')).toBeInTheDocument();
+  await expect
+    .element(screen.getByRole('button', { name: /Start a fresh shell here/i }))
+    .toBeEnabled();
+
+  // Starting a fresh shell spawns a live session in the restored cwd.
+  openSessionMock.mockResolvedValueOnce(
+    fakeSession('fresh', '/Users/dev/nightcore/.nightcore/worktrees/t1'),
+  );
+  await screen.getByRole('button', { name: /Start a fresh shell here/i }).click();
+  expect(openSessionMock).toHaveBeenCalledWith(
+    expect.objectContaining({ cwd: '/Users/dev/nightcore/.nightcore/worktrees/t1' }),
+  );
+
+  // The removed-cwd restored tab's action is disabled (its worktree is gone).
+  await screen.getByRole('tab', { name: /removed/ }).click();
+  await expect
+    .element(screen.getByRole('button', { name: /Start a fresh shell here/i }))
+    .toBeDisabled();
 });

@@ -77,9 +77,12 @@ export type { Task } from '../generated/Task';
 export type { TaskAttachment } from '../generated/TaskAttachment';
 export type { TaskPatch } from '../generated/TaskPatch';
 export type { TaskStatus } from '../generated/TaskStatus';
-// User terminal (PTY) command-return shape (ts-rs from `terminal/types.rs`). PR B
-// consumes only the live-session descriptor; the persisted-scrollback shapes land
-// with the PR C restore UI.
+// User terminal (PTY) command-return shapes (ts-rs from `terminal/types.rs`). PR B
+// consumes the live-session descriptor; PR C's restore UI adds the persisted-
+// scrollback metadata (`PersistedTerminalInfo`) + replay bytes
+// (`PersistedTerminalScrollback`).
+export type { PersistedTerminalInfo } from '../generated/PersistedTerminalInfo';
+export type { PersistedTerminalScrollback } from '../generated/PersistedTerminalScrollback';
 export type { TerminalSessionInfo } from '../generated/TerminalSessionInfo';
 export type { WorktreeDiff } from '../generated/WorktreeDiff';
 export type { WorktreeDiffFile } from '../generated/WorktreeDiffFile';

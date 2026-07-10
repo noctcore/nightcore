@@ -345,6 +345,7 @@ pub fn run() {
             commands::terminal::terminal_sessions_in_dir,
             commands::terminal::terminal_list_persisted,
             commands::terminal::terminal_read_persisted,
+            commands::terminal::terminal_delete_persisted,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Nightcore application");

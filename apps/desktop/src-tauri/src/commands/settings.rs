@@ -22,6 +22,7 @@ pub fn app_info() -> AppInfo {
     AppInfo {
         version: env!("CARGO_PKG_VERSION").to_string(),
         repository: REPOSITORY_URL.to_string(),
+        os: std::env::consts::OS.to_string(),
     }
 }
 

@@ -274,6 +274,12 @@ pub struct AppInfo {
     pub version: String,
     /// The canonical source repository URL.
     pub repository: String,
+    /// The host operating system (`std::env::consts::OS`: `"macos"` | `"linux"` |
+    /// `"windows"` | …). The web reads this as its platform-capability probe — the
+    /// terminal's "Confined" checkbox (macOS-only Seatbelt) renders only when this
+    /// is `"macos"`. Cheaper than a dedicated command and rides the metadata the
+    /// About page already fetches.
+    pub os: String,
 }
 
 /// The repository URL, compiled in (no fake `github.com/you` literal in the UI).

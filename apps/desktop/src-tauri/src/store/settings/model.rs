@@ -113,6 +113,22 @@ pub struct Settings {
     /// a settings file written before this field loads as `None`.
     #[serde(default)]
     pub preferred_editor: Option<String>,
+    /// USER terminal (build spec PR C, decision 7): opt into the xterm WebGL/GPU
+    /// renderer. Default `false` (DOM) while the upstream WebGL corruption bug
+    /// (xtermjs#5816, repro'd from Tauri) is open; when `true`, a new session loads
+    /// the WebGL addon with an `onContextLoss` auto-fallback to DOM. Global-only (a
+    /// machine/GPU preference, like `sidebar_style`/`sandbox_sessions`). Serde-
+    /// additive: a settings file written before this field loads as `false`.
+    #[serde(default)]
+    pub terminal_webgl_enabled: bool,
+    /// USER terminal (build spec PR C, decision 1): the sticky default for the
+    /// new-tab picker's "Confined" checkbox (macOS-only opt-in Seatbelt write
+    /// containment, scoped to the session cwd). The picker seeds the checkbox from
+    /// this and writes the last choice back, so the preference persists across
+    /// relaunches. Default `false` (unconfined — the human seam runs with full
+    /// permissions). Global-only. Serde-additive: legacy settings load this `false`.
+    #[serde(default)]
+    pub terminal_confined_default: bool,
     /// Per-project overrides keyed by project id.
     pub project_overrides: HashMap<String, SettingsOverride>,
 }
@@ -370,6 +386,12 @@ impl Default for Settings {
             // No editor pinned by default — the worktree "Open in editor" action
             // auto-detects the first installed known editor until the user picks one.
             preferred_editor: None,
+            // PR C decision 7: DOM renderer by default (WebGL is opt-in while the
+            // upstream corruption bug is open).
+            terminal_webgl_enabled: false,
+            // PR C decision 1: the human terminal is unconfined by default; the
+            // confined checkbox starts off and remembers the user's last choice.
+            terminal_confined_default: false,
             project_overrides: HashMap::new(),
         }
     }

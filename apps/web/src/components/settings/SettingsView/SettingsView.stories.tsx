@@ -22,6 +22,8 @@ const settings: Settings = {
   sandboxSessions: false,
   sidebarStyle: 'unified',
   preferredEditor: null,
+  terminalWebglEnabled: false,
+  terminalConfinedDefault: false,
   projectOverrides: {
     nightcore: { defaultModel: 'claude-haiku-4-5' },
   },

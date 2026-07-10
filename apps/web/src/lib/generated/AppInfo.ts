@@ -13,4 +13,12 @@ version: string,
 /**
  * The canonical source repository URL.
  */
-repository: string, };
+repository: string, 
+/**
+ * The host operating system (`std::env::consts::OS`: `"macos"` | `"linux"` |
+ * `"windows"` | …). The web reads this as its platform-capability probe — the
+ * terminal's "Confined" checkbox (macOS-only Seatbelt) renders only when this
+ * is `"macos"`. Cheaper than a dedicated command and rides the metadata the
+ * About page already fetches.
+ */
+os: string, };

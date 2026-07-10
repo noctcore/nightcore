@@ -181,7 +181,15 @@ export function AppShellViews({
             context inside the view. */}
         {view === 'terminal' && (
           <Suspense fallback={<RouteFallback />}>
-            <TerminalView projectPath={active?.path ?? null} projectName={active?.name ?? null} />
+            <TerminalView
+              projectPath={active?.path ?? null}
+              projectName={active?.name ?? null}
+              webglEnabled={settings.settings?.terminalWebglEnabled ?? false}
+              confinedDefault={settings.settings?.terminalConfinedDefault ?? false}
+              onConfinedDefaultChange={(confined) =>
+                settings.update({ terminalConfinedDefault: confined })
+              }
+            />
           </Suspense>
         )}
 

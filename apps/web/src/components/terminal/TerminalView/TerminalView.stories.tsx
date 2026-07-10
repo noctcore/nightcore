@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, userEvent } from 'storybook/test';
+import { expect, fn, userEvent } from 'storybook/test';
 
 import { ToastProvider } from '@/components/ui';
 import type { WorktreeInfo } from '@/lib/bridge';
@@ -66,6 +66,9 @@ const meta = {
     worktrees: WORKTREES,
     projectPath: '/Users/dev/nightcore',
     projectName: 'nightcore',
+    webglEnabled: false,
+    confinedDefault: false,
+    onConfinedDefaultChange: fn(),
   },
 } satisfies Meta<typeof TerminalViewFixture>;
 

@@ -141,6 +141,68 @@ if (await newTask.isVisible().catch(() => false)) {
   await page.keyboard.press('Escape');
 }
 
+// --- Terminal view: render + echo round-trip against the mock bridge ---
+// Reload to the clean initial view first: earlier sections navigate to the
+// sidebar-less Projects landing, and the Terminal destination lives in the sidebar.
+await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+await page.waitForTimeout(600);
+// The nav button's accessible name is "Terminal" + its "L" hint, so match loosely.
+const terminalNav = page.getByRole('button', { name: /Terminal/ }).first();
+if (await terminalNav.isVisible().catch(() => false)) {
+  await terminalNav.click();
+  await page.waitForTimeout(500);
+}
+await shot('11-terminal');
+const terminalEmpty = await page
+  .getByText(/No terminals open/i)
+  .isVisible()
+  .catch(() => false);
+log('Terminal view renders (empty state):', terminalEmpty);
+
+// Open the new-terminal picker and pick a target (spawns the in-memory echo shell).
+const openTerm = page.getByRole('button', { name: /Open a terminal/i }).first();
+if (await openTerm.isVisible().catch(() => false)) {
+  await openTerm.click();
+  await page.waitForTimeout(300);
+  await shot('12-terminal-picker');
+  // macOS mock → the confined checkbox is present in the picker.
+  const confinedBox = await page
+    .getByText(/Confined \(writes limited to this folder\)/i)
+    .isVisible()
+    .catch(() => false);
+  log('Confined checkbox visible in picker:', confinedBox);
+  // Pick the repo-root target — scoped INSIDE the modal overlay so we don't hit the
+  // sidebar's identically-named project button (which the modal backdrop covers).
+  const modal = page.locator('[role="presentation"]').last();
+  const target = modal.getByRole('button', { name: /nightcore/i }).first();
+  try {
+    if (await target.isVisible().catch(() => false)) {
+      await target.click({ timeout: 4000 });
+      await page.waitForTimeout(500);
+    }
+  } catch (e) {
+    log('terminal target pick skipped:', e.message);
+  }
+}
+await shot('13-terminal-open');
+
+// Echo round-trip: type into the xterm's input and confirm the bytes echo back.
+let echoOk = false;
+const helper = page.locator('.xterm-helper-textarea').first();
+if (await helper.isVisible().catch(() => false)) {
+  await helper.focus();
+  await page.keyboard.type('echo-roundtrip-42');
+  await page.waitForTimeout(400);
+  const rows = await page
+    .locator('.xterm-rows')
+    .first()
+    .innerText()
+    .catch(() => '');
+  echoOk = /echo-roundtrip-42/.test(rows);
+}
+log('Terminal echo round-trip:', echoOk);
+await shot('14-terminal-echo');
+
 log('\n=== CONSOLE ERRORS (' + errors.length + ') ===');
 errors.slice(0, 25).forEach((e) => console.log('  ✖', e));
 

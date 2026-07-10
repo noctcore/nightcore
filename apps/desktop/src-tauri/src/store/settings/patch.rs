@@ -165,6 +165,16 @@ pub struct SettingsPatch {
     /// [`super::model::Settings::sandbox_sessions`].
     #[cfg_attr(test, ts(optional))]
     pub sandbox_sessions: Option<bool>,
+    /// PR C decision 7: toggle the terminal WebGL/GPU renderer. Global-only
+    /// (ignored for a per-project override target), like `sandbox_sessions`. See
+    /// [`super::model::Settings::terminal_webgl_enabled`].
+    #[cfg_attr(test, ts(optional))]
+    pub terminal_webgl_enabled: Option<bool>,
+    /// PR C decision 1: set the sticky default for the new-tab picker's confined
+    /// checkbox. Global-only (ignored for a per-project override target). See
+    /// [`super::model::Settings::terminal_confined_default`].
+    #[cfg_attr(test, ts(optional))]
+    pub terminal_confined_default: Option<bool>,
     /// M4.6: default run mode (`"main"` | `"worktree"`). With a `projectId` it lands
     /// in that project's override; without one, the global default.
     #[cfg_attr(test, ts(optional, as = "Option<RunMode>"))]
@@ -255,6 +265,14 @@ impl Settings {
         // Mode option above.
         if let Some(v) = patch.sandbox_sessions {
             self.sandbox_sessions = v;
+        }
+        // PR C: the two terminal toggles are global-only machine/GPU preferences,
+        // so they merge into the global block alongside `sandbox_sessions`.
+        if let Some(v) = patch.terminal_webgl_enabled {
+            self.terminal_webgl_enabled = v;
+        }
+        if let Some(v) = patch.terminal_confined_default {
+            self.terminal_confined_default = v;
         }
         if let Some(v) = patch.default_run_mode {
             self.default_run_mode = v;

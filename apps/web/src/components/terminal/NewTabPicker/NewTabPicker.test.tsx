@@ -4,7 +4,8 @@ import { render } from 'vitest-browser-react';
 
 import * as stories from './NewTabPicker.stories';
 
-const { Default, Empty, CapReached, Busy } = composeStories(stories);
+const { Default, Empty, CapReached, Busy, Confined, NonMac, ConfinedRefused } =
+  composeStories(stories);
 
 test('lists the repo root and worktrees as pickable targets', async () => {
   const screen = render(<Default />);
@@ -39,4 +40,42 @@ test('surfaces the session-cap error inline without closing', async () => {
 test('disables targets while a spawn is in flight', async () => {
   const screen = render(<Busy />);
   await expect.element(screen.getByRole('button', { name: /nc\/task-42/ })).toBeDisabled();
+});
+
+test('renders the confined checkbox on macOS and toggles it', async () => {
+  const onConfinedChange = vi.fn();
+  const screen = render(<Default onConfinedChange={onConfinedChange} />);
+  const box = screen.getByRole('checkbox', {
+    name: /Confined \(writes limited to this folder\)/i,
+  });
+  await expect.element(box).toBeInTheDocument();
+  // Click the visible label (the native input is sr-only), matching the Checkbox
+  // primitive's own test.
+  await screen.getByText(/Confined \(writes limited to this folder\)/i).click();
+  expect(onConfinedChange).toHaveBeenCalledWith(true);
+});
+
+test('hides the confined checkbox on non-macOS hosts', async () => {
+  const screen = render(<NonMac />);
+  // The targets still render, but the confined checkbox is gone entirely.
+  await expect.element(screen.getByRole('button', { name: /nc\/task-42/ })).toBeInTheDocument();
+  expect(screen.container.querySelector('input[type="checkbox"]')).toBeNull();
+});
+
+test('shows the confined checkbox already checked from the sticky default', async () => {
+  const screen = render(<Confined />);
+  const box = screen.getByRole('checkbox', {
+    name: /Confined \(writes limited to this folder\)/i,
+  });
+  await expect.element(box).toBeInTheDocument();
+  expect(box.element()).toBeChecked();
+});
+
+test('surfaces a fail-closed confined refusal inline without closing', async () => {
+  const onClose = vi.fn();
+  const screen = render(<ConfinedRefused onClose={onClose} />);
+  await expect
+    .element(screen.getByText(/Seatbelt profile could not be assembled/i))
+    .toBeInTheDocument();
+  expect(onClose).not.toHaveBeenCalled();
 });

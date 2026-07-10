@@ -15,9 +15,9 @@ export interface TerminalTarget {
 }
 
 /** Props for the {@link NewTabPicker} modal. Presentational: the parent owns the
- *  target list, the spawn, and the busy/error state; the picker just surfaces
- *  them. NO confined checkbox in PR B — spawn is always unconfined (the toggle is
- *  PR C). */
+ *  target list, the spawn, the busy/error state, AND the confined choice; the
+ *  picker just surfaces them. The confined checkbox (PR C, decision 1) renders only
+ *  on macOS (`confinedAvailable`); its value is the sticky Settings default. */
 export interface NewTabPickerProps {
   /** Whether the picker is mounted/visible. */
   open: boolean;
@@ -27,9 +27,17 @@ export interface NewTabPickerProps {
   onPick: (path: string) => void;
   /** Fired on Esc, click-outside, or Cancel. */
   onClose: () => void;
-  /** A spawn error to surface inline (e.g. the 8-session cap) WITHOUT closing the
-   *  picker — so the user sees why nothing opened. */
+  /** A spawn error to surface inline (e.g. the 8-session cap, or a fail-closed
+   *  confined refusal) WITHOUT closing the picker — so the user sees why nothing
+   *  opened. */
   error?: string | null;
   /** A spawn is in flight (a target was picked and is opening). */
   busy?: boolean;
+  /** Whether the host supports the opt-in confined shell (macOS only). When false
+   *  the confined checkbox is not rendered at all. */
+  confinedAvailable: boolean;
+  /** Whether the next spawn is confined (Seatbelt write-containment, macOS). */
+  confined: boolean;
+  /** Toggle the confined choice (the parent persists it as the sticky default). */
+  onConfinedChange: (confined: boolean) => void;
 }

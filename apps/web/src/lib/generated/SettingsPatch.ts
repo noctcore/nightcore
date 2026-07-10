@@ -26,6 +26,18 @@ autoCommitOnVerified?: boolean,
  */
 sandboxSessions?: boolean, 
 /**
+ * PR C decision 7: toggle the terminal WebGL/GPU renderer. Global-only
+ * (ignored for a per-project override target), like `sandbox_sessions`. See
+ * [`super::model::Settings::terminal_webgl_enabled`].
+ */
+terminalWebglEnabled?: boolean, 
+/**
+ * PR C decision 1: set the sticky default for the new-tab picker's confined
+ * checkbox. Global-only (ignored for a per-project override target). See
+ * [`super::model::Settings::terminal_confined_default`].
+ */
+terminalConfinedDefault?: boolean, 
+/**
  * M4.6: default run mode (`"main"` | `"worktree"`). With a `projectId` it lands
  * in that project's override; without one, the global default.
  */

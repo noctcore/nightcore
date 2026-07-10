@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect } from 'storybook/test';
 
+import { ToastProvider } from '@/components/ui';
 import type { TerminalSessionInfo } from '@/lib/bridge';
 
 import { TerminalPane } from './TerminalPane';
@@ -27,10 +28,14 @@ const meta = {
   component: TerminalPane,
   parameters: { layout: 'fullscreen' },
   decorators: [
+    // The pane's hook uses `useToast` (the WebGL context-loss fallback), so it needs
+    // a ToastProvider in scope.
     (Story) => (
-      <div style={{ height: '320px', display: 'flex' }}>
-        <Story />
-      </div>
+      <ToastProvider>
+        <div style={{ height: '320px', display: 'flex' }}>
+          <Story />
+        </div>
+      </ToastProvider>
     ),
   ],
 } satisfies Meta<typeof TerminalPane>;
