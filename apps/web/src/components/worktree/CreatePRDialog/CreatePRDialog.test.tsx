@@ -118,6 +118,71 @@ test('confirm calls createPrTask with the edited values, base, and draft flag', 
   await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
 });
 
+test('the governance receipt checkbox (default on) appends the for_github receipt to the body', async () => {
+  const RECEIPT =
+    '### 🌙 Nightcore — Trust report: Wire up auth guard\n\n_Posted from Nightcore._';
+  stubCommands({ trust_report_markdown: () => Promise.resolve(RECEIPT) });
+  const created: CreatePrOptions[] = [];
+  const capture = (_id: string, opts: CreatePrOptions) => {
+    created.push(opts);
+    return Promise.resolve();
+  };
+  const screen = render(
+    <CreatePRDialog open task={TASK} onCreate={capture} onClose={() => {}} />,
+  );
+  await expect.element(screen.getByLabelText('Body')).toHaveValue('Drafted summary.');
+
+  // The checkbox defaults ON — submit renders the for_github receipt and appends
+  // it to the drafted body before handing it to the create.
+  await screen.getByRole('button', { name: 'Create PR' }).click();
+  await vi.waitFor(() => expect(created.length).toBe(1));
+  expect(invoke).toHaveBeenCalledWith('trust_report_markdown', {
+    taskId: 't-pr',
+    forGithub: true,
+  });
+  expect(created[0]?.body).toBe(`Drafted summary.\n\n${RECEIPT}`);
+});
+
+test('unchecking the governance receipt leaves the body untouched and renders no receipt', async () => {
+  stubCommands({ trust_report_markdown: () => Promise.resolve('SHOULD-NOT-APPEAR') });
+  const created: CreatePrOptions[] = [];
+  const capture = (_id: string, opts: CreatePrOptions) => {
+    created.push(opts);
+    return Promise.resolve();
+  };
+  const screen = render(
+    <CreatePRDialog open task={TASK} onCreate={capture} onClose={() => {}} />,
+  );
+  await expect.element(screen.getByLabelText('Body')).toHaveValue('Drafted summary.');
+
+  // Toggle the receipt off (click the visible sr-only label text), then submit.
+  await screen.getByText('Include governance receipt').click();
+  await screen.getByRole('button', { name: 'Create PR' }).click();
+  await vi.waitFor(() => expect(created.length).toBe(1));
+  expect(created[0]?.body).toBe('Drafted summary.');
+  expect(invoke).not.toHaveBeenCalledWith('trust_report_markdown', expect.anything());
+});
+
+test('a receipt render failure never blocks the create — the plain body still goes out', async () => {
+  stubCommands({
+    trust_report_markdown: () => Promise.reject(new Error('trust report failed')),
+  });
+  const created: CreatePrOptions[] = [];
+  const capture = (_id: string, opts: CreatePrOptions) => {
+    created.push(opts);
+    return Promise.resolve();
+  };
+  const screen = render(
+    <CreatePRDialog open task={TASK} onCreate={capture} onClose={() => {}} />,
+  );
+  await expect.element(screen.getByLabelText('Body')).toHaveValue('Drafted summary.');
+
+  await screen.getByRole('button', { name: 'Create PR' }).click();
+  await vi.waitFor(() => expect(created.length).toBe(1));
+  // The failed receipt is best-effort: the PR still opens with the plain body.
+  expect(created[0]?.body).toBe('Drafted summary.');
+});
+
 test('the confirm button single-flights while the create is pending', async () => {
   let resolveCreate: (() => void) | undefined;
   stubCommands({

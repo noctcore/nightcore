@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import type { BranchInfo, CreatePrOptions, Task } from '@/lib/bridge';
-import { draftPrMessage, listBranches } from '@/lib/bridge';
+import { draftPrMessage, listBranches, trustReportMarkdown } from '@/lib/bridge';
 
 /** Everything the CreatePRDialog shell renders from. */
 export interface CreatePrDialogView {
@@ -21,6 +21,11 @@ export interface CreatePrDialogView {
   /** Open the PR as a draft. Defaults off. */
   draft: boolean;
   setDraft: (draft: boolean) => void;
+  /** Append the governance receipt (the `for_github` Trust Report) to the PR
+   *  body on submit. Defaults ON — the receipt is best-effort, so a failure to
+   *  render it never blocks the create. */
+  includeReceipt: boolean;
+  setIncludeReceipt: (includeReceipt: boolean) => void;
   /** The project's branches for the base picker (`[]` ⇒ free-form entry). */
   branches: BranchInfo[];
   /** True while `draftPrMessage` is pre-filling the title/body. */
@@ -112,6 +117,9 @@ export function useCreatePrDialog({
   const [body, setBody] = useState('');
   const [base, setBase] = useState('');
   const [draft, setDraft] = useState(false);
+  // The governance receipt is appended to the body by default (§3.9); the human
+  // can opt out before submit.
+  const [includeReceipt, setIncludeReceipt] = useState(true);
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [drafting, setDrafting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -138,6 +146,7 @@ export function useCreatePrDialog({
     if (!open || taskId === null) return;
     setError(null);
     setDraft(false);
+    setIncludeReceipt(true);
     setBase(defaultBase);
     setTitle('');
     setBody('');
@@ -270,18 +279,36 @@ export function useCreatePrDialog({
     setSubmitting(true);
     setError(null);
     const trimmedBase = base.trim();
-    void Promise.resolve(
-      onCreate(taskId, {
-        base: trimmedBase.length > 0 ? trimmedBase : undefined,
-        title: finalTitle,
-        body,
-        draft,
-      }),
-    )
+    // When opted in, append the `for_github` governance receipt to the body
+    // pre-submit — a passthrough into the same body handed to `create_pr_task`
+    // (no Rust create-path change, §3.9). BEST-EFFORT: a render failure (or the
+    // empty browser-preview sentinel) must never block the PR, so it degrades to
+    // the plain body.
+    const composeBody = async (): Promise<string> => {
+      if (!includeReceipt) return body;
+      try {
+        const receipt = await trustReportMarkdown(taskId, true);
+        if (receipt != null && receipt.trim().length > 0) {
+          return body.trim().length > 0 ? `${body}\n\n${receipt}` : receipt;
+        }
+      } catch {
+        // Swallow — proceed with the plain body.
+      }
+      return body;
+    };
+    void composeBody()
+      .then((finalBody) =>
+        onCreate(taskId, {
+          base: trimmedBase.length > 0 ? trimmedBase : undefined,
+          title: finalTitle,
+          body: finalBody,
+          draft,
+        }),
+      )
       .then(() => onClose())
       .catch((err: unknown) => setError(errorText(err)))
       .finally(() => setSubmitting(false));
-  }, [taskId, submitting, drafting, title, body, base, draft, onCreate, onClose]);
+  }, [taskId, submitting, drafting, title, body, base, draft, includeReceipt, onCreate, onClose]);
 
   return {
     title,
@@ -292,6 +319,8 @@ export function useCreatePrDialog({
     setBase,
     draft,
     setDraft,
+    includeReceipt,
+    setIncludeReceipt,
     branches,
     drafting,
     submitting,

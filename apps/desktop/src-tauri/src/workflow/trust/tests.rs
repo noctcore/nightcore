@@ -16,6 +16,7 @@ use crate::task::{RunMode, Task, TaskStatus};
 use super::aggregate::iso8601_utc;
 use super::build_report;
 use super::contract::TrustReport;
+use super::post::{post_trust_comment_with, require_pr_number};
 use super::render::{code_span, longest_backtick_run};
 use super::{render_for_github, render_markdown};
 
@@ -353,6 +354,114 @@ fn iso8601_utc_formats_a_known_instant() {
     assert_eq!(iso8601_utc(1_700_000_000_000), "2023-11-14T22:13:20Z");
     // The unix epoch itself.
     assert_eq!(iso8601_utc(0), "1970-01-01T00:00:00Z");
+}
+
+// ── PR attachment (PR 3): the comment-post over a fake-`gh` seam ────────────────
+
+/// Write an executable shell script to stand in for `gh`, exercising the real
+/// spawn + exit-code mapping (the PR-arc fixture pattern, cloned from
+/// `pr_fix::tests::fake_gh`).
+#[cfg(unix)]
+fn fake_gh(dir: &Path, body: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = dir.join("fake-gh.sh");
+    std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write script");
+    let mut perms = std::fs::metadata(&path)
+        .expect("script metadata")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&path, perms).expect("chmod script");
+    path
+}
+
+#[test]
+fn require_pr_number_fails_loudly_without_a_pr() {
+    // A PR-bearing task yields its number; a PR-less task errors (never a no-op).
+    assert_eq!(
+        require_pr_number(&synthetic_task()).expect("the fixture carries a PR"),
+        7
+    );
+    let mut no_pr = synthetic_task();
+    no_pr.pr_number = None;
+    no_pr.pr_url = None;
+    let err = require_pr_number(&no_pr).expect_err("no PR ⇒ a loud error, not a silent no-op");
+    assert!(err.contains("no pull request"), "{err}");
+}
+
+#[test]
+#[cfg(unix)]
+fn attach_posts_the_for_github_receipt_to_the_issues_endpoint_with_a_json_body() {
+    use std::time::Duration;
+    let tmp = TempDir::new().expect("temp dir");
+    // Capture the exact argv + the JSON body fed on stdin.
+    let script = fake_gh(
+        tmp.path(),
+        "printf '%s\\n' \"$@\" > args.txt\ncat > stdin.txt",
+    );
+
+    let report = build_report(&synthetic_task(), Path::new("/no/ledger"), tmp.path());
+    let body = render_for_github(&report);
+    post_trust_comment_with(
+        tmp.path(),
+        script.to_str().expect("utf8 path"),
+        7,
+        &body,
+        Duration::from_secs(10),
+    )
+    .expect("the comment posts");
+
+    let args = std::fs::read_to_string(tmp.path().join("args.txt")).expect("args.txt");
+    let args: Vec<&str> = args.lines().collect();
+    assert_eq!(
+        args,
+        vec![
+            "api",
+            "--method",
+            "POST",
+            "repos/{owner}/{repo}/issues/7/comments",
+            "--input",
+            "-"
+        ],
+        "the atomic issues-comment argv ({{owner}}/{{repo}} resolved by gh, never a raw URL)"
+    );
+
+    // The payload is serde_json (never string-formatted JSON) and carries the
+    // for_github receipt verbatim — including the house footer + fenced content.
+    let stdin = std::fs::read_to_string(tmp.path().join("stdin.txt")).expect("stdin.txt");
+    let payload: serde_json::Value = serde_json::from_str(&stdin).expect("a valid JSON payload");
+    let posted = payload["body"].as_str().expect("a string `body`");
+    assert_eq!(posted, body, "the exact for_github receipt is posted");
+    assert!(
+        posted.contains("_Posted from Nightcore._"),
+        "the GitHub house footer rode along: {posted}"
+    );
+    assert!(
+        posted.starts_with("### 🌙 Nightcore — Trust report"),
+        "the GitHub house header (never the plain `#` export title): {posted}"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn attach_surfaces_gh_stderr_on_failure() {
+    use std::time::Duration;
+    let tmp = TempDir::new().expect("temp dir");
+    let script = fake_gh(
+        tmp.path(),
+        "echo 'HTTP 404: Not Found (pull request)' >&2\nexit 1",
+    );
+    let err = post_trust_comment_with(
+        tmp.path(),
+        script.to_str().expect("utf8 path"),
+        7,
+        "body",
+        Duration::from_secs(10),
+    )
+    .expect_err("a gh failure surfaces (never a silent success)");
+    assert!(
+        err.contains("Not Found"),
+        "gh's own stderr explains itself: {err}"
+    );
 }
 
 #[test]

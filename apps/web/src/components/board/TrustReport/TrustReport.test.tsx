@@ -33,6 +33,13 @@ const RUN_TASK: Task = makeTask({
   verified: true,
 });
 
+/** The same run, but with a pull request — the "Attach to PR" action appears. */
+const PR_TASK: Task = makeTask({
+  ...RUN_TASK,
+  prUrl: 'https://github.com/acme/widget/pull/7',
+  prNumber: 7,
+});
+
 const PREVIEW_MD = '# Nightcore — Trust report\n\nPREVIEW-ONLY-MARKER line for the receipt body.';
 
 /** Route the mocked invoke per command. */
@@ -149,6 +156,56 @@ test('Preview renders the canonical markdown from trust_report_markdown', async 
       forGithub: false,
     }),
   );
+});
+
+// --- Attach to PR (PR 3): the human-gated GitHub comment post ----------------
+
+test('the Attach to PR action is hidden for a task with no pull request', async () => {
+  stubCommands();
+  const screen = render(<TrustReport task={RUN_TASK} />);
+  await expect.element(screen.getByText('✓ Verified')).toBeInTheDocument();
+  await expect.element(screen.getByRole('button', { name: /attach to pr/i })).not.toBeInTheDocument();
+});
+
+test('Attach to PR posts the receipt through attach_trust_report_to_pr after the confirm', async () => {
+  stubCommands();
+  const screen = render(<TrustReport task={PR_TASK} />);
+  await expect.element(screen.getByText('✓ Verified')).toBeInTheDocument();
+
+  // Arm the confirm gate — nothing is posted yet.
+  await screen.getByRole('button', { name: /attach to pr/i }).click();
+  expect(invoke).not.toHaveBeenCalledWith('attach_trust_report_to_pr', expect.anything());
+
+  // Confirm posts the comment for this task; a success note replaces the gate.
+  await screen.getByRole('button', { name: /attach receipt/i }).click();
+  await vi.waitFor(() =>
+    expect(invoke).toHaveBeenCalledWith('attach_trust_report_to_pr', { taskId: 'task-1' }),
+  );
+  await expect
+    .element(screen.getByText(/Attached the receipt to the pull request/i))
+    .toBeInTheDocument();
+});
+
+test('cancelling the confirm gate posts nothing', async () => {
+  stubCommands();
+  const screen = render(<TrustReport task={PR_TASK} />);
+  await expect.element(screen.getByText('✓ Verified')).toBeInTheDocument();
+
+  await screen.getByRole('button', { name: /attach to pr/i }).click();
+  await screen.getByRole('button', { name: /^cancel$/i }).click();
+  expect(invoke).not.toHaveBeenCalledWith('attach_trust_report_to_pr', expect.anything());
+});
+
+test('a failed attach surfaces the error inline and posts nothing further', async () => {
+  stubCommands({
+    attach_trust_report_to_pr: () => Promise.reject(new Error('HTTP 404: Not Found')),
+  });
+  const screen = render(<TrustReport task={PR_TASK} />);
+  await expect.element(screen.getByText('✓ Verified')).toBeInTheDocument();
+
+  await screen.getByRole('button', { name: /attach to pr/i }).click();
+  await screen.getByRole('button', { name: /attach receipt/i }).click();
+  await expect.element(screen.getByText(/Attach failed: HTTP 404: Not Found/i)).toBeInTheDocument();
 });
 
 test('exportFileName slugs a title into a safe *.md stem', () => {

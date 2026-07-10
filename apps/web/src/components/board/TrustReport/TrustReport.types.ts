@@ -20,6 +20,32 @@ export interface TrustExportView {
   savedPath: string | null;
 }
 
+/** The Trust band's PR-attachment sub-state (PR 3): the human-gated post of the
+ *  `for_github` receipt as a conversation comment on the task's PR, behind a
+ *  ConfirmDialog. Single-flight via `pending`; inline pending/error/success
+ *  feedback (mirroring the export flow rather than a global toast). */
+export interface TrustAttachView {
+  /** Whether the task has a PR to attach to — gates the button's presence
+   *  (`task.prUrl !== undefined`). */
+  available: boolean;
+  /** Arm the ConfirmDialog (open it). */
+  arm: () => void;
+  /** Whether the ConfirmDialog is armed/open. */
+  arming: boolean;
+  /** Dismiss the ConfirmDialog without posting. */
+  cancel: () => void;
+  /** Post the receipt as a PR comment (the ConfirmDialog's confirm). No-ops
+   *  while a post is already in flight (single-flight). */
+  confirm: () => void;
+  /** True while the comment POST is in flight (the confirm shows a spinner). */
+  pending: boolean;
+  /** The last attach failure, shown inline; a new attempt clears it. */
+  error: string | null;
+  /** True after a successful attach (the transient "Attached to the pull
+   *  request" note). */
+  done: boolean;
+}
+
 /** The Trust band's in-drawer markdown-preview sub-state. The canonical markdown is
  *  fetched lazily (once) the first time the preview opens. */
 export interface TrustPreviewView {
@@ -44,6 +70,7 @@ export interface TrustReportView {
   /** The last fetch failure. */
   error: string | null;
   export: TrustExportView;
+  attach: TrustAttachView;
   preview: TrustPreviewView;
 }
 

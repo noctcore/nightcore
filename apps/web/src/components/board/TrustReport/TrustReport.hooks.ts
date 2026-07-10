@@ -7,7 +7,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { Task, TrustReport as TrustReportData } from '@/lib/bridge';
-import { exportTrustReport, trustReport, trustReportMarkdown } from '@/lib/bridge';
+import {
+  attachTrustReportToPr,
+  exportTrustReport,
+  trustReport,
+  trustReportMarkdown,
+} from '@/lib/bridge';
 
 import type { TrustReportView } from './TrustReport.types';
 
@@ -61,6 +66,11 @@ export function useTrustReport(task: Task, override?: TrustReportData | null): T
   const [exportError, setExportError] = useState<string | null>(null);
   const [savedPath, setSavedPath] = useState<string | null>(null);
 
+  const [attachArming, setAttachArming] = useState(false);
+  const [attachPending, setAttachPending] = useState(false);
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const [attachDone, setAttachDone] = useState(false);
+
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewMarkdown, setPreviewMarkdown] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -78,6 +88,10 @@ export function useTrustReport(task: Task, override?: TrustReportData | null): T
     setExportPending(false);
     setExportError(null);
     setSavedPath(null);
+    setAttachArming(false);
+    setAttachPending(false);
+    setAttachError(null);
+    setAttachDone(false);
     setPreviewOpen(false);
     setPreviewMarkdown(null);
     setPreviewLoading(false);
@@ -149,12 +163,56 @@ export function useTrustReport(task: Task, override?: TrustReportData | null): T
 
   const togglePreview = useCallback(() => setPreviewOpen((open) => !open), []);
 
+  // Attach the receipt to the task's PR (PR 3): arm → confirm → post. The confirm
+  // is single-flight (a second confirm while a post is in flight no-ops), and the
+  // dialog closes on confirm so it can't re-fire; a failure surfaces inline and
+  // re-arming retries. Mirrors the export flow's inline-feedback posture.
+  const armAttach = useCallback(() => {
+    setAttachError(null);
+    setAttachDone(false);
+    setAttachArming(true);
+  }, []);
+  const cancelAttach = useCallback(() => setAttachArming(false), []);
+  // Single-flight is structural: confirm CLOSES the dialog (so it can't be
+  // re-clicked) and the confirm button disables while `busy`; the post then runs
+  // to a terminal state. Mirrors `runExport`'s straightforward fire-and-settle.
+  const confirmAttach = useCallback(() => {
+    setAttachArming(false);
+    setAttachPending(true);
+    setAttachError(null);
+    setAttachDone(false);
+    void attachTrustReportToPr(taskId).then(
+      () => {
+        setAttachPending(false);
+        setAttachDone(true);
+      },
+      (err: unknown) => {
+        setAttachPending(false);
+        setAttachError(errorText(err));
+      },
+    );
+  }, [taskId]);
+
+  // The button is present only when the task actually has a PR (mirror how the
+  // PR bands gate on `task.prUrl !== undefined`).
+  const attachAvailable = task.prUrl !== undefined;
+
   return useMemo<TrustReportView>(() => {
     const exportView = {
       run: runExport,
       pending: exportPending,
       error: exportError,
       savedPath,
+    };
+    const attachView = {
+      available: attachAvailable,
+      arm: armAttach,
+      arming: attachArming,
+      cancel: cancelAttach,
+      confirm: confirmAttach,
+      pending: attachPending,
+      error: attachError,
+      done: attachDone,
     };
     const previewView = {
       open: previewOpen,
@@ -170,6 +228,7 @@ export function useTrustReport(task: Task, override?: TrustReportData | null): T
         unavailable: override === null,
         error: null,
         export: exportView,
+        attach: attachView,
         preview: previewView,
       };
     }
@@ -179,6 +238,7 @@ export function useTrustReport(task: Task, override?: TrustReportData | null): T
       unavailable,
       error: fetchError,
       export: exportView,
+      attach: attachView,
       preview: previewView,
     };
   }, [
@@ -191,6 +251,14 @@ export function useTrustReport(task: Task, override?: TrustReportData | null): T
     exportPending,
     exportError,
     savedPath,
+    attachAvailable,
+    armAttach,
+    attachArming,
+    cancelAttach,
+    confirmAttach,
+    attachPending,
+    attachError,
+    attachDone,
     previewOpen,
     togglePreview,
     previewMarkdown,

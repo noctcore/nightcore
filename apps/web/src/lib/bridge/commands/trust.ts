@@ -61,3 +61,17 @@ export async function exportTrustReport(
   await invoke('write_trust_report', { taskId, destPath: dest });
   return { saved: true, path: dest };
 }
+
+/** Attach the Trust Report to the task's pull request as a conversation comment
+ *  (PR 3). Rust renders the ONE canonical markdown in its `for_github` flavor
+ *  (house header/footer + GitHub-safe fencing) and posts it atomically via
+ *  `gh api …/issues/{n}/comments`. Human-gated on this side (the Trust band's
+ *  ConfirmDialog); REJECTS loudly on failure (and when the task has no PR) so the
+ *  band surfaces the error inline — no silent no-op. Rejects outside Tauri
+ *  (browser preview) rather than pretending the post landed. */
+export async function attachTrustReportToPr(taskId: string): Promise<void> {
+  if (!isTauri()) {
+    throw new Error('Attaching to a pull request is unavailable in the browser preview.');
+  }
+  await invoke('attach_trust_report_to_pr', { taskId });
+}

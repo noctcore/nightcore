@@ -37,8 +37,27 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** The demoable happy path: reviewer PASS, structure-lock green, a couple of
- *  guardrail events, cost + tokens present. */
+ *  guardrail events, cost + tokens present. The task has NO PR, so the "Attach to
+ *  PR" action is hidden (only Export + Preview show). */
 export const Verified: Story = {};
+
+/** A verified task that already has a pull request — the "Attach to PR" action
+ *  appears beside Export + Preview (PR 3). */
+export const WithPullRequest: Story = {
+  args: {
+    task: makeTask({
+      id: 'task-1',
+      title: 'Wire up auth guard',
+      status: 'done',
+      runMode: 'worktree',
+      branch: 'nc/auth-guard',
+      verified: true,
+      prUrl: 'https://github.com/acme/widget/pull/7',
+      prNumber: 7,
+    }),
+    trustReport: TRUST_VERIFIED,
+  },
+};
 
 /** The gauntlet failed at a structure-lock check and the reviewer requested
  *  changes — the "do not trust this merge yet" shape. */
@@ -67,5 +86,32 @@ export const TogglesPreview: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole('button', { name: /^preview$/i }));
     await expect(canvas.getByRole('button', { name: /hide preview/i })).toBeInTheDocument();
+  },
+};
+
+/** Play test: "Attach to PR" arms a ConfirmDialog (the human gate) before anything
+ *  is posted to GitHub. Stops at the gate — the post itself needs a live backend. */
+export const AttachArmsConfirm: Story = {
+  args: {
+    task: makeTask({
+      id: 'task-1',
+      title: 'Wire up auth guard',
+      status: 'done',
+      runMode: 'worktree',
+      branch: 'nc/auth-guard',
+      verified: true,
+      prUrl: 'https://github.com/acme/widget/pull/7',
+      prNumber: 7,
+    }),
+    trustReport: TRUST_VERIFIED,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: /attach to pr/i }));
+    // The ConfirmDialog renders in a portal (document.body), not the canvas.
+    const dialog = within(document.body);
+    await expect(
+      dialog.getByRole('alertdialog', { name: /attach the trust report/i }),
+    ).toBeInTheDocument();
   },
 };

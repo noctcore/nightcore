@@ -121,6 +121,19 @@ export function CreatePRDialog({ open, task, onCreate, onClose }: CreatePRDialog
           disabled={v.submitting}
         />
 
+        <div className="flex flex-col gap-1">
+          <Checkbox
+            checked={v.includeReceipt}
+            onChange={v.setIncludeReceipt}
+            label="Include governance receipt"
+            disabled={v.submitting}
+          />
+          <p className="pl-6 text-[11px] leading-snug text-muted-foreground">
+            Appends the Trust Report (gauntlet, guardrail ledger, flight summary) to the
+            pull-request body.
+          </p>
+        </div>
+
         {v.error !== null && (
           <p className="rounded-[8px] border border-destructive/40 bg-destructive/[0.12] px-3 py-2 text-[12px] text-destructive">
             {v.error}

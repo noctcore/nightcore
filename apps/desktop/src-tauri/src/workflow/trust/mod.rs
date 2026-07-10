@@ -18,6 +18,7 @@
 
 mod aggregate;
 mod contract;
+mod post;
 mod render;
 
 #[cfg(test)]
@@ -25,6 +26,7 @@ mod tests;
 
 pub(crate) use aggregate::build_report;
 pub(crate) use contract::TrustReport;
+pub(crate) use post::{post_trust_comment_with, require_pr_number, GH_COMMENT_TIMEOUT};
 pub(crate) use render::{render_for_github, render_markdown};
 
 // The nested section shapes (`GauntletTrust`/`GuardrailTrust`/… ) are referenced by

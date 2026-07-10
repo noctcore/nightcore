@@ -17,9 +17,14 @@ use std::path::{Component, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
+use crate::git::gh::GH_BINARY;
 use crate::store::TaskStore;
 use crate::task::Task;
-use crate::workflow::trust::{build_report, render_for_github, render_markdown, TrustReport};
+use crate::workflow::merge::require_project;
+use crate::workflow::trust::{
+    build_report, post_trust_comment_with, render_for_github, render_markdown, require_pr_number,
+    TrustReport, GH_COMMENT_TIMEOUT,
+};
 
 /// The active project's per-task ledger path (`resolve_ledger_path` idiom). `None`
 /// when no project is active — the aggregator then reads an absent ledger (empty
@@ -99,6 +104,48 @@ pub async fn write_trust_report(
     })
     .await
     .map_err(|e| format!("write trust report failed to run: {e}"))?
+}
+
+/// Attach the Trust Report to the task's pull request as a conversation comment
+/// (PR 3, §3.9). Renders the ONE canonical markdown in its `for_github` flavor
+/// (the house header/footer + GitHub-safe fencing — NEVER the plain export
+/// renderer) and posts it via `gh api …/issues/{n}/comments` (the
+/// `post_push_comment_with` idiom). FAILS loudly when the task has no PR — never a
+/// silent no-op (`require_pr_number`). Human-gated on the web side (the Trust
+/// band's ConfirmDialog); the command never self-gates
+/// (`pr_review_post::post_review_to_github`'s posture). It is a SEPARATE action
+/// from create/merge and takes NO `pr_in_flight` lease (§3.9) — its own comment
+/// deadline bounds it, and the web action's pending guard single-flights it.
+///
+/// `gh` runs in the PROJECT ROOT (always present — the worktree may be gone
+/// post-merge); `{owner}/{repo}` resolve from that repo's origin remote, so no raw
+/// URL crosses IPC. Async + `spawn_blocking` for the file reads + network `gh`
+/// spawn (the sync-command WKWebView-freeze trap).
+#[tauri::command]
+pub async fn attach_trust_report_to_pr(app: AppHandle, task_id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || attach_blocking(&app, &task_id))
+        .await
+        .map_err(|e| format!("attach trust report failed to run: {e}"))?
+}
+
+/// The blocking body of [`attach_trust_report_to_pr`]: resolve the PR number +
+/// project root, build the report, render `for_github`, and post the comment.
+fn attach_blocking(app: &AppHandle, task_id: &str) -> Result<(), String> {
+    let store = app
+        .try_state::<TaskStore>()
+        .ok_or("task store unavailable")?;
+    let task: Task = store
+        .get(task_id)
+        .ok_or_else(|| format!("no task with id {task_id}"))?;
+    // Fail loudly when there is no PR to attach to (never a silent no-op).
+    let pr_number = require_pr_number(&task)?;
+    let project = require_project(app)?;
+    let dir = PathBuf::from(&project.path);
+    let tasks_dir = store.tasks_dir();
+    let ledger = ledger_path(app, task_id);
+    let report = build_report(&task, &ledger, &tasks_dir);
+    let body = render_for_github(&report);
+    post_trust_comment_with(&dir, GH_BINARY, pr_number, &body, GH_COMMENT_TIMEOUT)
 }
 
 /// Validate a user-chosen export path (§3.7): it must be ABSOLUTE (the native
