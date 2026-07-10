@@ -6,14 +6,18 @@ import {
   GithubIcon,
   InsightIcon,
   LockIcon,
-  PerfIcon,
   RefineIcon,
-  VerifiedIcon,
 } from '@/components/ui';
 
 import type { NavItem } from './AppShell.types';
 
-/** Workspace sidebar nav — grouped by project / tools / settings. */
+/** Workspace sidebar nav — grouped by the five workflow stages (Intake →
+ *  Understand → Harden → Enforce → Verify) plus the non-stage Project and footer
+ *  Settings groups. Each stage is its own mono-uppercase group header (kept even
+ *  for single-child groups); the group metadata + order live in
+ *  `NavSidebar.hooks.ts` (NAV_GROUP_META / GROUP_ORDER). Hints K W T U H E P S
+ *  are all distinct (I / R were freed by removing the standalone Insight /
+ *  Scorecard rows in the PR 3 stage flip). */
 export const APP_SHELL_NAV: NavItem[] = [
   {
     view: 'board',
@@ -30,66 +34,39 @@ export const APP_SHELL_NAV: NavItem[] = [
     group: 'project',
   },
   {
-    // Phase-1 PR 1: temporary row in `tools`. The stage regroup (Intake →
-    // Understand → Harden → Enforce → Verify) and the removal of the standalone
-    // Insight/Scorecard rows land in PR 3.
+    view: 'issuetriage',
+    label: 'Issue Triage',
+    hint: 'T',
+    icon: <BugIcon size={16} />,
+    group: 'intake',
+  },
+  {
     view: 'understand',
     label: 'Find & Grade',
     hint: 'U',
     icon: <InsightIcon size={16} />,
-    group: 'tools',
+    group: 'understand',
   },
-  {
-    view: 'insight',
-    label: 'Insight',
-    hint: 'I',
-    icon: <InsightIcon size={16} />,
-    group: 'tools',
-  },
-  {
-    view: 'scorecard',
-    label: 'Scorecard',
-    hint: 'R',
-    icon: <PerfIcon size={16} />,
-    group: 'tools',
-  },
-  {
-    view: 'harness',
-    label: 'Harness',
-    hint: 'H',
-    icon: <VerifiedIcon size={16} />,
-    group: 'tools',
-  },
-  // Temporary Harden / Enforce rows (Phase-1 PR 2). They coexist with the unified
-  // `harness` row until PR 3 removes it and regroups the sidebar into stages;
-  // hints D / E stay clear of the existing set (K W I R H P T S).
   {
     view: 'harden',
-    label: 'Harden',
-    hint: 'D',
+    label: 'Propose',
+    hint: 'H',
     icon: <RefineIcon size={16} />,
-    group: 'tools',
+    group: 'harden',
   },
   {
     view: 'enforce',
-    label: 'Enforce',
+    label: 'Conventions',
     hint: 'E',
     icon: <LockIcon size={16} />,
-    group: 'tools',
+    group: 'enforce',
   },
   {
     view: 'prreview',
     label: 'PR Review',
     hint: 'P',
     icon: <GithubIcon size={16} />,
-    group: 'tools',
-  },
-  {
-    view: 'issuetriage',
-    label: 'Issue Triage',
-    hint: 'T',
-    icon: <BugIcon size={16} />,
-    group: 'tools',
+    group: 'verify',
   },
   {
     view: 'settings',

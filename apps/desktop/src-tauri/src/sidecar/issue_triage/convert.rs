@@ -118,6 +118,10 @@ pub fn convert_issue_validation_to_task(
         validation_description(&run, result),
     );
     task.kind = task_kind_for(result);
+    // FROZEN mint prefix: paired with the source-ref.ts REGISTRY (`issue-triage` →
+    // Issue Triage, an Intake child) — do not rename. Renaming orphans every
+    // persisted token. Run-level (2-segment) token: the validation IS the item.
+    // Spelling split: this KEY is hyphenated; its AppView is `issuetriage`.
     task.source_ref = Some(format!("issue-triage:{run_id}"));
 
     let stamped = convert_to_task(

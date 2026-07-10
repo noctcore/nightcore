@@ -3,13 +3,13 @@
 export type AppView =
   | 'board'
   | 'worktrees'
+  // The five stage destinations (Phase-1 view rethink, PR 3): Understand hosts
+  // Insight's Find + Scorecard's Grade behind one shell; Harden / Enforce are two
+  // view filters over the ONE HarnessView run/store; PR Review + Issue Triage keep
+  // their own destinations. The standalone `insight` / `scorecard` / `harness`
+  // routes were removed in PR 3 — every stale literal is now a compile error, and
+  // the source-ref REGISTRY retargets legacy provenance tokens onto these keys.
   | 'understand'
-  | 'insight'
-  | 'scorecard'
-  | 'harness'
-  // The Harden / Enforce destinations (Phase-1 view rethink, PR 2): two view
-  // filters over the ONE HarnessView run/store. Added additively alongside the
-  // unified `harness` route, which PR 3 removes when the nav regroups.
   | 'harden'
   | 'enforce'
   | 'prreview'
@@ -19,8 +19,17 @@ export type AppView =
 
 import type { ReactNode } from 'react';
 
-/** Sidebar nav section ids — main groups plus footer-placed settings. */
-export type NavGroupId = 'project' | 'tools' | 'settings';
+/** Sidebar nav section ids — the five workflow stages (Intake → Understand →
+ *  Harden → Enforce → Verify) framed by the non-stage Project group and the
+ *  footer-placed Settings group. */
+export type NavGroupId =
+  | 'project'
+  | 'intake'
+  | 'understand'
+  | 'harden'
+  | 'enforce'
+  | 'verify'
+  | 'settings';
 
 /** A nav entry in the sidebar workspace section. */
 export interface NavItem {

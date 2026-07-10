@@ -2,17 +2,35 @@ import { useCallback, useMemo, useState } from 'react';
 
 import type { NavGroupId, NavItem } from '../AppShell/AppShell.types';
 
-/** Metadata for each sidebar nav section. */
+/** Metadata for each sidebar nav section. `note` is an optional muted caption
+ *  rendered under the group's items (non-interactive) — used to explain a stage
+ *  whose surface lives elsewhere (Verify's gauntlet runs per-task on the board). */
 export const NAV_GROUP_META: Record<
   NavGroupId,
-  { label: string; collapsible: boolean; footer?: boolean }
+  { label: string; collapsible: boolean; footer?: boolean; note?: string }
 > = {
   project: { label: 'Project', collapsible: false },
-  tools: { label: 'Tools', collapsible: true },
+  intake: { label: 'Intake', collapsible: false },
+  understand: { label: 'Understand', collapsible: false },
+  harden: { label: 'Harden', collapsible: false },
+  enforce: { label: 'Enforce', collapsible: false },
+  verify: {
+    label: 'Verify',
+    collapsible: false,
+    note: 'Structure-Lock Gauntlet runs per-task on the board.',
+  },
   settings: { label: 'Settings', collapsible: false, footer: true },
 };
 
-const GROUP_ORDER: NavGroupId[] = ['project', 'tools', 'settings'];
+const GROUP_ORDER: NavGroupId[] = [
+  'project',
+  'intake',
+  'understand',
+  'harden',
+  'enforce',
+  'verify',
+  'settings',
+];
 
 /** One labelled nav section derived from flat {@link NavItem} rows. */
 export interface NavSection {
@@ -20,6 +38,8 @@ export interface NavSection {
   label: string;
   collapsible: boolean;
   footer?: boolean;
+  /** Optional muted caption rendered under the section's items. */
+  note?: string;
   items: NavItem[];
 }
 
