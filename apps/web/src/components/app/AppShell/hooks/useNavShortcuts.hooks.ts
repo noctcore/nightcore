@@ -12,7 +12,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return target.isContentEditable;
 }
 
-/** Wire the sidebar's single-letter nav hints (K/W/I/R/H/P/S) to actual
+/** Wire the sidebar's single-letter nav hints (K/W/T/U/H/E/P/S) to actual
  *  navigation: a bare keypress matching a nav item's `hint` routes to its view.
  *  Ignored while a modifier is held (so app/OS chords still work) or focus is in a
  *  text field, and only active while `enabled` (the sidebar is on screen). Without

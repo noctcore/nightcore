@@ -1,6 +1,7 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
 
+import { navRenderParityRule } from '../rules/nav-render-parity.ts';
 import { noWarnSeverityRule } from '../rules/no-warn-severity.ts';
 import { packageShapeRule } from '../rules/package-shape.ts';
 import { createFakeCtx, type FakeFiles } from './test-utils/createFakeCtx.ts';
@@ -106,5 +107,43 @@ describe('noWarnSeverityRule (via fake ctx)', () => {
     expect(violations.length).toBe(1);
     expect(violations[0].file).toBe('eslint.config.mjs');
     expect(violations[0].message).toContain("'warn'");
+  });
+});
+
+describe('navRenderParityRule (via fake ctx)', () => {
+  const SOURCE_REF = 'apps/web/src/lib/source-ref.ts';
+  const APP_SHELL_VIEWS =
+    'apps/web/src/components/app/AppShell/AppShellViews.tsx';
+
+  test('every REGISTRY view with a render branch is clean', () => {
+    const files: FakeFiles = {
+      [SOURCE_REF]: `
+        insight: { view: 'understand', family: 'insight' },
+        harness: { view: 'enforce', family: 'harness' },
+      `,
+      [APP_SHELL_VIEWS]: `
+        {view === 'understand' && <UnderstandView />}
+        {view === 'enforce' && <HarnessView mode="enforce" />}
+      `,
+    };
+    const ctx = createFakeCtx({ files });
+    expect(navRenderParityRule.run(ctx)).toEqual([]);
+  });
+
+  test('a REGISTRY view with no render branch is a violation (the blank-screen mode)', () => {
+    const files: FakeFiles = {
+      [SOURCE_REF]: `ghost: { view: 'ghoststage', family: 'insight' },`,
+      [APP_SHELL_VIEWS]: `{view === 'board' && <Board />}`,
+    };
+    const ctx = createFakeCtx({ files });
+    const violations = navRenderParityRule.run(ctx);
+    expect(violations.length).toBe(1);
+    expect(violations[0].rule).toBe('nav-render-parity');
+    expect(violations[0].message).toContain('ghoststage');
+  });
+
+  test('missing files stay silent (a bigger break other rules surface)', () => {
+    const ctx = createFakeCtx({ files: {} });
+    expect(navRenderParityRule.run(ctx)).toEqual([]);
   });
 });

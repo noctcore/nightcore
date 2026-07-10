@@ -4,14 +4,13 @@ import type { ScanTarget } from '@/lib/source-ref';
 
 import type { UnderstandMode, UnderstandViewProps } from './UnderstandView.types';
 
-/** Which sub-view owns a given provenance target. Phase-1 PR 1: the `ScanTarget`
- *  carries no `family` discriminator yet (added in PR 3), so we route by `kind` —
- *  a Scorecard `reading` lands on Grade, an Insight `finding` on Find. When
- *  PR 3 adds `family`, this narrows to `family === 'scorecard'` with no other
- *  change to the shell. Returns `null` for an absent target. */
+/** Which sub-view owns a given provenance target. The `ScanTarget.family`
+ *  discriminator (added in PR 3) says which tool minted it — a Scorecard
+ *  (`family: 'scorecard'`) target lands on Grade, an Insight (`family: 'insight'`)
+ *  target on Find. Returns `null` for an absent target. */
 function modeForTarget(target: ScanTarget | null | undefined): UnderstandMode | null {
   if (target === null || target === undefined) return null;
-  return target.kind === 'reading' ? 'grade' : 'find';
+  return target.family === 'scorecard' ? 'grade' : 'find';
 }
 
 /** State model for the Understand shell: owns the Find|Grade toggle and routes a
@@ -40,11 +39,12 @@ export function useUnderstandView({ preselect }: UnderstandViewProps): {
     if (value === 'find' || value === 'grade') setMode(value);
   }, []);
 
-  const targetMode = modeForTarget(preselect);
+  // Hand each sub-view ONLY the target it owns (gated by `family`), so the other
+  // never tries to consume a preselect that isn't its own.
   return {
     mode,
     selectMode,
-    findPreselect: targetMode === 'find' ? (preselect ?? null) : null,
-    gradePreselect: targetMode === 'grade' ? (preselect ?? null) : null,
+    findPreselect: preselect?.family === 'insight' ? preselect : null,
+    gradePreselect: preselect?.family === 'scorecard' ? preselect : null,
   };
 }

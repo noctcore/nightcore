@@ -363,6 +363,7 @@ test('preselect selects the run’s PR and opens the named finding', async () =>
   mockCommands({ get_pr_review_run: () => run });
   const model = await mountView({
     view: 'prreview',
+    family: 'pr-review',
     kind: 'finding',
     runId: 'run-10',
     itemId: 'sf1',
@@ -436,6 +437,7 @@ test('a preselect landing while a gate dialog is open closes all three gates', a
         sink={(m) => (model = m)}
         preselect={{
           view: 'prreview',
+          family: 'pr-review',
           kind: 'finding',
           runId: 'run-10',
           itemId: 'sf1',

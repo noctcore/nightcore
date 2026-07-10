@@ -62,6 +62,36 @@ test('shows no provenance chip for a hand-created task', async () => {
   expect(screen.getByText(/^From /).query()).toBeNull();
 });
 
+test('the provenance chip fires onOpenSourceRef with the raw token for each legacy scheme', async () => {
+  // The mint PREFIXES are frozen and the chip label (sourceRefLabel) is unchanged
+  // by the stage flip, so every legacy scheme still renders its chip and hands the
+  // RAW token back to routing (which retargets it via the REGISTRY).
+  const cases: ReadonlyArray<readonly [string, string]> = [
+    ['insight:run-1:f-9', 'Insight finding'],
+    ['scorecard:run-2:r-3', 'Scorecard reading'],
+    ['harness:run-4:conv-1', 'Harness convention'],
+    ['harness-proposal:run-4:prop-2', 'Harness proposal'],
+    ['pr-review:run-5:sf-1', 'PR Review finding'],
+    ['issue-triage:val-7', 'Issue validation'],
+  ];
+  for (const [ref, label] of cases) {
+    const onOpenSourceRef = vi.fn();
+    const screen = render(
+      <FromScanProvenance task={makeTask({ sourceRef: ref })} onOpenSourceRef={onOpenSourceRef} />,
+    );
+    await screen.getByRole('button', { name: new RegExp(`From ${label}`) }).click();
+    expect(onOpenSourceRef).toHaveBeenCalledWith(ref);
+  }
+});
+
+test('an unknown-scheme sourceRef renders no provenance chip (graceful degradation)', async () => {
+  // A future/legacy scheme not in the REGISTRY degrades silently — no chip, and
+  // routing no-ops if somehow invoked (see useRouting malformed-token test).
+  const screen = render(<FromScanProvenance task={makeTask({ sourceRef: 'mystery:run:item' })} />);
+  await expect.element(screen.getByText('Overview')).toBeInTheDocument();
+  expect(screen.getByText(/^From /).query()).toBeNull();
+});
+
 test('shows the plan and Approve / Refine / Reject for a waiting task', async () => {
   const onApprove = vi.fn();
   const screen = render(

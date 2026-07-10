@@ -12,7 +12,8 @@ const meta = {
     view: 'board',
     nav: [
       { view: 'board', label: 'Kanban Board', hint: 'K', icon: '▦', group: 'project' },
-      { view: 'insight', label: 'Insight', hint: 'I', icon: '◎', group: 'tools' },
+      { view: 'understand', label: 'Find & Grade', hint: 'U', icon: '◎', group: 'understand' },
+      { view: 'prreview', label: 'PR Review', hint: 'P', icon: '⌥', group: 'verify' },
       { view: 'settings', label: 'Settings', hint: 'S', icon: '⚙', group: 'settings' },
     ],
     collapsed: false,

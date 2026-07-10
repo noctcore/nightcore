@@ -289,6 +289,9 @@ pub fn convert_review_finding_to_task(
         review_description(&finding),
     );
     task.kind = TaskKind::Build;
+    // FROZEN mint prefix: paired with the source-ref.ts REGISTRY (`pr-review` →
+    // PR Review, a Verify child) — do not rename. Renaming orphans every persisted
+    // token. Note the spelling split: this KEY is hyphenated; its AppView is `prreview`.
     task.source_ref = Some(format!("pr-review:{run_id}:{finding_id}"));
 
     let stamped = super::convert::convert_to_task(

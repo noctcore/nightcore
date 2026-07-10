@@ -23,14 +23,11 @@ const TaskDetail = lazy(() =>
 const SettingsView = lazy(() =>
   import('@/components/settings').then((m) => ({ default: m.SettingsView })),
 );
+// Understand hosts Insight (Find) + Scorecard (Grade) internally, so those two
+// feature views are no longer imported here directly — they load transitively
+// through UnderstandView's own lazy chunk.
 const UnderstandView = lazy(() =>
   import('../UnderstandView').then((m) => ({ default: m.UnderstandView })),
-);
-const InsightView = lazy(() =>
-  import('@/components/insight').then((m) => ({ default: m.InsightView })),
-);
-const ScorecardView = lazy(() =>
-  import('@/components/scorecard').then((m) => ({ default: m.ScorecardView })),
 );
 const HarnessView = lazy(() =>
   import('@/components/harness').then((m) => ({ default: m.HarnessView })),
@@ -175,61 +172,29 @@ export function AppShellViews({
           </Suspense>
         )}
 
+        {/* Understand stage (Phase-1 PR 3): one shell hosting Insight's Find +
+            Scorecard's Grade. The `understand`-view preselect flows in; the shell
+            reads `scanTarget.family` to flip to the sub-view that owns it. The
+            standalone `insight` / `scorecard` routes were removed in the flip —
+            legacy `insight:` / `scorecard:` provenance tokens now retarget here
+            through the source-ref REGISTRY. */}
         {view === 'understand' && (
           <Suspense fallback={<RouteFallback />}>
-            {/* Phase-1 PR 1: additive shell. `preselect` stays null — no
-                `sourceRef` scheme mints the `understand` view until the PR 3
-                REGISTRY retarget, so provenance chips still route to the
-                standalone Insight/Scorecard rows below. */}
             <UnderstandView
               projectPath={active?.path ?? null}
               projectName={active?.name ?? null}
               onGotoBoard={() => routing.goto('board')}
-              preselect={null}
+              preselect={routing.scanTarget?.view === 'understand' ? routing.scanTarget : null}
               onPreselectConsumed={routing.clearScanTarget}
             />
           </Suspense>
         )}
 
-        {view === 'insight' && (
-          <Suspense fallback={<RouteFallback />}>
-            <InsightView
-              projectPath={active?.path ?? null}
-              projectName={active?.name ?? null}
-              onGotoBoard={() => routing.goto('board')}
-              preselect={routing.scanTarget?.view === 'insight' ? routing.scanTarget : null}
-              onPreselectConsumed={routing.clearScanTarget}
-            />
-          </Suspense>
-        )}
-
-        {view === 'scorecard' && (
-          <Suspense fallback={<RouteFallback />}>
-            <ScorecardView
-              projectPath={active?.path ?? null}
-              projectName={active?.name ?? null}
-              onGotoBoard={() => routing.goto('board')}
-              preselect={routing.scanTarget?.view === 'scorecard' ? routing.scanTarget : null}
-              onPreselectConsumed={routing.clearScanTarget}
-            />
-          </Suspense>
-        )}
-
-        {view === 'harness' && (
-          <Suspense fallback={<RouteFallback />}>
-            <HarnessView
-              projectPath={active?.path ?? null}
-              projectName={active?.name ?? null}
-              onGotoBoard={() => routing.goto('board')}
-              preselect={routing.scanTarget?.view === 'harness' ? routing.scanTarget : null}
-              onPreselectConsumed={routing.clearScanTarget}
-            />
-          </Suspense>
-        )}
-
-        {/* Harden / Enforce (Phase-1 PR 2): the same HarnessView run/store, split by
-            `mode`. Provenance chips still route to the unified `harness` view until
-            PR 3 retargets the source-ref REGISTRY, so these carry no preselect yet. */}
+        {/* Harden / Enforce (Phase-1 PR 3): the same HarnessView run/store, split by
+            `mode`. Each gates its preselect on its own stage view key — a
+            `harness-proposal:` token retargets to `harden`, a `harness:` convention
+            token to `enforce`; the section within HarnessView is then picked by the
+            target's `kind`. The standalone unified `harness` route was removed. */}
         {view === 'harden' && (
           <Suspense fallback={<RouteFallback />}>
             <HarnessView
@@ -237,7 +202,7 @@ export function AppShellViews({
               projectPath={active?.path ?? null}
               projectName={active?.name ?? null}
               onGotoBoard={() => routing.goto('board')}
-              preselect={null}
+              preselect={routing.scanTarget?.view === 'harden' ? routing.scanTarget : null}
               onPreselectConsumed={routing.clearScanTarget}
             />
           </Suspense>
@@ -250,7 +215,7 @@ export function AppShellViews({
               projectPath={active?.path ?? null}
               projectName={active?.name ?? null}
               onGotoBoard={() => routing.goto('board')}
-              preselect={null}
+              preselect={routing.scanTarget?.view === 'enforce' ? routing.scanTarget : null}
               onPreselectConsumed={routing.clearScanTarget}
             />
           </Suspense>

@@ -58,13 +58,33 @@ test('openNewProject opens the dialog and closes the switcher together', async (
 
 test('gotoSourceRef preselects the scan target and routes to its view', async () => {
   const router = await mountRouter();
-  // `insight:<runId>:<itemId>` routes to the insight surface carrying the target.
+  // `insight:<runId>:<itemId>` retargets to the Understand STAGE carrying the target.
   router().gotoSourceRef('insight:run-1:item-9');
   await vi.waitFor(() => expect(router().scanTarget).not.toBeNull());
   expect(router().view).toBe(router().scanTarget!.view);
 
   router().clearScanTarget();
   await vi.waitFor(() => expect(router().scanTarget).toBeNull());
+});
+
+test('gotoSourceRef routes each legacy scheme to its remapped stage view', async () => {
+  // The compat shim: a frozen mint prefix routes through the retargeted REGISTRY
+  // to its STAGE. Pin the literal stage key (not an echo of scanTarget.view) so a
+  // silent re-point of the REGISTRY would fail here.
+  const cases: ReadonlyArray<readonly [string, string]> = [
+    ['insight:run-1:f-9', 'understand'],
+    ['scorecard:run-2:r-3', 'understand'],
+    ['harness:run-4:conv-1', 'enforce'],
+    ['harness-proposal:run-4:prop-2', 'harden'],
+    ['pr-review:run-5:sf-1', 'prreview'],
+    ['issue-triage:val-7', 'issuetriage'],
+  ];
+  for (const [ref, stage] of cases) {
+    const router = await mountRouter();
+    router().gotoSourceRef(ref);
+    await vi.waitFor(() => expect(router().view).toBe(stage));
+    expect(router().scanTarget!.view).toBe(stage);
+  }
 });
 
 test('gotoSourceRef ignores a malformed token (defensive no-op)', async () => {

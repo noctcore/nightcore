@@ -145,6 +145,15 @@ function NavGroupSection({
           ))}
         </div>
       )}
+
+      {/* Stage note (e.g. Verify): a muted, non-interactive caption under the
+          group's items explaining a stage whose surface lives elsewhere. Hidden
+          in the collapsed rail (no room for prose). */}
+      {!collapsed && showItems && section.note !== undefined && (
+        <p className="mt-1 px-2.5 text-[11px] leading-snug text-muted-foreground/70">
+          {section.note}
+        </p>
+      )}
     </div>
   );
 }

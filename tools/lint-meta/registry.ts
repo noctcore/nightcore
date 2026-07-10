@@ -5,6 +5,7 @@ import { canonicalHelpersSingleHomeRule } from './rules/canonical-helpers-single
 import { codegenDriftRule } from './rules/codegen-drift';
 import { decisionRegisterIntegrityRule } from './rules/decision-register-integrity';
 import { layerRankRule } from './rules/layer-rank';
+import { navRenderParityRule } from './rules/nav-render-parity';
 import { noClonedComponentFoldersRule } from './rules/no-cloned-component-folders';
 import { noWarnSeverityRule } from './rules/no-warn-severity';
 import { packageShapeRule } from './rules/package-shape';
@@ -38,6 +39,7 @@ export const META_RULES: IMetaRule[] = [
   agentsDocPresenceRule,
   uiPrimitiveShapeRule,
   scanFamilyParityRule,
+  navRenderParityRule,
   noClonedComponentFoldersRule,
   webFileSizeRatchetRule,
   rustModuleShapeRule,

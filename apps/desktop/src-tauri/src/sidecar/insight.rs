@@ -178,6 +178,8 @@ pub fn convert_finding_to_task(
         task_description(&finding),
     );
     task.kind = category_to_kind(&finding.category);
+    // FROZEN mint prefix: paired with the source-ref.ts REGISTRY (`insight` →
+    // Understand stage) — do not rename. Renaming orphans every persisted token.
     task.source_ref = Some(format!("insight:{run_id}:{finding_id}"));
 
     let stamped = super::convert::convert_to_task(
