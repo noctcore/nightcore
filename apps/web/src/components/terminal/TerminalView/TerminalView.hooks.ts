@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useToast } from '@/components/ui';
 import {
   deleteTerminalPersisted,
+  directoryExists,
   getAppInfo,
   listTerminals,
   listTerminalsPersisted,
@@ -67,19 +68,21 @@ export function useTerminalView(input: UseTerminalViewInput) {
   const [restored, setRestored] = useState<PersistedTerminalInfo[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [browseOpen, setBrowseOpen] = useState(false);
   const [spawnError, setSpawnError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pendingClose, setPendingClose] = useState<string | null>(null);
   const [hostOs, setHostOs] = useState<string | null>(null);
   const [confined, setConfined] = useState(confinedDefault);
+  // The cwds of restored (dead) sessions that STILL EXIST on disk — the fail-closed
+  // gate for the "start a fresh shell here" action. Probed once at mount (below).
+  // Since a terminal cwd can now be ANY browsed directory (not just the repo root
+  // or a worktree), a static membership check would wrongly reject browsed dirs; we
+  // probe existence instead. Fail closed: a probe error leaves the cwd out of the
+  // set, so the action stays disabled with a hint.
+  const [restorableCwds, setRestorableCwds] = useState<ReadonlySet<string>>(new Set());
 
   const targets = useMemo(() => buildTargets(input), [input]);
-  // A fresh shell can only reopen into a still-valid spawn target (repo root or a
-  // live worktree) — the same set the server's `resolve_spawn_cwd` accepts. This is
-  // the cwd-still-exists probe for the restore action: a persisted session whose
-  // worktree was removed is not in this set, so its "start fresh" action is gated
-  // off with a hint (rather than surfacing a fail-closed spawn rejection).
-  const restorablePaths = useMemo(() => new Set(targets.map((t) => t.path)), [targets]);
   const confinedAvailable = supportsConfinedTerminal(hostOs);
 
   // On mount, reconcile the manager cache with server truth (drop instances whose
@@ -102,6 +105,19 @@ export function useTerminalView(input: UseTerminalViewInput) {
         setRestored(restoredTabs);
         setHostOs(appInfo.os);
         setActiveId((cur) => cur ?? liveSessions[0]?.id ?? restoredTabs[0]?.id ?? null);
+        // Probe each restored cwd for existence (the fresh-shell gate). Fail-closed:
+        // only cwds that still resolve to a directory become restorable.
+        void Promise.all(
+          restoredTabs.map((t) =>
+            directoryExists(t.cwd).then(
+              (ok) => [t.cwd, ok] as const,
+              () => [t.cwd, false] as const,
+            ),
+          ),
+        ).then((results) => {
+          if (cancelled) return;
+          setRestorableCwds(new Set(results.filter(([, ok]) => ok).map(([cwd]) => cwd)));
+        });
       },
     );
     return () => {
@@ -153,6 +169,36 @@ export function useTerminalView(input: UseTerminalViewInput) {
         // The session cap, a rejected cwd, or a fail-closed confined refusal rejects
         // here — surface it inline in the still-open picker AND as a toast.
         setSpawnError(spawnErrorText(err));
+        toast.error('Could not open terminal', err);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [spawnInto, confined, confinedDefault, onConfinedDefaultChange, toast],
+  );
+
+  /** Open the folder browser to pick ANY directory; close the target picker (the
+   *  confined choice made there carries into the browsed spawn). */
+  const openBrowse = useCallback(() => {
+    setSpawnError(null);
+    setPickerOpen(false);
+    setBrowseOpen(true);
+  }, []);
+  const closeBrowse = useCallback(() => setBrowseOpen(false), []);
+
+  /** Spawn into a browsed directory. On failure, reopen the target picker with the
+   *  error inline (the confined choice preserved), matching `pickTarget`'s surface —
+   *  the folder browser has already closed itself on select. */
+  const pickBrowsed = useCallback(
+    async (path: string) => {
+      setSpawnError(null);
+      setBusy(true);
+      try {
+        await spawnInto(path, confined);
+        if (confined !== confinedDefault) onConfinedDefaultChange(confined);
+      } catch (err) {
+        setSpawnError(spawnErrorText(err));
+        setPickerOpen(true);
         toast.error('Could not open terminal', err);
       } finally {
         setBusy(false);
@@ -230,10 +276,18 @@ export function useTerminalView(input: UseTerminalViewInput) {
       openPicker,
       closePicker,
       pickTarget,
+      onBrowse: openBrowse,
       onConfinedChange,
     },
+    browse: {
+      open: browseOpen,
+      // Start browsing at the project root when there is one, else the home default.
+      initialPath: input.projectPath,
+      close: closeBrowse,
+      pick: pickBrowsed,
+    },
     restore: {
-      canRestore: (cwd: string) => restorablePaths.has(cwd),
+      canRestore: (cwd: string) => restorableCwds.has(cwd),
       startFresh,
     },
   };

@@ -24,8 +24,15 @@ test('picking a target fires onPick with its absolute path', async () => {
 test('shows an empty note when no project is open', async () => {
   const screen = render(<Empty />);
   await expect
-    .element(screen.getByText(/No open project — open a project to start a terminal/i))
+    .element(screen.getByText(/No open project — browse for a folder to start a terminal/i))
     .toBeInTheDocument();
+});
+
+test('the Browse entry fires onBrowse', async () => {
+  const onBrowse = vi.fn();
+  const screen = render(<Default onBrowse={onBrowse} />);
+  await screen.getByRole('button', { name: /Browse/ }).click();
+  expect(onBrowse).toHaveBeenCalled();
 });
 
 test('surfaces the session-cap error inline without closing', async () => {

@@ -25,6 +25,9 @@ export interface NewTabPickerProps {
   targets: TerminalTarget[];
   /** Fired with the chosen target's absolute path. */
   onPick: (path: string) => void;
+  /** Open the folder browser to choose ANY directory (not just the repo root or a
+   *  worktree). The confined choice made here carries into the browsed spawn. */
+  onBrowse: () => void;
   /** Fired on Esc, click-outside, or Cancel. */
   onClose: () => void;
   /** A spawn error to surface inline (e.g. the 8-session cap, or a fail-closed

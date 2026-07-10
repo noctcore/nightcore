@@ -5,6 +5,7 @@ import {
   FolderIcon,
   LockIcon,
   Modal,
+  SearchIcon,
   Spinner,
   useLastPresent,
 } from '@/components/ui';
@@ -51,6 +52,7 @@ export function NewTabPicker({
   open,
   targets,
   onPick,
+  onBrowse,
   onClose,
   error,
   busy = false,
@@ -89,9 +91,26 @@ export function NewTabPicker({
           ))
         ) : (
           <p className="py-3 text-[13px] text-muted-foreground">
-            No open project — open a project to start a terminal.
+            No open project — browse for a folder to start a terminal.
           </p>
         )}
+
+        {/* Browse ANY directory — opens the folder browser. The confined choice
+            below carries into the browsed spawn. */}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onBrowse}
+          className="flex w-full items-center gap-2.5 rounded-[9px] border border-dashed border-border/70 bg-transparent px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-accent/40 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <SearchIcon size={15} className="shrink-0 text-muted-foreground" />
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate text-[13px] font-medium text-foreground">Browse…</span>
+            <span className="truncate text-[11px] text-muted-foreground">
+              Open a shell in any folder on your machine
+            </span>
+          </span>
+        </button>
       </div>
 
       {confinedAvailable && (

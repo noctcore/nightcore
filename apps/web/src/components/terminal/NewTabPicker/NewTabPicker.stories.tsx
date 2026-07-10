@@ -29,6 +29,7 @@ const meta = {
     open: true,
     targets: TARGETS,
     onPick: fn(),
+    onBrowse: fn(),
     onClose: fn(),
     // macOS host by default so the confined checkbox is visible in the gallery.
     confinedAvailable: true,

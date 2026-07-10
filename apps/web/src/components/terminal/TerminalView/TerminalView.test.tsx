@@ -29,6 +29,10 @@ vi.mock('@/lib/bridge', async (importOriginal) => {
     listTerminals: () => listTerminalsMock(),
     listTerminalsPersisted: () => listPersistedMock(),
     deleteTerminalPersisted: () => Promise.resolve(),
+    // The restore fresh-shell gate now probes existence (a cwd can be ANY browsed
+    // dir, not just a worktree). Here the `t1` cwd still exists, the `removed` one
+    // does not — driving the enabled/disabled restore action per tab.
+    directoryExists: (path: string) => Promise.resolve(path.endsWith('/t1')),
     readTerminalPersisted: (id: string) =>
       Promise.resolve({
         info: { id, cwd: '', shell: '', confined: false, createdAt: 0, updatedAt: 0 },
@@ -152,9 +156,9 @@ test('closing a tab confirms, then kills the session and returns to empty', asyn
   await expect.element(screen.getByText('No terminals open')).toBeInTheDocument();
 });
 
-test('restores a persisted session read-only; fresh-shell is gated on the cwd being a valid target', async () => {
-  // A persisted session whose cwd IS a live worktree (restorable) and one whose cwd
-  // was removed (not a target → the fresh-shell action is disabled with a hint).
+test('restores a persisted session read-only; fresh-shell is gated on the cwd still existing', async () => {
+  // A persisted session whose cwd STILL EXISTS (restorable) and one whose cwd was
+  // removed (probe → false → the fresh-shell action is disabled with a hint).
   listPersistedMock.mockResolvedValue([
     persisted('r1', '/Users/dev/nightcore/.nightcore/worktrees/t1'),
     persisted('gone', '/Users/dev/nightcore/.nightcore/worktrees/removed'),
@@ -181,4 +185,24 @@ test('restores a persisted session read-only; fresh-shell is gated on the cwd be
   await expect
     .element(screen.getByRole('button', { name: /Start a fresh shell here/i }))
     .toBeDisabled();
+});
+
+test('Browse opens the folder browser and spawns in the chosen directory', async () => {
+  openSessionMock.mockResolvedValueOnce(fakeSession('b1', '/Users/dev/nightcore'));
+  const screen = render(<Empty />);
+
+  await screen.getByRole('button', { name: 'Open a terminal' }).click();
+  // The picker offers a Browse entry alongside the repo root + worktrees.
+  await screen.getByRole('button', { name: /Browse/ }).click();
+
+  // The folder browser opens at the project root (empty in the mock fs); selecting
+  // the current folder spawns a shell there.
+  await expect
+    .element(screen.getByRole('heading', { name: 'Open a terminal here' }))
+    .toBeInTheDocument();
+  await screen.getByRole('button', { name: /Open terminal here/i }).click();
+
+  expect(openSessionMock).toHaveBeenCalledWith(
+    expect.objectContaining({ cwd: '/Users/dev/nightcore', confined: false }),
+  );
 });

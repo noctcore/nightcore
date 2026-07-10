@@ -1,4 +1,10 @@
-import { Button, ConfirmDialog, EmptyState, TerminalIcon } from '@/components/ui';
+import {
+  Button,
+  ConfirmDialog,
+  EmptyState,
+  FolderBrowserDialog,
+  TerminalIcon,
+} from '@/components/ui';
 import { useWorktreesContext } from '@/lib/worktrees-context';
 
 import { NewTabPicker } from '../NewTabPicker';
@@ -70,12 +76,24 @@ export function TerminalView({
         open={v.picker.open}
         targets={v.picker.targets}
         onPick={v.picker.pickTarget}
+        onBrowse={v.picker.onBrowse}
         onClose={v.picker.closePicker}
         error={v.picker.error}
         busy={v.picker.busy}
         confinedAvailable={v.picker.confinedAvailable}
         confined={v.picker.confined}
         onConfinedChange={v.picker.onConfinedChange}
+      />
+
+      <FolderBrowserDialog
+        open={v.browse.open}
+        initialPath={v.browse.initialPath}
+        onClose={v.browse.close}
+        onSelect={(path) => void v.browse.pick(path)}
+        title="Open a terminal here"
+        description="Pick any folder — your shell runs there with full permissions."
+        selectLabel="Open terminal here"
+        recentsKey="nc:terminal:recent-folders"
       />
 
       <ConfirmDialog
