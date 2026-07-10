@@ -3,6 +3,10 @@
 export type AppView =
   | 'board'
   | 'worktrees'
+  // The global user-terminal view (terminal build spec, PR B). A Project-group
+  // destination, NOT a source-ref REGISTRY view — so `nav-render-parity` is
+  // unaffected — but its render branch lands in the SAME commit as this member.
+  | 'terminal'
   // The five stage destinations (Phase-1 view rethink, PR 3): Understand hosts
   // Insight's Find + Scorecard's Grade behind one shell; Harden / Enforce are two
   // view filters over the ONE HarnessView run/store; PR Review + Issue Triage keep
