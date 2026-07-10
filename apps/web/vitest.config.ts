@@ -83,6 +83,7 @@ export default defineConfig({
             'lucide-react',
             '@xterm/xterm',
             '@xterm/addon-fit',
+            '@xterm/addon-webgl',
           ],
         },
         test: {
@@ -115,6 +116,7 @@ export default defineConfig({
             'lucide-react',
             '@xterm/xterm',
             '@xterm/addon-fit',
+            '@xterm/addon-webgl',
           ],
         },
         test: {

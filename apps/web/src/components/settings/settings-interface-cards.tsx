@@ -1,6 +1,6 @@
 /** Interface settings cards — split from settings-cards to stay under file-size ratchet. */
-import { Columns2Icon, DesignIcon, PanelLeftIcon } from '@/components/ui';
-import type { Settings } from '@/lib/bridge';
+import { Columns2Icon, DesignIcon, PanelLeftIcon, TerminalIcon, Toggle } from '@/components/ui';
+import type { Settings, SettingsPatch } from '@/lib/bridge';
 
 import type { SettingsCardProps } from './SettingsCard';
 
@@ -63,10 +63,10 @@ function SidebarLayoutPicker({
   );
 }
 
-/** Build the Interface page cards (sidebar layout). */
+/** Build the Interface page cards (sidebar layout + terminal rendering). */
 export function buildInterfaceCards(
   settings: Settings,
-  patchGlobal: (patch: { sidebarStyle: string }) => void,
+  patchGlobal: (patch: SettingsPatch) => void,
 ): SettingsCardProps[] {
   const value: SidebarStyle = settings.sidebarStyle === 'classic' ? 'classic' : 'unified';
 
@@ -84,6 +84,24 @@ export function buildInterfaceCards(
             <SidebarLayoutPicker
               value={value}
               onChange={(next) => patchGlobal({ sidebarStyle: next })}
+            />
+          ),
+        },
+      ],
+    },
+    {
+      icon: <TerminalIcon size={18} />,
+      title: 'Terminal',
+      subtitle: 'How the integrated terminal renders its output.',
+      rows: [
+        {
+          label: 'GPU rendering (WebGL)',
+          hint: 'Use the GPU to draw the terminal. Off by default (standard DOM rendering); a lost GPU context falls back automatically.',
+          control: (
+            <Toggle
+              on={settings.terminalWebglEnabled}
+              onChange={(next) => patchGlobal({ terminalWebglEnabled: next })}
+              label="GPU rendering (WebGL)"
             />
           ),
         },

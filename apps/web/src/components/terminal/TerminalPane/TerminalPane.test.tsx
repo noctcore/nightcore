@@ -2,6 +2,7 @@ import { composeStories } from '@storybook/react-vite';
 import { afterEach, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
+import { ToastProvider } from '@/components/ui';
 import type { TerminalSessionInfo } from '@/lib/bridge';
 
 import { closeSession, openSession } from '../terminal-session-manager';
@@ -44,7 +45,11 @@ test('attaches a live xterm instance for a real (echo) session', async () => {
   });
   openedId = session.id;
 
-  render(<TerminalPane session={session} />);
+  render(
+    <ToastProvider>
+      <TerminalPane session={session} />
+    </ToastProvider>,
+  );
   // The pane's attach effect opens the terminal into its container — the xterm
   // screen element appears once mounted.
   await vi.waitFor(() => expect(document.querySelector('.xterm')).not.toBeNull());

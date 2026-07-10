@@ -1,7 +1,9 @@
 import {
   BranchIcon,
   Button,
+  Checkbox,
   FolderIcon,
+  LockIcon,
   Modal,
   Spinner,
   useLastPresent,
@@ -52,6 +54,9 @@ export function NewTabPicker({
   onClose,
   error,
   busy = false,
+  confinedAvailable,
+  confined,
+  onConfinedChange,
 }: NewTabPickerProps) {
   // Retain content across the exit animation so the panel doesn't blank when the
   // parent clears its state on close. Callbacks stay live.
@@ -88,6 +93,24 @@ export function NewTabPicker({
           </p>
         )}
       </div>
+
+      {confinedAvailable && (
+        <div className="mx-5 mt-1 flex items-start gap-2 rounded-[9px] border border-border/60 bg-black/10 px-3 py-2.5">
+          <LockIcon size={14} className="mt-[3px] shrink-0 text-warning/80" aria-hidden />
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <Checkbox
+              checked={confined}
+              onChange={onConfinedChange}
+              label="Confined (writes limited to this folder)"
+              disabled={busy}
+            />
+            <span className="text-[11px] text-muted-foreground">
+              Runs the shell inside the macOS write-containment sandbox, scoped to the
+              chosen folder. Off by default — your shell is otherwise unconfined.
+            </span>
+          </div>
+        </div>
+      )}
 
       {hasPickerError(shown.error) && (
         <div className="mx-5 mt-1 rounded-[8px] border border-destructive/40 bg-destructive/[0.12] px-3 py-2 text-[12px] text-destructive">

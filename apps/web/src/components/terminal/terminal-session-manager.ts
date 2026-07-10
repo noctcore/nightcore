@@ -22,24 +22,15 @@ import { Terminal } from '@xterm/xterm';
 import type { SpawnTerminalOpts, TerminalHandle, TerminalSessionInfo } from '@/lib/bridge';
 import { killTerminal, resizeTerminal, spawnTerminal, writeTerminal } from '@/lib/bridge';
 
-/** Fixed cosmic-dark xterm styling. WKWebView needs an explicit `fontSize` /
- *  `fontFamily` (the feasibility trap list) — inherited page fonts don't reach
- *  xterm's canvas/DOM cells. */
+import { TERMINAL_RENDER_OPTIONS } from './terminal-shared';
+import { loadWebgl, type WebglController } from './terminal-webgl';
+
+/** Live-pane xterm options: the shared cosmic-dark render config plus a blinking
+ *  cursor. The renderer is DOM by default; a WebGL addon is loaded post-open when
+ *  the session opted into the GPU toggle ([`ensureRenderer`], decision 7). */
 const TERMINAL_OPTIONS = {
-  fontSize: 13,
-  fontFamily:
-    'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
-  lineHeight: 1.2,
+  ...TERMINAL_RENDER_OPTIONS,
   cursorBlink: true,
-  // DOM renderer only in PR B (no WebGL addon loaded — that arrives in PR C behind
-  // the GPU toggle). xterm 6's default renderer is DOM, so simply not loading the
-  // WebGL addon IS the DOM-only choice.
-  theme: {
-    background: '#0a0a0f',
-    foreground: '#e4e4ef',
-    cursor: '#a78bfa',
-    selectionBackground: 'rgba(167, 139, 250, 0.3)',
-  },
 } as const;
 
 /** How long to settle rapid ResizeObserver bursts before telling the PTY (the
@@ -56,6 +47,13 @@ interface CachedSession {
   readonly host: HTMLDivElement;
   opened: boolean;
   input: IDisposable | null;
+  /** Whether this session opted into the WebGL/GPU renderer (decision 7). */
+  readonly webgl: boolean;
+  /** The loaded WebGL renderer, or `null` while on DOM (never enabled, still
+   *  loading, or fell back after a context loss). */
+  webglController: WebglController | null;
+  /** Guards the one-time renderer load against re-attach churn. */
+  rendererStarted: boolean;
 }
 
 const cache = new Map<string, CachedSession>();
@@ -66,7 +64,10 @@ const encoder = new TextEncoder();
  *  captured — xterm buffers writes issued before `open()`. Rejects (and disposes
  *  the throwaway instance) when the server refuses: over the 8-session cap or a
  *  rejected cwd. The caller surfaces that. */
-export async function openSession(opts: SpawnTerminalOpts): Promise<TerminalSessionInfo> {
+export async function openSession(
+  opts: SpawnTerminalOpts,
+  webgl = false,
+): Promise<TerminalSessionInfo> {
   const term = new Terminal(TERMINAL_OPTIONS);
   const fit = new FitAddon();
   term.loadAddon(fit);
@@ -90,8 +91,36 @@ export async function openSession(opts: SpawnTerminalOpts): Promise<TerminalSess
     host,
     opened: false,
     input: null,
+    webgl,
+    webglController: null,
+    rendererStarted: false,
   });
   return handle.session;
+}
+
+/** Load the WebGL renderer for a session that opted in (decision 7) — called by the
+ *  pane once its terminal is open. One-time per session (guarded), and only when the
+ *  GPU toggle was on at spawn. `onContextLoss` is invoked if the WebGL context is
+ *  later lost, AFTER this manager has already disposed the addon (reverting to DOM);
+ *  the caller uses it to toast the degrade. A no-op for DOM sessions / unknown ids /
+ *  when WebGL is unavailable. */
+export async function ensureRenderer(id: string, onContextLoss: () => void): Promise<void> {
+  const entry = cache.get(id);
+  if (entry === undefined || !entry.webgl || entry.rendererStarted || !entry.opened) return;
+  // Mark started BEFORE the await so a re-attach mid-load can't double-load.
+  entry.rendererStarted = true;
+  const controller = await loadWebgl(entry.term, () => {
+    // Context lost: dispose the addon (xterm reverts to DOM) and notify the caller.
+    entry.webglController?.dispose();
+    entry.webglController = null;
+    onContextLoss();
+  });
+  // The session may have been closed while the addon loaded — don't resurrect it.
+  if (!cache.has(id)) {
+    controller?.dispose();
+    return;
+  }
+  entry.webglController = controller;
 }
 
 /** Mount a cached session's terminal into `container` and wire input + resize.
@@ -153,6 +182,7 @@ export async function closeSession(id: string): Promise<void> {
     await killTerminal(id);
   } finally {
     entry.input?.dispose();
+    entry.webglController?.dispose();
     entry.handle.detach();
     entry.host.remove();
     entry.term.dispose();

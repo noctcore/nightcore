@@ -25,7 +25,11 @@ import {
   echoWriteTerminal,
   type TerminalByteHandler,
 } from '../mocks';
-import type { TerminalSessionInfo } from '../types';
+import type {
+  PersistedTerminalInfo,
+  PersistedTerminalScrollback,
+  TerminalSessionInfo,
+} from '../types';
 
 export type { TerminalByteHandler } from '../mocks';
 
@@ -124,4 +128,40 @@ export async function terminalSessionsInDir(
   path: string,
 ): Promise<TerminalSessionInfo[]> {
   return tauriInvoke<TerminalSessionInfo[]>('terminal_sessions_in_dir', { path }, []);
+}
+
+// --- Restore on relaunch (PR C) -------------------------------------------
+//
+// Dead sessions persist their scrollback to `.nightcore/terminals/<id>.json`; on
+// Terminal view mount the restore UI lists them and replays a selected one's
+// scrollback READ-ONLY, with a "start a fresh shell here" action. These commands
+// carry only small JSON descriptors (no Channel — the replay bytes ride the
+// base64 field of `terminal_read_persisted`), so they go through `tauriInvoke`
+// like the other lifecycle reads. Outside Tauri there is no persistence, so the
+// list is empty and the reads degrade to no-ops.
+
+/** Persisted (dead) sessions' metadata for the restore UI, newest first. The Rust
+ *  side prunes stale files (age + vanished cwd) as a side effect of listing.
+ *  Returns `[]` outside Tauri (browser preview / dogfood → no restored tabs). */
+export async function listTerminalsPersisted(): Promise<PersistedTerminalInfo[]> {
+  return tauriInvoke<PersistedTerminalInfo[]>('terminal_list_persisted', {}, []);
+}
+
+/** A persisted session's metadata + scrollback bytes (base64) for read-only
+ *  replay. Outside Tauri this is never reached in the normal flow (the list is
+ *  empty), so it resolves to an empty replay. */
+export async function readTerminalPersisted(
+  id: string,
+): Promise<PersistedTerminalScrollback> {
+  return tauriInvoke<PersistedTerminalScrollback>('terminal_read_persisted', { id }, {
+    info: { id, cwd: '', shell: '', confined: false, createdAt: 0, updatedAt: 0 },
+    dataBase64: '',
+  });
+}
+
+/** Delete a persisted session's scrollback file — the restore UI's "dismiss", so a
+ *  dismissed read-only tab does not reappear on the next relaunch. Idempotent;
+ *  no-ops outside Tauri. */
+export async function deleteTerminalPersisted(id: string): Promise<void> {
+  await tauriInvoke<void>('terminal_delete_persisted', { id }, undefined);
 }

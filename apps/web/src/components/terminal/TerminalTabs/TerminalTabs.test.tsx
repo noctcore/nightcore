@@ -4,7 +4,8 @@ import { render } from 'vitest-browser-react';
 
 import * as stories from './TerminalTabs.stories';
 
-const { Populated, Empty, WithConfinedTab, CapReached } = composeStories(stories);
+const { Populated, Empty, WithConfinedTab, WithRestoredTabs, CapReached } =
+  composeStories(stories);
 
 test('renders one tab per session with the active one selected', async () => {
   const screen = render(<Populated />);
@@ -57,4 +58,13 @@ test('the new-tab button is disabled at the session cap', async () => {
   await expect
     .element(screen.getByRole('button', { name: /Terminal limit reached \(8\)/ }))
     .toBeDisabled();
+});
+
+test('restored tabs render after live ones and dismiss fires onDismiss', async () => {
+  const onDismiss = vi.fn();
+  const screen = render(<WithRestoredTabs onDismiss={onDismiss} />);
+  // The restored tab is a selectable tab (read-only session from a prior run).
+  await expect.element(screen.getByRole('tab', { name: /task-77/ })).toBeInTheDocument();
+  await screen.getByRole('button', { name: /Dismiss task-77/ }).click();
+  expect(onDismiss).toHaveBeenCalledWith('task-77');
 });

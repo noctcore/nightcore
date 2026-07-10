@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent } from 'storybook/test';
 
-import type { TerminalSessionInfo } from '@/lib/bridge';
+import type { PersistedTerminalInfo, TerminalSessionInfo } from '@/lib/bridge';
 
 import { TerminalTabs } from './TerminalTabs';
 
@@ -18,6 +18,17 @@ function session(over: Partial<TerminalSessionInfo> & { id: string }): TerminalS
   };
 }
 
+function persisted(id: string): PersistedTerminalInfo {
+  return {
+    id,
+    cwd: `/Users/dev/nightcore/.nightcore/worktrees/${id}`,
+    shell: '/bin/zsh',
+    confined: false,
+    createdAt: 0,
+    updatedAt: 1,
+  };
+}
+
 const SESSIONS: TerminalSessionInfo[] = [
   session({ id: 'task-42' }),
   session({ id: 'task-91' }),
@@ -30,10 +41,12 @@ const meta = {
   parameters: { layout: 'padded' },
   args: {
     sessions: SESSIONS,
+    restored: [],
     activeId: 'task-91',
     canAddTab: true,
     onSelect: fn(),
     onClose: fn(),
+    onDismiss: fn(),
     onNewTab: fn(),
   },
 } satisfies Meta<typeof TerminalTabs>;
@@ -56,6 +69,16 @@ export const WithConfinedTab: Story = {
       session({ id: 'task-91', confined: true }),
     ],
     activeId: 'task-91',
+  },
+};
+
+/** Live tabs plus restored (read-only) tabs from a prior run, rendered dimmed with
+ *  a history marker after the live ones. */
+export const WithRestoredTabs: Story = {
+  args: {
+    sessions: [session({ id: 'task-42' })],
+    restored: [persisted('task-77'), persisted('task-88')],
+    activeId: 'task-77',
   },
 };
 

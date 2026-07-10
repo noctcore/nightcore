@@ -1,7 +1,14 @@
-import { CloseIcon, IconButton, LockIcon, PlusIcon, TerminalIcon } from '@/components/ui';
-import type { TerminalSessionInfo } from '@/lib/bridge';
+import {
+  CloseIcon,
+  HistoryIcon,
+  IconButton,
+  LockIcon,
+  PlusIcon,
+  TerminalIcon,
+} from '@/components/ui';
+import type { PersistedTerminalInfo, TerminalSessionInfo } from '@/lib/bridge';
 
-import { identityTitle, terminalLabel } from '../terminal-shared';
+import { identityTitle, restoredIdentityTitle, terminalLabel } from '../terminal-shared';
 import { newTabTitle } from './TerminalTabs.hooks';
 import type { TerminalTabsProps } from './TerminalTabs.types';
 
@@ -61,14 +68,62 @@ function Tab({
   );
 }
 
+/** A restored (read-only) tab: a dimmed, history-marked tab for a dead session from
+ *  a prior run. Selecting it replays its persisted scrollback read-only; the X
+ *  dismisses it (deletes the persisted file). */
+function RestoredTab({
+  info,
+  active,
+  onSelect,
+  onDismiss,
+}: {
+  info: PersistedTerminalInfo;
+  active: boolean;
+  onSelect: (id: string) => void;
+  onDismiss: (id: string) => void;
+}) {
+  const label = terminalLabel(info.cwd);
+  return (
+    <div
+      className={`group flex items-center gap-1.5 rounded-t-[8px] border-b-2 px-2.5 py-1.5 transition-colors ${
+        active
+          ? 'border-muted-foreground/60 bg-white/[0.04] text-muted-foreground'
+          : 'border-transparent text-muted-foreground/60 hover:bg-white/[0.02] hover:text-muted-foreground'
+      }`}
+    >
+      <button
+        type="button"
+        role="tab"
+        aria-selected={active}
+        title={restoredIdentityTitle()}
+        onClick={() => onSelect(info.id)}
+        className="flex min-w-0 items-center gap-1.5"
+      >
+        <HistoryIcon size={12} className="shrink-0 opacity-70" aria-hidden />
+        <span className="max-w-[12rem] truncate text-[12.5px] font-medium italic">{label}</span>
+      </button>
+      <IconButton
+        label={`Dismiss ${label}`}
+        onClick={() => onDismiss(info.id)}
+        className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+      >
+        <CloseIcon size={12} />
+      </IconButton>
+    </div>
+  );
+}
+
 /** The terminal tabs bar: one tab per live session with a per-tab identity marker
- *  and close affordance, plus a "+" that opens the new-terminal picker (disabled at
- *  the 8-session cap). Purely presentational — the parent owns state + actions. */
+ *  and close affordance, then any restored (read-only) tabs from a prior run, plus
+ *  a "+" that opens the new-terminal picker (disabled at the 8-session cap). Purely
+ *  presentational — the parent owns state + actions. */
 export function TerminalTabs({
   sessions,
+  restored,
   activeId,
   onSelect,
   onClose,
+  onDismiss,
   onNewTab,
   canAddTab,
 }: TerminalTabsProps) {
@@ -85,6 +140,15 @@ export function TerminalTabs({
           active={session.id === activeId}
           onSelect={onSelect}
           onClose={onClose}
+        />
+      ))}
+      {restored.map((info) => (
+        <RestoredTab
+          key={info.id}
+          info={info}
+          active={info.id === activeId}
+          onSelect={onSelect}
+          onDismiss={onDismiss}
         />
       ))}
       <button
