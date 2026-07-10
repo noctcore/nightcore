@@ -23,6 +23,9 @@ const TaskDetail = lazy(() =>
 const SettingsView = lazy(() =>
   import('@/components/settings').then((m) => ({ default: m.SettingsView })),
 );
+const UnderstandView = lazy(() =>
+  import('../UnderstandView').then((m) => ({ default: m.UnderstandView })),
+);
 const InsightView = lazy(() =>
   import('@/components/insight').then((m) => ({ default: m.InsightView })),
 );
@@ -169,6 +172,22 @@ export function AppShellViews({
         {view === 'worktrees' && (
           <Suspense fallback={<RouteFallback />}>
             <WorktreeView tasks={tasks} />
+          </Suspense>
+        )}
+
+        {view === 'understand' && (
+          <Suspense fallback={<RouteFallback />}>
+            {/* Phase-1 PR 1: additive shell. `preselect` stays null — no
+                `sourceRef` scheme mints the `understand` view until the PR 3
+                REGISTRY retarget, so provenance chips still route to the
+                standalone Insight/Scorecard rows below. */}
+            <UnderstandView
+              projectPath={active?.path ?? null}
+              projectName={active?.name ?? null}
+              onGotoBoard={() => routing.goto('board')}
+              preselect={null}
+              onPreselectConsumed={routing.clearScanTarget}
+            />
           </Suspense>
         )}
 

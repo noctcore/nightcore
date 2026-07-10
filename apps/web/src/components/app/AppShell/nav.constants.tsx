@@ -28,6 +28,16 @@ export const APP_SHELL_NAV: NavItem[] = [
     group: 'project',
   },
   {
+    // Phase-1 PR 1: temporary row in `tools`. The stage regroup (Intake →
+    // Understand → Harden → Enforce → Verify) and the removal of the standalone
+    // Insight/Scorecard rows land in PR 3.
+    view: 'understand',
+    label: 'Find & Grade',
+    hint: 'U',
+    icon: <InsightIcon size={16} />,
+    group: 'tools',
+  },
+  {
     view: 'insight',
     label: 'Insight',
     hint: 'I',
