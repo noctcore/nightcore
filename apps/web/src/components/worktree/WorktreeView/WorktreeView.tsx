@@ -47,6 +47,7 @@ export function WorktreeView({ tasks }: WorktreeViewProps) {
         preview={v.preview?.data ?? null}
         loading={v.preview?.loading ?? false}
         merging={v.merging}
+        terminalSessions={v.preview?.terminalSessions.length ?? 0}
         onMerge={v.confirmMerge}
         onClose={v.closePreview}
         onViewDiff={v.onPreviewViewDiff}
@@ -63,6 +64,7 @@ export function WorktreeView({ tasks }: WorktreeViewProps) {
         open={v.discard !== null}
         branch={v.discard?.branch}
         changedFiles={v.discard?.changedFiles}
+        terminalSessions={v.discard?.terminalSessions.length ?? 0}
         discarding={v.discard?.discarding ?? false}
         error={v.discard?.error ?? null}
         onConfirm={v.confirmDiscard}

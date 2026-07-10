@@ -13,6 +13,10 @@ export interface MergePreviewDialogProps {
   loading?: boolean;
   /** A merge is currently in flight. */
   merging?: boolean;
+  /** Count of live user terminal sessions open in this worktree (terminal spec,
+   *  decision 2). When greater than zero, a blocking notice warns that merging
+   *  will close them first; the parent's merge handler kills them then merges. */
+  terminalSessions?: number;
   /** Fired when the user confirms the merge. */
   onMerge: () => void;
   /** Fired on Esc, click-outside, the close affordance, or Cancel. */

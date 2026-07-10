@@ -27,6 +27,10 @@ export const NoBranch: Story = { args: { branch: undefined } };
 /** Uncommitted work present — the amber warning line appears. */
 export const WithUncommittedChanges: Story = { args: { changedFiles: 3 } };
 
+/** Live terminal sessions open in this worktree (terminal spec, decision 2) — a
+ *  blocking notice warns they'll be closed on confirm. */
+export const WithTerminalSessions: Story = { args: { terminalSessions: 2 } };
+
 /** Discard in flight — the confirm button shows a spinner and is disabled. */
 export const Discarding: Story = { args: { discarding: true } };
 

@@ -12,6 +12,10 @@ export interface DiscardDialogProps {
   /** Count of uncommitted files that would be lost. Drives the amber warning line
    *  when greater than zero. */
   changedFiles?: number;
+  /** Count of live user terminal sessions open in this worktree (terminal spec,
+   *  decision 2). When greater than zero, a blocking notice warns that confirming
+   *  will close them first; the parent's confirm handler kills them then discards. */
+  terminalSessions?: number;
   /** Whether a discard is in flight — swaps the confirm button for a spinner. */
   discarding?: boolean;
   /** The last discard error, if any. When set, it is shown (red) and the confirm

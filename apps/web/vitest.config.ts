@@ -76,7 +76,15 @@ export default defineConfig({
         // Pre-bundle react-dom/client for the storybook project too, to avoid
         // mid-run re-optimize (which causes "Failed to fetch dynamically imported module"
         // flakes when other tests are loading).
-        optimizeDeps: { include: ['react-dom/client', 'motion/react', 'lucide-react'] },
+        optimizeDeps: {
+          include: [
+            'react-dom/client',
+            'motion/react',
+            'lucide-react',
+            '@xterm/xterm',
+            '@xterm/addon-fit',
+          ],
+        },
         test: {
           name: 'storybook',
           setupFiles: ['./.storybook/vitest.setup.ts'],
@@ -100,7 +108,15 @@ export default defineConfig({
         // "Failed to fetch dynamically imported module" — a nondeterministic
         // whole-suite flake (a different `.test.tsx` file fails each CI run).
         // Pre-bundling it here means no second optimize pass, so no mid-run reload.
-        optimizeDeps: { include: ['react-dom/client', 'motion/react', 'lucide-react'] },
+        optimizeDeps: {
+          include: [
+            'react-dom/client',
+            'motion/react',
+            'lucide-react',
+            '@xterm/xterm',
+            '@xterm/addon-fit',
+          ],
+        },
         test: {
           name: 'unit',
           include: ['src/**/*.test.tsx'],

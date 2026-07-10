@@ -4,7 +4,8 @@ import { render } from 'vitest-browser-react';
 
 import * as stories from './MergePreviewDialog.stories';
 
-const { Ready, UpToDate, Diverged, Conflicts, Loading, Merging } = composeStories(stories);
+const { Ready, UpToDate, Diverged, Conflicts, Loading, Merging, WithTerminalSessions } =
+  composeStories(stories);
 
 test('enables Merge and fires onMerge for a ready preview', async () => {
   const onMerge = vi.fn();
@@ -60,4 +61,18 @@ test('fires onClose from the close affordance', async () => {
   const screen = render(<Ready onClose={onClose} />);
   await screen.getByRole('button', { name: 'Close' }).click();
   expect(onClose).toHaveBeenCalled();
+});
+
+test('warns when live terminal sessions are open in the worktree', async () => {
+  const screen = render(<WithTerminalSessions />);
+  await expect
+    .element(screen.getByText(/3 terminal session\(s\) open in this worktree will be closed\./i))
+    .toBeInTheDocument();
+});
+
+test('shows no terminal-session notice when none are open', async () => {
+  const screen = render(<Ready />);
+  await expect
+    .element(screen.getByText(/terminal session\(s\) open/i))
+    .not.toBeInTheDocument();
 });

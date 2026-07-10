@@ -41,6 +41,9 @@ const IssueTriageView = lazy(() =>
 const WorktreeView = lazy(() =>
   import('@/components/worktree').then((m) => ({ default: m.WorktreeView })),
 );
+const TerminalView = lazy(() =>
+  import('@/components/terminal').then((m) => ({ default: m.TerminalView })),
+);
 
 /** A minimal fallback while a lazy route view streams in — a quiet centered
  *  status line that never flashes chrome of its own. */
@@ -169,6 +172,16 @@ export function AppShellViews({
         {view === 'worktrees' && (
           <Suspense fallback={<RouteFallback />}>
             <WorktreeView tasks={tasks} />
+          </Suspense>
+        )}
+
+        {/* Global user terminal (terminal build spec, PR B): a Project-group
+            destination hosting tabbed shells over the PTY backbone. Reads the
+            repo root off the active project; worktrees come from the shared
+            context inside the view. */}
+        {view === 'terminal' && (
+          <Suspense fallback={<RouteFallback />}>
+            <TerminalView projectPath={active?.path ?? null} projectName={active?.name ?? null} />
           </Suspense>
         )}
 

@@ -7,11 +7,13 @@ import { useToast } from '@/components/ui';
 import type { MergePreview, Task, WorktreeDiff, WorktreeInfo } from '@/lib/bridge';
 import {
   discardWorktree,
+  killTerminal,
   mergePreview,
   mergeTask,
   openExternal,
   openInEditor,
   revealWorktree,
+  terminalSessionsInDir,
   worktreeDiff,
 } from '@/lib/bridge';
 import { parseGitError } from '@/lib/git-error';
@@ -23,6 +25,9 @@ interface PreviewState {
   taskId: string;
   data: MergePreview | null;
   loading: boolean;
+  /** Live terminal session ids open in this worktree (terminal spec, decision 2):
+   *  the merge notice's count + the sessions the confirm kills before merging. */
+  terminalSessions: string[];
 }
 
 /** The diff dialog's data, keyed by the task it was opened for. */
@@ -39,6 +44,8 @@ interface DiscardState {
   changedFiles: number;
   discarding: boolean;
   error: string | null;
+  /** Live terminal session ids open in this worktree (terminal spec, decision 2). */
+  terminalSessions: string[];
 }
 
 /** The view-model the WorktreeView binds to. */
@@ -134,9 +141,26 @@ export function useWorktreeView(tasks: Task[], worktrees: WorktreeInfo[]): Workt
     [toast],
   );
 
+  // Live terminal sessions open in a task's worktree dir (terminal spec, decision
+  // 2). Tolerant: an error (or no Tauri) reads as "none open", so the merge/discard
+  // flows never block on a fetch failure.
+  const fetchWorktreeSessions = useCallback(
+    async (taskId: string): Promise<string[]> => {
+      const wt = worktrees.find((w) => w.taskIds.includes(taskId));
+      if (wt === undefined) return [];
+      try {
+        const sessions = await terminalSessionsInDir(wt.path);
+        return sessions.map((s) => s.id);
+      } catch {
+        return [];
+      }
+    },
+    [worktrees],
+  );
+
   const openPreview = useCallback(
     (taskId: string) => {
-      setPreview({ taskId, data: null, loading: true });
+      setPreview({ taskId, data: null, loading: true, terminalSessions: [] });
       void mergePreview(taskId)
         .then((data) =>
           // Ignore a stale resolve if the dialog moved on to another task.
@@ -148,8 +172,11 @@ export function useWorktreeView(tasks: Task[], worktrees: WorktreeInfo[]): Workt
           // dismissed request must not close a newer preview.
           setPreview((p) => (p && p.taskId === taskId ? null : p));
         });
+      void fetchWorktreeSessions(taskId).then((ids) =>
+        setPreview((p) => (p && p.taskId === taskId ? { ...p, terminalSessions: ids } : p)),
+      );
     },
-    [reportError],
+    [reportError, fetchWorktreeSessions],
   );
 
   const openDiff = useCallback(
@@ -177,16 +204,23 @@ export function useWorktreeView(tasks: Task[], worktrees: WorktreeInfo[]): Workt
         changedFiles: wt?.changedFiles ?? 0,
         discarding: false,
         error: null,
+        terminalSessions: [],
       });
+      void fetchWorktreeSessions(taskId).then((ids) =>
+        setDiscard((d) => (d && d.taskId === taskId ? { ...d, terminalSessions: ids } : d)),
+      );
     },
-    [tasks, worktrees],
+    [tasks, worktrees, fetchWorktreeSessions],
   );
 
   const confirmMerge = useCallback(() => {
     if (preview === null) return;
-    const { taskId } = preview;
+    const { taskId, terminalSessions } = preview;
     setMerging(true);
-    void mergeTask(taskId)
+    // Decision 2: close any live terminal sessions in this worktree BEFORE merging
+    // (best-effort — a shell in a soon-cleaned dir is harmless), then merge.
+    void Promise.allSettled(terminalSessions.map((id) => killTerminal(id)))
+      .then(() => mergeTask(taskId))
       .then(() => {
         toast.push({ tone: 'success', title: 'Branch merged into base' });
         setPreview(null);
@@ -197,9 +231,12 @@ export function useWorktreeView(tasks: Task[], worktrees: WorktreeInfo[]): Workt
 
   const confirmDiscard = useCallback(() => {
     if (discard === null) return;
-    const { taskId } = discard;
+    const { taskId, terminalSessions } = discard;
     setDiscard((d) => (d ? { ...d, discarding: true, error: null } : d));
-    void discardWorktree(taskId)
+    // Decision 2: close any live terminal sessions in this worktree first (best-
+    // effort), then discard.
+    void Promise.allSettled(terminalSessions.map((id) => killTerminal(id)))
+      .then(() => discardWorktree(taskId))
       .then(() => {
         toast.push({ tone: 'success', title: 'Worktree discarded' });
         setDiscard(null);

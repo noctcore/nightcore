@@ -19,6 +19,7 @@ export function DiscardDialog({
   open,
   branch,
   changedFiles,
+  terminalSessions = 0,
   discarding = false,
   error,
   onConfirm,
@@ -27,8 +28,8 @@ export function DiscardDialog({
   // Retain the display content across the exit animation so the panel doesn't
   // blank when the parent clears its state on close. Callbacks stay live.
   const shown =
-    useLastPresent(open ? { branch, changedFiles, error } : null) ??
-    { branch, changedFiles, error };
+    useLastPresent(open ? { branch, changedFiles, terminalSessions, error } : null) ??
+    { branch, changedFiles, terminalSessions, error };
 
   return (
     <Modal
@@ -49,6 +50,12 @@ export function DiscardDialog({
           <p className="flex items-center gap-1.5 text-[12px] font-medium text-warning">
             <AlertIcon size={13} className="shrink-0" />
             {shown.changedFiles} uncommitted file(s) will be lost.
+          </p>
+        )}
+        {shown.terminalSessions > 0 && (
+          <p className="flex items-center gap-1.5 text-[12px] font-medium text-warning">
+            <AlertIcon size={13} className="shrink-0" />
+            {shown.terminalSessions} terminal session(s) open in this worktree will be closed.
           </p>
         )}
         {hasDiscardError(shown.error) && (

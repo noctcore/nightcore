@@ -4,8 +4,14 @@ import { render } from 'vitest-browser-react';
 
 import * as stories from './DiscardDialog.stories';
 
-const { Default, NoBranch, WithUncommittedChanges, Discarding, WithError } =
-  composeStories(stories);
+const {
+  Default,
+  NoBranch,
+  WithUncommittedChanges,
+  WithTerminalSessions,
+  Discarding,
+  WithError,
+} = composeStories(stories);
 
 test('renders the title and consequence copy with the branch name', async () => {
   const screen = render(<Default />);
@@ -40,6 +46,20 @@ test('shows the amber data-loss warning when files are uncommitted', async () =>
   await expect
     .element(screen.getByText(/3 uncommitted file\(s\) will be lost\./i))
     .toBeInTheDocument();
+});
+
+test('warns when live terminal sessions are open in the worktree', async () => {
+  const screen = render(<WithTerminalSessions />);
+  await expect
+    .element(screen.getByText(/2 terminal session\(s\) open in this worktree will be closed\./i))
+    .toBeInTheDocument();
+});
+
+test('shows no terminal-session notice when none are open', async () => {
+  const screen = render(<Default />);
+  await expect
+    .element(screen.getByText(/terminal session\(s\) open/i))
+    .not.toBeInTheDocument();
 });
 
 test('disables the confirm button and shows the spinner label while discarding', async () => {

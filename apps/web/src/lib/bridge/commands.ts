@@ -17,5 +17,6 @@ export * from './commands/run-interaction';
 export * from './commands/scorecard';
 export * from './commands/settings';
 export * from './commands/tasks';
+export * from './commands/terminal';
 export * from './commands/updater';
 export * from './commands/worktrees';

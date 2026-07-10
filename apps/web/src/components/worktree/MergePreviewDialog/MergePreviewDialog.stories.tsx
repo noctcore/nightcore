@@ -87,6 +87,10 @@ export const Loading: Story = { args: { preview: null, loading: true } };
 
 export const Merging: Story = { args: { merging: true } };
 
+/** Live terminal sessions open in this worktree (terminal spec, decision 2) — a
+ *  blocking notice warns they'll be closed on merge. */
+export const WithTerminalSessions: Story = { args: { terminalSessions: 3 } };
+
 /** Play test: a ready preview enables Merge, and clicking it fires onMerge. */
 export const MergesWhenReady: Story = {
   play: async ({ args }) => {

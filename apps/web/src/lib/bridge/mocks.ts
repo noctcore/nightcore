@@ -20,6 +20,7 @@ import type {
   ProviderCapabilities,
   ProviderConfigSnapshot,
   Settings,
+  TerminalSessionInfo,
 } from './types';
 
 /** Canonical fallbacks shared by the browser-preview mocks and UI fallbacks, so
@@ -222,3 +223,61 @@ export const MOCK_INJECTION_FLAGS: InjectionFlag[] = [
     ],
   },
 ];
+
+// --- Echo terminal (browser preview / Storybook / dogfood:ui) -------------
+//
+// Outside the Tauri webview there is no PTY, so the terminal bridge (`./commands/
+// terminal`) drives this in-memory echo instead: spawn prints a banner + prompt,
+// each write is echoed back through the same byte handler (CR → CRLF so lines
+// feel real), resize is a no-op, kill tears the handler down. This is what lets
+// the :5173 mock web render a live-feeling xterm (feasibility §4's echo-bridge
+// idiom) and keeps component/hook tests off a real shell.
+
+/** One byte frame from a session's output stream (an xterm-ready chunk). */
+export type TerminalByteHandler = (bytes: Uint8Array) => void;
+
+/** The live echo handlers, keyed by the synthetic session id. */
+const echoHandlers = new Map<string, TerminalByteHandler>();
+let echoSeq = 0;
+const echoEncoder = new TextEncoder();
+const echoDecoder = new TextDecoder();
+
+/** Spawn an in-memory echo session: registers `onData`, emits a banner + prompt on
+ *  the next microtask (so the caller can finish wiring first), and returns the
+ *  synthetic descriptor + a detach that stops delivering output. */
+export function echoSpawnTerminal(
+  opts: { cwd: string; confined: boolean; cols: number; rows: number },
+  onData: TerminalByteHandler,
+): { session: TerminalSessionInfo; detach: () => void } {
+  const id = `echo-${(echoSeq += 1)}`;
+  echoHandlers.set(id, onData);
+  const session: TerminalSessionInfo = {
+    id,
+    cwd: opts.cwd,
+    shell: '/bin/echo',
+    confined: opts.confined,
+    cols: opts.cols,
+    rows: opts.rows,
+    alive: true,
+    createdAt: Date.now(),
+  };
+  queueMicrotask(() => {
+    echoHandlers
+      .get(id)
+      ?.(echoEncoder.encode(`nightcore echo terminal — ${opts.cwd}\r\n$ `));
+  });
+  return { session, detach: () => echoHandlers.delete(id) };
+}
+
+/** Echo written bytes straight back to the session's handler (CR → CRLF). */
+export function echoWriteTerminal(id: string, bytes: Uint8Array): void {
+  const handler = echoHandlers.get(id);
+  if (handler === undefined) return;
+  const text = echoDecoder.decode(bytes).replace(/\r/g, '\r\n');
+  handler(echoEncoder.encode(text));
+}
+
+/** Drop an echo session (mirrors `terminal_kill` outside Tauri). */
+export function echoKillTerminal(id: string): void {
+  echoHandlers.delete(id);
+}

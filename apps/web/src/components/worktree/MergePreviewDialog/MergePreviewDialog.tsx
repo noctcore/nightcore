@@ -1,4 +1,5 @@
 import {
+  AlertIcon,
   BranchIcon,
   Button,
   CloseIcon,
@@ -24,6 +25,7 @@ export function MergePreviewDialog({
   preview,
   loading = false,
   merging = false,
+  terminalSessions = 0,
   onMerge,
   onClose,
   onViewDiff,
@@ -82,6 +84,13 @@ export function MergePreviewDialog({
               <span className="text-destructive">−{shownPreview.deletions}</span>,{' '}
               {shownPreview.ahead} ahead / {shownPreview.behind} behind
             </p>
+
+            {terminalSessions > 0 && (
+              <p className="flex items-center gap-1.5 text-[12px] font-medium text-warning">
+                <AlertIcon size={13} className="shrink-0" />
+                {terminalSessions} terminal session(s) open in this worktree will be closed.
+              </p>
+            )}
 
             {shownPreview.status === 'conflicts' && (
               <div className="flex flex-col gap-1.5">
