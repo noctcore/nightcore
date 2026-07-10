@@ -4,6 +4,7 @@ import {
   EmptyState,
   FolderIcon,
   HistoryIcon,
+  IssueMapExportButton,
   Menu,
   PerfIcon,
   RetryIcon,
@@ -152,6 +153,9 @@ export function ScorecardView(props: ScorecardViewProps) {
                 statusMessage={view.bulkStatusMessage}
                 error={view.bulkError}
                 onConvertAll={view.convertAll}
+                trailing={
+                  <IssueMapExportButton scanKind="scorecard" runId={view.stream.runId} />
+                }
               />
             )}
 

@@ -51,6 +51,10 @@ export * from './icons';
 export { IconTile } from './IconTile';
 export type { ImageDropzoneItem, ImageDropzoneProps } from './ImageDropzone';
 export { ImageDropzone } from './ImageDropzone';
+export type { IssueMapDialogProps } from './IssueMapDialog';
+export { IssueMapDialog } from './IssueMapDialog';
+export type { IssueMapExportButtonProps } from './IssueMapExportButton';
+export { IssueMapExportButton } from './IssueMapExportButton';
 export { Kbd } from './Kbd';
 export type {
   LensChipDescriptor,

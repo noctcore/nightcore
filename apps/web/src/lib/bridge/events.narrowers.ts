@@ -13,6 +13,7 @@ import type {
   HarnessEvent,
   HarnessScanEvent,
   InsightEvent,
+  IssueMapProgress,
   IssueTriageEvent,
   LoopState,
   PermissionPrompt,
@@ -314,4 +315,20 @@ export function parseHarnessEvent(value: unknown): HarnessEvent | null {
     ['runId', 'artifactId', 'path'],
     'harness-',
   );
+}
+
+/** Narrow an unknown `nc:issue-map` payload to a progress tick. Only the
+ *  `progress` shape is emitted today; a `type` guard keeps the subscriber
+ *  forward-safe if future ticks add variants. Drops anything malformed. */
+export function parseIssueMapProgress(value: unknown): IssueMapProgress | null {
+  if (!hasKeys(value, ['type', 'runId', 'created', 'total'])) return null;
+  if (
+    value.type !== 'progress' ||
+    typeof value.runId !== 'string' ||
+    typeof value.created !== 'number' ||
+    typeof value.total !== 'number'
+  ) {
+    return null;
+  }
+  return { type: 'progress', runId: value.runId, created: value.created, total: value.total };
 }

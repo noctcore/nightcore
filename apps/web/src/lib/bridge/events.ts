@@ -17,6 +17,7 @@ import {
   isTask,
   parseHarnessEvent,
   parseInsightEvent,
+  parseIssueMapProgress,
   parseIssueTriageEvent,
   parsePrReviewEvent,
   parseScorecardEvent,
@@ -25,6 +26,7 @@ import {
 import type {
   HarnessEvent,
   InsightEvent,
+  IssueMapProgress,
   IssueTriageEvent,
   PermissionPrompt,
   ProjectEnvelope,
@@ -47,6 +49,7 @@ export type {
   HarnessProposalConvertedEvent,
   HarnessScanEvent,
   InsightEvent,
+  IssueMapProgress,
   IssueTriageEvent,
   LoopState,
   PermissionPrompt,
@@ -197,4 +200,16 @@ export async function onHarnessEvent(
   handler: (event: HarnessEvent) => void,
 ): Promise<UnlistenFn> {
   return subscribeChannel(CHANNELS.harness, parseHarnessEvent, handler);
+}
+
+/** Subscribe to the transient `nc:issue-map` export-progress ticks. This channel
+ *  is deliberately a raw string, NOT a `CHANNELS.*` entry: it is a cosmetic
+ *  `created k/N` progress emit (no persistence, the terminal `IssueMapResult` is
+ *  the source of truth), so it never joined the registry that mirrors into the
+ *  Rust `NIGHTCORE_CHANNELS` codegen. Returns an unlisten function (a no-op
+ *  outside Tauri). */
+export async function onIssueMapEvent(
+  handler: (event: IssueMapProgress) => void,
+): Promise<UnlistenFn> {
+  return subscribeChannel('nc:issue-map', parseIssueMapProgress, handler);
 }

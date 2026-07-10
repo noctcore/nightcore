@@ -239,3 +239,18 @@ export type HarnessEvent =
   | HarnessProposalConvertedEvent
   | HarnessProposalAppliedEvent
   | HarnessCheckArmedEvent;
+
+/** The transient progress payload the Rust core emits on the raw `nc:issue-map`
+ *  channel while `export_issue_map` mints the map (one per sub-issue created +
+ *  attached). Purely cosmetic — the terminal `IssueMapResult` is the source of
+ *  truth — so it is deliberately NOT in the `CHANNELS` registry (no persistence,
+ *  no new store, §4.1). The dialog consumes it to show "Creating… k/N". */
+export interface IssueMapProgress {
+  type: 'progress';
+  /** The run being exported (the dialog ignores foreign runs). */
+  runId: string;
+  /** Sub-issues created + attached so far. */
+  created: number;
+  /** Total sub-issues the export will create (= the finding count). */
+  total: number;
+}

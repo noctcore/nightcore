@@ -8,6 +8,7 @@ import {
   FolderIcon,
   HistoryIcon,
   InsightIcon,
+  IssueMapExportButton,
   Menu,
   RetryIcon,
   RunLifecycleShell,
@@ -186,6 +187,9 @@ export function InsightView(props: InsightViewProps) {
                 statusMessage={view.bulkStatusMessage}
                 error={view.bulkError}
                 onConvertAll={view.convertAll}
+                trailing={
+                  <IssueMapExportButton scanKind="insight" runId={view.stream.runId} />
+                }
               />
             )}
 

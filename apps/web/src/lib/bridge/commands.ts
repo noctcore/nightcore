@@ -7,6 +7,7 @@
  */
 export * from './commands/harness';
 export * from './commands/insight';
+export * from './commands/issue-map';
 export * from './commands/issues';
 export * from './commands/models';
 export * from './commands/onboarding';

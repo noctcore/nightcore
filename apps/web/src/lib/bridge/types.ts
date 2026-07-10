@@ -87,6 +87,18 @@ export type { GuardrailTrust } from '../generated/GuardrailTrust';
 export type { QuarantineEvent } from '../generated/QuarantineEvent';
 export type { TokenTotals } from '../generated/TokenTotals';
 export type { TrustReport } from '../generated/TrustReport';
+// GitHub issue-map export (ts-rs from `workflow/issue_map/contract.rs`, wayfinder
+// #112). The transient preview payload the dialog renders (parent body + every
+// sub-issue title + group counts + supersede + soft warning + the fail-open LLM
+// narrative), and the terminal export result (full / partial / degraded-linkage).
+// `Narrative` is the generated file `IssueMapNarrative.ts` (the type is `Narrative`).
+export type { GroupCount } from '../generated/GroupCount';
+export type { GroupIntro } from '../generated/GroupIntro';
+export type { Narrative } from '../generated/IssueMapNarrative';
+export type { IssueMapPreview } from '../generated/IssueMapPreview';
+export type { IssueMapResult } from '../generated/IssueMapResult';
+export type { PriorMap } from '../generated/PriorMap';
+export type { SubIssuePreview } from '../generated/SubIssuePreview';
 // User terminal (PTY) command-return shapes (ts-rs from `terminal/types.rs`). PR B
 // consumes the live-session descriptor; PR C's restore UI adds the persisted-
 // scrollback metadata (`PersistedTerminalInfo`) + replay bytes

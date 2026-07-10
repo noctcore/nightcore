@@ -1,4 +1,5 @@
 /** Public props for the shared BulkConvertBar. */
+import type { ReactNode } from 'react';
 
 /** The progress counters the bar renders while the convert-all loop runs. A
  *  structural subset of `useBulkConvert`'s `BulkConvertProgress` (which also
@@ -25,4 +26,8 @@ export interface BulkConvertBarProps {
   error: string | null;
   /** Start the convert-all loop over the open items (a no-op when inert). */
   onConvertAll: () => void;
+  /** Optional sibling action rendered at the trailing (right) edge of the SAME
+   *  bar — used by the scan-results views to place "Export to GitHub" next to
+   *  convert-all rather than in a second stacked bar. Omit for the bare bar. */
+  trailing?: ReactNode;
 }
