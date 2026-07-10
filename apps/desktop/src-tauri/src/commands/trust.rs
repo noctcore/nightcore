@@ -12,7 +12,8 @@
 //! `State<'_>` guard can't cross into it), so an unmanaged store fails gracefully.
 //! The report is COMPUTED ON DEMAND and never persisted (locked decision 4).
 
-use std::path::PathBuf;
+use std::ffi::OsStr;
+use std::path::{Component, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
@@ -70,4 +71,80 @@ pub async fn trust_report_markdown(
     })
     .await
     .map_err(|e| format!("trust report markdown failed to run: {e}"))?
+}
+
+/// Render the Trust Report and write it to a user-chosen `*.md` path (PR 2, §3.7).
+///
+/// `dest_path` comes from the web `save()` native dialog, so it is USER-CHOSEN and
+/// untrusted: it is validated ([`validate_export_dest`]) to be absolute and to not
+/// target any `.nightcore/` directory before any write, so a receipt can never
+/// clobber the on-disk store (constraint §4.2). The backend renders the ONE
+/// canonical markdown (`render_markdown` — the local-export flavor, an `#` title,
+/// no GitHub header/footer) and writes it atomically via `store::atomic::write_atomic`
+/// (the backend-writes-the-artifact idiom of `apply_harness_artifact`). Async +
+/// `spawn_blocking` for the file reads + write (the sync-command WKWebView-freeze
+/// trap, `reference_tauri_command_threading`).
+#[tauri::command]
+pub async fn write_trust_report(
+    app: AppHandle,
+    task_id: String,
+    dest_path: String,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let dest = validate_export_dest(&dest_path)?;
+        let report = build_blocking(&app, &task_id)?;
+        let markdown = render_markdown(&report);
+        crate::store::write_atomic(&dest, markdown.as_bytes())
+            .map_err(|e| format!("failed to write trust report to {}: {e}", dest.display()))
+    })
+    .await
+    .map_err(|e| format!("write trust report failed to run: {e}"))?
+}
+
+/// Validate a user-chosen export path (§3.7): it must be ABSOLUTE (the native
+/// save dialog returns one) and must not descend through any `.nightcore/`
+/// directory — the receipt is a user artifact and is NEVER allowed to land inside
+/// the on-disk store (constraint §4.2). Returns the normalized `PathBuf` to write.
+fn validate_export_dest(dest_path: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(dest_path);
+    if !path.is_absolute() {
+        return Err(format!("export path must be absolute: {dest_path}"));
+    }
+    if path
+        .components()
+        .any(|c| matches!(c, Component::Normal(name) if name == OsStr::new(".nightcore")))
+    {
+        return Err("refusing to write a Trust Report inside a .nightcore directory".to_string());
+    }
+    Ok(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_export_dest;
+
+    #[test]
+    fn rejects_a_relative_export_path() {
+        assert!(validate_export_dest("reports/trust.md").is_err());
+        assert!(validate_export_dest("./trust.md").is_err());
+        assert!(validate_export_dest("").is_err());
+    }
+
+    #[test]
+    fn rejects_a_path_inside_a_nightcore_directory() {
+        assert!(validate_export_dest("/home/dev/proj/.nightcore/trust.md").is_err());
+        assert!(validate_export_dest("/home/dev/proj/.nightcore/ledger/x.md").is_err());
+    }
+
+    #[test]
+    fn accepts_an_absolute_path_outside_nightcore() {
+        let dest = validate_export_dest("/home/dev/Desktop/trust-report.md")
+            .expect("an absolute non-.nightcore path is a valid export destination");
+        assert_eq!(
+            dest,
+            std::path::PathBuf::from("/home/dev/Desktop/trust-report.md")
+        );
+        // A `.nightcore`-lookalike segment (not the exact dir name) is NOT rejected.
+        assert!(validate_export_dest("/home/dev/my.nightcore-notes/trust.md").is_ok());
+    }
 }
