@@ -468,6 +468,8 @@ pub enum NightcoreEvent {
         artifacts: Vec<ProposedArtifact>,
         #[serde(default)]
         proposals: Vec<HarnessProposal>,
+        #[serde(default)]
+        coverage: Vec<RuleCoverageGap>,
         categories_run: Vec<ConventionCategory>,
         cost_usd: f64,
         #[serde(default)]
@@ -704,6 +706,14 @@ pub enum CostTelemetry {
     Full,
     TokensOnly,
     None,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CoverageStatus {
+    Enforced,
+    DocumentedOnly,
+    Unenforced,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1270,6 +1280,23 @@ pub enum ReviewLens {
     Structure,
     Tests,
     Contracts,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuleCoverageGap {
+    pub id: String,
+    pub convention_fingerprint: String,
+    pub category: String,
+    pub title: String,
+    pub status: CoverageStatus,
+    #[serde(default)]
+    pub enforced_by: Vec<String>,
+    #[serde(default)]
+    pub documented_in: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggested_artifact_kind: Option<String>,
+    pub fingerprint: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

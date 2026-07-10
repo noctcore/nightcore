@@ -13,7 +13,7 @@ use crate::sidecar::scan::{failure_reason, finalize_completed, ScanTelemetry};
 use crate::sidecar::HARNESS_EVENT;
 use crate::store::harness::{
     HarnessStore, StoredConventionFinding, StoredHarnessProposal, StoredProposedArtifact,
-    StoredRepoProfile,
+    StoredRepoProfile, StoredRuleCoverageGap,
 };
 use crate::store::TaskStore;
 use crate::task::TaskStatus;
@@ -129,6 +129,19 @@ pub(crate) async fn handle_harness_event(app: &AppHandle, event_type: &str, even
                 }
             }
 
+            // ENFORCE-lite coverage: recomputed every scan, so it carries NO lifecycle
+            // (no dismissed/converted reconciliation) — the terminal event is
+            // authoritative. Parse and overwrite wholesale at finalize.
+            let coverage: Vec<StoredRuleCoverageGap> = event
+                .get("coverage")
+                .and_then(Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(StoredRuleCoverageGap::from_wire)
+                        .collect()
+                })
+                .unwrap_or_default();
+
             let tel = ScanTelemetry::from_event(event);
             let (finding_count, artifact_count) = (findings.len(), artifacts.len());
 
@@ -210,6 +223,7 @@ pub(crate) async fn handle_harness_event(app: &AppHandle, event_type: &str, even
                     run.findings = merged_findings;
                     run.artifacts = merged_artifacts;
                     run.proposals = merged_proposals;
+                    run.coverage = coverage;
                     run.synthesizing = false;
                 });
             if finalized {

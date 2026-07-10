@@ -117,6 +117,7 @@ pub async fn start_harness_scan(
         findings: Vec::new(),
         artifacts: Vec::new(),
         proposals: Vec::new(),
+        coverage: Vec::new(),
         synthesizing: false,
         error: None,
     };

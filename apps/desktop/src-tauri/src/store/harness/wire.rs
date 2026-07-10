@@ -216,6 +216,54 @@ impl StoredHarnessProposal {
     }
 }
 
+/// A persisted rule-coverage record (ENFORCE-lite): one convention's enforcement
+/// coverage as the engine's stateless coverage join produced it. Unlike the finding /
+/// artifact / proposal wire types this carries NO Rust-owned lifecycle — coverage is
+/// recomputed every scan, so there is no user-editable state to persist. Enum-ish
+/// `status` (`enforced` | `documented-only` | `unenforced`) is stored as its wire
+/// string (the web casts it), matching the rest of this module.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "StoredRuleCoverageGap.ts"))]
+pub struct StoredRuleCoverageGap {
+    pub id: String,
+    /// Joins back to the convention finding (its `category | title` sha1).
+    pub convention_fingerprint: String,
+    pub category: String,
+    pub title: String,
+    /// `enforced` | `documented-only` | `unenforced`.
+    pub status: String,
+    /// Enforcing rule ids that cover it (empty unless `enforced`).
+    #[serde(default)]
+    pub enforced_by: Vec<String>,
+    /// Agent-doc claim lines that mention it (populated for `documented-only`).
+    #[serde(default)]
+    pub documented_in: Vec<String>,
+    /// What synthesis could generate to close the gap (an `ArtifactKind` wire string).
+    pub suggested_artifact_kind: Option<String>,
+    pub fingerprint: String,
+}
+
+impl StoredRuleCoverageGap {
+    /// Build a stored coverage record from one wire `RuleCoverageGap` JSON object (an
+    /// element of `harness-scan-completed`'s `coverage` array).
+    pub fn from_wire(v: &Value) -> Option<Self> {
+        let s = |k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
+        Some(Self {
+            id: s("id")?,
+            convention_fingerprint: s("conventionFingerprint")?,
+            category: s("category")?,
+            title: s("title")?,
+            status: s("status")?,
+            enforced_by: string_array(v.get("enforcedBy")),
+            documented_in: string_array(v.get("documentedIn")),
+            suggested_artifact_kind: s("suggestedArtifactKind"),
+            fingerprint: s("fingerprint")?,
+        })
+    }
+}
+
 fn locations_from_wire(v: Option<&Value>) -> Vec<FindingLocation> {
     v.and_then(Value::as_array)
         .map(|a| a.iter().filter_map(location_from_wire).collect())
@@ -376,6 +424,12 @@ pub struct HarnessRun {
     /// with an empty set.
     #[serde(default)]
     pub proposals: Vec<StoredHarnessProposal>,
+    /// ENFORCE-lite rule coverage: one record per convention (`enforced` /
+    /// `documented-only` / `unenforced`). Additive (`#[serde(default)]`) so a
+    /// pre-coverage on-disk scan loads with an empty set — no migration, coverage,
+    /// not conformance.
+    #[serde(default)]
+    pub coverage: Vec<StoredRuleCoverageGap>,
     /// Set while the serial synthesis pass runs (after every lens, before the
     /// terminal event) so a run reloaded mid-synthesis still projects the
     /// "Synthesizing…" state instead of the all-lenses-done dead zone.

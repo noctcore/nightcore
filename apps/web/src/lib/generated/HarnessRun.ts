@@ -4,6 +4,7 @@ import type { StoredConventionFinding } from "./StoredConventionFinding";
 import type { StoredHarnessProposal } from "./StoredHarnessProposal";
 import type { StoredProposedArtifact } from "./StoredProposedArtifact";
 import type { StoredRepoProfile } from "./StoredRepoProfile";
+import type { StoredRuleCoverageGap } from "./StoredRuleCoverageGap";
 
 /**
  * One Harness scan, persisted under `.nightcore/harness/<id>.json`.
@@ -23,6 +24,13 @@ categories: Array<string>, model: string, createdAt: number, updatedAt: number, 
  * with an empty set.
  */
 proposals: Array<StoredHarnessProposal>, 
+/**
+ * ENFORCE-lite rule coverage: one record per convention (`enforced` /
+ * `documented-only` / `unenforced`). Additive (`#[serde(default)]`) so a
+ * pre-coverage on-disk scan loads with an empty set — no migration, coverage,
+ * not conformance.
+ */
+coverage: Array<StoredRuleCoverageGap>, 
 /**
  * Set while the serial synthesis pass runs (after every lens, before the
  * terminal event) so a run reloaded mid-synthesis still projects the

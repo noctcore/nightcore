@@ -96,8 +96,23 @@ mod tests {
             findings: vec![finding("f1", "fp1")],
             artifacts: vec![artifact("a1", "afp1")],
             proposals: vec![proposal("p1", "pfp1")],
+            coverage: vec![coverage("fp1")],
             synthesizing: false,
             error: None,
+        }
+    }
+
+    fn coverage(convention_fp: &str) -> StoredRuleCoverageGap {
+        StoredRuleCoverageGap {
+            id: format!("coverage-{convention_fp}"),
+            convention_fingerprint: convention_fp.to_string(),
+            category: "folder-structure".into(),
+            title: "t".into(),
+            status: "enforced".into(),
+            enforced_by: vec!["nightcore/component-folder-structure".into()],
+            documented_in: vec![],
+            suggested_artifact_kind: Some("eslint-rule".into()),
+            fingerprint: convention_fp.to_string(),
         }
     }
 
@@ -158,6 +173,70 @@ mod tests {
         .unwrap();
         let reloaded = HarnessStore::load_from(dir);
         assert_eq!(reloaded.get("old").unwrap().proposals.len(), 0);
+    }
+
+    #[test]
+    fn a_pre_coverage_scan_on_disk_loads_with_an_empty_coverage_set() {
+        // A HarnessRun JSON written before the `coverage` field existed must still
+        // deserialize (serde default), proving the additive ENFORCE-lite migration is
+        // zero-risk — the sole persisted-shape touch in Phase 1.
+        let (_store, tmp) = store();
+        let dir = tmp.path().join("harness");
+        std::fs::create_dir_all(&dir).unwrap();
+        let legacy = serde_json::json!({
+            "id": "old",
+            "projectPath": "/proj",
+            "status": "completed",
+            "categories": ["folder-structure"],
+            "model": "claude-opus-4-8",
+            "createdAt": 1,
+            "updatedAt": 1,
+            "findings": [],
+            "artifacts": [],
+            "proposals": []
+            // no `coverage` key
+        });
+        std::fs::write(
+            dir.join("old.json"),
+            serde_json::to_string_pretty(&legacy).unwrap(),
+        )
+        .unwrap();
+        let reloaded = HarnessStore::load_from(dir);
+        assert_eq!(reloaded.get("old").unwrap().coverage.len(), 0);
+    }
+
+    #[test]
+    fn coverage_survives_the_disk_round_trip() {
+        let (store, tmp) = store();
+        store.upsert(&run("r1")).unwrap();
+        let reloaded = HarnessStore::load_from(tmp.path().join("harness"));
+        let cov = &reloaded.get("r1").unwrap().coverage;
+        assert_eq!(cov.len(), 1);
+        assert_eq!(cov[0].status, "enforced");
+        assert_eq!(
+            cov[0].enforced_by,
+            vec!["nightcore/component-folder-structure"]
+        );
+        assert_eq!(cov[0].convention_fingerprint, "fp1");
+    }
+
+    #[test]
+    fn stored_rule_coverage_gap_from_wire_parses() {
+        let cv = serde_json::json!({
+            "id": "coverage-fp",
+            "conventionFingerprint": "fp",
+            "category": "imports-boundaries",
+            "title": "No cross-feature imports",
+            "status": "documented-only",
+            "enforcedBy": [],
+            "documentedIn": ["No cross-feature imports."],
+            "fingerprint": "fp"
+        });
+        let c = StoredRuleCoverageGap::from_wire(&cv).expect("parse coverage");
+        assert_eq!(c.status, "documented-only");
+        assert!(c.enforced_by.is_empty());
+        assert_eq!(c.documented_in, vec!["No cross-feature imports."]);
+        assert!(c.suggested_artifact_kind.is_none());
     }
 
     #[test]

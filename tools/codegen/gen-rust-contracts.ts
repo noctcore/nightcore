@@ -342,6 +342,11 @@ const STRUCT_NAMES: Record<string, string> = {
   // One task-shaped harness proposal (apply-artifacts bundle | agent-task).
   'artifactIds|confidence|description|fingerprint|harnessCheck|id|kind|prompt|rationale|title|verifyCommand':
     'HarnessProposal',
+  // ENFORCE-lite: one convention's rule-coverage report (rides `harness-scan-completed`
+  // additively). `category` is a lenient wire string (no ConventionCategory import in
+  // harness-enforce.ts — avoids a contract cycle).
+  'category|conventionFingerprint|documentedIn|enforcedBy|fingerprint|id|status|suggestedArtifactKind|title':
+    'RuleCoverageGap',
   // The manifest-declared runtime policy the engine's PreToolUse gate enforces
   // (hardening modules #3/#4/#9/#12), carried on `start-session`.
   'allowTools|askTools|denyBashPatterns|denyReadPaths|disallowedTools|protectedPaths':
@@ -403,6 +408,9 @@ const ENUM_NAMES: Record<string, string> = {
   'architecture|folder-structure|naming|imports-boundaries|design-decisions|tooling-lint|testing|agent-context':
     'ConventionCategory',
   'convention|gap': 'ConventionKind',
+  // Harness ENFORCE-lite (rule-coverage) status enum. Kebab-case wire strings →
+  // clean `rename_all = "kebab-case"` Rust enum.
+  'enforced|documented-only|unenforced': 'CoverageStatus',
   'pnpm|bun|yarn|npm|turbo|nx|cargo|single|unknown': 'WorkspaceTool',
   'app|package|tool|unknown': 'RepoPackageRole',
   'lint-meta-rule|eslint-rule|eslint-plugin-file|eslint-config|agent-contract|custom-lint-plugin':
@@ -1458,6 +1466,19 @@ const EVENT_INPUTS: Record<string, unknown> = {
         description: 'Write the AGENTS.md guardrail section codifying colocation.',
         artifactIds: ['pa-1'],
         fingerprint: 'apply-artifacts:agent-contract:AGENTS.md',
+      },
+    ],
+    coverage: [
+      {
+        id: 'coverage:folder-structure:folder-per-component',
+        conventionFingerprint: 'folder-structure:folder-per-component',
+        category: 'folder-structure',
+        title: 'Components follow strict folder-per-component',
+        status: 'enforced',
+        enforcedBy: ['nightcore/component-folder-structure'],
+        documentedIn: ['Components are folder-per-component.'],
+        suggestedArtifactKind: 'eslint-rule',
+        fingerprint: 'folder-structure:folder-per-component',
       },
     ],
     categoriesRun: ['architecture', 'folder-structure', 'imports-boundaries'],

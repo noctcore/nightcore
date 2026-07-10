@@ -711,6 +711,23 @@
           "fingerprint": "apply-artifacts:agent-contract:AGENTS.md"
         }
       ],
+      "coverage": [
+        {
+          "id": "coverage:folder-structure:folder-per-component",
+          "conventionFingerprint": "folder-structure:folder-per-component",
+          "category": "folder-structure",
+          "title": "Components follow strict folder-per-component",
+          "status": "enforced",
+          "enforcedBy": [
+            "nightcore/component-folder-structure"
+          ],
+          "documentedIn": [
+            "Components are folder-per-component."
+          ],
+          "suggestedArtifactKind": "eslint-rule",
+          "fingerprint": "folder-structure:folder-per-component"
+        }
+      ],
       "categoriesRun": [
         "architecture",
         "folder-structure",
