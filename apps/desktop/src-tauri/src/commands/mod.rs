@@ -23,6 +23,7 @@
 //!    FEATURE group (the grouping comments there), and a synchronous command
 //!    body must stay allowlisted in `arch_guards` (the main-thread ratchet).
 
+pub mod fs;
 pub mod onboarding;
 pub mod policy;
 pub mod project;

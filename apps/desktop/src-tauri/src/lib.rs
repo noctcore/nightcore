@@ -354,6 +354,10 @@ pub fn run() {
             commands::terminal::terminal_list_persisted,
             commands::terminal::terminal_read_persisted,
             commands::terminal::terminal_delete_persisted,
+            // Read-only filesystem browsing for the terminal folder picker (open a
+            // shell in ANY directory). Async; never reads file contents or writes.
+            commands::fs::list_directory,
+            commands::fs::directory_exists,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Nightcore application");

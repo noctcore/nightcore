@@ -24,6 +24,7 @@ use ts_rs::TS;
 fn export_all_bindings() {
     use crate::analysis::injection_scan::InjectionFlag;
     use crate::gauntlet::{GauntletResult, GauntletStep};
+    use crate::infra::browse::{DirectoryEntry, DirectoryListing};
     use crate::infra::editor::DetectedEditor;
     use crate::orchestration::coordinator::LoopSnapshot;
     use crate::project::Project;
@@ -167,6 +168,10 @@ fn export_all_bindings() {
         TerminalSessionInfo,
         PersistedTerminalInfo,
         PersistedTerminalScrollback,
+        // Terminal folder browser: the one-level directory listing + its entries
+        // (`export_all` on the listing also writes the nested `DirectoryEntry`).
+        DirectoryListing,
+        DirectoryEntry,
         // Trust Report (wayfinder #91): the per-task governance receipt. `export_all`
         // on `TrustReport` also writes its nested section shapes (GauntletTrust /
         // GuardrailTrust / GuardrailEvent / FlightSummary / TokenTotals /
@@ -275,6 +280,8 @@ mod tests {
             "TerminalSessionInfo.ts",
             "PersistedTerminalInfo.ts",
             "PersistedTerminalScrollback.ts",
+            "DirectoryListing.ts",
+            "DirectoryEntry.ts",
             "TrustReport.ts",
             "GauntletTrust.ts",
             "GuardrailTrust.ts",

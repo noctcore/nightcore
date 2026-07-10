@@ -4,6 +4,7 @@
 //! `crate::{logging, platform, proc}` paths are preserved by the facade
 //! re-exports in `lib.rs`.
 
+pub(crate) mod browse;
 pub(crate) mod editor;
 pub(crate) mod logging;
 pub(crate) mod platform;

@@ -16,36 +16,29 @@ use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
-use crate::project::ProjectStore;
 use crate::terminal::{
     OutputSink, PersistedTerminalInfo, PersistedTerminalScrollback, SpawnOpts, TerminalRegistry,
     TerminalSessionInfo,
 };
 
-/// Resolve + confine the requested spawn cwd SERVER-SIDE: it must be the active
-/// project's root or a dir under its `.nightcore/worktrees/` base (exactly what the
-/// new-tab picker offers). Paths are canonicalized so a `..`/symlink cwd can't open
-/// a shell outside the project — the same posture as `reveal_worktree`, since here
-/// the cwd arrives raw from the webview.
-fn resolve_spawn_cwd(app: &AppHandle, cwd: &str) -> Result<PathBuf, String> {
-    let project = app
-        .try_state::<ProjectStore>()
-        .and_then(|s| s.active())
-        .ok_or_else(|| "no active project — open a project before a terminal".to_string())?;
-    let project_root = std::fs::canonicalize(&project.path)
-        .map_err(|_| "the active project's path no longer exists".to_string())?;
+/// Resolve the requested spawn cwd SERVER-SIDE: canonicalize it (so a `..`/symlink
+/// input resolves to a real, stable location), then require that it EXISTS and is a
+/// DIRECTORY. Any user-chosen directory is a valid terminal cwd.
+///
+/// DELIBERATE WIDENING (folder-browser feature): this previously required the cwd
+/// to be the active project's root or a dir under its `.nightcore/worktrees/` base.
+/// That membership check was defense-in-depth, NOT the security boundary — the
+/// terminal is the user's own unconfined seam by grilled decision 1 (never
+/// agent-reachable), so restricting *which folder the human opens their own shell
+/// in* bought nothing. The new-tab picker now offers a "Browse…" flow over any
+/// directory, so this resolves to exists-and-is-a-directory. The real containment
+/// (opt-in Seatbelt write-scoping for a CONFINED tab) is unchanged and still scopes
+/// to whatever cwd resolves here, arbitrary or not.
+fn resolve_spawn_cwd(cwd: &str) -> Result<PathBuf, String> {
     let candidate = std::fs::canonicalize(cwd)
         .map_err(|_| format!("cannot open a terminal — {cwd} does not exist"))?;
     if !candidate.is_dir() {
         return Err(format!("cannot open a terminal — {cwd} is not a directory"));
-    }
-    let worktrees_base = crate::worktree::worktrees_base(&project_root);
-    let allowed =
-        candidate == project_root || crate::worktree::is_under(&worktrees_base, &candidate);
-    if !allowed {
-        return Err(
-            "refusing to open a terminal outside the project root or its worktrees".to_string(),
-        );
     }
     Ok(candidate)
 }
@@ -68,7 +61,7 @@ pub async fn terminal_spawn(
     channel: tauri::ipc::Channel,
 ) -> Result<TerminalSessionInfo, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let cwd = resolve_spawn_cwd(&app, &cwd)?;
+        let cwd = resolve_spawn_cwd(&cwd)?;
         // Wrap the binary Channel as the session's output sink: each coalesced batch
         // is sent as a raw ArrayBuffer (never JSON — the load-bearing transport
         // choice). A closed webview makes `send` error, which we drop.
@@ -178,4 +171,39 @@ pub async fn terminal_delete_persisted(app: AppHandle, id: String) -> Result<(),
     })
     .await
     .map_err(|e| format!("terminal delete_persisted failed to run: {e}"))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_spawn_cwd;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn spawn_cwd_accepts_any_existing_directory() {
+        // The deliberate widening: an arbitrary directory (NOT under any project or
+        // worktree) is now a valid terminal cwd. It is canonicalized on the way out.
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("anywhere");
+        fs::create_dir(&dir).unwrap();
+        let resolved = resolve_spawn_cwd(dir.to_str().unwrap()).expect("an existing dir resolves");
+        assert_eq!(resolved, fs::canonicalize(&dir).unwrap());
+    }
+
+    #[test]
+    fn spawn_cwd_rejects_a_missing_path() {
+        let tmp = TempDir::new().unwrap();
+        let missing = tmp.path().join("gone");
+        let err = resolve_spawn_cwd(missing.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("does not exist"), "got: {err}");
+    }
+
+    #[test]
+    fn spawn_cwd_rejects_a_file() {
+        let tmp = TempDir::new().unwrap();
+        let file = tmp.path().join("file.txt");
+        fs::write(&file, "x").unwrap();
+        let err = resolve_spawn_cwd(file.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("is not a directory"), "got: {err}");
+    }
 }
