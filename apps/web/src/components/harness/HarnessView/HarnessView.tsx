@@ -7,6 +7,7 @@ import {
   EmptyState,
   FolderIcon,
   HistoryIcon,
+  IssueMapExportButton,
   Menu,
   RetryIcon,
   RunLifecycleShell,
@@ -197,7 +198,12 @@ function ResultsScreen({
       {view.section === 'conventions' && (
         <>
           {view.stream.status === 'completed' && (
-            <BulkConvertBar {...view.conventionsBulk} />
+            <BulkConvertBar
+              {...view.conventionsBulk}
+              trailing={
+                <IssueMapExportButton scanKind="enforce" runId={view.stream.runId} />
+              }
+            />
           )}
           <CategoryTabs tabs={view.tabs} active={view.activeTab} onSelect={view.setActiveTab} />
           <ConventionGrid
