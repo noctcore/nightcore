@@ -23,6 +23,7 @@ mod commands;
 mod convert;
 mod harness;
 mod insight;
+mod issue_map;
 mod issue_triage;
 mod lifecycle;
 mod models;
@@ -69,6 +70,9 @@ pub(crate) use pr_review::*;
 // The Issue Triage commands + the reader-side `issue-validation-*` handler (glob so the
 // `#[tauri::command]` macro siblings resolve through `sidecar::*` for `generate_handler!`).
 pub(crate) use issue_triage::*;
+// The issue-map export commands (glob so the `#[tauri::command]` macro siblings resolve
+// through `sidecar::*` for `generate_handler!`).
+pub(crate) use issue_map::*;
 // The workflow-facing session dispatchers are no longer re-exported here: the
 // workflow tier reaches them through the managed `Arc<dyn SessionDispatch>` seam
 // (`seam::SidecarSessions` — issue #33), never as `crate::sidecar::*`.

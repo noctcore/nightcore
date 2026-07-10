@@ -44,6 +44,10 @@ fn export_all_bindings() {
     use crate::terminal::{
         PersistedTerminalInfo, PersistedTerminalScrollback, TerminalSessionInfo,
     };
+    use crate::workflow::issue_map::{
+        GroupCount, GroupIntro, IssueMapPreview, IssueMapResult, Narrative, PriorMap,
+        SubIssuePreview,
+    };
     use crate::workflow::pr::{PrDraft, PrSupport};
     use crate::workflow::pr_changed_files::PrChangedFile;
     use crate::workflow::pr_comments::{PrCommentTriage, PrCommentTriageClass};
@@ -174,6 +178,16 @@ fn export_all_bindings() {
         FlightSummary,
         TokenTotals,
         QuarantineEvent,
+        // Issue-map export (wayfinder #112): the preview payload + the write result.
+        // `export_all` on `IssueMapPreview` also writes its nested SubIssuePreview /
+        // GroupCount / PriorMap / Narrative (→ IssueMapNarrative.ts) / GroupIntro.
+        IssueMapPreview,
+        SubIssuePreview,
+        GroupCount,
+        PriorMap,
+        GroupIntro,
+        Narrative,
+        IssueMapResult,
     );
 }
 
@@ -268,6 +282,13 @@ mod tests {
             "FlightSummary.ts",
             "TokenTotals.ts",
             "QuarantineEvent.ts",
+            "IssueMapPreview.ts",
+            "SubIssuePreview.ts",
+            "GroupCount.ts",
+            "PriorMap.ts",
+            "GroupIntro.ts",
+            "IssueMapNarrative.ts",
+            "IssueMapResult.ts",
         ] {
             assert!(
                 dir.join(file).exists(),

@@ -261,6 +261,10 @@ pub fn run() {
             sidecar::preview_issue_comment,
             sidecar::post_issue_validation_comment,
             sidecar::convert_issue_validation_to_task,
+            // Issue-map export (wayfinder #112): the human-gated full preview + the
+            // GitHub write. Both async + spawn_blocking (they shell to `gh`).
+            sidecar::preview_issue_map,
+            sidecar::export_issue_map,
             workflow::pr_review_post::post_review_to_github,
             workflow::pr_list::list_open_prs,
             workflow::pr_changed_files::pr_changed_files,

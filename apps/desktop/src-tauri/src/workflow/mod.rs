@@ -15,6 +15,7 @@ pub(crate) mod gauntlet;
 pub(crate) mod gauntlet_project;
 pub(crate) mod github_labels;
 pub(crate) mod github_md;
+pub(crate) mod issue_map;
 pub(crate) mod issue_triage;
 pub(crate) mod kind;
 pub(crate) mod merge;
