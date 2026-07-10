@@ -18,16 +18,33 @@ use std::process::Command;
 
 /// Build a `git <args>` fixture command in `dir` with a fixed, HERMETIC identity.
 /// The ONE sanctioned raw `git` spawn outside `platform::git_command` — the guard
-/// below scans the crate's sources to enforce that. We pin a deterministic
-/// author/committer (so a `git commit` works with no host `user.name`/`email`) and
-/// point the global/system config at `/dev/null` so a fixture never depends on the
-/// developer's or CI host's git config (aliases, hooks, merge drivers) — the
-/// isolation the pr_fix conflict fixtures already needed, applied to all of them.
+/// below scans the crate's sources to enforce that.
+///
+/// CONFINEMENT (why the env scrub): a fixture only sets `.current_dir(dir)` (a
+/// TempDir), but `current_dir` alone does NOT win against an inherited `GIT_DIR` /
+/// `GIT_WORK_TREE` / `GIT_INDEX_FILE` — git resolves the repo from those env vars
+/// FIRST, so a fixture `git config user.email …` or `git init --bare` would then
+/// silently retarget the REAL repo the test runs inside. Git exports exactly those
+/// vars when `cargo test` runs from a pre-push/pre-commit hook (the gate battery),
+/// so an un-scrubbed fixture writes `user.name=t` / `user.email=t@t.t` into the
+/// developer's `.git/config` and flips `core.bare=true`. We apply the SAME
+/// isolation the production seam uses ([`crate::platform::scrub_git_env`], which
+/// clears the repo-location + author + code-execution vectors) so every fixture git
+/// call is pinned to `dir` regardless of the ambient environment.
+///
+/// After scrubbing we re-pin a deterministic author/committer (scrub cleared the
+/// inherited ones, so a fixture `git commit` still works with no host
+/// `user.name`/`email`) and point the global/system config at `/dev/null` so a
+/// fixture never depends on the developer's or CI host's git config.
 fn git_cmd(dir: &Path, args: &[&str]) -> Command {
     let mut cmd = Command::new("git");
-    cmd.args(args)
-        .current_dir(dir)
-        .env("GIT_AUTHOR_NAME", "nightcore-test")
+    cmd.args(args).current_dir(dir);
+    // Confine to `dir`: strip any inherited GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE (and
+    // the author + code-execution vectors) so the ambient env can't redirect the spawn.
+    crate::platform::scrub_git_env(&mut cmd);
+    // Re-pin the hermetic fixture identity + neutralize the host global/system config
+    // (these `.env` sets run AFTER the scrub's `.env_remove`, so they win).
+    cmd.env("GIT_AUTHOR_NAME", "nightcore-test")
         .env("GIT_AUTHOR_EMAIL", "test@nightcore.local")
         .env("GIT_COMMITTER_NAME", "nightcore-test")
         .env("GIT_COMMITTER_EMAIL", "test@nightcore.local")
@@ -93,6 +110,42 @@ fn no_raw_git_spawn_outside_the_fixture_helper() {
         "raw `git` spawn found outside the chokepoint — route it through \
          crate::platform::git_command (production) or crate::git::testutil (tests): {offenders:#?}"
     );
+}
+
+/// REGRESSION GUARD: a fixture git spawn must be CONFINED to its `current_dir`.
+/// An inherited `GIT_DIR` / `GIT_WORK_TREE` / `GIT_INDEX_FILE` (git exports these
+/// when `cargo test` runs from a pre-push/pre-commit hook) overrides `current_dir`,
+/// so an un-scrubbed fixture `git config user.email t@t.t` / `git init --bare`
+/// silently retargets the developer's REAL repo — writing `user.name=t` and
+/// flipping `core.bare=true`. Assert the built command removes the repo-location
+/// vars (and still carries the pinned hermetic identity). Deterministic + parallel
+/// safe: it inspects the Command's env map, never the process env or a real repo.
+#[test]
+fn git_cmd_scrubs_ambient_repo_location_env() {
+    use std::collections::HashMap;
+    use std::ffi::OsStr;
+    let cmd = git_cmd(Path::new("/tmp"), &["status"]);
+    let envs: HashMap<&OsStr, Option<&OsStr>> = cmd.get_envs().collect();
+    // The repo-location vars that would otherwise redirect the spawn off `dir`.
+    for var in ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"] {
+        assert_eq!(
+            envs.get(OsStr::new(var)),
+            Some(&None),
+            "{var} must be scrubbed so `current_dir` wins (else fixtures leak into the real repo)"
+        );
+    }
+    // The hermetic identity survives the scrub (re-pinned after it), so a fixture
+    // `git commit` still works on a host with no `user.name`/`email`.
+    assert_eq!(
+        envs.get(OsStr::new("GIT_AUTHOR_NAME")),
+        Some(&Some(OsStr::new("nightcore-test"))),
+        "the pinned fixture identity must survive the env scrub"
+    );
+    assert_eq!(
+        envs.get(OsStr::new("GIT_CONFIG_GLOBAL")),
+        Some(&Some(OsStr::new("/dev/null"))),
+    );
+    assert_eq!(cmd.get_current_dir(), Some(Path::new("/tmp")));
 }
 
 /// Recurse `dir`, calling `f(path, contents)` for every `.rs` file.
