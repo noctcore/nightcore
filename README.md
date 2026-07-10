@@ -12,52 +12,22 @@
 
 # Nightcore
 
-**Stop typing code. Start directing AI agents.**
+**Full-loop autonomy inside an enforced harness — coding agents that can't wreck your architecture.**
 
 > **[!WARNING]**
 >
-> **Alpha — early and actively changing.** Nightcore is under heavy development; APIs,
-> UI, and on-disk formats can break between commits. There are **no GitHub releases**
-> yet — not until the app is stable and ships an auto-update channel. For now you
-> **clone and build locally** (see [Quick Start](#quick-start)). Tested on **macOS and
-> Windows** only; Linux may work but is not officially supported yet.
+> **Alpha — early and actively changing.** APIs, UI, and on-disk formats can break
+> between commits. There are **no GitHub releases yet** — for now you **clone and
+> build locally** (see [Getting Started](#getting-started)). Tested on **macOS and
+> Windows**; Linux is best-effort.
 
-<details open>
-<summary><h2>Table of Contents</h2></summary>
-
-- [What Makes Nightcore Different?](#what-makes-nightcore-different)
-  - [The Workflow](#the-workflow)
-  - [Hard Process Boundaries](#hard-process-boundaries)
-  - [Powered by Claude Agent SDK](#powered-by-claude-agent-sdk)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Quick Start](#quick-start)
-- [Features](#features)
-  - [Kanban Board](#kanban-board-k)
-  - [Task Kinds](#task-kinds)
-  - [Insight, Harness & Scorecard](#insight-i)
-  - [Worktrees, PR Review & Settings](#worktrees-w)
-- [Architecture](#architecture)
-- [Tech Stack](#tech-stack)
-- [Development](#development)
-- [Security Disclaimer](#security-disclaimer)
-- [Contributing](#contributing)
-- [Community Standards](#community-standards)
-- [Project Status](#project-status)
-- [License](#license)
-
-</details>
-
-Nightcore is a **local-first desktop studio** that turns Claude into an autonomous
-development teammate. Describe work as cards on a Kanban board; Nightcore plans,
-dispatches, and runs agents in parallel — in isolated git worktrees, with
-dependency ordering and a failure circuit-breaker — and streams every agent's
-progress back to the UI.
-
-It is a from-scratch, better-architected reimagining of
-[AutoMaker](https://github.com/AutoMaker-Org/automaker): the same autonomous
-orchestration value, rebuilt on hard process boundaries instead of one monolithic
-daemon.
+Nightcore is a **local-first desktop studio** that runs Claude as an autonomous
+development team. Describe work as cards on a Kanban board; agents plan, build,
+and test in parallel, each in its own isolated git worktree. The difference is
+what happens next: **nothing merges on trust.** Every change must pass a
+verification gauntlet — build, lint, typecheck, your project's *own* structure
+rules, and an independent reviewer agent — before it can reach your branch. The
+gates are machine-enforced state transitions, not suggestions in a prompt.
 
 > Local-first, single-user, Claude-first. No server, no database, no accounts.
 > State lives under `~/.nightcore/` and per-project `.nightcore/`.
@@ -66,69 +36,223 @@ daemon.
   <source srcset="docs/assets/kanban-board.webp" type="image/webp" />
   <img
     src="docs/assets/kanban-board.png"
-    alt="Nightcore Kanban Board — autonomous agent orchestration with worktree isolation, verification gates, and live streaming"
+    alt="Nightcore Kanban Board — autonomous agents running in isolated worktrees behind verification gates"
     width="100%"
   />
 </picture>
 
-## What Makes Nightcore Different?
+## Contents
 
-Traditional dev tools help you write code. Nightcore helps you **orchestrate AI
-agents** to build entire features autonomously — with isolation, verification,
-and governance baked in.
+- [Why autonomy needs a harness](#why-autonomy-needs-a-harness)
+- [The harness](#the-harness)
+- [The loop](#the-loop)
+- [Architecture](#architecture)
+- [Getting Started](#getting-started)
+- [Status & roadmap](#status--roadmap)
+- [Security disclaimer](#security-disclaimer)
+- [Contributing](#contributing) · [License](#license)
 
-### The Workflow
+## Why autonomy needs a harness
 
-1. **Add tasks** — Describe work on the Kanban board (Build, TDD, Research, or Decompose)
-2. **Run or enable Auto Mode** — Nightcore assigns agents, respects dependencies, and caps concurrency
-3. **Watch it build** — Live transcripts, tool use, cost/usage, and session history stream to the UI
-4. **Verify & approve** — An automated gauntlet (build → lint/typecheck → independent reviewer) gates merge
-5. **Ship** — Commit, merge, and open PRs from isolated worktrees without touching `main`
+Coding agents are good at producing diffs and bad at respecting a codebase.
+Left unsupervised, the failure modes are predictable:
 
-### Hard Process Boundaries
+- **Architecture erosion.** A diff can compile, pass tests, and still import
+  across layer boundaries, duplicate an existing module, or ignore every
+  convention your team spent a year establishing. "Green" is not "right."
+- **Gaming the gate.** Agents optimize for *done*: skip the failing test,
+  sprinkle `@ts-ignore`, gut an assertion, quietly widen the task's scope until
+  the diff touches forty files.
+- **Untrusted input.** Task descriptions, issue bodies, PR comments, and repo
+  files are all channels for prompt injection — text that turns your own agent
+  against your own machine.
+- **Review that doesn't scale.** A diff viewer and a "waiting approval" column
+  work for one agent. At three agents running in parallel, eyeball review
+  degrades into a rubber stamp.
 
-Where AutoMaker runs one Express daemon, Nightcore splits responsibilities across
-three tiers with enforced seams:
+Most tools answer these with advice: *review carefully, use a worktree.*
+Nightcore's answer is to keep the autonomy at full speed and make the
+boundaries **enforced instead of advisory**.
 
-| Tier | Role |
-|------|------|
-| **Rust core** (Tauri 2) | Orchestration brain — task registry, auto-loop, worktrees, verification, IPC |
-| **Bun sidecar** | The *only* place the Claude Agent SDK lives — dumb NDJSON adapter, swappable later |
-| **React board** | Thin client — Tauri commands + `nc:event` stream only |
+## The harness
 
-Lint rules and `tools/lint-meta` enforce these boundaries in CI. See
-[`AGENTS.md`](AGENTS.md) for the full contract.
+Every Build/TDD task runs inside a battery of gates. All of them live in the
+product — in the Rust core and the agent-session hooks — not in a prompt the
+model can talk its way around.
 
-### Powered by Claude Agent SDK
+- **Verification gauntlet.** On completion, a task enters `Verifying`: project
+  build, lint/typecheck (auto-detected), then an **independent reviewer agent**
+  that reads the diff and returns `PASS` / `CHANGES_REQUESTED` / `FAIL`. The
+  verdict drives the task's state machine — `CHANGES_REQUESTED` parks it for
+  you, `FAIL` fails it. Merging is downstream of the verdict.
+- **Structure-Lock Gauntlet.** A deterministic, zero-agent-cost gate that runs
+  the target project's **own** harness checks — its generated lint plugin,
+  architecture-boundary rules, coverage thresholds — before the reviewer and
+  again at merge. Armed per-project via `.nightcore/harness.json` (absent file =
+  no checks, existing projects unaffected). A task cannot merge code that
+  breaks its own harness.
+- **Guardrail battery.**
+  - *Diff budget* — an oversized diff is a scoping problem, not a defect: the
+    task is parked for human triage instead of auto-fixed.
+  - *Contract budget* — caps how much wire-schema/contract surface one task may
+    churn.
+  - *Strictness ratchet* — snapshots the project's `any` / `@ts-ignore` /
+    `eslint-disable` counts and fails any task that regresses them. One-way.
+  - *Anti-gaming sweep* — always-on for worktree builds: flags focused/skipped
+    tests, gutted assertions, suppression sprinkling, and tampering with the
+    gate config itself, with the exact evidence in the failure.
+  - *Secret scan* — committed diffs are swept for credentials.
+- **Policy tiers.** Deny / ask / allow rules evaluated in a `PreToolUse` hook
+  inside the agent session: protected paths, banned command patterns, ask-first
+  tools. Deny always wins over ask, ask over allow — and the deny tier holds
+  even when a session runs with permissions bypassed. Configured per project,
+  never by model output.
+- **Injection quarantine.** External text (issue bodies, PR comments) is
+  fenced as untrusted before an agent sees it, and an injection scan flags
+  suspicious repo content; flagged paths become read-denials for agents, with a
+  Policy surface showing what was quarantined and why.
+- **Flight recorder.** Every gate decision — each tool call allowed or blocked,
+  per task — lands in an append-only ledger at
+  `.nightcore/ledger/<taskId>.ndjson`. You audit what an agent actually did,
+  not what it says it did.
+- **Workspace confinement + OS sandbox.** A `PreToolUse` gate confines agent
+  writes to the task's worktree, and an **opt-in macOS Seatbelt sandbox** wraps
+  the whole agent process so write confinement is enforced at the OS level —
+  beneath the agent, its hooks, and any subprocess it spawns.
 
-Nightcore uses the
-[Claude Agent SDK](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk)
-through a process-isolated sidecar. Agents read files, write code, run commands,
-and make git commits — typically in per-task git worktrees so your main branch
-stays safe.
+Simplified, the path from agent output to your branch:
 
-Authentication flows through your **local Claude CLI login** (`~/.claude`).
-Nightcore does not bundle credentials, broker tokens, or run a cloud backend.
+```mermaid
+flowchart LR
+  A[Agent builds in<br/>isolated worktree] --> B[Guardrail battery<br/>budgets · ratchet · anti-gaming · secrets]
+  B --> C[Structure-Lock<br/>the project's own rules]
+  C --> D[Gauntlet<br/>build · lint · typecheck]
+  D --> E[Reviewer agent<br/>PASS / CHANGES / FAIL]
+  E --> F[You<br/>approve · merge · PR]
+```
 
----
+## The loop
+
+The harness matters because the autonomy is real — Nightcore runs the whole
+development loop, not a chat window with a diff.
+
+1. **Add tasks** on the Kanban board, or generate them from scans.
+2. **Run, or enable Auto Mode** — the auto-loop assigns agents, respects
+   dependency ordering, caps concurrency, and trips a circuit-breaker on
+   repeated failures.
+3. **Watch** live transcripts, tool use, per-task cost, and session history.
+4. **Approve** what survives the gauntlet.
+5. **Ship** — commit, merge, and open PRs from worktrees without touching `main`.
+
+### Task kinds
+
+| Kind | Agent behavior | Orchestration |
+|------|----------------|---------------|
+| **Build** | Writes code, injection-guarded | Worktree + full verification gauntlet |
+| **TDD** | Red → green → refactor enforcement | Same as Build |
+| **Research** | Read-only, may use web tools | No worktree, report in transcript |
+| **Decompose** | Read-only planning → proposed sub-tasks | Convert 2–8 cards onto the board |
+| **Review** *(internal)* | Independent reviewer over the diff | Auto-dispatched by the gauntlet |
+
+### Surfaces
+
+- **Board** (`K`) — the control surface: drag-and-drop columns, parallel runs,
+  plan-approval for interactive sessions, commit/merge/PR from the task drawer.
+- **Worktrees** (`W`) — standalone manager for per-task branches: merge
+  preview, diff view, discard.
+- **Insight** (`I`) — codebase analysis producing grounded, categorized
+  findings (architecture, bugs, security, performance, …) you convert into
+  tasks.
+- **Scorecard** (`R`) — production-readiness profile: A–F grades with evidence
+  per dimension; **Harden** turns a weak grade into a pre-filled Build task.
+- **Harness** (`H`) — convention auditor that *writes the guardrails*: proposes
+  applyable lint rules, a custom ESLint plugin, and `AGENTS.md` blocks — the
+  artifacts the Structure-Lock Gauntlet then enforces.
+- **Issue Triage** — pull GitHub issues into a graded triage list and convert
+  them into governed board tasks.
+- **PR Review** (`P`) — create, push, and finalize PRs; address review comments
+  with an agent fix pass; run a diff-grounded AI PR-reviewer whose findings post
+  only after your approval.
+- **Settings** (`S`) — concurrency, models, permission mode, external MCP
+  servers, and the policy hardening modules.
+
+The loop closes on itself: **scans propose the guardrails, Apply writes them,
+the Structure-Lock enforces them, the gauntlet verifies against them.**
+
+## Architecture
+
+Three tiers with hard process boundaries — orchestration is native Rust, the
+agent SDK is quarantined in a sidecar process, and the UI is a thin client:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  apps/web — React board (Tauri webview)                        │
+│  Kanban UI. Talks ONLY Tauri commands + the `nc:event` stream. │
+└───────────────▲───────────────────────────┬──────────────────┘
+                │ invoke / events            │
+┌───────────────┴───────────────────────────▼──────────────────┐
+│  apps/desktop/src-tauri — RUST CORE (the orchestration brain)  │
+│  task registry · auto-loop · worktrees · verification gates ·  │
+│  guardrail battery · dependency resolver · event bus · IPC.    │
+│  Provider-agnostic. Native, always-on, performance-critical.   │
+└───────────────▲───────────────────────────┬──────────────────┘
+                │ NDJSON over stdio          │ spawn + drive
+┌───────────────┴───────────────────────────▼──────────────────┐
+│  apps/sidecar — BUN PROVIDER SIDECAR (the only place an agent  │
+│  SDK lives). Wraps the Claude Agent SDK behind the Rust        │
+│  `AgentProvider` trait; streams normalized events.             │
+└───────────────────────────────────────────────────────────────┘
+```
+
+- **Rust + Tauri 2, not Electron.** Native webview, no bundled Chromium; the
+  orchestration loop, gates, and git operations are native Rust. The studio
+  stays light while running multiple concurrent agent sessions.
+- **The SDK is quarantined.** The Claude Agent SDK exists in exactly one
+  process — the Bun sidecar — behind a provider seam. The core is
+  provider-agnostic by construction; Claude is the provider that ships today.
+- **The boundaries are enforced, not aspirational.** Custom lint rules,
+  `tools/lint-meta` layer checks, and Rust arch-guard tests gate every commit
+  in CI — Nightcore is governed by the same kind of harness it builds for your
+  project. See [`AGENTS.md`](AGENTS.md) for the contract.
+
+Nightcore grew out of the author's work on
+[AutoMaker](https://github.com/AutoMaker-Org/automaker) and rebuilds that idea
+from scratch: the same board-driven autonomy, re-architected onto hard process
+boundaries and an enforcement-first harness.
+
+### Monorepo layout
+
+```
+apps/
+  desktop/   Tauri 2 shell + src-tauri/ — Rust orchestration core & gates
+  web/       React 19 + Vite + Tailwind v4 — board UI
+  sidecar/   Bun NDJSON server wrapping the Claude Agent SDK
+packages/
+  contracts/ Zod schemas + types (wire protocol spine)
+  engine/    session runner, policy hooks, sandbox, scans
+  shared/ config/ storage/ session-fold/ eslint-plugin/
+tools/       codegen, lint-meta, coverage
+docs/        architecture, decisions, research
+```
 
 ## Getting Started
 
 ### Prerequisites
 
-- **[Bun](https://bun.sh) ≥ 1.1** — sidecar and TS workspace (Node 22 also works)
+- **[Bun](https://bun.sh) ≥ 1.1** — sidecar and TS workspace
 - **Rust toolchain** — to build the Tauri core
-- **[Claude CLI](https://code.claude.com/docs/en/setup)** — install and authenticate:
+- **[Claude CLI](https://code.claude.com/docs/en/setup)** — installed and
+  authenticated (Nightcore drives your local `claude` login; it does not bundle
+  credentials or run a cloud backend):
+
   ```bash
   curl -fsSL https://claude.ai/install.sh | bash
   claude   # log in once
   ```
 
-`@tauri-apps/cli` ships as a workspace dev-dependency — no global Tauri install needed.
+### Quick start
 
-### Quick Start
-
-> There is no installable release yet — build from source:
+> No installable release yet — build from source:
 
 ```bash
 git clone https://github.com/Shironex/nightcore.git
@@ -141,321 +265,51 @@ Verify the workspace:
 
 ```bash
 bun run typecheck
-bun run test:all       # full gate (includes Rust)
+bun run test:all     # full gate (includes Rust)
 ```
 
-Browser-only UI preview (sidecar disabled):
+Browser-only UI preview (sidecar disabled): `bun run web`.
+`ANTHROPIC_API_KEY` is honored as a fallback; the intended path is your local
+Claude CLI login.
 
-```bash
-bun run web
-```
+## Status & roadmap
 
-`ANTHROPIC_API_KEY` is honored as an optional fallback, but the intended path is
-your local Claude CLI login.
+**Alpha.** Functional and dogfooded daily — Nightcore's own backlog is built by
+Nightcore — but not production-ready. Expect breaking changes. Releases and
+auto-update are the top of the near-term roadmap and will land before broad
+distribution; until then, build from source.
 
----
+| Next up | |
+|---|---|
+| Installers + auto-update | signed releases, update channel |
+| Scan-view regroup | Understand → Harden → Enforce → Verify stages |
+| Deeper enforcement | convention-drift + rule-coverage detection |
+| Second provider | Codex, behind the existing `AgentProvider` seam |
 
-## Features
+Full picture: [`docs/research/2026-07-10-nightcore-roadmap.md`](docs/research/2026-07-10-nightcore-roadmap.md).
 
-Nightcore's sidebar routes between the surfaces below. Keyboard hints appear next
-to each nav item.
-
-### Kanban Board (`K`)
-
-The primary control surface. Drag cards across columns and let the auto-loop run
-agents in parallel (up to your concurrency limit).
-
-- Live agent transcripts, per-task cost/usage, dependency ordering
-- Failure circuit-breaker, session history with resume, plan-approval for interactive runs
-- Commit / merge / PR actions from the task drawer
-- Pre-merge **readiness gauntlet** (build → lint/typecheck as detected → Harness structure-lock checks)
-
-**Run modes:** **Main** edits on the current branch; **Worktree** isolates each task on its own branch (recommended for parallel agents).
-
-### Task Kinds
-
-| Kind | Agent behavior | Orchestration | What you get |
-|------|----------------|---------------|--------------|
-| **Build** | Writes code with injection guard | Worktree + verification gate | Reviewed diff, ready to merge |
-| **TDD** | Red → green → refactor enforcement | Same as Build | Test-first changes with verification |
-| **Research** | Read-only; may use web tools | No worktree, no verification | Report in transcript |
-| **Decompose** | Read-only planning → JSON sub-tasks | No worktree, no verification | 2–8 proposed cards to convert |
-| **Review** *(internal)* | Independent reviewer over worktree diff | Auto-dispatched by verification gate | `PASS` / `CHANGES_REQUESTED` / `FAIL` |
-
-### Insight (`I`)
-
-Claude-powered **codebase analysis** — grounded findings you triage and convert to tasks.
-
-**Categories:** Architecture · Bugs · Refactor · Performance · Security · Tests · Docs · UI/UX · Dependencies
-
-**Actions:** Convert to task, Dismiss, Restore, or Convert all open findings.
-
-### Harness (`H`)
-
-**Convention auditor** — discovers project structure, surfaces gaps, and proposes applyable harness artifacts (lint rules, ESLint config, `AGENTS.md` blocks). **Apply** writes to disk; ESLint artifacts can arm Structure-Lock gauntlet checks.
-
-**Lenses:** Architecture · Folder Structure · Naming · Imports & Boundaries · Design Decisions · Tooling & Lint · Testing · Agent Context
-
-### Scorecard (`R`)
-
-**Production-readiness profile** — one graded reading (A–F) per dimension with evidence.
-
-**Dimensions:** Architecture · Tests · Security · Error Handling · Observability · Dependencies · Performance · Type Safety · Accessibility · Docs & CI
-
-**Harden** converts a weak dimension into a Build task pre-filled with remediation context.
-
-### Worktrees (`W`)
-
-Standalone git worktree manager: browse per-task branches, preview merges, view diffs, discard worktrees.
-
-### PR Review (`P`)
-
-Create and track PRs from tasks (`gh pr create`), push updates, finalize, address review comments with an AI-assisted fix pass, and run a diff-grounded PR reviewer scan.
-
-### Settings (`S`)
-
-Project and global configuration: concurrency, auto-loop, model defaults, permission mode, external MCP servers, provider-config inspector, and policy hardening modules.
-
-### How scans and tasks connect
-
-```mermaid
-flowchart LR
-  subgraph scans["Sidebar scans (read-only)"]
-    I[Insight]
-    H[Harness]
-    S[Scorecard]
-  end
-  subgraph outputs["What you get"]
-    IF[Findings · severity · evidence]
-    HC[Conventions · proposals · artifacts]
-    SR[Graded readings · A–F · evidence]
-  end
-  subgraph board["Kanban Board"]
-    T[Build / TDD / Research / Decompose tasks]
-    V[Verification gate · merge · PR]
-  end
-  I --> IF
-  H --> HC
-  S --> SR
-  IF -->|Convert| T
-  HC -->|Convert / Apply| T
-  SR -->|Harden| T
-  T --> V
-```
-
-### Build-task lifecycle
-
-```mermaid
-stateDiagram-v2
-  [*] --> Backlog
-  Backlog --> Ready
-  Ready --> InProgress: Run
-  InProgress --> Verifying: Agent completes
-  Verifying --> WaitingApproval: Reviewer requests changes
-  Verifying --> Done: Reviewer PASS
-  Verifying --> Failed: Reviewer FAIL / build breaks
-  WaitingApproval --> InProgress: Accept & merge path
-  WaitingApproval --> InProgress: Reject & fix
-  InProgress --> Failed: Circuit-breaker / cancel
-  Done --> [*]
-  Failed --> [*]
-```
-
----
-
-## Architecture
-
-Three tiers with hard boundaries — orchestration is native Rust, the SDK is
-quarantined in a process-isolated sidecar, and the UI is a thin client:
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│  apps/web — React board (Tauri webview)                        │
-│  Kanban UI. Talks ONLY Tauri commands + the `nc:event` stream. │
-└───────────────▲───────────────────────────┬──────────────────┘
-                │ invoke / events            │
-┌───────────────┴───────────────────────────▼──────────────────┐
-│  apps/desktop/src-tauri — RUST CORE (the orchestration brain)  │
-│  task registry · auto-loop · concurrency/slots · worktrees ·   │
-│  dependency resolver · project registry · event bus · IPC.     │
-│  Provider-agnostic. Native, always-on, performance-critical.   │
-└───────────────▲───────────────────────────┬──────────────────┘
-                │ NDJSON over stdio          │ spawn + drive
-┌───────────────┴───────────────────────────▼──────────────────┐
-│  apps/sidecar — BUN PROVIDER SIDECAR (the only place an SDK    │
-│  lives). Wraps the Claude Agent SDK; streams normalized        │
-│  events. Swappable: a Codex sidecar later speaks the same      │
-│  protocol behind the same Rust `AgentProvider` trait.          │
-└───────────────────────────────────────────────────────────────┘
-```
-
-The core ↔ sidecar protocol is line-delimited JSON (NDJSON) over the child's
-stdio: one `SurfaceCommand` per line in, one `NightcoreEvent` per line out,
-human logs on stderr.
-
-**Docs:**
-
-- [`docs/arch/2026-06-21-nightcore-studio-architecture.md`](docs/arch/2026-06-21-nightcore-studio-architecture.md) — full design
-- [`docs/architecture.md`](docs/architecture.md) — runtime tiers summary
-- [`AGENTS.md`](AGENTS.md) — package layer model and import boundaries
-
-### Monorepo layout
-
-```
-apps/
-  desktop/   Tauri 2 shell + src-tauri/ — Rust orchestration core
-  web/       React 19 + Vite + Tailwind v4 — Kanban board UI
-  sidecar/   Bun NDJSON server wrapping the Claude Agent SDK
-packages/
-  contracts/ Zod schemas + types (wire protocol spine)
-  shared/    logger, Result<T,E>, ids, path helpers
-  config/    layered config (~/.nightcore → ./.nightcore)
-  storage/   local session-metadata store
-  engine/    SessionManager, permissions, hooks, scans
-  session-fold/  event→state fold logic
-  eslint-plugin/ nightcore/* lint rules
-tools/       codegen, lint-meta, coverage
-docs/        architecture, decisions, research
-```
-
----
-
-## Tech Stack
-
-### Frontend
-
-- **React 19** · **Vite** · **Tailwind CSS v4**
-- **Tauri 2** webview shell
-- **Vitest** + Storybook for component tests
-
-### Core
-
-- **Rust** — task store, auto-loop, worktrees, verification, event bus
-- **Tauri 2** — desktop IPC and lifecycle
-
-### Sidecar & packages
-
-- **Bun** — sidecar runtime and TS workspace
-- **Claude Agent SDK** — quarantined in `@nightcore/engine` → `apps/sidecar`
-- **Zod 4** — contract source of truth (`@nightcore/contracts`)
-- **TypeScript 5.6** — shared packages and web UI
-
-### Quality
-
-- **ESLint 9** + custom `@nightcore/eslint-plugin`
-- **`tools/lint-meta`** — layer-rank, package-shape, codegen-drift, agent-contract parity
-- **bun:test** (node packages) · **Vitest** (web + eslint-plugin)
-- **cargo test / clippy / fmt** — Rust core
-
----
-
-## Development
-
-| Command | What |
-|---------|------|
-| `bun run desktop` | Tauri desktop app (`tauri dev`) |
-| `bun run web` | Vite dev server (browser preview) |
-| `bun run sidecar` | Bun provider sidecar (raw NDJSON) |
-| `bun run typecheck` | `tsc -b` across the workspace |
-| `bun run lint` | ESLint + lint-meta (always use this, not bare `eslint`) |
-| `bun run test:all` | **Full gate** — build + node + web + plugin + Rust |
-| `bun run codegen:contracts` | Regenerate zod → Rust contracts |
-
-### Testing
-
-All suites are fast and offline — no live Claude sessions, no token cost:
-
-- **Rust core:** task store, orchestration seams, sidecar serial-guard
-- **Sidecar:** NDJSON framing, command dispatch (SDK stubbed)
-- **Web:** Vitest + Storybook component tests
-
-**CI** (`.github/workflows/ci.yml`): `lint` → `typecheck` → node coverage floor → web → plugin on Bun; `cargo fmt`, `test:rust`, `clippy` on Rust. Dependency CVE scanning runs separately in `audit.yml`.
-
-Drive the sidecar by hand:
-
-```bash
-echo '{"type":"start-session","prompt":"say hello"}' | bun run sidecar
-```
-
-The sidecar prints `nightcore-sidecar ready` on stderr, then emits one
-`NightcoreEvent` per line on stdout.
-
----
-
-## Security Disclaimer
+## Security disclaimer
 
 > **[!CAUTION]**
 >
-> **This software runs AI agents with access to your filesystem and shell. Use at your own risk.**
->
-> Agents can read, modify, and delete files under the project paths you open.
-> Review task descriptions for injection attempts; Nightcore includes guards, but
-> no sandbox is perfect on a bare-metal desktop install.
->
-> **Run only on projects you trust.** Consider separate git worktrees, dedicated
-> user accounts, or VMs for untrusted codebases.
-
----
+> **This software runs AI agents with access to your filesystem and shell. Use
+> at your own risk.** The harness reduces risk — policy tiers, workspace
+> confinement, injection quarantine, the opt-in OS sandbox — but no gate set is
+> perfect on a bare-metal desktop install. Agents can read, modify, and delete
+> files under the project paths you open. **Run only on projects you trust**,
+> and consider dedicated user accounts or VMs for untrusted codebases.
 
 ## Contributing
 
-Contributions are welcome under the MIT License. See **[CONTRIBUTING.md](CONTRIBUTING.md)**
-for setup, the PR checklist, architecture rules, and testing requirements.
-
-Before your first PR, read [`AGENTS.md`](AGENTS.md) — CI enforces every rule there.
-
-Found a security issue? See **[SECURITY.md](SECURITY.md)** — please do not file public issues for vulnerabilities.
-
----
-
-## Community Standards
-
-This project follows the **[Contributor Covenant](CODE_OF_CONDUCT.md)**. By participating, you agree to uphold a respectful, harassment-free community. Report conduct concerns to [@Shironex](https://github.com/Shironex).
-
----
-
-## Project Status
-
-**Alpha.** Nightcore is functional and dogfooded daily, but it is not production-ready.
-Expect breaking changes, rough edges, and missing polish. **GitHub releases and
-installers will come after** the app is stable and auto-update is in place — until
-then, [clone and build locally](#quick-start).
-
-Platform support today: **macOS and Windows** (actively tested). Linux is
-best-effort only.
-
-Nightcore has shipped through studio milestones **M0–M4** and ongoing post-M4
-governance work (Insight, Harness, Scorecard, PR system, hardening gates). See
-[`docs/research/`](docs/research/) for detailed specs and open threads.
-
-| Milestone | Status |
-|-----------|--------|
-| M0 — walking skeleton | Done |
-| M1 — task spine + board | Done |
-| M2 — autonomy + worktrees | Done |
-| M3 — provider trait + plan gate | Done |
-| M4 — verification gauntlet | Done |
-| Post-M4 — scans, PR, policy | Shipped, ongoing |
-
----
-
-## Learn More
-
-| Doc | Description |
-|-----|-------------|
-| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute, PR checklist, testing |
-| [Issue templates](.github/ISSUE_TEMPLATE/) | Bug reports and feature requests |
-| [SECURITY.md](SECURITY.md) | Vulnerability reporting and supported versions |
-| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community standards (Contributor Covenant) |
-| [AGENTS.md](AGENTS.md) | Architecture contract enforced by CI |
-| [docs/architecture.md](docs/architecture.md) | Runtime tiers and data flow |
-| [docs/decisions/INDEX.md](docs/decisions/INDEX.md) | Architectural decision register |
-
----
+Contributions are welcome under the MIT License. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for setup and the PR checklist, and read
+[`AGENTS.md`](AGENTS.md) first — CI enforces every rule in it. Security issues:
+[SECURITY.md](SECURITY.md) (no public issues for vulnerabilities, please).
+This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md).
 
 ## License
 
-MIT © [Shirone](https://github.com/Shironex). See [LICENSE](LICENSE) for the full text.
+MIT © [Shirone](https://github.com/Shironex). See [LICENSE](LICENSE).
 
 Not affiliated with Anthropic. Nightcore is not "Claude Code" and does not
 redistribute Claude credentials.
