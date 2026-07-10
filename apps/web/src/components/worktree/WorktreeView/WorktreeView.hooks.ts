@@ -5,7 +5,15 @@ import { useCallback, useState } from 'react';
 
 import { useToast } from '@/components/ui';
 import type { MergePreview, Task, WorktreeDiff, WorktreeInfo } from '@/lib/bridge';
-import { discardWorktree, mergePreview, mergeTask, openExternal, worktreeDiff } from '@/lib/bridge';
+import {
+  discardWorktree,
+  mergePreview,
+  mergeTask,
+  openExternal,
+  openInEditor,
+  revealWorktree,
+  worktreeDiff,
+} from '@/lib/bridge';
 import { parseGitError } from '@/lib/git-error';
 
 import type { WorktreePrRef } from '../WorktreeManager';
@@ -42,6 +50,10 @@ export interface WorktreeViewModel {
   prForTask: (id: string) => WorktreePrRef | null;
   /** Open a PR page in the system browser (https-gated Rust-side). */
   openPr: (url: string) => void;
+  /** Reveal a worktree's directory in Finder (path resolved server-side). */
+  reveal: (taskId: string) => void;
+  /** Open a worktree's directory in the user's editor (path resolved server-side). */
+  openEditor: (taskId: string) => void;
   openDiff: (taskId: string) => void;
   openPreview: (taskId: string) => void;
   openDiscard: (taskId: string) => void;
@@ -85,6 +97,30 @@ export function useWorktreeView(tasks: Task[], worktrees: WorktreeInfo[]): Workt
       void openExternal(url).catch((err: unknown) => {
         console.error('open_external failed', err);
         toast.error('Could not open the pull request', err);
+      });
+    },
+    [toast],
+  );
+
+  const reveal = useCallback(
+    (taskId: string) => {
+      // Path is resolved + confined server-side; a failure (worktree discarded, no
+      // Finder) surfaces as a toast, mirroring the openPr discipline.
+      void revealWorktree(taskId).catch((err: unknown) => {
+        console.error('reveal_worktree failed', err);
+        toast.error('Could not reveal the worktree', err);
+      });
+    },
+    [toast],
+  );
+
+  const openEditor = useCallback(
+    (taskId: string) => {
+      // Rust picks the Settings-pinned editor (else auto-detects); a "no editor
+      // found" error surfaces here so the user knows to pick one in Settings.
+      void openInEditor(taskId).catch((err: unknown) => {
+        console.error('open_in_editor failed', err);
+        toast.error('Could not open the editor', err);
       });
     },
     [toast],
@@ -196,6 +232,8 @@ export function useWorktreeView(tasks: Task[], worktrees: WorktreeInfo[]): Workt
     titleForTask,
     prForTask,
     openPr,
+    reveal,
+    openEditor,
     openDiff,
     openPreview,
     openDiscard,

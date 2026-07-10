@@ -103,6 +103,17 @@ sandboxSessions: boolean,
  */
 sidebarStyle: string | null, 
 /**
+ * The user's preferred editor for the worktree "Open in editor" action — a
+ * known-editor command id (`code` / `cursor` / …, see
+ * [`crate::infra::editor::KNOWN_EDITORS`]). `None` ⇒ auto-detect the first
+ * installed known editor. Global-only (a machine/user preference, like
+ * `sidebar_style`). A stored value that isn't an installed allowlisted editor
+ * is ignored at launch time (resolution falls back to auto-detect), so the
+ * field can never make the opener spawn an arbitrary program. Serde-additive:
+ * a settings file written before this field loads as `None`.
+ */
+preferredEditor: string | null, 
+/**
  * Per-project overrides keyed by project id.
  */
 projectOverrides: { [key in string]: SettingsOverride }, };

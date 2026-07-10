@@ -24,6 +24,7 @@ use ts_rs::TS;
 fn export_all_bindings() {
     use crate::analysis::injection_scan::InjectionFlag;
     use crate::gauntlet::{GauntletResult, GauntletStep};
+    use crate::infra::editor::DetectedEditor;
     use crate::orchestration::coordinator::LoopSnapshot;
     use crate::project::Project;
     use crate::settings::{
@@ -86,6 +87,8 @@ fn export_all_bindings() {
         BoardAppearance,
         BoardBackgroundRef,
         AppInfo,
+        // Worktree open-in-editor: the detected-editor rows for the Settings picker.
+        DetectedEditor,
         WorktreeStatus,
         // Worktree overhaul: branch picker + merge-preview + worktree-diff shapes.
         // `export_all` on the aggregates also writes their nested enums/stats.
@@ -190,6 +193,7 @@ mod tests {
             "BoardAppearance.ts",
             "BoardBackgroundRef.ts",
             "AppInfo.ts",
+            "DetectedEditor.ts",
             "WorktreeInfo.ts",
             "BranchInfo.ts",
             "MergePreview.ts",

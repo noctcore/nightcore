@@ -19,6 +19,7 @@ import {
 } from '@/components/ui';
 import {
   type AppInfo,
+  type DetectedEditor,
   PROVIDER_LABEL,
   type Settings,
   type SettingsPatch,
@@ -59,6 +60,12 @@ const RUN_MODES: [value: string, label: string][] = [
   ['worktree', 'Worktree'],
 ];
 
+/** The editor-picker options: an "Auto" sentinel (empty value ⇒ Rust auto-detects
+ *  the first installed editor) followed by each detected editor. */
+function editorOptions(editors: DetectedEditor[]): [value: string, label: string][] {
+  return [['', 'Auto'], ...editors.map((e): [string, string] => [e.id, e.label])];
+}
+
 
 /** The data and patch callbacks `buildCards` needs to assemble each page's cards. */
 export interface CardContext {
@@ -70,6 +77,8 @@ export interface CardContext {
   appInfo: AppInfo | null;
   onRestartOnboarding: () => void;
   isAppIdle: boolean;
+  /** Editors detected on this machine, for the worktree open-in-editor picker. */
+  editors: DetectedEditor[];
 }
 
 /** Build the card set for a settings page. The run-shaping controls (model,
@@ -84,6 +93,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
     activeProjectPath,
     appInfo,
     onRestartOnboarding,
+    editors,
   } = ctx;
   switch (page) {
     case 'models':
@@ -247,6 +257,23 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
                   on={settings.cleanupWorktrees}
                   onChange={(next) => patchGlobal({ cleanupWorktrees: next })}
                   label="Delete worktree on merge"
+                />
+              ),
+            },
+            {
+              label: 'Open in editor',
+              hint:
+                editors.length > 0
+                  ? 'Editor the worktree row "Open in editor" button launches'
+                  : 'No supported editor detected on PATH — install one (Cursor, VS Code, …)',
+              control: (
+                <Segmented
+                  // Empty string is the "Auto" sentinel: the Rust side auto-detects
+                  // the first installed editor. Detected editors follow. Global-only —
+                  // it's a machine/user preference, not a per-project setting.
+                  options={editorOptions(editors)}
+                  value={settings.preferredEditor ?? ''}
+                  onChange={(v) => patchGlobal({ preferredEditor: v })}
                 />
               ),
             },

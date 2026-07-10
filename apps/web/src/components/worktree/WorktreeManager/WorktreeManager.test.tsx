@@ -49,6 +49,29 @@ test('disables actions for a worktree with no owning task', async () => {
   await expect.element(screen.getByRole('button', { name: /discard/i })).toBeDisabled();
 });
 
+test('renders Reveal / Open-in-editor only when their callbacks are provided', async () => {
+  // Default passes neither, so no reveal/editor buttons render.
+  const bare = render(<Default />);
+  expect(bare.getByRole('button', { name: /^reveal$/i }).query()).toBeNull();
+  expect(bare.getByRole('button', { name: /^editor$/i }).query()).toBeNull();
+});
+
+test('fires onReveal and onOpenEditor with the primary task id', async () => {
+  const onReveal = vi.fn();
+  const onOpenEditor = vi.fn();
+  const screen = render(<Single onReveal={onReveal} onOpenEditor={onOpenEditor} />);
+  await screen.getByRole('button', { name: /^reveal$/i }).click();
+  await screen.getByRole('button', { name: /^editor$/i }).click();
+  expect(onReveal).toHaveBeenCalledWith('task-7');
+  expect(onOpenEditor).toHaveBeenCalledWith('task-7');
+});
+
+test('disables Reveal / Editor for a worktree with no owning task', async () => {
+  const screen = render(<Orphaned onReveal={vi.fn()} onOpenEditor={vi.fn()} />);
+  await expect.element(screen.getByRole('button', { name: /^reveal$/i })).toBeDisabled();
+  await expect.element(screen.getByRole('button', { name: /^editor$/i })).toBeDisabled();
+});
+
 test('flags a diverged worktree', async () => {
   const screen = render(<Diverged />);
   await expect.element(screen.getByLabelText(/diverged from base/i)).toBeInTheDocument();

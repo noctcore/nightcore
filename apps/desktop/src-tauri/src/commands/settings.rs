@@ -67,6 +67,17 @@ pub fn update_settings(
     Ok(merged)
 }
 
+/// The editors detected on this machine (CLI-first: a known-editor command
+/// present on PATH), for the Settings "Open in editor" picker. Pure detection —
+/// no store, no side effects. Async + `spawn_blocking`: each probe is a `which`
+/// PATH walk, so the (bounded) filesystem scan stays off the WKWebView thread.
+#[tauri::command]
+pub async fn list_editors() -> Result<Vec<crate::infra::editor::DetectedEditor>, String> {
+    tauri::async_runtime::spawn_blocking(crate::infra::editor::detect_editors)
+        .await
+        .map_err(|e| format!("list editors failed to run: {e}"))
+}
+
 // --- Custom Board Background -------------------------------------------------
 
 /// Persist a project's custom board-background image (Custom Background feature) and

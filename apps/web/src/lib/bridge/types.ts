@@ -40,6 +40,7 @@ export type { AppInfo } from '../generated/AppInfo';
 export type { BoardAppearance } from '../generated/BoardAppearance';
 export type { BoardBackgroundRef } from '../generated/BoardBackgroundRef';
 export type { BranchInfo } from '../generated/BranchInfo';
+export type { DetectedEditor } from '../generated/DetectedEditor';
 export type { DiffFileStat } from '../generated/DiffFileStat';
 export type { DiffStatus } from '../generated/DiffStatus';
 export type { GauntletResult } from '../generated/GauntletResult';

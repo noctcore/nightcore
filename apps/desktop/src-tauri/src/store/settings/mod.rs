@@ -351,10 +351,54 @@ mod tests {
             "maxBudgetUsd",
             "mcpServers",
             "contextPackEnabled",
+            "preferredEditor",
             "projectOverrides",
         ] {
             assert!(obj.contains_key(key), "missing camelCase key {key}");
         }
+    }
+
+    #[test]
+    fn preferred_editor_defaults_none_and_is_serde_additive() {
+        // The worktree open-in-editor pin is unset by default (auto-detect).
+        assert!(Settings::default().preferred_editor.is_none());
+
+        // A settings.json from before the field still parses, defaulting it to None.
+        let tmp = TempDir::new().expect("temp dir");
+        let dir = tmp.path().join("config");
+        std::fs::create_dir_all(&dir).unwrap();
+        let legacy = r#"{"defaultModel":"claude-opus-4-8","defaultEffort":"medium",
+            "maxConcurrency":3,"permissionMode":"bypass","cleanupWorktrees":true,
+            "notifyOnComplete":false,"defaultRunMode":"main","projectOverrides":{}}"#;
+        std::fs::write(dir.join("settings.json"), legacy).unwrap();
+        let store = SettingsStore::load_from(dir);
+        assert!(store.get().preferred_editor.is_none());
+    }
+
+    #[test]
+    fn preferred_editor_patch_sets_and_the_empty_sentinel_clears() {
+        let (store, _tmp) = temp_store();
+        // A non-empty value pins the editor.
+        store
+            .update(serde_json::from_str(r#"{"preferredEditor":"code"}"#).unwrap())
+            .expect("set editor");
+        assert_eq!(store.get().preferred_editor.as_deref(), Some("code"));
+
+        // The empty-string "Auto" sentinel clears the pin back to auto-detect.
+        store
+            .update(serde_json::from_str(r#"{"preferredEditor":""}"#).unwrap())
+            .expect("clear editor");
+        assert!(store.get().preferred_editor.is_none());
+
+        // An omitted key is a no-op: pinning again then sending an unrelated patch
+        // must leave the editor untouched.
+        store
+            .update(serde_json::from_str(r#"{"preferredEditor":"cursor"}"#).unwrap())
+            .expect("set editor again");
+        store
+            .update(serde_json::from_str(r#"{"notifyOnComplete":true}"#).unwrap())
+            .expect("unrelated patch");
+        assert_eq!(store.get().preferred_editor.as_deref(), Some("cursor"));
     }
 
     #[test]

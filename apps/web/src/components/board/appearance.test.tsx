@@ -28,6 +28,7 @@ function settingsWith(projectId: string, appearance: BoardAppearance): Settings 
     autoCommitOnVerified: false,
     sandboxSessions: false,
     sidebarStyle: 'unified',
+    preferredEditor: null,
     projectOverrides: { [projectId]: { boardAppearance: appearance } },
   };
 }

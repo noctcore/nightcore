@@ -78,6 +78,22 @@ export async function discardWorktree(id: string): Promise<void> {
   await invoke('discard_worktree', { id });
 }
 
+/** Reveal a task's worktree directory in the OS file manager (Finder `open -R`).
+ *  The path is resolved + confined server-side from the task id (the webview never
+ *  supplies a path). Real failures (worktree discarded, opener missing) reject so
+ *  the caller can toast; no-ops outside Tauri (browser preview). */
+export async function revealWorktree(id: string): Promise<void> {
+  await tauriInvoke<void>('reveal_worktree', { id }, undefined);
+}
+
+/** Open a task's worktree directory in the user's editor (the Settings-pinned
+ *  editor, else CLI-first auto-detect). Path resolved + confined server-side like
+ *  {@link revealWorktree}. Rejects when no editor is found so the caller can toast;
+ *  no-ops outside Tauri. */
+export async function openInEditor(id: string): Promise<void> {
+  await tauriInvoke<void>('open_in_editor', { id }, undefined);
+}
+
 // --- Autonomous loop ------------------------------------------------------
 
 /** Start the autonomous loop: ready tasks are leased and run up to the live

@@ -192,6 +192,13 @@ pub struct SettingsPatch {
     /// per-project override target). Serde-additive.
     #[cfg_attr(test, ts(optional))]
     pub sidebar_style: Option<String>,
+    /// The preferred editor id for the worktree open-in-editor action, or an empty
+    /// string to clear it back to auto-detect (serde collapses absent/null to
+    /// `None`, so the empty string is the explicit "Auto" sentinel the picker
+    /// sends). Global-only (ignored for a per-project override target), like
+    /// `sidebar_style`. Serde-additive.
+    #[cfg_attr(test, ts(optional))]
+    pub preferred_editor: Option<String>,
     /// Custom Background: the project's COMPLETE next board-appearance knob set.
     /// Requires a `projectId` (board appearance is per-project only — a patch with no
     /// `projectId` ignores this field). The panel always sends the full object, so
@@ -278,6 +285,13 @@ impl Settings {
         }
         if let Some(v) = patch.sidebar_style {
             self.sidebar_style = Some(resolve_sidebar_style(Some(v.as_str())).to_string());
+        }
+        // The empty string is the picker's "Auto" sentinel — clear the pin back to
+        // auto-detect; any non-empty value pins that editor id. (An omitted key is
+        // `None`, a no-op — so you can set OR clear, unlike the Option ceilings.)
+        if let Some(v) = patch.preferred_editor {
+            let trimmed = v.trim();
+            self.preferred_editor = (!trimmed.is_empty()).then(|| trimmed.to_string());
         }
     }
 }

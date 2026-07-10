@@ -12,13 +12,20 @@ import {
   MOCK_SETTINGS,
   mockSettingsWithBackground,
 } from '../mocks';
-import type { AppInfo, Settings, SettingsPatch } from '../types';
+import type { AppInfo, DetectedEditor, Settings, SettingsPatch } from '../types';
 
 // --- Settings -------------------------------------------------------------
 
 /** The current settings. Returns mock defaults outside Tauri. */
 export async function getSettings(): Promise<Settings> {
   return tauriInvoke<Settings>('get_settings', {}, MOCK_SETTINGS);
+}
+
+/** The editors detected on this machine (CLI-first: a known editor on PATH) for
+ *  the Settings "Open in editor" picker. Returns `[]` outside Tauri (browser
+ *  preview) so the picker degrades to just the "Auto" option. */
+export async function listEditors(): Promise<DetectedEditor[]> {
+  return tauriInvoke<DetectedEditor[]>('list_editors', {}, []);
 }
 
 /** Shallow-merge a settings patch (global, or a per-project override when

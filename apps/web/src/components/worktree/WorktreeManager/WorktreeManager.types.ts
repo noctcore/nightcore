@@ -67,4 +67,10 @@ export interface WorktreeManagerProps {
   onPreviewMerge: (taskId: string) => void;
   /** Discard a worktree (and its branch) for the primary task. Destructive. */
   onDiscard: (taskId: string) => void;
+  /** Reveal the worktree directory in the OS file manager (Finder). Optional —
+   *  the button only renders when provided (like `onOpenPr`). */
+  onReveal?: (taskId: string) => void;
+  /** Open the worktree directory in the user's editor. Optional — the button
+   *  only renders when provided. */
+  onOpenEditor?: (taskId: string) => void;
 }

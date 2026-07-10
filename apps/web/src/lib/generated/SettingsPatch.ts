@@ -58,6 +58,14 @@ contextPackEnabled?: boolean,
  */
 sidebarStyle?: string, 
 /**
+ * The preferred editor id for the worktree open-in-editor action, or an empty
+ * string to clear it back to auto-detect (serde collapses absent/null to
+ * `None`, so the empty string is the explicit "Auto" sentinel the picker
+ * sends). Global-only (ignored for a per-project override target), like
+ * `sidebar_style`. Serde-additive.
+ */
+preferredEditor?: string, 
+/**
  * Custom Background: the project's COMPLETE next board-appearance knob set.
  * Requires a `projectId` (board appearance is per-project only — a patch with no
  * `projectId` ignores this field). The panel always sends the full object, so

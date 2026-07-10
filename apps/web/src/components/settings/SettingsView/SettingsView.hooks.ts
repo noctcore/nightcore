@@ -3,7 +3,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   type AppInfo,
+  type DetectedEditor,
   getAppInfo,
+  listEditors,
   type McpServerEntry,
   type RunMode,
   type SettingsPatch,
@@ -123,6 +125,29 @@ export function useSettingsView({
     patchScoped,
     patchGlobal,
   };
+}
+
+/** Load the editors detected on this machine once, for the worktree "Open in
+ *  editor" picker. Empty until it resolves (and `[]` outside Tauri), so the picker
+ *  degrades to just the "Auto" option. */
+export function useEditors(): DetectedEditor[] {
+  const [editors, setEditors] = useState<DetectedEditor[]>([]);
+  useEffect(() => {
+    let alive = true;
+    void listEditors()
+      .then((loaded) => {
+        if (alive) setEditors(loaded);
+      })
+      .catch((err) => {
+        // Non-fatal: the picker just shows "Auto". Log so the rejection doesn't
+        // leak as an unhandled promise.
+        console.error('list_editors failed', err);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return editors;
 }
 
 /** Load the real app metadata (version + repo URL) for the About page once. Null

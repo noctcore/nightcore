@@ -21,6 +21,7 @@ const settings: Settings = {
   autoCommitOnVerified: false,
   sandboxSessions: false,
   sidebarStyle: 'unified',
+  preferredEditor: null,
   projectOverrides: {
     nightcore: { defaultModel: 'claude-haiku-4-5' },
   },

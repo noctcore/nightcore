@@ -162,6 +162,7 @@ export const MOCK_SETTINGS: Settings = {
   autoCommitOnVerified: false,
   sandboxSessions: false,
   sidebarStyle: null,
+  preferredEditor: null,
   projectOverrides: {},
 };
 

@@ -174,6 +174,73 @@ fn discard_worktree_blocking(app: &AppHandle, id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Resolve a task's worktree dir from the store and confirm it exists AND lives
+/// under the project's `.nightcore/worktrees/` base — the shared guard for the
+/// reveal / open-in-editor conveniences. The path is computed server-side from the
+/// task id (the webview never supplies a raw path), so a stored field or model
+/// output can never point these OS openers at an arbitrary location; the
+/// `is_under` assertion is defense-in-depth against a future refactor widening it.
+fn resolve_worktree_dir(app: &AppHandle, id: &str) -> Result<std::path::PathBuf, String> {
+    let store = app
+        .try_state::<TaskStore>()
+        .ok_or_else(|| "task store unavailable".to_string())?;
+    // A stale/unknown id must open nothing.
+    store
+        .get(id)
+        .ok_or_else(|| format!("no task with id {id}"))?;
+    let project = active_project_path(app)?;
+    let dir = worktree::worktree_path(&project, id);
+    if !worktree::is_under(&worktree::worktrees_base(&project), &dir) {
+        return Err("refusing to open a path outside the worktrees directory".to_string());
+    }
+    if !dir.exists() {
+        return Err(format!(
+            "no worktree for task {id} — run it first, or it was discarded"
+        ));
+    }
+    Ok(dir)
+}
+
+/// Reveal a task's worktree directory in the OS file manager (Finder `open -R`,
+/// Linux `xdg-open`, Windows `explorer /select`). The path is resolved SERVER-SIDE
+/// from the store and confined to the worktrees base (see [`resolve_worktree_dir`]),
+/// mirroring `open_external`'s posture — the webview never supplies a path. A pure
+/// user-gesture convenience; the opener is reaped on a detached thread. Async +
+/// `spawn_blocking` (store read + git-path checks off the UI thread). Errors when
+/// the worktree is gone so the web can toast.
+#[tauri::command]
+pub async fn reveal_worktree(app: AppHandle, id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let dir = resolve_worktree_dir(&app, &id)?;
+        crate::infra::editor::reveal_in_file_manager(&dir)
+    })
+    .await
+    .map_err(|e| format!("reveal worktree failed to run: {e}"))?
+}
+
+/// Open a task's worktree directory in the user's editor. The editor is resolved
+/// from Settings (`preferred_editor`, an allowlisted known-editor id) with a
+/// CLI-first auto-detect fallback (see [`crate::infra::editor::resolve_editor`]);
+/// the path is resolved SERVER-SIDE + confined exactly like [`reveal_worktree`].
+/// Async + `spawn_blocking`; the editor is spawned with the path as a single argv
+/// (never a shell string) and reaped on a thread.
+#[tauri::command]
+pub async fn open_in_editor(app: AppHandle, id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let dir = resolve_worktree_dir(&app, &id)?;
+        // The preferred editor is a global user preference; a missing settings store
+        // (unusual) just means auto-detect.
+        let preferred = match app.try_state::<crate::settings::SettingsStore>() {
+            Some(store) => store.with_settings(|s| s.preferred_editor.clone()),
+            None => None,
+        };
+        let editor = crate::infra::editor::resolve_editor(preferred.as_deref())?;
+        crate::infra::editor::open_in_editor_at(&editor, &dir)
+    })
+    .await
+    .map_err(|e| format!("open in editor failed to run: {e}"))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

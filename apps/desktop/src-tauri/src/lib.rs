@@ -314,6 +314,9 @@ pub fn run() {
             commands::worktree::merge_preview,
             commands::worktree::worktree_diff,
             commands::worktree::discard_worktree,
+            commands::worktree::reveal_worktree,
+            commands::worktree::open_in_editor,
+            commands::settings::list_editors,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Nightcore application");

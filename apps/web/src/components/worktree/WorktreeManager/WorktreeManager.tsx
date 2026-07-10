@@ -18,6 +18,8 @@ export function WorktreeManager({
   onViewDiff,
   onPreviewMerge,
   onDiscard,
+  onReveal,
+  onOpenEditor,
 }: WorktreeManagerProps) {
   return (
     <section className="flex flex-col gap-3">
@@ -51,6 +53,8 @@ export function WorktreeManager({
               onViewDiff={onViewDiff}
               onPreviewMerge={onPreviewMerge}
               onDiscard={onDiscard}
+              onReveal={onReveal}
+              onOpenEditor={onOpenEditor}
             />
           ))}
         </ul>

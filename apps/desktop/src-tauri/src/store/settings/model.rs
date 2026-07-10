@@ -103,6 +103,16 @@ pub struct Settings {
     /// legacy settings load as `None` and resolve to unified at read time.
     #[serde(default)]
     pub sidebar_style: Option<String>,
+    /// The user's preferred editor for the worktree "Open in editor" action — a
+    /// known-editor command id (`code` / `cursor` / …, see
+    /// [`crate::infra::editor::KNOWN_EDITORS`]). `None` ⇒ auto-detect the first
+    /// installed known editor. Global-only (a machine/user preference, like
+    /// `sidebar_style`). A stored value that isn't an installed allowlisted editor
+    /// is ignored at launch time (resolution falls back to auto-detect), so the
+    /// field can never make the opener spawn an arbitrary program. Serde-additive:
+    /// a settings file written before this field loads as `None`.
+    #[serde(default)]
+    pub preferred_editor: Option<String>,
     /// Per-project overrides keyed by project id.
     pub project_overrides: HashMap<String, SettingsOverride>,
 }
@@ -357,6 +367,9 @@ impl Default for Settings {
             // darwin-only) — sessions run unwrapped until the user enables it.
             sandbox_sessions: false,
             sidebar_style: None,
+            // No editor pinned by default — the worktree "Open in editor" action
+            // auto-detects the first installed known editor until the user picks one.
+            preferred_editor: None,
             project_overrides: HashMap::new(),
         }
     }

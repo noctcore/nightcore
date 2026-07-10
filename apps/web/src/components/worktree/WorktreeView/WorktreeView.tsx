@@ -38,6 +38,8 @@ export function WorktreeView({ tasks }: WorktreeViewProps) {
         onViewDiff={v.openDiff}
         onPreviewMerge={v.openPreview}
         onDiscard={v.openDiscard}
+        onReveal={v.reveal}
+        onOpenEditor={v.openEditor}
       />
 
       <MergePreviewDialog

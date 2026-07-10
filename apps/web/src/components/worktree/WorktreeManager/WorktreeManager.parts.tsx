@@ -1,6 +1,15 @@
 /** Presentational sub-parts for WorktreeManager: a tinted status chip and a
  *  worktree row with its badge cluster + per-row actions. */
-import { BranchIcon, Button, GithubIcon, LogsIcon, MoveIcon, TrashIcon } from '@/components/ui';
+import {
+  BranchIcon,
+  Button,
+  ExternalLinkIcon,
+  FolderIcon,
+  GithubIcon,
+  LogsIcon,
+  MoveIcon,
+  TrashIcon,
+} from '@/components/ui';
 
 import type { WorktreeChip, WorktreeChipTone, WorktreeRowView } from './WorktreeManager.types';
 
@@ -32,6 +41,8 @@ interface WorktreeRowProps {
   onViewDiff: (taskId: string) => void;
   onPreviewMerge: (taskId: string) => void;
   onDiscard: (taskId: string) => void;
+  onReveal?: (taskId: string) => void;
+  onOpenEditor?: (taskId: string) => void;
 }
 
 /** One worktree: the branch (monospace) + optional task title, a status-badge
@@ -45,6 +56,8 @@ export function WorktreeRow({
   onViewDiff,
   onPreviewMerge,
   onDiscard,
+  onReveal,
+  onOpenEditor,
 }: WorktreeRowProps) {
   const taskId = view.primaryTaskId;
   const disabled = taskId === null;
@@ -79,6 +92,28 @@ export function WorktreeRow({
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5">
+        {onOpenEditor !== undefined && (
+          <Button
+            variant="secondary"
+            disabled={disabled}
+            onClick={() => taskId !== null && onOpenEditor(taskId)}
+            title="Open the worktree in your editor"
+          >
+            <ExternalLinkIcon size={13} />
+            Editor
+          </Button>
+        )}
+        {onReveal !== undefined && (
+          <Button
+            variant="secondary"
+            disabled={disabled}
+            onClick={() => taskId !== null && onReveal(taskId)}
+            title="Reveal the worktree in Finder"
+          >
+            <FolderIcon size={13} />
+            Reveal
+          </Button>
+        )}
         <Button
           variant="secondary"
           disabled={disabled}

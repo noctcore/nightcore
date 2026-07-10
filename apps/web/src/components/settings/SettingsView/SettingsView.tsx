@@ -19,7 +19,7 @@ import { ConstitutionCard } from '../ConstitutionCard';
 import { McpServersCard } from '../McpServersCard';
 import { buildCards } from '../settings-cards';
 import { SettingsCard } from '../SettingsCard';
-import { useAppInfo, useSettingsView } from './SettingsView.hooks';
+import { useAppInfo, useEditors, useSettingsView } from './SettingsView.hooks';
 import type {
   SettingsPage,
   SettingsScope,
@@ -127,6 +127,7 @@ export function SettingsView({
   } = useSettingsView({ settings, activeProjectId, onUpdate });
 
   const appInfo = useAppInfo();
+  const editors = useEditors();
   const header = PAGE_HEADERS[page];
   const cards = buildCards(page, {
     effective,
@@ -137,6 +138,7 @@ export function SettingsView({
     appInfo,
     onRestartOnboarding,
     isAppIdle,
+    editors,
   });
   const note = PAGE_NOTES[page];
 
