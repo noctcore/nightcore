@@ -19,7 +19,7 @@ import type { IMetaRule, IViolation } from '../types';
  *   1  contracts, infra, sync, engine_api   (pure leaves — import nothing internal)
  *   2  git                                  (→ infra only)
  *   3  store, worktree, provider            (co-tier; no sideways edges between them)
- *   4  analysis                             (→ git, store)
+ *   4  analysis, terminal                   (analysis → git, store; terminal → store)
  *   5  orchestration, sidecar, workflow     (the ENGINE SCC — see below)
  *   6  commands, bindings                   (surfaces)
  *
@@ -60,6 +60,10 @@ const RANK: Record<string, number> = {
   worktree: 3,
   provider: 3,
   analysis: 4,
+  // The USER terminal (PTY registry): a rank-4 peer of `analysis`. Imports only
+  // `store` (rank 3, the atomic-write idiom); commands (rank 6) drive it. A
+  // USER-ONLY seam — never wired to the engine SCC (rank 5).
+  terminal: 4,
   orchestration: 5,
   sidecar: 5,
   workflow: 5,

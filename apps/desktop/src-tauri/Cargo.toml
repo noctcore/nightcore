@@ -52,6 +52,13 @@ tree-sitter = "0.26.10"
 tree-sitter-typescript = "0.23.2"
 tree-sitter-javascript = "0.25.0"
 tree-sitter-rust = "0.24.2"
+# The integrated USER terminal (`terminal/`): wezterm's cross-platform PTY layer —
+# `openpty` + `spawn_command` into a real pty, a blocking `try_clone_reader` per
+# session (a dedicated reader thread is mandatory), `take_writer`, and `resize`
+# (SIGWINCH). Chosen over the `tauri-plugin-pty` drop-in (invoke long-poll data
+# path, RUSTSEC-flagged `safemem`, no registry lifecycle hooks) per the feasibility
+# research. USER-ONLY seam — no agent/sidecar path ever reaches it.
+portable-pty = "0.9.0"
 
 [dev-dependencies]
 tempfile = "3.27"

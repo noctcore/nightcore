@@ -28,6 +28,10 @@ mod provider;
 mod sidecar;
 mod store;
 mod sync;
+// The integrated USER terminal (PTY session registry). A peer of `provider/` /
+// `worktree/`; a USER-ONLY seam with no agent/sidecar path into it (see
+// `terminal/mod.rs`).
+mod terminal;
 mod workflow;
 mod worktree;
 
@@ -101,6 +105,19 @@ pub fn run() {
                 }};
             }
             store::run_store::scan_kinds!(boot_scan_store);
+
+            // The USER terminal registry (PTY sessions) — global (AutoMaker-style
+            // tabs), with scrollback persisted under the active project's
+            // `.nightcore/terminals/` (retargeted on project switch, like the task
+            // + scan stores). USER-ONLY managed state: driven solely by the command
+            // layer, never by any agent/sidecar path. Best-effort boot prune drops
+            // scrollback for since-discarded worktrees + files past the 30-day age.
+            let terminals_dir = project_store
+                .active()
+                .map(|p| std::path::Path::new(&p.path).join(".nightcore/terminals"))
+                .unwrap_or_else(|| config_dir.join("no-active-project/terminals"));
+            terminal::persist::prune(&terminals_dir);
+            app.manage(terminal::TerminalRegistry::new(terminals_dir));
 
             // The orchestrator (slot manager + circuit breaker + provider +
             // auto-loop) starts at the persisted concurrency. The provider spawns
@@ -317,6 +334,17 @@ pub fn run() {
             commands::worktree::reveal_worktree,
             commands::worktree::open_in_editor,
             commands::settings::list_editors,
+            // The integrated USER terminal (PTY). All async (a sync command would
+            // freeze the WKWebView); output streams over a per-session binary
+            // Channel, not events. USER-ONLY — never wired to an agent session.
+            commands::terminal::terminal_spawn,
+            commands::terminal::terminal_write,
+            commands::terminal::terminal_resize,
+            commands::terminal::terminal_kill,
+            commands::terminal::terminal_list,
+            commands::terminal::terminal_sessions_in_dir,
+            commands::terminal::terminal_list_persisted,
+            commands::terminal::terminal_read_persisted,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Nightcore application");

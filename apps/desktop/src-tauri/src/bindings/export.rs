@@ -41,6 +41,9 @@ fn export_all_bindings() {
         PermissionMode, ProposedSubtask, RunMode, SubtaskStatus, Task, TaskKind, TaskPatch,
         TaskStatus,
     };
+    use crate::terminal::{
+        PersistedTerminalInfo, PersistedTerminalScrollback, TerminalSessionInfo,
+    };
     use crate::workflow::pr::{PrDraft, PrSupport};
     use crate::workflow::pr_changed_files::PrChangedFile;
     use crate::workflow::pr_comments::{PrCommentTriage, PrCommentTriageClass};
@@ -150,6 +153,12 @@ fn export_all_bindings() {
         // enum (`export_all` on the row writes the nested enum too).
         PrCommentTriage,
         PrCommentTriageClass,
+        // The integrated USER terminal: the live-session descriptor + the
+        // persisted-scrollback metadata/replay shapes (`export_all` on the
+        // scrollback shape also writes the nested `PersistedTerminalInfo`).
+        TerminalSessionInfo,
+        PersistedTerminalInfo,
+        PersistedTerminalScrollback,
     );
 }
 
@@ -234,6 +243,9 @@ mod tests {
             "PrFixState.ts",
             "PrCommentTriage.ts",
             "PrCommentTriageClass.ts",
+            "TerminalSessionInfo.ts",
+            "PersistedTerminalInfo.ts",
+            "PersistedTerminalScrollback.ts",
         ] {
             assert!(
                 dir.join(file).exists(),

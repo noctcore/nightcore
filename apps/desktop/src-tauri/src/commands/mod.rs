@@ -28,5 +28,6 @@ pub mod policy;
 pub mod project;
 pub mod settings;
 pub mod task;
+pub mod terminal;
 pub mod transcript;
 pub mod worktree;

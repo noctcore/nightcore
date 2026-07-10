@@ -116,6 +116,18 @@ fn retarget_tasks(app: &AppHandle, store: &ProjectStore) {
         }};
     }
     crate::store::run_store::scan_kinds!(retarget_scan);
+
+    // The USER terminal registry's scrollback persist dir is project-scoped too
+    // (its live in-memory sessions are global and survive the switch — only the
+    // persist target moves). Best-effort: a missing registry (shouldn't happen)
+    // just skips the retarget.
+    if let Some(terminals) = app.try_state::<crate::terminal::TerminalRegistry>() {
+        let terminals_dir = store
+            .active()
+            .map(|p| std::path::Path::new(&p.path).join(".nightcore/terminals"))
+            .unwrap_or_else(|| store.config_dir.join("no-active-project/terminals"));
+        terminals.retarget(terminals_dir);
+    }
 }
 
 // --- Registry single-flight -------------------------------------------------
