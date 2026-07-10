@@ -265,6 +265,8 @@ pub fn run() {
             workflow::pr_list::list_open_prs,
             workflow::pr_changed_files::pr_changed_files,
             commands::transcript::read_transcript,
+            commands::trust::trust_report,
+            commands::trust::trust_report_markdown,
             plan_approval::approve_task,
             plan_approval::reject_task,
             plan_approval::refine_task,

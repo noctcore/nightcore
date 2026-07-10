@@ -50,6 +50,10 @@ fn export_all_bindings() {
     use crate::workflow::pr_fix::PrFixState;
     use crate::workflow::pr_list::{PrLabel, PrSummary};
     use crate::workflow::pr_status::PrStatus;
+    use crate::workflow::trust::{
+        FlightSummary, GauntletTrust, GuardrailEvent, GuardrailTrust, QuarantineEvent, TokenTotals,
+        TrustReport,
+    };
     use crate::worktree::{
         BranchInfo, DiffFileStat, DiffStatus, MergePreview, MergePreviewStatus, WorktreeDiff,
         WorktreeDiffFile, WorktreeStatus,
@@ -159,6 +163,17 @@ fn export_all_bindings() {
         TerminalSessionInfo,
         PersistedTerminalInfo,
         PersistedTerminalScrollback,
+        // Trust Report (wayfinder #91): the per-task governance receipt. `export_all`
+        // on `TrustReport` also writes its nested section shapes (GauntletTrust /
+        // GuardrailTrust / GuardrailEvent / FlightSummary / TokenTotals /
+        // QuarantineEvent) and the reused Task enums (already listed above).
+        TrustReport,
+        GauntletTrust,
+        GuardrailTrust,
+        GuardrailEvent,
+        FlightSummary,
+        TokenTotals,
+        QuarantineEvent,
     );
 }
 
@@ -246,6 +261,13 @@ mod tests {
             "TerminalSessionInfo.ts",
             "PersistedTerminalInfo.ts",
             "PersistedTerminalScrollback.ts",
+            "TrustReport.ts",
+            "GauntletTrust.ts",
+            "GuardrailTrust.ts",
+            "GuardrailEvent.ts",
+            "FlightSummary.ts",
+            "TokenTotals.ts",
+            "QuarantineEvent.ts",
         ] {
             assert!(
                 dir.join(file).exists(),

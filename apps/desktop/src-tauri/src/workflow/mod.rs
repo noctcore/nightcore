@@ -28,3 +28,4 @@ pub(crate) mod pr_review_post;
 pub(crate) mod pr_status;
 pub(crate) mod ratchet;
 pub(crate) mod secret_scan;
+pub(crate) mod trust;

@@ -47,11 +47,17 @@ pub fn ledger_path(project_root: &Path, task_id: &str) -> PathBuf {
 #[serde(rename_all = "camelCase")]
 pub struct LedgerRecord {
     /// Marker discriminator: `session-start` / `session-end` / `truncated`.
-    /// Parsed so marker lines round-trip (and a future reader can segment the
-    /// file by session), but no production detector reads it yet.
+    /// Parsed so marker lines round-trip; the Trust Report reader counts
+    /// `session-start` markers to derive a task's session count
+    /// (`crate::workflow::trust`).
     #[serde(default)]
-    #[allow(dead_code)]
     pub event: Option<String>,
+    /// ISO-8601 UTC timestamp the engine stamps on every record
+    /// (`session-ledger.ts`). The Rust gates predating the Trust Report never
+    /// needed it; the Trust Report surfaces it as the per-event chronology on
+    /// blocked/asked lines. Serde-additive (a pre-`ts` line simply loads `None`).
+    #[serde(default)]
+    pub ts: Option<String>,
     #[serde(default)]
     pub tool: Option<String>,
     /// First ~200 chars of the most relevant input field (Bash command line,
@@ -188,7 +194,10 @@ mod tests {
         let records = read_records(&path);
         assert_eq!(records.len(), 2, "the bad line is dropped, siblings kept");
         assert_eq!(records[0].event.as_deref(), Some("session-start"));
+        // The additive `ts` parse surfaces the engine's per-record timestamp.
+        assert_eq!(records[0].ts.as_deref(), Some("2026-07-01T00:00:00Z"));
         assert_eq!(records[1].tool.as_deref(), Some("Bash"));
+        assert_eq!(records[1].ts.as_deref(), Some("2026-07-01T00:00:01Z"));
         assert_eq!(records[1].decision.as_deref(), Some("allow"));
     }
 

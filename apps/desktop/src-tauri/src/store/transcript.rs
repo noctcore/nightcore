@@ -336,6 +336,75 @@ fn read_tail_lines(path: &Path, max_lines: usize) -> Option<Vec<String>> {
     Some(lines)
 }
 
+/// Aggregate cost + token totals summed across ALL of a task's sessions, derived
+/// from the per-session `session-completed` events persisted in the transcript
+/// (Trust Report, `crate::workflow::trust`). A pure store-leaf value — the
+/// workflow tier maps it onto the wire `TokenTotals`/`cost_usd_total` (a store
+/// leaf must not reach up into the workflow contract types).
+///
+/// Caveat carried by the caller's render: PR-**fix** sessions are deliberately
+/// skipped from the transcript (`sidecar::reader`), so this total slightly
+/// UNDER-counts fix-round spend. Everything summed here is exact for the sessions
+/// the transcript retains.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(crate) struct CostSummary {
+    /// Summed `costUsd` over every `session-completed` event.
+    pub cost_usd: f64,
+    /// How many `session-completed` events were summed (the transcript-visible
+    /// session count — distinct from the ledger `session-start` marker count,
+    /// which the Trust Report uses for its authoritative session tally).
+    pub sessions: u32,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub reasoning_output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_creation_tokens: u64,
+}
+
+/// Sum cost + token usage across a task's `session-completed` transcript records
+/// (Trust Report §3.5). Scans the FULL transcript (not the tail-bounded read) —
+/// `session-completed` events are one-per-session and rare, so a whole-file pass
+/// is cheap and must not miss an early session. Returns `None` when the task has
+/// no transcript or no completed session yet (nothing to total — the
+/// missing-transcript-is-empty posture), so the caller can omit the aggregate
+/// rather than render a misleading `$0`.
+pub(crate) fn cost_summary(tasks_dir: &Path, task_id: &str) -> Option<CostSummary> {
+    // Defence in depth: never join an unsafe id into the transcript path.
+    if !crate::store::is_safe_task_id(task_id) {
+        return None;
+    }
+    let path = transcript_path(tasks_dir, task_id);
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let mut summary = CostSummary::default();
+    let mut seen = false;
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Ok(ev) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        if ev.get("type").and_then(Value::as_str) != Some("session-completed") {
+            continue;
+        }
+        seen = true;
+        summary.sessions += 1;
+        if let Some(cost) = ev.get("costUsd").and_then(Value::as_f64) {
+            summary.cost_usd += cost;
+        }
+        if let Some(usage) = ev.get("usage") {
+            let u = |key: &str| usage.get(key).and_then(Value::as_u64).unwrap_or(0);
+            summary.input_tokens += u("inputTokens");
+            summary.output_tokens += u("outputTokens");
+            summary.reasoning_output_tokens += u("reasoningOutputTokens");
+            summary.cache_read_tokens += u("cacheReadTokens");
+            summary.cache_creation_tokens += u("cacheCreationTokens");
+        }
+    }
+    seen.then_some(summary)
+}
+
 /// A compact, bounded plain-text digest of a task's transcript for commit-message
 /// context (M-commit): the assistant's prose (`text` fields) and the names of the
 /// tools it used (`toolName`), in order, joined and tail-capped to `max_chars` (the
@@ -474,6 +543,93 @@ mod tests {
         let (store, _tmp) = temp_store();
         // A task that never ran has no transcript file → an empty vec, never an err.
         assert!(read_events(&store.tasks_dir(), "ghost").is_empty());
+    }
+
+    #[test]
+    fn cost_summary_sums_across_completed_sessions() {
+        // Trust Report §3.5: the cost summer totals `costUsd` + token `usage` over
+        // every `session-completed` record, spanning a task's multiple runs.
+        let (store, _tmp) = temp_store();
+        let task = Task::new("t".into(), String::new());
+        store.upsert(&task).expect("upsert");
+
+        // Two completed sessions plus non-completion noise that must be ignored.
+        append_event(
+            &store,
+            &task.id,
+            &serde_json::json!({"type":"session-started","sessionId":1}),
+        );
+        append_event(
+            &store,
+            &task.id,
+            &serde_json::json!({
+                "type":"session-completed","costUsd":0.25,
+                "usage":{"inputTokens":100,"outputTokens":40,"reasoningOutputTokens":5,
+                         "cacheReadTokens":10,"cacheCreationTokens":2}
+            }),
+        );
+        append_event(
+            &store,
+            &task.id,
+            &serde_json::json!({"type":"assistant-text","text":"noise"}),
+        );
+        append_event(
+            &store,
+            &task.id,
+            &serde_json::json!({
+                "type":"session-completed","costUsd":0.75,
+                "usage":{"inputTokens":200,"outputTokens":60,"reasoningOutputTokens":1,
+                         "cacheReadTokens":3,"cacheCreationTokens":4}
+            }),
+        );
+
+        let s = cost_summary(&store.tasks_dir(), &task.id).expect("a completed session totals");
+        assert_eq!(s.sessions, 2, "both completed sessions counted");
+        assert!(
+            (s.cost_usd - 1.0).abs() < 1e-9,
+            "0.25 + 0.75 = 1.0, got {}",
+            s.cost_usd
+        );
+        assert_eq!(s.input_tokens, 300);
+        assert_eq!(s.output_tokens, 100);
+        assert_eq!(s.reasoning_output_tokens, 6);
+        assert_eq!(s.cache_read_tokens, 13);
+        assert_eq!(s.cache_creation_tokens, 6);
+    }
+
+    #[test]
+    fn cost_summary_is_none_without_a_completed_session() {
+        let (store, _tmp) = temp_store();
+        // A task that never ran: no transcript → None (not a misleading $0).
+        assert!(cost_summary(&store.tasks_dir(), "ghost").is_none());
+
+        // A transcript with events but no `session-completed` → still None.
+        let task = Task::new("t".into(), String::new());
+        store.upsert(&task).expect("upsert");
+        append_event(
+            &store,
+            &task.id,
+            &serde_json::json!({"type":"assistant-text","text":"in progress"}),
+        );
+        assert!(cost_summary(&store.tasks_dir(), &task.id).is_none());
+    }
+
+    #[test]
+    fn cost_summary_tolerates_a_completed_session_missing_cost_and_usage() {
+        // A `session-completed` with neither costUsd nor usage still counts as a
+        // session and contributes zeroes (the fields are optional on the wire).
+        let (store, _tmp) = temp_store();
+        let task = Task::new("t".into(), String::new());
+        store.upsert(&task).expect("upsert");
+        append_event(
+            &store,
+            &task.id,
+            &serde_json::json!({"type":"session-completed"}),
+        );
+        let s = cost_summary(&store.tasks_dir(), &task.id).expect("counted");
+        assert_eq!(s.sessions, 1);
+        assert_eq!(s.cost_usd, 0.0);
+        assert_eq!(s.input_tokens, 0);
     }
 
     #[test]
