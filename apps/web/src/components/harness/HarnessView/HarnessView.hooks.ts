@@ -31,6 +31,11 @@ import type { ConventionFindingVM } from '../harness.types';
 import { useHarnessApply } from '../harness-apply.hooks';
 import { harnessScanConfig, useHarness } from '../harness-data.hooks';
 import { useHarnessProposals } from '../harness-proposals.hooks';
+import {
+  defaultSectionForMode,
+  sectionTabsForMode,
+  showProfileBannerForMode,
+} from '../harness-sections';
 import { useRunConfig } from '../RunControls/RunControls.hooks';
 import type {
   HarnessSection,
@@ -46,6 +51,7 @@ export type { HarnessSection, HarnessViewModel } from './HarnessView.types';
 export function useHarnessView({
   projectPath,
   projectName,
+  mode,
   onGotoBoard,
   preselect,
   onPreselectConsumed,
@@ -66,7 +72,9 @@ export function useHarnessView({
     notifyError: (title, err) => toast.error(title, err),
   });
   const { activeTab, resetTransient, runAction, startReconfigure } = view;
-  const [section, setSection] = useState<HarnessSection>('conventions');
+  // Default section is destination-driven: harden opens on Proposals, enforce on
+  // Conventions, the unified route on Conventions (its pre-split default).
+  const [section, setSection] = useState<HarnessSection>(defaultSectionForMode(mode));
 
   // Lifted CONFIGURE run config (the shared shape Insight uses too). It lives here
   // (not in RunControls) so the config survives the CONFIGURE → RUNNING → RESULTS
@@ -209,6 +217,19 @@ export function useHarnessView({
     [harness, resetTransient],
   );
 
+  // The section toggle is a pure filter over the ONE run's findings/proposals/
+  // artifacts: `mode` picks which tabs render (harden → propose half, enforce →
+  // enforce half, undefined → all), each carrying its live badge count.
+  const sectionTabs = useMemo(
+    () =>
+      sectionTabsForMode(mode, {
+        conventions: countOpenItems(stream.findings),
+        proposals: proposals.proposalCount,
+        artifacts: apply.artifactCount,
+      }),
+    [mode, stream.findings, proposals.proposalCount, apply.artifactCount],
+  );
+
   return {
     hasProject,
     projectName,
@@ -231,11 +252,10 @@ export function useHarnessView({
     runHistory,
     hasHistory: harness.runs.length > 0,
     profileLoading: stream.status === 'running' && stream.profile === null,
+    showProfileBanner: showProfileBannerForMode(mode),
     section,
     setSection,
-    conventionCount: countOpenItems(stream.findings),
-    proposalCount: proposals.proposalCount,
-    artifactCount: apply.artifactCount,
+    sectionTabs,
     tabs,
     activeTab,
     setActiveTab: view.setActiveTab,

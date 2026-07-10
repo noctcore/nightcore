@@ -17,6 +17,7 @@ import {
 
 import { CategoryTabs } from '../CategoryTabs';
 import { ConventionGrid } from '../ConventionGrid';
+import type { HarnessMode } from '../harness-sections';
 import { HarnessProposalList } from '../HarnessProposalList';
 import { PolicySection } from '../PolicySection';
 import { ProfileBanner } from '../ProfileBanner';
@@ -26,6 +27,13 @@ import { HarnessOverlays } from './HarnessOverlays';
 import type { HarnessSection, HarnessViewModel } from './HarnessView.hooks';
 import { useHarnessView } from './HarnessView.hooks';
 import type { HarnessViewProps } from './HarnessView.types';
+
+/** Per-destination heading: the PROPOSE / ENFORCE halves title themselves so a
+ *  provenance chip lands somewhere legible; the unified route stays "Harness". */
+const HEADING_BY_MODE: Record<HarnessMode, string> = {
+  harden: 'Harden',
+  enforce: 'Enforce',
+};
 
 /** One section-toggle tab: "Conventions" / "Proposals" / "Artifacts", with a live count. */
 function SectionTab({
@@ -163,39 +171,26 @@ function ResultsScreen({
           </div>
         ))}
 
-      <ProfileBanner profile={view.stream.profile} loading={view.profileLoading} />
+      {view.showProfileBanner && (
+        <ProfileBanner profile={view.stream.profile} loading={view.profileLoading} />
+      )}
 
-      {/* Section toggle */}
+      {/* Section toggle — the mode filter decides which tabs render (harden shows
+          Proposals + Artifacts, enforce shows Conventions + Policy). */}
       <div
         role="tablist"
         aria-label="Harness sections"
         className="flex items-center gap-1 border-b border-border px-6 py-2"
       >
-        <SectionTab
-          label="Conventions"
-          count={view.conventionCount}
-          active={view.section === 'conventions'}
-          onClick={() => setSection('conventions')}
-        />
-        <SectionTab
-          label="Proposals"
-          count={view.proposalCount}
-          active={view.section === 'proposals'}
-          onClick={() => setSection('proposals')}
-        />
-        <SectionTab
-          label="Artifacts"
-          count={view.artifactCount}
-          active={view.section === 'artifacts'}
-          onClick={() => setSection('artifacts')}
-        />
-        {/* Policy edits the project manifest directly — no per-run count. */}
-        <SectionTab
-          label="Policy"
-          count={0}
-          active={view.section === 'policy'}
-          onClick={() => setSection('policy')}
-        />
+        {view.sectionTabs.map((tab) => (
+          <SectionTab
+            key={tab.key}
+            label={tab.label}
+            count={tab.count}
+            active={view.section === tab.key}
+            onClick={() => setSection(tab.key)}
+          />
+        ))}
       </div>
 
       {view.section === 'conventions' && (
@@ -246,6 +241,7 @@ function ResultsScreen({
  *  harness), plus the slide-in detail sheets and the apply-to-disk confirmation. */
 export function HarnessView(props: HarnessViewProps) {
   const view = useHarnessView(props);
+  const heading = props.mode !== undefined ? HEADING_BY_MODE[props.mode] : 'Harness';
 
   if (!view.hasProject) {
     return (
@@ -301,7 +297,7 @@ export function HarnessView(props: HarnessViewProps) {
         title={
           <span className="flex items-center gap-2">
             <VerifiedIcon size={16} className="text-primary" />
-            Harness
+            {heading}
           </span>
         }
         subtitle={view.projectName ?? 'Convention audit'}

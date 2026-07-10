@@ -4,12 +4,22 @@ import { render } from 'vitest-browser-react';
 
 import * as stories from './HarnessView.stories';
 
-const { Idle, NoProject } = composeStories(stories);
+const { Idle, Harden, Enforce, NoProject } = composeStories(stories);
 
 test('renders the Harness header for an active project', async () => {
   const screen = render(<Idle />);
   await expect.element(screen.getByRole('heading', { name: 'Harness' })).toBeInTheDocument();
   await expect.element(screen.getByText('acme')).toBeInTheDocument();
+});
+
+test('the harden destination titles itself "Harden"', async () => {
+  const screen = render(<Harden />);
+  await expect.element(screen.getByRole('heading', { name: 'Harden' })).toBeInTheDocument();
+});
+
+test('the enforce destination titles itself "Enforce"', async () => {
+  const screen = render(<Enforce />);
+  await expect.element(screen.getByRole('heading', { name: 'Enforce' })).toBeInTheDocument();
 });
 
 test('opens on the CONFIGURE screen with the run-config hero and Scan CTA', async () => {

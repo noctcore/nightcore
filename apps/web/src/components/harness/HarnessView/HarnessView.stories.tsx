@@ -30,6 +30,18 @@ type Story = StoryObj<typeof meta>;
 // listener), so this renders the idle project view.
 export const Idle: Story = {};
 
+// The PROPOSE half (Phase-1 view rethink): its RESULTS screen shows Proposals +
+// Artifacts + the RepoProfile banner, and opens on Proposals.
+export const Harden: Story = {
+  args: { mode: 'harden' },
+};
+
+// The ENFORCE half: its RESULTS screen shows Conventions + Policy (no profile
+// banner), and opens on Conventions.
+export const Enforce: Story = {
+  args: { mode: 'enforce' },
+};
+
 export const NoProject: Story = {
   args: { projectPath: null, projectName: null },
 };

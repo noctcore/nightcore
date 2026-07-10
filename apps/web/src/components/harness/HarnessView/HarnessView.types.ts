@@ -15,7 +15,16 @@ import type {
   HarnessProposalVM,
   ProposedArtifactVM,
 } from '../harness.types';
+import type {
+  HarnessMode,
+  HarnessSection,
+  HarnessSectionTab,
+} from '../harness-sections';
 import type { HarnessStream } from '../harness-stream';
+
+/** Re-exported for the existing `./HarnessView.hooks` → `./HarnessView` import
+ *  chain; the canonical home is `../harness-sections`. */
+export type { HarnessSection } from '../harness-sections';
 
 /** Props for the HarnessView shell: the active project's path and display name. */
 export interface HarnessViewProps {
@@ -23,6 +32,10 @@ export interface HarnessViewProps {
   projectPath: string | null;
   /** The active project's display name. */
   projectName: string | null;
+  /** Which destination this instance is: the PROPOSE half (`harden`), the ENFORCE
+   *  half (`enforce`), or (undefined) the unified route showing every section. A
+   *  pure view filter over the ONE harness run/store — see `../harness-sections`. */
+  mode?: HarnessMode;
   /** Navigate to the board (used after convert-to-task). */
   onGotoBoard?: () => void;
   /** A board→scan provenance target: the run + item to load and open on mount
@@ -32,10 +45,6 @@ export interface HarnessViewProps {
   /** Acknowledge the preselect so routing clears it (it never refires). */
   onPreselectConsumed?: () => void;
 }
-
-/** Which body section is showing: the convention grid, the task-shaped proposals,
- *  the file-level artifacts, or the runtime-policy editor + injection scan. */
-export type HarnessSection = 'conventions' | 'proposals' | 'artifacts' | 'policy';
 
 /** Everything the HarnessView shell renders. `hasProject === false` is the only
  *  early-return branch; every other field is meaningful in the project view. */
@@ -71,13 +80,15 @@ export interface HarnessViewModel {
   hasHistory: boolean;
   /** Whether the profile banner should show its skeleton (scan running, no profile). */
   profileLoading: boolean;
+  /** Whether the RepoProfile banner renders (hidden in the ENFORCE destination). */
+  showProfileBanner: boolean;
   /** Which body section is active, and the toggle. */
   section: HarnessSection;
   setSection: (section: HarnessSection) => void;
-  /** Section-toggle badge counts: open findings, open proposals, proposed artifacts. */
-  conventionCount: number;
-  proposalCount: number;
-  artifactCount: number;
+  /** The mode-filtered, ordered section tabs (label + live badge count). Harden
+   *  shows Proposals + Artifacts; Enforce shows Conventions + Policy; the unified
+   *  route shows all four. */
+  sectionTabs: HarnessSectionTab[];
   /** Convention-lens tabs + active tab. */
   tabs: CategoryTab[];
   activeTab: 'all' | ConventionCategory;
