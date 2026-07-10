@@ -41,3 +41,11 @@ export const PartialFailure: Story = {
     statusMessage: 'Converted 4 findings (1 failed).',
   },
 };
+
+/** A trailing sibling action (e.g. the scan views' "Export to GitHub" button)
+ *  shares the SAME bar as convert-all rather than stacking a second bar. */
+export const WithTrailingAction: Story = {
+  args: {
+    trailing: <button type="button">Export to GitHub</button>,
+  },
+};

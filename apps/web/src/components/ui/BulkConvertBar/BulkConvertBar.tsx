@@ -16,6 +16,7 @@ export function BulkConvertBar({
   statusMessage,
   error,
   onConvertAll,
+  trailing,
 }: BulkConvertBarProps) {
   const inert = count === 0 || converting;
   return (
@@ -41,6 +42,8 @@ export function BulkConvertBar({
       <span role="status" aria-live="polite" className="sr-only">
         {statusMessage}
       </span>
+      {/* Trailing sibling action (e.g. Export to GitHub) — same bar, right edge. */}
+      {trailing !== undefined && <div className="ml-auto">{trailing}</div>}
     </div>
   );
 }

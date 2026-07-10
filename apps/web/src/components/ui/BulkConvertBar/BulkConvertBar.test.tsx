@@ -4,7 +4,7 @@ import { render } from 'vitest-browser-react';
 
 import * as stories from './BulkConvertBar.stories';
 
-const { Default, NothingOpen, Converting, PartialFailure } =
+const { Default, NothingOpen, Converting, PartialFailure, WithTrailingAction } =
   composeStories(stories);
 
 test('names the open count and is live when there is something to convert', async () => {
@@ -46,5 +46,16 @@ test('surfaces the inline partial-failure summary once settled', async () => {
   const screen = render(<PartialFailure />);
   await expect
     .element(screen.getByText(/1 of 5 findings could not be converted/i))
+    .toBeInTheDocument();
+});
+
+test('renders a trailing sibling action alongside convert-all in the same bar', async () => {
+  const screen = render(<WithTrailingAction />);
+  // Both the convert-all button and the trailing action live in the one bar.
+  await expect
+    .element(screen.getByRole('button', { name: /convert all to tasks/i }))
+    .toBeInTheDocument();
+  await expect
+    .element(screen.getByRole('button', { name: /export to github/i }))
     .toBeInTheDocument();
 });
