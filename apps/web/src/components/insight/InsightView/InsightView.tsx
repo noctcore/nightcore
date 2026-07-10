@@ -1,6 +1,7 @@
 /** Top-level Insight component: renders the CONFIGURE / RUNNING / RESULTS
  *  lifecycle and the finding detail panel from the `useInsightView` model. */
 import {
+  BulkConvertBar,
   Button,
   ChevronLeftIcon,
   EmptyState,
@@ -8,7 +9,6 @@ import {
   HistoryIcon,
   InsightIcon,
   Menu,
-  MoveIcon,
   RetryIcon,
   RunLifecycleShell,
   RunProgress,
@@ -179,35 +179,14 @@ export function InsightView(props: InsightViewProps) {
               ))}
 
             {view.stream.status === 'completed' && (
-              <div className="flex items-center gap-3 border-b border-border px-6 py-3">
-                <Button
-                  // aria-busy + aria-disabled (not the `disabled` attribute) keep the
-                  // trigger focusable through the conversion so focus isn't dropped to
-                  // <body> when it becomes inert; `convertAll` is a no-op when inert.
-                  aria-busy={view.bulkConverting}
-                  aria-disabled={view.openCount === 0 || view.bulkConverting}
-                  onClick={view.convertAll}
-                  className={
-                    view.openCount === 0 || view.bulkConverting
-                      ? 'cursor-not-allowed opacity-40'
-                      : undefined
-                  }
-                >
-                  <MoveIcon size={15} />
-                  {view.bulkConverting
-                    ? `Converting… ${view.bulkProgress.done}/${view.bulkProgress.total}`
-                    : `Convert all to tasks (${view.openCount})`}
-                </Button>
-                {view.bulkError !== null && (
-                  <span className="text-[12px] text-destructive">
-                    {view.bulkError}
-                  </span>
-                )}
-                {/* Announce convert-all progress + completion to assistive tech. */}
-                <span role="status" aria-live="polite" className="sr-only">
-                  {view.bulkStatusMessage}
-                </span>
-              </div>
+              <BulkConvertBar
+                count={view.openCount}
+                converting={view.bulkConverting}
+                progress={view.bulkProgress}
+                statusMessage={view.bulkStatusMessage}
+                error={view.bulkError}
+                onConvertAll={view.convertAll}
+              />
             )}
 
             <CategoryTabs
