@@ -19,6 +19,14 @@
 //! frames text INTO an agent, and renders as noise in a markdown body).
 
 use super::contract::{GuardrailEvent, TrustReport};
+// The GitHub-safe fence/sanitize primitives now live in the neutral shared home
+// (§10.5): the issue-map renderer reuses the SAME helpers. `code_span` is re-exported
+// `pub(super)` so the trust tests keep importing it from `super::render`;
+// `longest_backtick_run` is only named by those tests, so it is re-exported test-only.
+pub(super) use crate::workflow::github_md::code_span;
+#[cfg(test)]
+pub(super) use crate::workflow::github_md::longest_backtick_run;
+use crate::workflow::github_md::{one_line, sanitize_label};
 
 /// The house GitHub header/footer (the `compose_push_comment` idiom).
 const GH_HEADER: &str = "### 🌙 Nightcore — Trust report";
@@ -223,49 +231,6 @@ fn cost_lines(report: &TrustReport, lines: &mut Vec<String>) {
             t.input, t.output, t.reasoning_output, t.cache_read, t.cache_creation,
         ));
     }
-}
-
-/// Render an UNTRUSTED string as a single GitHub-safe inline code span (§3.6):
-/// control chars → spaces + whitespace collapsed (the `sanitize_minted_title`
-/// idiom, which also caps + never returns empty), then fenced with a backtick run
-/// strictly longer than any run inside the content (the `defuse_fence` idea) so a
-/// crafted digest cannot break out of its span. CommonMark strips one leading +
-/// trailing space when both are present, so pad when the content abuts a backtick.
-pub(super) fn code_span(raw: &str) -> String {
-    let clean = crate::task::sanitize_minted_title(raw, "(empty)");
-    let fence = "`".repeat(longest_backtick_run(&clean) + 1);
-    if clean.starts_with('`') || clean.ends_with('`') {
-        format!("{fence} {clean} {fence}")
-    } else {
-        format!("{fence}{clean}{fence}")
-    }
-}
-
-/// The longest run of consecutive backticks in `s` (0 when none).
-pub(super) fn longest_backtick_run(s: &str) -> usize {
-    let mut max = 0usize;
-    let mut cur = 0usize;
-    for ch in s.chars() {
-        if ch == '`' {
-            cur += 1;
-            max = max.max(cur);
-        } else {
-            cur = 0;
-        }
-    }
-    max
-}
-
-/// Collapse an untrusted label to one printable line (no fencing) — for spans
-/// already inside our own backticks (a `kind`/`rule`), or for prose lines
-/// (verdict/policy) that must not break the layout.
-fn sanitize_label(raw: &str) -> String {
-    crate::task::sanitize_minted_title(raw, "(none)")
-}
-
-/// A prose line collapsed to one printable line (control chars → spaces).
-fn one_line(raw: &str) -> String {
-    crate::task::sanitize_minted_title(raw, "(none)")
 }
 
 /// Format a USD amount for the receipt (4 dp — small agent costs need the tail).
