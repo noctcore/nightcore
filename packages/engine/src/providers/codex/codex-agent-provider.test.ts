@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
 
-import type { NightcoreEvent } from '@nightcore/contracts';
+import type { NightcoreEvent, NightcoreEventOf } from '@nightcore/contracts';
 
 import type { AgentSession } from '../agent-provider.js';
 import { AutonomyNotPermittedError } from '../agent-provider.js';
@@ -385,6 +385,50 @@ describe('CodexSession run contract', () => {
         process.env.NIGHTCORE_CODEX_PATH = previousCodexPath;
       }
     }
+  });
+
+  test('reaps a wedged turn via the idle watchdog (fail-visible, never a silent hang)', async () => {
+    // A thread that streams the opening events then WEDGES — never yielding a
+    // terminal `turn.completed`/`turn.failed`. Without the Rust-side/engine idle
+    // watchdog this would hang the run forever and leak its concurrency slot.
+    const stallingThread: CodexThreadLike = {
+      runStreamed() {
+        async function* events(): AsyncGenerator<ThreadEvent> {
+          yield { type: 'thread.started', thread_id: 'thread-stall' };
+          yield { type: 'turn.started' };
+          // Wedge: park forever with no further (and no terminal) event.
+          await new Promise<void>(() => {});
+        }
+        return Promise.resolve({ events: events() });
+      },
+    };
+    const factory: CodexFactory = () => ({
+      startThread: () => stallingThread,
+      resumeThread: () => stallingThread,
+    });
+    // 20ms idle deadline so the watchdog trips at once instead of after 30 minutes.
+    const provider = new CodexAgentProvider(undefined, factory, 20);
+    const { emit, events } = collector();
+    const session = provider.startSession(
+      {
+        sessionId: 77,
+        prompt: 'go',
+        model: 'gpt-5-codex',
+        cwd: '/tmp',
+        autonomyOverride: 'auto-accept',
+      },
+      emit,
+    );
+
+    // The stall path degrades-not-throws: run() resolves with a terminal failure.
+    await expect(session.run()).resolves.toBeUndefined();
+    // A session-ready was emitted before the stall (from thread.started).
+    expect(events.some((e) => e.type === 'session-ready')).toBe(true);
+    const failure = events.find((e) => e.type === 'session-failed') as
+      | NightcoreEventOf<'session-failed'>
+      | undefined;
+    expect(failure).toMatchObject({ sessionId: 77, reason: 'runner-crash' });
+    expect(failure?.message).toContain('stalled');
   });
 });
 

@@ -71,6 +71,21 @@ export type CodexFactory = (options: CodexOptions) => CodexLike;
 /** The production factory: the real `@openai/codex-sdk` client. */
 const defaultCodexFactory: CodexFactory = (options) => new Codex(options);
 
+/**
+ * Default idle watchdog deadline for a Codex turn: 30 minutes with NO stream event
+ * resets the timer on every yield. Mirrors the Claude runner's
+ * `DEFAULT_IDLE_TIMEOUT_MS` — deliberately generous so one long tool call (a
+ * multi-minute build) that emits no `ThreadEvent`s isn't killed, while a genuinely
+ * wedged `codex exec` (stopped yielding, no terminal `turn.completed`/`turn.failed`)
+ * is reaped instead of hanging the run and leaking its concurrency slot forever.
+ * Injectable via the provider/session constructor for tests only.
+ */
+export const CODEX_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+
+/** Sentinel returned by {@link CodexSession.nextWithIdleDeadline} when the idle
+ *  watchdog fires before the turn's event stream yields its next event. */
+const CODEX_IDLE_STALLED = Symbol('codex-idle-stalled');
+
 function autonomyToRecordMode(autonomy: AutonomyLevel): PermissionMode {
   switch (autonomy) {
     case 'bypass':
@@ -100,6 +115,10 @@ class CodexSession implements AgentSession {
     private readonly emit: SessionEventSink,
     private readonly logger?: Logger,
     private readonly codexFactory: CodexFactory = defaultCodexFactory,
+    /** Idle watchdog deadline (ms) for each turn's event stream — see
+     *  {@link CODEX_IDLE_TIMEOUT_MS}. Overridable only so tests can trip the stall
+     *  path without waiting 30 minutes. */
+    private readonly idleTimeoutMs: number = CODEX_IDLE_TIMEOUT_MS,
   ) {
     this.permissionMode = autonomyToRecordMode(autonomy);
   }
@@ -168,14 +187,21 @@ class CodexSession implements AgentSession {
       // intermediate one must not, or the supervisor would retire the run early.
       for (;;) {
         const streamed = await thread.runStreamed(input, turnOptions);
-        let held: NightcoreEvent[] | undefined;
-        for await (const event of streamed.events) {
-          const translated = translateCodexEvent(event, state);
-          if (translated.terminal) {
-            held = translated.events;
-            break;
-          }
-          for (const next of translated.events) this.emit(next);
+        const held = await this.drainTurnEvents(streamed.events, state);
+        if (held === CODEX_IDLE_STALLED) {
+          // A wedged `codex exec` that stopped yielding without a terminal event
+          // would otherwise hang this loop forever, leaking the run's concurrency
+          // slot. Abort the turn (cancels the subprocess via the shared signal) and
+          // report a terminal runner crash — the same fail-visible posture as the
+          // Claude runner's idle watchdog (never a silent hang).
+          this.abort.abort();
+          this.fail(
+            'runner-crash',
+            `Codex stream stalled (no output for ${Math.round(
+              this.idleTimeoutMs / 60000,
+            )} min) and was reaped.`,
+          );
+          return;
         }
         if (held === undefined) {
           this.fail('runner-crash', 'Codex stream ended without a terminal event.');
@@ -203,6 +229,57 @@ class CodexSession implements AgentSession {
       const message = error instanceof Error ? error.message : String(error);
       this.logger?.warn('codex session failed', { message });
       this.fail('runner-crash', message);
+    }
+  }
+
+  /**
+   * Drive one turn's event stream to its terminal event under an idle deadline.
+   * Returns the held terminal events when the turn completes/fails in time,
+   * `undefined` when the stream ends with no terminal event, or
+   * {@link CODEX_IDLE_STALLED} when the watchdog fires first (a wedged subprocess).
+   * Non-terminal events are emitted as they arrive, exactly like the prior
+   * `for await` loop — the only change is the per-`next()` idle race.
+   */
+  private async drainTurnEvents(
+    events: AsyncIterable<ThreadEvent>,
+    state: ReturnType<typeof createCodexTranslationState>,
+  ): Promise<NightcoreEvent[] | undefined | typeof CODEX_IDLE_STALLED> {
+    const iterator = events[Symbol.asyncIterator]();
+    for (;;) {
+      const next = await this.nextWithIdleDeadline(iterator);
+      if (next === CODEX_IDLE_STALLED) return CODEX_IDLE_STALLED;
+      if (next.done === true) return undefined;
+      const translated = translateCodexEvent(next.value, state);
+      if (translated.terminal) return translated.events;
+      for (const event of translated.events) this.emit(event);
+    }
+  }
+
+  /**
+   * Await the stream's next event under an idle deadline. Returns the
+   * `IteratorResult` when the turn yields (or ends) in time, or
+   * {@link CODEX_IDLE_STALLED} when {@link idleTimeoutMs} elapses first. A fresh
+   * timer per call, so every yielded event resets it — only a genuinely quiet
+   * (wedged) stream trips it. When the timer wins, the dangling `next()` promise's
+   * eventual rejection (from the turn abort) is swallowed so it never surfaces as an
+   * unhandled rejection. Mirrors the Claude runner's `nextWithIdleDeadline`.
+   */
+  private async nextWithIdleDeadline(
+    iterator: AsyncIterator<ThreadEvent>,
+  ): Promise<IteratorResult<ThreadEvent> | typeof CODEX_IDLE_STALLED> {
+    const nextPromise = iterator.next();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const idle = new Promise<typeof CODEX_IDLE_STALLED>((resolve) => {
+      timer = setTimeout(() => resolve(CODEX_IDLE_STALLED), this.idleTimeoutMs);
+    });
+    try {
+      const result = await Promise.race([nextPromise, idle]);
+      if (result === CODEX_IDLE_STALLED) {
+        void Promise.resolve(nextPromise).catch(() => {});
+      }
+      return result;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
     }
   }
 
@@ -296,6 +373,9 @@ export class CodexAgentProvider implements AgentProvider {
     /** Injectable Codex SDK client factory — production uses the real
      *  `@openai/codex-sdk`; tests fake the turn loop with no `codex exec` spawn. */
     private readonly codexFactory: CodexFactory = defaultCodexFactory,
+    /** Idle watchdog deadline (ms) threaded into every session — see
+     *  {@link CODEX_IDLE_TIMEOUT_MS}. Overridable for tests only. */
+    private readonly idleTimeoutMs: number = CODEX_IDLE_TIMEOUT_MS,
   ) {}
 
   capabilities(): ProviderCapabilities {
@@ -345,6 +425,7 @@ export class CodexAgentProvider implements AgentProvider {
       emit,
       logger ?? this.logger,
       this.codexFactory,
+      this.idleTimeoutMs,
     );
   }
 
@@ -362,6 +443,7 @@ export class CodexAgentProvider implements AgentProvider {
       () => {},
       logger ?? this.logger,
       this.codexFactory,
+      this.idleTimeoutMs,
     );
   }
 }
