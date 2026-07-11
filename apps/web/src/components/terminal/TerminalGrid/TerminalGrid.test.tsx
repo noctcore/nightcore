@@ -31,6 +31,7 @@ function renderGrid(sessions: TerminalSessionInfo[], zoomedId: string | null = n
         ungovernedIds={new Set()}
         canLaunchClaude={() => true}
         zoomedId={zoomedId}
+        broadcastArmed={false}
         onRename={() => {}}
         onLaunchClaude={() => {}}
         onReorder={() => {}}
@@ -69,6 +70,7 @@ test('reordering keyed panes does NOT unmount them (same DOM node persists)', as
         ungovernedIds={new Set()}
         canLaunchClaude={() => true}
         zoomedId={null}
+        broadcastArmed={false}
         onRename={() => {}}
         onLaunchClaude={() => {}}
         onReorder={() => {}}
@@ -97,6 +99,7 @@ test('zooming a pane replaces the grid with only that pane', async () => {
         ungovernedIds={new Set()}
         canLaunchClaude={() => true}
         zoomedId="b"
+        broadcastArmed={false}
         onRename={() => {}}
         onLaunchClaude={() => {}}
         onReorder={() => {}}
@@ -121,6 +124,7 @@ test('threads a per-pane Launch Claude affordance and fires it with the pane ses
         ungovernedIds={new Set()}
         canLaunchClaude={(s) => s.id === 'a'}
         zoomedId={null}
+        broadcastArmed={false}
         onRename={() => {}}
         onLaunchClaude={onLaunchClaude}
         onReorder={() => {}}

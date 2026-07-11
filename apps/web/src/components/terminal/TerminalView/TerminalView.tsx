@@ -74,6 +74,9 @@ export function TerminalView({
         unread={v.unread}
         viewMode={v.layout.mode}
         onToggleViewMode={v.layout.toggleMode}
+        broadcastArmed={v.layout.broadcastArmed}
+        broadcastEligible={v.layout.broadcastEligible}
+        onToggleBroadcast={v.layout.toggleBroadcast}
         ungovernedIds={v.tasks.ungovernedIds}
         headerSlot={
           <TerminalTaskMenu
@@ -91,6 +94,7 @@ export function TerminalView({
           ungovernedIds={v.tasks.ungovernedIds}
           canLaunchClaude={v.tasks.canLaunchClaude}
           zoomedId={v.layout.zoomedId}
+          broadcastArmed={v.layout.broadcastArmed}
           onRename={v.renameSession}
           onLaunchClaude={v.tasks.launchClaude}
           onReorder={v.layout.reorder}

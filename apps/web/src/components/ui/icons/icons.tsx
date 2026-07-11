@@ -18,6 +18,7 @@ export {
   BookOpen as BookIcon,
   Brain as BrainIcon,
   GitBranch as BranchIcon,
+  Radio as BroadcastIcon,
   Bug as BugIcon,
   Hammer as BuildIcon,
   Check as CheckIcon,

@@ -50,6 +50,8 @@ const meta = {
     canAddTab: true,
     unread: {},
     viewMode: 'tabs',
+    broadcastArmed: false,
+    broadcastEligible: true,
     ungovernedIds: new Set<string>(),
     onSelect: fn(),
     onClose: fn(),
@@ -57,6 +59,7 @@ const meta = {
     onNewTab: fn(),
     onRename: fn(),
     onToggleViewMode: fn(),
+    onToggleBroadcast: fn(),
   },
 } satisfies Meta<typeof TerminalTabs>;
 
@@ -145,11 +148,13 @@ export const RenamesTab: Story = {
   },
 };
 
-/** In grid mode the toggle offers to switch back to Tabs view. */
+/** In grid mode the toggle offers to switch back to Tabs view, and the broadcast-input
+ *  toggle appears beside it (grid-only, round-2 PR B). */
 export const GridMode: Story = {
   args: { viewMode: 'grid' },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('button', { name: 'Tabs view' })).toBeInTheDocument();
+    await expect(canvas.getByRole('button', { name: 'Broadcast input' })).toBeInTheDocument();
   },
 };
 
@@ -158,5 +163,40 @@ export const TogglesViewMode: Story = {
   play: async ({ args, canvas }) => {
     await userEvent.click(canvas.getByRole('button', { name: 'Grid view' }));
     await expect(args.onToggleViewMode).toHaveBeenCalled();
+  },
+};
+
+/** The broadcast toggle is grid-only — it never renders in tabs view. */
+export const NoBroadcastInTabs: Story = {
+  play: async ({ canvas }) => {
+    expect(canvas.queryByRole('button', { name: /Broadcast/ })).toBeNull();
+  },
+};
+
+/** Armed broadcast: the toggle shows its LOUD active state (round-2 PR B, § B.3). */
+export const BroadcastArmed: Story = {
+  args: { viewMode: 'grid', broadcastArmed: true },
+  play: async ({ canvas }) => {
+    const toggle = canvas.getByRole('button', { name: 'Broadcasting to all panes' });
+    await expect(toggle).toBeInTheDocument();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  },
+};
+
+/** With fewer than two visible panes the broadcast toggle is disabled — nothing to
+ *  broadcast to. */
+export const BroadcastIneligible: Story = {
+  args: { viewMode: 'grid', broadcastEligible: false },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('button', { name: 'Broadcast input' })).toBeDisabled();
+  },
+};
+
+/** Play test: clicking the broadcast toggle arms via `onToggleBroadcast`. */
+export const TogglesBroadcast: Story = {
+  args: { viewMode: 'grid' },
+  play: async ({ args, canvas }) => {
+    await userEvent.click(canvas.getByRole('button', { name: 'Broadcast input' }));
+    await expect(args.onToggleBroadcast).toHaveBeenCalled();
   },
 };

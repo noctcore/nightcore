@@ -37,6 +37,7 @@ const meta = {
     canLaunch: true,
     zoomed: false,
     draggable: true,
+    broadcasting: false,
     onRename: fn(),
     onLaunchClaude: fn(),
     onToggleZoom: fn(),
@@ -116,5 +117,15 @@ export const NoLaunchOnNonPosix: Story = {
   args: { canLaunch: false },
   play: async ({ canvas }) => {
     expect(canvas.queryByRole('button', { name: 'Launch Claude' })).toBeNull();
+  },
+};
+
+/** A pane receiving broadcast input (round-2 PR B, § B.3): the LOUD "BCAST" chip in
+ *  the header marks it as one of the panes keystrokes are fanning out to. */
+export const Broadcasting: Story = {
+  args: { broadcasting: true },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText('BCAST')).toBeInTheDocument();
+    await expect(canvas.getByLabelText('Receiving broadcast input')).toBeInTheDocument();
   },
 };

@@ -16,11 +16,30 @@ export interface TerminalTabsTaskbar {
   headerSlot?: ReactNode;
 }
 
+/** The tab bar's right-pinned toolbar controls: the tabs⇄grid view toggle (PR 2) and
+ *  the grid-only broadcast-input toggle (round-2 PR B). A cohesive base so
+ *  {@link TerminalTabsProps} stays under the props budget — `extends` members are not
+ *  counted. */
+export interface TerminalTabsToolbar {
+  /** The current terminal-body view mode (decision 1, PR 2): tabs or grid. */
+  viewMode: TerminalViewMode;
+  /** Flip between the tabs and grid view modes. */
+  onToggleViewMode: () => void;
+  /** Whether broadcast input is armed (round-2 PR B): keystrokes fan out to every
+   *  visible pane. Drives the LOUD active state on the toggle. */
+  broadcastArmed: boolean;
+  /** Whether broadcast can be armed now (grid view + 2 or more visible panes). The
+   *  toggle is disabled otherwise; it only renders at all in grid view. */
+  broadcastEligible: boolean;
+  /** Arm/disarm broadcast (grid view only). */
+  onToggleBroadcast: () => void;
+}
+
 /** Props for the terminal tabs bar. Presentational: the parent owns the session
  *  list, the active selection, and the open/close/new-tab actions. Restored
  *  (read-only) tabs from a prior run render after the live ones, visually distinct
  *  (decision 3). */
-export interface TerminalTabsProps extends TerminalTabsTaskbar {
+export interface TerminalTabsProps extends TerminalTabsTaskbar, TerminalTabsToolbar {
   /** The live sessions, one tab each. */
   sessions: TerminalSessionInfo[];
   /** Restored (dead) sessions from a prior run — read-only tabs, rendered dimmed
@@ -45,8 +64,4 @@ export interface TerminalTabsProps extends TerminalTabsTaskbar {
   /** Per-session unread-output counts (decision 6c) — a badge on inactive tabs.
    *  Missing ids read as 0. */
   unread: Readonly<Record<string, number>>;
-  /** The current terminal-body view mode (decision 1, PR 2): tabs or grid. */
-  viewMode: TerminalViewMode;
-  /** Flip between the tabs and grid view modes. */
-  onToggleViewMode: () => void;
 }

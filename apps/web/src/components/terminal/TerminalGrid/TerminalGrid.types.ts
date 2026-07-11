@@ -18,6 +18,10 @@ export interface TerminalGridProps {
   onLaunchClaude: (session: TerminalSessionInfo) => void;
   /** The single zoomed pane's id, or `null` for the full grid. */
   zoomedId: string | null;
+  /** Whether broadcast input is armed (round-2 PR B): every visible pane shows the
+   *  LOUD receiving indicator while keystrokes fan out to all of them. Always `false`
+   *  once zoomed (the visible set collapses to one → auto-disarm). */
+  broadcastArmed: boolean;
   /** Rename a session (decision 5). */
   onRename: (id: string, title: string) => void;
   /** Reorder: move `activeId` into `overId`'s slot (drag drop resolution). */

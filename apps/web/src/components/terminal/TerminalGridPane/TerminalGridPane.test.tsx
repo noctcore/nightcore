@@ -10,7 +10,7 @@ import type { TerminalSessionInfo } from '@/lib/bridge';
 import { TerminalGridPane } from './TerminalGridPane';
 import * as stories from './TerminalGridPane.stories';
 
-const { Default, Zoomed } = composeStories(stories);
+const { Default, Zoomed, Broadcasting } = composeStories(stories);
 
 function fakeSession(over: Partial<TerminalSessionInfo>): TerminalSessionInfo {
   return {
@@ -40,6 +40,23 @@ test('a zoomed pane shows Restore and drops the reorder grip', async () => {
   expect(screen.container.querySelector('[aria-label^="Reorder"]')).toBeNull();
 });
 
+test('a broadcasting pane shows the LOUD BCAST indicator + amber ring (round-2 PR B)', async () => {
+  const screen = render(<Broadcasting />);
+  await expect.element(screen.getByText('BCAST')).toBeInTheDocument();
+  await expect
+    .element(screen.getByLabelText('Receiving broadcast input'))
+    .toBeInTheDocument();
+  // The receiving ring lands on the `data-session-id` pane root (an unmissable footgun cue).
+  const root = screen.container.querySelector('[data-session-id]');
+  expect(root?.className).toContain('ring-amber-400/80');
+});
+
+test('a non-broadcasting pane shows no BCAST indicator', async () => {
+  const screen = render(<Default />);
+  await expect.element(screen.getByRole('button', { name: /Maximize pane/ })).toBeInTheDocument();
+  expect(screen.container.querySelector('[aria-label="Receiving broadcast input"]')).toBeNull();
+});
+
 test('double-clicking the title opens the inline rename and commits on Enter', async () => {
   const onRename = vi.fn();
   const screen = render(
@@ -52,6 +69,7 @@ test('double-clicking the title opens the inline rename and commits on Enter', a
           canLaunch={false}
           zoomed={false}
           draggable
+          broadcasting={false}
           onRename={onRename}
           onLaunchClaude={() => {}}
           onToggleZoom={() => {}}
@@ -79,6 +97,7 @@ test('clicking the title activates the pane (the zoom target)', async () => {
           canLaunch={false}
           zoomed={false}
           draggable
+          broadcasting={false}
           onRename={() => {}}
           onLaunchClaude={() => {}}
           onToggleZoom={() => {}}
@@ -103,6 +122,7 @@ test('shows the Launch Claude button when canLaunch and fires onLaunchClaude', a
           canLaunch
           zoomed={false}
           draggable
+          broadcasting={false}
           onRename={() => {}}
           onLaunchClaude={onLaunchClaude}
           onToggleZoom={() => {}}
@@ -126,6 +146,7 @@ test('hides the Launch Claude button on a non-POSIX (canLaunch=false) pane', () 
           canLaunch={false}
           zoomed={false}
           draggable
+          broadcasting={false}
           onRename={() => {}}
           onLaunchClaude={() => {}}
           onToggleZoom={() => {}}

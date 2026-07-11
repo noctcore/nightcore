@@ -1,5 +1,6 @@
 import {
   BoltIcon,
+  BroadcastIcon,
   CloseIcon,
   GridIcon,
   HistoryIcon,
@@ -16,6 +17,8 @@ import type { TerminalViewMode } from '../terminal-layout';
 import { formatShortcut } from '../terminal-platform';
 import { useInlineRename } from '../terminal-rename';
 import {
+  broadcastToggleLabel,
+  broadcastToggleTitle,
   displayTitle,
   identityTitle,
   restoredIdentityTitle,
@@ -205,11 +208,47 @@ function ViewModeToggle({
       aria-pressed={!toGrid}
       title={`${label}${toGrid ? ' — arrange every terminal at once' : ''}`}
       onClick={onToggleViewMode}
-      className="my-0.5 ml-auto flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground"
+      className="my-0.5 flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground"
     >
       {toGrid ? <GridIcon size={13} aria-hidden /> : <TabsIcon size={13} aria-hidden />}
       <span>{label}</span>
       {!toGrid && <Kbd>{formatShortcut('E', { shift: true })}</Kbd>}
+    </button>
+  );
+}
+
+/** The broadcast-input toggle (round-2 PR B, § B.3): a grid-only control that arms
+ *  "type once, run everywhere" — every keystroke fans out to every visible pane. LOUD
+ *  when armed (amber fill + ring + a pulsing dot) since broadcasting to N shells is a
+ *  footgun; disabled (with an explanatory title) until there are 2+ visible panes. */
+function BroadcastToggle({
+  armed,
+  eligible,
+  onToggle,
+}: {
+  armed: boolean;
+  eligible: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={broadcastToggleLabel(armed)}
+      aria-pressed={armed}
+      title={broadcastToggleTitle(armed, eligible)}
+      disabled={!eligible && !armed}
+      onClick={onToggle}
+      className={`my-0.5 flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+        armed
+          ? 'bg-amber-400/20 text-amber-300 ring-1 ring-amber-400/70'
+          : 'text-muted-foreground hover:bg-white/[0.08] hover:text-foreground'
+      }`}
+    >
+      <BroadcastIcon size={13} aria-hidden />
+      <span>{armed ? 'Broadcasting' : 'Broadcast'}</span>
+      {armed && (
+        <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
+      )}
     </button>
   );
 }
@@ -232,6 +271,9 @@ export function TerminalTabs({
   unread,
   viewMode,
   onToggleViewMode,
+  broadcastArmed,
+  broadcastEligible,
+  onToggleBroadcast,
   ungovernedIds,
   headerSlot,
 }: TerminalTabsProps) {
@@ -274,7 +316,16 @@ export function TerminalTabs({
         {canAddTab && <Kbd>{formatShortcut('T')}</Kbd>}
       </button>
       {headerSlot}
-      <ViewModeToggle viewMode={viewMode} onToggleViewMode={onToggleViewMode} />
+      <div className="ml-auto flex shrink-0 items-center gap-1">
+        {viewMode === 'grid' && (
+          <BroadcastToggle
+            armed={broadcastArmed}
+            eligible={broadcastEligible}
+            onToggle={onToggleBroadcast}
+          />
+        )}
+        <ViewModeToggle viewMode={viewMode} onToggleViewMode={onToggleViewMode} />
+      </div>
     </div>
   );
 }

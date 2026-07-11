@@ -15,6 +15,8 @@ import type { TerminalSessionInfo } from '@/lib/bridge';
 import { formatShortcut } from '../terminal-platform';
 import { useInlineRename } from '../terminal-rename';
 import {
+  broadcastBadge,
+  broadcastBadgeLabel,
   displayTitle,
   identityTitle,
   ungovernedLabel,
@@ -25,6 +27,22 @@ import {
 import { TerminalSearchBar } from '../TerminalSearchBar';
 import { useTerminalGridPane } from './TerminalGridPane.hooks';
 import type { TerminalGridPaneProps } from './TerminalGridPane.types';
+
+/** The LOUD "receiving broadcast" chip (round-2 PR B, § B.3): shown on EVERY visible
+ *  pane while broadcast is armed, so it is impossible to miss that keystrokes are
+ *  fanning out. Amber + a pulsing dot, distinct from the unread + drag chrome. */
+function PaneBroadcast() {
+  return (
+    <span
+      aria-label={broadcastBadgeLabel()}
+      title={broadcastBadgeLabel()}
+      className="flex shrink-0 items-center gap-1 rounded-full bg-amber-400/20 px-1.5 text-[9.5px] font-bold uppercase leading-4 tracking-wide text-amber-300 ring-1 ring-amber-400/60"
+    >
+      <span aria-hidden className="h-1 w-1 animate-pulse rounded-full bg-amber-400" />
+      {broadcastBadge()}
+    </span>
+  );
+}
 
 /** The unread-output badge (decision 6c) on a zoomed-away / off-screen grid pane. */
 function PaneUnread({ count }: { count: number }) {
@@ -90,6 +108,7 @@ export function TerminalGridPane({
   canLaunch,
   zoomed,
   draggable,
+  broadcasting,
   onRename,
   onLaunchClaude,
   onToggleZoom,
@@ -106,7 +125,9 @@ export function TerminalGridPane({
       data-session-id={session.id}
       className={`group flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-[#0a0a0f] transition-colors ${
         v.isOver ? 'border-primary/70' : 'border-border'
-      } ${v.isDragging ? 'opacity-40' : ''}`}
+      } ${v.isDragging ? 'opacity-40' : ''} ${
+        broadcasting ? 'ring-2 ring-amber-400/80 ring-inset' : ''
+      }`}
     >
       <div className="flex items-center gap-1.5 border-b border-border bg-black/25 px-2 py-1">
         {draggable && (
@@ -137,6 +158,7 @@ export function TerminalGridPane({
           </span>
         )}
         <PaneUnread count={unread} />
+        {broadcasting && <PaneBroadcast />}
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
           {canLaunch && (
             <IconButton label="Launch Claude" onClick={onLaunchClaude}>

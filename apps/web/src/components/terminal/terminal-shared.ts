@@ -168,6 +168,34 @@ export function unreadBadgeLabel(count: number): string {
   return `${count} unread output ${count === 1 ? 'batch' : 'batches'}`;
 }
 
+/** The broadcast-input toggle's visible + accessible label (round-2 PR B, § B.3):
+ *  the grid "type once, run everywhere" arm control. Loud on purpose — broadcasting
+ *  keystrokes to N shells is a footgun the armed state must never hide. */
+export function broadcastToggleLabel(armed: boolean): string {
+  return armed ? 'Broadcasting to all panes' : 'Broadcast input';
+}
+
+/** The broadcast toggle's hover explanation (round-2 PR B). `eligible` is false with
+ *  fewer than two visible grid panes — there is nothing to broadcast to. */
+export function broadcastToggleTitle(armed: boolean, eligible: boolean): string {
+  if (!eligible && !armed) return 'Broadcast needs two or more visible panes in grid view.';
+  return armed
+    ? 'Every keystroke is being sent to all visible panes — click to stop.'
+    : 'Send every keystroke to all visible panes at once.';
+}
+
+/** The per-pane "receiving broadcast" chip text (round-2 PR B, § B.3): a short, LOUD
+ *  badge shown on EVERY visible pane while broadcast is armed, so an accidental
+ *  broadcast is impossible to miss. */
+export function broadcastBadge(): string {
+  return 'BCAST';
+}
+
+/** Accessible label for the per-pane broadcast indicator (badge + ring). */
+export function broadcastBadgeLabel(): string {
+  return 'Receiving broadcast input';
+}
+
 /** Count-driven grid column count (decision 1, PR 2): 1→1, 2→2, ≤4→2, ≤6→3, ≤9→3,
  *  else (up to the 12-session cap) →4. Rows follow from `ceil(n / gridColumns(n))`.
  *  No free-form spans in v1. Pure + unit-tested. `n<=1` yields 1 (an empty grid

@@ -43,6 +43,7 @@ const meta = {
     ungovernedIds: new Set<string>(),
     canLaunchClaude: () => true,
     zoomedId: null,
+    broadcastArmed: false,
     onRename: fn(),
     onLaunchClaude: fn(),
     onReorder: fn(),
@@ -100,5 +101,14 @@ export const WithBadges: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByText('4')).toBeInTheDocument();
     await expect(canvas.getByText('99+')).toBeInTheDocument();
+  },
+};
+
+/** Broadcast armed (round-2 PR B): EVERY visible pane shows the LOUD "BCAST" receiving
+ *  indicator — an accidental broadcast is impossible to miss. */
+export const Broadcasting: Story = {
+  args: { broadcastArmed: true },
+  play: async ({ canvas }) => {
+    await expect(canvas.getAllByText('BCAST')).toHaveLength(4);
   },
 };
