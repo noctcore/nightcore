@@ -167,6 +167,66 @@ impl TestApp {
             })
             .expect("settle done");
         self.orch().slots.release(task_id);
+        // `finish_run`'s `Outcome::Succeeded` arm resets the breaker window (a clean
+        // run clears any accumulated transient failures) — the exact call the
+        // production `EngineApi::breaker_record_success` makes on the orchestrator's own
+        // breaker.
+        self.orch().breaker.record_success();
+    }
+
+    /// The store + slot + session teardown every failure terminal shares (the reader's
+    /// `session-failed` non-verifying arm settling the task `Failed`, then `finish_run`
+    /// forgetting the session and releasing the slot). The breaker feed is the ONLY
+    /// thing that differs by `Outcome`, so it stays with each caller below — mirroring
+    /// `finish_run`'s per-`Outcome` breaker branch.
+    fn settle_failed(&self, task_id: &str, session_id: u64, error: &str) {
+        self.provider().forget(session_id);
+        self.store()
+            .mutate(task_id, |t| {
+                t.status = TaskStatus::Failed;
+                t.error = Some(error.to_string());
+                t.session_id = Some(session_id);
+            })
+            .expect("settle failed");
+        self.orch().slots.release(task_id);
+    }
+
+    /// Script a genuine (transient) failure terminal: `finish_run`'s
+    /// `Outcome::Failed { fatal: false }` bookkeeping — settle `Failed`, forget the
+    /// session, release the slot, and feed the breaker one windowed failure. Returns
+    /// whether THIS failure tripped the breaker (mirrors
+    /// `EngineApi::breaker_record_failure`).
+    pub(super) fn script_terminal_failed(
+        &self,
+        task_id: &str,
+        session_id: u64,
+        error: &str,
+    ) -> bool {
+        self.settle_failed(task_id, session_id, error);
+        self.orch().breaker.record_failure()
+    }
+
+    /// Script a FATAL-setup failure terminal (auth / disk-full — `is_fatal_setup_failure`):
+    /// the same store/slot settling as a transient failure, but `finish_run`'s
+    /// `Outcome::Failed { fatal: true }` trips the breaker AT ONCE regardless of the
+    /// sliding-window threshold (`EngineApi::breaker_record_fatal`). Returns whether
+    /// this failure tripped it.
+    pub(super) fn script_terminal_fatal(
+        &self,
+        task_id: &str,
+        session_id: u64,
+        error: &str,
+    ) -> bool {
+        self.settle_failed(task_id, session_id, error);
+        self.orch().breaker.record_fatal_failure()
+    }
+
+    /// Script an ABORTED terminal (user cancel / circuit-break — `session-failed
+    /// { reason: "aborted" }`): the run settles `Failed`, forgets the session, and frees
+    /// the slot, but `finish_run`'s `Outcome::Aborted` arm deliberately does NOT feed
+    /// the breaker (a cancel is not a broken-setup signal).
+    pub(super) fn script_terminal_aborted(&self, task_id: &str, session_id: u64) {
+        self.settle_failed(task_id, session_id, "aborted");
     }
 
     /// Convenience: read a task's current persisted status.
