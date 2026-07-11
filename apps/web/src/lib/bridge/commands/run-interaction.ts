@@ -84,9 +84,11 @@ export async function rejectTask(id: string): Promise<void> {
   await invoke('reject_task', { id });
 }
 
-/** Send a waiting plan back to the backlog with the plan kept for editing. */
-export async function refineTask(id: string): Promise<void> {
-  await invoke('refine_task', { id });
+/** Refine a waiting plan (reject-with-feedback): the feedback re-enters the SAME
+ *  session as the refinement prompt, so the agent revises the plan in place and
+ *  re-parks it for another review. A blank field still nudges a revision. */
+export async function refineTask(id: string, feedback: string): Promise<void> {
+  await invoke('refine_task', { id, feedback });
 }
 
 // --- Commit / merge -------------------------------------------------------

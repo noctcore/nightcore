@@ -39,10 +39,12 @@ export interface TaskDetailActions {
   onRespondPermission?: (taskId: string, requestId: string, decision: 'allow' | 'deny') => void;
   /** Answer a parked AskUserQuestion prompt (submit choices or skip). */
   onAnswerQuestion?: (taskId: string, requestId: string, answer: QuestionAnswer) => void;
-  /** Plan-approval actions (shown for a plan-parked `waiting_approval`). */
+  /** Plan-approval actions (shown for a plan-parked `waiting_approval`). Refine
+   *  carries the reviewer's feedback: it re-enters the SAME session as the
+   *  refinement prompt (T6, #147) rather than re-running from scratch. */
   onApprove?: (id: string) => void;
   onReject?: (id: string) => void;
-  onRefine?: (id: string) => void;
+  onRefine?: (id: string, feedback: string) => void;
   /** Edit the task's title — only when the task hasn't run yet. */
   onChangeTitle?: (id: string, title: string) => void;
   /** Edit the task's description/prompt — only when the task hasn't run yet. */

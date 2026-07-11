@@ -9,7 +9,6 @@ import {
   CommitIcon,
   GithubIcon,
   LayersIcon,
-  RefineIcon,
   Spinner,
 } from '@/components/ui';
 
@@ -66,32 +65,14 @@ export function TaskDetailFooter({
     <footer className="flex items-center gap-2 border-t border-border bg-card px-4 py-3">
       {planParked ? (
         <>
-          <Button
-            onClick={() => actions.onApprove?.(task.id)}
-            disabled={pending('approve')}
-            aria-busy={pending('approve')}
-          >
-            {pending('approve') ? <Spinner /> : <CheckIcon size={14} />}
-            {pending('approve') ? 'Approving…' : 'Approve'}
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => actions.onRefine?.(task.id)}
-            disabled={pending('refine')}
-            aria-busy={pending('refine')}
-          >
-            {pending('refine') ? <Spinner /> : <RefineIcon size={14} />}
-            {pending('refine') ? 'Refining…' : 'Refine'}
-          </Button>
-          <span className="flex-1" />
-          <Button
-            variant="danger"
-            onClick={() => actions.onReject?.(task.id)}
-            disabled={pending('reject')}
-            aria-busy={pending('reject')}
-          >
-            {pending('reject') ? <Spinner /> : null}
-            {pending('reject') ? 'Rejecting…' : 'Reject'}
+          {/* The Approve / Refine / Reject controls live in the PlanReview panel above
+              (colocated with the plan + refine-feedback field, mirroring the
+              review-verdict pattern) — the footer only points to them. */}
+          <span className="flex-1 text-xs text-muted-foreground">
+            Review the plan above.
+          </span>
+          <Button variant="ghost" onClick={() => actions.onDelete(task.id)}>
+            Delete
           </Button>
         </>
       ) : reviewParked ? (

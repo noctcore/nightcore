@@ -291,7 +291,7 @@ function TaskCardImpl({
               type="button"
               disabled={refinePending}
               aria-busy={refinePending}
-              onClick={() => onRefine?.(task.id)}
+              onClick={() => onRefine?.(task.id, '')}
               className={`${ACTION_BASE} ${refinePending ? ACTION_DISABLED : ACTION_GHOST}`}
             >
               {refinePending ? <Spinner size={13} /> : <RefineIcon size={13} />}

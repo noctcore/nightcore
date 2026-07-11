@@ -9,6 +9,7 @@ import { GauntletResults } from '../GauntletResults';
 import { InteractionDock } from '../InteractionDock';
 import { IssueClosedChip } from '../IssueClosedChip';
 import { IssueSyncNotice } from '../IssueSyncNotice';
+import { PlanReview } from '../PlanReview';
 import { ProposedSubtasksPanel } from '../ProposedSubtasksPanel';
 import { PrReviewComments, usePrReviewComments } from '../PrReviewComments';
 import { PrStatusCard, usePrStatus } from '../PrStatusCard';
@@ -149,8 +150,7 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
     (isDoneColumn && actions.onRunGauntlet !== undefined);
   // Interactive permission/question prompts moved to the pinned InteractionDock
   // (so they're never lost above a long activity log); the attention band now
-  // only holds the plan-approval gate.
-  const hasAttention = planParked && task.plan !== null;
+  // only holds the plan-approval gate (rendered inline below).
   const hasHistory =
     task.sdkSessionId !== null &&
     actions.onResumeSession !== undefined &&
@@ -188,20 +188,15 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
             nothing when the issue is open or the task is already Done/merged. */}
         <IssueClosedChip task={task} />
 
-        {/* Needs attention — the plan-approval gate. Permission/question prompts
-            live in the pinned InteractionDock below, not here. */}
-        {hasAttention && (
+        {/* Needs attention — the plan-approval gate (T6, #147): the reviewable plan
+            plus approve / refine-with-feedback / reject, colocated here in the
+            attention band (the footer only points to it, mirroring the review-verdict
+            pattern). Keyed per task so the refine-feedback draft never carries across
+            tasks. Permission/question prompts live in the pinned InteractionDock
+            below, not here. */}
+        {planParked && task.plan !== null && (
           <div className="space-y-3">
-            {planParked && task.plan !== null && (
-              <section>
-                <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
-                  Proposed plan
-                </h3>
-                <Markdown className="rounded-md border border-info/40 bg-info/[0.08] px-3 py-2">
-                  {task.plan}
-                </Markdown>
-              </section>
-            )}
+            <PlanReview key={task.id} task={task} pending={pending} />
           </div>
         )}
 

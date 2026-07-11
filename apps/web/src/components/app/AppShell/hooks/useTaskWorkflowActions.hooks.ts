@@ -56,9 +56,9 @@ export function useTaskWorkflowActions({ action, toast }: TaskWorkflowDeps) {
     [action, toast],
   );
   const handleRefine = useCallback(
-    (id: string) =>
+    (id: string, feedback: string) =>
       action.guard('refine', id, () =>
-        refineTask(id).catch((err) => {
+        refineTask(id, feedback).catch((err) => {
           console.error('refine_task failed', err);
           toast.error('Could not refine the plan', err);
         }),
