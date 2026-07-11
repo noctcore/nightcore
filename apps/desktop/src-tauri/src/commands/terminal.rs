@@ -345,6 +345,18 @@ pub async fn terminal_kill(app: AppHandle, id: String) -> Result<(), String> {
         .map_err(|e| format!("terminal kill failed to run: {e}"))?
 }
 
+/// Terminate EVERY live terminal session — the daemon orphan "kill-all" surface
+/// (T14), paired with `terminal_daemon_status`. Reaps daemon-owned shells that
+/// orphaned on a project switch or a daemon toggle-off, plus every in-process
+/// session. Returns how many were reaped so the UI can confirm. USER-only + async +
+/// `spawn_blocking` like every terminal command.
+#[tauri::command]
+pub async fn terminal_kill_all(app: AppHandle) -> Result<usize, String> {
+    tauri::async_runtime::spawn_blocking(move || Ok(backend(&app)?.kill_all()))
+        .await
+        .map_err(|e| format!("terminal kill_all failed to run: {e}"))?
+}
+
 /// All live sessions (dead ones reaped first).
 #[tauri::command]
 pub async fn terminal_list(app: AppHandle) -> Result<Vec<TerminalSessionInfo>, String> {

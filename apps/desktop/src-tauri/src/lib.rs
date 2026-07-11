@@ -443,6 +443,7 @@ pub fn run() {
             commands::terminal::terminal_notify_complete,
             commands::terminal::terminal_resize,
             commands::terminal::terminal_kill,
+            commands::terminal::terminal_kill_all,
             commands::terminal::terminal_list,
             commands::terminal::terminal_sessions_in_dir,
             commands::terminal::terminal_list_persisted,

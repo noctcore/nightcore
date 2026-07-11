@@ -246,6 +246,14 @@ export async function killTerminal(id: string): Promise<void> {
   await invoke('terminal_kill', { id });
 }
 
+/** Terminate EVERY live session (local + daemon) — the daemon orphan "kill-all"
+ *  surface (T14), paired with {@link terminalDaemonStatus}. Reaps daemon-owned
+ *  shells orphaned on a project switch / daemon toggle-off. Returns how many were
+ *  reaped; `0` outside Tauri (no backend to reap). */
+export async function killAllTerminals(): Promise<number> {
+  return tauriInvoke<number>('terminal_kill_all', {}, 0);
+}
+
 /** All live sessions — the tab list. Returns `[]` outside Tauri. */
 export async function listTerminals(): Promise<TerminalSessionInfo[]> {
   return tauriInvoke<TerminalSessionInfo[]>('terminal_list', {}, []);

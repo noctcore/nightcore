@@ -167,6 +167,21 @@ impl TerminalBackend {
         self.local.kill(id)
     }
 
+    /// Terminate EVERY live session (local + daemon) — the "orphan kill-all" escape
+    /// hatch (T14). Daemon-owned sessions can orphan invisibly on a project switch or
+    /// a daemon toggle-off (the app loses its handle but the shells keep running); this
+    /// is the user's one-click reap of all of them, paired with `daemon_status`. Kills
+    /// the deduped union `list()` reports, routing each by ownership. Idempotent — a
+    /// session that died between the list and the kill is a no-op success. Returns the
+    /// number of distinct sessions it asked to terminate (for the UI's confirm toast).
+    pub fn kill_all(&self) -> usize {
+        let sessions = self.list();
+        for session in &sessions {
+            let _ = self.kill(&session.id);
+        }
+        sessions.len()
+    }
+
     /// All live sessions — the UNION of local + daemon (deduped by id, local winning).
     /// Uses `ensure_daemon` (not the check-only `current_daemon`) so the FIRST list on
     /// relaunch CONNECTS to (or warms) the daemon and discovers the sessions that
