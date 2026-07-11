@@ -1,4 +1,5 @@
 import { composeStories } from '@storybook/react-vite';
+import { StrictMode } from 'react';
 import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
@@ -63,6 +64,46 @@ test('a duplicate name disables the save button (name uniqueness)', async () => 
   // existing entry (the header trigger is "Add server"; the save action is "Add").
   await expect.element(screen.getByRole('button', { name: 'Add', exact: true })).toBeDisabled();
   expect(onChange).not.toHaveBeenCalled();
+});
+
+// React 19 StrictMode double-invokes state updaters in dev to surface impurity.
+// The CRUD actions must keep their side effects (the `onChange` persistence write
+// and the `newId()` id-mint) OUT of the setState updater, or a save/remove would
+// fire `onChange` twice and an add would mint two different ids. These render under
+// StrictMode explicitly (the plain `render` above does not) to guard that seam.
+test('adding a server under StrictMode fires onChange once and mints one id', async () => {
+  const onChange = vi.fn();
+  const uuid = vi.spyOn(crypto, 'randomUUID');
+  const screen = render(
+    <StrictMode>
+      <McpServersCard servers={[]} onChange={onChange} />
+    </StrictMode>,
+  );
+  await screen.getByRole('button', { name: /add server/i }).click();
+  await screen.getByLabelText('Server name').fill('notion');
+  await screen.getByLabelText('Command').fill('npx');
+  uuid.mockClear();
+  await screen.getByRole('button', { name: 'Add', exact: true }).click();
+  // A single persistence write and a single minted id — not one-per-invocation.
+  expect(onChange).toHaveBeenCalledTimes(1);
+  expect(uuid).toHaveBeenCalledTimes(1);
+  const next = (onChange.mock.calls[0]?.[0] ?? []) as McpServerEntry[];
+  expect(next).toHaveLength(1);
+  expect(next[0]?.id).toEqual(expect.any(String));
+  expect(next[0]?.name).toBe('notion');
+});
+
+test('confirming a remove under StrictMode fires onChange exactly once', async () => {
+  const onChange = vi.fn();
+  const screen = render(
+    <StrictMode>
+      <McpServersCard servers={[stdioServer]} onChange={onChange} />
+    </StrictMode>,
+  );
+  await screen.getByRole('button', { name: /remove filesystem/i }).click();
+  await screen.getByRole('button', { name: 'Remove', exact: true }).click();
+  expect(onChange).toHaveBeenCalledTimes(1);
+  expect(onChange).toHaveBeenCalledWith([]);
 });
 
 test('editing a stdio server preserves an untouched masked secret', async () => {
