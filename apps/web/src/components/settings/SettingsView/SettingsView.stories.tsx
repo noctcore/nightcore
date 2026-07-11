@@ -27,6 +27,7 @@ const settings: Settings = {
   terminalFontSize: null,
   terminalScrollback: null,
   usageMeterEnabled: false,
+  terminalYoloLaunch: false,
   projectOverrides: {
     nightcore: { defaultModel: 'claude-haiku-4-5' },
   },

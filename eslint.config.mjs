@@ -76,6 +76,7 @@ const BOARD_CONTEXT_REGISTRY = {
         'onResumeSession',
         'onRenameSession',
         'onTagSession',
+        'onOpenTerminal',
       ],
     },
     {

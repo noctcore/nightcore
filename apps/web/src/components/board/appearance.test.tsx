@@ -34,6 +34,7 @@ function settingsWith(projectId: string, appearance: BoardAppearance): Settings 
     terminalFontSize: null,
     terminalScrollback: null,
     usageMeterEnabled: false,
+    terminalYoloLaunch: false,
     projectOverrides: { [projectId]: { boardAppearance: appearance } },
   };
 }

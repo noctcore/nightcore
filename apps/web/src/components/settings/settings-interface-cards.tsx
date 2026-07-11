@@ -163,6 +163,17 @@ export function buildInterfaceCards(
             />
           ),
         },
+        {
+          label: 'Skip Claude permissions (YOLO)',
+          hint: 'WARNING: adds --dangerously-skip-permissions to the terminal "Launch Claude" command — the agent then runs with NO permission prompts, as you, outside the gates. Off by default; enable only in a throwaway or fully trusted repo.',
+          control: (
+            <Toggle
+              on={settings.terminalYoloLaunch}
+              onChange={(next) => patchGlobal({ terminalYoloLaunch: next })}
+              label="Skip Claude permissions in the terminal Launch-Claude command"
+            />
+          ),
+        },
       ],
     },
   ];

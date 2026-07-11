@@ -22,6 +22,7 @@ import {
 
 import { useTaskActions } from '../actions';
 import { formatCostUsd, modelDisplayName, modelDotColor } from '../status';
+import { TaskCardTerminalChip } from '../TaskCardTerminalChip';
 import {
   ACTION_BASE,
   ACTION_DANGER,
@@ -377,6 +378,7 @@ function TaskCardImpl({
             </button>
           </>
         )}
+        <TaskCardTerminalChip taskId={task.id} />
         <button
           type="button"
           aria-label="Delete task"
