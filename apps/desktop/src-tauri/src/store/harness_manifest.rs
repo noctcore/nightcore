@@ -513,6 +513,17 @@ pub fn update_check(
                 entry.remove("configPath");
             }
         }
+        // Drift-v1 (T15): the convention join key follows the same set-or-remove merge
+        // as the other optional fields, so an edit preserves (or clears) a compiled
+        // drift check's `conventionFingerprint`.
+        match &updated.convention_fingerprint {
+            Some(fp) => {
+                entry.insert("conventionFingerprint".to_string(), json!(fp));
+            }
+            None => {
+                entry.remove("conventionFingerprint");
+            }
+        }
         Ok(())
     })
 }
@@ -850,6 +861,44 @@ mod tests {
         assert!(
             value["checks"][0].get("timeoutMs").is_none(),
             "the timeoutMs key is removed, not zeroed"
+        );
+    }
+
+    #[test]
+    fn update_check_sets_and_clears_the_convention_fingerprint() {
+        // Drift-v1 (T15): editing a check sets the `conventionFingerprint` when present
+        // and REMOVES the key when cleared (same set-or-remove merge as timeoutMs), so a
+        // compiled drift check keeps its join key across edits.
+        let tmp = TempDir::new().expect("temp dir");
+        write_manifest(&tmp, TWO_CHECKS);
+        let set = ArmedCheckFile {
+            name: "lint".into(),
+            kind: "lint-meta".into(),
+            command: "bun run lint:meta".into(),
+            enabled: true,
+            timeout_ms: None,
+            config_path: None,
+            convention_fingerprint: Some("a1b2c3d4e5f60718".into()),
+        };
+        let after = update_check(&root_of(&tmp), "lint", &set).expect("set fingerprint");
+        let lint = after.iter().find(|c| c.name == "lint").unwrap();
+        assert_eq!(
+            lint.convention_fingerprint.as_deref(),
+            Some("a1b2c3d4e5f60718")
+        );
+
+        // Now clear it — the key must be removed, not zeroed.
+        let cleared = ArmedCheckFile {
+            convention_fingerprint: None,
+            ..set
+        };
+        let after = update_check(&root_of(&tmp), "lint", &cleared).expect("clear fingerprint");
+        let lint = after.iter().find(|c| c.name == "lint").unwrap();
+        assert!(lint.convention_fingerprint.is_none());
+        let value = read_manifest_value(&tmp);
+        assert!(
+            value["checks"][0].get("conventionFingerprint").is_none(),
+            "the conventionFingerprint key is removed, not left behind"
         );
     }
 

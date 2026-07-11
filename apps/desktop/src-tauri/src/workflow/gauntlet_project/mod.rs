@@ -22,12 +22,21 @@
 //! folds in the task verify command, and renders the fix instruction. The facade
 //! preserves the historical `crate::gauntlet_project::{run, run_from,
 //! empty_pass, append_task_verify_command, fix_instruction}` paths.
+//!
+//! Drift-v1 (T15) adds two siblings: [`command_guard`] shape-validates a compiled
+//! drift check's model-generated `command` at the arm gate (the security seam), and
+//! [`drift`] is the EnforceRun that runs the ARMED checks and measures per-convention
+//! drift (`run_with_drift`) — the same gate result plus `ConventionDrift` records.
 
+mod command_guard;
 mod config;
+mod drift;
 mod runner;
 
 #[cfg(test)]
 mod tests;
 
+pub(crate) use command_guard::validate_check_command;
 pub(crate) use config::{is_armable_kind, ARMABLE_CHECK_KINDS};
+pub(crate) use drift::run_with_drift;
 pub(crate) use runner::*;
