@@ -94,20 +94,26 @@ pub(crate) fn ensure_labels(
     true
 }
 
-/// Ensure ONE label (binary-parameterized — the fake-`gh` test seam). A cached
-/// `(dir, name)` short-circuits; otherwise `POST …/labels` with the fixed
-/// name/color/description on argv (`-f`), treating `422 already_exists` as success.
-fn ensure_label_with(
+/// Ensure ONE label exists by NAME/color/description (binary-parameterized — the
+/// fake-`gh` test seam). THE single label-definition-ensure seam (#97 decision 5):
+/// both the scan-map export (via [`ensure_labels`]) and the two-way issue-sync
+/// writeback route their `POST …/labels` through here, so there is exactly one
+/// create path + one ensure-cache — no forked parallel seam. A cached `(dir, name)`
+/// short-circuits; otherwise `POST …/labels` with the fixed name/color/description
+/// on argv (`-f`), treating `422 already_exists` as idempotent success.
+pub(crate) fn ensure_label_named(
     dir: &Path,
     binary: &str,
-    label: Label,
+    name: &str,
+    color: &str,
+    description: &str,
     deadline: Duration,
 ) -> Result<(), String> {
-    let key = (dir.to_string_lossy().to_string(), label.name.to_string());
+    let key = (dir.to_string_lossy().to_string(), name.to_string());
     if crate::sync::lock_or_recover(ensure_cache()).contains(&key) {
         return Ok(());
     }
-    probe_gh(binary, "install it to create the map's labels")?;
+    probe_gh(binary, "install it to manage GitHub labels")?;
     let out = run_gh_bounded(
         dir,
         binary,
@@ -117,11 +123,11 @@ fn ensure_label_with(
             "POST",
             "repos/{owner}/{repo}/labels",
             "-f",
-            &format!("name={}", label.name),
+            &format!("name={name}"),
             "-f",
-            &format!("color={}", label.color),
+            &format!("color={color}"),
             "-f",
-            &format!("description={}", label.desc),
+            &format!("description={description}"),
         ],
         None,
         deadline,
@@ -132,6 +138,17 @@ fn ensure_label_with(
         return Ok(());
     }
     Err(map_gh_failure(binary, "api", &out))
+}
+
+/// Ensure one [`Label`] constant (the scan-map export's fixed vocabulary). Thin wrapper
+/// over the shared [`ensure_label_named`] seam.
+fn ensure_label_with(
+    dir: &Path,
+    binary: &str,
+    label: Label,
+    deadline: Duration,
+) -> Result<(), String> {
+    ensure_label_named(dir, binary, label.name, label.color, label.desc, deadline)
 }
 
 /// A `422 already_exists` is an idempotent success: `gh api` prints GitHub's error

@@ -14,12 +14,11 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use super::comment::build_sync_comment;
-use super::labels::{
-    add_label_with, ensure_label_with, remove_label_with, spec_for, GH_LABEL_TIMEOUT,
-};
+use super::labels::{add_label_with, remove_label_with, spec_for, GH_LABEL_TIMEOUT};
 use super::transition::{pending_work, Pending};
 use crate::git::gh::GH_BINARY;
 use crate::task::Task;
+use crate::workflow::github_labels::ensure_label_named;
 use crate::workflow::issue_triage::post_issue_comment_with;
 
 /// The comments-only degradation notice (§3.8 tier 2) — a human message, never a token.
@@ -236,7 +235,10 @@ fn apply_label_delta(
 ) -> Result<(), String> {
     if let Some(desired) = pending.desired_full.as_deref() {
         if let Some(spec) = pending.desired_suffix.and_then(spec_for) {
-            ensure_label_with(dir, binary, desired, spec.color, spec.description, deadline)?;
+            // The label-definition ensure goes through the SHARED github_labels seam
+            // (#97 decision 5) — one `POST …/labels` path + one ensure-cache for both
+            // the map export and this writeback.
+            ensure_label_named(dir, binary, desired, spec.color, spec.description, deadline)?;
         }
         add_label_with(dir, binary, issue_number, desired, deadline)?;
     }

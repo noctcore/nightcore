@@ -1,5 +1,10 @@
-//! The `nc:*` status-label vocabulary + the three idempotent `gh api` REST primitives
-//! that keep it in sync (§3.1 / §3.3).
+//! The `nc:*` status-label vocabulary + the two idempotent `gh api` REST primitives that
+//! ATTACH/DETACH it on an issue (§3.1 / §3.3).
+//!
+//! The label-DEFINITION ensure (`POST …/labels`) is NOT here: it lives in the shared
+//! [`crate::workflow::github_labels::ensure_label_named`] seam that both this writeback
+//! and the scan-map export route through (#97 decision 5) — one create path + one
+//! ensure-cache, never a forked parallel seam.
 //!
 //! Every mutation clones the injection-safe posture of `post_issue_comment_with`
 //! (`workflow/issue_triage/post.rs`): `gh api` REST, a decimal `u64` issue number in the
@@ -8,16 +13,13 @@
 //! The primitives are binary-parameterized (`_with`) so the tests inject a fake `gh`
 //! script instead of shelling to the real one — no live GitHub traffic.
 //!
-//! Idempotency (the anti-churn heart of decision 1): `ensure_label` tolerates a 422
-//! `already_exists` and caches its success so steady-state writebacks skip the create;
-//! `add_label` is ADDITIVE (`POST …/labels` with `labels[]=`, never the `PUT` replace
-//! that would nuke the user's other labels); `remove_label` tolerates a 404 (already
-//! absent) as success. A label SWITCH is `ensure(desired)` → `add(desired)` →
-//! `remove(prev)` — no read/list call, because `prev` is the task's `issue_synced_label`.
+//! Idempotency (the anti-churn heart of decision 1): `add_label` is ADDITIVE
+//! (`POST …/labels` with `labels[]=`, never the `PUT` replace that would nuke the user's
+//! other labels); `remove_label` tolerates a 404 (already absent) as success. A label
+//! SWITCH is `ensure(desired)` → `add(desired)` → `remove(prev)` — no read/list call,
+//! because `prev` is the task's `issue_synced_label`.
 
-use std::collections::HashSet;
 use std::path::Path;
-use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use crate::git::gh::{map_gh_failure, probe_gh, run_gh_bounded, GhOutput};
@@ -27,14 +29,15 @@ use crate::git::gh::{map_gh_failure, probe_gh, run_gh_bounded, GhOutput};
 /// triage GraphQL timeout (90s).
 pub(super) const GH_LABEL_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// The install-hint action `probe_gh` names when `gh` is missing (shared by all three
-/// primitives — they all sync issue labels).
+/// The install-hint action `probe_gh` names when `gh` is missing (shared by both
+/// attach/detach primitives — they both sync issue labels).
 const PROBE_ACTION: &str = "install it to sync issue labels";
 
 /// One managed `nc:*` status label: its stable SUFFIX (prefix-independent, so a project
 /// can remap the `nc:` prefix without changing these), plus the fixed color +
-/// description that make [`ensure_label_with`] idempotent (we never rewrite an existing
-/// label's color, so a create is the only label-definition write we ever make).
+/// description that make the shared
+/// [`crate::workflow::github_labels::ensure_label_named`] idempotent (we never rewrite an
+/// existing label's color, so a create is the only label-definition write we ever make).
 pub(super) struct LabelSpec {
     pub(super) suffix: &'static str,
     pub(super) color: &'static str,
@@ -84,19 +87,6 @@ pub(super) fn full_name(prefix: &str, suffix: &str) -> String {
     format!("{prefix}{suffix}")
 }
 
-/// Process-lifetime `(project_path, full_label_name)` set of labels already ensured, so a
-/// steady-state writeback skips the create call after the first success (§3.3). A
-/// crashed/edited label re-creates on next process start — acceptable; we never rewrite an
-/// existing label's color.
-fn ensured_labels() -> &'static Mutex<HashSet<String>> {
-    static ENSURED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-    ENSURED.get_or_init(|| Mutex::new(HashSet::new()))
-}
-
-fn ensure_cache_key(dir: &Path, name: &str) -> String {
-    format!("{}\u{0}{name}", dir.to_string_lossy())
-}
-
 /// The HTTP status `gh api` reports on a failed call. `gh` prints `gh: <message> (HTTP
 /// <code>)` to stderr; a few paths carry the status only in the JSON error body on stdout.
 /// Best-effort — `None` when neither is parseable.
@@ -113,51 +103,6 @@ fn http_status(out: &GhOutput) -> Option<u16> {
         }
     }
     None
-}
-
-/// Idempotently create the label definition (`POST repos/{owner}/{repo}/labels`). A 422
-/// (`already_exists` — our colors are fixed valid hex, so the only 422 is a duplicate) is
-/// SUCCESS. Caches success by `(dir, name)` so the next writeback skips the create.
-pub(super) fn ensure_label_with(
-    dir: &Path,
-    binary: &str,
-    name: &str,
-    color: &str,
-    description: &str,
-    deadline: Duration,
-) -> Result<(), String> {
-    let key = ensure_cache_key(dir, name);
-    if crate::sync::lock_or_recover(ensured_labels()).contains(&key) {
-        return Ok(());
-    }
-    probe_gh(binary, PROBE_ACTION)?;
-    let name_arg = format!("name={name}");
-    let color_arg = format!("color={color}");
-    let desc_arg = format!("description={description}");
-    let out = run_gh_bounded(
-        dir,
-        binary,
-        &[
-            "api",
-            "--method",
-            "POST",
-            "repos/{owner}/{repo}/labels",
-            "-f",
-            &name_arg,
-            "-f",
-            &color_arg,
-            "-f",
-            &desc_arg,
-        ],
-        None,
-        deadline,
-        "timed out creating the status label on GitHub — check your network and try again",
-    )?;
-    if out.status.success() || http_status(&out) == Some(422) {
-        crate::sync::lock_or_recover(ensured_labels()).insert(key);
-        return Ok(());
-    }
-    Err(map_gh_failure(binary, "api", &out))
 }
 
 /// ADDITIVELY attach `name` to the issue (`POST …/issues/{n}/labels` with `labels[]=`).
@@ -331,43 +276,5 @@ mod tests {
         )
         .expect_err("a 403 is not tolerated");
         assert!(err.contains("403"), "surfaces gh's stderr: {err}");
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn ensure_label_tolerates_422_and_caches_success() {
-        let tmp = tempfile::TempDir::new().expect("tempdir");
-        // First call: 422 already_exists → tolerated; increment a call counter.
-        let gh = fake_gh(
-            tmp.path(),
-            "n=$(cat calls.txt 2>/dev/null || echo 0)\necho $((n+1)) > calls.txt\n\
-             echo 'gh: Validation Failed (HTTP 422)' 1>&2\nexit 1",
-        );
-        let bin = gh.to_str().unwrap();
-        ensure_label_with(
-            tmp.path(),
-            bin,
-            "nc:queued",
-            "cccccc",
-            "Queued",
-            Duration::from_secs(5),
-        )
-        .expect("422 tolerated");
-        // Second call for the SAME (dir, name) is served from the cache — no new gh spawn.
-        ensure_label_with(
-            tmp.path(),
-            bin,
-            "nc:queued",
-            "cccccc",
-            "Queued",
-            Duration::from_secs(5),
-        )
-        .expect("cached");
-        let calls = std::fs::read_to_string(tmp.path().join("calls.txt")).expect("calls");
-        assert_eq!(
-            calls.trim(),
-            "1",
-            "the ensure cache skipped the second spawn"
-        );
     }
 }
