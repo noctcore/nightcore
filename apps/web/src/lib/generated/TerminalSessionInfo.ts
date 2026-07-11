@@ -32,4 +32,10 @@ alive: boolean,
 /**
  * Epoch-ms the session was spawned.
  */
-createdAt: number, };
+createdAt: number, 
+/**
+ * The user's manual name for this tab (decision 5), or `None` when unnamed —
+ * the web then falls back to the cwd leaf. Set via `terminal_set_title` and
+ * persisted so it survives a read-only restore.
+ */
+title: string | null, };

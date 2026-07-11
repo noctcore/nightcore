@@ -90,6 +90,32 @@ pub async fn terminal_write(app: AppHandle, id: String, data: Vec<u8>) -> Result
         .map_err(|e| format!("terminal write failed to run: {e}"))?
 }
 
+/// Set (or clear) a live session's manual tab name (decision 5). USER-only, like
+/// every terminal command. An empty/whitespace title clears the name (`None`), so
+/// the web falls back to the cwd leaf. The rename is persisted on the next
+/// scrollback flush, so it survives a read-only restore.
+#[tauri::command]
+pub async fn terminal_set_title(
+    app: AppHandle,
+    id: String,
+    title: Option<String>,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        registry(&app)?.set_title(&id, normalize_title(title))
+    })
+    .await
+    .map_err(|e| format!("terminal set_title failed to run: {e}"))?
+}
+
+/// Trim a requested title and treat empty/whitespace as "clear the name" (`None`).
+/// Keeps the descriptor's `title` either `None` or a non-empty string, so the web's
+/// `session.title ?? cwdLeaf` fallback never renders a blank tab.
+fn normalize_title(title: Option<String>) -> Option<String> {
+    title
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+}
+
 /// Resize a session's pty (delivers SIGWINCH).
 #[tauri::command]
 pub async fn terminal_resize(
@@ -175,9 +201,20 @@ pub async fn terminal_delete_persisted(app: AppHandle, id: String) -> Result<(),
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_spawn_cwd;
+    use super::{normalize_title, resolve_spawn_cwd};
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn normalize_title_trims_and_clears_blank_names() {
+        assert_eq!(normalize_title(None), None);
+        assert_eq!(normalize_title(Some("   ".to_string())), None);
+        assert_eq!(normalize_title(Some(String::new())), None);
+        assert_eq!(
+            normalize_title(Some("  deploy shell  ".to_string())).as_deref(),
+            Some("deploy shell")
+        );
+    }
 
     #[test]
     fn spawn_cwd_accepts_any_existing_directory() {

@@ -35,6 +35,10 @@ pub struct TerminalSessionInfo {
     pub alive: bool,
     /// Epoch-ms the session was spawned.
     pub created_at: u64,
+    /// The user's manual name for this tab (decision 5), or `None` when unnamed —
+    /// the web then falls back to the cwd leaf. Set via `terminal_set_title` and
+    /// persisted so it survives a read-only restore.
+    pub title: Option<String>,
 }
 
 /// Metadata for a persisted (dead) session's scrollback, without the bytes —
@@ -52,6 +56,10 @@ pub struct PersistedTerminalInfo {
     pub created_at: u64,
     /// Epoch-ms of the last scrollback flush to disk.
     pub updated_at: u64,
+    /// The user's manual name for the session (decision 5), or `None` when it was
+    /// never renamed — so a restored (read-only) tab shows the same name it had
+    /// while live, and old persisted files (no `title`) restore to the cwd leaf.
+    pub title: Option<String>,
 }
 
 /// A persisted session's metadata plus its scrollback bytes (base64) for read-only

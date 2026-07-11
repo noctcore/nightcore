@@ -19,9 +19,11 @@ use std::sync::Mutex;
 use super::session::{OutputSink, PtySession, SpawnOpts};
 use super::types::TerminalSessionInfo;
 
-/// Hard cap on concurrently LIVE sessions (decision 6). Spawning beyond it is a
-/// user-visible error, never an eviction of an existing shell.
-pub(crate) const MAX_LIVE_SESSIONS: usize = 8;
+/// Hard cap on concurrently LIVE sessions (decision 7). Spawning beyond it is a
+/// user-visible error, never an eviction of an existing shell. Mirrored web-side by
+/// `TERMINAL_SESSION_CAP` (both must move together — the web constant only disables
+/// the new-tab affordance; this is the authoritative guard).
+pub(crate) const MAX_LIVE_SESSIONS: usize = 12;
 
 /// The registry of live PTY sessions + the scrollback persist location.
 pub struct TerminalRegistry {
@@ -81,6 +83,18 @@ impl TerminalRegistry {
     pub fn write(&self, id: &str, data: &[u8]) -> Result<(), String> {
         let mut sessions = self.lock_sessions()?;
         sessions.get_mut(id).ok_or_else(|| no_such(id))?.write(data)
+    }
+
+    /// Set (or clear, with `None`) a live session's manual name (decision 5). The
+    /// title lives behind the session's own `Mutex`, so an immutable session borrow
+    /// suffices; the next scrollback flush persists it. Errors only for an unknown id.
+    pub fn set_title(&self, id: &str, title: Option<String>) -> Result<(), String> {
+        let sessions = self.lock_sessions()?;
+        sessions
+            .get(id)
+            .ok_or_else(|| no_such(id))?
+            .set_title(title);
+        Ok(())
     }
 
     /// Resize a session's pty.
@@ -223,6 +237,29 @@ mod tests {
         assert_eq!(reg.sessions_in_dir(tmp.path()).len(), 1);
         // A sibling dir contains nothing.
         assert!(reg.sessions_in_dir(&outside).is_empty());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn set_title_updates_the_live_descriptor_and_rejects_unknown_ids() {
+        let tmp = TempDir::new().unwrap();
+        let reg = TerminalRegistry::new(tmp.path().join("terminals"));
+        let s = reg.spawn(opts(tmp.path()), noop_sink()).expect("spawn");
+        assert_eq!(reg.list()[0].title, None, "a fresh session is unnamed");
+
+        reg.set_title(&s.id, Some("deploy shell".to_string()))
+            .expect("rename a live session");
+        assert_eq!(reg.list()[0].title.as_deref(), Some("deploy shell"));
+
+        // Clearing the name returns to the cwd-leaf fallback (None).
+        reg.set_title(&s.id, None).expect("clear the name");
+        assert_eq!(reg.list()[0].title, None);
+
+        assert!(
+            reg.set_title("ghost", Some("x".to_string())).is_err(),
+            "renaming an unknown id errors"
+        );
+        reg.kill(&s.id).expect("kill");
     }
 
     #[test]

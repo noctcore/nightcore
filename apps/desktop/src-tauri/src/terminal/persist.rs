@@ -46,6 +46,11 @@ pub(crate) struct PersistedScrollback {
     pub(crate) created_at: u64,
     #[serde(default)]
     pub(crate) updated_at: u64,
+    /// The user's manual tab name (decision 5), empty when never renamed. Additive
+    /// (`#[serde(default)]`, no `v` bump): an old file without it loads with `""`,
+    /// which `.info()` maps back to `None` (the web then labels by cwd leaf).
+    #[serde(default)]
+    pub(crate) title: String,
     /// The scrollback stream, base64-encoded (raw bytes don't round-trip cleanly
     /// through JSON; base64 keeps escape sequences intact).
     #[serde(default)]
@@ -57,6 +62,7 @@ fn default_version() -> u32 {
 }
 
 impl PersistedScrollback {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         id: String,
         cwd: String,
@@ -64,6 +70,7 @@ impl PersistedScrollback {
         confined: bool,
         created_at: u64,
         updated_at: u64,
+        title: String,
         scrollback: &[u8],
     ) -> Self {
         Self {
@@ -74,6 +81,7 @@ impl PersistedScrollback {
             confined,
             created_at,
             updated_at,
+            title,
             scrollback_b64: STANDARD.encode(scrollback),
         }
     }
@@ -86,6 +94,9 @@ impl PersistedScrollback {
             confined: self.confined,
             created_at: self.created_at,
             updated_at: self.updated_at,
+            // An empty persisted title means "never renamed" → `None`, so the web
+            // labels the restored tab by its cwd leaf exactly like an old file.
+            title: (!self.title.is_empty()).then(|| self.title.clone()),
         }
     }
 
@@ -238,6 +249,7 @@ mod tests {
             false,
             1,
             now_ms(),
+            String::new(),
             bytes,
         )
     }
@@ -254,6 +266,32 @@ mod tests {
         assert_eq!(read_bytes(&dir, "sess-1").as_deref(), Some(&raw[..]));
         // base64 is exactly what the command hands the webview.
         assert_eq!(got.data_base64, STANDARD.encode(raw));
+    }
+
+    #[test]
+    fn a_manual_title_round_trips_and_surfaces_on_the_restored_info() {
+        // A renamed session persists its title; on restore the info carries it back
+        // (decision 5). An empty title maps to `None` so an un-renamed / legacy tab
+        // labels by cwd leaf.
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("terminals");
+        let named = PersistedScrollback::new(
+            "named".to_string(),
+            tmp.path().to_string_lossy().into_owned(),
+            "/bin/zsh".to_string(),
+            false,
+            1,
+            now_ms(),
+            "deploy shell".to_string(),
+            b"x",
+        );
+        write(&dir, &named).unwrap();
+        let got = read(&dir, "named").expect("reads back");
+        assert_eq!(got.info.title.as_deref(), Some("deploy shell"));
+
+        // An un-renamed record surfaces `None`, not `Some("")`.
+        write(&dir, &record("plain", tmp.path().to_str().unwrap(), b"y")).unwrap();
+        assert_eq!(read(&dir, "plain").unwrap().info.title, None);
     }
 
     #[test]
