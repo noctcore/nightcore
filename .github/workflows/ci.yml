@@ -97,14 +97,27 @@ jobs:
       # to VM: run 28756795439 ENOSPC'd 70% through this suite while the rerun
       # on an identical image version passed. The suite itself writes <100MB
       # (measured locally) — the margin is eaten by the preinstalled toolchains,
-      # so drop the two big unused ones (~7GB for ~20s; the Android SDK is
-      # bigger still but takes a minute to rm, not worth it). df lines bracket
-      # the cleanup so a future ENOSPC is diagnosable from this log.
-      - name: Free runner disk space
+      # so drop the two big unused ones (~7GB; the Android SDK is bigger still but
+      # takes a minute to rm, not worth it).
+      #
+      # The rm itself costs ~14s on the critical path, so gate it: reclaim ONLY when
+      # free space is below a comfortable floor (~12 GiB — well above this job's few-GB
+      # peak). A VM that already has ample space skips the rm (the common case, per
+      # the "~14GB advertised" baseline); a tight VM (the F4 class) still reclaims, so
+      # the ENOSPC guard is preserved, not weakened. df lines bracket the reclaim so a
+      # future ENOSPC stays diagnosable from this log.
+      - name: Free runner disk space (only when low)
         run: |
-          df -h /
-          sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
-          df -h /
+          avail=$(df -Pk / | awk 'NR==2 {print $4}')
+          threshold=12582912  # 12 GiB in 1K-blocks
+          if [ "$avail" -lt "$threshold" ]; then
+            echo "Low disk: ${avail}K free (< ${threshold}K) — reclaiming dotnet/CodeQL"
+            df -h /
+            sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
+            df -h /
+          else
+            echo "Ample disk: ${avail}K free (>= ${threshold}K) — skipping reclaim"
+          fi
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
