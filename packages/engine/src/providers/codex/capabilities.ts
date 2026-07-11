@@ -9,8 +9,12 @@
  *  - `supportsHooks: false` — there is no Claude-style PreToolUse gate.
  *  - `providesOwnWriteContainment: true` — Codex's native sandbox is the
  *    compensating control for `workspace-write` autonomy.
- *  - `autonomyLevels: ['auto-accept', 'ask', 'plan']` — `bypass` stays hidden until
- *    an explicit process-level opt-in enables danger-full-access.
+ *  - `autonomyLevels: ['auto-accept', 'plan']` — `ask` is NOT advertised: the
+ *    codex-sdk has no approval channel (non-interactive `codex exec`, stdin closed,
+ *    no approval event), so an `ask` posture could never be answered and would hang.
+ *    Offering it in the picker would be a deadlock trap, so the real supported set
+ *    omits it. `bypass` stays hidden until an explicit process-level opt-in enables
+ *    danger-full-access.
  *  - `costTelemetry: 'tokens-only'` — Codex reports usage tokens, not dollars.
  *
  * The descriptor is CONTRACT-ONLY (`ProviderCapabilities`) and imports no SDK — a
@@ -32,7 +36,7 @@ export const CODEX_PROVIDER_LABEL = 'Codex';
 export const CODEX_CAPABILITIES: ProviderCapabilities = {
   id: CODEX_PROVIDER_ID,
   label: CODEX_PROVIDER_LABEL,
-  autonomyLevels: ['auto-accept', 'ask', 'plan'],
+  autonomyLevels: ['auto-accept', 'plan'],
   supportsHooks: false,
   providesOwnWriteContainment: true,
   supportsMcp: true,

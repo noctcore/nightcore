@@ -18,10 +18,14 @@ export const CLAUDE_CAPABILITIES: ProviderCapabilities = {
   costTelemetry: 'full',
 };
 
+// NOTE: hand-mirrored from packages/engine/src/providers/codex/capabilities.ts
+// (the drift hazard flagged for the capabilities-over-wire cleanup). `ask` is
+// intentionally absent: Codex has no approval channel, so offering it in the picker
+// would be a deadlock trap — keep this list identical to the engine descriptor.
 export const CODEX_CAPABILITIES: ProviderCapabilities = {
   id: 'codex',
   label: 'Codex',
-  autonomyLevels: ['auto-accept', 'ask', 'plan'],
+  autonomyLevels: ['auto-accept', 'plan'],
   supportsHooks: false,
   providesOwnWriteContainment: true,
   supportsMcp: true,

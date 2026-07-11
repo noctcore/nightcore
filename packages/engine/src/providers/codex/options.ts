@@ -31,6 +31,20 @@ export function codexBypassOptedIn(
   return env[CODEX_BYPASS_OPT_IN_ENV] === '1';
 }
 
+/**
+ * Map a neutral autonomy ceiling to a Codex sandbox + approval posture.
+ *
+ * THE DEADLOCK INVARIANT: the codex-sdk (`@openai/codex-sdk`) runs each turn as a
+ * non-interactive `codex exec` — it writes the prompt to stdin, CLOSES stdin, and
+ * exposes NO approval callback and no approval event in its `ThreadEvent` stream. So
+ * any `approval_policy` that can raise an approval request (`on-request` /
+ * `on-failure` / `untrusted`) has no channel to answer it: the run hangs (or at best
+ * proceeds unverifiably). We therefore NEVER emit those policies here — every posture
+ * uses `never`, which is provably fail-visible: a command the sandbox forbids simply
+ * fails (surfaced as a failed `command_execution`), it is never escalated to an
+ * unanswerable prompt. Write CONTAINMENT comes from the `sandboxMode`, not from an
+ * approval prompt.
+ */
 export function codexPostureForAutonomy(
   autonomy: AutonomyLevel,
   opts: { bypassOptedIn: boolean },
@@ -40,14 +54,22 @@ export function codexPostureForAutonomy(
       return {
         autonomy,
         sandboxMode: 'read-only',
-        approvalPolicy: 'on-request',
+        approvalPolicy: 'never',
         contained: true,
       };
     case 'ask':
+      // `ask` means "prompt me before acting", which Codex CANNOT honor (no approval
+      // channel). It is removed from the advertised `autonomyLevels`, so it only
+      // arrives here from a stale/persisted value or a global `permission_mode: "ask"`
+      // a Codex task inherits. We degrade it to the SAFE read-only floor — NOT the
+      // writable `workspace-write` posture — so the "prompt me first" safety
+      // expectation is never silently dropped into autonomous writes. A build task
+      // that lands here can't mutate the repo, which surfaces visibly (an empty diff),
+      // never a silent escalation and never a hang.
       return {
         autonomy,
-        sandboxMode: 'workspace-write',
-        approvalPolicy: 'on-request',
+        sandboxMode: 'read-only',
+        approvalPolicy: 'never',
         contained: true,
       };
     case 'auto-accept':

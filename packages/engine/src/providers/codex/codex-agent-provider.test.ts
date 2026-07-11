@@ -35,11 +35,10 @@ describe('CODEX_CAPABILITIES', () => {
   test('advertises the real Codex matrix', () => {
     expect(CODEX_CAPABILITIES.id).toBe('codex');
     expect(CODEX_CAPABILITIES.label).toBe('Codex');
-    expect(CODEX_CAPABILITIES.autonomyLevels).toEqual([
-      'auto-accept',
-      'ask',
-      'plan',
-    ]);
+    // `ask` is NOT advertised: Codex has no approval channel, so an `ask` posture
+    // could never be answered and would deadlock — the picker must never offer it.
+    expect(CODEX_CAPABILITIES.autonomyLevels).toEqual(['auto-accept', 'plan']);
+    expect(CODEX_CAPABILITIES.autonomyLevels).not.toContain('ask');
     expect(CODEX_CAPABILITIES.supportsHooks).toBe(false);
     expect(CODEX_CAPABILITIES.providesOwnWriteContainment).toBe(true);
     expect(CODEX_CAPABILITIES.supportsMcp).toBe(true);
@@ -59,12 +58,14 @@ describe('Codex autonomy posture', () => {
   test('maps neutral autonomy to Codex sandbox and approval modes', () => {
     expect(codexPostureForAutonomy('plan', { bypassOptedIn: false })).toMatchObject({
       sandboxMode: 'read-only',
-      approvalPolicy: 'on-request',
+      approvalPolicy: 'never',
       contained: true,
     });
+    // `ask` degrades to the SAFE read-only floor (never workspace-write): Codex can't
+    // prompt, so the "ask first" expectation must not silently become autonomous writes.
     expect(codexPostureForAutonomy('ask', { bypassOptedIn: false })).toMatchObject({
-      sandboxMode: 'workspace-write',
-      approvalPolicy: 'on-request',
+      sandboxMode: 'read-only',
+      approvalPolicy: 'never',
       contained: true,
     });
     expect(
@@ -84,6 +85,19 @@ describe('Codex autonomy posture', () => {
       approvalPolicy: 'never',
       contained: false,
     });
+  });
+
+  test('NO posture uses an unanswerable approval policy (the deadlock invariant)', () => {
+    // The codex-sdk has no approval channel, so `on-request`/`on-failure`/`untrusted`
+    // would hang forever. Every posture must resolve to `never` — fail-visible, never
+    // a silent hang.
+    for (const autonomy of ['plan', 'ask', 'auto-accept', 'bypass'] as const) {
+      for (const bypassOptedIn of [false, true]) {
+        expect(
+          codexPostureForAutonomy(autonomy, { bypassOptedIn }).approvalPolicy,
+        ).toBe('never');
+      }
+    }
   });
 
   test('auto-accept is permitted because Codex supplies native containment', () => {
@@ -195,14 +209,14 @@ describe('Codex option mapping', () => {
       model: 'gpt-5-codex',
       effort: 'medium',
       cwd: '/repo',
-      posture: codexPostureForAutonomy('ask', { bypassOptedIn: false }),
+      posture: codexPostureForAutonomy('auto-accept', { bypassOptedIn: false }),
     });
     expect(options).toEqual({
       model: 'gpt-5-codex',
       workingDirectory: '/repo',
       skipGitRepoCheck: true,
       sandboxMode: 'workspace-write',
-      approvalPolicy: 'on-request',
+      approvalPolicy: 'never',
       modelReasoningEffort: 'medium',
     });
   });

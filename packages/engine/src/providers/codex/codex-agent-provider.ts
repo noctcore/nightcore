@@ -218,7 +218,11 @@ export class CodexAgentProvider implements AgentProvider {
     emit: SessionEventSink,
     logger?: Logger,
   ): AgentSession {
-    const autonomy: AutonomyLevel = params.autonomyOverride ?? 'ask';
+    // Default to the safe read-only `plan` when no autonomy was resolved: `ask` is
+    // no longer a supported Codex ceiling (no approval channel — it would deadlock),
+    // so it can't be the fallback. In practice the Rust settings resolver always
+    // sends an explicit autonomy; this default only guards the undefined path.
+    const autonomy: AutonomyLevel = params.autonomyOverride ?? 'plan';
     const posture = codexPostureForAutonomy(autonomy, {
       bypassOptedIn: codexBypassOptedIn(),
     });
@@ -243,7 +247,9 @@ export class CodexAgentProvider implements AgentProvider {
         model: 'codex',
         cwd: process.cwd(),
       },
-      'ask',
+      // A probe never runs a turn, so its ceiling is inert — use the safe read-only
+      // `plan` for consistency with the non-deadlocking default.
+      'plan',
       () => {},
       logger ?? this.logger,
     );
