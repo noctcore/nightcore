@@ -259,22 +259,18 @@ export function useMcpServersCard(
   }, []);
 
   const saveDraft = useCallback(() => {
-    setDraftState((current) => {
-      if (current === null || !validate(current, servers).ok) return current;
-      const existing =
-        current.id === null
-          ? undefined
-          : servers.find((s) => s.id === current.id);
-      const id = existing?.id ?? newId();
-      const next = entryFromDraft(current, originalSecrets(existing), id);
-      const list =
-        existing === undefined
-          ? [...servers, next]
-          : servers.map((s) => (s.id === id ? next : s));
-      onChange(list);
-      return null;
-    });
-  }, [servers, onChange]);
+    if (draft === null || !validate(draft, servers).ok) return;
+    const existing =
+      draft.id === null ? undefined : servers.find((s) => s.id === draft.id);
+    const id = existing?.id ?? newId();
+    const next = entryFromDraft(draft, originalSecrets(existing), id);
+    const list =
+      existing === undefined
+        ? [...servers, next]
+        : servers.map((s) => (s.id === id ? next : s));
+    setDraftState(null);
+    onChange(list);
+  }, [draft, servers, onChange]);
 
   const toggleEnabled = useCallback(
     (entry: McpServerEntry) => {
@@ -293,11 +289,11 @@ export function useMcpServersCard(
   );
   const cancelRemove = useCallback(() => setPendingRemove(null), []);
   const confirmRemove = useCallback(() => {
-    setPendingRemove((entry) => {
-      if (entry !== null) onChange(servers.filter((s) => s.id !== entry.id));
-      return null;
-    });
-  }, [servers, onChange]);
+    if (pendingRemove !== null) {
+      onChange(servers.filter((s) => s.id !== pendingRemove.id));
+    }
+    setPendingRemove(null);
+  }, [pendingRemove, servers, onChange]);
 
   return {
     draft,
