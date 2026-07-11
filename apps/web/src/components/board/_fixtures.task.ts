@@ -66,6 +66,14 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     parentTaskId: overrides.parentTaskId ?? null,
     proposedSubtasks: overrides.proposedSubtasks ?? [],
     sourceRef: overrides.sourceRef ?? null,
+    // GitHub two-way sync (#97) — serde-additive optional fields; passed through
+    // verbatim (omitted-while-unset), like `prUrl`/`prNumber`/`baseBranch`.
+    issueNumber: overrides.issueNumber,
+    issueSyncedLabel: overrides.issueSyncedLabel,
+    issueSyncedAt: overrides.issueSyncedAt,
+    issueCommentMarker: overrides.issueCommentMarker,
+    issueState: overrides.issueState,
+    issueSyncError: overrides.issueSyncError,
   };
 }
 

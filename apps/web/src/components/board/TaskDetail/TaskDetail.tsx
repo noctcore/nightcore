@@ -6,6 +6,7 @@ import { useTaskActions } from '../actions';
 import { ActivityLog } from '../ActivityLog';
 import { GauntletResults } from '../GauntletResults';
 import { InteractionDock } from '../InteractionDock';
+import { IssueSyncNotice } from '../IssueSyncNotice';
 import { ProposedSubtasksPanel } from '../ProposedSubtasksPanel';
 import { PrReviewComments, usePrReviewComments } from '../PrReviewComments';
 import { PrStatusCard, usePrStatus } from '../PrStatusCard';
@@ -172,6 +173,12 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
       />
 
       <div className="flex flex-1 flex-col gap-4 overflow-auto px-4 py-4">
+        {/* GitHub two-way sync (#97): the writeback-degradation notice. Surfaces at
+            the top of the drawer when the token lacks issue-write scope and sync
+            downgraded (comments-only / silent-off); dismissible, informational —
+            renders nothing when sync is healthy or off. */}
+        <IssueSyncNotice task={task} />
+
         {/* Needs attention — the plan-approval gate. Permission/question prompts
             live in the pinned InteractionDock below, not here. */}
         {hasAttention && (

@@ -32,6 +32,7 @@ import { type CreatePrController, useCreatePr } from './hooks/useCreatePr.hooks'
 import { useEditProject } from './hooks/useEditProject.hooks';
 import { useGauntlet } from './hooks/useGauntlet.hooks';
 import { useGlobalErrorToast } from './hooks/useGlobalErrorToast.hooks';
+import { useIssueSync } from './hooks/useIssueSync.hooks';
 import { useNewProjectFlow } from './hooks/useNewProjectFlow.hooks';
 import { useOnboardingGate } from './hooks/useOnboardingGate.hooks';
 import { usePermissions, useQuestions } from './hooks/useParkedPrompts.hooks';
@@ -186,6 +187,11 @@ export function useAppShell(): AppShellState {
   const newProject = useNewProjectFlow(routing.closeNewProject, toast);
   const board = useBoard(toast);
   const blockedIds = useBlockedIds();
+  // GitHub two-way sync (#97): the writeback observer projects each issue-linked
+  // task's lifecycle onto its GitHub issue on `nc:task` transitions. Inert unless
+  // `issueSyncEnabled` (default false ⇒ no subscription) — writeback mutates a
+  // (often public) repo, so it stays opt-in like the other network-mutating gates.
+  useIssueSync(settings.settings?.issueSyncEnabled ?? false);
   const { tasks, streams, selectedId, setSelectedId } = board;
   const permissions = usePermissions(tasks, toast);
   const questions = useQuestions(tasks, toast);

@@ -46,9 +46,10 @@ function LabelPrefixField({
 /** Build the GitHub integration cards for the Integrations (hooks) page. Global-only
  *  settings (like native notifications), so both controls patch the global block.
  *
- *  NOTE (PR 1): the toggle is INERT — it only stores the preference. The writeback
- *  observer + label lifecycle ship in a later update, so the hint copy is explicit
- *  that enabling it does nothing yet. */
+ *  The toggle is LIVE (#97, PR 3): enabling it arms the writeback observer, so a
+ *  linked task's lifecycle projects onto its GitHub issue (`nc:*` labels + terminal
+ *  comments) and its PR gets `Closes #N`. Off by default — writeback mutates a
+ *  (often public) repo, so it is opt-in and needs a token with issue-write scope. */
 export function buildGithubCards(
   settings: Settings,
   patchGlobal: (patch: SettingsPatch) => void,
@@ -62,7 +63,7 @@ export function buildGithubCards(
       rows: [
         {
           label: 'Two-way issue sync',
-          hint: 'Off by default. Not active yet — the sync engine ships in a later update; enabling this only stores your preference for now.',
+          hint: 'Off by default. When on, Nightcore keeps nc:* status labels and posts terminal comments on the linked issue, and adds Closes #N to the task’s PR so a merge closes the issue. Needs a token with issue write access; if it can’t write, sync degrades and the task shows a notice.',
           control: (
             <Toggle
               on={settings.issueSyncEnabled}
