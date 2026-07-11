@@ -166,15 +166,6 @@ impl SettingsStore {
         })
     }
 
-    /// Whether the plan-approval gate (T6, #147) defaults ON for Build tasks.
-    /// Global-only — a studio-wide governance stance with no per-project override
-    /// (mirrors the global-only opt-ins like `auto_commit_on_verified`), so this is
-    /// a plain global read rather than an override → global resolution. Consumed by
-    /// [`crate::task::build_new_task`] when it resolves a new Build task's plan mode.
-    pub fn plan_gate_default(&self) -> bool {
-        self.with_settings(|settings| settings.plan_gate_default)
-    }
-
     /// Apply a patch, persist, and return the merged settings.
     pub(crate) fn update(&self, patch: SettingsPatch) -> Result<Settings, String> {
         let mut guard = crate::sync::lock_or_recover(&self.settings);
