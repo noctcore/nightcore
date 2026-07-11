@@ -181,7 +181,11 @@ pub(crate) fn post_issue_comment(
 /// mapping with a fake `gh`. Builds `{ "body": <body> }` with serde_json (NEVER string
 /// formatting) and POSTs it on STDIN. `issue_number` is a `u64` rendered decimal
 /// (injection-safe); `{owner}`/`{repo}` resolve from the repo in `dir`.
-pub(super) fn post_issue_comment_with(
+///
+/// `pub(crate)` (not `pub(super)`) so the GitHub two-way sync writeback engine
+/// (`workflow/issue_sync`) reuses this exact atomic-POST seam for its terminal status
+/// comments (§3.4) — same body-on-stdin, same failure mapping — with its own fake `gh`.
+pub(crate) fn post_issue_comment_with(
     dir: &Path,
     binary: &str,
     issue_number: u64,
