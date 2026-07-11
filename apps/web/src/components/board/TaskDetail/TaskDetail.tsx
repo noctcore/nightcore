@@ -6,6 +6,7 @@ import { useTaskActions } from '../actions';
 import { ActivityLog } from '../ActivityLog';
 import { GauntletResults } from '../GauntletResults';
 import { InteractionDock } from '../InteractionDock';
+import { IssueClosedChip } from '../IssueClosedChip';
 import { IssueSyncNotice } from '../IssueSyncNotice';
 import { ProposedSubtasksPanel } from '../ProposedSubtasksPanel';
 import { PrReviewComments, usePrReviewComments } from '../PrReviewComments';
@@ -178,6 +179,12 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
             downgraded (comments-only / silent-off); dismissible, informational —
             renders nothing when sync is healthy or off. */}
         <IssueSyncNotice task={task} />
+
+        {/* GitHub two-way sync (#97 PR 4): the "closed upstream" chip — the linked issue
+            was closed on GitHub while this task is still open. Informational; clicking
+            opens the issue so the user decides (no automatic task mutation). Renders
+            nothing when the issue is open or the task is already Done/merged. */}
+        <IssueClosedChip task={task} />
 
         {/* Needs attention — the plan-approval gate. Permission/question prompts
             live in the pinned InteractionDock below, not here. */}

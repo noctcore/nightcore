@@ -21,6 +21,7 @@ import {
 } from '@/components/ui';
 
 import { useTaskActions } from '../actions';
+import { IssueClosedChip } from '../IssueClosedChip';
 import { formatCostUsd, modelDisplayName, modelDotColor } from '../status';
 import { TaskCardTerminalChip } from '../TaskCardTerminalChip';
 import { TaskCardUsageChip } from '../TaskCardUsageChip';
@@ -382,6 +383,7 @@ function TaskCardImpl({
           </>
         )}
         <TaskCardTerminalChip taskId={task.id} />
+        <IssueClosedChip task={task} />
         <button
           type="button"
           aria-label="Delete task"
