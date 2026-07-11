@@ -26,12 +26,61 @@ use super::usage_gate::{notify_usage_pause, UsagePause, UsagePauseLatch};
 /// `{ state, reason?, maxConcurrency, leased, failureThreshold }`.
 pub const LOOP_EVENT: &str = "nc:loop";
 
+/// The typed reason a `nc:loop` snapshot carries. Replaces the prior free-string
+/// `reason` the web substring-matched (`includes('circuit')` / `includes('usage')`)
+/// — a fragile routing that broke silently on a rename. The board now branches on
+/// this typed field. Serialized in kebab-case, so the wire *values* are unchanged
+/// (`"circuit-breaker"`, `"usage"`, …); only the type tightens from a free string
+/// to a closed union. ts-rs exports it as `LoopReason` for `LoopEnvelope.reason`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(TS))]
+#[serde(rename_all = "kebab-case")]
+#[cfg_attr(test, ts(export, export_to = "LoopReason.ts"))]
+pub enum LoopReason {
+    /// The loop was explicitly disarmed by the user. Purely informational — the
+    /// board reads `armed` (not this) for the toggle.
+    Stopped,
+    /// The loop was resumed after a circuit-breaker pause.
+    Resumed,
+    /// The circuit breaker tripped (consecutive failures). The loop stays ARMED but
+    /// paused; drives the board's Resume banner.
+    CircuitBreaker,
+    /// The run provider's usage/rate-limit window is hot — new pickups pause while
+    /// in-flight runs finish. Drives the board's usage-pause banner.
+    Usage,
+}
+
+impl LoopReason {
+    /// Parse a wire-string reason back into the typed variant. The ONLY string-typed
+    /// entry point is the decoupled [`EngineApi::emit_state`](crate::engine_api::EngineApi)
+    /// boundary — the sidecar can't name this enum without re-growing the
+    /// `sidecar → orchestration` module cycle the trait exists to break — so the
+    /// breaker-trip cause (`circuit-breaker` / `circuit-breaker-fatal`) crosses as a
+    /// string and is re-typed HERE, in one tested place. Unknown/absent → `None`
+    /// (the reason is omitted rather than guessed). Orchestration-internal callers
+    /// pass the typed variant directly and never touch this.
+    pub(crate) fn from_wire(reason: &str) -> Option<Self> {
+        match reason {
+            "stopped" => Some(Self::Stopped),
+            "resumed" => Some(Self::Resumed),
+            // Fatal vs tolerant-window breaker trips both route to the same board
+            // banner; the fatal distinction is preserved in the tracing log, not the
+            // wire reason.
+            "circuit-breaker" | "circuit-breaker-fatal" => Some(Self::CircuitBreaker),
+            "usage" => Some(Self::Usage),
+            _ => None,
+        }
+    }
+}
+
 /// The `nc:loop` payload (M2): the autonomous loop's snapshot. Typed so the web's
 /// `LoopEnvelope` is generated from this struct (Rust→TS codegen) rather than
 /// hand-mirrored — a field rename here can't silently drift the board. `state` is
-/// the web-local `LoopState` union (`running`/`drained`/`paused`); `reason` is set
-/// only on a pause and OMITTED otherwise (the board reads `loop.reason === undefined`
-/// to detect the no-reason case), so it carries `skip_serializing_if` + `default`.
+/// the web-local `LoopState` union (`running`/`drained`/`paused`); `armed` is the
+/// arming truth the board's toggle reflects (see its field doc); `reason` is a typed
+/// [`LoopReason`] set only on a pause/transition and OMITTED otherwise (the board
+/// reads `loop.reason === undefined` for the no-reason case), so it keeps
+/// `skip_serializing_if` + `default`.
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(TS))]
 #[serde(rename_all = "camelCase")]
@@ -44,11 +93,19 @@ pub const LOOP_EVENT: &str = "nc:loop";
 pub struct LoopSnapshot {
     /// The loop run state (`running` | `drained` | `paused`).
     pub state: String,
-    /// Set only when `state == "paused"` (e.g. the circuit-breaker reason);
+    /// Whether the auto-loop is ARMED (the `running` flag is set), INDEPENDENT of
+    /// whether it currently has work. An armed loop that momentarily drains reports
+    /// `state: "drained"` with `armed: true`; the board's Auto Mode toggle reflects
+    /// THIS, not `state`. The prior bug: the toggle read `state === "running"`, so a
+    /// drained-but-armed loop showed the toggle OFF while it would still silently
+    /// launch the next backlog task, and clicking the "off" toggle re-armed (a no-op)
+    /// with NO disarm path. Reading `armed` gives a truthful toggle + a real disarm.
+    pub armed: bool,
+    /// Set only when `state == "paused"` (or on a transition like stop/resume);
     /// omitted otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
-    pub reason: Option<String>,
+    pub reason: Option<LoopReason>,
     /// The live concurrency cap (the slot pool's `max`).
     pub max_concurrency: u64,
     /// How many slots are currently leased to running agents.
@@ -223,12 +280,16 @@ impl Orchestrator {
     /// Emit `nc:loop` with the current loop snapshot. Serializes the typed
     /// [`LoopSnapshot`] (the source of the web's generated `LoopEnvelope`) so the
     /// payload keys can't drift from the contract.
-    pub fn emit_state(&self, app: &AppHandle, state: &str, reason: Option<&str>) {
+    pub fn emit_state(&self, app: &AppHandle, state: &str, reason: Option<LoopReason>) {
         let _ = app.emit(
             LOOP_EVENT,
             LoopSnapshot {
                 state: state.to_string(),
-                reason: reason.map(str::to_string),
+                // Arming truth is derived from the loop flag, not the transient
+                // `state`: a drained-but-armed loop must report `armed: true` so the
+                // board's toggle stays honest (and its click disarms).
+                armed: self.auto.is_running(),
+                reason,
                 max_concurrency: self.slots.max() as u64,
                 leased: self.slots.leased_count() as u64,
                 failure_threshold: self.breaker.threshold() as u64,
@@ -243,9 +304,9 @@ impl Orchestrator {
     /// or interrupt anything — the tick simply returns without launching new runs.
     pub fn enter_usage_pause(&self, app: &AppHandle, pause: &UsagePause) {
         let first = self.usage_pause.enter();
-        // The reason rides the existing free-string `nc:loop` `reason` (matched
-        // web-side with `includes('usage')`) — no schema change, no new channel.
-        self.emit_state(app, "paused", Some("usage"));
+        // The reason rides the typed `nc:loop` `reason` (`LoopReason::Usage`) — the
+        // board branches on the typed field, no substring matching.
+        self.emit_state(app, "paused", Some(LoopReason::Usage));
         if first {
             notify_usage_pause(app, pause);
             tracing::info!(
@@ -275,3 +336,39 @@ impl Orchestrator {
 /// directly; `Arc` is kept available for a future shared-handle path.
 #[allow(dead_code)]
 type SharedNotify = Arc<Notify>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loop_reason_serializes_to_the_stable_wire_strings() {
+        // The wire VALUES must not drift: the web branches on these exact strings
+        // (and old string consumers stay compatible). kebab-case is load-bearing.
+        let json = |r: LoopReason| serde_json::to_string(&r).expect("serialize");
+        assert_eq!(json(LoopReason::Stopped), "\"stopped\"");
+        assert_eq!(json(LoopReason::Resumed), "\"resumed\"");
+        assert_eq!(json(LoopReason::CircuitBreaker), "\"circuit-breaker\"");
+        assert_eq!(json(LoopReason::Usage), "\"usage\"");
+    }
+
+    #[test]
+    fn from_wire_maps_the_boundary_strings_and_omits_the_unknown() {
+        // The `EngineApi` boundary re-types the breaker cause here. Both breaker
+        // flavors collapse to CircuitBreaker; an unmapped string is omitted (None),
+        // never guessed.
+        assert_eq!(LoopReason::from_wire("stopped"), Some(LoopReason::Stopped));
+        assert_eq!(LoopReason::from_wire("resumed"), Some(LoopReason::Resumed));
+        assert_eq!(
+            LoopReason::from_wire("circuit-breaker"),
+            Some(LoopReason::CircuitBreaker)
+        );
+        assert_eq!(
+            LoopReason::from_wire("circuit-breaker-fatal"),
+            Some(LoopReason::CircuitBreaker),
+            "fatal trips share the board banner; the fatal detail lives in the log"
+        );
+        assert_eq!(LoopReason::from_wire("usage"), Some(LoopReason::Usage));
+        assert_eq!(LoopReason::from_wire("nonsense"), None);
+    }
+}

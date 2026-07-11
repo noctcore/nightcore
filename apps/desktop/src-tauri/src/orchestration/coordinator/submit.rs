@@ -10,7 +10,7 @@ use crate::orchestration::breaker::CircuitBreaker;
 use crate::store::TaskStore;
 use crate::worktree;
 
-use super::{fail_task, mark_task_in_progress, resolve_worktree, Orchestrator};
+use super::{fail_task, mark_task_in_progress, resolve_worktree, LoopReason, Orchestrator};
 
 /// The auto-loop entry point: lease + dispatch a task, discarding the result.
 /// A lease race (no free slot) is a silent skip — the tick retries next pass — so
@@ -197,7 +197,7 @@ fn fail_run(app: &AppHandle, task_id: &str, message: &str, feed_breaker: bool) {
             threshold = orch.breaker.threshold(),
             "circuit breaker tripped on launch failure; pausing auto-loop"
         );
-        orch.emit_state(app, "paused", Some("circuit-breaker"));
+        orch.emit_state(app, "paused", Some(LoopReason::CircuitBreaker));
         let app = app.clone();
         // `tauri::async_runtime::spawn` (not bare `tokio::spawn`) — the latter panics
         // when no Tokio runtime is entered on the calling thread and aborted the release

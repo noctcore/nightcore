@@ -14,7 +14,7 @@ use tauri::{AppHandle, Manager};
 use crate::orchestration::deps::eligible_tasks;
 use crate::store::TaskStore;
 
-use super::{launch, usage_throttle_reason, Orchestrator};
+use super::{launch, usage_throttle_reason, LoopReason, Orchestrator};
 
 /// The interval between coordinator ticks. A periodic scan is the simplest correct
 /// scanner for time-relative dependency/breaker windows; terminal events also kick
@@ -50,7 +50,7 @@ pub fn stop(app: &AppHandle) {
     orch.auto.generation.fetch_add(1, Ordering::SeqCst); // signal the tick task to exit
     orch.usage_pause.reset(); // a manual stop ends any usage-pause episode
     orch.kick(); // wake the loop so it observes the stop promptly
-    orch.emit_state(app, "drained", Some("stopped"));
+    orch.emit_state(app, "drained", Some(LoopReason::Stopped));
     tracing::info!(target: "nightcore", "auto-loop stopped; interrupting in-flight runs");
 
     // Interrupt in-flight sessions off-thread (the command handler is sync).
@@ -72,7 +72,7 @@ pub fn resume(app: &AppHandle) -> Result<(), String> {
     if !orch.auto.is_running() {
         return start(app);
     }
-    orch.emit_state(app, "running", Some("resumed"));
+    orch.emit_state(app, "running", Some(LoopReason::Resumed));
     orch.kick();
     Ok(())
 }
