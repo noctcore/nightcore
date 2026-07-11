@@ -9,6 +9,7 @@ import { useWorktreesContext } from '@/lib/worktrees-context';
 
 import { CreateWorktreeDialog } from '../CreateWorktreeDialog';
 import { NewTabPicker } from '../NewTabPicker';
+import { useTerminalCompletionNotifications } from '../terminal-notifications';
 import { TerminalGrid } from '../TerminalGrid';
 import { TerminalPane } from '../TerminalPane';
 import { TerminalReadonlyPane } from '../TerminalReadonlyPane';
@@ -33,6 +34,7 @@ export function TerminalView({
   tasks,
   yoloLaunch,
   aiNaming,
+  bellNotify,
   onConfinedDefaultChange,
 }: TerminalViewProps) {
   const { worktrees } = useWorktreesContext();
@@ -49,6 +51,11 @@ export function TerminalView({
     aiNaming,
     onConfinedDefaultChange,
   });
+  // T11: desktop-notify on an OSC/BEL completion from an off-screen/unfocused terminal.
+  // Module-level under the hood — the subscription survives navigating away, so a
+  // background terminal that finishes still notifies; this only feeds it labels + the
+  // setting while the view is mounted.
+  useTerminalCompletionNotifications(v.sessions, bellNotify);
   // Ids never collide (a restored session is dead), so the active tab is exactly one
   // of these — or neither, which lands on the empty state.
   const activeLive = v.sessions.find((s) => s.id === v.activeId) ?? null;

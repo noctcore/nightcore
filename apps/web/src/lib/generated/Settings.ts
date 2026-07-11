@@ -235,6 +235,16 @@ terminalDaemonEnabled: boolean,
  */
 terminalAiNaming: boolean, 
 /**
+ * USER terminal command-completion notifications (T11): when a shell emits a
+ * standard completion/notification escape (OSC 9/99/777 or a BEL) while the
+ * terminal view is not focused/visible, fire a desktop notification. DEFAULT
+ * `true` (these are EXPLICIT signals the shell/program chose to emit — e.g. via
+ * the one-click Claude notify hook — so they are not noisy; the toggle opts out).
+ * Global-only (a machine preference, like the other terminal knobs).
+ * Serde-additive: a settings file written before this field loads as `true`.
+ */
+terminalBellNotify: boolean, 
+/**
  * Per-project overrides keyed by project id.
  */
 projectOverrides: { [key in string]: SettingsOverride }, };

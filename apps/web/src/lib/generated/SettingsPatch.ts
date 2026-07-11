@@ -102,6 +102,12 @@ terminalDaemonEnabled?: boolean,
  */
 terminalAiNaming?: boolean, 
 /**
+ * T11: toggle terminal command-completion notifications (default on). Global-only
+ * (ignored for a per-project override target), like the other terminal knobs. See
+ * [`super::model::Settings::terminal_bell_notify`].
+ */
+terminalBellNotify?: boolean, 
+/**
  * M4.6: default run mode (`"main"` | `"worktree"`). With a `projectId` it lands
  * in that project's override; without one, the global default.
  */

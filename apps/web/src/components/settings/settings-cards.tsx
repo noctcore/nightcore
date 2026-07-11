@@ -357,6 +357,17 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
                 />
               ),
             },
+            {
+              label: 'Terminal command completion',
+              hint: 'Notify when a shell command finishes in an unfocused terminal',
+              control: (
+                <Toggle
+                  on={settings.terminalBellNotify}
+                  onChange={(next) => patchGlobal({ terminalBellNotify: next })}
+                  label="Native notifications on terminal command completion"
+                />
+              ),
+            },
           ],
         },
         ...buildGithubCards(settings, patchGlobal),

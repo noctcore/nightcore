@@ -258,6 +258,39 @@ fn ai_naming_enabled(app: &AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+/// Fire a desktop notification that a command finished in a terminal tab (T11). The
+/// WEB decides WHEN to call this — only for a shell completion signal (OSC 9/99/777 or
+/// a BEL) that fired while the terminal view was NOT focused/visible (it owns the
+/// focus/visibility knowledge the Rust side lacks) and only when the
+/// `terminal_bell_notify` setting is on. USER-only + async like every terminal command.
+/// Best-effort: a failed notification is logged at debug, never surfaced. Body carries
+/// only the tab label — never any shell output (the OSC/BEL payload is consumed by the
+/// web parser and never reaches here), preserving the M4.5 logging discipline.
+#[tauri::command]
+pub async fn terminal_notify_complete(app: AppHandle, tab_title: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri_plugin_notification::NotificationExt;
+        let label = tab_title.trim();
+        let body = if label.is_empty() {
+            "A terminal command finished".to_string()
+        } else {
+            format!("Command finished in {label}")
+        };
+        if let Err(e) = app
+            .notification()
+            .builder()
+            .title("Terminal")
+            .body(body)
+            .show()
+        {
+            tracing::debug!(target: "nightcore", error = %e, "terminal completion notification failed");
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("terminal notify_complete failed to run: {e}"))?
+}
+
 /// Sanitize a raw one-shot reply into a tab title (round-2 PR A): trim, reject empty
 /// or multi-line (garbled) output, strip trailing sentence punctuation, and clamp to
 /// ~24 chars / 3 words. `None` ⇒ keep the current title (fail-soft), never a blank or

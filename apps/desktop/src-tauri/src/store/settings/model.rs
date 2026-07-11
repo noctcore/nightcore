@@ -222,6 +222,15 @@ pub struct Settings {
     /// file written before this field loads as `false`.
     #[serde(default)]
     pub terminal_ai_naming: bool,
+    /// USER terminal command-completion notifications (T11): when a shell emits a
+    /// standard completion/notification escape (OSC 9/99/777 or a BEL) while the
+    /// terminal view is not focused/visible, fire a desktop notification. DEFAULT
+    /// `true` (these are EXPLICIT signals the shell/program chose to emit — e.g. via
+    /// the one-click Claude notify hook — so they are not noisy; the toggle opts out).
+    /// Global-only (a machine preference, like the other terminal knobs).
+    /// Serde-additive: a settings file written before this field loads as `true`.
+    #[serde(default = "default_true")]
+    pub terminal_bell_notify: bool,
     /// Per-project overrides keyed by project id.
     pub project_overrides: HashMap<String, SettingsOverride>,
 }
@@ -535,6 +544,9 @@ impl Default for Settings {
             // Round-2 PR A: AI tab auto-naming is opt-in — no `claude` one-shot ever
             // runs and the capture layer never even buffers until the user enables it.
             terminal_ai_naming: false,
+            // T11: terminal command-completion notifications default ON — an OSC/BEL
+            // is an explicit signal the shell chose to emit, not a busy/idle guess.
+            terminal_bell_notify: true,
             project_overrides: HashMap::new(),
         }
     }

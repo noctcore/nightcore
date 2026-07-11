@@ -32,6 +32,10 @@ export interface TerminalViewProps {
    *  in a tab whose title isn't manually/task-locked triggers a haiku one-shot that
    *  suggests a 2–3-word title. Default off (opt-in). */
   aiNaming: boolean;
+  /** Settings terminal command-completion notification flag (T11): when true, an
+   *  OSC/BEL completion signal from an off-screen/unfocused terminal fires a desktop
+   *  notification. Default on. */
+  bellNotify: boolean;
   /** Persist the confined choice actually used, so it seeds the next picker open. */
   onConfinedDefaultChange: (confined: boolean) => void;
 }

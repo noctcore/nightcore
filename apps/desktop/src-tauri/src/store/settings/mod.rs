@@ -467,6 +467,32 @@ mod tests {
     }
 
     #[test]
+    fn terminal_bell_notify_defaults_on_and_is_serde_additive() {
+        // T11: terminal command-completion notifications default ON (an OSC/BEL is an
+        // explicit signal, not a busy/idle guess).
+        assert!(Settings::default().terminal_bell_notify);
+
+        // A settings.json from before this field still parses, defaulting it `true`.
+        let tmp = TempDir::new().expect("temp dir");
+        let dir = tmp.path().join("config");
+        std::fs::create_dir_all(&dir).unwrap();
+        let legacy = r#"{"defaultModel":"claude-opus-4-8","defaultEffort":"medium",
+            "maxConcurrency":3,"permissionMode":"bypass","cleanupWorktrees":true,
+            "notifyOnComplete":false,"defaultRunMode":"main","projectOverrides":{}}"#;
+        std::fs::write(dir.join("settings.json"), legacy).unwrap();
+        let store = SettingsStore::load_from(dir);
+        assert!(store.get().terminal_bell_notify);
+
+        // A global patch turns it OFF and round-trips through persistence.
+        store
+            .update(serde_json::from_str(r#"{"terminalBellNotify":false}"#).unwrap())
+            .expect("update");
+        assert!(!store.get().terminal_bell_notify);
+        let reloaded = SettingsStore::load_from(tmp.path().join("config"));
+        assert!(!reloaded.get().terminal_bell_notify);
+    }
+
+    #[test]
     fn usage_meter_enabled_defaults_false_and_is_serde_additive() {
         // Issue #121 decision 5: the usage meter is opt-in (default off).
         assert!(!Settings::default().usage_meter_enabled);

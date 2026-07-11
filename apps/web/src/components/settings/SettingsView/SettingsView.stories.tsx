@@ -33,6 +33,7 @@ const settings: Settings = {
   terminalYoloLaunch: false,
   terminalDaemonEnabled: false,
   terminalAiNaming: false,
+  terminalBellNotify: true,
   projectOverrides: {
     nightcore: { defaultModel: 'claude-haiku-4-5' },
   },

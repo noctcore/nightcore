@@ -70,6 +70,27 @@ function notifyActivity(): void {
   for (const fn of activityListeners) fn();
 }
 
+/** Completion-signal listeners (T11): every OSC/BEL completion fires these with the
+ *  session id, REGARDLESS of visibility — the desktop-notification layer decides
+ *  whether to notify (unfocused/off-screen + setting). Kept separate from the
+ *  attention state (which gates on visibility) so the two consumers stay independent. */
+type CompletionListener = (id: string) => void;
+const completionListeners = new Set<CompletionListener>();
+
+/** Subscribe to raw completion signals (an OSC 9/99/777 or a BEL). Returns an
+ *  unsubscribe. Used by the desktop-notification layer; the attention badge consumes
+ *  the same signal through {@link recordAttention} inside {@link installCompletionSignals}. */
+export function subscribeCompletion(fn: CompletionListener): () => void {
+  completionListeners.add(fn);
+  return () => {
+    completionListeners.delete(fn);
+  };
+}
+
+function emitCompletion(id: string): void {
+  for (const fn of completionListeners) fn(id);
+}
+
 function getOrCreate(id: string): MutableAttention {
   let entry = state.get(id);
   if (entry === undefined) {
@@ -205,18 +226,22 @@ export function useTerminalAttention(sessions: readonly TerminalSessionInfo[]): 
  *  never touches the PTY, so the USER-ONLY seam holds. Disposed with the terminal.
  *  Returns the disposables (the caller may drop them; `term.dispose()` also releases). */
 export function installCompletionSignals(term: Terminal, id: string): IDisposable[] {
-  const onSignal = (): boolean => {
+  const signal = (): void => {
+    // Two independent consumers: the badge (gated on visibility) and the desktop
+    // notification (gated on focus/visibility + setting, off the completion stream).
     recordAttention(id);
-    // `true` = handled, so xterm doesn't log an unknown-OSC warning. These codes
-    // have no visual effect we'd lose by consuming them.
+    emitCompletion(id);
+  };
+  const onOsc = (): boolean => {
+    signal();
+    // `true` = handled, so xterm doesn't log an unknown-OSC warning. These codes have
+    // no visual effect we'd lose by consuming them.
     return true;
   };
   return [
-    term.parser.registerOscHandler(9, onSignal),
-    term.parser.registerOscHandler(99, onSignal),
-    term.parser.registerOscHandler(777, onSignal),
-    term.onBell(() => {
-      recordAttention(id);
-    }),
+    term.parser.registerOscHandler(9, onOsc),
+    term.parser.registerOscHandler(99, onOsc),
+    term.parser.registerOscHandler(777, onOsc),
+    term.onBell(signal),
   ];
 }

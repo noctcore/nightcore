@@ -401,6 +401,7 @@ pub fn run() {
             commands::terminal::terminal_set_title,
             commands::terminal::terminal_set_process_title,
             commands::terminal::terminal_suggest_title,
+            commands::terminal::terminal_notify_complete,
             commands::terminal::terminal_resize,
             commands::terminal::terminal_kill,
             commands::terminal::terminal_list,

@@ -73,6 +73,7 @@ const meta = {
     tasks: [],
     yoloLaunch: false,
     aiNaming: false,
+    bellNotify: true,
     onConfinedDefaultChange: fn(),
   },
 } satisfies Meta<typeof TerminalViewFixture>;

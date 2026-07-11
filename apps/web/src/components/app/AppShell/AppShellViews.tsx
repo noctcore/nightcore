@@ -222,6 +222,7 @@ export function AppShellViews({
               tasks={tasks}
               yoloLaunch={settings.settings?.terminalYoloLaunch ?? false}
               aiNaming={settings.settings?.terminalAiNaming ?? false}
+              bellNotify={settings.settings?.terminalBellNotify ?? true}
               onConfinedDefaultChange={(confined) =>
                 settings.update({ terminalConfinedDefault: confined })
               }

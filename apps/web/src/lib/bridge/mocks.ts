@@ -175,6 +175,7 @@ export const MOCK_SETTINGS: Settings = {
   terminalYoloLaunch: false,
   terminalDaemonEnabled: false,
   terminalAiNaming: false,
+  terminalBellNotify: true,
   projectOverrides: {},
 };
 
