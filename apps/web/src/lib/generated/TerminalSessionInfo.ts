@@ -4,6 +4,11 @@
  * One live PTY session as the webview sees it. Returned by `terminal_spawn`,
  * `terminal_list`, and `terminal_sessions_in_dir`. `alive` is `false` only in the
  * brief window between a shell exiting and the registry reaping it.
+ *
+ * `Deserialize` is derived (in addition to the wire `Serialize`) so the detached
+ * PTY daemon's IPC client (cockpit spec PR 6) can decode the session descriptors
+ * the daemon sends back over its local socket — it is the same camelCase shape,
+ * round-tripped, never a second schema.
  */
 export type TerminalSessionInfo = { 
 /**

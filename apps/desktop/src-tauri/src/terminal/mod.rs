@@ -13,6 +13,11 @@
 //! the binary Channel, never `nc:*` events.
 //!
 //! ## Layout (each file a flat sibling under this manifest)
+//!  - [`backend`] — the command-layer seam ([`TerminalBackend`]) that routes each op
+//!    to the in-process [`registry`] or, when the experimental detached daemon (PR 6)
+//!    is enabled + reachable, to it — degrading to in-process on any failure.
+//!  - [`daemon`] — the opt-in detached PTY daemon (live-PTY survival across restarts,
+//!    macOS/Linux only): owner-only-socket IPC + a process that outlives the window.
 //!  - [`registry`] — the live-session map, live cap (12), spawn/write/resize/kill/
 //!    list/sessions-in-dir/set-title, project-scoped scrollback persist root.
 //!  - [`session`] — one PTY: `portable-pty` spawn + reader/coalescer threads +
@@ -26,7 +31,9 @@
 //!    (fail-closed).
 //!  - [`types`] — the ts-rs-exported command-return descriptors.
 
+mod backend;
 pub(crate) mod confine;
+pub(crate) mod daemon;
 pub(crate) mod persist;
 mod registry;
 mod scrollback;
@@ -34,6 +41,9 @@ mod session;
 mod shell;
 mod types;
 
+pub use backend::TerminalBackend;
 pub use registry::TerminalRegistry;
 pub(crate) use session::{OutputSink, SpawnOpts};
-pub use types::{PersistedTerminalInfo, PersistedTerminalScrollback, TerminalSessionInfo};
+pub use types::{
+    PersistedTerminalInfo, PersistedTerminalScrollback, TerminalDaemonStatus, TerminalSessionInfo,
+};

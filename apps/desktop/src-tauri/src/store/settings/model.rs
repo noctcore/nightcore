@@ -164,6 +164,20 @@ pub struct Settings {
     /// Serde-additive: a settings file written before this field loads as `false`.
     #[serde(default)]
     pub terminal_yolo_launch: bool,
+    /// USER terminal (cockpit spec PR 6, decision 7): opt into the **detached PTY
+    /// daemon** so live shells survive an app restart. When `true` (and the platform
+    /// supports it — macOS/Linux only in v1), unconfined sessions are owned by a
+    /// separate detached process the app reattaches to over a local Unix socket on
+    /// relaunch, replaying buffered output instead of a read-only scrollback restore.
+    /// EXPERIMENTAL and DEFAULT `false`: every failure path (daemon absent, dead,
+    /// version-skewed, or platform-unsupported) degrades to the shipped in-process
+    /// PTY + read-only restore, so today's behavior is always the fallback. Confined
+    /// (Seatbelt) sessions are daemon-EXEMPT — they stay in-process and die with the
+    /// app even when this is on (§5.5). Global-only (a machine preference, like the
+    /// other terminal knobs). Serde-additive: a settings file written before this
+    /// field loads as `false`.
+    #[serde(default)]
+    pub terminal_daemon_enabled: bool,
     /// Per-project overrides keyed by project id.
     pub project_overrides: HashMap<String, SettingsOverride>,
 }
@@ -439,6 +453,10 @@ impl Default for Settings {
             // "Launch Claude" command runs with normal permission prompts until the
             // user enables the (explicitly warned) toggle.
             terminal_yolo_launch: false,
+            // Cockpit PR 6 decision 7: the detached PTY daemon is opt-in
+            // (experimental) — every session stays in-process (dying with the app,
+            // read-only-restored on relaunch) until the user enables it.
+            terminal_daemon_enabled: false,
             project_overrides: HashMap::new(),
         }
     }

@@ -170,6 +170,7 @@ export const MOCK_SETTINGS: Settings = {
   terminalScrollback: null,
   usageMeterEnabled: false,
   terminalYoloLaunch: false,
+  terminalDaemonEnabled: false,
   projectOverrides: {},
 };
 

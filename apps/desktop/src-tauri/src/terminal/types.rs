@@ -6,14 +6,19 @@
 //! for the bridge; ts-rs exports the twins under `cargo test` like every other
 //! command-return shape (`bindings/export.rs`).
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use ts_rs::TS;
 
 /// One live PTY session as the webview sees it. Returned by `terminal_spawn`,
 /// `terminal_list`, and `terminal_sessions_in_dir`. `alive` is `false` only in the
 /// brief window between a shell exiting and the registry reaping it.
-#[derive(Debug, Clone, Serialize, PartialEq)]
+///
+/// `Deserialize` is derived (in addition to the wire `Serialize`) so the detached
+/// PTY daemon's IPC client (cockpit spec PR 6) can decode the session descriptors
+/// the daemon sends back over its local socket — it is the same camelCase shape,
+/// round-tripped, never a second schema.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(test, derive(TS))]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, ts(export, export_to = "TerminalSessionInfo.ts"))]
@@ -60,6 +65,26 @@ pub struct PersistedTerminalInfo {
     /// never renamed — so a restored (read-only) tab shows the same name it had
     /// while live, and old persisted files (no `title`) restore to the cwd leaf.
     pub title: Option<String>,
+}
+
+/// Detached-PTY-daemon status (cockpit spec PR 6) — returned by
+/// `terminal_daemon_status` so the Settings toggle + dogfood can show whether the
+/// experimental daemon is actually running. Never gates behavior; purely
+/// informational (the backend degrades on its own regardless of what this reports).
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[cfg_attr(test, derive(TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "TerminalDaemonStatus.ts"))]
+pub struct TerminalDaemonStatus {
+    /// The `terminal_daemon_enabled` setting (the user's opt-in).
+    pub enabled: bool,
+    /// Whether this platform can run the daemon at all (macOS/Linux only in v1). When
+    /// `false`, the toggle is a no-op and the terminal read-only-restores like today.
+    pub supported: bool,
+    /// Whether a daemon connection is currently live (enabled + supported + a session
+    /// has caused a connect). `false` with `enabled` + `supported` just means no
+    /// daemon-eligible session has connected yet this launch.
+    pub active: bool,
 }
 
 /// A persisted session's metadata plus its scrollback bytes (base64) for read-only

@@ -54,6 +54,12 @@ use store::{workspace_root, TaskStore};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // FIRST of all, before ANY Tauri/window/state setup: if this process was
+    // re-invoked as the detached PTY daemon (`--terminal-daemon`, cockpit spec PR 6),
+    // run the daemon server and never return (it owns the survived shells and speaks
+    // only its owner-only local socket). A normal launch returns immediately.
+    terminal::daemon::maybe_run_daemon();
+
     // First thing, while still single-threaded: a Finder/Dock launch inherits
     // launchd's minimal PATH, so hydrate it from the login shell before we spawn the
     // sidecar (and through it the agent's Bash tool + the gauntlet) — otherwise none
@@ -110,18 +116,19 @@ pub fn run() {
             }
             store::run_store::scan_kinds!(boot_scan_store);
 
-            // The USER terminal registry (PTY sessions) — global (AutoMaker-style
+            // The USER terminal backend (PTY sessions) — global (AutoMaker-style
             // tabs), with scrollback persisted under the active project's
             // `.nightcore/terminals/` (retargeted on project switch, like the task
             // + scan stores). USER-ONLY managed state: driven solely by the command
             // layer, never by any agent/sidecar path. Best-effort boot prune drops
             // scrollback for since-discarded worktrees + files past the 30-day age.
+            // The backend itself is managed just below, once settings are loaded (it
+            // needs the `terminal_daemon_enabled` opt-in, PR 6).
             let terminals_dir = project_store
                 .active()
                 .map(|p| std::path::Path::new(&p.path).join(".nightcore/terminals"))
                 .unwrap_or_else(|| config_dir.join("no-active-project/terminals"));
             terminal::persist::prune(&terminals_dir);
-            app.manage(terminal::TerminalRegistry::new(terminals_dir));
 
             // The provider usage-meter registry (issue #121): the last-good snapshot +
             // 429 cooldowns + popover cost cache + poll-loop primitives. In-memory only
@@ -139,6 +146,16 @@ pub fn run() {
             // only when the meter is already opted-in. A disabled meter arms lazily
             // via `enable_usage_meter`, so a user who never opts in spawns no loop.
             let usage_meter_enabled = settings_store.with_settings(|s| s.usage_meter_enabled);
+            // The USER terminal backend (see the persist-dir prune above). Reads the
+            // experimental detached-daemon opt-in (PR 6, decision 7) once at boot: a
+            // running app keeps whatever backend it booted with. Inert (in-process,
+            // read-only restore) unless the flag is on AND the platform supports it.
+            let terminal_daemon_enabled =
+                settings_store.with_settings(|s| s.terminal_daemon_enabled);
+            app.manage(terminal::TerminalBackend::new(
+                terminals_dir,
+                terminal_daemon_enabled,
+            ));
             let orchestrator = Orchestrator::new(
                 workspace_root().join("apps/sidecar/src/index.ts"),
                 workspace_root(),
@@ -370,6 +387,8 @@ pub fn run() {
             // freeze the WKWebView); output streams over a per-session binary
             // Channel, not events. USER-ONLY — never wired to an agent session.
             commands::terminal::terminal_spawn,
+            commands::terminal::terminal_attach,
+            commands::terminal::terminal_daemon_status,
             commands::terminal::terminal_write,
             commands::terminal::terminal_set_title,
             commands::terminal::terminal_resize,

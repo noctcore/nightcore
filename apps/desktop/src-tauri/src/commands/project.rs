@@ -117,11 +117,12 @@ fn retarget_tasks(app: &AppHandle, store: &ProjectStore) {
     }
     crate::store::run_store::scan_kinds!(retarget_scan);
 
-    // The USER terminal registry's scrollback persist dir is project-scoped too
-    // (its live in-memory sessions are global and survive the switch — only the
-    // persist target moves). Best-effort: a missing registry (shouldn't happen)
+    // The USER terminal backend's scrollback persist dir is project-scoped too (its
+    // live in-memory sessions are global and survive the switch — only the persist
+    // target moves; the daemon connection, if any, is dropped so the next op connects
+    // to the new project's daemon). Best-effort: a missing backend (shouldn't happen)
     // just skips the retarget.
-    if let Some(terminals) = app.try_state::<crate::terminal::TerminalRegistry>() {
+    if let Some(terminals) = app.try_state::<crate::terminal::TerminalBackend>() {
         let terminals_dir = store
             .active()
             .map(|p| std::path::Path::new(&p.path).join(".nightcore/terminals"))

@@ -1,15 +1,17 @@
 //! The USER terminal command surface — thin async handlers over
-//! [`crate::terminal::TerminalRegistry`] (managed state).
+//! [`crate::terminal::TerminalBackend`] (managed state), which routes each op to the
+//! in-process registry or, when the experimental detached daemon (PR 6) is enabled +
+//! reachable, to it — degrading to in-process on any failure.
 //!
 //! USER-ONLY seam (spec §1): these commands are invokable only from the webview
-//! behind an explicit user gesture; no agent/sidecar path reaches the registry.
-//! Output does NOT flow through here — it streams over the per-session binary
-//! `tauri::ipc::Channel` passed to `terminal_spawn`. Only the small JSON
-//! descriptors (session lists, persisted metadata) return through the command
-//! layer.
+//! behind an explicit user gesture; no agent/sidecar path reaches the backend (or the
+//! daemon's owner-only socket). Output does NOT flow through here — it streams over
+//! the per-session binary `tauri::ipc::Channel` passed to `terminal_spawn` /
+//! `terminal_attach`. Only the small JSON descriptors (session lists, persisted
+//! metadata, daemon status) return through the command layer.
 //!
 //! ALL async + `spawn_blocking` (a sync `#[tauri::command]` runs on the WKWebView
-//! main thread and can freeze the UI — the known trap); the registry is re-acquired
+//! main thread and can freeze the UI — the known trap); the backend is re-acquired
 //! via `app.try_state()` inside each spawned block.
 
 use std::path::{Path, PathBuf};
@@ -17,8 +19,8 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
 use crate::terminal::{
-    OutputSink, PersistedTerminalInfo, PersistedTerminalScrollback, SpawnOpts, TerminalRegistry,
-    TerminalSessionInfo,
+    OutputSink, PersistedTerminalInfo, PersistedTerminalScrollback, SpawnOpts, TerminalBackend,
+    TerminalDaemonStatus, TerminalSessionInfo,
 };
 
 /// Resolve the requested spawn cwd SERVER-SIDE: canonicalize it (so a `..`/symlink
@@ -43,14 +45,26 @@ fn resolve_spawn_cwd(cwd: &str) -> Result<PathBuf, String> {
     Ok(candidate)
 }
 
-fn registry(app: &AppHandle) -> Result<tauri::State<'_, TerminalRegistry>, String> {
-    app.try_state::<TerminalRegistry>()
-        .ok_or_else(|| "terminal registry unavailable".to_string())
+fn backend(app: &AppHandle) -> Result<tauri::State<'_, TerminalBackend>, String> {
+    app.try_state::<TerminalBackend>()
+        .ok_or_else(|| "terminal backend unavailable".to_string())
+}
+
+/// Wrap a per-session binary `Channel` as an [`OutputSink`]: each coalesced batch is
+/// sent as a raw ArrayBuffer (never JSON — the load-bearing transport choice, §9 trap
+/// g). A closed webview makes `send` error, which we drop. Shared by `terminal_spawn`
+/// and the daemon-reattach `terminal_attach` so both terminate in the SAME Raw sink.
+fn channel_sink(channel: tauri::ipc::Channel) -> OutputSink {
+    Box::new(move |bytes: Vec<u8>| {
+        let _ = channel.send(tauri::ipc::InvokeResponseBody::Raw(bytes));
+    })
 }
 
 /// Spawn a shell in `cwd` (confined when `confined` is set — macOS-only, opt-in,
 /// fail-closed). Coalesced output streams over `channel` as binary `Raw` frames.
-/// Returns the new session descriptor.
+/// Returns the new session descriptor. When the detached daemon (PR 6) is enabled +
+/// reachable, an UNCONFINED session is created there so it survives a restart; the
+/// output still rides this same `channel` (the backend bridges the daemon's frames).
 #[tauri::command]
 pub async fn terminal_spawn(
     app: AppHandle,
@@ -62,30 +76,49 @@ pub async fn terminal_spawn(
 ) -> Result<TerminalSessionInfo, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let cwd = resolve_spawn_cwd(&cwd)?;
-        // Wrap the binary Channel as the session's output sink: each coalesced batch
-        // is sent as a raw ArrayBuffer (never JSON — the load-bearing transport
-        // choice). A closed webview makes `send` error, which we drop.
-        let sink: OutputSink = Box::new(move |bytes: Vec<u8>| {
-            let _ = channel.send(tauri::ipc::InvokeResponseBody::Raw(bytes));
-        });
-        registry(&app)?.spawn(
+        backend(&app)?.spawn(
             SpawnOpts {
                 cwd,
                 confined,
                 cols,
                 rows,
             },
-            sink,
+            channel_sink(channel),
         )
     })
     .await
     .map_err(|e| format!("terminal spawn failed to run: {e}"))?
 }
 
+/// Reattach to an EXISTING live (daemon-owned) session on relaunch (PR 6, §5.3):
+/// stream its replayed buffered tail then live output onto `channel`. The web calls
+/// this only for a session `terminal_list` reported live but which has no local xterm
+/// instance yet (i.e. after a restart, in daemon mode). Errors when there is no such
+/// live session (no daemon, or it already exited) — the caller then read-only-restores.
+#[tauri::command]
+pub async fn terminal_attach(
+    app: AppHandle,
+    id: String,
+    channel: tauri::ipc::Channel,
+) -> Result<TerminalSessionInfo, String> {
+    tauri::async_runtime::spawn_blocking(move || backend(&app)?.attach(&id, channel_sink(channel)))
+        .await
+        .map_err(|e| format!("terminal attach failed to run: {e}"))?
+}
+
+/// The detached-PTY-daemon status (PR 6) — informational only (whether the
+/// experimental daemon is enabled, supported on this platform, and currently live).
+#[tauri::command]
+pub async fn terminal_daemon_status(app: AppHandle) -> Result<TerminalDaemonStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || Ok(backend(&app)?.daemon_status()))
+        .await
+        .map_err(|e| format!("terminal daemon_status failed to run: {e}"))?
+}
+
 /// Forward user input bytes to a session's shell.
 #[tauri::command]
 pub async fn terminal_write(app: AppHandle, id: String, data: Vec<u8>) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || registry(&app)?.write(&id, &data))
+    tauri::async_runtime::spawn_blocking(move || backend(&app)?.write(&id, &data))
         .await
         .map_err(|e| format!("terminal write failed to run: {e}"))?
 }
@@ -101,7 +134,7 @@ pub async fn terminal_set_title(
     title: Option<String>,
 ) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        registry(&app)?.set_title(&id, normalize_title(title))
+        backend(&app)?.set_title(&id, normalize_title(title))
     })
     .await
     .map_err(|e| format!("terminal set_title failed to run: {e}"))?
@@ -124,7 +157,7 @@ pub async fn terminal_resize(
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || registry(&app)?.resize(&id, cols, rows))
+    tauri::async_runtime::spawn_blocking(move || backend(&app)?.resize(&id, cols, rows))
         .await
         .map_err(|e| format!("terminal resize failed to run: {e}"))?
 }
@@ -132,7 +165,7 @@ pub async fn terminal_resize(
 /// Terminate a session (idempotent).
 #[tauri::command]
 pub async fn terminal_kill(app: AppHandle, id: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || registry(&app)?.kill(&id))
+    tauri::async_runtime::spawn_blocking(move || backend(&app)?.kill(&id))
         .await
         .map_err(|e| format!("terminal kill failed to run: {e}"))?
 }
@@ -140,7 +173,7 @@ pub async fn terminal_kill(app: AppHandle, id: String) -> Result<(), String> {
 /// All live sessions (dead ones reaped first).
 #[tauri::command]
 pub async fn terminal_list(app: AppHandle) -> Result<Vec<TerminalSessionInfo>, String> {
-    tauri::async_runtime::spawn_blocking(move || Ok(registry(&app)?.list()))
+    tauri::async_runtime::spawn_blocking(move || Ok(backend(&app)?.list()))
         .await
         .map_err(|e| format!("terminal list failed to run: {e}"))?
 }
@@ -153,7 +186,7 @@ pub async fn terminal_sessions_in_dir(
     path: String,
 ) -> Result<Vec<TerminalSessionInfo>, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        Ok(registry(&app)?.sessions_in_dir(Path::new(&path)))
+        Ok(backend(&app)?.sessions_in_dir(Path::new(&path)))
     })
     .await
     .map_err(|e| format!("terminal sessions_in_dir failed to run: {e}"))?
@@ -164,7 +197,7 @@ pub async fn terminal_sessions_in_dir(
 #[tauri::command]
 pub async fn terminal_list_persisted(app: AppHandle) -> Result<Vec<PersistedTerminalInfo>, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let dir = registry(&app)?.persist_dir();
+        let dir = backend(&app)?.persist_dir();
         Ok(crate::terminal::persist::list(&dir))
     })
     .await
@@ -178,7 +211,7 @@ pub async fn terminal_read_persisted(
     id: String,
 ) -> Result<PersistedTerminalScrollback, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let dir = registry(&app)?.persist_dir();
+        let dir = backend(&app)?.persist_dir();
         crate::terminal::persist::read(&dir, &id)
             .ok_or_else(|| format!("no persisted terminal session {id}"))
     })
@@ -192,7 +225,7 @@ pub async fn terminal_read_persisted(
 #[tauri::command]
 pub async fn terminal_delete_persisted(app: AppHandle, id: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let dir = registry(&app)?.persist_dir();
+        let dir = backend(&app)?.persist_dir();
         crate::terminal::persist::delete(&dir, &id)
     })
     .await

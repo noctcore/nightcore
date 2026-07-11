@@ -43,7 +43,8 @@ fn export_all_bindings() {
         TaskStatus,
     };
     use crate::terminal::{
-        PersistedTerminalInfo, PersistedTerminalScrollback, TerminalSessionInfo,
+        PersistedTerminalInfo, PersistedTerminalScrollback, TerminalDaemonStatus,
+        TerminalSessionInfo,
     };
     use crate::usage::contract::{
         Credits, ProviderUsage, RateWindow, UsageCost, UsageMeter, UsageStatus,
@@ -171,6 +172,8 @@ fn export_all_bindings() {
         TerminalSessionInfo,
         PersistedTerminalInfo,
         PersistedTerminalScrollback,
+        // Detached PTY daemon (cockpit spec PR 6): the informational status shape.
+        TerminalDaemonStatus,
         // Terminal folder browser: the one-level directory listing + its entries
         // (`export_all` on the listing also writes the nested `DirectoryEntry`).
         DirectoryListing,
@@ -294,6 +297,7 @@ mod tests {
             "TerminalSessionInfo.ts",
             "PersistedTerminalInfo.ts",
             "PersistedTerminalScrollback.ts",
+            "TerminalDaemonStatus.ts",
             "DirectoryListing.ts",
             "DirectoryEntry.ts",
             "TrustReport.ts",

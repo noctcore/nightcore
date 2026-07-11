@@ -79,6 +79,16 @@ impl TerminalRegistry {
         Ok(info)
     }
 
+    /// Whether a live session with `id` is owned by THIS registry. The terminal
+    /// backend (cockpit spec PR 6) routes write/resize/kill/set-title by ownership:
+    /// a locally-owned (confined or pre-daemon) session is handled in-process, else
+    /// the call proxies to the daemon.
+    pub fn has(&self, id: &str) -> bool {
+        self.lock_sessions()
+            .map(|s| s.contains_key(id))
+            .unwrap_or(false)
+    }
+
     /// Forward user input to a session's shell.
     pub fn write(&self, id: &str, data: &[u8]) -> Result<(), String> {
         let mut sessions = self.lock_sessions()?;
@@ -171,8 +181,9 @@ fn no_such(id: &str) -> String {
 /// Whether `candidate` is `base` or under it, comparing canonicalized paths (a
 /// worktree cwd and the dialog's dir may differ by symlinks — e.g. `/tmp` vs
 /// `/private/tmp` on macOS). Falls back to the lexical path when canonicalization
-/// fails (a since-deleted dir).
-fn path_within(candidate: &Path, base: &Path) -> bool {
+/// fails (a since-deleted dir). `pub(crate)` so the terminal backend can apply the
+/// same match to daemon-owned sessions when unioning `sessions_in_dir` (PR 6).
+pub(crate) fn path_within(candidate: &Path, base: &Path) -> bool {
     let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
     canon(candidate).starts_with(canon(base))
 }

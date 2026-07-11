@@ -62,6 +62,13 @@ usageMeterEnabled?: boolean,
  */
 terminalYoloLaunch?: boolean, 
 /**
+ * Cockpit PR 6 decision 7: toggle the detached PTY daemon (experimental,
+ * macOS/Linux only, default off). Global-only (ignored for a per-project
+ * override target), like the other terminal knobs. See
+ * [`super::model::Settings::terminal_daemon_enabled`].
+ */
+terminalDaemonEnabled?: boolean, 
+/**
  * M4.6: default run mode (`"main"` | `"worktree"`). With a `projectId` it lands
  * in that project's override; without one, the global default.
  */

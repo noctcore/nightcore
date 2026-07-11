@@ -21,8 +21,19 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import type { IDisposable } from '@xterm/xterm';
 import { Terminal } from '@xterm/xterm';
 
-import type { SpawnTerminalOpts, TerminalHandle, TerminalSessionInfo } from '@/lib/bridge';
-import { killTerminal, resizeTerminal, spawnTerminal, writeTerminal } from '@/lib/bridge';
+import type {
+  SpawnTerminalOpts,
+  TerminalByteHandler,
+  TerminalHandle,
+  TerminalSessionInfo,
+} from '@/lib/bridge';
+import {
+  attachTerminal,
+  killTerminal,
+  resizeTerminal,
+  spawnTerminal,
+  writeTerminal,
+} from '@/lib/bridge';
 
 import { installKeymap } from './terminal-keymap';
 import {
@@ -206,31 +217,30 @@ export function applyRenderPrefs(prefs: TerminalRenderPrefs): void {
   }
 }
 
-/** Spawn a shell and cache a live xterm bound to its output stream. The xterm is
- *  created BEFORE `spawnTerminal` so the channel's first bytes (banner/prompt) are
- *  captured — xterm buffers writes issued before `open()`. Rejects (and disposes
- *  the throwaway instance) when the server refuses: over the 8-session cap or a
- *  rejected cwd. The caller surfaces that. */
-export async function openSession(
-  opts: SpawnTerminalOpts,
-  webgl = false,
+/** Create + cache a live xterm bound to a PTY stream via `bind` (a fresh spawn or a
+ *  daemon reattach). The xterm is created BEFORE `bind` so the channel's first bytes
+ *  (banner/prompt, or the replayed tail) are captured — xterm buffers pre-`open()`
+ *  writes. Disposes the throwaway instance + rejects on a `bind` failure (cap /
+ *  rejected cwd / no live session). Shared by {@link openSession}/{@link reattachSession}. */
+async function installSession(
+  webgl: boolean,
+  bind: (onData: TerminalByteHandler) => Promise<TerminalHandle>,
 ): Promise<TerminalSessionInfo> {
   const term = new Terminal(buildTerminalOptions(currentRenderPrefs));
   const fit = new FitAddon();
   term.loadAddon(fit);
-  // Scrollback search + https-only web links (spec PR 3c). Both activate on
-  // `loadAddon` and tolerate a not-yet-opened terminal, exactly like the fit addon.
+  // Scrollback search + https-only web links (spec PR 3c) — both tolerate a
+  // not-yet-opened terminal, like the fit addon.
   const search = new SearchAddon();
   term.loadAddon(search);
   term.loadAddon(new WebLinksAddon((_event, uri) => openTerminalLink(uri)));
 
-  // The id is server-minted at spawn and only known once it resolves, but output
-  // arrives strictly after — so a holder lets the byte callback (the one place
-  // every batch lands) record activity for the right session on each batch.
+  // The id is server-minted (only known once `bind` resolves) but output arrives
+  // strictly after — a holder lets the byte callback record activity for the right id.
   let sessionId: string | null = null;
   let handle: TerminalHandle;
   try {
-    handle = await spawnTerminal(opts, (bytes) => {
+    handle = await bind((bytes) => {
       term.write(bytes);
       if (sessionId !== null) recordActivity(sessionId);
     });
@@ -261,6 +271,26 @@ export async function openSession(
     unread: 0,
   });
   return handle.session;
+}
+
+/** Spawn a shell and cache a live xterm bound to its output stream. Rejects (disposing
+ *  the throwaway instance) when the server refuses — over the cap or a rejected cwd. */
+export async function openSession(
+  opts: SpawnTerminalOpts,
+  webgl = false,
+): Promise<TerminalSessionInfo> {
+  return installSession(webgl, (onData) => spawnTerminal(opts, onData));
+}
+
+/** Reattach to an EXISTING live session (cockpit spec PR 6 — detached-daemon reattach
+ *  on relaunch): a fresh xterm bound to its replayed + live output. Called on mount for
+ *  each session `listTerminals()` reported live but with no local instance — only after
+ *  a restart in daemon mode (in-process the list is empty, so this never fires). */
+export async function reattachSession(
+  session: TerminalSessionInfo,
+  webgl = false,
+): Promise<TerminalSessionInfo> {
+  return installSession(webgl, (onData) => attachTerminal(session.id, onData));
 }
 
 /** Load the WebGL renderer for a session that opted in (decision 7) — called by the
