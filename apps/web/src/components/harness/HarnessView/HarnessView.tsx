@@ -215,7 +215,9 @@ function ResultsScreen({
             onOpen={view.openFinding}
             coverageByFingerprint={view.showCoverage ? view.coverageByFingerprint : undefined}
           />
-          {view.showCoverage && <RuleCoverageGaps gaps={view.coverage} />}
+          {view.showCoverage && (
+            <RuleCoverageGaps gaps={view.coverage} drift={view.drift} />
+          )}
         </>
       )}
       {view.section === 'proposals' && (

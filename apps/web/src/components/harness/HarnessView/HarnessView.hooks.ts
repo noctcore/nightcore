@@ -32,6 +32,7 @@ import { ALL_CATEGORIES, CATEGORY_META } from '../harness.constants';
 import type { ConventionFindingVM } from '../harness.types';
 import { useHarnessApply } from '../harness-apply.hooks';
 import { harnessScanConfig, useHarness } from '../harness-data.hooks';
+import { useArmedDrift } from '../harness-drift.hooks';
 import { useHarnessProposals } from '../harness-proposals.hooks';
 import {
   defaultSectionForMode,
@@ -269,6 +270,12 @@ export function useHarnessView({
     return map;
   }, [stream.coverage]);
 
+  // Drift-v1 (T15): the MEASURED per-convention conformance from the last EnforceRun,
+  // joined to the coverage panel by `conventionFingerprint`. Fetched only while the
+  // Enforce coverage panel is on screen (Conventions section), so a "Run armed checks
+  // now" done on the Checks section is reflected the next time coverage is viewed.
+  const drift = useArmedDrift(showCoverage && section === 'conventions');
+
   return {
     hasProject,
     projectName,
@@ -303,6 +310,7 @@ export function useHarnessView({
     emptyMessage,
     coverage: stream.coverage,
     coverageByFingerprint,
+    drift,
     showCoverage,
     proposals: proposals.proposals,
     proposalsLoading: proposals.proposalsLoading,

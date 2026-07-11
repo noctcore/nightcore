@@ -12,6 +12,7 @@ import type { RunConfig } from '@/lib/useRunConfig';
 
 import type { CategoryTab } from '../CategoryTabs';
 import type {
+  ConventionDriftVM,
   ConventionFindingVM,
   HarnessProposalVM,
   ProposedArtifactVM,
@@ -102,6 +103,9 @@ export interface HarnessViewModel {
   coverage: RuleCoverageGapVM[];
   /** Per-convention coverage status keyed by `fingerprint` — the ConventionGrid badge. */
   coverageByFingerprint: Record<string, CoverageStatus>;
+  /** Drift-v1 (T15): the measured per-convention conformance from the last EnforceRun,
+   *  joined to `coverage` by `conventionFingerprint` in the Rule-Coverage-Gaps panel. */
+  drift: ConventionDriftVM[];
   /** Whether the Enforce destination surfaces coverage (badge + panel); false elsewhere. */
   showCoverage: boolean;
   /** Task-shaped proposals panel inputs (the convert-to-task units). */
