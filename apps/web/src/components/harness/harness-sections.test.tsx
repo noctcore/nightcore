@@ -18,20 +18,20 @@ test('harden shows only the PROPOSE half (Proposals + Artifacts), in order', () 
   expect(keys).toEqual(['proposals', 'artifacts']);
 });
 
-test('enforce shows only the ENFORCE half (Conventions + Policy), in order', () => {
+test('enforce shows the ENFORCE half (Conventions + Checks + Policy), in order', () => {
   const keys = sectionTabsForMode('enforce', COUNTS).map((t) => t.key);
-  expect(keys).toEqual(['conventions', 'policy']);
+  expect(keys).toEqual(['conventions', 'checks', 'policy']);
 });
 
 test('the unified route (undefined mode) shows every section', () => {
   const keys = sectionTabsForMode(undefined, COUNTS).map((t) => t.key);
-  expect(keys).toEqual(['conventions', 'proposals', 'artifacts', 'policy']);
+  expect(keys).toEqual(['conventions', 'proposals', 'artifacts', 'checks', 'policy']);
 });
 
-test('each tab carries its live badge count; policy is always 0', () => {
+test('each tab carries its live badge count; checks and policy are always 0', () => {
   const tabs = sectionTabsForMode(undefined, COUNTS);
   const byKey = Object.fromEntries(tabs.map((t) => [t.key, t.count]));
-  expect(byKey).toEqual({ conventions: 3, proposals: 5, artifacts: 2, policy: 0 });
+  expect(byKey).toEqual({ conventions: 3, proposals: 5, artifacts: 2, checks: 0, policy: 0 });
 });
 
 test('tabs are labelled for display', () => {
