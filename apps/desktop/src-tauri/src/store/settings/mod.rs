@@ -352,10 +352,45 @@ mod tests {
             "mcpServers",
             "contextPackEnabled",
             "preferredEditor",
+            "terminalFontSize",
+            "terminalScrollback",
             "projectOverrides",
         ] {
             assert!(obj.contains_key(key), "missing camelCase key {key}");
         }
+    }
+
+    #[test]
+    fn terminal_render_prefs_default_none_and_merge_set_only() {
+        // Cockpit PR 3 decision 6e: no render-pref override by default — a fresh
+        // install uses the shipped 13px / ~10k web-side defaults (None here).
+        let defaults = Settings::default();
+        assert!(defaults.terminal_font_size.is_none());
+        assert!(defaults.terminal_scrollback.is_none());
+
+        // A settings.json from before the fields still parses, defaulting them None.
+        let legacy: Settings = serde_json::from_str("{\"defaultModel\":\"m\",\"defaultEffort\":\"medium\",\"maxConcurrency\":3,\"permissionMode\":\"bypass\",\"cleanupWorktrees\":true,\"notifyOnComplete\":false,\"projectOverrides\":{}}").expect("legacy settings parse");
+        assert!(legacy.terminal_font_size.is_none());
+        assert!(legacy.terminal_scrollback.is_none());
+
+        // A global patch SETS both knobs.
+        let mut s = Settings::default();
+        s.merge(SettingsPatch {
+            terminal_font_size: Some(16),
+            terminal_scrollback: Some(50_000),
+            ..Default::default()
+        });
+        assert_eq!(s.terminal_font_size, Some(16));
+        assert_eq!(s.terminal_scrollback, Some(50_000));
+
+        // An omitted key is a no-op — a later patch that touches only the font size
+        // leaves the scrollback in place.
+        s.merge(SettingsPatch {
+            terminal_font_size: Some(14),
+            ..Default::default()
+        });
+        assert_eq!(s.terminal_font_size, Some(14));
+        assert_eq!(s.terminal_scrollback, Some(50_000));
     }
 
     #[test]

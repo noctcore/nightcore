@@ -31,6 +31,8 @@ function settingsWith(projectId: string, appearance: BoardAppearance): Settings 
     preferredEditor: null,
     terminalWebglEnabled: false,
     terminalConfinedDefault: false,
+    terminalFontSize: null,
+    terminalScrollback: null,
     usageMeterEnabled: false,
     projectOverrides: { [projectId]: { boardAppearance: appearance } },
   };
