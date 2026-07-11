@@ -13,6 +13,18 @@ impl SidecarProvider {
             .push_back(task_id.to_string());
     }
 
+    /// Test-only seam (issue #150, E2E ladder ring 1): seed a pending launch so the
+    /// crate-root `e2e` MockRuntime harness can script the session↔task correlation
+    /// FIFO WITHOUT spawning a real sidecar child (a real launch pushes this under the
+    /// stdin lock in [`start_session`](Provider::start_session), which needs a live
+    /// child). Gated to `#[cfg(test)]`, so it is never compiled into the app and
+    /// changes no production behavior — it only re-exposes the existing
+    /// `pub(super) push_pending` to the in-crate harness.
+    #[cfg(test)]
+    pub(crate) fn push_pending_for_test(&self, task_id: &str) {
+        self.push_pending(task_id);
+    }
+
     /// Bind a freshly-seen `session_id` to the task at the front of the pending
     /// FIFO. Called by the reader the first time it sees a session id. Returns the
     /// task id it bound, if any pending launch was waiting.

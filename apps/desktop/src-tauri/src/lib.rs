@@ -39,6 +39,12 @@ mod usage;
 mod workflow;
 mod worktree;
 
+// E2E ladder ring 1 (issue #150): the `tauri::test` MockRuntime integration suite
+// over the real run engine (stores + slot manager + provider correlation + breaker),
+// driven by a scripted fake provider. Test-only; never compiled into the app.
+#[cfg(test)]
+mod e2e;
+
 // Module facade: preserve the historical crate-root paths after the folder
 // regroup so call sites elsewhere keep resolving unchanged. Crate-internal
 // (`pub(crate)`) — these are not part of the lib's public API (only `run` is), so
