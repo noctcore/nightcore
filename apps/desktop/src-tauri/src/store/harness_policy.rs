@@ -128,6 +128,7 @@ pub fn read_policy(project_path: &str) -> Option<HarnessPolicy> {
         disallowed_tools: string_entries(&policy, "disallowedTools"),
         allow_tools: string_entries(&policy, "allowTools"),
         ask_tools: string_entries(&policy, "askTools"),
+        allow_exec_sinks: string_entries(&policy, "allowExecSinks"),
     })
 }
 
@@ -214,6 +215,29 @@ mod tests {
         assert_eq!(policy.allow_tools, vec!["WebSearch", "Bash(git status:*)"]);
         assert_eq!(policy.ask_tools, vec!["Write", "mcp__acme__push"]);
         assert!(policy.disallowed_tools.is_empty());
+    }
+
+    #[test]
+    fn allow_exec_sinks_resolve() {
+        // The exec-sink ASK gate's per-project downgrade list is carried through
+        // the wire policy so the engine can soften specific sinks (e.g. a repo
+        // whose agents legitimately manage CI).
+        let tmp = TempDir::new().expect("temp dir");
+        let root = write_manifest(
+            &tmp,
+            r#"{
+              "policy": {
+                "allowExecSinks": [".github/workflows/**", "package.json"]
+              }
+            }"#,
+        );
+        let policy = read_policy(&root).expect("policy armed");
+        assert_eq!(
+            policy.allow_exec_sinks,
+            vec![".github/workflows/**", "package.json"]
+        );
+        // Absent ⇒ empty (an armed policy with no allowance asks on every sink).
+        assert!(policy.protected_paths.is_empty());
     }
 
     #[test]
