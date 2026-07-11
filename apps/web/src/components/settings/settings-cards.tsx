@@ -346,6 +346,17 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
                 />
               ),
             },
+            {
+              label: 'Waiting for input',
+              hint: 'Notify when a run parks on a question (on by default)',
+              control: (
+                <Toggle
+                  on={settings.notifyOnAwaitingInput}
+                  onChange={(next) => patchGlobal({ notifyOnAwaitingInput: next })}
+                  label="Native notifications when a run awaits your input"
+                />
+              ),
+            },
           ],
         },
         ...buildGithubCards(settings, patchGlobal),

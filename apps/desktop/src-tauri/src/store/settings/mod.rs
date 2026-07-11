@@ -77,6 +77,8 @@ mod tests {
         assert_eq!(s.provider, "claude");
         assert!(s.cleanup_worktrees);
         assert!(!s.notify_on_complete);
+        // T11: awaiting-input notification defaults ON (unlike Done/Failed).
+        assert!(s.notify_on_awaiting_input);
         assert!(s.project_overrides.is_empty());
     }
 
@@ -434,6 +436,34 @@ mod tests {
             .update(serde_json::from_str(r#"{"notifyOnComplete":true}"#).unwrap())
             .expect("unrelated patch");
         assert_eq!(store.get().preferred_editor.as_deref(), Some("cursor"));
+    }
+
+    #[test]
+    fn notify_on_awaiting_input_defaults_on_and_is_serde_additive() {
+        // T11: unlike `notify_on_complete` (Done/Failed, default off), the
+        // awaiting-input park notification defaults ON.
+        assert!(Settings::default().notify_on_awaiting_input);
+
+        // A settings.json from before this field (no `notifyOnAwaitingInput`) still
+        // parses, defaulting the field to `true` — a legacy install gets the park
+        // notification without editing its config (serde-additive).
+        let tmp = TempDir::new().expect("temp dir");
+        let dir = tmp.path().join("config");
+        std::fs::create_dir_all(&dir).unwrap();
+        let legacy = r#"{"defaultModel":"claude-opus-4-8","defaultEffort":"medium",
+            "maxConcurrency":3,"permissionMode":"bypass","cleanupWorktrees":true,
+            "notifyOnComplete":false,"defaultRunMode":"main","projectOverrides":{}}"#;
+        std::fs::write(dir.join("settings.json"), legacy).unwrap();
+        let store = SettingsStore::load_from(dir);
+        assert!(store.get().notify_on_awaiting_input);
+
+        // A global patch turns it OFF and round-trips through persistence.
+        store
+            .update(serde_json::from_str(r#"{"notifyOnAwaitingInput":false}"#).unwrap())
+            .expect("update");
+        assert!(!store.get().notify_on_awaiting_input);
+        let reloaded = SettingsStore::load_from(tmp.path().join("config"));
+        assert!(!reloaded.get().notify_on_awaiting_input);
     }
 
     #[test]

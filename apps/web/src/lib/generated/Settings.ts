@@ -38,6 +38,16 @@ cleanupWorktrees: boolean,
  */
 notifyOnComplete: boolean, 
 /**
+ * Awaiting-input notification (T11): fire a desktop notification when a run
+ * PARKS awaiting the user's input (an `AskUserQuestion`). Unlike
+ * `notify_on_complete` (Done/Failed, default OFF), this defaults **ON** — a
+ * backgrounded window otherwise silently stalls the autonomous loop on a
+ * question no one sees, the highest-value notification for an autonomy product.
+ * Global-only (like `notify_on_complete`). Serde-additive: a settings file
+ * written before this field loads as `true`.
+ */
+notifyOnAwaitingInput: boolean, 
+/**
  * M4.6: the default run mode new tasks inherit — `"main"` (default) or
  * `"worktree"`. Per-project overridable. A new task's `run_mode` is this value
  * unless the create call passes an explicit one.

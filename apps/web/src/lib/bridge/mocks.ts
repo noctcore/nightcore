@@ -155,6 +155,7 @@ export const MOCK_SETTINGS: Settings = {
   provider: 'claude',
   cleanupWorktrees: true,
   notifyOnComplete: false,
+  notifyOnAwaitingInput: true,
   defaultRunMode: 'main',
   maxTurns: null,
   maxBudgetUsd: null,

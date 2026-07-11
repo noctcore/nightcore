@@ -42,6 +42,15 @@ pub struct Settings {
     pub cleanup_worktrees: bool,
     /// M3 toggle; persists only.
     pub notify_on_complete: bool,
+    /// Awaiting-input notification (T11): fire a desktop notification when a run
+    /// PARKS awaiting the user's input (an `AskUserQuestion`). Unlike
+    /// `notify_on_complete` (Done/Failed, default OFF), this defaults **ON** — a
+    /// backgrounded window otherwise silently stalls the autonomous loop on a
+    /// question no one sees, the highest-value notification for an autonomy product.
+    /// Global-only (like `notify_on_complete`). Serde-additive: a settings file
+    /// written before this field loads as `true`.
+    #[serde(default = "default_true")]
+    pub notify_on_awaiting_input: bool,
     /// M4.6: the default run mode new tasks inherit — `"main"` (default) or
     /// `"worktree"`. Per-project overridable. A new task's `run_mode` is this value
     /// unless the create call passes an explicit one.
@@ -467,6 +476,10 @@ impl Default for Settings {
             provider,
             cleanup_worktrees: true,
             notify_on_complete: false,
+            // T11: the awaiting-input park notification defaults ON — a stalled
+            // question in a backgrounded window is the case an autonomy product most
+            // needs to surface. (Done/Failed stays opt-in above.)
+            notify_on_awaiting_input: true,
             default_run_mode: default_run_mode_value(),
             // SDK-guardrails: no Settings-level ceiling by default — a new task
             // inherits the engine's `@nightcore/config` default (maxTurns 200,

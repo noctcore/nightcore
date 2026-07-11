@@ -155,6 +155,11 @@ pub struct SettingsPatch {
     pub cleanup_worktrees: Option<bool>,
     #[cfg_attr(test, ts(optional))]
     pub notify_on_complete: Option<bool>,
+    /// T11: toggle the awaiting-input park notification (default on). Global-only
+    /// (ignored for a per-project override target), like `notify_on_complete`. See
+    /// [`super::model::Settings::notify_on_awaiting_input`].
+    #[cfg_attr(test, ts(optional))]
+    pub notify_on_awaiting_input: Option<bool>,
     /// Auto Mode option: toggle auto-commit-on-verified. Global-only (like
     /// `cleanup_worktrees`/`notify_on_complete` — ignored for a per-project override
     /// target). See [`super::model::Settings::auto_commit_on_verified`].
@@ -304,6 +309,11 @@ impl Settings {
         }
         if let Some(v) = patch.notify_on_complete {
             self.notify_on_complete = v;
+        }
+        // T11: global-only awaiting-input notification toggle (no per-project
+        // override), like `notify_on_complete`.
+        if let Some(v) = patch.notify_on_awaiting_input {
+            self.notify_on_awaiting_input = v;
         }
         // Auto Mode option: global-only toggle (no per-project override), so it lives
         // in the global block alongside `cleanup_worktrees`/`notify_on_complete`.

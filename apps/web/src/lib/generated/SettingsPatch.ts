@@ -14,6 +14,12 @@ export type SettingsPatch = { projectId?: string, defaultModel?: string, default
  */
 provider?: string, cleanupWorktrees?: boolean, notifyOnComplete?: boolean, 
 /**
+ * T11: toggle the awaiting-input park notification (default on). Global-only
+ * (ignored for a per-project override target), like `notify_on_complete`. See
+ * [`super::model::Settings::notify_on_awaiting_input`].
+ */
+notifyOnAwaitingInput?: boolean, 
+/**
  * Auto Mode option: toggle auto-commit-on-verified. Global-only (like
  * `cleanup_worktrees`/`notify_on_complete` — ignored for a per-project override
  * target). See [`super::model::Settings::auto_commit_on_verified`].
