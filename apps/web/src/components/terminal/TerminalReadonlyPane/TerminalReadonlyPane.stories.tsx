@@ -13,6 +13,7 @@ const INFO: PersistedTerminalInfo = {
   confined: false,
   createdAt: 0,
   updatedAt: 1,
+  title: null,
 };
 
 /** Sized host so the read-only xterm has geometry (outside Tauri the replay bytes

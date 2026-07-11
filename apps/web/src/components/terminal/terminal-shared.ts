@@ -12,10 +12,11 @@ import { pathLeaf } from '@/lib/path-display';
 // shared folder-browser primitive can display paths without a cross-feature import.
 export { displayPath } from '@/lib/path-display';
 
-/** Server-enforced max live sessions (mirrors the Rust registry cap). Used to
- *  DISABLE the new-tab affordance client-side; the authoritative guard is the
- *  `terminal_spawn` rejection, surfaced as an inline error. */
-export const TERMINAL_SESSION_CAP = 8;
+/** Server-enforced max live sessions (mirrors the Rust registry cap
+ *  `MAX_LIVE_SESSIONS` — both must move together). Used to DISABLE the new-tab
+ *  affordance client-side; the authoritative guard is the `terminal_spawn`
+ *  rejection, surfaced as an inline error. */
+export const TERMINAL_SESSION_CAP = 12;
 
 /** Initial PTY geometry at spawn; the pane's fit addon re-sizes on first mount. */
 export const DEFAULT_TERMINAL_COLS = 80;
@@ -45,6 +46,17 @@ export const TERMINAL_RENDER_OPTIONS = {
  *  {@link pathLeaf} so the terminal keeps its domain-named helper. */
 export function terminalLabel(cwd: string): string {
   return pathLeaf(cwd);
+}
+
+/** The display name for a session or restored tab (decision 5): the user's manual
+ *  title when set, else the cwd leaf — so an un-renamed / legacy session labels
+ *  exactly as before. Accepts any descriptor carrying a nullable `title` + `cwd`
+ *  (both {@link TerminalSessionInfo} and `PersistedTerminalInfo` qualify). A
+ *  blank/whitespace title is treated as unset (the server normalizes to `null`, but
+ *  the optimistic local update guards here too). */
+export function displayTitle(session: { title: string | null; cwd: string }): string {
+  const title = session.title?.trim();
+  return title !== undefined && title !== '' ? title : terminalLabel(session.cwd);
 }
 
 /** Identity chrome copy (decision 1): the user terminal runs OUTSIDE the agent

@@ -16,6 +16,12 @@ vi.mock('../terminal-session-manager', () => ({
   ensureRenderer: () => Promise.resolve(),
   hasSession: () => true,
   reconcileSessions: () => {},
+  // Activity-badge seam (decision 6c): the hook subscribes + reads counts. The
+  // subscription returns an unsubscribe; counts are 0 (no real output in tests).
+  subscribeActivity: () => () => {},
+  getUnread: () => 0,
+  clearUnread: () => {},
+  setActiveTerminal: () => {},
 }));
 
 // Keep the real bridge (ToastProvider, types, getAppInfo → macOS mock) but make the
@@ -35,7 +41,7 @@ vi.mock('@/lib/bridge', async (importOriginal) => {
     directoryExists: (path: string) => Promise.resolve(path.endsWith('/t1')),
     readTerminalPersisted: (id: string) =>
       Promise.resolve({
-        info: { id, cwd: '', shell: '', confined: false, createdAt: 0, updatedAt: 0 },
+        info: { id, cwd: '', shell: '', confined: false, createdAt: 0, updatedAt: 0, title: null },
         dataBase64: '',
       }),
   };
@@ -55,11 +61,12 @@ function fakeSession(id: string, cwd: string): TerminalSessionInfo {
     rows: 24,
     alive: true,
     createdAt: 0,
+    title: null,
   };
 }
 
 function persisted(id: string, cwd: string): PersistedTerminalInfo {
-  return { id, cwd, shell: '/bin/zsh', confined: false, createdAt: 0, updatedAt: 1 };
+  return { id, cwd, shell: '/bin/zsh', confined: false, createdAt: 0, updatedAt: 1, title: null };
 }
 
 afterEach(() => {

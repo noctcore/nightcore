@@ -24,4 +24,10 @@ export interface TerminalTabsProps {
   onNewTab: () => void;
   /** False at the live-session cap — disables the new-tab button. */
   canAddTab: boolean;
+  /** Rename a LIVE tab (decision 5): the parent optimistically updates + persists.
+   *  An empty title clears the name back to the cwd-leaf label. */
+  onRename: (id: string, title: string) => void;
+  /** Per-session unread-output counts (decision 6c) — a badge on inactive tabs.
+   *  Missing ids read as 0. */
+  unread: Readonly<Record<string, number>>;
 }

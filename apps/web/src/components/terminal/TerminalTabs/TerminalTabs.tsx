@@ -8,8 +8,9 @@ import {
 } from '@/components/ui';
 import type { PersistedTerminalInfo, TerminalSessionInfo } from '@/lib/bridge';
 
-import { identityTitle, restoredIdentityTitle, terminalLabel } from '../terminal-shared';
-import { newTabTitle } from './TerminalTabs.hooks';
+import { useInlineRename } from '../terminal-rename';
+import { displayTitle, identityTitle, restoredIdentityTitle } from '../terminal-shared';
+import { newTabTitle, unreadBadge, unreadBadgeLabel } from './TerminalTabs.hooks';
 import type { TerminalTabsProps } from './TerminalTabs.types';
 
 /** The per-tab identity marker (decision 1): unconfined tabs carry a terminal
@@ -26,18 +27,38 @@ function IdentityDot({ confined }: { confined: boolean }) {
   );
 }
 
+/** The unread-output badge (decision 6c): a small pill on an inactive tab when
+ *  output has arrived while it wasn't visible. Generic byte-activity, not content
+ *  parsing. Hidden on the active tab (its badge is cleared on activation). */
+function UnreadBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      aria-label={unreadBadgeLabel(count)}
+      className="shrink-0 rounded-full bg-primary/25 px-1.5 text-[10px] font-semibold leading-4 text-primary"
+    >
+      {unreadBadge(count)}
+    </span>
+  );
+}
+
 function Tab({
   session,
   active,
+  unread,
   onSelect,
   onClose,
+  onRename,
 }: {
   session: TerminalSessionInfo;
   active: boolean;
+  unread: number;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
+  onRename: (id: string, title: string) => void;
 }) {
-  const label = terminalLabel(session.cwd);
+  const label = displayTitle(session);
+  const rename = useInlineRename(label, (next) => onRename(session.id, next));
   return (
     <div
       className={`group flex items-center gap-1.5 rounded-t-[8px] border-b-2 px-2.5 py-1.5 transition-colors ${
@@ -46,17 +67,35 @@ function Tab({
           : 'border-transparent text-muted-foreground hover:bg-white/[0.03] hover:text-foreground'
       }`}
     >
-      <button
-        type="button"
-        role="tab"
-        aria-selected={active}
-        title={identityTitle(session.confined)}
-        onClick={() => onSelect(session.id)}
-        className="flex min-w-0 items-center gap-1.5"
-      >
-        <IdentityDot confined={session.confined} />
-        <span className="max-w-[12rem] truncate text-[12.5px] font-medium">{label}</span>
-      </button>
+      {rename.editing ? (
+        <span className="flex min-w-0 items-center gap-1.5">
+          <IdentityDot confined={session.confined} />
+          <input
+            ref={rename.inputRef}
+            aria-label={`Rename ${label}`}
+            value={rename.draft}
+            onChange={rename.onChange}
+            onKeyDown={rename.onKeyDown}
+            onBlur={rename.onBlur}
+            size={Math.max(rename.draft.length, 4)}
+            className="min-w-0 rounded-sm bg-white/10 px-1 text-[12.5px] font-medium text-foreground outline-none ring-1 ring-primary/60"
+          />
+        </span>
+      ) : (
+        <button
+          type="button"
+          role="tab"
+          aria-selected={active}
+          title={identityTitle(session.confined)}
+          onClick={() => onSelect(session.id)}
+          onDoubleClick={rename.begin}
+          className="flex min-w-0 items-center gap-1.5"
+        >
+          <IdentityDot confined={session.confined} />
+          <span className="max-w-[12rem] truncate text-[12.5px] font-medium">{label}</span>
+        </button>
+      )}
+      {!active && <UnreadBadge count={unread} />}
       <IconButton
         label={`Close ${label}`}
         onClick={() => onClose(session.id)}
@@ -70,7 +109,8 @@ function Tab({
 
 /** A restored (read-only) tab: a dimmed, history-marked tab for a dead session from
  *  a prior run. Selecting it replays its persisted scrollback read-only; the X
- *  dismisses it (deletes the persisted file). */
+ *  dismisses it (deletes the persisted file). It shows the name it had while live
+ *  (decision 5) but is not renamable — the shell is gone. */
 function RestoredTab({
   info,
   active,
@@ -82,7 +122,7 @@ function RestoredTab({
   onSelect: (id: string) => void;
   onDismiss: (id: string) => void;
 }) {
-  const label = terminalLabel(info.cwd);
+  const label = displayTitle(info);
   return (
     <div
       className={`group flex items-center gap-1.5 rounded-t-[8px] border-b-2 px-2.5 py-1.5 transition-colors ${
@@ -113,9 +153,10 @@ function RestoredTab({
   );
 }
 
-/** The terminal tabs bar: one tab per live session with a per-tab identity marker
- *  and close affordance, then any restored (read-only) tabs from a prior run, plus
- *  a "+" that opens the new-terminal picker (disabled at the 8-session cap). Purely
+/** The terminal tabs bar: one tab per live session with a per-tab identity marker,
+ *  an unread-output badge, an inline-rename (double-click) title, and a close
+ *  affordance, then any restored (read-only) tabs from a prior run, plus a "+" that
+ *  opens the new-terminal picker (disabled at the session cap). Purely
  *  presentational — the parent owns state + actions. */
 export function TerminalTabs({
   sessions,
@@ -126,6 +167,8 @@ export function TerminalTabs({
   onDismiss,
   onNewTab,
   canAddTab,
+  onRename,
+  unread,
 }: TerminalTabsProps) {
   return (
     <div
@@ -138,8 +181,10 @@ export function TerminalTabs({
           key={session.id}
           session={session}
           active={session.id === activeId}
+          unread={unread[session.id] ?? 0}
           onSelect={onSelect}
           onClose={onClose}
+          onRename={onRename}
         />
       ))}
       {restored.map((info) => (
