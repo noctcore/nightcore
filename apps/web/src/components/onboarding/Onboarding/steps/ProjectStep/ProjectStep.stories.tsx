@@ -20,6 +20,7 @@ const view: OnboardingViewState = {
   checksLoading: false,
   checksError: null,
   appVersion: '0.2.0',
+  activeProvider: 'claude',
   projectName: 'nightcore',
   creating: false,
   canContinue: true,

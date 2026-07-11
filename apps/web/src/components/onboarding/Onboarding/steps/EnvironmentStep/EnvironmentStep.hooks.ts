@@ -1,15 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 import type { ToolCheck } from '@/lib/bridge';
 
+import { codexRequired } from '../../Onboarding.hooks';
 import type { OnboardingViewState } from '../../Onboarding.types';
 import type {
   EnvironmentRowIcon,
   EnvironmentRowModel,
   EnvironmentStepState,
 } from './EnvironmentStep.types';
-
-const ROW_DELAY_MS = 500;
 
 function pendingRow(
   id: string,
@@ -33,11 +32,13 @@ function installRow(
   tool: ToolCheck,
   label: string,
   icon: EnvironmentRowIcon,
+  optional = false,
 ): EnvironmentRowModel {
   return {
     id: `${tool.id}-install`,
     label,
     icon,
+    optional,
     ready: tool.installed,
     detail: tool.installed
       ? [tool.version, tool.path].filter(Boolean).join(' · ')
@@ -68,13 +69,16 @@ function authRow(
 
 function rowsFromChecks(view: OnboardingViewState): readonly EnvironmentRowModel[] {
   const checks = view.checks;
+  // Codex is optional UNLESS it's the active provider; GitHub CLI is always optional
+  // (its features degrade, they don't block first-run).
+  const codexOptional = !codexRequired(view.activeProvider);
   if (checks === null) {
     return [
       pendingRow('claude-install', 'Claude Code CLI', 'terminal'),
       pendingRow('claude-auth', 'Claude authenticated', 'key'),
-      pendingRow('codex-install', 'Codex CLI', 'terminal'),
-      pendingRow('codex-auth', 'Codex authenticated', 'key'),
-      pendingRow('gh-install', 'GitHub CLI', 'github'),
+      pendingRow('codex-install', 'Codex CLI', 'terminal', codexOptional),
+      pendingRow('codex-auth', 'Codex authenticated', 'key', codexOptional),
+      pendingRow('gh-install', 'GitHub CLI', 'github', true),
       pendingRow('gh-auth', 'GitHub authenticated', 'github', true),
       pendingRow('git-install', 'Git', 'checks'),
     ];
@@ -82,9 +86,9 @@ function rowsFromChecks(view: OnboardingViewState): readonly EnvironmentRowModel
   return [
     installRow(checks.claude, 'Claude Code CLI', 'terminal'),
     authRow(checks.claude, 'Claude authenticated', 'key'),
-    installRow(checks.codex, 'Codex CLI', 'terminal'),
-    authRow(checks.codex, 'Codex authenticated', 'key'),
-    installRow(checks.gh, 'GitHub CLI', 'github'),
+    installRow(checks.codex, 'Codex CLI', 'terminal', codexOptional),
+    authRow(checks.codex, 'Codex authenticated', 'key', codexOptional),
+    installRow(checks.gh, 'GitHub CLI', 'github', true),
     authRow(checks.gh, 'GitHub authenticated', 'github', true),
     installRow(checks.git, 'Git', 'checks'),
   ];
@@ -92,28 +96,16 @@ function rowsFromChecks(view: OnboardingViewState): readonly EnvironmentRowModel
 
 export function useEnvironmentStep(view: OnboardingViewState): EnvironmentStepState {
   const rows = useMemo(() => rowsFromChecks(view), [view]);
-  const [completedRows, setCompletedRows] = useState(0);
-
-  useEffect(() => {
-    setCompletedRows(0);
-    if (view.checks === null) return;
-    let row = 0;
-    const timer = window.setInterval(() => {
-      row += 1;
-      setCompletedRows(row);
-      if (row >= rows.length) window.clearInterval(timer);
-    }, ROW_DELAY_MS);
-    return () => window.clearInterval(timer);
-  }, [rows.length, view.checks]);
-
-  const animationDone = completedRows >= rows.length && view.checks !== null;
-  const failedRequired =
-    animationDone && rows.some((row) => !row.ready && row.optional !== true);
+  // The checks resolve as one batch, so the reveal is gated on that — no artificial
+  // per-row stagger (the prior 500ms/row delay was pure cosmetics that slowed the
+  // first-run gate and the tests).
+  const ready = view.checks !== null;
+  const failedRequired = ready && rows.some((row) => !row.ready && row.optional !== true);
 
   return {
     rows,
-    animationDone,
+    animationDone: ready,
     failedRequired,
-    isCheckingRow: (index) => view.checks === null || index >= completedRows,
+    isCheckingRow: () => !ready,
   };
 }

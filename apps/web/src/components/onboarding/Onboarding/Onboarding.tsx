@@ -26,7 +26,7 @@ export function Onboarding(props: OnboardingProps) {
               {view.step === 'welcome' && <WelcomeStep />}
               {view.step === 'environment' && <EnvironmentStep view={view} />}
               {view.step === 'project' && <ProjectStep props={props} view={view} />}
-              {view.step === 'ready' && <ReadyStep />}
+              {view.step === 'ready' && <ReadyStep checks={view.checks} />}
             </div>
           </main>
           <footer className="flex items-center gap-5 border-t border-white/[0.07] px-12 py-6 max-sm:px-6">

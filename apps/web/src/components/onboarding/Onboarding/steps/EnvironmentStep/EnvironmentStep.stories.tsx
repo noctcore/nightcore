@@ -57,6 +57,7 @@ const readyView: OnboardingViewState = {
   checksLoading: false,
   checksError: null,
   appVersion: '0.2.0',
+  activeProvider: 'claude',
   projectName: '',
   creating: false,
   canContinue: true,
