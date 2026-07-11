@@ -11,6 +11,9 @@ function run(over: Partial<ScanRunSummary> & Pick<ScanRunSummary, 'id' | 'family
     status: 'completed',
     createdAt: Date.now() - 60_000,
     projectPath: '/repo',
+    model: 'claude-opus-4-8',
+    costUsd: 0.42,
+    durationMs: 74_000,
     ...over,
   };
 }

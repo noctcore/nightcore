@@ -105,3 +105,47 @@ export function formatElapsed(ms: number, opts?: { padMinutes?: boolean }): stri
   const mm = (opts?.padMinutes ?? false) ? String(minutes).padStart(2, '0') : String(minutes);
   return `${mm}:${String(seconds).padStart(2, '0')}`;
 }
+
+/**
+ * Format a token count compactly (`842` → `842`, `1_240` → `1.2k`, `34_000` →
+ * `34k`, `2_100_000` → `2.1M`) for the run-usage readouts on the scan RESULTS
+ * screens, run-history menus, and the review evidence bundle. Negatives clamp to
+ * zero. Mirrors the RUNNING-screen `RunProgress` readout so the number a scan
+ * shows while running is the same one it shows after it finishes.
+ */
+export function formatTokensCompact(n: number): string {
+  const t = Math.max(0, Math.round(n));
+  if (t >= 1_000_000) return `${(t / 1_000_000).toFixed(1)}M`;
+  if (t >= 10_000) return `${Math.round(t / 1000)}k`;
+  if (t >= 1000) return `${(t / 1000).toFixed(1)}k`;
+  return String(t);
+}
+
+/**
+ * Format a millisecond duration as a compact human span (`0s`, `12s`, `1m 5s`,
+ * `2h 3m`) for the persisted run-duration readouts (scan RESULTS / history rows /
+ * run-history menus). Only the two most-significant units are shown so the label
+ * stays glanceable. Negatives / NaN clamp to `0s` so a run with no recorded
+ * duration renders rather than throwing.
+ */
+export function formatDurationMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '0s';
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  if (minutes > 0) return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+  return `${seconds}s`;
+}
+
+/**
+ * Compact `≈ $cost · duration` receipt for a persisted run, shared by the scan
+ * run-history menus and the global History rows (T8). Cost is APPROXIMATE (Trust
+ * Report precedent) so it is prefixed `≈`; the duration segment is dropped when a
+ * run recorded none. Fail-open: a non-finite cost renders `≈ —` rather than `NaN`.
+ */
+export function formatRunReceipt(costUsd: number, durationMs: number): string {
+  const cost = Number.isFinite(costUsd) ? `≈ ${formatCostUsd(Math.max(0, costUsd))}` : '≈ —';
+  return durationMs > 0 ? `${cost} · ${formatDurationMs(durationMs)}` : cost;
+}

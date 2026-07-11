@@ -1,7 +1,38 @@
 import { Card } from '@/components/ui';
 
-import { DIMENSION_META, GRADE_META } from '../scorecard.constants';
+import {
+  DIMENSION_META,
+  GRADE_META,
+  type GradeTrend,
+  type GradeTrendDirection,
+} from '../scorecard.constants';
 import type { DimensionGridProps, DimensionRow } from './DimensionGrid.types';
+
+/** Per-direction glyph + tone + spoken label for the grade-trend chip (T8). */
+const TREND_META: Record<GradeTrendDirection, { glyph: string; tone: string; verb: string }> = {
+  up: { glyph: '▲', tone: 'text-success', verb: 'improved' },
+  down: { glyph: '▼', tone: 'text-destructive', verb: 'regressed' },
+  flat: { glyph: '→', tone: 'text-muted-foreground', verb: 'unchanged' },
+};
+
+/** A compact chip showing how this dimension's grade moved vs the previous run,
+ *  with the recent-grades trail in its title ("grade over recent runs"). Renders
+ *  nothing without a prior run to compare against. */
+function GradeTrendChip({ trend }: { trend: GradeTrend }) {
+  const meta = TREND_META[trend.direction];
+  const text = trend.direction === 'flat' ? 'no change' : `from ${trend.previousGrade}`;
+  const label = `Grade ${meta.verb} vs previous run (was ${trend.previousGrade})`;
+  return (
+    <span
+      aria-label={label}
+      title={`${label}. Recent: ${trend.history.join(' → ')}`}
+      className={`inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.02] px-1.5 py-0.5 font-mono text-[10px] font-semibold ${meta.tone}`}
+    >
+      <span aria-hidden>{meta.glyph}</span>
+      <span>{text}</span>
+    </span>
+  );
+}
 
 /** The big A–F grade chip (or a live/ungraded placeholder) shown at the head of a
  *  row. The grade is the headline of the whole feature, so it is the loudest mark. */
@@ -61,6 +92,7 @@ function DimensionRowCard({
         <span className="text-[13.5px] font-semibold text-foreground">
           {Meta.label}
         </span>
+        {reading !== null && row.trend !== null && <GradeTrendChip trend={row.trend} />}
         {reading?.status === 'converted' && (
           <span className="rounded-md bg-success/[0.12] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-success">
             task

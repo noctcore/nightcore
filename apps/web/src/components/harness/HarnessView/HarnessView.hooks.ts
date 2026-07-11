@@ -12,6 +12,7 @@ import { useCallback, useMemo, useState } from 'react';
 import type { MenuItem, RunPhase, RunProgressCategory } from '@/components/ui';
 import { useToast } from '@/components/ui';
 import type { ConventionCategory, CoverageStatus } from '@/lib/bridge';
+import { formatRunReceipt } from '@/lib/formatters';
 import { EFFORT_OPTIONS, MODEL_OPTIONS } from '@/lib/models';
 import {
   buildLensTabs,
@@ -233,7 +234,7 @@ export function useHarnessView({
   const runHistory: MenuItem[] = useMemo(
     () =>
       harness.runs.map((run) => ({
-        label: `${new Date(run.createdAt).toLocaleString()} · ${run.findings.length} conventions`,
+        label: `${new Date(run.createdAt).toLocaleString()} · ${run.findings.length} conventions · ${formatRunReceipt(run.costUsd, run.durationMs)}`,
         onClick: () => {
           // Selecting a past run lands on its RESULTS — drop any reconfigure/peek.
           resetRunTransient();

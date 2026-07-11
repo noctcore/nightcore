@@ -3,7 +3,7 @@
  *  can drive the rendered list directly with fixtures (no bridge). Pure: no state,
  *  no data fetching — the routed {@link HistoryView} feeds it the merged summary. */
 import { Badge, EmptyState, HistoryIcon, StatusDot } from '@/components/ui';
-import { formatRelativeTime } from '@/lib/formatters';
+import { formatRelativeTime, formatRunReceipt } from '@/lib/formatters';
 
 import type { HistoryListProps, ScanFamily, ScanRunSummary } from './HistoryView.types';
 
@@ -36,6 +36,8 @@ function HistoryRow({
 }) {
   const status = statusMeta(run.status);
   const when = formatRelativeTime(run.createdAt);
+  // The persisted run receipt (approximate cost + duration), surfaced on the row (T8).
+  const receipt = formatRunReceipt(run.costUsd, run.durationMs);
   return (
     <button
       type="button"
@@ -44,6 +46,12 @@ function HistoryRow({
     >
       <Badge>{FAMILY_LABEL[run.family]}</Badge>
       <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{run.title}</span>
+      <span
+        className="shrink-0 tabular-nums font-mono text-[11px] text-muted-foreground/80"
+        title={run.model.length > 0 ? `Model: ${run.model}` : undefined}
+      >
+        {receipt}
+      </span>
       <span className="flex shrink-0 items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
         <StatusDot colorClass={status.dot} pulse={run.status === 'running'} />
         {status.label}

@@ -28,3 +28,14 @@ test('shows the empty message when there are no rows', async () => {
     .element(screen.getByText(/grade the codebase/i))
     .toBeInTheDocument();
 });
+
+test('renders a grade-trend chip vs the previous run for graded dimensions', async () => {
+  const screen = render(<Default />);
+  // Architecture improved to A (from B); security regressed to F (from C).
+  await expect
+    .element(screen.getByLabelText(/Grade improved vs previous run \(was B\)/))
+    .toBeInTheDocument();
+  await expect
+    .element(screen.getByLabelText(/Grade regressed vs previous run \(was C\)/))
+    .toBeInTheDocument();
+});

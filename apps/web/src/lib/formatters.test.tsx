@@ -1,6 +1,11 @@
 import { expect, test } from 'vitest';
 
-import { formatCountdown, formatLocation } from './formatters';
+import {
+  formatCountdown,
+  formatDurationMs,
+  formatLocation,
+  formatTokensCompact,
+} from './formatters';
 
 test('returns null for a missing location', () => {
   expect(formatLocation(null)).toBeNull();
@@ -73,4 +78,30 @@ test('formatCountdown reports now once the instant has elapsed', () => {
 
 test('formatCountdown returns an empty string for an unparseable value', () => {
   expect(formatCountdown('not-a-date', T0)).toBe('');
+});
+
+test('formatTokensCompact keeps small counts exact and compacts larger ones', () => {
+  expect(formatTokensCompact(0)).toBe('0');
+  expect(formatTokensCompact(842)).toBe('842');
+  expect(formatTokensCompact(1240)).toBe('1.2k');
+  expect(formatTokensCompact(34_000)).toBe('34k');
+  expect(formatTokensCompact(2_100_000)).toBe('2.1M');
+});
+
+test('formatTokensCompact clamps a negative/absent count to zero', () => {
+  expect(formatTokensCompact(-5)).toBe('0');
+});
+
+test('formatDurationMs renders compact two-unit spans', () => {
+  expect(formatDurationMs(0)).toBe('0s');
+  expect(formatDurationMs(12_000)).toBe('12s');
+  expect(formatDurationMs(65_000)).toBe('1m 5s');
+  expect(formatDurationMs(60_000)).toBe('1m');
+  expect(formatDurationMs(3_600_000)).toBe('1h');
+  expect(formatDurationMs(7_380_000)).toBe('2h 3m');
+});
+
+test('formatDurationMs clamps a negative or NaN duration to 0s', () => {
+  expect(formatDurationMs(-1)).toBe('0s');
+  expect(formatDurationMs(Number.NaN)).toBe('0s');
 });

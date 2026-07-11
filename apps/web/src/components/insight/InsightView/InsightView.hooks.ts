@@ -9,6 +9,7 @@ import type {
 } from '@/components/ui';
 import { useToast } from '@/components/ui';
 import type { FindingCategory } from '@/lib/bridge';
+import { formatRunReceipt } from '@/lib/formatters';
 import {
   buildLensTabs,
   countByLens,
@@ -200,7 +201,7 @@ export function useInsightView({
   const runHistory: MenuItem[] = useMemo(
     () =>
       insight.runs.map((run) => ({
-        label: `${new Date(run.createdAt).toLocaleString()} · ${run.findings.length} findings`,
+        label: `${new Date(run.createdAt).toLocaleString()} · ${run.findings.length} findings · ${formatRunReceipt(run.costUsd, run.durationMs)}`,
         onClick: () => {
           // Selecting a past run lands on its RESULTS — drop any reconfigure/peek
           // first, else the derived phase stays on CONFIGURE (reconfiguring=true).

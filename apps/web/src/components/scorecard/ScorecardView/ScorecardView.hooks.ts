@@ -19,6 +19,7 @@ import {
   startScorecard,
   type Task,
 } from '@/lib/bridge';
+import { formatRunReceipt } from '@/lib/formatters';
 import {
   countOpenItems,
   deriveRunPhase,
@@ -34,8 +35,9 @@ import { useScanRun } from '@/lib/useScanRun';
 import type { DimensionRow } from '../DimensionGrid';
 import { useRunConfig } from '../RunControls/RunControls.hooks';
 import type { ScorecardRunConfig } from '../RunControls/RunControls.types';
-import { DIMENSION_META, gradeRankValue } from '../scorecard.constants';
+import { DIMENSION_META } from '../scorecard.constants';
 import type { ScorecardReadingView } from '../scorecard.types';
+import { buildDimensionRows } from '../scorecard-rows';
 import {
   EMPTY_SCORECARD_STREAM,
   foldScorecard,
@@ -159,20 +161,6 @@ function useScorecard(hasProject: boolean): UseScorecardResult {
   };
 }
 
-/** Order rows for the results grid: graded rows worst-grade first, then ungraded
- *  (pending/running/errored) in dimension order. */
-function sortRows(rows: DimensionRow[]): DimensionRow[] {
-  return [...rows].sort((a, b) => {
-    const ag = a.reading !== null ? 0 : 1;
-    const bg = b.reading !== null ? 0 : 1;
-    if (ag !== bg) return ag - bg;
-    if (a.reading !== null && b.reading !== null) {
-      return gradeRankValue(b.reading.grade) - gradeRankValue(a.reading.grade);
-    }
-    return 0;
-  });
-}
-
 /** Everything the ScorecardView shell renders. `hasProject === false` is the only
  *  early-return branch; every other field is meaningful in the project view. */
 export interface ScorecardViewModel {
@@ -265,16 +253,12 @@ export function useScorecardView({
 
   const phase: RunPhase = deriveRunPhase(stream.status, scorecard.isStarting, view.reconfiguring);
 
-  const rows: DimensionRow[] = useMemo(() => {
-    const byDim = new Map<string, ScorecardReadingView>();
-    for (const r of stream.readings) byDim.set(r.dimension, r);
-    const built: DimensionRow[] = stream.requestedDimensions.map((d) => ({
-      dimension: d,
-      state: stream.dimensionState[d] ?? 'pending',
-      reading: byDim.get(d) ?? null,
-    }));
-    return sortRows(built);
-  }, [stream.readings, stream.requestedDimensions, stream.dimensionState]);
+  // Grade-trend rows (T8): built from the displayed stream + the persisted run list
+  // so each dimension carries its grade trend vs the most recent OLDER run.
+  const rows: DimensionRow[] = useMemo(
+    () => buildDimensionRows(stream, scorecard.runs),
+    [stream, scorecard.runs],
+  );
 
   const selected = useMemo(
     () => stream.readings.find((r) => r.id === view.selectedId) ?? null,
@@ -310,7 +294,7 @@ export function useScorecardView({
   const runHistory: MenuItem[] = useMemo(
     () =>
       scorecard.runs.map((run) => ({
-        label: `${new Date(run.createdAt).toLocaleString()} · ${run.readings.length} graded`,
+        label: `${new Date(run.createdAt).toLocaleString()} · ${run.readings.length} graded · ${formatRunReceipt(run.costUsd, run.durationMs)}`,
         onClick: () => {
           resetRun();
           void scorecard.selectRun(run.id);

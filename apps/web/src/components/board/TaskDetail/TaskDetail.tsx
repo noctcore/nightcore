@@ -4,6 +4,7 @@ import { m, Markdown, slideIn } from '@/components/ui';
 
 import { useTaskActions } from '../actions';
 import { ActivityLog } from '../ActivityLog';
+import { EvidenceBundle } from '../EvidenceBundle';
 import { GauntletResults } from '../GauntletResults';
 import { InteractionDock } from '../InteractionDock';
 import { IssueClosedChip } from '../IssueClosedChip';
@@ -209,6 +210,12 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
           <div className="space-y-3">
             <GroupLabel>Result</GroupLabel>
             <ReviewPanel task={task} pending={pending} />
+            {/* Evidence bundle (T8) — staged AT review time, right by Accept/Reject:
+                the gauntlet verbatim, diff stats, guardrail ledger, and approximate
+                cost, assembled into one receipt the reviewer decides on. The separate
+                Trust band below is suppressed while parked so the receipt lives in one
+                place at the decision point. */}
+            {reviewParked && <EvidenceBundle task={task} />}
             {isDoneColumn && actions.onRunGauntlet !== undefined && (
               <GauntletResults
                 result={gauntlet}
@@ -225,8 +232,11 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
             summary, computed on demand. Shown once the task has run (`!kindEditable`)
             so a fresh backlog task stays uncluttered; it renders what exists and
             never blocks the drawer. Sits directly beside the Result band, where
-            verification lives, with one-click markdown export + preview. */}
-        {!kindEditable && (
+            verification lives, with one-click markdown export + preview. While a
+            task is parked for review the receipt is staged in the Evidence bundle
+            above (T8), so the Trust band is suppressed there to avoid a duplicate
+            fetch/render at the decision point. */}
+        {!kindEditable && !reviewParked && (
           <div className="space-y-3">
             <GroupLabel>Trust</GroupLabel>
             <TrustReport task={task} trustReport={trustReport} />
