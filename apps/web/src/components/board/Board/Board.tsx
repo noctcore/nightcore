@@ -6,9 +6,10 @@ import { BoardDnd } from '../BoardDnd';
 import { BoardHeader } from '../BoardHeader';
 import { useBoardChrome } from '../chrome';
 import { Column } from '../Column';
+import { formatResetClock, providerDisplay } from '../usage-hot';
 import { WorktreeSwitcher } from '../WorktreeSwitcher';
 import { useBoardAppearance } from './Board.appearance.hooks';
-import { useBoardView, useBreakerBanner } from './Board.hooks';
+import { useBoardView, useBreakerBanner, useUsagePauseBanner } from './Board.hooks';
 import type { BoardProps } from './Board.types';
 
 const EMPTY_TEXT: Record<string, string> = {
@@ -50,10 +51,13 @@ function BoardImpl({
   // The appearance knobs style the whole board surface (this container) while
   // the header's Background panel edits them; the breaker cluster drives the
   // banner below the switcher. Both ride the low-churn chrome context.
-  const { appearanceOverride, backgroundVersion, breaker, onResume } = useBoardChrome();
+  const { appearanceOverride, backgroundVersion, breaker, onResume, usagePause } =
+    useBoardChrome();
   const { search, setSearch, columns, clearHandlers } = useBoardView(tasks, onClearColumn);
   const banner = useBreakerBanner(breaker);
+  const usageBanner = useUsagePauseBanner(usagePause);
   const appearance = useBoardAppearance(projectId, appearanceOverride, backgroundVersion);
+  const usageResetClock = usagePause !== null ? formatResetClock(usagePause.resetsAt) : null;
 
   return (
     <div
@@ -101,6 +105,25 @@ function BoardImpl({
             aria-label="Dismiss"
             onClick={banner.dismiss}
             className="flex shrink-0 items-center justify-center rounded-lg p-1 text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground"
+          >
+            <CloseIcon size={14} />
+          </button>
+        </div>
+      )}
+
+      {usageBanner.visible && usagePause !== null && (
+        <div className="flex items-center gap-3 border-b border-warning/40 bg-warning/[0.12] px-[22px] py-2.5">
+          <BoltIcon size={15} className="shrink-0 text-warning" />
+          <span className="min-w-0 text-[12.5px] text-foreground">
+            Auto Mode paused — {providerDisplay(usagePause.provider)} {usagePause.windowLabel} at{' '}
+            {Math.round(usagePause.usedPercent)}%
+            {usageResetClock !== null && `, resumes ~${usageResetClock}`}
+          </span>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={usageBanner.dismiss}
+            className="ml-auto flex shrink-0 items-center justify-center rounded-lg p-1 text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground"
           >
             <CloseIcon size={14} />
           </button>

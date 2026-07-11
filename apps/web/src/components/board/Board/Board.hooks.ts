@@ -8,6 +8,7 @@ import { useWorktreesContext } from '@/lib/worktrees-context';
 
 import type { BreakerInfo } from '../chrome';
 import { COLUMNS } from '../status';
+import type { UsageHotWindow } from '../usage-hot';
 import { filterTasksByWorktree } from '../WorktreeSwitcher';
 import type { BoardColumn } from './Board.utils';
 import {
@@ -109,6 +110,28 @@ export function useBreakerBanner(breaker: BreakerInfo | null): {
 
   return {
     visible: breaker !== null && !dismissed,
+    dismiss: useCallback(() => setDismissed(true), []),
+  };
+}
+
+/** Whether to show the usage-pause banner (spec 2026-07-11): visible while the loop
+ *  is usage-paused (`usagePause` set) and not locally dismissed, and re-shown when a
+ *  fresh episode arrives — the dismissed latch resets the moment the pause clears
+ *  (`usagePause === null`), so the next false→true transition surfaces the banner
+ *  again. Mirrors {@link useBreakerBanner}; there is NO Resume button (the loop
+ *  auto-resumes when usage cools), only a Dismiss. */
+export function useUsagePauseBanner(usagePause: UsageHotWindow | null): {
+  visible: boolean;
+  dismiss: () => void;
+} {
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    if (usagePause === null) setDismissed(false);
+  }, [usagePause]);
+
+  return {
+    visible: usagePause !== null && !dismissed,
     dismiss: useCallback(() => setDismissed(true), []),
   };
 }

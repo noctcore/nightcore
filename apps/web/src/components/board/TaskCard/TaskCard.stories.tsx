@@ -3,6 +3,7 @@ import { expect, fn, userEvent, within } from 'storybook/test';
 
 import { BLOCKED_TASK, MAIN_MODE_TASK, makeTaskActions, TASKS_BY_STATUS } from '../_fixtures';
 import { TaskActionsProvider, type TaskDetailActions } from '../actions';
+import { UsageHotProvider, type UsageHotWindow } from '../usage-hot';
 import { TaskCard } from './TaskCard';
 import type { TaskCardProps } from './TaskCard.types';
 
@@ -19,6 +20,7 @@ function TaskCardFixture({
   onCommit,
   onMerge,
   isActionPending,
+  usageHot = null,
   ...props
 }: TaskCardProps &
   Partial<
@@ -34,7 +36,7 @@ function TaskCardFixture({
       | 'onMerge'
       | 'isActionPending'
     >
-  >) {
+  > & { usageHot?: UsageHotWindow | null }) {
   return (
     <TaskActionsProvider
       actions={makeTaskActions({
@@ -49,10 +51,20 @@ function TaskCardFixture({
         isActionPending,
       })}
     >
-      <TaskCard {...props} />
+      <UsageHotProvider value={usageHot}>
+        <TaskCard {...props} />
+      </UsageHotProvider>
     </TaskActionsProvider>
   );
 }
+
+/** A hot Claude 5h window over the throttle threshold — drives the advisory chip. */
+const HOT_WINDOW: UsageHotWindow = {
+  provider: 'claude',
+  windowLabel: 'Session (5h)',
+  usedPercent: 93,
+  resetsAt: null,
+};
 
 const meta = {
   title: 'Board/TaskCard',
@@ -177,4 +189,25 @@ export const CommitVerified: Story = {
  *  The cross-column move itself is resolved by the board's `<DndContext>`. */
 export const Draggable: Story = {
   args: { task: TASKS_BY_STATUS.backlog, draggable: true },
+};
+
+/** Usage hot (spec 2026-07-11): a backlog card shows the advisory "usage high" chip
+ *  beside Run — but the Run button stays ENABLED (manual starts are never blocked). */
+export const UsageHigh: Story = {
+  args: { task: TASKS_BY_STATUS.backlog, usageHot: HOT_WINDOW },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(/usage high/i)).toBeInTheDocument();
+    await expect(canvas.getByRole('button', { name: /^run$/i })).toBeEnabled();
+  },
+};
+
+/** Usage hot on a failed card — the chip sits beside Retry, which stays enabled. */
+export const UsageHighRetry: Story = {
+  args: { task: TASKS_BY_STATUS.failed, usageHot: HOT_WINDOW },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(/usage high/i)).toBeInTheDocument();
+    await expect(canvas.getByRole('button', { name: /^retry$/i })).toBeEnabled();
+  },
 };

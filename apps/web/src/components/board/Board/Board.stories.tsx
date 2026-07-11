@@ -42,9 +42,13 @@ function BoardFixture({
   concurrency = 3,
   autoMode = false,
   autoCommitOnVerified = false,
+  autoPauseUsageThreshold = 90,
+  usageMeterEnabled = true,
+  usagePause = null,
   breaker = null,
   onToggleAutoMode,
   onAutoCommitChange,
+  onThresholdChange,
   onConcurrencyChange,
   onResume,
   ...props
@@ -67,9 +71,13 @@ function BoardFixture({
           concurrency,
           autoMode,
           autoCommitOnVerified,
+          autoPauseUsageThreshold,
+          usageMeterEnabled,
+          usagePause,
           breaker,
           onToggleAutoMode: onToggleAutoMode ?? (() => {}),
           onAutoCommitChange: onAutoCommitChange ?? (() => {}),
+          onThresholdChange: onThresholdChange ?? (() => {}),
           onConcurrencyChange: onConcurrencyChange ?? (() => {}),
           onResume: onResume ?? (() => {}),
         }}
@@ -112,6 +120,9 @@ const meta = {
     concurrency: 3,
     autoMode: false,
     autoCommitOnVerified: false,
+    autoPauseUsageThreshold: 90,
+    usageMeterEnabled: true,
+    usagePause: null,
     breaker: null,
     selectedId: null,
     logCounts: { 't-running': 7 },
@@ -122,6 +133,7 @@ const meta = {
     onClearColumn: fn(),
     onToggleAutoMode: fn(),
     onAutoCommitChange: fn(),
+    onThresholdChange: fn(),
     onConcurrencyChange: fn(),
     onResume: fn(),
   },
@@ -178,6 +190,37 @@ export const AutoModeOn: Story = {
 /** The circuit breaker tripped: a dismissable Resume banner is surfaced. */
 export const CircuitBreakerPaused: Story = {
   args: { tasks: ALL_TASKS, breaker: { failureThreshold: 3 } },
+};
+
+/** Usage-paused (spec 2026-07-11): the loop stopped picking up new runs because a
+ *  Claude window crossed the threshold — a dismissable banner shows the window +
+ *  reset clock. No Resume button (it auto-resumes when usage cools). */
+export const UsagePaused: Story = {
+  args: {
+    tasks: ALL_TASKS,
+    autoMode: true,
+    usagePause: {
+      provider: 'claude',
+      windowLabel: 'Session (5h)',
+      usedPercent: 94,
+      resetsAt: new Date(Date.now() + 2 * 3_600_000).toISOString(),
+    },
+  },
+};
+
+/** A usage window over threshold with no reset instant — the banner drops the
+ *  "resumes ~…" clause. */
+export const UsagePausedNoReset: Story = {
+  args: {
+    tasks: ALL_TASKS,
+    autoMode: true,
+    usagePause: {
+      provider: 'claude',
+      windowLabel: 'Weekly',
+      usedPercent: 97,
+      resetsAt: null,
+    },
+  },
 };
 
 /** Play test: typing a keyword filters cards to title/description matches. */
