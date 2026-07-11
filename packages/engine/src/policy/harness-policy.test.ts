@@ -346,6 +346,24 @@ describe('least-privilege tool denial (module #9)', () => {
     ).toBe(false);
   });
 
+  test('#223: an mcp__server__* deny entry gates every tool from that server', () => {
+    const policy = compiled([], [], undefined, [], ['mcp__acme__*']);
+    // A tool the policy never enumerated is still gated by the server glob.
+    const denied = evaluateHarnessPolicy('mcp__acme__anytool', {}, policy, undefined);
+    expect(denied.denied).toBe(true);
+    expect(denied.ruleId).toBe(HARNESS_TOOL_DENY_RULE_ID);
+    // A different server is untouched, and a native name is never a wildcard.
+    expect(
+      evaluateHarnessPolicy('mcp__other__push', {}, policy, undefined).denied,
+    ).toBe(false);
+    expect(
+      evaluateHarnessPolicy('WebSearch', {}, policy, undefined).denied,
+    ).toBe(false);
+    // The glob is a prefix, not an exact entry.
+    expect(policy.disallowedTools.exact.size).toBe(0);
+    expect(policy.disallowedTools.prefixes).toEqual(['mcp__acme__']);
+  });
+
   test('a disallowed mutation tool is denied by the tool rule, not path rules', () => {
     const policy = compiled(['bun.lock'], [], undefined, [], ['Write']);
     const denied = write(policy, 'src/app.ts');
@@ -356,7 +374,7 @@ describe('least-privilege tool denial (module #9)', () => {
   test('empty/whitespace tool entries are skipped at compile', () => {
     const logger = fakeLogger();
     const policy = compiled([], [], logger, [], ['', '  ', 'WebSearch']);
-    expect(policy.disallowedTools.size).toBe(1);
+    expect(policy.disallowedTools.exact.size).toBe(1);
   });
 });
 
@@ -378,6 +396,38 @@ describe('interactive ask tier (module #9)', () => {
     expect(
       evaluateHarnessPolicy('mcp__acme__pull', {}, policy, undefined).ask,
     ).toBeUndefined();
+  });
+
+  test('#223: an mcp__server__* ask entry escalates every tool from that server', () => {
+    const policy = compiled([], [], undefined, [], [], ['mcp__acme__*']);
+    expect(
+      evaluateHarnessPolicy('mcp__acme__anytool', {}, policy, undefined).ask,
+    ).toBe(true);
+    // A different server and a native tool are untouched by the server glob.
+    expect(
+      evaluateHarnessPolicy('mcp__other__anytool', {}, policy, undefined).ask,
+    ).toBeUndefined();
+    expect(
+      evaluateHarnessPolicy('WebSearch', {}, policy, undefined).ask,
+    ).toBeUndefined();
+  });
+
+  test('#223: a server-glob deny shadows a matching ask entry (dead config warns)', () => {
+    const logger = fakeLogger();
+    const policy = compiled(
+      [],
+      [],
+      logger,
+      [],
+      ['mcp__acme__*'],
+      ['mcp__acme__push'],
+    );
+    // Deny wins: the glob-denied server tool is denied, not asked.
+    const verdict = evaluateHarnessPolicy('mcp__acme__push', {}, policy, undefined);
+    expect(verdict.denied).toBe(true);
+    expect(verdict.ask).toBeUndefined();
+    expect(verdict.ruleId).toBe(HARNESS_TOOL_DENY_RULE_ID);
+    expect(logger.warn).toHaveBeenCalled();
   });
 
   test('a tool in both disallowedTools and askTools is DENIED (deny wins)', () => {
@@ -427,7 +477,7 @@ describe('interactive ask tier (module #9)', () => {
   test('empty/whitespace ask entries are skipped at compile', () => {
     const logger = fakeLogger();
     const policy = compiled([], [], logger, [], [], ['', '  ', 'WebFetch']);
-    expect(policy.askTools.size).toBe(1);
+    expect(policy.askTools.exact.size).toBe(1);
   });
 
   test('allowTools is NOT compiled into the hook policy (SDK-side only)', () => {

