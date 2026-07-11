@@ -170,13 +170,18 @@ export class BackpressuredWriter {
  * stringified tool output (a big-file Read or long Bash result, tens-to-hundreds
  * of KB), which the union walk re-validates variant by variant to reach the
  * `tool-result` member — same typed-translator trust argument as `assistant-delta`,
- * far larger payload. Every other event is low-frequency (lifecycle/terminal), so
- * full validation stays on there where the cost is negligible and an upstream
- * contract gap actually matters.
+ * far larger payload. `tool-use-requested` is the inbound mirror: it fires once per
+ * tool call and carries the tool's full `input` object (a Write's entire file
+ * `content`, a long Bash script, a big Edit body — tens-to-hundreds of KB), which
+ * the union walk re-validates variant by variant to reach its member. Same
+ * typed-translator trust argument, same large-payload cost as `tool-result`. Every
+ * other event is low-frequency (lifecycle/terminal), so full validation stays on
+ * there where the cost is negligible and an upstream contract gap actually matters.
  */
 const FAST_PATH_EVENT_TYPES = new Set<NightcoreEvent['type']>([
   'assistant-delta',
   'tool-result',
+  'tool-use-requested',
 ]);
 
 /**

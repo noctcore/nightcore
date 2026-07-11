@@ -260,6 +260,39 @@ describe('createSidecar — event sink', () => {
     expect(errors).toEqual([]);
   });
 
+  test('a hot tool-use-requested is fast-pathed to the wire with its full input intact', () => {
+    const manager = new StubManager();
+    const lines: string[] = [];
+    const errors: string[] = [];
+    createSidecar(manager, (line) => lines.push(line), (m) => errors.push(m));
+
+    // tool-use-requested fires once per tool call and carries the tool's full
+    // `input` object (here a big Write body). Like tool-result it is
+    // typed-translator-constructed, so it skips the union safeParse — the large
+    // input must not be re-walked variant by variant on every tool call — yet it
+    // still frames to exactly one valid NDJSON line with the input preserved.
+    const content = 'y'.repeat(200_000);
+    manager.emit({
+      type: 'tool-use-requested',
+      sessionId: 4,
+      toolUseId: 'tu-2',
+      toolName: 'Write',
+      input: { file_path: 'BIG.md', content },
+    });
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.endsWith('\n')).toBe(true);
+    expect(lines[0]!.trimEnd().includes('\n')).toBe(false);
+    expect(JSON.parse(lines[0]!)).toEqual({
+      type: 'tool-use-requested',
+      sessionId: 4,
+      toolUseId: 'tu-2',
+      toolName: 'Write',
+      input: { file_path: 'BIG.md', content },
+    });
+    expect(errors).toEqual([]);
+  });
+
   test('a malformed low-frequency event is still dropped and logged, not shipped', () => {
     const manager = new StubManager();
     const lines: string[] = [];
