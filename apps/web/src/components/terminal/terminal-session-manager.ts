@@ -3,17 +3,14 @@
  * that owns live `@xterm/xterm` instances and their binding to the PTY bridge.
  *
  * WHY A MODULE-LEVEL CACHE (the remount/re-attach answer): the shell's routed-view
- * container remounts on every nav switch (AnimatePresence), and PR A exposes NO
- * live-session scrollback read (`terminal_read_persisted` covers dead sessions
- * only, for the PR C restore UI). So the ONLY way a session's rendered scrollback
- * survives a view switch is to keep the xterm instance itself alive across React
- * remounts — a module-level `Map<sessionId, CachedSession>` here, outside the
- * component tree. The channel handler writes bytes straight into the (always-alive)
- * xterm even while its pane is unmounted, so a background tab keeps buffering
- * exactly like the reference apps. React state (the tab list) is derived; this map
- * is the source of truth for instances. `openSession` creates + spawns + caches;
- * `attachSession` moves the persistent host element into the live pane and wires
- * input/resize; `closeSession` kills + disposes. Not a React hook — pure lifecycle.
+ * container remounts on every nav switch (AnimatePresence), so the only way a
+ * session's rendered scrollback survives a view switch is to keep the xterm instance
+ * alive across React remounts — a module-level `Map<sessionId, CachedSession>` here,
+ * outside the component tree. The channel handler writes bytes straight into the
+ * (always-alive) xterm even while its pane is unmounted, so a background tab keeps
+ * buffering. React state (the tab list) is derived; this map is the source of truth.
+ * `openSession` spawns + caches; `attachSession` moves the persistent host into the
+ * live pane and wires input/resize; `closeSession` kills + disposes. Pure lifecycle.
  */
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
@@ -35,6 +32,7 @@ import {
   writeTerminal,
 } from '@/lib/bridge';
 
+import { forgetCommandCapture, recordCommandInput } from './terminal-command-capture';
 import { installKeymap } from './terminal-keymap';
 import {
   buildTerminalOptions,
@@ -332,9 +330,10 @@ export function attachSession(id: string, container: HTMLElement): () => void {
   if (!entry.opened) {
     entry.term.open(entry.host);
     entry.opened = true;
-    // Write path: xterm keystrokes/paste → terminal_write.
+    // Write path: xterm keystrokes → terminal_write + the opt-in AI-naming capture.
     entry.input = entry.term.onData((data) => {
       void writeTerminal(id, encoder.encode(data));
+      recordCommandInput(id, data);
     });
   }
 
@@ -372,6 +371,7 @@ export function attachSession(id: string, container: HTMLElement): () => void {
 export async function closeSession(id: string): Promise<void> {
   const entry = cache.get(id);
   cache.delete(id);
+  forgetCommandCapture(id); // drop any AI-naming capture state (round-2 PR A)
   if (entry === undefined) return;
   try {
     await killTerminal(id);

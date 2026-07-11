@@ -13,7 +13,6 @@ import {
   listTerminals,
   listTerminalsPersisted,
   type PersistedTerminalInfo,
-  setTerminalTitle,
   type TerminalSessionInfo,
 } from '@/lib/bridge';
 import {
@@ -22,6 +21,7 @@ import {
   reconcileTerminalLinks,
 } from '@/lib/terminal-links';
 
+import { useRenameSession, useTerminalAiNaming } from '../terminal-ai-naming';
 import { subscribePasteRejected } from '../terminal-keymap';
 import { useTerminalLayout } from '../terminal-layout';
 import { setTerminalPlatform } from '../terminal-platform';
@@ -257,14 +257,10 @@ export function useTerminalView(input: UseTerminalViewInput) {
   const requestClose = useCallback((id: string) => setPendingClose(id), []);
   const cancelClose = useCallback(() => setPendingClose(null), []);
 
-  /** Rename a live session (decision 5): optimistic local update, then persist via
-   *  `terminal_set_title` (trims + clears on blank; empty falls back to the cwd leaf). */
-  const renameSession = useCallback((id: string, next: string) => {
-    const trimmed = next.trim();
-    const title = trimmed === '' ? null : trimmed;
-    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title } : s)));
-    void setTerminalTitle(id, title);
-  }, []);
+  // Rename (decision 5 + round-2 PR A precedence) + AI tab auto-naming wiring, both
+  // extracted to `terminal-ai-naming` so this hook stays under the file-size ratchet.
+  const renameSession = useRenameSession(setSessions);
+  useTerminalAiNaming(input.aiNaming, setSessions);
 
   const confirmClose = useCallback(() => {
     const id = pendingClose;

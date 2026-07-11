@@ -21,6 +21,7 @@ function session(over: Partial<TerminalSessionInfo>): TerminalSessionInfo {
     alive: true,
     createdAt: Date.now(),
     title: null,
+    titleSource: null,
     ...over,
   };
 }

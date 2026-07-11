@@ -72,6 +72,7 @@ const meta = {
     scrollback: null,
     tasks: [],
     yoloLaunch: false,
+    aiNaming: false,
     onConfinedDefaultChange: fn(),
   },
 } satisfies Meta<typeof TerminalViewFixture>;

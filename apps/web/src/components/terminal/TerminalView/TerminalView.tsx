@@ -32,6 +32,7 @@ export function TerminalView({
   scrollback,
   tasks,
   yoloLaunch,
+  aiNaming,
   onConfinedDefaultChange,
 }: TerminalViewProps) {
   const { worktrees } = useWorktreesContext();
@@ -45,6 +46,7 @@ export function TerminalView({
     scrollback,
     tasks,
     yoloLaunch,
+    aiNaming,
     onConfinedDefaultChange,
   });
   // Ids never collide (a restored session is dead), so the active tab is exactly one

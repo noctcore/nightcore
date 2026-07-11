@@ -17,6 +17,7 @@ export function makeTerminalSession(
     alive: true,
     createdAt: 1_718_900_000_000,
     title: null,
+    titleSource: null,
     ...over,
   };
 }

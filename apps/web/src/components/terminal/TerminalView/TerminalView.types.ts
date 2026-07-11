@@ -28,6 +28,10 @@ export interface TerminalViewProps {
   /** Settings YOLO launch flag (decision 3/4e): when true the composed "Launch Claude"
    *  command appends `--dangerously-skip-permissions`. */
   yoloLaunch: boolean;
+  /** Settings AI tab auto-naming flag (round-2 PR A): when true, a non-trivial command
+   *  in a tab whose title isn't manually/task-locked triggers a haiku one-shot that
+   *  suggests a 2–3-word title. Default off (opt-in). */
+  aiNaming: boolean;
   /** Persist the confined choice actually used, so it seeds the next picker open. */
   onConfinedDefaultChange: (confined: boolean) => void;
 }
@@ -44,5 +48,6 @@ export interface UseTerminalViewInput {
   scrollback: number | null;
   tasks: Task[];
   yoloLaunch: boolean;
+  aiNaming: boolean;
   onConfinedDefaultChange: (confined: boolean) => void;
 }

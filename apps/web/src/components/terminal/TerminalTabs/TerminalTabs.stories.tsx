@@ -15,6 +15,7 @@ function session(over: Partial<TerminalSessionInfo> & { id: string }): TerminalS
     alive: true,
     createdAt: Date.now(),
     title: null,
+    titleSource: null,
     ...over,
   };
 }
@@ -28,6 +29,7 @@ function persisted(id: string): PersistedTerminalInfo {
     createdAt: 0,
     updatedAt: 1,
     title: null,
+    titleSource: null,
   };
 }
 

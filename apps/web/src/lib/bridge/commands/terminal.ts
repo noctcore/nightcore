@@ -30,6 +30,7 @@ import type {
   PersistedTerminalScrollback,
   TerminalDaemonStatus,
   TerminalSessionInfo,
+  TitleSource,
   WorktreeInfo,
 } from '../types';
 
@@ -136,15 +137,35 @@ export async function writeTerminal(id: string, data: Uint8Array): Promise<void>
   await invoke('terminal_write', { id, data: Array.from(data) });
 }
 
-/** Set (or clear, with `null`) a session's manual tab name (decision 5). The
- *  server trims + treats blank as "clear", and persists the name so it survives a
- *  read-only restore. No-op outside Tauri — the caller's optimistic local update
- *  still renames the echo tab in Storybook / `dogfood:ui`. Dynamic import per the
- *  bridge's Tauri-core isolation rule. */
-export async function setTerminalTitle(id: string, title: string | null): Promise<void> {
+/** Set (or clear, with `null`) a session's tab name, carrying its precedence `source`
+ *  (decision 5 + round-2 PR A): `'manual'` (an inline rename) and `'task'` (a linked
+ *  task's title) always out-rank an AI (`'auto'`) name server-side. The server trims +
+ *  treats blank as "clear", and persists the name so it survives a read-only restore.
+ *  No-op outside Tauri — the caller's optimistic local update still renames the echo
+ *  tab in Storybook / `dogfood:ui`. Dynamic import per the bridge's Tauri-core
+ *  isolation rule. */
+export async function setTerminalTitle(
+  id: string,
+  title: string | null,
+  source: TitleSource,
+): Promise<void> {
   if (!isTauri()) return;
   const { invoke } = await import('@tauri-apps/api/core');
-  await invoke('terminal_set_title', { id, title });
+  await invoke('terminal_set_title', { id, title, source });
+}
+
+/** Ask a sandboxed `claude -p` haiku one-shot for a 2–3-word tab title based on the
+ *  last non-trivial `command` (round-2 PR A, opt-in). The Rust command applies the
+ *  suggestion server-side with `'auto'` precedence GUARDED under the registry lock —
+ *  a manual/task rename always wins — and returns the title it actually applied, or
+ *  `null` when naming is off, the session isn't AI-eligible, or generation failed.
+ *  Fail-soft: any miss keeps the current title. Degrades to `null` outside the webview
+ *  (no `claude`, no naming). Dynamic import per the bridge's Tauri-core isolation rule
+ *  (§9 trap f) — the capture layer calls this from its debounce trigger. */
+export async function suggestTerminalTitle(id: string, command: string): Promise<string | null> {
+  if (!isTauri()) return null;
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<string | null>('terminal_suggest_title', { id, command });
 }
 
 /** Create a user-driven terminal worktree from the new-tab picker (spec PR 5a): slug the
@@ -238,7 +259,16 @@ export async function readTerminalPersisted(
   id: string,
 ): Promise<PersistedTerminalScrollback> {
   return tauriInvoke<PersistedTerminalScrollback>('terminal_read_persisted', { id }, {
-    info: { id, cwd: '', shell: '', confined: false, createdAt: 0, updatedAt: 0, title: null },
+    info: {
+      id,
+      cwd: '',
+      shell: '',
+      confined: false,
+      createdAt: 0,
+      updatedAt: 0,
+      title: null,
+      titleSource: null,
+    },
     dataBase64: '',
   });
 }

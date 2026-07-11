@@ -37,6 +37,7 @@ function settingsWith(projectId: string, appearance: BoardAppearance): Settings 
     usageMeterEnabled: false,
     terminalYoloLaunch: false,
     terminalDaemonEnabled: false,
+    terminalAiNaming: false,
     projectOverrides: { [projectId]: { boardAppearance: appearance } },
   };
 }

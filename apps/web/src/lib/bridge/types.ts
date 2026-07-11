@@ -117,6 +117,9 @@ export type { SubIssuePreview } from '../generated/SubIssuePreview';
 export type { PersistedTerminalInfo } from '../generated/PersistedTerminalInfo';
 export type { PersistedTerminalScrollback } from '../generated/PersistedTerminalScrollback';
 export type { TerminalSessionInfo } from '../generated/TerminalSessionInfo';
+// Tab-title precedence source (round-2 PR A): `"manual" | "task" | "auto"` — Manual
+// and Task always out-rank an AI (`auto`) name.
+export type { TitleSource } from '../generated/TitleSource';
 // Detached PTY daemon (cockpit spec PR 6) status — whether the experimental
 // live-PTY-survival daemon is enabled, supported on this platform, and live.
 export type { TerminalDaemonStatus } from '../generated/TerminalDaemonStatus';

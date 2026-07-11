@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useToast } from '@/components/ui';
-import type { PersistedTerminalInfo, Task, TerminalSessionInfo } from '@/lib/bridge';
+import type { PersistedTerminalInfo, Task, TerminalSessionInfo, TitleSource } from '@/lib/bridge';
 import { writeTerminal } from '@/lib/bridge';
 import {
   clearSessionTaskLink,
@@ -60,8 +60,10 @@ export interface UseTerminalTasksInput {
   readonly projectPath: string | null;
   /** The YOLO launch flag (decision 3/4e): appends `--dangerously-skip-permissions`. */
   readonly yoloLaunch: boolean;
-  /** PR 1 rename seam — a linked terminal auto-takes the task title (decision 2). */
-  readonly renameSession: (id: string, title: string) => void;
+  /** PR 1 rename seam — a linked terminal auto-takes the task title (decision 2),
+   *  written with the `'task'` precedence source (round-2 PR A) so it out-ranks an AI
+   *  auto-name but yields to a manual rename. */
+  readonly renameSession: (id: string, title: string, source: TitleSource) => void;
   /** Spawn a live shell in a cwd (the resume flow reuses the view's spawn path). */
   readonly spawnInto: (path: string, confined: boolean) => Promise<TerminalSessionInfo>;
   /** Drop a restored (read-only) tab after a fresh shell replaces it (resume flow). */
@@ -112,7 +114,9 @@ export function useTerminalTasks({
       const framed = frameBracketedPaste(composeTaskContext(task, projectPath));
       void writeTerminal(session.id, encoder.encode(framed));
       linkTaskToSession(task.id, session.id);
-      renameSession(session.id, task.title);
+      // Task auto-take carries the `'task'` source — wins over an AI name, loses to a
+      // manual rename (round-2 PR A precedence).
+      renameSession(session.id, task.title, 'task');
     },
     [projectPath, renameSession],
   );

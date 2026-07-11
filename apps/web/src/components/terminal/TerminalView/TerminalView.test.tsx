@@ -54,7 +54,16 @@ vi.mock('@/lib/bridge', async (importOriginal) => {
     directoryExists: (path: string) => Promise.resolve(path.endsWith('/t1')),
     readTerminalPersisted: (id: string) =>
       Promise.resolve({
-        info: { id, cwd: '', shell: '', confined: false, createdAt: 0, updatedAt: 0, title: null },
+        info: {
+          id,
+          cwd: '',
+          shell: '',
+          confined: false,
+          createdAt: 0,
+          updatedAt: 0,
+          title: null,
+          titleSource: null,
+        },
         dataBase64: '',
       }),
   };
@@ -75,11 +84,21 @@ function fakeSession(id: string, cwd: string): TerminalSessionInfo {
     alive: true,
     createdAt: 0,
     title: null,
+    titleSource: null,
   };
 }
 
 function persisted(id: string, cwd: string): PersistedTerminalInfo {
-  return { id, cwd, shell: '/bin/zsh', confined: false, createdAt: 0, updatedAt: 1, title: null };
+  return {
+    id,
+    cwd,
+    shell: '/bin/zsh',
+    confined: false,
+    createdAt: 0,
+    updatedAt: 1,
+    title: null,
+    titleSource: null,
+  };
 }
 
 afterEach(() => {

@@ -23,6 +23,7 @@ function fakeSession(over: Partial<TerminalSessionInfo>): TerminalSessionInfo {
     alive: true,
     createdAt: 0,
     title: null,
+    titleSource: null,
     ...over,
   };
 }

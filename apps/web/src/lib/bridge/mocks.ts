@@ -172,6 +172,7 @@ export const MOCK_SETTINGS: Settings = {
   usageMeterEnabled: false,
   terminalYoloLaunch: false,
   terminalDaemonEnabled: false,
+  terminalAiNaming: false,
   projectOverrides: {},
 };
 
@@ -272,6 +273,7 @@ export function echoSpawnTerminal(
     alive: true,
     createdAt: Date.now(),
     title: null,
+    titleSource: null,
   };
   queueMicrotask(() => {
     echoHandlers

@@ -175,6 +175,17 @@ export function buildInterfaceCards(
           ),
         },
         {
+          label: 'Auto-name terminal tabs',
+          hint: 'Uses a sandboxed claude haiku on the last command to suggest a short tab title after you run something. Off by default. A tab you rename yourself — or link to a task — keeps that name; the AI never overwrites it.',
+          control: (
+            <Toggle
+              on={settings.terminalAiNaming}
+              onChange={(next) => patchGlobal({ terminalAiNaming: next })}
+              label="Auto-name terminal tabs from the last command"
+            />
+          ),
+        },
+        {
           label: 'Live-PTY survival (experimental)',
           hint: 'EXPERIMENTAL, macOS/Linux only. Runs your shells in a detached background process so they keep running when you quit and reattach (replaying their output) on relaunch, instead of a read-only restore. Off by default; takes effect on the next relaunch. On other platforms this has no effect. Confined (sandboxed) tabs never survive.',
           control: (

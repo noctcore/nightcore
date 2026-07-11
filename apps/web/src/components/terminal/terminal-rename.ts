@@ -6,9 +6,12 @@
  * pane header (`TerminalPane`) drive the exact same edit semantics without
  * duplicating the fiddly commit/cancel/blur guard.
  *
- * Rename is MANUAL only (no AI auto-naming in v1). An empty/whitespace commit
- * clears the name back to the cwd-leaf fallback; the caller (and the Rust
- * `terminal_set_title`) normalize blanks to "unset".
+ * This hook drives the MANUAL rename gesture specifically — a manual rename carries
+ * the `'manual'` title source, which ALWAYS wins over a linked task's title and the
+ * opt-in AI auto-name (round-2 PR A added AI naming behind a precedence guard, so a
+ * hand-renamed tab is never auto-renamed). An empty/whitespace commit clears the name
+ * back to the cwd-leaf fallback; the caller (and the Rust `terminal_set_title`)
+ * normalize blanks to "unset".
  */
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 

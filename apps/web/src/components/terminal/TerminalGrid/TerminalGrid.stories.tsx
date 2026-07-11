@@ -21,6 +21,7 @@ function session(id: string, over: Partial<TerminalSessionInfo> = {}): TerminalS
     alive: true,
     createdAt: Date.now(),
     title: null,
+    titleSource: null,
     ...over,
   };
 }

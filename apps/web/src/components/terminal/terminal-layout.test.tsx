@@ -28,6 +28,7 @@ function session(id: string): TerminalSessionInfo {
     alive: true,
     createdAt: 0,
     title: null,
+    titleSource: null,
   };
 }
 
