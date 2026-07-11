@@ -32,6 +32,9 @@ function insightSummary(run: InsightRun): ScanRunSummary {
     status: run.status,
     createdAt: run.createdAt,
     projectPath: run.projectPath,
+    model: run.model,
+    costUsd: run.costUsd,
+    durationMs: run.durationMs,
   };
 }
 
@@ -43,6 +46,9 @@ function scorecardSummary(run: ScorecardRun): ScanRunSummary {
     status: run.status,
     createdAt: run.createdAt,
     projectPath: run.projectPath,
+    model: run.model,
+    costUsd: run.costUsd,
+    durationMs: run.durationMs,
   };
 }
 
@@ -54,6 +60,9 @@ function harnessSummary(run: HarnessRun): ScanRunSummary {
     status: run.status,
     createdAt: run.createdAt,
     projectPath: run.projectPath,
+    model: run.model,
+    costUsd: run.costUsd,
+    durationMs: run.durationMs,
   };
 }
 

@@ -10,6 +10,7 @@ import {
   RetryIcon,
   RunLifecycleShell,
   RunProgress,
+  RunUsageLine,
   StopIcon,
 } from '@/components/ui';
 
@@ -66,19 +67,33 @@ export function ScorecardView(props: ScorecardViewProps) {
     </>
   );
 
-  const summary =
-    view.stream.status === 'running' ? (
-      <span>{view.summary}</span>
-    ) : (
-      <button
-        type="button"
-        onClick={view.startNewRun}
-        className="transition-colors hover:text-foreground"
-      >
-        {view.summary}
-        <span className="sr-only"> — reconfigure run</span>
-      </button>
-    );
+  const summary = (
+    <div className="flex items-center justify-between gap-3">
+      {view.stream.status === 'running' ? (
+        <span>{view.summary}</span>
+      ) : (
+        <button
+          type="button"
+          onClick={view.startNewRun}
+          className="min-w-0 truncate text-left transition-colors hover:text-foreground"
+        >
+          {view.summary}
+          <span className="sr-only"> — reconfigure run</span>
+        </button>
+      )}
+      {/* The persisted run receipt (cost/tokens/duration/model), surfaced on RESULTS
+          so it no longer vanishes when the RUNNING screen ends (T8). */}
+      {view.phase === 'results' && (
+        <RunUsageLine
+          model={view.stream.model}
+          costUsd={view.stream.costUsd}
+          usage={view.stream.usage}
+          durationMs={view.stream.durationMs}
+          className="shrink-0"
+        />
+      )}
+    </div>
+  );
 
   return (
     <>

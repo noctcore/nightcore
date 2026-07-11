@@ -13,6 +13,7 @@ import {
   RetryIcon,
   RunLifecycleShell,
   RunProgress,
+  RunUsageLine,
   StopIcon,
 } from '@/components/ui';
 
@@ -70,22 +71,35 @@ export function InsightView(props: InsightViewProps) {
     </>
   );
 
-  // Collapsed-config bar: read-only while running, click-to-reconfigure otherwise.
-  const summary =
-    view.stream.status === 'running' ? (
-      <span>{view.summary}</span>
-    ) : (
-      <button
-        type="button"
-        onClick={view.startNewRun}
-        className="transition-colors hover:text-foreground"
-      >
-        {view.summary}
-        {/* Append to the accessible name without an aria-label, which would
-            clobber the visible config text screen-reader users still want read. */}
-        <span className="sr-only"> — reconfigure run</span>
-      </button>
-    );
+  // Collapsed-config bar: read-only while running, click-to-reconfigure otherwise,
+  // with the persisted run receipt (cost/tokens/duration/model) on RESULTS (T8).
+  const summary = (
+    <div className="flex items-center justify-between gap-3">
+      {view.stream.status === 'running' ? (
+        <span>{view.summary}</span>
+      ) : (
+        <button
+          type="button"
+          onClick={view.startNewRun}
+          className="min-w-0 truncate text-left transition-colors hover:text-foreground"
+        >
+          {view.summary}
+          {/* Append to the accessible name without an aria-label, which would
+              clobber the visible config text screen-reader users still want read. */}
+          <span className="sr-only"> — reconfigure run</span>
+        </button>
+      )}
+      {view.phase === 'results' && (
+        <RunUsageLine
+          model={view.stream.model}
+          costUsd={view.stream.costUsd}
+          usage={view.stream.usage}
+          durationMs={view.stream.durationMs}
+          className="shrink-0"
+        />
+      )}
+    </div>
+  );
 
   return (
     <>

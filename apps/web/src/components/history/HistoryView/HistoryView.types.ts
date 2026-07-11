@@ -19,6 +19,12 @@ export interface ScanRunSummary {
   status: string;
   createdAt: number;
   projectPath: string;
+  /** The model the run used (`''` when unrecorded). Persisted per run (T8). */
+  model: string;
+  /** Approximate total run cost in USD (from the transcript). Persisted per run. */
+  costUsd: number;
+  /** Wall-clock run duration in ms; `0` when unrecorded. Persisted per run. */
+  durationMs: number;
 }
 
 /** The merged-history hook result: the project-filtered, newest-first run list, a

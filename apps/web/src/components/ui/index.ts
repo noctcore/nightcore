@@ -134,6 +134,7 @@ export type {
   RunProgressUsage,
 } from './RunProgress';
 export { RunProgress } from './RunProgress';
+export { RunUsageLine } from './RunUsageLine';
 export { Segmented } from './Segmented';
 export type { SegmentedProps } from './Segmented/Segmented.types';
 export { Skeleton } from './Skeleton';

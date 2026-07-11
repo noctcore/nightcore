@@ -12,6 +12,7 @@ import {
   RetryIcon,
   RunLifecycleShell,
   RunProgress,
+  RunUsageLine,
   StopIcon,
   VerifiedIcon,
 } from '@/components/ui';
@@ -284,19 +285,32 @@ export function HarnessView(props: HarnessViewProps) {
     </>
   );
 
-  const summary =
-    view.phase === 'running' ? (
-      view.summary
-    ) : (
-      <button
-        type="button"
-        onClick={view.reconfigure}
-        className="text-left transition-colors hover:text-foreground"
-      >
-        {view.summary}
-        <span className="sr-only"> Reconfigure run</span>
-      </button>
-    );
+  const summary = (
+    <div className="flex items-center justify-between gap-3">
+      {view.phase === 'running' ? (
+        view.summary
+      ) : (
+        <button
+          type="button"
+          onClick={view.reconfigure}
+          className="min-w-0 truncate text-left transition-colors hover:text-foreground"
+        >
+          {view.summary}
+          <span className="sr-only"> Reconfigure run</span>
+        </button>
+      )}
+      {/* The persisted run receipt (cost/tokens/duration/model) on RESULTS (T8). */}
+      {view.phase === 'results' && (
+        <RunUsageLine
+          model={view.stream.model}
+          costUsd={view.stream.costUsd}
+          usage={view.stream.usage}
+          durationMs={view.stream.durationMs}
+          className="shrink-0"
+        />
+      )}
+    </div>
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

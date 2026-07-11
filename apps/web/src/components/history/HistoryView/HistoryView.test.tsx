@@ -115,6 +115,9 @@ test('a row click opens the run with its family and id', async () => {
       status: 'completed',
       createdAt: Date.now(),
       projectPath: '/p',
+      model: 'claude-opus-4-8',
+      costUsd: 0.42,
+      durationMs: 74_000,
     },
   ];
   const screen = render(
@@ -122,6 +125,26 @@ test('a row click opens the run with its family and id', async () => {
   );
   await screen.getByRole('button', { name: /Harness/ }).click();
   expect(onOpenRun).toHaveBeenCalledWith('harness', 'h1');
+});
+
+test('a row surfaces the persisted run receipt (approximate cost + duration)', async () => {
+  const runs: ScanRunSummary[] = [
+    {
+      id: 'h1',
+      family: 'harness',
+      title: '3 conventions',
+      status: 'completed',
+      createdAt: Date.now(),
+      projectPath: '/p',
+      model: 'claude-opus-4-8',
+      costUsd: 0.42,
+      durationMs: 74_000,
+    },
+  ];
+  const screen = render(
+    <HistoryList runs={runs} loading={false} error={null} onOpenRun={() => {}} />,
+  );
+  await expect.element(screen.getByText(/≈ \$0\.42 · 1m 14s/)).toBeInTheDocument();
 });
 
 test('a warning row renders above the list without blanking it', async () => {
@@ -133,6 +156,9 @@ test('a warning row renders above the list without blanking it', async () => {
       status: 'completed',
       createdAt: Date.now(),
       projectPath: '/p',
+      model: 'claude-opus-4-8',
+      costUsd: 0.42,
+      durationMs: 74_000,
     },
   ];
   const screen = render(
