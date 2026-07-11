@@ -26,6 +26,8 @@ export function TerminalView({
   projectName,
   webglEnabled,
   confinedDefault,
+  fontSize,
+  scrollback,
   onConfinedDefaultChange,
 }: TerminalViewProps) {
   const { worktrees } = useWorktreesContext();
@@ -35,6 +37,8 @@ export function TerminalView({
     worktrees,
     webglEnabled,
     confinedDefault,
+    fontSize,
+    scrollback,
     onConfinedDefaultChange,
   });
   // Ids never collide (a restored session is dead), so the active tab is exactly one

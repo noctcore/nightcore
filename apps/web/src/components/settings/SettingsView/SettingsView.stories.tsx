@@ -24,6 +24,8 @@ const settings: Settings = {
   preferredEditor: null,
   terminalWebglEnabled: false,
   terminalConfinedDefault: false,
+  terminalFontSize: null,
+  terminalScrollback: null,
   usageMeterEnabled: false,
   projectOverrides: {
     nightcore: { defaultModel: 'claude-haiku-4-5' },

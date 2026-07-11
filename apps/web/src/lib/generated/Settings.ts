@@ -132,6 +132,24 @@ terminalWebglEnabled: boolean,
  */
 terminalConfinedDefault: boolean, 
 /**
+ * USER terminal (cockpit spec PR 3, decision 6e): the xterm font size (px) for
+ * live sessions. `None` ⇒ the shipped 13px. A web render preference only — the
+ * Rust scrollback ring is unaffected; the session manager applies changes to
+ * live terminals reactively (`xterm.options.fontSize`). Global-only (a machine
+ * preference, like the other terminal knobs). The web clamps to a sane range
+ * before it lands here. Serde-additive: a settings file written before this
+ * field loads as `None`.
+ */
+terminalFontSize: number | null, 
+/**
+ * USER terminal (cockpit spec PR 3, decision 6e): the xterm scrollback length
+ * (lines) for live sessions. `None` ⇒ the shipped ~10k. A web render preference
+ * only — it sizes xterm's own web-side buffer, NOT the Rust persist ring (which
+ * stays ~10k regardless). Applied to live terminals reactively (new output).
+ * Global-only. Web-clamped. Serde-additive: legacy settings load this `None`.
+ */
+terminalScrollback: number | null, 
+/**
  * Provider usage meter (issue #121, spec decision 5): opt-in. When false
  * (default), the sidebar widget shows a dormant "Enable usage meter" button and
  * the Rust poll loop parks — zero network/Keychain access until the user opts

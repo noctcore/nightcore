@@ -12,6 +12,7 @@ import {
 import type { PersistedTerminalInfo, TerminalSessionInfo } from '@/lib/bridge';
 
 import type { TerminalViewMode } from '../terminal-layout';
+import { formatShortcut } from '../terminal-platform';
 import { useInlineRename } from '../terminal-rename';
 import {
   displayTitle,
@@ -107,7 +108,7 @@ function Tab({
       )}
       {!active && <UnreadBadge count={unread} />}
       <IconButton
-        label={`Close ${label}`}
+        label={active ? `Close ${label} (${formatShortcut('W')})` : `Close ${label}`}
         onClick={() => onClose(session.id)}
         className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
       >
@@ -186,7 +187,7 @@ function ViewModeToggle({
     >
       {toGrid ? <GridIcon size={13} aria-hidden /> : <TabsIcon size={13} aria-hidden />}
       <span>{label}</span>
-      {!toGrid && <Kbd>⌘⇧E</Kbd>}
+      {!toGrid && <Kbd>{formatShortcut('E', { shift: true })}</Kbd>}
     </button>
   );
 }
@@ -242,9 +243,10 @@ export function TerminalTabs({
         title={newTabTitle(canAddTab)}
         disabled={!canAddTab}
         onClick={onNewTab}
-        className="my-0.5 flex shrink-0 items-center justify-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+        className="my-0.5 flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
       >
         <PlusIcon size={14} />
+        {canAddTab && <Kbd>{formatShortcut('T')}</Kbd>}
       </button>
       <ViewModeToggle viewMode={viewMode} onToggleViewMode={onToggleViewMode} />
     </div>

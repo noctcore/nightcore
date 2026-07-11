@@ -1,10 +1,28 @@
 /** Interface settings cards — split from settings-cards to stay under file-size ratchet. */
-import { Columns2Icon, DesignIcon, PanelLeftIcon, TerminalIcon, Toggle } from '@/components/ui';
+import {
+  Columns2Icon,
+  DesignIcon,
+  NumberField,
+  PanelLeftIcon,
+  TerminalIcon,
+  Toggle,
+} from '@/components/ui';
 import type { Settings, SettingsPatch } from '@/lib/bridge';
 
 import type { SettingsCardProps } from './SettingsCard';
 
 type SidebarStyle = 'unified' | 'classic';
+
+// Clamp bounds for the two terminal render prefs (spec PR 3d). Mirrors the terminal
+// feature's own resolver (which re-clamps on apply) — kept inline here so a settings
+// card never cross-feature-imports the terminal module. Font size in px; scrollback
+// in lines.
+const TERMINAL_FONT_SIZE = { min: 8, max: 32, default: 13 } as const;
+const TERMINAL_SCROLLBACK = { min: 1_000, max: 100_000, default: 10_000 } as const;
+
+function clampInt(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
 
 function sidebarStyleCardClass(selected: boolean): string {
   const base =
@@ -102,6 +120,46 @@ export function buildInterfaceCards(
               on={settings.terminalWebglEnabled}
               onChange={(next) => patchGlobal({ terminalWebglEnabled: next })}
               label="GPU rendering (WebGL)"
+            />
+          ),
+        },
+        {
+          label: 'Font size',
+          hint: 'Terminal text size in pixels (empty = default 13). Applies to open terminals live.',
+          control: (
+            <NumberField
+              value={settings.terminalFontSize}
+              placeholder={String(TERMINAL_FONT_SIZE.default)}
+              min={TERMINAL_FONT_SIZE.min}
+              step="1"
+              ariaLabel="Terminal font size in pixels"
+              onCommit={(n) =>
+                patchGlobal({
+                  terminalFontSize: clampInt(n, TERMINAL_FONT_SIZE.min, TERMINAL_FONT_SIZE.max),
+                })
+              }
+            />
+          ),
+        },
+        {
+          label: 'Scrollback',
+          hint: 'Lines of history kept per terminal (empty = default 10,000). Applies to new output.',
+          control: (
+            <NumberField
+              value={settings.terminalScrollback}
+              placeholder={String(TERMINAL_SCROLLBACK.default)}
+              min={TERMINAL_SCROLLBACK.min}
+              step="1000"
+              ariaLabel="Terminal scrollback length in lines"
+              onCommit={(n) =>
+                patchGlobal({
+                  terminalScrollback: clampInt(
+                    n,
+                    TERMINAL_SCROLLBACK.min,
+                    TERMINAL_SCROLLBACK.max,
+                  ),
+                })
+              }
             />
           ),
         },

@@ -11,6 +11,7 @@ import {
   identityLabel,
   identityTitle,
 } from '../terminal-shared';
+import { TerminalSearchBar } from '../TerminalSearchBar';
 import { useTerminalPane } from './TerminalPane.hooks';
 import type { TerminalPaneProps } from './TerminalPane.types';
 
@@ -95,11 +96,25 @@ function IdentityHeader({
  *  surface the session's (remount-surviving) xterm instance is attached into. A
  *  thin shell — the ref + attach effect live in `useTerminalPane`. */
 export function TerminalPane({ session, onRename }: TerminalPaneProps) {
-  const { containerRef } = useTerminalPane(session);
+  const { containerRef, search } = useTerminalPane(session);
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[#0a0a0f]">
       <IdentityHeader session={session} onRename={onRename} />
-      <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden p-1.5" />
+      <div ref={search.rootRef} className="relative min-h-0 flex-1">
+        <div ref={containerRef} className="h-full overflow-hidden p-1.5" />
+        {search.open && (
+          <div className="absolute right-3 top-2 z-10">
+            <TerminalSearchBar
+              query={search.query}
+              noMatch={search.noMatch}
+              onQueryChange={search.onQueryChange}
+              onNext={search.next}
+              onPrev={search.prev}
+              onClose={search.close}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

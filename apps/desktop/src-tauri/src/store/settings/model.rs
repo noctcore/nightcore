@@ -129,6 +129,22 @@ pub struct Settings {
     /// permissions). Global-only. Serde-additive: legacy settings load this `false`.
     #[serde(default)]
     pub terminal_confined_default: bool,
+    /// USER terminal (cockpit spec PR 3, decision 6e): the xterm font size (px) for
+    /// live sessions. `None` ⇒ the shipped 13px. A web render preference only — the
+    /// Rust scrollback ring is unaffected; the session manager applies changes to
+    /// live terminals reactively (`xterm.options.fontSize`). Global-only (a machine
+    /// preference, like the other terminal knobs). The web clamps to a sane range
+    /// before it lands here. Serde-additive: a settings file written before this
+    /// field loads as `None`.
+    #[serde(default)]
+    pub terminal_font_size: Option<u16>,
+    /// USER terminal (cockpit spec PR 3, decision 6e): the xterm scrollback length
+    /// (lines) for live sessions. `None` ⇒ the shipped ~10k. A web render preference
+    /// only — it sizes xterm's own web-side buffer, NOT the Rust persist ring (which
+    /// stays ~10k regardless). Applied to live terminals reactively (new output).
+    /// Global-only. Web-clamped. Serde-additive: legacy settings load this `None`.
+    #[serde(default)]
+    pub terminal_scrollback: Option<u32>,
     /// Provider usage meter (issue #121, spec decision 5): opt-in. When false
     /// (default), the sidebar widget shows a dormant "Enable usage meter" button and
     /// the Rust poll loop parks — zero network/Keychain access until the user opts
@@ -401,6 +417,11 @@ impl Default for Settings {
             // PR C decision 1: the human terminal is unconfined by default; the
             // confined checkbox starts off and remembers the user's last choice.
             terminal_confined_default: false,
+            // Cockpit PR 3 decision 6e: no render-pref override by default — live
+            // terminals use the shipped 13px font + ~10k web scrollback until the
+            // user sets a value in the Terminal settings section.
+            terminal_font_size: None,
+            terminal_scrollback: None,
             // Issue #121 decision 5: the usage meter is opt-in — the poll loop parks
             // and no credential is read until the user clicks "Enable usage meter".
             usage_meter_enabled: false,

@@ -6,6 +6,7 @@ import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { type RefObject, useCallback } from 'react';
 
 import { useTerminalAttach } from '../terminal-attach';
+import { type TerminalSearch, useTerminalSearch } from '../terminal-search';
 
 /** The focus + SR drag attributes spread onto the grip — dnd-kit's
  *  `DraggableAttributes` MINUS `role`/`aria-pressed`/`aria-disabled` (the grip is
@@ -35,6 +36,8 @@ export interface TerminalGridPaneView {
   readonly isDragging: boolean;
   /** True while a dragged pane hovers this (droppable) pane — drives the drop glow. */
   readonly isOver: boolean;
+  /** In-pane search state (⌘F find bar, spec PR 3c). */
+  readonly search: TerminalSearch;
 }
 
 /** Attach the session's xterm and register the pane as a same-id draggable +
@@ -44,6 +47,7 @@ export interface TerminalGridPaneView {
  *  not move/scale mid-drag (a `<DragOverlay>` renders the moving preview instead). */
 export function useTerminalGridPane(sessionId: string, draggable: boolean): TerminalGridPaneView {
   const { containerRef } = useTerminalAttach(sessionId);
+  const search = useTerminalSearch(sessionId);
   const drag = useDraggable({ id: sessionId, disabled: !draggable });
   const drop = useDroppable({ id: sessionId, disabled: !draggable });
 
@@ -69,5 +73,6 @@ export function useTerminalGridPane(sessionId: string, draggable: boolean): Term
     },
     isDragging: drag.isDragging,
     isOver: drop.isOver && draggable,
+    search,
   };
 }

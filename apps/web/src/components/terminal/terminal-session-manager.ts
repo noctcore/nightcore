@@ -16,22 +16,31 @@
  * input/resize; `closeSession` kills + disposes. Not a React hook — pure lifecycle.
  */
 import { FitAddon } from '@xterm/addon-fit';
+import { SearchAddon } from '@xterm/addon-search';
+import { WebLinksAddon } from '@xterm/addon-web-links';
 import type { IDisposable } from '@xterm/xterm';
 import { Terminal } from '@xterm/xterm';
 
 import type { SpawnTerminalOpts, TerminalHandle, TerminalSessionInfo } from '@/lib/bridge';
 import { killTerminal, resizeTerminal, spawnTerminal, writeTerminal } from '@/lib/bridge';
 
-import { TERMINAL_RENDER_OPTIONS } from './terminal-shared';
+import { installKeymap } from './terminal-keymap';
+import {
+  buildTerminalOptions,
+  openTerminalLink,
+  type TerminalRenderPrefs,
+} from './terminal-render';
+import { DEFAULT_TERMINAL_FONT_SIZE, DEFAULT_TERMINAL_SCROLLBACK } from './terminal-shared';
 import { loadWebgl, type WebglController } from './terminal-webgl';
 
-/** Live-pane xterm options: the shared cosmic-dark render config plus a blinking
- *  cursor. The renderer is DOM by default; a WebGL addon is loaded post-open when
- *  the session opted into the GPU toggle ([`ensureRenderer`], decision 7). */
-const TERMINAL_OPTIONS = {
-  ...TERMINAL_RENDER_OPTIONS,
-  cursorBlink: true,
-} as const;
+export type { TerminalRenderPrefs } from './terminal-render';
+
+/** The current render prefs new sessions spawn with. Seeded to the shipped defaults
+ *  and overwritten by {@link applyRenderPrefs} when Settings resolve. */
+let currentRenderPrefs: TerminalRenderPrefs = {
+  fontSize: DEFAULT_TERMINAL_FONT_SIZE,
+  scrollback: DEFAULT_TERMINAL_SCROLLBACK,
+};
 
 /** How long to settle rapid ResizeObserver bursts before telling the PTY (the
  *  reference apps all debounce ~100ms so a drag-resize doesn't spam SIGWINCH). */
@@ -41,6 +50,8 @@ interface CachedSession {
   readonly session: TerminalSessionInfo;
   readonly term: Terminal;
   readonly fit: FitAddon;
+  /** Per-session scrollback search (spec PR 3c) — driven by the find bar. */
+  readonly search: SearchAddon;
   readonly handle: TerminalHandle;
   /** The persistent element the terminal is opened into once, then MOVED between
    *  panes across remounts (never re-opened — re-opening loses buffer state). */
@@ -147,6 +158,54 @@ export function refitSession(id: string): void {
   entry.term.refresh(0, Math.max(0, entry.term.rows - 1));
 }
 
+// --- Search-in-scrollback (spec PR 3c) -------------------------------------
+
+/** Find the next `query` match in a session's scrollback and reveal it. `incremental`
+ *  keeps the search anchored near the viewport as the user types. Returns whether a
+ *  match was found (drives the find bar's no-match style). No-op `false` for an
+ *  unknown id. */
+export function searchNext(id: string, query: string, incremental: boolean): boolean {
+  const entry = cache.get(id);
+  if (entry === undefined) return false;
+  return entry.search.findNext(query, { incremental });
+}
+
+/** Find the previous `query` match in a session's scrollback. */
+export function searchPrevious(id: string, query: string): boolean {
+  const entry = cache.get(id);
+  if (entry === undefined) return false;
+  return entry.search.findPrevious(query);
+}
+
+/** Clear a session's search highlight decorations (find bar closed / query emptied). */
+export function clearSearch(id: string): void {
+  cache.get(id)?.search.clearDecorations();
+}
+
+/** Return keyboard focus to a session's terminal (after the find bar closes). */
+export function focusSession(id: string): void {
+  const entry = cache.get(id);
+  if (entry === undefined || !entry.opened) return;
+  entry.term.focus();
+}
+
+// --- Render preferences (spec PR 3d) ---------------------------------------
+
+/** Apply the font-size / scrollback render prefs (spec PR 3d) to EVERY live session
+ *  and remember them for future spawns. xterm applies `options` changes live, so a
+ *  font-size change repaints without reopening; scrollback resizes the buffer that
+ *  future output fills. Each live term is re-`fit()`ed since a font-size change
+ *  alters the cols/rows the container holds. */
+export function applyRenderPrefs(prefs: TerminalRenderPrefs): void {
+  currentRenderPrefs = prefs;
+  for (const entry of cache.values()) {
+    entry.term.options.fontSize = prefs.fontSize;
+    entry.term.options.scrollback = prefs.scrollback;
+    if (!entry.opened) continue;
+    refitSession(entry.session.id);
+  }
+}
+
 /** Spawn a shell and cache a live xterm bound to its output stream. The xterm is
  *  created BEFORE `spawnTerminal` so the channel's first bytes (banner/prompt) are
  *  captured — xterm buffers writes issued before `open()`. Rejects (and disposes
@@ -156,9 +215,14 @@ export async function openSession(
   opts: SpawnTerminalOpts,
   webgl = false,
 ): Promise<TerminalSessionInfo> {
-  const term = new Terminal(TERMINAL_OPTIONS);
+  const term = new Terminal(buildTerminalOptions(currentRenderPrefs));
   const fit = new FitAddon();
   term.loadAddon(fit);
+  // Scrollback search + https-only web links (spec PR 3c). Both activate on
+  // `loadAddon` and tolerate a not-yet-opened terminal, exactly like the fit addon.
+  const search = new SearchAddon();
+  term.loadAddon(search);
+  term.loadAddon(new WebLinksAddon((_event, uri) => openTerminalLink(uri)));
 
   // The id is server-minted at spawn and only known once it resolves, but output
   // arrives strictly after — so a holder lets the byte callback (the one place
@@ -175,6 +239,9 @@ export async function openSession(
     throw err;
   }
   sessionId = handle.session.id;
+  // Clipboard smarts + app-chord swallowing (spec PR 3b) — installed now that the
+  // session id (the PTY write target for Shift+Enter / kill-line) is known.
+  installKeymap(term, handle.session.id);
 
   const host = document.createElement('div');
   host.style.width = '100%';
@@ -183,6 +250,7 @@ export async function openSession(
     session: handle.session,
     term,
     fit,
+    search,
     handle,
     host,
     opened: false,

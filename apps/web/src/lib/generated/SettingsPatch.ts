@@ -38,6 +38,18 @@ terminalWebglEnabled?: boolean,
  */
 terminalConfinedDefault?: boolean, 
 /**
+ * Cockpit PR 3 decision 6e: set the live-terminal font size (px). Global-only
+ * (ignored for a per-project override target), like the other terminal knobs.
+ * The web clamps to a sane range before sending. See
+ * [`super::model::Settings::terminal_font_size`].
+ */
+terminalFontSize?: number, 
+/**
+ * Cockpit PR 3 decision 6e: set the live-terminal scrollback length (lines).
+ * Global-only, web-clamped. See [`super::model::Settings::terminal_scrollback`].
+ */
+terminalScrollback?: number, 
+/**
  * Issue #121 decision 5: toggle the provider usage meter (opt-in). Global-only
  * (ignored for a per-project override target), like `sandbox_sessions`. See
  * [`super::model::Settings::usage_meter_enabled`].

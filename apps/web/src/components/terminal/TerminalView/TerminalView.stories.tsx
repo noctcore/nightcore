@@ -68,6 +68,8 @@ const meta = {
     projectName: 'nightcore',
     webglEnabled: false,
     confinedDefault: false,
+    fontSize: null,
+    scrollback: null,
     onConfinedDefaultChange: fn(),
   },
 } satisfies Meta<typeof TerminalViewFixture>;

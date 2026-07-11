@@ -186,6 +186,8 @@ export function AppShellViews({
               projectName={active?.name ?? null}
               webglEnabled={settings.settings?.terminalWebglEnabled ?? false}
               confinedDefault={settings.settings?.terminalConfinedDefault ?? false}
+              fontSize={settings.settings?.terminalFontSize ?? null}
+              scrollback={settings.settings?.terminalScrollback ?? null}
               onConfinedDefaultChange={(confined) =>
                 settings.update({ terminalConfinedDefault: confined })
               }

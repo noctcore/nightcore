@@ -25,6 +25,13 @@ vi.mock('../terminal-session-manager', () => ({
   // Layout seam (PR 2): the visible-set + refit calls the layout hook makes.
   setVisibleTerminals: () => {},
   refitSession: () => {},
+  // Search seam (PR 3c): the find bar drives these per session; no real xterm here.
+  searchNext: () => false,
+  searchPrevious: () => false,
+  clearSearch: () => {},
+  focusSession: () => {},
+  // Render-prefs seam (PR 3d): the view pushes font/scrollback to live terminals.
+  applyRenderPrefs: () => {},
 }));
 
 // Keep the real bridge (ToastProvider, types, getAppInfo → macOS mock) but make the

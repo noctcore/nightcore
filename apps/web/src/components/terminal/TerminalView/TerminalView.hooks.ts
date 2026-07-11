@@ -19,8 +19,11 @@ import {
 } from '@/lib/bridge';
 
 import type { TerminalTarget } from '../NewTabPicker';
+import { subscribePasteRejected } from '../terminal-keymap';
 import { useTerminalLayout } from '../terminal-layout';
+import { setTerminalPlatform } from '../terminal-platform';
 import {
+  applyRenderPrefs,
   closeSession,
   getUnread,
   hasSession,
@@ -33,8 +36,11 @@ import {
   DEFAULT_TERMINAL_COLS,
   DEFAULT_TERMINAL_ROWS,
   displayPath,
+  resolveFontSize,
+  resolveScrollback,
   supportsConfinedTerminal,
 } from '../terminal-shared';
+import { useTerminalShortcuts } from '../terminal-shortcuts';
 import type { UseTerminalViewInput } from './TerminalView.types';
 
 /** A Rust command rejection arrives as a string; normalize any thrown value to a
@@ -119,6 +125,9 @@ export function useTerminalView(input: UseTerminalViewInput) {
         setSessions(liveSessions);
         setRestored(restoredTabs);
         setHostOs(appInfo.os);
+        // Refine the shortcut/keymap platform from the Rust host OS (spec PR 3a) —
+        // the navigator default seeded it before this resolved.
+        setTerminalPlatform(appInfo.os);
         setLoaded(true);
         setActiveId((cur) => cur ?? liveSessions[0]?.id ?? restoredTabs[0]?.id ?? null);
         // Probe each restored cwd for existence (the fresh-shell gate). Fail-closed:
@@ -154,6 +163,31 @@ export function useTerminalView(input: UseTerminalViewInput) {
     recompute();
     return subscribeActivity(recompute);
   }, [sessions]);
+
+  // Reactive render prefs (spec PR 3d): resolve the Settings font size / scrollback
+  // (null ⇒ shipped defaults, clamped) and push them to every live terminal via the
+  // session manager. xterm applies option changes live, so no reopen — a font change
+  // repaints, scrollback resizes the buffer future output fills. Re-runs when either
+  // setting changes; also seeds the module-level prefs new spawns read.
+  const fontSize = resolveFontSize(input.fontSize);
+  const scrollback = resolveScrollback(input.scrollback);
+  useEffect(() => {
+    applyRenderPrefs({ fontSize, scrollback });
+  }, [fontSize, scrollback]);
+
+  // Surface a dropped over-cap paste (spec PR 3b) as a toast — the session manager's
+  // keymap is module-level, so it notifies through this subscription.
+  useEffect(
+    () =>
+      subscribePasteRejected(() => {
+        toast.push({
+          tone: 'info',
+          title: 'Paste too large',
+          description: 'Clipboard content over 1 MB was not pasted into the terminal.',
+        });
+      }),
+    [toast],
+  );
 
   // The visible-set (which tabs/panes stop badging) and the focus-clear are owned by
   // `useTerminalLayout` (it knows tabs vs grid vs zoom), so no per-active-tab effect
@@ -299,13 +333,26 @@ export function useTerminalView(input: UseTerminalViewInput) {
     [spawnInto, toast],
   );
 
+  const canAddTab = !atSessionCap(sessions);
+
+  // Cockpit shortcuts (spec PR 3a): ⌘T opens the picker, ⌘W closes the active tab
+  // (through the confirm dialog). Bound only while this view is mounted; ⌘⇧E zoom is
+  // owned by `useTerminalLayout`. The keymap separately swallows the same chords so
+  // xterm never forwards them to the PTY.
+  useTerminalShortcuts({
+    activeId,
+    canAddTab,
+    onNewTab: openPicker,
+    onCloseActive: requestClose,
+  });
+
   return {
     sessions,
     restored,
     activeId,
     unread,
     layout,
-    canAddTab: !atSessionCap(sessions),
+    canAddTab,
     selectTab,
     requestClose,
     dismissRestored,

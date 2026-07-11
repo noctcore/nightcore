@@ -10,6 +10,7 @@ import {
 } from '@/components/ui';
 import type { TerminalSessionInfo } from '@/lib/bridge';
 
+import { formatShortcut } from '../terminal-platform';
 import { useInlineRename } from '../terminal-rename';
 import {
   displayTitle,
@@ -17,6 +18,7 @@ import {
   unreadBadge,
   unreadBadgeLabel,
 } from '../terminal-shared';
+import { TerminalSearchBar } from '../TerminalSearchBar';
 import { useTerminalGridPane } from './TerminalGridPane.hooks';
 import type { TerminalGridPaneProps } from './TerminalGridPane.types';
 
@@ -89,7 +91,8 @@ export function TerminalGridPane({
   const v = useTerminalGridPane(session.id, draggable);
   const Identity = session.confined ? LockIcon : TerminalIcon;
   const ZoomIcon = zoomed ? MinimizeIcon : MaximizeIcon;
-  const zoomLabel = zoomed ? 'Restore grid (⌘⇧E)' : 'Maximize pane (⌘⇧E)';
+  const zoomHint = formatShortcut('E', { shift: true });
+  const zoomLabel = zoomed ? `Restore grid (${zoomHint})` : `Maximize pane (${zoomHint})`;
   return (
     <div
       ref={v.setRootRef}
@@ -126,7 +129,21 @@ export function TerminalGridPane({
           <ZoomIcon size={13} />
         </IconButton>
       </div>
-      <div ref={v.containerRef} className="min-h-0 flex-1 overflow-hidden p-1.5" />
+      <div ref={v.search.rootRef} className="relative min-h-0 flex-1">
+        <div ref={v.containerRef} className="h-full overflow-hidden p-1.5" />
+        {v.search.open && (
+          <div className="absolute right-2 top-2 z-10">
+            <TerminalSearchBar
+              query={v.search.query}
+              noMatch={v.search.noMatch}
+              onQueryChange={v.search.onQueryChange}
+              onNext={v.search.next}
+              onPrev={v.search.prev}
+              onClose={v.search.close}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

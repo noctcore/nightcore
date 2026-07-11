@@ -16,6 +16,12 @@ export interface TerminalViewProps {
   webglEnabled: boolean;
   /** Settings sticky default for the confined checkbox (decision 1). */
   confinedDefault: boolean;
+  /** Settings terminal font size in px, or `null` for the shipped default (spec
+   *  PR 3d). Applied to live terminals reactively via the session manager. */
+  fontSize: number | null;
+  /** Settings terminal scrollback length in lines, or `null` for the shipped default
+   *  (spec PR 3d). */
+  scrollback: number | null;
   /** Persist the confined choice actually used, so it seeds the next picker open. */
   onConfinedDefaultChange: (confined: boolean) => void;
 }
@@ -28,5 +34,7 @@ export interface UseTerminalViewInput {
   worktrees: WorktreeInfo[];
   webglEnabled: boolean;
   confinedDefault: boolean;
+  fontSize: number | null;
+  scrollback: number | null;
   onConfinedDefaultChange: (confined: boolean) => void;
 }

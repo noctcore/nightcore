@@ -175,6 +175,16 @@ pub struct SettingsPatch {
     /// [`super::model::Settings::terminal_confined_default`].
     #[cfg_attr(test, ts(optional))]
     pub terminal_confined_default: Option<bool>,
+    /// Cockpit PR 3 decision 6e: set the live-terminal font size (px). Global-only
+    /// (ignored for a per-project override target), like the other terminal knobs.
+    /// The web clamps to a sane range before sending. See
+    /// [`super::model::Settings::terminal_font_size`].
+    #[cfg_attr(test, ts(optional))]
+    pub terminal_font_size: Option<u16>,
+    /// Cockpit PR 3 decision 6e: set the live-terminal scrollback length (lines).
+    /// Global-only, web-clamped. See [`super::model::Settings::terminal_scrollback`].
+    #[cfg_attr(test, ts(optional))]
+    pub terminal_scrollback: Option<u32>,
     /// Issue #121 decision 5: toggle the provider usage meter (opt-in). Global-only
     /// (ignored for a per-project override target), like `sandbox_sessions`. See
     /// [`super::model::Settings::usage_meter_enabled`].
@@ -278,6 +288,16 @@ impl Settings {
         }
         if let Some(v) = patch.terminal_confined_default {
             self.terminal_confined_default = v;
+        }
+        // Cockpit PR 3: the terminal render prefs are global-only Option ceilings —
+        // a present value SETS the knob; an omitted key is a no-op. Like `max_turns`,
+        // the web only ever sends a value (the NumberField cannot clear back to the
+        // default), so set-only is the whole contract.
+        if patch.terminal_font_size.is_some() {
+            self.terminal_font_size = patch.terminal_font_size;
+        }
+        if patch.terminal_scrollback.is_some() {
+            self.terminal_scrollback = patch.terminal_scrollback;
         }
         // Issue #121: global-only opt-in toggle for the usage meter (no per-project
         // override), like the terminal toggles above.

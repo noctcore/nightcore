@@ -22,6 +22,39 @@ export const TERMINAL_SESSION_CAP = 12;
 export const DEFAULT_TERMINAL_COLS = 80;
 export const DEFAULT_TERMINAL_ROWS = 24;
 
+/** Live-terminal render prefs (spec PR 3d). Defaults reproduce the shipped look: the
+ *  13px font ({@link TERMINAL_RENDER_OPTIONS}) and a ~10k web-side scrollback buffer
+ *  (matching the Rust ring). A `null` Settings value resolves to these. */
+export const DEFAULT_TERMINAL_FONT_SIZE = 13;
+export const DEFAULT_TERMINAL_SCROLLBACK = 10_000;
+/** Sane clamp bounds so a stored/typed value can't wedge the renderer. */
+export const MIN_TERMINAL_FONT_SIZE = 8;
+export const MAX_TERMINAL_FONT_SIZE = 32;
+export const MIN_TERMINAL_SCROLLBACK = 1_000;
+export const MAX_TERMINAL_SCROLLBACK = 100_000;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+/** Resolve the effective terminal font size: a set value clamped to the sane range,
+ *  else the shipped default. */
+export function resolveFontSize(value: number | null | undefined): number {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return DEFAULT_TERMINAL_FONT_SIZE;
+  }
+  return clamp(value, MIN_TERMINAL_FONT_SIZE, MAX_TERMINAL_FONT_SIZE);
+}
+
+/** Resolve the effective terminal scrollback length: a set value clamped, else the
+ *  shipped default. */
+export function resolveScrollback(value: number | null | undefined): number {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return DEFAULT_TERMINAL_SCROLLBACK;
+  }
+  return clamp(value, MIN_TERMINAL_SCROLLBACK, MAX_TERMINAL_SCROLLBACK);
+}
+
 /** Shared xterm visual config (font + cosmic-dark theme) for BOTH the live pane and
  *  the read-only restore pane, so the two render identically. WKWebView needs an
  *  explicit `fontSize`/`fontFamily` (the feasibility trap list) — inherited page
