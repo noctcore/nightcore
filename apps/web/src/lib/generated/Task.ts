@@ -210,4 +210,43 @@ prUrl?: string,
  * `pr_url` (`…/pull/<n>`). Written together with `pr_url` by
  * `create_pr_task` only; same serde-additive posture.
  */
-prNumber?: number, };
+prNumber?: number, 
+/**
+ * GitHub two-way sync (#97). The issue this task was converted from, stamped at
+ * convert time (`convert_issue_validation_to_task`). The DURABLE linkage: the
+ * `sourceRef` (`issue-triage:<runId>`) resolves the issue number only through the
+ * validation RunStore, which is capped + pruned (MAX_RUNS=50) — so a task whose
+ * run was pruned would lose its issue link. This field makes writeback independent
+ * of run retention. `None` for hand-created tasks and pre-#97 issue tasks (they
+ * backfill lazily — see §2.3). Never patchable via TaskPatch.
+ */
+issueNumber?: number, 
+/**
+ * GitHub two-way sync (#97). The `nc:*` status label Nightcore last projected onto
+ * the linked issue (the ANTI-CHURN key: a writeback that computes the same label
+ * is a no-op, and the previous label is the one to remove). `None` until the first
+ * successful label writeback.
+ */
+issueSyncedLabel?: string, 
+/**
+ * GitHub two-way sync (#97). Epoch-ms of the last successful label writeback.
+ */
+issueSyncedAt?: number, 
+/**
+ * GitHub two-way sync (#97). The last terminal COMMENT key posted to the issue
+ * (`"converted"` | `"done"` | `"failed"`), so a Done→Backlog→Done flap can't
+ * double-post. `None` until the first comment posts.
+ */
+issueCommentMarker?: string, 
+/**
+ * GitHub two-way sync (#97), projection-IN. The last upstream issue state observed
+ * on a focus/manual poll (`"open"` | `"closed"`). Drives the "closed upstream"
+ * chip. `None` until the first poll; never gates anything and never mutates the task.
+ */
+issueState?: string, 
+/**
+ * GitHub two-way sync (#97). The last writeback DEGRADATION reason, surfaced as a
+ * one-time UI notice (e.g. "sync paused: the token can't write labels on this
+ * repo"). `None` when sync is healthy or off. Not a secret — never carries a token.
+ */
+issueSyncError?: string, };
