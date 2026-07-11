@@ -12,6 +12,7 @@ import { WorktreesProvider } from '@/lib/worktrees-context';
 
 import { Sidebar } from '../Sidebar';
 import { Splash } from '../Splash';
+import { UsageMeter } from '../UsageMeter';
 import { useAppShell } from './AppShell.hooks';
 import { AppShellOverlays } from './AppShellOverlays';
 import { AppShellViews, RouteFallback } from './AppShellViews';
@@ -175,6 +176,7 @@ export function AppShell() {
             runningCount={runningCount}
             awaitingInputCount={board.promptIds.size}
             version="v0.1.0"
+            footerSlot={<UsageMeter collapsed={collapsed} />}
             onToggleCollapsed={routing.toggleCollapsed}
             onNavigate={routing.goto}
             onGotoProjects={() => routing.goto('projects')}

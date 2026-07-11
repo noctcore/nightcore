@@ -17,6 +17,7 @@ export function Sidebar({
   onNavigate,
   onGotoProjects,
   onGotoAwaitingInput,
+  footerSlot,
 }: SidebarProps) {
   const navProps = {
     view,
@@ -39,7 +40,7 @@ export function Sidebar({
           runningCount={runningCount}
           onGotoProjects={onGotoProjects}
         />
-        <NavSidebar {...navProps} showHeader={false} />
+        <NavSidebar {...navProps} showHeader={false} slots={{ footer: footerSlot }} />
       </>
     );
   }
@@ -48,9 +49,10 @@ export function Sidebar({
     <NavSidebar
       {...navProps}
       showHeader
-      header={
-        <SidebarUnified switcher={switcher} collapsed={collapsed} />
-      }
+      slots={{
+        header: <SidebarUnified switcher={switcher} collapsed={collapsed} />,
+        footer: footerSlot,
+      }}
     />
   );
 }
