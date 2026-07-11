@@ -72,6 +72,23 @@ export function compactWindows(windows: readonly RateWindow[]): RateWindow[] {
   return windows.slice(0, 2);
 }
 
+/** A short window token for the collapsed-rail tooltip: `5h` / `weekly` for the
+ *  canonical lanes, else the full label. */
+function shortWindowToken(win: RateWindow): string {
+  if (win.kind === '5h') return '5h';
+  if (win.kind === 'weekly') return 'weekly';
+  return win.label;
+}
+
+/** A one-line `"5h 12% · weekly 72%"` summary of a provider's compact windows, for
+ *  the collapsed-rail hover tooltip (issue #121, collapsed-icon dogfood). Empty when
+ *  the provider reports no windows. */
+export function windowSummary(windows: readonly RateWindow[]): string {
+  return compactWindows(windows)
+    .map((win) => `${shortWindowToken(win)} ${Math.round(win.usedPercent)}%`)
+    .join(' · ');
+}
+
 /** Tailwind bar-fill class for a utilization percentage: calm under 60%, warning
  *  through 85%, destructive above — a glanceable "how close to the cap" signal. */
 export function barTone(usedPercent: number): string {

@@ -4,7 +4,7 @@ import { render } from 'vitest-browser-react';
 
 import type { RateWindow, UsageCost, UsageMeter } from '@/lib/bridge';
 
-import { compactWindows } from './UsageMeter.hooks';
+import { compactWindows, windowSummary } from './UsageMeter.hooks';
 import * as stories from './UsageMeter.stories';
 import type { UsageSource } from './UsageMeter.types';
 
@@ -174,10 +174,21 @@ test('fetches on mount, updates on a live push, and refetches on window focus', 
 
 test('the collapsed rail renders icon-only, not labeled bars', async () => {
   const screen = render(<Collapsed />);
-  // The provider dot is a button with a "<label> · <pct>%" title…
+  // The provider dot is a button whose accessible name is the compact summary…
   await expect.element(screen.getByRole('button', { name: /Claude/i })).toBeVisible();
   // …but the labeled bars only appear expanded.
   expect(screen.getByText('Session (5h)').query()).toBeNull();
+});
+
+test('the collapsed rail shows an immediate hover tooltip summarizing the windows', async () => {
+  // Issue #121: hovering a collapsed provider icon must show the usage numbers
+  // ("Claude — 5h 42% · weekly 68%") via the group-hover tooltip, not the slow
+  // native `title`. The Collapsed story's Claude row carries 5h 42% + weekly 68%.
+  const screen = render(<Collapsed />);
+  const button = screen.getByRole('button', { name: /Claude — 5h 42% · weekly 68%/ });
+  await expect.element(button).toBeVisible();
+  // The tooltip text is present in the DOM (revealed on hover via opacity).
+  await expect.element(screen.getByText('Claude — 5h 42% · weekly 68%')).toBeInTheDocument();
 });
 
 // ── Pure selectors (issue #121) ────────────────────────────────────────────────
@@ -210,4 +221,14 @@ test('compactWindows keeps the 5h lane first even when weekly is absent', () => 
 test('compactWindows falls back to the first two windows when no canonical lane exists', () => {
   const windows: RateWindow[] = [win('model:a', 10), win('model:b', 20), win('model:c', 30)];
   expect(compactWindows(windows).map((w) => w.kind)).toEqual(['model:a', 'model:b']);
+});
+
+test('windowSummary renders a "5h % · weekly %" one-liner for the collapsed tooltip', () => {
+  const windows: RateWindow[] = [
+    win('5h', 12.4, 'Session (5h)'),
+    win('weekly', 71.6, 'Weekly'),
+    win('weekly_opus', 91, 'Opus weekly'),
+  ];
+  expect(windowSummary(windows)).toBe('5h 12% · weekly 72%');
+  expect(windowSummary([])).toBe('');
 });
