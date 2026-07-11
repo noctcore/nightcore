@@ -2,6 +2,7 @@ import type {
   AutonomyLevel,
   EffortLevel,
   McpServerEntry,
+  TaskKind,
 } from '@nightcore/contracts';
 
 import { toSdkMcpServers } from '../claude/session-options.js';
@@ -95,6 +96,42 @@ export function codexPostureForAutonomy(
         contained: false,
       };
   }
+}
+
+/**
+ * Task kinds pinned to a kernel read-only posture under Codex regardless of the
+ * autonomy the run resolved to: the reviewer / verify identity.
+ *
+ * WHY THIS EXISTS: the Claude reviewer is made read-only by the `review` KIND preset
+ * (`disallowedTools: [WRITE_TOOLS…]` + a `dontAsk` permission mode). Codex has NO
+ * equivalent tool-surface wiring — `buildCodexThreadOptions` derives its posture
+ * purely from the autonomy — so a Codex reviewer would inherit whatever ceiling the
+ * run resolved (e.g. the global `bypass`/`auto-accept` default) and could WRITE. We
+ * close that by pinning a read-only KIND to the `plan` posture (the codex kernel's
+ * `read-only` sandbox), which is STRONGER than a tool denylist: the OS blocks the
+ * write below the tool layer, so a reviewer is provably unable to mutate the repo.
+ */
+const CODEX_READ_ONLY_KINDS: ReadonlySet<TaskKind> = new Set<TaskKind>(['review']);
+
+/** Whether a task kind must run read-only under Codex no matter the resolved
+ *  autonomy (see {@link CODEX_READ_ONLY_KINDS}). */
+export function codexKindForcesReadOnly(kind: TaskKind | undefined): boolean {
+  return kind !== undefined && CODEX_READ_ONLY_KINDS.has(kind);
+}
+
+/**
+ * The effective autonomy a Codex run uses. A read-only KIND (the reviewer) is pinned
+ * to `plan` — the read-only sandbox — so it can NEVER be handed a writable posture,
+ * whatever autonomy was resolved for the task. Every other kind uses the requested
+ * autonomy, defaulting to the safe read-only `plan` when none was set (`ask` is no
+ * longer a supported ceiling — it would deadlock).
+ */
+export function codexEffectiveAutonomy(
+  requested: AutonomyLevel | undefined,
+  kind: TaskKind | undefined,
+): AutonomyLevel {
+  if (codexKindForcesReadOnly(kind)) return 'plan';
+  return requested ?? 'plan';
 }
 
 export function effortToCodexEffort(

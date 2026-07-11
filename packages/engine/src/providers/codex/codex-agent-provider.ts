@@ -31,6 +31,7 @@ import {
   buildCodexOptions,
   buildCodexThreadOptions,
   codexBypassOptedIn,
+  codexEffectiveAutonomy,
   codexPostureForAutonomy,
 } from './options.js';
 import {
@@ -218,11 +219,16 @@ export class CodexAgentProvider implements AgentProvider {
     emit: SessionEventSink,
     logger?: Logger,
   ): AgentSession {
-    // Default to the safe read-only `plan` when no autonomy was resolved: `ask` is
-    // no longer a supported Codex ceiling (no approval channel — it would deadlock),
-    // so it can't be the fallback. In practice the Rust settings resolver always
-    // sends an explicit autonomy; this default only guards the undefined path.
-    const autonomy: AutonomyLevel = params.autonomyOverride ?? 'plan';
+    // Resolve the EFFECTIVE ceiling: a read-only KIND (the reviewer/verify identity)
+    // is pinned to `plan` — the read-only sandbox — no matter the resolved autonomy,
+    // so a Codex reviewer is provably unable to mutate the repo (Codex has no
+    // `disallowedTools` wiring, so the KIND's read-only-ness must be enforced by the
+    // kernel sandbox, not a tool denylist). Every other kind defaults the
+    // undefined-autonomy path to the safe read-only `plan` (`ask` would deadlock).
+    const autonomy: AutonomyLevel = codexEffectiveAutonomy(
+      params.autonomyOverride,
+      params.kind,
+    );
     const posture = codexPostureForAutonomy(autonomy, {
       bypassOptedIn: codexBypassOptedIn(),
     });

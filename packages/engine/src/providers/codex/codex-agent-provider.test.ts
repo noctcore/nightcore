@@ -12,6 +12,8 @@ import {
   buildCodexOptions,
   buildCodexThreadOptions,
   CODEX_BYPASS_OPT_IN_ENV,
+  codexEffectiveAutonomy,
+  codexKindForcesReadOnly,
   codexPostureForAutonomy,
   effortToCodexEffort,
 } from './options.js';
@@ -151,6 +153,83 @@ describe('Codex autonomy posture', () => {
       } else {
         process.env[CODEX_BYPASS_OPT_IN_ENV] = previous;
       }
+    }
+  });
+});
+
+describe('Codex reviewer read-only posture', () => {
+  test('only the review kind is pinned read-only', () => {
+    expect(codexKindForcesReadOnly('review')).toBe(true);
+    expect(codexKindForcesReadOnly('build')).toBe(false);
+    expect(codexKindForcesReadOnly('tdd')).toBe(false);
+    expect(codexKindForcesReadOnly('decompose')).toBe(false);
+    expect(codexKindForcesReadOnly(undefined)).toBe(false);
+  });
+
+  test('a review run is forced to plan regardless of the resolved autonomy', () => {
+    // Even an elevated writable ceiling collapses to read-only `plan` for a reviewer.
+    expect(codexEffectiveAutonomy('auto-accept', 'review')).toBe('plan');
+    expect(codexEffectiveAutonomy('bypass', 'review')).toBe('plan');
+    expect(codexEffectiveAutonomy(undefined, 'review')).toBe('plan');
+    // Non-review kinds pass the requested autonomy through (undefined → safe plan).
+    expect(codexEffectiveAutonomy('auto-accept', 'build')).toBe('auto-accept');
+    expect(codexEffectiveAutonomy(undefined, 'build')).toBe('plan');
+  });
+
+  test('the reviewer posture is provably read-only at the SDK boundary', () => {
+    // The concrete guarantee handed to `codex exec`: read-only sandbox, no approval
+    // escalation. A write is denied by the kernel, not merely by a tool denylist.
+    const threadOptions = buildCodexThreadOptions({
+      model: 'gpt-5-codex',
+      cwd: '/repo',
+      posture: codexPostureForAutonomy(
+        codexEffectiveAutonomy('auto-accept', 'review'),
+        { bypassOptedIn: true },
+      ),
+    });
+    expect(threadOptions.sandboxMode).toBe('read-only');
+    expect(threadOptions.approvalPolicy).toBe('never');
+  });
+
+  test('startSession records a review run as read-only even when handed auto-accept', () => {
+    const { emit } = collector();
+    const session = provider.startSession(
+      {
+        sessionId: 42,
+        prompt: 'review this',
+        model: 'gpt-5-codex',
+        cwd: '/tmp',
+        kind: 'review',
+        autonomyOverride: 'auto-accept',
+      },
+      emit,
+    );
+    // `plan` is the read-only record mode: the reviewer never gets a writable session.
+    expect(session.permissionMode).toBe('plan');
+  });
+
+  test('a review run under bypass is pinned read-only, not refused', () => {
+    // A reviewer dispatched while the global default is `bypass` must NOT be refused
+    // (it is read-only anyway) and must NOT be handed danger-full-access.
+    const previous = process.env[CODEX_BYPASS_OPT_IN_ENV];
+    process.env[CODEX_BYPASS_OPT_IN_ENV] = '1';
+    try {
+      const { emit } = collector();
+      const session = provider.startSession(
+        {
+          sessionId: 43,
+          prompt: 'review this',
+          model: 'gpt-5-codex',
+          cwd: '/tmp',
+          kind: 'review',
+          autonomyOverride: 'bypass',
+        },
+        emit,
+      );
+      expect(session.permissionMode).toBe('plan');
+    } finally {
+      if (previous === undefined) delete process.env[CODEX_BYPASS_OPT_IN_ENV];
+      else process.env[CODEX_BYPASS_OPT_IN_ENV] = previous;
     }
   });
 });
