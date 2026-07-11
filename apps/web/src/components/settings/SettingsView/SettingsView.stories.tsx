@@ -28,6 +28,7 @@ const settings: Settings = {
   terminalFontSize: null,
   terminalScrollback: null,
   usageMeterEnabled: false,
+  autoPauseUsageThreshold: 90,
   terminalYoloLaunch: false,
   terminalDaemonEnabled: false,
   projectOverrides: {

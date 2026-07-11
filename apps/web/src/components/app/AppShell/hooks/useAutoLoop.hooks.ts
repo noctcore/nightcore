@@ -38,6 +38,13 @@ export function useAutoLoop(
     return { failureThreshold: loop.failureThreshold };
   }, [loop]);
 
+  // Usage-aware throttle (spec 2026-07-11): the loop reflects a usage pause on the
+  // SAME `nc:loop` `reason` free-string the breaker uses (matched with 'usage'). The
+  // window specifics for the banner come from the `nc:usage` snapshot, not here — this
+  // is only the "is the loop usage-paused" flag that gates the banner's visibility.
+  const usagePaused =
+    loop?.state === 'paused' && (loop.reason ?? '').toLowerCase().includes('usage');
+
   const toggleAutoMode = useCallback(() => {
     const fn = loop?.state === 'running' ? stopAutoLoop : startAutoLoop;
     void fn().catch((err) => {
@@ -69,5 +76,13 @@ export function useAutoLoop(
     });
   }, [toast]);
 
-  return { autoMode, concurrency, breaker, toggleAutoMode, changeConcurrency, resume };
+  return {
+    autoMode,
+    concurrency,
+    breaker,
+    usagePaused,
+    toggleAutoMode,
+    changeConcurrency,
+    resume,
+  };
 }
