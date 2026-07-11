@@ -101,6 +101,85 @@ pub fn base_diff(dir: &Path, base: &str) -> Result<String, String> {
     git(dir, &["diff", &format!("{base}...HEAD")])
 }
 
+/// Cap on the synthesized-patch read for an untracked file — a huge generated file
+/// can't balloon the per-file review payload.
+const MAX_FILE_DIFF_BYTES: usize = 512 * 1024;
+
+/// The unified-diff patch text for ONE file in a worktree vs `base` — the per-file
+/// review payload (T13's real patch viewer; the file-list `WorktreeDiff` bottoms out at
+/// filenames). Tracked changes (committed + uncommitted) come from
+/// `git diff <base> -- <path>` (a plain diff exits 0 even with differences). An
+/// untracked NEW file — absent from `git diff <base>`, and cross-platform-awkward via
+/// `--no-index` — is rendered as an all-additions synthetic patch; a non-UTF-8 (binary)
+/// file is reported, not dumped, and an over-cap file is refused. `path` is confined to
+/// the worktree ([`sanitize_diff_path`]) so a crafted/relative entry can never read
+/// outside it.
+pub fn file_diff(dir: &Path, base: &str, path: &str) -> Result<String, String> {
+    crate::git::validate_ref(base)?;
+    let rel = sanitize_diff_path(path)?;
+    refresh_index(dir);
+    // Tracked changes vs base (committed + staged + unstaged); `--` fences the path so a
+    // pathspec starting with `-` can't be read as an option.
+    let patch = git(dir, &["diff", "--end-of-options", base, "--", &rel]).unwrap_or_default();
+    if !patch.trim().is_empty() {
+        return Ok(patch);
+    }
+    // No tracked diff ⇒ an untracked new file (or one just deleted from disk). Read it
+    // (bounded) and synthesize an all-additions patch; a binary file is reported.
+    let full = dir.join(&rel);
+    match std::fs::read(&full) {
+        Ok(bytes) if bytes.len() > MAX_FILE_DIFF_BYTES => Err(format!(
+            "file too large to preview ({} bytes, max {MAX_FILE_DIFF_BYTES})",
+            bytes.len()
+        )),
+        Ok(bytes) => match String::from_utf8(bytes) {
+            Ok(text) => Ok(synth_added_patch(&rel, &text)),
+            Err(_) => Ok(format!("Binary file {rel} (not shown)")),
+        },
+        // The file is gone (e.g. staged then removed) — nothing to show, not an error.
+        Err(_) => Ok(String::new()),
+    }
+}
+
+/// Confine a diff path to the worktree: reject an absolute path or any `..`/`.`/root
+/// component so a crafted entry can never read outside the worktree dir. The paths from
+/// [`worktree_diff`] are git-authored repo-relative, so this never rejects a real entry.
+fn sanitize_diff_path(path: &str) -> Result<String, String> {
+    use std::path::Component;
+    if path.is_empty() {
+        return Err("empty diff path".to_string());
+    }
+    let p = Path::new(path);
+    if p.is_absolute() {
+        return Err("diff path must be relative".to_string());
+    }
+    for comp in p.components() {
+        if !matches!(comp, Component::Normal(_)) {
+            return Err("diff path must not traverse".to_string());
+        }
+    }
+    Ok(path.to_string())
+}
+
+/// Build an all-additions unified-diff patch for an untracked new file — every line a
+/// `+`, headed by a `/dev/null → b/<path>` hunk — so the per-file viewer can render a new
+/// file with the same renderer it uses for tracked patches.
+fn synth_added_patch(path: &str, text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut out = String::new();
+    out.push_str(&format!("diff --git a/{path} b/{path}\n"));
+    out.push_str("new file\n");
+    out.push_str("--- /dev/null\n");
+    out.push_str(&format!("+++ b/{path}\n"));
+    out.push_str(&format!("@@ -0,0 +1,{} @@\n", lines.len()));
+    for line in &lines {
+        out.push('+');
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
 /// Compute the worktree's changed files vs `base` (committed + uncommitted tracked
 /// changes via `git diff <base>`, plus untracked files).
 pub fn worktree_diff(dir: &Path, base: &str) -> WorktreeDiff {
@@ -182,5 +261,43 @@ pub fn worktree_diff(dir: &Path, base: &str) -> WorktreeDiff {
         summary,
         additions: add_total,
         deletions: del_total,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_diff_path_accepts_a_repo_relative_path() {
+        assert_eq!(
+            sanitize_diff_path("src/app/main.rs").unwrap(),
+            "src/app/main.rs"
+        );
+        assert_eq!(sanitize_diff_path("README.md").unwrap(), "README.md");
+    }
+
+    #[test]
+    fn sanitize_diff_path_rejects_traversal_and_absolute() {
+        for bad in ["", "../secret", "a/../../etc/passwd", "/etc/passwd", "./x"] {
+            assert!(
+                sanitize_diff_path(bad).is_err(),
+                "path {bad:?} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn synth_added_patch_marks_every_line_added() {
+        let patch = synth_added_patch("new.txt", "alpha\nbeta\n");
+        assert!(patch.contains("--- /dev/null"));
+        assert!(patch.contains("+++ b/new.txt"));
+        assert!(patch.contains("@@ -0,0 +1,2 @@"));
+        assert!(patch.contains("+alpha"));
+        assert!(patch.contains("+beta"));
+        // No context/deletion lines in a synthesized new-file patch.
+        assert!(!patch
+            .lines()
+            .any(|l| l.starts_with('-') && !l.starts_with("---")));
     }
 }

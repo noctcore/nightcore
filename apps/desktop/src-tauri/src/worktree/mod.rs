@@ -54,11 +54,13 @@ pub use branch::{
     merge_ff_only, push_branch, remote_url, try_ahead_of_upstream, BranchInfo, DEFAULT_BASE_BRANCH,
 };
 pub use commit::{commit, commit_staged, has_staged_changes, stage_all, staged_diff};
-pub use diff::{base_diff, worktree_diff, WorktreeDiff};
+pub use diff::{base_diff, file_diff, worktree_diff, WorktreeDiff};
 pub use lifecycle::{
     allocate, allocate_branch, allocate_terminal, reconcile, remove, remove_terminal,
 };
-pub use merge::{merge_branch, merge_preview, MergeOutcome, MergePreview};
+pub use merge::{
+    merge_branch, merge_preview, update_from_base, MergeOutcome, MergePreview, UpdateFromBaseStatus,
+};
 pub use path::{
     branch_name, is_under, slugify, terminal_branch_name, worktree_path, worktrees_base,
 };

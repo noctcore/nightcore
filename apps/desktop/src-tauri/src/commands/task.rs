@@ -195,6 +195,94 @@ pub fn update_task(
     Ok(task)
 }
 
+/// Duplicate a task (T13: re-run-with-tweaks). Mints a FRESH `Backlog` task cloning
+/// the source's prompt + launch config (title/description/kind/run_mode/model/
+/// provider/effort/permission_mode/limits/verify_command/base_branch) and its image
+/// attachments — but NONE of its run state (a new id; no session/summary/cost/plan/
+/// branch/verified/review). Dependencies and decompose/scan provenance are
+/// deliberately dropped: a duplicate is a hand-authored variant, not a re-linked
+/// child. The user tweaks the prompt in the drawer, then runs it — the missing
+/// "re-run a rejected task with changes" affordance. Async + `spawn_blocking`: copying
+/// attachments reads + base64-encodes up to several MB, which must stay off the UI
+/// thread (mirrors `add_task_attachments`).
+#[tauri::command]
+pub async fn duplicate_task(app: AppHandle, id: String) -> Result<Task, String> {
+    tauri::async_runtime::spawn_blocking(move || duplicate_task_blocking(&app, &id))
+        .await
+        .map_err(|e| format!("duplicate task failed to run: {e}"))?
+}
+
+/// The blocking body of `duplicate_task`, run off the UI thread. Managed state is
+/// re-acquired from the owned `AppHandle` (a `State<'_, _>` guard can't cross the
+/// thread boundary); `try_state` so an unmanaged store fails gracefully. An
+/// attachment-copy failure removes the fresh dir so a failed duplicate leaves no
+/// orphan files (mirrors `create_task`).
+fn duplicate_task_blocking(app: &AppHandle, id: &str) -> Result<Task, String> {
+    use tauri::Manager;
+    let store = app
+        .try_state::<TaskStore>()
+        .ok_or_else(|| "task store unavailable".to_string())?;
+    let source = store
+        .get(id)
+        .ok_or_else(|| format!("no task with id {id}"))?;
+    // Carry only the launch config onto a fresh backlog task, never the run state.
+    let mut clone = Task::new(source.title.clone(), source.description.clone());
+    clone.kind = source.kind;
+    clone.run_mode = source.run_mode;
+    clone.model = source.model.clone();
+    clone.provider_id = source.provider_id.clone();
+    clone.effort = source.effort.clone();
+    clone.permission_mode = source.permission_mode.clone();
+    clone.max_turns = source.max_turns;
+    clone.max_budget_usd = source.max_budget_usd;
+    clone.verify_command = source.verify_command.clone();
+    clone.base_branch = source.base_branch.clone();
+    // Copy the source's images under the NEW task id (attachment files are keyed on
+    // task id). Any read/persist failure aborts the whole duplicate and removes the
+    // fresh dir, so a failed copy never leaves half a set behind.
+    if !source.attachments.is_empty() {
+        match copy_task_attachments(app, &source, &clone.id) {
+            Ok(refs) => clone.attachments = refs,
+            Err(e) => {
+                crate::store::attachments::remove_all(app, &clone.id);
+                return Err(e);
+            }
+        }
+    }
+    let clone = store.upsert(&clone)?;
+    tracing::info!(
+        target: "nightcore",
+        task_id = %clone.id,
+        source_id = %id,
+        kind = clone.kind.as_wire(),
+        run_mode = ?clone.run_mode,
+        "task duplicated"
+    );
+    let _ = app.emit(TASK_EVENT, &clone);
+    Ok(clone)
+}
+
+/// Copy a source task's persisted image attachments under `new_id` by reading each as
+/// base64 and re-persisting it (attachment files live under a per-task-id dir, so the
+/// duplicate needs its own copies). Any read/persist failure bubbles so the caller
+/// aborts the duplicate cleanly rather than minting a task with a partial image set.
+fn copy_task_attachments(
+    app: &AppHandle,
+    source: &Task,
+    new_id: &str,
+) -> Result<Vec<crate::task::TaskAttachment>, String> {
+    let mut payloads = Vec::with_capacity(source.attachments.len());
+    for att in &source.attachments {
+        let data = crate::store::attachments::read_base64(app, &source.id, att)?;
+        payloads.push(crate::store::attachments::NewAttachment {
+            filename: att.filename.clone(),
+            format: att.format.clone(),
+            data,
+        });
+    }
+    crate::store::attachments::persist(app, new_id, &[], payloads)
+}
+
 /// Delete a task and remove its JSON file. Also removes the task's transcript
 /// directory (M4.7 §C) and, when the task ran in worktree mode, its `nc/<id>`
 /// worktree dir + branch (C8 — mirrors the `merge_task` cleanup) so a deleted task
