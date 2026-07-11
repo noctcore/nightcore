@@ -10,6 +10,7 @@ import {
 } from '@nightcore/contracts';
 
 import type { SessionRunnerConfig } from '../../session/session-runner.js';
+import { MAX_DIFF_BYTES } from './diff.js';
 import { reviewFingerprint } from './findings.js';
 import { type PrReviewRunnerFactory,PrReviewScanManager } from './manager.js';
 
@@ -212,6 +213,94 @@ describe('PrReviewScanManager — diff-relative grounding', () => {
     expect(
       lens?.type === 'pr-review-lens-completed' && lens.findings,
     ).toHaveLength(0);
+  });
+});
+
+describe('PrReviewScanManager — untrusted diff framing + size cap', () => {
+  /** Capture the composed LENS prompt (the pass that is neither validator nor verdict). */
+  function capturingFactory(onLensPrompt: (p: string) => void): PrReviewRunnerFactory {
+    return (cfg: SessionRunnerConfig, emit) => ({
+      async run() {
+        if (isVerdict(cfg)) {
+          await completing(VERDICT_JSON)(emit);
+          return;
+        }
+        if (isValidator(cfg)) {
+          await completing('[]')(emit);
+          return;
+        }
+        onLensPrompt(cfg.prompt);
+        await completing(ONE_FINDING)(emit);
+      },
+      async interrupt() {},
+    });
+  }
+
+  test('wraps the PR diff in the untrusted block, not our instructions', async () => {
+    let lensPrompt = '';
+    const { emit, done } = collect();
+    const manager = new PrReviewScanManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      runnerFactory: capturingFactory((p) => {
+        lensPrompt = p;
+      }),
+    });
+
+    manager.start(startCommand(['security']));
+    await done;
+
+    const begin = lensPrompt.indexOf('<<<BEGIN UNTRUSTED PR DIFF>>>');
+    const end = lensPrompt.indexOf('<<<END UNTRUSTED PR DIFF>>>');
+    expect(begin).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(begin);
+    // The FOREIGN diff sits INSIDE the fence…
+    const inner = lensPrompt.slice(begin, end);
+    expect(inner).toContain('oops();');
+    // …and OUR instructions sit OUTSIDE it (the delimiters surround the diff only).
+    expect(lensPrompt.slice(0, begin)).toContain('Review lens:');
+    expect(inner).not.toContain('Review lens:');
+  });
+
+  test('truncates an oversized diff with a visible marker', async () => {
+    let lensPrompt = '';
+    const bigDiff = `diff --git a/src/a.ts b/src/a.ts\n@@\n+ ${'z'.repeat(MAX_DIFF_BYTES + 4096)}`;
+    const { emit, done } = collect();
+    const manager = new PrReviewScanManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      runnerFactory: capturingFactory((p) => {
+        lensPrompt = p;
+      }),
+    });
+
+    manager.start({ ...startCommand(['security']), diff: bigDiff });
+    await done;
+
+    expect(lensPrompt).toContain('[diff truncated at');
+    // The marker is inside the untrusted fence (still framed as data).
+    const end = lensPrompt.indexOf('<<<END UNTRUSTED PR DIFF>>>');
+    expect(lensPrompt.indexOf('[diff truncated at')).toBeLessThan(end);
+  });
+
+  test('leaves a small diff untruncated', async () => {
+    let lensPrompt = '';
+    const { emit, done } = collect();
+    const manager = new PrReviewScanManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      runnerFactory: capturingFactory((p) => {
+        lensPrompt = p;
+      }),
+    });
+
+    manager.start(startCommand(['security']));
+    await done;
+
+    expect(lensPrompt).not.toContain('[diff truncated');
   });
 });
 

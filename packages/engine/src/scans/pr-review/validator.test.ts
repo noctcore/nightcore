@@ -10,6 +10,7 @@ import {
 } from '@nightcore/contracts';
 
 import type { SessionRunnerConfig } from '../../session/session-runner.js';
+import { MAX_DIFF_BYTES } from './diff.js';
 import type { PrReviewRunnerFactory } from './manager.js';
 import { validatePrReviewFindings } from './validator.js';
 
@@ -208,5 +209,63 @@ describe('validatePrReviewFindings — fail-open', () => {
     expect(calls).toBe(2);
     expect(result.findings).toHaveLength(1);
     expect(result.error).toBeUndefined();
+  });
+});
+
+describe('validatePrReviewFindings — untrusted diff framing + size cap', () => {
+  /** Capture the composed validator prompt (skip the corrective-retry re-send). */
+  function capturingFactory(onPrompt: (p: string) => void): PrReviewRunnerFactory {
+    return (cfg: SessionRunnerConfig, emit) => ({
+      async run() {
+        if (!cfg.prompt.includes('was not valid JSON')) onPrompt(cfg.prompt);
+        await completing('[]')(emit);
+      },
+      async interrupt() {},
+    });
+  }
+
+  test('wraps the PR diff in the untrusted block, not our instructions', async () => {
+    let prompt = '';
+    await validatePrReviewFindings({
+      ...deps(capturingFactory((p) => {
+        prompt = p;
+      })),
+      findings: [finding()],
+    });
+
+    const begin = prompt.indexOf('<<<BEGIN UNTRUSTED PR DIFF>>>');
+    const end = prompt.indexOf('<<<END UNTRUSTED PR DIFF>>>');
+    expect(begin).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(begin);
+    // The FOREIGN diff sits INSIDE the fence…
+    const inner = prompt.slice(begin, end);
+    expect(inner).toContain('unsafe();');
+    // …and OUR instructions sit OUTSIDE it (the delimiters surround the diff only).
+    expect(prompt.slice(0, begin)).toContain('adversarial validator');
+    expect(inner).not.toContain('adversarial validator');
+  });
+
+  test('truncates an oversized diff with a visible marker', async () => {
+    let prompt = '';
+    const bigDiff = `${COMMAND.diff}\n${'x'.repeat(MAX_DIFF_BYTES + 4096)}`;
+    await validatePrReviewFindings({
+      ...deps(capturingFactory((p) => {
+        prompt = p;
+      })),
+      diff: bigDiff,
+      findings: [finding()],
+    });
+    expect(prompt).toContain('[diff truncated at');
+  });
+
+  test('leaves a small diff untruncated', async () => {
+    let prompt = '';
+    await validatePrReviewFindings({
+      ...deps(capturingFactory((p) => {
+        prompt = p;
+      })),
+      findings: [finding()],
+    });
+    expect(prompt).not.toContain('[diff truncated');
   });
 });
