@@ -39,11 +39,13 @@ mod registry;
 mod scrollback;
 mod session;
 mod shell;
+mod title;
 mod types;
 
 pub use backend::TerminalBackend;
 pub use registry::TerminalRegistry;
 pub(crate) use session::{OutputSink, SpawnOpts};
+pub(crate) use title::{auto_eligible, TitleSource};
 pub use types::{
     PersistedTerminalInfo, PersistedTerminalScrollback, TerminalDaemonStatus, TerminalSessionInfo,
 };

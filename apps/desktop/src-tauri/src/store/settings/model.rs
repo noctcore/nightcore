@@ -192,6 +192,17 @@ pub struct Settings {
     /// field loads as `false`.
     #[serde(default)]
     pub terminal_daemon_enabled: bool,
+    /// USER terminal (build spec — terminal round 2, PR A): opt into AI tab auto-naming.
+    /// When `true`, after a non-trivial command settles the web asks a sandboxed
+    /// `claude -p` haiku one-shot (all tools disallowed) for a 2–3-word tab title and
+    /// applies it with `Auto` precedence — a manual rename or a linked task's title
+    /// ALWAYS wins (`title_source`), and an AI name never overwrites them. DEFAULT
+    /// `false` (opt-in): this reverses the cockpit spec's PR 5 "manual rename only, no
+    /// AI auto-naming in v1" now that the precedence guard exists. Global-only (a
+    /// machine preference, like the other terminal knobs). Serde-additive: a settings
+    /// file written before this field loads as `false`.
+    #[serde(default)]
+    pub terminal_ai_naming: bool,
     /// Per-project overrides keyed by project id.
     pub project_overrides: HashMap<String, SettingsOverride>,
 }
@@ -488,6 +499,9 @@ impl Default for Settings {
             // (experimental) — every session stays in-process (dying with the app,
             // read-only-restored on relaunch) until the user enables it.
             terminal_daemon_enabled: false,
+            // Round-2 PR A: AI tab auto-naming is opt-in — no `claude` one-shot ever
+            // runs and the capture layer never even buffers until the user enables it.
+            terminal_ai_naming: false,
             project_overrides: HashMap::new(),
         }
     }

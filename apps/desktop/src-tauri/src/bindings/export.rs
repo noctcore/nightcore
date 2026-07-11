@@ -44,7 +44,7 @@ fn export_all_bindings() {
     };
     use crate::terminal::{
         PersistedTerminalInfo, PersistedTerminalScrollback, TerminalDaemonStatus,
-        TerminalSessionInfo,
+        TerminalSessionInfo, TitleSource,
     };
     use crate::usage::contract::{
         Credits, ProviderUsage, RateWindow, UsageCost, UsageMeter, UsageStatus,
@@ -168,10 +168,12 @@ fn export_all_bindings() {
         PrCommentTriageClass,
         // The integrated USER terminal: the live-session descriptor + the
         // persisted-scrollback metadata/replay shapes (`export_all` on the
-        // scrollback shape also writes the nested `PersistedTerminalInfo`).
+        // scrollback shape also writes the nested `PersistedTerminalInfo`) + the
+        // tab-title precedence source (round-2 PR A).
         TerminalSessionInfo,
         PersistedTerminalInfo,
         PersistedTerminalScrollback,
+        TitleSource,
         // Detached PTY daemon (cockpit spec PR 6): the informational status shape.
         TerminalDaemonStatus,
         // Terminal folder browser: the one-level directory listing + its entries
@@ -297,6 +299,7 @@ mod tests {
             "TerminalSessionInfo.ts",
             "PersistedTerminalInfo.ts",
             "PersistedTerminalScrollback.ts",
+            "TitleSource.ts",
             "TerminalDaemonStatus.ts",
             "DirectoryListing.ts",
             "DirectoryEntry.ts",

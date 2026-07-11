@@ -83,6 +83,12 @@ terminalYoloLaunch?: boolean,
  */
 terminalDaemonEnabled?: boolean, 
 /**
+ * Round-2 PR A: toggle AI tab auto-naming (opt-in, default off). Global-only
+ * (ignored for a per-project override target), like the other terminal knobs. See
+ * [`super::model::Settings::terminal_ai_naming`].
+ */
+terminalAiNaming?: boolean, 
+/**
  * M4.6: default run mode (`"main"` | `"worktree"`). With a `projectId` it lands
  * in that project's override; without one, the global default.
  */

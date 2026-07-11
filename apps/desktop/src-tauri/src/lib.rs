@@ -391,6 +391,7 @@ pub fn run() {
             commands::terminal::terminal_daemon_status,
             commands::terminal::terminal_write,
             commands::terminal::terminal_set_title,
+            commands::terminal::terminal_suggest_title,
             commands::terminal::terminal_resize,
             commands::terminal::terminal_kill,
             commands::terminal::terminal_list,

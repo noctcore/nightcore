@@ -26,6 +26,7 @@ use super::confine;
 use super::persist::{self, PersistedScrollback};
 use super::scrollback::{CoalesceConfig, Coalescer, ScrollbackRing};
 use super::shell::{interactive_args, resolve_shell};
+use super::title::{TitleSource, TitleState};
 use super::types::TerminalSessionInfo;
 
 /// The sink a session streams coalesced output batches into. The command layer
@@ -86,9 +87,10 @@ struct PersistCtx {
     shell: String,
     confined: bool,
     created_at: u64,
-    /// The manual tab name (decision 5), shared with the live session so a rename
-    /// after spawn is picked up by the next scrollback flush.
-    title: Arc<Mutex<Option<String>>>,
+    /// The tab name + its precedence source (decision 5 + round-2 PR A), shared with
+    /// the live session so a rename after spawn is picked up by the next scrollback
+    /// flush.
+    title: Arc<Mutex<TitleState>>,
 }
 
 /// A live PTY session. Owns the master (for resize), the writer (for input), and a
@@ -107,10 +109,11 @@ pub(crate) struct PtySession {
     writer: Box<dyn Write + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
     alive: Arc<AtomicBool>,
-    /// The user's manual name for this tab (decision 5), or `None` when unnamed.
-    /// Behind an `Arc<Mutex<_>>` shared with the coalescer's `PersistCtx` so a
-    /// rename survives a scrollback flush + a read-only restore.
-    title: Arc<Mutex<Option<String>>>,
+    /// The tab name + its precedence source (decision 5 + round-2 PR A). Behind an
+    /// `Arc<Mutex<_>>` shared with the coalescer's `PersistCtx` so a rename survives a
+    /// scrollback flush + a read-only restore, and so the AI-name precedence guard is
+    /// atomic under the registry lock.
+    title: Arc<Mutex<TitleState>>,
 }
 
 impl PtySession {
@@ -168,7 +171,7 @@ impl PtySession {
 
         let alive = Arc::new(AtomicBool::new(true));
         let scrollback = Arc::new(Mutex::new(ScrollbackRing::with_defaults()));
-        let title: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let title: Arc<Mutex<TitleState>> = Arc::new(Mutex::new(TitleState::default()));
         let created_at = persist::now_ms();
 
         let (tx, rx) = mpsc::channel::<Vec<u8>>();
@@ -204,12 +207,16 @@ impl PtySession {
         })
     }
 
-    /// Set (or clear, with `None`) the user's manual name for this tab. `&self`:
+    /// Apply a title write carrying its precedence `source` (round-2 PR A). `&self`:
     /// the title is behind an `Arc<Mutex<_>>`, so the registry updates it without a
-    /// mutable session borrow. The next scrollback flush persists it via `PersistCtx`.
-    pub(crate) fn set_title(&self, title: Option<String>) {
-        if let Ok(mut slot) = self.title.lock() {
-            *slot = title;
+    /// mutable session borrow. The write lands only if it out-ranks-or-ties the
+    /// current source ([`TitleState::apply`]) — a `Manual`/`Task` rename that landed
+    /// during an in-flight AI generation still wins. Returns whether it landed. The
+    /// next scrollback flush persists the result via `PersistCtx`.
+    pub(crate) fn set_title(&self, title: Option<String>, source: TitleSource) -> bool {
+        match self.title.lock() {
+            Ok(mut slot) => slot.apply(title, source),
+            Err(_) => false,
         }
     }
 
@@ -254,6 +261,10 @@ impl PtySession {
     }
 
     pub(crate) fn info(&self) -> TerminalSessionInfo {
+        let (title, title_source) = match self.title.lock() {
+            Ok(state) => (state.title.clone(), state.source),
+            Err(_) => (None, None),
+        };
         TerminalSessionInfo {
             id: self.id.clone(),
             cwd: self.cwd.to_string_lossy().into_owned(),
@@ -263,7 +274,8 @@ impl PtySession {
             rows: self.rows,
             alive: self.is_alive(),
             created_at: self.created_at,
-            title: self.title.lock().ok().and_then(|t| t.clone()),
+            title,
+            title_source,
         }
     }
 }
@@ -414,12 +426,10 @@ fn persist_scrollback(scrollback: &Arc<Mutex<ScrollbackRing>>, ctx: &PersistCtx)
         Ok(ring) => ring.snapshot(),
         Err(_) => return,
     };
-    let title = ctx
-        .title
-        .lock()
-        .ok()
-        .and_then(|t| t.clone())
-        .unwrap_or_default();
+    let (title, title_source) = match ctx.title.lock() {
+        Ok(state) => (state.title.clone().unwrap_or_default(), state.source),
+        Err(_) => (String::new(), None),
+    };
     let record = PersistedScrollback::new(
         ctx.id.clone(),
         ctx.cwd.clone(),
@@ -428,6 +438,7 @@ fn persist_scrollback(scrollback: &Arc<Mutex<ScrollbackRing>>, ctx: &PersistCtx)
         ctx.created_at,
         persist::now_ms(),
         title,
+        title_source,
         &snapshot,
     );
     if let Err(e) = persist::write(&ctx.dir, &record) {

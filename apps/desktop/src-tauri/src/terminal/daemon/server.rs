@@ -25,7 +25,7 @@ use std::time::{Duration, Instant};
 use super::discovery;
 use super::fanout::{ClientWriter, Fanout};
 use super::protocol::{self, ClientMessage, Frame, ServerMessage, PROTOCOL_VERSION};
-use crate::terminal::{OutputSink, SpawnOpts, TerminalRegistry};
+use crate::terminal::{OutputSink, SpawnOpts, TerminalRegistry, TitleSource};
 
 /// How often the idle monitor checks whether the daemon should self-exit.
 const IDLE_CHECK_INTERVAL: Duration = Duration::from_secs(5);
@@ -133,10 +133,15 @@ impl Server {
                     Err(message) => ServerMessage::Error { message },
                 }
             }
-            ClientMessage::SetTitle { id, title } => match self.registry.set_title(&id, title) {
-                Ok(()) => ServerMessage::Ok,
-                Err(message) => ServerMessage::Error { message },
-            },
+            ClientMessage::SetTitle { id, title, source } => {
+                // A missing source (an older app) is treated as `Manual`, matching the
+                // pre-feature unconditional set; a new app always sends a concrete one.
+                let source = source.unwrap_or(TitleSource::Manual);
+                match self.registry.set_title(&id, title, source) {
+                    Ok(_) => ServerMessage::Ok,
+                    Err(message) => ServerMessage::Error { message },
+                }
+            }
             ClientMessage::Kill { id } => {
                 let _ = self.registry.kill(&id);
                 self.fanouts.lock().ok().and_then(|mut f| f.remove(&id));

@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use super::session::{OutputSink, PtySession, SpawnOpts};
+use super::title::TitleSource;
 use super::types::TerminalSessionInfo;
 
 /// Hard cap on concurrently LIVE sessions (decision 7). Spawning beyond it is a
@@ -95,16 +96,22 @@ impl TerminalRegistry {
         sessions.get_mut(id).ok_or_else(|| no_such(id))?.write(data)
     }
 
-    /// Set (or clear, with `None`) a live session's manual name (decision 5). The
-    /// title lives behind the session's own `Mutex`, so an immutable session borrow
-    /// suffices; the next scrollback flush persists it. Errors only for an unknown id.
-    pub fn set_title(&self, id: &str, title: Option<String>) -> Result<(), String> {
+    /// Set (or clear, with `None`) a live session's title, carrying its precedence
+    /// `source` (decision 5 + round-2 PR A). The title lives behind the session's own
+    /// `Mutex`, so an immutable session borrow suffices; the guarded write lands only
+    /// if `source` out-ranks-or-ties the current source. Returns whether it landed;
+    /// errors only for an unknown id. The next scrollback flush persists the result.
+    pub fn set_title(
+        &self,
+        id: &str,
+        title: Option<String>,
+        source: TitleSource,
+    ) -> Result<bool, String> {
         let sessions = self.lock_sessions()?;
-        sessions
+        Ok(sessions
             .get(id)
             .ok_or_else(|| no_such(id))?
-            .set_title(title);
-        Ok(())
+            .set_title(title, source))
     }
 
     /// Resize a session's pty.
@@ -258,18 +265,55 @@ mod tests {
         let s = reg.spawn(opts(tmp.path()), noop_sink()).expect("spawn");
         assert_eq!(reg.list()[0].title, None, "a fresh session is unnamed");
 
-        reg.set_title(&s.id, Some("deploy shell".to_string()))
-            .expect("rename a live session");
+        assert!(
+            reg.set_title(&s.id, Some("deploy shell".to_string()), TitleSource::Manual)
+                .expect("rename a live session"),
+            "a manual rename of a fresh session lands"
+        );
         assert_eq!(reg.list()[0].title.as_deref(), Some("deploy shell"));
+        assert_eq!(reg.list()[0].title_source, Some(TitleSource::Manual));
 
-        // Clearing the name returns to the cwd-leaf fallback (None).
-        reg.set_title(&s.id, None).expect("clear the name");
+        // A manual clear returns to the cwd-leaf fallback (None), still Manual-locked.
+        reg.set_title(&s.id, None, TitleSource::Manual)
+            .expect("clear the name");
         assert_eq!(reg.list()[0].title, None);
 
         assert!(
-            reg.set_title("ghost", Some("x".to_string())).is_err(),
+            reg.set_title("ghost", Some("x".to_string()), TitleSource::Manual)
+                .is_err(),
             "renaming an unknown id errors"
         );
+        reg.kill(&s.id).expect("kill");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn set_title_honors_precedence_on_a_live_session() {
+        // End-to-end (through PtySession): an AI (Auto) name lands on a fresh session,
+        // a Manual rename wins over it, and a later Auto is refused (returns false,
+        // leaves the manual title). Mirrors the TitleState unit tests but proves the
+        // guard threads through the registry lock.
+        let tmp = TempDir::new().unwrap();
+        let reg = TerminalRegistry::new(tmp.path().join("terminals"));
+        let s = reg.spawn(opts(tmp.path()), noop_sink()).expect("spawn");
+
+        assert!(
+            reg.set_title(&s.id, Some("build web".to_string()), TitleSource::Auto)
+                .expect("auto-name a fresh session"),
+            "an AI name lands on an unnamed session"
+        );
+        assert!(
+            reg.set_title(&s.id, Some("deploy".to_string()), TitleSource::Manual)
+                .expect("manual over auto"),
+            "a manual rename out-ranks the AI name"
+        );
+        assert!(
+            !reg.set_title(&s.id, Some("run tests".to_string()), TitleSource::Auto)
+                .expect("auto refused"),
+            "a later AI name is refused over the manual title"
+        );
+        assert_eq!(reg.list()[0].title.as_deref(), Some("deploy"));
+        assert_eq!(reg.list()[0].title_source, Some(TitleSource::Manual));
         reg.kill(&s.id).expect("kill");
     }
 

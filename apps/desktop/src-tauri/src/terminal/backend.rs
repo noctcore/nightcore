@@ -20,7 +20,7 @@
 
 use std::path::{Path, PathBuf};
 
-use super::{OutputSink, SpawnOpts, TerminalRegistry, TerminalSessionInfo};
+use super::{OutputSink, SpawnOpts, TerminalRegistry, TerminalSessionInfo, TitleSource};
 use crate::terminal::types::TerminalDaemonStatus;
 
 // The path-containment match is only applied to daemon sessions (Unix); the local
@@ -110,16 +110,24 @@ impl TerminalBackend {
         Err(format!("no live terminal session {id} to reattach"))
     }
 
-    /// Set (or clear) a live session's manual title, routed by ownership.
-    pub fn set_title(&self, id: &str, title: Option<String>) -> Result<(), String> {
+    /// Set (or clear) a live session's title with its precedence `source` (round-2
+    /// PR A), routed by ownership. The guarded write (local or daemon registry) decides
+    /// whether it lands; the applied state is read back via [`Self::list`] by callers
+    /// that need it (`terminal_suggest_title`).
+    pub fn set_title(
+        &self,
+        id: &str,
+        title: Option<String>,
+        source: TitleSource,
+    ) -> Result<(), String> {
         if self.local.has(id) {
-            return self.local.set_title(id, title);
+            return self.local.set_title(id, title, source).map(|_| ());
         }
         #[cfg(unix)]
         if let Some(client) = self.current_daemon() {
-            return client.set_title(id, title);
+            return client.set_title(id, title, source);
         }
-        self.local.set_title(id, title)
+        self.local.set_title(id, title, source).map(|_| ())
     }
 
     /// Forward user input, routed by ownership.
@@ -323,9 +331,10 @@ mod tests {
 
         backend.write(&info.id, b"echo hi\n").expect("write");
         backend
-            .set_title(&info.id, Some("deploy".to_string()))
+            .set_title(&info.id, Some("deploy".to_string()), TitleSource::Manual)
             .expect("set title");
         assert_eq!(backend.list()[0].title.as_deref(), Some("deploy"));
+        assert_eq!(backend.list()[0].title_source, Some(TitleSource::Manual));
 
         // `attach` has nothing to reattach with the daemon off.
         assert!(backend.attach(&info.id, noop_sink()).is_err());

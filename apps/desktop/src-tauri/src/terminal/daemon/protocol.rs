@@ -23,7 +23,7 @@ use std::io::{self, Read, Write};
 
 use serde::{Deserialize, Serialize};
 
-use crate::terminal::TerminalSessionInfo;
+use crate::terminal::{TerminalSessionInfo, TitleSource};
 
 /// The wire-protocol version. Bumped on any breaking change to the message shapes
 /// below. A client and daemon that disagree and can't bridge fall back to read-only
@@ -55,8 +55,16 @@ pub(crate) enum ClientMessage {
     Write { id: String, bytes: Vec<u8> },
     /// Resize a session's pty (SIGWINCH).
     Resize { id: String, cols: u16, rows: u16 },
-    /// Set (or clear, with `None`) a session's manual tab title.
-    SetTitle { id: String, title: Option<String> },
+    /// Set (or clear, with `None`) a session's tab title, carrying its precedence
+    /// `source` (round-2 PR A). `source` is `#[serde(default)]` so a message from an
+    /// older app (no source) still decodes — the daemon treats a missing source as
+    /// `Manual` (§ server), matching the pre-feature unconditional-set behavior.
+    SetTitle {
+        id: String,
+        title: Option<String>,
+        #[serde(default)]
+        source: Option<TitleSource>,
+    },
     /// Terminate a session (idempotent).
     Kill { id: String },
     /// List the daemon's live sessions.
@@ -250,6 +258,7 @@ mod tests {
             alive: true,
             created_at: 42,
             title: Some("deploy".to_string()),
+            title_source: Some(TitleSource::Manual),
         }
     }
 

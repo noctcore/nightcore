@@ -18,6 +18,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 
+use super::title::TitleSource;
 use super::types::{PersistedTerminalInfo, PersistedTerminalScrollback};
 
 /// The current on-disk schema version. Bumped only on a breaking shape change;
@@ -46,11 +47,16 @@ pub(crate) struct PersistedScrollback {
     pub(crate) created_at: u64,
     #[serde(default)]
     pub(crate) updated_at: u64,
-    /// The user's manual tab name (decision 5), empty when never renamed. Additive
+    /// The tab name (decision 5), empty when never renamed. Additive
     /// (`#[serde(default)]`, no `v` bump): an old file without it loads with `""`,
     /// which `.info()` maps back to `None` (the web then labels by cwd leaf).
     #[serde(default)]
     pub(crate) title: String,
+    /// The title's precedence source (round-2 PR A), `None` for a legacy record. Kept
+    /// so a restored tab carries its Manual/Task/AI provenance. Additive
+    /// (`#[serde(default)]`, no `v` bump): an old file loads it as `None`.
+    #[serde(default)]
+    pub(crate) title_source: Option<TitleSource>,
     /// The scrollback stream, base64-encoded (raw bytes don't round-trip cleanly
     /// through JSON; base64 keeps escape sequences intact).
     #[serde(default)]
@@ -71,6 +77,7 @@ impl PersistedScrollback {
         created_at: u64,
         updated_at: u64,
         title: String,
+        title_source: Option<TitleSource>,
         scrollback: &[u8],
     ) -> Self {
         Self {
@@ -82,6 +89,7 @@ impl PersistedScrollback {
             created_at,
             updated_at,
             title,
+            title_source,
             scrollback_b64: STANDARD.encode(scrollback),
         }
     }
@@ -97,6 +105,7 @@ impl PersistedScrollback {
             // An empty persisted title means "never renamed" → `None`, so the web
             // labels the restored tab by its cwd leaf exactly like an old file.
             title: (!self.title.is_empty()).then(|| self.title.clone()),
+            title_source: self.title_source,
         }
     }
 
@@ -250,6 +259,7 @@ mod tests {
             1,
             now_ms(),
             String::new(),
+            None,
             bytes,
         )
     }
@@ -283,15 +293,20 @@ mod tests {
             1,
             now_ms(),
             "deploy shell".to_string(),
+            Some(TitleSource::Manual),
             b"x",
         );
         write(&dir, &named).unwrap();
         let got = read(&dir, "named").expect("reads back");
         assert_eq!(got.info.title.as_deref(), Some("deploy shell"));
+        // The precedence source round-trips through the persist boundary (PR A).
+        assert_eq!(got.info.title_source, Some(TitleSource::Manual));
 
-        // An un-renamed record surfaces `None`, not `Some("")`.
+        // An un-renamed record surfaces `None`, not `Some("")`, and a `None` source.
         write(&dir, &record("plain", tmp.path().to_str().unwrap(), b"y")).unwrap();
-        assert_eq!(read(&dir, "plain").unwrap().info.title, None);
+        let plain = read(&dir, "plain").unwrap();
+        assert_eq!(plain.info.title, None);
+        assert_eq!(plain.info.title_source, None);
     }
 
     #[test]

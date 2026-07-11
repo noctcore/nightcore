@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use super::protocol::{self, ClientMessage, Frame, ServerMessage, PROTOCOL_VERSION};
-use crate::terminal::{OutputSink, TerminalSessionInfo};
+use crate::terminal::{OutputSink, TerminalSessionInfo, TitleSource};
 
 /// How long an RPC waits for its control reply before declaring the daemon wedged.
 /// Generous for a local socket; a timeout marks the client dead → the backend
@@ -140,10 +140,16 @@ impl DaemonClient {
         })
     }
 
-    pub(crate) fn set_title(&self, id: &str, title: Option<String>) -> Result<(), String> {
+    pub(crate) fn set_title(
+        &self,
+        id: &str,
+        title: Option<String>,
+        source: TitleSource,
+    ) -> Result<(), String> {
         self.expect_ok(ClientMessage::SetTitle {
             id: id.to_string(),
             title,
+            source: Some(source),
         })
     }
 

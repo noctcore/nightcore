@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use ts_rs::TS;
 
+use super::title::TitleSource;
+
 /// One live PTY session as the webview sees it. Returned by `terminal_spawn`,
 /// `terminal_list`, and `terminal_sessions_in_dir`. `alive` is `false` only in the
 /// brief window between a shell exiting and the registry reaping it.
@@ -40,10 +42,16 @@ pub struct TerminalSessionInfo {
     pub alive: bool,
     /// Epoch-ms the session was spawned.
     pub created_at: u64,
-    /// The user's manual name for this tab (decision 5), or `None` when unnamed —
-    /// the web then falls back to the cwd leaf. Set via `terminal_set_title` and
-    /// persisted so it survives a read-only restore.
+    /// The tab's name (manual / task / AI, decision 5 + round-2 PR A), or `None` when
+    /// unnamed — the web then falls back to the cwd leaf. Set via `terminal_set_title`
+    /// and persisted so it survives a read-only restore.
     pub title: Option<String>,
+    /// Where `title` came from — the precedence source (round-2 PR A): `Manual` /
+    /// `Task` always out-rank an AI (`Auto`) name. `None` for a never-titled session
+    /// OR a legacy record written before this field existed (a non-empty legacy title
+    /// is treated as Manual-equivalent, so the AI never clobbers it). Serde-additive.
+    #[serde(default)]
+    pub title_source: Option<TitleSource>,
 }
 
 /// Metadata for a persisted (dead) session's scrollback, without the bytes —
@@ -61,10 +69,15 @@ pub struct PersistedTerminalInfo {
     pub created_at: u64,
     /// Epoch-ms of the last scrollback flush to disk.
     pub updated_at: u64,
-    /// The user's manual name for the session (decision 5), or `None` when it was
-    /// never renamed — so a restored (read-only) tab shows the same name it had
-    /// while live, and old persisted files (no `title`) restore to the cwd leaf.
+    /// The session's name (decision 5), or `None` when it was never renamed — so a
+    /// restored (read-only) tab shows the same name it had while live, and old
+    /// persisted files (no `title`) restore to the cwd leaf.
     pub title: Option<String>,
+    /// The persisted title's precedence source (round-2 PR A), or `None` for a
+    /// never-titled / legacy record. Carried through restore so a restored tab keeps
+    /// its Manual/Task/AI provenance. Serde-additive.
+    #[serde(default)]
+    pub title_source: Option<TitleSource>,
 }
 
 /// Detached-PTY-daemon status (cockpit spec PR 6) — returned by

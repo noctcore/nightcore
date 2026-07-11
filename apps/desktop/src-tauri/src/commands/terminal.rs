@@ -19,8 +19,8 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
 use crate::terminal::{
-    OutputSink, PersistedTerminalInfo, PersistedTerminalScrollback, SpawnOpts, TerminalBackend,
-    TerminalDaemonStatus, TerminalSessionInfo,
+    auto_eligible, OutputSink, PersistedTerminalInfo, PersistedTerminalScrollback, SpawnOpts,
+    TerminalBackend, TerminalDaemonStatus, TerminalSessionInfo, TitleSource,
 };
 
 /// Resolve the requested spawn cwd SERVER-SIDE: canonicalize it (so a `..`/symlink
@@ -123,21 +123,127 @@ pub async fn terminal_write(app: AppHandle, id: String, data: Vec<u8>) -> Result
         .map_err(|e| format!("terminal write failed to run: {e}"))?
 }
 
-/// Set (or clear) a live session's manual tab name (decision 5). USER-only, like
-/// every terminal command. An empty/whitespace title clears the name (`None`), so
-/// the web falls back to the cwd leaf. The rename is persisted on the next
-/// scrollback flush, so it survives a read-only restore.
+/// Set (or clear) a live session's tab name with its precedence `source` (decision 5
+/// + round-2 PR A). USER-only, like every terminal command. An empty/whitespace title
+/// clears the name (`None`), so the web falls back to the cwd leaf. The guarded write
+/// lands only if `source` out-ranks-or-ties the current source (Manual/Task always
+/// beat an AI name). A missing `source` (an older webview) is treated as `Manual`,
+/// matching the pre-feature behavior. Persisted on the next scrollback flush, so it
+/// survives a read-only restore.
 #[tauri::command]
 pub async fn terminal_set_title(
     app: AppHandle,
     id: String,
     title: Option<String>,
+    source: Option<TitleSource>,
 ) -> Result<(), String> {
+    let source = source.unwrap_or(TitleSource::Manual);
     tauri::async_runtime::spawn_blocking(move || {
-        backend(&app)?.set_title(&id, normalize_title(title))
+        backend(&app)?.set_title(&id, normalize_title(title), source)
     })
     .await
     .map_err(|e| format!("terminal set_title failed to run: {e}"))?
+}
+
+/// The AI tab-naming instruction (round-2 PR A): a tiny, deterministic prompt. The
+/// last command rides the one-shot's stdin; every tool is disallowed (the seam's
+/// least-privilege), so this can never read or exfiltrate anything beyond that input.
+const SUGGEST_INSTRUCTION: &str = "Give a 2-3 word, lowercase title for a terminal tab \
+    running the command on stdin. Reply with ONLY the title, no punctuation.";
+
+/// Suggest an AI tab title from the last command (round-2 PR A, opt-in). Wraps the
+/// shared `claude -p` haiku one-shot ([`crate::workflow::oneshot::run_oneshot`] —
+/// `--model haiku`, ALL tools disallowed, 30s bound, best-effort → `None`), sanitizes
+/// the reply to a 2–3-word title, and applies it with `Auto` precedence GUARDED under
+/// the registry lock — so a Manual/Task rename that landed during the ~2s generation
+/// still wins. Returns the applied title, or `None` when naming is off, the session
+/// isn't AI-eligible, generation failed/was garbled, or a higher-ranked rename raced
+/// in. Fail-soft by construction: any miss keeps the current title and never errors
+/// the UI. USER-only + async + `spawn_blocking` like every terminal command.
+#[tauri::command]
+pub async fn terminal_suggest_title(
+    app: AppHandle,
+    id: String,
+    command: String,
+) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        // Guard OFF (settings), read live so toggling takes effect without a relaunch.
+        if !ai_naming_enabled(&app) {
+            return Ok(None);
+        }
+        let be = backend(&app)?;
+        // Server-side eligibility pre-check (defense in depth): never spend a `claude`
+        // spawn on a Manual/Task-locked (or legacy-titled) session.
+        let eligible = be
+            .list()
+            .into_iter()
+            .find(|s| s.id == id)
+            .is_some_and(|s| auto_eligible(s.title.as_deref(), s.title_source));
+        if !eligible {
+            return Ok(None);
+        }
+        // Generate (a blocking child spawn) — best-effort → None. `cap` bounds the
+        // stdin payload; `strip_code_fence` + `sanitize_title` clean the reply.
+        let raw = crate::workflow::oneshot::run_oneshot(
+            SUGGEST_INSTRUCTION,
+            crate::workflow::oneshot::cap(&command, 4000),
+        );
+        let Some(title) = raw
+            .as_deref()
+            .map(crate::workflow::oneshot::strip_code_fence)
+            .and_then(sanitize_title)
+        else {
+            return Ok(None);
+        };
+        // Apply with Auto precedence, guarded under the registry lock, then read the
+        // AUTHORITATIVE post-write state: return the title only if the Auto write
+        // actually landed (source is still Auto). A Manual/Task rename that raced in
+        // wins and yields `None` here, so the web never reflects a name that didn't
+        // stick.
+        be.set_title(&id, Some(title), TitleSource::Auto)?;
+        let applied = be
+            .list()
+            .into_iter()
+            .find(|s| s.id == id)
+            .filter(|s| s.title_source == Some(TitleSource::Auto))
+            .and_then(|s| s.title);
+        Ok(applied)
+    })
+    .await
+    .map_err(|e| format!("terminal suggest_title failed to run: {e}"))?
+}
+
+/// Whether the opt-in AI tab-naming setting (`terminal_ai_naming`) is on — read live
+/// from the settings store so a toggle takes effect without a relaunch. Missing store
+/// (never in production) fails closed to `false`.
+fn ai_naming_enabled(app: &AppHandle) -> bool {
+    app.try_state::<crate::settings::SettingsStore>()
+        .map(|store| store.with_settings(|s| s.terminal_ai_naming))
+        .unwrap_or(false)
+}
+
+/// Sanitize a raw one-shot reply into a tab title (round-2 PR A): trim, reject empty
+/// or multi-line (garbled) output, strip trailing sentence punctuation, and clamp to
+/// ~24 chars / 3 words. `None` ⇒ keep the current title (fail-soft), never a blank or
+/// multi-line tab. `pub(crate)` only for the unit test alongside `normalize_title`.
+fn sanitize_title(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    // A clean tab title is one short line — reject empty or multi-line replies.
+    if trimmed.is_empty() || trimmed.contains('\n') {
+        return None;
+    }
+    let stripped = trimmed
+        .trim_end_matches(['.', '!', '?', ',', ';', ':'])
+        .trim();
+    let joined = stripped
+        .split_whitespace()
+        .take(3)
+        .collect::<Vec<_>>()
+        .join(" ");
+    let capped = crate::workflow::oneshot::cap(&joined, 24)
+        .trim()
+        .to_string();
+    (!capped.is_empty()).then_some(capped)
 }
 
 /// Trim a requested title and treat empty/whitespace as "clear the name" (`None`).
@@ -234,9 +340,48 @@ pub async fn terminal_delete_persisted(app: AppHandle, id: String) -> Result<(),
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_title, resolve_spawn_cwd};
+    use super::{normalize_title, resolve_spawn_cwd, sanitize_title};
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn sanitize_title_clamps_words_and_strips_punctuation() {
+        assert_eq!(
+            sanitize_title("build web app now here").as_deref(),
+            Some("build web app"),
+            "clamps to the first 3 words"
+        );
+        assert_eq!(
+            sanitize_title("  deploy shell.  ").as_deref(),
+            Some("deploy shell"),
+            "trims + strips a trailing period"
+        );
+        assert_eq!(sanitize_title("run tests!").as_deref(), Some("run tests"));
+    }
+
+    #[test]
+    fn sanitize_title_rejects_empty_and_garbled_output() {
+        // Fail-soft: empty / whitespace / multi-line replies keep the current title.
+        assert_eq!(sanitize_title(""), None);
+        assert_eq!(sanitize_title("   "), None);
+        assert_eq!(
+            sanitize_title("here is a title:\nbuild web"),
+            None,
+            "a multi-line (chatty) reply is rejected, not partially used"
+        );
+        assert_eq!(sanitize_title("."), None, "punctuation-only ⇒ None");
+    }
+
+    #[test]
+    fn sanitize_title_caps_length_on_a_char_boundary() {
+        // A single over-long word (multi-byte glyphs) is clamped to ≤24 bytes without
+        // splitting a glyph — proving the cap rides `oneshot::cap`'s boundary logic.
+        let capped = sanitize_title(&"é".repeat(30)).expect("some title");
+        assert!(
+            capped.len() <= 24 && capped.chars().all(|c| c == 'é'),
+            "capped to ~24 bytes on a boundary, got {capped:?}"
+        );
+    }
 
     #[test]
     fn normalize_title_trims_and_clears_blank_names() {

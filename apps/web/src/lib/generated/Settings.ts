@@ -202,6 +202,18 @@ terminalYoloLaunch: boolean,
  */
 terminalDaemonEnabled: boolean, 
 /**
+ * USER terminal (build spec — terminal round 2, PR A): opt into AI tab auto-naming.
+ * When `true`, after a non-trivial command settles the web asks a sandboxed
+ * `claude -p` haiku one-shot (all tools disallowed) for a 2–3-word tab title and
+ * applies it with `Auto` precedence — a manual rename or a linked task's title
+ * ALWAYS wins (`title_source`), and an AI name never overwrites them. DEFAULT
+ * `false` (opt-in): this reverses the cockpit spec's PR 5 "manual rename only, no
+ * AI auto-naming in v1" now that the precedence guard exists. Global-only (a
+ * machine preference, like the other terminal knobs). Serde-additive: a settings
+ * file written before this field loads as `false`.
+ */
+terminalAiNaming: boolean, 
+/**
  * Per-project overrides keyed by project id.
  */
 projectOverrides: { [key in string]: SettingsOverride }, };
