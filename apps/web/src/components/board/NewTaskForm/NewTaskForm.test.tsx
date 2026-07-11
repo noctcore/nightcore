@@ -37,6 +37,7 @@ test('gates create on a non-empty title, then fires onCreate', async () => {
     model: null,
     effort: null,
     maxTurns: null,
+    // A blank budget field inherits (no override on the wire).
     maxBudgetUsd: null,
     branch: null,
     baseBranch: null,
@@ -58,6 +59,29 @@ test('threads an explicit max-turns ceiling through onCreate', async () => {
     model: null,
     effort: null,
     maxTurns: 40,
+    maxBudgetUsd: null,
+    branch: null,
+    baseBranch: null,
+    attachments: [],
+  });
+});
+
+test('a $0 max-budget inherits — 0 is not a valid ceiling (#240)', async () => {
+  const onCreate = vi.fn(async () => {});
+  const screen = render(<Default onCreate={onCreate} />);
+
+  await userEvent.type(screen.getByLabelText('Title').element(), 'Zero budget');
+  // The wire contract is `maxBudgetUsd: positive().optional()` — a $0 ceiling is
+  // unrunnable, so "0" must inherit exactly like the blank field above (not send 0).
+  await userEvent.type(screen.getByLabelText('Max budget (USD)').element(), '0');
+  await screen.getByRole('button', { name: /create task/i }).click();
+
+  expect(onCreate).toHaveBeenCalledWith('Zero budget', '', 'build', 'main', {
+    permissionMode: null,
+    planFirst: true,
+    model: null,
+    effort: null,
+    maxTurns: null,
     maxBudgetUsd: null,
     branch: null,
     baseBranch: null,
