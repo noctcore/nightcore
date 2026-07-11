@@ -108,3 +108,56 @@ impl StructureLockResult {
         }
     }
 }
+
+/// Drift-v1 (T15): one convention's MEASURED conformance, the output of an
+/// EnforceRun executing its armed check. The Rust serde+ts-rs mirror of the zod
+/// `ConventionDriftSchema` (`@nightcore/contracts` `harness-enforce.ts`), the exact
+/// counterpart to how [`crate::store::harness::wire::StoredRuleCoverageGap`] mirrors
+/// the zod `RuleCoverageGap` — coverage answers "is there a rule?", drift answers "is
+/// it FOLLOWED at every site?". Produced only by running a HUMAN-armed check, joined
+/// back to its convention by `conventionFingerprint`.
+///
+/// Non-negotiable product rule (mirrored from the contract): `clean`/`drifted` are
+/// NEVER emitted without a `method` + real site counts. A check whose output can't be
+/// turned into confident counts is `errored` (fail-visible), not silently `clean`.
+/// `status` rides as its wire string (`clean` | `drifted` | `uncheckable` |
+/// `errored`) and `category` as a lenient `ConventionCategory` wire string — the web
+/// casts both, matching the ENFORCE-lite coverage record.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "ConventionDrift.ts"))]
+pub struct ConventionDrift {
+    /// Stable id (`drift-<conventionFingerprint>`; UI keys).
+    pub id: String,
+    /// The convention this measures — its `category | title` sha1 (the join key).
+    pub convention_fingerprint: String,
+    /// The convention's lens (a `ConventionCategory` wire string; the web casts it).
+    /// Empty when an EnforceRun has no access to the scan's convention set (it reads
+    /// only the manifest) — the UI backfills the real category via the fingerprint join.
+    pub category: String,
+    /// The convention, restated as the rule the armed check verifies (the check name).
+    pub title: String,
+    /// `clean` | `drifted` | `uncheckable` | `errored` (wire string; the web casts).
+    pub status: String,
+    /// ALWAYS rendered: the check name + tool/rule id that determined this (e.g.
+    /// `lint-meta: folder-per-component`).
+    pub method: String,
+    /// Violating sites the armed check reported.
+    #[serde(default)]
+    pub sites_matched: u64,
+    /// Sites the armed check examined (`0` ⇒ counts unknown → never `clean`).
+    #[serde(default)]
+    pub sites_checked: u64,
+    /// The armed check that produced this drift record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub check_name: Option<String>,
+    /// Populated for `errored` — why the check could not run / its output could not
+    /// be turned into confident counts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub error_reason: Option<String>,
+    /// Stable carry-forward key — `== conventionFingerprint` (v0.4 acknowledged-drift).
+    pub fingerprint: String,
+}

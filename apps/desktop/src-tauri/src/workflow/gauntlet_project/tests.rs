@@ -47,7 +47,14 @@ fn armable_kinds_are_exactly_the_runnable_kinds() {
             "armable kind {kind} must be a runnable HarnessCheckKind"
         );
     }
-    assert!(!is_armable_kind("shell"), "a stray kind is not armable");
+    // The Drift-v1 (T15) substrates are armable (a `shell` check parses as a kind even
+    // though `plan_check` skips its execution for now).
+    assert!(is_armable_kind("lint-meta"), "lint-meta must be armable");
+    assert!(is_armable_kind("shell"), "shell must be armable");
+    assert!(
+        !is_armable_kind("lint-meta-rule"),
+        "an artifact kind is not an armable CHECK kind"
+    );
     assert!(
         !is_armable_kind("Lint-Plugin"),
         "a case near-miss is not armable"

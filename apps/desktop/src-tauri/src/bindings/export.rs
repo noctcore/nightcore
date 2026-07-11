@@ -42,7 +42,9 @@ fn export_all_bindings() {
     use crate::store::insight::{FindingLocation, InsightRun, InsightUsage, StoredFinding};
     use crate::store::pr_review::{PrReviewRun, StoredReviewFinding};
     use crate::store::scorecard::{ScorecardEvidence, ScorecardRun, StoredReading};
-    use crate::store::types::{StepStatus, StructureLockCheck, StructureLockResult};
+    use crate::store::types::{
+        ConventionDrift, StepStatus, StructureLockCheck, StructureLockResult,
+    };
     use crate::task::{
         PermissionMode, ProposedSubtask, RunMode, SubtaskStatus, Task, TaskKind, TaskPatch,
         TaskStatus,
@@ -163,6 +165,9 @@ fn export_all_bindings() {
         ArmedCheckOutcome,
         ArmedChecksLastRun,
         ArmedChecksState,
+        // Drift-v1 (T15): the per-convention drift record an EnforceRun produces (also
+        // reached transitively via `ArmedChecksState.drift`).
+        ConventionDrift,
         InjectionFlag,
         // PR arc (phase 1): the capability probe + the editable draft shape.
         PrSupport,
@@ -306,6 +311,7 @@ mod tests {
             "ArmedCheckOutcome.ts",
             "ArmedChecksLastRun.ts",
             "ArmedChecksState.ts",
+            "ConventionDrift.ts",
             "InjectionFlag.ts",
             "PrSupport.ts",
             "PrDraft.ts",
