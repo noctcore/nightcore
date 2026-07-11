@@ -120,7 +120,8 @@ export const MultiSession: Story = {
   },
 };
 
-/** A session whose stream carries a terminal error replaces the timeline. */
+/** A session whose stream carries a terminal error before any tokens streamed:
+ *  the error banner is the whole body (no transcript to keep). */
 export const WithError: Story = {
   args: {
     isRunning: false,
@@ -128,6 +129,35 @@ export const WithError: Story = {
       {
         phase: 'build',
         stream: { error: "cannot resolve 'sass-loader'" },
+      },
+    ]),
+  },
+};
+
+/** A FAILED session that had already streamed a transcript: the error renders as a
+ *  banner ABOVE the entries, so the transcript stays visible for debugging (the bug
+ *  this fixes lost the transcript exactly when it was needed). */
+export const WithErrorAndTranscript: Story = {
+  args: {
+    isRunning: false,
+    sessions: sessions([
+      {
+        phase: 'build',
+        model: 'claude-opus-4-8',
+        stream: {
+          entries: [
+            {
+              kind: 'text',
+              id: 1,
+              closed: true,
+              markdown: 'Wiring the sass pipeline into the build.',
+            },
+            { kind: 'tool', id: 1, toolName: 'Bash', input: { command: 'bun run build' } },
+          ],
+          toolSeq: 1,
+          toolCount: 1,
+          error: "cannot resolve 'sass-loader'",
+        },
       },
     ]),
   },

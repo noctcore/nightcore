@@ -7,7 +7,7 @@ import { EMPTY_STREAM, type SessionGroup, type TimelineEntry } from '../session-
 import { ActivityLog } from './ActivityLog';
 import * as stories from './ActivityLog.stories';
 
-const { Empty, WaitingForToken, SingleSession, MultiSession, WithError } =
+const { Empty, WaitingForToken, SingleSession, MultiSession, WithError, WithErrorAndTranscript } =
   composeStories(stories);
 
 /** Wrap a timeline in a single build session (rendered inline, no chrome). */
@@ -79,11 +79,26 @@ test('renders multiple sessions as collapsible blocks with the latest open', asy
     .toBeInTheDocument();
 });
 
-test('renders a terminal session error in place of the timeline', async () => {
+test('renders a terminal session error as a banner (no transcript to keep)', async () => {
   const screen = render(<WithError />);
   await expect
     .element(screen.getByText("cannot resolve 'sass-loader'"))
     .toBeInTheDocument();
+});
+
+test('a failed session keeps its transcript visible alongside the error banner', async () => {
+  // The bug this fixes: the error text used to REPLACE the whole entry list, so a
+  // failed run's transcript vanished exactly when it was needed for debugging. The
+  // error must render above the entries, not instead of them.
+  const screen = render(<WithErrorAndTranscript />);
+  await expect
+    .element(screen.getByText("cannot resolve 'sass-loader'"))
+    .toBeInTheDocument();
+  // The transcript entries are still on screen under the banner.
+  await expect
+    .element(screen.getByText('Wiring the sass pipeline into the build.'))
+    .toBeInTheDocument();
+  await expect.element(screen.getByText('Bash')).toBeInTheDocument();
 });
 
 test('a streaming turn mutated in place still updates on screen', async () => {

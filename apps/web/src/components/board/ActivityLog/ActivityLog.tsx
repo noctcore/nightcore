@@ -155,9 +155,10 @@ const SessionLog = memo(function SessionLog({
 
 /** The header-less activity list for a single session: assistant text turns
  *  interleaved with boxed tool-call / subagent lines, in arrival order. The live
- *  cursor renders only on a trailing text entry; a terminal error replaces the
- *  list entirely. Shared by the inline single-session view and each collapsible
- *  `SessionLog`. */
+ *  cursor renders only on a trailing text entry; a terminal error renders as a
+ *  banner ABOVE the entries (not in place of them) so a failed session's transcript
+ *  stays visible for debugging — losing it was the exact moment it mattered most.
+ *  Shared by the inline single-session view and each collapsible `SessionLog`. */
 function TimelineBody({
   entries,
   error,
@@ -172,13 +173,21 @@ function TimelineBody({
   // newest entry — and the in-place-streaming trailing row + auto-follow sentinel
   // — is always mounted; older pages reveal on demand.
   const { visible, hiddenCount, showEarlier } = useCappedEntries(entries, ENTRY_PAGE_SIZE);
+  const hasEntries = entries.length > 0;
   return (
     <>
-      {error !== null ? (
-        <pre className="whitespace-pre-wrap rounded-md border border-destructive/40 bg-destructive/[0.12] px-3 py-2 font-mono text-xs text-destructive">
+      {error !== null && (
+        // The failure banner sits above the transcript; a bottom margin separates
+        // it from the entries when both are present.
+        <pre
+          className={`whitespace-pre-wrap rounded-md border border-destructive/40 bg-destructive/[0.12] px-3 py-2 font-mono text-xs text-destructive${
+            hasEntries ? ' mb-2.5' : ''
+          }`}
+        >
           {error}
         </pre>
-      ) : entries.length > 0 ? (
+      )}
+      {hasEntries ? (
         <>
           {hiddenCount > 0 && (
             <div className="mb-2.5 flex justify-center">
@@ -214,9 +223,13 @@ function TimelineBody({
           </ol>
         </>
       ) : (
-        <p className="text-sm text-muted-foreground">
-          {isRunning ? 'Waiting for first token…' : 'No activity recorded for this session.'}
-        </p>
+        // No transcript yet. When an error is already shown above, the banner is
+        // enough — don't add a redundant "no activity" placeholder under it.
+        error === null && (
+          <p className="text-sm text-muted-foreground">
+            {isRunning ? 'Waiting for first token…' : 'No activity recorded for this session.'}
+          </p>
+        )
       )}
     </>
   );
