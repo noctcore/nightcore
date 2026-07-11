@@ -12,6 +12,7 @@ import {
   listProjectIssues,
 } from '@/lib/bridge';
 import { usePreselectNavigation } from '@/lib/usePreselectNavigation';
+import { useWindowFocusPoll } from '@/lib/useWindowFocusPoll';
 
 import { EMPTY_ISSUE_TRIAGE_STREAM, type IssueTriageStream } from '../issue-stream';
 import {
@@ -136,6 +137,12 @@ export function useIssueTriageView({
   useEffect(() => {
     void loadIssues();
   }, [loadIssues]);
+
+  // Intake focus poll (#97 PR 4, §4): re-list the repo's open issues when the app window
+  // regains focus, so a freshly-filed issue surfaces without a manual refresh. Only the
+  // Issues view mounts this hook, so a list nobody is looking at is never re-fetched;
+  // `loadIssues` itself no-ops without an active project.
+  useWindowFocusPoll(loadIssues);
 
   // Fetch one issue's detail (body + comments); shared by list-select + preselect.
   const loadDetail = useCallback(async (issueNumber: number) => {

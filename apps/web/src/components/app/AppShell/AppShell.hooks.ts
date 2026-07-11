@@ -32,6 +32,7 @@ import { type CreatePrController, useCreatePr } from './hooks/useCreatePr.hooks'
 import { useEditProject } from './hooks/useEditProject.hooks';
 import { useGauntlet } from './hooks/useGauntlet.hooks';
 import { useGlobalErrorToast } from './hooks/useGlobalErrorToast.hooks';
+import { useIssueStatePoll } from './hooks/useIssueStatePoll.hooks';
 import { useIssueSync } from './hooks/useIssueSync.hooks';
 import { useNewProjectFlow } from './hooks/useNewProjectFlow.hooks';
 import { useOnboardingGate } from './hooks/useOnboardingGate.hooks';
@@ -192,6 +193,10 @@ export function useAppShell(): AppShellState {
   // `issueSyncEnabled` (default false ⇒ no subscription) — writeback mutates a
   // (often public) repo, so it stays opt-in like the other network-mutating gates.
   useIssueSync(settings.settings?.issueSyncEnabled ?? false);
+  // Projection-IN (#97 PR 4): on window focus, poll the upstream state of issue-linked
+  // tasks and project close/reopen onto their "closed upstream" chip. Same opt-in gate as
+  // the writeback observer; read-only (no repo mutation), so it runs regardless of view.
+  useIssueStatePoll(settings.settings?.issueSyncEnabled ?? false);
   const { tasks, streams, selectedId, setSelectedId } = board;
   const permissions = usePermissions(tasks, toast);
   const questions = useQuestions(tasks, toast);
