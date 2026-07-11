@@ -6,6 +6,7 @@ import { tauriInvoke } from '../internal';
 import type {
   BranchInfo,
   MergePreview,
+  UpdateFromBaseStatus,
   WorktreeDiff,
   WorktreeInfo,
 } from '../types';
@@ -86,6 +87,21 @@ export async function worktreeDiff(id: string): Promise<WorktreeDiff> {
     additions: 0,
     deletions: 0,
   });
+}
+
+/** The unified-diff patch text for ONE changed file in a task's worktree vs base
+ *  (T13's per-file patch viewer). `path` is one of the entries {@link worktreeDiff}
+ *  returned. Returns `''` outside Tauri (browser preview). */
+export async function worktreeFileDiff(id: string, path: string): Promise<string> {
+  return tauriInvoke<string>('worktree_file_diff', { id, path }, '');
+}
+
+/** Pull the base branch INTO a task's worktree branch — the "Update from base" action
+ *  (T13): resolves a stale branch (cut before a base-only commit) before merge. Rejects
+ *  on a real failure (still running / dirty worktree) so the caller can surface it; uses
+ *  raw `invoke` (no silent fallback). */
+export async function updateWorktreeFromBase(id: string): Promise<UpdateFromBaseStatus> {
+  return invoke<UpdateFromBaseStatus>('update_worktree_from_base', { id });
 }
 
 /** Discard a task's worktree and its branch (safe cleanup, distinct from deleting

@@ -3,6 +3,8 @@
  *  only its header chrome, the tasks it renders, and the drop-target status. */
 import type { Task } from '@/lib/bridge';
 
+import type { DependencyChip } from '../Board/Board.utils';
+
 /** Props for a single board column. */
 export interface ColumnProps {
   title: string;
@@ -14,6 +16,10 @@ export interface ColumnProps {
   selectedId: string | null;
   /** Task ids that are blocked on an unfinished dependency. */
   blockedIds: Set<string>;
+  /** Per-task resolved dependency chips (id → title + satisfied) for the blocked
+   *  chip; only tasks with dependencies appear, so a dep-free card gets `undefined`.
+   *  Defaults to an empty map for presentational stories. */
+  dependencyChipsById?: Map<string, DependencyChip[]>;
   /** Task ids with a parked permission prompt — drives the card's pulse. */
   promptIds?: Set<string>;
   /** Streamed log-line counts per task id (for the running card's Logs badge). */

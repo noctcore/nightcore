@@ -1,6 +1,12 @@
 /** Board status vocabulary: column definitions, status/kind/run-mode/verdict
  *  labels and colors, drag-eligibility rules, and model/cost formatters. */
-import type { PermissionMode, RunMode, TaskKind, TaskStatus } from '@/lib/bridge';
+import type { PermissionMode, RunMode, Task, TaskKind, TaskStatus } from '@/lib/bridge';
+import { modelOptionFor } from '@/lib/models';
+
+/** The DOM id on the board's search input, shared with the `/` focus-search shortcut so
+ *  the app-shell keyboard layer can focus the field without threading a ref through the
+ *  memoized Board. */
+export const BOARD_SEARCH_INPUT_ID = 'board-search';
 
 /** A board column: its key, label, the statuses it groups, its status
  *  dot color, and whether it offers a "Clear". */
@@ -119,25 +125,51 @@ export const STATUS_TEXT: Record<TaskStatus, string> = {
  *  from the shared `lib/formatters` home under its canonical name. */
 export { formatCostUsd } from '@/lib/formatters';
 
-/** Map a stored model id (or already-display name) to its display name. The
- *  store may hold ids like `opus-4.8` / `sonnet-4.6` / `haiku-4.5`, or the
- *  display names directly; both resolve to the canonical label.
- *  Never returns a literal "default model" — falls back to Opus 4.8. */
-export function modelDisplayName(model: string | null): string {
-  const id = (model ?? '').toLowerCase();
-  if (id.includes('opus')) return 'Opus 4.8';
-  if (id.includes('sonnet')) return 'Sonnet 4.8';
-  if (id.includes('haiku')) return 'Haiku 4.5';
-  return 'Opus 4.8';
+/** The muted dot for an inherited (`Default`) or unrecognized model — never a
+ *  guessed model's colour. */
+const NEUTRAL_MODEL_DOT = 'oklch(62% .02 290)';
+
+/** Compact a raw model id into a chip label when the shared catalog doesn't know it
+ *  (a provider/model shipped ahead of Nightcore) — drop the provider prefix and turn
+ *  the dashes into spaces, so an unknown id renders honestly as itself instead of a
+ *  guessed default. */
+function shortModelId(id: string): string {
+  return id.replace(/^(claude|gpt|codex)-/i, '').replace(/-/g, ' ').trim() || id;
 }
 
-/** The colored dot beside a model badge, keyed on model family:
- *  Opus → primary, Sonnet → blue, Haiku → green. */
+/** Human label for a model id, resolved through the shared model catalog
+ *  (`@/lib/models`) so a Codex/Fable/unknown id renders HONESTLY — the old
+ *  substring hack mapped every unrecognized id (and `null`) to "Opus 4.8" (and
+ *  mislabelled Sonnet as 4.8). `null`/empty (inherit the provider default) → `Default`;
+ *  a known id → its catalog label; an unknown id → a cleaned short form of the id. */
+export function modelDisplayName(model: string | null): string {
+  if (model === null || model.trim() === '') return 'Default';
+  const option = modelOptionFor(model);
+  return option !== null ? option.label : shortModelId(model);
+}
+
+/** The colored dot beside a model badge, keyed on the resolved model: Codex → teal,
+ *  Sonnet → blue, Haiku → green, Opus/Fable (premium) → primary, and an
+ *  inherit/unknown model → a neutral muted dot (never a guessed model's colour). */
 export function modelDotColor(model: string | null): string {
-  const name = modelDisplayName(model);
-  if (name.startsWith('Sonnet')) return 'oklch(74% .13 248)';
-  if (name.startsWith('Haiku')) return 'oklch(76% .15 152)';
+  const option = model !== null ? modelOptionFor(model) : null;
+  if (option === null) return NEUTRAL_MODEL_DOT;
+  if (option.id.startsWith('gpt') || option.id.includes('codex')) return 'oklch(72% .15 165)';
+  if (option.label.startsWith('Sonnet')) return 'oklch(74% .13 248)';
+  if (option.label.startsWith('Haiku')) return 'oklch(76% .15 152)';
   return 'var(--nc-primary)';
+}
+
+/** The board badge for a task's model — the honest one (T13). Prefers the model the
+ *  run ACTUALLY used (`actualModel`, captured from the engine's session event) over the
+ *  requested `model` override (which is `null` for "inherit the provider default", the
+ *  source of the old default-guess dishonesty). So a card reflects what ran, not a
+ *  hardcoded fallback. Pure. */
+export function modelBadge(
+  task: Pick<Task, 'model' | 'actualModel'>,
+): { label: string; dotColor: string } {
+  const id = task.actualModel ?? task.model;
+  return { label: modelDisplayName(id), dotColor: modelDotColor(id) };
 }
 
 // --- Task kinds -----------------------------------------------------------

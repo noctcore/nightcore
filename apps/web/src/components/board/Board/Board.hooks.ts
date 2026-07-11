@@ -10,8 +10,9 @@ import type { BreakerInfo } from '../chrome';
 import { COLUMNS } from '../status';
 import type { UsageHotWindow } from '../usage-hot';
 import { filterTasksByWorktree } from '../WorktreeSwitcher';
-import type { BoardColumn } from './Board.utils';
+import type { BoardColumn, DependencyChip } from './Board.utils';
 import {
+  dependencyChipsByTask,
   groupTasksByColumn,
   isGhostWorktree,
   matchesQuery,
@@ -27,6 +28,10 @@ export interface BoardViewState {
   /** Stable `onClear` per column key, so a fresh `() => onClearColumn(statuses)`
    *  closure per Board render never defeats `memo(Column)`. */
   clearHandlers: Record<string, () => void>;
+  /** Per-task resolved dependency chips (id → title + satisfied) for the blocked chip,
+   *  memoized over the FULL task list (a dep may live in another column/worktree) so it's
+   *  stable across stream flushes and never churns the memoized cards. */
+  dependencyChipsById: Map<string, DependencyChip[]>;
 }
 
 /** Board view state: the search query plus the derived filtered/grouped columns.
@@ -76,11 +81,16 @@ export function useBoardView(
     return handlers;
   }, [onClearColumn]);
 
+  // Resolved over the FULL (unscoped, unfiltered) task list so a dependency in another
+  // column/worktree still resolves; memoized on tasks so it's stable across flushes.
+  const dependencyChipsById = useMemo(() => dependencyChipsByTask(tasks), [tasks]);
+
   return {
     search,
     setSearch: useCallback((value: string) => setSearch(value), []),
     columns,
     clearHandlers,
+    dependencyChipsById,
   };
 }
 

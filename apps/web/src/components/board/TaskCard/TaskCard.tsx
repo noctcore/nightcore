@@ -22,7 +22,7 @@ import {
 
 import { useTaskActions } from '../actions';
 import { IssueClosedChip } from '../IssueClosedChip';
-import { formatCostUsd, modelDisplayName, modelDotColor } from '../status';
+import { formatCostUsd } from '../status';
 import { TaskCardTerminalChip } from '../TaskCardTerminalChip';
 import { TaskCardUsageChip } from '../TaskCardUsageChip';
 import {
@@ -34,7 +34,7 @@ import {
   CARD_BASE,
   containerClass,
 } from './TaskCard.appearance';
-import { useElapsed, useTaskDraggable } from './TaskCard.hooks';
+import { useElapsed, useTaskCardView, useTaskDraggable } from './TaskCard.hooks';
 import type { TaskCardProps } from './TaskCard.types';
 
 /** A task card showing its full anatomy: model badge + dot, elapsed timer
@@ -53,6 +53,7 @@ function TaskCardImpl({
   task,
   selected,
   blocked = false,
+  blockedBy,
   needsApproval = false,
   logCount = 0,
   draggable = false,
@@ -69,22 +70,20 @@ function TaskCardImpl({
     onMerge,
     isActionPending,
   } = useTaskActions();
+  // Model badge, run gate, blocked chip, chip visibility + pulse — derived together in
+  // the card hook to keep this body lean (T13).
+  const { badge, gate, depChip, showBranch, showMainChip, pulse } = useTaskCardView(
+    task,
+    blocked,
+    blockedBy,
+    needsApproval,
+  );
   const running = task.status === 'in_progress';
   const verifying = task.status === 'verifying';
   const elapsed = useElapsed(task.updatedAt, running || verifying);
   const drag = useTaskDraggable(task.id, draggable, preview);
   const branch = task.branch;
   const mainMode = task.runMode === 'main';
-  const settled =
-    running ||
-    verifying ||
-    task.status === 'waiting_approval' ||
-    task.status === 'done' ||
-    task.status === 'failed';
-  const showBranch = branch !== null && settled;
-  // A main-mode task edits the project tree in place — surface a "main" chip
-  // (it has no branch) whenever a worktree task would show its branch chip.
-  const showMainChip = mainMode && settled;
 
   // True while a named bridge command is in flight for this task — disables the
   // matching board button and swaps its icon for a Spinner + "…ing" label, so the
@@ -97,11 +96,6 @@ function TaskCardImpl({
   const commitPending = pending('commit');
 
   const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
-  const pulse = needsApproval
-    ? 'animate-pulse ring-1 ring-warning/60'
-    : verifying
-      ? 'animate-pulse ring-1 ring-primary/50'
-      : '';
 
   return (
     <div
@@ -122,9 +116,9 @@ function TaskCardImpl({
             <span
               aria-hidden
               className="inline-block h-[5px] w-[5px] rounded-full"
-              style={{ background: modelDotColor(task.model) }}
+              style={{ background: badge.dotColor }}
             />
-            {modelDisplayName(task.model)}
+            {badge.label}
           </span>
           <span className="ml-auto flex items-center gap-2">
             {running && (
@@ -207,9 +201,12 @@ function TaskCardImpl({
               </span>
             )}
             {blocked && (
-              <span className="flex items-center gap-1 rounded-md bg-[oklch(74%_.13_60_/_.12)] px-1.5 py-0.5 font-mono text-[9.5px] text-[oklch(74%_.13_60)]">
+              <span
+                className="flex max-w-full items-center gap-1 truncate rounded-md bg-[oklch(74%_.13_60_/_.12)] px-1.5 py-0.5 font-mono text-[9.5px] text-[oklch(74%_.13_60)]"
+                title={depChip.tooltip}
+              >
                 <LockIcon size={11} />
-                blocked · {task.dependencies[0] ?? ''}
+                {depChip.label}
               </span>
             )}
             {task.status === 'failed' && task.error !== null && (
@@ -239,15 +236,16 @@ function TaskCardImpl({
           <>
             <button
               type="button"
-              disabled={blocked || runPending}
+              disabled={!gate.enabled || runPending}
               aria-busy={runPending}
+              title={gate.reason ?? undefined}
               onClick={() => onRun?.(task.id)}
-              className={`${ACTION_BASE} ${blocked || runPending ? ACTION_DISABLED : ACTION_PRIMARY}`}
+              className={`${ACTION_BASE} ${!gate.enabled || runPending ? ACTION_DISABLED : ACTION_PRIMARY}`}
             >
               {runPending ? <Spinner size={13} /> : blocked ? <LockIcon size={13} /> : <PlayIcon size={13} />}
               {runPending ? 'Starting…' : blocked ? 'Blocked' : 'Run'}
             </button>
-            {!blocked && <TaskCardUsageChip />}
+            {gate.enabled && <TaskCardUsageChip />}
             <button
               type="button"
               onClick={() => onSelect(task.id)}
@@ -363,10 +361,11 @@ function TaskCardImpl({
           <>
             <button
               type="button"
-              disabled={runPending}
+              disabled={!gate.enabled || runPending}
               aria-busy={runPending}
+              title={gate.reason ?? undefined}
               onClick={() => onRun?.(task.id)}
-              className={`${ACTION_BASE} ${runPending ? ACTION_DISABLED : ACTION_PRIMARY}`}
+              className={`${ACTION_BASE} ${!gate.enabled || runPending ? ACTION_DISABLED : ACTION_PRIMARY}`}
             >
               {runPending ? <Spinner size={13} /> : <RetryIcon size={13} />}
               {runPending ? 'Starting…' : 'Retry'}

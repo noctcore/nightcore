@@ -2,10 +2,11 @@ import { expect, test } from 'vitest';
 
 import { BLOCKED_TASK, ORPHAN_BRANCH_TASK, TASKS_BY_STATUS, WORKTREES } from '../_fixtures';
 import {
-  computeBlockedIds,
+  dependencyChipsByTask,
   groupTasksByColumn,
   isGhostWorktree,
   matchesQuery,
+  resolveDependencies,
 } from './Board.utils';
 
 test('groupTasksByColumn places each task in its status column, newest first', () => {
@@ -19,20 +20,34 @@ test('groupTasksByColumn places each task in its status column, newest first', (
   expect(grouped.find((c) => c.def.key === 'done')?.tasks).toHaveLength(1);
 });
 
-test('computeBlockedIds flags a backlog task whose dependency is unfinished', () => {
-  const dep = { ...TASKS_BY_STATUS.in_progress, title: 'Deployment configuration' };
-  const blocked = computeBlockedIds([BLOCKED_TASK, dep]);
-  expect(blocked.has(BLOCKED_TASK.id)).toBe(true);
+test('resolveDependencies maps dependency IDs to titles + satisfied state', () => {
+  const byId = new Map([[TASKS_BY_STATUS.in_progress.id, TASKS_BY_STATUS.in_progress]]);
+  // BLOCKED_TASK depends on the still-running t-running task (by id).
+  const chips = resolveDependencies(BLOCKED_TASK, byId);
+  expect(chips).toHaveLength(1);
+  const chip = chips[0]!;
+  expect(chip.id).toBe('t-running');
+  expect(chip.title).toBe('Generate API client');
+  expect(chip.satisfied).toBe(false);
 });
 
-test('computeBlockedIds clears the block once the dependency is verified', () => {
-  const dep = {
-    ...TASKS_BY_STATUS.done,
-    title: 'Deployment configuration',
-    status: 'done' as const,
-  };
-  const blocked = computeBlockedIds([BLOCKED_TASK, dep]);
-  expect(blocked.has(BLOCKED_TASK.id)).toBe(false);
+test('resolveDependencies marks a Done dependency satisfied', () => {
+  const done = { ...TASKS_BY_STATUS.in_progress, status: 'done' as const };
+  const byId = new Map([[done.id, done]]);
+  expect(resolveDependencies(BLOCKED_TASK, byId)[0]?.satisfied).toBe(true);
+});
+
+test('resolveDependencies reports a deleted dependency with a null title', () => {
+  const chip = resolveDependencies(BLOCKED_TASK, new Map())[0];
+  expect(chip?.title).toBeNull();
+  expect(chip?.satisfied).toBe(false);
+});
+
+test('dependencyChipsByTask only maps tasks that declare dependencies', () => {
+  const map = dependencyChipsByTask([BLOCKED_TASK, TASKS_BY_STATUS.in_progress]);
+  expect(map.has(BLOCKED_TASK.id)).toBe(true);
+  // A task with no dependencies gets no entry (stable `undefined` prop for the card).
+  expect(map.has(TASKS_BY_STATUS.in_progress.id)).toBe(false);
 });
 
 test('matchesQuery matches title and description, case-insensitively', () => {

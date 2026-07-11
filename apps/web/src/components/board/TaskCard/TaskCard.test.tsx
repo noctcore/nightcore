@@ -37,13 +37,23 @@ test('calls onSelect with the task id when the card body is clicked', async () =
 
 test('resolves the model id to its display name', async () => {
   const screen = render(<Running />);
-  await expect.element(screen.getByText('Sonnet 4.8')).toBeInTheDocument();
+  // T13 badge honesty: `sonnet-4.6` resolves to the real catalog label (was the
+  // hardcoded-wrong "Sonnet 4.8" before the honest resolver landed).
+  await expect.element(screen.getByText('Sonnet 4.6')).toBeInTheDocument();
 });
 
 test('disables the run action and shows a Blocked label when blocked', async () => {
   const screen = render(<Blocked />);
   const blockedBtn = screen.getByRole('button', { name: /^blocked$/i });
   await expect.element(blockedBtn).toBeDisabled();
+});
+
+test('names the unfinished dependency in the human-readable blocked chip (T13)', async () => {
+  const screen = render(<Blocked />);
+  // The chip resolves the dependency id to its task TITLE, not the raw id.
+  await expect
+    .element(screen.getByText('blocked · Generate API client'))
+    .toBeInTheDocument();
 });
 
 test('calls onCancel from the running card', async () => {

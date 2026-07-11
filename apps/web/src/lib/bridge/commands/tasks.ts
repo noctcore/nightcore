@@ -78,6 +78,14 @@ export async function updateTask(id: string, patch: TaskPatch): Promise<Task> {
   return invoke<Task>('update_task', { id, patch });
 }
 
+/** Duplicate a task (T13: re-run-with-tweaks). Mints a fresh backlog task cloning the
+ *  source's prompt + launch config + image attachments (not its run state or deps),
+ *  returning the clone so the caller can select it for editing. No-op (throws) outside
+ *  Tauri. */
+export async function duplicateTask(id: string): Promise<Task> {
+  return invoke<Task>('duplicate_task', { id });
+}
+
 /** Delete a task (its attachment files are removed server-side). */
 export async function deleteTask(id: string): Promise<void> {
   await invoke('delete_task', { id });

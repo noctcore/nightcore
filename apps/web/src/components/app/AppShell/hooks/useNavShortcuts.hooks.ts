@@ -1,16 +1,8 @@
 import { useEffect } from 'react';
 
-import type { AppView, NavItem } from '../AppShell.types';
+import { isTypingTarget } from '@/lib/typing-target';
 
-/** True when the event target is a text-entry surface where a bare letter keypress
- *  is real typing, not a shortcut — an input, textarea, select, or any
- *  contenteditable host. Guards the nav shortcuts from stealing keystrokes. */
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  const tag = target.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-  return target.isContentEditable;
-}
+import type { AppView, NavItem } from '../AppShell.types';
 
 /** Wire the sidebar's single-letter nav hints (K/W/T/U/H/E/P/S) to actual
  *  navigation: a bare keypress matching a nav item's `hint` routes to its view.

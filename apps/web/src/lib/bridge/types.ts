@@ -127,6 +127,7 @@ export type { TerminalDaemonStatus } from '../generated/TerminalDaemonStatus';
 // listing + its dir entries, from the read-only `list_directory` command.
 export type { DirectoryEntry } from '../generated/DirectoryEntry';
 export type { DirectoryListing } from '../generated/DirectoryListing';
+export type { UpdateFromBaseStatus } from '../generated/UpdateFromBaseStatus';
 export type { WorktreeDiff } from '../generated/WorktreeDiff';
 export type { WorktreeDiffFile } from '../generated/WorktreeDiffFile';
 export type { WorktreeInfo } from '../generated/WorktreeInfo';

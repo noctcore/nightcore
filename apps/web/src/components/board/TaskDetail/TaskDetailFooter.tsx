@@ -8,11 +8,13 @@ import {
   CheckIcon,
   CommitIcon,
   GithubIcon,
+  LayersIcon,
   RefineIcon,
   Spinner,
 } from '@/components/ui';
 
 import { useTaskActions } from '../actions';
+import { canRunTask, useRunGate } from '../run-gating';
 import { canCreatePr, canMerge, createPrBlockedReason, prChipLabel } from './TaskDetail.hooks';
 import type { TaskDetailFooterProps } from './TaskDetail.types';
 
@@ -25,11 +27,28 @@ export function TaskDetailFooter({
   reviewParked,
   isDoneColumn,
   isRunning,
-  anyRunning,
   pending,
 }: TaskDetailFooterProps) {
   const actions = useTaskActions();
+  const { slotsFree } = useRunGate();
   const mergeable = canMerge(task, gauntlet);
+  // The SAME slot-aware gate the board card uses (T13): a non-done task can start when a
+  // run slot is free, replacing the old "another task is already running" check that
+  // refused whenever ANY task ran even though concurrency defaults to 3.
+  const runGate = canRunTask({ blocked: false, slotsFree });
+  // Duplicate (T13: re-run-with-tweaks): clone this task's prompt + config into a fresh
+  // backlog task and open it for editing. Shown beside Delete on the settled branches.
+  const duplicateButton =
+    actions.onDuplicate !== undefined ? (
+      <Button
+        variant="ghost"
+        onClick={() => actions.onDuplicate!(task.id)}
+        title="Duplicate this task's prompt + config into a new backlog task"
+      >
+        <LayersIcon size={14} />
+        Duplicate
+      </Button>
+    ) : null;
   // Freshly-fetched PR state (from the lifted status view): a PR already
   // merged ON GitHub must not arm the local Merge — the worktree branch was
   // integrated remotely, and a local merge would re-apply it against a base
@@ -154,6 +173,7 @@ export function TaskDetailFooter({
             </Button>
           ) : null}
           <span className="flex-1" />
+          {duplicateButton}
           <Button variant="ghost" onClick={() => actions.onDelete(task.id)}>
             Delete
           </Button>
@@ -167,9 +187,9 @@ export function TaskDetailFooter({
           ) : (
             <Button
               onClick={() => actions.onRun(task.id)}
-              disabled={anyRunning || pending('run')}
+              disabled={!runGate.enabled || pending('run')}
               aria-busy={pending('run')}
-              title={anyRunning ? 'Another task is already running' : undefined}
+              title={runGate.reason ?? undefined}
             >
               {pending('run') ? <Spinner /> : null}
               {pending('run') ? 'Starting…' : 'Run'}
@@ -177,9 +197,12 @@ export function TaskDetailFooter({
           )}
           <span className="flex-1" />
           {!isRunning && task.status !== 'verifying' && (
-            <Button variant="ghost" onClick={() => actions.onDelete(task.id)}>
-              Delete
-            </Button>
+            <>
+              {duplicateButton}
+              <Button variant="ghost" onClick={() => actions.onDelete(task.id)}>
+                Delete
+              </Button>
+            </>
           )}
         </>
       )}

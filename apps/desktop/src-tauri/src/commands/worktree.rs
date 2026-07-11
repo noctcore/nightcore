@@ -12,7 +12,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::project::ProjectStore;
 use crate::store::TaskStore;
 use crate::task::{Task, TASK_EVENT};
-use crate::worktree::{self, BranchInfo, MergePreview, WorktreeDiff};
+use crate::worktree::{self, BranchInfo, MergePreview, UpdateFromBaseStatus, WorktreeDiff};
 
 /// The active project's path, or an error for a command that needs one.
 fn active_project_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
@@ -125,6 +125,97 @@ fn worktree_diff_blocking(app: &AppHandle, id: &str) -> Result<WorktreeDiff, Str
         .clone()
         .unwrap_or_else(|| worktree::base_branch(&project));
     Ok(worktree::worktree_diff(&dir, &base))
+}
+
+/// The unified-diff patch text for ONE changed file in a task's worktree vs base
+/// (T13's per-file patch viewer). `path` is one of the entries `worktree_diff`
+/// returned; the worktree resolves the same base the file list was computed against, and
+/// the path is confined to the worktree server-side ([`worktree::file_diff`]). The git
+/// read runs off the UI thread.
+#[tauri::command]
+pub async fn worktree_file_diff(
+    app: AppHandle,
+    id: String,
+    path: String,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || worktree_file_diff_blocking(&app, &id, &path))
+        .await
+        .map_err(|e| format!("worktree file diff failed to run: {e}"))?
+}
+
+fn worktree_file_diff_blocking(app: &AppHandle, id: &str, path: &str) -> Result<String, String> {
+    let store = app
+        .try_state::<TaskStore>()
+        .ok_or_else(|| "task store unavailable".to_string())?;
+    let task = store
+        .get(id)
+        .ok_or_else(|| format!("no task with id {id}"))?;
+    let project = active_project_path(app)?;
+    let dir = worktree::worktree_path(&project, id);
+    if !dir.exists() {
+        return Err(format!("no worktree for task {id} — run it first"));
+    }
+    let base = task
+        .base_branch
+        .clone()
+        .unwrap_or_else(|| worktree::base_branch(&project));
+    worktree::file_diff(&dir, &base, path)
+}
+
+/// Pull the base branch INTO a task's worktree branch — the "Update from base" action
+/// (T13). Merges `base` into `nc/<taskId>` inside the worktree so a branch cut before a
+/// base-only commit (the documented silent-revert incident class) stops reverting it on
+/// merge. Refuses while the task is actively running (the slot lease, mirroring
+/// [`discard_worktree`]) and while the worktree is dirty (server-side). A clean update
+/// emits `nc:task` so the board refreshes the branch's ahead/behind. The git work runs
+/// off the UI thread.
+#[tauri::command]
+pub async fn update_worktree_from_base(
+    app: AppHandle,
+    id: String,
+) -> Result<UpdateFromBaseStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || update_worktree_from_base_blocking(&app, &id))
+        .await
+        .map_err(|e| format!("update from base failed to run: {e}"))?
+}
+
+fn update_worktree_from_base_blocking(
+    app: &AppHandle,
+    id: &str,
+) -> Result<UpdateFromBaseStatus, String> {
+    let store = app
+        .try_state::<TaskStore>()
+        .ok_or_else(|| "task store unavailable".to_string())?;
+    let task = store
+        .get(id)
+        .ok_or_else(|| format!("no task with id {id}"))?;
+    // Refuse to rewrite a worktree out from under a live run (authoritative: the slot
+    // lease), mirroring `discard_worktree`.
+    if let Some(orch) = app.try_state::<crate::orchestration::coordinator::Orchestrator>() {
+        if orch.slots.is_leased(id) {
+            return Err(
+                "this task is still running — stop it before updating its worktree".to_string(),
+            );
+        }
+    }
+    let project = active_project_path(app)?;
+    let dir = worktree::worktree_path(&project, id);
+    if !dir.exists() {
+        return Err(format!("no worktree for task {id} — run it first"));
+    }
+    let base = task
+        .base_branch
+        .clone()
+        .unwrap_or_else(|| worktree::base_branch(&project));
+    let outcome = worktree::update_from_base(&dir, &base)?;
+    // A clean update advanced the worktree branch — clear any stale conflict flag and
+    // emit `nc:task` so the switcher/board refresh the branch's ahead/behind counts.
+    if outcome == UpdateFromBaseStatus::Updated {
+        if let Ok(updated) = store.mutate(id, |t| t.conflict = false) {
+            let _ = app.emit(TASK_EVENT, &updated);
+        }
+    }
+    Ok(outcome)
 }
 
 /// Discard a task's worktree and its branch — a safe cleanup distinct from deleting

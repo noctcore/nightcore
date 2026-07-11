@@ -3,6 +3,7 @@ import { lazy, Suspense } from 'react';
 import {
   BoardChromeProvider,
   NewTaskForm,
+  RunGateProvider,
   TaskActionsProvider,
   UsageHotProvider,
 } from '@/components/board';
@@ -18,6 +19,7 @@ import { UsageMeter } from '../UsageMeter';
 import { useAppShell } from './AppShell.hooks';
 import { AppShellOverlays } from './AppShellOverlays';
 import { AppShellViews, RouteFallback } from './AppShellViews';
+import { useBoardShortcuts } from './hooks/useBoardShortcuts.hooks';
 import { useNavShortcuts } from './hooks/useNavShortcuts.hooks';
 import { APP_SHELL_NAV } from './nav.constants';
 
@@ -49,6 +51,7 @@ export function AppShell() {
     newProject,
     chrome,
     usageHot,
+    runSlots,
     board,
     drawer,
     prDialog,
@@ -92,6 +95,18 @@ export function AppShell() {
   const shortcutsEnabled =
     !showSplash && registry.loaded && view !== 'projects' && active !== null;
   useNavShortcuts(APP_SHELL_NAV, routing.goto, shortcutsEnabled);
+
+  // The board keyboard layer (T13): N (new task) / Esc (close drawer) / `/` (focus
+  // search). Active only on the board view with no modal open, so it never fights the
+  // NewTaskForm's own Esc-to-close or a scan surface's inputs. Both callbacks are stable
+  // (`routing.openNewTask` and the memoized `drawer.closeDetail`), so the listener
+  // subscribes once per enable.
+  useBoardShortcuts({
+    enabled: shortcutsEnabled && view === 'board' && !routing.newTaskOpen && !newProjectOpen,
+    drawerOpen: board.selectedId !== null,
+    onNewTask: routing.openNewTask,
+    onCloseDrawer: drawer.closeDetail,
+  });
 
   // Hold the splash until the registry has loaded — in EVERY environment, not just
   // Tauri — so the first real paint already knows whether to land on full-screen
@@ -169,6 +184,7 @@ export function AppShell() {
     <TaskActionsProvider actions={drawer.detailActions}>
     <WorktreesProvider value={worktrees}>
     <UsageHotProvider value={usageHot}>
+    <RunGateProvider value={runSlots}>
     <BoardChromeProvider value={chrome}>
       {showProjects ? (
         <div className="flex h-full w-full flex-col overflow-hidden bg-background text-foreground">
@@ -261,6 +277,7 @@ export function AppShell() {
 
       <AppShellOverlays confirm={confirm} editProject={editProject} projectRemoval={projectRemoval} />
     </BoardChromeProvider>
+    </RunGateProvider>
     </UsageHotProvider>
     </WorktreesProvider>
     </TaskActionsProvider>

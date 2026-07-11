@@ -7,6 +7,7 @@ import {
   createTask,
   type CreateTaskOptions,
   deleteTask,
+  duplicateTask,
   moveTask,
   renameSession,
   resumeSession,
@@ -270,6 +271,28 @@ export function useTaskLifecycleActions({ board, action, toast }: TaskLifecycleD
     [setTasks, toast],
   );
 
+  // Duplicate a task (T13: re-run-with-tweaks). The backend mints a fresh backlog clone
+  // of the prompt + launch config; select it so the drawer opens on the copy for editing.
+  const handleDuplicate = useCallback(
+    (id: string) => {
+      void duplicateTask(id)
+        .then((clone) => {
+          setTasks((prev) => (prev.some((t) => t.id === clone.id) ? prev : [...prev, clone]));
+          setSelectedId(clone.id);
+        })
+        .catch((err) => {
+          console.error('duplicate_task failed', err);
+          toast.error('Could not duplicate task', err);
+        });
+    },
+    [setTasks, setSelectedId, toast],
+  );
+
+  const handleChangeTitle = useMemo(() => makeFieldUpdater('title'), [makeFieldUpdater]);
+  const handleChangeDescription = useMemo(
+    () => makeFieldUpdater('description'),
+    [makeFieldUpdater],
+  );
   const handleChangeKind = useMemo(() => makeFieldUpdater('kind'), [makeFieldUpdater]);
   const handleChangeRunMode = useMemo(() => makeFieldUpdater('runMode'), [makeFieldUpdater]);
   const handleChangePermissionMode = useMemo(
@@ -293,8 +316,11 @@ export function useTaskLifecycleActions({ board, action, toast }: TaskLifecycleD
     handleRenameSession,
     handleTagSession,
     handleDelete,
+    handleDuplicate,
     handleClearColumn,
     handleMoveTask,
+    handleChangeTitle,
+    handleChangeDescription,
     handleChangeKind,
     handleChangeRunMode,
     handleChangePermissionMode,

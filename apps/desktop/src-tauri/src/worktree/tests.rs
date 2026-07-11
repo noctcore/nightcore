@@ -1010,3 +1010,93 @@ fn delete_refuses_base_branch_under_equivalent_spellings() {
         "the non-base branch was deleted"
     );
 }
+
+// --- file_diff untracked-path confinement (HIGH path-confinement regression) ---------
+// The per-file patch viewer (`worktree_file_diff` → `file_diff`) falls back to reading an
+// UNTRACKED file's bytes to synthesize an all-additions patch. That read is the ONE branch
+// that touches the filesystem directly (the tracked `git diff` is git-confined), so it must
+// reject a symlink escape — an untracked `notes.txt -> /outside/secret` passes the lexical
+// path check but would otherwise be FOLLOWED and leak an out-of-worktree file through the
+// full-privilege backend. The gap that let this through originally: no test exercised an
+// untracked symlink. These mirror `safe_join`'s symlink tests for this read path.
+
+#[cfg(unix)]
+#[test]
+fn file_diff_untracked_symlink_does_not_leak_out_of_worktree() {
+    let Some((_tmp, repo)) = temp_repo() else {
+        return; // git unavailable
+    };
+    let base = base_branch(&repo);
+
+    // A secret file OUTSIDE the worktree, and an untracked symlink inside pointing at it.
+    let outside = tempfile::TempDir::new().expect("outside dir");
+    let secret = outside.path().join("id_rsa");
+    std::fs::write(&secret, "TOP-SECRET-KEY-MATERIAL").expect("write secret");
+    std::os::unix::fs::symlink(&secret, repo.join("notes.txt")).expect("plant symlink");
+
+    // Precondition: the untracked symlink shows in the diff LIST (so a user can click it).
+    let listed = worktree_diff(&repo, &base);
+    assert!(
+        listed.files.iter().any(|f| f.path == "notes.txt"),
+        "the untracked symlink is listed as a changed file"
+    );
+
+    // The per-file patch must NEVER return the out-of-worktree secret's bytes.
+    let patch = file_diff(&repo, &base, "notes.txt").expect("file_diff returns a note, not Err");
+    assert!(
+        !patch.contains("TOP-SECRET-KEY-MATERIAL"),
+        "the out-of-worktree secret content leaked through file_diff: {patch}"
+    );
+    assert!(
+        patch.contains("not confined to the worktree"),
+        "the symlink escape must be rejected with the not-confined note, got: {patch}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn file_diff_untracked_dangling_symlink_is_rejected_not_followed() {
+    // A DANGLING leaf symlink (target absent) reports exists()==false, so a naive read
+    // would skip past it (and follow it the instant the target appears). lstat catches the
+    // link itself and rejects the path.
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    let base = base_branch(&repo);
+    let outside = tempfile::TempDir::new()
+        .expect("outside dir")
+        .path()
+        .join("evil-not-yet-created");
+    std::os::unix::fs::symlink(&outside, repo.join("notes.txt")).expect("plant dangling symlink");
+    assert!(
+        !repo.join("notes.txt").exists(),
+        "precondition: the symlink is dangling (target absent)"
+    );
+
+    let patch = file_diff(&repo, &base, "notes.txt").expect("dangling symlink handled gracefully");
+    assert!(
+        patch.contains("not confined to the worktree"),
+        "a dangling symlink must be rejected, not followed: {patch}"
+    );
+    assert!(
+        !outside.exists(),
+        "nothing was created outside the worktree"
+    );
+}
+
+#[test]
+fn file_diff_untracked_regular_file_still_shows_as_added() {
+    // Positive: a NORMAL untracked regular file must still return its synthesized
+    // all-additions patch — only symlink-escaping paths are rejected.
+    let Some((_tmp, repo)) = temp_repo() else {
+        return;
+    };
+    let base = base_branch(&repo);
+    std::fs::write(repo.join("new.txt"), "alpha\nbeta\n").expect("write untracked file");
+
+    let patch = file_diff(&repo, &base, "new.txt").expect("file_diff");
+    assert!(
+        patch.contains("+alpha") && patch.contains("+beta"),
+        "a normal untracked file must diff as added: {patch}"
+    );
+}

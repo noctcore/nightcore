@@ -4,8 +4,16 @@ import { render } from 'vitest-browser-react';
 
 import * as stories from './MergePreviewDialog.stories';
 
-const { Ready, UpToDate, Diverged, Conflicts, Loading, Merging, WithTerminalSessions } =
-  composeStories(stories);
+const {
+  Ready,
+  UpToDate,
+  Diverged,
+  Conflicts,
+  Loading,
+  Merging,
+  UpdatingFromBase,
+  WithTerminalSessions,
+} = composeStories(stories);
 
 test('enables Merge and fires onMerge for a ready preview', async () => {
   const onMerge = vi.fn();
@@ -19,7 +27,9 @@ test('enables Merge and fires onMerge for a ready preview', async () => {
 test('shows the branch → base target and stats row', async () => {
   const screen = render(<Ready />);
   await expect.element(screen.getByText('feat/merge-preview')).toBeInTheDocument();
-  await expect.element(screen.getByText('main')).toBeInTheDocument();
+  // Exact match targets the header's base span specifically — the merge-checkout
+  // note now also contains the word "main", so a substring match is ambiguous.
+  await expect.element(screen.getByText('main', { exact: true })).toBeInTheDocument();
   await expect.element(screen.getByText(/2 files,/)).toBeInTheDocument();
   await expect.element(screen.getByText(/3 ahead \/ 0 behind/)).toBeInTheDocument();
 });
@@ -75,4 +85,51 @@ test('shows no terminal-session notice when none are open', async () => {
   await expect
     .element(screen.getByText(/terminal session\(s\) open/i))
     .not.toBeInTheDocument();
+});
+
+test('raises the stale-branch hazard callout when behind base', async () => {
+  const screen = render(<Diverged />);
+  await expect.element(screen.getByText(/7 commits behind main/i)).toBeInTheDocument();
+  await expect
+    .element(screen.getByText(/Merging may silently revert base-only changes/i))
+    .toBeInTheDocument();
+});
+
+test('shows no hazard callout for a clean ahead-only branch', async () => {
+  const screen = render(<Ready />);
+  await expect.element(screen.getByText(/behind main/i)).not.toBeInTheDocument();
+});
+
+test('offers Update from base when behind, and fires onUpdateFromBase', async () => {
+  const onUpdateFromBase = vi.fn();
+  const screen = render(<Diverged onUpdateFromBase={onUpdateFromBase} />);
+  const update = screen.getByRole('button', { name: /Update from base/i });
+  await expect.element(update).toBeEnabled();
+  await update.click();
+  expect(onUpdateFromBase).toHaveBeenCalled();
+});
+
+test('hides Update from base when the branch is not behind base', async () => {
+  const screen = render(<Ready />);
+  await expect
+    .element(screen.getByRole('button', { name: /Update from base/i }))
+    .not.toBeInTheDocument();
+});
+
+test('disables Update from base and shows the spinner label while updating', async () => {
+  const screen = render(<UpdatingFromBase />);
+  await expect.element(screen.getByText(/Updating…/i)).toBeInTheDocument();
+  await expect.element(screen.getByRole('button', { name: /Updating…/i })).toBeDisabled();
+});
+
+test('shows the merge-checkout note naming the real base for a mergeable preview', async () => {
+  const screen = render(<Ready />);
+  await expect
+    .element(screen.getByText(/Merging checks out main in the main repo and leaves it there\./i))
+    .toBeInTheDocument();
+});
+
+test('hides the merge-checkout note when the merge would conflict', async () => {
+  const screen = render(<Conflicts />);
+  await expect.element(screen.getByText(/Merging checks out/i)).not.toBeInTheDocument();
 });

@@ -81,6 +81,80 @@ pub enum MergeOutcome {
     Conflict,
 }
 
+/// The outcome of pulling `base` INTO a worktree branch ([`update_from_base`]).
+#[derive(Debug, Clone, Copy, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(test, ts(export, export_to = "UpdateFromBaseStatus.ts"))]
+pub enum UpdateFromBaseStatus {
+    /// The worktree branch already contained every base commit — nothing to do.
+    UpToDate,
+    /// Base was merged into the worktree branch cleanly.
+    Updated,
+    /// Merging base conflicted; the merge was aborted (the worktree is left clean).
+    Conflict,
+}
+
+/// Pull `base` INTO a worktree branch — the "Update from base" action (T13). Merges the
+/// current `base` into the checked-out `nc/<taskId>` branch INSIDE `worktree_dir`, so a
+/// branch cut before a base-only commit (the documented silent-revert incident class —
+/// e.g. a security fix landed on base after the branch forked) stops reverting it on the
+/// eventual merge. Only `git merge` (never `--force`/reset); a genuine conflict is
+/// aborted (`merge --abort`) and reported as `Conflict` with a clean worktree, exactly
+/// like [`merge_branch`]. Refuses a dirty worktree so uncommitted work is never merged
+/// over. Distinct from [`super::branch::merge_ff_only`], which fast-forwards the MAIN
+/// checkout onto origin — this operates entirely inside the isolated worktree.
+pub fn update_from_base(worktree_dir: &Path, base: &str) -> Result<UpdateFromBaseStatus, String> {
+    validate_ref(base)?;
+    if !is_worktree_clean(worktree_dir)? {
+        return Err(
+            "this worktree has uncommitted changes; commit or discard them before updating from base"
+                .to_string(),
+        );
+    }
+    // Nothing to pull when the branch already contains every base commit (`base...HEAD`
+    // left-count == commits on base not in the branch).
+    let range = format!("{base}...HEAD");
+    let (behind, _ahead) = git(
+        worktree_dir,
+        &[
+            "rev-list",
+            "--left-right",
+            "--count",
+            "--end-of-options",
+            &range,
+        ],
+    )
+    .ok()
+    .and_then(|s| parse_left_right_count(&s))
+    .unwrap_or((0, 0));
+    if behind == 0 {
+        return Ok(UpdateFromBaseStatus::UpToDate);
+    }
+    match git(
+        worktree_dir,
+        &["merge", "--no-edit", "--end-of-options", base],
+    ) {
+        Ok(_) => Ok(UpdateFromBaseStatus::Updated),
+        Err(merge_err) => {
+            // Only a genuine content conflict (unmerged paths) is aborted-and-reported;
+            // any other failure started no merge and is surfaced as an error.
+            if !has_unmerged_paths(worktree_dir) {
+                return Err(format!(
+                    "git merge {base} into the worktree failed: {merge_err}"
+                ));
+            }
+            git(worktree_dir, &["merge", "--abort"]).map_err(|abort_err| {
+                format!(
+                    "merge conflict pulling {base} into the worktree, and `git merge --abort` \
+                     failed — the worktree is left mid-merge: {abort_err}"
+                )
+            })?;
+            Ok(UpdateFromBaseStatus::Conflict)
+        }
+    }
+}
+
 /// The outcome of a read-only merge preview.
 #[derive(Debug, Clone, Copy, serde::Serialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]

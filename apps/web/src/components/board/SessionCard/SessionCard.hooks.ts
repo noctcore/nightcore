@@ -4,7 +4,7 @@ import { useState } from 'react';
 
 import type { Task } from '@/lib/bridge';
 
-import { KIND_LABEL, modelDisplayName, PERMISSION_MODE_LABEL, RUN_MODE_LABEL } from '../status';
+import { KIND_LABEL, modelBadge, PERMISSION_MODE_LABEL, RUN_MODE_LABEL } from '../status';
 
 /** The Session card's collapse state. Collapsed by default; opens once at mount
  *  when the task is still editable (`kindEditable`) so a fresh backlog/ready task
@@ -32,7 +32,7 @@ export function summarizeSession(task: Task): string {
   const permission =
     task.permissionMode !== null ? PERMISSION_MODE_LABEL[task.permissionMode] : 'Inherit';
   const modelEffort =
-    modelDisplayName(task.model) + (task.effort !== null ? `·${task.effort}` : '');
+    modelBadge(task).label + (task.effort !== null ? `·${task.effort}` : '');
   const turns = task.maxTurns !== null ? `${task.maxTurns} turns` : '∞ turns';
   const limits = task.maxBudgetUsd !== null ? `${turns} · $${task.maxBudgetUsd}` : turns;
   return [

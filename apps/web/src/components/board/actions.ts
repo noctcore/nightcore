@@ -32,6 +32,9 @@ export interface TaskDetailActions {
   onRun: (id: string) => void;
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
+  /** Duplicate a task (T13: re-run-with-tweaks) — mint a fresh backlog clone of the
+   *  prompt + launch config and open it for editing. */
+  onDuplicate?: (id: string) => void;
   /** Answer a parked permission prompt. */
   onRespondPermission?: (taskId: string, requestId: string, decision: 'allow' | 'deny') => void;
   /** Answer a parked AskUserQuestion prompt (submit choices or skip). */
@@ -40,6 +43,10 @@ export interface TaskDetailActions {
   onApprove?: (id: string) => void;
   onReject?: (id: string) => void;
   onRefine?: (id: string) => void;
+  /** Edit the task's title — only when the task hasn't run yet. */
+  onChangeTitle?: (id: string, title: string) => void;
+  /** Edit the task's description/prompt — only when the task hasn't run yet. */
+  onChangeDescription?: (id: string, description: string) => void;
   /** Edit the task's kind — only when the task hasn't run yet. */
   onChangeKind?: (id: string, kind: TaskKind) => void;
   /** Edit the task's run mode — only when the task hasn't run yet. */

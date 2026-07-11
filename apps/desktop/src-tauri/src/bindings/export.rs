@@ -64,8 +64,8 @@ fn export_all_bindings() {
         TrustReport,
     };
     use crate::worktree::{
-        BranchInfo, DiffFileStat, DiffStatus, MergePreview, MergePreviewStatus, WorktreeDiff,
-        WorktreeDiffFile, WorktreeStatus,
+        BranchInfo, DiffFileStat, DiffStatus, MergePreview, MergePreviewStatus,
+        UpdateFromBaseStatus, WorktreeDiff, WorktreeDiffFile, WorktreeStatus,
     };
 
     // `export_all` writes the type AND all of its `TS` dependencies, so exporting
@@ -115,6 +115,8 @@ fn export_all_bindings() {
         WorktreeDiff,
         WorktreeDiffFile,
         DiffStatus,
+        // T13: the "Update from base" action outcome.
+        UpdateFromBaseStatus,
         GauntletResult,
         GauntletStep,
         StepStatus,
@@ -264,6 +266,7 @@ mod tests {
             "WorktreeDiff.ts",
             "WorktreeDiffFile.ts",
             "DiffStatus.ts",
+            "UpdateFromBaseStatus.ts",
             "GauntletResult.ts",
             "GauntletStep.ts",
             "StepStatus.ts",

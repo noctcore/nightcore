@@ -20,6 +20,7 @@ import { AutoModeOptions } from '../AutoModeOptions';
 import { BoardBackgroundPanel } from '../BoardBackgroundPanel';
 import { useBoardChrome } from '../chrome';
 import { ProviderConfigPanel } from '../ProviderConfigPanel';
+import { BOARD_SEARCH_INPUT_ID } from '../status';
 import { useBoardBackgroundPanel, useInspector } from './BoardHeader.hooks';
 import type { BoardHeaderProps } from './BoardHeader.types';
 
@@ -160,12 +161,14 @@ export function BoardHeader({
           <div className="nc-focus-ring-host flex min-w-[220px] max-w-[420px] flex-1 items-center gap-2.5 rounded-[9px] border border-border bg-white/[0.02] px-3 py-2">
             <SearchIcon size={15} className="text-muted-foreground" />
             <input
+              id={BOARD_SEARCH_INPUT_ID}
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
               aria-label="Search tasks"
               placeholder="Search tasks by keyword…"
               className="flex-1 bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground"
             />
+            <Kbd>/</Kbd>
           </div>
         </div>
       </div>

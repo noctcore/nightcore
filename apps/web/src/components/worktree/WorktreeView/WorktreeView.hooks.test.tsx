@@ -10,6 +10,22 @@ import type { Task, WorktreeInfo } from '@/lib/bridge';
 const killTerminal = vi.fn<(id: string) => Promise<void>>(() => Promise.resolve());
 const discardWorktree = vi.fn(() => Promise.resolve());
 const mergeTask = vi.fn(() => Promise.resolve());
+const mergePreview = vi.fn(() =>
+  Promise.resolve({
+    status: 'diverged',
+    branch: 'nc/t1',
+    base: 'main',
+    conflictFiles: [],
+    files: [],
+    additions: 0,
+    deletions: 0,
+    ahead: 1,
+    behind: 2,
+  }),
+);
+const updateWorktreeFromBase = vi.fn<(id: string) => Promise<'up_to_date' | 'updated' | 'conflict'>>(
+  () => Promise.resolve('updated'),
+);
 const terminalSessionsInDir = vi.fn(() =>
   Promise.resolve([
     {
@@ -25,7 +41,7 @@ const terminalSessionsInDir = vi.fn(() =>
   ]),
 );
 // Partial mock (spread the real bridge) so co-loaded modules keep every other
-// export; only the merge/discard + terminal seam is spied/controlled.
+// export; only the merge/discard + update-from-base + terminal seam is controlled.
 vi.mock('@/lib/bridge', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/bridge')>();
   return {
@@ -33,18 +49,8 @@ vi.mock('@/lib/bridge', async (importOriginal) => {
     discardWorktree: () => discardWorktree(),
     killTerminal: (id: string) => killTerminal(id),
     mergeTask: () => mergeTask(),
-    mergePreview: () =>
-      Promise.resolve({
-        status: 'ready',
-        branch: 'nc/t1',
-        base: 'main',
-        conflictFiles: [],
-        files: [],
-        additions: 0,
-        deletions: 0,
-        ahead: 1,
-        behind: 0,
-      }),
+    mergePreview: () => mergePreview(),
+    updateWorktreeFromBase: (id: string) => updateWorktreeFromBase(id),
     terminalSessionsInDir: () => terminalSessionsInDir(),
   };
 });
@@ -83,6 +89,8 @@ afterEach(() => {
   killTerminal.mockClear();
   discardWorktree.mockClear();
   mergeTask.mockClear();
+  mergePreview.mockClear();
+  updateWorktreeFromBase.mockClear();
   terminalSessionsInDir.mockClear();
 });
 
@@ -129,4 +137,34 @@ test('with no open sessions, discard proceeds without killing anything', async (
 
   await vi.waitFor(() => expect(discardWorktree).toHaveBeenCalled());
   expect(killTerminal).not.toHaveBeenCalled();
+});
+
+test('update from base pulls base into the worktree and refreshes the preview', async () => {
+  const model = renderHook();
+  model.current!.openPreview('t1');
+  await vi.waitFor(() => expect(mergePreview).toHaveBeenCalledTimes(1));
+  await vi.waitFor(() => expect(model.current!.preview?.data?.behind).toBe(2));
+
+  model.current!.updateFromBase();
+
+  await vi.waitFor(() => expect(updateWorktreeFromBase).toHaveBeenCalledWith('t1'));
+  // 'updated' refreshes the open preview in place — mergePreview runs a 2nd time.
+  await vi.waitFor(() => expect(mergePreview).toHaveBeenCalledTimes(2));
+});
+
+test('an up-to-date update-from-base does not refresh the preview', async () => {
+  updateWorktreeFromBase.mockResolvedValueOnce('up_to_date');
+  const model = renderHook();
+  model.current!.openPreview('t1');
+  await vi.waitFor(() => expect(mergePreview).toHaveBeenCalledTimes(1));
+  // Wait for the preview DATA to settle (not just non-null — `undefined` also
+  // passes `not.toBeNull`) so `updateFromBase` closes over a non-null preview; a
+  // stale closure would early-return before ever reaching the bridge call.
+  await vi.waitFor(() => expect(model.current!.preview?.data?.behind).toBe(2));
+
+  model.current!.updateFromBase();
+  await vi.waitFor(() => expect(updateWorktreeFromBase).toHaveBeenCalled());
+  await vi.waitFor(() => expect(model.current!.updatingFromBase).toBe(false));
+  // No state change on the base ⇒ no in-place refetch.
+  expect(mergePreview).toHaveBeenCalledTimes(1);
 });

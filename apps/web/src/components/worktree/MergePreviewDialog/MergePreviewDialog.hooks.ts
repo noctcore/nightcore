@@ -61,3 +61,31 @@ export function isMergeBlocked(
     preview.status === 'upToDate'
   );
 }
+
+/** Whether the branch is behind base (has base-only commits it hasn't picked up).
+ *  Gates BOTH the stale-branch hazard callout and the "Update from base" button. */
+export function isBehindBase(preview: MergePreview | null): boolean {
+  return preview !== null && preview.behind > 0;
+}
+
+/** The stale-branch hazard message, or `null` when the branch is up to date with
+ *  base. A branch cut before a base-only commit (e.g. a security fix that later
+ *  landed on base) can SILENTLY REVERT that commit when merged — the documented
+ *  silent-revert incident class — so we warn prominently and point at "Update
+ *  from base". Named as a pure helper so the tsx stays derivation-free. */
+export function staleBranchHazard(preview: MergePreview | null): string | null {
+  if (!isBehindBase(preview) || preview === null) return null;
+  const n = preview.behind;
+  return (
+    `This branch is ${n} commit${n === 1 ? '' : 's'} behind ${preview.base}. ` +
+    `Merging may silently revert base-only changes — e.g. a security fix landed ` +
+    `on ${preview.base} after this branch forked. Consider "Update from base" first.`
+  );
+}
+
+/** Whether to show the muted "merge checks out <base>" note: only when a merge is
+ *  actually reachable — not loading, a preview is present, and the status isn't
+ *  `conflicts` (which blocks merge and shows its own resolve guidance instead). */
+export function showsCheckoutNote(preview: MergePreview | null, loading: boolean): boolean {
+  return !loading && preview !== null && preview.status !== 'conflicts';
+}

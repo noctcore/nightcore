@@ -5,11 +5,18 @@ import {
   CloseIcon,
   IconButton,
   Modal,
+  RefreshIcon,
   Spinner,
   useLastPresent,
 } from '@/components/ui';
 
-import { isMergeBlocked, mergeStatusBanner } from './MergePreviewDialog.hooks';
+import {
+  isBehindBase,
+  isMergeBlocked,
+  mergeStatusBanner,
+  showsCheckoutNote,
+  staleBranchHazard,
+} from './MergePreviewDialog.hooks';
 import type { MergePreviewDialogProps } from './MergePreviewDialog.types';
 
 /** A read-only preview of merging a worktree branch into its base BEFORE the user
@@ -17,16 +24,22 @@ import type { MergePreviewDialogProps } from './MergePreviewDialog.types';
  *  branch → base target, a changed-file/ahead-behind stats row, and — when the
  *  merge would conflict — the conflicting files plus resolve guidance.
  *
+ *  When the branch is BEHIND base it also raises a stale-branch hazard callout and
+ *  offers "Update from base" — a stale branch (cut before a base-only commit) can
+ *  silently revert that commit on merge, the documented silent-revert incident.
+ *
  *  Built on the shared `<Modal>` primitive, so it gets the focus trap + Esc /
  *  click-outside close for free. Enter confirms the merge when it is mergeable.
- *  Purely presentational: the preview is computed by the parent. */
+ *  Purely presentational: the parent computes the preview and owns the actions. */
 export function MergePreviewDialog({
   open,
   preview,
   loading = false,
   merging = false,
   terminalSessions = 0,
+  updatingFromBase = false,
   onMerge,
+  onUpdateFromBase,
   onClose,
   onViewDiff,
 }: MergePreviewDialogProps) {
@@ -35,6 +48,10 @@ export function MergePreviewDialog({
   const shownPreview = useLastPresent(preview);
   const mergeDisabled = isMergeBlocked(shownPreview, loading, merging);
   const banner = shownPreview !== null ? mergeStatusBanner(shownPreview) : null;
+  // Pure derivations (no hooks) — safe to compute inline in the body.
+  const hazard = staleBranchHazard(shownPreview);
+  const behind = isBehindBase(shownPreview);
+  const showCheckoutNote = showsCheckoutNote(shownPreview, loading);
 
   return (
     <Modal
@@ -85,6 +102,13 @@ export function MergePreviewDialog({
               {shownPreview.ahead} ahead / {shownPreview.behind} behind
             </p>
 
+            {hazard !== null && (
+              <div className="flex items-start gap-2 rounded-[10px] border border-warning/40 bg-warning/[0.12] px-3 py-2 text-[12px] leading-snug text-warning">
+                <AlertIcon size={14} className="mt-0.5 shrink-0" />
+                <span>{hazard}</span>
+              </div>
+            )}
+
             {terminalSessions > 0 && (
               <p className="flex items-center gap-1.5 text-[12px] font-medium text-warning">
                 <AlertIcon size={13} className="shrink-0" />
@@ -106,6 +130,16 @@ export function MergePreviewDialog({
                 </p>
               </div>
             )}
+
+            {showCheckoutNote && (
+              // Distinct from the amber hazard: a quiet heads-up that `merge_branch`
+              // does a `git checkout <base>` in the project root and leaves HEAD
+              // there. The base is interpolated as plain text (not its own span) so
+              // it doesn't create a second element whose exact text is the base name.
+              <p className="text-[12px] text-muted-foreground">
+                Merging checks out {shownPreview.base} in the main repo and leaves it there.
+              </p>
+            )}
           </>
         )}
       </div>
@@ -119,6 +153,21 @@ export function MergePreviewDialog({
           >
             View full diff
           </button>
+        )}
+        {behind && (
+          <Button variant="ghost" disabled={updatingFromBase} onClick={onUpdateFromBase}>
+            {updatingFromBase ? (
+              <>
+                <Spinner />
+                <span>Updating…</span>
+              </>
+            ) : (
+              <>
+                <RefreshIcon size={14} />
+                <span>Update from base</span>
+              </>
+            )}
+          </Button>
         )}
         <Button variant="ghost" onClick={onClose}>
           Cancel

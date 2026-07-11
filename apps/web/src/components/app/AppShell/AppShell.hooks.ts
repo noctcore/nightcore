@@ -126,6 +126,10 @@ export interface AppShellState {
    *  task cards for the advisory manual-start chip. Low-churn (changes only on a
    *  `nc:usage` snapshot or a threshold edit), so it rides its own context. */
   usageHot: UsageHotWindow | null;
+  /** The board-wide run-slot availability (T13): the ONE gate the card + drawer read for
+   *  Run/Retry, provided via `RunGateProvider`. Memoized on the boolean so it flips only
+   *  when availability crosses the concurrency line. */
+  runSlots: { slotsFree: boolean };
   board: BoardData;
   drawer: DrawerState;
   prDialog: PrDialogState;
@@ -246,6 +250,12 @@ export function useAppShell(): AppShellState {
   // yes/no used for the card pulse, TaskDetail, and the Projects running-dots.
   const runningCount = useMemo(() => runningTaskCount(tasks), [tasks]);
   const anyRunning = runningCount > 0;
+  // The board-wide run-slot availability (T13): a free slot exists when fewer tasks run
+  // than the configured concurrency — the same gate the backend enforces. Memoized on the
+  // boolean so the RunGate context flips (re-rendering subscribed cards) only when
+  // availability crosses the concurrency line, never on every run start/stop.
+  const slotsFree = runningCount < autoLoop.concurrency;
+  const runSlots = useMemo(() => ({ slotsFree }), [slotsFree]);
   const selected = useMemo(
     () => tasks.find((t) => t.id === selectedId) ?? null,
     [tasks, selectedId],
@@ -277,6 +287,7 @@ export function useAppShell(): AppShellState {
     newProject,
     chrome,
     usageHot,
+    runSlots,
     board: {
       tasks,
       selected,

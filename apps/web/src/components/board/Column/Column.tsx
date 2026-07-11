@@ -2,10 +2,15 @@ import { memo } from 'react';
 
 import { TrashIcon } from '@/components/ui';
 
+import type { DependencyChip } from '../Board/Board.utils';
 import { canDragStatus } from '../status';
 import { TaskCard } from '../TaskCard';
 import { useColumn } from './Column.hooks';
 import type { ColumnProps } from './Column.types';
+
+/** Stable empty default so a story that omits `dependencyChipsById` doesn't mint a fresh
+ *  map per render (which would churn the memoized cards). */
+const NO_DEP_CHIPS: Map<string, DependencyChip[]> = new Map();
 
 /** A board column: a colored status dot + label + count header (with a Clear
  *  affordance for Backlog/Done/Failed), over its task cards. Failed renders
@@ -30,6 +35,7 @@ function ColumnImpl({
   clearable,
   selectedId,
   blockedIds,
+  dependencyChipsById = NO_DEP_CHIPS,
   promptIds,
   logCounts,
   dropStatus,
@@ -94,6 +100,7 @@ function ColumnImpl({
                     task={task}
                     selected={task.id === selectedId}
                     blocked={blockedIds.has(task.id)}
+                    blockedBy={dependencyChipsById.get(task.id)}
                     needsApproval={promptIds?.has(task.id) ?? false}
                     logCount={logCounts[task.id] ?? 0}
                     draggable={interactive && canDragStatus(task.status)}

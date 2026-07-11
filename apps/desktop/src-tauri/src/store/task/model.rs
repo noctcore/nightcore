@@ -408,6 +408,17 @@ pub struct Task {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub issue_sync_error: Option<String>,
+    /// T13 (badge honesty): the model id the run ACTUALLY used, captured from the
+    /// engine's `session-started`/`session-ready` event (`SessionReadyEvent.model`).
+    /// Distinct from `model` (the REQUESTED override, which is `None` for "inherit the
+    /// provider default" — the source of the old "any unknown id renders Opus 4.8"
+    /// dishonesty). The board badge prefers this once a run has reported it, so the
+    /// card reflects what actually ran, not a guessed default. Re-stamped on every
+    /// `session-started`, so a re-run with a different model self-corrects. `None`
+    /// until the first run reports it. Serde-additive: a legacy task loads as `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub actual_model: Option<String>,
 }
 
 impl Task {
@@ -463,6 +474,8 @@ impl Task {
             issue_comment_marker: None,
             issue_state: None,
             issue_sync_error: None,
+            // T13: no run has reported an actual model yet.
+            actual_model: None,
         }
     }
 
@@ -1129,5 +1142,38 @@ mod tests {
         let restored: Task = serde_json::from_str(&json).unwrap();
         assert!(restored.structure_lock_result.is_some());
         assert!(restored.structure_lock_result.unwrap().passed);
+    }
+
+    #[test]
+    fn actual_model_defaults_none_and_is_serde_additive() {
+        // T13 (badge honesty): `actual_model` defaults to None; while unset the key is
+        // omitted (`skip_serializing_if`), so pre-T13 task JSON is byte-compatible.
+        let task = Task::new("t".into(), String::new());
+        assert!(task.actual_model.is_none(), "actual_model defaults to None");
+
+        let value: serde_json::Value = serde_json::to_value(&task).unwrap();
+        assert!(
+            !value.as_object().unwrap().contains_key("actualModel"),
+            "an unset actualModel is omitted from the JSON"
+        );
+
+        // A legacy task JSON written before the field existed still loads (serde
+        // default → None), so existing task files aren't broken.
+        let legacy = r#"{"id":"x","title":"t","description":"","status":"backlog",
+            "dependencies":[],"model":null,"branch":null,"createdAt":1,"updatedAt":1,
+            "sessionId":null,"summary":null,"error":null,"costUsd":null}"#;
+        let back: Task = serde_json::from_str(legacy).expect("legacy task deserializes");
+        assert!(back.actual_model.is_none());
+
+        // A captured value round-trips with the camelCase key.
+        let mut ran = Task::new("t".into(), String::new());
+        ran.actual_model = Some("claude-opus-4-8".into());
+        let json = serde_json::to_string(&ran).unwrap();
+        assert!(
+            json.contains("\"actualModel\":\"claude-opus-4-8\""),
+            "actual_model serializes camelCase: {json}"
+        );
+        let restored: Task = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.actual_model.as_deref(), Some("claude-opus-4-8"));
     }
 }

@@ -14,6 +14,7 @@ import { PrStatusCard, usePrStatus } from '../PrStatusCard';
 import { ReviewPanel } from '../ReviewPanel';
 import { GroupLabel, HistoryCard, SessionCard } from '../SessionCard';
 import { TaskAttachments } from '../TaskAttachments';
+import { TaskOverviewEditor } from '../TaskOverviewEditor';
 import { TrustReport } from '../TrustReport';
 import {
   deriveTaskDetailView,
@@ -289,18 +290,30 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
             </div>
           )}
 
-        {/* Overview — what was asked for and how the session is configured. */}
+        {/* Overview — what was asked for and how the session is configured. Pre-run
+            (`kindEditable`) the title + description are editable in place (T13); post-run
+            they render read-only (the header shows the title, the Markdown the body). */}
         <div className="space-y-3">
           <GroupLabel>Overview</GroupLabel>
-          {task.description.trim().length > 0 && (
-            <section>
-              <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
-                Description
-              </h3>
-              <Markdown className="text-sm leading-relaxed text-foreground/90">
-                {task.description}
-              </Markdown>
-            </section>
+          {kindEditable &&
+          actions.onChangeTitle !== undefined &&
+          actions.onChangeDescription !== undefined ? (
+            <TaskOverviewEditor
+              task={task}
+              onChangeTitle={actions.onChangeTitle}
+              onChangeDescription={actions.onChangeDescription}
+            />
+          ) : (
+            task.description.trim().length > 0 && (
+              <section>
+                <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+                  Description
+                </h3>
+                <Markdown className="text-sm leading-relaxed text-foreground/90">
+                  {task.description}
+                </Markdown>
+              </section>
+            )
           )}
           {(task.attachments.length > 0 || kindEditable) && (
             <TaskAttachments task={task} editable={kindEditable} />
@@ -351,7 +364,6 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
         reviewParked={reviewParked}
         isDoneColumn={isDoneColumn}
         isRunning={isRunning}
-        anyRunning={anyRunning}
         pending={pending}
       />
     </m.aside>

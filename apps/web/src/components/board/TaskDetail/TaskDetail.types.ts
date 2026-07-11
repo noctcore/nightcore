@@ -21,7 +21,7 @@ import type { TaskTranscript } from '../session-stream';
 export interface TaskDetailProps {
   task: Task;
   stream: TaskTranscript | undefined;
-  /** True when ANY task is in_progress (serial-run guard). */
+  /** True when ANY task is in_progress/verifying — gates history resume. */
   anyRunning: boolean;
   /** Parked permission prompts for this task (interactive approval). */
   prompts?: PermissionPrompt[];
@@ -90,7 +90,7 @@ export interface TaskDetailChromeProps {
   kindEditable: boolean;
   /** Whether the Done-column gauntlet + merge controls apply (a `done` task). */
   isDoneColumn: boolean;
-  /** True when ANY task is in_progress (serial-run guard). */
+  /** True when ANY task is in_progress/verifying — gates history resume. */
   anyRunning: boolean;
   prompts: PermissionPrompt[];
   questions: QuestionPrompt[];
@@ -144,7 +144,6 @@ export interface TaskDetailFooterProps {
   reviewParked: boolean;
   isDoneColumn: boolean;
   isRunning: boolean;
-  anyRunning: boolean;
   /** True while the named action is mid-flight for this task (disables its button). */
   pending: (action: string) => boolean;
 }
