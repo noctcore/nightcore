@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use super::anchor::{parse_valid_anchors, prepare_survivable_review};
+use super::anchor::{parse_valid_anchors, prepare_survivable_review, sanitize_untrusted_md};
 use super::diff::{
     cap_diff, fetch_pr_diff_raw_with, fetch_pr_diff_with, fetch_pr_head_oid_with, PR_DIFF_CAP,
 };
@@ -634,14 +634,20 @@ fn prepare_survivable_review_matching_head_adds_no_stale_note() {
 }
 
 #[test]
-fn prepare_survivable_review_with_no_reviewed_head_skips_staleness_but_still_re_anchors() {
-    // No stored reviewed head (older run / post outside a run) → no staleness note, but the
-    // out-of-diff comment is STILL demoted (anchoring is validated regardless of head).
+fn prepare_survivable_review_unverified_head_is_surfaced_not_silently_passed() {
+    // No stored reviewed head (older run / post outside a run) → an HONEST "couldn't be
+    // verified" note is added (never a silent pass), and the out-of-diff comment is still
+    // demoted (anchoring is validated regardless of head).
     let comments = vec![ic("src/a.ts", 2, "ok"), ic("src/a.ts", 99, "outside")];
     let prepared = prepare_survivable_review("Body.", &comments, SAMPLE_DIFF, None, "current-sha");
     assert!(
+        prepared.body.contains("couldn't be verified"),
+        "an unverifiable head is surfaced, not silently dropped: {}",
+        prepared.body
+    );
+    assert!(
         !prepared.body.contains("PR head advanced"),
-        "no reviewed head ⇒ no note"
+        "the unverified note is distinct from the moved-head note"
     );
     assert_eq!(
         prepared.comments.len(),
@@ -649,6 +655,93 @@ fn prepare_survivable_review_with_no_reviewed_head_skips_staleness_but_still_re_
         "the out-of-diff comment is still demoted"
     );
     assert!(prepared.body.contains("`src/a.ts:99`"));
+}
+
+#[test]
+fn prepare_survivable_review_unreadable_current_head_is_also_surfaced() {
+    // The reviewed head is known but the current head couldn't be read (empty) → still
+    // Unverified, still surfaced (we can't confirm the anchors reflect the reviewed code).
+    let comments = vec![ic("src/a.ts", 2, "ok")];
+    let prepared = prepare_survivable_review("Body.", &comments, SAMPLE_DIFF, Some("reviewed"), "");
+    assert!(
+        prepared.body.contains("couldn't be verified"),
+        "an unreadable current head is surfaced: {}",
+        prepared.body
+    );
+}
+
+// ─── Untrusted-content sanitization (Finding 1: no markdown injection in the body) ─────
+
+#[test]
+fn sanitize_untrusted_md_neutralizes_mentions_links_images_html_and_backticks() {
+    let dirty = "see @Shironex/maintainers and [x](http://evil) and ![](http://evil/img) \
+                 and `code` and <script>alert(1)</script>\nsecond line #42";
+    let clean = sanitize_untrusted_md(dirty);
+    assert!(!clean.contains('@'), "no @ mention sigil survives: {clean}");
+    assert!(!clean.contains('`'), "no backtick survives: {clean}");
+    assert!(
+        !clean.contains('<') && !clean.contains('>'),
+        "no angle brackets: {clean}"
+    );
+    assert!(
+        !clean.contains('[') && !clean.contains(']'),
+        "no link/image brackets: {clean}"
+    );
+    assert!(
+        !clean.contains("://"),
+        "no autolink scheme separator: {clean}"
+    );
+    assert!(!clean.contains("]("), "no residual link syntax: {clean}");
+    assert!(
+        !clean.contains('\n'),
+        "newlines collapse to spaces: {clean}"
+    );
+    // The text is preserved, only the dangerous sigils neutralized.
+    assert!(
+        clean.contains("(at)Shironex/maintainers"),
+        "the mention is defanged, not dropped: {clean}"
+    );
+    assert!(
+        clean.contains("(hash)42"),
+        "the issue-ref sigil is defanged: {clean}"
+    );
+}
+
+#[test]
+fn prepare_survivable_review_sanitizes_a_malicious_path_and_body_in_the_demote_section() {
+    // The exploit from the review: a file literally named `src/x`@org/team`.ts` (backtick
+    // breakout + team mention) whose finding demotes, and a body carrying @mention /
+    // markdown link / image / raw HTML / backtick / newline. NONE may survive as live
+    // markdown in the body — which is composed AFTER the human approval gate.
+    let attack_path = "src/x`@Shironex/maintainers`.ts";
+    let attack_body = "ping @Shironex/maintainers see [click](http://evil) \
+                       ![](http://evil/img) `x` <b>hi</b>\nline2";
+    // line 1 of a file not in the diff ⇒ demoted into the body.
+    let comments = vec![ic(attack_path, 1, attack_body)];
+    let prepared =
+        prepare_survivable_review("Summary.", &comments, SAMPLE_DIFF, Some("sha"), "sha");
+    let body = &prepared.body;
+    assert!(
+        body.contains("couldn't be anchored inline"),
+        "the finding is demoted, not dropped: {body}"
+    );
+    // No live mention, no link/image/HTML syntax, no autolink anywhere in the posted body.
+    assert!(!body.contains('@'), "no @ mention survives: {body}");
+    assert!(!body.contains("]("), "no link syntax survives: {body}");
+    assert!(!body.contains("://"), "no autolink scheme survives: {body}");
+    assert!(!body.contains("!["), "no image syntax survives: {body}");
+    assert!(
+        !body.contains('<') && !body.contains('>'),
+        "no raw HTML survives: {body}"
+    );
+    // Every backtick left is a code-span delimiter WE added: the one demoted `path:line`
+    // span is exactly two. The attacker's backticks were stripped, so the path code span
+    // cannot be broken out of.
+    assert_eq!(
+        body.matches('`').count(),
+        2,
+        "only our own code-span delimiters remain: {body}"
+    );
 }
 
 #[test]
