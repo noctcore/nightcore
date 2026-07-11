@@ -20,6 +20,7 @@ use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
+use serde::Deserialize;
 use serde_json::Value;
 use tauri::Manager;
 
@@ -361,6 +362,37 @@ pub(crate) struct CostSummary {
     pub cache_creation_tokens: u64,
 }
 
+/// The lean shape [`cost_summary`] deserializes a `session-completed` record into
+/// — just the discriminator plus the cost/usage totals it sums, rather than
+/// building the full untyped `Value` DOM for every line (perf #207). Fields are
+/// optional / serde-defaulted so a completion record missing `costUsd`/`usage`
+/// still parses and counts, matching the previous per-field lenient extraction.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CompletedEvent {
+    #[serde(rename = "type")]
+    event_type: Option<String>,
+    cost_usd: Option<f64>,
+    usage: Option<CompletedUsage>,
+}
+
+/// The token counts summed off a `session-completed` record's `usage` object.
+/// Each field defaults to `0` when absent (the wire fields are all optional).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CompletedUsage {
+    #[serde(default)]
+    input_tokens: u64,
+    #[serde(default)]
+    output_tokens: u64,
+    #[serde(default)]
+    reasoning_output_tokens: u64,
+    #[serde(default)]
+    cache_read_tokens: u64,
+    #[serde(default)]
+    cache_creation_tokens: u64,
+}
+
 /// Sum cost + token usage across a task's `session-completed` transcript records
 /// (Trust Report §3.5). Scans the FULL transcript (not the tail-bounded read) —
 /// `session-completed` events are one-per-session and rare, so a whole-file pass
@@ -382,24 +414,31 @@ pub(crate) fn cost_summary(tasks_dir: &Path, task_id: &str) -> Option<CostSummar
         if line.is_empty() {
             continue;
         }
-        let Ok(ev) = serde_json::from_str::<Value>(line) else {
+        // Cheap substring gate before the JSON parse (perf #207): a long run
+        // streams thousands of partial-message deltas, and only the rare
+        // `session-completed` records matter here, so skipping the serde parse
+        // for every other line avoids building a `Value` for the whole
+        // transcript. A line that merely mentions the marker in some other field
+        // is still discarded by the exact `type` check below, so the totals are
+        // unchanged.
+        if !line.contains("session-completed") {
+            continue;
+        }
+        let Ok(ev) = serde_json::from_str::<CompletedEvent>(line) else {
             continue;
         };
-        if ev.get("type").and_then(Value::as_str) != Some("session-completed") {
+        if ev.event_type.as_deref() != Some("session-completed") {
             continue;
         }
         seen = true;
         summary.sessions += 1;
-        if let Some(cost) = ev.get("costUsd").and_then(Value::as_f64) {
-            summary.cost_usd += cost;
-        }
-        if let Some(usage) = ev.get("usage") {
-            let u = |key: &str| usage.get(key).and_then(Value::as_u64).unwrap_or(0);
-            summary.input_tokens += u("inputTokens");
-            summary.output_tokens += u("outputTokens");
-            summary.reasoning_output_tokens += u("reasoningOutputTokens");
-            summary.cache_read_tokens += u("cacheReadTokens");
-            summary.cache_creation_tokens += u("cacheCreationTokens");
+        summary.cost_usd += ev.cost_usd.unwrap_or(0.0);
+        if let Some(usage) = ev.usage {
+            summary.input_tokens += usage.input_tokens;
+            summary.output_tokens += usage.output_tokens;
+            summary.reasoning_output_tokens += usage.reasoning_output_tokens;
+            summary.cache_read_tokens += usage.cache_read_tokens;
+            summary.cache_creation_tokens += usage.cache_creation_tokens;
         }
     }
     seen.then_some(summary)
@@ -588,6 +627,63 @@ mod tests {
         assert!(
             (s.cost_usd - 1.0).abs() < 1e-9,
             "0.25 + 0.75 = 1.0, got {}",
+            s.cost_usd
+        );
+        assert_eq!(s.input_tokens, 300);
+        assert_eq!(s.output_tokens, 100);
+        assert_eq!(s.reasoning_output_tokens, 6);
+        assert_eq!(s.cache_read_tokens, 13);
+        assert_eq!(s.cache_creation_tokens, 6);
+    }
+
+    #[test]
+    fn cost_summary_ignores_non_completed_lines_that_mention_the_marker() {
+        // perf #207: the parse is now gated on the "session-completed" substring,
+        // but the exact `type` check must still exclude any OTHER line that merely
+        // mentions the marker text. Interleaving such decoys must not change the
+        // totals — only real completion records count.
+        let (store, _tmp) = temp_store();
+        let task = Task::new("t".into(), String::new());
+        store.upsert(&task).expect("upsert");
+
+        // A real completion record.
+        append_event(
+            &store,
+            &task.id,
+            &serde_json::json!({
+                "type":"session-completed","costUsd":0.5,
+                "usage":{"inputTokens":100,"outputTokens":40,"reasoningOutputTokens":5,
+                         "cacheReadTokens":10,"cacheCreationTokens":2}
+            }),
+        );
+        // Decoys that pass the cheap substring gate but are NOT completion records:
+        // one mentions the marker in a prose field, one carries it as a tool name.
+        append_event(
+            &store,
+            &task.id,
+            &serde_json::json!({"type":"assistant-text","text":"a session-completed event will follow"}),
+        );
+        append_event(
+            &store,
+            &task.id,
+            &serde_json::json!({"type":"tool-result","toolName":"session-completed"}),
+        );
+        // A second real completion record.
+        append_event(
+            &store,
+            &task.id,
+            &serde_json::json!({
+                "type":"session-completed","costUsd":0.25,
+                "usage":{"inputTokens":200,"outputTokens":60,"reasoningOutputTokens":1,
+                         "cacheReadTokens":3,"cacheCreationTokens":4}
+            }),
+        );
+
+        let s = cost_summary(&store.tasks_dir(), &task.id).expect("completed sessions total");
+        assert_eq!(s.sessions, 2, "only the two real completion records count");
+        assert!(
+            (s.cost_usd - 0.75).abs() < 1e-9,
+            "0.5 + 0.25 = 0.75 (decoys excluded), got {}",
             s.cost_usd
         );
         assert_eq!(s.input_tokens, 300);

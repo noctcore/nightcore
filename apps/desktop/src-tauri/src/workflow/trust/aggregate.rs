@@ -15,7 +15,7 @@ use std::path::Path;
 // (issue #121) can reuse it too; re-exported at `super::aggregate::iso8601_utc` so
 // the existing call site + `trust::tests` resolve unchanged.
 pub(super) use crate::infra::time::iso8601_utc;
-use crate::store::ledger::{blocked_by_policy_message, read_records, LedgerRecord};
+use crate::store::ledger::{blocked_by_policy_message_from, read_records, LedgerRecord};
 use crate::store::transcript::{cost_summary, CostSummary};
 use crate::task::{Task, TaskStatus};
 
@@ -50,7 +50,7 @@ pub(crate) fn build_report(task: &Task, ledger_path: &Path, tasks_dir: &Path) ->
         pr_number: task.pr_number,
         generated_at: iso8601_utc(crate::task::now_ms()),
         gauntlet: gauntlet_trust(task),
-        guardrails: guardrail_trust(task, ledger_path, &records),
+        guardrails: guardrail_trust(task, &records),
         flight: flight_summary(task, &records, cost),
         // v1 seam: quarantine is never populated (§3.1).
         quarantine: Vec::new(),
@@ -82,7 +82,7 @@ fn extract_verdict_line(review: Option<&str>) -> Option<String> {
 }
 
 /// The guardrail section, derived from the ledger decisions.
-fn guardrail_trust(task: &Task, ledger_path: &Path, records: &[LedgerRecord]) -> GuardrailTrust {
+fn guardrail_trust(task: &Task, records: &[LedgerRecord]) -> GuardrailTrust {
     let mut allowed = 0u32;
     let mut asked = 0u32;
     let mut denied = 0u32;
@@ -120,7 +120,9 @@ fn guardrail_trust(task: &Task, ledger_path: &Path, records: &[LedgerRecord]) ->
         denied,
         blocked,
         asked_events,
-        policy_hold: blocked_by_policy_message(ledger_path),
+        // Reuse the records already parsed above instead of re-reading and
+        // re-parsing the ledger from `ledger_path` a second time (perf #206).
+        policy_hold: blocked_by_policy_message_from(records),
         scope_park: scope_park(task),
     }
 }

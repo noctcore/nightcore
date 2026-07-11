@@ -113,8 +113,21 @@ pub fn read_records(path: &Path) -> Vec<LedgerRecord> {
 /// parks a task). Evidence-first: leads with the count, then the denied paths
 /// (deduped, capped) so a human can triage the rail at a glance. Any OTHER
 /// harness-policy denials (bash/read/tool) ride along as a count.
+///
+/// Reads the ledger, then delegates to [`blocked_by_policy_message_from`]. Kept
+/// as the path-taking entry point for the callers that don't already hold the
+/// parsed records (the park gate in `verification::handlers`); the Trust Report
+/// aggregator, which has already parsed the ledger once, calls the `_from`
+/// variant instead so the file isn't read and per-line serde-parsed twice.
 pub fn blocked_by_policy_message(ledger: &Path) -> Option<String> {
-    let records = read_records(ledger);
+    blocked_by_policy_message_from(&read_records(ledger))
+}
+
+/// Same as [`blocked_by_policy_message`] but over an ALREADY-parsed record slice
+/// — no file read, no per-line parse. For callers that already hold the ledger
+/// records (the Trust Report aggregator parses the ledger once for its guardrail
+/// tallies and reuses that slice here).
+pub fn blocked_by_policy_message_from(records: &[LedgerRecord]) -> Option<String> {
     let protected: Vec<&LedgerRecord> = records
         .iter()
         .filter(|r| r.is_protected_path_denial())
@@ -281,5 +294,40 @@ mod tests {
         let msg = blocked_by_policy_message(&path).expect("denials present");
         assert!(msg.contains("8 denied write(s)"), "{msg}");
         assert!(msg.contains("(+3 more)"), "{msg}");
+    }
+
+    #[test]
+    fn from_slice_matches_the_path_variant_over_the_same_records() {
+        // #206: the Trust Report aggregator already parses the ledger once, so it
+        // calls `blocked_by_policy_message_from` over that slice instead of making
+        // the path variant re-read + re-parse the file. The two entry points must
+        // return byte-identical output for the same records — both the message
+        // case and the `None` case.
+        let (_tmp, path) = write_ledger(&[
+            r#"{"event":"session-start","sessionId":1}"#,
+            r#"{"tool":"Write","inputDigest":"migrations/0001.sql","decision":"deny","ruleId":"harness-protected-path"}"#,
+            r#"{"tool":"Edit","inputDigest":"bun.lock","decision":"deny","ruleId":"harness-protected-path"}"#,
+            r#"{"tool":"Bash","inputDigest":"git commit --no-verify","decision":"deny","ruleId":"harness-bash-deny"}"#,
+            r#"{"event":"session-end","sessionId":1}"#,
+        ]);
+        let records = read_records(&path);
+        assert_eq!(
+            blocked_by_policy_message_from(&records),
+            blocked_by_policy_message(&path),
+            "slice and path variants agree when a protected-path denial is present"
+        );
+        // The message is actually produced (not both trivially `None`).
+        assert!(blocked_by_policy_message_from(&records).is_some());
+
+        // The `None` case (no protected-path denial) must also agree.
+        let (_clean_tmp, clean) =
+            write_ledger(&[r#"{"tool":"Bash","inputDigest":"bun test","decision":"allow"}"#]);
+        let clean_records = read_records(&clean);
+        assert_eq!(blocked_by_policy_message_from(&clean_records), None);
+        assert_eq!(
+            blocked_by_policy_message_from(&clean_records),
+            blocked_by_policy_message(&clean),
+            "slice and path variants agree on the no-denial case"
+        );
     }
 }
