@@ -5,6 +5,7 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   evaluateWorkspaceConfinement,
+  GIT_CONFIG_PROTECTION_RULE_ID,
   MCP_CONTAINMENT_RULE_ID,
   SENSITIVE_READ_RULE_ID,
   WORKSPACE_CONFINEMENT_RULE_ID,
@@ -532,5 +533,141 @@ describe('evaluateWorkspaceConfinement — Bash write escape (best-effort)', () 
 
   test('allows an absolute redirect INSIDE cwd', () => {
     expect(denies(`echo x > ${WORKTREE}/out.txt`)).toBe(false);
+  });
+});
+
+describe('evaluateWorkspaceConfinement — git config write protection (issue #221)', () => {
+  // A committed `.gitattributes` (`* merge=evil`) + a `[merge "evil"] driver=<cmd>`
+  // in `.git/config` makes git EXECUTE `<cmd>` on the host during merge/checkout/add.
+  // The driver NAME is attacker-chosen so an allowlist can't enumerate it — the fix
+  // is to DENY writing `.git/config` at all. This gate is a pure function with no
+  // permission-mode parameter: HookBus fires it on EVERY PreToolUse regardless of
+  // mode (incl. bypassPermissions), so these denies hold under the default unattended
+  // config, and they fire even when `.git/config` sits INSIDE the run cwd (where
+  // ordinary confinement would otherwise allow it).
+
+  test.each(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])(
+    'denies %s to an in-cwd .git/config',
+    (tool) => {
+      const key = tool === 'NotebookEdit' ? 'notebook_path' : 'file_path';
+      const verdict = evaluateWorkspaceConfinement(
+        tool,
+        { [key]: `${WORKTREE}/.git/config` },
+        WORKTREE,
+      );
+      expect(verdict.denied).toBe(true);
+      expect(verdict.ruleId).toBe(GIT_CONFIG_PROTECTION_RULE_ID);
+      expect(verdict.reason).toContain('.git/config');
+    },
+  );
+
+  test('denies a write to .git/config in MAIN mode (cwd = repo root)', () => {
+    const verdict = evaluateWorkspaceConfinement(
+      'Write',
+      { file_path: `${MAIN}/.git/config` },
+      MAIN,
+    );
+    expect(verdict.denied).toBe(true);
+    expect(verdict.ruleId).toBe(GIT_CONFIG_PROTECTION_RULE_ID);
+  });
+
+  test('denies a relative .git/config write (resolved against cwd)', () => {
+    const verdict = evaluateWorkspaceConfinement(
+      'Write',
+      { file_path: '.git/config' },
+      WORKTREE,
+    );
+    expect(verdict.denied).toBe(true);
+    expect(verdict.ruleId).toBe(GIT_CONFIG_PROTECTION_RULE_ID);
+  });
+
+  test('denies a NESTED .git/config at any depth', () => {
+    const verdict = evaluateWorkspaceConfinement(
+      'Edit',
+      { file_path: `${WORKTREE}/vendor/dep/.git/config` },
+      WORKTREE,
+    );
+    expect(verdict.denied).toBe(true);
+    expect(verdict.ruleId).toBe(GIT_CONFIG_PROTECTION_RULE_ID);
+  });
+
+  test('denies the .git/config write even when it ESCAPES cwd (git-config reason wins)', () => {
+    // In worktree mode the shared common dir sits OUTSIDE cwd; the write is refused
+    // with the SPECIFIC git-config reason rather than the generic escape reason.
+    const verdict = evaluateWorkspaceConfinement(
+      'Write',
+      { file_path: `${MAIN}/.git/config` },
+      WORKTREE,
+    );
+    expect(verdict.denied).toBe(true);
+    expect(verdict.ruleId).toBe(GIT_CONFIG_PROTECTION_RULE_ID);
+  });
+
+  test('denies a case-variant .GIT/Config (folding only strengthens the block)', () => {
+    const verdict = evaluateWorkspaceConfinement(
+      'Write',
+      { file_path: `${WORKTREE}/.GIT/Config` },
+      WORKTREE,
+    );
+    expect(verdict.denied).toBe(true);
+    expect(verdict.ruleId).toBe(GIT_CONFIG_PROTECTION_RULE_ID);
+  });
+
+  test('denies an ApplyPatch whose body writes .git/config', () => {
+    const patch = [
+      '*** Begin Patch',
+      '*** Add File: .git/config',
+      '*** End Patch',
+    ].join('\n');
+    const verdict = evaluateWorkspaceConfinement('ApplyPatch', { patch }, WORKTREE);
+    expect(verdict.denied).toBe(true);
+    expect(verdict.ruleId).toBe(GIT_CONFIG_PROTECTION_RULE_ID);
+  });
+
+  test.each([
+    ['truncating redirect', 'echo "[core]" > .git/config'],
+    ['append redirect', 'echo x >> .git/config'],
+    ['tee into .git/config', 'echo x | tee .git/config'],
+    ['sh -c subshell hiding the redirect', "sh -c 'echo x >> .git/config'"],
+  ] as const)('denies a Bash write to .git/config (%s)', (_label, command) => {
+    const verdict = evaluateWorkspaceConfinement('Bash', { command }, WORKTREE);
+    expect(verdict.denied).toBe(true);
+    expect(verdict.ruleId).toBe(GIT_CONFIG_PROTECTION_RULE_ID);
+  });
+
+  test.each([
+    ['a ref update', `${WORKTREE}/.git/refs/heads/feature`],
+    ['the index', `${WORKTREE}/.git/index`],
+    ['HEAD', `${WORKTREE}/.git/HEAD`],
+    ['a git hook (exec-sink ASK gate handles it, not this DENY)', `${WORKTREE}/.git/hooks/pre-commit`],
+    ['config.worktree (not the executed config file)', `${WORKTREE}/.git/config.worktree`],
+    ['a file named config NOT directly under .git', `${WORKTREE}/.git/hooks/config`],
+    ['an ordinary in-cwd config file', `${WORKTREE}/src/config`],
+    ['an ordinary source file', `${WORKTREE}/apps/web/x.ts`],
+  ] as const)('ALLOWS a normal in-cwd write (%s)', (_label, file) => {
+    expect(
+      evaluateWorkspaceConfinement('Write', { file_path: file }, WORKTREE).denied,
+    ).toBe(false);
+  });
+
+  test('does NOT block a READ of .git/config (this is a mutation gate only)', () => {
+    expect(
+      evaluateWorkspaceConfinement(
+        'Read',
+        { file_path: `${WORKTREE}/.git/config` },
+        WORKTREE,
+      ).denied,
+    ).toBe(false);
+  });
+
+  test('a Bash write to a NON-config .git file is not caught by this rule', () => {
+    // A `.git/refs/...` redirect stays in-cwd and is allowed — only `config` is denied.
+    expect(
+      evaluateWorkspaceConfinement(
+        'Bash',
+        { command: 'echo abc > .git/refs/heads/x' },
+        WORKTREE,
+      ).denied,
+    ).toBe(false);
   });
 });

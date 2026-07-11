@@ -254,3 +254,27 @@ export function bashWriteTargetTokens(command: string): string[] {
   }
   return tokens;
 }
+
+/**
+ * Resolve a raw Bash write-target TOKEN (from {@link bashWriteTargetTokens}) to an
+ * absolute path INSIDE the run root, or undefined. Unlike {@link lexicalWriteTarget}
+ * (absolute/`~`/`$HOME`-only, which catches root ESCAPES), a RELATIVE token is
+ * resolved against `resolvedCwd` here — the in-root write shape
+ * (`echo x > .git/config`, `echo x > .github/workflows/y.yml`) that escape detection
+ * deliberately ignores because a relative target can't ESCAPE the root. Dynamic
+ * tokens (`$VAR`, `$(…)`, backticks), fd/redirect artifacts (`&1`), and `~` home
+ * targets are left alone — unresolvable lexically, or out of the repo (the escape
+ * check's jurisdiction). Shared by the exec-sink gate and the git-config write-deny
+ * so the two gates never drift on how a bash write target resolves.
+ */
+export function resolveBashWriteTargetInCwd(
+  token: string,
+  resolvedCwd: string,
+): string | undefined {
+  if (token.length === 0) return undefined;
+  if (token.includes('$') || token.includes('`')) return undefined;
+  if (token.startsWith('&') || token.startsWith('~')) return undefined;
+  return path.isAbsolute(token)
+    ? path.resolve(token)
+    : path.resolve(resolvedCwd, token);
+}
