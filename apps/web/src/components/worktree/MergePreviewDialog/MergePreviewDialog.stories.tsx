@@ -67,6 +67,7 @@ const meta = {
     open: true,
     preview: readyPreview,
     onMerge: fn(),
+    onUpdateFromBase: fn(),
     onClose: fn(),
     onViewDiff: fn(),
   },
@@ -86,6 +87,11 @@ export const Conflicts: Story = { args: { preview: conflictsPreview } };
 export const Loading: Story = { args: { preview: null, loading: true } };
 
 export const Merging: Story = { args: { merging: true } };
+
+/** An update-from-base pull is in flight — the button shows a spinner + is disabled. */
+export const UpdatingFromBase: Story = {
+  args: { preview: divergedPreview, updatingFromBase: true },
+};
 
 /** Live terminal sessions open in this worktree (terminal spec, decision 2) — a
  *  blocking notice warns they'll be closed on merge. */
@@ -132,5 +138,30 @@ export const ViewsDiff: Story = {
     const canvas = portaledSurface();
     await userEvent.click(canvas.getByRole('button', { name: 'View full diff' }));
     await expect(args.onViewDiff).toHaveBeenCalled();
+  },
+};
+
+/** Play test: a behind-base branch raises the stale-branch hazard callout and the
+ *  "Update from base" button, which fires onUpdateFromBase. */
+export const BehindBaseWarns: Story = {
+  args: { preview: divergedPreview },
+  play: async ({ args }) => {
+    const canvas = portaledSurface();
+    await expect(canvas.getByText(/7 commits behind main/i)).toBeInTheDocument();
+    await expect(canvas.getByText(/silently revert base-only changes/i)).toBeInTheDocument();
+    const update = canvas.getByRole('button', { name: /Update from base/i });
+    await userEvent.click(update);
+    await expect(args.onUpdateFromBase).toHaveBeenCalled();
+  },
+};
+
+/** Play test: a clean ahead-only branch shows neither the hazard nor the button,
+ *  but still shows the muted merge-checkout note naming the base. */
+export const CleanAheadNoHazard: Story = {
+  play: async () => {
+    const canvas = portaledSurface();
+    await expect(canvas.queryByText(/behind main/i)).toBeNull();
+    await expect(canvas.queryByRole('button', { name: /Update from base/i })).toBeNull();
+    await expect(canvas.getByText(/Merging checks out/i)).toBeInTheDocument();
   },
 };

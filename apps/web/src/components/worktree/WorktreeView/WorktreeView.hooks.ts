@@ -14,6 +14,7 @@ import {
   openInEditor,
   revealWorktree,
   terminalSessionsInDir,
+  updateWorktreeFromBase,
   worktreeDiff,
 } from '@/lib/bridge';
 import { parseGitError } from '@/lib/git-error';
@@ -67,6 +68,11 @@ export interface WorktreeViewModel {
   preview: PreviewState | null;
   merging: boolean;
   confirmMerge: () => void;
+  /** Pull base INTO the previewed worktree branch (the "Update from base" action),
+   *  then refresh the open preview in place. */
+  updateFromBase: () => void;
+  /** An update-from-base pull is in flight (disables the dialog's button). */
+  updatingFromBase: boolean;
   closePreview: () => void;
   onPreviewViewDiff: () => void;
   diff: DiffState | null;
@@ -80,6 +86,7 @@ export function useWorktreeView(tasks: Task[], worktrees: WorktreeInfo[]): Workt
   const toast = useToast();
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [merging, setMerging] = useState(false);
+  const [updatingFromBase, setUpdatingFromBase] = useState(false);
   const [diff, setDiff] = useState<DiffState | null>(null);
   const [discard, setDiscard] = useState<DiscardState | null>(null);
 
@@ -229,6 +236,34 @@ export function useWorktreeView(tasks: Task[], worktrees: WorktreeInfo[]): Workt
       .finally(() => setMerging(false));
   }, [preview, reportError, toast]);
 
+  const updateFromBase = useCallback(() => {
+    if (preview === null) return;
+    const { taskId } = preview;
+    setUpdatingFromBase(true);
+    void updateWorktreeFromBase(taskId)
+      .then((status) => {
+        if (status === 'updated') {
+          toast.push({ tone: 'success', title: 'Worktree updated from base' });
+          // The ahead/behind + conflict status just changed — re-fetch so the open
+          // dialog reflects the new state in place (reuses the preview open path).
+          openPreview(taskId);
+        } else if (status === 'up_to_date') {
+          toast.push({ tone: 'info', title: 'Already up to date' });
+        } else {
+          // 'conflict' — the backend aborted the merge and left the worktree clean,
+          // so nothing is broken; keep the dialog open and tell the user to resolve
+          // manually. (No `warning` tone exists — `info` is the neutral heads-up.)
+          toast.push({
+            tone: 'info',
+            title: 'Base has conflicting changes',
+            description: 'The worktree was left unchanged. Resolve by merging base in manually.',
+          });
+        }
+      })
+      .catch(reportError)
+      .finally(() => setUpdatingFromBase(false));
+  }, [preview, toast, openPreview, reportError]);
+
   const confirmDiscard = useCallback(() => {
     if (discard === null) return;
     const { taskId, terminalSessions } = discard;
@@ -277,6 +312,8 @@ export function useWorktreeView(tasks: Task[], worktrees: WorktreeInfo[]): Workt
     preview,
     merging,
     confirmMerge,
+    updateFromBase,
+    updatingFromBase,
     closePreview,
     onPreviewViewDiff,
     diff,

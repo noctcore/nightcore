@@ -63,7 +63,9 @@ export function WorktreeView({ tasks, onOpenTerminal }: WorktreeViewProps) {
         loading={v.preview?.loading ?? false}
         merging={v.merging}
         terminalSessions={v.preview?.terminalSessions.length ?? 0}
+        updatingFromBase={v.updatingFromBase}
         onMerge={v.confirmMerge}
+        onUpdateFromBase={v.updateFromBase}
         onClose={v.closePreview}
         onViewDiff={v.onPreviewViewDiff}
       />
@@ -71,6 +73,7 @@ export function WorktreeView({ tasks, onOpenTerminal }: WorktreeViewProps) {
       <DiffViewDialog
         open={v.diff !== null}
         diff={v.diff?.data ?? null}
+        taskId={v.diff?.taskId ?? null}
         loading={v.diff?.loading ?? false}
         onClose={v.closeDiff}
       />

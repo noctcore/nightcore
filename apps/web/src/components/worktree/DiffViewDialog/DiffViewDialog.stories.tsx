@@ -36,6 +36,9 @@ const meta = {
   args: {
     open: true,
     diff: sampleDiff,
+    // `null` keeps the per-file patch fetch idle in Storybook (no Tauri), so an
+    // expanded row degrades to the empty-patch note rather than a live call.
+    taskId: null,
     onClose: fn(),
   },
 } satisfies Meta<typeof DiffViewDialog>;
@@ -92,5 +95,21 @@ export const RendersNothingClosed: Story = {
   play: async () => {
     const canvas = portaledSurface();
     await expect(canvas.queryByRole('dialog')).toBeNull();
+  },
+};
+
+/** Play test: a file row is a toggle button that expands its inline patch, and a
+ *  second click collapses it (aria-expanded tracks the open state). */
+export const ExpandsAndCollapsesRow: Story = {
+  play: async () => {
+    const canvas = portaledSurface();
+    const row = canvas.getByRole('button', { name: /scratch\/notes\.md/ });
+    await expect(row).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(row);
+    await expect(row).toHaveAttribute('aria-expanded', 'true');
+    // No taskId in Storybook ⇒ the fetch stays idle ⇒ the empty-patch note shows.
+    await expect(canvas.getByText('No textual changes to show.')).toBeInTheDocument();
+    await userEvent.click(row);
+    await expect(row).toHaveAttribute('aria-expanded', 'false');
   },
 };

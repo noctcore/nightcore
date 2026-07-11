@@ -9,6 +9,10 @@ export interface DiffViewDialogProps {
   open: boolean;
   /** The computed worktree diff, or `null` while it has not been loaded yet. */
   diff: WorktreeDiff | null;
+  /** The task whose worktree the diff belongs to, threaded so an expanded file
+   *  row can lazily fetch its per-file patch (`worktree_file_diff`). `null` when
+   *  no diff is open — the per-file fetch stays idle. */
+  taskId: string | null;
   /** Show the loading spinner while the diff is being computed. */
   loading?: boolean;
   /** Esc, click-outside, and the close affordance route here. */
