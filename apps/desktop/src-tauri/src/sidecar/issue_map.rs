@@ -20,6 +20,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::git::gh::GH_BINARY;
 use crate::project::Project;
+use crate::settings::SettingsStore;
 use crate::store::harness::HarnessStore;
 use crate::store::insight::InsightStore;
 use crate::store::scorecard::ScorecardStore;
@@ -90,6 +91,14 @@ fn require_completed(status: &str) -> Result<(), String> {
     }
 }
 
+/// The configured issue-label prefix (`issue_label_prefix`, default `"nc:"`), so the map's
+/// `nc:*` labels honor the same prefix as the two-way sync writeback (#97 — the export used
+/// to hardcode `nc:`).
+fn label_prefix(app: &AppHandle) -> String {
+    app.state::<SettingsStore>()
+        .with_settings(|s| s.label_prefix().to_string())
+}
+
 /// Guard that the run's project is still the active one, and return it (its root is the
 /// `gh` cwd that resolves `{owner}`/`{repo}`). Never post to a repo the user left.
 fn guard_active_project(app: &AppHandle, plan: &IssueMapPlan) -> Result<Project, String> {
@@ -126,6 +135,8 @@ fn preview_blocking(
     }
     let project = guard_active_project(app, &plan)?;
     let dir = Path::new(&project.path);
+    // The label prefix the export uses (honors `issue_label_prefix`, so map + sync agree).
+    let prefix = label_prefix(app);
 
     // Mint the ISO timestamp ONCE here and thread it to the write command (preview ==
     // post, §3.8/§10.6).
@@ -133,7 +144,7 @@ fn preview_blocking(
     let (narrative, narrative_ok) = generate(&plan);
     // Prior-map discovery is a best-effort network read — a hiccup must not sink the
     // preview (export re-probes gh and surfaces a real failure loudly).
-    let supersedes = find_prior_map(dir, GH_BINARY, kind, GH_TIMEOUT).unwrap_or_else(|e| {
+    let supersedes = find_prior_map(dir, GH_BINARY, kind, &prefix, GH_TIMEOUT).unwrap_or_else(|e| {
         tracing::warn!(target: "nightcore::issue_map", error = %e, "prior-map discovery failed (preview continues without a supersede)");
         None
     });
@@ -211,8 +222,9 @@ fn export_blocking(
     }
     let project = guard_active_project(app, &plan)?;
     let dir = Path::new(&project.path);
+    let prefix = label_prefix(app);
 
-    let supersedes = find_prior_map(dir, GH_BINARY, kind, GH_TIMEOUT).unwrap_or_else(|e| {
+    let supersedes = find_prior_map(dir, GH_BINARY, kind, &prefix, GH_TIMEOUT).unwrap_or_else(|e| {
         tracing::warn!(target: "nightcore::issue_map", error = %e, "prior-map discovery failed (export continues without a supersede)");
         None
     });
@@ -221,6 +233,7 @@ fn export_blocking(
     export_map(
         dir,
         GH_BINARY,
+        &prefix,
         &plan,
         narrative,
         generated_at,

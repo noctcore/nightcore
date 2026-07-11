@@ -236,8 +236,11 @@ pub(crate) fn find_prior_map(
     dir: &Path,
     binary: &str,
     kind: ScanKind,
+    prefix: &str,
     deadline: Duration,
 ) -> Result<Option<PriorMap>, String> {
+    let map_label = NC_MAP.full_name(prefix);
+    let kind_label = kind.label().full_name(prefix);
     let out = run_gh_bounded(
         dir,
         binary,
@@ -245,9 +248,9 @@ pub(crate) fn find_prior_map(
             "issue",
             "list",
             "--label",
-            NC_MAP.name,
+            &map_label,
             "--label",
-            kind.label().name,
+            &kind_label,
             "--state",
             "open",
             "--json",
@@ -328,6 +331,7 @@ fn partial(
 pub(crate) fn export_map(
     dir: &Path,
     binary: &str,
+    prefix: &str,
     plan: &IssueMapPlan,
     narrative: &Narrative,
     generated_at: &str,
@@ -342,16 +346,29 @@ pub(crate) fn export_map(
         plan.groups.iter().flat_map(|g| g.items.iter()).collect();
     let attempted = items.len() as u32;
 
-    // Ensure the ≤5 labels once up front; a scope failure degrades to no labels (§3.8).
+    // Ensure the ≤5 labels once up front (under the configured prefix, so the export
+    // honors the same `issue_label_prefix` as the sync writeback); a scope failure
+    // degrades to no labels (§3.8).
     let kind_label = plan.kind.label();
-    let labels_ok = ensure_labels(dir, binary, &[NC_MAP, NC_FINDING, kind_label], deadline);
+    let labels_ok = ensure_labels(
+        dir,
+        binary,
+        &[NC_MAP, NC_FINDING, kind_label],
+        prefix,
+        deadline,
+    );
+    let (map_name, finding_name, kind_name) = (
+        NC_MAP.full_name(prefix),
+        NC_FINDING.full_name(prefix),
+        kind_label.full_name(prefix),
+    );
     let parent_labels: Vec<&str> = if labels_ok {
-        vec![NC_MAP.name, kind_label.name]
+        vec![map_name.as_str(), kind_name.as_str()]
     } else {
         Vec::new()
     };
     let child_labels: Vec<&str> = if labels_ok {
-        vec![NC_FINDING.name, kind_label.name]
+        vec![finding_name.as_str(), kind_name.as_str()]
     } else {
         Vec::new()
     };
@@ -557,6 +574,7 @@ mod tests {
         let result = export_map(
             tmp.path(),
             script.to_str().unwrap(),
+            "nc:",
             &plan,
             &narrative(),
             "2021-01-01T00:00:00Z",
@@ -591,6 +609,7 @@ mod tests {
         let result = export_map(
             tmp.path(),
             script.to_str().unwrap(),
+            "nc:",
             &plan,
             &narrative(),
             "2021-01-01T00:00:00Z",
@@ -618,16 +637,28 @@ mod tests {
             tmp.path(),
             "printf '[{\"number\":5,\"title\":\"Old map\",\"url\":\"https://h/5\"}]'\nexit 0",
         );
-        let prior = find_prior_map(tmp.path(), present.to_str().unwrap(), ScanKind::Insight, T)
-            .expect("list ok");
+        let prior = find_prior_map(
+            tmp.path(),
+            present.to_str().unwrap(),
+            ScanKind::Insight,
+            "nc:",
+            T,
+        )
+        .expect("list ok");
         assert_eq!(prior.as_ref().map(|p| p.number), Some(5));
         assert_eq!(prior.unwrap().title, "Old map");
 
         let empty = fake_gh(tmp.path(), "printf '[]'\nexit 0");
         assert!(
-            find_prior_map(tmp.path(), empty.to_str().unwrap(), ScanKind::Insight, T)
-                .expect("empty list ok")
-                .is_none(),
+            find_prior_map(
+                tmp.path(),
+                empty.to_str().unwrap(),
+                ScanKind::Insight,
+                "nc:",
+                T
+            )
+            .expect("empty list ok")
+            .is_none(),
             "no open map ⇒ None"
         );
     }

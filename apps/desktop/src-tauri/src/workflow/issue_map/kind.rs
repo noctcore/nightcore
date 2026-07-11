@@ -103,8 +103,10 @@ mod tests {
 
     #[test]
     fn label_matches_the_kind() {
-        assert_eq!(ScanKind::Insight.label().name, "nc:insight");
-        assert_eq!(ScanKind::Scorecard.label().name, "nc:scorecard");
-        assert_eq!(ScanKind::Enforce.label().name, "nc:enforce");
+        assert_eq!(ScanKind::Insight.label().suffix, "insight");
+        assert_eq!(ScanKind::Scorecard.label().suffix, "scorecard");
+        assert_eq!(ScanKind::Enforce.label().suffix, "enforce");
+        // Composed under the default prefix, they read as the historical `nc:*` names.
+        assert_eq!(ScanKind::Insight.label().full_name("nc:"), "nc:insight");
     }
 }
