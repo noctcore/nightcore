@@ -148,3 +148,4 @@ export { Toolbar } from './Toolbar';
 export type { ToolbarProps } from './Toolbar/Toolbar.types';
 export type { ToolbarOptionProps } from './ToolbarOption';
 export { ToolbarOption } from './ToolbarOption';
+export { UsageLimitBanner } from './UsageLimitBanner';

@@ -50,6 +50,36 @@ export function addUsage(a: ScanUsage, b: ScanUsage | undefined): ScanUsage {
   };
 }
 
+/** The inputs the usage-limit signature reads from any scan run (live stream or
+ *  persisted): the terminal status plus the run's total cost and input tokens. */
+export interface UsageLimitInputs {
+  /** The run's lifecycle status (`completed` is the only one this fires on). */
+  status: string;
+  /** Total run cost in USD (transcript-approximated). */
+  costUsd: number;
+  /** Total input tokens the run consumed. */
+  inputTokens: number;
+}
+
+/**
+ * The rate/usage-limit signature: a run that reached `completed` yet spent
+ * NOTHING — $0.00 and zero input tokens. A genuine scan always consumes input
+ * tokens (it reads the diff / the codebase), so a completed run with none almost
+ * always means the provider refused every request under a usage or rate limit,
+ * and the empty result is an artifact of that — NOT a clean bill. Only fires on a
+ * `completed` run (a failed / running / idle run already reads as incomplete).
+ * Documented signature: `reference_scan_zero_dollar_failure` (0 input tokens +
+ * $0.00, no WARN). Conservative on both axes (`<= 0`) so it never mis-fires on a
+ * run that actually did work.
+ */
+export function isUsageLimitSignature({
+  status,
+  costUsd,
+  inputTokens,
+}: UsageLimitInputs): boolean {
+  return status === 'completed' && costUsd <= 0 && inputTokens <= 0;
+}
+
 /**
  * The per-step (category / dimension / lens) progress a scan tracks while it runs.
  * Every family re-declares this same four-value union under its own noun
