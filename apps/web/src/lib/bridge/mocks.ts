@@ -166,6 +166,7 @@ export const MOCK_SETTINGS: Settings = {
   preferredEditor: null,
   terminalWebglEnabled: false,
   terminalConfinedDefault: false,
+  usageMeterEnabled: false,
   projectOverrides: {},
 };
 

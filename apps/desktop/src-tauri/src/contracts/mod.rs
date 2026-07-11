@@ -493,6 +493,7 @@ mod tests {
             ("project", crate::commands::project::PROJECT_EVENT),
             ("loop", crate::orchestration::coordinator::LOOP_EVENT),
             ("prFix", crate::workflow::pr_fix::PRFIX_EVENT),
+            ("usage", crate::usage::USAGE_EVENT),
         ]
         .into_iter()
         .collect();

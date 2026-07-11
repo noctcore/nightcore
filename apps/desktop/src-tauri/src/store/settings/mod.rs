@@ -402,6 +402,32 @@ mod tests {
     }
 
     #[test]
+    fn usage_meter_enabled_defaults_false_and_is_serde_additive() {
+        // Issue #121 decision 5: the usage meter is opt-in (default off).
+        assert!(!Settings::default().usage_meter_enabled);
+
+        // A settings.json from before the usage meter (no `usageMeterEnabled`) still
+        // parses, defaulting the field to `false` — existing config isn't broken.
+        let tmp = TempDir::new().expect("temp dir");
+        let dir = tmp.path().join("config");
+        std::fs::create_dir_all(&dir).unwrap();
+        let legacy = r#"{"defaultModel":"claude-opus-4-8","defaultEffort":"medium",
+            "maxConcurrency":3,"permissionMode":"bypass","cleanupWorktrees":true,
+            "notifyOnComplete":false,"defaultRunMode":"main","projectOverrides":{}}"#;
+        std::fs::write(dir.join("settings.json"), legacy).unwrap();
+        let store = SettingsStore::load_from(dir);
+        assert!(!store.get().usage_meter_enabled);
+
+        // A global patch flips it on and round-trips through persistence.
+        store
+            .update(serde_json::from_str(r#"{"usageMeterEnabled":true}"#).unwrap())
+            .expect("update");
+        assert!(store.get().usage_meter_enabled);
+        let reloaded = SettingsStore::load_from(tmp.path().join("config"));
+        assert!(reloaded.get().usage_meter_enabled);
+    }
+
+    #[test]
     fn context_pack_enabled_defaults_true_and_is_serde_additive() {
         // Lock (feature #4): the curated Constitution is injected by default.
         assert!(Settings::default().context_pack_enabled);

@@ -132,6 +132,16 @@ terminalWebglEnabled: boolean,
  */
 terminalConfinedDefault: boolean, 
 /**
+ * Provider usage meter (issue #121, spec decision 5): opt-in. When false
+ * (default), the sidebar widget shows a dormant "Enable usage meter" button and
+ * the Rust poll loop parks — zero network/Keychain access until the user opts
+ * in. Enabling reads OAuth credentials to call the providers' usage endpoints
+ * (read-only; never refreshes a token). Global-only (a machine/account
+ * preference, like `sandbox_sessions`). Serde-additive: a settings file written
+ * before this field loads as `false`.
+ */
+usageMeterEnabled: boolean, 
+/**
  * Per-project overrides keyed by project id.
  */
 projectOverrides: { [key in string]: SettingsOverride }, };

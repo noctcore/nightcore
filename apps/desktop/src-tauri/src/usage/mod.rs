@@ -1,0 +1,52 @@
+//! The provider usage meter (issue #121) — a read-only telemetry system that reads
+//! the OAuth credentials the user's `claude` / `codex` CLIs already wrote, calls
+//! each provider's usage endpoint on a 10-minute timer, and renders the returned
+//! rate-limit windows in the sidebar footer (the web widget lands in PR B).
+//!
+//! A top-level module (a peer of `provider/`, `terminal/`, `worktree.rs`) because it
+//! owns SYSTEM seams — the macOS Keychain, the HTTP client, and `~/.claude` /
+//! `~/.codex` file reads — so it can't live in a `store/` leaf (pure persistence) or
+//! in the per-run sidecar (no system-credential ownership). It must run regardless
+//! of sidecar state.
+//!
+//! ## Hard constraints (spec §1)
+//!  - **Read-only, never a token manager:** never writes/refreshes/rotates a
+//!    credential. On 401 it surfaces re-auth guidance and stops (spec decision 4).
+//!  - **Tokens live only as long as the request:** read at poll time, moved into the
+//!    request, dropped when it returns — never stored in state, a log, or the
+//!    emitted snapshot (spec §3.7).
+//!  - **Fail-soft everywhere:** every failure degrades ONE provider row via the
+//!    [`UsageStatus`](contract::UsageStatus) machine — never a panic, never a blank
+//!    widget (spec §3.6).
+//!  - **Opt-in:** the poll loop parks until the `usage_meter_enabled` flag is set,
+//!    spending zero CPU/network before the user opts in (spec decision 5).
+//!
+//! ## Layout (flat siblings under this manifest, house pattern)
+//!  - [`contract`] — the ts-rs wire types (registered in `bindings/export.rs`).
+//!  - `registry` — the managed-state [`UsageRegistry`] (last-good snapshot +
+//!    cooldowns + cost cache + poll-loop primitives).
+//!  - `poller` — the 10-minute single-flight loop + the `nc:usage` push.
+//!  - `credentials` — Keychain + file credential reads.
+//!  - `claude` / `codex` — per-provider fetch + defensive parsers.
+//!  - `http` — the one rustls `reqwest` client + the fail-soft taxonomy + redaction.
+//!  - `cost` / `pricing` — the popover-only local JSONL cost ESTIMATE.
+
+pub(crate) mod contract;
+
+mod claude;
+mod codex;
+mod cost;
+mod credentials;
+mod http;
+mod poller;
+mod pricing;
+mod registry;
+
+pub(crate) use credentials::prime_credentials;
+pub(crate) use poller::{arm, kick, REFRESH_MIN_AGE};
+pub use registry::UsageRegistry;
+// `USAGE_EVENT` is emitted from inside `poller` directly; this re-export exists ONLY
+// for the `contracts::mod` channel-conformance test, so it is `#[cfg(test)]`-gated to
+// avoid an unused-import warning in a release build.
+#[cfg(test)]
+pub(crate) use poller::USAGE_EVENT;

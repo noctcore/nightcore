@@ -32,6 +32,10 @@ mod sync;
 // `worktree/`; a USER-ONLY seam with no agent/sidecar path into it (see
 // `terminal/mod.rs`).
 mod terminal;
+// The provider usage meter (issue #121): a top-level system-seam module (Keychain +
+// HTTP + `~/.claude`/`~/.codex` reads) that polls each provider's usage endpoint. A
+// USER-ONLY read-only seam — no agent/sidecar path reaches it (see `usage/mod.rs`).
+mod usage;
 mod workflow;
 mod worktree;
 
@@ -119,12 +123,22 @@ pub fn run() {
             terminal::persist::prune(&terminals_dir);
             app.manage(terminal::TerminalRegistry::new(terminals_dir));
 
+            // The provider usage-meter registry (issue #121): the last-good snapshot +
+            // 429 cooldowns + popover cost cache + poll-loop primitives. In-memory only
+            // (a restart starts cold; the first poll refills it — spec §3.2). The poll
+            // loop is armed at the end of setup only if the opt-in flag is already on.
+            app.manage(usage::UsageRegistry::new());
+
             // The orchestrator (slot manager + circuit breaker + provider +
             // auto-loop) starts at the persisted concurrency. The provider spawns
             // `bun run apps/sidecar/src/index.ts` in the workspace root on first use.
             let settings_store = SettingsStore::load_from(config_dir);
             let (max_concurrency, provider_id) = settings_store
                 .with_settings(|s| (s.max_concurrency.max(1) as usize, s.provider.clone()));
+            // Whether to arm the usage poll loop at startup (issue #121, spec §3.3):
+            // only when the meter is already opted-in. A disabled meter arms lazily
+            // via `enable_usage_meter`, so a user who never opts in spawns no loop.
+            let usage_meter_enabled = settings_store.with_settings(|s| s.usage_meter_enabled);
             let orchestrator = Orchestrator::new(
                 workspace_root().join("apps/sidecar/src/index.ts"),
                 workspace_root(),
@@ -177,6 +191,13 @@ pub fn run() {
             // whose run died with the process is re-queued (or re-reviewed) so the
             // auto-loop can pick it up again instead of stranding it forever.
             orchestration::coordinator::reconcile_tasks(&app.handle().clone());
+
+            // Arm the usage poll loop iff the meter is already opted-in (issue #121).
+            // The loop reads OAuth credentials + polls each provider on a 10-min
+            // cadence; a disabled meter's loop is armed lazily by `enable_usage_meter`.
+            if usage_meter_enabled {
+                usage::arm(&app.handle().clone());
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -358,6 +379,14 @@ pub fn run() {
             // shell in ANY directory). Async; never reads file contents or writes.
             commands::fs::list_directory,
             commands::fs::directory_exists,
+            // The provider usage meter (issue #121). All async (a sync command would
+            // freeze the WKWebView); the meter is a USER-ONLY read-only seam driven
+            // solely from the webview, never wired to an agent session.
+            commands::usage::enable_usage_meter,
+            commands::usage::disable_usage_meter,
+            commands::usage::get_usage,
+            commands::usage::refresh_usage,
+            commands::usage::get_usage_cost,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Nightcore application");

@@ -59,6 +59,20 @@ tree-sitter-rust = "0.24.2"
 # path, RUSTSEC-flagged `safemem`, no registry lifecycle hooks) per the feasibility
 # research. USER-ONLY seam — no agent/sidecar path ever reaches it.
 portable-pty = "0.9.0"
+# Usage meter (issue #121): the ONE first-party HTTP client for the reverse-engineered
+# provider usage endpoints. The crate tree ALREADY compiles reqwest 0.13 + rustls (via
+# `tauri-plugin-updater`), which pins the `ring` crypto provider — NOT aws-lc-rs. So
+# this direct dep matches that exactly: `default-features = false` + `rustls-no-provider`
+# (reqwest 0.13 dropped the `rustls-tls` feature; `rustls` here would pull aws-lc-rs +
+# reintroduce the openssl/native-tls CI grief the rustls choice avoids). It adds
+# essentially no new transitive compile cost. `use_rustls_tls()` + the ring provider are
+# wired in `usage::http::build_client`.
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider"] }
+# Named directly (feature-unified with the updater's copy) only so `build_client` can
+# install the `ring` crypto provider as the process default — required because
+# reqwest's `rustls-no-provider` builds its TLS config from the process default at
+# client-build time. Same version + provider the tree already resolves; no new cost.
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 [dev-dependencies]
 tempfile = "3.27"
@@ -68,3 +82,10 @@ tempfile = "3.27"
 # assert no git diff". Default features include `serde-compat` so serde attrs
 # (rename_all/skip_serializing_if/default) shape the TS exactly like the wire.
 ts-rs = "12.0"
+
+# Usage meter (issue #121): the Claude `Claude Code-credentials` Keychain read is
+# macOS-only. Target-gated so Linux/Windows CI clippy (-D warnings) never sees the
+# macOS-only Keychain path as dead code (trap a). Version-unified with the copy
+# `tauri` already pulls transitively.
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"

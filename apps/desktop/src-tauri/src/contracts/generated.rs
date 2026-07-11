@@ -1537,4 +1537,5 @@ pub const NIGHTCORE_CHANNELS: &[(&str, &str)] = &[
     ("scorecard", "nc:scorecard"),
     ("session", "nc:session"),
     ("task", "nc:task"),
+    ("usage", "nc:usage"),
 ];

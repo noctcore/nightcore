@@ -40,6 +40,8 @@ export const CHANNELS = {
   issueTriage: 'nc:issue-triage',
   /** The full pr-fix state snapshot on every lifecycle change. */
   prFix: 'nc:pr-fix',
+  /** The provider usage meter snapshot, pushed on every poll change (issue #121). */
+  usage: 'nc:usage',
 } as const;
 
 /** A registry symbol (e.g. `'prReview'`) — the key side of {@link CHANNELS}. */

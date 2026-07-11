@@ -32,4 +32,5 @@ pub mod task;
 pub mod terminal;
 pub mod transcript;
 pub mod trust;
+pub mod usage;
 pub mod worktree;

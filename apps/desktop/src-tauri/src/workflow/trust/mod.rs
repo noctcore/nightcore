@@ -26,6 +26,10 @@ mod tests;
 
 pub(crate) use aggregate::build_report;
 pub(crate) use contract::TrustReport;
+// `TokenTotals` is reused at RUNTIME by the usage meter's popover cost estimate
+// (`usage::contract::UsageCost`, issue #121), so it is re-exported unconditionally
+// (not `#[cfg(test)]` like the other nested section shapes below).
+pub(crate) use contract::TokenTotals;
 pub(crate) use post::{post_trust_comment_with, require_pr_number, GH_COMMENT_TIMEOUT};
 pub(crate) use render::{render_for_github, render_markdown};
 
@@ -36,5 +40,5 @@ pub(crate) use render::{render_for_github, render_markdown};
 // no unused re-export.
 #[cfg(test)]
 pub(crate) use contract::{
-    FlightSummary, GauntletTrust, GuardrailEvent, GuardrailTrust, QuarantineEvent, TokenTotals,
+    FlightSummary, GauntletTrust, GuardrailEvent, GuardrailTrust, QuarantineEvent,
 };

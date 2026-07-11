@@ -38,6 +38,12 @@ terminalWebglEnabled?: boolean,
  */
 terminalConfinedDefault?: boolean, 
 /**
+ * Issue #121 decision 5: toggle the provider usage meter (opt-in). Global-only
+ * (ignored for a per-project override target), like `sandbox_sessions`. See
+ * [`super::model::Settings::usage_meter_enabled`].
+ */
+usageMeterEnabled?: boolean, 
+/**
  * M4.6: default run mode (`"main"` | `"worktree"`). With a `projectId` it lands
  * in that project's override; without one, the global default.
  */

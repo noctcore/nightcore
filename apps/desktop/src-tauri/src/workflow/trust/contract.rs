@@ -176,7 +176,9 @@ pub struct FlightSummary {
 }
 
 /// Token usage totalled across a task's retained sessions.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+// `PartialEq` is derived so the usage meter's `UsageCost { tokens: Option<TokenTotals> }`
+// (issue #121) can derive `PartialEq` — trivially correct for a struct of counters.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(TS))]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, ts(export, export_to = "TokenTotals.ts"))]

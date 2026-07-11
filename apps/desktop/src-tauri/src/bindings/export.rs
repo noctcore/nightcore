@@ -45,6 +45,9 @@ fn export_all_bindings() {
     use crate::terminal::{
         PersistedTerminalInfo, PersistedTerminalScrollback, TerminalSessionInfo,
     };
+    use crate::usage::contract::{
+        Credits, ProviderUsage, RateWindow, UsageCost, UsageMeter, UsageStatus,
+    };
     use crate::workflow::issue_map::{
         GroupCount, GroupIntro, IssueMapPreview, IssueMapResult, Narrative, PriorMap,
         SubIssuePreview,
@@ -193,6 +196,17 @@ fn export_all_bindings() {
         GroupIntro,
         Narrative,
         IssueMapResult,
+        // Provider usage meter (issue #121): the whole-meter snapshot + per-provider
+        // row + window/credits/status shapes, plus the popover-only cost estimate.
+        // `export_all` on `UsageMeter` also writes its nested `ProviderUsage` /
+        // `RateWindow` / `Credits` / `UsageStatus`; `UsageCost` reuses the Trust
+        // Report's `TokenTotals` (already listed above).
+        UsageMeter,
+        ProviderUsage,
+        RateWindow,
+        Credits,
+        UsageStatus,
+        UsageCost,
     );
 }
 
@@ -296,6 +310,12 @@ mod tests {
             "GroupIntro.ts",
             "IssueMapNarrative.ts",
             "IssueMapResult.ts",
+            "UsageMeter.ts",
+            "ProviderUsage.ts",
+            "RateWindow.ts",
+            "Credits.ts",
+            "UsageStatus.ts",
+            "UsageCost.ts",
         ] {
             assert!(
                 dir.join(file).exists(),

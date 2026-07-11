@@ -129,6 +129,15 @@ pub struct Settings {
     /// permissions). Global-only. Serde-additive: legacy settings load this `false`.
     #[serde(default)]
     pub terminal_confined_default: bool,
+    /// Provider usage meter (issue #121, spec decision 5): opt-in. When false
+    /// (default), the sidebar widget shows a dormant "Enable usage meter" button and
+    /// the Rust poll loop parks — zero network/Keychain access until the user opts
+    /// in. Enabling reads OAuth credentials to call the providers' usage endpoints
+    /// (read-only; never refreshes a token). Global-only (a machine/account
+    /// preference, like `sandbox_sessions`). Serde-additive: a settings file written
+    /// before this field loads as `false`.
+    #[serde(default)]
+    pub usage_meter_enabled: bool,
     /// Per-project overrides keyed by project id.
     pub project_overrides: HashMap<String, SettingsOverride>,
 }
@@ -392,6 +401,9 @@ impl Default for Settings {
             // PR C decision 1: the human terminal is unconfined by default; the
             // confined checkbox starts off and remembers the user's last choice.
             terminal_confined_default: false,
+            // Issue #121 decision 5: the usage meter is opt-in — the poll loop parks
+            // and no credential is read until the user clicks "Enable usage meter".
+            usage_meter_enabled: false,
             project_overrides: HashMap::new(),
         }
     }
