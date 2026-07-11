@@ -196,16 +196,16 @@ fn with_json_flag(args: &[String]) -> Vec<String> {
 }
 
 /// The `--json` payload shape (a subset of `tools/lint-meta/json-reporter.ts`'s stable
-/// contract — extend additively only): per-rule `counts` (every rule that RAN, incl.
-/// 0), the `errored` rule ids (excluded from `counts`), and the `total` across rules.
+/// contract — extend additively only): per-rule `counts` (every rule that RAN, incl. 0)
+/// and the `errored` rule ids (excluded from `counts`). We attribute STRICTLY per-rule
+/// by name, so the report's suite `total` is deliberately not parsed — a convention is
+/// measured only from its OWN rule's count (never inferred from siblings).
 #[derive(Debug, Default, Deserialize)]
 struct LintMetaReport {
     #[serde(default)]
     counts: BTreeMap<String, u64>,
     #[serde(default)]
     errored: Vec<String>,
-    #[serde(default)]
-    total: u64,
 }
 
 /// Build a [`ConventionDrift`] from a lint-meta `--json` run. PURE (no I/O) so the
@@ -247,17 +247,21 @@ fn drift_from_lint_meta(
         );
     }
 
-    // No rule ran at all (empty registry / every rule errored) ⇒ no measurement.
-    if report.counts.is_empty() {
-        return errored_drift(
-            name,
-            fingerprint,
-            &method,
-            "no lint-meta rules ran, so drift could not be measured".to_string(),
-        );
-    }
-
-    let matched = report.counts.get(name).copied().unwrap_or(report.total);
+    // This convention's rule MUST be present in `counts` — i.e. it actually RAN — before
+    // any clean/drifted claim. Absent (empty registry, or a suite that ran OTHER rules)
+    // ⇒ unmeasured ⇒ errored, never `clean` inferred from sibling rules. This is the
+    // spec's non-negotiable "no `clean` without a real measurement of THIS convention".
+    let Some(&matched) = report.counts.get(name) else {
+        let reason = if report.counts.is_empty() {
+            "no lint-meta rules ran, so drift could not be measured".to_string()
+        } else {
+            format!(
+                "the lint-meta rule `{name}` was not in the report (it did not run), so this \
+                 convention's conformance was not measured"
+            )
+        };
+        return errored_drift(name, fingerprint, &method, reason);
+    };
     let checked = matched.max(1); // ≥ matched, and ≥1 ⇒ a 0-match run is a real `clean`.
     let status = if matched == 0 {
         STATUS_CLEAN
@@ -439,12 +443,28 @@ mod tests {
     }
 
     #[test]
-    fn falls_back_to_total_when_the_name_is_not_a_rule_id() {
-        // The check name doesn't match any rule id → attribute the suite total.
-        let out = report_json(&[("rule-a", 2), ("rule-b", 5)], &[]);
-        let d = drift_from_lint_meta("some-textual-convention", FP, &out, None);
-        assert_eq!(d.status, STATUS_DRIFTED);
-        assert_eq!(d.sites_matched, 7);
+    fn errored_when_this_conventions_rule_is_absent_from_the_report() {
+        // The check's own rule never ran — sibling rules DID (some at 0). We must NOT
+        // infer `clean` from the siblings: this convention's conformance is unmeasured.
+        let out = report_json(&[("rule-a", 0), ("rule-b", 0)], &[]);
+        let d = drift_from_lint_meta("folder-per-component", FP, &out, None);
+        assert_eq!(
+            d.status, STATUS_ERRORED,
+            "absent rule ⇒ errored, never clean"
+        );
+        assert_eq!(d.sites_matched, 0);
+        assert_eq!(d.sites_checked, 0);
+        assert!(d.error_reason.unwrap().contains("did not run"));
+    }
+
+    #[test]
+    fn errored_when_absent_even_though_siblings_drifted() {
+        // Same absence, but siblings have violations — still errored (not `drifted`):
+        // we never attribute another rule's count to this convention.
+        let out = report_json(&[("rule-a", 7)], &[]);
+        let d = drift_from_lint_meta("folder-per-component", FP, &out, None);
+        assert_eq!(d.status, STATUS_ERRORED);
+        assert_eq!(d.sites_matched, 0);
     }
 
     #[test]
