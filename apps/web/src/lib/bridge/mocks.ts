@@ -169,6 +169,7 @@ export const MOCK_SETTINGS: Settings = {
   terminalFontSize: null,
   terminalScrollback: null,
   usageMeterEnabled: false,
+  terminalYoloLaunch: false,
   projectOverrides: {},
 };
 

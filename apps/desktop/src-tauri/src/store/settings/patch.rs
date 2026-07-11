@@ -190,6 +190,11 @@ pub struct SettingsPatch {
     /// [`super::model::Settings::usage_meter_enabled`].
     #[cfg_attr(test, ts(optional))]
     pub usage_meter_enabled: Option<bool>,
+    /// Cockpit PR 4 decision 3: toggle the terminal "YOLO" launch flag. Global-only
+    /// (ignored for a per-project override target), like the other terminal knobs.
+    /// See [`super::model::Settings::terminal_yolo_launch`].
+    #[cfg_attr(test, ts(optional))]
+    pub terminal_yolo_launch: Option<bool>,
     /// M4.6: default run mode (`"main"` | `"worktree"`). With a `projectId` it lands
     /// in that project's override; without one, the global default.
     #[cfg_attr(test, ts(optional, as = "Option<RunMode>"))]
@@ -303,6 +308,11 @@ impl Settings {
         // override), like the terminal toggles above.
         if let Some(v) = patch.usage_meter_enabled {
             self.usage_meter_enabled = v;
+        }
+        // Cockpit PR 4: global-only opt-in YOLO launch flag (no per-project override),
+        // like the other terminal toggles.
+        if let Some(v) = patch.terminal_yolo_launch {
+            self.terminal_yolo_launch = v;
         }
         if let Some(v) = patch.default_run_mode {
             self.default_run_mode = v;

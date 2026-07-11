@@ -27,6 +27,7 @@ function renderGrid(sessions: TerminalSessionInfo[], zoomedId: string | null = n
       <TerminalGrid
         sessions={sessions}
         unread={{}}
+        ungovernedIds={new Set()}
         zoomedId={zoomedId}
         onRename={() => {}}
         onReorder={() => {}}
@@ -62,6 +63,7 @@ test('reordering keyed panes does NOT unmount them (same DOM node persists)', as
       <TerminalGrid
         sessions={[session('b'), session('a')]}
         unread={{}}
+        ungovernedIds={new Set()}
         zoomedId={null}
         onRename={() => {}}
         onReorder={() => {}}
@@ -87,6 +89,7 @@ test('zooming a pane replaces the grid with only that pane', async () => {
       <TerminalGrid
         sessions={[session('a'), session('b'), session('c')]}
         unread={{}}
+        ungovernedIds={new Set()}
         zoomedId="b"
         onRename={() => {}}
         onReorder={() => {}}

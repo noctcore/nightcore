@@ -13,4 +13,8 @@ export interface TerminalReadonlyPaneProps {
   /** Start a fresh live shell in the session's cwd (the parent spawns + swaps this
    *  read-only tab for the new live one). */
   onRestore: () => void;
+  /** Resume `claude` here (cockpit spec PR 4, decision 3): start a fresh shell in the
+   *  cwd, then type `cd … && claude --continue`. Gated by `canRestore` (needs the
+   *  folder). */
+  onResumeClaude: () => void;
 }

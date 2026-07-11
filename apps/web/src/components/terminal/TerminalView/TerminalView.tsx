@@ -12,6 +12,7 @@ import { TerminalGrid } from '../TerminalGrid';
 import { TerminalPane } from '../TerminalPane';
 import { TerminalReadonlyPane } from '../TerminalReadonlyPane';
 import { TerminalTabs } from '../TerminalTabs';
+import { TerminalTaskMenu } from '../TerminalTaskMenu';
 import { useTerminalView } from './TerminalView.hooks';
 import type { TerminalViewProps } from './TerminalView.types';
 
@@ -28,6 +29,8 @@ export function TerminalView({
   confinedDefault,
   fontSize,
   scrollback,
+  tasks,
+  yoloLaunch,
   onConfinedDefaultChange,
 }: TerminalViewProps) {
   const { worktrees } = useWorktreesContext();
@@ -39,6 +42,8 @@ export function TerminalView({
     confinedDefault,
     fontSize,
     scrollback,
+    tasks,
+    yoloLaunch,
     onConfinedDefaultChange,
   });
   // Ids never collide (a restored session is dead), so the active tab is exactly one
@@ -66,12 +71,21 @@ export function TerminalView({
         unread={v.unread}
         viewMode={v.layout.mode}
         onToggleViewMode={v.layout.toggleMode}
+        ungovernedIds={v.tasks.ungovernedIds}
+        headerSlot={
+          <TerminalTaskMenu
+            tasks={v.tasks.pickableTasks}
+            activeSession={activeLive}
+            onPick={v.tasks.injectTask}
+          />
+        }
       />
 
       {showGrid ? (
         <TerminalGrid
           sessions={v.layout.orderedSessions}
           unread={v.unread}
+          ungovernedIds={v.tasks.ungovernedIds}
           zoomedId={v.layout.zoomedId}
           onRename={v.renameSession}
           onReorder={v.layout.reorder}
@@ -79,13 +93,25 @@ export function TerminalView({
           onActivate={v.selectTab}
         />
       ) : activeLive !== null ? (
-        <TerminalPane key={activeLive.id} session={activeLive} onRename={v.renameSession} />
+        <TerminalPane
+          key={activeLive.id}
+          session={activeLive}
+          onRename={v.renameSession}
+          link={{
+            ungoverned: v.tasks.ungovernedIds.has(activeLive.id),
+            linkedTitle: v.tasks.linkedTitleBySession.get(activeLive.id) ?? null,
+            canLaunchClaude: v.tasks.canLaunchClaude(activeLive),
+            onLaunchClaude: () => v.tasks.launchClaude(activeLive),
+            onClearLink: () => v.tasks.clearLink(activeLive.id),
+          }}
+        />
       ) : activeRestored !== null ? (
         <TerminalReadonlyPane
           key={activeRestored.id}
           info={activeRestored}
           canRestore={v.restore.canRestore(activeRestored.cwd)}
           onRestore={() => void v.restore.startFresh(activeRestored)}
+          onResumeClaude={() => void v.tasks.resumeClaude(activeRestored)}
         />
       ) : (
         <EmptyState

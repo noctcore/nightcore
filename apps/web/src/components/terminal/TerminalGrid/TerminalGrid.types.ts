@@ -9,6 +9,8 @@ export interface TerminalGridProps {
   sessions: TerminalSessionInfo[];
   /** Per-session unread-output counts (decision 6c). Missing ids read as 0. */
   unread: Readonly<Record<string, number>>;
+  /** Session ids marked "ungoverned" (decision 3) — a warning marker per pane. */
+  ungovernedIds: ReadonlySet<string>;
   /** The single zoomed pane's id, or `null` for the full grid. */
   zoomedId: string | null;
   /** Rename a session (decision 5). */

@@ -154,6 +154,16 @@ pub struct Settings {
     /// before this field loads as `false`.
     #[serde(default)]
     pub usage_meter_enabled: bool,
+    /// USER terminal (cockpit spec PR 4, decision 3): the "YOLO" launch flag. When
+    /// enabled, the web's one-click "Launch Claude" affordance appends
+    /// `--dangerously-skip-permissions` to the composed launch command, so the
+    /// `claude` started inside the terminal runs with no permission prompts. It
+    /// changes ONLY the composed launch string — nothing about the PTY seam or
+    /// confinement. DEFAULT `false` (opt-in; a Settings toggle carries an explicit
+    /// warning). Global-only (a machine preference, like the other terminal knobs).
+    /// Serde-additive: a settings file written before this field loads as `false`.
+    #[serde(default)]
+    pub terminal_yolo_launch: bool,
     /// Per-project overrides keyed by project id.
     pub project_overrides: HashMap<String, SettingsOverride>,
 }
@@ -425,6 +435,10 @@ impl Default for Settings {
             // Issue #121 decision 5: the usage meter is opt-in — the poll loop parks
             // and no credential is read until the user clicks "Enable usage meter".
             usage_meter_enabled: false,
+            // Cockpit PR 4 decision 3: YOLO launch off by default — the composed
+            // "Launch Claude" command runs with normal permission prompts until the
+            // user enables the (explicitly warned) toggle.
+            terminal_yolo_launch: false,
             project_overrides: HashMap::new(),
         }
     }

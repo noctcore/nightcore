@@ -44,6 +44,31 @@ const PERSIST_INTERVAL: Duration = Duration::from_secs(15);
 /// between periodic-persist checks.
 const IDLE_TICK: Duration = Duration::from_millis(200);
 
+/// Provider / agent env vars scrubbed from EVERY PTY spawn (cockpit spec PR 4a,
+/// decision 3). The terminal is the user's own shell, but it is launched from
+/// Nightcore's process — which may itself have been started by a `claude` session
+/// (so it carries `CLAUDECODE`) or with an `ANTHROPIC_API_KEY` / provider override
+/// in its env. `portable-pty`'s `CommandBuilder` seeds from the full parent env and
+/// the shipped `build_command` only ADDS `TERM`/`COLORTERM`, so without this scrub
+/// those vars leak straight through. Stripping them (as a Nightcore decision):
+///  - `CLAUDECODE` / `CLAUDE_CODE_ENTRYPOINT` let a `claude` launched INSIDE the
+///    terminal start cleanly instead of tripping its own nested-session guard;
+///  - `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL` keep that
+///    launch on the user's OAuth/subscription path rather than silently billing an
+///    API key or hitting a provider-override endpoint;
+///  - `NIGHTCORE_PROVIDER` is Nightcore's own provider selector, meaningless (and
+///    confusing) inside a bare user shell.
+///
+/// Removed for confined and unconfined spawns alike.
+const SCRUBBED_ENV_VARS: &[&str] = &[
+    "CLAUDECODE",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+    "NIGHTCORE_PROVIDER",
+];
+
 /// What the caller passes to spawn a session.
 pub(crate) struct SpawnOpts {
     pub(crate) cwd: PathBuf,
@@ -284,7 +309,20 @@ fn build_command(shell: &str, args: &[&str], opts: &SpawnOpts) -> Result<Command
     cmd.cwd(&opts.cwd);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
+    // Env hygiene (cockpit spec PR 4a, decision 3): scrub Nightcore's provider/agent
+    // env AFTER the base env + confine redirects are set, so the removals win over
+    // any inherited value on every spawn.
+    scrub_provider_env(&mut cmd);
     Ok(cmd)
+}
+
+/// Remove every [`SCRUBBED_ENV_VARS`] entry from a spawn command's environment.
+/// Split out (pure over the `CommandBuilder`) so the scrub is unit-testable without
+/// opening a pty, mirroring the `build_command` env tests.
+fn scrub_provider_env(cmd: &mut CommandBuilder) {
+    for key in SCRUBBED_ENV_VARS {
+        cmd.env_remove(key);
+    }
 }
 
 /// The blocking reader loop: read → forward raw chunks to the coalescer → on
@@ -449,6 +487,55 @@ mod tests {
         assert_eq!(
             cmd.get_env("TERM").unwrap().to_string_lossy(),
             "xterm-256color"
+        );
+    }
+
+    #[test]
+    fn scrub_provider_env_removes_claude_and_provider_vars() {
+        // The pure scrub (cockpit spec PR 4a): explicitly set each provider/agent var
+        // on a fresh builder, scrub, and assert every one is gone while an unrelated
+        // var (TERM) survives — deterministic, no process-env mutation.
+        let mut cmd = CommandBuilder::new("/bin/sh");
+        for key in SCRUBBED_ENV_VARS {
+            cmd.env(key, "leak");
+        }
+        cmd.env("TERM", "xterm-256color");
+        scrub_provider_env(&mut cmd);
+        for key in SCRUBBED_ENV_VARS {
+            assert!(cmd.get_env(key).is_none(), "{key} was scrubbed");
+        }
+        assert_eq!(
+            cmd.get_env("TERM").unwrap().to_string_lossy(),
+            "xterm-256color",
+            "an unrelated env var survives the scrub"
+        );
+    }
+
+    #[test]
+    fn build_command_scrubs_inherited_provider_env() {
+        // Wiring check: a var present in the PARENT env (as it would be for a
+        // terminal opened from a Claude-spawned Nightcore) is absent from the built
+        // command. `CommandBuilder::new` snapshots `std::env` at construction, so set
+        // the leak var before `build_command` and clear it right after.
+        let tmp = TempDir::new().unwrap();
+        std::env::set_var("CLAUDECODE", "1");
+        std::env::set_var("ANTHROPIC_API_KEY", "sk-should-not-leak");
+        let opts = SpawnOpts {
+            cwd: tmp.path().to_path_buf(),
+            confined: false,
+            cols: 80,
+            rows: 24,
+        };
+        let cmd = build_command("/bin/sh", &["-i"], &opts).expect("unconfined command");
+        std::env::remove_var("CLAUDECODE");
+        std::env::remove_var("ANTHROPIC_API_KEY");
+        assert!(
+            cmd.get_env("CLAUDECODE").is_none(),
+            "CLAUDECODE must not leak into the user's terminal (nested-session guard)"
+        );
+        assert!(
+            cmd.get_env("ANTHROPIC_API_KEY").is_none(),
+            "ANTHROPIC_API_KEY must not leak (keeps a launched claude on the OAuth path)"
         );
     }
 

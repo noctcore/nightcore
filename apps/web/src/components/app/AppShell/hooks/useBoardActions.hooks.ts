@@ -27,6 +27,9 @@ export interface BoardActionsDeps {
   gauntlet: ReturnType<typeof useGauntlet>;
   createPr: CreatePrController;
   prLifecycle: PrLifecycleController;
+  /** Open a task's linked terminal (cockpit spec PR 4, decision 2): route to the
+   *  Terminal view + activate the session. Stable across stream flushes. */
+  onOpenTerminal: (sessionId: string) => void;
 }
 
 /** The board's cross-hook actions: the drawer's grouped `detailActions`, the shared
@@ -63,6 +66,7 @@ export function useBoardActions({
   gauntlet,
   createPr,
   prLifecycle,
+  onOpenTerminal,
 }: BoardActionsDeps): BoardActions {
   const { tasks, setSelectedId } = board;
 
@@ -123,6 +127,7 @@ export function useBoardActions({
       onResumeSession: lifecycle.handleResumeSession,
       onRenameSession: lifecycle.handleRenameSession,
       onTagSession: lifecycle.handleTagSession,
+      onOpenTerminal,
       // Re-identifies only when the guard's pending set transitions — the same
       // cadence the guarded handlers above already turn over on, so including it
       // here adds no extra churn to this object's identity.
@@ -163,6 +168,7 @@ export function useBoardActions({
       lifecycle.handleResumeSession,
       lifecycle.handleRenameSession,
       lifecycle.handleTagSession,
+      onOpenTerminal,
       action.isPending,
     ],
   );

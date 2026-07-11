@@ -14,6 +14,7 @@ import {
   type QuestionPrompt,
   type Task,
 } from '@/lib/bridge';
+import { requestActivateSession } from '@/lib/terminal-links';
 import type { WorktreesContextValue } from '@/lib/worktrees-context';
 
 import { useActionGuard } from './hooks/useActionGuard.hooks';
@@ -184,6 +185,17 @@ export function useAppShell(): AppShellState {
   // The board's cross-hook action layer (the ~28 handlers + the shared destructive
   // confirm + the drawer's `detailActions` memo), extracted so this hook stays a
   // thin router/registry/settings/board-data composition root.
+  // Open a task's linked terminal (cockpit spec PR 4, decision 2): flag the session for
+  // the Terminal view to activate on mount, then route there. Stable (routing.goto is),
+  // so it never churns the memoized detailActions on a stream flush.
+  const onOpenTerminal = useCallback(
+    (sessionId: string) => {
+      requestActivateSession(sessionId);
+      routing.goto('terminal');
+    },
+    [routing.goto],
+  );
+
   const boardActions = useBoardActions({
     board,
     action,
@@ -193,6 +205,7 @@ export function useAppShell(): AppShellState {
     gauntlet,
     createPr,
     prLifecycle,
+    onOpenTerminal,
   });
 
   // The real concurrent-run count (tasks default to concurrency 3), not a boolean.

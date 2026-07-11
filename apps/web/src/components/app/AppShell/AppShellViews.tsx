@@ -188,6 +188,8 @@ export function AppShellViews({
               confinedDefault={settings.settings?.terminalConfinedDefault ?? false}
               fontSize={settings.settings?.terminalFontSize ?? null}
               scrollback={settings.settings?.terminalScrollback ?? null}
+              tasks={tasks}
+              yoloLaunch={settings.settings?.terminalYoloLaunch ?? false}
               onConfinedDefaultChange={(confined) =>
                 settings.update({ terminalConfinedDefault: confined })
               }

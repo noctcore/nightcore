@@ -160,6 +160,17 @@ terminalScrollback: number | null,
  */
 usageMeterEnabled: boolean, 
 /**
+ * USER terminal (cockpit spec PR 4, decision 3): the "YOLO" launch flag. When
+ * enabled, the web's one-click "Launch Claude" affordance appends
+ * `--dangerously-skip-permissions` to the composed launch command, so the
+ * `claude` started inside the terminal runs with no permission prompts. It
+ * changes ONLY the composed launch string — nothing about the PTY seam or
+ * confinement. DEFAULT `false` (opt-in; a Settings toggle carries an explicit
+ * warning). Global-only (a machine preference, like the other terminal knobs).
+ * Serde-additive: a settings file written before this field loads as `false`.
+ */
+terminalYoloLaunch: boolean, 
+/**
  * Per-project overrides keyed by project id.
  */
 projectOverrides: { [key in string]: SettingsOverride }, };

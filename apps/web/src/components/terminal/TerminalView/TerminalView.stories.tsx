@@ -70,6 +70,8 @@ const meta = {
     confinedDefault: false,
     fontSize: null,
     scrollback: null,
+    tasks: [],
+    yoloLaunch: false,
     onConfinedDefaultChange: fn(),
   },
 } satisfies Meta<typeof TerminalViewFixture>;

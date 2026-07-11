@@ -34,6 +34,7 @@ const meta = {
     info: INFO,
     canRestore: true,
     onRestore: fn(),
+    onResumeClaude: fn(),
   },
 } satisfies Meta<typeof Fixture>;
 

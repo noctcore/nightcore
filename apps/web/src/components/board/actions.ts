@@ -98,6 +98,10 @@ export interface TaskDetailActions {
   onRenameSession?: (sdkSessionId: string, title: string) => void;
   /** Tag a past session, or clear its tag with `null`. */
   onTagSession?: (sdkSessionId: string, tag: string | null) => void;
+  /** Open the terminal linked to a task (cockpit spec PR 4, decision 2): route to the
+   *  Terminal view and activate the given session's tab. Enables the card's terminal
+   *  chip. */
+  onOpenTerminal?: (sessionId: string) => void;
   /** True while a guarded action (`run`/`approve`/`commit`/…) is in flight for
    *  the task, so the matching button disables itself between the click and the
    *  `nc:task` echo. Identity turns over only when the guard's pending set

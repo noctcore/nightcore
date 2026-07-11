@@ -56,6 +56,12 @@ terminalScrollback?: number,
  */
 usageMeterEnabled?: boolean, 
 /**
+ * Cockpit PR 4 decision 3: toggle the terminal "YOLO" launch flag. Global-only
+ * (ignored for a per-project override target), like the other terminal knobs.
+ * See [`super::model::Settings::terminal_yolo_launch`].
+ */
+terminalYoloLaunch?: boolean, 
+/**
  * M4.6: default run mode (`"main"` | `"worktree"`). With a `projectId` it lands
  * in that project's override; without one, the global default.
  */

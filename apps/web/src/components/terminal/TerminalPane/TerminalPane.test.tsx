@@ -57,7 +57,17 @@ test('attaches a live xterm instance for a real (echo) session', async () => {
 
   render(
     <ToastProvider>
-      <TerminalPane session={session} onRename={() => {}} />
+      <TerminalPane
+        session={session}
+        onRename={() => {}}
+        link={{
+          ungoverned: false,
+          linkedTitle: null,
+          canLaunchClaude: false,
+          onLaunchClaude: () => {},
+          onClearLink: () => {},
+        }}
+      />
     </ToastProvider>,
   );
   // The pane's attach effect opens the terminal into its container — the xterm

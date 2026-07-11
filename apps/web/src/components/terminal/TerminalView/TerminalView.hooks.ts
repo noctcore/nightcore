@@ -1,9 +1,8 @@
-/** Orchestration for the global Terminal view: the tab/session list, the restore-
- *  on-relaunch read-only tabs (decision 3), the new-tab picker + spawn with the
- *  macOS confined toggle (decision 1) and the GPU-renderer choice (decision 7), and
- *  the confirm-gated tab close. The view component is a thin shell over this. Live
- *  xterm instances are owned by the feature's session manager (kept alive across the
- *  shell's routed-view remounts); this hook owns only the React-facing state. */
+/** Orchestration for the global Terminal view: the tab/session list, restore-on-
+ *  relaunch read-only tabs (decision 3), the new-tab picker + spawn (confined toggle /
+ *  GPU choice), the confirm-gated close, and task→terminal integration (decision 2/3).
+ *  The view is a thin shell; live xterm instances live in the session manager (kept
+ *  alive across remounts), so this hook owns only the React-facing state. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useToast } from '@/components/ui';
@@ -17,6 +16,11 @@ import {
   setTerminalTitle,
   type TerminalSessionInfo,
 } from '@/lib/bridge';
+import {
+  consumePendingActivateSession,
+  forgetSession,
+  reconcileTerminalLinks,
+} from '@/lib/terminal-links';
 
 import type { TerminalTarget } from '../NewTabPicker';
 import { subscribePasteRejected } from '../terminal-keymap';
@@ -41,6 +45,7 @@ import {
   supportsConfinedTerminal,
 } from '../terminal-shared';
 import { useTerminalShortcuts } from '../terminal-shortcuts';
+import { useTerminalTasks } from '../terminal-tasks';
 import type { UseTerminalViewInput } from './TerminalView.types';
 
 /** A Rust command rejection arrives as a string; normalize any thrown value to a
@@ -85,18 +90,14 @@ export function useTerminalView(input: UseTerminalViewInput) {
   const [hostOs, setHostOs] = useState<string | null>(null);
   const [confined, setConfined] = useState(confinedDefault);
   // The cwds of restored (dead) sessions that STILL EXIST on disk — the fail-closed
-  // gate for the "start a fresh shell here" action. Probed once at mount (below).
-  // Since a terminal cwd can now be ANY browsed directory (not just the repo root
-  // or a worktree), a static membership check would wrongly reject browsed dirs; we
-  // probe existence instead. Fail closed: a probe error leaves the cwd out of the
-  // set, so the action stays disabled with a hint.
+  // gate for the "start a fresh shell here" action (a browsed cwd can be anywhere, so
+  // we probe existence at mount rather than a static membership check).
   const [restorableCwds, setRestorableCwds] = useState<ReadonlySet<string>>(new Set());
   // Per-session unread-output counts (decision 6c), mirrored from the module-level
-  // session manager. Recomputed on every activity notification so an inactive tab's
-  // badge updates as its background shell emits output.
+  // session manager on every activity notification.
   const [unread, setUnread] = useState<Readonly<Record<string, number>>>({});
-  // Whether the initial `listTerminals()` has resolved — gates the layout hook's
-  // order reconcile so it never prunes the persisted pane order during the load gap.
+  // Whether the initial `listTerminals()` has resolved — gates the layout hook's order
+  // reconcile so it never prunes the persisted pane order during the load gap.
   const [loaded, setLoaded] = useState(false);
 
   // View-mode (tabs⇄grid) + pane order + zoom (decision 1, PR 2). Owns the layout
@@ -106,17 +107,18 @@ export function useTerminalView(input: UseTerminalViewInput) {
   const targets = useMemo(() => buildTargets(input), [input]);
   const confinedAvailable = supportsConfinedTerminal(hostOs);
 
-  // On mount, reconcile the manager cache with server truth (drop instances whose
-  // shells died), show the surviving live sessions, list persisted (dead) sessions
-  // as read-only restore tabs, and probe the host OS for the confined toggle. In the
-  // real app the live sessions survive a nav away/back (they live in Rust + the
-  // module cache); outside Tauri `listTerminals`/`listTerminalsPersisted` are empty.
+  // On mount, reconcile the manager cache + link store with server truth, show the
+  // surviving live sessions, list persisted (dead) sessions as read-only restore tabs,
+  // and probe the host OS for the confined toggle. Outside Tauri the lists are empty.
   useEffect(() => {
     let cancelled = false;
     void Promise.all([listTerminals(), listTerminalsPersisted(), getAppInfo()]).then(
       ([live, persisted, appInfo]) => {
         if (cancelled) return;
         reconcileSessions(live.map((s) => s.id));
+        // Drop task-links / ungoverned markers for sessions that didn't survive
+        // (decision 2/3) — the store is web-side, seeded from live sessions.
+        reconcileTerminalLinks(live.map((s) => s.id));
         const liveSessions = live.filter((s) => hasSession(s.id));
         const liveIds = new Set(liveSessions.map((s) => s.id));
         // A persisted file whose session is somehow still live would double the tab;
@@ -129,7 +131,11 @@ export function useTerminalView(input: UseTerminalViewInput) {
         // the navigator default seeded it before this resolved.
         setTerminalPlatform(appInfo.os);
         setLoaded(true);
-        setActiveId((cur) => cur ?? liveSessions[0]?.id ?? restoredTabs[0]?.id ?? null);
+        // A board terminal-chip click routes here + asks for a specific tab; honor it
+        // when the requested session is live, else fall back to the first tab.
+        const pending = consumePendingActivateSession();
+        const focus = pending !== null && liveIds.has(pending) ? pending : null;
+        setActiveId((cur) => cur ?? focus ?? liveSessions[0]?.id ?? restoredTabs[0]?.id ?? null);
         // Probe each restored cwd for existence (the fresh-shell gate). Fail-closed:
         // only cwds that still resolve to a directory become restorable.
         void Promise.all(
@@ -151,9 +157,7 @@ export function useTerminalView(input: UseTerminalViewInput) {
   }, []);
 
   // Bridge the module-level activity counters into React: recompute the per-session
-  // unread map on every notification (an inactive tab's shell emitting output) and
-  // whenever the session list changes. Re-subscribes when `sessions` changes so the
-  // closure reads the current list.
+  // unread map on every notification, and whenever the session list changes.
   useEffect(() => {
     const recompute = () => {
       const next: Record<string, number> = {};
@@ -166,9 +170,7 @@ export function useTerminalView(input: UseTerminalViewInput) {
 
   // Reactive render prefs (spec PR 3d): resolve the Settings font size / scrollback
   // (null ⇒ shipped defaults, clamped) and push them to every live terminal via the
-  // session manager. xterm applies option changes live, so no reopen — a font change
-  // repaints, scrollback resizes the buffer future output fills. Re-runs when either
-  // setting changes; also seeds the module-level prefs new spawns read.
+  // session manager (xterm applies option changes live, no reopen).
   const fontSize = resolveFontSize(input.fontSize);
   const scrollback = resolveScrollback(input.scrollback);
   useEffect(() => {
@@ -189,14 +191,12 @@ export function useTerminalView(input: UseTerminalViewInput) {
     [toast],
   );
 
-  // The visible-set (which tabs/panes stop badging) and the focus-clear are owned by
-  // `useTerminalLayout` (it knows tabs vs grid vs zoom), so no per-active-tab effect
-  // lives here.
+  // The visible-set + focus-clear are owned by `useTerminalLayout` (tabs vs grid vs
+  // zoom), so no per-active-tab effect lives here.
 
   const openPicker = useCallback(() => {
     setSpawnError(null);
-    // Each open starts from the persisted sticky default; the user can still toggle
-    // it for this spawn.
+    // Each open starts from the persisted sticky default (toggleable per spawn).
     setConfined(confinedDefault);
     setPickerOpen(true);
   }, [confinedDefault]);
@@ -230,12 +230,10 @@ export function useTerminalView(input: UseTerminalViewInput) {
       try {
         await spawnInto(path, confined);
         setPickerOpen(false);
-        // Sticky last-choice: persist the confined choice actually used as the new
-        // default (so it seeds the next picker open).
+        // Sticky last-choice: persist the confined choice actually used.
         if (confined !== confinedDefault) onConfinedDefaultChange(confined);
       } catch (err) {
-        // The session cap, a rejected cwd, or a fail-closed confined refusal rejects
-        // here — surface it inline in the still-open picker AND as a toast.
+        // Cap / rejected cwd / fail-closed confined refusal — surface inline + toast.
         setSpawnError(spawnErrorText(err));
         toast.error('Could not open terminal', err);
       } finally {
@@ -245,8 +243,7 @@ export function useTerminalView(input: UseTerminalViewInput) {
     [spawnInto, confined, confinedDefault, onConfinedDefaultChange, toast],
   );
 
-  /** Open the folder browser to pick ANY directory; close the target picker (the
-   *  confined choice made there carries into the browsed spawn). */
+  /** Open the folder browser to pick ANY directory; close the target picker. */
   const openBrowse = useCallback(() => {
     setSpawnError(null);
     setPickerOpen(false);
@@ -255,8 +252,7 @@ export function useTerminalView(input: UseTerminalViewInput) {
   const closeBrowse = useCallback(() => setBrowseOpen(false), []);
 
   /** Spawn into a browsed directory. On failure, reopen the target picker with the
-   *  error inline (the confined choice preserved), matching `pickTarget`'s surface —
-   *  the folder browser has already closed itself on select. */
+   *  error inline (the folder browser has already closed itself on select). */
   const pickBrowsed = useCallback(
     async (path: string) => {
       setSpawnError(null);
@@ -279,9 +275,8 @@ export function useTerminalView(input: UseTerminalViewInput) {
   const requestClose = useCallback((id: string) => setPendingClose(id), []);
   const cancelClose = useCallback(() => setPendingClose(null), []);
 
-  /** Rename a live session (decision 5): optimistically update the local descriptor
-   *  so the tab/pane relabel instantly, then persist via `terminal_set_title` (which
-   *  trims + clears on blank). An empty name falls back to the cwd leaf. */
+  /** Rename a live session (decision 5): optimistic local update, then persist via
+   *  `terminal_set_title` (trims + clears on blank; empty falls back to the cwd leaf). */
   const renameSession = useCallback((id: string, next: string) => {
     const trimmed = next.trim();
     const title = trimmed === '' ? null : trimmed;
@@ -293,6 +288,7 @@ export function useTerminalView(input: UseTerminalViewInput) {
     const id = pendingClose;
     if (id === null) return;
     setPendingClose(null);
+    forgetSession(id); // drop any task-link / ungoverned marker (decision 2/3)
     void closeSession(id);
     setSessions((prev) => prev.filter((s) => s.id !== id));
     setActiveId((cur) => {
@@ -302,36 +298,50 @@ export function useTerminalView(input: UseTerminalViewInput) {
     });
   }, [pendingClose, sessions, restored]);
 
-  /** Dismiss a restored (read-only) tab: delete its persisted file so it does not
-   *  reappear next relaunch, drop it from the list, and re-home the active tab. */
+  /** Drop a restored (read-only) tab: delete its persisted file + remove it from the
+   *  list. Shared by dismiss + the fresh-shell / resume swaps. */
+  const consumeRestored = useCallback((id: string) => {
+    void deleteTerminalPersisted(id);
+    setRestored((prev) => prev.filter((r) => r.id !== id));
+  }, []);
+
+  /** Dismiss a restored tab and re-home the active tab off it. */
   const dismissRestored = useCallback(
     (id: string) => {
-      void deleteTerminalPersisted(id);
-      setRestored((prev) => prev.filter((r) => r.id !== id));
+      consumeRestored(id);
       setActiveId((cur) => {
         if (cur !== id) return cur;
         const remaining = restored.filter((r) => r.id !== id);
         return sessions[0]?.id ?? remaining[0]?.id ?? null;
       });
     },
-    [restored, sessions],
+    [consumeRestored, restored, sessions],
   );
 
-  /** Start a fresh live shell in a restored session's cwd (its worktree/repo still
-   *  exists), then swap the read-only tab for the new live one and drop the stale
-   *  persisted file. */
+  /** Start a fresh live shell in a restored session's cwd, then swap the read-only tab. */
   const startFresh = useCallback(
     async (info: PersistedTerminalInfo) => {
       try {
         await spawnInto(info.cwd, info.confined);
-        setRestored((prev) => prev.filter((r) => r.id !== info.id));
-        void deleteTerminalPersisted(info.id);
+        consumeRestored(info.id);
       } catch (err) {
         toast.error('Could not start a fresh shell', err);
       }
     },
-    [spawnInto, toast],
+    [spawnInto, consumeRestored, toast],
   );
+
+  // Task→terminal integration (decision 2/3): pickable list, ungoverned / linked-title
+  // maps, and the inject / launch / resume handlers.
+  const tasks = useTerminalTasks({
+    sessions,
+    tasks: input.tasks,
+    projectPath: input.projectPath,
+    yoloLaunch: input.yoloLaunch,
+    renameSession,
+    spawnInto,
+    consumeRestored,
+  });
 
   const canAddTab = !atSessionCap(sessions);
 
@@ -384,5 +394,6 @@ export function useTerminalView(input: UseTerminalViewInput) {
       canRestore: (cwd: string) => restorableCwds.has(cwd),
       startFresh,
     },
+    tasks,
   };
 }
