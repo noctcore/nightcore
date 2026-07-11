@@ -26,6 +26,20 @@ autoCommitOnVerified?: boolean,
  */
 sandboxSessions?: boolean, 
 /**
+ * #97: toggle GitHub two-way issue sync (writeback). Global-only (ignored for a
+ * per-project override target), like `sandbox_sessions`. See
+ * [`super::model::Settings::issue_sync_enabled`].
+ */
+issueSyncEnabled?: boolean, 
+/**
+ * #97: set the status-label prefix Nightcore manages, or an empty string to clear
+ * it back to the default `nc:` (serde collapses absent/null to `None`, so the
+ * empty string is the explicit "reset to default" sentinel — mirrors
+ * `preferred_editor`). Global-only. See
+ * [`super::model::Settings::issue_label_prefix`].
+ */
+issueLabelPrefix?: string, 
+/**
  * PR C decision 7: toggle the terminal WebGL/GPU renderer. Global-only
  * (ignored for a per-project override target), like `sandbox_sessions`. See
  * [`super::model::Settings::terminal_webgl_enabled`].

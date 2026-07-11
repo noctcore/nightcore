@@ -123,6 +123,10 @@ pub fn convert_issue_validation_to_task(
     // persisted token. Run-level (2-segment) token: the validation IS the item.
     // Spelling split: this KEY is hyphenated; its AppView is `issuetriage`.
     task.source_ref = Some(format!("issue-triage:{run_id}"));
+    // GitHub two-way sync (#97): stamp the DURABLE issue linkage on the task itself, so
+    // writeback survives the validation run being pruned (RunStore MAX_RUNS=50). The
+    // only new write in the convert path; every other sync field defaults to `None`.
+    task.issue_number = Some(run.issue_number);
 
     let stamped = convert_to_task(
         &store,

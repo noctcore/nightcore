@@ -98,6 +98,22 @@ autoCommitOnVerified: boolean,
  */
 sandboxSessions: boolean, 
 /**
+ * GitHub two-way sync (#97): master switch for issue writeback — status labels,
+ * terminal comments, and the PR `Closes` keyword. OFF by default: writeback
+ * MUTATES a (often public) GitHub repo, so it is opt-in exactly like
+ * `auto_commit_on_verified` / `sandbox_sessions`. Global-only (no per-project
+ * override). Serde-additive: a settings file written before this field loads as
+ * `false`.
+ */
+issueSyncEnabled: boolean, 
+/**
+ * GitHub two-way sync (#97): the prefix for the status labels Nightcore manages
+ * (`nc:` → `nc:queued`, `nc:in-progress`, …). `None` ⇒ the default `"nc:"` (see
+ * [`Settings::label_prefix`]). Lets a project that already uses `nc:` for something
+ * else remap. Global-only (no per-project override in v1). Serde-additive.
+ */
+issueLabelPrefix?: string | null, 
+/**
  * Sidebar layout preference: `"unified"` (default) or `"classic"`. Serde-additive:
  * legacy settings load as `None` and resolve to unified at read time.
  */

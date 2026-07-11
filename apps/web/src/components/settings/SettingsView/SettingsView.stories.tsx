@@ -20,6 +20,7 @@ const settings: Settings = {
   contextPackEnabled: true,
   autoCommitOnVerified: false,
   sandboxSessions: false,
+  issueSyncEnabled: false,
   sidebarStyle: 'unified',
   preferredEditor: null,
   terminalWebglEnabled: false,

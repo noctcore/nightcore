@@ -165,6 +165,18 @@ pub struct SettingsPatch {
     /// [`super::model::Settings::sandbox_sessions`].
     #[cfg_attr(test, ts(optional))]
     pub sandbox_sessions: Option<bool>,
+    /// #97: toggle GitHub two-way issue sync (writeback). Global-only (ignored for a
+    /// per-project override target), like `sandbox_sessions`. See
+    /// [`super::model::Settings::issue_sync_enabled`].
+    #[cfg_attr(test, ts(optional))]
+    pub issue_sync_enabled: Option<bool>,
+    /// #97: set the status-label prefix Nightcore manages, or an empty string to clear
+    /// it back to the default `nc:` (serde collapses absent/null to `None`, so the
+    /// empty string is the explicit "reset to default" sentinel — mirrors
+    /// `preferred_editor`). Global-only. See
+    /// [`super::model::Settings::issue_label_prefix`].
+    #[cfg_attr(test, ts(optional))]
+    pub issue_label_prefix: Option<String>,
     /// PR C decision 7: toggle the terminal WebGL/GPU renderer. Global-only
     /// (ignored for a per-project override target), like `sandbox_sessions`. See
     /// [`super::model::Settings::terminal_webgl_enabled`].
@@ -291,6 +303,18 @@ impl Settings {
         // Mode option above.
         if let Some(v) = patch.sandbox_sessions {
             self.sandbox_sessions = v;
+        }
+        // #97: global-only writeback toggle (no per-project override), like the two
+        // network/OS-mutating opt-ins above.
+        if let Some(v) = patch.issue_sync_enabled {
+            self.issue_sync_enabled = v;
+        }
+        // #97: the empty string is the "reset to default `nc:`" sentinel — clear the
+        // prefix; any non-empty (trimmed) value remaps it. Mirrors `preferred_editor`,
+        // so the prefix can be SET or cleared (unlike the Option ceilings).
+        if let Some(v) = patch.issue_label_prefix {
+            let trimmed = v.trim();
+            self.issue_label_prefix = (!trimmed.is_empty()).then(|| trimmed.to_string());
         }
         // PR C: the two terminal toggles are global-only machine/GPU preferences,
         // so they merge into the global block alongside `sandbox_sessions`.

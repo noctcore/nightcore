@@ -162,6 +162,7 @@ export const MOCK_SETTINGS: Settings = {
   contextPackEnabled: true,
   autoCommitOnVerified: false,
   sandboxSessions: false,
+  issueSyncEnabled: false,
   sidebarStyle: null,
   preferredEditor: null,
   terminalWebglEnabled: false,

@@ -29,6 +29,7 @@ import {
 } from '@/lib/models';
 
 import { buildAboutCards } from './settings-about-cards';
+import { buildGithubCards } from './settings-github-cards';
 import { buildInterfaceCards } from './settings-interface-cards';
 import {
   DefaultModelControl,
@@ -347,6 +348,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
             },
           ],
         },
+        ...buildGithubCards(settings, patchGlobal),
       ];
     case 'paths':
       return [

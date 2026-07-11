@@ -369,6 +369,45 @@ pub struct Task {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub pr_number: Option<u64>,
+    /// GitHub two-way sync (#97). The issue this task was converted from, stamped at
+    /// convert time (`convert_issue_validation_to_task`). The DURABLE linkage: the
+    /// `sourceRef` (`issue-triage:<runId>`) resolves the issue number only through the
+    /// validation RunStore, which is capped + pruned (MAX_RUNS=50) — so a task whose
+    /// run was pruned would lose its issue link. This field makes writeback independent
+    /// of run retention. `None` for hand-created tasks and pre-#97 issue tasks (they
+    /// backfill lazily — see §2.3). Never patchable via TaskPatch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub issue_number: Option<u64>,
+    /// GitHub two-way sync (#97). The `nc:*` status label Nightcore last projected onto
+    /// the linked issue (the ANTI-CHURN key: a writeback that computes the same label
+    /// is a no-op, and the previous label is the one to remove). `None` until the first
+    /// successful label writeback.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub issue_synced_label: Option<String>,
+    /// GitHub two-way sync (#97). Epoch-ms of the last successful label writeback.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub issue_synced_at: Option<u64>,
+    /// GitHub two-way sync (#97). The last terminal COMMENT key posted to the issue
+    /// (`"converted"` | `"done"` | `"failed"`), so a Done→Backlog→Done flap can't
+    /// double-post. `None` until the first comment posts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub issue_comment_marker: Option<String>,
+    /// GitHub two-way sync (#97), projection-IN. The last upstream issue state observed
+    /// on a focus/manual poll (`"open"` | `"closed"`). Drives the "closed upstream"
+    /// chip. `None` until the first poll; never gates anything and never mutates the task.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub issue_state: Option<String>,
+    /// GitHub two-way sync (#97). The last writeback DEGRADATION reason, surfaced as a
+    /// one-time UI notice (e.g. "sync paused: the token can't write labels on this
+    /// repo"). `None` when sync is healthy or off. Not a secret — never carries a token.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub issue_sync_error: Option<String>,
 }
 
 impl Task {
@@ -415,6 +454,15 @@ impl Task {
             source_ref: None,
             pr_url: None,
             pr_number: None,
+            // GitHub two-way sync (#97): every linkage/projection field starts unset.
+            // `issue_number` is stamped at convert time; the rest are written only by
+            // the sync paths (label writeback / comment post / upstream poll).
+            issue_number: None,
+            issue_synced_label: None,
+            issue_synced_at: None,
+            issue_comment_marker: None,
+            issue_state: None,
+            issue_sync_error: None,
         }
     }
 
@@ -946,6 +994,103 @@ mod tests {
             Some("https://github.com/acme/widget/pull/7")
         );
         assert_eq!(restored.pr_number, Some(7));
+    }
+
+    #[test]
+    fn issue_sync_fields_default_none_and_are_serde_additive() {
+        // GitHub two-way sync (#97): the six per-task sync fields default to None;
+        // while unset the keys are omitted entirely (`skip_serializing_if`), so
+        // pre-#97 task JSON is byte-compatible.
+        let task = Task::new("t".into(), String::new());
+        assert!(task.issue_number.is_none(), "issue_number defaults to None");
+        assert!(
+            task.issue_synced_label.is_none(),
+            "issue_synced_label defaults to None"
+        );
+        assert!(
+            task.issue_synced_at.is_none(),
+            "issue_synced_at defaults to None"
+        );
+        assert!(
+            task.issue_comment_marker.is_none(),
+            "issue_comment_marker defaults to None"
+        );
+        assert!(task.issue_state.is_none(), "issue_state defaults to None");
+        assert!(
+            task.issue_sync_error.is_none(),
+            "issue_sync_error defaults to None"
+        );
+
+        let value: serde_json::Value = serde_json::to_value(&task).unwrap();
+        let obj = value.as_object().unwrap();
+        for key in [
+            "issueNumber",
+            "issueSyncedLabel",
+            "issueSyncedAt",
+            "issueCommentMarker",
+            "issueState",
+            "issueSyncError",
+        ] {
+            assert!(
+                !obj.contains_key(key),
+                "unset issue-sync field {key} is omitted from the JSON"
+            );
+        }
+
+        // A legacy task JSON written before the issue-sync fields existed still loads
+        // (serde default), so existing task files aren't broken.
+        let legacy = r#"{"id":"x","title":"t","description":"","status":"backlog",
+            "dependencies":[],"model":null,"branch":null,"createdAt":1,"updatedAt":1,
+            "sessionId":null,"summary":null,"error":null,"costUsd":null,
+            "plan":null,"committed":true,"merged":false,"conflict":false,
+            "kind":"build","runMode":"worktree","verified":true,"review":null,
+            "fixAttempts":0}"#;
+        let back: Task = serde_json::from_str(legacy).expect("legacy task deserializes");
+        assert!(back.issue_number.is_none() && back.issue_sync_error.is_none());
+
+        // Populated values round-trip with camelCase keys.
+        let mut synced = Task::new("t".into(), String::new());
+        synced.issue_number = Some(97);
+        synced.issue_synced_label = Some("nc:in-progress".into());
+        synced.issue_synced_at = Some(1_720_000_000_000);
+        synced.issue_comment_marker = Some("converted".into());
+        synced.issue_state = Some("open".into());
+        synced.issue_sync_error = Some("comments-only".into());
+        let json = serde_json::to_string(&synced).unwrap();
+        assert!(
+            json.contains("\"issueNumber\":97"),
+            "issueNumber camelCase: {json}"
+        );
+        assert!(
+            json.contains("\"issueSyncedLabel\":\"nc:in-progress\""),
+            "issueSyncedLabel camelCase: {json}"
+        );
+        assert!(
+            json.contains("\"issueSyncedAt\":1720000000000"),
+            "issueSyncedAt camelCase: {json}"
+        );
+        assert!(
+            json.contains("\"issueCommentMarker\":\"converted\""),
+            "issueCommentMarker camelCase: {json}"
+        );
+        assert!(
+            json.contains("\"issueState\":\"open\""),
+            "issueState camelCase: {json}"
+        );
+        assert!(
+            json.contains("\"issueSyncError\":\"comments-only\""),
+            "issueSyncError camelCase: {json}"
+        );
+        let restored: Task = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.issue_number, Some(97));
+        assert_eq!(
+            restored.issue_synced_label.as_deref(),
+            Some("nc:in-progress")
+        );
+        assert_eq!(restored.issue_synced_at, Some(1_720_000_000_000));
+        assert_eq!(restored.issue_comment_marker.as_deref(), Some("converted"));
+        assert_eq!(restored.issue_state.as_deref(), Some("open"));
+        assert_eq!(restored.issue_sync_error.as_deref(), Some("comments-only"));
     }
 
     #[test]
