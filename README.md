@@ -17,8 +17,8 @@
 > **[!WARNING]**
 >
 > **Alpha — early and actively changing.** APIs, UI, and on-disk formats can break
-> between commits. **[Download a signed installer](#install)** (macOS · Windows) to
-> get started, or [build from source](#build-from-source). Tested on **macOS and
+> between commits. **[Download an installer](#install)** (macOS · Windows) to get
+> started, or [build from source](#build-from-source). Tested on **macOS and
 > Windows**; Linux is best-effort.
 
 Nightcore is a **local-first desktop studio** that runs Claude as an autonomous
@@ -48,7 +48,7 @@ gates are machine-enforced state transitions, not suggestions in a prompt.
 - [The loop](#the-loop)
 - [Architecture](#architecture)
 - [Getting Started](#getting-started)
-- [Status & roadmap](#status--roadmap)
+- [Status](#status) · [Roadmap](#roadmap)
 - [Security disclaimer](#security-disclaimer)
 - [Contributing](#contributing) · [License](#license)
 
@@ -119,6 +119,12 @@ model can talk its way around.
   writes to the task's worktree, and an **opt-in macOS Seatbelt sandbox** wraps
   the whole agent process so write confinement is enforced at the OS level —
   beneath the agent, its hooks, and any subprocess it spawns.
+- **Exec-sink ask gate.** A fixed, built-in list of execution-changing targets
+  — CI workflows, git/Claude hooks, `package.json` scripts — escalates every
+  write to an interactive ask, even under `bypassPermissions`. Closes the
+  one-shot RCE hole that confinement and the OS sandbox both leave open (the
+  run's cwd stays writable either way); a project can only widen the list to
+  allow, never to deny.
 
 Simplified, the path from agent output to your branch:
 
@@ -206,8 +212,8 @@ agent SDK is quarantined in a sidecar process, and the UI is a thin client:
 └───────────────▲───────────────────────────┬──────────────────┘
                 │ NDJSON over stdio          │ spawn + drive
 ┌───────────────┴───────────────────────────▼──────────────────┐
-│  apps/sidecar — BUN PROVIDER SIDECAR (the only place an agent  │
-│  SDK lives). Wraps the Claude Agent SDK behind the Rust        │
+│  apps/sidecar — BUN PROVIDER SIDECAR (the only place agent     │
+│  SDKs live). Wraps Claude + Codex behind the Rust              │
 │  `AgentProvider` trait; streams normalized events.             │
 └───────────────────────────────────────────────────────────────┘
 ```
@@ -215,9 +221,10 @@ agent SDK is quarantined in a sidecar process, and the UI is a thin client:
 - **Rust + Tauri 2, not Electron.** Native webview, no bundled Chromium; the
   orchestration loop, gates, and git operations are native Rust. The studio
   stays light while running multiple concurrent agent sessions.
-- **The SDK is quarantined.** The Claude Agent SDK exists in exactly one
-  process — the Bun sidecar — behind a provider seam. The core is
-  provider-agnostic by construction; Claude is the provider that ships today.
+- **The SDK is quarantined.** Agent SDKs exist in exactly one process — the
+  Bun sidecar — behind a provider seam. The core is provider-agnostic by
+  construction; Claude ships as the default provider, with Codex available as
+  an optional second provider behind the same seam.
 - **The boundaries are enforced, not aspirational.** Custom lint rules,
   `tools/lint-meta` layer checks, and Rust arch-guard tests gate every commit
   in CI — Nightcore is governed by the same kind of harness it builds for your
@@ -263,6 +270,10 @@ installers, with signed in-app auto-update built in.
   claude   # log in once
   ```
 
+- **Codex** *(optional second provider)* — select it in Settings;
+  authenticates via `CODEX_API_KEY` or your local Codex login, the same
+  local-first posture as Claude.
+
 Building from source additionally needs:
 
 - **[Bun](https://bun.sh) ≥ 1.1** — sidecar and TS workspace
@@ -288,20 +299,40 @@ Browser-only UI preview (sidecar disabled): `bun run web`.
 `ANTHROPIC_API_KEY` is honored as a fallback; the intended path is your local
 Claude CLI login.
 
-## Status & roadmap
+## Status
 
 **Alpha** — [v0.1.0](https://github.com/Shironex/nightcore/releases/latest) is
 out with macOS/Windows installers and signed auto-update. Functional and
 dogfooded daily — Nightcore's own backlog is built by Nightcore — but not
 production-ready yet. Expect breaking changes.
 
-| Next up | |
-|---|---|
-| Trust made visible | plan-approval gate · evidence bundle · checks manager |
-| Deeper enforcement | convention-drift detection (coverage → conformance) |
-| Verify hardening | real end-to-end coverage of the PR arc |
+## Roadmap
 
-Full picture: [`docs/research/2026-07-11-roadmap-v0.3-v0.5.md`](docs/research/2026-07-11-roadmap-v0.3-v0.5.md).
+Nightcore is developed in the open using its own governed-autonomy method —
+research → build-ready specs → gated PRs — and the roadmap is public.
+
+- **[Roadmap board](https://github.com/users/Shironex/projects/8)** — live
+  ticket status.
+- **[Planning map](https://github.com/Shironex/nightcore/issues/141)** — the
+  tracking issue linking every ticket.
+- **[Full roadmap doc](docs/research/2026-07-11-roadmap-v0.3-v0.5.md)** —
+  strategic verdicts, fast-track fixes, and the open decisions behind the
+  themes below.
+
+- **v0.2 (now):** release the governed lifecycle that's been built —
+  five-stage nav, terminal cockpit, Trust Report, usage meter, GitHub issue
+  sync.
+- **v0.3 — trust made visible + table stakes:** plan-approval gate, evidence
+  bundles on verified work, on-demand convention checks + gauntlet
+  robustness, an E2E harness, richer notifications, native-sandbox adoption
+  spike.
+- **v0.4 — conformance + platform:** real drift/conformance detection, the
+  portable lock (CI-enforceable structure lock), a per-project trust
+  dashboard, skill-registry groundwork.
+- **v0.5+ — the keystone:** user-definable skills with per-skill gates, team
+  collaboration, receipt signing.
+
+Free for individuals; a future team/collaboration layer is planned.
 
 ## Security disclaimer
 
