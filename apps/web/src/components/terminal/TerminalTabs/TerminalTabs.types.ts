@@ -1,6 +1,8 @@
 /** Props for the {@link TerminalTabs} bar. */
 import type { PersistedTerminalInfo, TerminalSessionInfo } from '@/lib/bridge';
 
+import type { TerminalViewMode } from '../terminal-layout';
+
 /** Props for the terminal tabs bar. Presentational: the parent owns the session
  *  list, the active selection, and the open/close/new-tab actions. Restored
  *  (read-only) tabs from a prior run render after the live ones, visually distinct
@@ -30,4 +32,8 @@ export interface TerminalTabsProps {
   /** Per-session unread-output counts (decision 6c) — a badge on inactive tabs.
    *  Missing ids read as 0. */
   unread: Readonly<Record<string, number>>;
+  /** The current terminal-body view mode (decision 1, PR 2): tabs or grid. */
+  viewMode: TerminalViewMode;
+  /** Flip between the tabs and grid view modes. */
+  onToggleViewMode: () => void;
 }

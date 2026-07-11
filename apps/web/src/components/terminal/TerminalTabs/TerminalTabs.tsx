@@ -1,16 +1,26 @@
 import {
   CloseIcon,
+  GridIcon,
   HistoryIcon,
   IconButton,
+  Kbd,
   LockIcon,
   PlusIcon,
+  TabsIcon,
   TerminalIcon,
 } from '@/components/ui';
 import type { PersistedTerminalInfo, TerminalSessionInfo } from '@/lib/bridge';
 
+import type { TerminalViewMode } from '../terminal-layout';
 import { useInlineRename } from '../terminal-rename';
-import { displayTitle, identityTitle, restoredIdentityTitle } from '../terminal-shared';
-import { newTabTitle, unreadBadge, unreadBadgeLabel } from './TerminalTabs.hooks';
+import {
+  displayTitle,
+  identityTitle,
+  restoredIdentityTitle,
+  unreadBadge,
+  unreadBadgeLabel,
+} from '../terminal-shared';
+import { newTabTitle } from './TerminalTabs.hooks';
 import type { TerminalTabsProps } from './TerminalTabs.types';
 
 /** The per-tab identity marker (decision 1): unconfined tabs carry a terminal
@@ -153,11 +163,39 @@ function RestoredTab({
   );
 }
 
+/** The tabs⇄grid view-mode toggle (decision 1, PR 2): a single button that flips to
+ *  the OTHER mode, showing the target mode's glyph + a ⌘⇧E hint (the zoom shortcut
+ *  lives in grid mode). Pinned to the right of the tab strip. */
+function ViewModeToggle({
+  viewMode,
+  onToggleViewMode,
+}: {
+  viewMode: TerminalViewMode;
+  onToggleViewMode: () => void;
+}) {
+  const toGrid = viewMode === 'tabs';
+  const label = toGrid ? 'Grid view' : 'Tabs view';
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={!toGrid}
+      title={`${label}${toGrid ? ' — arrange every terminal at once' : ''}`}
+      onClick={onToggleViewMode}
+      className="my-0.5 ml-auto flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground"
+    >
+      {toGrid ? <GridIcon size={13} aria-hidden /> : <TabsIcon size={13} aria-hidden />}
+      <span>{label}</span>
+      {!toGrid && <Kbd>⌘⇧E</Kbd>}
+    </button>
+  );
+}
+
 /** The terminal tabs bar: one tab per live session with a per-tab identity marker,
  *  an unread-output badge, an inline-rename (double-click) title, and a close
- *  affordance, then any restored (read-only) tabs from a prior run, plus a "+" that
- *  opens the new-terminal picker (disabled at the session cap). Purely
- *  presentational — the parent owns state + actions. */
+ *  affordance, then any restored (read-only) tabs from a prior run, a "+" that opens
+ *  the new-terminal picker (disabled at the session cap), and the tabs⇄grid view-mode
+ *  toggle pinned right. Purely presentational — the parent owns state + actions. */
 export function TerminalTabs({
   sessions,
   restored,
@@ -169,6 +207,8 @@ export function TerminalTabs({
   canAddTab,
   onRename,
   unread,
+  viewMode,
+  onToggleViewMode,
 }: TerminalTabsProps) {
   return (
     <div
@@ -206,6 +246,7 @@ export function TerminalTabs({
       >
         <PlusIcon size={14} />
       </button>
+      <ViewModeToggle viewMode={viewMode} onToggleViewMode={onToggleViewMode} />
     </div>
   );
 }

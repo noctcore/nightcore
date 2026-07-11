@@ -22,6 +22,9 @@ vi.mock('../terminal-session-manager', () => ({
   getUnread: () => 0,
   clearUnread: () => {},
   setActiveTerminal: () => {},
+  // Layout seam (PR 2): the visible-set + refit calls the layout hook makes.
+  setVisibleTerminals: () => {},
+  refitSession: () => {},
 }));
 
 // Keep the real bridge (ToastProvider, types, getAppInfo → macOS mock) but make the
@@ -76,6 +79,9 @@ afterEach(() => {
   listTerminalsMock.mockResolvedValue([]);
   listPersistedMock.mockReset();
   listPersistedMock.mockResolvedValue([]);
+  // These tests exercise the default (tabs) view mode; clear any layout blob a case
+  // might persist so the next case starts in tabs mode.
+  window.localStorage.removeItem('nc:terminal:layout');
 });
 
 test('shows the empty state until a terminal is opened', async () => {

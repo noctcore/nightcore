@@ -97,6 +97,14 @@ test('an inactive tab shows its unread-output badge; the active tab does not', a
     .toHaveTextContent('99+');
 });
 
+test('the view-mode toggle flips the mode via onToggleViewMode', async () => {
+  const onToggleViewMode = vi.fn();
+  // Default args are tabs mode → the toggle offers to switch to Grid.
+  const screen = render(<Populated onToggleViewMode={onToggleViewMode} />);
+  await screen.getByRole('button', { name: 'Grid view' }).click();
+  expect(onToggleViewMode).toHaveBeenCalled();
+});
+
 test('restored tabs render after live ones and dismiss fires onDismiss', async () => {
   const onDismiss = vi.fn();
   const screen = render(<WithRestoredTabs onDismiss={onDismiss} />);

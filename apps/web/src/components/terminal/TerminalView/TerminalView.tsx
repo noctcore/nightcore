@@ -8,6 +8,7 @@ import {
 import { useWorktreesContext } from '@/lib/worktrees-context';
 
 import { NewTabPicker } from '../NewTabPicker';
+import { TerminalGrid } from '../TerminalGrid';
 import { TerminalPane } from '../TerminalPane';
 import { TerminalReadonlyPane } from '../TerminalReadonlyPane';
 import { TerminalTabs } from '../TerminalTabs';
@@ -40,6 +41,11 @@ export function TerminalView({
   // of these — or neither, which lands on the empty state.
   const activeLive = v.sessions.find((s) => s.id === v.activeId) ?? null;
   const activeRestored = v.restored.find((r) => r.id === v.activeId) ?? null;
+  // Grid mode shows every live pane at once (decision 1, PR 2). Restored (read-only)
+  // tabs stay tab-only — selecting one drops back to the single-pane body even in
+  // grid mode, and an empty live set falls through to the restore/empty body.
+  const showGrid =
+    v.layout.mode === 'grid' && v.layout.orderedSessions.length > 0 && activeRestored === null;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -54,9 +60,21 @@ export function TerminalView({
         canAddTab={v.canAddTab}
         onRename={v.renameSession}
         unread={v.unread}
+        viewMode={v.layout.mode}
+        onToggleViewMode={v.layout.toggleMode}
       />
 
-      {activeLive !== null ? (
+      {showGrid ? (
+        <TerminalGrid
+          sessions={v.layout.orderedSessions}
+          unread={v.unread}
+          zoomedId={v.layout.zoomedId}
+          onRename={v.renameSession}
+          onReorder={v.layout.reorder}
+          onToggleZoom={v.layout.toggleZoom}
+          onActivate={v.selectTab}
+        />
+      ) : activeLive !== null ? (
         <TerminalPane key={activeLive.id} session={activeLive} onRename={v.renameSession} />
       ) : activeRestored !== null ? (
         <TerminalReadonlyPane

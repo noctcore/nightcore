@@ -19,14 +19,13 @@ import {
 } from '@/lib/bridge';
 
 import type { TerminalTarget } from '../NewTabPicker';
+import { useTerminalLayout } from '../terminal-layout';
 import {
-  clearUnread,
   closeSession,
   getUnread,
   hasSession,
   openSession,
   reconcileSessions,
-  setActiveTerminal,
   subscribeActivity,
 } from '../terminal-session-manager';
 import {
@@ -90,6 +89,13 @@ export function useTerminalView(input: UseTerminalViewInput) {
   // session manager. Recomputed on every activity notification so an inactive tab's
   // badge updates as its background shell emits output.
   const [unread, setUnread] = useState<Readonly<Record<string, number>>>({});
+  // Whether the initial `listTerminals()` has resolved — gates the layout hook's
+  // order reconcile so it never prunes the persisted pane order during the load gap.
+  const [loaded, setLoaded] = useState(false);
+
+  // View-mode (tabs⇄grid) + pane order + zoom (decision 1, PR 2). Owns the layout
+  // localStorage blob and the session-manager visible-set / ⌘⇧E zoom wiring.
+  const layout = useTerminalLayout({ sessions, activeId, loaded });
 
   const targets = useMemo(() => buildTargets(input), [input]);
   const confinedAvailable = supportsConfinedTerminal(hostOs);
@@ -113,6 +119,7 @@ export function useTerminalView(input: UseTerminalViewInput) {
         setSessions(liveSessions);
         setRestored(restoredTabs);
         setHostOs(appInfo.os);
+        setLoaded(true);
         setActiveId((cur) => cur ?? liveSessions[0]?.id ?? restoredTabs[0]?.id ?? null);
         // Probe each restored cwd for existence (the fresh-shell gate). Fail-closed:
         // only cwds that still resolve to a directory become restorable.
@@ -148,22 +155,9 @@ export function useTerminalView(input: UseTerminalViewInput) {
     return subscribeActivity(recompute);
   }, [sessions]);
 
-  // Tell the manager which tab is visible: its output stops badging and its badge
-  // clears. A restored (dead) tab has no live instance, so this is a harmless no-op
-  // for those ids.
-  useEffect(() => {
-    setActiveTerminal(activeId);
-  }, [activeId]);
-
-  // Regaining window focus clears the active tab's unread (the user is looking at
-  // it again), mirroring the activation clear.
-  useEffect(() => {
-    const onFocus = () => {
-      if (activeId !== null) clearUnread(activeId);
-    };
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [activeId]);
+  // The visible-set (which tabs/panes stop badging) and the focus-clear are owned by
+  // `useTerminalLayout` (it knows tabs vs grid vs zoom), so no per-active-tab effect
+  // lives here.
 
   const openPicker = useCallback(() => {
     setSpawnError(null);
@@ -310,6 +304,7 @@ export function useTerminalView(input: UseTerminalViewInput) {
     restored,
     activeId,
     unread,
+    layout,
     canAddTab: !atSessionCap(sessions),
     selectTab,
     requestClose,

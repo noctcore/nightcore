@@ -47,11 +47,13 @@ const meta = {
     activeId: 'task-91',
     canAddTab: true,
     unread: {},
+    viewMode: 'tabs',
     onSelect: fn(),
     onClose: fn(),
     onDismiss: fn(),
     onNewTab: fn(),
     onRename: fn(),
+    onToggleViewMode: fn(),
   },
 } satisfies Meta<typeof TerminalTabs>;
 
@@ -132,5 +134,21 @@ export const RenamesTab: Story = {
     await userEvent.clear(input);
     await userEvent.type(input, 'deploy shell{Enter}');
     await expect(args.onRename).toHaveBeenCalledWith('task-91', 'deploy shell');
+  },
+};
+
+/** In grid mode the toggle offers to switch back to Tabs view. */
+export const GridMode: Story = {
+  args: { viewMode: 'grid' },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('button', { name: 'Tabs view' })).toBeInTheDocument();
+  },
+};
+
+/** Play test: clicking the view-mode toggle flips the mode via `onToggleViewMode`. */
+export const TogglesViewMode: Story = {
+  play: async ({ args, canvas }) => {
+    await userEvent.click(canvas.getByRole('button', { name: 'Grid view' }));
+    await expect(args.onToggleViewMode).toHaveBeenCalled();
   },
 };
