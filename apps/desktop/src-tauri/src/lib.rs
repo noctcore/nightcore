@@ -302,6 +302,7 @@ pub fn run() {
             sidecar::get_provider_config,
             sidecar::list_models,
             sidecar::get_capabilities,
+            sidecar::validate_plugin_rule,
             // The run-based scan commands (Insight / Harness / Scorecard). The store
             // boot + retarget wiring is driven off the single `scan_kinds!` registry;
             // these command paths must still be listed explicitly because Tauri's

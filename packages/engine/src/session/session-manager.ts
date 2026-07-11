@@ -40,6 +40,7 @@ import {
   buildProviderRegistry,
   type ProviderRegistry,
 } from '../providers/provider-factory.js';
+import { validateRule } from '../rule-tester/validate-rule.js';
 import { ScanRouter } from '../scans/scan-router.js';
 
 interface ManagedSession {
@@ -315,6 +316,19 @@ export class SessionManager {
           ok: true,
           kind: 'models',
           models: await this.listModels(),
+        };
+      }
+      case 'validate-rule': {
+        // One-shot RuleTester validation (issue #185): load the plugin rule
+        // cross-toolchain and run it (or a structural probe) to confirm an armed
+        // check is a real rule, not a placebo. `validateRule` is fail-SOFT — a load
+        // failure is carried inside `outcome: 'error'`, so the reply stays `ok: true`.
+        return {
+          type: 'query-result',
+          requestId,
+          ok: true,
+          kind: 'rule-validation',
+          ruleValidation: await validateRule(query, this.logger?.child('rule-tester')),
         };
       }
     }

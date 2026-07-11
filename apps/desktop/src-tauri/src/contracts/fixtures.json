@@ -274,6 +274,20 @@
     "get-models": {
       "requestId": "q-8",
       "type": "get-models"
+    },
+    "validate-rule": {
+      "requestId": "q-9",
+      "type": "validate-rule",
+      "ruleId": "@nightcore/no-state-in-body",
+      "rulePath": "packages/eslint-plugin/src/index.ts",
+      "ruleName": "no-state-in-body",
+      "projectPath": "/proj",
+      "validCases": [
+        "const x = 1;"
+      ],
+      "invalidCases": [
+        "{\"code\":\"let s = useState();\",\"errors\":1}"
+      ]
     }
   },
   "events": {
@@ -1074,6 +1088,30 @@
           ]
         }
       ],
+      "ruleValidation": {
+        "ruleId": "@nightcore/no-state-in-body",
+        "outcome": "passed",
+        "ruleLoaded": true,
+        "eslintVersion": "9.39.4",
+        "validPassed": 1,
+        "validTotal": 1,
+        "invalidPassed": 1,
+        "invalidTotal": 1,
+        "cases": [
+          {
+            "kind": "valid",
+            "index": 0,
+            "passed": true
+          },
+          {
+            "kind": "invalid",
+            "index": 0,
+            "passed": false,
+            "message": "Should have 1 error but had 0."
+          }
+        ],
+        "error": "none"
+      },
       "error": "none"
     }
   }

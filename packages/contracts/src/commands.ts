@@ -516,6 +516,36 @@ export const GetModelsQuery = z.object({
   type: z.literal('get-models'),
 });
 
+/** Validate an armed lint-plugin rule via ESLint's `RuleTester` on demand (issue
+ *  #185) — the "is this armed check a real rule that actually fires, not a placebo?"
+ *  probe. The engine loads the rule cross-toolchain (TS/ESM/CJS) and runs the
+ *  supplied cases (or a minimal structural probe when none are given) against the
+ *  TARGET project's own ESLint, returning a structured {@link RuleValidationResult}
+ *  on the reply's `ruleValidation` slot. Fails SOFT: a load/setup failure is reported
+ *  as `outcome: 'error'`, never a thrown crash. */
+export const ValidateRuleQuery = z.object({
+  ...requestTarget,
+  type: z.literal('validate-rule'),
+  /** The rule id being validated (for reporting; e.g. `@nightcore/no-state-in-body`). */
+  ruleId: z.string(),
+  /** Absolute or `projectPath`-relative path to the module exporting the rule — a
+   *  single-rule module OR a plugin exposing a `.rules` map. Loaded cross-toolchain. */
+  rulePath: z.string(),
+  /** The rule's key within a plugin's `rules` map. Omit ⇒ derived from `ruleId`'s
+   *  last path segment (a plugin entry) or ignored (a single-rule module). */
+  ruleName: z.string().optional(),
+  /** Project root used to resolve a relative `rulePath` and the ESLint/RuleTester
+   *  toolchain, so validation runs against the target's own ESLint version. Omit ⇒
+   *  the engine cwd. */
+  projectPath: z.string().optional(),
+  /** RuleTester `valid` cases. Each entry is source code, or a JSON string of a
+   *  RuleTester case object (`{ code, options, ... }`); a non-JSON string is the code. */
+  validCases: z.array(z.string()).default([]),
+  /** RuleTester `invalid` cases, each a JSON string of `{ code, errors, output? }`.
+   *  A non-JSON string is taken as `code` expecting at least one reported error. */
+  invalidCases: z.array(z.string()).default([]),
+});
+
 /** The discriminated union of every request/reply surface → engine query, keyed by `type`. */
 export const SurfaceQuerySchema = z.discriminatedUnion('type', [
   ListSessionsQuery,
@@ -526,5 +556,6 @@ export const SurfaceQuerySchema = z.discriminatedUnion('type', [
   GetProviderConfigQuery,
   GetCapabilitiesQuery,
   GetModelsQuery,
+  ValidateRuleQuery,
 ]);
 export type SurfaceQuery = z.infer<typeof SurfaceQuerySchema>;

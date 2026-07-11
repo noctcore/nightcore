@@ -323,6 +323,12 @@ const STRUCT_NAMES: Record<string, string> = {
   // `supportedEffortLevels[]`.
   'description|displayName|supportedEffortLevels|supportsEffort|value':
     'ModelDescriptor',
+  // One-shot RuleTester validation (issue #185) — carried on the `ruleValidation`
+  // slot of a `query-result`, so the Rust core single-sources the verdict from the
+  // engine (which owns cross-toolchain rule loading) instead of duplicating it.
+  'index|kind|message|passed': 'RuleTesterCaseResult',
+  'cases|error|eslintVersion|invalidPassed|invalidTotal|outcome|ruleId|ruleLoaded|validPassed|validTotal':
+    'RuleValidationResult',
   // Insight (codebase analysis) shapes.
   'endLine|file|startLine|symbol': 'FindingLocation',
   'affectedFiles|category|codeAfter|codeBefore|confidence|description|effort|fingerprint|id|location|rationale|severity|suggestion|tags|title':
@@ -429,6 +435,11 @@ const ENUM_NAMES: Record<string, string> = {
   // command), and the four verdict-result enums (via `issue-validation-completed`).
   // `IssueState` (`open|closed`) is web/gh-only (never on the wire) so it is absent.
   'open|closed|merged': 'IssuePrState',
+  // One-shot RuleTester validation (issue #185) enums — the case-suite discriminator
+  // and the overall verdict. `valid|invalid` is distinct from `IssueVerdict`'s
+  // `valid|invalid|needs_clarification` (a different value-set → no collapse).
+  'valid|invalid': 'RuleTesterCaseKind',
+  'passed|failed|probed|error': 'RuleValidationOutcome',
   'bug_report|feature_request|question|unknown': 'IssueKind',
   'valid|invalid|needs_clarification': 'IssueVerdict',
   'high|medium|low': 'IssueConfidence',
@@ -1109,6 +1120,16 @@ const QUERY_INPUTS: Record<string, unknown> = {
     type: 'get-models',
     requestId: 'q-8',
   },
+  'validate-rule': {
+    type: 'validate-rule',
+    requestId: 'q-9',
+    ruleId: '@nightcore/no-state-in-body',
+    rulePath: 'packages/eslint-plugin/src/index.ts',
+    ruleName: 'no-state-in-body',
+    projectPath: '/proj',
+    validCases: ['const x = 1;'],
+    invalidCases: ['{"code":"let s = useState();","errors":1}'],
+  },
 };
 
 /** A representative raw input per event variant. */
@@ -1774,6 +1795,26 @@ const EVENT_INPUTS: Record<string, unknown> = {
         supportedEffortLevels: ['low', 'medium', 'high'],
       },
     ],
+    ruleValidation: {
+      ruleId: '@nightcore/no-state-in-body',
+      outcome: 'passed',
+      ruleLoaded: true,
+      eslintVersion: '9.39.4',
+      validPassed: 1,
+      validTotal: 1,
+      invalidPassed: 1,
+      invalidTotal: 1,
+      cases: [
+        { kind: 'valid', index: 0, passed: true },
+        {
+          kind: 'invalid',
+          index: 0,
+          passed: false,
+          message: 'Should have 1 error but had 0.',
+        },
+      ],
+      error: 'none',
+    },
     error: 'none',
   },
 };

@@ -37,6 +37,7 @@ import {
 } from './pr-review.js';
 import { ProviderCapabilitiesSchema } from './provider.js';
 import { ProviderConfigSnapshotSchema } from './provider-config.js';
+import { RuleValidationResultSchema } from './rule-tester.js';
 import {
   ScorecardCompletedEvent,
   ScorecardDimensionCompletedEvent,
@@ -403,6 +404,7 @@ export const QueryResultEvent = z.object({
     'provider-config',
     'capabilities',
     'models',
+    'rule-validation',
   ]),
   /** Populated for `kind: 'sessions'`. */
   sessions: z.array(SessionInfoSchema).optional(),
@@ -417,6 +419,10 @@ export const QueryResultEvent = z.object({
   /** Populated for `kind: 'models'`: the provider's dynamic model catalog (each id
    *  plus its supported effort levels), for the surface's `/model` picker. */
   models: z.array(ModelDescriptorSchema).optional(),
+  /** Populated for `kind: 'rule-validation'`: the one-shot RuleTester verdict for an
+   *  armed lint-plugin rule (issue #185). Carries its own `outcome`/`error`, so the
+   *  reply stays `ok: true` even when the rule failed to load (a soft failure). */
+  ruleValidation: RuleValidationResultSchema.optional(),
   /** Set when `ok` is false: a short failure reason. */
   error: z.string().optional(),
 });

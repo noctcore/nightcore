@@ -12,6 +12,7 @@ export * from './models.js';
 export * from './pr-review.js';
 export * from './provider.js';
 export * from './provider-config.js';
+export * from './rule-tester.js';
 export * from './scorecard.js';
 export * from './session.js';
 export * from './tools.js';

@@ -32,6 +32,7 @@ mod permission;
 mod pr_review;
 mod provider_config;
 mod reader;
+mod rule_tester;
 mod scan;
 mod scorecard;
 mod seam;
@@ -56,6 +57,9 @@ pub(crate) use models::*;
 // The provider-capability command `get_capabilities` (issue #18, B5; glob so the
 // `#[tauri::command]` macro siblings resolve through `sidecar::*` for `generate_handler!`).
 pub(crate) use capabilities::*;
+// The one-shot RuleTester validation command `validate_plugin_rule` (issue #185; glob
+// so the `#[tauri::command]` macro siblings resolve through `sidecar::*` for `generate_handler!`).
+pub(crate) use rule_tester::*;
 // The Insight (codebase analysis) commands + the reader-side `analysis-*` handler
 // (glob so the `#[tauri::command]` macro siblings resolve through `sidecar::*`).
 pub(crate) use insight::*;

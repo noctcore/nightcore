@@ -256,6 +256,20 @@ pub enum SurfaceQuery {
     },
     #[serde(rename_all = "camelCase")]
     GetModels { request_id: String },
+    #[serde(rename_all = "camelCase")]
+    ValidateRule {
+        request_id: String,
+        rule_id: String,
+        rule_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        rule_name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        project_path: Option<String>,
+        #[serde(default)]
+        valid_cases: Vec<String>,
+        #[serde(default)]
+        invalid_cases: Vec<String>,
+    },
 }
 
 // === Engine → surface events (Rust DESERIALIZES / forwards these) ===
@@ -379,6 +393,8 @@ pub enum NightcoreEvent {
         capabilities: Option<ProviderCapabilities>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         models: Option<Vec<QueryResultModelsItem>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        rule_validation: Option<RuleValidationResult>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
@@ -1183,6 +1199,7 @@ pub enum QueryResultKindEnum {
     ProviderConfig,
     Capabilities,
     Models,
+    RuleValidation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1299,6 +1316,54 @@ pub struct RuleCoverageGap {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub suggested_artifact_kind: Option<String>,
     pub fingerprint: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RuleTesterCaseKind {
+    Valid,
+    Invalid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuleTesterCaseResult {
+    pub kind: RuleTesterCaseKind,
+    pub index: u64,
+    pub passed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RuleValidationOutcome {
+    Passed,
+    Failed,
+    Probed,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuleValidationResult {
+    pub rule_id: String,
+    pub outcome: RuleValidationOutcome,
+    pub rule_loaded: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eslint_version: Option<String>,
+    #[serde(default)]
+    pub valid_passed: u64,
+    #[serde(default)]
+    pub valid_total: u64,
+    #[serde(default)]
+    pub invalid_passed: u64,
+    #[serde(default)]
+    pub invalid_total: u64,
+    #[serde(default)]
+    pub cases: Vec<RuleTesterCaseResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
