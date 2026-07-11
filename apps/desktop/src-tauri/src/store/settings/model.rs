@@ -168,6 +168,16 @@ pub struct Settings {
     /// before this field loads as `false`.
     #[serde(default)]
     pub usage_meter_enabled: bool,
+    /// Usage-aware auto-mode throttle (spec 2026-07-11, decision 2): the % at which
+    /// the autonomous loop STOPS picking up new runs when the run provider's usage
+    /// meter shows ANY rate-limit window (5h / weekly / model-scoped) at or above
+    /// this level. Range 50..=100, default 90. Only consulted when
+    /// `usage_meter_enabled` is on AND the meter snapshot is fresh (decision 4 —
+    /// fail-open); it never blocks manual runs and never interrupts an in-flight
+    /// session. Global-only (like `auto_commit_on_verified`). Serde-additive: a
+    /// settings file written before this field loads as 90.
+    #[serde(default = "default_usage_pause_threshold")]
+    pub auto_pause_usage_threshold: u8,
     /// USER terminal (cockpit spec PR 4, decision 3): the "YOLO" launch flag. When
     /// enabled, the web's one-click "Launch Claude" affordance appends
     /// `--dangerously-skip-permissions` to the composed launch command, so the
@@ -275,6 +285,13 @@ fn default_provider() -> String {
 /// field loads as `true` — a project's authored Constitution is injected by default).
 fn default_true() -> bool {
     true
+}
+
+/// The serde default for `auto_pause_usage_threshold` (spec 2026-07-11, decision 2):
+/// a settings file written before this field loads at 90% — the usage-aware
+/// auto-mode throttle's default ceiling.
+fn default_usage_pause_threshold() -> u8 {
+    90
 }
 
 /// The serde default for the board-appearance opacity knobs: fully opaque (`1.0`).
@@ -491,6 +508,9 @@ impl Default for Settings {
             // Issue #121 decision 5: the usage meter is opt-in — the poll loop parks
             // and no credential is read until the user clicks "Enable usage meter".
             usage_meter_enabled: false,
+            // Spec 2026-07-11 decision 2: the usage-aware auto-mode throttle pauses
+            // new pickups at 90% by default. Inert until the meter is enabled.
+            auto_pause_usage_threshold: default_usage_pause_threshold(),
             // Cockpit PR 4 decision 3: YOLO launch off by default — the composed
             // "Launch Claude" command runs with normal permission prompts until the
             // user enables the (explicitly warned) toggle.

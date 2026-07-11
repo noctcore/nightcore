@@ -1,10 +1,19 @@
 import { useMemo } from 'react';
 
-import type { BoardChromeValue, PickedBackgroundImage } from '@/components/board';
+import type {
+  BoardChromeValue,
+  PickedBackgroundImage,
+  UsageHotWindow,
+} from '@/components/board';
 import type { BoardAppearance } from '@/lib/bridge';
 
 import type { useAutoLoop } from './useAutoLoop.hooks';
 import type { useSettingsData } from './useSettingsData.hooks';
+
+/** The Settings default for the usage-throttle threshold — mirrors the Rust
+ *  `default_usage_pause_threshold` (90) so a not-yet-loaded settings snapshot reads
+ *  the same value the backend gate uses. */
+export const DEFAULT_USAGE_PAUSE_THRESHOLD = 90;
 
 /** The Board header's four project-scoped chrome handlers (appearance/background +
  *  the auto-commit Auto Mode option), pre-assembled into one referentially stable
@@ -19,6 +28,8 @@ export interface BoardChromeActions {
   onClearBackground: () => Promise<void> | void;
   /** Persist the auto-commit-on-verified Auto Mode option (global setting). */
   onAutoCommitChange: (next: boolean) => void;
+  /** Persist the usage-throttle threshold (global setting; clamped 50..=100). */
+  onThresholdChange: (next: number) => void;
 }
 
 /** Assemble the board-chrome cluster (appearance override/version + the four
@@ -33,6 +44,7 @@ export function useBoardChromeValue(
   activeProjectId: string | null,
   settings: ReturnType<typeof useSettingsData>,
   autoLoop: ReturnType<typeof useAutoLoop>,
+  usageHot: UsageHotWindow | null,
 ): BoardChromeValue {
   const {
     update: applySettings,
@@ -50,6 +62,7 @@ export function useBoardChromeValue(
       onClearBackground: () =>
         activeProjectId === null ? undefined : applyClearBackground(activeProjectId),
       onAutoCommitChange: (next) => applySettings({ autoCommitOnVerified: next }),
+      onThresholdChange: (next) => applySettings({ autoPauseUsageThreshold: next }),
     }),
     [activeProjectId, applySettings, applyBackground, applyClearBackground],
   );
@@ -62,6 +75,14 @@ export function useBoardChromeValue(
   const appearanceOverride = projectOverride?.boardAppearance ?? null;
   const backgroundVersion = projectOverride?.boardBackground?.version ?? null;
   const autoCommitOnVerified = settings.settings?.autoCommitOnVerified ?? false;
+  const autoPauseUsageThreshold =
+    settings.settings?.autoPauseUsageThreshold ?? DEFAULT_USAGE_PAUSE_THRESHOLD;
+  const usageMeterEnabled = settings.settings?.usageMeterEnabled ?? false;
+  // The pause banner shows ONLY when the loop actually reports a usage pause
+  // (`nc:loop` reason 'usage'); the window specifics come from the live `nc:usage`
+  // snapshot. So the banner is null unless the loop is usage-paused AND the snapshot
+  // still shows a hot window — both must agree, matching the backend gate.
+  const usagePause = autoLoop.usagePaused ? usageHot : null;
 
   return useMemo<BoardChromeValue>(
     () => ({
@@ -73,9 +94,13 @@ export function useBoardChromeValue(
       concurrency: autoLoop.concurrency,
       autoMode: autoLoop.autoMode,
       autoCommitOnVerified,
+      autoPauseUsageThreshold,
+      usageMeterEnabled,
+      usagePause,
       breaker: autoLoop.breaker,
       onToggleAutoMode: autoLoop.toggleAutoMode,
       onAutoCommitChange: appearance.onAutoCommitChange,
+      onThresholdChange: appearance.onThresholdChange,
       onConcurrencyChange: autoLoop.changeConcurrency,
       onResume: autoLoop.resume,
     }),
@@ -86,6 +111,9 @@ export function useBoardChromeValue(
       autoLoop.concurrency,
       autoLoop.autoMode,
       autoCommitOnVerified,
+      autoPauseUsageThreshold,
+      usageMeterEnabled,
+      usagePause,
       autoLoop.breaker,
       autoLoop.toggleAutoMode,
       autoLoop.changeConcurrency,

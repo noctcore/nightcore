@@ -70,6 +70,13 @@ terminalScrollback?: number,
  */
 usageMeterEnabled?: boolean, 
 /**
+ * Spec 2026-07-11 decision 2: set the usage-aware auto-mode throttle threshold
+ * (the % at which the loop stops picking up new runs). Global-only (ignored for
+ * a per-project override target), like `usage_meter_enabled`. Clamped to
+ * 50..=100 on merge. See [`super::model::Settings::auto_pause_usage_threshold`].
+ */
+autoPauseUsageThreshold?: number, 
+/**
  * Cockpit PR 4 decision 3: toggle the terminal "YOLO" launch flag. Global-only
  * (ignored for a per-project override target), like the other terminal knobs.
  * See [`super::model::Settings::terminal_yolo_launch`].

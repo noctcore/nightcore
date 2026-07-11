@@ -5,7 +5,7 @@ import { render } from 'vitest-browser-react';
 import { formatElapsed, subscribeSecondTick } from './TaskCard.hooks';
 import * as stories from './TaskCard.stories';
 
-const { Backlog, Failed, Done, Blocked, Running, Verifying, WaitingApproval, MainMode, MainModeCommitted, Draggable } =
+const { Backlog, Failed, Done, Blocked, Running, Verifying, WaitingApproval, MainMode, MainModeCommitted, Draggable, UsageHigh, UsageHighRetry } =
   composeStories(stories);
 
 test('shows the reviewing chip and a cancel control while verifying', async () => {
@@ -106,6 +106,25 @@ test('an unrelated pending action leaves this card\'s buttons interactive', asyn
   // A pending merge on some OTHER task must not disable this card's Run button.
   const screen = render(<Backlog isActionPending={(action) => action === 'merge'} />);
   await expect.element(screen.getByRole('button', { name: /^run$/i })).toBeEnabled();
+});
+
+test('shows the advisory "usage high" chip beside Run without disabling it', async () => {
+  // Decision 1 (spec 2026-07-11): the chip is ADVISORY — manual starts stay allowed.
+  const screen = render(<UsageHigh />);
+  await expect.element(screen.getByText(/usage high/i)).toBeInTheDocument();
+  await expect.element(screen.getByRole('button', { name: /^run$/i })).toBeEnabled();
+});
+
+test('shows the "usage high" chip beside Retry on a failed card, still enabled', async () => {
+  const screen = render(<UsageHighRetry />);
+  await expect.element(screen.getByText(/usage high/i)).toBeInTheDocument();
+  await expect.element(screen.getByRole('button', { name: /^retry$/i })).toBeEnabled();
+});
+
+test('shows NO usage chip when the meter is cool (no provider / null hot window)', async () => {
+  // The default Backlog story has no UsageHotProvider value → no chip.
+  const screen = render(<Backlog />);
+  expect(screen.container.textContent).not.toMatch(/usage high/i);
 });
 
 test('formatElapsed renders mm:ss and clamps negatives to 00:00', () => {

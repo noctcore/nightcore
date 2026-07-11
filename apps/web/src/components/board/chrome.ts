@@ -11,6 +11,7 @@ import { createContext, createElement, type ReactNode, useContext } from 'react'
 import type { BoardAppearance } from '@/lib/bridge';
 
 import type { PickedBackgroundImage } from './BoardBackgroundPanel';
+import type { UsageHotWindow } from './usage-hot';
 
 /** A tripped circuit breaker: the autonomous loop paused after consecutive
  *  failures. Drives the board's dismissable Resume banner. */
@@ -41,12 +42,24 @@ export interface BoardChromeValue {
   autoMode: boolean;
   /** Auto Mode option: auto-commit each task once it's verified (persisted). */
   autoCommitOnVerified: boolean;
+  /** Usage-aware throttle (spec 2026-07-11): the % at which Auto Mode stops picking
+   *  up new runs. 50..=100, persisted; drives the gear-popover slider. */
+  autoPauseUsageThreshold: number;
+  /** Whether the usage meter is enabled — the throttle (and its slider) only
+   *  function when it is (decision 4). Renders the slider disabled + hinted when off. */
+  usageMeterEnabled: boolean;
+  /** Set when the loop is usage-paused (spec 2026-07-11): the hottest window ≥ the
+   *  threshold on the run provider, for the board's dismissable pause banner; `null`
+   *  when not usage-paused. */
+  usagePause: UsageHotWindow | null;
   /** Set when the circuit breaker tripped; drives the Resume banner. */
   breaker: BreakerInfo | null;
   /** Start/stop the autonomous loop (the header Auto Mode toggle). */
   onToggleAutoMode: () => void;
   /** Persist the auto-commit-on-verified Auto Mode option (the gear popover). */
   onAutoCommitChange: (next: boolean) => void;
+  /** Persist the usage-throttle threshold (the gear popover slider). */
+  onThresholdChange: (next: number) => void;
   /** Resize the live agent pool (the header concurrency slider). */
   onConcurrencyChange: (n: number) => void;
   /** Resume the loop after a circuit-breaker pause. */

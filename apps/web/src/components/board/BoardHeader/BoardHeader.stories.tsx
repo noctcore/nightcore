@@ -17,8 +17,11 @@ type ChromeArgs = Partial<
     | 'concurrency'
     | 'autoMode'
     | 'autoCommitOnVerified'
+    | 'autoPauseUsageThreshold'
+    | 'usageMeterEnabled'
     | 'onToggleAutoMode'
     | 'onAutoCommitChange'
+    | 'onThresholdChange'
     | 'onConcurrencyChange'
     | 'onChangeAppearance'
     | 'onPickBackground'
@@ -33,8 +36,11 @@ function BoardHeaderFixture({
   concurrency = 3,
   autoMode = false,
   autoCommitOnVerified = false,
+  autoPauseUsageThreshold = 90,
+  usageMeterEnabled = true,
   onToggleAutoMode,
   onAutoCommitChange,
+  onThresholdChange,
   onConcurrencyChange,
   onChangeAppearance,
   onPickBackground,
@@ -53,9 +59,13 @@ function BoardHeaderFixture({
         concurrency,
         autoMode,
         autoCommitOnVerified,
+        autoPauseUsageThreshold,
+        usageMeterEnabled,
+        usagePause: null,
         breaker: null,
         onToggleAutoMode: onToggleAutoMode ?? (() => {}),
         onAutoCommitChange: onAutoCommitChange ?? (() => {}),
+        onThresholdChange: onThresholdChange ?? (() => {}),
         onConcurrencyChange: onConcurrencyChange ?? (() => {}),
         onResume: () => {},
       }}
@@ -93,6 +103,7 @@ const meta = {
     backgroundUrl: null,
     onToggleAutoMode: fn(),
     onAutoCommitChange: fn(),
+    onThresholdChange: fn(),
     onConcurrencyChange: fn(),
     onChangeAppearance: fn(),
     onPickBackground: fn(),

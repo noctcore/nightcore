@@ -23,6 +23,7 @@ import {
 import { useTaskActions } from '../actions';
 import { formatCostUsd, modelDisplayName, modelDotColor } from '../status';
 import { TaskCardTerminalChip } from '../TaskCardTerminalChip';
+import { TaskCardUsageChip } from '../TaskCardUsageChip';
 import {
   ACTION_BASE,
   ACTION_DANGER,
@@ -245,6 +246,7 @@ function TaskCardImpl({
               {runPending ? <Spinner size={13} /> : blocked ? <LockIcon size={13} /> : <PlayIcon size={13} />}
               {runPending ? 'Starting…' : blocked ? 'Blocked' : 'Run'}
             </button>
+            {!blocked && <TaskCardUsageChip />}
             <button
               type="button"
               onClick={() => onSelect(task.id)}
@@ -368,6 +370,7 @@ function TaskCardImpl({
               {runPending ? <Spinner size={13} /> : <RetryIcon size={13} />}
               {runPending ? 'Starting…' : 'Retry'}
             </button>
+            <TaskCardUsageChip />
             <button
               type="button"
               onClick={() => onSelect(task.id)}

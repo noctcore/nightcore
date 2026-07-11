@@ -10,4 +10,10 @@ export { NewTaskForm } from './NewTaskForm';
 export { EMPTY_TRANSCRIPT, foldTranscript, type TaskTranscript } from './session-stream';
 export { COLUMNS, isActive } from './status';
 export { TaskDetail } from './TaskDetail';
+export {
+  hotUsageWindow,
+  UsageHotProvider,
+  type UsageHotWindow,
+  useUsageHot,
+} from './usage-hot';
 export type { ActiveWorktree } from './WorktreeSwitcher';

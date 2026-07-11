@@ -463,6 +463,60 @@ mod tests {
     }
 
     #[test]
+    fn auto_pause_usage_threshold_defaults_90_and_is_serde_additive() {
+        // Spec 2026-07-11 decision 2: the usage-throttle ceiling defaults to 90%.
+        assert_eq!(Settings::default().auto_pause_usage_threshold, 90);
+
+        // A settings.json from before this field (no `autoPauseUsageThreshold`) still
+        // parses, defaulting to 90 — existing config isn't broken (serde-additive).
+        let tmp = TempDir::new().expect("temp dir");
+        let dir = tmp.path().join("config");
+        std::fs::create_dir_all(&dir).unwrap();
+        let legacy = r#"{"defaultModel":"claude-opus-4-8","defaultEffort":"medium",
+            "maxConcurrency":3,"permissionMode":"bypass","cleanupWorktrees":true,
+            "notifyOnComplete":false,"defaultRunMode":"main","projectOverrides":{}}"#;
+        std::fs::write(dir.join("settings.json"), legacy).unwrap();
+        let store = SettingsStore::load_from(dir);
+        assert_eq!(store.get().auto_pause_usage_threshold, 90);
+
+        // A global patch sets it and round-trips through persistence.
+        store
+            .update(serde_json::from_str(r#"{"autoPauseUsageThreshold":75}"#).unwrap())
+            .expect("update");
+        assert_eq!(store.get().auto_pause_usage_threshold, 75);
+        let reloaded = SettingsStore::load_from(tmp.path().join("config"));
+        assert_eq!(reloaded.get().auto_pause_usage_threshold, 75);
+    }
+
+    #[test]
+    fn auto_pause_usage_threshold_clamps_to_50_100_on_merge() {
+        // The slider is 50..=100, but the patch defends the store: an out-of-range
+        // value clamps rather than persisting a nonsensical threshold.
+        let (store, _tmp) = temp_store();
+        store
+            .update(serde_json::from_str(r#"{"autoPauseUsageThreshold":10}"#).unwrap())
+            .expect("update low");
+        assert_eq!(
+            store.get().auto_pause_usage_threshold,
+            50,
+            "clamped up to 50"
+        );
+        store
+            .update(serde_json::from_str(r#"{"autoPauseUsageThreshold":200}"#).unwrap())
+            .expect("update high");
+        assert_eq!(
+            store.get().auto_pause_usage_threshold,
+            100,
+            "clamped down to 100"
+        );
+        // A boundary value passes through unchanged.
+        store
+            .update(serde_json::from_str(r#"{"autoPauseUsageThreshold":50}"#).unwrap())
+            .expect("update boundary");
+        assert_eq!(store.get().auto_pause_usage_threshold, 50);
+    }
+
+    #[test]
     fn terminal_yolo_launch_defaults_false_and_is_serde_additive() {
         // Cockpit PR 4 decision 3: the YOLO launch flag is opt-in (default off).
         assert!(!Settings::default().terminal_yolo_launch);

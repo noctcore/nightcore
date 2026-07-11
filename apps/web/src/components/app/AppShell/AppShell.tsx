@@ -4,6 +4,7 @@ import {
   BoardChromeProvider,
   NewTaskForm,
   TaskActionsProvider,
+  UsageHotProvider,
 } from '@/components/board';
 import { NewProjectDialog } from '@/components/new-project';
 import { Onboarding } from '@/components/onboarding';
@@ -46,6 +47,7 @@ export function AppShell() {
     settings,
     newProject,
     chrome,
+    usageHot,
     board,
     drawer,
     prDialog,
@@ -150,6 +152,7 @@ export function AppShell() {
     // consumers per-frame.
     <TaskActionsProvider actions={drawer.detailActions}>
     <WorktreesProvider value={worktrees}>
+    <UsageHotProvider value={usageHot}>
     <BoardChromeProvider value={chrome}>
       {showProjects ? (
         <div className="flex h-full w-full flex-col overflow-hidden bg-background text-foreground">
@@ -241,6 +244,7 @@ export function AppShell() {
 
       <AppShellOverlays confirm={confirm} editProject={editProject} projectRemoval={projectRemoval} />
     </BoardChromeProvider>
+    </UsageHotProvider>
     </WorktreesProvider>
     </TaskActionsProvider>
   );

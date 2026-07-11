@@ -48,8 +48,11 @@ export function BoardHeader({
     concurrency,
     autoMode,
     autoCommitOnVerified,
+    autoPauseUsageThreshold,
+    usageMeterEnabled,
     onToggleAutoMode,
     onAutoCommitChange,
+    onThresholdChange,
     onConcurrencyChange,
     onChangeAppearance,
     onPickBackground,
@@ -115,6 +118,9 @@ export function BoardHeader({
                 <AutoModeOptions
                   autoCommitOnVerified={autoCommitOnVerified}
                   onAutoCommitChange={onAutoCommitChange}
+                  autoPauseUsageThreshold={autoPauseUsageThreshold}
+                  onThresholdChange={onThresholdChange}
+                  usageMeterEnabled={usageMeterEnabled}
                 />
               }
             />

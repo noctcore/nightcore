@@ -35,6 +35,7 @@ function settingsWith(projectId: string, appearance: BoardAppearance): Settings 
     terminalFontSize: null,
     terminalScrollback: null,
     usageMeterEnabled: false,
+    autoPauseUsageThreshold: 90,
     terminalYoloLaunch: false,
     terminalDaemonEnabled: false,
     terminalAiNaming: false,

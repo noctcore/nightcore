@@ -202,6 +202,12 @@ pub struct SettingsPatch {
     /// [`super::model::Settings::usage_meter_enabled`].
     #[cfg_attr(test, ts(optional))]
     pub usage_meter_enabled: Option<bool>,
+    /// Spec 2026-07-11 decision 2: set the usage-aware auto-mode throttle threshold
+    /// (the % at which the loop stops picking up new runs). Global-only (ignored for
+    /// a per-project override target), like `usage_meter_enabled`. Clamped to
+    /// 50..=100 on merge. See [`super::model::Settings::auto_pause_usage_threshold`].
+    #[cfg_attr(test, ts(optional))]
+    pub auto_pause_usage_threshold: Option<u8>,
     /// Cockpit PR 4 decision 3: toggle the terminal "YOLO" launch flag. Global-only
     /// (ignored for a per-project override target), like the other terminal knobs.
     /// See [`super::model::Settings::terminal_yolo_launch`].
@@ -343,6 +349,12 @@ impl Settings {
         // override), like the terminal toggles above.
         if let Some(v) = patch.usage_meter_enabled {
             self.usage_meter_enabled = v;
+        }
+        // Spec 2026-07-11: global-only usage-throttle threshold. Clamp to 50..=100 on
+        // write for tidiness — the gate compares defensively regardless, but a clamped
+        // store keeps the persisted value inside the slider's range.
+        if let Some(v) = patch.auto_pause_usage_threshold {
+            self.auto_pause_usage_threshold = v.clamp(50, 100);
         }
         // Cockpit PR 4: global-only opt-in YOLO launch flag (no per-project override),
         // like the other terminal toggles.

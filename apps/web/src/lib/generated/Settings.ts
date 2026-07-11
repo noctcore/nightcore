@@ -176,6 +176,17 @@ terminalScrollback: number | null,
  */
 usageMeterEnabled: boolean, 
 /**
+ * Usage-aware auto-mode throttle (spec 2026-07-11, decision 2): the % at which
+ * the autonomous loop STOPS picking up new runs when the run provider's usage
+ * meter shows ANY rate-limit window (5h / weekly / model-scoped) at or above
+ * this level. Range 50..=100, default 90. Only consulted when
+ * `usage_meter_enabled` is on AND the meter snapshot is fresh (decision 4 —
+ * fail-open); it never blocks manual runs and never interrupts an in-flight
+ * session. Global-only (like `auto_commit_on_verified`). Serde-additive: a
+ * settings file written before this field loads as 90.
+ */
+autoPauseUsageThreshold: number, 
+/**
  * USER terminal (cockpit spec PR 4, decision 3): the "YOLO" launch flag. When
  * enabled, the web's one-click "Launch Claude" affordance appends
  * `--dangerously-skip-permissions` to the composed launch command, so the

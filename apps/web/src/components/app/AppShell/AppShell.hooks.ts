@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   type BoardChromeValue,
+  hotUsageWindow,
   isActive,
   type TaskDetailActions,
   type TaskTranscript,
+  type UsageHotWindow,
 } from '@/components/board';
 import { useToast } from '@/components/ui';
 import {
@@ -22,7 +24,10 @@ import { useAutoLoop } from './hooks/useAutoLoop.hooks';
 import { useBlockedIds } from './hooks/useBlockedIds.hooks';
 import { useBoard } from './hooks/useBoard.hooks';
 import { type BoardActions, useBoardActions } from './hooks/useBoardActions.hooks';
-import { useBoardChromeValue } from './hooks/useBoardChromeValue.hooks';
+import {
+  DEFAULT_USAGE_PAUSE_THRESHOLD,
+  useBoardChromeValue,
+} from './hooks/useBoardChromeValue.hooks';
 import { type CreatePrController, useCreatePr } from './hooks/useCreatePr.hooks';
 import { useEditProject } from './hooks/useEditProject.hooks';
 import { useGauntlet } from './hooks/useGauntlet.hooks';
@@ -37,6 +42,7 @@ import { useRouting } from './hooks/useRouting.hooks';
 import { useSettingsData } from './hooks/useSettingsData.hooks';
 import { useSplash } from './hooks/useSplash.hooks';
 import { useStableLogCounts } from './hooks/useStableLogCounts.hooks';
+import { useUsageSnapshot } from './hooks/useUsageSnapshot.hooks';
 import { useWorktreesValue } from './hooks/useWorktreesValue.hooks';
 
 /** The board's live data slice: the task list, selection, derived run counts, and
@@ -113,6 +119,11 @@ export interface AppShellState {
    *  low-churn value: it re-identifies only on a loop event (`nc:loop`), a settings
    *  write, or a project switch — never on a per-frame `nc:session` stream flush. */
   chrome: BoardChromeValue;
+  /** Usage-aware throttle (spec 2026-07-11): the hottest run-provider window at/above
+   *  the threshold (or `null` when cool / the meter is off), provided to the board's
+   *  task cards for the advisory manual-start chip. Low-churn (changes only on a
+   *  `nc:usage` snapshot or a threshold edit), so it rides its own context. */
+  usageHot: UsageHotWindow | null;
   board: BoardData;
   drawer: DrawerState;
   prDialog: PrDialogState;
@@ -161,6 +172,17 @@ export function useAppShell(): AppShellState {
     [settings],
   );
   const autoLoop = useAutoLoop(settings.settings?.maxConcurrency ?? 3, persistConcurrency, toast);
+  // Usage-aware throttle (spec 2026-07-11): subscribe to the shipped `nc:usage`
+  // snapshot at the shell and derive the hottest run-provider window at/above the
+  // threshold ONCE — the board pause banner (via the chrome value) and the task-card
+  // manual-start chip (via UsageHotProvider) both read this single derivation.
+  const usage = useUsageSnapshot();
+  const usageThreshold =
+    settings.settings?.autoPauseUsageThreshold ?? DEFAULT_USAGE_PAUSE_THRESHOLD;
+  const usageHot = useMemo(
+    () => hotUsageWindow(usage.meter, usageThreshold),
+    [usage.meter, usageThreshold],
+  );
   const newProject = useNewProjectFlow(routing.closeNewProject, toast);
   const board = useBoard(toast);
   const blockedIds = useBlockedIds();
@@ -230,7 +252,12 @@ export function useAppShell(): AppShellState {
   // The low-churn board-chrome cluster (appearance + auto-loop) for the
   // BoardChromeProvider — assembled in its own hook so it re-identifies only on a
   // loop event, a settings write, or a project switch (never on a stream flush).
-  const chrome = useBoardChromeValue(registry.active?.id ?? null, settings, autoLoop);
+  const chrome = useBoardChromeValue(
+    registry.active?.id ?? null,
+    settings,
+    autoLoop,
+    usageHot,
+  );
 
   return {
     routing,
@@ -238,6 +265,7 @@ export function useAppShell(): AppShellState {
     settings,
     newProject,
     chrome,
+    usageHot,
     board: {
       tasks,
       selected,

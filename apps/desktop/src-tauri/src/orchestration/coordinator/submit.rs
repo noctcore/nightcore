@@ -322,6 +322,28 @@ mod tests {
     }
 
     #[test]
+    fn manual_submit_run_is_never_usage_gated() {
+        // Decision 1 (spec 2026-07-11): the usage-aware throttle must gate ONLY the
+        // auto-loop's pickup (`tick`), never the shared `submit_run` chokepoint that
+        // manual `run_task` also traverses. If the gate leaked into `submit_run`, a
+        // hot usage window would block manual starts too — a forbidden regression.
+        // Source-level guard (mirrors the pr-fix probe test): `submit_run` must not
+        // reference the usage gate at all. The needles are `concat!`-assembled so this
+        // guard never flags itself (the joined literal never appears in this file).
+        let src = include_str!("submit.rs");
+        let reason_needle = concat!("usage_", "throttle_reason");
+        let enter_needle = concat!("enter_", "usage_pause");
+        assert!(
+            !src.contains(reason_needle),
+            "submit_run must not consult the usage gate — manual runs stay allowed"
+        );
+        assert!(
+            !src.contains(enter_needle),
+            "submit_run must not enter a usage pause — the gate lives only in tick()"
+        );
+    }
+
+    #[test]
     fn fail_run_breaker_trip_uses_the_guarded_spawn() {
         // Regression guard for the SIGABRT pattern (nightcore-2026-06-27-161645.ips): the
         // breaker-trip branch of `fail_run` must launch `interrupt_all` via
