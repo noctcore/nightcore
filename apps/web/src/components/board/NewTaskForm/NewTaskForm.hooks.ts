@@ -210,7 +210,12 @@ export function useNewTaskForm({
         files,
         MAX_IMAGES_PER_TASK - attachments.length,
       );
-      if (accepted.length > 0) setAttachments((prev) => [...prev, ...accepted]);
+      // Clamp inside the functional update: capacity is derived from the
+      // closure-captured `attachments.length`, but two adds in one render (drop +
+      // paste) would each pass their own budget check and could overshoot the cap.
+      // Re-clamping against the live `prev` keeps the total at `MAX_IMAGES_PER_TASK`.
+      if (accepted.length > 0)
+        setAttachments((prev) => [...prev, ...accepted].slice(0, MAX_IMAGES_PER_TASK));
       if (errors.length > 0) setAttachError(errors.join(' '));
     },
     [attachments],

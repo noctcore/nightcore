@@ -1,10 +1,14 @@
 import { composeStories } from '@storybook/react-vite';
 import { userEvent } from '@vitest/browser/context';
+import { useEffect } from 'react';
 import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
-import { planFirstDefault } from './NewTaskForm.hooks';
+import { MAX_IMAGES_PER_TASK } from '@/lib/attachments';
+
+import { planFirstDefault, useNewTaskForm } from './NewTaskForm.hooks';
 import * as stories from './NewTaskForm.stories';
+import type { NewTaskFormProps } from './NewTaskForm.types';
 
 const { Default } = composeStories(stories);
 
@@ -87,4 +91,54 @@ test('a $0 max-budget inherits — 0 is not a valid ceiling (#240)', async () =>
     baseBranch: null,
     attachments: [],
   });
+});
+
+// Render `useNewTaskForm` directly so a test can drive `addFiles` twice within one
+// render — a drop + a paste that both land before React re-renders. The .tsx dialog
+// can't stage that race, but the hook is where the clamp must hold.
+type Controller = ReturnType<typeof useNewTaskForm>;
+
+function Harness({ props, sink }: { props: NewTaskFormProps; sink: (c: Controller) => void }) {
+  const controller = useNewTaskForm(props);
+  useEffect(() => {
+    sink(controller);
+  });
+  return null;
+}
+
+async function mountForm(): Promise<() => Controller> {
+  let latest: Controller | undefined;
+  const props: NewTaskFormProps = {
+    open: true,
+    planGateDefault: true,
+    onCreate: vi.fn(async () => {}),
+    onClose: vi.fn(),
+  };
+  render(<Harness props={props} sink={(c) => (latest = c)} />);
+  await vi.waitFor(() => expect(latest).toBeDefined());
+  return () => latest!;
+}
+
+function pngFiles(n: number): File[] {
+  return Array.from(
+    { length: n },
+    (_, i) => new File([new Uint8Array([i + 1])], `img-${i}.png`, { type: 'image/png' }),
+  );
+}
+
+test('two image adds in one render cannot exceed the per-task cap (#243)', async () => {
+  const get = await mountForm();
+  await vi.waitFor(() => expect(get().attachments).toHaveLength(0));
+
+  // Both calls read the SAME closure-captured `attachments.length` (0 ⇒ room = MAX),
+  // so each accepts a full batch. Without re-clamping in the functional update this
+  // overshoots to 2×MAX; the fix caps the committed total at MAX_IMAGES_PER_TASK.
+  const controller = get();
+  controller.addFiles(pngFiles(MAX_IMAGES_PER_TASK));
+  controller.addFiles(pngFiles(MAX_IMAGES_PER_TASK));
+
+  // Let the first read commit, then give the racing second read time to land too.
+  await vi.waitFor(() => expect(get().attachments.length).toBeGreaterThan(0));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(get().attachments).toHaveLength(MAX_IMAGES_PER_TASK);
 });
