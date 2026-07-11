@@ -4,6 +4,8 @@ import { useWorktreesContext } from '@/lib/worktrees-context';
 import { DiffViewDialog } from '../DiffViewDialog';
 import { DiscardDialog } from '../DiscardDialog';
 import { MergePreviewDialog } from '../MergePreviewDialog';
+import { TerminalWorktreeList } from '../TerminalWorktreeList';
+import { useTerminalWorktrees } from '../worktree-terminal';
 import { WorktreeManager } from '../WorktreeManager';
 import { useWorktreeView } from './WorktreeView.hooks';
 import type { WorktreeViewProps } from './WorktreeView.types';
@@ -13,16 +15,22 @@ import type { WorktreeViewProps } from './WorktreeView.types';
  *  drives. A thin shell — all data + dialog orchestration lives in
  *  `useWorktreeView` (no state in the component body). A header Refresh reconciles
  *  + re-reads state on demand so stale entries never require an app restart. */
-export function WorktreeView({ tasks }: WorktreeViewProps) {
+export function WorktreeView({ tasks, onOpenTerminal }: WorktreeViewProps) {
   const { worktrees, refreshWorktrees } = useWorktreesContext();
   const v = useWorktreeView(tasks, worktrees);
+  // Terminal worktrees (spec PR 5): their own list + discard interlock, separate from the
+  // task-worktree flow above.
+  const term = useTerminalWorktrees();
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto p-5">
       <div className="mb-4 flex items-center justify-end">
         <Button
           variant="secondary"
-          onClick={refreshWorktrees}
+          onClick={() => {
+            refreshWorktrees();
+            term.reload();
+          }}
           title="Reconcile + re-read worktree state"
         >
           <RefreshIcon size={14} className="text-muted-foreground" />
@@ -38,8 +46,15 @@ export function WorktreeView({ tasks }: WorktreeViewProps) {
         onViewDiff={v.openDiff}
         onPreviewMerge={v.openPreview}
         onDiscard={v.openDiscard}
+        onOpenTerminal={onOpenTerminal}
         onReveal={v.reveal}
         onOpenEditor={v.openEditor}
+      />
+
+      <TerminalWorktreeList
+        worktrees={term.worktrees}
+        onOpenTerminal={onOpenTerminal}
+        onDiscard={term.openDiscard}
       />
 
       <MergePreviewDialog
@@ -69,6 +84,19 @@ export function WorktreeView({ tasks }: WorktreeViewProps) {
         error={v.discard?.error ?? null}
         onConfirm={v.confirmDiscard}
         onClose={v.closeDiscard}
+      />
+
+      {/* Terminal-worktree discard (spec PR 5c): its own dialog instance, gated on the
+          cleanup interlock (open sessions are counted + closed before removal). */}
+      <DiscardDialog
+        open={term.discard !== null}
+        branch={term.discard?.branch}
+        changedFiles={term.discard?.changedFiles}
+        terminalSessions={term.discard?.terminalSessions.length ?? 0}
+        discarding={term.discard?.discarding ?? false}
+        error={term.discard?.error ?? null}
+        onConfirm={term.confirmDiscard}
+        onClose={term.closeDiscard}
       />
     </div>
   );

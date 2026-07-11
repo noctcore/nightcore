@@ -66,6 +66,7 @@ export function worktreeRowView(
 
   return {
     branch: worktree.branch,
+    path: worktree.path,
     title,
     primaryTaskId,
     pr,

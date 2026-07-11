@@ -10,6 +10,7 @@ import {
   m,
 } from '@/components/ui';
 import type { PermissionPrompt, QuestionPrompt } from '@/lib/bridge';
+import { requestOpenTerminalInCwd } from '@/lib/terminal-links';
 
 import type { AppShellState } from './AppShell.hooks';
 
@@ -171,7 +172,15 @@ export function AppShellViews({
 
         {view === 'worktrees' && (
           <Suspense fallback={<RouteFallback />}>
-            <WorktreeView tasks={tasks} />
+            <WorktreeView
+              tasks={tasks}
+              // Open-terminal-here (spec PR 5b): stash the cwd, then route to the Terminal
+              // view, which spawns a shell there on mount (the shell owns routing).
+              onOpenTerminal={(cwd) => {
+                requestOpenTerminalInCwd(cwd);
+                routing.goto('terminal');
+              }}
+            />
           </Suspense>
         )}
 

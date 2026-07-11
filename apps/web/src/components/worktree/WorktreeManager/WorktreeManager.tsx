@@ -18,6 +18,7 @@ export function WorktreeManager({
   onViewDiff,
   onPreviewMerge,
   onDiscard,
+  onOpenTerminal,
   onReveal,
   onOpenEditor,
 }: WorktreeManagerProps) {
@@ -53,6 +54,7 @@ export function WorktreeManager({
               onViewDiff={onViewDiff}
               onPreviewMerge={onPreviewMerge}
               onDiscard={onDiscard}
+              onOpenTerminal={onOpenTerminal}
               onReveal={onReveal}
               onOpenEditor={onOpenEditor}
             />

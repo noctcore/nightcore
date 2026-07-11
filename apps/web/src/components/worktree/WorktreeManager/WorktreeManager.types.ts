@@ -34,6 +34,8 @@ export interface WorktreePrRef {
 export interface WorktreeRowView {
   /** The worktree's branch (`nc/<taskId>`), shown monospace. */
   branch: string;
+  /** The worktree's absolute dir — the cwd for the "Open terminal" action (spec PR 5b). */
+  path: string;
   /** Friendly task title when the resolver returns one. */
   title?: string;
   /** The primary owning task id (`taskIds[0]`), or `null` when the worktree owns
@@ -67,6 +69,9 @@ export interface WorktreeManagerProps {
   onPreviewMerge: (taskId: string) => void;
   /** Discard a worktree (and its branch) for the primary task. Destructive. */
   onDiscard: (taskId: string) => void;
+  /** Open a terminal in the worktree's directory (spec PR 5b) — routes to the Terminal
+   *  view and spawns a shell there. Optional — the button only renders when provided. */
+  onOpenTerminal?: (path: string) => void;
   /** Reveal the worktree directory in the OS file manager (Finder). Optional —
    *  the button only renders when provided (like `onOpenPr`). */
   onReveal?: (taskId: string) => void;

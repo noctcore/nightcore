@@ -8,6 +8,7 @@ import {
   GithubIcon,
   LogsIcon,
   MoveIcon,
+  TerminalIcon,
   TrashIcon,
 } from '@/components/ui';
 
@@ -41,6 +42,7 @@ interface WorktreeRowProps {
   onViewDiff: (taskId: string) => void;
   onPreviewMerge: (taskId: string) => void;
   onDiscard: (taskId: string) => void;
+  onOpenTerminal?: (path: string) => void;
   onReveal?: (taskId: string) => void;
   onOpenEditor?: (taskId: string) => void;
 }
@@ -56,6 +58,7 @@ export function WorktreeRow({
   onViewDiff,
   onPreviewMerge,
   onDiscard,
+  onOpenTerminal,
   onReveal,
   onOpenEditor,
 }: WorktreeRowProps) {
@@ -92,6 +95,16 @@ export function WorktreeRow({
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5">
+        {onOpenTerminal !== undefined && (
+          <Button
+            variant="secondary"
+            onClick={() => onOpenTerminal(view.path)}
+            title="Open a terminal in this worktree"
+          >
+            <TerminalIcon size={13} />
+            Terminal
+          </Button>
+        )}
         {onOpenEditor !== undefined && (
           <Button
             variant="secondary"
