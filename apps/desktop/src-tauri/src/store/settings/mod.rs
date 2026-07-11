@@ -489,6 +489,52 @@ mod tests {
     }
 
     #[test]
+    fn issue_sync_settings_default_off_and_are_serde_additive() {
+        // #97: issue writeback is opt-in (default off) and the label prefix defaults
+        // to `nc:` via `label_prefix()`.
+        let defaults = Settings::default();
+        assert!(!defaults.issue_sync_enabled);
+        assert!(defaults.issue_label_prefix.is_none());
+        assert_eq!(defaults.label_prefix(), "nc:");
+
+        // A settings.json from before the fields (no `issueSyncEnabled` /
+        // `issueLabelPrefix`) still parses, defaulting off + `nc:` — existing config
+        // isn't broken.
+        let tmp = TempDir::new().expect("temp dir");
+        let dir = tmp.path().join("config");
+        std::fs::create_dir_all(&dir).unwrap();
+        let legacy = r#"{"defaultModel":"claude-opus-4-8","defaultEffort":"medium",
+            "maxConcurrency":3,"permissionMode":"bypass","cleanupWorktrees":true,
+            "notifyOnComplete":false,"defaultRunMode":"main","projectOverrides":{}}"#;
+        std::fs::write(dir.join("settings.json"), legacy).unwrap();
+        let store = SettingsStore::load_from(dir);
+        assert!(!store.get().issue_sync_enabled);
+        assert_eq!(store.get().label_prefix(), "nc:");
+
+        // A global patch flips the toggle on and remaps the prefix; both round-trip
+        // through persistence.
+        store
+            .update(
+                serde_json::from_str(r#"{"issueSyncEnabled":true,"issueLabelPrefix":"track:"}"#)
+                    .unwrap(),
+            )
+            .expect("update");
+        assert!(store.get().issue_sync_enabled);
+        assert_eq!(store.get().label_prefix(), "track:");
+        let reloaded = SettingsStore::load_from(tmp.path().join("config"));
+        assert!(reloaded.get().issue_sync_enabled);
+        assert_eq!(reloaded.get().issue_label_prefix.as_deref(), Some("track:"));
+
+        // The empty-string sentinel clears the prefix back to the default `nc:`
+        // (mirrors `preferred_editor`), so the field can be reset without a null.
+        store
+            .update(serde_json::from_str(r#"{"issueLabelPrefix":""}"#).unwrap())
+            .expect("update");
+        assert!(store.get().issue_label_prefix.is_none());
+        assert_eq!(store.get().label_prefix(), "nc:");
+    }
+
+    #[test]
     fn context_pack_enabled_defaults_true_and_is_serde_additive() {
         // Lock (feature #4): the curated Constitution is injected by default.
         assert!(Settings::default().context_pack_enabled);

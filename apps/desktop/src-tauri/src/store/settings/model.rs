@@ -99,6 +99,20 @@ pub struct Settings {
     /// written before this field loads as `false`.
     #[serde(default)]
     pub sandbox_sessions: bool,
+    /// GitHub two-way sync (#97): master switch for issue writeback — status labels,
+    /// terminal comments, and the PR `Closes` keyword. OFF by default: writeback
+    /// MUTATES a (often public) GitHub repo, so it is opt-in exactly like
+    /// `auto_commit_on_verified` / `sandbox_sessions`. Global-only (no per-project
+    /// override). Serde-additive: a settings file written before this field loads as
+    /// `false`.
+    #[serde(default)]
+    pub issue_sync_enabled: bool,
+    /// GitHub two-way sync (#97): the prefix for the status labels Nightcore manages
+    /// (`nc:` → `nc:queued`, `nc:in-progress`, …). `None` ⇒ the default `"nc:"` (see
+    /// [`Settings::label_prefix`]). Lets a project that already uses `nc:` for something
+    /// else remap. Global-only (no per-project override in v1). Serde-additive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issue_label_prefix: Option<String>,
     /// Sidebar layout preference: `"unified"` (default) or `"classic"`. Serde-additive:
     /// legacy settings load as `None` and resolve to unified at read time.
     #[serde(default)]
@@ -390,6 +404,18 @@ impl From<McpServerEntry> for crate::contracts::McpServerEntry {
     }
 }
 
+impl Settings {
+    /// GitHub two-way sync (#97): resolve the status-label prefix, defaulting an unset
+    /// `issue_label_prefix` to `"nc:"`. The single source of the prefix so the
+    /// writeback engine (PR 2) never re-hardcodes the literal.
+    // Consumed by the writeback engine in PR 2; landed here (with the field) so the
+    // data model + resolver ship together. Exercised by the settings tests.
+    #[allow(dead_code)]
+    pub fn label_prefix(&self) -> &str {
+        self.issue_label_prefix.as_deref().unwrap_or("nc:")
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         // Derive the default model from the SAME provider the defaults ship with, so
@@ -431,6 +457,11 @@ impl Default for Settings {
             // Module #15: OS write containment is opt-in (experimental,
             // darwin-only) — sessions run unwrapped until the user enables it.
             sandbox_sessions: false,
+            // #97: issue writeback is opt-in (it mutates a often-public GitHub repo),
+            // exactly like `auto_commit_on_verified` / `sandbox_sessions`. `None` prefix
+            // resolves to the default `nc:` via `label_prefix()`.
+            issue_sync_enabled: false,
+            issue_label_prefix: None,
             sidebar_style: None,
             // No editor pinned by default — the worktree "Open in editor" action
             // auto-detects the first installed known editor until the user picks one.
