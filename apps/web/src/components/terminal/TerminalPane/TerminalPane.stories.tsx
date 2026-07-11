@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect } from 'storybook/test';
+import { expect, fn } from 'storybook/test';
 
 import { ToastProvider } from '@/components/ui';
 import type { TerminalSessionInfo } from '@/lib/bridge';
@@ -19,6 +19,7 @@ function session(over: Partial<TerminalSessionInfo>): TerminalSessionInfo {
     rows: 24,
     alive: true,
     createdAt: Date.now(),
+    title: null,
     ...over,
   };
 }
@@ -27,6 +28,7 @@ const meta = {
   title: 'Terminal/TerminalPane',
   component: TerminalPane,
   parameters: { layout: 'fullscreen' },
+  args: { onRename: fn() },
   decorators: [
     // The pane's hook uses `useToast` (the WebGL context-loss fallback), so it needs
     // a ToastProvider in scope.
@@ -60,5 +62,14 @@ export const Confined: Story = {
     await expect(
       canvas.getByText('Writes outside this folder are blocked — some shell-startup noise is normal.'),
     ).toBeInTheDocument();
+  },
+};
+
+/** A renamed session (decision 5): the header title shows the manual name instead
+ *  of the cwd leaf. */
+export const Renamed: Story = {
+  args: { session: session({ title: 'deploy shell' }) },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText('deploy shell')).toBeInTheDocument();
   },
 };

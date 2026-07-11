@@ -7,4 +7,8 @@ import type { TerminalSessionInfo } from '@/lib/bridge';
 export interface TerminalPaneProps {
   /** The session this pane displays. */
   session: TerminalSessionInfo;
+  /** Rename this session (decision 5): double-click the header title → inline edit.
+   *  The parent optimistically updates + persists; empty clears back to the cwd
+   *  leaf. */
+  onRename: (id: string, title: string) => void;
 }

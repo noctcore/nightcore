@@ -14,15 +14,20 @@ import {
   listTerminals,
   listTerminalsPersisted,
   type PersistedTerminalInfo,
+  setTerminalTitle,
   type TerminalSessionInfo,
 } from '@/lib/bridge';
 
 import type { TerminalTarget } from '../NewTabPicker';
 import {
+  clearUnread,
   closeSession,
+  getUnread,
   hasSession,
   openSession,
   reconcileSessions,
+  setActiveTerminal,
+  subscribeActivity,
 } from '../terminal-session-manager';
 import {
   atSessionCap,
@@ -81,6 +86,10 @@ export function useTerminalView(input: UseTerminalViewInput) {
   // probe existence instead. Fail closed: a probe error leaves the cwd out of the
   // set, so the action stays disabled with a hint.
   const [restorableCwds, setRestorableCwds] = useState<ReadonlySet<string>>(new Set());
+  // Per-session unread-output counts (decision 6c), mirrored from the module-level
+  // session manager. Recomputed on every activity notification so an inactive tab's
+  // badge updates as its background shell emits output.
+  const [unread, setUnread] = useState<Readonly<Record<string, number>>>({});
 
   const targets = useMemo(() => buildTargets(input), [input]);
   const confinedAvailable = supportsConfinedTerminal(hostOs);
@@ -124,6 +133,37 @@ export function useTerminalView(input: UseTerminalViewInput) {
       cancelled = true;
     };
   }, []);
+
+  // Bridge the module-level activity counters into React: recompute the per-session
+  // unread map on every notification (an inactive tab's shell emitting output) and
+  // whenever the session list changes. Re-subscribes when `sessions` changes so the
+  // closure reads the current list.
+  useEffect(() => {
+    const recompute = () => {
+      const next: Record<string, number> = {};
+      for (const s of sessions) next[s.id] = getUnread(s.id);
+      setUnread(next);
+    };
+    recompute();
+    return subscribeActivity(recompute);
+  }, [sessions]);
+
+  // Tell the manager which tab is visible: its output stops badging and its badge
+  // clears. A restored (dead) tab has no live instance, so this is a harmless no-op
+  // for those ids.
+  useEffect(() => {
+    setActiveTerminal(activeId);
+  }, [activeId]);
+
+  // Regaining window focus clears the active tab's unread (the user is looking at
+  // it again), mirroring the activation clear.
+  useEffect(() => {
+    const onFocus = () => {
+      if (activeId !== null) clearUnread(activeId);
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [activeId]);
 
   const openPicker = useCallback(() => {
     setSpawnError(null);
@@ -211,6 +251,16 @@ export function useTerminalView(input: UseTerminalViewInput) {
   const requestClose = useCallback((id: string) => setPendingClose(id), []);
   const cancelClose = useCallback(() => setPendingClose(null), []);
 
+  /** Rename a live session (decision 5): optimistically update the local descriptor
+   *  so the tab/pane relabel instantly, then persist via `terminal_set_title` (which
+   *  trims + clears on blank). An empty name falls back to the cwd leaf. */
+  const renameSession = useCallback((id: string, next: string) => {
+    const trimmed = next.trim();
+    const title = trimmed === '' ? null : trimmed;
+    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title } : s)));
+    void setTerminalTitle(id, title);
+  }, []);
+
   const confirmClose = useCallback(() => {
     const id = pendingClose;
     if (id === null) return;
@@ -259,10 +309,12 @@ export function useTerminalView(input: UseTerminalViewInput) {
     sessions,
     restored,
     activeId,
+    unread,
     canAddTab: !atSessionCap(sessions),
     selectTab,
     requestClose,
     dismissRestored,
+    renameSession,
     pendingClose,
     confirmClose,
     cancelClose,

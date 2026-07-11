@@ -13,8 +13,8 @@
 //! the binary Channel, never `nc:*` events.
 //!
 //! ## Layout (each file a flat sibling under this manifest)
-//!  - [`registry`] — the live-session map, live cap (8), spawn/write/resize/kill/
-//!    list/sessions-in-dir, project-scoped scrollback persist root.
+//!  - [`registry`] — the live-session map, live cap (12), spawn/write/resize/kill/
+//!    list/sessions-in-dir/set-title, project-scoped scrollback persist root.
 //!  - [`session`] — one PTY: `portable-pty` spawn + reader/coalescer threads +
 //!    write/resize/kill.
 //!  - [`shell`] — platform-aware shell resolution + interactive-launch flags (pure,

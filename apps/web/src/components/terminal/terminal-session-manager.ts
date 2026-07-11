@@ -54,10 +54,68 @@ interface CachedSession {
   webglController: WebglController | null;
   /** Guards the one-time renderer load against re-attach churn. */
   rendererStarted: boolean;
+  /** Unread-output activity count (decision 6c): batches that landed while this
+   *  session was NOT the visible tab. Generic byte-activity — never Claude-output
+   *  parsing. Cleared when the session becomes active or the window regains focus.
+   *  Lives here (module-level, not React) so it survives the view's remounts. */
+  unread: number;
 }
 
 const cache = new Map<string, CachedSession>();
 const encoder = new TextEncoder();
+
+/** Activity (unread-badge) plumbing — the session manager is module-level, so a
+ *  tiny subscription bridges its counters to the React hook that renders badges. */
+type ActivityListener = () => void;
+const activityListeners = new Set<ActivityListener>();
+/** The session id currently visible/active. Output for this id never badges; every
+ *  other session's output bumps its unread count. `null` when no tab is active. */
+let visibleId: string | null = null;
+
+function notifyActivity(): void {
+  for (const fn of activityListeners) fn();
+}
+
+/** Record one output batch for `id`: bump its unread badge + notify, unless it is
+ *  the visible tab (which never accrues unread). A no-op for an unknown id. */
+function recordActivity(id: string): void {
+  if (id === visibleId) return;
+  const entry = cache.get(id);
+  if (entry === undefined) return;
+  entry.unread += 1;
+  notifyActivity();
+}
+
+/** Subscribe to activity changes (any unread bump or clear). Returns an
+ *  unsubscribe. The hook re-derives per-tab badge counts on each notification. */
+export function subscribeActivity(fn: ActivityListener): () => void {
+  activityListeners.add(fn);
+  return () => {
+    activityListeners.delete(fn);
+  };
+}
+
+/** The current unread-output count for a session (0 for unknown / visible ids). */
+export function getUnread(id: string): number {
+  return cache.get(id)?.unread ?? 0;
+}
+
+/** Clear a session's unread badge (focus regain / activation). Notifies only when
+ *  it actually changed, so a no-op clear doesn't churn the subscribers. */
+export function clearUnread(id: string): void {
+  const entry = cache.get(id);
+  if (entry === undefined || entry.unread === 0) return;
+  entry.unread = 0;
+  notifyActivity();
+}
+
+/** Mark `id` the visible/active session: it stops accruing unread and its badge
+ *  clears immediately. `null` (no active tab) leaves every session eligible to
+ *  badge. In grid mode (PR 2) the visible set widens to every mounted pane. */
+export function setActiveTerminal(id: string | null): void {
+  visibleId = id;
+  if (id !== null) clearUnread(id);
+}
 
 /** Spawn a shell and cache a live xterm bound to its output stream. The xterm is
  *  created BEFORE `spawnTerminal` so the channel's first bytes (banner/prompt) are
@@ -72,13 +130,21 @@ export async function openSession(
   const fit = new FitAddon();
   term.loadAddon(fit);
 
+  // The id is server-minted at spawn and only known once it resolves, but output
+  // arrives strictly after — so a holder lets the byte callback (the one place
+  // every batch lands) record activity for the right session on each batch.
+  let sessionId: string | null = null;
   let handle: TerminalHandle;
   try {
-    handle = await spawnTerminal(opts, (bytes) => term.write(bytes));
+    handle = await spawnTerminal(opts, (bytes) => {
+      term.write(bytes);
+      if (sessionId !== null) recordActivity(sessionId);
+    });
   } catch (err) {
     term.dispose();
     throw err;
   }
+  sessionId = handle.session.id;
 
   const host = document.createElement('div');
   host.style.width = '100%';
@@ -94,6 +160,7 @@ export async function openSession(
     webgl,
     webglController: null,
     rendererStarted: false,
+    unread: 0,
   });
   return handle.session;
 }

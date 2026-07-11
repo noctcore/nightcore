@@ -61,6 +61,9 @@ struct PersistCtx {
     shell: String,
     confined: bool,
     created_at: u64,
+    /// The manual tab name (decision 5), shared with the live session so a rename
+    /// after spawn is picked up by the next scrollback flush.
+    title: Arc<Mutex<Option<String>>>,
 }
 
 /// A live PTY session. Owns the master (for resize), the writer (for input), and a
@@ -79,6 +82,10 @@ pub(crate) struct PtySession {
     writer: Box<dyn Write + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
     alive: Arc<AtomicBool>,
+    /// The user's manual name for this tab (decision 5), or `None` when unnamed.
+    /// Behind an `Arc<Mutex<_>>` shared with the coalescer's `PersistCtx` so a
+    /// rename survives a scrollback flush + a read-only restore.
+    title: Arc<Mutex<Option<String>>>,
 }
 
 impl PtySession {
@@ -136,6 +143,7 @@ impl PtySession {
 
         let alive = Arc::new(AtomicBool::new(true));
         let scrollback = Arc::new(Mutex::new(ScrollbackRing::with_defaults()));
+        let title: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let created_at = persist::now_ms();
 
         let (tx, rx) = mpsc::channel::<Vec<u8>>();
@@ -151,6 +159,7 @@ impl PtySession {
                 shell: shell.clone(),
                 confined: opts.confined,
                 created_at,
+                title: Arc::clone(&title),
             },
         );
 
@@ -166,7 +175,17 @@ impl PtySession {
             writer,
             killer,
             alive,
+            title,
         })
+    }
+
+    /// Set (or clear, with `None`) the user's manual name for this tab. `&self`:
+    /// the title is behind an `Arc<Mutex<_>>`, so the registry updates it without a
+    /// mutable session borrow. The next scrollback flush persists it via `PersistCtx`.
+    pub(crate) fn set_title(&self, title: Option<String>) {
+        if let Ok(mut slot) = self.title.lock() {
+            *slot = title;
+        }
     }
 
     /// Write user input to the shell. Small keystroke/paste writes; a closed pty
@@ -219,6 +238,7 @@ impl PtySession {
             rows: self.rows,
             alive: self.is_alive(),
             created_at: self.created_at,
+            title: self.title.lock().ok().and_then(|t| t.clone()),
         }
     }
 }
@@ -356,6 +376,12 @@ fn persist_scrollback(scrollback: &Arc<Mutex<ScrollbackRing>>, ctx: &PersistCtx)
         Ok(ring) => ring.snapshot(),
         Err(_) => return,
     };
+    let title = ctx
+        .title
+        .lock()
+        .ok()
+        .and_then(|t| t.clone())
+        .unwrap_or_default();
     let record = PersistedScrollback::new(
         ctx.id.clone(),
         ctx.cwd.clone(),
@@ -363,6 +389,7 @@ fn persist_scrollback(scrollback: &Arc<Mutex<ScrollbackRing>>, ctx: &PersistCtx)
         ctx.confined,
         ctx.created_at,
         persist::now_ms(),
+        title,
         &snapshot,
     );
     if let Err(e) = persist::write(&ctx.dir, &record) {

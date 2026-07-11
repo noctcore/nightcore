@@ -347,6 +347,7 @@ pub fn run() {
             // Channel, not events. USER-ONLY — never wired to an agent session.
             commands::terminal::terminal_spawn,
             commands::terminal::terminal_write,
+            commands::terminal::terminal_set_title,
             commands::terminal::terminal_resize,
             commands::terminal::terminal_kill,
             commands::terminal::terminal_list,

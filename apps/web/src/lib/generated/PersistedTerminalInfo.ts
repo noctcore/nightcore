@@ -9,4 +9,10 @@ export type PersistedTerminalInfo = { id: string, cwd: string, shell: string, co
 /**
  * Epoch-ms of the last scrollback flush to disk.
  */
-updatedAt: number, };
+updatedAt: number, 
+/**
+ * The user's manual name for the session (decision 5), or `None` when it was
+ * never renamed — so a restored (read-only) tab shows the same name it had
+ * while live, and old persisted files (no `title`) restore to the cwd leaf.
+ */
+title: string | null, };

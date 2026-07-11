@@ -1,6 +1,17 @@
 import { afterEach, expect, test, vi } from 'vitest';
 
-import { attachSession, closeSession, ensureRenderer, openSession } from './terminal-session-manager';
+import { writeTerminal } from '@/lib/bridge';
+
+import {
+  attachSession,
+  clearUnread,
+  closeSession,
+  ensureRenderer,
+  getUnread,
+  openSession,
+  setActiveTerminal,
+  subscribeActivity,
+} from './terminal-session-manager';
 import { setWebglLoader, type WebglController } from './terminal-webgl';
 
 // Outside Tauri the bridge drives the in-memory echo terminal, so `openSession`
@@ -58,6 +69,39 @@ test('a WebGL session loads the renderer once and falls back to DOM on context l
   detach();
   await closeSession(session.id);
   container.remove();
+});
+
+test('output for a non-visible session accrues an unread badge, cleared on activation', async () => {
+  // Nothing visible → every session's output badges. The echo bridge echoes any
+  // written bytes back through the SAME callback that records activity, so a write
+  // simulates background shell output arriving on an inactive tab.
+  setActiveTerminal(null);
+  const notified = vi.fn();
+  const unsub = subscribeActivity(notified);
+
+  const session = await openSession(
+    { cwd: '/tmp/background', confined: false, cols: 80, rows: 24 },
+    false,
+  );
+  await writeTerminal(session.id, new TextEncoder().encode('ls\r'));
+  await vi.waitFor(() => expect(getUnread(session.id)).toBeGreaterThan(0));
+  expect(notified).toHaveBeenCalled();
+
+  // Activating the tab clears its badge and stops it accruing more.
+  setActiveTerminal(session.id);
+  expect(getUnread(session.id)).toBe(0);
+
+  // Output for the now-visible session does not badge.
+  await writeTerminal(session.id, new TextEncoder().encode('pwd\r'));
+  expect(getUnread(session.id)).toBe(0);
+
+  // A redundant clear is a no-op (no throw, stays 0).
+  clearUnread(session.id);
+  expect(getUnread(session.id)).toBe(0);
+
+  unsub();
+  setActiveTerminal(null);
+  await closeSession(session.id);
 });
 
 test('a DOM session never invokes the WebGL loader', async () => {

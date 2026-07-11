@@ -265,6 +265,7 @@ export function echoSpawnTerminal(
     rows: opts.rows,
     alive: true,
     createdAt: Date.now(),
+    title: null,
   };
   queueMicrotask(() => {
     echoHandlers

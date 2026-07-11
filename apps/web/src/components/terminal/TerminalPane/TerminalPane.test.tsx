@@ -1,4 +1,5 @@
 import { composeStories } from '@storybook/react-vite';
+import { userEvent } from '@vitest/browser/context';
 import { afterEach, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
@@ -10,7 +11,7 @@ import { DEFAULT_TERMINAL_COLS, DEFAULT_TERMINAL_ROWS } from '../terminal-shared
 import { TerminalPane } from './TerminalPane';
 import * as stories from './TerminalPane.stories';
 
-const { Unconfined, Confined } = composeStories(stories);
+const { Unconfined, Confined, Renamed } = composeStories(stories);
 
 // Live sessions opened by a test are disposed here so the module-level manager
 // cache doesn't leak an xterm across tests.
@@ -56,10 +57,20 @@ test('attaches a live xterm instance for a real (echo) session', async () => {
 
   render(
     <ToastProvider>
-      <TerminalPane session={session} />
+      <TerminalPane session={session} onRename={() => {}} />
     </ToastProvider>,
   );
   // The pane's attach effect opens the terminal into its container — the xterm
   // screen element appears once mounted.
   await vi.waitFor(() => expect(document.querySelector('.xterm')).not.toBeNull());
+});
+
+test('double-clicking the header title opens the inline rename and commits on Enter', async () => {
+  const onRename = vi.fn();
+  const screen = render(<Renamed onRename={onRename} />);
+  await userEvent.dblClick(screen.getByText('deploy shell').element());
+  const input = screen.getByRole('textbox', { name: /Rename/ });
+  await input.fill('build shell');
+  await userEvent.keyboard('{Enter}');
+  expect(onRename).toHaveBeenCalledWith('story-session', 'build shell');
 });

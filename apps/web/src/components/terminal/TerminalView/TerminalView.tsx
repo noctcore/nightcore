@@ -52,10 +52,12 @@ export function TerminalView({
         onDismiss={v.dismissRestored}
         onNewTab={v.picker.openPicker}
         canAddTab={v.canAddTab}
+        onRename={v.renameSession}
+        unread={v.unread}
       />
 
       {activeLive !== null ? (
-        <TerminalPane key={activeLive.id} session={activeLive} />
+        <TerminalPane key={activeLive.id} session={activeLive} onRename={v.renameSession} />
       ) : activeRestored !== null ? (
         <TerminalReadonlyPane
           key={activeRestored.id}

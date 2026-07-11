@@ -14,6 +14,7 @@ function session(over: Partial<TerminalSessionInfo> & { id: string }): TerminalS
     rows: 24,
     alive: true,
     createdAt: Date.now(),
+    title: null,
     ...over,
   };
 }
@@ -26,6 +27,7 @@ function persisted(id: string): PersistedTerminalInfo {
     confined: false,
     createdAt: 0,
     updatedAt: 1,
+    title: null,
   };
 }
 
@@ -44,10 +46,12 @@ const meta = {
     restored: [],
     activeId: 'task-91',
     canAddTab: true,
+    unread: {},
     onSelect: fn(),
     onClose: fn(),
     onDismiss: fn(),
     onNewTab: fn(),
+    onRename: fn(),
   },
 } satisfies Meta<typeof TerminalTabs>;
 
@@ -82,12 +86,32 @@ export const WithRestoredTabs: Story = {
   },
 };
 
-/** At the 8-session cap — the new-tab button is disabled. */
+/** At the 12-session cap — the new-tab button is disabled. */
 export const CapReached: Story = {
   args: {
-    sessions: Array.from({ length: 8 }, (_, i) => session({ id: `task-${i}` })),
+    sessions: Array.from({ length: 12 }, (_, i) => session({ id: `task-${i}` })),
     activeId: 'task-0',
     canAddTab: false,
+  },
+};
+
+/** A manually renamed tab (decision 5) shows its custom title, not the cwd leaf. */
+export const WithCustomTitle: Story = {
+  args: {
+    sessions: [
+      session({ id: 'task-42', title: 'deploy shell' }),
+      session({ id: 'task-91' }),
+    ],
+    activeId: 'task-91',
+  },
+};
+
+/** Unread-output badges (decision 6c) on the two inactive tabs; the active tab
+ *  never badges. */
+export const WithActivityBadges: Story = {
+  args: {
+    activeId: 'task-91',
+    unread: { 'task-42': 3, 'task-12': 128 },
   },
 };
 
@@ -96,5 +120,17 @@ export const SelectsTab: Story = {
   play: async ({ args, canvas }) => {
     await userEvent.click(canvas.getByRole('tab', { name: /task-12/ }));
     await expect(args.onSelect).toHaveBeenCalledWith('task-12');
+  },
+};
+
+/** Play test: double-clicking a tab label opens the inline rename input; Enter
+ *  commits the new name via `onRename`. */
+export const RenamesTab: Story = {
+  play: async ({ args, canvas }) => {
+    await userEvent.dblClick(canvas.getByRole('tab', { name: /task-91/ }));
+    const input = canvas.getByRole('textbox', { name: /Rename/ });
+    await userEvent.clear(input);
+    await userEvent.type(input, 'deploy shell{Enter}');
+    await expect(args.onRename).toHaveBeenCalledWith('task-91', 'deploy shell');
   },
 };

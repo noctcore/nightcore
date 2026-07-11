@@ -96,6 +96,17 @@ export async function writeTerminal(id: string, data: Uint8Array): Promise<void>
   await invoke('terminal_write', { id, data: Array.from(data) });
 }
 
+/** Set (or clear, with `null`) a session's manual tab name (decision 5). The
+ *  server trims + treats blank as "clear", and persists the name so it survives a
+ *  read-only restore. No-op outside Tauri — the caller's optimistic local update
+ *  still renames the echo tab in Storybook / `dogfood:ui`. Dynamic import per the
+ *  bridge's Tauri-core isolation rule. */
+export async function setTerminalTitle(id: string, title: string | null): Promise<void> {
+  if (!isTauri()) return;
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('terminal_set_title', { id, title });
+}
+
 /** Resize a session's PTY (fit addon + ResizeObserver → SIGWINCH). No-op outside
  *  Tauri (the echo has no geometry). */
 export async function resizeTerminal(
@@ -154,7 +165,7 @@ export async function readTerminalPersisted(
   id: string,
 ): Promise<PersistedTerminalScrollback> {
   return tauriInvoke<PersistedTerminalScrollback>('terminal_read_persisted', { id }, {
-    info: { id, cwd: '', shell: '', confined: false, createdAt: 0, updatedAt: 0 },
+    info: { id, cwd: '', shell: '', confined: false, createdAt: 0, updatedAt: 0, title: null },
     dataBase64: '',
   });
 }
