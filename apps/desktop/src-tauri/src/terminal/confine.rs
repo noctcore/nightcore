@@ -3,9 +3,10 @@
 //! Mirrors the engine's Seatbelt write-sandbox (`providers/claude/sandbox.ts`) but
 //! for a Rust-spawned shell: a `(allow default)` + `(deny file-write*)` profile
 //! with `file-write*` re-allowed only under the session cwd (plus the git common
-//! dir for a worktree cwd, `/dev`, and the temp trees so an ordinary shell still
-//! works). Reads and network stay open — this contains WRITES to the workspace, it
-//! does not air-gap.
+//! dir for a worktree cwd, `/dev`, the temp trees, and the Claude Code per-session
+//! STATE dirs under `~/.claude` — see [`claude_state_write_roots`] — so an ordinary
+//! shell AND an in-terminal `claude` still work). Reads and network stay open — this
+//! contains WRITES to the workspace, it does not air-gap.
 //!
 //! **FAIL CLOSED** — unlike the engine's fail-OPEN sandbox (an experimental,
 //! default-off agent feature that must never strand a task), a user who explicitly
@@ -93,6 +94,47 @@ pub(crate) fn git_common_write_root(cwd: &Path) -> Option<PathBuf> {
     Some(common)
 }
 
+/// The Claude Code per-session STATE subdirectories under the user's `~/.claude`
+/// that a confined `claude` must be able to WRITE (verified against the shipped CLI):
+/// the user's SessionStart hook does `mkdir ~/.claude/session-env/<uuid>`, and the
+/// TUI writes transcripts, todos, shell snapshots, telemetry, and logs. Each becomes
+/// its own `subpath` carve-out, so writes land ONLY inside these leaves.
+///
+/// SECURITY — the `~/.claude` ROOT is DELIBERATELY ABSENT here, and so is everything
+/// else under it (`settings.json`, `hooks/`, `skills/`, `agents/`, `commands/`,
+/// `plugins/`, `CLAUDE.md`). Those are CONFIG, and a confined shell that could rewrite
+/// them would ESCAPE the sandbox: Claude Code hooks execute OUTSIDE the Seatbelt
+/// profile, so a writable `settings.json` / `hooks/` is arbitrary code execution as
+/// the user. Only ephemeral per-session STATE is writable; config stays read-only.
+/// (Grilled + locked 2026-07-11 — do not add the root or any config path here.)
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+const CLAUDE_STATE_DIRS: [&str; 7] = [
+    "session-env",
+    "projects",
+    "todos",
+    "shell-snapshots",
+    "statsig",
+    "logs",
+    "debug",
+];
+
+/// The writable Seatbelt roots for a confined session's Claude state: each
+/// [`CLAUDE_STATE_DIRS`] leaf under `<home>/.claude`, canonicalized where it already
+/// exists (else the lexical path, so a not-yet-created `session-env` still gets a
+/// rule — the SessionStart `mkdir` needs the carve-out to exist BEFORE the dir does).
+/// The `.claude` ROOT itself is NEVER returned (config-write = sandbox escape via
+/// hooks — see [`CLAUDE_STATE_DIRS`]). Pure — pass a resolved home. Callers must have
+/// already canonicalized `home` so a non-existent leaf's lexical path still matches
+/// the kernel-resolved path Seatbelt sees.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn claude_state_write_roots(home: &Path) -> Vec<String> {
+    let claude_dir = home.join(".claude");
+    CLAUDE_STATE_DIRS
+        .iter()
+        .map(|leaf| realpath_or(&claude_dir.join(leaf)))
+        .collect()
+}
+
 /// `canonicalize` that degrades to the lexical absolute path when the target can't
 /// be resolved — a not-yet-created optional root still gets a rule.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -121,8 +163,20 @@ fn shell_state_env(state_dir: &Path) -> Vec<(String, String)> {
     ]
 }
 
+/// The user's canonicalized home directory (`HOME` on macOS), or `None` when it is
+/// unset/empty. Canonicalized so the `~/.claude/<state-dir>` carve-outs match the
+/// kernel-resolved path Seatbelt sees even if `HOME` carries a symlink component.
+#[cfg(target_os = "macos")]
+fn confined_home_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .filter(|h| !h.is_empty())
+        .map(PathBuf::from)
+        .map(|h| std::fs::canonicalize(&h).unwrap_or(h))
+}
+
 /// The writable roots for one confined session: the (canonicalized) cwd, the git
-/// common dir for a worktree cwd, `/dev`, and the darwin temp trees. Deduped,
+/// common dir for a worktree cwd, `/dev`, the darwin temp trees, and the Claude Code
+/// per-session state dirs under `~/.claude` (never the `.claude` root). Deduped,
 /// order-stable. Returns an error only if the cwd itself can't be canonicalized
 /// (fail-closed: a session with no writable cwd is useless and the ask was for
 /// containment).
@@ -150,6 +204,16 @@ fn derive_writable_roots(cwd: &Path) -> Result<Vec<String>, String> {
     add(realpath_or(&std::env::temp_dir()));
     add("/private/tmp".to_string());
     add("/private/var/folders".to_string());
+    // Claude Code per-session STATE dirs under ~/.claude, so an in-terminal `claude`
+    // (and the user's SessionStart hook's `mkdir ~/.claude/session-env/<uuid>`) can
+    // write instead of EPERM-ing. The `.claude` ROOT + config stay denied — see
+    // `claude_state_write_roots`. When HOME is unset the carve-outs are simply omitted
+    // (an in-terminal `claude` then can't run, but the confined shell still works).
+    if let Some(home) = confined_home_dir() {
+        for root in claude_state_write_roots(&home) {
+            add(root);
+        }
+    }
     Ok(roots)
 }
 
@@ -260,6 +324,55 @@ mod tests {
             );
             assert_eq!(p.file_name().unwrap(), std::ffi::OsStr::new(leaf));
         }
+    }
+
+    #[test]
+    fn claude_state_roots_allow_each_state_dir_but_never_the_claude_root() {
+        let home = Path::new("/Users/tester");
+        let roots = claude_state_write_roots(home);
+
+        // Exactly the grilled state dirs, each a leaf UNDER ~/.claude.
+        assert_eq!(roots.len(), CLAUDE_STATE_DIRS.len());
+        for leaf in [
+            "session-env",
+            "projects",
+            "todos",
+            "shell-snapshots",
+            "statsig",
+            "logs",
+            "debug",
+        ] {
+            let expected = format!("/Users/tester/.claude/{leaf}");
+            assert!(
+                roots.contains(&expected),
+                "the {leaf} state dir must be a writable root"
+            );
+        }
+
+        // SECURITY INVARIANT: the ~/.claude ROOT is NEVER a writable root — a confined
+        // shell that could rewrite settings.json / hooks/ would escape (hooks run
+        // outside the sandbox). Config-write must stay denied.
+        assert!(
+            !roots.iter().any(|r| r == "/Users/tester/.claude"),
+            "the .claude root must not be writable"
+        );
+    }
+
+    #[test]
+    fn profile_carves_out_state_dirs_and_omits_the_claude_root_allow() {
+        let profile = build_profile(&claude_state_write_roots(Path::new("/Users/tester")));
+        // Each state dir is an explicit allow…
+        assert!(
+            profile.contains("(allow file-write* (subpath \"/Users/tester/.claude/session-env\"))")
+        );
+        assert!(profile.contains("(allow file-write* (subpath \"/Users/tester/.claude/todos\"))"));
+        assert!(profile.contains("(allow file-write* (subpath \"/Users/tester/.claude/debug\"))"));
+        // …but the `.claude` ROOT itself is NOT allowed (the closing-quote form only
+        // matches an allow of the bare root, not the `/session-env`-suffixed carve-outs).
+        assert!(
+            !profile.contains("(allow file-write* (subpath \"/Users/tester/.claude\"))"),
+            "the .claude root must never get a write-allow — config-write is the escape vector"
+        );
     }
 
     #[test]
