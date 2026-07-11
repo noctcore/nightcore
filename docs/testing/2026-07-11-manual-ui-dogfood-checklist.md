@@ -81,6 +81,23 @@ Verifying · Waiting Approval · Done · Failed.
 - [ ] Drag a `ready` card back onto **Backlog** → **no-op** (no silent demotion to backlog).
 - [ ] A running (`in_progress`) or `verifying` card is **pinned** — it won't start a drag.
 
+**Board keyboard layer** (board in focus, cursor NOT in a field, no dialog open):
+
+- [ ] Press **N** → the **New Task** composer opens (the header's New task button carries a
+      `N` hint). Press **Esc** with a card drawer open → the drawer closes. Reopen a card,
+      then press **/** → focus jumps to the header **search** box ("Search tasks by keyword…",
+      `/` hint); type a fragment → the columns filter live.
+
+**Inline edit + duplicate** (task drawer):
+
+- [ ] Open a **not-yet-run** card → the drawer's **Overview** shows editable **Title** and
+      **Description** fields (a "⌘↵ or blur to save" hint under the description). Change the
+      title and press **Enter** (or blur) → it persists on the card. (A task that has already
+      run shows a read-only description instead of the editor.)
+- [ ] In a **settled** task's drawer footer (Backlog / Failed / Done), click **Duplicate** →
+      a fresh **Backlog** copy appears (same title + kind + config, no run state) and the drawer
+      reopens on the copy. Duplicate is hidden while a task is running/verifying.
+
 ## §3 — Plan-park / plan-approval gate (~3 min)
 
 Setup: **New task** (board header). Title it e.g. "add HELLO.md", give a one-line
@@ -106,6 +123,13 @@ Setup: let the §3 task finish. A Build task runs in an isolated worktree, then 
       **Cancel run** (not Run).
 - [ ] When the reviewer verdict lands, the drawer's **Result → Reviewer verdict** shows the
       parsed verdict badge (**Passed / Changes requested / Failed**) over the verdict markdown.
+- [ ] The drawer's model pill (**Model & effort** row, and the card's top-left badge) reflects
+      the model the run **actually used** — not just the requested override (a no-override run
+      reads **Default**).
+- [ ] If the task parks for review, the **Result → Evidence** band renders the review receipt
+      ("the receipt for this decision · cost is approximate"): a trust summary, a **Diff** line
+      (`N file(s) · +adds −dels` for worktree tasks), and the gauntlet / guardrail sections the
+      reviewer saw.
 - [ ] If it parked at Waiting Approval on the verdict, the panel shows **Accept · Rerun ·
       Reject**. Click **Rerun** → "Rerunning…" re-runs verification; then **Accept** →
       "Accepting…" and the card moves to **Done**. (A structure-lock failure instead shows a
@@ -154,15 +178,29 @@ Setup: press `L`, then **⌘T** to open the terminal picker.
 - [ ] Fail-closed check: the confined spawn either sandboxes or **refuses with an inline
       error** in the picker (the picker stays open) — it never silently launches unconfined.
 
+## §7 — Checks Manager on the Enforce stage (~2 min, optional)
+
+Setup: press **E** (Conventions / Enforce stage) and run a harness scan to completion — the
+section tabs (**Conventions · Checks · Policy**) render on the **results** screen. Click **Checks**.
+
+- [ ] The **Armed checks** panel lists each armed gate: a **name**, a **kind** pill, its
+      **command**, and an **arm/disarm toggle**. A **Run armed checks now** button sits top-right.
+- [ ] Toggle a check **off** then back **on** → the state persists (the row dims while disabled;
+      re-open the view to confirm it stuck).
+- [ ] Click **Run armed checks now** → the button shows **Running…**, then a banner reports
+      **All passed** or **Failed at {check}** with a per-check result glyph (`✓ / ✕ / – / ~`).
+- [ ] With nothing armed, the panel shows the empty state ("No checks armed yet. Arm a generated
+      ESLint plugin or convention check from the Harden stage…") rather than a blank panel.
+
 ---
 
 ## Where this fits
 
 | Layer | Covers | This checklist |
 |---|---|---|
-| MockRuntime Rust suite (`apps/desktop/src-tauri/src/e2e/`) | engine/store/lifecycle contracts, headless | — |
+| MockRuntime Rust suite (`apps/desktop/src-tauri/src/e2e/`) | engine/store/lifecycle contracts incl. the run-failure branch + circuit breaker, headless | — |
 | `bun run dogfood:gh` harness | GitHub PR/issue flows vs a scratch repo | — |
-| **This doc** | WKWebView-only interactive UI: terminal cockpit, board DnD, plan gate, review + diff/merge dialogs, usage meter + Keychain, confined tabs | **✓** |
+| **This doc** | WKWebView-only interactive UI: terminal cockpit, board DnD + keyboard layer + inline-edit/duplicate, plan gate, review verdict + evidence bundle + diff/merge dialogs, usage meter + Keychain, confined tabs, Checks Manager | **✓** |
 
 Log any failure with the offending section number and the relevant lines from
 `~/Library/Logs/dev.shirone.nightcore/`.

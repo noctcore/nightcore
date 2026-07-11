@@ -17,6 +17,12 @@
 //! - [`slot_leak`] — the past **cancel→re-run slot-leak critical** (2026-06-29 audit):
 //!   a stale terminal for a superseded session must NOT release the live re-run's
 //!   slot. Composes the real provider correlation + real `SlotManager` + real store.
+//! - [`failure_breaker`] — the FAILURE branch of the lifecycle (`run_lifecycle`'s
+//!   mirror): a run settling `Failed` + `finish_run` feeding the real `CircuitBreaker`.
+//!   Asserts a failed terminal frees its slot (no leak on failure) and the breaker
+//!   trips on exactly the broken-setup signals — a windowed threshold of transient
+//!   failures or a single fatal one — while a clean run clears the window and an abort
+//!   is spared.
 //! - [`crash_requeue`] — the boot crash-recovery path: `reset_after_crash` returns
 //!   the orphaned tasks + the reconcile core requeues stranded `InProgress`/`Verifying`
 //!   tasks, over a real `TaskStore`.
@@ -43,6 +49,7 @@
 
 mod boot_state;
 mod crash_requeue;
+mod failure_breaker;
 mod harness;
 mod run_lifecycle;
 mod slot_leak;
