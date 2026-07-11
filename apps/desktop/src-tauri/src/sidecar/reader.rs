@@ -281,10 +281,23 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
                     .get("sdkSessionId")
                     .and_then(Value::as_str)
                     .map(|s| s.to_string());
+                // T13 (badge honesty): capture the model the engine ACTUALLY resolved
+                // for this run (`SessionReadyEvent.model`), so the board badge reflects
+                // what ran rather than the requested override (which may be `None` =
+                // "inherit the provider default"). Re-stamped on every session start, so
+                // a re-run with a different model self-corrects.
+                let actual_model = event
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
                 apply_and_emit(app, &store, &task_id, |task| {
                     task.session_id = Some(sid);
                     if let Some(ref sdk_id) = sdk_session_id {
                         task.sdk_session_id = Some(sdk_id.clone());
+                    }
+                    if let Some(ref m) = actual_model {
+                        task.actual_model = Some(m.clone());
                     }
                 });
             }

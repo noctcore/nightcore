@@ -249,4 +249,15 @@ issueState?: string,
  * one-time UI notice (e.g. "sync paused: the token can't write labels on this
  * repo"). `None` when sync is healthy or off. Not a secret — never carries a token.
  */
-issueSyncError?: string, };
+issueSyncError?: string, 
+/**
+ * T13 (badge honesty): the model id the run ACTUALLY used, captured from the
+ * engine's `session-started`/`session-ready` event (`SessionReadyEvent.model`).
+ * Distinct from `model` (the REQUESTED override, which is `None` for "inherit the
+ * provider default" — the source of the old "any unknown id renders Opus 4.8"
+ * dishonesty). The board badge prefers this once a run has reported it, so the
+ * card reflects what actually ran, not a guessed default. Re-stamped on every
+ * `session-started`, so a re-run with a different model self-corrects. `None`
+ * until the first run reports it. Serde-additive: a legacy task loads as `None`.
+ */
+actualModel?: string, };
