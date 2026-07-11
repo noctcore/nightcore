@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { EMPTY_TRANSCRIPT, foldTranscript, type TaskTranscript } from '@/components/board';
+import { EMPTY_TRANSCRIPT, foldTranscript, isActive, type TaskTranscript } from '@/components/board';
 import type { ToastApi } from '@/components/ui';
 import type { SessionEnvelope, Task } from '@/lib/bridge';
 import { listTasks, onProjectEvent, onSessionEvent, onTaskEvent, readTranscript } from '@/lib/bridge';
@@ -9,6 +9,34 @@ import { listTasks, onProjectEvent, onSessionEvent, onTaskEvent, readTranscript 
  *  immediately so the final tokens render promptly (not on the next rAF, which a
  *  backgrounded tab may throttle). */
 const TERMINAL_EVENTS: ReadonlySet<string> = new Set(['session-completed', 'session-failed']);
+
+/** Drop the folded transcripts the board no longer needs resident. A stream is
+ *  RETAINED only when its task is the open drawer's selection OR still owns a live
+ *  session (`in_progress`/`verifying`); every other task's transcript is evicted.
+ *  A completed/idle card's transcript is re-foldable on demand from its persisted
+ *  JSONL when the drawer reopens (see the `readTranscript` reseed effect), so
+ *  holding it resident only grows the heap for the project's lifetime — the exact
+ *  unbounded accumulation this guards against across a long, many-run session
+ *  (#204). A stream whose task is absent from `tasks` (its record hasn't loaded
+ *  yet, or it was just deleted) is kept — we can't prove it safe to drop and that
+ *  window is transient. Returns the SAME reference when nothing is evicted so
+ *  `setStreams` bails out without a wasted Board render. Pure. */
+function evictStaleStreams(
+  streams: Record<string, TaskTranscript>,
+  tasks: Task[],
+  selectedId: string | null,
+): Record<string, TaskTranscript> {
+  const statusById = new Map(tasks.map((t) => [t.id, t.status] as const));
+  const next: Record<string, TaskTranscript> = {};
+  let changed = false;
+  for (const [id, transcript] of Object.entries(streams)) {
+    const status = statusById.get(id);
+    const keep = id === selectedId || status === undefined || isActive(status);
+    if (keep) next[id] = transcript;
+    else changed = true;
+  }
+  return changed ? next : streams;
+}
 
 /** The board's task + stream state, reseeded whenever a project is activated.
  *
@@ -24,6 +52,14 @@ export function useBoard(toast: ToastApi) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [streams, setStreams] = useState<Record<string, TaskTranscript>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Latest task list + selection, mirrored into refs so `flush` (memoized with no
+  // deps, to keep the session subscription stable) can run its eviction pass
+  // against current state without re-subscribing on every board update.
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
 
   // Seed from the active project's store, and reseed on every activation. A
   // monotonic generation drops out-of-order responses: switching project A→B fires
@@ -102,7 +138,9 @@ export function useBoard(toast: ToastApi) {
       for (const { taskId, event } of pending) {
         next[taskId] = foldTranscript(next[taskId] ?? EMPTY_TRANSCRIPT, event);
       }
-      return next;
+      // Evict transcripts we no longer need to hold at the same seam that grows
+      // the map, so a burst of runs never accumulates unbounded (#204).
+      return evictStaleStreams(next, tasksRef.current, selectedIdRef.current);
     });
   }, []);
 
@@ -133,6 +171,16 @@ export function useBoard(toast: ToastApi) {
       }
     };
   }, [flush]);
+
+  // Reclaim a task's transcript the moment it leaves the retained set — a run
+  // transitions to Done/Failed, or the drawer deselects it. Complements the
+  // flush-time pass so an idle end-state (no further session events to trigger a
+  // flush) still frees memory promptly. Lossless: reopening the card re-folds the
+  // transcript from JSONL via the reseed effect below. Identity-stable, so a
+  // no-op prune returns the same map and setStreams bails out without a render.
+  useEffect(() => {
+    setStreams((prev) => evictStaleStreams(prev, tasks, selectedId));
+  }, [tasks, selectedId]);
 
   // Reseed the opened task's transcript from its persisted JSONL so a
   // reload/HMR no longer blanks it. Skips a task that already has a live stream
