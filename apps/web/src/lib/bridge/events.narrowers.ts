@@ -26,7 +26,7 @@ import type {
   ScorecardWireEvent,
   SessionEnvelope,
 } from './events.types';
-import type { LoopEnvelope, PrFixState, Task } from './types';
+import type { LoopEnvelope, PrFixState, Task, UsageMeter } from './types';
 
 /** Runtime membership array for `ProjectEventType`. Must stay exhaustive: the
  *  `satisfies` clause makes adding a variant to `ProjectEventType` without adding
@@ -315,6 +315,16 @@ export function parseHarnessEvent(value: unknown): HarnessEvent | null {
     ['runId', 'artifactId', 'path'],
     'harness-',
   );
+}
+
+/** Narrow an unknown `nc:usage` payload to a `UsageMeter` snapshot defensively.
+ *  The poller emits the FULL meter on every change; the widget reads `providers`
+ *  (and each row's `status`/`windows`), so the top-level `providers` array is the
+ *  membership gate. INTENTIONALLY PARTIAL like `isTask`: the per-row fields are the
+ *  generated shape and degrade per-row, so a single array check is enough here. */
+export function isUsageMeter(value: unknown): value is UsageMeter {
+  if (!hasKeys(value, ['providers'])) return false;
+  return Array.isArray(value.providers);
 }
 
 /** Narrow an unknown `nc:issue-map` payload to a progress tick. Only the

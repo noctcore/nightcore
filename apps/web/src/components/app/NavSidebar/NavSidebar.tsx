@@ -171,7 +171,7 @@ export function NavSidebar({
   onNavigate,
   onGotoProjects,
   onGotoAwaitingInput,
-  header,
+  slots,
 }: NavSidebarProps) {
   const { sections, toggleSection, isSectionCollapsed } = useNavSidebarSections(nav);
   const mainSections = sections.filter((section) => !section.footer);
@@ -203,7 +203,7 @@ export function NavSidebar({
         </div>
       )}
 
-      {header}
+      {slots?.header}
 
       <nav className="flex min-h-0 flex-1 flex-col px-3 pt-2">
         {mainSections.map((section, index) => (
@@ -262,8 +262,14 @@ export function NavSidebar({
         </nav>
       )}
 
+      {slots?.footer !== undefined && (
+        <div className={awaitingInputCount > 0 || footerSections.length > 0 ? '' : 'mt-auto'}>
+          {slots.footer}
+        </div>
+      )}
+
       <div
-        className={`flex items-center gap-2.5 border-t border-border px-3.5 py-3 ${awaitingInputCount > 0 || footerSections.length > 0 ? '' : 'mt-auto'} ${collapsed ? 'justify-center' : ''}`}
+        className={`flex items-center gap-2.5 border-t border-border px-3.5 py-3 ${awaitingInputCount > 0 || footerSections.length > 0 || slots?.footer !== undefined ? '' : 'mt-auto'} ${collapsed ? 'justify-center' : ''}`}
       >
         {runningCount > 0 ? (
           <span className="flex items-center gap-1.5 font-mono text-[10.5px] text-warning">

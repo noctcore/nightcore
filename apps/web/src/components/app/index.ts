@@ -5,3 +5,5 @@ export type { SidebarProps } from './Sidebar';
 export { Sidebar } from './Sidebar';
 export type { SplashProps } from './Splash';
 export { Splash } from './Splash';
+export type { UsageMeterProps } from './UsageMeter';
+export { UsageMeter } from './UsageMeter';

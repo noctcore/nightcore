@@ -70,6 +70,29 @@ export function formatRelativeTime(
 }
 
 /**
+ * Format the time UNTIL a future ISO-8601 string (or epoch ms) as a compact
+ * countdown (`2d 3h`, `2h 15m`, `15m`, `<1m`, or `now` once elapsed) — the usage
+ * meter's "resets in …" labels. Only the two most-significant units are shown so
+ * the label stays glanceable. An unparseable value returns `''` so the caller can
+ * omit the label rather than render `NaN`. `now` is injectable for deterministic
+ * tests.
+ */
+export function formatCountdown(value: string | number, now: number = Date.now()): string {
+  const target = typeof value === 'number' ? value : Date.parse(value);
+  if (Number.isNaN(target)) return '';
+  const seconds = Math.floor((target - now) / 1000);
+  if (seconds <= 0) return 'now';
+  if (seconds < 60) return '<1m';
+  const totalMinutes = Math.floor(seconds / 60);
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  return `${minutes}m`;
+}
+
+/**
  * Format a millisecond elapsed span as `m:ss`, clamping negatives to zero.
  * Seconds are always zero-padded to two digits; minutes are padded only when
  * `padMinutes` is set — the board's live card timer shows `01:05`, while the

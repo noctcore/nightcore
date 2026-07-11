@@ -87,6 +87,17 @@ export type { GuardrailTrust } from '../generated/GuardrailTrust';
 export type { QuarantineEvent } from '../generated/QuarantineEvent';
 export type { TokenTotals } from '../generated/TokenTotals';
 export type { TrustReport } from '../generated/TrustReport';
+// Provider usage meter — the read-only rate-limit-window telemetry the sidebar
+// widget renders (ts-rs from `usage/contract.rs`, issue #121). `UsageMeter` is the
+// whole-meter snapshot (`get_usage` + the `nc:usage` push); `UsageCost` is the
+// popover-only local cost estimate (`get_usage_cost`), reusing the Trust Report
+// `TokenTotals`.
+export type { Credits } from '../generated/Credits';
+export type { ProviderUsage } from '../generated/ProviderUsage';
+export type { RateWindow } from '../generated/RateWindow';
+export type { UsageCost } from '../generated/UsageCost';
+export type { UsageMeter } from '../generated/UsageMeter';
+export type { UsageStatus } from '../generated/UsageStatus';
 // GitHub issue-map export (ts-rs from `workflow/issue_map/contract.rs`, wayfinder
 // #112). The transient preview payload the dialog renders (parent body + every
 // sub-issue title + group counts + supersede + soft warning + the fail-open LLM

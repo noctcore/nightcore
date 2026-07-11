@@ -22,4 +22,5 @@ export * from './commands/tasks';
 export * from './commands/terminal';
 export * from './commands/trust';
 export * from './commands/updater';
+export * from './commands/usage';
 export * from './commands/worktrees';

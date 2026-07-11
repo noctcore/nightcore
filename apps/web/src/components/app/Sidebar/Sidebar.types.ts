@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 import type { Project } from '@/lib/bridge';
 
 import type { AppView, NavItem } from '../AppShell/AppShell.types';
@@ -39,4 +41,6 @@ export interface SidebarProps {
   onGotoProjects: () => void;
   /** Jump to the first task awaiting input: select it and open its board drawer. */
   onGotoAwaitingInput: () => void;
+  /** The provider usage meter widget, rendered in the nav footer (both layouts). */
+  footerSlot?: ReactNode;
 }

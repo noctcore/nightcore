@@ -15,6 +15,7 @@ import {
   isProjectEnvelope,
   isQuestionPrompt,
   isTask,
+  isUsageMeter,
   parseHarnessEvent,
   parseInsightEvent,
   parseIssueMapProgress,
@@ -36,7 +37,7 @@ import type {
   SessionEnvelope,
 } from './events.types';
 import { isTauri } from './internal';
-import type { LoopEnvelope, PrFixState, Task } from './types';
+import type { LoopEnvelope, PrFixState, Task, UsageMeter } from './types';
 
 export type {
   AnalysisEvent,
@@ -200,6 +201,16 @@ export async function onHarnessEvent(
   handler: (event: HarnessEvent) => void,
 ): Promise<UnlistenFn> {
   return subscribeChannel(CHANNELS.harness, parseHarnessEvent, handler);
+}
+
+/** Subscribe to `nc:usage` provider-usage-meter snapshots (the full meter, pushed
+ *  on every poll change; issue #121). The `get_usage` command is the fetch-on-mount
+ *  source of truth — this push only saves the widget from waiting up to 10 min for
+ *  the next change. Returns an unlisten function (a no-op outside Tauri). */
+export async function onUsageEvent(
+  handler: (meter: UsageMeter) => void,
+): Promise<UnlistenFn> {
+  return subscribeChannel(CHANNELS.usage, (v) => (isUsageMeter(v) ? v : null), handler);
 }
 
 /** Subscribe to the transient `nc:issue-map` export-progress ticks. This channel
