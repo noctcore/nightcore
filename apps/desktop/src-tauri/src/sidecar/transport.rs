@@ -268,8 +268,13 @@ async fn handle_sidecar_crash(app: &AppHandle) {
     let engine = app.state::<Arc<dyn EngineApi>>();
     let store = app.state::<TaskStore>();
     let orphaned = provider.reset_after_crash().await;
+    // Reap in-flight SCAN runs too (T14): they correlate by `runId`, not `sessionId`,
+    // so the task recovery below never touches them — a running scan would otherwise
+    // stay `running` until the next boot. Independent of whether any TASK was orphaned,
+    // so this runs before the no-tasks early return.
+    super::reader::reap_scans_on_crash(app).await;
     if orphaned.is_empty() {
-        tracing::warn!(target: "nightcore", "sidecar exited with no in-flight runs to recover");
+        tracing::warn!(target: "nightcore", "sidecar exited with no in-flight task runs to recover");
         return;
     }
     tracing::warn!(target: "nightcore", count = orphaned.len(), "sidecar exited; recovering stranded runs");

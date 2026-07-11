@@ -373,6 +373,20 @@ impl<R: PersistedRun> RunStore<R> {
         }
     }
 
+    /// The ids of every run currently `running`. Used by the live sidecar-crash reap
+    /// (T14): a scan correlates by `runId`, not `sessionId`, so the session-based crash
+    /// recovery can't see it — this lets the reaper enumerate the in-flight scans to
+    /// fail. A pure snapshot read (no mutation), so a run that finalizes between this
+    /// and the reap is simply skipped by the per-family handler's idempotency.
+    pub fn running_ids(&self) -> Vec<String> {
+        self.read(|runs| {
+            runs.values()
+                .filter(|r| r.status() == "running")
+                .map(|r| r.id().to_string())
+                .collect()
+        })
+    }
+
     /// Delete a run from memory and disk. Idempotent on a missing file.
     pub fn remove(&self, id: &str) -> Result<(), String> {
         let path = self.path_for(id)?;

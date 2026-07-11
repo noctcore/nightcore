@@ -36,6 +36,69 @@ struct TaggedSessionEvent<'a> {
     event: &'a RawValue,
 }
 
+/// The synthetic `*-failed` event a crash-reap routes through a family handler.
+/// Matches the contract's failed-event shape (`{ type, runId, reason, message }`)
+/// EXACTLY so the web's `NightcoreEventSchema.safeParse` accepts it and folds the live
+/// view to failed. `runner-crash` is a member of the shared `scanFailure` reason enum
+/// (and a valid free string for the pr-review / issue-validation families).
+fn crash_failed_event(event_type: &str, run_id: &str) -> Value {
+    serde_json::json!({
+        "type": event_type,
+        "runId": run_id,
+        "reason": "runner-crash",
+        "message": "Sidecar exited mid-run — scan reaped.",
+    })
+}
+
+/// Fail every in-flight SCAN run when the sidecar process exits (T14). Scans correlate
+/// by `runId`, not `sessionId`, so `handle_sidecar_crash`'s session-based task recovery
+/// never sees them — a running scan would otherwise sit `running` until the next boot's
+/// `reap_running`. For each of the five families, snapshot its running run ids and route
+/// the family's own synthetic `*-failed` event through the SAME handler a real failure
+/// uses: that both marks the persisted run `failed` AND forwards the event to the family
+/// channel, so an OPEN scan view stops spinning live rather than only on the next
+/// refetch. Idempotent — a run that finalized between the snapshot and the reap is a
+/// no-op under the handler's own dedupe. The `running_ids()` snapshot drops the state
+/// guard before the awaits, so nothing is held across an `.await`.
+pub(crate) async fn reap_scans_on_crash(app: &AppHandle) {
+    for run_id in app
+        .state::<crate::store::insight::InsightStore>()
+        .running_ids()
+    {
+        let event = crash_failed_event("analysis-failed", &run_id);
+        super::insight::handle_analysis_event(app, "analysis-failed", &event).await;
+    }
+    for run_id in app
+        .state::<crate::store::harness::HarnessStore>()
+        .running_ids()
+    {
+        let event = crash_failed_event("harness-failed", &run_id);
+        super::harness::handle_harness_event(app, "harness-failed", &event).await;
+    }
+    for run_id in app
+        .state::<crate::store::scorecard::ScorecardStore>()
+        .running_ids()
+    {
+        let event = crash_failed_event("scorecard-failed", &run_id);
+        super::scorecard::handle_scorecard_event(app, "scorecard-failed", &event).await;
+    }
+    for run_id in app
+        .state::<crate::store::pr_review::PrReviewStore>()
+        .running_ids()
+    {
+        let event = crash_failed_event("pr-review-failed", &run_id);
+        super::pr_review::handle_pr_review_event(app, "pr-review-failed", &event).await;
+    }
+    for run_id in app
+        .state::<crate::store::issue_triage::IssueValidationStore>()
+        .running_ids()
+    {
+        let event = crash_failed_event("issue-validation-failed", &run_id);
+        super::issue_triage::handle_issue_validation_event(app, "issue-validation-failed", &event)
+            .await;
+    }
+}
+
 /// Process one parsed sidecar event: correlate it to its task, forward it as
 /// `nc:session`, auto-deny permission requests, and apply terminal transitions
 /// (releasing the slot, cleaning up the worktree, feeding the breaker, kicking the

@@ -408,6 +408,26 @@ mod tests {
     }
 
     #[test]
+    fn running_ids_returns_only_running_runs() {
+        // The snapshot the live sidecar-crash reap (T14) enumerates: only `running`
+        // runs, so a completed/failed run is never re-failed by the crash handler.
+        let (store, _tmp) = store();
+        let mut a = run("a", vec![]);
+        a.status = "running".into();
+        let mut b = run("b", vec![]);
+        b.status = "running".into();
+        let c = run("c", vec![]); // fixture default: "completed"
+        let mut d = run("d", vec![]);
+        d.status = "failed".into();
+        for r in [&a, &b, &c, &d] {
+            store.upsert(r).unwrap();
+        }
+        let mut ids = store.running_ids();
+        ids.sort();
+        assert_eq!(ids, vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[test]
     fn list_is_newest_first() {
         let (store, _tmp) = store();
         let mut a = run("a", vec![]);
