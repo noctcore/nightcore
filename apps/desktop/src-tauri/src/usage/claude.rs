@@ -89,8 +89,18 @@ pub(crate) fn parse_claude(v: &Value) -> ParsedUsage {
 fn parse_limits(limits: &[Value]) -> Vec<RateWindow> {
     let mut out = Vec::new();
     for item in limits {
-        // Skip an explicitly inactive (promotional / not-currently-applicable) window.
-        if item.get("is_active").and_then(Value::as_bool) == Some(false) {
+        let raw_kind = item.get("kind").and_then(Value::as_str).unwrap_or("");
+        // Skip ONLY an explicitly promotional window that isn't currently active.
+        // The canonical `session` (5h) and `weekly_scoped` (per-model dev weekly)
+        // windows legitimately come back `is_active: false` — you're simply not in
+        // an active 5h session, or it isn't the currently-binding weekly — yet they
+        // carry a real utilization the user wants to see. The old blanket
+        // `is_active == false → skip` was the dogfood miss: it dropped the 5h and
+        // per-model lanes, leaving only `weekly_all`, so the compact row showed a
+        // lone weekly with a raw label.
+        if raw_kind.contains("promo")
+            && item.get("is_active").and_then(Value::as_bool) == Some(false)
+        {
             continue;
         }
         let Some(percent) = item.get("percent").and_then(Value::as_f64) else {
@@ -105,7 +115,6 @@ fn parse_limits(limits: &[Value]) -> Vec<RateWindow> {
             .and_then(|m| m.get("display_name"))
             .and_then(Value::as_str)
             .filter(|s| !s.is_empty());
-        let raw_kind = item.get("kind").and_then(Value::as_str).unwrap_or("");
         // The window length: the explicit `limit_window_seconds` when present, else
         // the nominal length for a known legacy key. Drives both the classification
         // below and the emitted `window_seconds` field.
@@ -138,12 +147,27 @@ fn parse_limits(limits: &[Value]) -> Vec<RateWindow> {
 }
 
 /// Classify a NON-model-scoped canonical window into the stable `(kind, label)` the
-/// compact widget filters on, keyed off `limit_window_seconds` rather than the
-/// `kind` string: a ~5h window → `("5h", "Session (5h)")`, a ~7d window →
-/// `("weekly", "Weekly")`. Falls back to the raw `kind` string when the length is
-/// absent or unrecognized, so an unmodeled window still renders (just not in the
-/// compact 5h/weekly pair) instead of being lost.
+/// compact widget filters on. The `kind` STRING is authoritative here because
+/// Claude's `limits[]` sends these windows with a NULL `limit_window_seconds`
+/// (dogfood 2026-07-11): `session` = the 5-hour window, `weekly_all` = the
+/// all-models weekly (the compact `weekly` lane), `weekly_scoped` = the current
+/// dev-model weekly (a DISTINCT lane so it never masquerades as the primary
+/// weekly). The `limit_window_seconds` length is a fallback for shapes that omit
+/// these kinds; the raw kind is the last resort so an unmodeled window still
+/// renders (just not in the compact 5h/weekly pair) instead of being lost.
 fn classify_canonical_window(window_seconds: Option<u64>, raw_kind: &str) -> (String, String) {
+    match raw_kind {
+        "session" | "five_hour" => return ("5h".to_string(), "Session (5h)".to_string()),
+        "weekly_all" | "seven_day" => return ("weekly".to_string(), "Weekly".to_string()),
+        "weekly_scoped" => return ("weekly_scoped".to_string(), "Weekly (model)".to_string()),
+        "weekly_opus" | "seven_day_opus" => {
+            return ("weekly_opus".to_string(), "Opus weekly".to_string());
+        }
+        "weekly_sonnet" | "seven_day_sonnet" => {
+            return ("weekly_sonnet".to_string(), "Sonnet weekly".to_string());
+        }
+        _ => {}
+    }
     match window_seconds {
         Some(s) if is_about(s, FIVE_HOUR_SECONDS, FIVE_HOUR_TOLERANCE) => {
             ("5h".to_string(), "Session (5h)".to_string())
@@ -242,9 +266,8 @@ fn reset_value(v: Option<&Value>) -> Option<String> {
 /// A stable machine key for a legacy/limits `kind` string.
 fn map_kind(raw: &str) -> String {
     match raw {
-        "five_hour" => "5h".to_string(),
-        "seven_day" => "weekly".to_string(),
-        "" => "weekly".to_string(),
+        "five_hour" | "session" => "5h".to_string(),
+        "seven_day" | "weekly_all" | "" => "weekly".to_string(),
         other => other.to_string(),
     }
 }
@@ -252,8 +275,9 @@ fn map_kind(raw: &str) -> String {
 /// A human display label for a `kind` string when no model display name is given.
 fn humanize_kind(raw: &str) -> String {
     match raw {
-        "five_hour" => "Session (5h)".to_string(),
-        "seven_day" => "Weekly".to_string(),
+        "five_hour" | "session" => "Session (5h)".to_string(),
+        "seven_day" | "weekly_all" => "Weekly".to_string(),
+        "weekly_scoped" => "Weekly (model)".to_string(),
         "seven_day_opus" => "Opus weekly".to_string(),
         "seven_day_sonnet" => "Sonnet weekly".to_string(),
         "" => "Weekly".to_string(),
@@ -265,8 +289,8 @@ fn humanize_kind(raw: &str) -> String {
 /// shape); `None` for an unknown key.
 fn window_seconds_for_kind(raw: &str) -> Option<u64> {
     match raw {
-        "five_hour" => Some(18_000),
-        k if k.starts_with("seven_day") => Some(604_800),
+        "five_hour" | "session" => Some(18_000),
+        k if k.starts_with("seven_day") || k.starts_with("weekly") => Some(604_800),
         _ => None,
     }
 }
@@ -387,6 +411,65 @@ mod tests {
             "model-scoped weekly retains its model key"
         );
         // The compact pair the widget shows is exactly [5h, weekly], in that order.
+        let compact: Vec<&str> = parsed
+            .windows
+            .iter()
+            .filter(|w| w.kind == "5h" || w.kind == "weekly")
+            .map(|w| w.kind.as_str())
+            .collect();
+        assert_eq!(compact, vec!["5h", "weekly"]);
+    }
+
+    #[test]
+    fn real_limits_shape_null_window_seconds_and_inactive_session() {
+        // The ACTUAL Claude `limits[]` shape (dogfood 2026-07-11): NULL
+        // `limit_window_seconds`, the 5-hour window as kind `session` + `is_active:
+        // false`, the all-models weekly as `weekly_all` (active), the per-model dev
+        // weekly as `weekly_scoped`. This is the reported "weekly all 73%" with no 5h —
+        // the session + scoped lanes must NOT be dropped, and length-based
+        // classification can't help (window_seconds is null), so the kind string wins.
+        let body = serde_json::json!({
+            "limits": [
+                { "kind": "session", "percent": 27, "limit_window_seconds": null,
+                  "is_active": false, "resets_at": "2026-07-11T15:29:59Z" },
+                { "kind": "weekly_all", "percent": 73, "limit_window_seconds": null,
+                  "is_active": true, "resets_at": "2026-07-11T13:59:59Z" },
+                { "kind": "weekly_scoped", "percent": 72, "limit_window_seconds": null,
+                  "is_active": false, "resets_at": "2026-07-11T13:59:59Z" }
+            ]
+        });
+        let parsed = parse_claude(&body);
+        assert_eq!(
+            parsed.windows.len(),
+            3,
+            "session + weekly_all + weekly_scoped all render"
+        );
+        let five = parsed
+            .windows
+            .iter()
+            .find(|w| w.kind == "5h")
+            .expect("session → 5h lane even with null window_seconds + is_active:false");
+        assert!((five.used_percent - 27.0).abs() < 1e-9);
+        assert_eq!(five.label, "Session (5h)");
+        assert_eq!(
+            five.window_seconds,
+            Some(18_000),
+            "5h length inferred from the kind"
+        );
+        let weekly = parsed
+            .windows
+            .iter()
+            .find(|w| w.kind == "weekly")
+            .expect("weekly_all → primary weekly lane");
+        assert!((weekly.used_percent - 73.0).abs() < 1e-9);
+        assert_eq!(weekly.label, "Weekly");
+        let scoped = parsed
+            .windows
+            .iter()
+            .find(|w| w.kind == "weekly_scoped")
+            .expect("weekly_scoped → its own distinct lane, not the primary weekly");
+        assert!((scoped.used_percent - 72.0).abs() < 1e-9);
+        // The compact pair is exactly [5h, weekly] — session + all-models weekly.
         let compact: Vec<&str> = parsed
             .windows
             .iter()
