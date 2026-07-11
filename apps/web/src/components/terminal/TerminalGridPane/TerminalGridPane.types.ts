@@ -29,6 +29,9 @@ export interface TerminalGridPaneProps {
   /** Whether broadcast input is armed (round-2 PR B): this pane is RECEIVING the
    *  fanned-out keystrokes, so it shows the LOUD amber ring + "BCAST" badge. */
   broadcasting: boolean;
+  /** Whether a dragged file is currently over this pane (round-2 PR C): shows the
+   *  drop-hint overlay. Dropping types the file's shell-escaped absolute path. */
+  isDropTarget: boolean;
   /** Rename this session (decision 5): double-click the title → inline edit. */
   onRename: (id: string, title: string) => void;
   /** Toggle this pane's zoom (header button; also ⌘⇧E on the active pane). */

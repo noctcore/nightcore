@@ -70,6 +70,7 @@ test('double-clicking the title opens the inline rename and commits on Enter', a
           zoomed={false}
           draggable
           broadcasting={false}
+          isDropTarget={false}
           onRename={onRename}
           onLaunchClaude={() => {}}
           onToggleZoom={() => {}}
@@ -98,6 +99,7 @@ test('clicking the title activates the pane (the zoom target)', async () => {
           zoomed={false}
           draggable
           broadcasting={false}
+          isDropTarget={false}
           onRename={() => {}}
           onLaunchClaude={() => {}}
           onToggleZoom={() => {}}
@@ -123,6 +125,7 @@ test('shows the Launch Claude button when canLaunch and fires onLaunchClaude', a
           zoomed={false}
           draggable
           broadcasting={false}
+          isDropTarget={false}
           onRename={() => {}}
           onLaunchClaude={onLaunchClaude}
           onToggleZoom={() => {}}
@@ -147,6 +150,7 @@ test('hides the Launch Claude button on a non-POSIX (canLaunch=false) pane', () 
           zoomed={false}
           draggable
           broadcasting={false}
+          isDropTarget={false}
           onRename={() => {}}
           onLaunchClaude={() => {}}
           onToggleZoom={() => {}}

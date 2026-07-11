@@ -95,6 +95,7 @@ export function TerminalView({
           canLaunchClaude={v.tasks.canLaunchClaude}
           zoomedId={v.layout.zoomedId}
           broadcastArmed={v.layout.broadcastArmed}
+          dropTargetId={v.dropTargetId}
           onRename={v.renameSession}
           onLaunchClaude={v.tasks.launchClaude}
           onReorder={v.layout.reorder}
@@ -105,6 +106,7 @@ export function TerminalView({
         <TerminalPane
           key={activeLive.id}
           session={activeLive}
+          isDropTarget={v.dropTargetId === activeLive.id}
           onRename={v.renameSession}
           link={{
             ungoverned: v.tasks.ungovernedIds.has(activeLive.id),

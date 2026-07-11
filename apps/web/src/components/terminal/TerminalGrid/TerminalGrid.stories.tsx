@@ -44,6 +44,7 @@ const meta = {
     canLaunchClaude: () => true,
     zoomedId: null,
     broadcastArmed: false,
+    dropTargetId: null,
     onRename: fn(),
     onLaunchClaude: fn(),
     onReorder: fn(),

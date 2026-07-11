@@ -37,7 +37,7 @@ const meta = {
   title: 'Terminal/TerminalPane',
   component: TerminalPane,
   parameters: { layout: 'fullscreen' },
-  args: { onRename: fn(), link: UNLINKED },
+  args: { isDropTarget: false, onRename: fn(), link: UNLINKED },
   decorators: [
     // The pane's hook uses `useToast` (the WebGL context-loss fallback), so it needs
     // a ToastProvider in scope.

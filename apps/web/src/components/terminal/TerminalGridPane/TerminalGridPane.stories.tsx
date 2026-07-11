@@ -38,6 +38,7 @@ const meta = {
     zoomed: false,
     draggable: true,
     broadcasting: false,
+    isDropTarget: false,
     onRename: fn(),
     onLaunchClaude: fn(),
     onToggleZoom: fn(),

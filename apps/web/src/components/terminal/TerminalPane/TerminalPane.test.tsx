@@ -59,6 +59,7 @@ test('attaches a live xterm instance for a real (echo) session', async () => {
     <ToastProvider>
       <TerminalPane
         session={session}
+        isDropTarget={false}
         onRename={() => {}}
         link={{
           ungoverned: false,

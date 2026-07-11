@@ -22,6 +22,10 @@ export interface TerminalGridProps {
    *  LOUD receiving indicator while keystrokes fan out to all of them. Always `false`
    *  once zoomed (the visible set collapses to one → auto-disarm). */
   broadcastArmed: boolean;
+  /** The session id of the pane currently under a dragged file (round-2 PR C), or
+   *  `null`. The matching pane shows the drop-hint overlay; the hit-test lives in the
+   *  view's webview-global drop listener. */
+  dropTargetId: string | null;
   /** Rename a session (decision 5). */
   onRename: (id: string, title: string) => void;
   /** Reorder: move `activeId` into `overId`'s slot (drag drop resolution). */

@@ -22,6 +22,7 @@ import {
 } from '@/lib/terminal-links';
 
 import { useRenameSession, useTerminalAiNaming } from '../terminal-ai-naming';
+import { useTerminalDragDrop } from '../terminal-drag-drop';
 import { subscribePasteRejected } from '../terminal-keymap';
 import { useTerminalLayout } from '../terminal-layout';
 import { setTerminalPlatform } from '../terminal-platform';
@@ -76,6 +77,8 @@ export function useTerminalView(input: UseTerminalViewInput) {
   // View-mode (tabs⇄grid) + pane order + zoom (decision 1, PR 2). Owns the layout
   // localStorage blob and the session-manager visible-set / ⌘⇧E zoom wiring.
   const layout = useTerminalLayout({ sessions, activeId, loaded });
+  // Drag a file onto a pane → type its shell-escaped absolute path (round-2 PR C).
+  const dragDrop = useTerminalDragDrop({ sessions });
 
   const targets = useMemo(
     () => buildTargets(input.projectPath, input.projectName, input.worktrees),
@@ -348,6 +351,7 @@ export function useTerminalView(input: UseTerminalViewInput) {
     activeId,
     unread,
     layout,
+    dropTargetId: dragDrop.dropTargetId,
     canAddTab,
     selectTab,
     requestClose,

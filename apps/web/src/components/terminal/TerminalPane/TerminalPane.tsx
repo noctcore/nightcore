@@ -22,6 +22,7 @@ import {
   ungovernedLabel,
   ungovernedTitle,
 } from '../terminal-shared';
+import { TerminalDropHint } from '../TerminalDropHint';
 import { TerminalSearchBar } from '../TerminalSearchBar';
 import { useTerminalPane } from './TerminalPane.hooks';
 import type { TerminalPaneLink, TerminalPaneProps } from './TerminalPane.types';
@@ -150,13 +151,14 @@ function IdentityHeader({
 /** The xterm host pane for one session: the identity chrome plus the terminal
  *  surface the session's (remount-surviving) xterm instance is attached into. A
  *  thin shell — the ref + attach effect live in `useTerminalPane`. */
-export function TerminalPane({ session, onRename, link }: TerminalPaneProps) {
+export function TerminalPane({ session, isDropTarget, onRename, link }: TerminalPaneProps) {
   const { containerRef, search } = useTerminalPane(session);
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-[#0a0a0f]">
+    <div data-session-id={session.id} className="flex min-h-0 flex-1 flex-col bg-[#0a0a0f]">
       <IdentityHeader session={session} onRename={onRename} link={link} />
       <div ref={search.rootRef} className="relative min-h-0 flex-1">
         <div ref={containerRef} className="h-full overflow-hidden p-1.5" />
+        {isDropTarget && <TerminalDropHint />}
         {search.open && (
           <div className="absolute right-3 top-2 z-10">
             <TerminalSearchBar

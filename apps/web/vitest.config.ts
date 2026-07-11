@@ -87,6 +87,11 @@ export default defineConfig({
             '@xterm/addon-search',
             '@xterm/addon-web-links',
             '@xterm/addon-webgl',
+            // The terminal drag-to-path listener (round-2 PR C) dynamically imports this
+            // only inside the real webview; pre-bundle it so vitest's browser
+            // dep-optimizer never discovers it mid-run and reloads the page (the known
+            // re-optimize flake).
+            '@tauri-apps/api/webview',
           ],
         },
         test: {
@@ -123,6 +128,11 @@ export default defineConfig({
             '@xterm/addon-search',
             '@xterm/addon-web-links',
             '@xterm/addon-webgl',
+            // The terminal drag-to-path listener (round-2 PR C) dynamically imports this
+            // only inside the real webview; pre-bundle it so vitest's browser
+            // dep-optimizer never discovers it mid-run and reloads the page (the known
+            // re-optimize flake).
+            '@tauri-apps/api/webview',
           ],
         },
         test: {

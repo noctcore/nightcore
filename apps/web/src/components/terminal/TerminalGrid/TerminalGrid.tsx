@@ -39,6 +39,7 @@ export function TerminalGrid({
   canLaunchClaude,
   zoomedId,
   broadcastArmed,
+  dropTargetId,
   onRename,
   onLaunchClaude,
   onReorder,
@@ -75,6 +76,7 @@ export function TerminalGrid({
             zoomed={zoomedId === session.id}
             draggable={zoomedId === null}
             broadcasting={broadcastArmed}
+            isDropTarget={dropTargetId === session.id}
             onRename={onRename}
             onLaunchClaude={() => onLaunchClaude(session)}
             onToggleZoom={onToggleZoom}

@@ -196,6 +196,18 @@ export function broadcastBadgeLabel(): string {
   return 'Receiving broadcast input';
 }
 
+/** The drop-hint overlay copy (round-2 PR C, § C.2): shown on the pane under a dragged
+ *  file so the target is unmistakable. Dropping types the file's shell-escaped absolute
+ *  path at the prompt — the user then presses Enter. */
+export function dropHintLabel(): string {
+  return 'Drop to paste path';
+}
+
+/** Accessible label for the drop-target overlay (the pane under the dragged file). */
+export function dropHintAriaLabel(): string {
+  return 'Drop a file here to type its path';
+}
+
 /** Count-driven grid column count (decision 1, PR 2): 1→1, 2→2, ≤4→2, ≤6→3, ≤9→3,
  *  else (up to the 12-session cap) →4. Rows follow from `ceil(n / gridColumns(n))`.
  *  No free-form spans in v1. Pure + unit-tested. `n<=1` yields 1 (an empty grid

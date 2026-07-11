@@ -24,6 +24,7 @@ import {
   unreadBadge,
   unreadBadgeLabel,
 } from '../terminal-shared';
+import { TerminalDropHint } from '../TerminalDropHint';
 import { TerminalSearchBar } from '../TerminalSearchBar';
 import { useTerminalGridPane } from './TerminalGridPane.hooks';
 import type { TerminalGridPaneProps } from './TerminalGridPane.types';
@@ -109,6 +110,7 @@ export function TerminalGridPane({
   zoomed,
   draggable,
   broadcasting,
+  isDropTarget,
   onRename,
   onLaunchClaude,
   onToggleZoom,
@@ -172,6 +174,7 @@ export function TerminalGridPane({
       </div>
       <div ref={v.search.rootRef} className="relative min-h-0 flex-1">
         <div ref={v.containerRef} className="h-full overflow-hidden p-1.5" />
+        {isDropTarget && <TerminalDropHint />}
         {v.search.open && (
           <div className="absolute right-2 top-2 z-10">
             <TerminalSearchBar
