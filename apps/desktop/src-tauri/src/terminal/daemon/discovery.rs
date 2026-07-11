@@ -20,10 +20,29 @@
 //! stray connection can only ever cost that one daemon connection — the app still
 //! degrades to the in-process PTY + read-only restore.
 
-/// Whether this platform supports the detached PTY daemon. macOS + Linux only in v1
-/// (§5.6); everywhere else the backend stays in-process and read-only-restores like
-/// today. The settings toggle is a no-op on an unsupported platform (no dead UI —
-/// the toggle explains the platform requirement).
+/// Whether this platform supports the detached PTY daemon. macOS + Linux only (§5.6);
+/// everywhere else the backend stays in-process and read-only-restores like today. The
+/// settings toggle is a no-op on an unsupported platform (no dead UI — the toggle
+/// explains the platform requirement).
+///
+/// **Windows parity is a planned follow-up (terminal round 2, PR D, deferred).** The
+/// Unix half of PR D — the per-connection peer-cred uid check ([`peer_uid`]) — shipped;
+/// the Windows daemon did not. Bringing live-PTY survival to Windows means mirroring
+/// the Unix seam WITHOUT touching it (§5.1, "do not rip out the working Unix socket"):
+///   1. a **named-pipe transport** (`\\.\pipe\nightcore-pty-<user-scoped-id>`) carrying
+///      the identical transport-agnostic [`super::protocol`] frames — a `Read + Write`
+///      pipe stream + one-thread-per-client accept loop mirroring the Unix
+///      `std::thread` model (server/client/fanout abstract over the stream type);
+///   2. a **`CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS`** detached spawn (std
+///      `CommandExt::creation_flags`) — the Windows analog of the Unix `setsid`
+///      re-invoke in [`spawn_detached`];
+///   3. an **owner-only DACL** (`SECURITY_ATTRIBUTES` restricting the pipe to the
+///      current-user SID) as the Windows analog of `0600` + this peer-cred check;
+///   4. flipping this fn to `true` on Windows ONLY once (1)-(3) exist and have passed an
+///      on-hardware create -> detach -> reattach -> kill dogfood pass.
+///
+/// Until then Windows keeps the shipped read-only restore — the degradation floor — so
+/// nothing regresses and no live shell can be orphaned by an unverified transport.
 pub(crate) const fn daemon_supported() -> bool {
     cfg!(unix)
 }

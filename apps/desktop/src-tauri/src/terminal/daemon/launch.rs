@@ -17,8 +17,13 @@ pub fn maybe_run_daemon() {
     }
     #[cfg(not(unix))]
     {
-        // The app never spawns a daemon on an unsupported platform, so this arg
-        // should never appear here — but fail loudly rather than boot a half GUI.
+        // The app never spawns a daemon on Windows: `daemon_supported()` is `false`
+        // there, so the backend never builds a client and this `--terminal-daemon` arg
+        // is never passed. Windows daemon parity (named-pipe transport + DETACHED_PROCESS
+        // spawn + owner-only DACL) is the deferred follow-up documented on
+        // `discovery::daemon_supported`; when it lands, this arm parses the pipe args and
+        // runs the Windows server instead of exiting. Until then, fail loudly rather than
+        // boot a half GUI.
         eprintln!("nightcore: --terminal-daemon is unsupported on this platform");
         std::process::exit(1);
     }
