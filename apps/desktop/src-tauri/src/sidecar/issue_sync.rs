@@ -13,6 +13,7 @@
 //! no live GitHub traffic.
 
 use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -65,12 +66,23 @@ fn sync_issue_status_blocking(app: &AppHandle, task_id: &str) -> Result<(), Stri
     };
     task.issue_number = Some(issue_number);
 
-    // 3. Project guard — the active project's root is the `gh` cwd resolving {owner}/{repo}.
-    let project = app
-        .state::<ProjectStore>()
-        .active()
-        .ok_or_else(|| "no active project".to_string())?;
-    let project_path = std::path::PathBuf::from(&project.path);
+    // 3. Explicit project→repo guard (fix T2-1). Resolve the repo the label is routed to
+    //    from where the task file actually LIVES (`<root>/.nightcore/tasks` → `<root>`) —
+    //    the TaskStore is retargeted per active project, so its target dir IS the task's
+    //    project root. NEVER the global active pointer alone (which could name a different
+    //    repo than the store the task came from during a project switch). Then require that
+    //    root to still be the active project (its root is the `gh` cwd resolving
+    //    {owner}/{repo}). A switch racing this writeback fails CLOSED: skip, never misroute
+    //    a label onto another repo's issue #N.
+    let Some(project_path) = task_project_root(&store.tasks_dir()) else {
+        tracing::warn!(target: "nightcore", task_id, "issue-sync skipped: cannot resolve the task's project root from its store dir");
+        return Ok(());
+    };
+    let active = app.state::<ProjectStore>().active();
+    if active.as_ref().map(|p| Path::new(p.path.as_str())) != Some(project_path.as_path()) {
+        tracing::warn!(target: "nightcore", task_id, project = %project_path.display(), "issue-sync skipped: the task's project is not the active one — refusing to route a label to another repo");
+        return Ok(());
+    }
 
     // 4. Compute the writeback delta PURELY — zero `gh` calls when nothing changed.
     if pending_work(&task, &prefix).is_noop() {
@@ -123,6 +135,19 @@ fn backfill_issue_number(app: &AppHandle, task: &Task) -> Option<u64> {
     let run_id = task.source_ref.as_deref()?.strip_prefix("issue-triage:")?;
     let store = app.try_state::<IssueValidationStore>()?;
     store.get(run_id).map(|r| r.issue_number)
+}
+
+/// The repo root that OWNS a task, derived from the task store's target dir — the layout is
+/// always `<root>/.nightcore/tasks` (see [`crate::project::ProjectStore::active_tasks_dir`]),
+/// so the root is the grandparent whose intermediate component is `.nightcore`. `None` when
+/// the dir is not that shape (e.g. the `no-active-project/tasks` scratch dir used with no
+/// active project) — the caller fails closed rather than guessing a repo (fix T2-1).
+fn task_project_root(tasks_dir: &Path) -> Option<PathBuf> {
+    let nightcore = tasks_dir.parent()?;
+    if nightcore.file_name() != Some(std::ffi::OsStr::new(".nightcore")) {
+        return None;
+    }
+    nightcore.parent().map(Path::to_path_buf)
 }
 
 /// Projection-IN (#97 PR 4, §5): poll the upstream state of every issue-linked task's
@@ -210,4 +235,33 @@ pub async fn open_issue_in_browser(app: AppHandle, issue_number: u64) -> Result<
     })
     .await
     .map_err(|e| format!("opening the issue failed to run: {e}"))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn task_project_root_resolves_the_owning_repo_from_the_store_dir() {
+        // The real per-project layout: <root>/.nightcore/tasks → <root>.
+        assert_eq!(
+            task_project_root(Path::new("/repo/nightcore/.nightcore/tasks")),
+            Some(PathBuf::from("/repo/nightcore")),
+        );
+        // Matches the exact PathBuf `active_tasks_dir` builds (join of ".nightcore/tasks").
+        let built = Path::new("/repo/a").join(".nightcore/tasks");
+        assert_eq!(task_project_root(&built), Some(PathBuf::from("/repo/a")));
+    }
+
+    #[test]
+    fn task_project_root_fails_closed_off_the_expected_shape() {
+        // The no-active-project scratch dir (`…/no-active-project/tasks`) is NOT a repo.
+        assert_eq!(
+            task_project_root(Path::new("/config/no-active-project/tasks")),
+            None,
+        );
+        // Any dir whose parent is not `.nightcore` is refused (no guessing a repo root).
+        assert_eq!(task_project_root(Path::new("/repo/tasks")), None);
+        assert_eq!(task_project_root(Path::new("/")), None);
+    }
 }
