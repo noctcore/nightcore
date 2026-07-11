@@ -4,6 +4,7 @@ import { agentsDocPresenceRule } from './rules/agents-doc-presence';
 import { canonicalHelpersSingleHomeRule } from './rules/canonical-helpers-single-home';
 import { codegenDriftRule } from './rules/codegen-drift';
 import { decisionRegisterIntegrityRule } from './rules/decision-register-integrity';
+import { engineFileSizeRatchetRule } from './rules/engine-file-size-ratchet';
 import { layerRankRule } from './rules/layer-rank';
 import { navRenderParityRule } from './rules/nav-render-parity';
 import { noClonedComponentFoldersRule } from './rules/no-cloned-component-folders';
@@ -42,6 +43,7 @@ export const META_RULES: IMetaRule[] = [
   navRenderParityRule,
   noClonedComponentFoldersRule,
   webFileSizeRatchetRule,
+  engineFileSizeRatchetRule,
   rustModuleShapeRule,
   rustLayerRankRule,
   rustCommandPlacementRule,
