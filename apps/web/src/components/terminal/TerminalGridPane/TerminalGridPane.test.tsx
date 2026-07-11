@@ -48,9 +48,11 @@ test('double-clicking the title opens the inline rename and commits on Enter', a
           session={fakeSession({ title: 'deploy shell' })}
           unread={0}
           ungoverned={false}
+          canLaunch={false}
           zoomed={false}
           draggable
           onRename={onRename}
+          onLaunchClaude={() => {}}
           onToggleZoom={() => {}}
           onActivate={() => {}}
         />
@@ -73,9 +75,11 @@ test('clicking the title activates the pane (the zoom target)', async () => {
           session={fakeSession({ title: 'shell one' })}
           unread={0}
           ungoverned={false}
+          canLaunch={false}
           zoomed={false}
           draggable
           onRename={() => {}}
+          onLaunchClaude={() => {}}
           onToggleZoom={() => {}}
           onActivate={onActivate}
         />
@@ -84,4 +88,50 @@ test('clicking the title activates the pane (the zoom target)', async () => {
   );
   await userEvent.click(screen.getByText('shell one').element());
   expect(onActivate).toHaveBeenCalledWith('grid-session');
+});
+
+test('shows the Launch Claude button when canLaunch and fires onLaunchClaude', async () => {
+  const onLaunchClaude = vi.fn();
+  const screen = render(
+    <ToastProvider>
+      <DndContext>
+        <TerminalGridPane
+          session={fakeSession({})}
+          unread={0}
+          ungoverned={false}
+          canLaunch
+          zoomed={false}
+          draggable
+          onRename={() => {}}
+          onLaunchClaude={onLaunchClaude}
+          onToggleZoom={() => {}}
+          onActivate={() => {}}
+        />
+      </DndContext>
+    </ToastProvider>,
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Launch Claude' }).element());
+  expect(onLaunchClaude).toHaveBeenCalledTimes(1);
+});
+
+test('hides the Launch Claude button on a non-POSIX (canLaunch=false) pane', () => {
+  const screen = render(
+    <ToastProvider>
+      <DndContext>
+        <TerminalGridPane
+          session={fakeSession({})}
+          unread={0}
+          ungoverned={false}
+          canLaunch={false}
+          zoomed={false}
+          draggable
+          onRename={() => {}}
+          onLaunchClaude={() => {}}
+          onToggleZoom={() => {}}
+          onActivate={() => {}}
+        />
+      </DndContext>
+    </ToastProvider>,
+  );
+  expect(screen.container.querySelector('[aria-label="Launch Claude"]')).toBeNull();
 });

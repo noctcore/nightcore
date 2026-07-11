@@ -11,6 +11,11 @@ export interface TerminalGridProps {
   unread: Readonly<Record<string, number>>;
   /** Session ids marked "ungoverned" (decision 3) — a warning marker per pane. */
   ungovernedIds: ReadonlySet<string>;
+  /** Whether a session's shell can run the composed `claude` launch (POSIX only,
+   *  decision 3) — gates each pane's Launch-Claude button, matching the tab pane. */
+  canLaunchClaude: (session: TerminalSessionInfo) => boolean;
+  /** Launch `claude` in a session (decision 3): the per-pane header button handler. */
+  onLaunchClaude: (session: TerminalSessionInfo) => void;
   /** The single zoomed pane's id, or `null` for the full grid. */
   zoomedId: string | null;
   /** Rename a session (decision 5). */

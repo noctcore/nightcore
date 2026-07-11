@@ -15,6 +15,13 @@ export interface TerminalGridPaneProps {
   /** Whether this session is "ungoverned" (task-linked or Claude-launched,
    *  decision 3) — a warning marker in the pane chrome. */
   ungoverned: boolean;
+  /** Whether the one-click `claude` launch is available for this session (POSIX
+   *  shell only, decision 3) — gates the header Launch-Claude button, matching the
+   *  tab pane. */
+  canLaunch: boolean;
+  /** Launch `claude` in this terminal (decision 3): types the composed `cd … &&
+   *  claude` command into the PTY (YOLO flag respected upstream). */
+  onLaunchClaude: () => void;
   /** Whether this pane is the single zoomed pane (full-view). */
   zoomed: boolean;
   /** Whether reorder drag is enabled (false while any pane is zoomed). */

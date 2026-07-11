@@ -33,9 +33,11 @@ const meta = {
     session: session({}),
     unread: 0,
     ungoverned: false,
+    canLaunch: true,
     zoomed: false,
     draggable: true,
     onRename: fn(),
+    onLaunchClaude: fn(),
     onToggleZoom: fn(),
     onActivate: fn(),
   },
@@ -96,5 +98,22 @@ export const TogglesZoom: Story = {
   play: async ({ args, canvas }) => {
     await userEvent.click(canvas.getByRole('button', { name: /Maximize pane/ }));
     await expect(args.onToggleZoom).toHaveBeenCalledWith('grid-session');
+  },
+};
+
+/** The one-click Claude launch (decision 3) rides in the grid pane header too, the
+ *  same affordance as the tab pane — clicking it types the composed launch command. */
+export const LaunchesClaude: Story = {
+  play: async ({ args, canvas }) => {
+    await userEvent.click(canvas.getByRole('button', { name: 'Launch Claude' }));
+    await expect(args.onLaunchClaude).toHaveBeenCalled();
+  },
+};
+
+/** A non-POSIX shell (Windows) can't run the composed launch — no Launch button. */
+export const NoLaunchOnNonPosix: Story = {
+  args: { canLaunch: false },
+  play: async ({ canvas }) => {
+    expect(canvas.queryByRole('button', { name: 'Launch Claude' })).toBeNull();
   },
 };

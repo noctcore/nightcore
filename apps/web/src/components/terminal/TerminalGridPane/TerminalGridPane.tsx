@@ -7,6 +7,7 @@ import {
   LockIcon,
   MaximizeIcon,
   MinimizeIcon,
+  ProviderIcon,
   TerminalIcon,
 } from '@/components/ui';
 import type { TerminalSessionInfo } from '@/lib/bridge';
@@ -86,9 +87,11 @@ export function TerminalGridPane({
   session,
   unread,
   ungoverned,
+  canLaunch,
   zoomed,
   draggable,
   onRename,
+  onLaunchClaude,
   onToggleZoom,
   onActivate,
 }: TerminalGridPaneProps) {
@@ -134,13 +137,16 @@ export function TerminalGridPane({
           </span>
         )}
         <PaneUnread count={unread} />
-        <IconButton
-          label={zoomLabel}
-          onClick={() => onToggleZoom(session.id)}
-          className="ml-auto shrink-0"
-        >
-          <ZoomIcon size={13} />
-        </IconButton>
+        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+          {canLaunch && (
+            <IconButton label="Launch Claude" onClick={onLaunchClaude}>
+              <ProviderIcon provider="claude" size={13} />
+            </IconButton>
+          )}
+          <IconButton label={zoomLabel} onClick={() => onToggleZoom(session.id)}>
+            <ZoomIcon size={13} />
+          </IconButton>
+        </div>
       </div>
       <div ref={v.search.rootRef} className="relative min-h-0 flex-1">
         <div ref={v.containerRef} className="h-full overflow-hidden p-1.5" />

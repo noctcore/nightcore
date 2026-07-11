@@ -28,8 +28,10 @@ function renderGrid(sessions: TerminalSessionInfo[], zoomedId: string | null = n
         sessions={sessions}
         unread={{}}
         ungovernedIds={new Set()}
+        canLaunchClaude={() => true}
         zoomedId={zoomedId}
         onRename={() => {}}
+        onLaunchClaude={() => {}}
         onReorder={() => {}}
         onToggleZoom={() => {}}
         onActivate={() => {}}
@@ -64,8 +66,10 @@ test('reordering keyed panes does NOT unmount them (same DOM node persists)', as
         sessions={[session('b'), session('a')]}
         unread={{}}
         ungovernedIds={new Set()}
+        canLaunchClaude={() => true}
         zoomedId={null}
         onRename={() => {}}
+        onLaunchClaude={() => {}}
         onReorder={() => {}}
         onToggleZoom={() => {}}
         onActivate={() => {}}
@@ -90,8 +94,10 @@ test('zooming a pane replaces the grid with only that pane', async () => {
         sessions={[session('a'), session('b'), session('c')]}
         unread={{}}
         ungovernedIds={new Set()}
+        canLaunchClaude={() => true}
         zoomedId="b"
         onRename={() => {}}
+        onLaunchClaude={() => {}}
         onReorder={() => {}}
         onToggleZoom={() => {}}
         onActivate={() => {}}
@@ -102,4 +108,31 @@ test('zooming a pane replaces the grid with only that pane', async () => {
   const panes = screen.container.querySelectorAll('[data-session-id]');
   expect(panes).toHaveLength(1);
   expect(panes[0]?.getAttribute('data-session-id')).toBe('b');
+});
+
+test('threads a per-pane Launch Claude affordance and fires it with the pane session', async () => {
+  const onLaunchClaude = vi.fn();
+  const screen = render(
+    <ToastProvider>
+      <TerminalGrid
+        sessions={[session('a'), session('b')]}
+        unread={{}}
+        ungovernedIds={new Set()}
+        canLaunchClaude={(s) => s.id === 'a'}
+        zoomedId={null}
+        onRename={() => {}}
+        onLaunchClaude={onLaunchClaude}
+        onReorder={() => {}}
+        onToggleZoom={() => {}}
+        onActivate={() => {}}
+      />
+    </ToastProvider>,
+  );
+  // Only the POSIX pane ('a') exposes the launch affordance.
+  await vi.waitFor(() =>
+    expect(screen.container.querySelectorAll('[aria-label="Launch Claude"]')).toHaveLength(1),
+  );
+  const launch = screen.container.querySelector<HTMLButtonElement>('[aria-label="Launch Claude"]');
+  launch?.click();
+  expect(onLaunchClaude).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }));
 });

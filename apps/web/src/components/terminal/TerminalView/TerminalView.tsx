@@ -87,8 +87,10 @@ export function TerminalView({
           sessions={v.layout.orderedSessions}
           unread={v.unread}
           ungovernedIds={v.tasks.ungovernedIds}
+          canLaunchClaude={v.tasks.canLaunchClaude}
           zoomedId={v.layout.zoomedId}
           onRename={v.renameSession}
+          onLaunchClaude={v.tasks.launchClaude}
           onReorder={v.layout.reorder}
           onToggleZoom={v.layout.toggleZoom}
           onActivate={v.selectTab}

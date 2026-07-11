@@ -40,8 +40,10 @@ const meta = {
     sessions: FOUR,
     unread: {},
     ungovernedIds: new Set<string>(),
+    canLaunchClaude: () => true,
     zoomedId: null,
     onRename: fn(),
+    onLaunchClaude: fn(),
     onReorder: fn(),
     onToggleZoom: fn(),
     onActivate: fn(),
@@ -64,6 +66,14 @@ type Story = StoryObj<typeof meta>;
 export const FourPanes: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getAllByRole('button', { name: /Maximize pane/ })).toHaveLength(4);
+  },
+};
+
+/** Every POSIX pane carries its own Launch-Claude affordance (decision 3), the same
+ *  one the tab pane has — not just the active tab. */
+export const LaunchPerPane: Story = {
+  play: async ({ canvas }) => {
+    await expect(canvas.getAllByRole('button', { name: 'Launch Claude' })).toHaveLength(4);
   },
 };
 

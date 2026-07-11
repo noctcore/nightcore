@@ -36,8 +36,10 @@ export function TerminalGrid({
   sessions,
   unread,
   ungovernedIds,
+  canLaunchClaude,
   zoomedId,
   onRename,
+  onLaunchClaude,
   onReorder,
   onToggleZoom,
   onActivate,
@@ -68,9 +70,11 @@ export function TerminalGrid({
             session={session}
             unread={unread[session.id] ?? 0}
             ungoverned={ungovernedIds.has(session.id)}
+            canLaunch={canLaunchClaude(session)}
             zoomed={zoomedId === session.id}
             draggable={zoomedId === null}
             onRename={onRename}
+            onLaunchClaude={() => onLaunchClaude(session)}
             onToggleZoom={onToggleZoom}
             onActivate={onActivate}
           />
