@@ -280,6 +280,89 @@ fn a_flaky_check_fails_then_passes_and_is_not_a_failure() {
     assert!(!fix_instruction(&result).contains("flake"));
 }
 
+#[test]
+fn security_critical_kinds_are_secret_scan_and_mutation_score() {
+    // The greppable classification that drives the flaky-retry exclusion: only the
+    // two security kinds are security-critical; every other runnable kind is not.
+    use HarnessCheckKind::*;
+    assert!(SecretScan.is_security_critical());
+    assert!(MutationScore.is_security_critical());
+    for kind in [
+        LintPlugin,
+        DependencyCruiser,
+        CoverageThreshold,
+        LockfileLint,
+        EnvContract,
+        AstGrep,
+        ApiExtractor,
+    ] {
+        assert!(
+            !kind.is_security_critical(),
+            "{kind:?} must not be security-critical"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_security_check_that_fails_then_passes_is_not_a_flaky_pass() {
+    // Item 3: security-critical kinds are EXCLUDED from flaky-retry. The very same
+    // fail-then-pass script that a `lint-plugin` treats as non-blocking `flaky`
+    // (see `a_flaky_check_fails_then_passes_and_is_not_a_failure`) must BLOCK for a
+    // security kind — with no retry, the first failure is the verdict.
+    for kind in ["secret-scan", "mutation-score"] {
+        let tmp = temp_project_with_config("{}"); // config rewritten below with the abs path
+        let script = write_script(
+            tmp.path(),
+            "flaky.sh",
+            "if [ -f flaky-marker ]; then exit 0; else touch flaky-marker; exit 1; fi",
+        );
+        std::fs::write(
+            tmp.path().join(".nightcore/harness.json"),
+            format!(
+                r#"{{ "checks": [ {{ "name": "sec", "kind": "{kind}", "command": "{}" }} ] }}"#,
+                script.display()
+            ),
+        )
+        .expect("rewrite manifest");
+
+        let result = run(tmp.path());
+        assert!(
+            !result.passed,
+            "{kind} must block on a fail-then-pass, not flip to a flaky pass"
+        );
+        assert_eq!(result.failed_check.as_deref(), Some("sec"), "{kind}");
+        assert_eq!(result.checks[0].status, StepStatus::Failed, "{kind}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_non_security_check_still_gets_its_one_flaky_retry() {
+    // The contrast: a non-security kind keeps the single retry, so the identical
+    // fail-then-pass script is `Flaky` (non-blocking) — the retry is not removed
+    // wholesale, only for security-critical kinds.
+    let tmp = temp_project_with_config("{}");
+    let script = write_script(
+        tmp.path(),
+        "flaky.sh",
+        "if [ -f flaky-marker ]; then exit 0; else touch flaky-marker; exit 1; fi",
+    );
+    std::fs::write(
+        tmp.path().join(".nightcore/harness.json"),
+        format!(
+            r#"{{ "checks": [ {{ "name": "cov", "kind": "coverage-threshold", "command": "{}" }} ] }}"#,
+            script.display()
+        ),
+    )
+    .expect("rewrite manifest");
+
+    let result = run(tmp.path());
+    assert!(result.passed, "a non-security flake does not fail the gate");
+    assert!(result.failed_check.is_none());
+    assert_eq!(result.checks[0].status, StepStatus::Flaky);
+}
+
 #[cfg(unix)]
 #[test]
 fn a_hung_check_times_out_and_fails_closed() {

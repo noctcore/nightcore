@@ -7,7 +7,10 @@
 //! (a non-failure the gate ignores) rather than burning a fix session on a flake.
 //! Per-check duration is recorded. A task's own verify command folds in as an
 //! extra check, and `fix_instruction` renders the aggregate feedback the auto-fix
-//! loop feeds back on failure.
+//! loop feeds back on failure. Security-critical kinds (`secret-scan`,
+//! `mutation-score`) are EXCLUDED from the retry: a failure blocks immediately
+//! rather than getting a second chance to flip green (and a side-effecting check
+//! is not run twice).
 
 use std::path::Path;
 use std::process::Stdio;
@@ -51,7 +54,14 @@ pub fn run_from(manifest_root: &Path, run_dir: &Path) -> StructureLockResult {
     for check in planned {
         let kind = check.kind.as_wire().to_string();
         tracing::debug!(target: "nightcore::structure_lock", check = %check.name, "running structure-lock check");
-        let outcome = run_check_with_retry(&check.program, &check.args, run_dir, check.timeout);
+        // Security-critical kinds are excluded from flaky-retry: a failure blocks.
+        let outcome = run_check_with_retry(
+            &check.program,
+            &check.args,
+            run_dir,
+            check.timeout,
+            check.kind.is_security_critical(),
+        );
 
         match outcome.status {
             StepStatus::Passed => {
@@ -190,11 +200,18 @@ fn run_check_once(program: &str, args: &[String], dir: &Path, timeout: Duration)
 /// passes is `Flaky` — a non-failure the gate ignores, so a flake no longer burns
 /// a fix session — while a check that fails BOTH times is `Failed`. Each attempt
 /// is independently bounded by `timeout`, so the worst case is `2 * timeout`.
+///
+/// When `security_critical` is true the retry is SUPPRESSED: the first failure is
+/// the verdict (`Failed`), so a security check (`secret-scan` / `mutation-score`)
+/// that ever fails BLOCKS instead of being masked as a non-blocking `flaky` pass —
+/// and a side-effecting check is never run twice. See
+/// [`super::config::HarnessCheckKind::is_security_critical`].
 fn run_check_with_retry(
     program: &str,
     args: &[String],
     dir: &Path,
     timeout: Duration,
+    security_critical: bool,
 ) -> CheckOutcome {
     let first = run_check_once(program, args, dir, timeout);
     if first.ok {
@@ -202,6 +219,17 @@ fn run_check_with_retry(
             status: StepStatus::Passed,
             exit_code: first.exit_code,
             output: None,
+            duration_ms: first.duration_ms,
+        };
+    }
+
+    // A security-critical check gets NO second chance: a single failure blocks
+    // (never a `flaky` pass), and a side-effecting check isn't run twice.
+    if security_critical {
+        return CheckOutcome {
+            status: StepStatus::Failed,
+            exit_code: first.exit_code,
+            output: first.output,
             duration_ms: first.duration_ms,
         };
     }
@@ -255,7 +283,8 @@ pub fn append_task_verify_command(result: &mut StructureLockResult, command: &st
     let args: Vec<String> = tokens.map(str::to_string).collect();
 
     tracing::debug!(target: "nightcore::structure_lock", command = %command, "running task verify command");
-    let outcome = run_check_with_retry(program, &args, dir, DEFAULT_CHECK_TIMEOUT);
+    // The task's own verify command is not a security kind; it keeps its flaky-retry.
+    let outcome = run_check_with_retry(program, &args, dir, DEFAULT_CHECK_TIMEOUT, false);
 
     match outcome.status {
         StepStatus::Passed => {

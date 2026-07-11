@@ -87,6 +87,21 @@ impl HarnessCheckKind {
             HarnessCheckKind::ApiExtractor => "api-extractor",
         }
     }
+
+    /// Security-critical kinds are EXCLUDED from the runner's flaky-retry policy. A
+    /// `secret-scan` or `mutation-score` that fails then flips to exit-0 on a retry
+    /// must still BLOCK (a leaked secret that momentarily disappears is still a leak;
+    /// a mutation score that only clears on a re-run is not a real pass) rather than
+    /// be masked as a non-blocking `flaky`. Excluding them also avoids re-running a
+    /// side-effecting check (e.g. Stryker) a second time. The greppable single source
+    /// of truth for [`super::runner::run_check_with_retry`]'s per-kind decision; kept
+    /// in lockstep with the enum by [`super::tests`].
+    pub(super) fn is_security_critical(self) -> bool {
+        matches!(
+            self,
+            HarnessCheckKind::SecretScan | HarnessCheckKind::MutationScore
+        )
+    }
 }
 
 /// One check as declared in `.nightcore/harness.json`. Parsed leniently (per-entry
