@@ -56,42 +56,71 @@ pub(super) fn detect_findings(diff: &str) -> Vec<Finding> {
     let mut old_path: Option<String> = None;
     // Line number in the NEW file; 0 = unknown (no hunk header parsed yet).
     let mut new_line: u32 = 0;
+    // Header-vs-body disambiguation. Inside a hunk BODY every line is content
+    // regardless of its leading chars — a removed `-- x` reaches us as `--- x`
+    // and an added `++ y` as `+++ y`, which must NOT be read as `--- `/`+++ `
+    // file headers. We stay in the body until the hunk's line budget is spent
+    // (`@@ -a,b +c,d @@` promises `b` old-side and `d` new-side lines) or a new
+    // `diff --git` file section begins — only then are `--- `/`+++ ` headers.
+    let mut in_body = false;
+    let mut old_budget: u32 = 0;
+    let mut new_budget: u32 = 0;
 
     for line in diff.lines() {
-        if let Some(rest) = line.strip_prefix("--- ") {
-            old_path = parse_diff_path(rest, "a/");
+        // A new file section always resets to header mode, even if the previous
+        // hunk's declared budget was never spent (test fixtures over-count).
+        if line.starts_with("diff --git ") {
+            in_body = false;
+            old_path = None;
             continue;
         }
-        if let Some(rest) = line.strip_prefix("+++ ") {
-            let new_path = parse_diff_path(rest, "b/");
-            let deleted = new_path.is_none();
-            // A deleted file is identified by its OLD path (the new side is /dev/null).
-            let Some(file) = new_path.or_else(|| old_path.clone()) else {
-                continue;
-            };
-            if file.starts_with(".nightcore/") {
-                findings.push(Finding {
-                    file: file.clone(),
-                    pattern: "gate-config change under .nightcore/".to_string(),
-                    line: None,
-                });
-            }
-            tallies.push(FileTally {
-                is_test: is_test_file(&file),
-                file,
-                deleted,
-                removed_assertions: 0,
-                added_assertions: 0,
-            });
-            new_line = 0;
-            continue;
-        }
+        // A hunk header has no `+`/`-`/space content prefix, so it can never
+        // collide with body content; it (re)opens body mode with a fresh budget.
         if line.starts_with("@@") {
-            new_line = parse_hunk_new_start(line).unwrap_or(0);
+            let (start, old_count, new_count) = parse_hunk_header(line);
+            new_line = start;
+            old_budget = old_count;
+            new_budget = new_count;
+            in_body = old_count > 0 || new_count > 0;
             continue;
         }
+        if !in_body {
+            // Header region (between `diff --git`/start and the first `@@`): the
+            // only place `--- `/`+++ ` are file headers.
+            if let Some(rest) = line.strip_prefix("--- ") {
+                old_path = parse_diff_path(rest, "a/");
+            } else if let Some(rest) = line.strip_prefix("+++ ") {
+                let new_path = parse_diff_path(rest, "b/");
+                let deleted = new_path.is_none();
+                // A deleted file is identified by its OLD path (new side is /dev/null).
+                let Some(file) = new_path.or_else(|| old_path.clone()) else {
+                    continue;
+                };
+                if file.starts_with(".nightcore/") {
+                    findings.push(Finding {
+                        file: file.clone(),
+                        pattern: "gate-config change under .nightcore/".to_string(),
+                        line: None,
+                    });
+                }
+                tallies.push(FileTally {
+                    is_test: is_test_file(&file),
+                    file,
+                    deleted,
+                    removed_assertions: 0,
+                    added_assertions: 0,
+                });
+                new_line = 0;
+            }
+            // Everything else in the header region (`index`, `deleted file mode`,
+            // similarity lines, preamble noise) is ignored.
+            continue;
+        }
+        // Body region: consume exactly one hunk line, dispatching on its leading
+        // char, and spend the matching side of the budget.
         let Some(tally) = tallies.last_mut() else {
-            continue; // preamble noise before the first file header
+            in_body = false; // no file to attribute to — treat as header noise
+            continue;
         };
         if let Some(content) = line.strip_prefix('+') {
             let at = (new_line > 0).then_some(new_line);
@@ -123,6 +152,7 @@ pub(super) fn detect_findings(diff: &str) -> Vec<Finding> {
                     tally.added_assertions += 1;
                 }
             }
+            new_budget = new_budget.saturating_sub(1);
             if new_line > 0 {
                 new_line += 1;
             }
@@ -130,11 +160,21 @@ pub(super) fn detect_findings(diff: &str) -> Vec<Finding> {
             if tally.is_test && is_assertion(content) {
                 tally.removed_assertions += 1;
             }
-        } else if new_line > 0 {
-            // Context line: advances the new file. (`\ No newline` lines don't.)
-            if !line.starts_with('\\') {
+            old_budget = old_budget.saturating_sub(1);
+        } else if line.starts_with('\\') {
+            // `\ No newline at end of file`: advances nothing, costs no budget.
+        } else {
+            // Context line (leading space, or a blank line): advances the new
+            // file and spends both sides of the budget.
+            old_budget = old_budget.saturating_sub(1);
+            new_budget = new_budget.saturating_sub(1);
+            if new_line > 0 {
                 new_line += 1;
             }
+        }
+        // Budget spent ⇒ the hunk is over; the next `--- `/`+++ ` are headers again.
+        if old_budget == 0 && new_budget == 0 {
+            in_body = false;
         }
     }
 
@@ -163,10 +203,47 @@ fn parse_diff_path(rest: &str, prefix: &str) -> Option<String> {
     Some(rest.strip_prefix(prefix).unwrap_or(rest).to_string())
 }
 
-/// New-file start line from a hunk header (`@@ -12,5 +34,6 @@` ⇒ 34).
-fn parse_hunk_new_start(line: &str) -> Option<u32> {
-    let plus = line.split(' ').find(|t| t.starts_with('+'))?;
-    plus[1..].split(',').next()?.parse().ok()
+/// Parse a hunk header into `(new_start, old_count, new_count)`.
+/// `@@ -12,5 +34,6 @@` ⇒ `(34, 5, 6)`; a missing `,count` means one line
+/// (`@@ -1 +1 @@` ⇒ counts of 1); an unparseable field falls back to a
+/// single line so a malformed header still bounds exactly one body line.
+fn parse_hunk_header(line: &str) -> (u32, u32, u32) {
+    let mut new_start = 0;
+    let mut old_count = 1;
+    let mut new_count = 1;
+    let mut got_old = false;
+    let mut got_new = false;
+    // Only the FIRST `-…`/`+…` tokens are the ranges; any trailing section
+    // heading (`@@ … @@ fn foo()`) that happens to contain them is ignored.
+    for tok in line.split_whitespace() {
+        if !got_old {
+            if let Some(range) = tok.strip_prefix('-') {
+                old_count = hunk_count(range);
+                got_old = true;
+                continue;
+            }
+        }
+        if !got_new {
+            if let Some(range) = tok.strip_prefix('+') {
+                new_start = range
+                    .split(',')
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0);
+                new_count = hunk_count(range);
+                got_new = true;
+            }
+        }
+    }
+    (new_start, old_count, new_count)
+}
+
+/// The line-count field of a hunk range (`12,5` ⇒ 5, bare `12` ⇒ 1).
+fn hunk_count(range: &str) -> u32 {
+    match range.split_once(',') {
+        Some((_, count)) => count.parse().unwrap_or(1),
+        None => 1,
+    }
 }
 
 /// A test file by path convention: `*.test.*`, `*.spec.*`, or under `__tests__/`.

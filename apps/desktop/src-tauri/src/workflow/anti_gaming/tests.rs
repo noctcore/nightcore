@@ -182,6 +182,94 @@ fn assertion_gutting_not_flagged_when_rewritten_deleted_or_non_test() {
 }
 
 #[test]
+fn header_like_body_lines_do_not_create_phantom_tallies() {
+    // The evasion the hunk-budget parser closes: a removed content line `-- foo`
+    // reaches the parser as `--- foo` and an added `++ bar` as `+++ bar`. A naive
+    // parser strips those as `--- `/`+++ ` FILE headers, pushing a phantom
+    // (non-test) tally, so the assertion removals that follow attribute to the
+    // phantom and the gutting check is silently suppressed. Consuming them as
+    // hunk BODY keeps the removals on the real test file, so gutting is caught.
+    let diff = "\
+diff --git a/src/math.test.ts b/src/math.test.ts
+index 111..222 100644
+--- a/src/math.test.ts
++++ b/src/math.test.ts
+@@ -1,4 +1,2 @@
+--- foo
++++ bar
+-  expect(add(1, 2)).toBe(3)
+-  assert.equal(mul(2, 2), 4)
+";
+    let findings = detect_findings(diff);
+    // No phantom `foo`/`bar` tally: the ONLY finding is gutting on the real file.
+    assert_eq!(findings.len(), 1, "{findings:?}");
+    assert_eq!(findings[0].file, "src/math.test.ts", "{findings:?}");
+    assert!(
+        findings[0].pattern.contains("assertion gutting"),
+        "{findings:?}"
+    );
+    assert!(findings[0].pattern.contains("removed 2"), "{findings:?}");
+}
+
+#[test]
+fn plus_plus_line_before_removals_still_caught() {
+    // The deliberate ORDERING: hide the removals behind a leading `++ bar` line
+    // (diff `+++ bar`) so a header-first parser reparents everything after it.
+    // The budget parser sees the `+++ bar` as an added body line and still tallies
+    // the two removed assertions on the real test file.
+    let diff = "\
+diff --git a/src/api.test.ts b/src/api.test.ts
+index 111..222 100644
+--- a/src/api.test.ts
++++ b/src/api.test.ts
+@@ -1,3 +1,1 @@
++++ coverage moved
+-  expect(handler()).toBe(200)
+-  expect(logged()).toBe(true)
+";
+    let findings = detect_findings(diff);
+    assert_eq!(findings.len(), 1, "{findings:?}");
+    assert_eq!(findings[0].file, "src/api.test.ts", "{findings:?}");
+    assert!(findings[0].pattern.contains("removed 2"), "{findings:?}");
+}
+
+#[test]
+fn header_like_body_line_does_not_leak_across_files() {
+    // A genuine multi-file diff whose FIRST file's hunk body carries a header-like
+    // `+++ moved` line must NOT desync the stream: file B is parsed on its own,
+    // and file A's gutting is still attributed to file A.
+    let diff = "\
+diff --git a/src/a.test.ts b/src/a.test.ts
+index 111..222 100644
+--- a/src/a.test.ts
++++ b/src/a.test.ts
+@@ -1,3 +1,1 @@
++++ moved to helper
+-  expect(one()).toBe(1)
+-  expect(two()).toBe(2)
+diff --git a/src/b.test.ts b/src/b.test.ts
+index 333..444 100644
+--- a/src/b.test.ts
++++ b/src/b.test.ts
+@@ -1,1 +1,1 @@
++it.only('b', () => {})
+";
+    let findings = detect_findings(diff);
+    assert_eq!(findings.len(), 2, "{findings:?}");
+    // The focus finding is emitted inline; the gutting finding at the end.
+    let a = findings
+        .iter()
+        .find(|f| f.file == "src/a.test.ts")
+        .expect("file A gutting");
+    assert!(a.pattern.contains("removed 2"), "{findings:?}");
+    let b = findings
+        .iter()
+        .find(|f| f.file == "src/b.test.ts")
+        .expect("file B focus");
+    assert!(b.pattern.contains(".only("), "{findings:?}");
+}
+
+#[test]
 fn line_numbers_are_tracked_from_hunk_headers() {
     // Hunk starts at new-file line 10; a context line advances it, so the
     // added line lands on 11.
