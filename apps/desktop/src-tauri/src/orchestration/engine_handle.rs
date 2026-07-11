@@ -63,6 +63,10 @@ impl EngineApi for EngineHandle {
     }
 
     fn emit_state(&self, app: &AppHandle, state: &str, reason: Option<&str>) {
+        // The trait stays string-typed so `sidecar` needn't name `orchestration`
+        // (the decoupling invariant); re-type the reason at this boundary — the only
+        // place a wire-string reason enters the coordinator.
+        let reason = reason.and_then(coordinator::LoopReason::from_wire);
         app.state::<Orchestrator>().emit_state(app, state, reason);
     }
 

@@ -94,14 +94,15 @@ export function isProjectEnvelope(value: unknown): value is ProjectEnvelope {
 }
 
 /** Narrow an unknown payload to a `LoopEnvelope` defensively. The handler reads
- *  `state`, `maxConcurrency`, `reason`, and `failureThreshold` (the breaker
- *  badge), so the numeric fields it depends on are type-checked too. `LOOP_STATES`
- *  is the single source of truth for the membership check — no hand-enumerated
- *  string literals here. */
+ *  `state`, `armed` (the toggle's arming truth), `maxConcurrency`, `reason`, and
+ *  `failureThreshold` (the breaker badge), so the boolean + numeric fields it
+ *  depends on are type-checked too. `LOOP_STATES` is the single source of truth for
+ *  the membership check — no hand-enumerated string literals here. */
 export function isLoopEnvelope(value: unknown): value is LoopEnvelope {
-  if (!hasKeys(value, ['state', 'maxConcurrency', 'failureThreshold'])) return false;
+  if (!hasKeys(value, ['state', 'armed', 'maxConcurrency', 'failureThreshold'])) return false;
   return (
     (LOOP_STATES as readonly string[]).includes(value.state as string) &&
+    typeof value.armed === 'boolean' &&
     typeof value.maxConcurrency === 'number' &&
     typeof value.failureThreshold === 'number'
   );

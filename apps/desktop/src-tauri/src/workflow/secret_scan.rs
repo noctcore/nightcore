@@ -81,10 +81,7 @@ fn scan_staged_with(dir: &Path, binary: &str) -> ScanOutcome {
     // commit); `--redact` masks matched values so the captured output is safe to
     // surface. Routed through the Windows-shim-aware spawner like every other
     // external tool.
-    let output = crate::platform::std_command(binary)
-        .args(["protect", "--staged", "--no-banner", "--redact"])
-        .current_dir(dir)
-        .output();
+    let output = spawn_scanner(binary, dir);
 
     match output {
         Ok(out) if out.status.success() => ScanOutcome::Clean,
@@ -123,6 +120,42 @@ fn scan_staged_with(dir: &Path, binary: &str) -> ScanOutcome {
             }
         }
     }
+}
+
+/// Spawn the scanner and capture its output. In release builds this is a single
+/// `.output()` — the production fail-closed mapping (any spawn `Err` →
+/// [`ScanOutcome::ScannerError`]) is UNCHANGED, because the retry below is
+/// `#[cfg(test)]`-only and compiled out entirely.
+///
+/// TEST-ONLY retry: the two script-spawning tests write an executable script into a
+/// temp dir then exec it. Under concurrent test load, a sibling test's `fork()` can
+/// inherit the still-open write fd to that script → the exec fails with `ETXTBSY`
+/// (`ExecutableFileBusy`), which would otherwise map to `ScannerError` and flake the
+/// test red. A pre-installed `gitleaks` (the production path) is never freshly
+/// written, so it can't hit this window — the retry is a pure test-harness fix, not
+/// a loosening of the gate.
+fn spawn_scanner(binary: &str, dir: &Path) -> std::io::Result<std::process::Output> {
+    fn attempt(binary: &str, dir: &Path) -> std::io::Result<std::process::Output> {
+        crate::platform::std_command(binary)
+            .args(["protect", "--staged", "--no-banner", "--redact"])
+            .current_dir(dir)
+            .output()
+    }
+    #[cfg(test)]
+    {
+        // Bounded: a handful of short backoffs comfortably outlasts a sibling's
+        // fork/exec window without risking a hang. A non-ETXTBSY result (success or
+        // any other error) returns immediately, preserving fail-closed semantics.
+        for _ in 0..8 {
+            match attempt(binary, dir) {
+                Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                    std::thread::sleep(std::time::Duration::from_millis(15));
+                }
+                result => return result,
+            }
+        }
+    }
+    attempt(binary, dir)
 }
 
 /// Decide whether an outcome permits the commit. The single enforcement point so

@@ -21,19 +21,30 @@ export function toolReady(tool: ToolCheck): boolean {
   return tool.installed && tool.authenticated !== false;
 }
 
-export function prerequisitesReady(checks: OnboardingPrerequisites | null): boolean {
-  return (
-    checks !== null &&
-    toolReady(checks.claude) &&
-    toolReady(checks.codex) &&
-    toolReady(checks.gh) &&
-    toolReady(checks.git)
-  );
+/** Whether Codex is a REQUIRED prerequisite: only when the active provider is codex.
+ *  A Claude-only user (the primary persona) never needs it. */
+export function codexRequired(activeProvider: string): boolean {
+  return activeProvider === 'codex';
+}
+
+/** The environment gate. REQUIRES only `claude` + `git` — the two the app can't run
+ *  without. `codex` is required ONLY when it's the active provider; `gh` is always
+ *  optional (its features degrade, they don't block first-run). The prior gate ANDed
+ *  claude+codex+gh+git, so a Claude-only user could never pass Continue. */
+export function prerequisitesReady(
+  checks: OnboardingPrerequisites | null,
+  activeProvider: string,
+): boolean {
+  if (checks === null) return false;
+  if (!toolReady(checks.claude) || !toolReady(checks.git)) return false;
+  if (codexRequired(activeProvider) && !toolReady(checks.codex)) return false;
+  return true;
 }
 
 export function useOnboarding({
   folder,
   gitState,
+  activeProvider = 'claude',
   onCreateProject,
   onComplete,
 }: OnboardingProps): OnboardingViewState {
@@ -80,7 +91,10 @@ export function useOnboarding({
     setProjectName(folderBasename(folder));
   }, [folder, projectName]);
 
-  const envReady = useMemo(() => prerequisitesReady(checks), [checks]);
+  const envReady = useMemo(
+    () => prerequisitesReady(checks, activeProvider),
+    [checks, activeProvider],
+  );
   const canCreateProject =
     folder !== null && gitState === 'valid' && projectName.trim().length > 0 && !creating;
 
@@ -121,6 +135,7 @@ export function useOnboarding({
     checksLoading,
     checksError,
     appVersion,
+    activeProvider,
     projectName,
     creating,
     canContinue: step !== 'environment' || envReady,

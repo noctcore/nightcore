@@ -17,8 +17,8 @@
 > **[!WARNING]**
 >
 > **Alpha — early and actively changing.** APIs, UI, and on-disk formats can break
-> between commits. There are **no GitHub releases yet** — for now you **clone and
-> build locally** (see [Getting Started](#getting-started)). Tested on **macOS and
+> between commits. **[Download a signed installer](#install)** (macOS · Windows) to
+> get started, or [build from source](#build-from-source). Tested on **macOS and
 > Windows**; Linux is best-effort.
 
 Nightcore is a **local-first desktop studio** that runs Claude as an autonomous
@@ -156,25 +156,33 @@ development loop, not a chat window with a diff.
 
 ### Surfaces
 
+The workspace reads as the governed lifecycle — the nav is grouped by stage
+(Intake → Understand → Harden → Enforce → Verify) alongside the project surfaces:
+
 - **Board** (`K`) — the control surface: drag-and-drop columns, parallel runs,
-  plan-approval for interactive sessions, commit/merge/PR from the task drawer.
+  plan-approval for interactive sessions, commit/merge/PR from the task drawer,
+  and a per-task **Trust Report** — the receipt (gauntlet results, diff stats,
+  cited claims, cost) that no other tool can screenshot.
 - **Worktrees** (`W`) — standalone manager for per-task branches: merge
   preview, diff view, discard.
-- **Insight** (`I`) — codebase analysis producing grounded, categorized
-  findings (architecture, bugs, security, performance, …) you convert into
-  tasks.
-- **Scorecard** (`R`) — production-readiness profile: A–F grades with evidence
-  per dimension; **Harden** turns a weak grade into a pre-filled Build task.
-- **Harness** (`H`) — convention auditor that *writes the guardrails*: proposes
+- **Terminal** (`L`) — built-in per-project terminals (persistent sessions,
+  AI-named tabs), so the shell you drive agents from lives beside the board.
+- **History** (`R`) — every past run and scan, with cost, duration, and outcome.
+- **Issue Triage** (`T`) — pull GitHub issues into a graded triage list and
+  convert them into governed board tasks.
+- **Understand** (`U`) — codebase analysis + a production-readiness **Scorecard**:
+  grounded, categorized findings (architecture, bugs, security, performance, …)
+  and A–F grades with evidence per dimension, each convertible into a task.
+- **Harden** (`H`) — convention auditor that *writes the guardrails*: proposes
   applyable lint rules, a custom ESLint plugin, and `AGENTS.md` blocks — the
   artifacts the Structure-Lock Gauntlet then enforces.
-- **Issue Triage** — pull GitHub issues into a graded triage list and convert
-  them into governed board tasks.
-- **PR Review** (`P`) — create, push, and finalize PRs; address review comments
-  with an agent fix pass; run a diff-grounded AI PR-reviewer whose findings post
-  only after your approval.
+- **Enforce** (`E`) — arm those guardrails as Structure-Lock checks and see
+  rule coverage across the repo.
+- **Verify / PR Review** (`P`) — create, push, and finalize PRs; address review
+  comments with an agent fix pass; run a diff-grounded AI PR-reviewer whose
+  findings post only after your approval.
 - **Settings** (`S`) — concurrency, models, permission mode, external MCP
-  servers, and the policy hardening modules.
+  servers, the **usage meter**, and the policy hardening modules.
 
 The loop closes on itself: **scans propose the guardrails, Apply writes them,
 the Structure-Lock enforces them, the gauntlet verifies against them.**
@@ -289,11 +297,11 @@ production-ready yet. Expect breaking changes.
 
 | Next up | |
 |---|---|
-| Scan-view regroup | Understand → Harden → Enforce → Verify stages |
-| Deeper enforcement | convention-drift + rule-coverage detection |
-| Second provider | Codex, behind the existing `AgentProvider` seam |
+| Trust made visible | plan-approval gate · evidence bundle · checks manager |
+| Deeper enforcement | convention-drift detection (coverage → conformance) |
+| Verify hardening | real end-to-end coverage of the PR arc |
 
-Full picture: [`docs/research/2026-07-10-nightcore-roadmap.md`](docs/research/2026-07-10-nightcore-roadmap.md).
+Full picture: [`docs/research/2026-07-11-roadmap-v0.3-v0.5.md`](docs/research/2026-07-11-roadmap-v0.3-v0.5.md).
 
 ## Security disclaimer
 

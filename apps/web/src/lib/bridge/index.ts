@@ -17,5 +17,5 @@ export { PROVIDER_LABEL } from '../provider';
 export * from './commands';
 export * from './events';
 export { isTauri } from './internal';
-export { DEFAULT_REPO_URL } from './mocks';
+export { DEFAULT_REPO_URL, MOCK_ONBOARDING_PREREQUISITES } from './mocks';
 export * from './types';

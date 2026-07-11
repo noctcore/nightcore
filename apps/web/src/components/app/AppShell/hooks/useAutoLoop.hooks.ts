@@ -28,25 +28,28 @@ export function useAutoLoop(
     };
   }, []);
 
-  const autoMode = loop?.state === 'running';
+  // ARMED truth, not `state`: an armed loop that momentarily drains reports
+  // `state: 'drained'` while still set to launch the next backlog task. Reading
+  // `armed` keeps the toggle honest (ON while armed-but-idle) and, crucially, makes
+  // its click a real disarm — the prior `state === 'running'` read showed OFF while
+  // armed and its click re-armed (a no-op), leaving no way to stop the loop.
+  const autoMode = loop?.armed ?? false;
   const concurrency = loop?.maxConcurrency ?? fallbackConcurrency;
   const breaker = useMemo<BreakerInfo | null>(() => {
-    if (loop?.state !== 'paused') return null;
-    if (loop.reason === undefined || !loop.reason.toLowerCase().includes('circuit')) {
-      return null;
-    }
+    // Branch on the typed `reason` (a `LoopReason` union), not substring matching.
+    if (loop?.state !== 'paused' || loop.reason !== 'circuit-breaker') return null;
     return { failureThreshold: loop.failureThreshold };
   }, [loop]);
 
-  // Usage-aware throttle (spec 2026-07-11): the loop reflects a usage pause on the
-  // SAME `nc:loop` `reason` free-string the breaker uses (matched with 'usage'). The
-  // window specifics for the banner come from the `nc:usage` snapshot, not here — this
-  // is only the "is the loop usage-paused" flag that gates the banner's visibility.
-  const usagePaused =
-    loop?.state === 'paused' && (loop.reason ?? '').toLowerCase().includes('usage');
+  // Usage-aware throttle (spec 2026-07-11): the loop reflects a usage pause via the
+  // typed `nc:loop` `reason` (`'usage'`). The window specifics for the banner come
+  // from the `nc:usage` snapshot, not here — this is only the "is the loop
+  // usage-paused" flag that gates the banner's visibility.
+  const usagePaused = loop?.state === 'paused' && loop.reason === 'usage';
 
   const toggleAutoMode = useCallback(() => {
-    const fn = loop?.state === 'running' ? stopAutoLoop : startAutoLoop;
+    // Disarm when armed (even if currently drained/paused), else arm.
+    const fn = loop?.armed ? stopAutoLoop : startAutoLoop;
     void fn().catch((err) => {
       console.error('auto loop toggle failed', err);
       toast.error('Could not toggle Auto Mode', err);

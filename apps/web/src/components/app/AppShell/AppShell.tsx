@@ -8,6 +8,7 @@ import {
 } from '@/components/board';
 import { NewProjectDialog } from '@/components/new-project';
 import { Onboarding } from '@/components/onboarding';
+import { useAppInfo } from '@/components/settings/SettingsView';
 import { useUpdateChecker } from '@/components/settings/UpdateChecker';
 import { WorktreesProvider } from '@/lib/worktrees-context';
 
@@ -66,6 +67,14 @@ export function AppShell() {
   const { tasks, setSelectedId, anyRunning, runningCount } = board;
   const isAppIdle = runningCount === 0;
 
+  // The real app version, sourced from the build-time Cargo package version (the
+  // same `app_info` the About page reads) instead of a hardcoded literal that drifts
+  // every release. Empty until it resolves, so the footer never flashes a wrong tag.
+  const appInfo = useAppInfo();
+  const appVersion = appInfo !== null ? `v${appInfo.version}` : '';
+  // The active agent provider gates which onboarding prerequisites are required.
+  const activeProvider = settings.settings?.provider ?? 'claude';
+
   // Background update probe — idle-gated install stays in Settings → About.
   useUpdateChecker({ isAppIdle, checkOnStartup: true });
 
@@ -92,6 +101,7 @@ export function AppShell() {
       <Onboarding
         folder={newProject.folder}
         gitState={newProject.gitState}
+        activeProvider={activeProvider}
         onChooseFolder={newProject.pickFolder}
         onInitGit={newProject.initGit}
         onCreateProject={async (name) => {
@@ -178,7 +188,7 @@ export function AppShell() {
             sidebarStyle={sidebarStyle}
             runningCount={runningCount}
             awaitingInputCount={board.promptIds.size}
-            version="v0.1.0"
+            version={appVersion}
             footerSlot={<UsageMeter collapsed={collapsed} />}
             onToggleCollapsed={routing.toggleCollapsed}
             onNavigate={routing.goto}
