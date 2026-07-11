@@ -132,16 +132,46 @@ function actionLooksReadOnly(action: string): boolean {
   return tokens.some((t) => MCP_READ_KEYWORDS.some((k) => t.startsWith(k)));
 }
 
-/** Classify an external MCP tool by its action name. `network` and `write` are the
- *  two uncontained-by-default capabilities the native-name gates never see; `read`
- *  is the positively-recognized benign class allowed to fall through; everything
- *  else is `other` (UNKNOWN → fail-closed at the caller). Network is checked first
- *  (a `put_url`/`upload` reads as egress), then write (a mutation verb), then the
- *  read allowlist. */
-function classifyMcpTool(toolName: string): 'network' | 'write' | 'read' | 'other' {
+/** A string carrying a URL scheme (`https://`, `s3://`, `file://`, `gopher://`).
+ *  Shared by {@link extractMcpPaths} (a URL is not a filesystem target, so it is
+ *  excluded from path containment) and {@link hasUrlArgument} (a URL-valued
+ *  argument is an egress channel, so it forces a network classification). */
+const URL_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
+
+/** True when any string value in the tool input carries a URL scheme. A URL
+ *  argument is an off-machine egress channel even under a benign read verb
+ *  (`mcp__x__get`/`__search`/`__resolve` with `url: https://attacker/?<secret>`),
+ *  so a URL-bearing call is treated as `network` — and denied under bypass —
+ *  rather than allowed to fall through the read allowlist (fail-closed default;
+ *  #222). Uses the SAME URL-scheme shape the path extractor already excludes. */
+function hasUrlArgument(toolInput: unknown): boolean {
+  if (toolInput === null || typeof toolInput !== 'object') return false;
+  for (const value of Object.values(toolInput as Record<string, unknown>)) {
+    if (typeof value === 'string' && URL_SCHEME_PATTERN.test(value)) return true;
+  }
+  return false;
+}
+
+/** Classify an external MCP tool by its action name AND its input. `network` and
+ *  `write` are the two uncontained-by-default capabilities the native-name gates
+ *  never see; `read` is the positively-recognized benign class allowed to fall
+ *  through; everything else is `other` (UNKNOWN → fail-closed at the caller).
+ *  Network is checked first (a `put_url`/`upload` reads as egress), then write (a
+ *  mutation verb); a call carrying a URL-valued ARGUMENT is then promoted to
+ *  `network` too — an in-URL-GET exfil under a read verb (`get`/`search`/`query`/
+ *  `resolve`/…) must not slip through the read allowlist (#222) — and only after
+ *  that does the read allowlist decide. */
+function classifyMcpTool(
+  toolName: string,
+  toolInput: unknown,
+): 'network' | 'write' | 'read' | 'other' {
   const action = mcpAction(toolName);
   if (MCP_NETWORK_KEYWORDS.some((k) => action.includes(k))) return 'network';
   if (MCP_WRITE_KEYWORDS.some((k) => action.includes(k))) return 'write';
+  // A URL-valued argument is an egress channel regardless of the action verb, so
+  // promote to `network` (denied under bypass) BEFORE the read-verb allowlist can
+  // win — closes the in-URL-GET exfil hole under a `get`/`search`/`resolve` name.
+  if (hasUrlArgument(toolInput)) return 'network';
   if (actionLooksReadOnly(action)) return 'read';
   return 'other';
 }
@@ -173,7 +203,7 @@ function extractMcpPaths(toolInput: unknown): string[] {
   const paths: string[] = [];
   for (const [key, value] of Object.entries(toolInput as Record<string, unknown>)) {
     if (typeof value !== 'string' || value.length === 0) continue;
-    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) continue; // a URL, not a path
+    if (URL_SCHEME_PATTERN.test(value)) continue; // a URL, not a path
     const looksLikePath =
       MCP_PATH_KEYS.has(key.toLowerCase()) ||
       path.isAbsolute(value) ||
@@ -214,7 +244,7 @@ export function evaluateMcpContainment(
   resolvedCwd: string,
   roots: readonly string[],
 ): ToolDenyVerdict {
-  const kind = classifyMcpTool(toolName);
+  const kind = classifyMcpTool(toolName, toolInput);
   if (kind === 'other') {
     return {
       denied: true,

