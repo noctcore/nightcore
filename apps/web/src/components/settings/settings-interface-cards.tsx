@@ -174,6 +174,17 @@ export function buildInterfaceCards(
             />
           ),
         },
+        {
+          label: 'Live-PTY survival (experimental)',
+          hint: 'EXPERIMENTAL, macOS/Linux only. Runs your shells in a detached background process so they keep running when you quit and reattach (replaying their output) on relaunch, instead of a read-only restore. Off by default; takes effect on the next relaunch. On other platforms this has no effect. Confined (sandboxed) tabs never survive.',
+          control: (
+            <Toggle
+              on={settings.terminalDaemonEnabled}
+              onChange={(next) => patchGlobal({ terminalDaemonEnabled: next })}
+              label="Keep terminals running across app restarts (experimental)"
+            />
+          ),
+        },
       ],
     },
   ];
