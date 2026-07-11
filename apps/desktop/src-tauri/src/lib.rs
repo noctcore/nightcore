@@ -45,6 +45,12 @@ mod worktree;
 #[cfg(test)]
 mod e2e;
 
+// E2E ladder ring 1 (issue #150), deliverable (b): the `#[ignore]`-gated real-`gh`
+// scratch-repo harness (`bun run dogfood:gh`). Never runs in the default battery —
+// it needs a scratch GitHub repo + a PAT and mutates real remote state.
+#[cfg(test)]
+mod e2e_gh;
+
 // Module facade: preserve the historical crate-root paths after the folder
 // regroup so call sites elsewhere keep resolving unchanged. Crate-internal
 // (`pub(crate)`) — these are not part of the lib's public API (only `run` is), so

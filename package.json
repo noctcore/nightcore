@@ -26,6 +26,7 @@
     "codegen:contracts": "bun run tools/codegen/gen-rust-contracts.ts",
     "dogfood:ui": "node scripts/dogfood-ui.mjs",
     "dogfood:engine": "bun run scripts/headless-harness.ts",
+    "dogfood:gh": "cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib e2e_gh -- --ignored --nocapture",
     "test": "bun run test:node && bun run test:web && bun run test:plugin && echo '⚠️  Rust suite skipped — run: bun run test:all (includes test:rust) for the full gate'",
     "test:node": "bun test apps/sidecar packages/config packages/contracts packages/engine packages/session-fold packages/shared packages/storage tools/codegen tools/lint-meta",
     "test:node:coverage": "bun run tools/coverage/check-node-coverage.ts",
