@@ -114,9 +114,12 @@ export function useHarnessApply({
     const target = stream.artifacts.find((a) => a.id === armTargetId) ?? null;
     if (target === null) return;
     const name = target.groupTitle ?? target.title;
+    // The applied plugin's path (fallback to its proposed target) lets Rust refuse
+    // a placebo `lint-plugin` arm — one whose plugin no ESLint config wires in.
+    const requireWired = target.appliedPath ?? target.targetPath;
     setArmTargetId(null);
     void runAction('arm gauntlet check', async () => {
-      await harness.armCheck(name, ARM_SUGGESTION.kind, ARM_SUGGESTION.command);
+      await harness.armCheck(name, ARM_SUGGESTION.kind, ARM_SUGGESTION.command, requireWired);
       toast.push({
         tone: 'success',
         title: 'Structure-Lock check armed',

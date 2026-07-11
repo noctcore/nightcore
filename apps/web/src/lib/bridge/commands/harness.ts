@@ -5,6 +5,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { tauriInvoke } from '../internal';
 import { MOCK_INJECTION_FLAGS, MOCK_POLICY_FILE } from '../mocks';
 import type {
+  ArmedCheckFile,
+  ArmedChecksState,
   ConventionCategory,
   EffortLevel,
   HarnessPolicyFile,
@@ -13,6 +15,29 @@ import type {
   InjectionFlag,
   Task,
 } from '../types';
+
+/** The mock Checks Manager view returned outside Tauri, so the armed-checks panel
+ *  renders deterministically in Storybook + browser preview (kept local — the
+ *  shared `mocks.ts` is at its size cap). */
+const MOCK_ARMED_CHECKS_STATE: ArmedChecksState = {
+  checks: [
+    {
+      name: 'folder-per-component',
+      kind: 'lint-plugin',
+      command: 'npx eslint .',
+      enabled: true,
+      timeoutMs: 120000,
+      lastResult: { status: 'passed', exitCode: 0, durationMs: 3400 },
+    },
+    {
+      name: 'architecture-boundaries',
+      kind: 'dependency-cruiser',
+      command: 'npx depcruise src',
+      enabled: false,
+    },
+  ],
+  lastRun: { passed: true, ranAt: Date.now() - 5 * 60 * 1000 },
+};
 
 // --- Harness (codebase convention auditor) --------------------------------
 
@@ -175,8 +200,55 @@ export async function armHarnessGauntletCheck(
   name: string,
   kind: string,
   command: string,
+  /** For a `lint-plugin` arm, the applied plugin's repo-relative path — the Rust
+   *  preflight refuses to arm it if no ESLint config actually references it (the
+   *  placebo-gate fix). `null` for a hand-authored command (no plugin to check). */
+  requireWired: string | null = null,
 ): Promise<void> {
-  await invoke<void>('arm_harness_gauntlet_check', { runId, name, kind, command });
+  await invoke<void>('arm_harness_gauntlet_check', {
+    runId,
+    name,
+    kind,
+    command,
+    requireWired,
+  });
+}
+
+// --- Checks Manager (Enforce, T7): the armed structure-lock checks -----------
+
+/** The ACTIVE project's armed checks (incl. disabled), each folded with its last
+ *  on-demand result + the run-level summary. Returns a mock outside Tauri. */
+export async function listArmedChecks(): Promise<ArmedChecksState> {
+  return tauriInvoke<ArmedChecksState>('list_armed_checks', {}, MOCK_ARMED_CHECKS_STATE);
+}
+
+/** Enable / disable one armed check by name (merge-by-key over the manifest).
+ *  Returns the refreshed view. Rejects outside Tauri so a failed write surfaces. */
+export async function setArmedCheckEnabled(
+  name: string,
+  enabled: boolean,
+): Promise<ArmedChecksState> {
+  return invoke<ArmedChecksState>('set_armed_check_enabled', { name, enabled });
+}
+
+/** Remove (disarm) one armed check by name. Returns the refreshed view. */
+export async function removeArmedCheck(name: string): Promise<ArmedChecksState> {
+  return invoke<ArmedChecksState>('remove_armed_check', { name });
+}
+
+/** Edit an existing armed check identified by `originalName` (validates kind +
+ *  non-empty name/command Rust-side). Returns the refreshed view. */
+export async function updateArmedCheck(
+  originalName: string,
+  updated: ArmedCheckFile,
+): Promise<ArmedChecksState> {
+  return invoke<ArmedChecksState>('update_armed_check', { originalName, updated });
+}
+
+/** Run the whole armed gauntlet against the active project root now, persist the
+ *  result as the last run, and return the refreshed view. Rejects outside Tauri. */
+export async function runArmedChecksNow(): Promise<ArmedChecksState> {
+  return invoke<ArmedChecksState>('run_armed_checks_now', {});
 }
 
 // --- Harness policy authoring + injection scan ------------------------------

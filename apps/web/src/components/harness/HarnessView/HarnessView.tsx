@@ -17,6 +17,7 @@ import {
 } from '@/components/ui';
 
 import { CategoryTabs } from '../CategoryTabs';
+import { ChecksManager } from '../ChecksManager';
 import { ConventionGrid } from '../ConventionGrid';
 import type { HarnessMode } from '../harness-sections';
 import { HarnessProposalList } from '../HarnessProposalList';
@@ -237,6 +238,7 @@ function ResultsScreen({
           onOpen={view.openArtifact}
         />
       )}
+      {view.section === 'checks' && <ChecksManager />}
       {view.section === 'policy' && <PolicySection />}
     </div>
   );

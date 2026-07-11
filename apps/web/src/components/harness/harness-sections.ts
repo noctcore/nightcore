@@ -12,8 +12,9 @@
  *  docs/research/2026-07-10-phase1-view-rethink-spec.md § 4. */
 
 /** Which body section is showing: the convention grid, the task-shaped proposals,
- *  the file-level artifacts, or the runtime-policy editor + injection scan. */
-export type HarnessSection = 'conventions' | 'proposals' | 'artifacts' | 'policy';
+ *  the file-level artifacts, the armed-checks manager, or the runtime-policy editor
+ *  + injection scan. */
+export type HarnessSection = 'conventions' | 'proposals' | 'artifacts' | 'checks' | 'policy';
 
 /** The harness destination: the PROPOSE half, the ENFORCE half, or (undefined) the
  *  unified route that shows every section. */
@@ -34,11 +35,12 @@ export interface HarnessSectionCounts {
   artifacts: number;
 }
 
-/** Ordered sections per destination. `all` is the unified route (pre-split). */
+/** Ordered sections per destination. `all` is the unified route (pre-split). The
+ *  armed-checks manager rides the ENFORCE half (alongside conventions + policy). */
 const SECTIONS_BY_MODE = {
-  all: ['conventions', 'proposals', 'artifacts', 'policy'],
+  all: ['conventions', 'proposals', 'artifacts', 'checks', 'policy'],
   harden: ['proposals', 'artifacts'],
-  enforce: ['conventions', 'policy'],
+  enforce: ['conventions', 'checks', 'policy'],
 } as const satisfies Record<'all' | HarnessMode, readonly HarnessSection[]>;
 
 /** The section a destination opens on (its first tab). Held as an explicit map
@@ -54,6 +56,7 @@ const SECTION_LABELS: Record<HarnessSection, string> = {
   conventions: 'Conventions',
   proposals: 'Proposals',
   artifacts: 'Artifacts',
+  checks: 'Checks',
   policy: 'Policy',
 };
 
@@ -77,7 +80,8 @@ export function sectionTabsForMode(
     conventions: counts.conventions,
     proposals: counts.proposals,
     artifacts: counts.artifacts,
-    // Policy edits the manifest directly — no per-run count.
+    // Checks + Policy edit the project manifest directly — no per-run count.
+    checks: 0,
     policy: 0,
   };
   return SECTIONS_BY_MODE[mode ?? 'all'].map((key) => ({

@@ -37,6 +37,12 @@ export interface OnboardingPrerequisites {
 // mismatch. The runtime invoke/listen wrappers + zod re-validation below are
 // UNCHANGED; only the type DECLARATIONS now come from the generated bindings.
 export type { AppInfo } from '../generated/AppInfo';
+// Checks Manager (Enforce, T7): the armed-check list view + its edit DTO.
+export type { ArmedCheck } from '../generated/ArmedCheck';
+export type { ArmedCheckFile } from '../generated/ArmedCheckFile';
+export type { ArmedCheckOutcome } from '../generated/ArmedCheckOutcome';
+export type { ArmedChecksLastRun } from '../generated/ArmedChecksLastRun';
+export type { ArmedChecksState } from '../generated/ArmedChecksState';
 export type { BoardAppearance } from '../generated/BoardAppearance';
 export type { BoardBackgroundRef } from '../generated/BoardBackgroundRef';
 export type { BranchInfo } from '../generated/BranchInfo';

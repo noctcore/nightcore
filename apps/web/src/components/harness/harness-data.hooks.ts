@@ -77,7 +77,12 @@ export interface UseHarnessResult {
   applyArtifact: (artifactId: string) => Promise<void>;
   /** Arm a Structure-Lock check into the project's `.nightcore/harness.json` so the
    *  gauntlet enforces it on every future task. Command is user-confirmed, not derived. */
-  armCheck: (name: string, kind: string, command: string) => Promise<void>;
+  armCheck: (
+    name: string,
+    kind: string,
+    command: string,
+    requireWired?: string | null,
+  ) => Promise<void>;
 }
 
 /** The Harness run-lifecycle config for the shared {@link useScanRun}: the bridge
@@ -316,11 +321,12 @@ export function useHarness(
   );
 
   const armCheck = useCallback(
-    async (name: string, kind: string, command: string) => {
+    async (name: string, kind: string, command: string, requireWired: string | null = null) => {
       if (stream.runId === null) return;
       // Writes only to the project's harness.json; the `check-armed` notice is a
-      // no-op for the stream, so nothing to reconcile here.
-      await armHarnessGauntletCheck(stream.runId, name, kind, command);
+      // no-op for the stream, so nothing to reconcile here. `requireWired` (the
+      // applied plugin path) lets Rust refuse a placebo `lint-plugin` arm.
+      await armHarnessGauntletCheck(stream.runId, name, kind, command, requireWired);
     },
     [stream.runId],
   );
