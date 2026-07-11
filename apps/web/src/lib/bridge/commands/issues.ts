@@ -122,3 +122,13 @@ export async function postIssueValidationComment(runId: string): Promise<void> {
 export async function convertIssueValidationToTask(runId: string): Promise<Task> {
   return invoke<Task>('convert_issue_validation_to_task', { runId });
 }
+
+/** GitHub two-way sync (#97): project a task's Nightcore lifecycle onto its linked GitHub
+ *  issue — the `nc:*` status label + terminal comments. A MUTATION, gated in Rust by the
+ *  `issueSyncEnabled` setting and the task carrying an `issueNumber`; idempotent and
+ *  anti-churn (an unchanged task is a zero-`gh` no-op). Fire-and-forget from the observer
+ *  (PR 3); errors surface via the task's `issueSyncError` field, not a toast. No-op outside
+ *  Tauri. */
+export async function syncIssueStatus(taskId: string): Promise<void> {
+  await tauriInvoke<void>('sync_issue_status', { taskId }, undefined);
+}
