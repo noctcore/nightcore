@@ -328,6 +328,12 @@ pub struct ArmedCheckFile {
     pub timeout_ms: Option<u64>,
     /// Informational tool config path, when the entry declares one.
     pub config_path: Option<String>,
+    /// Drift-v1 (T15): the `conventionFingerprint` of the convention a COMPILED
+    /// check verifies — the join key an EnforceRun uses to attribute site counts
+    /// back to a `ConventionDrift` record. Serde-additive: absent on every existing
+    /// manifest and on plain hardening checks, so old files load with `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub convention_fingerprint: Option<String>,
 }
 
 /// Read one `checks[]` entry leniently: skip any entry missing the three required
@@ -342,6 +348,7 @@ fn armed_check_from_value(v: &Value) -> Option<ArmedCheckFile> {
         enabled: v.get("enabled").and_then(Value::as_bool) != Some(false),
         timeout_ms: v.get("timeoutMs").and_then(Value::as_u64),
         config_path: s("configPath"),
+        convention_fingerprint: s("conventionFingerprint"),
     })
 }
 
@@ -831,6 +838,7 @@ mod tests {
             enabled: false,
             timeout_ms: None, // clears the existing timeoutMs
             config_path: Some(".eslintrc".into()),
+            convention_fingerprint: None,
         };
         let after = update_check(&root_of(&tmp), "lint", &updated).expect("update");
         let lint = after.iter().find(|c| c.name == "lint").unwrap();
@@ -856,6 +864,7 @@ mod tests {
             enabled: true,
             timeout_ms: None,
             config_path: None,
+            convention_fingerprint: None,
         };
         let err = update_check(&root_of(&tmp), "lint", &renamed).expect_err("collision");
         assert!(err.contains("already exists"), "got: {err}");
@@ -870,6 +879,50 @@ mod tests {
         let raw =
             std::fs::read_to_string(tmp.path().join(".nightcore/harness.json")).expect("kept");
         assert_eq!(raw, "{ not json", "the broken file is preserved");
+    }
+
+    #[test]
+    fn armed_check_reads_convention_fingerprint_additively() {
+        // Drift-v1 (T15): a compiled check carries the origin convention's fingerprint;
+        // an old-style check without the key loads with `None` (serde-additive).
+        let tmp = TempDir::new().expect("temp dir");
+        write_manifest(
+            &tmp,
+            r#"{
+              "checks": [
+                { "name": "drift", "kind": "lint-meta", "command": "bun run lint:meta", "conventionFingerprint": "a1b2c3d4e5f60718" },
+                { "name": "legacy", "kind": "lint-plugin", "command": "npx eslint ." }
+              ]
+            }"#,
+        );
+        let checks = read_armed_checks(&root_of(&tmp));
+        let drift = checks.iter().find(|c| c.name == "drift").unwrap();
+        assert_eq!(
+            drift.convention_fingerprint.as_deref(),
+            Some("a1b2c3d4e5f60718")
+        );
+        let legacy = checks.iter().find(|c| c.name == "legacy").unwrap();
+        assert!(
+            legacy.convention_fingerprint.is_none(),
+            "a check without the key loads with None"
+        );
+    }
+
+    #[test]
+    fn editing_a_check_preserves_its_convention_fingerprint() {
+        // The origin fingerprint is immutable metadata the manager never edits — a
+        // merge-by-key write (disable) must leave it verbatim on disk.
+        let tmp = TempDir::new().expect("temp dir");
+        write_manifest(
+            &tmp,
+            r#"{ "checks": [ { "name": "drift", "kind": "lint-meta", "command": "bun run lint:meta", "conventionFingerprint": "a1b2c3d4e5f60718" } ] }"#,
+        );
+        set_check_enabled(&root_of(&tmp), "drift", false).expect("disable");
+        let value = read_manifest_value(&tmp);
+        assert_eq!(
+            value["checks"][0]["conventionFingerprint"],
+            "a1b2c3d4e5f60718"
+        );
     }
 
     #[test]

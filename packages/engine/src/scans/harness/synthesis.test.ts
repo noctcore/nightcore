@@ -1,13 +1,19 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
 
-import type { Config, RepoProfile, SurfaceCommand } from '@nightcore/contracts';
+import type {
+  Config,
+  ConventionFinding,
+  RepoProfile,
+  SurfaceCommand,
+} from '@nightcore/contracts';
 
 import type {
   ScanRunnerFactory,
   ScanSessionRunner,
 } from '../shared/scan-manager.js';
 import {
+  conventionFingerprintSet,
   parseProposedArtifacts,
   parseSynthesis,
   synthesizeHarness,
@@ -624,5 +630,261 @@ describe('parseProposedArtifacts — execution-sink grounding', () => {
       'AGENTS.md',
       'eslint.config.js',
     ]);
+  });
+});
+
+/**
+ * Drift-v1 (T15) compiled-check grounding. Synthesis compiles a
+ * mechanically-checkable convention into a `harnessCheck` (a lint-meta rule or a
+ * shell/ripgrep count) that carries the convention's `conventionFingerprint`, so a
+ * later EnforceRun can attribute site counts back to a `ConventionDrift` record. The
+ * fingerprint is GROUNDED against the run's real CONVENTION findings: a value that
+ * matches no convention (a `gap`, an unknown, or an injected string) is dropped, and
+ * a non-checkable convention simply gets no check.
+ */
+describe('synthesis — drift check compiler (T15)', () => {
+  const STRUCTURAL_FP = 'a1b2c3d4e5f60718'; // a folder-structure convention
+  const TEXTUAL_FP = '1122334455667788'; // a naming/textual convention
+  const GAP_FP = '99aa99aa99aa99aa'; // a gap — drift is never measured on gaps
+
+  const FINDINGS = [
+    {
+      id: 'folder-structure-a1b2c3d4e5f60718',
+      category: 'folder-structure',
+      kind: 'convention',
+      severity: 'medium',
+      title: 'Components live in a folder-per-component',
+      description: 'Each component has its own directory.',
+      evidence: [],
+      tags: [],
+      fingerprint: STRUCTURAL_FP,
+    },
+    {
+      id: 'naming-1122334455667788',
+      category: 'naming',
+      kind: 'convention',
+      severity: 'low',
+      title: 'Hooks are prefixed with use',
+      description: 'Custom hooks start with `use`.',
+      evidence: [],
+      tags: [],
+      fingerprint: TEXTUAL_FP,
+    },
+    {
+      id: 'testing-99aa99aa99aa99aa',
+      category: 'testing',
+      kind: 'gap',
+      severity: 'high',
+      title: 'No coverage threshold is enforced',
+      description: 'Tests run without a floor.',
+      evidence: [],
+      tags: [],
+      fingerprint: GAP_FP,
+    },
+  ] as unknown as ConventionFinding[];
+
+  test('conventionFingerprintSet keeps convention fingerprints and drops gaps', () => {
+    const set = conventionFingerprintSet(FINDINGS);
+    expect(set.has(STRUCTURAL_FP)).toBe(true);
+    expect(set.has(TEXTUAL_FP)).toBe(true);
+    // A `gap` is a missing practice — you cannot measure drift against it.
+    expect(set.has(GAP_FP)).toBe(false);
+    expect(set.size).toBe(2);
+  });
+
+  test('grounds a compiled lint-meta check and a shell check on their conventions', () => {
+    const RULE_ARTIFACT = {
+      kind: 'lint-meta-rule',
+      title: 'folder-per-component rule',
+      description: 'Fails when a component file is not in its own folder.',
+      targetPath: 'tools/lint-meta/rules/folder-per-component.ts',
+      writeMode: 'create',
+      content: 'export const rule = {};\n',
+      sourceFindings: [STRUCTURAL_FP],
+    };
+    const ruleId = parseProposedArtifacts(
+      JSON.stringify([RULE_ARTIFACT]),
+      PROJECT,
+    ).artifacts[0]!.id;
+
+    const raw = JSON.stringify({
+      artifacts: [RULE_ARTIFACT],
+      proposals: [
+        {
+          // STRUCTURAL → lint-meta rule, shipped via apply-artifacts.
+          kind: 'apply-artifacts',
+          title: 'Arm the folder-per-component drift check',
+          description: 'Apply the rule and arm it.',
+          artifactIds: [ruleId],
+          harnessCheck: {
+            name: 'folder-per-component',
+            kind: 'lint-meta',
+            command: 'bun run lint:meta',
+            conventionFingerprint: STRUCTURAL_FP,
+          },
+        },
+        {
+          // TEXTUAL → shell/ripgrep count, on an agent-task (no artifact to write).
+          kind: 'agent-task',
+          title: 'Arm the hook-prefix drift check',
+          description: 'Count hooks that break the use-prefix convention.',
+          prompt: 'Review and arm the shell drift check.',
+          harnessCheck: {
+            name: 'hook-use-prefix',
+            kind: 'shell',
+            command: "rg -c '^export function [a-z]' src/hooks",
+            conventionFingerprint: TEXTUAL_FP,
+          },
+        },
+      ],
+    });
+
+    const set = conventionFingerprintSet(FINDINGS);
+    const { proposals } = parseSynthesis(raw, PROJECT, set);
+    expect(proposals).toHaveLength(2);
+
+    const lintMeta = proposals.find((p) => p.harnessCheck?.kind === 'lint-meta');
+    expect(lintMeta?.harnessCheck?.conventionFingerprint).toBe(STRUCTURAL_FP);
+
+    const shell = proposals.find((p) => p.harnessCheck?.kind === 'shell');
+    expect(shell?.harnessCheck?.command).toContain('rg -c');
+    expect(shell?.harnessCheck?.conventionFingerprint).toBe(TEXTUAL_FP);
+  });
+
+  test('drops a fingerprint that cites a gap or an unknown convention', () => {
+    const raw = JSON.stringify({
+      artifacts: [],
+      proposals: [
+        {
+          kind: 'agent-task',
+          title: 'gap-cited check',
+          description: 'x',
+          prompt: 'arm it',
+          harnessCheck: {
+            name: 'gap-check',
+            kind: 'shell',
+            command: 'rg -c TODO src',
+            conventionFingerprint: GAP_FP, // a gap is not in the grounded set
+          },
+        },
+        {
+          kind: 'agent-task',
+          title: 'unknown-cited check',
+          description: 'x',
+          prompt: 'arm it',
+          harnessCheck: {
+            name: 'ghost-check',
+            kind: 'shell',
+            command: 'rg -c XXX src',
+            conventionFingerprint: 'deadbeefdeadbeef', // matches no finding
+          },
+        },
+      ],
+    });
+    const { proposals } = parseSynthesis(raw, PROJECT, conventionFingerprintSet(FINDINGS));
+    // Both proposals survive (they are valid agent-tasks), but the ungrounded
+    // fingerprint is stripped — the check is no longer drift-linked.
+    expect(proposals).toHaveLength(2);
+    for (const p of proposals) {
+      expect(p.harnessCheck?.conventionFingerprint).toBeUndefined();
+    }
+  });
+
+  test('a non-checkable convention emits no compiled check', () => {
+    // The model judged this convention un-mechanizable, so it attached no
+    // harnessCheck — the proposal carries no drift link.
+    const raw = JSON.stringify({
+      artifacts: [],
+      proposals: [
+        {
+          kind: 'agent-task',
+          title: 'Document the design decision',
+          description: 'A convention that needs human judgement to verify.',
+          prompt: 'Explain the layering decision in AGENTS.md.',
+        },
+      ],
+    });
+    const { proposals } = parseSynthesis(raw, PROJECT, conventionFingerprintSet(FINDINGS));
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]?.harnessCheck).toBeUndefined();
+  });
+
+  test('without a grounding set no check is drift-linked (safe default)', () => {
+    // An isolated caller passes no set: a cited fingerprint can never be verified,
+    // so it is dropped rather than trusted from raw model output.
+    const raw = JSON.stringify({
+      artifacts: [],
+      proposals: [
+        {
+          kind: 'agent-task',
+          title: 'ungrounded',
+          description: 'x',
+          prompt: 'arm it',
+          harnessCheck: {
+            name: 'c',
+            kind: 'shell',
+            command: 'rg -c x src',
+            conventionFingerprint: STRUCTURAL_FP,
+          },
+        },
+      ],
+    });
+    const { proposals } = parseSynthesis(raw, PROJECT);
+    expect(proposals[0]?.harnessCheck?.conventionFingerprint).toBeUndefined();
+  });
+
+  test('the synthesis prompt advertises the drift-compile contract', async () => {
+    const PROFILE = {
+      isMonorepo: true,
+      workspaceTool: 'bun',
+      packages: [],
+      languages: ['typescript'],
+      frameworks: [],
+      hasEslintFlatConfig: true,
+      hasLintMeta: true,
+      hasAgentDocs: false,
+      existingPlugins: [],
+    } as unknown as RepoProfile;
+    const COMMAND = {
+      type: 'start-harness-scan',
+      runId: 'run-1',
+      projectPath: PROJECT,
+      categories: [],
+    } as unknown as Extract<SurfaceCommand, { type: 'start-harness-scan' }>;
+    const CONFIG = {
+      model: 'test-model',
+      permissions: {},
+      settingSources: [],
+    } as unknown as Config;
+
+    let prompt = '';
+    const factory: ScanRunnerFactory = (config, emit): ScanSessionRunner => ({
+      async run() {
+        prompt = config.prompt;
+        emit({
+          type: 'session-completed',
+          sessionId: -1,
+          result: '{"artifacts":[],"proposals":[]}',
+          costUsd: 0,
+        } as never);
+      },
+      async interrupt() {},
+    });
+    await synthesizeHarness({
+      profile: PROFILE,
+      findings: FINDINGS,
+      inventory: 'top-level: x',
+      command: COMMAND,
+      config: CONFIG,
+      apiKeyFallback: false,
+      runnerFactory: factory,
+    });
+    expect(prompt).toContain('COMPILE DRIFT CHECKS');
+    expect(prompt).toContain('conventionFingerprint');
+    // The v0.3 substrate boundary is stated (lint-meta + shell, not eslint/ast-grep).
+    expect(prompt).toContain('kind:"lint-meta"');
+    expect(prompt).toContain('kind:"shell"');
+    // The convention fingerprints are printed so the model can cite them.
+    expect(prompt).toContain(STRUCTURAL_FP);
   });
 });

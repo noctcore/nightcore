@@ -26,4 +26,11 @@ timeoutMs: number | null,
 /**
  * Informational tool config path, when the entry declares one.
  */
-configPath: string | null, };
+configPath: string | null, 
+/**
+ * Drift-v1 (T15): the `conventionFingerprint` of the convention a COMPILED
+ * check verifies — the join key an EnforceRun uses to attribute site counts
+ * back to a `ConventionDrift` record. Serde-additive: absent on every existing
+ * manifest and on plain hardening checks, so old files load with `None`.
+ */
+conventionFingerprint?: string | null, };

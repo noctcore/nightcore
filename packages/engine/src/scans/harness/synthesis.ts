@@ -103,6 +103,9 @@ const SYNTHESIS_RETRY_REMINDER =
 export async function synthesizeHarness(
   args: SynthesizeHarnessArgs,
 ): Promise<SynthesizeHarnessResult> {
+  // The real convention fingerprints a compiled drift check may cite — grounded once
+  // per run so an injected/hallucinated fingerprint can never fabricate a drift join.
+  const conventionFingerprints = conventionFingerprintSet(args.findings);
   const tail = await runTailSession<ParsedSynthesis>({
     prompt: buildSynthesisPrompt(
       args.profile,
@@ -127,7 +130,11 @@ export async function synthesizeHarness(
     // parseSynthesis always yields a (possibly empty) value; its `error` — set only
     // when NO JSON could be extracted — drives the corrective retry.
     parse: (raw) => {
-      const parsed = parseSynthesis(raw, args.command.projectPath);
+      const parsed = parseSynthesis(
+        raw,
+        args.command.projectPath,
+        conventionFingerprints,
+      );
       return {
         value: parsed,
         ...(parsed.error !== undefined ? { error: parsed.error } : {}),
@@ -298,8 +305,9 @@ function proposalOutputContract(eslintAllowed: boolean): string {
     '  "artifactIds": ["ids of the artifacts this bundles"]  // apply-artifacts ONLY,',
     '  "prompt": "the instruction for the agent to perform"   // agent-task ONLY,',
     '  "verifyCommand": "a command that MUST pass when done, e.g. npx eslint ."  // agent-task, optional,',
-    '  "harnessCheck": { "name": "…", "kind": "lint-plugin", "command": "npx eslint ." }  // optional',
+    '  "harnessCheck": { "name": "…", "kind": "lint-meta | shell | lint-plugin", "command": "…", "conventionFingerprint": "…" }  // optional',
     '}',
+    driftCompileContract(),
     'Use `apply-artifacts` for changes that are safe to write straight to disk (new docs,',
     'a new lint config file, a generated plugin BUNDLE): set `artifactIds` to the ids of',
     'the artifacts that ship together (group members share one proposal).',
@@ -307,6 +315,37 @@ function proposalOutputContract(eslintAllowed: boolean): string {
       ? 'Use `agent-task` for changes that must NOT be a blind write — WIRING the generated plugin into `eslint.config.*`, editing `package.json` scripts, adding a pre-commit hook: describe the change in `prompt`, and set `verifyCommand` to the command that proves it works (e.g. the lint command). These become worktree Build tasks a human reviews as a diff — never a direct file write.'
       : 'This repo has no eslint host: prefer `apply-artifacts` proposals for the docs/rules; use `agent-task` only for a genuinely execution-adjacent change.',
     `Return "proposals": [] if there is nothing worth proposing. At most ${MAX_PROPOSALS} proposals.`,
+  ].join('\n');
+}
+
+/** The Drift-v1 (T15) compiled-check contract: for a convention the codebase ALREADY
+ *  follows and that can be verified DETERMINISTICALLY, compile a check so a later run
+ *  can measure whether the convention still holds at every site. Deliberately narrow:
+ *  the v0.3 substrate is lint-meta rules + shell/ripgrep counts ONLY, and a check is
+ *  only ever a SUGGESTION a human reviews and arms — synthesis never arms anything. */
+function driftCompileContract(): string {
+  return [
+    '',
+    'COMPILE DRIFT CHECKS (only for conventions the repo ALREADY follows):',
+    'For each CONVENTION finding above (kind = convention, not a gap) that you are',
+    'CONFIDENT can be verified by a DETERMINISTIC, mechanical check, compile ONE check',
+    'and attach it to the proposal as its `harnessCheck`. Set `conventionFingerprint` to',
+    "that convention's EXACT fingerprint — the `(<fingerprint>)` prefix in the findings",
+    'list above. Two substrates ONLY (v0.3):',
+    '  - STRUCTURAL / PATH / NAMING / FOLDER conventions → a lint-meta rule. Emit a',
+    '    `lint-meta-rule` artifact holding the rule body, reference it from an',
+    '    `apply-artifacts` proposal, and give that proposal a `harnessCheck` with',
+    '    `kind:"lint-meta"` and a `command` that runs the rule.',
+    '  - TEXTUAL / CONTENT conventions (a required/forbidden token, import form, header)',
+    '    → a shell check. Use an `agent-task` proposal whose `harnessCheck` has',
+    '    `kind:"shell"` and a `command` that COUNTS violating sites with ripgrep, e.g.',
+    "    `rg --count-matches 'pattern' src` or `rg -c 'pattern' src` (a count is what an",
+    '    EnforceRun turns into site totals).',
+    'ONLY compile a check you can express as a deterministic rule/command. If a convention',
+    'needs human judgement or a semantic read to verify, SKIP it — do NOT invent a check;',
+    'it simply stays unmeasured (honest). Do NOT use ESLint rules or ast-grep for drift',
+    'checks in v0.3. Every compiled check is a SUGGESTION reviewed and armed by a human —',
+    'never assume it runs, and never propose auto-arming it.',
   ].join('\n');
 }
 
@@ -359,8 +398,17 @@ export interface ParsedSynthesis {
  * artifact grounding and is dropped if none remain (never references a rejected/injected
  * artifact); an `agent-task` proposal requires a non-empty `prompt`. Returns `error` only
  * when no JSON is present at all (drives the single corrective retry).
+ *
+ * `conventionFingerprints` is the set of REAL convention fingerprints the scan surfaced;
+ * a compiled check's `conventionFingerprint` is grounded against it (a fingerprint that
+ * matches no convention is dropped). Defaults to empty — an isolated caller that passes
+ * no set simply gets no drift-linked checks (never a fabricated join).
  */
-export function parseSynthesis(raw: string, projectPath: string): ParsedSynthesis {
+export function parseSynthesis(
+  raw: string,
+  projectPath: string,
+  conventionFingerprints: ReadonlySet<string> = new Set(),
+): ParsedSynthesis {
   const parsed = extractJson(raw);
   if (parsed === undefined) {
     return { artifacts: [], proposals: [], error: 'no JSON in synthesis output' };
@@ -374,10 +422,22 @@ export function parseSynthesis(raw: string, projectPath: string): ParsedSynthesi
   const proposals: HarnessProposal[] = [];
   for (const item of toProposalArray(parsed)) {
     if (proposals.length >= MAX_PROPOSALS) break;
-    const proposal = coerceProposal(item, knownArtifactIds);
+    const proposal = coerceProposal(item, knownArtifactIds, conventionFingerprints);
     if (proposal !== undefined) proposals.push(proposal);
   }
   return { artifacts, proposals };
+}
+
+/** The `conventionFingerprint`s of this run's CONVENTION-kind findings — the set a
+ *  compiled drift check's fingerprint is grounded against. Drift measures conformance
+ *  of conventions the codebase already follows, so `gap` findings (missing practices)
+ *  are excluded: you cannot measure drift against a rule that isn't followed yet. */
+export function conventionFingerprintSet(
+  findings: ConventionFinding[],
+): ReadonlySet<string> {
+  return new Set(
+    findings.filter((f) => f.kind === 'convention').map((f) => f.fingerprint),
+  );
 }
 
 /** Pull the `proposals` array out of the object envelope; `[]` for a bare array or any
@@ -403,10 +463,13 @@ function proposalFingerprint(
   return createHash('sha1').update(`${kind}|${target}`).digest('hex').slice(0, 16);
 }
 
-/** Coerce + ground one raw model item into a {@link HarnessProposal}, or drop it. */
+/** Coerce + ground one raw model item into a {@link HarnessProposal}, or drop it.
+ *  `conventionFingerprints` is the set of REAL convention fingerprints this run
+ *  surfaced — used to ground a compiled check's `conventionFingerprint` (T15). */
 function coerceProposal(
   raw: unknown,
   knownArtifactIds: Set<string>,
+  conventionFingerprints: ReadonlySet<string>,
 ): HarnessProposal | undefined {
   if (raw === null || typeof raw !== 'object') return undefined;
   const r = raw as Record<string, unknown>;
@@ -434,7 +497,7 @@ function coerceProposal(
     return undefined;
   }
 
-  const harnessCheck = coerceHarnessCheck(r.harnessCheck);
+  const harnessCheck = coerceHarnessCheck(r.harnessCheck, conventionFingerprints);
   const fingerprint = proposalFingerprint(
     kind,
     artifactIds,
@@ -461,8 +524,17 @@ function coerceProposal(
 
 /** Coerce a suggested gauntlet check `{ name, kind, command }` — all three must be
  *  non-empty strings, else the check is dropped (a partial suggestion is discarded, not
- *  patched). This is only a SUGGESTION; arming stays human-gated in Rust. */
-function coerceHarnessCheck(raw: unknown): HarnessProposal['harnessCheck'] | undefined {
+ *  patched). This is only a SUGGESTION; arming stays human-gated in Rust.
+ *
+ *  Drift-v1 (T15): a COMPILED check may additionally cite the `conventionFingerprint`
+ *  of the convention it verifies. That fingerprint is GROUNDED against the run's real
+ *  convention findings — a value matching no convention is DROPPED (the check survives
+ *  as a plain suggestion), so a prompt-injected fingerprint can never fabricate a
+ *  drift join. The check is never auto-armed regardless. */
+function coerceHarnessCheck(
+  raw: unknown,
+  conventionFingerprints: ReadonlySet<string>,
+): HarnessProposal['harnessCheck'] | undefined {
   if (raw === null || typeof raw !== 'object') return undefined;
   const r = raw as Record<string, unknown>;
   const name = getString(r, 'name');
@@ -477,7 +549,15 @@ function coerceHarnessCheck(raw: unknown): HarnessProposal['harnessCheck'] | und
   ) {
     return undefined;
   }
-  return { name, kind, command };
+  const cited = getString(r, 'conventionFingerprint');
+  const conventionFingerprint =
+    cited !== undefined && conventionFingerprints.has(cited) ? cited : undefined;
+  return {
+    name,
+    kind,
+    command,
+    ...(conventionFingerprint !== undefined ? { conventionFingerprint } : {}),
+  };
 }
 
 /** Coerce + ground one raw model item into a {@link ProposedArtifact}. */

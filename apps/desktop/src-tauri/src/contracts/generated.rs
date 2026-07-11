@@ -842,6 +842,8 @@ pub struct HarnessCheck {
     pub name: String,
     pub kind: String,
     pub command: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub convention_fingerprint: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

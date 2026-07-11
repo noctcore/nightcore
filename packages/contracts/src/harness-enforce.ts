@@ -69,3 +69,62 @@ export const RuleCoverageGapSchema = z.object({
   fingerprint: z.string(),
 });
 export type RuleCoverageGap = z.infer<typeof RuleCoverageGapSchema>;
+
+/**
+ * A convention's measured conformance status — the Phase-2 "drift" answer that
+ * {@link RuleCoverageGapSchema} deliberately does NOT give (coverage answers "is
+ * there a rule?", drift answers "is it FOLLOWED at every site?"). Produced only by
+ * executing a human-armed check; the non-negotiable product rule is that
+ * `clean`/`drifted` are NEVER rendered without a `method` + site counts.
+ *   - `clean`       — an armed check ran and found 0 violating sites (render WITH
+ *                     method + counts, never as a bare "clean").
+ *   - `drifted`     — an armed check ran and found N>0 violating sites.
+ *   - `uncheckable` — no armed check covers this convention (the HONEST state — a
+ *                     convention with no check is not "clean").
+ *   - `errored`     — the check could not run, or its output could not be parsed
+ *                     into counts (fail-visible, not silently "clean").
+ * Kebab-free lowercase wire strings → a clean `ConventionDriftStatus` Rust enum.
+ */
+export const ConventionDriftStatusSchema = z.enum([
+  'clean',
+  'drifted',
+  'uncheckable',
+  'errored',
+]);
+export type ConventionDriftStatus = z.infer<typeof ConventionDriftStatusSchema>;
+
+/**
+ * One convention's measured drift, the output of an EnforceRun executing its armed
+ * check. A SEPARATE additive record from {@link RuleCoverageGapSchema}, joined to it
+ * in the UI by `conventionFingerprint` — the SAME key ENFORCE-lite's coverage record
+ * reserved (its header says "a `ConventionDrift` record (Phase 2) will key on the
+ * same fingerprint"), so coverage + drift join with zero migration. Flat and
+ * lifecycle-free like coverage; `method` + `sitesMatched`/`sitesChecked` are always
+ * carried so the UI can honor the fail-visible product rule (`sitesChecked: 0` ⇒
+ * counts unknown ⇒ NOT `clean`).
+ */
+export const ConventionDriftSchema = z.object({
+  /** Stable id assigned by the engine (`drift-<conventionFingerprint>`; UI keys). */
+  id: z.string(),
+  /** The convention this measures — its `category | normalized-title` sha1 (the join key). */
+  conventionFingerprint: z.string(),
+  /** The convention's lens (a `ConventionCategory` wire string; the web casts it). */
+  category: z.string(),
+  /** The convention, restated as the rule the armed check verifies. */
+  title: z.string(),
+  status: ConventionDriftStatusSchema,
+  /** ALWAYS rendered: the check name + tool/rule id that determined this (e.g.
+   *  `lint-meta: folder-per-component` or `shell: rg -c 'export default'`). */
+  method: z.string(),
+  /** Violating sites the armed check reported. */
+  sitesMatched: z.number().default(0),
+  /** Sites the armed check examined (`0` ⇒ counts unknown → can never be `clean`). */
+  sitesChecked: z.number().default(0),
+  /** The armed check that produced this drift record, when known. */
+  checkName: z.string().optional(),
+  /** Populated for `errored` — why the check could not run / parse. */
+  errorReason: z.string().optional(),
+  /** Stable fingerprint — `== conventionFingerprint` (carry-forward key, v0.4). */
+  fingerprint: z.string(),
+});
+export type ConventionDrift = z.infer<typeof ConventionDriftSchema>;

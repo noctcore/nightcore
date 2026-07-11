@@ -242,6 +242,13 @@ export const HarnessCheckSchema = z.object({
   kind: z.string(),
   /** The shell command the gauntlet runs (e.g. `npx eslint .`). */
   command: z.string(),
+  /** For a Drift-v1 COMPILED check (T15): the `conventionFingerprint` of the
+   *  convention this check verifies — the join key an EnforceRun uses to attribute
+   *  the check's site counts back to a `ConventionDrift` record. Absent on a plain
+   *  hardening arm-suggestion. Grounded by the engine against a real convention
+   *  finding (a fingerprint that matches no convention is dropped), never trusted
+   *  from raw model output. */
+  conventionFingerprint: z.string().optional(),
 });
 export type HarnessCheck = z.infer<typeof HarnessCheckSchema>;
 

@@ -343,8 +343,9 @@ const STRUCT_NAMES: Record<string, string> = {
   'confidence|content|dependsOn|description|fingerprint|group|groupTitle|id|kind|language|rationale|sourceFindings|targetPath|title|writeMode':
     'ProposedArtifact',
   // A suggested Structure-Lock check carried on a harness proposal (arming stays
-  // human-gated in Rust; this is data, not authority).
-  'command|kind|name': 'HarnessCheck',
+  // human-gated in Rust; this is data, not authority). The optional
+  // `conventionFingerprint` links a Drift-v1 COMPILED check back to its convention.
+  'command|conventionFingerprint|kind|name': 'HarnessCheck',
   // One task-shaped harness proposal (apply-artifacts bundle | agent-task).
   'artifactIds|confidence|description|fingerprint|harnessCheck|id|kind|prompt|rationale|title|verifyCommand':
     'HarnessProposal',

@@ -297,6 +297,7 @@ mod tests {
             enabled,
             timeout_ms: None,
             config_path: None,
+            convention_fingerprint: None,
         }
     }
 
