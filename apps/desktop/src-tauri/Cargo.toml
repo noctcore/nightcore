@@ -20,6 +20,12 @@ tauri-plugin-dialog = "2.7"
 tauri-plugin-notification = "2.3"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+# Single-instance guard (T14): a SECOND launch of Nightcore must not come up — two
+# processes racing the SAME `settings.json`/`projects.json` last-writer-wins clobber
+# each other's stores. The plugin holds a per-app-identifier lock; a second launch
+# fires our callback in the FIRST instance (we focus its window) and then exits.
+# Desktop-only; MUST be the first plugin registered (Tauri requirement).
+tauri-plugin-single-instance = "2"
 serde = { version = "1.0", features = ["derive"] }
 # `raw_value` lets the sidecar reader serialize each streamed session event ONCE
 # into a `RawValue` and share those bytes with both the webview envelope (emitted

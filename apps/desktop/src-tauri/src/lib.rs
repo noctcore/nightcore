@@ -78,7 +78,28 @@ pub fn run() {
     // of them can find bun/cargo/Homebrew tools. No-op on a terminal/dev launch.
     platform::hydrate_login_path();
 
-    tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default();
+    // Single-instance guard (T14): register FIRST (Tauri requirement) and desktop-only.
+    // A second launch of Nightcore would otherwise race the SAME app-config
+    // `settings.json`/`projects.json` and last-writer-wins clobber the stores. The
+    // plugin fires this callback in the ALREADY-RUNNING instance when a second is
+    // attempted; we surface the existing window (unminimize + show + focus) so the
+    // user's second click just brings the app forward, and the second process exits.
+    // The `--terminal-daemon` re-invocation never reaches here (it returns from
+    // `maybe_run_daemon` above), so the detached PTY daemon is unaffected.
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            use tauri::Manager;
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }));
+    }
+    builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
