@@ -44,7 +44,7 @@ jobs:
     # most expensive way to find out something hung.
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
@@ -67,7 +67,7 @@ jobs:
     # serialized behind a 3-minute browser suite.
     timeout-minutes: 6
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
@@ -118,7 +118,7 @@ jobs:
           else
             echo "Ample disk: ${avail}K free (>= ${threshold}K) — skipping reclaim"
           fi
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
@@ -136,7 +136,7 @@ jobs:
       # `playwright install --with-deps`.
       - name: Cache Playwright chromium
         id: playwright-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -158,18 +158,42 @@ jobs:
       # seeds a token bump. Worst case (empty/failed cache) degrades to today's
       # behavior — it never reds the gate.
       - name: Cache Playwright apt archives
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/nightcore-apt/playwright
           key: apt-playwright-${{ runner.os }}-v1
           restore-keys: apt-playwright-${{ runner.os }}-
-      - name: Install Playwright system deps (browser cached)
+      # QW2 (docs/research/2026-07-11-ci-performance.md): on a browser cache-hit
+      # this ~14s step used to install system deps unconditionally, and
+      # `install-deps` runs its own `apt-get update` which re-contacts the Azure
+      # mirror every run (the apt-archive cache above only caches downloaded .debs,
+      # not the index refresh). ubuntu-latest already ships most of chromium's
+      # shared libraries; when it ships all of them this install is pure apt
+      # overhead. Probe the cached chromium binaries with ldd and skip the install
+      # only when nothing is missing. Self-verifying and fail-safe: no binary found
+      # OR any `=> not found` falls through to install-deps, so the browser suite
+      # never runs against a chromium with unmet shared libs. (A dlopen'd/font dep
+      # not visible to ldd is the residual risk — the PR's own CI run validates it.)
+      - name: Install Playwright system deps (only when chromium libs missing)
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: |
+          found=0
+          missing=0
+          while IFS= read -r bin; do
+            found=1
+            if ldd "$bin" 2>/dev/null | grep -q 'not found'; then
+              missing=1
+            fi
+          done < <(find "$HOME/.cache/ms-playwright" -type f \( -name chrome -o -name headless_shell \) -path '*chrome-linux*' 2>/dev/null)
+          if [ "$found" = 1 ] && [ "$missing" = 0 ]; then
+            echo "chromium shared libs already satisfied on this runner — skipping install-deps (QW2)"
+            exit 0
+          fi
+          echo "chromium missing shared libs (or binary not found) — installing system deps"
           store="$HOME/.cache/nightcore-apt/playwright"
           mkdir -p "$store"
           # Seed apt's archive dir with cached .debs so install-deps finds them already
-          # downloaded and skips the mirror fetch. -n never clobbers a newer archive.
+          # downloaded and skips the mirror fetch (QW1). -n never clobbers a newer archive.
           if compgen -G "$store/*.deb" >/dev/null; then
             sudo cp -n "$store"/*.deb /var/cache/apt/archives/ || true
           fi
@@ -183,7 +207,7 @@ jobs:
       # bun install so the install can't clobber it; vite revalidates the
       # bundle hashes itself, so a stale restore just re-optimizes at startup.
       - name: Cache Vite/Vitest cache dir
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: apps/web/node_modules/.vite
           key: vite-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -209,7 +233,7 @@ jobs:
     # build ever trips this, bump it once rather than removing it.
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
@@ -236,7 +260,7 @@ jobs:
       # force a cold refetch); prefix restore-key seeds a token bump. Worst case
       # (empty/failed cache) degrades to today's behavior — it never reds the gate.
       - name: Cache Tauri apt archives
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/nightcore-apt/tauri
           key: apt-tauri-${{ runner.os }}-v1
