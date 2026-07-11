@@ -163,13 +163,37 @@ jobs:
           path: ~/.cache/nightcore-apt/playwright
           key: apt-playwright-${{ runner.os }}-v1
           restore-keys: apt-playwright-${{ runner.os }}-
-      - name: Install Playwright system deps (browser cached)
+      # QW2 (docs/research/2026-07-11-ci-performance.md): on a browser cache-hit
+      # this ~14s step used to install system deps unconditionally, and
+      # `install-deps` runs its own `apt-get update` which re-contacts the Azure
+      # mirror every run (the apt-archive cache above only caches downloaded .debs,
+      # not the index refresh). ubuntu-latest already ships most of chromium's
+      # shared libraries; when it ships all of them this install is pure apt
+      # overhead. Probe the cached chromium binaries with ldd and skip the install
+      # only when nothing is missing. Self-verifying and fail-safe: no binary found
+      # OR any `=> not found` falls through to install-deps, so the browser suite
+      # never runs against a chromium with unmet shared libs. (A dlopen'd/font dep
+      # not visible to ldd is the residual risk — the PR's own CI run validates it.)
+      - name: Install Playwright system deps (only when chromium libs missing)
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: |
+          found=0
+          missing=0
+          while IFS= read -r bin; do
+            found=1
+            if ldd "$bin" 2>/dev/null | grep -q 'not found'; then
+              missing=1
+            fi
+          done < <(find "$HOME/.cache/ms-playwright" -type f \( -name chrome -o -name headless_shell \) -path '*chrome-linux*' 2>/dev/null)
+          if [ "$found" = 1 ] && [ "$missing" = 0 ]; then
+            echo "chromium shared libs already satisfied on this runner — skipping install-deps (QW2)"
+            exit 0
+          fi
+          echo "chromium missing shared libs (or binary not found) — installing system deps"
           store="$HOME/.cache/nightcore-apt/playwright"
           mkdir -p "$store"
           # Seed apt's archive dir with cached .debs so install-deps finds them already
-          # downloaded and skips the mirror fetch. -n never clobbers a newer archive.
+          # downloaded and skips the mirror fetch (QW1). -n never clobbers a newer archive.
           if compgen -G "$store/*.deb" >/dev/null; then
             sudo cp -n "$store"/*.deb /var/cache/apt/archives/ || true
           fi
