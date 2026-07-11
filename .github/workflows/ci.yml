@@ -97,14 +97,27 @@ jobs:
       # to VM: run 28756795439 ENOSPC'd 70% through this suite while the rerun
       # on an identical image version passed. The suite itself writes <100MB
       # (measured locally) — the margin is eaten by the preinstalled toolchains,
-      # so drop the two big unused ones (~7GB for ~20s; the Android SDK is
-      # bigger still but takes a minute to rm, not worth it). df lines bracket
-      # the cleanup so a future ENOSPC is diagnosable from this log.
-      - name: Free runner disk space
+      # so drop the two big unused ones (~7GB; the Android SDK is bigger still but
+      # takes a minute to rm, not worth it).
+      #
+      # The rm itself costs ~14s on the critical path, so gate it: reclaim ONLY when
+      # free space is below a comfortable floor (~12 GiB — well above this job's few-GB
+      # peak). A VM that already has ample space skips the rm (the common case, per
+      # the "~14GB advertised" baseline); a tight VM (the F4 class) still reclaims, so
+      # the ENOSPC guard is preserved, not weakened. df lines bracket the reclaim so a
+      # future ENOSPC stays diagnosable from this log.
+      - name: Free runner disk space (only when low)
         run: |
-          df -h /
-          sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
-          df -h /
+          avail=$(df -Pk / | awk 'NR==2 {print $4}')
+          threshold=12582912  # 12 GiB in 1K-blocks
+          if [ "$avail" -lt "$threshold" ]; then
+            echo "Low disk: ${avail}K free (< ${threshold}K) — reclaiming dotnet/CodeQL"
+            df -h /
+            sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
+            df -h /
+          else
+            echo "Ample disk: ${avail}K free (>= ${threshold}K) — skipping reclaim"
+          fi
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
@@ -134,9 +147,35 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: bunx playwright install --with-deps chromium
         working-directory: apps/web
+      # Cache the .deb archives Playwright's `install-deps` pulls (chromium fonts +
+      # any system libs the base image doesn't already ship). A warm run installs
+      # them from the runner-local cache instead of re-fetching from the periodically
+      # slow Azure apt mirror — the F1 flake spiked this step from 14s to 315-330s
+      # (docs/research/2026-07-11-ci-performance.md). `install-deps` stays the source
+      # of truth for WHICH packages are needed (no hand-maintained list), so the exact
+      # same system deps are installed — only their download is cached. Static key +
+      # a manual version token (bump `-v1` to force a cold refetch); prefix restore-key
+      # seeds a token bump. Worst case (empty/failed cache) degrades to today's
+      # behavior — it never reds the gate.
+      - name: Cache Playwright apt archives
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/nightcore-apt/playwright
+          key: apt-playwright-${{ runner.os }}-v1
+          restore-keys: apt-playwright-${{ runner.os }}-
       - name: Install Playwright system deps (browser cached)
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: bunx playwright install-deps chromium
+        run: |
+          store="$HOME/.cache/nightcore-apt/playwright"
+          mkdir -p "$store"
+          # Seed apt's archive dir with cached .debs so install-deps finds them already
+          # downloaded and skips the mirror fetch. -n never clobbers a newer archive.
+          if compgen -G "$store/*.deb" >/dev/null; then
+            sudo cp -n "$store"/*.deb /var/cache/apt/archives/ || true
+          fi
+          bunx playwright install-deps chromium
+          # Persist whatever apt resolved for the next run's cache.
+          cp -u /var/cache/apt/archives/*.deb "$store"/ 2>/dev/null || true
         working-directory: apps/web
       # Vite dep-optimize + vitest processed-module cache. A warm cache shaves
       # vitest startup and shrinks the mid-run dep-discovery window (the
@@ -188,8 +227,30 @@ jobs:
       # recommends (~half the 55s install); the -dev packages hard-Depend on
       # everything the build actually links. If a future toolchain bump fails
       # with a missing-library error here, drop the flag before digging deeper.
+      # Cache the resolved .deb archives so a warm run installs them from the
+      # runner-local cache instead of re-fetching the big GTK/WebKit -dev packages
+      # from the periodically slow Azure apt mirror — the F2 flake spiked this step
+      # from 27s to 350-439s (docs/research/2026-07-11-ci-performance.md). The exact
+      # same packages are installed (list + --no-install-recommends unchanged) — only
+      # their download is cached. Static key + a manual version token (bump `-v1` to
+      # force a cold refetch); prefix restore-key seeds a token bump. Worst case
+      # (empty/failed cache) degrades to today's behavior — it never reds the gate.
+      - name: Cache Tauri apt archives
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/nightcore-apt/tauri
+          key: apt-tauri-${{ runner.os }}-v1
+          restore-keys: apt-tauri-${{ runner.os }}-
       - name: Install Tauri system dependencies
         run: |
+          store="$HOME/.cache/nightcore-apt/tauri"
+          mkdir -p "$store"
+          # Seed apt's archive dir with cached .debs so `apt-get install` finds them
+          # already downloaded and skips the mirror fetch. -n never clobbers a newer
+          # archive the base image may already ship.
+          if compgen -G "$store/*.deb" >/dev/null; then
+            sudo cp -n "$store"/*.deb /var/cache/apt/archives/ || true
+          fi
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev \
@@ -197,6 +258,8 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf
+          # Persist whatever apt resolved for the next run's cache.
+          cp -u /var/cache/apt/archives/*.deb "$store"/ 2>/dev/null || true
       - run: bun install --frozen-lockfile
       # Style half of the Rust lint gate: rustfmt.toml pins the style, so a
       # formatting diff is a CI failure, not editor noise. Runs before the

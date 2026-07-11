@@ -79,6 +79,14 @@ export default defineConfig({
         optimizeDeps: {
           include: [
             'react-dom/client',
+            // Storybook's React renderer dynamically imports @storybook/react-dom-shim,
+            // whose main entry is dist/react-18.mjs (createRoot path, used for React 18+).
+            // If Vite discovers it mid-run under the addon-vitest gate, the
+            // "optimized dependencies changed" reload 404s the in-flight page as
+            // `.../sb-vitest/deps/react-18-*.js` — the confirmed CI false-red (F3 in
+            // docs/research/2026-07-11-ci-performance.md). Pre-bundling it here keeps
+            // it out of any second optimize pass.
+            '@storybook/react-dom-shim',
             'motion/react',
             'lucide-react',
             '@dnd-kit/core',
@@ -120,6 +128,11 @@ export default defineConfig({
         optimizeDeps: {
           include: [
             'react-dom/client',
+            // Same F3 guard as the storybook project: the composed-story render
+            // path (setProjectAnnotations + vitest-browser-react) pulls in
+            // @storybook/react-dom-shim (dist/react-18.mjs). Pre-bundle it so it is
+            // never re-optimized mid-run. See docs/research/2026-07-11-ci-performance.md.
+            '@storybook/react-dom-shim',
             'motion/react',
             'lucide-react',
             '@dnd-kit/core',
