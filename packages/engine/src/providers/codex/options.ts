@@ -2,6 +2,7 @@ import type {
   AutonomyLevel,
   EffortLevel,
   McpServerEntry,
+  TaskKind,
 } from '@nightcore/contracts';
 
 import { toSdkMcpServers } from '../claude/session-options.js';
@@ -31,6 +32,20 @@ export function codexBypassOptedIn(
   return env[CODEX_BYPASS_OPT_IN_ENV] === '1';
 }
 
+/**
+ * Map a neutral autonomy ceiling to a Codex sandbox + approval posture.
+ *
+ * THE DEADLOCK INVARIANT: the codex-sdk (`@openai/codex-sdk`) runs each turn as a
+ * non-interactive `codex exec` — it writes the prompt to stdin, CLOSES stdin, and
+ * exposes NO approval callback and no approval event in its `ThreadEvent` stream. So
+ * any `approval_policy` that can raise an approval request (`on-request` /
+ * `on-failure` / `untrusted`) has no channel to answer it: the run hangs (or at best
+ * proceeds unverifiably). We therefore NEVER emit those policies here — every posture
+ * uses `never`, which is provably fail-visible: a command the sandbox forbids simply
+ * fails (surfaced as a failed `command_execution`), it is never escalated to an
+ * unanswerable prompt. Write CONTAINMENT comes from the `sandboxMode`, not from an
+ * approval prompt.
+ */
 export function codexPostureForAutonomy(
   autonomy: AutonomyLevel,
   opts: { bypassOptedIn: boolean },
@@ -40,14 +55,22 @@ export function codexPostureForAutonomy(
       return {
         autonomy,
         sandboxMode: 'read-only',
-        approvalPolicy: 'on-request',
+        approvalPolicy: 'never',
         contained: true,
       };
     case 'ask':
+      // `ask` means "prompt me before acting", which Codex CANNOT honor (no approval
+      // channel). It is removed from the advertised `autonomyLevels`, so it only
+      // arrives here from a stale/persisted value or a global `permission_mode: "ask"`
+      // a Codex task inherits. We degrade it to the SAFE read-only floor — NOT the
+      // writable `workspace-write` posture — so the "prompt me first" safety
+      // expectation is never silently dropped into autonomous writes. A build task
+      // that lands here can't mutate the repo, which surfaces visibly (an empty diff),
+      // never a silent escalation and never a hang.
       return {
         autonomy,
-        sandboxMode: 'workspace-write',
-        approvalPolicy: 'on-request',
+        sandboxMode: 'read-only',
+        approvalPolicy: 'never',
         contained: true,
       };
     case 'auto-accept':
@@ -73,6 +96,42 @@ export function codexPostureForAutonomy(
         contained: false,
       };
   }
+}
+
+/**
+ * Task kinds pinned to a kernel read-only posture under Codex regardless of the
+ * autonomy the run resolved to: the reviewer / verify identity.
+ *
+ * WHY THIS EXISTS: the Claude reviewer is made read-only by the `review` KIND preset
+ * (`disallowedTools: [WRITE_TOOLS…]` + a `dontAsk` permission mode). Codex has NO
+ * equivalent tool-surface wiring — `buildCodexThreadOptions` derives its posture
+ * purely from the autonomy — so a Codex reviewer would inherit whatever ceiling the
+ * run resolved (e.g. the global `bypass`/`auto-accept` default) and could WRITE. We
+ * close that by pinning a read-only KIND to the `plan` posture (the codex kernel's
+ * `read-only` sandbox), which is STRONGER than a tool denylist: the OS blocks the
+ * write below the tool layer, so a reviewer is provably unable to mutate the repo.
+ */
+const CODEX_READ_ONLY_KINDS: ReadonlySet<TaskKind> = new Set<TaskKind>(['review']);
+
+/** Whether a task kind must run read-only under Codex no matter the resolved
+ *  autonomy (see {@link CODEX_READ_ONLY_KINDS}). */
+export function codexKindForcesReadOnly(kind: TaskKind | undefined): boolean {
+  return kind !== undefined && CODEX_READ_ONLY_KINDS.has(kind);
+}
+
+/**
+ * The effective autonomy a Codex run uses. A read-only KIND (the reviewer) is pinned
+ * to `plan` — the read-only sandbox — so it can NEVER be handed a writable posture,
+ * whatever autonomy was resolved for the task. Every other kind uses the requested
+ * autonomy, defaulting to the safe read-only `plan` when none was set (`ask` is no
+ * longer a supported ceiling — it would deadlock).
+ */
+export function codexEffectiveAutonomy(
+  requested: AutonomyLevel | undefined,
+  kind: TaskKind | undefined,
+): AutonomyLevel {
+  if (codexKindForcesReadOnly(kind)) return 'plan';
+  return requested ?? 'plan';
 }
 
 export function effortToCodexEffort(

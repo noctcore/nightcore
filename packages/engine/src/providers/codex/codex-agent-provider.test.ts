@@ -3,8 +3,10 @@ import { describe, expect, test } from 'bun:test';
 
 import type { NightcoreEvent } from '@nightcore/contracts';
 
+import type { AgentSession } from '../agent-provider.js';
 import { AutonomyNotPermittedError } from '../agent-provider.js';
 import { CODEX_CAPABILITIES } from './capabilities.js';
+import type { CodexFactory, CodexThreadLike } from './codex-agent-provider.js';
 import { CodexAgentProvider } from './codex-agent-provider.js';
 import { parseModelList } from './model-catalog.js';
 import {
@@ -12,6 +14,8 @@ import {
   buildCodexOptions,
   buildCodexThreadOptions,
   CODEX_BYPASS_OPT_IN_ENV,
+  codexEffectiveAutonomy,
+  codexKindForcesReadOnly,
   codexPostureForAutonomy,
   effortToCodexEffort,
 } from './options.js';
@@ -35,11 +39,10 @@ describe('CODEX_CAPABILITIES', () => {
   test('advertises the real Codex matrix', () => {
     expect(CODEX_CAPABILITIES.id).toBe('codex');
     expect(CODEX_CAPABILITIES.label).toBe('Codex');
-    expect(CODEX_CAPABILITIES.autonomyLevels).toEqual([
-      'auto-accept',
-      'ask',
-      'plan',
-    ]);
+    // `ask` is NOT advertised: Codex has no approval channel, so an `ask` posture
+    // could never be answered and would deadlock — the picker must never offer it.
+    expect(CODEX_CAPABILITIES.autonomyLevels).toEqual(['auto-accept', 'plan']);
+    expect(CODEX_CAPABILITIES.autonomyLevels).not.toContain('ask');
     expect(CODEX_CAPABILITIES.supportsHooks).toBe(false);
     expect(CODEX_CAPABILITIES.providesOwnWriteContainment).toBe(true);
     expect(CODEX_CAPABILITIES.supportsMcp).toBe(true);
@@ -59,12 +62,14 @@ describe('Codex autonomy posture', () => {
   test('maps neutral autonomy to Codex sandbox and approval modes', () => {
     expect(codexPostureForAutonomy('plan', { bypassOptedIn: false })).toMatchObject({
       sandboxMode: 'read-only',
-      approvalPolicy: 'on-request',
+      approvalPolicy: 'never',
       contained: true,
     });
+    // `ask` degrades to the SAFE read-only floor (never workspace-write): Codex can't
+    // prompt, so the "ask first" expectation must not silently become autonomous writes.
     expect(codexPostureForAutonomy('ask', { bypassOptedIn: false })).toMatchObject({
-      sandboxMode: 'workspace-write',
-      approvalPolicy: 'on-request',
+      sandboxMode: 'read-only',
+      approvalPolicy: 'never',
       contained: true,
     });
     expect(
@@ -84,6 +89,19 @@ describe('Codex autonomy posture', () => {
       approvalPolicy: 'never',
       contained: false,
     });
+  });
+
+  test('NO posture uses an unanswerable approval policy (the deadlock invariant)', () => {
+    // The codex-sdk has no approval channel, so `on-request`/`on-failure`/`untrusted`
+    // would hang forever. Every posture must resolve to `never` — fail-visible, never
+    // a silent hang.
+    for (const autonomy of ['plan', 'ask', 'auto-accept', 'bypass'] as const) {
+      for (const bypassOptedIn of [false, true]) {
+        expect(
+          codexPostureForAutonomy(autonomy, { bypassOptedIn }).approvalPolicy,
+        ).toBe('never');
+      }
+    }
   });
 
   test('auto-accept is permitted because Codex supplies native containment', () => {
@@ -137,6 +155,83 @@ describe('Codex autonomy posture', () => {
       } else {
         process.env[CODEX_BYPASS_OPT_IN_ENV] = previous;
       }
+    }
+  });
+});
+
+describe('Codex reviewer read-only posture', () => {
+  test('only the review kind is pinned read-only', () => {
+    expect(codexKindForcesReadOnly('review')).toBe(true);
+    expect(codexKindForcesReadOnly('build')).toBe(false);
+    expect(codexKindForcesReadOnly('tdd')).toBe(false);
+    expect(codexKindForcesReadOnly('decompose')).toBe(false);
+    expect(codexKindForcesReadOnly(undefined)).toBe(false);
+  });
+
+  test('a review run is forced to plan regardless of the resolved autonomy', () => {
+    // Even an elevated writable ceiling collapses to read-only `plan` for a reviewer.
+    expect(codexEffectiveAutonomy('auto-accept', 'review')).toBe('plan');
+    expect(codexEffectiveAutonomy('bypass', 'review')).toBe('plan');
+    expect(codexEffectiveAutonomy(undefined, 'review')).toBe('plan');
+    // Non-review kinds pass the requested autonomy through (undefined → safe plan).
+    expect(codexEffectiveAutonomy('auto-accept', 'build')).toBe('auto-accept');
+    expect(codexEffectiveAutonomy(undefined, 'build')).toBe('plan');
+  });
+
+  test('the reviewer posture is provably read-only at the SDK boundary', () => {
+    // The concrete guarantee handed to `codex exec`: read-only sandbox, no approval
+    // escalation. A write is denied by the kernel, not merely by a tool denylist.
+    const threadOptions = buildCodexThreadOptions({
+      model: 'gpt-5-codex',
+      cwd: '/repo',
+      posture: codexPostureForAutonomy(
+        codexEffectiveAutonomy('auto-accept', 'review'),
+        { bypassOptedIn: true },
+      ),
+    });
+    expect(threadOptions.sandboxMode).toBe('read-only');
+    expect(threadOptions.approvalPolicy).toBe('never');
+  });
+
+  test('startSession records a review run as read-only even when handed auto-accept', () => {
+    const { emit } = collector();
+    const session = provider.startSession(
+      {
+        sessionId: 42,
+        prompt: 'review this',
+        model: 'gpt-5-codex',
+        cwd: '/tmp',
+        kind: 'review',
+        autonomyOverride: 'auto-accept',
+      },
+      emit,
+    );
+    // `plan` is the read-only record mode: the reviewer never gets a writable session.
+    expect(session.permissionMode).toBe('plan');
+  });
+
+  test('a review run under bypass is pinned read-only, not refused', () => {
+    // A reviewer dispatched while the global default is `bypass` must NOT be refused
+    // (it is read-only anyway) and must NOT be handed danger-full-access.
+    const previous = process.env[CODEX_BYPASS_OPT_IN_ENV];
+    process.env[CODEX_BYPASS_OPT_IN_ENV] = '1';
+    try {
+      const { emit } = collector();
+      const session = provider.startSession(
+        {
+          sessionId: 43,
+          prompt: 'review this',
+          model: 'gpt-5-codex',
+          cwd: '/tmp',
+          kind: 'review',
+          autonomyOverride: 'bypass',
+        },
+        emit,
+      );
+      expect(session.permissionMode).toBe('plan');
+    } finally {
+      if (previous === undefined) delete process.env[CODEX_BYPASS_OPT_IN_ENV];
+      else process.env[CODEX_BYPASS_OPT_IN_ENV] = previous;
     }
   });
 });
@@ -195,14 +290,14 @@ describe('Codex option mapping', () => {
       model: 'gpt-5-codex',
       effort: 'medium',
       cwd: '/repo',
-      posture: codexPostureForAutonomy('ask', { bypassOptedIn: false }),
+      posture: codexPostureForAutonomy('auto-accept', { bypassOptedIn: false }),
     });
     expect(options).toEqual({
       model: 'gpt-5-codex',
       workingDirectory: '/repo',
       skipGitRepoCheck: true,
       sandboxMode: 'workspace-write',
-      approvalPolicy: 'on-request',
+      approvalPolicy: 'never',
       modelReasoningEffort: 'medium',
     });
   });
@@ -289,6 +384,163 @@ describe('CodexSession run contract', () => {
       } else {
         process.env.NIGHTCORE_CODEX_PATH = previousCodexPath;
       }
+    }
+  });
+});
+
+describe('Codex follow-up turns (streamInput)', () => {
+  /** A fake thread whose runStreamed streams one normal turn; turn 1 fires `onTurnOne`
+   *  just before completing (to simulate a mid-run follow-up) and records each input. */
+  function scriptedThread(
+    inputs: string[],
+    onTurnOne?: () => void,
+  ): CodexThreadLike {
+    return {
+      runStreamed(input) {
+        inputs.push(typeof input === 'string' ? input : JSON.stringify(input));
+        const turnIndex = inputs.length;
+        async function* events(): AsyncGenerator<ThreadEvent> {
+          if (turnIndex === 1) {
+            yield { type: 'thread.started', thread_id: 'thread-1' };
+          }
+          yield { type: 'turn.started' };
+          yield {
+            type: 'item.completed',
+            item: {
+              id: `msg-${turnIndex}`,
+              type: 'agent_message',
+              text: `turn ${turnIndex}`,
+            },
+          };
+          if (turnIndex === 1) onTurnOne?.();
+          yield {
+            type: 'turn.completed',
+            usage: {
+              input_tokens: 1,
+              cached_input_tokens: 0,
+              output_tokens: 1,
+              reasoning_output_tokens: 0,
+            },
+          };
+        }
+        return Promise.resolve({ events: events() });
+      },
+    };
+  }
+
+  function fakeProvider(
+    inputs: string[],
+    onTurnOne?: () => void,
+  ): CodexAgentProvider {
+    const factory: CodexFactory = () => {
+      // One thread per session; its runStreamed is called once per turn (the SDK
+      // resumes the thread by id on subsequent calls).
+      const thread = scriptedThread(inputs, onTurnOne);
+      return { startThread: () => thread, resumeThread: () => thread };
+    };
+    return new CodexAgentProvider(undefined, factory);
+  }
+
+  const runParams = (sessionId: number) =>
+    ({
+      sessionId,
+      prompt: 'do the thing',
+      model: 'gpt-5-codex',
+      cwd: '/tmp',
+      kind: 'research' as const,
+      autonomyOverride: 'auto-accept' as const,
+    });
+
+  test('delivers a mid-run message as a follow-up turn (never dropped)', async () => {
+    const inputs: string[] = [];
+    const completed: NightcoreEvent[] = [];
+    // Holder so the mid-turn hook can reach the session that owns the factory.
+    const ref: { session?: AgentSession } = {};
+    const provider = fakeProvider(inputs, () => {
+      // A follow-up arrives WHILE turn 1 is still streaming.
+      ref.session?.streamInput('please also add a test');
+    });
+    ref.session = provider.startSession(runParams(5), (event) => {
+      if (event.type === 'session-completed') completed.push(event);
+    });
+    await ref.session.run();
+
+    // The follow-up was delivered as a SECOND turn (resume), not silently dropped.
+    expect(inputs).toEqual(['do the thing', 'please also add a test']);
+    // Only the FINAL turn finalizes the session — no premature session-completed.
+    expect(completed).toHaveLength(1);
+    expect(completed[0]).toMatchObject({ numTurns: 2 });
+  });
+
+  test('a run with no follow-up completes in a single turn', async () => {
+    const inputs: string[] = [];
+    const completed: NightcoreEvent[] = [];
+    const provider = fakeProvider(inputs);
+    const session = provider.startSession(runParams(6), (event) => {
+      if (event.type === 'session-completed') completed.push(event);
+    });
+    await session.run();
+
+    expect(inputs).toEqual(['do the thing']);
+    expect(completed).toHaveLength(1);
+    expect(completed[0]).toMatchObject({ numTurns: 1 });
+  });
+
+  test('empty follow-up input is ignored', async () => {
+    const inputs: string[] = [];
+    const ref: { session?: AgentSession } = {};
+    const provider = fakeProvider(inputs, () => ref.session?.streamInput(''));
+    ref.session = provider.startSession(runParams(7), () => {});
+    await ref.session.run();
+
+    expect(inputs).toEqual(['do the thing']);
+  });
+});
+
+describe('Codex probeConfig prerequisite validation', () => {
+  const swapEnv = (codexPath: string | undefined) => {
+    const prevAgent = process.env.NIGHTCORE_AGENT_PATH;
+    const prevCodex = process.env.NIGHTCORE_CODEX_PATH;
+    delete process.env.NIGHTCORE_AGENT_PATH;
+    if (codexPath === undefined) delete process.env.NIGHTCORE_CODEX_PATH;
+    else process.env.NIGHTCORE_CODEX_PATH = codexPath;
+    return () => {
+      if (prevAgent === undefined) delete process.env.NIGHTCORE_AGENT_PATH;
+      else process.env.NIGHTCORE_AGENT_PATH = prevAgent;
+      if (prevCodex === undefined) delete process.env.NIGHTCORE_CODEX_PATH;
+      else process.env.NIGHTCORE_CODEX_PATH = prevCodex;
+    };
+  };
+
+  test('surfaces an unavailable snapshot when the codex binary is missing', async () => {
+    const restore = swapEnv('/definitely/missing/nightcore-codex-probe');
+    try {
+      const snapshot = await provider.createProbeSession().probeConfig('/proj');
+      expect(snapshot.providerId).toBe('codex');
+      expect(snapshot.mcp.status).toBe('unavailable');
+      expect(snapshot.skills.status).toBe('unavailable');
+      expect(snapshot.extrasStatus).toBe('unavailable');
+      // The actionable message reaches the inspector (rendered with a Retry).
+      expect(snapshot.mcp.error).toContain(
+        '/definitely/missing/nightcore-codex-probe',
+      );
+    } finally {
+      restore();
+    }
+  });
+
+  test('reports supported sections when a codex binary resolves', async () => {
+    // Point the override at a real, existing executable so the existence check passes
+    // without spawning anything (probeCodexCli is pure fs/PATH lookups).
+    const restore = swapEnv(process.execPath);
+    try {
+      const snapshot = await provider.createProbeSession().probeConfig('/proj');
+      expect(snapshot.mcp.status).toBe('supported');
+      expect(snapshot.skills.status).toBe('supported');
+      expect(snapshot.extrasStatus).toBe('supported');
+      expect(snapshot.subagents.status).toBe('unsupported');
+    } finally {
+      restore();
     }
   });
 });

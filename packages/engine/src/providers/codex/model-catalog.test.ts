@@ -6,8 +6,10 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import {
   CODEX_MODELS_FALLBACK,
+  CODEX_UNAVAILABLE_HINT,
   listCodexModels,
   parseModelList,
+  probeCodexCli,
 } from './model-catalog.js';
 
 const tempFiles: string[] = [];
@@ -92,6 +94,46 @@ describe('parseModelList', () => {
         supportedEffortLevels: ['high', 'max'],
       },
     ]);
+  });
+});
+
+describe('probeCodexCli', () => {
+  function withEnv(codexPath: string | undefined, run: () => void): void {
+    const prevAgent = process.env.NIGHTCORE_AGENT_PATH;
+    const prevCodex = process.env.NIGHTCORE_CODEX_PATH;
+    delete process.env.NIGHTCORE_AGENT_PATH;
+    if (codexPath === undefined) delete process.env.NIGHTCORE_CODEX_PATH;
+    else process.env.NIGHTCORE_CODEX_PATH = codexPath;
+    try {
+      run();
+    } finally {
+      if (prevAgent === undefined) delete process.env.NIGHTCORE_AGENT_PATH;
+      else process.env.NIGHTCORE_AGENT_PATH = prevAgent;
+      if (prevCodex === undefined) delete process.env.NIGHTCORE_CODEX_PATH;
+      else process.env.NIGHTCORE_CODEX_PATH = prevCodex;
+    }
+  }
+
+  test('reports unavailable with the specific reason when an override is missing', () => {
+    withEnv('/definitely/missing/nightcore-codex-probe', () => {
+      const status = probeCodexCli();
+      expect(status.ok).toBe(false);
+      expect(status.message).toContain(
+        '/definitely/missing/nightcore-codex-probe',
+      );
+    });
+  });
+
+  test('reports available for an existing override binary', () => {
+    // Any existing executable satisfies the pure existence check.
+    withEnv(process.execPath, () => {
+      expect(probeCodexCli()).toEqual({ ok: true });
+    });
+  });
+
+  test('exposes an actionable install/sign-in hint constant', () => {
+    expect(CODEX_UNAVAILABLE_HINT).toContain('codex login');
+    expect(CODEX_UNAVAILABLE_HINT).toContain('NIGHTCORE_CODEX_PATH');
   });
 });
 
