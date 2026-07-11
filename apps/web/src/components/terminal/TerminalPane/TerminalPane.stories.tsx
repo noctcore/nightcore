@@ -24,11 +24,19 @@ function session(over: Partial<TerminalSessionInfo>): TerminalSessionInfo {
   };
 }
 
+const UNLINKED = {
+  ungoverned: false,
+  linkedTitle: null,
+  canLaunchClaude: true,
+  onLaunchClaude: fn(),
+  onClearLink: fn(),
+};
+
 const meta = {
   title: 'Terminal/TerminalPane',
   component: TerminalPane,
   parameters: { layout: 'fullscreen' },
-  args: { onRename: fn() },
+  args: { onRename: fn(), link: UNLINKED },
   decorators: [
     // The pane's hook uses `useToast` (the WebGL context-loss fallback), so it needs
     // a ToastProvider in scope.
@@ -71,5 +79,18 @@ export const Renamed: Story = {
   args: { session: session({ title: 'deploy shell' }) },
   play: async ({ canvas }) => {
     await expect(canvas.getByText('deploy shell')).toBeInTheDocument();
+  },
+};
+
+/** A task-linked, Claude-launched session (decisions 2 & 3): the ungoverned marker,
+ *  the linked-task chip, and the Launch-Claude affordance. */
+export const LinkedToTask: Story = {
+  args: {
+    session: session({}),
+    link: { ...UNLINKED, ungoverned: true, linkedTitle: 'Add dark-mode toggle' },
+  },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText('Task: Add dark-mode toggle')).toBeInTheDocument();
+    await expect(canvas.getByText('Ungoverned')).toBeInTheDocument();
   },
 };

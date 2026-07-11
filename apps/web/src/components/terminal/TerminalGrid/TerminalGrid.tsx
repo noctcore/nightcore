@@ -35,6 +35,7 @@ function GridPanePreview({ session }: { session: TerminalSessionInfo }) {
 export function TerminalGrid({
   sessions,
   unread,
+  ungovernedIds,
   zoomedId,
   onRename,
   onReorder,
@@ -66,6 +67,7 @@ export function TerminalGrid({
             key={session.id}
             session={session}
             unread={unread[session.id] ?? 0}
+            ungoverned={ungovernedIds.has(session.id)}
             zoomed={zoomedId === session.id}
             draggable={zoomedId === null}
             onRename={onRename}

@@ -1,4 +1,5 @@
 import {
+  BoltIcon,
   CloseIcon,
   GridIcon,
   HistoryIcon,
@@ -18,6 +19,8 @@ import {
   displayTitle,
   identityTitle,
   restoredIdentityTitle,
+  ungovernedLabel,
+  ungovernedTitle,
   unreadBadge,
   unreadBadgeLabel,
 } from '../terminal-shared';
@@ -53,10 +56,27 @@ function UnreadBadge({ count }: { count: number }) {
   );
 }
 
+/** The "ungoverned session" marker (decision 3): a warning bolt on a task-linked or
+ *  Claude-launched tab, with the verbatim governance tooltip. Mirrors the pane's own
+ *  inline marker (the feature keeps these tiny presentational glyphs per-component,
+ *  like `IdentityDot`). */
+function UngovernedMarker({ size = 11 }: { size?: number }) {
+  return (
+    <span
+      title={ungovernedTitle()}
+      aria-label={ungovernedLabel()}
+      className="flex shrink-0 items-center text-warning"
+    >
+      <BoltIcon size={size} aria-hidden />
+    </span>
+  );
+}
+
 function Tab({
   session,
   active,
   unread,
+  ungoverned,
   onSelect,
   onClose,
   onRename,
@@ -64,6 +84,7 @@ function Tab({
   session: TerminalSessionInfo;
   active: boolean;
   unread: number;
+  ungoverned: boolean;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
   onRename: (id: string, title: string) => void;
@@ -106,6 +127,7 @@ function Tab({
           <span className="max-w-[12rem] truncate text-[12.5px] font-medium">{label}</span>
         </button>
       )}
+      {ungoverned && <UngovernedMarker />}
       {!active && <UnreadBadge count={unread} />}
       <IconButton
         label={active ? `Close ${label} (${formatShortcut('W')})` : `Close ${label}`}
@@ -210,6 +232,8 @@ export function TerminalTabs({
   unread,
   viewMode,
   onToggleViewMode,
+  ungovernedIds,
+  headerSlot,
 }: TerminalTabsProps) {
   return (
     <div
@@ -223,6 +247,7 @@ export function TerminalTabs({
           session={session}
           active={session.id === activeId}
           unread={unread[session.id] ?? 0}
+          ungoverned={ungovernedIds.has(session.id)}
           onSelect={onSelect}
           onClose={onClose}
           onRename={onRename}
@@ -248,6 +273,7 @@ export function TerminalTabs({
         <PlusIcon size={14} />
         {canAddTab && <Kbd>{formatShortcut('T')}</Kbd>}
       </button>
+      {headerSlot}
       <ViewModeToggle viewMode={viewMode} onToggleViewMode={onToggleViewMode} />
     </div>
   );

@@ -47,6 +47,7 @@ test('double-clicking the title opens the inline rename and commits on Enter', a
         <TerminalGridPane
           session={fakeSession({ title: 'deploy shell' })}
           unread={0}
+          ungoverned={false}
           zoomed={false}
           draggable
           onRename={onRename}
@@ -71,6 +72,7 @@ test('clicking the title activates the pane (the zoom target)', async () => {
         <TerminalGridPane
           session={fakeSession({ title: 'shell one' })}
           unread={0}
+          ungoverned={false}
           zoomed={false}
           draggable
           onRename={() => {}}

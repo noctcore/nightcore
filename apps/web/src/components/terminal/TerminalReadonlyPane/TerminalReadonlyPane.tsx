@@ -1,6 +1,6 @@
 import '@xterm/xterm/css/xterm.css';
 
-import { Button, HistoryIcon, PlayIcon } from '@/components/ui';
+import { Button, HistoryIcon, PlayIcon, SparkIcon } from '@/components/ui';
 
 import { displayPath, restoredIdentityLabel, restoredIdentityTitle } from '../terminal-shared';
 import { useTerminalReadonlyPane } from './TerminalReadonlyPane.hooks';
@@ -31,7 +31,12 @@ function RestoredHeader({ shell, cwd }: { shell: string; cwd: string }) {
  *  scrollback in an input-disabled xterm, under a chrome that says the shell ended,
  *  with a "start a fresh shell here" action (disabled — with a hint — when the
  *  original folder is gone). A thin shell; the replay lives in the hook. */
-export function TerminalReadonlyPane({ info, canRestore, onRestore }: TerminalReadonlyPaneProps) {
+export function TerminalReadonlyPane({
+  info,
+  canRestore,
+  onRestore,
+  onResumeClaude,
+}: TerminalReadonlyPaneProps) {
   const { containerRef } = useTerminalReadonlyPane(info.id);
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[#0a0a0f]">
@@ -42,6 +47,20 @@ export function TerminalReadonlyPane({ info, canRestore, onRestore }: TerminalRe
             ? 'This session ended. Start a fresh shell to continue in the same folder.'
             : 'This session ended, and its original folder is no longer available.'}
         </span>
+        <Button
+          variant="secondary"
+          onClick={onResumeClaude}
+          disabled={!canRestore}
+          className="!py-1 text-[12px]"
+          title={
+            canRestore
+              ? 'Open a new shell here and resume the most-recent Claude session (claude --continue)'
+              : 'The original folder no longer exists — nothing to resume'
+          }
+        >
+          <SparkIcon size={13} />
+          Resume Claude
+        </Button>
         <Button
           variant="secondary"
           onClick={onRestore}

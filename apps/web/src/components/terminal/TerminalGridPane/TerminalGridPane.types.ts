@@ -12,6 +12,9 @@ export interface TerminalGridPaneProps {
   /** Unread-output count for this session (decision 6c) — badged while it is a
    *  zoomed-away / off-screen pane. */
   unread: number;
+  /** Whether this session is "ungoverned" (task-linked or Claude-launched,
+   *  decision 3) — a warning marker in the pane chrome. */
+  ungoverned: boolean;
   /** Whether this pane is the single zoomed pane (full-view). */
   zoomed: boolean;
   /** Whether reorder drag is enabled (false while any pane is zoomed). */

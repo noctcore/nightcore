@@ -1,6 +1,7 @@
 import '@xterm/xterm/css/xterm.css';
 
 import {
+  BoltIcon,
   GripIcon,
   IconButton,
   LockIcon,
@@ -15,6 +16,8 @@ import { useInlineRename } from '../terminal-rename';
 import {
   displayTitle,
   identityTitle,
+  ungovernedLabel,
+  ungovernedTitle,
   unreadBadge,
   unreadBadgeLabel,
 } from '../terminal-shared';
@@ -82,6 +85,7 @@ function GridPaneTitle({
 export function TerminalGridPane({
   session,
   unread,
+  ungoverned,
   zoomed,
   draggable,
   onRename,
@@ -120,6 +124,15 @@ export function TerminalGridPane({
           aria-hidden
         />
         <GridPaneTitle session={session} onRename={onRename} onActivate={onActivate} />
+        {ungoverned && (
+          <span
+            title={ungovernedTitle()}
+            aria-label={ungovernedLabel()}
+            className="flex shrink-0 items-center text-warning"
+          >
+            <BoltIcon size={11} aria-hidden />
+          </span>
+        )}
         <PaneUnread count={unread} />
         <IconButton
           label={zoomLabel}

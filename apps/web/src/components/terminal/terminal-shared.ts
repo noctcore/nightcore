@@ -139,6 +139,23 @@ export function restoredIdentityTitle(): string {
   return 'This shell has ended. Its scrollback is shown read-only; start a fresh shell to continue in the same folder.';
 }
 
+/** The "ungoverned session" marker label (decision 3): a task-linked or Claude-launched
+ *  terminal runs as the user, OUTSIDE the agent guardrails. Shown in the tab + pane
+ *  identity chrome. */
+export function ungovernedLabel(): string {
+  return 'Ungoverned';
+}
+
+/** The hover/title explanation behind {@link ungovernedLabel} (decision 3, verbatim). */
+export function ungovernedTitle(): string {
+  return 'Runs as you, outside the gates, flight-recorder, and gauntlet. Terminal work can never mark a task verified.';
+}
+
+/** The linkage chip label (decision 2): the task this terminal is linked to. */
+export function linkedTaskChipLabel(title: string): string {
+  return `Task: ${title}`;
+}
+
 /** The unread-output badge text (decision 6c): the raw count, clamped so a busy
  *  background tab/pane shows `99+` rather than an ever-widening pill. Shared by the
  *  tab strip and the grid pane header so both badge identically. */

@@ -39,6 +39,7 @@ const meta = {
   args: {
     sessions: FOUR,
     unread: {},
+    ungovernedIds: new Set<string>(),
     zoomedId: null,
     onRename: fn(),
     onReorder: fn(),

@@ -32,6 +32,7 @@ const meta = {
   args: {
     session: session({}),
     unread: 0,
+    ungoverned: false,
     zoomed: false,
     draggable: true,
     onRename: fn(),

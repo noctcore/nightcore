@@ -48,6 +48,7 @@ const meta = {
     canAddTab: true,
     unread: {},
     viewMode: 'tabs',
+    ungovernedIds: new Set<string>(),
     onSelect: fn(),
     onClose: fn(),
     onDismiss: fn(),
@@ -62,6 +63,11 @@ type Story = StoryObj<typeof meta>;
 
 /** Three tabs, the middle one active. */
 export const Populated: Story = {};
+
+/** A task-linked / Claude-launched tab shows the "ungoverned" warning marker. */
+export const WithUngovernedTab: Story = {
+  args: { ungovernedIds: new Set(['task-42']) },
+};
 
 /** No sessions — only the "+" new-tab affordance. */
 export const Empty: Story = { args: { sessions: [], activeId: null } };

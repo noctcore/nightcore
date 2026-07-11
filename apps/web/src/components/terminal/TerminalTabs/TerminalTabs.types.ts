@@ -1,13 +1,26 @@
 /** Props for the {@link TerminalTabs} bar. */
+import type { ReactNode } from 'react';
+
 import type { PersistedTerminalInfo, TerminalSessionInfo } from '@/lib/bridge';
 
 import type { TerminalViewMode } from '../terminal-layout';
+
+/** Task-integration additions to the tabs bar (cockpit spec PR 4, decisions 2 & 3),
+ *  kept a separate base so the (already wide) {@link TerminalTabsProps} stays under
+ *  the props budget — `extends` members are not counted. */
+export interface TerminalTabsTaskbar {
+  /** Session ids marked "ungoverned" (decision 3): task-linked or Claude-launched —
+   *  a warning marker on the tab. Missing ids read as governed. */
+  ungovernedIds: ReadonlySet<string>;
+  /** A slot rendered in the tab bar (the task-inject dropdown, decision 2). */
+  headerSlot?: ReactNode;
+}
 
 /** Props for the terminal tabs bar. Presentational: the parent owns the session
  *  list, the active selection, and the open/close/new-tab actions. Restored
  *  (read-only) tabs from a prior run render after the live ones, visually distinct
  *  (decision 3). */
-export interface TerminalTabsProps {
+export interface TerminalTabsProps extends TerminalTabsTaskbar {
   /** The live sessions, one tab each. */
   sessions: TerminalSessionInfo[];
   /** Restored (dead) sessions from a prior run — read-only tabs, rendered dimmed

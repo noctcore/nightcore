@@ -1,5 +1,5 @@
 /** Props for the {@link TerminalView} — the global Terminal nav destination. */
-import type { WorktreeInfo } from '@/lib/bridge';
+import type { Task, WorktreeInfo } from '@/lib/bridge';
 
 /** Props for the Terminal view. The repo root + name frame the new-tab picker's
  *  "repo root" target; the live worktrees (read from the shared worktrees context
@@ -22,6 +22,12 @@ export interface TerminalViewProps {
   /** Settings terminal scrollback length in lines, or `null` for the shipped default
    *  (spec PR 3d). */
   scrollback: number | null;
+  /** The active project's tasks (cockpit spec PR 4, decision 2): the header dropdown's
+   *  pickable list + the source for a linked task's title. */
+  tasks: Task[];
+  /** Settings YOLO launch flag (decision 3/4e): when true the composed "Launch Claude"
+   *  command appends `--dangerously-skip-permissions`. */
+  yoloLaunch: boolean;
   /** Persist the confined choice actually used, so it seeds the next picker open. */
   onConfinedDefaultChange: (confined: boolean) => void;
 }
@@ -36,5 +42,7 @@ export interface UseTerminalViewInput {
   confinedDefault: boolean;
   fontSize: number | null;
   scrollback: number | null;
+  tasks: Task[];
+  yoloLaunch: boolean;
   onConfinedDefaultChange: (confined: boolean) => void;
 }
