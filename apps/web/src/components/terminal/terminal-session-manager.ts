@@ -31,6 +31,12 @@ import {
   spawnTerminal,
 } from '@/lib/bridge';
 
+import {
+  forgetAttention,
+  getVisibleIds,
+  installCompletionSignals,
+  recordActivity,
+} from './terminal-attention';
 import { writeToTargets } from './terminal-broadcast';
 import { forgetCommandCapture, recordCommandInput } from './terminal-command-capture';
 import { installKeymap } from './terminal-keymap';
@@ -74,78 +80,10 @@ interface CachedSession {
   webglController: WebglController | null;
   /** Guards the one-time renderer load against re-attach churn. */
   rendererStarted: boolean;
-  /** Unread-output activity count (decision 6c): batches that landed while this
-   *  session was NOT the visible tab. Generic byte-activity — never Claude-output
-   *  parsing. Cleared when the session becomes active or the window regains focus.
-   *  Lives here (module-level, not React) so it survives the view's remounts. */
-  unread: number;
 }
 
 const cache = new Map<string, CachedSession>();
 const encoder = new TextEncoder();
-
-/** Activity (unread-badge) plumbing — the session manager is module-level, so a
- *  tiny subscription bridges its counters to the React hook that renders badges. */
-type ActivityListener = () => void;
-const activityListeners = new Set<ActivityListener>();
-/** The session ids currently visible on screen. Output for a visible id never
- *  badges; every other session's output bumps its unread count. In tabs mode this
- *  is the single active tab; in grid mode (PR 2) it is EVERY mounted pane (or just
- *  the zoomed one) — so only zoomed-away / off-screen panes badge. */
-let visibleIds: Set<string> = new Set();
-
-function notifyActivity(): void {
-  for (const fn of activityListeners) fn();
-}
-
-/** Record one output batch for `id`: bump its unread badge + notify, unless it is
- *  currently visible (which never accrues unread). A no-op for an unknown id. */
-function recordActivity(id: string): void {
-  if (visibleIds.has(id)) return;
-  const entry = cache.get(id);
-  if (entry === undefined) return;
-  entry.unread += 1;
-  notifyActivity();
-}
-
-/** Subscribe to activity changes (any unread bump or clear). Returns an
- *  unsubscribe. The hook re-derives per-tab badge counts on each notification. */
-export function subscribeActivity(fn: ActivityListener): () => void {
-  activityListeners.add(fn);
-  return () => {
-    activityListeners.delete(fn);
-  };
-}
-
-/** The current unread-output count for a session (0 for unknown / visible ids). */
-export function getUnread(id: string): number {
-  return cache.get(id)?.unread ?? 0;
-}
-
-/** Clear a session's unread badge (focus regain / activation). Notifies only when
- *  it actually changed, so a no-op clear doesn't churn the subscribers. */
-export function clearUnread(id: string): void {
-  const entry = cache.get(id);
-  if (entry === undefined || entry.unread === 0) return;
-  entry.unread = 0;
-  notifyActivity();
-}
-
-/** Mark the set of currently-visible sessions (grid mode, PR 2): each stops
- *  accruing unread and its badge clears immediately; every other session keeps
- *  badging its background output. Passing every mounted pane's id in grid mode, or
- *  just the zoomed pane's id, is what makes only off-screen panes badge. */
-export function setVisibleTerminals(ids: readonly string[]): void {
-  visibleIds = new Set(ids);
-  for (const id of ids) clearUnread(id);
-}
-
-/** Mark `id` the single visible/active session (tabs mode): it stops accruing
- *  unread and its badge clears immediately; `null` (no active tab) leaves every
- *  session eligible to badge. A thin wrapper over {@link setVisibleTerminals}. */
-export function setActiveTerminal(id: string | null): void {
-  setVisibleTerminals(id === null ? [] : [id]);
-}
 
 /** Re-fit a live session's terminal to its (now resized) host and repaint it — used
  *  after a grid relayout / drag-drop / zoom transition, where a pane's cell changed
@@ -249,7 +187,13 @@ async function installSession(
   sessionId = handle.session.id;
   // Clipboard smarts + app-chord swallowing (spec PR 3b). The emit routes the manual
   // Shift+Enter / kill-line writes through the broadcast fan-out (round-2 PR B).
-  installKeymap(term, { write: (b) => void writeToTargets(handle.session.id, b, [...visibleIds]) });
+  installKeymap(term, {
+    write: (b) => void writeToTargets(handle.session.id, b, [...getVisibleIds()]),
+  });
+  // T11: parse the shell's OSC 9/99/777 + BEL completion signals → needs-attention
+  // (output-side only; never touches the PTY, so the USER-ONLY seam holds). Disposed
+  // with the terminal on `closeSession`.
+  installCompletionSignals(term, handle.session.id);
 
   const host = document.createElement('div');
   host.style.width = '100%';
@@ -266,7 +210,6 @@ async function installSession(
     webgl,
     webglController: null,
     rendererStarted: false,
-    unread: 0,
   });
   return handle.session;
 }
@@ -332,7 +275,7 @@ export function attachSession(id: string, container: HTMLElement): () => void {
     entry.opened = true;
     // Write path: keystrokes (+ pastes, which ride onData) → broadcast fan-out + AI capture.
     entry.input = entry.term.onData((data) => {
-      writeToTargets(id, encoder.encode(data), [...visibleIds]);
+      writeToTargets(id, encoder.encode(data), [...getVisibleIds()]);
       recordCommandInput(id, data);
     });
   }
@@ -372,6 +315,7 @@ export async function closeSession(id: string): Promise<void> {
   const entry = cache.get(id);
   cache.delete(id);
   forgetCommandCapture(id); // drop any AI-naming capture state (round-2 PR A)
+  forgetAttention(id); // drop the 3-state attention counters (T11)
   if (entry === undefined) return;
   try {
     await killTerminal(id);

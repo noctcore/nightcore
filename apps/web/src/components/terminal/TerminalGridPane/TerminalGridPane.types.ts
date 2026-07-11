@@ -2,16 +2,18 @@
  *  view (decision 1, PR 2). */
 import type { TerminalSessionInfo } from '@/lib/bridge';
 
+import type { TerminalAttention } from '../terminal-attention';
+
 /** Props for a grid pane. The pane hosts ONE live session's (remount-surviving)
- *  xterm, a drag grip + drop target for reorder, an inline-rename title, an unread
- *  badge, and a zoom toggle. Presentational over the shared session manager + the
- *  grid's `<DndContext>`; the parent owns order + zoom + rename state. */
+ *  xterm, a drag grip + drop target for reorder, an inline-rename title, an
+ *  attention badge, and a zoom toggle. Presentational over the shared session
+ *  manager + the grid's `<DndContext>`; the parent owns order + zoom + rename. */
 export interface TerminalGridPaneProps {
   /** The session this pane displays. */
   session: TerminalSessionInfo;
-  /** Unread-output count for this session (decision 6c) — badged while it is a
-   *  zoomed-away / off-screen pane. */
-  unread: number;
+  /** The session's 3-state attention (T11): idle / has-output / needs-attention —
+   *  badged while it is a zoomed-away / off-screen pane. */
+  attention: TerminalAttention;
   /** Whether this session is "ungoverned" (task-linked or Claude-launched,
    *  decision 3) — a warning marker in the pane chrome. */
   ungoverned: boolean;

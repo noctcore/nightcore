@@ -71,12 +71,14 @@ export function TerminalView({
         onNewTab={v.picker.openPicker}
         canAddTab={v.canAddTab}
         onRename={v.renameSession}
-        unread={v.unread}
+        attention={v.attention.states}
         viewMode={v.layout.mode}
         onToggleViewMode={v.layout.toggleMode}
         broadcastArmed={v.layout.broadcastArmed}
         broadcastEligible={v.layout.broadcastEligible}
         onToggleBroadcast={v.layout.toggleBroadcast}
+        attentionWaiting={v.attention.waiting}
+        onJumpAttention={v.attention.jumpNext}
         ungovernedIds={v.tasks.ungovernedIds}
         headerSlot={
           <TerminalTaskMenu
@@ -90,7 +92,7 @@ export function TerminalView({
       {showGrid ? (
         <TerminalGrid
           sessions={v.layout.orderedSessions}
-          unread={v.unread}
+          attention={v.attention.states}
           ungovernedIds={v.tasks.ungovernedIds}
           canLaunchClaude={v.tasks.canLaunchClaude}
           zoomedId={v.layout.zoomedId}

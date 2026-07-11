@@ -14,11 +14,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { TerminalSessionInfo } from '@/lib/bridge';
 
+import { clearActivity, setVisibleTerminals } from './terminal-attention';
 import {
   isBroadcastEligible,
   setBroadcastArmed as syncBroadcastArmed,
 } from './terminal-broadcast';
-import { clearUnread, setVisibleTerminals } from './terminal-session-manager';
 
 /** The terminal body layout: a tabbed single pane or a count-driven grid. */
 export type TerminalViewMode = 'tabs' | 'grid';
@@ -231,7 +231,7 @@ export function useTerminalLayout({
   // is looking at them again), mirroring the activation clear.
   useEffect(() => {
     const onFocus = () => {
-      for (const id of visibleIds) clearUnread(id);
+      for (const id of visibleIds) clearActivity(id);
     };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);

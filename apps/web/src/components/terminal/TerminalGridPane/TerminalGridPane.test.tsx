@@ -64,7 +64,7 @@ test('double-clicking the title opens the inline rename and commits on Enter', a
       <DndContext>
         <TerminalGridPane
           session={fakeSession({ title: 'deploy shell' })}
-          unread={0}
+          attention={{ unread: 0, needsAttention: false }}
           ungoverned={false}
           canLaunch={false}
           zoomed={false}
@@ -93,7 +93,7 @@ test('clicking the title activates the pane (the zoom target)', async () => {
       <DndContext>
         <TerminalGridPane
           session={fakeSession({ title: 'shell one' })}
-          unread={0}
+          attention={{ unread: 0, needsAttention: false }}
           ungoverned={false}
           canLaunch={false}
           zoomed={false}
@@ -119,7 +119,7 @@ test('shows the Launch Claude button when canLaunch and fires onLaunchClaude', a
       <DndContext>
         <TerminalGridPane
           session={fakeSession({})}
-          unread={0}
+          attention={{ unread: 0, needsAttention: false }}
           ungoverned={false}
           canLaunch
           zoomed={false}
@@ -144,7 +144,7 @@ test('hides the Launch Claude button on a non-POSIX (canLaunch=false) pane', () 
       <DndContext>
         <TerminalGridPane
           session={fakeSession({})}
-          unread={0}
+          attention={{ unread: 0, needsAttention: false }}
           ungoverned={false}
           canLaunch={false}
           zoomed={false}
