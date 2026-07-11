@@ -15,6 +15,7 @@ import {
   RunProgress,
   RunUsageLine,
   StopIcon,
+  UsageLimitBanner,
 } from '@/components/ui';
 
 import { CategoryTabs } from '../CategoryTabs';
@@ -192,6 +193,17 @@ export function InsightView(props: InsightViewProps) {
                   </div>
                 </div>
               ))}
+
+            {/* A completed analysis that spent nothing is a usage-limit tell, not
+                a clean codebase — surface it so empty findings aren't misread as a
+                pass (T10). Self-hides unless the $0 signature holds. */}
+            <UsageLimitBanner
+              status={view.stream.status}
+              costUsd={view.stream.costUsd}
+              usage={view.stream.usage}
+              runNoun="analysis"
+              className="mx-6 mt-5"
+            />
 
             {view.stream.status === 'completed' && (
               <BulkConvertBar

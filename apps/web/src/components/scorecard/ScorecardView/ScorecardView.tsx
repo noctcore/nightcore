@@ -12,6 +12,7 @@ import {
   RunProgress,
   RunUsageLine,
   StopIcon,
+  UsageLimitBanner,
 } from '@/components/ui';
 
 import { DimensionGrid } from '../DimensionGrid';
@@ -159,6 +160,17 @@ export function ScorecardView(props: ScorecardViewProps) {
                   </div>
                 </div>
               ))}
+
+            {/* A completed grading that spent nothing is a usage-limit tell, not a
+                clean bill — surface it so empty dimensions aren't misread as a pass
+                (T10). Self-hides unless the $0 signature holds. */}
+            <UsageLimitBanner
+              status={view.stream.status}
+              costUsd={view.stream.costUsd}
+              usage={view.stream.usage}
+              runNoun="grading"
+              className="mx-6 mt-5"
+            />
 
             {view.stream.status === 'completed' && (
               <BulkConvertBar
