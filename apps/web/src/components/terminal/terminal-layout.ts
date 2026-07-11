@@ -14,6 +14,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { TerminalSessionInfo } from '@/lib/bridge';
 
+import {
+  isBroadcastEligible,
+  setBroadcastArmed as syncBroadcastArmed,
+} from './terminal-broadcast';
 import { clearUnread, setVisibleTerminals } from './terminal-session-manager';
 
 /** The terminal body layout: a tabbed single pane or a count-driven grid. */
@@ -126,6 +130,14 @@ export interface TerminalLayoutState {
   readonly toggleMode: () => void;
   readonly reorder: (activeId: string, overId: string) => void;
   readonly toggleZoom: (id: string) => void;
+  /** Whether broadcast input is armed (round-2 PR B): typing in the focused pane fans
+   *  out to every visible pane. Grid-only; auto-disarms off-grid / on zoom / on collapse. */
+  readonly broadcastArmed: boolean;
+  /** Whether broadcast CAN be armed right now (grid view with 2+ visible panes). Gates
+   *  the toggle's enabled state + the auto-disarm. */
+  readonly broadcastEligible: boolean;
+  /** Arm/disarm broadcast (no-op arm when ineligible). */
+  readonly toggleBroadcast: () => void;
 }
 
 export function useTerminalLayout({
@@ -137,6 +149,9 @@ export function useTerminalLayout({
   const [mode, setMode] = useState<TerminalViewMode>(initial.mode);
   const [order, setOrder] = useState<string[]>([...initial.order]);
   const [zoomedId, setZoomedId] = useState<string | null>(null);
+  // Broadcast-input arm state (round-2 PR B): view-local (like zoom), never persisted —
+  // a footgun must never survive a restart armed.
+  const [broadcastArmed, setBroadcastArmed] = useState(false);
   const orderedSessions = useMemo(() => orderSessions(sessions, order), [sessions, order]);
 
   // Latest active id + ordered list, read by the ⌘⇧E handler without re-binding the
@@ -191,6 +206,27 @@ export function useTerminalLayout({
     setVisibleTerminals(visibleIds);
   }, [visibleIds]);
 
+  // Broadcast input (round-2 PR B). Eligible only in grid view with 2+ visible panes;
+  // `visibleIds` already encodes grid + non-zoomed (tabs → 1, zoomed → 1), so this turns
+  // false the instant the user leaves grid, zooms a pane, or closes down to one pane.
+  const broadcastEligible = isBroadcastEligible(mode === 'grid', visibleIds.length);
+  // Auto-disarm the moment broadcast stops being eligible — a LOUD footgun must never
+  // linger armed off-grid (decision B / § B.1).
+  useEffect(() => {
+    if (broadcastArmed && !broadcastEligible) setBroadcastArmed(false);
+  }, [broadcastArmed, broadcastEligible]);
+  // Mirror the armed flag into the module-level fan-out (read by the session manager's
+  // input path + the keymap emits). The cleanup disarms on unmount (nav away from the
+  // Terminal view) so the module never stays armed with no view to show the indicator.
+  useEffect(() => {
+    syncBroadcastArmed(broadcastArmed);
+    return () => syncBroadcastArmed(false);
+  }, [broadcastArmed]);
+  const toggleBroadcast = useCallback(() => {
+    // Toggling OFF always works; toggling ON only when eligible (2+ visible grid panes).
+    setBroadcastArmed((on) => (on ? false : broadcastEligible));
+  }, [broadcastEligible]);
+
   // Regaining window focus clears unread for every currently-visible pane (the user
   // is looking at them again), mirroring the activation clear.
   useEffect(() => {
@@ -219,5 +255,15 @@ export function useTerminalLayout({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [mode]);
 
-  return { mode, orderedSessions, zoomedId, toggleMode, reorder, toggleZoom };
+  return {
+    mode,
+    orderedSessions,
+    zoomedId,
+    toggleMode,
+    reorder,
+    toggleZoom,
+    broadcastArmed,
+    broadcastEligible,
+    toggleBroadcast,
+  };
 }
