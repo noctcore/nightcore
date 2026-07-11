@@ -1,4 +1,5 @@
 import {
+  BellIcon,
   BoltIcon,
   BroadcastIcon,
   CloseIcon,
@@ -13,10 +14,16 @@ import {
 } from '@/components/ui';
 import type { PersistedTerminalInfo, TerminalSessionInfo } from '@/lib/bridge';
 
+import {
+  attentionLevel,
+  IDLE_ATTENTION,
+  type TerminalAttention,
+} from '../terminal-attention';
 import type { TerminalViewMode } from '../terminal-layout';
 import { formatShortcut } from '../terminal-platform';
 import { useInlineRename } from '../terminal-rename';
 import {
+  attentionBadgeLabel,
   broadcastToggleLabel,
   broadcastToggleTitle,
   displayTitle,
@@ -44,17 +51,30 @@ function IdentityDot({ confined }: { confined: boolean }) {
   );
 }
 
-/** The unread-output badge (decision 6c): a small pill on an inactive tab when
- *  output has arrived while it wasn't visible. Generic byte-activity, not content
- *  parsing. Hidden on the active tab (its badge is cleared on activation). */
-function UnreadBadge({ count }: { count: number }) {
-  if (count <= 0) return null;
+/** The 3-state attention badge (T11) on an inactive tab: nothing when idle; a muted
+ *  count pill for has-output (generic byte-activity, not content parsing); and a LOUD
+ *  pulsing warning dot for needs-attention (an OSC/BEL completion fired while the tab
+ *  was off-screen). Hidden on the active tab (its state clears on activation). */
+function AttentionBadge({ attention }: { attention: TerminalAttention }) {
+  const level = attentionLevel(attention);
+  if (level === 'idle') return null;
+  if (level === 'needs-attention') {
+    return (
+      <span
+        aria-label={attentionBadgeLabel()}
+        title={attentionBadgeLabel()}
+        className="flex shrink-0 items-center rounded-full bg-warning/20 px-1.5 py-1 ring-1 ring-warning/50"
+      >
+        <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />
+      </span>
+    );
+  }
   return (
     <span
-      aria-label={unreadBadgeLabel(count)}
+      aria-label={unreadBadgeLabel(attention.unread)}
       className="shrink-0 rounded-full bg-primary/25 px-1.5 text-[10px] font-semibold leading-4 text-primary"
     >
-      {unreadBadge(count)}
+      {unreadBadge(attention.unread)}
     </span>
   );
 }
@@ -78,7 +98,7 @@ function UngovernedMarker({ size = 11 }: { size?: number }) {
 function Tab({
   session,
   active,
-  unread,
+  attention,
   ungoverned,
   onSelect,
   onClose,
@@ -86,7 +106,7 @@ function Tab({
 }: {
   session: TerminalSessionInfo;
   active: boolean;
-  unread: number;
+  attention: TerminalAttention;
   ungoverned: boolean;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
@@ -131,7 +151,7 @@ function Tab({
         </button>
       )}
       {ungoverned && <UngovernedMarker />}
-      {!active && <UnreadBadge count={unread} />}
+      {!active && <AttentionBadge attention={attention} />}
       <IconButton
         label={active ? `Close ${label} (${formatShortcut('W')})` : `Close ${label}`}
         onClick={() => onClose(session.id)}
@@ -253,6 +273,31 @@ function BroadcastToggle({
   );
 }
 
+/** The "jump to next waiting terminal" affordance (T11): shown in the toolbar only
+ *  when one or more sessions are in the needs-attention state. LOUD (warning fill +
+ *  a pulsing bell) so a backgrounded terminal that finished/asked is never missed;
+ *  clicking cycles to the next waiting session and selects it. */
+function JumpAttentionButton({ count, onJump }: { count: number; onJump: () => void }) {
+  const label = `Jump to the next of ${count} waiting terminal${count === 1 ? '' : 's'}`;
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onJump}
+      className="my-0.5 flex shrink-0 items-center gap-1.5 rounded-md bg-warning/15 px-2 py-1 text-[11px] font-semibold text-warning ring-1 ring-warning/40 transition-colors hover:bg-warning/25"
+    >
+      <span
+        aria-hidden
+        className="flex animate-[nc-pulse_1.4s_ease-in-out_infinite] items-center"
+      >
+        <BellIcon size={13} />
+      </span>
+      <span>{count}</span>
+    </button>
+  );
+}
+
 /** The terminal tabs bar: one tab per live session with a per-tab identity marker,
  *  an unread-output badge, an inline-rename (double-click) title, and a close
  *  affordance, then any restored (read-only) tabs from a prior run, a "+" that opens
@@ -268,12 +313,14 @@ export function TerminalTabs({
   onNewTab,
   canAddTab,
   onRename,
-  unread,
+  attention,
   viewMode,
   onToggleViewMode,
   broadcastArmed,
   broadcastEligible,
   onToggleBroadcast,
+  attentionWaiting,
+  onJumpAttention,
   ungovernedIds,
   headerSlot,
 }: TerminalTabsProps) {
@@ -288,7 +335,7 @@ export function TerminalTabs({
           key={session.id}
           session={session}
           active={session.id === activeId}
-          unread={unread[session.id] ?? 0}
+          attention={attention[session.id] ?? IDLE_ATTENTION}
           ungoverned={ungovernedIds.has(session.id)}
           onSelect={onSelect}
           onClose={onClose}
@@ -317,6 +364,9 @@ export function TerminalTabs({
       </button>
       {headerSlot}
       <div className="ml-auto flex shrink-0 items-center gap-1">
+        {attentionWaiting > 0 && (
+          <JumpAttentionButton count={attentionWaiting} onJump={onJumpAttention} />
+        )}
         {viewMode === 'grid' && (
           <BroadcastToggle
             armed={broadcastArmed}

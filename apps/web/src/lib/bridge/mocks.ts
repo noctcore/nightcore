@@ -155,6 +155,7 @@ export const MOCK_SETTINGS: Settings = {
   provider: 'claude',
   cleanupWorktrees: true,
   notifyOnComplete: false,
+  notifyOnAwaitingInput: true,
   defaultRunMode: 'main',
   maxTurns: null,
   maxBudgetUsd: null,
@@ -174,6 +175,7 @@ export const MOCK_SETTINGS: Settings = {
   terminalYoloLaunch: false,
   terminalDaemonEnabled: false,
   terminalAiNaming: false,
+  terminalBellNotify: true,
   projectOverrides: {},
 };
 

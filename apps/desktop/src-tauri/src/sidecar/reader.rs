@@ -18,7 +18,9 @@ use super::permission::{
     emit_permission_prompt, emit_question_prompt, handle_plan_gate, EXIT_PLAN_MODE,
 };
 use super::verification::{handle_build_completed, handle_review_completed};
-use super::{apply_and_emit, finish_run, park_for_approval, Outcome, SESSION_EVENT};
+use super::{
+    apply_and_emit, finish_run, notify_awaiting_input, park_for_approval, Outcome, SESSION_EVENT,
+};
 
 /// The `nc:session` wire envelope: a streamed engine event tagged with its task.
 /// Both fields BORROW — the task id and the already-serialized event body — so
@@ -235,6 +237,10 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
             }
             tracing::info!(target: "nightcore", task_id, "relaying ask-user-question request");
             emit_question_prompt(app, &task_id, request_id, &event);
+            // T11: a parked question silently stalls the loop when the window is
+            // backgrounded — fire ONE desktop notification (default ON). Body is the
+            // task title only; never the model-authored question text (M4.5).
+            notify_awaiting_input(app, &task_id);
         }
         return;
     }

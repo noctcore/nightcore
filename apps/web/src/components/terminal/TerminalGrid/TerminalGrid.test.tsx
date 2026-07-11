@@ -27,7 +27,7 @@ function renderGrid(sessions: TerminalSessionInfo[], zoomedId: string | null = n
     <ToastProvider>
       <TerminalGrid
         sessions={sessions}
-        unread={{}}
+        attention={{}}
         ungovernedIds={new Set()}
         canLaunchClaude={() => true}
         zoomedId={zoomedId}
@@ -67,7 +67,7 @@ test('reordering keyed panes does NOT unmount them (same DOM node persists)', as
     <ToastProvider>
       <TerminalGrid
         sessions={[session('b'), session('a')]}
-        unread={{}}
+        attention={{}}
         ungovernedIds={new Set()}
         canLaunchClaude={() => true}
         zoomedId={null}
@@ -97,7 +97,7 @@ test('zooming a pane replaces the grid with only that pane', async () => {
     <ToastProvider>
       <TerminalGrid
         sessions={[session('a'), session('b'), session('c')]}
-        unread={{}}
+        attention={{}}
         ungovernedIds={new Set()}
         canLaunchClaude={() => true}
         zoomedId="b"
@@ -123,7 +123,7 @@ test('threads a per-pane Launch Claude affordance and fires it with the pane ses
     <ToastProvider>
       <TerminalGrid
         sessions={[session('a'), session('b')]}
-        unread={{}}
+        attention={{}}
         ungovernedIds={new Set()}
         canLaunchClaude={(s) => s.id === 'a'}
         zoomedId={null}

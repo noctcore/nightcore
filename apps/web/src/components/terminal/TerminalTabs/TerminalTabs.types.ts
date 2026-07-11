@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 import type { PersistedTerminalInfo, TerminalSessionInfo } from '@/lib/bridge';
 
+import type { TerminalAttention } from '../terminal-attention';
 import type { TerminalViewMode } from '../terminal-layout';
 
 /** Task-integration additions to the tabs bar (cockpit spec PR 4, decisions 2 & 3),
@@ -33,6 +34,13 @@ export interface TerminalTabsToolbar {
   broadcastEligible: boolean;
   /** Arm/disarm broadcast (grid view only). */
   onToggleBroadcast: () => void;
+  /** T11: how many sessions are currently in the needs-attention state (an OSC/BEL
+   *  completion fired while off-screen). Gates the "jump to next waiting terminal"
+   *  affordance's visibility. */
+  attentionWaiting: number;
+  /** T11: jump to the next terminal waiting on the user (cycles through the
+   *  needs-attention sessions and selects one). */
+  onJumpAttention: () => void;
 }
 
 /** Props for the terminal tabs bar. Presentational: the parent owns the session
@@ -61,7 +69,8 @@ export interface TerminalTabsProps extends TerminalTabsTaskbar, TerminalTabsTool
   /** Rename a LIVE tab (decision 5): the parent optimistically updates + persists.
    *  An empty title clears the name back to the cwd-leaf label. */
   onRename: (id: string, title: string) => void;
-  /** Per-session unread-output counts (decision 6c) — a badge on inactive tabs.
-   *  Missing ids read as 0. */
-  unread: Readonly<Record<string, number>>;
+  /** Per-session 3-state attention (T11): idle / has-output (unread count) /
+   *  needs-attention (a completion/awaiting signal fired off-screen) — the inactive
+   *  tab badge. Missing ids read as idle. */
+  attention: Readonly<Record<string, TerminalAttention>>;
 }

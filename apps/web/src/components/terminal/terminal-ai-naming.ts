@@ -13,6 +13,7 @@ import { type Dispatch, type SetStateAction, useCallback, useEffect } from 'reac
 import { setTerminalTitle, type TerminalSessionInfo, type TitleSource } from '@/lib/bridge';
 
 import { lockSessionTitle, setAiNamingEnabled, subscribeTitleSuggestions } from './terminal-command-capture';
+import { subscribeProcessTitle } from './terminal-process-title';
 
 type SetSessions = Dispatch<SetStateAction<TerminalSessionInfo[]>>;
 
@@ -49,6 +50,19 @@ export function useTerminalAiNaming(enabled: boolean, setSessions: SetSessions):
       subscribeTitleSuggestions((id, title) => {
         setSessions((prev) =>
           prev.map((s) => (s.id === id ? { ...s, title, titleSource: 'auto' } : s)),
+        );
+      }),
+    [setSessions],
+  );
+  // T11: reflect a landed process-title (OSC 0/2) into the session list. Always on (no
+  // quota) and the LOWEST precedence — the Rust side only returns a title that actually
+  // stuck, so this never overwrites a Manual/Task/AI name. Not gated on `enabled` (that
+  // gate is the AI one-shot; the process-title is free and always available).
+  useEffect(
+    () =>
+      subscribeProcessTitle((id, title) => {
+        setSessions((prev) =>
+          prev.map((s) => (s.id === id ? { ...s, title, titleSource: 'processTitle' } : s)),
         );
       }),
     [setSessions],

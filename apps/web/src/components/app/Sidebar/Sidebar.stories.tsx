@@ -97,3 +97,7 @@ export const AwaitingInput: Story = {
 export const Collapsed: Story = {
   args: { collapsed: true },
 };
+
+export const UpdateAvailable: Story = {
+  args: { update: { version: '0.2.0', onGoto: fn() } },
+};

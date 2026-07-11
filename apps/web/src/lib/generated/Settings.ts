@@ -38,6 +38,16 @@ cleanupWorktrees: boolean,
  */
 notifyOnComplete: boolean, 
 /**
+ * Awaiting-input notification (T11): fire a desktop notification when a run
+ * PARKS awaiting the user's input (an `AskUserQuestion`). Unlike
+ * `notify_on_complete` (Done/Failed, default OFF), this defaults **ON** — a
+ * backgrounded window otherwise silently stalls the autonomous loop on a
+ * question no one sees, the highest-value notification for an autonomy product.
+ * Global-only (like `notify_on_complete`). Serde-additive: a settings file
+ * written before this field loads as `true`.
+ */
+notifyOnAwaitingInput: boolean, 
+/**
  * M4.6: the default run mode new tasks inherit — `"main"` (default) or
  * `"worktree"`. Per-project overridable. A new task's `run_mode` is this value
  * unless the create call passes an explicit one.
@@ -224,6 +234,16 @@ terminalDaemonEnabled: boolean,
  * file written before this field loads as `false`.
  */
 terminalAiNaming: boolean, 
+/**
+ * USER terminal command-completion notifications (T11): when a shell emits a
+ * standard completion/notification escape (OSC 9/99/777 or a BEL) while the
+ * terminal view is not focused/visible, fire a desktop notification. DEFAULT
+ * `true` (these are EXPLICIT signals the shell/program chose to emit — e.g. via
+ * the one-click Claude notify hook — so they are not noisy; the toggle opts out).
+ * Global-only (a machine preference, like the other terminal knobs).
+ * Serde-additive: a settings file written before this field loads as `true`.
+ */
+terminalBellNotify: boolean, 
 /**
  * Per-project overrides keyed by project id.
  */

@@ -1,14 +1,17 @@
 /** Props for the {@link TerminalGrid} — the grid view mode (decision 1, PR 2). */
 import type { TerminalSessionInfo } from '@/lib/bridge';
 
+import type { TerminalAttention } from '../terminal-attention';
+
 /** Props for the grid view. Presentational over the shared session manager: the
  *  parent (the Terminal view) owns the ordered session list, the zoom + reorder
  *  state, and the rename/activate actions. */
 export interface TerminalGridProps {
   /** The live sessions, already in the persisted display order. */
   sessions: TerminalSessionInfo[];
-  /** Per-session unread-output counts (decision 6c). Missing ids read as 0. */
-  unread: Readonly<Record<string, number>>;
+  /** Per-session 3-state attention (T11): idle / has-output / needs-attention.
+   *  Missing ids read as idle. */
+  attention: Readonly<Record<string, TerminalAttention>>;
   /** Session ids marked "ungoverned" (decision 3) — a warning marker per pane. */
   ungovernedIds: ReadonlySet<string>;
   /** Whether a session's shell can run the composed `claude` launch (POSIX only,

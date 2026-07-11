@@ -32,7 +32,7 @@ const meta = {
   parameters: { layout: 'fullscreen' },
   args: {
     session: session({}),
-    unread: 0,
+    attention: { unread: 0, needsAttention: false },
     ungoverned: false,
     canLaunch: true,
     zoomed: false,
@@ -80,11 +80,20 @@ export const Zoomed: Story = {
   },
 };
 
-/** An off-screen pane badges its unread output (decision 6c). */
+/** An off-screen pane badges its unread output (has-output, T11). */
 export const WithUnread: Story = {
-  args: { unread: 7 },
+  args: { attention: { unread: 7, needsAttention: false } },
   play: async ({ canvas }) => {
     await expect(canvas.getByText('7')).toBeInTheDocument();
+  },
+};
+
+/** A needs-attention pane (an OSC/BEL completion fired while off-screen) shows the
+ *  LOUD warning dot instead of the count (T11). */
+export const NeedsAttention: Story = {
+  args: { attention: { unread: 3, needsAttention: true } },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByLabelText('Waiting for you — a command finished')).toBeInTheDocument();
   },
 };
 

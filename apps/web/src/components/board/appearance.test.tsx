@@ -20,6 +20,7 @@ function settingsWith(projectId: string, appearance: BoardAppearance): Settings 
     provider: 'claude',
     cleanupWorktrees: true,
     notifyOnComplete: false,
+    notifyOnAwaitingInput: true,
     defaultRunMode: 'main',
     maxTurns: null,
     maxBudgetUsd: null,
@@ -39,6 +40,7 @@ function settingsWith(projectId: string, appearance: BoardAppearance): Settings 
     terminalYoloLaunch: false,
     terminalDaemonEnabled: false,
     terminalAiNaming: false,
+    terminalBellNotify: true,
     projectOverrides: { [projectId]: { boardAppearance: appearance } },
   };
 }

@@ -84,6 +84,38 @@ pub(crate) fn notify_task_complete(app: &AppHandle, task_id: &str, succeeded: bo
     }
 }
 
+/// T11 (awaiting-input park): tell the user a run PARKED awaiting their input — an
+/// `AskUserQuestion` the agent surfaced and cannot proceed past. Gated on
+/// `notify_on_awaiting_input`, which defaults ON (unlike the Done/Failed
+/// `notify_on_complete`): a backgrounded window otherwise silently stalls the
+/// autonomous loop on a question no one sees. Body carries ONLY the task title —
+/// never the question/option text (model-authored, surfaced to the UI but never
+/// logged) or any secret (M4.5 logging discipline). Best-effort: a failed
+/// notification is logged at debug, never surfaced. One notification per park (the
+/// caller fires it once per `question-required` event).
+pub(crate) fn notify_awaiting_input(app: &AppHandle, task_id: &str) {
+    use crate::settings::SettingsStore;
+    if !app
+        .state::<SettingsStore>()
+        .with_settings(|s| s.notify_on_awaiting_input)
+    {
+        return;
+    }
+    let Some(task) = app.state::<TaskStore>().get(task_id) else {
+        return;
+    };
+    use tauri_plugin_notification::NotificationExt;
+    if let Err(e) = app
+        .notification()
+        .builder()
+        .title("Waiting for your input")
+        .body(task.title)
+        .show()
+    {
+        tracing::debug!(target: "nightcore", task_id, error = %e, "awaiting-input notification failed");
+    }
+}
+
 pub(crate) fn finish_run(
     app: &AppHandle,
     task_id: &str,

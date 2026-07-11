@@ -168,6 +168,13 @@ export function unreadBadgeLabel(count: number): string {
   return `${count} unread output ${count === 1 ? 'batch' : 'batches'}`;
 }
 
+/** Accessible label + tooltip for the LOUD needs-attention badge (T11): a completion
+ *  or awaiting-input signal (OSC 9/99/777 or BEL) fired while the tab/pane was
+ *  off-screen. Shared by the tab strip and the grid pane so both read identically. */
+export function attentionBadgeLabel(): string {
+  return 'Waiting for you — a command finished';
+}
+
 /** The broadcast-input toggle's visible + accessible label (round-2 PR B, § B.3):
  *  the grid "type once, run everywhere" arm control. Loud on purpose — broadcasting
  *  keystrokes to N shells is a footgun the armed state must never hide. */

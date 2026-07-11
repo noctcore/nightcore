@@ -2,8 +2,8 @@
 
 /**
  * Where a tab's current title came from — the precedence source. Serializes
- * camelCase to the TS union `"manual" | "task" | "auto"`; the wire field is
- * `Option<TitleSource>` (a legacy / never-titled session is `None`, treated as
- * `Unset` unless it carries a non-empty title, § module docs).
+ * camelCase to the TS union `"manual" | "task" | "auto" | "processTitle"`; the wire
+ * field is `Option<TitleSource>` (a legacy / never-titled session is `None`, treated
+ * as `Unset` unless it carries a non-empty title, § module docs).
  */
-export type TitleSource = "manual" | "task" | "auto";
+export type TitleSource = "manual" | "task" | "auto" | "processTitle";

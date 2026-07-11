@@ -145,6 +145,42 @@ pub async fn terminal_set_title(
     .map_err(|e| format!("terminal set_title failed to run: {e}"))?
 }
 
+/// Apply the shell's own process-title (OSC 0/2) to a session's tab (T11) with the
+/// LOWEST `ProcessTitle` precedence, GUARDED under the registry lock — so a Manual /
+/// Task / AI name always wins and the process-title only fills an Unset session (or
+/// replaces a prior process-title). A blank title is a no-op. Returns the title it
+/// ACTUALLY applied (`Some`), or `None` when it was refused (a higher-ranked name is
+/// set) or was blank — so the web reflects only a name that stuck, exactly like
+/// `terminal_suggest_title`. USER-only + async + `spawn_blocking` like every terminal
+/// command; the web debounces the noisy `onTitleChange` stream before calling this.
+#[tauri::command]
+pub async fn terminal_set_process_title(
+    app: AppHandle,
+    id: String,
+    title: String,
+) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(title) = normalize_title(Some(title)) else {
+            return Ok(None);
+        };
+        let be = backend(&app)?;
+        be.set_title(&id, Some(title), TitleSource::ProcessTitle)?;
+        // Read the AUTHORITATIVE post-write state: return the title only if the
+        // ProcessTitle write actually landed (source is still ProcessTitle). A
+        // higher-ranked name that raced in / is already set yields None, so the web
+        // never reflects a process-title that didn't stick.
+        let applied = be
+            .list()
+            .into_iter()
+            .find(|s| s.id == id)
+            .filter(|s| s.title_source == Some(TitleSource::ProcessTitle))
+            .and_then(|s| s.title);
+        Ok(applied)
+    })
+    .await
+    .map_err(|e| format!("terminal set_process_title failed to run: {e}"))?
+}
+
 /// The AI tab-naming instruction (round-2 PR A): a tiny, deterministic prompt. The
 /// last command rides the one-shot's stdin; every tool is disallowed (the seam's
 /// least-privilege), so this can never read or exfiltrate anything beyond that input.
@@ -220,6 +256,39 @@ fn ai_naming_enabled(app: &AppHandle) -> bool {
     app.try_state::<crate::settings::SettingsStore>()
         .map(|store| store.with_settings(|s| s.terminal_ai_naming))
         .unwrap_or(false)
+}
+
+/// Fire a desktop notification that a command finished in a terminal tab (T11). The
+/// WEB decides WHEN to call this — only for a shell completion signal (OSC 9/99/777 or
+/// a BEL) that fired while the terminal view was NOT focused/visible (it owns the
+/// focus/visibility knowledge the Rust side lacks) and only when the
+/// `terminal_bell_notify` setting is on. USER-only + async like every terminal command.
+/// Best-effort: a failed notification is logged at debug, never surfaced. Body carries
+/// only the tab label — never any shell output (the OSC/BEL payload is consumed by the
+/// web parser and never reaches here), preserving the M4.5 logging discipline.
+#[tauri::command]
+pub async fn terminal_notify_complete(app: AppHandle, tab_title: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri_plugin_notification::NotificationExt;
+        let label = tab_title.trim();
+        let body = if label.is_empty() {
+            "A terminal command finished".to_string()
+        } else {
+            format!("Command finished in {label}")
+        };
+        if let Err(e) = app
+            .notification()
+            .builder()
+            .title("Terminal")
+            .body(body)
+            .show()
+        {
+            tracing::debug!(target: "nightcore", error = %e, "terminal completion notification failed");
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("terminal notify_complete failed to run: {e}"))?
 }
 
 /// Sanitize a raw one-shot reply into a tab title (round-2 PR A): trim, reject empty

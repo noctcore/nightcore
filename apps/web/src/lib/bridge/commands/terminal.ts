@@ -154,6 +154,31 @@ export async function setTerminalTitle(
   await invoke('terminal_set_title', { id, title, source });
 }
 
+/** Fire a desktop notification that a command finished in a terminal tab (T11). The
+ *  WEB calls this only for a shell completion signal (OSC 9/99/777 or a BEL) that fired
+ *  while the terminal view was NOT focused/visible, and only when the setting is on —
+ *  the Rust side just shows the notification (title-only body; it never sees the shell
+ *  output). No-op outside Tauri (Storybook / `dogfood:ui` have no OS notifications).
+ *  Dynamic import per the bridge's Tauri-core isolation rule (§9 trap f). */
+export async function notifyTerminalComplete(tabTitle: string): Promise<void> {
+  if (!isTauri()) return;
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('terminal_notify_complete', { tabTitle });
+}
+
+/** Apply the shell's own process-title (OSC 0/2) to a session's tab (T11) with the
+ *  lowest `'processTitle'` precedence — a Manual / Task / AI (`'auto'`) name always
+ *  wins server-side, so this only fills an un-named session (or replaces a prior
+ *  process-title). Returns the title it ACTUALLY applied (a name that stuck), or `null`
+ *  when a higher-ranked name is set or the title was blank — mirroring
+ *  {@link suggestTerminalTitle}. Degrades to `null` outside the webview. Dynamic import
+ *  per the bridge's Tauri-core isolation rule. */
+export async function setTerminalProcessTitle(id: string, title: string): Promise<string | null> {
+  if (!isTauri()) return null;
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<string | null>('terminal_set_process_title', { id, title });
+}
+
 /** Ask a sandboxed `claude -p` haiku one-shot for a 2–3-word tab title based on the
  *  last non-trivial `command` (round-2 PR A, opt-in). The Rust command applies the
  *  suggestion server-side with `'auto'` precedence GUARDED under the registry lock —

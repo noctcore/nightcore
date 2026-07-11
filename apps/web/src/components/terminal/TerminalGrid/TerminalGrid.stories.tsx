@@ -39,7 +39,7 @@ const meta = {
   parameters: { layout: 'fullscreen' },
   args: {
     sessions: FOUR,
-    unread: {},
+    attention: {},
     ungovernedIds: new Set<string>(),
     canLaunchClaude: () => true,
     zoomedId: null,
@@ -96,12 +96,18 @@ export const Zoomed: Story = {
   },
 };
 
-/** Unread badges on off-screen panes (decision 6c). */
+/** Has-output badges on off-screen panes; one pane in the LOUD needs-attention state
+ *  (an OSC/BEL completion fired while off-screen) shows the warning dot (T11). */
 export const WithBadges: Story = {
-  args: { unread: { 'task-42': 4, 'task-77': 128 } },
+  args: {
+    attention: {
+      'task-42': { unread: 4, needsAttention: false },
+      'task-77': { unread: 128, needsAttention: true },
+    },
+  },
   play: async ({ canvas }) => {
     await expect(canvas.getByText('4')).toBeInTheDocument();
-    await expect(canvas.getByText('99+')).toBeInTheDocument();
+    await expect(canvas.getByLabelText('Waiting for you — a command finished')).toBeInTheDocument();
   },
 };
 

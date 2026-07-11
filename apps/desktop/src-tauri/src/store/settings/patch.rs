@@ -155,6 +155,11 @@ pub struct SettingsPatch {
     pub cleanup_worktrees: Option<bool>,
     #[cfg_attr(test, ts(optional))]
     pub notify_on_complete: Option<bool>,
+    /// T11: toggle the awaiting-input park notification (default on). Global-only
+    /// (ignored for a per-project override target), like `notify_on_complete`. See
+    /// [`super::model::Settings::notify_on_awaiting_input`].
+    #[cfg_attr(test, ts(optional))]
+    pub notify_on_awaiting_input: Option<bool>,
     /// Auto Mode option: toggle auto-commit-on-verified. Global-only (like
     /// `cleanup_worktrees`/`notify_on_complete` — ignored for a per-project override
     /// target). See [`super::model::Settings::auto_commit_on_verified`].
@@ -224,6 +229,11 @@ pub struct SettingsPatch {
     /// [`super::model::Settings::terminal_ai_naming`].
     #[cfg_attr(test, ts(optional))]
     pub terminal_ai_naming: Option<bool>,
+    /// T11: toggle terminal command-completion notifications (default on). Global-only
+    /// (ignored for a per-project override target), like the other terminal knobs. See
+    /// [`super::model::Settings::terminal_bell_notify`].
+    #[cfg_attr(test, ts(optional))]
+    pub terminal_bell_notify: Option<bool>,
     /// M4.6: default run mode (`"main"` | `"worktree"`). With a `projectId` it lands
     /// in that project's override; without one, the global default.
     #[cfg_attr(test, ts(optional, as = "Option<RunMode>"))]
@@ -305,6 +315,11 @@ impl Settings {
         if let Some(v) = patch.notify_on_complete {
             self.notify_on_complete = v;
         }
+        // T11: global-only awaiting-input notification toggle (no per-project
+        // override), like `notify_on_complete`.
+        if let Some(v) = patch.notify_on_awaiting_input {
+            self.notify_on_awaiting_input = v;
+        }
         // Auto Mode option: global-only toggle (no per-project override), so it lives
         // in the global block alongside `cleanup_worktrees`/`notify_on_complete`.
         if let Some(v) = patch.auto_commit_on_verified {
@@ -371,6 +386,11 @@ impl Settings {
         // override), like the other terminal toggles.
         if let Some(v) = patch.terminal_ai_naming {
             self.terminal_ai_naming = v;
+        }
+        // T11: global-only terminal command-completion notification toggle (no
+        // per-project override), like the other terminal toggles.
+        if let Some(v) = patch.terminal_bell_notify {
+            self.terminal_bell_notify = v;
         }
         if let Some(v) = patch.default_run_mode {
             self.default_run_mode = v;

@@ -22,6 +22,7 @@ import {
 } from '@/lib/terminal-links';
 
 import { useRenameSession, useTerminalAiNaming } from '../terminal-ai-naming';
+import { nextAttentionId, useTerminalAttention } from '../terminal-attention';
 import { useTerminalDragDrop } from '../terminal-drag-drop';
 import { subscribePasteRejected } from '../terminal-keymap';
 import { useTerminalLayout } from '../terminal-layout';
@@ -29,12 +30,10 @@ import { setTerminalPlatform } from '../terminal-platform';
 import {
   applyRenderPrefs,
   closeSession,
-  getUnread,
   hasSession,
   openSession,
   reattachSession,
   reconcileSessions,
-  subscribeActivity,
 } from '../terminal-session-manager';
 import {
   atSessionCap,
@@ -67,9 +66,6 @@ export function useTerminalView(input: UseTerminalViewInput) {
   // gate for the "start a fresh shell here" action (a browsed cwd can be anywhere, so
   // we probe existence at mount rather than a static membership check).
   const [restorableCwds, setRestorableCwds] = useState<ReadonlySet<string>>(new Set());
-  // Per-session unread-output counts (decision 6c), mirrored from the module-level
-  // session manager on every activity notification.
-  const [unread, setUnread] = useState<Readonly<Record<string, number>>>({});
   // Whether the initial `listTerminals()` has resolved — gates the layout hook's order
   // reconcile so it never prunes the persisted pane order during the load gap.
   const [loaded, setLoaded] = useState(false);
@@ -141,17 +137,9 @@ export function useTerminalView(input: UseTerminalViewInput) {
     };
   }, []);
 
-  // Bridge the module-level activity counters into React: recompute the per-session
-  // unread map on every notification, and whenever the session list changes.
-  useEffect(() => {
-    const recompute = () => {
-      const next: Record<string, number> = {};
-      for (const s of sessions) next[s.id] = getUnread(s.id);
-      setUnread(next);
-    };
-    recompute();
-    return subscribeActivity(recompute);
-  }, [sessions]);
+  // 3-state attention (T11): the per-session idle/has-output/needs-attention map,
+  // mirrored from the module-level counters, plus the count of waiting sessions.
+  const { attention, attentionCount } = useTerminalAttention(sessions);
 
   // Reactive render prefs (spec PR 3d): resolve the Settings font size / scrollback
   // (null ⇒ shipped defaults, clamped) and push them to every live terminal via the
@@ -257,6 +245,14 @@ export function useTerminalView(input: UseTerminalViewInput) {
   );
 
   const selectTab = useCallback((id: string) => setActiveId(id), []);
+  // Jump to the next terminal waiting on the user (T11): cycle to the next
+  // needs-attention session after the active one and select it. No-op when nothing
+  // is waiting. Uses the ordered session list so the cycle follows tab/pane order.
+  const jumpToNextAttention = useCallback(() => {
+    const ids = layout.orderedSessions.map((s) => s.id);
+    const next = nextAttentionId(ids, activeId, attention);
+    if (next !== null) setActiveId(next);
+  }, [layout.orderedSessions, activeId, attention]);
   const requestClose = useCallback((id: string) => setPendingClose(id), []);
   const cancelClose = useCallback(() => setPendingClose(null), []);
 
@@ -349,7 +345,9 @@ export function useTerminalView(input: UseTerminalViewInput) {
     sessions,
     restored,
     activeId,
-    unread,
+    // 3-state attention (T11): the per-session state map, the waiting count, and the
+    // jump-to-next-waiting action — one cohesive sub-object (the tab bar + grid read it).
+    attention: { states: attention, waiting: attentionCount, jumpNext: jumpToNextAttention },
     layout,
     dropTargetId: dragDrop.dropTargetId,
     canAddTab,

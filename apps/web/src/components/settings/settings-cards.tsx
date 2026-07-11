@@ -5,7 +5,6 @@
  *  Settings never re-derives its own model/effort vocabulary. */
 import {
   AgentsIcon,
-  BellIcon,
   BoltIcon,
   BranchIcon,
   FieldValue,
@@ -31,6 +30,7 @@ import {
 import { buildAboutCards } from './settings-about-cards';
 import { buildGithubCards } from './settings-github-cards';
 import { buildInterfaceCards } from './settings-interface-cards';
+import { buildNotificationCards } from './settings-notification-cards';
 import {
   DefaultModelControl,
   defaultModelForProvider,
@@ -330,24 +330,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
       ];
     case 'hooks':
       return [
-        {
-          icon: <BellIcon size={18} />,
-          title: 'Notifications',
-          subtitle: 'A desktop notification when a task finishes or fails.',
-          rows: [
-            {
-              label: 'Native notifications',
-              hint: 'Notify on Done and Failed',
-              control: (
-                <Toggle
-                  on={settings.notifyOnComplete}
-                  onChange={(next) => patchGlobal({ notifyOnComplete: next })}
-                  label="Native notifications on task complete"
-                />
-              ),
-            },
-          ],
-        },
+        ...buildNotificationCards(settings, patchGlobal),
         ...buildGithubCards(settings, patchGlobal),
       ];
     case 'paths':

@@ -42,6 +42,15 @@ pub struct Settings {
     pub cleanup_worktrees: bool,
     /// M3 toggle; persists only.
     pub notify_on_complete: bool,
+    /// Awaiting-input notification (T11): fire a desktop notification when a run
+    /// PARKS awaiting the user's input (an `AskUserQuestion`). Unlike
+    /// `notify_on_complete` (Done/Failed, default OFF), this defaults **ON** — a
+    /// backgrounded window otherwise silently stalls the autonomous loop on a
+    /// question no one sees, the highest-value notification for an autonomy product.
+    /// Global-only (like `notify_on_complete`). Serde-additive: a settings file
+    /// written before this field loads as `true`.
+    #[serde(default = "default_true")]
+    pub notify_on_awaiting_input: bool,
     /// M4.6: the default run mode new tasks inherit — `"main"` (default) or
     /// `"worktree"`. Per-project overridable. A new task's `run_mode` is this value
     /// unless the create call passes an explicit one.
@@ -213,6 +222,15 @@ pub struct Settings {
     /// file written before this field loads as `false`.
     #[serde(default)]
     pub terminal_ai_naming: bool,
+    /// USER terminal command-completion notifications (T11): when a shell emits a
+    /// standard completion/notification escape (OSC 9/99/777 or a BEL) while the
+    /// terminal view is not focused/visible, fire a desktop notification. DEFAULT
+    /// `true` (these are EXPLICIT signals the shell/program chose to emit — e.g. via
+    /// the one-click Claude notify hook — so they are not noisy; the toggle opts out).
+    /// Global-only (a machine preference, like the other terminal knobs).
+    /// Serde-additive: a settings file written before this field loads as `true`.
+    #[serde(default = "default_true")]
+    pub terminal_bell_notify: bool,
     /// Per-project overrides keyed by project id.
     pub project_overrides: HashMap<String, SettingsOverride>,
 }
@@ -467,6 +485,10 @@ impl Default for Settings {
             provider,
             cleanup_worktrees: true,
             notify_on_complete: false,
+            // T11: the awaiting-input park notification defaults ON — a stalled
+            // question in a backgrounded window is the case an autonomy product most
+            // needs to surface. (Done/Failed stays opt-in above.)
+            notify_on_awaiting_input: true,
             default_run_mode: default_run_mode_value(),
             // SDK-guardrails: no Settings-level ceiling by default — a new task
             // inherits the engine's `@nightcore/config` default (maxTurns 200,
@@ -522,6 +544,9 @@ impl Default for Settings {
             // Round-2 PR A: AI tab auto-naming is opt-in — no `claude` one-shot ever
             // runs and the capture layer never even buffers until the user enables it.
             terminal_ai_naming: false,
+            // T11: terminal command-completion notifications default ON — an OSC/BEL
+            // is an explicit signal the shell chose to emit, not a busy/idle guess.
+            terminal_bell_notify: true,
             project_overrides: HashMap::new(),
         }
     }

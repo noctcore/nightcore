@@ -7,9 +7,11 @@
 //! that keeps them ordered:
 //!
 //! > A title write lands only if it out-ranks-or-ties the current source. Ranks are
-//! > **Manual (3) > Task (2) > Auto (1) > Unset (0)**. So an AI (`Auto`) name never
-//! > overwrites a human or task title, a task title never overwrites a manual one,
-//! > and a manual rename always wins.
+//! > **Manual (4) > Task (3) > Auto (2) > ProcessTitle (1) > Unset (0)**. So the shell
+//! > process-title (OSC 0/2) is a better default than the cwd leaf but yields to an AI
+//! > name, a task title, and a manual rename; an AI (`Auto`) name never overwrites a
+//! > human or task title; a task title never overwrites a manual one; and a manual
+//! > rename always wins.
 //!
 //! **Legacy-safety:** a session titled BEFORE this feature has a `title` string but
 //! `source == None`. A non-empty untracked title is treated as **Manual-equivalent**
@@ -20,9 +22,9 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 /// Where a tab's current title came from — the precedence source. Serializes
-/// camelCase to the TS union `"manual" | "task" | "auto"`; the wire field is
-/// `Option<TitleSource>` (a legacy / never-titled session is `None`, treated as
-/// `Unset` unless it carries a non-empty title, § module docs).
+/// camelCase to the TS union `"manual" | "task" | "auto" | "processTitle"`; the wire
+/// field is `Option<TitleSource>` (a legacy / never-titled session is `None`, treated
+/// as `Unset` unless it carries a non-empty title, § module docs).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(TS))]
 #[serde(rename_all = "camelCase")]
@@ -32,8 +34,13 @@ pub enum TitleSource {
     Manual,
     /// A linked task's auto-taken title — wins over AI, loses to Manual.
     Task,
-    /// An AI (haiku) auto-name — the lowest-ranked writer; refused over Manual/Task.
+    /// An AI (haiku) auto-name — refused over Manual/Task, wins over ProcessTitle.
     Auto,
+    /// The shell's own process-title escape (OSC 0/2) — the LOWEST-ranked writer (T11):
+    /// a better default than the cwd leaf, but yields to every deliberate name (Auto,
+    /// Task, Manual). It only ever fills in an Unset session or replaces a prior
+    /// process-title, so a `claude`/`vim` window title never clobbers a chosen name.
+    ProcessTitle,
 }
 
 impl TitleSource {
@@ -41,9 +48,10 @@ impl TitleSource {
     /// source, whose rank is computed contextually by [`TitleState::effective_rank`].
     const fn rank(self) -> u8 {
         match self {
-            TitleSource::Manual => 3,
-            TitleSource::Task => 2,
-            TitleSource::Auto => 1,
+            TitleSource::Manual => 4,
+            TitleSource::Task => 3,
+            TitleSource::Auto => 2,
+            TitleSource::ProcessTitle => 1,
         }
     }
 }
@@ -147,6 +155,29 @@ mod tests {
         assert!(s.auto_eligible());
         assert!(s.apply(Some("start server".into()), TitleSource::Auto));
         assert_eq!(s.title.as_deref(), Some("start server"));
+    }
+
+    #[test]
+    fn process_title_fills_unset_but_yields_to_every_deliberate_name() {
+        // A fresh (Unset) session takes the shell's process-title as a better default.
+        let mut s = TitleState::default();
+        assert!(s.apply(Some("~/dev/app".into()), TitleSource::ProcessTitle));
+        assert_eq!(s.source, Some(TitleSource::ProcessTitle));
+        // A newer process-title replaces the prior one (ties at rank 1).
+        assert!(s.apply(Some("npm run dev".into()), TitleSource::ProcessTitle));
+        assert_eq!(s.title.as_deref(), Some("npm run dev"));
+
+        // An AI name out-ranks the process-title and takes over.
+        assert!(s.apply(Some("dev server".into()), TitleSource::Auto));
+        // The process-title can no longer clobber the AI (or a Task/Manual) name.
+        assert!(!s.apply(Some("node".into()), TitleSource::ProcessTitle));
+        assert_eq!(s.title.as_deref(), Some("dev server"));
+
+        // A manual rename locks it against the process-title too.
+        let mut m = TitleState::default();
+        assert!(m.apply(Some("deploy".into()), TitleSource::Manual));
+        assert!(!m.apply(Some("bash".into()), TitleSource::ProcessTitle));
+        assert_eq!(m.title.as_deref(), Some("deploy"));
     }
 
     #[test]

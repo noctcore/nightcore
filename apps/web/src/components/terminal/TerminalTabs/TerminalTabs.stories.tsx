@@ -48,10 +48,11 @@ const meta = {
     restored: [],
     activeId: 'task-91',
     canAddTab: true,
-    unread: {},
+    attention: {},
     viewMode: 'tabs',
     broadcastArmed: false,
     broadcastEligible: true,
+    attentionWaiting: 0,
     ungovernedIds: new Set<string>(),
     onSelect: fn(),
     onClose: fn(),
@@ -60,6 +61,7 @@ const meta = {
     onRename: fn(),
     onToggleViewMode: fn(),
     onToggleBroadcast: fn(),
+    onJumpAttention: fn(),
   },
 } satisfies Meta<typeof TerminalTabs>;
 
@@ -119,12 +121,32 @@ export const WithCustomTitle: Story = {
   },
 };
 
-/** Unread-output badges (decision 6c) on the two inactive tabs; the active tab
- *  never badges. */
+/** Has-output badges (T11) on the two inactive tabs; the active tab never badges. */
 export const WithActivityBadges: Story = {
   args: {
     activeId: 'task-91',
-    unread: { 'task-42': 3, 'task-12': 128 },
+    attention: {
+      'task-42': { unread: 3, needsAttention: false },
+      'task-12': { unread: 128, needsAttention: false },
+    },
+  },
+};
+
+/** Needs-attention (T11): an OSC/BEL completion fired on an off-screen tab shows the
+ *  LOUD warning dot, and the "jump to next waiting terminal" affordance appears. */
+export const WithAttentionBadges: Story = {
+  args: {
+    activeId: 'task-91',
+    attention: {
+      'task-42': { unread: 5, needsAttention: true },
+      'task-12': { unread: 2, needsAttention: false },
+    },
+    attentionWaiting: 1,
+  },
+  play: async ({ args, canvas }) => {
+    await expect(canvas.getByLabelText('Waiting for you — a command finished')).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole('button', { name: /Jump to the next of 1 waiting/ }));
+    await expect(args.onJumpAttention).toHaveBeenCalled();
   },
 };
 

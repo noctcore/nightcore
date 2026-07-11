@@ -3,6 +3,7 @@ import { closestCenter, DndContext, DragOverlay } from '@dnd-kit/core';
 import { LockIcon, TerminalIcon } from '@/components/ui';
 import type { TerminalSessionInfo } from '@/lib/bridge';
 
+import { IDLE_ATTENTION } from '../terminal-attention';
 import { displayTitle, gridColumns } from '../terminal-shared';
 import { TerminalGridPane } from '../TerminalGridPane';
 import { useTerminalGrid } from './TerminalGrid.hooks';
@@ -34,7 +35,7 @@ function GridPanePreview({ session }: { session: TerminalSessionInfo }) {
  *  DnD state + refit scheduling live in `useTerminalGrid`. */
 export function TerminalGrid({
   sessions,
-  unread,
+  attention,
   ungovernedIds,
   canLaunchClaude,
   zoomedId,
@@ -70,7 +71,7 @@ export function TerminalGrid({
           <TerminalGridPane
             key={session.id}
             session={session}
-            unread={unread[session.id] ?? 0}
+            attention={attention[session.id] ?? IDLE_ATTENTION}
             ungoverned={ungovernedIds.has(session.id)}
             canLaunch={canLaunchClaude(session)}
             zoomed={zoomedId === session.id}

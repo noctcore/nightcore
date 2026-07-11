@@ -3,15 +3,17 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { writeTerminal } from '@/lib/bridge';
 
 import {
-  attachSession,
-  clearUnread,
-  closeSession,
-  ensureRenderer,
+  clearActivity,
   getUnread,
-  openSession,
   setActiveTerminal,
   setVisibleTerminals,
   subscribeActivity,
+} from './terminal-attention';
+import {
+  attachSession,
+  closeSession,
+  ensureRenderer,
+  openSession,
 } from './terminal-session-manager';
 import { setWebglLoader, type WebglController } from './terminal-webgl';
 
@@ -97,7 +99,7 @@ test('output for a non-visible session accrues an unread badge, cleared on activ
   expect(getUnread(session.id)).toBe(0);
 
   // A redundant clear is a no-op (no throw, stays 0).
-  clearUnread(session.id);
+  clearActivity(session.id);
   expect(getUnread(session.id)).toBe(0);
 
   unsub();

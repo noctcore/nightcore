@@ -12,9 +12,11 @@ import {
 } from '@/components/ui';
 import type { TerminalSessionInfo } from '@/lib/bridge';
 
+import { attentionLevel, type TerminalAttention } from '../terminal-attention';
 import { formatShortcut } from '../terminal-platform';
 import { useInlineRename } from '../terminal-rename';
 import {
+  attentionBadgeLabel,
   broadcastBadge,
   broadcastBadgeLabel,
   displayTitle,
@@ -45,15 +47,29 @@ function PaneBroadcast() {
   );
 }
 
-/** The unread-output badge (decision 6c) on a zoomed-away / off-screen grid pane. */
-function PaneUnread({ count }: { count: number }) {
-  if (count <= 0) return null;
+/** The 3-state attention badge (T11) on a zoomed-away / off-screen grid pane: a muted
+ *  count pill for has-output, and a LOUD pulsing warning dot for needs-attention (an
+ *  OSC/BEL completion fired while the pane was off-screen). Nothing when idle. */
+function PaneAttention({ attention }: { attention: TerminalAttention }) {
+  const level = attentionLevel(attention);
+  if (level === 'idle') return null;
+  if (level === 'needs-attention') {
+    return (
+      <span
+        aria-label={attentionBadgeLabel()}
+        title={attentionBadgeLabel()}
+        className="flex shrink-0 items-center rounded-full bg-warning/20 px-1.5 py-1 ring-1 ring-warning/50"
+      >
+        <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />
+      </span>
+    );
+  }
   return (
     <span
-      aria-label={unreadBadgeLabel(count)}
+      aria-label={unreadBadgeLabel(attention.unread)}
       className="shrink-0 rounded-full bg-primary/25 px-1.5 text-[10px] font-semibold leading-4 text-primary"
     >
-      {unreadBadge(count)}
+      {unreadBadge(attention.unread)}
     </span>
   );
 }
@@ -104,7 +120,7 @@ function GridPaneTitle({
  *  wiring live in `useTerminalGridPane`. */
 export function TerminalGridPane({
   session,
-  unread,
+  attention,
   ungoverned,
   canLaunch,
   zoomed,
@@ -159,7 +175,7 @@ export function TerminalGridPane({
             <BoltIcon size={11} aria-hidden />
           </span>
         )}
-        <PaneUnread count={unread} />
+        <PaneAttention attention={attention} />
         {broadcasting && <PaneBroadcast />}
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
           {canLaunch && (
