@@ -23,6 +23,30 @@ bun run lint:meta   # == bun run tools/lint-meta/cli.ts
 
 `lint-meta: no violations` on a clean tree means the gate is green.
 
+### `--json` (machine-readable)
+
+`bun run lint:meta -- --json` swaps the human/CI text reporter for a stable JSON
+payload and always exits `0` (the payload, not the exit code, carries pass/fail).
+The text reporter is the default, so CI output is unchanged. The shape is an
+integration contract (Drift v1 EnforceRun turns it into per-convention site
+counts) — extend it additively only (see `json-reporter.ts`):
+
+```json
+{
+  "violations": [
+    { "ruleId": "package-shape", "filePath": "packages/bad/package.json", "message": "…", "line": 12, "column": 3 }
+  ],
+  "counts":  { "package-shape": 1, "no-warn-severity": 0 },
+  "errored": [],
+  "total":   1
+}
+```
+
+`counts` lists **every** rule that ran (including `0`, so a ran-clean rule is
+distinct from one that errored or is absent); a rule that threw is listed in
+`errored` and excluded from `counts`. `line`/`column` are 1-indexed and omitted
+(never `null`) when a rule reports no location.
+
 ### Adding / validating a rule
 
 1. Write `rules/<my-rule>.ts` exporting an `IMetaRule` (`id`, `description`,

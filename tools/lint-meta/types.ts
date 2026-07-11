@@ -23,6 +23,14 @@ export interface IViolation {
   file: string;
   rule: string;
   message: string;
+  /**
+   * 1-indexed source location, when the rule can pinpoint one. Optional and
+   * additive: existing rules omit it and the text reporter ignores it; the
+   * `--json` reporter surfaces `line`/`column` only when present (see
+   * `json-reporter.ts`).
+   */
+  line?: number;
+  column?: number;
 }
 
 export interface IMetaRule {
