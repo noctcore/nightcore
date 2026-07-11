@@ -89,3 +89,14 @@ ts-rs = "12.0"
 # `tauri` already pulls transitively.
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3"
+
+# Terminal daemon peer-cred (terminal round 2, PR D): the detached-PTY-daemon socket
+# is authenticated by filesystem perms (0700 dir / 0600 socket); this adds a
+# defence-in-depth uid check on every accepted connection via the kernel peer
+# credential (`SO_PEERCRED` on Linux / `getpeereid` on macOS/BSD). Unix-only. `libc`
+# 0.2 is ALREADY resolved transitively in Cargo.lock (via tokio/portable-pty/…), so
+# naming it as a direct dep adds ZERO new transitive crates — just the direct edge —
+# and is preferred over hand-declaring the Linux `ucred` layout or pulling the larger
+# `nix`. The macOS/Linux FFI branch is compiled per-OS behind `#[cfg(target_os)]`.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

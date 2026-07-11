@@ -149,3 +149,38 @@ fn a_refused_connection_surfaces_as_an_error() {
     let socket = tmp.path().join("absent.sock");
     assert!(DaemonClient::connect(&socket).is_err());
 }
+
+#[test]
+fn a_peer_with_the_owning_uid_is_served() {
+    // The peer-cred happy path (§5.2, PR D): the daemon serves OUR uid (the production
+    // default), so the same-process handshake completes and lists zero sessions. This
+    // and `full_lifecycle_…` both go through the real `SO_PEERCRED`/`getpeereid` accept
+    // gate — a same-uid peer is always let through.
+    let tmp = TempDir::new().unwrap();
+    let persist = tmp.path().join("terminals");
+    let socket = socket_for(&persist);
+    let _daemon = TestDaemon::start_as(socket.clone(), persist, super::discovery::euid());
+    let (client, sessions) =
+        DaemonClient::connect(&socket).expect("a same-uid peer is served the handshake");
+    assert!(sessions.is_empty(), "a fresh daemon owns no sessions");
+    assert!(client.is_alive());
+}
+
+#[test]
+fn a_peer_with_a_mismatched_uid_is_refused() {
+    // The peer-cred reject path (§5.2, PR D): the daemon is told to serve a uid that is
+    // NOT ours, so our same-process connection — which the kernel reports at OUR euid —
+    // fails the uid check and is dropped at accept, BEFORE the handshake. The client's
+    // `connect` therefore errors (the backend then degrades to the in-process PTY).
+    // Simulating the mismatch via the injected expected uid exercises the real
+    // getsockopt/getpeereid path without needing a second OS user.
+    let tmp = TempDir::new().unwrap();
+    let persist = tmp.path().join("terminals");
+    let socket = socket_for(&persist);
+    let not_our_uid = super::discovery::euid().wrapping_add(1);
+    let _daemon = TestDaemon::start_as(socket.clone(), persist, not_our_uid);
+    assert!(
+        DaemonClient::connect(&socket).is_err(),
+        "a connection whose peer uid differs from the daemon's is refused, not served"
+    );
+}

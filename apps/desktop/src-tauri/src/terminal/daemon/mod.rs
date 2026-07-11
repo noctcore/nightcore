@@ -14,7 +14,8 @@
 //! ## Layout
 //!  - [`protocol`] — the length-prefixed control-JSON + binary-output wire format +
 //!    version negotiation (pure; unit-tested).
-//!  - [`discovery`] — capability check, owner-only socket path, and the detached
+//!  - [`discovery`] — capability check, owner-only socket path, the per-connection
+//!    peer-cred uid check (`SO_PEERCRED`/`getpeereid`, PR D), and the detached
 //!    (`setsid`) re-invoke of this exe as the daemon.
 //!  - [`fanout`] — per-session output multiplexer: sequence-numbered replay ring +
 //!    live subscriber.

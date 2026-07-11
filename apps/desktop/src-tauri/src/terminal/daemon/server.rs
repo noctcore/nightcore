@@ -31,19 +31,31 @@ use crate::terminal::{OutputSink, SpawnOpts, TerminalRegistry, TitleSource};
 const IDLE_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Shared daemon state: the reused session registry + a fanout per session + a live
-/// client count (for idle self-exit).
+/// client count (for idle self-exit) + the uid the daemon is allowed to serve.
 pub(crate) struct Server {
     registry: TerminalRegistry,
     fanouts: Mutex<HashMap<String, Arc<Fanout>>>,
     client_count: AtomicUsize,
+    /// The only uid this daemon serves (§5.2 peer-cred). Every accepted connection's
+    /// kernel-reported peer uid must equal this or it is refused. Defaults to the
+    /// daemon's own euid in production; a test injects a mismatching value to drive the
+    /// reject path without a second OS user.
+    expected_uid: u32,
 }
 
 impl Server {
     pub(crate) fn new(persist_dir: PathBuf) -> Self {
+        Self::with_expected_uid(persist_dir, discovery::euid())
+    }
+
+    /// A server that serves only `expected_uid`. `new` uses the daemon's own euid; the
+    /// daemon integration tests pass a different uid to exercise the peer-cred refusal.
+    pub(crate) fn with_expected_uid(persist_dir: PathBuf, expected_uid: u32) -> Self {
         Self {
             registry: TerminalRegistry::new(persist_dir),
             fanouts: Mutex::new(HashMap::new()),
             client_count: AtomicUsize::new(0),
+            expected_uid,
         }
     }
 
@@ -62,8 +74,39 @@ impl Server {
                 break;
             }
             let Ok(stream) = incoming else { continue };
+            // Peer-cred (§5.2): refuse any connection whose owning uid is not ours,
+            // BEFORE it is handed a handler thread. A refused peer is dropped here (its
+            // handshake never completes → the app degrades to in-process).
+            if !self.peer_authorized(&stream) {
+                continue;
+            }
             let server = Arc::clone(self);
             std::thread::spawn(move || server.handle_connection(stream));
+        }
+    }
+
+    /// Whether the connecting peer is the owning user (§5.2 peer-cred). On a uid
+    /// mismatch OR any error reading the peer credential, log at WARN and refuse —
+    /// fail-closed, so a spoofed / unreadable peer is never served. Refusing costs only
+    /// this one daemon connection; the app still degrades to the in-process PTY.
+    fn peer_authorized(&self, stream: &UnixStream) -> bool {
+        match discovery::peer_uid(stream) {
+            Ok(uid) if uid == self.expected_uid => true,
+            Ok(uid) => {
+                tracing::warn!(
+                    target: "terminal-daemon",
+                    "refused a daemon connection from uid {uid} (serves uid {})",
+                    self.expected_uid
+                );
+                false
+            }
+            Err(e) => {
+                tracing::warn!(
+                    target: "terminal-daemon",
+                    "refused a daemon connection: could not read peer credential: {e}"
+                );
+                false
+            }
         }
     }
 
@@ -279,10 +322,19 @@ pub(crate) mod test_support {
     }
 
     impl TestDaemon {
+        /// A daemon that serves OUR uid (the production default), so a same-process
+        /// client is accepted.
         pub(crate) fn start(socket: PathBuf, persist_dir: PathBuf) -> Self {
+            Self::start_as(socket, persist_dir, discovery::euid())
+        }
+
+        /// A daemon that serves `expected_uid`. A peer-cred test passes a uid other than
+        /// our own so the same-process connection — which the kernel reports at OUR uid
+        /// — is refused, exercising the reject path without a second OS user.
+        pub(crate) fn start_as(socket: PathBuf, persist_dir: PathBuf, expected_uid: u32) -> Self {
             let listener = UnixListener::bind(&socket).expect("bind test socket");
             let _ = discovery::set_socket_perms(&socket);
-            let server = Arc::new(Server::new(persist_dir));
+            let server = Arc::new(Server::with_expected_uid(persist_dir, expected_uid));
             let stop = Arc::new(AtomicBool::new(false));
             let serve_stop = Arc::clone(&stop);
             std::thread::spawn(move || server.serve(listener, serve_stop));
