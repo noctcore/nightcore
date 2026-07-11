@@ -20,6 +20,8 @@ use crate::orchestration::breaker::CircuitBreaker;
 use crate::orchestration::slots::SlotManager;
 use crate::provider::SidecarProvider;
 
+use super::usage_gate::{notify_usage_pause, UsagePause, UsagePauseLatch};
+
 /// The Tauri event reflecting auto-loop state. Payload:
 /// `{ state, reason?, maxConcurrency, leased, failureThreshold }`.
 pub const LOOP_EVENT: &str = "nc:loop";
@@ -124,6 +126,12 @@ pub struct Orchestrator {
     pub auto: AutoLoop,
     /// Parked interactive permission requests awaiting a surface decision (M3).
     pub permissions: PendingPermissions,
+    /// Usage-aware auto-mode throttle (spec 2026-07-11): the one-shot latch so the
+    /// board banner-signal + OS notification fire once per usage-pause episode, not
+    /// every 750ms tick. The gate DECISION itself is stateless (non-latching) —
+    /// re-checked live each tick from the meter — so this latch only debounces the
+    /// transition side effects, it never gates the loop.
+    pub usage_pause: UsagePauseLatch,
     /// Kicked to run a tick immediately (on launch, on terminal events).
     pub(super) kick: Notify,
 }
@@ -153,6 +161,7 @@ impl Orchestrator {
             provider,
             auto: AutoLoop::default(),
             permissions: PendingPermissions::default(),
+            usage_pause: UsagePauseLatch::default(),
             kick: Notify::new(),
         }
     }
@@ -225,6 +234,40 @@ impl Orchestrator {
                 failure_threshold: self.breaker.threshold() as u64,
             },
         );
+    }
+
+    /// Enter the usage-pause (spec 2026-07-11): reflect `paused`/`usage` on `nc:loop`
+    /// so the board banner shows, and — ONCE per episode (the false→true edge) — fire
+    /// the single OS notification (decision 3). Idempotent across the 750ms ticks
+    /// that keep the pause hot: only the transition tick notifies. It does NOT stop
+    /// or interrupt anything — the tick simply returns without launching new runs.
+    pub fn enter_usage_pause(&self, app: &AppHandle, pause: &UsagePause) {
+        let first = self.usage_pause.enter();
+        // The reason rides the existing free-string `nc:loop` `reason` (matched
+        // web-side with `includes('usage')`) — no schema change, no new channel.
+        self.emit_state(app, "paused", Some("usage"));
+        if first {
+            notify_usage_pause(app, pause);
+            tracing::info!(
+                target: "nightcore",
+                provider = %pause.provider,
+                window = %pause.window_label,
+                pct = pause.used_percent,
+                resets_at = ?pause.resets_at,
+                "auto-loop usage-paused (meter hot); running sessions finish untouched"
+            );
+        }
+    }
+
+    /// Leave the usage-pause when the window cools: on the true→false edge, re-emit
+    /// `running` so the banner clears promptly (the tick then launches as normal).
+    /// A no-op when we weren't usage-paused. The latch resets, so a later re-heat is
+    /// a fresh episode that notifies again.
+    pub fn leave_usage_pause(&self, app: &AppHandle) {
+        if self.usage_pause.leave() {
+            self.emit_state(app, "running", None);
+            tracing::info!(target: "nightcore", "auto-loop usage-pause cleared; resuming pickups");
+        }
     }
 }
 

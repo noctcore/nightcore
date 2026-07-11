@@ -19,6 +19,7 @@ mod cwd;
 mod reconcile;
 mod state;
 mod submit;
+mod usage_gate;
 
 // Module facade: preserve the historical `crate::orchestration::coordinator::*`
 // paths after the god-file split so external call sites keep resolving unchanged
@@ -32,6 +33,7 @@ pub(crate) use cwd::*;
 pub(crate) use reconcile::*;
 pub(crate) use state::*;
 pub(crate) use submit::*;
+pub(crate) use usage_gate::*;
 
 #[cfg(test)]
 mod tests {

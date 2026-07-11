@@ -41,10 +41,15 @@ mod http;
 mod poller;
 mod pricing;
 mod registry;
+mod throttle;
 
 pub(crate) use credentials::prime_credentials;
 pub(crate) use poller::{arm, kick, REFRESH_MIN_AGE};
 pub use registry::UsageRegistry;
+// Usage-aware auto-mode throttle (spec 2026-07-11): the provider-scoped decision the
+// coordinator's tick gate consumes. Lives here (not `orchestration/`) so the gate
+// stays provider-id-agnostic (issue #18 arch invariant).
+pub(crate) use throttle::{hot_window, provider_display, UsagePause};
 // `USAGE_EVENT` is emitted from inside `poller` directly; this re-export exists ONLY
 // for the `contracts::mod` channel-conformance test, so it is `#[cfg(test)]`-gated to
 // avoid an unused-import warning in a release build.

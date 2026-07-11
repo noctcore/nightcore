@@ -14,7 +14,7 @@ use tauri::{AppHandle, Manager};
 use crate::orchestration::deps::eligible_tasks;
 use crate::store::TaskStore;
 
-use super::{launch, Orchestrator};
+use super::{launch, usage_throttle_reason, Orchestrator};
 
 /// The interval between coordinator ticks. A periodic scan is the simplest correct
 /// scanner for time-relative dependency/breaker windows; terminal events also kick
@@ -48,6 +48,7 @@ pub fn stop(app: &AppHandle) {
     let orch = app.state::<Orchestrator>();
     orch.auto.running.store(false, Ordering::SeqCst);
     orch.auto.generation.fetch_add(1, Ordering::SeqCst); // signal the tick task to exit
+    orch.usage_pause.reset(); // a manual stop ends any usage-pause episode
     orch.kick(); // wake the loop so it observes the stop promptly
     orch.emit_state(app, "drained", Some("stopped"));
     tracing::info!(target: "nightcore", "auto-loop stopped; interrupting in-flight runs");
@@ -63,8 +64,10 @@ pub fn stop(app: &AppHandle) {
 pub fn resume(app: &AppHandle) -> Result<(), String> {
     let orch = app.state::<Orchestrator>();
     orch.breaker.reset();
-    // Resuming re-arms the loop (a pause leaves `running` true but gated; an
+    // Clearing the loop ends any usage-pause episode too (so a later re-heat notifies
+    // afresh). Resuming re-arms the loop (a pause leaves `running` true but gated; an
     // explicit stop set it false). Either way, kick a fresh scan.
+    orch.usage_pause.reset();
     tracing::info!(target: "nightcore", "circuit-breaker reset; resuming auto-loop");
     if !orch.auto.is_running() {
         return start(app);
@@ -116,6 +119,19 @@ async fn tick(app: &AppHandle) {
     if !orch.auto.is_running() || orch.breaker.is_paused() {
         return;
     }
+
+    // Usage-aware throttle (spec 2026-07-11): a sibling of the breaker gate but
+    // NON-LATCHING — a live per-tick read of the usage meter. While the run
+    // provider's rate-limit window is hot, stop picking up NEW runs (in-flight runs
+    // finish untouched); when the next poll shows it cool, the very next tick
+    // proceeds. Precedence is explicit: breaker first (above), then usage. Fail-open
+    // — `usage_throttle_reason` returns `None` on any uncertainty, so a flaky meter
+    // never halts automation.
+    if let Some(pause) = usage_throttle_reason(app) {
+        orch.enter_usage_pause(app, &pause);
+        return;
+    }
+    orch.leave_usage_pause(app);
 
     let free = orch.slots.free_slots();
     if free == 0 {
@@ -186,6 +202,38 @@ mod tests {
         assert!(!breaker.is_paused());
         breaker.record_failure();
         assert!(breaker.is_paused(), "a trip pauses the loop gate");
+    }
+
+    #[test]
+    fn usage_gate_sits_after_the_breaker_and_never_interrupts() {
+        // Spec 2026-07-11 trap (b) + §3.3 precedence: the usage gate is a PRE-LAUNCH
+        // sibling of the breaker inside `tick`, placed AFTER the breaker check
+        // (breaker precedence) and BEFORE any launch, and it must call NEITHER
+        // `stop()` NOR `interrupt_all()` — those interrupt in-flight runs, which
+        // decision 1 forbids ("running sessions finish naturally"). A source-level
+        // guard, since the behavioral path needs a live `AppHandle`.
+        let src = include_str!("auto_loop.rs");
+        let tick = src.find("async fn tick(").expect("the tick driver exists");
+        let body = &src[tick..];
+        let breaker = body
+            .find("orch.breaker.is_paused()")
+            .expect("the breaker gate is in the tick");
+        let usage = body
+            .find("usage_throttle_reason(app)")
+            .expect("the usage gate is in the tick");
+        let launch = body.find("launch(app, &task_id)").expect("the launch site");
+        assert!(
+            breaker < usage && usage < launch,
+            "the usage gate runs after the breaker and before any launch"
+        );
+        // The usage-pause branch (from the gate to the free-slot scan) must not stop
+        // or interrupt anything — it only returns, letting in-flight runs finish.
+        let scan = body.find("let free =").expect("the free-slot scan");
+        let gate_branch = &body[usage..scan];
+        assert!(
+            !gate_branch.contains("interrupt_all") && !gate_branch.contains("stop("),
+            "the usage gate must never interrupt in-flight runs (pause ≠ stop)"
+        );
     }
 
     #[test]
