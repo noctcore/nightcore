@@ -82,6 +82,46 @@ pub fn std_command(name: &str) -> std::process::Command {
     cmd
 }
 
+/// Whether the current process is running from inside a packaged app bundle
+/// (release OR `tauri build --debug`) rather than a raw `tauri dev` / `cargo run`
+/// target binary. This ONE split governs both which sidecar we spawn (the compiled
+/// binary next to the app vs `bun run` the TypeScript for hot reload) AND how we
+/// resolve the runtime workspace base (a real on-disk data dir vs the compile-time
+/// repo root — see [`crate::store::workspace_root`]).
+///
+/// We can't key this off `cfg!(debug_assertions)` alone: `tauri build --debug`
+/// produces a *debug* build that is nonetheless a real bundle (it copies the
+/// compiled sidecar into the `.app`). macOS detects the `<App>.app/Contents/MacOS/`
+/// layout directly; other platforms fall back to the build profile (release ⇒
+/// bundled), preserving prior behavior.
+pub(crate) fn running_as_bundle() -> bool {
+    running_as_bundle_seam(std::env::current_exe().ok().as_deref())
+}
+
+/// Injectable-seam form of [`running_as_bundle`]: classify bundle vs dev from the
+/// given current-exe path (`None` when it can't be resolved). Extracted so tests can
+/// exercise the `.app`-layout branch without a real bundled executable on disk.
+#[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
+pub(crate) fn running_as_bundle_seam(exe: Option<&Path>) -> bool {
+    #[cfg(target_os = "macos")]
+    if let Some(exe) = exe {
+        if exe_in_app_bundle(exe) {
+            return true;
+        }
+    }
+    !cfg!(debug_assertions)
+}
+
+/// Pure classifier: is `exe` inside a macOS `.app` bundle? A debug bundle lives
+/// under `target/debug/bundle/macos/<App>.app/…`, so the target-dir path is NOT a
+/// reliable "dev" signal — only an `.app` ancestor is. Extracted so the layout logic
+/// is unit-testable without a real executable.
+#[cfg(target_os = "macos")]
+pub(crate) fn exe_in_app_bundle(exe: &Path) -> bool {
+    exe.ancestors()
+        .any(|ancestor| ancestor.extension().is_some_and(|ext| ext == "app"))
+}
+
 /// Environment variables that leak a parent git context into a child `git`
 /// invocation. If any are inherited (Nightcore launched from a git hook, or the
 /// agent's own git ops set them), git would target the WRONG repo/index/author —
@@ -333,6 +373,64 @@ fn extract_sentinel(output: &str, sentinel: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn release_bundle_layout_is_a_bundle() {
+        // The canonical installed layout: `<App>.app/Contents/MacOS/<exe>`.
+        assert!(exe_in_app_bundle(Path::new(
+            "/Applications/Nightcore.app/Contents/MacOS/nightcore"
+        )));
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn debug_bundle_under_target_is_still_a_bundle() {
+        // `tauri build --debug` produces a real `.app` nested under the target dir;
+        // the `target/debug` prefix must NOT override the `.app` ancestor signal.
+        assert!(exe_in_app_bundle(Path::new(
+            "/repo/apps/desktop/src-tauri/target/debug/bundle/macos/Nightcore.app/Contents/MacOS/nightcore"
+        )));
+        // …and `running_as_bundle_seam` agrees when handed that same exe path, so a
+        // debug bundle spawns the compiled sidecar instead of falling through to dev.
+        assert!(running_as_bundle_seam(Some(Path::new(
+            "/repo/apps/desktop/src-tauri/target/debug/bundle/macos/Nightcore.app/Contents/MacOS/nightcore"
+        ))));
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn raw_dev_target_binary_is_not_a_bundle() {
+        // A plain `tauri dev` / `cargo run` binary sitting in the target dir.
+        assert!(!exe_in_app_bundle(Path::new(
+            "/repo/apps/desktop/src-tauri/target/debug/nightcore"
+        )));
+        assert!(!exe_in_app_bundle(Path::new(
+            "/repo/apps/desktop/src-tauri/target/release/nightcore"
+        )));
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn app_must_be_an_extension_not_a_substring() {
+        // A directory that merely contains "app" in its name is not a bundle;
+        // only a literal `.app` extension on an ancestor counts.
+        assert!(!exe_in_app_bundle(Path::new(
+            "/Users/dev/myapp/build/nightcore"
+        )));
+        assert!(!exe_in_app_bundle(Path::new(
+            "/opt/apps/nightcore/bin/nightcore"
+        )));
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn app_extension_anywhere_in_ancestry_counts() {
+        // The `.app` need not be the immediate grandparent — any ancestor suffices.
+        assert!(exe_in_app_bundle(Path::new(
+            "/Applications/Nightcore.app/Contents/MacOS/helpers/inner/nightcore"
+        )));
+    }
 
     #[test]
     #[cfg(not(windows))]

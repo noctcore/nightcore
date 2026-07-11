@@ -156,12 +156,39 @@ pub fn run() {
                 terminals_dir,
                 terminal_daemon_enabled,
             ));
-            let orchestrator = Orchestrator::new(
-                workspace_root().join("apps/sidecar/src/index.ts"),
-                workspace_root(),
-                max_concurrency,
-                &provider_id,
-            );
+            // Resolve the sidecar's default working directory + TS entry. This is the
+            // v0.2.0 regression fix: `workspace_root()` is `CARGO_MANIFEST_DIR`-based,
+            // a COMPILE-TIME constant = the BUILD machine's path. In a CI-built release
+            // that is `/Users/runner/work/nightcore/…`, which does not exist on a
+            // user's machine — the persistent sidecar is spawned with this as its cwd,
+            // so chdir-ing there fails with ENOENT and the sidecar never comes up (all
+            // scans + `list_models` fail). In a bundle we therefore use a
+            // guaranteed-existing runtime dir (`app_local_data_dir`, created here); the
+            // per-SESSION cwd is set separately by the session runner, so this default
+            // only needs to be a valid, writable directory. In dev we keep the real
+            // repo root so `bun run` finds the live TS entry + a dev-local `.nightcore`.
+            let (sidecar_entry, sidecar_cwd) = if crate::platform::running_as_bundle() {
+                let base = app
+                    .path()
+                    .app_local_data_dir()
+                    .expect("app local data dir unavailable");
+                if let Err(e) = std::fs::create_dir_all(&base) {
+                    tracing::warn!(
+                        target: "sidecar",
+                        dir = %base.display(),
+                        error = %e,
+                        "failed to create the app-data dir for the sidecar cwd"
+                    );
+                }
+                (base.join("apps/sidecar/src/index.ts"), base)
+            } else {
+                (
+                    workspace_root().join("apps/sidecar/src/index.ts"),
+                    workspace_root(),
+                )
+            };
+            let orchestrator =
+                Orchestrator::new(sidecar_entry, sidecar_cwd, max_concurrency, &provider_id);
 
             // The scan stores were already handed to managed state by `boot_scan_store`
             // above; task/project/settings are managed here.

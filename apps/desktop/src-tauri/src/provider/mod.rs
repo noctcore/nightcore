@@ -104,27 +104,8 @@ mod tests {
         );
     }
 
-    #[test]
-    #[cfg(target_os = "macos")]
-    fn detects_a_macos_app_bundle_exe() {
-        use std::path::Path;
-        // A release bundle and a `tauri build --debug` bundle both put the exe inside
-        // a `.app` — both must be treated as bundled so the sidecar binary is used.
-        assert!(SidecarProvider::exe_in_app_bundle(Path::new(
-            "/Applications/Nightcore.app/Contents/MacOS/nightcore"
-        )));
-        assert!(
-            SidecarProvider::exe_in_app_bundle(Path::new(
-                "/repo/apps/desktop/src-tauri/target/debug/bundle/macos/Nightcore.app/Contents/MacOS/nightcore"
-            )),
-            "a debug bundle under target/debug is still an .app bundle — must use the bundled sidecar"
-        );
-        // `tauri dev` runs the raw target binary — NOT a bundle, so it falls through
-        // to `bun run` for hot reload.
-        assert!(!SidecarProvider::exe_in_app_bundle(Path::new(
-            "/repo/apps/desktop/src-tauri/target/debug/nightcore"
-        )));
-    }
+    // The `.app`-bundle classifier now lives in `crate::platform` (shared by the
+    // sidecar spawn and the workspace-root resolver); its layout tests live there.
 
     #[test]
     fn parse_line_skips_blanks_and_reports_bad_json() {
