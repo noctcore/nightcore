@@ -2,8 +2,9 @@ import { composeStories } from '@storybook/react-vite';
 import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
-import type { UsageCost, UsageMeter } from '@/lib/bridge';
+import type { RateWindow, UsageCost, UsageMeter } from '@/lib/bridge';
 
+import { compactWindows } from './UsageMeter.hooks';
 import * as stories from './UsageMeter.stories';
 import type { UsageSource } from './UsageMeter.types';
 
@@ -177,4 +178,36 @@ test('the collapsed rail renders icon-only, not labeled bars', async () => {
   await expect.element(screen.getByRole('button', { name: /Claude/i })).toBeVisible();
   // …but the labeled bars only appear expanded.
   expect(screen.getByText('Session (5h)').query()).toBeNull();
+});
+
+// ── Pure selectors (issue #121) ────────────────────────────────────────────────
+const win = (kind: string, usedPercent: number, label = kind): RateWindow => ({
+  kind,
+  label,
+  usedPercent,
+});
+
+test('compactWindows picks the 5h + weekly lanes even amid model-scoped weeklies', () => {
+  // The dogfood shape: a 5h, the primary weekly, and TWO model-scoped weeklies. The
+  // compact row must be exactly [5h, weekly] — the model-scoped lanes never crowd
+  // out the session lane (they live only in the detail popover).
+  const windows: RateWindow[] = [
+    win('weekly_opus', 91, 'Opus weekly'),
+    win('5h', 12, 'Session (5h)'),
+    win('weekly', 72, 'Weekly'),
+    win('weekly_sonnet', 30, 'Sonnet weekly'),
+  ];
+  const compact = compactWindows(windows);
+  expect(compact.map((w) => w.kind)).toEqual(['5h', 'weekly']);
+});
+
+test('compactWindows keeps the 5h lane first even when weekly is absent', () => {
+  expect(compactWindows([win('5h', 20)]).map((w) => w.kind)).toEqual(['5h']);
+  // With only a weekly (the pre-fix Claude bug), it still renders — just the weekly.
+  expect(compactWindows([win('weekly', 72)]).map((w) => w.kind)).toEqual(['weekly']);
+});
+
+test('compactWindows falls back to the first two windows when no canonical lane exists', () => {
+  const windows: RateWindow[] = [win('model:a', 10), win('model:b', 20), win('model:c', 30)];
+  expect(compactWindows(windows).map((w) => w.kind)).toEqual(['model:a', 'model:b']);
 });
