@@ -89,6 +89,12 @@
  */
 import * as path from 'node:path';
 
+import {
+  bashGitConfigWriteTarget,
+  GIT_CONFIG_PROTECTION_RULE_ID,
+  gitConfigWriteReason,
+  isGitConfigWriteTarget,
+} from './confinement/git-config.js';
 import { evaluateMcpContainment } from './confinement/mcp.js';
 import {
   allowedRoots,
@@ -118,6 +124,7 @@ import { BASH_TOOL, type ToolDenyVerdict } from './tool-deny-policy.js';
 // it owns the orchestrator + the whole-gate documentation above, and re-exports the
 // public surface (the rule ids for telemetry/tests; the path-resolution + mutation-
 // key helpers the harness-policy gate reuses) so every consumer keeps one import site.
+export { GIT_CONFIG_PROTECTION_RULE_ID } from './confinement/git-config.js';
 export { MCP_CONTAINMENT_RULE_ID } from './confinement/mcp.js';
 export {
   allowedRoots,
@@ -133,6 +140,7 @@ export {
   bashWriteTargetTokens,
   extractApplyPatchTargets,
   FILE_MUTATION_TARGET_KEY,
+  resolveBashWriteTargetInCwd,
   WORKSPACE_CONFINEMENT_RULE_ID,
 } from './confinement/workspace.js';
 
@@ -171,6 +179,13 @@ export function evaluateWorkspaceConfinement(
     }
     for (const target of targets) {
       const resolved = resolveAgainst(cwd, target);
+      if (isGitConfigWriteTarget(resolved)) {
+        return {
+          denied: true,
+          ruleId: GIT_CONFIG_PROTECTION_RULE_ID,
+          reason: gitConfigWriteReason(resolved),
+        };
+      }
       if (!isAllowedTarget(resolved, roots)) {
         return {
           denied: true,
@@ -199,6 +214,17 @@ export function evaluateWorkspaceConfinement(
       };
     }
     const resolved = resolveAgainst(cwd, target);
+    // `.git/config` is DENIED at any depth — even INSIDE cwd — because a git config
+    // file can carry a merge driver / clean-smudge filter / external diff that git
+    // executes on the host during merge/checkout/add (issue #221). Checked before the
+    // cwd allow so an in-cwd `.git/config` write can never fall through to allow.
+    if (isGitConfigWriteTarget(resolved)) {
+      return {
+        denied: true,
+        ruleId: GIT_CONFIG_PROTECTION_RULE_ID,
+        reason: gitConfigWriteReason(resolved),
+      };
+    }
     if (!isAllowedTarget(resolved, roots)) {
       return {
         denied: true,
@@ -232,6 +258,20 @@ export function evaluateWorkspaceConfinement(
 
   if (toolName === BASH_TOOL) {
     const command = targetUnderKey(toolInput, 'command');
+    // A Bash write into `.git/config` (relative in-cwd, e.g. `echo … >> .git/config`)
+    // is DENIED for the same reason as the native-tool path — the escape check below
+    // ignores relative in-root targets, so this runs first (issue #221).
+    const gitConfig =
+      command !== undefined
+        ? bashGitConfigWriteTarget(command, resolvedCwd)
+        : undefined;
+    if (gitConfig !== undefined) {
+      return {
+        denied: true,
+        ruleId: GIT_CONFIG_PROTECTION_RULE_ID,
+        reason: gitConfigWriteReason(gitConfig),
+      };
+    }
     const escape =
       bashCdEscape(toolInput, roots) ??
       (command !== undefined ? bashWriteEscape(command, roots) : undefined);

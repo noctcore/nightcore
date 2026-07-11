@@ -65,6 +65,7 @@ import {
   FILE_MUTATION_TARGET_KEY,
   isWithin,
   resolveAgainst,
+  resolveBashWriteTargetInCwd,
   targetUnderKey,
 } from './workspace-confinement.js';
 
@@ -162,21 +163,6 @@ function execSinkAskReason(target: string, pattern: string): string {
   );
 }
 
-/** Resolve a raw Bash write-target token to an absolute path INSIDE the run root,
- *  or undefined. Unlike confinement's absolute-only resolver, a RELATIVE token is
- *  resolved against cwd — an exec-sink write is normally a relative in-cwd path
- *  (`echo x > .github/workflows/y.yml`). Dynamic tokens (`$VAR`, `$(…)`,
- *  backticks), fd/redirect artifacts (`&1`), and `~` home targets are left alone
- *  (unresolvable lexically, or out of the repo — confinement's job). */
-function resolveBashTargetInCwd(token: string, resolvedCwd: string): string | undefined {
-  if (token.length === 0) return undefined;
-  if (token.includes('$') || token.includes('`')) return undefined;
-  if (token.startsWith('&') || token.startsWith('~')) return undefined;
-  return path.isAbsolute(token)
-    ? path.resolve(token)
-    : path.resolve(resolvedCwd, token);
-}
-
 /** Every filesystem target a single tool call would WRITE, resolved to an
  *  absolute path against `cwd` — the native mutation tools' single target, every
  *  `ApplyPatch` body target, and the Bash write-vector tokens. Bash reuses the
@@ -200,7 +186,7 @@ function resolvedWriteTargets(
     if (command === undefined) return [];
     const targets: string[] = [];
     for (const token of bashWriteTargetTokens(command)) {
-      const resolved = resolveBashTargetInCwd(token, resolvedCwd);
+      const resolved = resolveBashWriteTargetInCwd(token, resolvedCwd);
       if (resolved !== undefined) targets.push(resolved);
     }
     return targets;
