@@ -4,7 +4,7 @@ import { render } from 'vitest-browser-react';
 
 import * as stories from './Sidebar.stories';
 
-const { Unified, Classic } = composeStories(stories);
+const { Unified, Classic, UpdateAvailable } = composeStories(stories);
 
 test('Unified mode renders the project switcher', async () => {
   const screen = render(<Unified />);
@@ -23,4 +23,21 @@ test('navigates when a nav item is clicked', async () => {
   const screen = render(<Unified onNavigate={onNavigate} />);
   await screen.getByText('Kanban Board').click();
   expect(onNavigate).toHaveBeenCalledWith('board');
+});
+
+test('surfaces a ready update as a footer pill that jumps to Settings (T11)', async () => {
+  const onGoto = vi.fn();
+  const screen = render(<UpdateAvailable update={{ version: '0.2.0', onGoto }} />);
+  const pill = screen.getByRole('button', { name: /Update available — v0\.2\.0/ });
+  await expect.element(pill).toBeInTheDocument();
+  await pill.click();
+  expect(onGoto).toHaveBeenCalled();
+});
+
+test('shows no update pill when up to date', async () => {
+  const screen = render(<Unified />);
+  await expect
+    .element(screen.getByText('Kanban Board'))
+    .toBeInTheDocument();
+  expect(screen.container.querySelectorAll('[aria-label^="Update available"]')).toHaveLength(0);
 });

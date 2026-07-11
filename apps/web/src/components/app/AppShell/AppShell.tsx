@@ -75,8 +75,14 @@ export function AppShell() {
   // The active agent provider gates which onboarding prerequisites are required.
   const activeProvider = settings.settings?.provider ?? 'claude';
 
-  // Background update probe — idle-gated install stays in Settings → About.
-  useUpdateChecker({ isAppIdle, checkOnStartup: true });
+  // Background update probe — idle-gated install stays in Settings → About. Its
+  // result was previously discarded; T11 surfaces a ready update as a passive
+  // sidebar-footer pill (the install action still lives in About).
+  const updater = useUpdateChecker({ isAppIdle, checkOnStartup: true });
+  const sidebarUpdate =
+    updater.update !== null
+      ? { version: updater.update.version, onGoto: () => routing.goto('settings') }
+      : null;
 
   const runningProjectIds = anyRunning && active !== null ? [active.id] : [];
 
@@ -189,6 +195,7 @@ export function AppShell() {
             runningCount={runningCount}
             awaitingInputCount={board.promptIds.size}
             version={appVersion}
+            update={sidebarUpdate}
             footerSlot={<UsageMeter collapsed={collapsed} />}
             onToggleCollapsed={routing.toggleCollapsed}
             onNavigate={routing.goto}

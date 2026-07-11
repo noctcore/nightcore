@@ -292,6 +292,11 @@ export function NavSidebar({
           <GithubIcon size={16} />
         </a>
       </div>
+
+      {/* T11 "update available": the bottom-most strip, below the version row, so it
+          never disturbs the footer's mt-auto push chain. Rendered only when the
+          startup probe found a newer version (`slots.updatePill` is otherwise null). */}
+      {slots?.updatePill}
     </aside>
   );
 }
