@@ -394,6 +394,128 @@ describe('HookBus — harness runtime policy gate (module #3)', () => {
   });
 });
 
+describe('HookBus — execution-sink write protection gate (issue #142)', () => {
+  async function pre(bus: HookBus, toolName: string, toolInput: unknown) {
+    return bus.hooks().PreToolUse![0]!.hooks[0]!({
+      hook_event_name: 'PreToolUse',
+      tool_name: toolName,
+      tool_input: toolInput,
+    });
+  }
+  const decision = (r: unknown) =>
+    (r as { hookSpecificOutput?: { permissionDecision?: string } })
+      .hookSpecificOutput?.permissionDecision;
+  const reason = (r: unknown) =>
+    (r as { hookSpecificOutput?: { permissionDecisionReason?: string } })
+      .hookSpecificOutput?.permissionDecisionReason;
+
+  const CWD = '/repo';
+  const WORKTREE = '/repo/.nightcore/worktrees/task-1';
+
+  test('escalates a workflow write to ask under the DEFAULT config (no harness policy)', async () => {
+    // The whole point: with NO manifest (default), a write that changes how code
+    // executes is held for approval. `decidePreToolUse` never consults
+    // permissionMode, so this ask fires the same under `bypassPermissions` — which
+    // the SDK forwards to the host's `canUseTool` (see the gate docs).
+    const bus = new HookBus(undefined, { cwd: CWD });
+    const r = await pre(bus, 'Write', { file_path: '.github/workflows/evil.yml' });
+    expect(decision(r)).toBe('ask');
+    expect(reason(r)).toContain('execute');
+  });
+
+  test('escalates the Bash redirect vector into a Claude config sink', async () => {
+    const bus = new HookBus(undefined, { cwd: CWD });
+    const r = await pre(bus, 'Bash', {
+      command: 'echo "{}" > .claude/settings.local.json',
+    });
+    expect(decision(r)).toBe('ask');
+  });
+
+  test('an out-of-cwd sink write stays DENIED by confinement, not downgraded to ask', async () => {
+    // A worktree session writing the MAIN checkout's workflow via an absolute
+    // parent path: confinement (gate 2) denies it BEFORE the exec-sink gate, so a
+    // deny is never softened to an ask.
+    const bus = new HookBus(undefined, { cwd: WORKTREE });
+    const r = await pre(bus, 'Write', {
+      file_path: '/repo/.github/workflows/evil.yml',
+    });
+    expect(decision(r)).toBe('deny');
+    expect(reason(r)).toContain('worktree isolation');
+  });
+
+  test('a project protectedPaths sink hard-denies — deny wins over the exec-sink ask', async () => {
+    const bus = new HookBus(undefined, {
+      cwd: CWD,
+      harnessPolicy: {
+        protectedPaths: ['.github/**'],
+        denyBashPatterns: [],
+        denyReadPaths: [],
+        disallowedTools: [],
+        allowTools: [],
+        askTools: [],
+      },
+    });
+    const r = await pre(bus, 'Write', { file_path: '.github/workflows/ci.yml' });
+    expect(decision(r)).toBe('deny');
+    expect(reason(r)).toContain('harness policy');
+  });
+
+  test('the destructive deny list still wins over an exec-sink write', async () => {
+    const bus = new HookBus(undefined, { cwd: CWD });
+    const r = await pre(bus, 'Bash', {
+      command: 'rm -rf / ; echo x > package.json',
+    });
+    expect(decision(r)).toBe('deny');
+    expect(reason(r)).toContain('Nightcore safety policy');
+  });
+
+  test('a per-project allowExecSinks downgrades that sink to a silent allow', async () => {
+    const bus = new HookBus(undefined, {
+      cwd: CWD,
+      harnessPolicy: {
+        protectedPaths: [],
+        denyBashPatterns: [],
+        denyReadPaths: [],
+        disallowedTools: [],
+        allowTools: [],
+        askTools: [],
+        allowExecSinks: ['.github/workflows/**'],
+      },
+    });
+    // The allowed sink proceeds without a prompt…
+    expect(
+      await pre(bus, 'Write', { file_path: '.github/workflows/ci.yml' }),
+    ).toEqual({ continue: true });
+    // …but a sink NOT on the allow list is still held.
+    expect(decision(await pre(bus, 'Write', { file_path: 'package.json' }))).toBe(
+      'ask',
+    );
+  });
+
+  test('an ordinary source write is unaffected by the gate', async () => {
+    const bus = new HookBus(undefined, { cwd: CWD });
+    expect(await pre(bus, 'Write', { file_path: 'src/foo.ts' })).toEqual({
+      continue: true,
+    });
+  });
+
+  test('records the exec-sink ask on the flight recorder with its rule id', async () => {
+    const seen: { tool: string; decision: string; ruleId?: string }[] = [];
+    const bus = new HookBus(undefined, {
+      cwd: CWD,
+      onToolDecision: (tool, _input, d, ruleId) =>
+        seen.push({ tool, decision: d, ...(ruleId !== undefined ? { ruleId } : {}) }),
+    });
+    await pre(bus, 'Write', { file_path: 'package.json' });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      tool: 'Write',
+      decision: 'ask',
+      ruleId: 'exec-sink-ask',
+    });
+  });
+});
+
 describe('HookBus — onToolDecision flight-recorder seam (module #5)', () => {
   async function pre(bus: HookBus, toolName: string, toolInput: unknown) {
     return bus.hooks().PreToolUse![0]!.hooks[0]!({

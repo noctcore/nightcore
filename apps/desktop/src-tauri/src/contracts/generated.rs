@@ -843,6 +843,8 @@ pub struct HarnessPolicy {
     pub allow_tools: Vec<String>,
     #[serde(default)]
     pub ask_tools: Vec<String>,
+    #[serde(default)]
+    pub allow_exec_sinks: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

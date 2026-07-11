@@ -225,3 +225,32 @@ export function bashWriteEscape(
   }
   return undefined;
 }
+
+/** Every raw WRITE-destination TOKEN a bash command names — redirect targets and
+ *  the write-tool destinations {@link collectBashWriteTargets} recognizes (`tee`,
+ *  `cp`, `mv`, `install`, `dd of=`, `sed -i`, `ln`) — across every simple command,
+ *  recursing into `sh -c <script>` subshells. Returned UNRESOLVED so each caller
+ *  applies its OWN resolution: {@link bashWriteEscape} resolves them
+ *  absolute/`~`/`$HOME`-only (catching root ESCAPES), while the exec-sink gate
+ *  resolves them RELATIVE-to-cwd (catching an in-root exec-sink write like
+ *  `echo x > .github/workflows/y.yml`, which {@link bashWriteEscape} deliberately
+ *  ignores because a relative target can't ESCAPE the root). This shares the one
+ *  bash write-target parser so the two gates never drift. Best-effort and lexical
+ *  — the same residual gaps documented at the facade head apply (dynamic `$VAR`/
+ *  `$(…)` targets, non-shell interpreters, encoded commands). */
+export function bashWriteTargetTokens(command: string): string[] {
+  const tokens: string[] = [];
+  for (const cmd of parseCommandLine(command)) {
+    for (const token of collectBashWriteTargets(cmd)) {
+      if (token.length > 0) tokens.push(token);
+    }
+    if (cmd.length > 0 && SHELL_INTERPRETERS.has(bashBasename(cmd[0]!))) {
+      const ci = cmd.findIndex((t) => t === '-c');
+      const script = ci !== -1 ? cmd[ci + 1] : undefined;
+      if (typeof script === 'string' && script.length > 0) {
+        tokens.push(...bashWriteTargetTokens(script));
+      }
+    }
+  }
+  return tokens;
+}

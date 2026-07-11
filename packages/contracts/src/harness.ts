@@ -299,6 +299,18 @@ export const HarnessPolicySchema = z.object({
    *  `canUseTool` — even under `bypassPermissions`. Every deny tier wins over
    *  ask (a tool both denied and asked-for is denied). */
   askTools: z.array(z.string()).default([]),
+  /** Repo-relative paths/globs (same glob semantics as `protectedPaths`) that
+   *  DOWNGRADE the engine's built-in execution-sink ASK gate to a silent allow
+   *  for this project. The exec-sink gate escalates any write to a path that
+   *  changes how code executes — CI workflows (`.github/workflows`), git/husky
+   *  hooks, Claude config (`.claude/**`), or package scripts (`package.json`) —
+   *  to an interactive approval, even under `bypassPermissions`. A repo where
+   *  agents legitimately manage CI can name those sinks here (e.g.
+   *  `.github/workflows/**`) so their writes proceed without a prompt. This ONLY
+   *  softens the exec-sink ASK; it can never override a deny (destructive deny,
+   *  workspace confinement, or a `protectedPaths` entry all still win), so an
+   *  allowance can't be used to punch a hole in a hard rail. */
+  allowExecSinks: z.array(z.string()).default([]),
 });
 export type HarnessPolicy = z.infer<typeof HarnessPolicySchema>;
 

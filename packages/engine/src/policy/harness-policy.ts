@@ -143,8 +143,11 @@ const FILE_READ_TARGET_KEY: Record<string, string> = {
 export const MANIFEST_PROTECTED_PATTERN = '.nightcore/**';
 
 /** One compiled protected-path rule: the original pattern (for the deny reason)
- *  plus its segment matchers (`'**'` sentinel | a per-segment regex). */
-interface CompiledPathRule {
+ *  plus its segment matchers (`'**'` sentinel | a per-segment regex). Exported
+ *  (with {@link compilePathRule} / {@link ruleProtects}) so the exec-sink ASK gate
+ *  reuses the SAME repo-relative glob engine — one home for the anchored/floating
+ *  + subtree-prefix semantics both gates match against. */
+export interface CompiledPathRule {
   pattern: string;
   segments: (RegExp | '**')[];
   /** True for a pattern without `/` — matched at any depth (gitignore-style). */
@@ -191,7 +194,7 @@ function segmentToRegex(segment: string): RegExp {
 
 /** Compile one protected-path pattern, or undefined for an unusable (empty)
  *  one. Leading `./`/`/` and a trailing `/` are tolerated author sugar. */
-function compilePathRule(raw: string): CompiledPathRule | undefined {
+export function compilePathRule(raw: string): CompiledPathRule | undefined {
   const trimmed = raw.trim().replace(/^\.?\//, '').replace(/\/+$/, '');
   if (trimmed.length === 0) return undefined;
   const parts = trimmed.split('/').filter((p) => p.length > 0);
@@ -312,7 +315,7 @@ function matchesFrom(
 
 /** True when `rule` protects the cwd-relative path split into `segments`. An
  *  anchored rule matches from the root only; a floating rule from any depth. */
-function ruleProtects(rule: CompiledPathRule, segments: readonly string[]): boolean {
+export function ruleProtects(rule: CompiledPathRule, segments: readonly string[]): boolean {
   if (!rule.floating) return matchesFrom(rule, segments, 0);
   for (let i = 0; i < segments.length; i += 1) {
     if (matchesFrom(rule, segments, i)) return true;

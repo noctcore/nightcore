@@ -130,6 +130,7 @@ export {
 export { SENSITIVE_READ_RULE_ID } from './confinement/sensitive-read.js';
 export {
   APPLY_PATCH_TOOL,
+  bashWriteTargetTokens,
   extractApplyPatchTargets,
   FILE_MUTATION_TARGET_KEY,
   WORKSPACE_CONFINEMENT_RULE_ID,

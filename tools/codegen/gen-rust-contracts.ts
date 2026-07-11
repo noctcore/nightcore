@@ -348,8 +348,9 @@ const STRUCT_NAMES: Record<string, string> = {
   'category|conventionFingerprint|documentedIn|enforcedBy|fingerprint|id|status|suggestedArtifactKind|title':
     'RuleCoverageGap',
   // The manifest-declared runtime policy the engine's PreToolUse gate enforces
-  // (hardening modules #3/#4/#9/#12), carried on `start-session`.
-  'allowTools|askTools|denyBashPatterns|denyReadPaths|disallowedTools|protectedPaths':
+  // (hardening modules #3/#4/#9/#12 + the exec-sink ask gate's `allowExecSinks`
+  // downgrade list), carried on `start-session`.
+  'allowExecSinks|allowTools|askTools|denyBashPatterns|denyReadPaths|disallowedTools|protectedPaths':
     'HarnessPolicy',
   // PR Review: one grounded review finding over the PR diff (severity reuses the
   // Insight `FindingSeverity` enum; lens is `ReviewLens`). `corroboratedBy` is the

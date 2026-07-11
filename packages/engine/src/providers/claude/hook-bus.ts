@@ -8,6 +8,11 @@ import type { HarnessPolicy } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
 
 import {
+  type CompiledExecSinkGate,
+  compileExecSinkGate,
+  evaluateExecSinkGate,
+} from '../../policy/exec-sink.js';
+import {
   type CompiledHarnessPolicy,
   compileHarnessPolicy,
   evaluateHarnessPolicy,
@@ -27,11 +32,14 @@ import { evaluateWorkspaceConfinement } from '../../policy/workspace-confinement
  * `PreToolUse` is also a **blocking enforcement gate**: it evaluates each tool
  * call against (1) a safe default destructive-command deny list, (2) the
  * workspace-confinement gate — a file mutation that resolves outside the run
- * `cwd` — and (3) the project's harness runtime policy (protected paths + Bash
+ * `cwd` — (3) the project's harness runtime policy (protected paths + Bash
  * deny patterns + tool deny/ask tiers from `.nightcore/harness.json`), and
- * returns a `permissionDecision: 'deny'` for a deny match or
- * `permissionDecision: 'ask'` for an `askTools` match (escalated to the host's
- * `canUseTool` by the CLI, even under bypass). Crucially, SDK hooks fire
+ * (4) the built-in execution-sink gate — a write to a path that changes how
+ * code executes (CI, git/Claude hooks, package scripts) — and returns a
+ * `permissionDecision: 'deny'` for a deny match or `permissionDecision: 'ask'`
+ * for an `askTools`/exec-sink match (escalated to the host's `canUseTool` by the
+ * CLI, even under bypass). The exec-sink gate runs LAST so a hard deny always
+ * wins and it can never downgrade a deny to an ask. Crucially, SDK hooks fire
  * **regardless of `permissionMode`** — including `bypassPermissions`, where the
  * `canUseTool` permission layer is never consulted for ordinary calls — so this
  * is the one guardrail that contains the studio's default unattended config. See
@@ -54,6 +62,11 @@ export class HookBus {
   /** The project's harness runtime policy (module #3), compiled once for the
    *  session. Undefined ⇒ no policy layer (no manifest / disabled). */
   private readonly harnessPolicy?: CompiledHarnessPolicy;
+  /** The built-in execution-sink ask gate (issue #142), compiled once for the
+   *  session. ALWAYS armed (independent of a harness manifest) — it enforces
+   *  under the studio's default unattended config — with the project's
+   *  `allowExecSinks` downgrade list folded in (empty when there's no policy). */
+  private readonly execSinkGate: CompiledExecSinkGate;
   /** Observer of every PreToolUse gate evaluation (the session flight-recorder
    *  seam, module #5): called with the tool, its raw input, and the gate's
    *  decision (+ the matched rule id on deny). Purely observational — a throw
@@ -91,6 +104,10 @@ export class HookBus {
     if (opts?.harnessPolicy !== undefined) {
       this.harnessPolicy = compileHarnessPolicy(opts.harnessPolicy, logger);
     }
+    // Always armed: the exec-sink gate must bite even for a project with no
+    // harness manifest (the default). Only the per-project `allowExecSinks`
+    // downgrade list comes from the policy (empty when absent).
+    this.execSinkGate = compileExecSinkGate(opts?.harnessPolicy?.allowExecSinks);
     this.onToolDecision = opts?.onToolDecision;
   }
 
@@ -157,6 +174,23 @@ export class HookBus {
       );
       if (policy.denied) return this.denyOutput(tool_name, tool_input, policy);
       if (policy.ask === true) return this.askOutput(tool_name, tool_input, policy);
+    }
+
+    // (4) Execution-sink write protection (issue #142) — a write to a path that
+    // changes how code executes (CI, git/Claude/husky hooks, package scripts) is
+    // escalated to an interactive ask, even under bypass. Runs LAST so every deny
+    // tier above wins: an out-of-cwd exec-sink write is already DENIED by
+    // confinement (2) and a `protectedPaths` sink by the harness policy (3), so
+    // this ask can never downgrade a deny. Always armed (independent of a
+    // manifest); a project softens specific sinks via `allowExecSinks`.
+    if (this.cwd !== undefined) {
+      const execSink = evaluateExecSinkGate(
+        tool_name,
+        tool_input,
+        this.cwd,
+        this.execSinkGate,
+      );
+      if (execSink.ask === true) return this.askOutput(tool_name, tool_input, execSink);
     }
 
     this.recordDecision(tool_name, tool_input, 'allow');
