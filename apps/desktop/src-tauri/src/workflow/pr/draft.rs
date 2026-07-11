@@ -68,10 +68,19 @@ fn draft_pr_message_blocking(
     } else {
         None
     };
-    Ok(drafted.unwrap_or_else(|| PrDraft {
+    let mut draft = drafted.unwrap_or_else(|| PrDraft {
         title: task.title.clone(),
         body: task.description.clone(),
-    }))
+    });
+    // GitHub two-way sync (#97, §3.5 layer 1 — the VISIBLE pre-fill): an issue-linked
+    // task's drafted body carries `Closes #N` so the user SEES the closing keyword in
+    // the editable dialog before confirming (PR-system principle 5). Idempotent; the
+    // create path re-ensures it defensively if the user edits it out. Applied to both
+    // the AI draft and the deterministic (title + description) fallback.
+    if let Some(n) = task.issue_number {
+        draft.body = super::create::ensure_closes_keyword(&draft.body, n);
+    }
+    Ok(draft)
 }
 
 /// Resolve the base a draft is computed against: an explicit picker base wins
