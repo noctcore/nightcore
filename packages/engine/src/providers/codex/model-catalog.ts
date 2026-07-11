@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { EffortLevel, ModelDescriptor } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
+import { whichSync } from '@nightcore/shared';
 
 import { CODEX_PROVIDER_ID } from './capabilities.js';
 import { buildCodexEnv } from './options.js';
@@ -61,6 +62,44 @@ const VALID_EFFORTS = new Set<EffortLevel>([
   'xhigh',
   'max',
 ]);
+
+/** The status of the codex CLI prerequisite check (see {@link probeCodexCli}). */
+export interface CodexCliStatus {
+  readonly ok: boolean;
+  /** A human-actionable reason, present only when `ok` is `false`. */
+  readonly message?: string;
+}
+
+/** The actionable "codex isn't usable" message surfaced at provider selection. It
+ *  covers both not-installed and not-signed-in, since the binary check can't tell an
+ *  installed-but-signed-out CLI from a working one without a heavier probe. */
+export const CODEX_UNAVAILABLE_HINT =
+  'Codex CLI not found. Install Codex (`npm i -g @openai/codex`) and sign in with ' +
+  '`codex login`, or set NIGHTCORE_CODEX_PATH to the codex binary.';
+
+/**
+ * Validate the codex CLI prerequisite AT PROVIDER SELECTION (issue #144 / D10),
+ * mirroring the claude-not-found fail-fast: the user should learn Codex is missing
+ * from the read-only inspector, not from a confusing mid-run crash. Resolves the SAME
+ * executable a live session/model-catalog would use — an explicit
+ * `NIGHTCORE_CODEX_PATH`/`NIGHTCORE_AGENT_PATH` override (existence-validated), the
+ * SDK's bundled `@openai/codex` (dev), or `codex` on PATH — and reports whether one
+ * is present. Pure fs/PATH lookups (no spawn), so it never blocks the engine. Never
+ * throws.
+ */
+export function probeCodexCli(): CodexCliStatus {
+  const override = resolveCodexBinaryOverride();
+  const overrideWarning = checkCodexBinaryOverride(override);
+  if (overrideWarning !== undefined) {
+    // An explicit override that doesn't exist is a configuration error — surface its
+    // specific message rather than the generic hint.
+    return { ok: false, message: overrideWarning };
+  }
+  if (override !== undefined) return { ok: true };
+  if (resolveBundledCodexEntrypoint() !== undefined) return { ok: true };
+  if (whichSync('codex')) return { ok: true };
+  return { ok: false, message: CODEX_UNAVAILABLE_HINT };
+}
 
 export async function listCodexModels(
   logger?: Logger,
