@@ -1,6 +1,6 @@
 [package]
 name = "nightcore"
-version = "0.2.0"
+version = "0.2.1"
 description = "Nightcore — an autonomous Claude dev studio"
 authors = ["Shirone"]
 edition = "2021"
