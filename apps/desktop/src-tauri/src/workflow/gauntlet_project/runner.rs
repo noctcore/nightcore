@@ -115,14 +115,15 @@ pub(super) const VERIFY_COMMAND_CHECK: &str = "verify-command";
 
 /// The resolved outcome of running one check (after the retry-once policy). `status`
 /// is `Passed` (first try), `Flaky` (failed then passed), or `Failed` (both tries);
-/// `duration_ms` sums every attempt made.
-struct CheckOutcome {
-    status: StepStatus,
-    exit_code: Option<i32>,
+/// `duration_ms` sums every attempt made. `pub(super)` so the EnforceRun drift path
+/// ([`super::drift`]) can reuse the shared bounded+retry runner for its non-drift checks.
+pub(super) struct CheckOutcome {
+    pub(super) status: StepStatus,
+    pub(super) exit_code: Option<i32>,
     /// The failure tail (for `failed`) or the first-attempt tail annotated as flaky
     /// (for `flaky`). `None` for a clean first-try pass.
-    output: Option<String>,
-    duration_ms: u64,
+    pub(super) output: Option<String>,
+    pub(super) duration_ms: u64,
 }
 
 /// The result of ONE spawn attempt (before the retry policy is applied).
@@ -206,7 +207,7 @@ fn run_check_once(program: &str, args: &[String], dir: &Path, timeout: Duration)
 /// that ever fails BLOCKS instead of being masked as a non-blocking `flaky` pass —
 /// and a side-effecting check is never run twice. See
 /// [`super::config::HarnessCheckKind::is_security_critical`].
-fn run_check_with_retry(
+pub(super) fn run_check_with_retry(
     program: &str,
     args: &[String],
     dir: &Path,

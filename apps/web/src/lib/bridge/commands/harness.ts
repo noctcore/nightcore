@@ -37,6 +37,22 @@ const MOCK_ARMED_CHECKS_STATE: ArmedChecksState = {
     },
   ],
   lastRun: { passed: true, ranAt: Date.now() - 5 * 60 * 1000 },
+  // Drift-v1 (T15): one measured convention so the drift panel renders deterministically
+  // outside Tauri. `method` + site counts are always present (the fail-visible rule).
+  drift: [
+    {
+      id: 'drift-a1b2c3d4e5f60718',
+      conventionFingerprint: 'a1b2c3d4e5f60718',
+      category: 'folder-structure',
+      title: 'folder-per-component',
+      status: 'drifted',
+      method: 'lint-meta: folder-per-component',
+      sitesMatched: 3,
+      sitesChecked: 3,
+      checkName: 'folder-per-component',
+      fingerprint: 'a1b2c3d4e5f60718',
+    },
+  ],
 };
 
 // --- Harness (codebase convention auditor) --------------------------------
@@ -204,6 +220,12 @@ export async function armHarnessGauntletCheck(
    *  preflight refuses to arm it if no ESLint config actually references it (the
    *  placebo-gate fix). `null` for a hand-authored command (no plugin to check). */
   requireWired: string | null = null,
+  /** Drift-v1 (T15): for a COMPILED drift check (`lint-meta` / `shell`), the
+   *  convention's `conventionFingerprint` — the join key a later EnforceRun uses to
+   *  attribute site counts back to a `ConventionDrift`. `null` for a plain gate check.
+   *  Persisted verbatim (an opaque id, never executed); the `command` is what the arm
+   *  gate shape-validates. */
+  conventionFingerprint: string | null = null,
 ): Promise<void> {
   await invoke<void>('arm_harness_gauntlet_check', {
     runId,
@@ -211,6 +233,7 @@ export async function armHarnessGauntletCheck(
     kind,
     command,
     requireWired,
+    conventionFingerprint,
   });
 }
 
