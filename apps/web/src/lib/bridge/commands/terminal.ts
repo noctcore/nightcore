@@ -28,6 +28,7 @@ import {
 import type {
   PersistedTerminalInfo,
   PersistedTerminalScrollback,
+  TerminalDaemonStatus,
   TerminalSessionInfo,
   WorktreeInfo,
 } from '../types';
@@ -83,6 +84,44 @@ export async function spawnTerminal(
       channel.onmessage = () => {};
     },
   };
+}
+
+/** Reattach to an EXISTING live session and stream its output to `onData` (cockpit
+ *  spec PR 6 — detached-daemon reattach on relaunch). Mirrors {@link spawnTerminal}
+ *  but calls `terminal_attach` (no new shell): the daemon replays the session's
+ *  buffered output tail then streams live, all onto the SAME per-session binary
+ *  Channel the shipped code consumes. The caller invokes this only for a session
+ *  `listTerminals()` reported live but with no local xterm instance (the post-restart
+ *  case). Rejects when there is no such live session (no daemon / already exited) —
+ *  the caller then read-only-restores. No-op-rejects outside Tauri (the echo has no
+ *  daemon). Dynamic import per the bridge's Tauri-core isolation rule (§9 trap f). */
+export async function attachTerminal(
+  id: string,
+  onData: TerminalByteHandler,
+): Promise<TerminalHandle> {
+  if (!isTauri()) throw new Error('terminal reattach is unavailable outside the desktop app');
+  const { Channel, invoke } = await import('@tauri-apps/api/core');
+  const channel = new Channel<ArrayBuffer>();
+  channel.onmessage = (buffer) => onData(new Uint8Array(buffer));
+  const session = await invoke<TerminalSessionInfo>('terminal_attach', { id, channel });
+  return {
+    session,
+    detach: () => {
+      channel.onmessage = () => {};
+    },
+  };
+}
+
+/** The detached-PTY-daemon status (cockpit spec PR 6): whether the experimental
+ *  live-PTY-survival daemon is enabled, supported on this platform, and currently
+ *  live. Informational only (the backend degrades on its own regardless). Outside
+ *  Tauri it reports "not supported" so the Settings toggle renders its inert state. */
+export async function terminalDaemonStatus(): Promise<TerminalDaemonStatus> {
+  return tauriInvoke<TerminalDaemonStatus>('terminal_daemon_status', {}, {
+    enabled: false,
+    supported: false,
+    active: false,
+  });
 }
 
 /** Forward user input bytes (xterm `onData`) to a session's shell. Sent as a

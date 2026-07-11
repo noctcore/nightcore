@@ -15,6 +15,9 @@ vi.mock('../terminal-session-manager', () => ({
   attachSession: () => () => {},
   ensureRenderer: () => Promise.resolve(),
   hasSession: () => true,
+  // Daemon reattach seam (PR 6): never exercised here (hasSession → true makes the
+  // mount reattach loop empty), but the hook imports it, so the mock must export it.
+  reattachSession: () => Promise.resolve({} as TerminalSessionInfo),
   reconcileSessions: () => {},
   // Activity-badge seam (decision 6c): the hook subscribes + reads counts. The
   // subscription returns an unsubscribe; counts are 0 (no real output in tests).

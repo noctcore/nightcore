@@ -31,6 +31,7 @@ import {
   getUnread,
   hasSession,
   openSession,
+  reattachSession,
   reconcileSessions,
   subscribeActivity,
 } from '../terminal-session-manager';
@@ -88,12 +89,18 @@ export function useTerminalView(input: UseTerminalViewInput) {
   useEffect(() => {
     let cancelled = false;
     void Promise.all([listTerminals(), listTerminalsPersisted(), getAppInfo()]).then(
-      ([live, persisted, appInfo]) => {
+      async ([live, persisted, appInfo]) => {
         if (cancelled) return;
         reconcileSessions(live.map((s) => s.id));
         // Drop task-links / ungoverned markers for sessions that didn't survive
         // (decision 2/3) — the store is web-side, seeded from live sessions.
         reconcileTerminalLinks(live.map((s) => s.id));
+        // Reattach live sessions with no local xterm — the detached-daemon reattach on
+        // relaunch (PR 6). In the in-process default `live` is empty here, so this is a
+        // no-op (no regression when the daemon is off); a lost session read-only-restores.
+        const missing = live.filter((s) => !hasSession(s.id));
+        await Promise.all(missing.map((s) => reattachSession(s, webglEnabled).catch(() => undefined)));
+        if (cancelled) return;
         const liveSessions = live.filter((s) => hasSession(s.id));
         const liveIds = new Set(liveSessions.map((s) => s.id));
         // A persisted file whose session is somehow still live would double the tab;

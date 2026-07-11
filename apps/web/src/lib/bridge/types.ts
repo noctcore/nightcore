@@ -117,6 +117,9 @@ export type { SubIssuePreview } from '../generated/SubIssuePreview';
 export type { PersistedTerminalInfo } from '../generated/PersistedTerminalInfo';
 export type { PersistedTerminalScrollback } from '../generated/PersistedTerminalScrollback';
 export type { TerminalSessionInfo } from '../generated/TerminalSessionInfo';
+// Detached PTY daemon (cockpit spec PR 6) status — whether the experimental
+// live-PTY-survival daemon is enabled, supported on this platform, and live.
+export type { TerminalDaemonStatus } from '../generated/TerminalDaemonStatus';
 // Terminal folder browser (open a shell in ANY directory): the one-level directory
 // listing + its dir entries, from the read-only `list_directory` command.
 export type { DirectoryEntry } from '../generated/DirectoryEntry';
