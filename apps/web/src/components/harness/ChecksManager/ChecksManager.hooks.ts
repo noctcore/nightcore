@@ -67,6 +67,12 @@ export function useChecksManager(): ChecksManagerVM {
     })();
   }, []);
 
+  // TODO(#185): add a per-check "Validate rule" trigger here for `lint-plugin`
+  // checks — invoke the `validate_plugin_rule` command (Bun-sidecar RuleTester
+  // runner) and surface its RuleValidationResult (passed/failed/probed/error) inline,
+  // so a user can confirm an armed check is a real rule that fires, not a placebo.
+  // The runner + Rust command shipped in this PR; the UI trigger is the deferred slice.
+
   const toggle = useCallback((name: string, enabled: boolean) => {
     setPendingName(name);
     setActionError(null);
