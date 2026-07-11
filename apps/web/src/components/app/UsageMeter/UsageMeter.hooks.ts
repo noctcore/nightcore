@@ -57,14 +57,36 @@ function isMeterEnabled(meter: UsageMeterSnapshot): boolean {
   return meter.providers.some((row) => row.status !== 'disabled');
 }
 
-/** The compact-bar windows for a provider row: the session (`5h`) + `weekly`
- *  lanes, in that order (the popover shows ALL windows incl. model-scoped). Falls
- *  back to the first two windows when a provider names its lanes differently, so a
- *  future shape still renders something rather than nothing. */
+/** The compact-bar windows for a provider row: the session (`5h`) THEN the primary
+ *  (non-model-scoped) `weekly` lane, in that order — the popover shows ALL windows
+ *  incl. model-scoped. Picking the two canonical lanes explicitly (rather than the
+ *  first two that happen to match) guarantees Claude's compact row shows 5h + weekly
+ *  like Codex, and never lets an extra model-scoped weekly (`weekly_opus`, …) crowd
+ *  out the session lane. Falls back to the first two windows only when neither
+ *  canonical lane is present, so a future/unknown shape still renders something. */
 export function compactWindows(windows: readonly RateWindow[]): RateWindow[] {
-  const primary = windows.filter((w) => w.kind === '5h' || w.kind === 'weekly');
-  if (primary.length > 0) return primary.slice(0, 2);
+  const session = windows.find((w) => w.kind === '5h');
+  const weekly = windows.find((w) => w.kind === 'weekly');
+  const picked = [session, weekly].filter((w): w is RateWindow => w !== undefined);
+  if (picked.length > 0) return picked;
   return windows.slice(0, 2);
+}
+
+/** A short window token for the collapsed-rail tooltip: `5h` / `weekly` for the
+ *  canonical lanes, else the full label. */
+function shortWindowToken(win: RateWindow): string {
+  if (win.kind === '5h') return '5h';
+  if (win.kind === 'weekly') return 'weekly';
+  return win.label;
+}
+
+/** A one-line `"5h 12% · weekly 72%"` summary of a provider's compact windows, for
+ *  the collapsed-rail hover tooltip (issue #121, collapsed-icon dogfood). Empty when
+ *  the provider reports no windows. */
+export function windowSummary(windows: readonly RateWindow[]): string {
+  return compactWindows(windows)
+    .map((win) => `${shortWindowToken(win)} ${Math.round(win.usedPercent)}%`)
+    .join(' · ');
 }
 
 /** Tailwind bar-fill class for a utilization percentage: calm under 60%, warning

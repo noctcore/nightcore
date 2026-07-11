@@ -205,7 +205,7 @@ export function NavSidebar({
 
       {slots?.header}
 
-      <nav className="flex min-h-0 flex-1 flex-col px-3 pt-2">
+      <nav className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pt-2">
         {mainSections.map((section, index) => (
           <NavGroupSection
             key={section.id}
@@ -226,7 +226,7 @@ export function NavSidebar({
           onClick={onGotoAwaitingInput}
           title={`${awaitingInputCount} awaiting your input`}
           aria-label={`${awaitingInputCount} task${awaitingInputCount === 1 ? '' : 's'} awaiting your input`}
-          className={`mt-auto flex items-center gap-2 border-t border-border bg-warning/[0.06] px-3.5 py-2.5 text-left text-warning transition-colors hover:bg-warning/[0.12] ${collapsed ? 'justify-center' : ''}`}
+          className={`mt-auto flex shrink-0 items-center gap-2 border-t border-border bg-warning/[0.06] px-3.5 py-2.5 text-left text-warning transition-colors hover:bg-warning/[0.12] ${collapsed ? 'justify-center' : ''}`}
         >
           <span className="flex shrink-0 animate-[nc-pulse_1.4s_ease-in-out_infinite] items-center">
             <BellIcon size={14} />
@@ -245,7 +245,7 @@ export function NavSidebar({
 
       {footerSections.length > 0 && (
         <nav
-          className={`flex flex-col gap-0.5 px-3 py-2 ${awaitingInputCount > 0 ? '' : 'mt-auto'}`}
+          className={`flex shrink-0 flex-col gap-0.5 px-3 py-2 ${awaitingInputCount > 0 ? '' : 'mt-auto'}`}
         >
           {footerSections.map((section, index) => (
             <NavGroupSection
@@ -263,13 +263,15 @@ export function NavSidebar({
       )}
 
       {slots?.footer !== undefined && (
-        <div className={awaitingInputCount > 0 || footerSections.length > 0 ? '' : 'mt-auto'}>
+        <div
+          className={`shrink-0 ${awaitingInputCount > 0 || footerSections.length > 0 ? '' : 'mt-auto'}`}
+        >
           {slots.footer}
         </div>
       )}
 
       <div
-        className={`flex items-center gap-2.5 border-t border-border px-3.5 py-3 ${awaitingInputCount > 0 || footerSections.length > 0 || slots?.footer !== undefined ? '' : 'mt-auto'} ${collapsed ? 'justify-center' : ''}`}
+        className={`flex shrink-0 items-center gap-2.5 border-t border-border px-3.5 py-3 ${awaitingInputCount > 0 || footerSections.length > 0 || slots?.footer !== undefined ? '' : 'mt-auto'} ${collapsed ? 'justify-center' : ''}`}
       >
         {runningCount > 0 ? (
           <span className="flex items-center gap-1.5 font-mono text-[10.5px] text-warning">

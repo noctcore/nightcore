@@ -19,6 +19,17 @@ const CLAUDE_USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 /// pinned fallback version — we don't shell out to detect the installed CLI.
 const CLAUDE_USER_AGENT: &str = "claude-code/2.1.0";
 
+/// Canonical rate-limit window lengths + the tolerance we allow when classifying a
+/// `limits[]` window by its `limit_window_seconds` (spec §3.5). We key the compact
+/// `"5h"`/`"weekly"` lanes off the window LENGTH, not the `kind` STRING, because
+/// Claude has relabeled the `kind` field across response shapes — but the window
+/// duration is stable. The tolerances are generous (they absorb provider rounding)
+/// yet the two ranges do NOT overlap, so a 5h window can never be misread as weekly.
+const FIVE_HOUR_SECONDS: u64 = 18_000; // 5h
+const FIVE_HOUR_TOLERANCE: u64 = 7_200; // ±2h → a 3h..7h window counts as the session lane
+const WEEKLY_SECONDS: u64 = 604_800; // 7d
+const WEEKLY_TOLERANCE: u64 = 86_400; // ±1d → a 6d..8d window counts as the weekly lane
+
 /// Fetch + parse Claude usage. Reads the OAuth token at call time and drops it when
 /// the request returns (spec §3.7). Status mapping per spec §3.4b.
 pub(crate) async fn fetch(client: &reqwest::Client) -> Result<ParsedUsage, FetchError> {
@@ -67,6 +78,14 @@ pub(crate) fn parse_claude(v: &Value) -> ParsedUsage {
 /// Parse the newer `limits[]` array: each element `{ kind, percent, resets_at,
 /// scope.model.{id,display_name}, is_active, limit_window_seconds }`. Model-scoped
 /// windows key off `scope.model.id`. An explicitly inactive promo window is skipped.
+///
+/// A NON-model-scoped canonical window is classified into the `"5h"`/`"weekly"`
+/// keys the compact widget filters on by its `limit_window_seconds`, NOT its `kind`
+/// string (spec §3.5). This is the durable fix for the dogfood miss: on the
+/// `limits[]` shape Claude labels the 5-hour window with a `kind` that isn't
+/// literally `"five_hour"`, so the old string map dropped it and the compact row
+/// showed only the weekly. Keying off the stable window length restores the
+/// session lane regardless of how the `kind` field is spelled.
 fn parse_limits(limits: &[Value]) -> Vec<RateWindow> {
     let mut out = Vec::new();
     for item in limits {
@@ -87,29 +106,58 @@ fn parse_limits(limits: &[Value]) -> Vec<RateWindow> {
             .and_then(Value::as_str)
             .filter(|s| !s.is_empty());
         let raw_kind = item.get("kind").and_then(Value::as_str).unwrap_or("");
+        // The window length: the explicit `limit_window_seconds` when present, else
+        // the nominal length for a known legacy key. Drives both the classification
+        // below and the emitted `window_seconds` field.
+        let window_seconds = item
+            .get("limit_window_seconds")
+            .and_then(Value::as_u64)
+            .or_else(|| window_seconds_for_kind(raw_kind));
 
         let (kind, label) = match model_id {
+            // Model-scoped windows keep their model-scoped key (the weekly promo
+            // lanes) — they must never crowd out the canonical 5h/weekly pair.
             Some(id) => (
                 format!("model:{id}"),
                 model_display
                     .map(|d| format!("{d} weekly"))
                     .unwrap_or_else(|| humanize_kind(raw_kind)),
             ),
-            None => (map_kind(raw_kind), humanize_kind(raw_kind)),
+            None => classify_canonical_window(window_seconds, raw_kind),
         };
         out.push(RateWindow {
             kind,
             label,
             used_percent: normalize_pct(percent),
             resets_at: reset_value(item.get("resets_at")),
-            window_seconds: item
-                .get("limit_window_seconds")
-                .and_then(Value::as_u64)
-                .or_else(|| window_seconds_for_kind(raw_kind)),
+            window_seconds,
             scope_model: model_display.map(str::to_string),
         });
     }
     out
+}
+
+/// Classify a NON-model-scoped canonical window into the stable `(kind, label)` the
+/// compact widget filters on, keyed off `limit_window_seconds` rather than the
+/// `kind` string: a ~5h window → `("5h", "Session (5h)")`, a ~7d window →
+/// `("weekly", "Weekly")`. Falls back to the raw `kind` string when the length is
+/// absent or unrecognized, so an unmodeled window still renders (just not in the
+/// compact 5h/weekly pair) instead of being lost.
+fn classify_canonical_window(window_seconds: Option<u64>, raw_kind: &str) -> (String, String) {
+    match window_seconds {
+        Some(s) if is_about(s, FIVE_HOUR_SECONDS, FIVE_HOUR_TOLERANCE) => {
+            ("5h".to_string(), "Session (5h)".to_string())
+        }
+        Some(s) if is_about(s, WEEKLY_SECONDS, WEEKLY_TOLERANCE) => {
+            ("weekly".to_string(), "Weekly".to_string())
+        }
+        _ => (map_kind(raw_kind), humanize_kind(raw_kind)),
+    }
+}
+
+/// `value` is within `tolerance` seconds of `target`.
+fn is_about(value: u64, target: u64, tolerance: u64) -> bool {
+    value.abs_diff(target) <= tolerance
 }
 
 /// Parse the legacy flat keys (`five_hour`, `seven_day`, `seven_day_opus`,
@@ -293,6 +341,59 @@ mod tests {
             "0.2 fraction → 20%"
         );
         assert_eq!(opus.window_seconds, Some(604_800));
+    }
+
+    #[test]
+    fn classifies_a_5h_window_by_window_seconds_even_with_a_non_5h_kind_label() {
+        // The dogfood miss: on the `limits[]` shape Claude labels the session window
+        // with a `kind` that is NOT "five_hour" (the field drifts across shapes). We
+        // classify by `limit_window_seconds` ≈ 18000 so it still becomes the "5h" lane
+        // the compact widget filters on — otherwise the session window is dropped and
+        // only the weekly survives (the reported bug: "weekly scoped 72%" with no 5h).
+        let body = serde_json::json!({
+            "limits": [
+                { "kind": "session", "percent": 12, "resets_at": "2026-07-11T05:00:00Z",
+                  "limit_window_seconds": 18000 },
+                { "kind": "primary_weekly", "percent": 72, "resets_at": "2026-07-18T00:00:00Z",
+                  "limit_window_seconds": 604800 },
+                { "kind": "weekly_opus", "percent": 91, "resets_at": "2026-07-18T00:00:00Z",
+                  "limit_window_seconds": 604800,
+                  "scope": { "model": { "id": "claude-opus-4-8", "display_name": "Opus" } } }
+            ]
+        });
+        let parsed = parse_claude(&body);
+        // The "session" kind + ~5h window_seconds is classified as the 5h lane.
+        let five = parsed
+            .windows
+            .iter()
+            .find(|w| w.kind == "5h")
+            .expect("a 5h window classified by limit_window_seconds, not the kind label");
+        assert!((five.used_percent - 12.0).abs() < 1e-9);
+        assert_eq!(five.label, "Session (5h)");
+        assert_eq!(five.window_seconds, Some(18_000));
+        // The non-model-scoped "primary_weekly" kind + ~7d window becomes canonical weekly.
+        let weekly = parsed
+            .windows
+            .iter()
+            .find(|w| w.kind == "weekly")
+            .expect("a weekly window classified by limit_window_seconds");
+        assert!((weekly.used_percent - 72.0).abs() < 1e-9);
+        // The model-scoped weekly keeps its model-scoped key (does NOT crowd out 5h).
+        assert!(
+            parsed
+                .windows
+                .iter()
+                .any(|w| w.kind == "model:claude-opus-4-8"),
+            "model-scoped weekly retains its model key"
+        );
+        // The compact pair the widget shows is exactly [5h, weekly], in that order.
+        let compact: Vec<&str> = parsed
+            .windows
+            .iter()
+            .filter(|w| w.kind == "5h" || w.kind == "weekly")
+            .map(|w| w.kind.as_str())
+            .collect();
+        assert_eq!(compact, vec!["5h", "weekly"]);
     }
 
     #[test]

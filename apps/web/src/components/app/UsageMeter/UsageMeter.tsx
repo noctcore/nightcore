@@ -5,7 +5,12 @@
 import { AnimatePresence, BoltIcon, ProviderIcon, providerLabel } from '@/components/ui';
 import type { ProviderUsage } from '@/lib/bridge';
 
-import { compactWindows, LIVE_USAGE_SOURCE, useUsageMeter } from './UsageMeter.hooks';
+import {
+  compactWindows,
+  LIVE_USAGE_SOURCE,
+  useUsageMeter,
+  windowSummary,
+} from './UsageMeter.hooks';
 import type { CostState, UsageMeterProps } from './UsageMeter.types';
 import { STATUS_META, UsageMeterPopover, WindowBar } from './UsageMeterPopover';
 
@@ -106,6 +111,11 @@ function ProviderRow({
 
   const peak = Math.max(0, ...compactWindows(row.windows).map((w) => w.usedPercent));
   const dimmed = row.stale || row.status === 'rateLimited' || row.status === 'unsupported';
+  // The collapsed-rail hover tooltip: the compact-window summary ("Claude — 5h 12%
+  // · weekly 72%") when there are windows, else just the peak — shown immediately on
+  // hover via the group-hover idiom (not the slow native `title` reveal).
+  const summary = windowSummary(row.windows);
+  const railTip = summary !== '' ? `${label} — ${summary}` : `${label} · ${Math.round(peak)}%`;
 
   return (
     <div className="relative">
@@ -115,14 +125,20 @@ function ProviderRow({
           onClick={onToggle}
           aria-haspopup="dialog"
           aria-expanded={open}
-          title={`${label} · ${Math.round(peak)}%`}
-          className="flex w-full justify-center rounded-lg py-1 transition-colors hover:bg-white/[0.04]"
+          aria-label={railTip}
+          className="group/usage relative flex w-full justify-center rounded-lg py-1 transition-colors hover:bg-white/[0.04]"
         >
           <ProviderIcon
             provider={row.provider}
             size={16}
             className={dimmed ? 'text-muted-foreground' : iconTone(peak)}
           />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 translate-x-1 whitespace-nowrap rounded-lg border border-border bg-popover px-2.5 py-1.5 text-[11px] font-medium text-popover-foreground opacity-0 shadow-lg transition-all duration-200 group-hover/usage:translate-x-0 group-hover/usage:opacity-100"
+          >
+            {railTip}
+          </span>
         </button>
       ) : (
         <button
