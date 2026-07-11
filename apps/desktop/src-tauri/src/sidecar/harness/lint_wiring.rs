@@ -79,12 +79,14 @@ const GENERIC_SEGMENTS: &[&str] = &[
 ];
 
 /// Normalize a repo-relative plugin path (backslashes → `/`, trimmed) and derive the
-/// substrings an ESLint config would use to reference it. Only PATH-SHAPED needles
+/// path forms an ESLint config would use to reference it. Only PATH-SHAPED needles
 /// are used — the full path, the path without extension, and the parent directory —
 /// because a bare basename like `index.js` or a generic dir like `src` appears in
 /// nearly every config and would false-positive the gate. A needle whose final
 /// segment is generic ([`GENERIC_SEGMENTS`]) or shorter than 3 chars is dropped, so
-/// a match means the config genuinely names this plugin's location.
+/// a match means the config genuinely names this plugin's location. Needles are
+/// matched by path-segment SUFFIX (see [`literal_refers_to`]) against the config's
+/// string literals, never by raw substring.
 fn wiring_needles(plugin_rel_path: &str) -> Vec<String> {
     let norm = plugin_rel_path.replace('\\', "/");
     let norm = norm.trim_matches('/').trim().to_string();
@@ -128,11 +130,81 @@ fn wiring_needles(plugin_rel_path: &str) -> Vec<String> {
     needles
 }
 
-/// True if any collected config's text references the plugin (by any needle).
+/// Extract the contents of every string literal in `text` (single-, double-, or
+/// backtick-quoted), skipping anything inside `//` line comments and `/* … */`
+/// block comments. A tiny hand-rolled scanner: an ESLint config references a local
+/// plugin ONLY as a quoted module specifier (`import … from '<path>'` /
+/// `require('<path>')`), so matching against the extracted literals — never the raw
+/// text — is what makes the gate robust. A path mentioned in a COMMENT, or that is
+/// merely a substring of a longer sibling path, is no longer a false "wired" signal.
+fn string_literals(text: &str) -> Vec<String> {
+    let bytes = text.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            // `//` line comment: skip to end of line.
+            b'/' if bytes.get(i + 1) == Some(&b'/') => {
+                i += 2;
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            // `/* … */` block comment: skip to the closing `*/`.
+            b'/' if bytes.get(i + 1) == Some(&b'*') => {
+                i += 2;
+                while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                    i += 1;
+                }
+                i += 2;
+            }
+            // A string literal: capture its contents up to the matching close quote
+            // (a `\` escapes the next byte, so `\'` does not end a single-quoted one).
+            quote @ (b'\'' | b'"' | b'`') => {
+                i += 1;
+                let start = i;
+                while i < bytes.len() && bytes[i] != quote {
+                    if bytes[i] == b'\\' {
+                        i += 1;
+                    }
+                    i += 1;
+                }
+                let end = i.min(bytes.len());
+                if let Ok(s) = std::str::from_utf8(&bytes[start..end]) {
+                    out.push(s.to_string());
+                }
+                i += 1; // step past the closing quote
+            }
+            _ => i += 1,
+        }
+    }
+    out
+}
+
+/// True if the module specifier `literal` refers to the path `needle` by path-segment
+/// SUFFIX — an exact match or a `/`-anchored tail. So a sibling `…/bar.js` never
+/// matches a plugin `…/foo.js`, while a nested config's `../../tools/eslint-rules`
+/// still resolves to the root plugin. A glob pattern (an `ignores`/`files` entry,
+/// which contains `*`) is never a module specifier, so it can wire nothing.
+fn literal_refers_to(literal: &str, needle: &str) -> bool {
+    let lit = literal.replace('\\', "/");
+    let lit = lit.trim().trim_end_matches('/');
+    if lit.contains('*') {
+        return false;
+    }
+    lit == needle || lit.ends_with(&format!("/{needle}"))
+}
+
+/// True if any collected config REGISTERS the plugin: some string-literal module
+/// specifier in it (comments and glob patterns excluded) resolves — by path suffix —
+/// to one of the plugin's [`wiring_needles`].
 fn any_config_references(configs: &[(String, String)], needles: &[String]) -> bool {
-    configs
-        .iter()
-        .any(|(_, text)| needles.iter().any(|n| text.contains(n)))
+    configs.iter().any(|(_, text)| {
+        let literals = string_literals(text);
+        literals
+            .iter()
+            .any(|lit| needles.iter().any(|n| literal_refers_to(lit, n)))
+    })
 }
 
 /// Pure assessment: given the ESLint configs found and the applied plugin's
@@ -284,5 +356,90 @@ mod tests {
         assert!(assert_plugin_wired(tmp.path(), "tools/eslint-rules/index.js").is_ok());
         // A different, unwired plugin path is refused.
         assert!(assert_plugin_wired(tmp.path(), "other/plugin/index.js").is_err());
+    }
+
+    // --- Substring-defeat regressions (the arm-gate can no longer be tricked) ---
+
+    #[test]
+    fn a_sibling_plugin_in_the_same_dir_does_not_false_positive() {
+        // The config wires a DIFFERENT plugin file in the SAME directory; the plugin
+        // being armed is never registered, so arming its check is still a placebo.
+        // The old substring gate matched the shared parent dir and armed green.
+        let configs = vec![(
+            "eslint.config.mjs".to_string(),
+            "import sibling from './tools/eslint-rules/sibling.js';\nexport default [sibling];"
+                .to_string(),
+        )];
+        let err = assess_plugin_wiring(&configs, "tools/eslint-rules/my-plugin.js")
+            .expect_err("a sibling reference must not count as wiring this plugin");
+        assert!(err.contains("isn't referenced"), "got: {err}");
+    }
+
+    #[test]
+    fn a_path_only_in_a_comment_does_not_wire() {
+        // Whether the plugin path is dropped in a line or a block comment, it is not
+        // a registration — the config never actually loads the plugin.
+        for body in [
+            "// wire ./tools/eslint-rules/index.js once reviewed\nexport default [];",
+            "/* wire ./tools/eslint-rules/index.js once reviewed */\nexport default [];",
+        ] {
+            let configs = vec![("eslint.config.mjs".to_string(), body.to_string())];
+            let err = assess_plugin_wiring(&configs, "tools/eslint-rules/index.js")
+                .expect_err("a commented path must not count as wiring");
+            assert!(err.contains("isn't referenced"), "got: {err}");
+        }
+    }
+
+    #[test]
+    fn a_path_only_in_an_ignores_glob_does_not_wire() {
+        // An `ignores` glob EXCLUDES files from linting — the opposite of wiring the
+        // plugin in — so it must never satisfy the arm gate.
+        let configs = vec![(
+            "eslint.config.mjs".to_string(),
+            "export default [{ ignores: ['tools/eslint-rules/**'] }];".to_string(),
+        )];
+        let err = assess_plugin_wiring(&configs, "tools/eslint-rules/index.js")
+            .expect_err("an ignores glob must not count as wiring");
+        assert!(err.contains("isn't referenced"), "got: {err}");
+    }
+
+    #[test]
+    fn a_genuinely_wired_plugin_is_still_detected() {
+        // The real registration path (import the local plugin, turn its rule on) is
+        // still recognized — the hardening only removes false positives.
+        let configs = vec![(
+            "eslint.config.mjs".to_string(),
+            "import local from './tools/eslint-rules/index.js';\n\
+             export default [{ plugins: { local }, rules: { 'local/my-rule': 'error' } }];"
+                .to_string(),
+        )];
+        assert!(assess_plugin_wiring(&configs, "tools/eslint-rules/index.js").is_ok());
+    }
+
+    #[test]
+    fn a_nested_config_importing_via_a_parent_path_is_wired() {
+        // A package-level config imports the root plugin via `../../`; the path suffix
+        // still identifies it, so monorepo wiring keeps working precisely.
+        let configs = vec![(
+            "eslint.config.ts".to_string(),
+            "import p from '../../tools/eslint-rules/index.js';\nexport default [p];".to_string(),
+        )];
+        assert!(assess_plugin_wiring(&configs, "tools/eslint-rules/index.js").is_ok());
+    }
+
+    #[test]
+    fn string_literals_skips_comments_and_captures_quotes() {
+        // The scanner ignores line + block comments and captures each quote style.
+        let lits = string_literals(
+            "// './commented.js'\nimport a from './real.js';\n/* './blocked.js' */\nconst b = `./tpl.js`;",
+        );
+        assert!(lits.iter().any(|l| l == "./real.js"), "{lits:?}");
+        assert!(lits.iter().any(|l| l == "./tpl.js"), "{lits:?}");
+        assert!(
+            !lits
+                .iter()
+                .any(|l| l.contains("commented") || l.contains("blocked")),
+            "commented literals are not captured: {lits:?}"
+        );
     }
 }
