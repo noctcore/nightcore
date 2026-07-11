@@ -11,6 +11,10 @@
 
 use std::path::Path;
 
+// The ISO-8601 UTC formatter lives in `infra::time` (rank 1) so the usage poller
+// (issue #121) can reuse it too; re-exported at `super::aggregate::iso8601_utc` so
+// the existing call site + `trust::tests` resolve unchanged.
+pub(super) use crate::infra::time::iso8601_utc;
 use crate::store::ledger::{blocked_by_policy_message, read_records, LedgerRecord};
 use crate::store::transcript::{cost_summary, CostSummary};
 use crate::task::{Task, TaskStatus};
@@ -200,31 +204,4 @@ fn flight_summary(
             cache_creation: c.cache_creation_tokens,
         }),
     }
-}
-
-/// Format an epoch-millis instant as ISO-8601 UTC (`YYYY-MM-DDTHH:MM:SSZ`) without
-/// a date crate (the crate deliberately avoids `chrono`). Pure civil-time
-/// arithmetic — deterministic and unit-tested against known instants.
-pub(super) fn iso8601_utc(epoch_ms: u64) -> String {
-    let secs = (epoch_ms / 1000) as i64;
-    let days = secs.div_euclid(86_400);
-    let tod = secs.rem_euclid(86_400);
-    let (y, m, d) = civil_from_days(days);
-    let (hh, mm, ss) = (tod / 3600, (tod % 3600) / 60, tod % 60);
-    format!("{y:04}-{m:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}Z")
-}
-
-/// (year, month `1..=12`, day `1..=31`) for a count of days since 1970-01-01
-/// (Howard Hinnant's `civil_from_days`).
-fn civil_from_days(z: i64) -> (i64, u32, u32) {
-    let z = z + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 }.div_euclid(146_097);
-    let doe = (z - era * 146_097) as u64; // [0, 146096]
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365; // [0, 399]
-    let y = yoe as i64 + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
-    let mp = (5 * doy + 2) / 153; // [0, 11]
-    let d = (doy - (153 * mp + 2) / 5 + 1) as u32; // [1, 31]
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32; // [1, 12]
-    (if m <= 2 { y + 1 } else { y }, m, d)
 }
