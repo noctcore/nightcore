@@ -94,7 +94,14 @@ type Story = StoryObj<typeof meta>;
 
 export const Backlog: Story = { args: { task: TASKS_BY_STATUS.backlog } };
 export const Ready: Story = { args: { task: TASKS_BY_STATUS.ready } };
-export const Blocked: Story = { args: { task: BLOCKED_TASK, blocked: true } };
+export const Blocked: Story = {
+  args: {
+    task: BLOCKED_TASK,
+    blocked: true,
+    // The resolved dependency (id → title) the human-readable blocked chip names.
+    blockedBy: [{ id: 't-running', title: 'Generate API client', satisfied: false }],
+  },
+};
 export const Running: Story = {
   args: { task: TASKS_BY_STATUS.in_progress, logCount: 7 },
 };

@@ -53,7 +53,10 @@ function BoardImpl({
   // banner below the switcher. Both ride the low-churn chrome context.
   const { appearanceOverride, backgroundVersion, breaker, onResume, usagePause } =
     useBoardChrome();
-  const { search, setSearch, columns, clearHandlers } = useBoardView(tasks, onClearColumn);
+  const { search, setSearch, columns, clearHandlers, dependencyChipsById } = useBoardView(
+    tasks,
+    onClearColumn,
+  );
   const banner = useBreakerBanner(breaker);
   const usageBanner = useUsagePauseBanner(usagePause);
   const appearance = useBoardAppearance(projectId, appearanceOverride, backgroundVersion);
@@ -141,6 +144,7 @@ function BoardImpl({
               clearable={def.clearable}
               selectedId={selectedId}
               blockedIds={blockedIds}
+              dependencyChipsById={dependencyChipsById}
               promptIds={promptIds}
               logCounts={logCounts}
               dropStatus={def.statuses[0]}

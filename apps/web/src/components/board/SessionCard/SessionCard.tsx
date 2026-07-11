@@ -18,7 +18,7 @@ import { PermissionModePicker } from '../PermissionModePicker';
 import { SessionHistory } from '../SessionHistory';
 import {
   KIND_LABEL,
-  modelDisplayName,
+  modelBadge,
   PERMISSION_MODE_LABEL,
   RUN_MODE_LABEL,
 } from '../status';
@@ -209,9 +209,9 @@ function ReadonlySessionBody({ task }: { task: Task }) {
       </SessionRow>
       <SessionRow label="Model & effort">
         <div className="flex flex-wrap gap-1.5">
-          <ConfigPill>
-            {task.model !== null ? modelDisplayName(task.model) : 'Model: inherit'}
-          </ConfigPill>
+          {/* Prefer the model the run ACTUALLY used over the requested override (which
+              is null for "inherit"), so a post-run config reads honestly (T13). */}
+          <ConfigPill>{modelBadge(task).label}</ConfigPill>
           <ConfigPill>Effort: {task.effort ?? 'inherit'}</ConfigPill>
         </div>
       </SessionRow>

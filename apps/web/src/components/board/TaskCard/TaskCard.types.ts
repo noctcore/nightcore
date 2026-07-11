@@ -5,12 +5,17 @@
  *  down the Board → Column → TaskCard chain. */
 import type { Task } from '@/lib/bridge';
 
+import type { DependencyChip } from '../Board/Board.utils';
+
 /** Props for a single task card: the task and its presentational flags. */
 export interface TaskCardProps {
   task: Task;
   selected: boolean;
   /** True when this backlog task is blocked on an unfinished dependency. */
   blocked?: boolean;
+  /** The task's resolved dependencies (id → title + satisfied), for the human-readable
+   *  blocked chip. `undefined`/empty when the task declares no dependencies. */
+  blockedBy?: DependencyChip[];
   /** True when the running task has a parked permission prompt — pulses the card
    *  and surfaces a "needs approval" chip. */
   needsApproval?: boolean;

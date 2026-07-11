@@ -226,5 +226,7 @@ export const BLOCKED_TASK: Task = makeTask({
   description:
     'Remove per-task worktrees once a task is verified and merged.',
   model: 'haiku-4.5',
-  dependencies: ['Deployment configuration'],
+  // Dependencies are task IDS (not titles): this one waits on the still-running
+  // "Generate API client" task (`t-running`), so the card resolves + shows its title.
+  dependencies: ['t-running'],
 });

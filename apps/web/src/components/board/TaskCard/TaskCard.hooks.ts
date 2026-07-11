@@ -4,7 +4,71 @@ import type { DraggableSyntheticListeners } from '@dnd-kit/core';
 import { useDraggable } from '@dnd-kit/core';
 import { useEffect, useState } from 'react';
 
+import type { Task } from '@/lib/bridge';
 import { formatElapsed as formatElapsedShared } from '@/lib/formatters';
+
+import type { DependencyChip } from '../Board/Board.utils';
+import { canRunTask, type RunGate, useRunGate } from '../run-gating';
+import { modelBadge } from '../status';
+
+/** The human-readable blocked chip (T13): a short label + full tooltip naming the
+ *  UNFINISHED dependencies by title (id → title resolved upstream). Replaces the raw
+ *  `blocked · 3f2a9c…` id display. Pure. */
+export function blockedDepChip(blockedBy: DependencyChip[] | undefined): {
+  label: string;
+  tooltip: string;
+} {
+  const unmet = (blockedBy ?? []).filter((dep) => !dep.satisfied);
+  if (unmet.length === 0) {
+    return { label: 'blocked', tooltip: 'Waiting on an unfinished dependency' };
+  }
+  const names = unmet.map((dep) => dep.title ?? 'a deleted task');
+  const label =
+    unmet.length === 1 ? `blocked · ${unmet[0]!.title ?? 'deleted task'}` : `blocked · ${unmet.length} deps`;
+  return { label, tooltip: `Waiting on: ${names.join(', ')}` };
+}
+
+/** The card's derived presentational view (T13): the honest model badge, the shared
+ *  slot-aware run gate (reads the board-wide `RunGate` context), the human-readable
+ *  blocked chip, and the settled-state chip visibility + attention pulse. Groups the
+ *  pure derivations so the card body stays lean. */
+export function useTaskCardView(
+  task: Task,
+  blocked: boolean,
+  blockedBy: DependencyChip[] | undefined,
+  needsApproval: boolean,
+): {
+  badge: { label: string; dotColor: string };
+  gate: RunGate;
+  depChip: { label: string; tooltip: string };
+  /** Show the branch chip: a worktree task's branch, once the run has settled. */
+  showBranch: boolean;
+  /** Show the "main" chip: a main-mode task edits the tree in place (no branch). */
+  showMainChip: boolean;
+  /** The attention ring: a needs-approval pulse, else a verifying pulse, else none. */
+  pulse: string;
+} {
+  const { slotsFree } = useRunGate();
+  const verifying = task.status === 'verifying';
+  const settled =
+    task.status === 'in_progress' ||
+    verifying ||
+    task.status === 'waiting_approval' ||
+    task.status === 'done' ||
+    task.status === 'failed';
+  return {
+    badge: modelBadge(task),
+    gate: canRunTask({ blocked, slotsFree }),
+    depChip: blockedDepChip(blockedBy),
+    showBranch: task.branch !== null && settled,
+    showMainChip: task.runMode === 'main' && settled,
+    pulse: needsApproval
+      ? 'animate-pulse ring-1 ring-warning/60'
+      : verifying
+        ? 'animate-pulse ring-1 ring-primary/50'
+        : '',
+  };
+}
 
 /** Format a millisecond elapsed span as mm:ss (zero-padded minutes). Delegates
  *  to the shared `lib/formatters` helper; the board's live cards pad minutes. */

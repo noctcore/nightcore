@@ -7,8 +7,9 @@ export { Board } from './Board';
 export type { PickedBackgroundImage } from './BoardBackgroundPanel';
 export { BoardChromeProvider, type BoardChromeValue, type BreakerInfo } from './chrome';
 export { NewTaskForm } from './NewTaskForm';
+export { RunGateProvider } from './run-gating';
 export { EMPTY_TRANSCRIPT, foldTranscript, type TaskTranscript } from './session-stream';
-export { COLUMNS, isActive } from './status';
+export { BOARD_SEARCH_INPUT_ID, COLUMNS, isActive } from './status';
 export { TaskDetail } from './TaskDetail';
 export {
   hotUsageWindow,

@@ -9,26 +9,44 @@ export interface BoardColumn {
   tasks: Task[];
 }
 
-/** Statuses that count as "finished" when resolving a dependency. */
-const SETTLED: ReadonlySet<Task['status']> = new Set(['done']);
+/** One resolved dependency of a task — its real id, the depended-on task's title (or
+ *  `null` when it no longer exists), and whether it's satisfied (Done). The
+ *  human-readable replacement for the old raw-id `blocked · 3f2a9c…` chip. */
+export interface DependencyChip {
+  id: string;
+  title: string | null;
+  satisfied: boolean;
+}
 
 /**
- * A backlog task is blocked when any of its dependencies (matched by task
- * title) is not yet verified (i.e. not in the SETTLED set). Returns the set
- * of blocked task ids.
+ * Resolve a task's `dependencies` (task ids) to human-readable chips — driven by the
+ * REAL id list against the live task index, replacing the fragile title-matching
+ * `computeBlockedIds` web util (which looked deps up as titles and so never matched the
+ * id-based backend). A missing dependency (deleted task) reads as unsatisfied with a
+ * `null` title so the chip can say "unknown". Pure.
  */
-export function computeBlockedIds(tasks: Task[]): Set<string> {
-  const byTitle = new Map(tasks.map((t) => [t.title, t]));
-  const blocked = new Set<string>();
+export function resolveDependencies(task: Task, byId: Map<string, Task>): DependencyChip[] {
+  return task.dependencies.map((id) => {
+    const dep = byId.get(id);
+    return { id, title: dep?.title ?? null, satisfied: dep?.status === 'done' };
+  });
+}
+
+/**
+ * A per-task map of resolved dependency chips, built once over the whole task list for
+ * the board to thread to each card. Only tasks that actually declare dependencies get an
+ * entry, so a dependency-free card is passed `undefined` (a stable prop that never
+ * defeats the card memo on a stream flush). Pure.
+ */
+export function dependencyChipsByTask(tasks: Task[]): Map<string, DependencyChip[]> {
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const out = new Map<string, DependencyChip[]>();
   for (const task of tasks) {
-    if (task.status !== 'backlog' && task.status !== 'ready') continue;
-    const isBlocked = task.dependencies.some((dep) => {
-      const target = byTitle.get(dep);
-      return target !== undefined && !SETTLED.has(target.status);
-    });
-    if (isBlocked) blocked.add(task.id);
+    if (task.dependencies.length > 0) {
+      out.set(task.id, resolveDependencies(task, byId));
+    }
   }
-  return blocked;
+  return out;
 }
 
 /** Group tasks into the board's columns, newest-updated first within each. */
