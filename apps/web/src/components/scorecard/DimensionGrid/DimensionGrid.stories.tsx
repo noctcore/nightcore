@@ -31,15 +31,17 @@ const ROWS: DimensionRow[] = [
     dimension: 'architecture',
     state: 'done',
     reading: reading({ dimension: 'architecture', grade: 'A', title: 'Clean boundaries' }),
+    trend: { previousGrade: 'B', direction: 'up', history: ['C', 'B', 'A'] },
   },
-  { dimension: 'tests', state: 'running', reading: null },
+  { dimension: 'tests', state: 'running', reading: null, trend: null },
   {
     dimension: 'security',
     state: 'done',
     reading: reading({ dimension: 'security', grade: 'F', title: 'Exploitable holes', status: 'converted' }),
+    trend: { previousGrade: 'C', direction: 'down', history: ['C', 'F'] },
   },
-  { dimension: 'performance', state: 'pending', reading: null },
-  { dimension: 'types', state: 'error', reading: null },
+  { dimension: 'performance', state: 'pending', reading: null, trend: null },
+  { dimension: 'types', state: 'error', reading: null, trend: null },
 ];
 
 const meta = {

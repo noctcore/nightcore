@@ -61,6 +61,39 @@ export function gradeRankValue(g: ScorecardGrade): number {
   return GRADE_ORDER.indexOf(g);
 }
 
+/** Which way a dimension's grade moved vs the most recent OLDER run that graded it.
+ *  `up` = improved (a better letter), `down` = regressed, `flat` = unchanged. */
+export type GradeTrendDirection = 'up' | 'down' | 'flat';
+
+/** A dimension's grade trend for the RESULTS chip (T8): the previous run's grade,
+ *  the direction of change, and the recent-grades trail (oldest→newest, current
+ *  last) so the chip can read as "grade over recent runs". */
+export interface GradeTrend {
+  previousGrade: ScorecardGrade;
+  direction: GradeTrendDirection;
+  /** Up to five recent grades, oldest first, current last — the mini trail. */
+  history: ScorecardGrade[];
+}
+
+/**
+ * Compute a dimension's grade trend from its `current` grade and the chronological
+ * (oldest-first) grades of every OLDER run that graded it. Returns `null` when
+ * there is no prior comparable grade (nothing to trend against) — the caller then
+ * renders no chip. Pure + total: never throws, so a dimension with no history just
+ * renders its grade with no trend.
+ */
+export function computeGradeTrend(
+  current: ScorecardGrade,
+  priorGrades: readonly ScorecardGrade[],
+): GradeTrend | null {
+  if (priorGrades.length === 0) return null;
+  const previousGrade = priorGrades[priorGrades.length - 1] as ScorecardGrade;
+  const delta = gradeRankValue(current) - gradeRankValue(previousGrade);
+  // A lower rank is a better grade, so a negative delta is an improvement.
+  const direction: GradeTrendDirection = delta < 0 ? 'up' : delta > 0 ? 'down' : 'flat';
+  return { previousGrade, direction, history: [...priorGrades.slice(-4), current] };
+}
+
 interface GradeMeta {
   label: string;
   /** Tailwind text tone for the letter. */

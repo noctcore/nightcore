@@ -1,5 +1,6 @@
 import type { ScorecardDimension } from '@/lib/bridge';
 
+import type { GradeTrend } from '../scorecard.constants';
 import type { ScorecardReadingView } from '../scorecard.types';
 import type { DimensionProgress } from '../scorecard-stream';
 
@@ -11,6 +12,9 @@ export interface DimensionRow {
   state: DimensionProgress;
   /** The graded reading for this dimension, when available. */
   reading: ScorecardReadingView | null;
+  /** Grade trend vs the most recent older run that graded this dimension (T8);
+   *  `null` when there's no prior run to compare against. */
+  trend: GradeTrend | null;
 }
 
 /** Props for the DimensionGrid: the rows to render, an idle empty message, and an open handler. */
