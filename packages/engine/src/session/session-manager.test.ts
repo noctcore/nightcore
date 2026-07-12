@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 
-import type { Config, NightcoreEvent } from '@nightcore/contracts';
+import type { Config, HarnessPolicy, NightcoreEvent } from '@nightcore/contracts';
 
 import type {
   AgentProvider,
@@ -12,7 +12,10 @@ import type {
   PreflightRequest,
   StartSessionParams,
 } from '../providers/agent-provider.js';
-import { assertHooksInvariant } from '../providers/agent-provider.js';
+import {
+  assertGovernanceInvariant,
+  assertHooksInvariant,
+} from '../providers/agent-provider.js';
 import {
   autonomyToPermissionMode,
   CLAUDE_CAPABILITIES,
@@ -935,6 +938,120 @@ describe('SessionManager fail-closed autonomy invariant', () => {
       autonomy: 'bypass',
       sandboxWrites: true,
     });
+
+    expect(events.some((e) => e.type === 'session-started')).toBe(true);
+    expect(events.some(isFailed)).toBe(false);
+  });
+});
+
+describe('SessionManager fail-closed governance invariant (#296)', () => {
+  const STUB_SESSION: AgentSession = {
+    permissionMode: 'acceptEdits',
+    run: async () => {},
+    streamInput: () => {},
+    interrupt: async () => {},
+    setModel: async () => {},
+    setAutonomy: async () => {},
+    approvePermission: () => false,
+    answerQuestion: () => false,
+    listModels: async () => [],
+    probeConfig: async () => {
+      throw new Error('probe not used in this test');
+    },
+  };
+
+  /** An armed-but-empty Harness policy — presence alone arms the layer. */
+  const ARMED_POLICY: HarnessPolicy = {
+    protectedPaths: [],
+    denyBashPatterns: [],
+    denyReadPaths: [],
+    disallowedTools: [],
+    allowTools: [],
+    askTools: [],
+    allowExecSinks: [],
+  };
+
+  /** A provider whose ONLY material difference from Claude is that it cannot
+   *  enforce Harness policy or write a ledger — mirrors `CODEX_CAPABILITIES`'s
+   *  shape without hardcoding a real Codex session (never spins one). */
+  class UngovernedProvider implements AgentProvider {
+    capabilities() {
+      return {
+        ...CLAUDE_CAPABILITIES,
+        id: 'fake-ungoverned',
+        label: 'FakeUngoverned',
+        supportsHarnessPolicy: false,
+        supportsLedger: false,
+      };
+    }
+    preflight(): void {}
+    startSession(params: StartSessionParams): AgentSession {
+      assertGovernanceInvariant(this.capabilities(), params);
+      return STUB_SESSION;
+    }
+    createProbeSession(): AgentSession {
+      return STUB_SESSION;
+    }
+  }
+
+  function isFailed(
+    e: NightcoreEvent,
+  ): e is Extract<NightcoreEvent, { type: 'session-failed' }> {
+    return e.type === 'session-failed';
+  }
+
+  test('REFUSES a run with an armed Harness policy — terminal session-failed, no start', async () => {
+    const manager = new SessionManager(
+      makeConfig(),
+      undefined,
+      new UngovernedProvider(),
+    );
+    const events: NightcoreEvent[] = [];
+    manager.on((e) => events.push(e));
+
+    await manager.dispatch({
+      type: 'start-session',
+      prompt: 'x',
+      harnessPolicy: ARMED_POLICY,
+    });
+
+    const failed = events.find(isFailed);
+    expect(failed).toBeDefined();
+    expect(failed?.message).toContain('Harness governance policy');
+    expect(events.some((e) => e.type === 'session-started')).toBe(false);
+  });
+
+  test('REFUSES a run with a ledger path requested', async () => {
+    const manager = new SessionManager(
+      makeConfig(),
+      undefined,
+      new UngovernedProvider(),
+    );
+    const events: NightcoreEvent[] = [];
+    manager.on((e) => events.push(e));
+
+    await manager.dispatch({
+      type: 'start-session',
+      prompt: 'x',
+      ledgerPath: '/tmp/nc-ledger.ndjson',
+    });
+
+    const failed = events.find(isFailed);
+    expect(failed).toBeDefined();
+    expect(failed?.message).toContain('audit ledger');
+    expect(events.some((e) => e.type === 'session-started')).toBe(false);
+  });
+
+  test('STARTS a run with NO active policy or ledger on the same ungoverned provider', async () => {
+    const manager = new SessionManager(
+      makeConfig(),
+      undefined,
+      new UngovernedProvider(),
+    );
+    const events: NightcoreEvent[] = [];
+    manager.on((e) => events.push(e));
+
+    await manager.dispatch({ type: 'start-session', prompt: 'x' });
 
     expect(events.some((e) => e.type === 'session-started')).toBe(true);
     expect(events.some(isFailed)).toBe(false);

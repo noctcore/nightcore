@@ -27,6 +27,10 @@ export const CLAUDE_PROVIDER_LABEL = 'Claude';
  * structured output, session resume, file checkpointing, AskUserQuestion, layered
  * setting sources, the `~/.claude` session store, per-model effort, and FULL cost
  * telemetry (dollars AND tokens). All four autonomy ceilings are supported.
+ *
+ * `supportsHarnessPolicy`/`supportsLedger` are both `true`: the Harness runtime
+ * policy and the flight-recorder ledger both ride the SAME PreToolUse hook
+ * (`HookBus`) as the confinement gate — see `session-runner.ts`/`hook-bus.ts`.
  */
 export const CLAUDE_CAPABILITIES: ProviderCapabilities = {
   id: CLAUDE_PROVIDER_ID,
@@ -34,6 +38,8 @@ export const CLAUDE_CAPABILITIES: ProviderCapabilities = {
   autonomyLevels: ['bypass', 'auto-accept', 'ask', 'plan'],
   supportsHooks: true,
   providesOwnWriteContainment: false,
+  supportsHarnessPolicy: true,
+  supportsLedger: true,
   supportsMcp: true,
   supportsPlanMode: true,
   supportsStructuredOutput: true,

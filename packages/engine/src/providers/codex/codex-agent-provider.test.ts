@@ -1,10 +1,17 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
 
-import type { NightcoreEvent, NightcoreEventOf } from '@nightcore/contracts';
+import type {
+  HarnessPolicy,
+  NightcoreEvent,
+  NightcoreEventOf,
+} from '@nightcore/contracts';
 
 import type { AgentSession } from '../agent-provider.js';
-import { AutonomyNotPermittedError } from '../agent-provider.js';
+import {
+  AutonomyNotPermittedError,
+  GovernanceNotSupportedError,
+} from '../agent-provider.js';
 import { CODEX_CAPABILITIES } from './capabilities.js';
 import type { CodexFactory, CodexThreadLike } from './codex-agent-provider.js';
 import { CodexAgentProvider } from './codex-agent-provider.js';
@@ -32,6 +39,18 @@ function collector(): {
   const events: NightcoreEvent[] = [];
   return { emit: (event) => events.push(event), events };
 }
+
+/** An armed-but-empty Harness policy — presence alone arms the layer (mirrors the
+ *  Rust `read_policy` resolver). */
+const ARMED_POLICY: HarnessPolicy = {
+  protectedPaths: [],
+  denyBashPatterns: [],
+  denyReadPaths: [],
+  disallowedTools: [],
+  allowTools: [],
+  askTools: [],
+  allowExecSinks: [],
+};
 
 const provider = new CodexAgentProvider();
 
@@ -156,6 +175,84 @@ describe('Codex autonomy posture', () => {
         process.env[CODEX_BYPASS_OPT_IN_ENV] = previous;
       }
     }
+  });
+});
+
+describe('Codex governance preflight (#296)', () => {
+  test('startSession refuses a run with an armed Harness policy before constructing a session', () => {
+    const { emit, events } = collector();
+    expect(() =>
+      provider.startSession(
+        {
+          sessionId: 10,
+          prompt: 'go',
+          model: 'gpt-5-codex',
+          cwd: '/tmp',
+          autonomyOverride: 'auto-accept',
+          harnessPolicy: ARMED_POLICY,
+        },
+        emit,
+      ),
+    ).toThrow(GovernanceNotSupportedError);
+    expect(events).toHaveLength(0);
+  });
+
+  test('startSession refuses a run with a ledger path requested', () => {
+    const { emit, events } = collector();
+    expect(() =>
+      provider.startSession(
+        {
+          sessionId: 11,
+          prompt: 'go',
+          model: 'gpt-5-codex',
+          cwd: '/tmp',
+          autonomyOverride: 'auto-accept',
+          ledgerPath: '/tmp/nc-ledger.ndjson',
+        },
+        emit,
+      ),
+    ).toThrow(GovernanceNotSupportedError);
+    expect(events).toHaveLength(0);
+  });
+
+  test('startSession proceeds when NO harness policy or ledger is requested', () => {
+    const { emit } = collector();
+    const session = provider.startSession(
+      {
+        sessionId: 12,
+        prompt: 'go',
+        model: 'gpt-5-codex',
+        cwd: '/tmp',
+        autonomyOverride: 'auto-accept',
+      },
+      emit,
+    );
+    expect(session).toBeDefined();
+  });
+
+  test('the refusal names Codex and both missing capabilities', () => {
+    let caught: unknown;
+    try {
+      provider.startSession(
+        {
+          sessionId: 13,
+          prompt: 'go',
+          model: 'gpt-5-codex',
+          cwd: '/tmp',
+          autonomyOverride: 'auto-accept',
+          harnessPolicy: ARMED_POLICY,
+          ledgerPath: '/tmp/nc-ledger.ndjson',
+        },
+        () => {},
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(GovernanceNotSupportedError);
+    const err = caught as GovernanceNotSupportedError;
+    expect(err.providerId).toBe('codex');
+    expect(err.missingHarnessPolicy).toBe(true);
+    expect(err.missingLedger).toBe(true);
   });
 });
 

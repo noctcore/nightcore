@@ -1,6 +1,10 @@
 import type {
+  CodexOptions,
+  Input,
   ThreadEvent,
   ThreadItem,
+  ThreadOptions,
+  TurnOptions,
 } from '@openai/codex-sdk';
 import { Codex } from '@openai/codex-sdk';
 
@@ -25,6 +29,25 @@ export type {
   Usage,
 } from '@openai/codex-sdk';
 export { Codex };
+
+/** The minimal Codex SDK surface a session drives — a seam so tests can fake the turn
+ *  loop (follow-up delivery, reviewer read-only posture) without spawning `codex
+ *  exec`. The real {@link Codex} class satisfies it; a `Thread.runStreamed` returns a
+ *  `StreamedTurn` whose `events` is an `AsyncGenerator` (an `AsyncIterable`). */
+export interface CodexThreadLike {
+  runStreamed(
+    input: Input,
+    turnOptions?: TurnOptions,
+  ): Promise<{ events: AsyncIterable<ThreadEvent> }>;
+}
+export interface CodexLike {
+  startThread(options?: ThreadOptions): CodexThreadLike;
+  resumeThread(id: string, options?: ThreadOptions): CodexThreadLike;
+}
+export type CodexFactory = (options: CodexOptions) => CodexLike;
+
+/** The production factory: the real `@openai/codex-sdk` client. */
+export const defaultCodexFactory: CodexFactory = (options) => new Codex(options);
 
 type FailureReason = Extract<
   NightcoreEvent,

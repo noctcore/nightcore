@@ -9,6 +9,17 @@
  *  - `supportsHooks: false` — there is no Claude-style PreToolUse gate.
  *  - `providesOwnWriteContainment: true` — Codex's native sandbox is the
  *    compensating control for `workspace-write` autonomy.
+ *  - `supportsHarnessPolicy: false` / `supportsLedger: false` — a project's Harness
+ *    runtime policy (protected paths + Bash-command deny tiers) and the
+ *    flight-recorder audit ledger both ride Claude's PreToolUse hook; Codex has no
+ *    equivalent seam today, so a run that requests either is REFUSED fail-closed
+ *    rather than silently running ungoverned/unaudited (issue #296). A real
+ *    interception point (`codex app-server`'s `execCommandApproval`/
+ *    `applyPatchApproval` RPCs) exists one layer below the `@openai/codex-sdk`
+ *    Nightcore drives today, but wiring it is a separate, larger initiative
+ *    (#304) — Codex's own kernel sandbox (`providesOwnWriteContainment`) is a
+ *    real but PARTIAL compensating control: it covers workspace confinement, not
+ *    a project's custom protected-path/deny-pattern rules.
  *  - `autonomyLevels: ['auto-accept', 'plan']` — `ask` is NOT advertised: the
  *    codex-sdk has no approval channel (non-interactive `codex exec`, stdin closed,
  *    no approval event), so an `ask` posture could never be answered and would hang.
@@ -39,6 +50,8 @@ export const CODEX_CAPABILITIES: ProviderCapabilities = {
   autonomyLevels: ['auto-accept', 'plan'],
   supportsHooks: false,
   providesOwnWriteContainment: true,
+  supportsHarnessPolicy: false,
+  supportsLedger: false,
   supportsMcp: true,
   supportsPlanMode: true,
   supportsStructuredOutput: true,

@@ -17,6 +17,7 @@ import type {
   StartSessionParams,
 } from '../agent-provider.js';
 import {
+  assertGovernanceInvariant,
   assertHooksInvariant,
   AutonomyNotPermittedError,
 } from '../agent-provider.js';
@@ -40,36 +41,18 @@ import {
   resolveCodexBinaryOverride,
 } from './resolve-codex-binary.js';
 import {
-  Codex,
-  type CodexOptions,
+  type CodexFactory,
   createCodexTranslationState,
-  type Input,
+  defaultCodexFactory,
   type ThreadEvent,
-  type ThreadOptions,
   translateCodexEvent,
   type TurnOptions,
 } from './sdk-adapter.js';
 
-/**
- * The minimal Codex SDK surface a session drives — a seam so tests can fake the turn
- * loop (follow-up delivery, reviewer read-only posture) without spawning `codex
- * exec`. The real {@link Codex} class satisfies it; a `Thread.runStreamed` returns a
- * `StreamedTurn` whose `events` is an `AsyncGenerator` (an `AsyncIterable`).
- */
-export interface CodexThreadLike {
-  runStreamed(
-    input: Input,
-    turnOptions?: TurnOptions,
-  ): Promise<{ events: AsyncIterable<ThreadEvent> }>;
-}
-export interface CodexLike {
-  startThread(options?: ThreadOptions): CodexThreadLike;
-  resumeThread(id: string, options?: ThreadOptions): CodexThreadLike;
-}
-export type CodexFactory = (options: CodexOptions) => CodexLike;
-
-/** The production factory: the real `@openai/codex-sdk` client. */
-const defaultCodexFactory: CodexFactory = (options) => new Codex(options);
+// The minimal Codex SDK surface a session drives, and its production factory over
+// the real `@openai/codex-sdk` client — both defined in `sdk-adapter.ts` (the SDK
+// boundary module) and re-exported here for `CodexAgentProvider`'s test fakes.
+export type { CodexFactory, CodexLike, CodexThreadLike } from './sdk-adapter.js';
 
 /**
  * Default idle watchdog deadline for a Codex turn: 30 minutes with NO stream event
@@ -396,6 +379,16 @@ export class CodexAgentProvider implements AgentProvider {
     emit: SessionEventSink,
     logger?: Logger,
   ): AgentSession {
+    // Fail-closed governance preflight (issue #296) BEFORE anything else: Codex has
+    // no PreToolUse-equivalent seam, so a run that requests Harness policy
+    // enforcement or a ledger is REFUSED here rather than silently running
+    // ungoverned/unaudited. A real interception point exists one layer below the
+    // `@openai/codex-sdk` this session drives (`codex app-server`'s
+    // `execCommandApproval`/`applyPatchApproval` RPCs — see
+    // `CODEX_CAPABILITIES`'s docblock) but wiring it is a separate, larger
+    // initiative tracked as #304; this refusal is the durable answer until then.
+    assertGovernanceInvariant(this.capabilities(), params);
+
     // Resolve the EFFECTIVE ceiling: a read-only KIND (the reviewer/verify identity)
     // is pinned to `plan` — the read-only sandbox — no matter the resolved autonomy,
     // so a Codex reviewer is provably unable to mutate the repo (Codex has no

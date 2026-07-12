@@ -5,19 +5,23 @@ import {
   type AutonomyLevel,
   type Config,
   ConfigSchema,
+  type HarnessPolicy,
   type PermissionMode,
   type ProviderCapabilities,
 } from '@nightcore/contracts';
 
 import {
+  assertGovernanceInvariant,
   assertHooksInvariant,
   AutonomyNotPermittedError,
+  GovernanceNotSupportedError,
 } from './agent-provider.js';
 import {
   CLAUDE_CAPABILITIES,
   permissionModeToAutonomy,
 } from './claude/capabilities.js';
 import { ClaudeAgentProvider } from './claude/claude-agent-provider.js';
+import { CODEX_CAPABILITIES } from './codex/capabilities.js';
 
 /** A fake provider descriptor with the ONLY difference that matters to the gate:
  *  it cannot enforce PreToolUse hooks (no workspace confinement / deny-ask tiers). */
@@ -26,6 +30,30 @@ const DEGRADED: ProviderCapabilities = {
   id: 'fake',
   label: 'Fake',
   supportsHooks: false,
+};
+
+/** A fake provider that cannot enforce Harness governance policy or write the
+ *  audit ledger — otherwise identical to Claude (mirrors `CODEX_CAPABILITIES`'s
+ *  shape without hardcoding the real Codex descriptor into this gate battery). */
+const UNGOVERNED: ProviderCapabilities = {
+  ...CLAUDE_CAPABILITIES,
+  id: 'fake-ungoverned',
+  label: 'FakeUngoverned',
+  supportsHarnessPolicy: false,
+  supportsLedger: false,
+};
+
+/** An armed-but-empty Harness policy — presence alone is what arms the layer
+ *  (mirrors the Rust `read_policy` resolver: an armed policy can have empty lists
+ *  and still be "on", guarding the manifest itself). */
+const ARMED_POLICY: HarnessPolicy = {
+  protectedPaths: [],
+  denyBashPatterns: [],
+  denyReadPaths: [],
+  disallowedTools: [],
+  allowTools: [],
+  askTools: [],
+  allowExecSinks: [],
 };
 
 // ---------------------------------------------------------------------------
@@ -96,6 +124,87 @@ describe('assertHooksInvariant', () => {
 });
 
 // ---------------------------------------------------------------------------
+// The fail-closed governance invariant (issue #296)
+// ---------------------------------------------------------------------------
+
+describe('assertGovernanceInvariant', () => {
+  test('REFUSES a run with an armed Harness policy on an ungoverned provider', () => {
+    expect(() =>
+      assertGovernanceInvariant(UNGOVERNED, { harnessPolicy: ARMED_POLICY }),
+    ).toThrow(GovernanceNotSupportedError);
+  });
+
+  test('REFUSES a run with a ledger request on a provider that cannot write one', () => {
+    expect(() =>
+      assertGovernanceInvariant(UNGOVERNED, { ledgerPath: '/tmp/nc-ledger.ndjson' }),
+    ).toThrow(GovernanceNotSupportedError);
+  });
+
+  test('permits a run with NO active policy or ledger, even on an ungoverned provider', () => {
+    expect(() => assertGovernanceInvariant(UNGOVERNED, {})).not.toThrow();
+  });
+
+  test('a governance-capable provider is never refused, policy and ledger both requested', () => {
+    expect(() =>
+      assertGovernanceInvariant(CLAUDE_CAPABILITIES, {
+        harnessPolicy: ARMED_POLICY,
+        ledgerPath: '/tmp/nc-ledger.ndjson',
+      }),
+    ).not.toThrow();
+  });
+
+  test('is driven by the capability descriptor, not the provider id', () => {
+    // A provider named "codex" that DID advertise support is never refused; a
+    // provider named anything else that does NOT advertise support IS refused —
+    // proving the gate reads `capabilities.supportsHarnessPolicy`, never `id`.
+    const governedCodex: ProviderCapabilities = {
+      ...UNGOVERNED,
+      id: 'codex',
+      supportsHarnessPolicy: true,
+      supportsLedger: true,
+    };
+    expect(() =>
+      assertGovernanceInvariant(governedCodex, { harnessPolicy: ARMED_POLICY }),
+    ).not.toThrow();
+
+    const ungovernedOther: ProviderCapabilities = { ...UNGOVERNED, id: 'some-future-provider' };
+    expect(() =>
+      assertGovernanceInvariant(ungovernedOther, { harnessPolicy: ARMED_POLICY }),
+    ).toThrow(GovernanceNotSupportedError);
+  });
+
+  test('the refusal names the offending provider and both gaps in the message', () => {
+    let caught: unknown;
+    try {
+      assertGovernanceInvariant(UNGOVERNED, {
+        harnessPolicy: ARMED_POLICY,
+        ledgerPath: '/tmp/nc-ledger.ndjson',
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(GovernanceNotSupportedError);
+    const err = caught as GovernanceNotSupportedError;
+    expect(err.providerId).toBe('fake-ungoverned');
+    expect(err.missingHarnessPolicy).toBe(true);
+    expect(err.missingLedger).toBe(true);
+    expect(err.message).toContain("fake-ungoverned");
+    expect(err.message).toContain('Harness governance policy');
+    expect(err.message).toContain('audit ledger');
+  });
+
+  test('CODEX_CAPABILITIES honestly declares no governance support', () => {
+    expect(CODEX_CAPABILITIES.supportsHarnessPolicy).toBe(false);
+    expect(CODEX_CAPABILITIES.supportsLedger).toBe(false);
+  });
+
+  test('CLAUDE_CAPABILITIES declares full governance support', () => {
+    expect(CLAUDE_CAPABILITIES.supportsHarnessPolicy).toBe(true);
+    expect(CLAUDE_CAPABILITIES.supportsLedger).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // The Claude-internal PermissionMode → AutonomyLevel bridge
 // ---------------------------------------------------------------------------
 
@@ -150,6 +259,8 @@ describe('ClaudeAgentProvider', () => {
     expect(caps.supportsSettingSources).toBe(true);
     expect(caps.supportsSessionStore).toBe(true);
     expect(caps.supportsEffort).toBe(true);
+    expect(caps.supportsHarnessPolicy).toBe(true);
+    expect(caps.supportsLedger).toBe(true);
     expect(caps.costTelemetry).toBe('full');
     expect(caps.autonomyLevels).toEqual([
       'bypass',
@@ -166,6 +277,21 @@ describe('ClaudeAgentProvider', () => {
         osSandboxed: false,
       }),
     ).not.toThrow();
+  });
+
+  test('startSession proceeds with an armed Harness policy and a ledger path (#296)', () => {
+    const session = provider.startSession(
+      {
+        sessionId: 100,
+        prompt: 'hi',
+        model: 'claude-opus-4-8',
+        cwd: '/tmp',
+        harnessPolicy: ARMED_POLICY,
+        ledgerPath: '/tmp/nc-ledger.ndjson',
+      },
+      () => {},
+    );
+    expect(session).toBeDefined();
   });
 
   test('startSession resolves the autonomy precedence: override wins', () => {

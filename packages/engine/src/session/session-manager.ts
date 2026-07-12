@@ -30,18 +30,17 @@ import type {
   AgentSession,
   StartSessionParams,
 } from '../providers/agent-provider.js';
-import { AutonomyNotPermittedError } from '../providers/agent-provider.js';
 import {
-  toWireSessionInfo,
-  toWireSessionMessage,
-} from '../providers/claude/mappers.js';
+  AutonomyNotPermittedError,
+  GovernanceNotSupportedError,
+} from '../providers/agent-provider.js';
 import { SessionApi } from '../providers/claude/session-api.js';
 import {
   buildProviderRegistry,
   type ProviderRegistry,
 } from '../providers/provider-factory.js';
-import { validateRule } from '../rule-tester/validate-rule.js';
 import { ScanRouter } from '../scans/scan-router.js';
+import { handleSessionQuery } from './session-query.js';
 
 interface ManagedSession {
   id: number;
@@ -177,161 +176,23 @@ export class SessionManager {
     }
   }
 
-  /**
-   * Answer a `SurfaceQuery` against the SDK session store, returning the
-   * correlated `query-result` event (which the sidecar emits through the same
-   * sink). Pure disk reads/writes via the SDK — no session runner involved. The
-   * `SessionApi` degrades-not-throws, so a read returns an empty/`ok: true` result
-   * rather than rejecting; only a mutation that the SDK reported as failed sets
-   * `ok: false`. The SDK return shapes are mapped to the camelCase wire types.
-   */
+  /** Answer a `SurfaceQuery` against the SDK session store — delegates to {@link
+   *  handleSessionQuery} (extracted for the file-size ratchet; behavior verbatim),
+   *  threading in exactly the collaborators this supervisor already owns. */
   async handleQuery(
     query: SurfaceQuery,
   ): Promise<NightcoreEventOf<'query-result'>> {
-    const { requestId } = query;
-    switch (query.type) {
-      case 'list-sessions': {
-        const sessions = await this.sessionApi.listTaskSessions({
-          ...(query.dir !== undefined ? { dir: query.dir } : {}),
-          ...(query.limit !== undefined ? { limit: query.limit } : {}),
-          ...(query.offset !== undefined ? { offset: query.offset } : {}),
-          ...(query.includeWorktrees !== undefined
-            ? { includeWorktrees: query.includeWorktrees }
-            : {}),
-        });
-        return {
-          type: 'query-result',
-          requestId,
-          ok: true,
-          kind: 'sessions',
-          sessions: sessions.map(toWireSessionInfo),
-        };
-      }
-      case 'get-session-info': {
-        const info = await this.sessionApi.getSessionInfoById(
-          query.sdkSessionId,
-          query.dir !== undefined ? { dir: query.dir } : {},
-        );
-        return {
-          type: 'query-result',
-          requestId,
-          ok: true,
-          kind: 'session-info',
-          info: info !== undefined ? toWireSessionInfo(info) : null,
-        };
-      }
-      case 'get-session-messages': {
-        const messages = await this.sessionApi.getTaskSessionMessages(
-          query.sdkSessionId,
-          {
-            ...(query.dir !== undefined ? { dir: query.dir } : {}),
-            ...(query.limit !== undefined ? { limit: query.limit } : {}),
-            ...(query.offset !== undefined ? { offset: query.offset } : {}),
-            ...(query.includeSystemMessages !== undefined
-              ? { includeSystemMessages: query.includeSystemMessages }
-              : {}),
-          },
-        );
-        return {
-          type: 'query-result',
-          requestId,
-          ok: true,
-          kind: 'messages',
-          messages: messages.map(toWireSessionMessage),
-        };
-      }
-      case 'rename-session': {
-        const ok = await this.sessionApi.renameTaskSession(
-          query.sdkSessionId,
-          query.title,
-          query.dir !== undefined ? { dir: query.dir } : {},
-        );
-        return ok
-          ? { type: 'query-result', requestId, ok: true, kind: 'ack' }
-          : {
-              type: 'query-result',
-              requestId,
-              ok: false,
-              kind: 'ack',
-              error: 'rename failed',
-            };
-      }
-      case 'tag-session': {
-        const ok = await this.sessionApi.tagTaskSession(
-          query.sdkSessionId,
-          query.tag,
-          query.dir !== undefined ? { dir: query.dir } : {},
-        );
-        return ok
-          ? { type: 'query-result', requestId, ok: true, kind: 'ack' }
-          : {
-              type: 'query-result',
-              requestId,
-              ok: false,
-              kind: 'ack',
-              error: 'tag failed',
-            };
-      }
-      case 'get-provider-config': {
-        // The inspector reads RESOLVED, scope-aware config off a transient provider
-        // probe rooted at the project dir (resolution keys off cwd). Reuse a live
-        // session when one exists; else spin the input-less probe session — the
-        // provider shares ONE subprocess and degrades per section, so the snapshot
-        // always resolves (`ok: true`).
-        const projectPath = query.dir ?? process.cwd();
-        const session =
-          query.providerId === undefined
-            ? this.firstLiveRunner() ?? this.makeProbeSession()
-            : this.makeProbeSession(query.providerId);
-        const providerConfig = await session.probeConfig(projectPath);
-        return {
-          type: 'query-result',
-          requestId,
-          ok: true,
-          kind: 'provider-config',
-          providerConfig,
-        };
-      }
-      case 'get-capabilities': {
-        // Provider-static: answer straight from the provider's descriptor (no probe,
-        // no project dir), so the Rust core single-sources the truthful capability
-        // matrix from the engine instead of duplicating it (issue #18).
-        const provider = this.providers.forSession(query.providerId);
-        return {
-          type: 'query-result',
-          requestId,
-          ok: true,
-          kind: 'capabilities',
-          capabilities: provider.capabilities(),
-        };
-      }
-      case 'get-models': {
-        // Provider-dynamic: the model catalog (ids + per-model effort levels) fetched
-        // from the SDK at runtime, not hardcoded. Reuses a live session's query or
-        // spins a transient probe; `listModels()` degrades to `[]` on any error, so
-        // the reply is always `ok: true` (issue #80).
-        return {
-          type: 'query-result',
-          requestId,
-          ok: true,
-          kind: 'models',
-          models: await this.listModels(),
-        };
-      }
-      case 'validate-rule': {
-        // One-shot RuleTester validation (issue #185): load the plugin rule
-        // cross-toolchain and run it (or a structural probe) to confirm an armed
-        // check is a real rule, not a placebo. `validateRule` is fail-SOFT — a load
-        // failure is carried inside `outcome: 'error'`, so the reply stays `ok: true`.
-        return {
-          type: 'query-result',
-          requestId,
-          ok: true,
-          kind: 'rule-validation',
-          ruleValidation: await validateRule(query, this.logger?.child('rule-tester')),
-        };
-      }
-    }
+    return handleSessionQuery(
+      {
+        sessionApi: this.sessionApi,
+        providers: this.providers,
+        listModels: () => this.listModels(),
+        firstLiveRunner: () => this.firstLiveRunner(),
+        makeProbeSession: (providerId) => this.makeProbeSession(providerId),
+        ...(this.logger !== undefined ? { logger: this.logger } : {}),
+      },
+      query,
+    );
   }
 
   /** Number of currently-live sessions. */
@@ -438,10 +299,12 @@ export class SessionManager {
     };
 
     // Construct the run through the provider seam. The fail-closed hooks invariant
-    // runs inside `startSession`: a provider that can't enforce PreToolUse
-    // confinement at the requested autonomy REFUSES here rather than silently
-    // dropping confinement. Surface the refusal as a terminal `session-failed` so the
-    // board shows it like any other failure and the concurrency slot is never taken.
+    // AND the fail-closed governance invariant (issue #296) both run inside
+    // `startSession`: a provider that can't enforce PreToolUse confinement at the
+    // requested autonomy, or can't enforce an armed Harness policy / write a
+    // requested ledger, REFUSES here rather than silently dropping confinement or
+    // governance. Surface the refusal as a terminal `session-failed` so the board
+    // shows it like any other failure and the concurrency slot is never taken.
     let runner: AgentSession;
     try {
       runner = provider.startSession(
@@ -451,18 +314,17 @@ export class SessionManager {
       );
     } catch (error) {
       if (error instanceof AutonomyNotPermittedError) {
-        this.logger?.warn('session refused: autonomy not permitted', {
-          id,
+        return this.refuseSession(id, error.message, 'autonomy not permitted', {
           providerId: error.providerId,
           autonomy: error.autonomy,
         });
-        this.emit({
-          type: 'session-failed',
-          sessionId: id,
-          reason: 'runner-crash',
-          message: error.message,
+      }
+      if (error instanceof GovernanceNotSupportedError) {
+        return this.refuseSession(id, error.message, 'governance not supported', {
+          providerId: error.providerId,
+          missingHarnessPolicy: error.missingHarnessPolicy,
+          missingLedger: error.missingLedger,
         });
-        return id;
       }
       throw error;
     }
@@ -505,6 +367,19 @@ export class SessionManager {
     // floating promise here is safe and keeps dispatch() non-blocking.
     void runner.run().finally(() => this.retire(id));
 
+    return id;
+  }
+
+  /** Log + emit `session-failed` for a preflight-refused run (autonomy or
+   *  governance) — no runner started, so unlike a crash no slot was taken. */
+  private refuseSession(
+    id: number,
+    message: string,
+    reason: string,
+    logContext: Record<string, unknown>,
+  ): number {
+    this.logger?.warn(`session refused: ${reason}`, { id, ...logContext });
+    this.emit({ type: 'session-failed', sessionId: id, reason: 'runner-crash', message });
     return id;
   }
 
