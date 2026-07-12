@@ -15,7 +15,7 @@ import type { TerminalGridProps } from './TerminalGrid.types';
 function GridPanePreview({ session }: { session: TerminalSessionInfo }) {
   const Identity = session.confined ? LockIcon : TerminalIcon;
   return (
-    <div className="flex items-center gap-1.5 rounded-lg border border-primary/70 bg-[#12121a] px-3 py-2 shadow-lg">
+    <div className="flex items-center gap-1.5 rounded-lg border border-primary/70 bg-popover px-3 py-2 shadow-lg">
       <Identity
         size={12}
         className={session.confined ? 'text-warning' : 'text-primary/80'}

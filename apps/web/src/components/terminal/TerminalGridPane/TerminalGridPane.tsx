@@ -141,7 +141,7 @@ export function TerminalGridPane({
     <div
       ref={v.setRootRef}
       data-session-id={session.id}
-      className={`group flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-[#0a0a0f] transition-colors ${
+      className={`group flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-background transition-colors ${
         v.isOver ? 'border-primary/70' : 'border-border'
       } ${v.isDragging ? 'opacity-40' : ''} ${
         broadcasting ? 'ring-2 ring-amber-400/80 ring-inset' : ''

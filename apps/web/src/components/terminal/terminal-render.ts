@@ -6,7 +6,7 @@
  */
 import { openExternal } from '@/lib/bridge';
 
-import { TERMINAL_RENDER_OPTIONS } from './terminal-shared';
+import { resolveTerminalTheme, TERMINAL_RENDER_OPTIONS } from './terminal-shared';
 
 /** The two live-terminal render preferences (spec PR 3d): xterm font size (px) and
  *  scrollback length (lines). Resolved from Settings by the view and applied to every
@@ -16,13 +16,15 @@ export interface TerminalRenderPrefs {
   readonly scrollback: number;
 }
 
-/** Live-pane xterm options: the shared cosmic-dark render config plus a blinking
- *  cursor and the current font-size / scrollback render prefs. The renderer is DOM by
+/** Live-pane xterm options: the shared render config plus the token-resolved theme, a
+ *  blinking cursor, and the current font-size / scrollback render prefs. The theme is
+ *  resolved at spawn time from the live design tokens (#235). The renderer is DOM by
  *  default; a WebGL addon is loaded post-open when the session opted into the GPU
  *  toggle (decision 7). */
 export function buildTerminalOptions(prefs: TerminalRenderPrefs) {
   return {
     ...TERMINAL_RENDER_OPTIONS,
+    theme: resolveTerminalTheme(),
     cursorBlink: true,
     fontSize: prefs.fontSize,
     scrollback: prefs.scrollback,

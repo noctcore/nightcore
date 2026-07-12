@@ -154,7 +154,7 @@ function IdentityHeader({
 export function TerminalPane({ session, isDropTarget, onRename, link }: TerminalPaneProps) {
   const { containerRef, search } = useTerminalPane(session);
   return (
-    <div data-session-id={session.id} className="flex min-h-0 flex-1 flex-col bg-[#0a0a0f]">
+    <div data-session-id={session.id} className="flex min-h-0 flex-1 flex-col bg-background">
       <IdentityHeader session={session} onRename={onRename} link={link} />
       <div ref={search.rootRef} className="relative min-h-0 flex-1">
         <div ref={containerRef} className="h-full overflow-hidden p-1.5" />

@@ -9,15 +9,20 @@ import { useEffect, useRef } from 'react';
 
 import { readTerminalPersisted } from '@/lib/bridge';
 
-import { decodeScrollback, TERMINAL_RENDER_OPTIONS } from '../terminal-shared';
+import { decodeScrollback, resolveTerminalTheme, TERMINAL_RENDER_OPTIONS } from '../terminal-shared';
 
-/** Read-only xterm options: the shared render config, no cursor, stdin disabled so
- *  the replay can't be typed into. */
-const READONLY_OPTIONS = {
-  ...TERMINAL_RENDER_OPTIONS,
-  cursorBlink: false,
-  disableStdin: true,
-} as const;
+/** Read-only xterm options: the shared render config plus the token-resolved theme
+ *  (#235), no cursor, stdin disabled so the replay can't be typed into. Built per open
+ *  (not a module const) so the theme is read from the live design tokens at mount, not
+ *  at import time. */
+function buildReadonlyOptions() {
+  return {
+    ...TERMINAL_RENDER_OPTIONS,
+    theme: resolveTerminalTheme(),
+    cursorBlink: false,
+    disableStdin: true,
+  };
+}
 
 /** Open a read-only xterm into this pane's container and write the persisted
  *  session's decoded scrollback into it once. Fetches the bytes for `id` on mount
@@ -29,7 +34,7 @@ export function useTerminalReadonlyPane(id: string) {
     const container = containerRef.current;
     if (container === null) return;
     let disposed = false;
-    const term = new Terminal(READONLY_OPTIONS);
+    const term = new Terminal(buildReadonlyOptions());
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(container);

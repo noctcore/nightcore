@@ -168,14 +168,14 @@ function TaskCardImpl({
           task.status === 'failed') && (
           <div className="mt-2.5 flex flex-wrap gap-1.5">
             {showBranch && (
-              <span className="flex items-center gap-1 rounded-md bg-white/[0.03] px-1.5 py-0.5 font-mono text-[9.5px] text-muted-foreground">
+              <span className="flex min-w-0 max-w-full items-center gap-1 truncate rounded-md bg-white/[0.03] px-1.5 py-0.5 font-mono text-[9.5px] text-muted-foreground">
                 <BranchIcon size={11} />
                 {branch}
               </span>
             )}
             {showMainChip && (
               <span
-                className="flex items-center gap-1 rounded-md bg-white/[0.03] px-1.5 py-0.5 font-mono text-[9.5px] text-muted-foreground"
+                className="flex min-w-0 max-w-full items-center gap-1 truncate rounded-md bg-white/[0.03] px-1.5 py-0.5 font-mono text-[9.5px] text-muted-foreground"
                 title="Runs on the project directory — no worktree"
               >
                 <BoardIcon size={11} />
@@ -202,7 +202,7 @@ function TaskCardImpl({
             )}
             {blocked && (
               <span
-                className="flex max-w-full items-center gap-1 truncate rounded-md bg-[oklch(74%_.13_60_/_.12)] px-1.5 py-0.5 font-mono text-[9.5px] text-[oklch(74%_.13_60)]"
+                className="flex max-w-full items-center gap-1 truncate rounded-md bg-warning/[0.12] px-1.5 py-0.5 font-mono text-[9.5px] text-warning"
                 title={depChip.tooltip}
               >
                 <LockIcon size={11} />

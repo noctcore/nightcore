@@ -39,7 +39,7 @@ export function TerminalReadonlyPane({
 }: TerminalReadonlyPaneProps) {
   const { containerRef } = useTerminalReadonlyPane(info.id);
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-[#0a0a0f]">
+    <div className="flex min-h-0 flex-1 flex-col bg-background">
       <RestoredHeader shell={info.shell} cwd={info.cwd} />
       <div className="flex items-center gap-3 border-b border-border/60 bg-warning/[0.06] px-3 py-2">
         <span className="min-w-0 flex-1 text-[12px] text-muted-foreground">

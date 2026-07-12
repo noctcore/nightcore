@@ -56,6 +56,16 @@ test('names the unfinished dependency in the human-readable blocked chip (T13)',
     .toBeInTheDocument();
 });
 
+test('the blocked chip uses the shared warning design token, not a hardcoded oklch (#236)', async () => {
+  const screen = render(<Blocked />);
+  const chip = screen.getByText('blocked · Generate API client');
+  await expect.element(chip).toBeInTheDocument();
+  // Matches its sibling status chips (needs-approval etc.) on the same card rather
+  // than restating amber as raw `oklch(...)`.
+  expect(chip.element()).toHaveClass('text-warning');
+  expect(chip.element()).toHaveClass('bg-warning/[0.12]');
+});
+
 test('calls onCancel from the running card', async () => {
   const onCancel = vi.fn();
   const screen = render(<Running onCancel={onCancel} />);
@@ -68,9 +78,29 @@ test('renders the branch chip from task.branch', async () => {
   await expect.element(screen.getByText('nc/auth-guard')).toBeInTheDocument();
 });
 
+test('the branch chip truncates a long branch name instead of overflowing the card (#237)', async () => {
+  const screen = render(<Done />);
+  const chip = screen.getByText('nc/auth-guard');
+  await expect.element(chip).toBeInTheDocument();
+  // A min-w-0 flex item + max-w-full + truncate keeps a long branch inside the card,
+  // matching the blocked/error chips' overflow behavior.
+  expect(chip.element()).toHaveClass('truncate');
+  expect(chip.element()).toHaveClass('max-w-full');
+  expect(chip.element()).toHaveClass('min-w-0');
+});
+
 test('renders a "main" chip for a main-mode task instead of a branch', async () => {
   const screen = render(<MainMode />);
   await expect.element(screen.getByText('main')).toBeInTheDocument();
+});
+
+test('the main chip also truncates so a long context cannot overflow the card (#237)', async () => {
+  const screen = render(<MainMode />);
+  const chip = screen.getByText('main');
+  await expect.element(chip).toBeInTheDocument();
+  expect(chip.element()).toHaveClass('truncate');
+  expect(chip.element()).toHaveClass('max-w-full');
+  expect(chip.element()).toHaveClass('min-w-0');
 });
 
 test('suppresses Merge for a committed main-mode task', async () => {

@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'vitest';
 
-import { displayPath, gridColumns, terminalLabel, unreadBadge } from './terminal-shared';
+import {
+  displayPath,
+  gridColumns,
+  resolveTerminalTheme,
+  terminalLabel,
+  unreadBadge,
+} from './terminal-shared';
 
 // Pure-string tests (no PTY, no host dependence) — these prove the Windows
 // verbatim-prefix display fix on any CI host, including the Linux/macOS boxes that
@@ -73,5 +79,53 @@ describe('unreadBadge', () => {
     expect(unreadBadge(7)).toBe('7');
     expect(unreadBadge(99)).toBe('99');
     expect(unreadBadge(128)).toBe('99+');
+  });
+});
+
+describe('resolveTerminalTheme', () => {
+  // #235: the xterm theme must come from the live design tokens, not hand-eyeballed
+  // hex restatements that silently drift from styles.css. These run in the real test
+  // browser, so we drive the resolver by setting the `--nc-*` custom properties inline
+  // on the document root and asserting they flow through verbatim.
+  test('reads the live --nc-* tokens for background/foreground/cursor and derives selection from primary', () => {
+    const root = document.documentElement;
+    root.style.setProperty('--nc-background', 'oklch(9% 0.035 280)');
+    root.style.setProperty('--nc-foreground', 'oklch(97% 0.015 290)');
+    root.style.setProperty('--nc-primary', 'oklch(78% 0.22 290)');
+    try {
+      const theme = resolveTerminalTheme();
+      expect(theme.background).toBe('oklch(9% 0.035 280)');
+      expect(theme.foreground).toBe('oklch(97% 0.015 290)');
+      expect(theme.cursor).toBe('oklch(78% 0.22 290)');
+      // Selection is the primary at 30% via color-mix (already used in styles.css).
+      expect(theme.selectionBackground).toBe(
+        'color-mix(in oklch, oklch(78% 0.22 290) 30%, transparent)',
+      );
+    } finally {
+      root.style.removeProperty('--nc-background');
+      root.style.removeProperty('--nc-foreground');
+      root.style.removeProperty('--nc-primary');
+    }
+  });
+
+  test('falls back to the shipped cosmic-dark hex when a token is unreadable (stylesheet-less host)', () => {
+    const root = document.documentElement;
+    // Force the tokens empty so the fallback branch is exercised deterministically.
+    root.style.setProperty('--nc-background', '');
+    root.style.setProperty('--nc-foreground', '');
+    root.style.setProperty('--nc-primary', '');
+    try {
+      const theme = resolveTerminalTheme();
+      // Every field is a non-empty, xterm-parseable color (never '' — which would
+      // throw inside xterm's color parser).
+      expect(theme.background).toBeTruthy();
+      expect(theme.foreground).toBeTruthy();
+      expect(theme.cursor).toBeTruthy();
+      expect(theme.selectionBackground).toBeTruthy();
+    } finally {
+      root.style.removeProperty('--nc-background');
+      root.style.removeProperty('--nc-foreground');
+      root.style.removeProperty('--nc-primary');
+    }
   });
 });

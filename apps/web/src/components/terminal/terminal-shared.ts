@@ -55,23 +55,67 @@ export function resolveScrollback(value: number | null | undefined): number {
   return clamp(value, MIN_TERMINAL_SCROLLBACK, MAX_TERMINAL_SCROLLBACK);
 }
 
-/** Shared xterm visual config (font + cosmic-dark theme) for BOTH the live pane and
- *  the read-only restore pane, so the two render identically. WKWebView needs an
- *  explicit `fontSize`/`fontFamily` (the feasibility trap list) — inherited page
- *  fonts don't reach xterm's cells. The live pane spreads this + `cursorBlink`; the
- *  read-only pane spreads it + `disableStdin` / no cursor. */
+/** Shared xterm visual config (font only) for BOTH the live pane and the read-only
+ *  restore pane, so the two render identically. WKWebView needs an explicit
+ *  `fontSize`/`fontFamily` (the feasibility trap list) — inherited page fonts don't
+ *  reach xterm's cells. The live pane spreads this + `cursorBlink`; the read-only pane
+ *  spreads it + `disableStdin` / no cursor. The COLOR theme is resolved separately at
+ *  spawn time from the live design tokens — see {@link resolveTerminalTheme} (#235). */
 export const TERMINAL_RENDER_OPTIONS = {
   fontSize: 13,
   fontFamily:
     'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
   lineHeight: 1.2,
-  theme: {
-    background: '#0a0a0f',
-    foreground: '#e4e4ef',
-    cursor: '#a78bfa',
-    selectionBackground: 'rgba(167, 139, 250, 0.3)',
-  },
 } as const;
+
+/** The xterm theme fields Nightcore drives from the design system. */
+export interface TerminalTheme {
+  background: string;
+  foreground: string;
+  cursor: string;
+  selectionBackground: string;
+}
+
+/** Fallback theme reproducing the shipped cosmic-dark look, used whenever the CSS
+ *  custom properties can't be read (no `document`, or a stylesheet-less test host).
+ *  These are the pre-token hand-eyeballed hex restatements; the live app reads the
+ *  real oklch tokens via {@link resolveTerminalTheme}. */
+const TERMINAL_THEME_FALLBACK: TerminalTheme = {
+  background: '#0a0a0f',
+  foreground: '#e4e4ef',
+  cursor: '#a78bfa',
+  selectionBackground: 'rgba(167, 139, 250, 0.3)',
+};
+
+/** Read a `--nc-*` design token off the document root, trimmed. Returns '' when there
+ *  is no `document` (a node test host) or the property is unset — the caller then
+ *  falls back to the shipped hex so xterm always receives a parseable color. */
+function readCssToken(name: string): string {
+  if (typeof document === 'undefined') return '';
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+/** Resolve the xterm terminal theme from the live design tokens (#235): the cosmic
+ *  background/foreground and the purple cursor/selection are the SAME oklch values the
+ *  rest of the app uses (`--nc-background`, `--nc-foreground`, `--nc-primary`) instead
+ *  of hand-eyeballed hex restatements that silently drift from the theme. xterm needs
+ *  concrete color strings (not CSS `var()`), so the resolved token values are read at
+ *  spawn time; the selection is the primary at 30% via `color-mix` (already used
+ *  elsewhere in the app's stylesheet). Any token that can't be read falls back to the
+ *  shipped hex, so a stylesheet-less host still gets a valid, parseable theme. */
+export function resolveTerminalTheme(): TerminalTheme {
+  const background = readCssToken('--nc-background');
+  const foreground = readCssToken('--nc-foreground');
+  const primary = readCssToken('--nc-primary');
+  return {
+    background: background || TERMINAL_THEME_FALLBACK.background,
+    foreground: foreground || TERMINAL_THEME_FALLBACK.foreground,
+    cursor: primary || TERMINAL_THEME_FALLBACK.cursor,
+    selectionBackground: primary
+      ? `color-mix(in oklch, ${primary} 30%, transparent)`
+      : TERMINAL_THEME_FALLBACK.selectionBackground,
+  };
+}
 
 /** The last segment of a cwd — a tab's short label. Strips the Windows verbatim
  *  prefix and splits on BOTH separators, so `\\?\X:\dev\nightcore` and
