@@ -10,6 +10,7 @@ import {
   type RunMode,
   type SettingsPatch,
 } from '@/lib/bridge';
+import { type UsageMeterEnabledState, useUsageMeterEnabled } from '@/lib/useUsageMeterEnabled';
 
 import type {
   SettingsPage,
@@ -56,6 +57,11 @@ export interface SettingsViewState {
   /** Patch a global-only field (e.g. `cleanupWorktrees`, `notifyOnComplete`),
    *  never scoped to a project — those settings are global by design. */
   patchGlobal: (patch: SettingsPatch) => void;
+  /** The shared reactive usage-meter enabled signal (issue #305): the single
+   *  source of truth the Usage-page toggle binds to, kept in sync with the
+   *  sidebar widget via the same `nc:usage` push the Rust enable/disable
+   *  commands emit. */
+  usageMeter: UsageMeterEnabledState;
 }
 
 /**
@@ -115,6 +121,8 @@ export function useSettingsView({
     [onUpdate],
   );
 
+  const usageMeter = useUsageMeterEnabled(settings.usageMeterEnabled);
+
   return {
     page,
     setPage: useCallback((next: SettingsPage) => setPage(next), []),
@@ -124,6 +132,7 @@ export function useSettingsView({
     effective,
     patchScoped,
     patchGlobal,
+    usageMeter,
   };
 }
 

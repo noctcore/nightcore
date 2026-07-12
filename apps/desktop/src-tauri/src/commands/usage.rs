@@ -9,11 +9,11 @@
 //! USER-ONLY (spec §2): these commands are invokable only from the webview; no
 //! agent/sidecar path reaches the meter.
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::settings::{SettingsPatch, SettingsStore};
 use crate::usage::contract::{UsageCost, UsageMeter};
-use crate::usage::{arm, kick, prime_credentials, UsageRegistry, REFRESH_MIN_AGE};
+use crate::usage::{arm, kick, prime_credentials, UsageRegistry, REFRESH_MIN_AGE, USAGE_EVENT};
 
 /// Opt in (spec decision 5): (a) flip the persisted `usage_meter_enabled` flag,
 /// (b) perform the FIRST credential read so the macOS Keychain prompt fires as a
@@ -21,6 +21,11 @@ use crate::usage::{arm, kick, prime_credentials, UsageRegistry, REFRESH_MIN_AGE}
 /// snapshot (the first real windows arrive shortly over `nc:usage`). If the user
 /// denies the Keychain prompt, the provider resolves to `Unauthorized`/`NotConnected`
 /// — never a crash.
+///
+/// Also PUSHES that same snapshot over `nc:usage` (issue #305): the return value
+/// only reaches the caller (e.g. the Settings toggle), but other mounted surfaces
+/// (the sidebar widget) only ever render off the push — without this, an enable
+/// triggered from Settings never reached the sidebar until the next 10-min poll.
 #[tauri::command]
 pub async fn enable_usage_meter(app: AppHandle) -> Result<UsageMeter, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -33,7 +38,9 @@ pub async fn enable_usage_meter(app: AppHandle) -> Result<UsageMeter, String> {
         let reg = app
             .try_state::<UsageRegistry>()
             .ok_or("usage registry unavailable")?;
-        Ok(reg.snapshot())
+        let snapshot = reg.snapshot();
+        let _ = app.emit(USAGE_EVENT, snapshot.clone());
+        Ok(snapshot)
     })
     .await
     .map_err(|e| format!("enable usage meter failed to run: {e}"))?
@@ -41,11 +48,18 @@ pub async fn enable_usage_meter(app: AppHandle) -> Result<UsageMeter, String> {
 
 /// Opt out: flip the flag off + wake the loop so it re-checks and parks (spending
 /// zero network while disabled).
+///
+/// Also PUSHES a fresh `disabled_meter()` snapshot over `nc:usage` (issue #305): the
+/// poll loop only parks silently on its own kick (`poller::run_loop`) — it never
+/// emits on the disable path — so without this push, a surface that renders purely
+/// off the `nc:usage` snapshot (the sidebar widget) stayed showing live data until
+/// the next relaunch, even though the meter had just been turned off.
 #[tauri::command]
 pub async fn disable_usage_meter(app: AppHandle) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         set_enabled(&app, false)?;
         kick(&app);
+        let _ = app.emit(USAGE_EVENT, UsageRegistry::disabled_meter());
         Ok(())
     })
     .await

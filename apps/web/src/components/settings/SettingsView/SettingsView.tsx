@@ -143,6 +143,7 @@ export function SettingsView({
     effective,
     patchScoped,
     patchGlobal,
+    usageMeter,
   } = useSettingsView({ settings, activeProjectId, onUpdate });
 
   const appInfo = useAppInfo();
@@ -159,6 +160,7 @@ export function SettingsView({
     isAppIdle,
     editors,
     onNavigate: setPage,
+    usageMeter,
   });
   const note = PAGE_NOTES[page];
 

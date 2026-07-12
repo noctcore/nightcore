@@ -25,6 +25,7 @@ import {
 import {
   isEffortSupported,
 } from '@/lib/models';
+import type { UsageMeterEnabledState } from '@/lib/useUsageMeterEnabled';
 
 import { buildAboutCards } from './settings-about-cards';
 import { buildAutoModeCards } from './settings-automode-cards';
@@ -79,6 +80,9 @@ export interface CardContext {
   editors: DetectedEditor[];
   /** Jump the left nav to another page (e.g. the Auto Mode → Permissions cross-link). */
   onNavigate: (page: SettingsPage) => void;
+  /** The shared reactive usage-meter enabled signal (issue #305) the Usage page's
+   *  toggle binds to. */
+  usageMeter: UsageMeterEnabledState;
 }
 
 /** Build the card set for a settings page. The run-shaping controls (model,
@@ -95,6 +99,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
     onRestartOnboarding,
     editors,
     onNavigate,
+    usageMeter,
   } = ctx;
   switch (page) {
     case 'models':
@@ -203,7 +208,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
     case 'automode':
       return buildAutoModeCards(settings, patchGlobal, onNavigate);
     case 'usage':
-      return buildUsageCards(settings, patchGlobal);
+      return buildUsageCards(settings, patchGlobal, usageMeter);
     case 'worktrees':
       return [
         {

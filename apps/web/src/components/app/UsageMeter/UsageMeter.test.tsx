@@ -172,6 +172,28 @@ test('fetches on mount, updates on a live push, and refetches on window focus', 
   expect(source.refresh).toHaveBeenCalled();
 });
 
+test('issue #305: a live disable push flips an active widget back to the Enable affordance', async () => {
+  // Regression coverage for the Settings → sidebar direction of the desync bug:
+  // `disable_usage_meter` now pushes a fresh `disabled_meter()` shape over
+  // `nc:usage` as soon as Settings turns the meter off, so the widget — which
+  // renders purely off its own live snapshot — must flip back to the dormant
+  // "Enable" affordance without a remount or a click of its own.
+  const disabled: UsageMeter = {
+    providers: [
+      { provider: 'claude', status: 'disabled', stale: false, windows: [] },
+      { provider: 'codex', status: 'disabled', stale: false, windows: [] },
+    ],
+  };
+  const { source, push } = makeSpySource(CLAUDE_OK);
+  const screen = render(<Active source={source} />);
+  await expect.element(screen.getByText('Session (5h)')).toBeInTheDocument();
+
+  push(disabled);
+  await expect
+    .element(screen.getByRole('button', { name: 'Enable usage meter' }))
+    .toBeVisible();
+});
+
 test('the collapsed rail renders icon-only, not labeled bars', async () => {
   const screen = render(<Collapsed />);
   // The provider dot is a button whose accessible name is the compact summary…
