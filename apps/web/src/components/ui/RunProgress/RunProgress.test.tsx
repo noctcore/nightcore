@@ -5,7 +5,8 @@ import { render } from 'vitest-browser-react';
 import { useElapsedMs } from './RunProgress.hooks';
 import * as stories from './RunProgress.stories';
 
-const { Running, CustomUnitLabel, Synthesizing, WithError, Completed } = composeStories(stories);
+const { Running, CustomUnitLabel, DeepRounds, Synthesizing, WithError, Completed } =
+  composeStories(stories);
 
 test('renders the overall bar with the finished/total lens count', async () => {
   const screen = render(<Running />);
@@ -45,6 +46,17 @@ test('fires onOpenCategory when a done row is clicked', async () => {
   const screen = render(<Running onOpenCategory={onOpenCategory} />);
   await screen.getByRole('button', { name: /Imports & Boundaries/ }).click();
   expect(onOpenCategory).toHaveBeenCalledWith('imports');
+});
+
+test('deep mode: a running category with round data shows "round N (M new)" instead of scanning…', async () => {
+  const screen = render(<DeepRounds />);
+  await expect.element(screen.getByText('round 3 (2 new)')).toBeVisible();
+  expect(screen.container.textContent).not.toContain('scanning…');
+});
+
+test('deep mode: a done category with round data appends the round to its finding count', async () => {
+  const screen = render(<DeepRounds />);
+  await expect.element(screen.getByText('8 findings · round 5')).toBeVisible();
 });
 
 test('shows the synthesis row only while synthesizing', async () => {

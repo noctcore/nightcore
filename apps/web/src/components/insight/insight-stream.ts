@@ -20,6 +20,7 @@ import type {
   StoredFinding,
 } from '@/lib/bridge';
 import {
+  addUsage,
   enumGuard,
   makeScanFold,
   narrowMembers,
@@ -33,6 +34,16 @@ import type { InsightFinding, RunStatus } from './insight.types';
 
 /** A category's progress within a run. */
 export type CategoryProgress = 'pending' | 'running' | 'done' | 'error';
+
+/** Deep mode (issue #294): one category's round progress — the 1-based round index
+ *  and how many net-new (post-dedup) findings that round contributed. Keyed by
+ *  category in {@link InsightStream.categoryRounds}; a missing key means that
+ *  category hasn't completed a round yet (classic single-pass runs never populate
+ *  this map at all). */
+export interface CategoryRoundInfo {
+  round: number;
+  newFindingsThisRound: number;
+}
 
 /** Membership guard for the web-local `FindingStatus` union (no contract schema),
  *  mirroring `insight.types.ts` exactly. */
@@ -60,6 +71,9 @@ export interface InsightStream {
   /** Why the run failed, when `status === 'failed'`. Only set from the live
    *  `analysis-failed` event (a reloaded persisted run carries no reason). */
   failureReason: AnalysisFailureReason | null;
+  /** Deep mode (issue #294): per-category round progress, keyed by category. Empty
+   *  for a classic single-pass run (which never emits round events). */
+  categoryRounds: Record<string, CategoryRoundInfo>;
 }
 
 export const EMPTY_INSIGHT_STREAM: InsightStream = {
@@ -70,6 +84,7 @@ export const EMPTY_INSIGHT_STREAM: InsightStream = {
   requestedCategories: [],
   categoryState: {},
   findings: [],
+  categoryRounds: {},
   costUsd: 0,
   usage: { inputTokens: 0, outputTokens: 0 },
   durationMs: 0,
@@ -155,6 +170,15 @@ export function streamFromRun(run: InsightRun): InsightStream {
     // The persisted run records no failure reason — a reloaded failed run can't
     // distinguish a cancel from a crash, so it falls back to the generic banner.
     failureReason: null,
+    // Deep mode (issue #294): the persisted per-category round count survives
+    // reconcile/resume; `newFindingsThisRound` isn't persisted (it's a
+    // point-in-time delta), so a reloaded run reports 0 for it.
+    categoryRounds: Object.fromEntries(
+      Object.entries(run.roundsByCategory).map(([category, round]) => [
+        category,
+        { round, newFindingsThisRound: 0 },
+      ]),
+    ),
   };
 }
 
@@ -205,6 +229,32 @@ export const foldInsight = makeScanFold<
           errored: Boolean(event.error),
           costUsd: event.costUsd,
           usage: event.usage,
+        };
+      // Deep mode (issue #294): one round of a category's multi-round loop finished.
+      // `event.findings` is already the CUMULATIVE grounded set for that category
+      // across every round so far, so this replaces (not appends to) the category's
+      // slice of `findings` — the same replace-by-step shape `step-completed` uses,
+      // via the `apply` escape hatch so the category stays `running` (more rounds
+      // may still land; deep mode never emits a per-category terminal event).
+      case 'analysis-category-round-completed':
+        return {
+          kind: 'apply',
+          next: (prev) => ({
+            ...prev,
+            findings: [
+              ...prev.findings.filter((f) => f.category !== event.category),
+              ...event.findings.map(wireToFinding),
+            ],
+            costUsd: prev.costUsd + event.costUsd,
+            usage: addUsage(prev.usage, event.usage),
+            categoryRounds: {
+              ...prev.categoryRounds,
+              [event.category]: {
+                round: event.round,
+                newFindingsThisRound: event.newFindingsThisRound,
+              },
+            },
+          }),
         };
       case 'analysis-completed':
         return {

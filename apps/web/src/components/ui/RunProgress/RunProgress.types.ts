@@ -24,6 +24,13 @@ export interface RunProgressUsage {
   outputTokens: number;
 }
 
+/** Deep mode only (issue #294): one category's round progress — the 1-based round
+ *  index and how many net-new findings that round contributed. */
+export interface RunProgressCategoryRound {
+  round: number;
+  newFindingsThisRound: number;
+}
+
 /** Props for the RunProgress component. */
 export interface RunProgressProps {
   /** The run's lifecycle status; drives the live-elapsed ticker and the header dot. */
@@ -34,6 +41,10 @@ export interface RunProgressProps {
   categoryState: Record<string, CategoryRunState>;
   /** Per-category finding count, shown on `done` rows. Missing keys count as `0`. */
   findingCounts: Record<string, number>;
+  /** Deep mode only (issue #294): per-category round progress. A missing key
+   *  renders the classic row text ("scanning…" / "N findings") — absent entirely
+   *  for a non-deep run, so those stay visually unchanged. */
+  categoryRounds?: Record<string, RunProgressCategoryRound>;
   /** Noun for the overall count readout (`{finished} / {total} {unitLabel}`).
    *  Defaults to `lenses`; Insight passes `categories`. */
   unitLabel?: string;

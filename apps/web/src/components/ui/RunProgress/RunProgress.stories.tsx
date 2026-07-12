@@ -83,6 +83,17 @@ export const Synthesizing: Story = {
   },
 };
 
+/** Deep mode (issue #294): a running category shows "round N (M new)" instead of
+ *  "scanning…"; a category with no round yet renders the classic text unchanged. */
+export const DeepRounds: Story = {
+  args: {
+    categoryRounds: {
+      architecture: { round: 5, newFindingsThisRound: 0 },
+      naming: { round: 3, newFindingsThisRound: 2 },
+    },
+  },
+};
+
 /** A lens that errored still renders a clickable row. */
 export const WithError: Story = {
   args: {

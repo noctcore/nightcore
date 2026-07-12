@@ -18,6 +18,11 @@ export interface InsightRunConfig
   extends Omit<RunConfig<FindingCategory>, 'prefill'> {
   scope: AnalysisScope;
   setScope: (scope: AnalysisScope) => void;
+  /** Opt-in DEEP scan mode (issue #294): multi-round convergence loop per category
+   *  instead of one pass. Defaults `false`; never carried across "New run"
+   *  pre-fill — each run starts from the classic single-pass mode. */
+  deep: boolean;
+  setDeep: (deep: boolean) => void;
   /** Alias of `canRun`, kept for the Analyze CTA's readability. */
   canAnalyze: boolean;
   prefill: (opts: InsightRunConfigPrefill) => void;

@@ -29,3 +29,24 @@ test('toggling a category off updates the lens count hint', async () => {
   await screen.getByRole('button', { name: /^architecture$/i }).click();
   await expect.element(screen.getByText(/across 8 lenses/i)).toBeInTheDocument();
 });
+
+test('defaults to Standard mode and shows no Deep-mode hint', async () => {
+  const screen = render(<Idle />);
+  await expect
+    .element(screen.getByRole('radio', { name: /^standard$/i }))
+    .toHaveAttribute('aria-checked', 'true');
+  expect(screen.container.textContent).not.toContain('Deep mode');
+});
+
+test('selecting Deep mode adds the Deep-mode hint', async () => {
+  const screen = render(<Idle />);
+  await screen.getByRole('radio', { name: /^deep$/i }).click();
+  await expect
+    .element(screen.getByRole('radio', { name: /^deep$/i }))
+    .toHaveAttribute('aria-checked', 'true');
+  await expect
+    .element(
+      screen.getByText(/Deep mode: multiple rounds per category until convergence/i),
+    )
+    .toBeInTheDocument();
+});

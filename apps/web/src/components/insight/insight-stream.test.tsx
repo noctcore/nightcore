@@ -133,6 +133,88 @@ describe('foldInsight', () => {
     expect(s.findings.map((f) => f.id).sort()).toEqual(['b1', 's1']);
   });
 
+  it('a round-completed event grows findings, accumulates cost/usage, and keeps the category running', () => {
+    const base: InsightStream = {
+      ...EMPTY_INSIGHT_STREAM,
+      runId: 'run-1',
+      status: 'running',
+      requestedCategories: ['bugs'],
+      categoryState: { bugs: 'running' },
+    };
+    const round1 = foldInsight(base, {
+      type: 'analysis-category-round-completed',
+      runId: 'run-1',
+      category: 'bugs',
+      round: 1,
+      newFindingsThisRound: 1,
+      findings: [wireFinding({ id: 'b1', fingerprint: 'b1' })],
+      usage: USAGE,
+      costUsd: 0.02,
+      durationMs: 5000,
+    } as AnalysisEvent);
+    expect(round1.findings).toHaveLength(1);
+    // Deep mode never emits a per-category terminal event — the round leaves the
+    // category `running` (not `done`) so the UI doesn't wait on an event that
+    // never comes.
+    expect(round1.categoryState.bugs).toBe('running');
+    expect(round1.categoryRounds.bugs).toEqual({ round: 1, newFindingsThisRound: 1 });
+    expect(round1.costUsd).toBeCloseTo(0.02);
+    expect(round1.usage.inputTokens).toBe(100);
+
+    // A second round's CUMULATIVE findings replace (not append to) the category's
+    // slice — the grid grows as rounds land, but stays de-duplicated per round.
+    const round2 = foldInsight(round1, {
+      type: 'analysis-category-round-completed',
+      runId: 'run-1',
+      category: 'bugs',
+      round: 2,
+      newFindingsThisRound: 1,
+      findings: [
+        wireFinding({ id: 'b1', fingerprint: 'b1' }),
+        wireFinding({ id: 'b2', fingerprint: 'b2' }),
+      ],
+      usage: USAGE,
+      costUsd: 0.03,
+      durationMs: 4000,
+    } as AnalysisEvent);
+    expect(round2.findings.map((f) => f.id).sort()).toEqual(['b1', 'b2']);
+    expect(round2.categoryRounds.bugs).toEqual({ round: 2, newFindingsThisRound: 1 });
+    expect(round2.costUsd).toBeCloseTo(0.05);
+  });
+
+  it('a round-completed event for one category leaves another category’s findings alone', () => {
+    let s: InsightStream = {
+      ...EMPTY_INSIGHT_STREAM,
+      runId: 'run-1',
+      status: 'running',
+      requestedCategories: ['bugs', 'security'],
+      categoryState: { bugs: 'running', security: 'running' },
+    };
+    s = foldInsight(s, {
+      type: 'analysis-category-round-completed',
+      runId: 'run-1',
+      category: 'security',
+      round: 1,
+      newFindingsThisRound: 1,
+      findings: [wireFinding({ id: 's1', category: 'security', fingerprint: 's1' })],
+      costUsd: 0,
+    } as AnalysisEvent);
+    s = foldInsight(s, {
+      type: 'analysis-category-round-completed',
+      runId: 'run-1',
+      category: 'bugs',
+      round: 1,
+      newFindingsThisRound: 1,
+      findings: [wireFinding({ id: 'b1', fingerprint: 'b1' })],
+      costUsd: 0,
+    } as AnalysisEvent);
+    expect(s.findings.map((f) => f.id).sort()).toEqual(['b1', 's1']);
+    expect(s.categoryRounds).toEqual({
+      security: { round: 1, newFindingsThisRound: 1 },
+      bugs: { round: 1, newFindingsThisRound: 1 },
+    });
+  });
+
   it('analysis-completed sets the final findings + totals and marks all done', () => {
     const base: InsightStream = {
       ...EMPTY_INSIGHT_STREAM,
@@ -251,6 +333,32 @@ describe('normalizers', () => {
     expect(s.scope).toBe('diff');
     expect(s.categoryState.bugs).toBe('done');
     expect(s.costUsd).toBe(0.5);
+    expect(s.categoryRounds).toEqual({});
+  });
+
+  it('streamFromRun projects a deep run’s persisted round counts into categoryRounds', () => {
+    const run: InsightRun = {
+      id: 'run-1',
+      projectPath: '/proj',
+      scope: 'repo',
+      status: 'completed',
+      categories: ['bugs', 'security'],
+      model: 'm',
+      createdAt: 1,
+      updatedAt: 2,
+      costUsd: 1.2,
+      durationMs: 60000,
+      usage: { inputTokens: 100, outputTokens: 50 },
+      findings: [],
+      roundsByCategory: { bugs: 4, security: 2 },
+      error: null,
+    };
+    const s = streamFromRun(run);
+    // `newFindingsThisRound` isn't persisted — a reloaded run reports 0 for it.
+    expect(s.categoryRounds).toEqual({
+      bugs: { round: 4, newFindingsThisRound: 0 },
+      security: { round: 2, newFindingsThisRound: 0 },
+    });
   });
 
   it('storedToFinding degrades corrupt enum fields to their neutral fallbacks', () => {

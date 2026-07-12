@@ -23,6 +23,7 @@ import { patchStreamItem, seedStepState } from '@/lib/scan-run';
 import { useScanItemActions } from '@/lib/useScanItemActions';
 import { useScanRun } from '@/lib/useScanRun';
 
+import { DEFAULT_DEEP_SCAN_CONFIG } from '../../insight.constants';
 import type { InsightFinding } from '../../insight.types';
 import {
   EMPTY_INSIGHT_STREAM,
@@ -42,6 +43,10 @@ export interface UseInsightResult {
     model: string | null,
     effort: string | null,
     providerId: string | null,
+    /** Opt-in DEEP scan mode (issue #294). `true` sends the explicit
+     *  {@link DEFAULT_DEEP_SCAN_CONFIG} (never an empty object — see that
+     *  constant's doc for why). */
+    deep: boolean,
   ) => Promise<void>;
   cancel: () => Promise<void>;
   selectRun: (runId: string) => Promise<void>;
@@ -91,12 +96,16 @@ export function useInsight(hasProject: boolean): UseInsightResult {
       model: string | null,
       effort: string | null,
       providerId: string | null,
+      deep: boolean,
     ) => {
       await runStart(hasProject && categories.length > 0, async () => {
         const runId = await startAnalysis(scope, categories, {
           model,
           effort: effort as EffortLevel | null,
           providerId,
+          // Explicit values only — see `DEFAULT_DEEP_SCAN_CONFIG`'s doc: the
+          // generated Rust struct zero-defaults any field an empty `{}` omits.
+          deep: deep ? DEFAULT_DEEP_SCAN_CONFIG : null,
         });
         // Optimistic running state until `analysis-started` lands.
         return {
