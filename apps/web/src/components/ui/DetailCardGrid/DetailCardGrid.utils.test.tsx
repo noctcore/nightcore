@@ -1,3 +1,4 @@
+import { isValidElement, type ReactNode } from 'react';
 import { expect, test } from 'vitest';
 
 import {
@@ -34,8 +35,11 @@ test('chunkIntoRows gives a full-row item its own dedicated row', () => {
     <div key="header">header</div>,
     <div key="c">c</div>,
   ];
-  const isFullRow = (item: (typeof items)[number]) =>
-    typeof item === 'object' && item !== null && item.key === 'header';
+  // Typed against `chunkIntoRows`'s own `(item: ReactNode) => boolean`
+  // predicate param — `isValidElement` narrows to `ReactElement` (which has a
+  // `.key`) without an unsound cast.
+  const isFullRow = (item: ReactNode): boolean =>
+    isValidElement(item) && item.key === 'header';
   const rows = chunkIntoRows(items, 2, isFullRow);
 
   // a+b pack a 2-column row, "header" gets its own row, then c starts a fresh row.
