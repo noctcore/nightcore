@@ -1,26 +1,66 @@
 # Platform-primitives adoption spike (T12 / #153) — decision memo
 
 **Scope:** decide whether Nightcore should adopt the Claude Code / Agent SDK
-**native sandbox primitives** in place of its custom Seatbelt writer, and produce a
-migration plan + the two user-facing decisions (D3, D4). Feeds the execution ticket
-**T16 / #157** (native-sandbox adoption) and the review-calibration build **#197**
-(structured outputs). Read alongside the roadmap `2026-07-11-roadmap-v0.3-v0.5.md`
-§2.3, §5.4, §6, §8.
+**native sandbox primitives** in place of its custom Seatbelt writers — covers BOTH
+`sandbox.ts` (agent-write confinement, §1/§3–§7/D3/D4) and `confine.rs` (the
+confined-terminal profile, §1b) — and produce a migration plan + the two user-facing
+decisions (D3, D4). Feeds the execution ticket **T16 / #157** (native-sandbox
+adoption) and the review-calibration build **#197** (structured outputs). Read
+alongside the roadmap `2026-07-11-roadmap-v0.3-v0.5.md` §2.3, §5.4, §6, §8.
 
 Grounding is by `file:line` and by primary-source doc citation. The pinned SDK is
 `@anthropic-ai/claude-agent-sdk@0.3.190` (`packages/engine/package.json:15`); latest
 published is `0.3.207`. The authoritative sandbox behavior is the shipped SDK
 `sandbox` schema (`node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts:2639-2692`)
 cross-checked against the current docs (`code.claude.com/docs/en/sandboxing`,
-fetched 2026-07-12).
+fetched 2026-07-12). Companion doc: `docs/research/2026-07-12-codex-governance-spike.md`
+characterizes Codex's OWN native sandbox (Landlock fallback / bubblewrap
+`workspace-write`/`read-only` modes) and its `app-server` approval-RPC — referenced
+in §5 for the MCP-management comparison (`@openai/codex-sdk`'s `Thread`/`TurnOptions`
+has no `setMcpServers` equivalent) and relevant background for §1b's Codex-state
+carve-out discipline in `confine.rs`.
+
+---
+
+## Update — 2026-07-12, later same day (independent re-verification pass)
+
+Re-verified against the live SDK docs (WebFetch, `code.claude.com/docs/en/sandboxing`,
+this session) and the current repo state (HEAD `e00f70a7`, ~9.5h after this memo's
+initial commit `2c20feec` at 12:22). All `sdk.d.ts` schema citations and the
+worktree-`.git`/`settings.json`-protection/Bash-only-scope doc quotes in §1–§3
+matched the fetched docs verbatim — **D3/D4 stand unchanged.** Two corrections:
+
+1. **§4 is now DONE, not an open proposal.** `feat(review): verdict clamp +
+   structured outputs + severity rubric (slice 1 of #197)` (`41eec03d`, 13:31 — ~1h
+   after this memo) shipped exactly the recipe below for pr-review:
+   `PR_REVIEW_OUTPUT_FORMAT` (`pr-review/findings.ts:137`), `outputFormat` added to
+   `SessionConfigParts` (`scan-manager.ts:172-176`), wired in
+   `PrReviewManager.sessionConfig()` (`manager.ts:121`), and `structuredOutput`
+   threaded onto `SessionOutcome` (`scan-manager.ts:146`). Read §4 as a
+   **retrospective proof-of-shape record**, not a TODO — the next candidate
+   (Insight, per the roadmap) can reuse the same recipe.
+2. **§5's Q3 answer was incomplete.** The SDK's live `Query` control object DOES
+   support runtime MCP add/remove/reconfigure **without a session restart** — a
+   real, load-bearing capability the original pass missed. §5 below is rewritten
+   with the verified finding.
+3. **The confined-terminal writer (`confine.rs`) was out of scope originally — added
+   as new §1b.** The spike's brief asks about BOTH custom Seatbelt writers
+   (`confine.rs` for the confined-terminal use case, `sandbox.ts` for agent-write
+   confinement); this memo's §1/D3/D4 only ever covered `sandbox.ts` (matching the
+   roadmap's own D3/D4 framing). `Options.sandbox` cannot apply to `confine.rs` at
+   all — it wraps only the SDK's own `query()` Bash tool, and `confine.rs` spawns a
+   plain PTY shell outside any SDK call. The one Anthropic-native primitive that
+   COULD apply (`@anthropic-ai/sandbox-runtime`, a standalone process-wrapper CLI) is
+   a beta research preview — verdict: KEEP `confine.rs`, watch `sandbox-runtime`.
+   See §1b.
 
 ---
 
 ## §1 Executive recommendation — **HYBRID (adopt native sandbox for the OS layer; KEEP the PreToolUse gate)**
 
 Adopt the SDK's native `Options.sandbox` to **replace the custom Seatbelt writer**
-(`packages/engine/src/providers/claude/sandbox.ts`, 373 lines + `sandbox.test.ts`
-464 lines + the premium-billed macOS CI lane at `.github/workflows/ci.yml:40-60`),
+(`packages/engine/src/providers/claude/sandbox.ts`, 372 lines + `sandbox.test.ts`
+399 lines + the premium-billed macOS CI lane at `.github/workflows/ci.yml:40-60`),
 and **keep every PreToolUse policy gate** (`packages/engine/src/policy/**`) exactly
 as-is. This is not "adopt vs keep" — the two layers cover **disjoint** tool surfaces
 and must both exist. Five load-bearing reasons:
@@ -77,9 +117,77 @@ and must both exist. Five load-bearing reasons:
    + a premium macOS CI lane, and hands the containment guarantee to a layer Anthropic
    fuzzes and ships weekly. That is exactly the roadmap's "adopt-don't-maintain" thesis.
 
-**Net:** delete the Seatbelt writer, wire `Options.sandbox`, keep the PreToolUse gate
-as the permanent tool-input layer. The two are complementary (docs, "How sandboxing
-relates to permissions": *"complementary layers"*).
+**Net:** delete the `sandbox.ts` Seatbelt writer, wire `Options.sandbox`, keep the
+PreToolUse gate as the permanent tool-input layer. The two are complementary (docs,
+"How sandboxing relates to permissions": *"complementary layers"*). This verdict is
+scoped to `sandbox.ts` only — see §1b immediately below for the confined-terminal
+writer, which is a SEPARATE decision.
+
+---
+
+## §1b — The OTHER custom Seatbelt writer: `confine.rs` (confined-terminal) — KEEP, watch `@anthropic-ai/sandbox-runtime`
+
+Nightcore actually has **two** independent custom Seatbelt writers, and this spike's
+Q1 explicitly asks about both. §1/§3–§6/D3/D4 above (matching the roadmap's own D3/D4
+framing, `2026-07-11-roadmap-v0.3-v0.5.md:380-381`) are scoped to `sandbox.ts` — the
+**agent-write-confinement** case (wraps the Claude Agent SDK's own `query()` Bash
+tool). `apps/desktop/src-tauri/src/terminal/confine.rs` (1099 lines, hardened as
+recently as PR #292/#291, 2026-07-12) is a **second, separate** writer for the
+**confined-terminal** case: a Rust-spawned interactive PTY shell the user drives
+directly — `sandbox-exec -f <profile> <shell> -i` (`confine.rs:1-19`, `prepare`
+`:393`). This is architecturally outside the Claude Agent SDK entirely — there is no
+`query()` call in this path, so **`Options.sandbox` (the SDK schema analyzed above)
+literally cannot apply here**: it is a field on the SDK's `query()` `Options`, and
+confine.rs never calls `query()`.
+
+**Does ANY Anthropic-native primitive cover the confined-terminal use case?** Yes,
+one — but it is a *different* primitive than `Options.sandbox`, and it changes the
+verdict. The docs (`code.claude.com/docs/en/sandbox-environments`, fetched this
+session) describe **`@anthropic-ai/sandbox-runtime`** (published to npm, confirmed
+`v0.0.65` as of 2026-07-10 via `npm view`; NOT currently a Nightcore dependency) as a
+**standalone CLI** built on the *same* Seatbelt/bubblewrap primitives, that wraps an
+**arbitrary process**, not just a `query()` loop: *"npx @anthropic-ai/sandbox-runtime
+claude … The same command works for sandboxing standalone MCP servers or other
+helper processes."* Its settings schema (`~/.srt-settings.json`) is structurally
+identical to `Options.sandbox.filesystem`/`network` (`allowWrite`/`denyWrite`/
+`denyRead`/`allowRead`, `allowedDomains`/`deniedDomains`) — and it adds Linux
+bubblewrap **and alpha-stage Windows** (`srt-win.exe`) coverage confine.rs has
+neither of today.
+
+**Recommend KEEP `confine.rs` for now — do not adopt `sandbox-runtime` in this
+cycle.** Three reasons:
+1. **Maturity.** The package's own README states it verbatim: *"The Sandbox Runtime
+   is a research preview... APIs and configuration formats may evolve."* Adopting a
+   beta external npm dependency to replace a just-hardened, fail-closed, unit-tested
+   Rust module for a security-load-bearing confinement feature is the wrong trade at
+   this maturity.
+2. **Loss-of-control risk is real, not theoretical, for this specific feature.**
+   confine.rs's whole value is the hand-tuned STATE-vs-CONFIG carve-out discipline —
+   `claude_state_write_roots` (`:130`) allows `~/.claude` STATE dirs while denying
+   `settings.json`/`plugins`/`CLAUDE.md` CONFIG (`:98-105`), and
+   `codex_state_write_roots` (`:214`) deliberately **excludes** the `.codex` root
+   itself, carving in only specific STATE files/dirs while explicitly keeping
+   `auth.json`/`config.toml`/plugins/computer-use denied (`:149-203`) — a distinction
+   won by a documented SBPL-delimiter incident (memory: `project_codex_confine_sbpl.md`,
+   PR #292/#291). `sandbox-runtime`'s allow/deny-list schema is generic (no
+   Claude-vs-Codex-vs-generic-shell awareness) — re-deriving this exact discipline
+   against an evolving external schema is a worse trade than the "SBPL fragility"
+   argument used to justify replacing `sandbox.ts` in §1, because confine.rs's
+   fragility has already been found and fixed, recently, in-house.
+3. **Posture mismatch:** confine.rs is deliberately **fail-closed** (`:8-16` —
+   refuses the spawn rather than launch unconfined) specifically because a user who
+   ticks "Confined" is asking for a hard guarantee; the SDK-side `sandbox.ts` is
+   fail-open because it's an experimental default-off agent feature that must never
+   strand a task (§2.1 above). `sandbox-runtime`'s stability posture doesn't yet
+   inspire swapping in a load-bearing fail-closed path.
+
+**Watch item, not a T16 blocker:** `sandbox-runtime` reaching 1.0 would be worth a
+fresh look — it would let ONE Anthropic-maintained writer cover both the
+confined-terminal AND (via wrapping the whole `claude` subprocess rather than only
+its internal Bash tool) a strictly *stronger* agent-write posture than
+`Options.sandbox` gives today (file tools/MCP/hooks too, not just Bash — see the
+comparison table in `sandbox-environments`), plus genuine Windows coverage neither
+current writer has. File this as a v0.5+ watch item, not part of T16's scope.
 
 ---
 
@@ -197,7 +305,7 @@ sink ASK, `.git/config` deny, sensitive-read deny.
 
 ---
 
-## §4 Structured-output migration recipe (proven on ONE scan family: **pr-review**)
+## §4 Structured-output migration recipe (proven on ONE scan family: **pr-review**) — SHIPPED, see Update above
 
 **Why pr-review:** the roadmap ties structured outputs to the review-calibration build
 (#197 / v0.4 §6), and pr-review has three parseable passes (lens findings, adversarial
@@ -258,34 +366,84 @@ best-effort-parsed prose — the precondition for calibrating reviewer trust.
 
 ---
 
-## §5 Runtime MCP management (exists vs. gap)
+## §5 Runtime MCP management — exists (static, session-start-only), AND the SDK has a live-reconfigure API Nightcore doesn't call yet
 
-**Exists (roadmap §9 item 1 confirmed):**
+**Exists (roadmap §9 item 1 confirmed) — static, session-start-only:**
 - **CRUD UI:** `apps/web/src/components/settings/McpServersCard/**` (card, editor,
   hooks, stories) + `SettingsView.hooks.ts`.
 - **Rust store + wire:** `store/settings/{model,patch,store}.rs`,
   `provider/{types,imp}.rs`, `sidecar/provider_config.rs`, generated contracts.
 - **Per-session injection into the SDK:** `toSdkMcpServers()` folds enabled entries
-  into `Options.mcpServers`, additively over the user's native config
-  (`session-options.ts:51-79`, `:353` / `:393-395`), shared by run + inspector probe.
+  into `Options.mcpServers` **once, at `query()` construction**, additively over the
+  user's native config (`session-options.ts:51-79`, `:353` / `:393-395`), shared by
+  run + inspector probe. Editing a server in `McpServersCard` while a session is
+  in flight has no effect on that session — it only applies to the *next* one.
 - **Coarse governance already shipped:** harness-policy supports `mcp__server__*`
   prefix **deny/ask tiers** (`harness-policy.ts:163-234`, tests #223), and the bypass-
   mode MCP-containment fallback classifies + confines/denies write/network MCP tools,
   fail-closed on unknown (`confinement/mcp.ts:276-332`).
 
-**Gap (what "runtime MCP management" would still add):**
-- **Per-server default governance tier in the UI.** Today an allow/ask/deny tier for a
-  server requires hand-authoring a `.nightcore/harness.json` `mcp__<server>__*` prefix
-  rule; there is no per-server tier selector in `McpServersCard`. (This is roadmap
-  §9-1's "MCP *governance* … per-server default tier, wildcards, scoping".)
-- **Lifecycle/health surfacing.** No runtime start/stop/restart or reachability status
-  per server; the SDK's `command_lifecycle` / `background_tasks_changed` frames
-  (roadmap §2.3 item 4) are not consumed.
-- **Interactive MCP auth.** OAuth/remote-transport auth handshakes aren't surfaced.
+**The gap, corrected: the SDK's `Query` control object already exposes live
+reconfiguration — Nightcore just isn't calling it.** `node_modules/@anthropic-ai/
+claude-agent-sdk/sdk.d.ts` (pinned 0.3.190), on the `Query` interface returned by
+`query()`:
+- `setMcpServers(servers: Record<string, McpServerConfig>): Promise<McpSetServersResult>`
+  (`:2420`) — *"Dynamically set the MCP servers for this session... Servers that are
+  removed will be disconnected, and new servers will be connected... Note: This only
+  affects servers added dynamically via this method or the SDK. Servers configured
+  via settings files are not affected."* Returns `{ added, removed, errors }`
+  (`:1060-1075`).
+- `reconnectMcpServer(serverName): Promise<void>` (`:2390`) and
+  `toggleMcpServer(serverName, enabled): Promise<void>` (`:2398`) for a single-server
+  nudge without touching the rest.
+- `setMcpPermissionModeOverride(serverName, 'default'|'auto'|null)` (`:2217`) — a
+  **tighten-only** per-server permission pin the SDK enforces (docstring: "can never
+  widen privilege").
+- `mcpServerStatus(): Promise<McpServerStatus[]>` — connected/failed/needs-auth/pending
+  state; Nightcore already probes this one (see below).
 
-**Assessment:** MCP management is **orthogonal to the sandbox adopt/keep decision** and
-should not gate T16. The governance-tier UI is a small, high-value follow-up (fits the
-v0.4 Policy-UX item); lifecycle frames are a watch-item. Nothing here blocks §6.
+**All of the above are gated "only supported when streaming input/output is used"**
+(`sdk.d.ts:2182-2186`, the `Query` interface's own doc block). **Nightcore already
+qualifies.** `SessionRunner` launches every real run with
+`query({ prompt: this.inputStream(), options })` (`session-runner.ts:297`), and its
+own class doc says so explicitly: *"Uses streaming input mode (prompt is an
+`AsyncIterable<SDKUserMessage>`) so the SDK's control requests are available —
+`interrupt()` / `setModel()` etc. are only supported in streaming mode"*
+(`session-runner.ts:124-130`). `SessionRunner` **already proxies three sibling
+control methods through this exact pattern** — `interrupt()` (`:424`, `:436`),
+`setModel()` (`:446`), `setPermissionMode()` (`:454`) — and already probes
+`mcpServerStatus()` read-only (`:541-542`, consumed by `provider-config.ts`). Adding
+`setMcpServers` / `reconnectMcpServer` / `toggleMcpServer` is the identical one-line
+proxy shape, not new architecture.
+
+**What this buys, concretely:** a user could add/remove/disable an MCP server from
+`McpServersCard` **while a long-running task is mid-flight** and have it take effect
+without killing and restarting the session (today: edit → save → the change is inert
+until the *next* `query()`). It also unlocks a "reconnect" action for a server
+`mcpServerStatus()` reports as `needs-auth`/`failed`, without a full session restart,
+and — via `setMcpPermissionModeOverride` — a **live, tighten-only** per-server
+lockdown a user or a harness-triggered escalation could apply mid-run without waiting
+for the task to finish. `@openai/codex-sdk@0.142.5`'s `Thread`/`TurnOptions` surface
+has no equivalent (only static MCP-tool-call *reporting* via `McpToolCallItem`,
+`dist/index.d.ts:37-62`) — this capability is Claude-SDK-only.
+
+**Residual gap, unaffected by the above:** per-server default governance **tier
+selector in the UI** (today requires hand-authoring a `.nightcore/harness.json`
+`mcp__<server>__*` rule; roadmap §9-1) and **interactive MCP auth** (OAuth/remote-
+transport handshakes) are not surfaced by `setMcpServers`/`reconnectMcpServer`
+either — those remain genuinely open.
+
+**Is it worth it? Yes, as a small follow-up — not a T16 blocker.** Recommend:
+thread `setMcpServers` / `reconnectMcpServer` / `toggleMcpServer` onto
+`SessionRunner` mirroring the existing `setModel`/`setPermissionMode` proxy; wire a
+"reconnect" affordance onto `McpServersCard` rows keyed off `mcpServerStatus()`; and
+gate the mid-run "apply now" action behind the same governance tiers
+`confinement/mcp.ts` already enforces (a live-added server must still classify
+through the fail-closed-on-unknown path — `setMcpServers` bypasses none of that, it
+only changes *when* a server connects, not *what* it's allowed to do once connected).
+This is orthogonal to the sandbox adopt/keep decision and should not gate T16; the
+per-server default-tier UI selector remains the higher-value near-term item if only
+one MCP follow-up gets picked up next.
 
 ---
 
