@@ -44,6 +44,36 @@ pub struct FindingLocation {
     pub symbol: Option<String>,
 }
 
+impl FindingLocation {
+    /// Parse one wire `location` JSON object into a grounded anchor. Returns `None`
+    /// when `file` is absent (the only required key); line/symbol fields fall through
+    /// as `None` when missing or the wrong type. Shared by every scan feature that
+    /// grounds a finding — Insight, Scorecard, and Harness all defer here rather than
+    /// carrying byte-identical copies.
+    pub(crate) fn from_wire(v: &Value) -> Option<Self> {
+        let file = v.get("file").and_then(Value::as_str)?.to_string();
+        Some(FindingLocation {
+            file,
+            start_line: v.get("startLine").and_then(Value::as_u64),
+            end_line: v.get("endLine").and_then(Value::as_u64),
+            symbol: v.get("symbol").and_then(Value::as_str).map(str::to_string),
+        })
+    }
+}
+
+/// Collect a wire JSON array into a `Vec<String>`, dropping any non-string element.
+/// Returns an empty vec when the value is absent or not an array. Shared across the
+/// scan store modules (Insight / Scorecard / Harness) for their `String` list fields.
+pub(crate) fn string_array(v: Option<&Value>) -> Vec<String> {
+    v.and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// A persisted finding: the engine's analysis output plus the Rust-owned lifecycle
 /// fields (`status`, `linkedTaskId`). `category`/`severity`/`effort`/`status` are
 /// stored as their wire strings (the web casts them to its unions) so this struct
@@ -90,7 +120,7 @@ impl StoredFinding {
         let title = s("title")?;
         let description = s("description")?;
         let fingerprint = s("fingerprint")?;
-        let location = v.get("location").and_then(location_from_wire);
+        let location = v.get("location").and_then(FindingLocation::from_wire);
         let affected_files = string_array(v.get("affectedFiles"));
         let tags = string_array(v.get("tags"));
         Some(Self {
@@ -134,26 +164,6 @@ impl LifecycleItem for StoredFinding {
     fn set_linked_task_id(&mut self, task_id: Option<String>) {
         self.linked_task_id = task_id;
     }
-}
-
-fn location_from_wire(v: &Value) -> Option<FindingLocation> {
-    let file = v.get("file").and_then(Value::as_str)?.to_string();
-    Some(FindingLocation {
-        file,
-        start_line: v.get("startLine").and_then(Value::as_u64),
-        end_line: v.get("endLine").and_then(Value::as_u64),
-        symbol: v.get("symbol").and_then(Value::as_str).map(str::to_string),
-    })
-}
-
-fn string_array(v: Option<&Value>) -> Vec<String> {
-    v.and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|x| x.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default()
 }
 
 /// Token totals for a run, summed across category passes.
@@ -522,6 +532,61 @@ mod tests {
         assert_eq!(f.location.unwrap().start_line, Some(10));
         assert_eq!(f.affected_files, vec!["src/a.ts"]);
         assert_eq!(f.status, "open");
+    }
+
+    #[test]
+    fn finding_location_from_wire_reads_every_field() {
+        let v = serde_json::json!({
+            "file": "src/a.ts",
+            "startLine": 10,
+            "endLine": 12,
+            "symbol": "handler"
+        });
+        let loc = FindingLocation::from_wire(&v).expect("a well-formed location parses");
+        assert_eq!(loc.file, "src/a.ts");
+        assert_eq!(loc.start_line, Some(10));
+        assert_eq!(loc.end_line, Some(12));
+        assert_eq!(loc.symbol.as_deref(), Some("handler"));
+    }
+
+    #[test]
+    fn finding_location_from_wire_tolerates_absent_and_malformed_optionals() {
+        // `file` is the only required key; every other field falls through to `None`
+        // when missing or the wrong JSON type, rather than failing the whole parse.
+        let v = serde_json::json!({
+            "file": "src/only.ts",
+            "startLine": "not-a-number", // wrong type → None
+            "symbol": 42                 // wrong type → None
+                                         // endLine absent → None
+        });
+        let loc = FindingLocation::from_wire(&v).expect("only `file` is required");
+        assert_eq!(loc.file, "src/only.ts");
+        assert_eq!(loc.start_line, None, "a non-numeric startLine is dropped");
+        assert_eq!(loc.end_line, None, "an absent endLine is None");
+        assert_eq!(loc.symbol, None, "a non-string symbol is dropped");
+    }
+
+    #[test]
+    fn finding_location_from_wire_requires_a_string_file() {
+        // No `file` key, a non-string one, or a non-object all yield no anchor.
+        assert!(FindingLocation::from_wire(&serde_json::json!({ "startLine": 1 })).is_none());
+        assert!(FindingLocation::from_wire(&serde_json::json!({ "file": 7 })).is_none());
+        assert!(FindingLocation::from_wire(&serde_json::json!("not-an-object")).is_none());
+    }
+
+    #[test]
+    fn string_array_collects_strings_in_order_and_drops_non_strings() {
+        let v = serde_json::json!(["a", 1, "b", null, true, "c"]);
+        assert_eq!(string_array(Some(&v)), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn string_array_defaults_empty_for_absent_or_non_array() {
+        // Absent (None), null, and non-array values all yield an empty vec, never a panic.
+        assert!(string_array(None).is_empty());
+        assert!(string_array(Some(&serde_json::Value::Null)).is_empty());
+        assert!(string_array(Some(&serde_json::json!("scalar"))).is_empty());
+        assert!(string_array(Some(&serde_json::json!({ "k": "v" }))).is_empty());
     }
 
     #[test]

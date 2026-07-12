@@ -18,7 +18,7 @@ use serde_json::Value;
 #[cfg(test)]
 use ts_rs::TS;
 
-use crate::store::insight::{FindingLocation, InsightUsage};
+use crate::store::insight::{string_array, FindingLocation, InsightUsage};
 use crate::store::run_store::{LifecycleItem, PersistedRun, RunStore};
 
 // The convert-to-task link outcome is one shared enum across every scan feature (Insight
@@ -83,7 +83,7 @@ impl StoredReading {
         let title = s("title")?;
         let summary = s("summary")?;
         let fingerprint = s("fingerprint")?;
-        let location = v.get("location").and_then(location_from_wire);
+        let location = v.get("location").and_then(FindingLocation::from_wire);
         let affected_files = string_array(v.get("affectedFiles"));
         let tags = string_array(v.get("tags"));
         let findings = v
@@ -136,28 +136,8 @@ fn evidence_from_wire(v: &Value) -> Option<ScorecardEvidence> {
     let detail = v.get("detail").and_then(Value::as_str)?.to_string();
     Some(ScorecardEvidence {
         detail,
-        location: v.get("location").and_then(location_from_wire),
+        location: v.get("location").and_then(FindingLocation::from_wire),
     })
-}
-
-fn location_from_wire(v: &Value) -> Option<FindingLocation> {
-    let file = v.get("file").and_then(Value::as_str)?.to_string();
-    Some(FindingLocation {
-        file,
-        start_line: v.get("startLine").and_then(Value::as_u64),
-        end_line: v.get("endLine").and_then(Value::as_u64),
-        symbol: v.get("symbol").and_then(Value::as_str).map(str::to_string),
-    })
-}
-
-fn string_array(v: Option<&Value>) -> Vec<String> {
-    v.and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|x| x.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default()
 }
 
 /// One Scorecard run, persisted under `.nightcore/scorecards/<id>.json`. Reuses the

@@ -12,8 +12,9 @@ use serde_json::Value;
 use ts_rs::TS;
 
 // `FindingLocation` is shared with Insight (same grounded file:line anchor) so the
-// web gets ONE `FindingLocation.ts` for both features.
-use crate::store::insight::FindingLocation;
+// web gets ONE `FindingLocation.ts` for both features; `FindingLocation::from_wire`
+// and `string_array` are the shared wire-parsing helpers, home in `insight`.
+use crate::store::insight::{string_array, FindingLocation};
 
 /// A persisted convention finding: the engine's stateless output plus the Rust-owned
 /// `status`. Enum-ish fields (`category`/`kind`/`severity`/`status`) are stored as their
@@ -266,27 +267,7 @@ impl StoredRuleCoverageGap {
 
 fn locations_from_wire(v: Option<&Value>) -> Vec<FindingLocation> {
     v.and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(location_from_wire).collect())
-        .unwrap_or_default()
-}
-
-fn location_from_wire(v: &Value) -> Option<FindingLocation> {
-    let file = v.get("file").and_then(Value::as_str)?.to_string();
-    Some(FindingLocation {
-        file,
-        start_line: v.get("startLine").and_then(Value::as_u64),
-        end_line: v.get("endLine").and_then(Value::as_u64),
-        symbol: v.get("symbol").and_then(Value::as_str).map(str::to_string),
-    })
-}
-
-fn string_array(v: Option<&Value>) -> Vec<String> {
-    v.and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|x| x.as_str().map(str::to_string))
-                .collect()
-        })
+        .map(|a| a.iter().filter_map(FindingLocation::from_wire).collect())
         .unwrap_or_default()
 }
 
