@@ -110,9 +110,16 @@ export async function runScanSession(
         model: command.model ?? deps.config.model,
         ...(effort ? { effort } : {}),
         cwd: command.projectPath,
-        // Scans are trusted internal read-only analysis; give the model the
-        // tools the persona says it can use.
-        autonomyOverride: 'bypass',
+        // Scans are read-only analysis: request the neutral `plan` ceiling, which
+        // maps to Codex's kernel-enforced read-only sandbox (`codexPostureForAutonomy`)
+        // and is actually in Codex's advertised `autonomyLevels`. `bypass` is NOT
+        // advertised for Codex and is unconditionally refused without the
+        // `NIGHTCORE_CODEX_ALLOW_BYPASS` process opt-in (`assertHooksInvariant`),
+        // so requesting it here made every scan fail on pass #1 under Codex. The
+        // Claude scan path never reads this field at all — it goes through
+        // `SessionRunner` directly with `permissionMode: 'dontAsk'` above, so this
+        // change is Codex-only.
+        autonomyOverride: 'plan',
         maxTurns: parts.maxTurns,
         ...(parts.maxBudgetUsd !== undefined
           ? { maxBudgetUsd: parts.maxBudgetUsd }
