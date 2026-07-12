@@ -66,6 +66,8 @@ describe('ProviderCapabilitiesSchema', () => {
     supportsSettingSources: true,
     supportsSessionStore: true,
     supportsEffort: true,
+    supportsMaxTurns: true,
+    supportsMaxBudget: true,
     costTelemetry: 'full',
   };
 
@@ -154,6 +156,26 @@ describe('ProviderCapabilitiesSchema', () => {
     const missingLedger: Record<string, unknown> = { ...claude };
     delete missingLedger.supportsLedger;
     expect(ProviderCapabilitiesSchema.safeParse(missingLedger).success).toBe(false);
+  });
+
+  test('supportsMaxTurns / supportsMaxBudget (#296 item 5) round-trip and are required', () => {
+    const unenforced = ProviderCapabilitiesSchema.parse({
+      ...claude,
+      supportsMaxTurns: false,
+      supportsMaxBudget: false,
+    });
+    expect(unenforced.supportsMaxTurns).toBe(false);
+    expect(unenforced.supportsMaxBudget).toBe(false);
+
+    // Required — no implicit default, so a provider must declare (not silently drop)
+    // whether it honors the run ceilings.
+    const missingTurns: Record<string, unknown> = { ...claude };
+    delete missingTurns.supportsMaxTurns;
+    expect(ProviderCapabilitiesSchema.safeParse(missingTurns).success).toBe(false);
+
+    const missingBudget: Record<string, unknown> = { ...claude };
+    delete missingBudget.supportsMaxBudget;
+    expect(ProviderCapabilitiesSchema.safeParse(missingBudget).success).toBe(false);
   });
 
   test('rejects an invalid provider id', () => {

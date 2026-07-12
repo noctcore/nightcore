@@ -314,9 +314,10 @@ const STRUCT_NAMES: Record<string, string> = {
   'extrasStatus|mcp|model|outputStyle|permissionMode|projectPath|providerId|providerLabel|skills|subagents':
     'ProviderConfigSnapshot',
   // The provider capability descriptor (issue #18; `supportsHarnessPolicy`/
-  // `supportsLedger` added for issue #296) — carried on the `capabilities` slot of
-  // a `query-result`, so the Rust core single-sources it from the engine.
-  'autonomyLevels|costTelemetry|id|label|providesOwnWriteContainment|supportsAskUserQuestion|supportsEffort|supportsFileCheckpointing|supportsHarnessPolicy|supportsHooks|supportsLedger|supportsMcp|supportsPlanMode|supportsSessionResume|supportsSessionStore|supportsSettingSources|supportsStructuredOutput':
+  // `supportsLedger` added for issue #296, `supportsMaxTurns`/`supportsMaxBudget`
+  // added for issue #296 item 5) — carried on the `capabilities` slot of a
+  // `query-result`, so the Rust core single-sources it from the engine.
+  'autonomyLevels|costTelemetry|id|label|providesOwnWriteContainment|supportsAskUserQuestion|supportsEffort|supportsFileCheckpointing|supportsHarnessPolicy|supportsHooks|supportsLedger|supportsMaxBudget|supportsMaxTurns|supportsMcp|supportsPlanMode|supportsSessionResume|supportsSessionStore|supportsSettingSources|supportsStructuredOutput':
     'ProviderCapabilities',
   // The dynamic model-catalog descriptor (issue #80) — carried on the `models` slot
   // of a `query-result` (the engine's `listModels()` output), so the Rust core
