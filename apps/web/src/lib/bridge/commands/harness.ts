@@ -277,16 +277,18 @@ export async function runArmedChecksNow(): Promise<ArmedChecksState> {
 
 /** The arguments to {@link validatePluginRule} — the `validate_plugin_rule` invoke
  *  shape (issue #185). Only `ruleId` + `rulePath` are required; omit `validCases` /
- *  `invalidCases` for a structural probe ("is this a real rule at all?"). */
+ *  `invalidCases` for a structural probe ("is this a real rule at all?").
+ *
+ *  There is deliberately no `projectPath`: RuleTester executes the rule's `create()`,
+ *  so the backend server-resolves the project root from the active project and contains
+ *  `rulePath` inside it (issue #194 item 4) — the client cannot choose the toolchain root. */
 export interface ValidatePluginRuleArgs {
-  /** The rule id being validated (for reporting; e.g. the armed check's name). */
+  /** The armed lint-plugin check's NAME (also used as the rule id for reporting). */
   ruleId: string;
-  /** Absolute or `projectPath`-relative path to the rule/plugin module to load. */
+  /** The rule/plugin module to load, repo-relative to the active project (backend-contained). */
   rulePath: string;
   /** The rule's key within a plugin's `rules` map (omit ⇒ derived from `ruleId`). */
   ruleName?: string | null;
-  /** Project root that roots a relative `rulePath` + the ESLint toolchain (omit ⇒ engine cwd). */
-  projectPath?: string | null;
   /** RuleTester `valid` cases (source, or a JSON case object). Empty ⇒ probe. */
   validCases?: string[];
   /** RuleTester `invalid` cases (JSON `{ code, errors }`, or bare source). */
@@ -296,10 +298,12 @@ export interface ValidatePluginRuleArgs {
 /** Validate an armed `lint-plugin` rule via ESLint's `RuleTester` on demand (issue
  *  #185) — the "is this armed check a real rule that actually fires, not a placebo?"
  *  probe. Loads the rule cross-toolchain and runs the supplied cases (or a structural
- *  probe when none are given) against the target project's own ESLint, returning a
- *  {@link RuleValidationResult}. Fails SOFT engine-side: a rule/toolchain that won't
- *  load resolves as `outcome: 'error'` (not a rejection). Uses raw `invoke` (throws
- *  outside Tauri) like the other on-demand check actions. */
+ *  probe when none are given) against the active project's own ESLint, returning a
+ *  {@link RuleValidationResult}. The project root is resolved server-side and the rule
+ *  path contained there (issue #194 item 4), so no `projectPath` is sent. Fails SOFT
+ *  engine-side: a rule/toolchain that won't load resolves as `outcome: 'error'` (not a
+ *  rejection). Uses raw `invoke` (throws outside Tauri) like the other on-demand check
+ *  actions. */
 export async function validatePluginRule(
   args: ValidatePluginRuleArgs,
 ): Promise<RuleValidationResult> {
@@ -307,7 +311,6 @@ export async function validatePluginRule(
     ruleId: args.ruleId,
     rulePath: args.rulePath,
     ruleName: args.ruleName ?? null,
-    projectPath: args.projectPath ?? null,
     validCases: args.validCases ?? null,
     invalidCases: args.invalidCases ?? null,
   });
