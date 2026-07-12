@@ -8,6 +8,7 @@ import type { EffortLevel, ModelDescriptor } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
 import { whichSync } from '@nightcore/shared';
 
+import { type BackoffOptions, withTimeoutAndRetry } from '../../util/retry.js';
 import { CODEX_PROVIDER_ID } from './capabilities.js';
 import { buildCodexEnv } from './options.js';
 import {
@@ -16,6 +17,22 @@ import {
 } from './resolve-codex-binary.js';
 
 const REQUEST_TIMEOUT_MS = 8_000;
+
+/**
+ * Retry the read-only `model/list` probe so a TRANSIENT `codex app-server` blip
+ * recovers the real catalog instead of masking as the static fallback (issue #252).
+ * Each attempt is already bounded by {@link REQUEST_TIMEOUT_MS} (which kills the
+ * child), so a fast transient failure only adds a backoff before retrying; a true
+ * hang stays ~one timeout per attempt. The turn-driving `codex exec` run loop is
+ * OUT of scope and is never wrapped here.
+ */
+const MODEL_LIST_RETRIES = 2;
+const MODEL_LIST_BACKOFF: BackoffOptions = {
+  baseMs: 300,
+  factor: 2,
+  maxMs: 2_000,
+  jitter: true,
+};
 
 type AppServerResponse =
   | { id: string; result: unknown }
@@ -113,8 +130,17 @@ export async function listCodexModels(
     return CODEX_MODELS_FALLBACK;
   }
 
+  const executable = resolveCodexExecutable(codexPathOverride);
   try {
-    const models = await fetchAppServerModels(resolveCodexExecutable(codexPathOverride));
+    const models = await withTimeoutAndRetry(() => fetchAppServerModels(executable), {
+      retries: MODEL_LIST_RETRIES,
+      backoff: MODEL_LIST_BACKOFF,
+      onRetry: ({ attempt, error }) =>
+        logger?.debug('codex model/list retrying transient blip', {
+          attempt,
+          message: error instanceof Error ? error.message : String(error),
+        }),
+    });
     return models.length > 0 ? models : CODEX_MODELS_FALLBACK;
   } catch (error) {
     logger?.warn('codex app-server model/list failed; using fallback catalog', {
