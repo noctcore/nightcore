@@ -13,7 +13,7 @@ import {
 import type { BranchInfo, PermissionMode, RunMode, TaskKind } from '@/lib/bridge';
 import { getHarnessPolicyFile, listBranches } from '@/lib/bridge';
 import { governanceWarningFor, harnessPolicyHasRules } from '@/lib/harness-governance';
-import { capabilitiesForProvider } from '@/lib/provider-capabilities';
+import { capabilitiesForProvider, runCeilingCaveatFor } from '@/lib/provider-capabilities';
 
 import type { NewTaskFormProps } from './NewTaskForm.types';
 
@@ -79,6 +79,10 @@ export interface NewTaskFormState {
    *  and the picked provider can't enforce it — creating the task would run and
    *  then be REFUSED at dispatch. `null` when there's nothing to warn about. */
   governanceWarning: string | null;
+  /** Caveat (#296 item 5) when the picked provider can't enforce the per-run
+   *  maxTurns / maxBudget ceilings (Codex's SDK has no such control), so those
+   *  fields would be silently ignored. `null` when both are supported or unknown. */
+  runCeilingCaveat: string | null;
   model: string | null;
   /** The provider the picked model belongs to (B5), stamped so a created task
    *  round-trips its selection's provider. `undefined` ⇒ derive from the model id. */
@@ -156,6 +160,10 @@ export function useNewTaskForm({
   const capabilities = useProviderCapabilities();
   const resolvedCapabilities = capabilitiesForProvider(providerId, capabilities);
   const providerSupportsPlanGate = resolvedCapabilities?.supportsHooks ?? true;
+
+  // Run-ceiling caveat (#296 item 5): the picked provider can't enforce maxTurns /
+  // maxBudget (Codex's SDK has no turn/budget ceiling). Fail-open null while caps load.
+  const runCeilingCaveat = runCeilingCaveatFor(resolvedCapabilities);
 
   // Governance mismatch warning (#296): whether the active project's Harness policy
   // is armed, loaded once below. `false` while loading — fail-open, a heads-up
@@ -342,6 +350,7 @@ export function useNewTaskForm({
     planFirst,
     providerSupportsPlanGate,
     governanceWarning,
+    runCeilingCaveat,
     model,
     providerId,
     effort,

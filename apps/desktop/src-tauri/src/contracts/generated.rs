@@ -1226,6 +1226,8 @@ pub struct ProviderCapabilities {
     pub supports_setting_sources: bool,
     pub supports_session_store: bool,
     pub supports_effort: bool,
+    pub supports_max_turns: bool,
+    pub supports_max_budget: bool,
     pub cost_telemetry: CostTelemetry,
 }
 

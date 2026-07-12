@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react';
 
 import { getCapabilities, listModels, type ProviderCapabilities } from '@/lib/bridge';
+import { cacheProviderCapabilities, KNOWN_PROVIDER_IDS } from '@/lib/provider-capabilities';
 
 import type { ModelCatalogData } from '../ModelSelect';
 
@@ -29,11 +30,33 @@ export const LIVE_MODEL_CATALOG_DATA: ModelCatalogData = {
 let capabilitiesMemo: Promise<ProviderCapabilities | null> | null = null;
 
 function loadCapabilitiesOnce(): Promise<ProviderCapabilities | null> {
-  // Coerce a malformed/absent reply (`undefined` from a partial invoke mock) to
-  // `null` so every consumer's null fail-open path applies uniformly.
-  capabilitiesMemo ??= getCapabilities()
-    .then((caps) => caps ?? null)
-    .catch(() => null);
+  capabilitiesMemo ??= (async () => {
+    // Prime the per-provider cache for every KNOWN provider so
+    // `capabilitiesForProvider(providerId, …)` resolves synchronously later (the
+    // create-task form reads it during render). Each descriptor is cached under its
+    // OWN id, so an outside-Tauri / fail-open Claude reply for a non-Claude request
+    // lands under `claude`, never masquerading as the requested provider. Fail-safe
+    // per entry: a rejected/absent fetch leaves that provider absent (→
+    // `capabilitiesForProvider`'s fail-safe null).
+    await Promise.all(
+      KNOWN_PROVIDER_IDS.map((id) =>
+        getCapabilities(id)
+          .then((caps) => {
+            if (caps) cacheProviderCapabilities(caps);
+          })
+          .catch(() => {}),
+      ),
+    );
+    // The DEFAULT provider's descriptor backs the hook's return + the `fallback` arg.
+    // Coerce a malformed/absent reply (`undefined` from a partial invoke mock) to
+    // `null` so every consumer's null fail-open path applies uniformly; cache it
+    // under its own id too.
+    const def = await getCapabilities()
+      .then((caps) => caps ?? null)
+      .catch(() => null);
+    if (def) cacheProviderCapabilities(def);
+    return def;
+  })();
   return capabilitiesMemo;
 }
 

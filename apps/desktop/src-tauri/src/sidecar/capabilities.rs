@@ -1,10 +1,13 @@
 //! The provider-capability command: `get_capabilities` (issue #18, B5).
 //!
-//! Serves the web the default provider's [`ProviderCapabilities`] descriptor — the
-//! support matrix the UI degrades from. The model picker's reasoning-effort row
-//! gates on `supportsEffort`, and the scan surfaces' cost lines gate on
-//! `costTelemetry`, so a provider that lacks a control (or reports no cost) hides
-//! that affordance instead of the UI branching on the provider id.
+//! Serves the web a provider's [`ProviderCapabilities`] descriptor — the support
+//! matrix the UI degrades from. Pass `provider_id` to describe a SPECIFIC provider
+//! (the web primes one entry per known provider so `capabilitiesForProvider`
+//! resolves synchronously); omit it (`None`) to describe the engine's DEFAULT
+//! provider. The model picker's reasoning-effort row gates on `supportsEffort`, and
+//! the scan surfaces' cost lines gate on `costTelemetry`, so a provider that lacks a
+//! control (or reports no cost) hides that affordance instead of the UI branching on
+//! the provider id.
 //!
 //! ## Why here (next to `provider_config` / `list_models`)
 //!
@@ -23,19 +26,23 @@ use crate::contracts::{ProviderCapabilities, SurfaceQuery};
 
 use super::query;
 
-/// Read the default provider's capability descriptor over the `get-capabilities`
-/// seam (engine → the provider's own `capabilities()`). Routes through the sidecar
+/// Read a provider's capability descriptor over the `get-capabilities` seam (engine
+/// → the provider's own `capabilities()`). `provider_id` selects a specific provider;
+/// `None` describes the engine's DEFAULT provider. Routes through the sidecar
 /// [`query`] transport (which lazily spawns the child + its reader), so it also
 /// starts the sidecar on first use; no project dir, since the descriptor is
 /// provider-static.
 #[tauri::command]
-pub async fn get_capabilities(app: AppHandle) -> Result<ProviderCapabilities, String> {
+pub async fn get_capabilities(
+    app: AppHandle,
+    provider_id: Option<String>,
+) -> Result<ProviderCapabilities, String> {
     let reply = query(
         &app,
         SurfaceQuery::GetCapabilities {
             // `requestId` is overwritten by `query` with a fresh uuid.
             request_id: String::new(),
-            provider_id: None,
+            provider_id,
         },
     )
     .await?;

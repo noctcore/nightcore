@@ -12,18 +12,20 @@ import type {
 
 // --- Provider configuration inspector (read-only) -------------------------
 
-/** Read the default provider's RESOLVED configuration for a project — its MCP
- *  servers, skills, subagents, and scalar extras — for the read-only inspector.
- *  Omit `projectPath` to inspect the ACTIVE project (the board-header entry point);
- *  pass one to inspect another root. Each section degrades independently
+/** Read a provider's RESOLVED configuration for a project — its MCP servers, skills,
+ *  subagents, and scalar extras — for the read-only inspector. Omit `projectPath` to
+ *  inspect the ACTIVE project (the board-header entry point); pass one to inspect
+ *  another root. Pass `providerId` to inspect a SPECIFIC provider; omit it for the
+ *  engine's DEFAULT provider. Each section degrades independently
  *  (supported / unsupported / unavailable), so the snapshot always resolves.
  *  Returns a populated mock outside Tauri (browser preview). */
 export async function getProviderConfig(
   projectPath?: string,
+  providerId?: string,
 ): Promise<ProviderConfigSnapshot> {
   return tauriInvoke<ProviderConfigSnapshot>(
     'get_provider_config',
-    { dir: projectPath ?? null },
+    { dir: projectPath ?? null, providerId: providerId ?? null },
     MOCK_PROVIDER_CONFIG,
   );
 }

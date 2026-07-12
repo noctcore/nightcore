@@ -42,6 +42,7 @@ export function NewTaskForm({ open, planGateDefault, onCreate, onClose }: NewTas
     planFirst,
     providerSupportsPlanGate,
     governanceWarning,
+    runCeilingCaveat,
     model,
     providerId,
     effort,
@@ -260,6 +261,13 @@ export function NewTaskForm({ open, planGateDefault, onCreate, onClose }: NewTas
               />
             </div>
           </div>
+          {/* Run-ceiling caveat (#296 item 5): the picked provider (e.g. Codex)
+              can't enforce these limits — its SDK has no turn/budget ceiling — so
+              they'd be silently ignored. Shown only when the resolved provider
+              declares them unsupported; the controls stay (they work for Claude). */}
+          {runCeilingCaveat !== null && (
+            <p className="text-3xs leading-snug text-muted-foreground">{runCeilingCaveat}</p>
+          )}
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-border bg-black/15 px-5 py-3.5">
           {error !== null ? (

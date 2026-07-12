@@ -31,6 +31,10 @@
  *    omits it. `bypass` stays hidden until an explicit process-level opt-in enables
  *    danger-full-access.
  *  - `costTelemetry: 'tokens-only'` — Codex reports usage tokens, not dollars.
+ *  - `supportsMaxTurns: false` / `supportsMaxBudget: false` — Codex's
+ *    `@openai/codex-sdk` `TurnOptions` exposes only `outputSchema` + `signal`, so a
+ *    turn or budget ceiling can't be honored; these are declared false rather than
+ *    silently ignored so the UI can caveat the controls (issue #296 item 5).
  *
  * The descriptor is CONTRACT-ONLY (`ProviderCapabilities`) and imports no SDK — a
  * provider-neutral module by definition (the engine SDK-confinement lint keeps the
@@ -65,5 +69,7 @@ export const CODEX_CAPABILITIES: ProviderCapabilities = {
   supportsSettingSources: true,
   supportsSessionStore: true,
   supportsEffort: true,
+  supportsMaxTurns: false,
+  supportsMaxBudget: false,
   costTelemetry: 'tokens-only',
 };

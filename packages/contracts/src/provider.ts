@@ -140,6 +140,17 @@ export const ProviderCapabilitiesSchema = z.object({
   supportsSessionStore: z.boolean(),
   /** A per-model reasoning-effort control. */
   supportsEffort: z.boolean(),
+  /** Can enforce a per-run `maxTurns` conversation ceiling. `false` ⇒ the control
+   *  is silently unenforced for this provider (issue #296): Codex's
+   *  `@openai/codex-sdk` `TurnOptions` exposes only `outputSchema` + `signal`, so a
+   *  turn ceiling can't be honored — declared false rather than silently ignored so
+   *  the UI can caveat it. */
+  supportsMaxTurns: z.boolean(),
+  /** Can enforce a per-run `maxBudgetUsd` cost ceiling. `false` ⇒ silently
+   *  unenforced for this provider (issue #296) — same `TurnOptions` limitation as
+   *  {@link ProviderCapabilities.supportsMaxTurns}; declared truthfully so the UI
+   *  can caveat it instead of a ceiling quietly not applying. */
+  supportsMaxBudget: z.boolean(),
   /** How completely the provider reports run cost. */
   costTelemetry: CostTelemetrySchema,
 });

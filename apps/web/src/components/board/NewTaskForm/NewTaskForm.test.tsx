@@ -4,16 +4,37 @@ import { useEffect } from 'react';
 import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
+import type { ProviderCapabilities } from '@nightcore/contracts';
 import { MAX_IMAGES_PER_TASK } from '@/lib/attachments';
 import type { HarnessPolicyFile } from '@/lib/bridge';
 import { governanceWarningFor, harnessPolicyHasRules } from '@/lib/harness-governance';
-import { CLAUDE_CAPABILITIES, CODEX_CAPABILITIES } from '@/lib/provider-capabilities';
+import {
+  cacheProviderCapabilities,
+  CLAUDE_CAPABILITIES,
+} from '@/lib/provider-capabilities';
 
 import { planFirstDefault, useNewTaskForm } from './NewTaskForm.hooks';
 import * as stories from './NewTaskForm.stories';
 import type { NewTaskFormProps } from './NewTaskForm.types';
 
 const { Default } = composeStories(stories);
+
+/** A Codex-like descriptor — derived from the Claude default via spread (a test
+ *  fixture, not a hand-copied source of truth; the real Codex matrix now arrives over
+ *  the wire). Seeded into the capabilities cache so the full-render tests below can
+ *  pick Codex and see it resolve to the ungoverned/unenforced matrix synchronously,
+ *  the way `useProviderCapabilities` primes it inside Tauri. */
+const CODEX_CAPS: ProviderCapabilities = {
+  ...CLAUDE_CAPABILITIES,
+  id: 'codex',
+  label: 'Codex',
+  supportsHarnessPolicy: false,
+  supportsLedger: false,
+  supportsHooks: false,
+  supportsMaxTurns: false,
+  supportsMaxBudget: false,
+};
+cacheProviderCapabilities(CODEX_CAPS);
 
 test('planFirstDefault seeds plan-first only for a Build task on a hooks-capable provider', () => {
   // The interactive default-on: Build + gate on + a plan-capable provider.
@@ -48,13 +69,13 @@ test('harnessPolicyHasRules (#296): false for an all-empty policy, true when any
 
 test('governanceWarningFor (#296): only warns when the policy is armed AND the provider lacks governance', () => {
   // No warning: policy not armed, capabilities unresolved, or a governed provider.
-  expect(governanceWarningFor(false, CODEX_CAPABILITIES)).toBeNull();
+  expect(governanceWarningFor(false, CODEX_CAPS)).toBeNull();
   expect(governanceWarningFor(true, null)).toBeNull();
   expect(governanceWarningFor(true, CLAUDE_CAPABILITIES)).toBeNull();
   // Warns: policy armed AND the resolved provider can't enforce it. Never mentions
   // the audit ledger — the ledger path is unconditional per project, never an
   // independent trigger (see the engine's `assertGovernanceInvariant` docblock).
-  const warning = governanceWarningFor(true, CODEX_CAPABILITIES);
+  const warning = governanceWarningFor(true, CODEX_CAPS);
   expect(warning).not.toBeNull();
   expect(warning).toContain('Codex');
   expect(warning).toContain('Harness governance policy');

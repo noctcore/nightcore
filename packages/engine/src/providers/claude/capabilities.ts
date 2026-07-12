@@ -31,6 +31,8 @@ export const CLAUDE_PROVIDER_LABEL = 'Claude';
  * `supportsHarnessPolicy`/`supportsLedger` are both `true`: the Harness runtime
  * policy and the flight-recorder ledger both ride the SAME PreToolUse hook
  * (`HookBus`) as the confinement gate — see `session-runner.ts`/`hook-bus.ts`.
+ * `supportsMaxTurns`/`supportsMaxBudget` are both `true`: the Claude Agent SDK
+ * honors per-run turn and budget ceilings.
  */
 export const CLAUDE_CAPABILITIES: ProviderCapabilities = {
   id: CLAUDE_PROVIDER_ID,
@@ -49,6 +51,8 @@ export const CLAUDE_CAPABILITIES: ProviderCapabilities = {
   supportsSettingSources: true,
   supportsSessionStore: true,
   supportsEffort: true,
+  supportsMaxTurns: true,
+  supportsMaxBudget: true,
   costTelemetry: 'full',
 };
 

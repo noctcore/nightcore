@@ -19,10 +19,14 @@ export async function listModels(refresh = false): Promise<ModelDescriptor[]> {
   return Array.isArray(models) ? models : MOCK_MODEL_CATALOG;
 }
 
-/** The default provider's capability descriptor (issue #18, `get_capabilities`) — the
- *  provider-static support matrix the UI degrades from. Outside Tauri it degrades to
+/** A provider's capability descriptor (issue #18, `get_capabilities`) — the
+ *  provider-static support matrix the UI degrades from. Pass `providerId` to fetch a
+ *  SPECIFIC provider's descriptor (the capabilities cache primes one per known
+ *  provider); omit it for the engine's DEFAULT provider. Outside Tauri it degrades to
  *  the Claude fallback; this is ALSO the fail-open default a caller uses when the
- *  live read fails (a missing capability must never silently drop a control). */
-export async function getCapabilities(): Promise<ProviderCapabilities> {
-  return tauriInvoke<ProviderCapabilities>('get_capabilities', {}, MOCK_CAPABILITIES);
+ *  live read fails (a missing capability must never silently drop a control). The
+ *  caller keys the cache by the RETURNED descriptor's `id`, so an outside-Tauri
+ *  Claude fallback for a non-Claude request can never masquerade as that provider. */
+export async function getCapabilities(providerId?: string): Promise<ProviderCapabilities> {
+  return tauriInvoke<ProviderCapabilities>('get_capabilities', { providerId }, MOCK_CAPABILITIES);
 }

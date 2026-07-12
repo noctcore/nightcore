@@ -1,11 +1,12 @@
 //! The read-only provider-configuration inspector command.
 //!
-//! Surfaces how the default provider is RESOLVED for the active
-//! project — its MCP servers, skills, subagents, and scalar extras (model /
-//! permission mode / output style) — over the request/reply NDJSON path. The
-//! command issues a `get-provider-config` [`SurfaceQuery`] through
-//! [`crate::sidecar::query`], so a future provider that declines a section returns `unsupported`
-//! WITHOUT any inspector code change.
+//! Surfaces how a provider is RESOLVED for the active project — its MCP servers,
+//! skills, subagents, and scalar extras (model / permission mode / output style) —
+//! over the request/reply NDJSON path. Pass `provider_id` to inspect a SPECIFIC
+//! provider; omit it (`None`) to inspect the engine's DEFAULT provider (reusing a
+//! live session when one exists). The command issues a `get-provider-config`
+//! [`SurfaceQuery`] through [`crate::sidecar::query`], so a future provider that
+//! declines a section returns `unsupported` WITHOUT any inspector code change.
 //!
 //! ## Why a separate command (not an overload of `sessions.rs`)
 //!
@@ -156,16 +157,19 @@ fn reply_error(reply: &Value) -> String {
         .to_string()
 }
 
-/// Read the default provider's resolved configuration for a project (the read-only
-/// inspector). `dir` defaults to the ACTIVE PROJECT root so the board-header entry
-/// is per-project with no argument; pass an explicit `dir` to inspect another root.
-/// Returns the snapshot (its sections degrade independently engine-side, so this
-/// resolves with `ok: true` even when a section couldn't be read). Errors only when
-/// no project is active or the transport itself failed.
+/// Read a provider's resolved configuration for a project (the read-only inspector).
+/// `dir` defaults to the ACTIVE PROJECT root so the board-header entry is per-project
+/// with no argument; pass an explicit `dir` to inspect another root. `provider_id`
+/// selects a specific provider; `None` inspects the engine's DEFAULT provider (and
+/// lets the engine reuse a live session). Returns the snapshot (its sections degrade
+/// independently engine-side, so this resolves with `ok: true` even when a section
+/// couldn't be read). Errors only when no project is active or the transport itself
+/// failed.
 #[tauri::command]
 pub async fn get_provider_config(
     app: AppHandle,
     dir: Option<String>,
+    provider_id: Option<String>,
 ) -> Result<ProviderConfigSnapshotView, String> {
     let dir = dir.or_else(|| active_project_root(&app));
     let Some(dir) = dir else {
@@ -176,7 +180,7 @@ pub async fn get_provider_config(
         &app,
         SurfaceQuery::GetProviderConfig {
             request_id: String::new(),
-            provider_id: None,
+            provider_id,
             dir: Some(dir),
         },
     )
