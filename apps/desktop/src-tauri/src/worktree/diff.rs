@@ -211,41 +211,18 @@ fn sanitize_diff_path(path: &str) -> Result<String, String> {
 /// against the worktree `dir` for the untracked-file READ, rejecting a symlink escape.
 /// `sanitize_diff_path` blocks `..`/absolute but NOT a symlink: an untracked
 /// `notes.txt -> /outside/secret` passes the lexical check, yet `std::fs::read` would
-/// follow it out of the worktree. Walk the joined path component-by-component with
-/// `symlink_metadata` (lstat — does NOT follow links, unlike `exists()`, so a DANGLING
-/// leaf symlink is caught too) and reject if ANY component is a symlink; then assert the
-/// result still sits under the canonical worktree root. This is the symlink-escape layer
-/// of the repo's `safe_join`, replicated because that helper is `pub(super)` to the
-/// harness module AND carries write-oriented execution-sink denylists that must not
-/// reject a read-only diff view of a legitimate file (e.g. `agents.md`, `.github/…`).
+/// follow it out of the worktree.
 ///
-/// TODO(#178): call the hoisted shared `safe_join` here once it moves to `infra/`
-/// (dropping the write-only denylists for this read path).
+/// Delegates to the shared canonicalized symlink-walk containment core
+/// ([`crate::infra::path_confine::confine`]) — the walk lstats each component (does NOT
+/// follow links, so a DANGLING leaf symlink is caught too), rejects any symlink, and
+/// asserts canonical containment. The READ path uses that core ALONE, WITHOUT the write
+/// path's (`safe_join`'s) execution-sink denylist, so a legitimate `.github/…`/`agents.md`
+/// file can still be diffed: the denylist would reject it for a WRITE (a synthesized
+/// artifact must never land an auto-executing file), but merely READING it is safe.
+/// Returns the confined absolute path.
 fn confined_untracked_path(dir: &Path, rel: &str) -> Result<PathBuf, String> {
-    let root = dir
-        .canonicalize()
-        .map_err(|e| format!("worktree {} is not accessible: {e}", dir.display()))?;
-    let mut current = root.clone();
-    for comp in Path::new(rel).components() {
-        // `sanitize_diff_path` guarantees only Normal components reach here.
-        let Component::Normal(name) = comp else {
-            return Err("diff path must not traverse".to_string());
-        };
-        current.push(name);
-        if let Ok(meta) = std::fs::symlink_metadata(&current) {
-            if meta.file_type().is_symlink() {
-                return Err(format!(
-                    "diff path passes through a symlink (rejected): {rel}"
-                ));
-            }
-        }
-    }
-    // Defence in depth: with no symlink in the chain and no `..`, `current` is inside the
-    // root by construction — assert it anyway (matches `safe_join`).
-    if current != root && !current.starts_with(&root) {
-        return Err(format!("diff path resolves outside the worktree: {rel}"));
-    }
-    Ok(current)
+    Ok(crate::infra::path_confine::confine(dir, rel, "diff path", "worktree")?.path)
 }
 
 /// Build an all-additions unified-diff patch for an untracked new file — every line a
@@ -354,6 +331,7 @@ pub fn worktree_diff(dir: &Path, base: &str) -> WorktreeDiff {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn sanitize_diff_path_accepts_a_repo_relative_path() {
@@ -386,5 +364,44 @@ mod tests {
         assert!(!patch
             .lines()
             .any(|l| l.starts_with('-') && !l.starts_with("---")));
+    }
+
+    #[test]
+    fn confined_untracked_path_accepts_a_repo_relative_file() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("notes.txt"), "hi").unwrap();
+        let out = confined_untracked_path(tmp.path(), "notes.txt").unwrap();
+        assert!(out.ends_with("notes.txt"));
+        assert!(out.starts_with(tmp.path().canonicalize().unwrap()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn confined_untracked_path_rejects_a_symlink_escape() {
+        // The read-path guard: an untracked symlink pointing outside the worktree must be
+        // rejected, not followed by the later `fs::read` (which would leak the target).
+        let root = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        std::fs::write(outside.path().join("secret"), "TOP-SECRET").unwrap();
+        std::os::unix::fs::symlink(outside.path().join("secret"), root.path().join("notes.txt"))
+            .unwrap();
+        assert!(confined_untracked_path(root.path(), "notes.txt").is_err());
+    }
+
+    #[test]
+    fn confined_untracked_path_allows_a_dotfile_the_write_path_denies() {
+        // Divergence proof (issue #178): the READ path resolves a legitimate
+        // `.github/workflows/*.yml` for a diff view — the shared containment core carries
+        // NO execution-sink denylist. The WRITE path (`sidecar::harness::apply::safe_join`)
+        // rejects the very same target via that denylist (see
+        // `apply::tests::safe_join_rejects_execution_sinks` and
+        // `apply::tests::write_path_denies_a_dotfile_the_read_path_core_allows`), because a
+        // synthesized artifact must never LAND an auto-executing workflow file. Same core,
+        // different layering.
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join(".github/workflows")).unwrap();
+        std::fs::write(tmp.path().join(".github/workflows/ci.yml"), "on: push").unwrap();
+        let out = confined_untracked_path(tmp.path(), ".github/workflows/ci.yml").unwrap();
+        assert!(out.ends_with(".github/workflows/ci.yml"));
     }
 }
