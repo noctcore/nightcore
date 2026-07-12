@@ -14,6 +14,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::settings::SettingsStore;
+use crate::usage::contract::UsageMeter;
 use crate::usage::http::{build_client, FetchError, ParsedUsage};
 use crate::usage::registry::{UsageRegistry, PROVIDERS};
 use crate::usage::{claude, codex};
@@ -75,6 +76,11 @@ async fn run_loop(app: AppHandle) {
 /// One poll batch: build the client, fetch every non-cooldown provider, emit the
 /// updated snapshot over `nc:usage`. A client-build failure skips the batch (keeps
 /// last-good) rather than panicking.
+///
+/// Re-checks `enabled` right before emitting (issue #305): a `disable_usage_meter`
+/// call landing mid-batch already pushed its OWN `disabled_meter()` snapshot, but
+/// doesn't cancel this in-flight batch — without the re-check, this emit would land
+/// after that one and show a since-disabled meter as live again until the next tick.
 async fn poll_once(app: &AppHandle) {
     let client = match build_client() {
         Ok(c) => c,
@@ -82,7 +88,22 @@ async fn poll_once(app: &AppHandle) {
     };
     let reg = app.state::<UsageRegistry>();
     poll_batch(reg.inner(), |provider| dispatch_fetch(&client, provider)).await;
-    let _ = app.emit(USAGE_EVENT, reg.snapshot());
+    let _ = app.emit(USAGE_EVENT, state_change_snapshot(&reg, enabled(app)));
+}
+
+/// The snapshot to push on `nc:usage` for a given enabled state (issue #305): the
+/// real last-good registry snapshot when enabled, else the synthesized `disabled`
+/// shape — regardless of what the registry still holds from before the meter was
+/// turned off. Pure over the registry + a bool (no `AppHandle`), so it's the one
+/// piece of `poll_once`'s new race-guard that's unit-testable; `commands::usage`'s
+/// `enable`/`disable_usage_meter` push the same two shapes directly (one hardcoded
+/// branch each — no decision to make there).
+fn state_change_snapshot(reg: &UsageRegistry, enabled: bool) -> UsageMeter {
+    if enabled {
+        reg.snapshot()
+    } else {
+        UsageRegistry::disabled_meter()
+    }
 }
 
 /// The pure-over-an-injected-fetch batch (spec §3.3): each provider not in a 429
@@ -213,5 +234,25 @@ mod tests {
             1,
             "last-good windows survive the cooldown"
         );
+    }
+
+    #[test]
+    fn state_change_snapshot_is_the_disabled_shape_when_off() {
+        // A disable landing mid-poll must win over whatever the registry still holds
+        // from before the meter was turned off (issue #305 race guard).
+        let reg = UsageRegistry::new();
+        reg.mark_ok("claude", ParsedUsage::default());
+        let snapshot = state_change_snapshot(&reg, false);
+        assert!(snapshot
+            .providers
+            .iter()
+            .all(|r| r.status == UsageStatus::Disabled));
+    }
+
+    #[test]
+    fn state_change_snapshot_is_the_real_registry_snapshot_when_on() {
+        let reg = UsageRegistry::new();
+        reg.mark_ok("claude", ParsedUsage::default());
+        assert_eq!(state_change_snapshot(&reg, true), reg.snapshot());
     }
 }

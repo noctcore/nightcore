@@ -50,8 +50,9 @@ pub use registry::UsageRegistry;
 // coordinator's tick gate consumes. Lives here (not `orchestration/`) so the gate
 // stays provider-id-agnostic (issue #18 arch invariant).
 pub(crate) use throttle::{hot_window, provider_display, UsagePause};
-// `USAGE_EVENT` is emitted from inside `poller` directly; this re-export exists ONLY
-// for the `contracts::mod` channel-conformance test, so it is `#[cfg(test)]`-gated to
-// avoid an unused-import warning in a release build.
-#[cfg(test)]
+// `USAGE_EVENT` — the single `nc:usage` channel const, authored once in `poller`.
+// Re-exported for `commands::usage` (issue #305: the enable/disable commands push a
+// state-change snapshot on this SAME channel so every listening surface, not just
+// the poller's own 10-min tick, reconciles live) and for the `contracts::mod`
+// channel-conformance test.
 pub(crate) use poller::USAGE_EVENT;
