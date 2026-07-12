@@ -111,7 +111,7 @@ const MERGE_SECTION_ALLOWED_BASENAMES: &[&str] = &["claude.md", "agents.md", "ag
 /// Layer 3 is the read path's ENTIRE guard ([`crate::worktree::diff`]); layers 2 + 4 are
 /// write-path-specific. Returns the absolute destination path (which may not exist yet,
 /// for `create`).
-pub(super) fn safe_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
+pub(crate) fn safe_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
     if rel.trim().is_empty() {
         return Err("artifact target path is empty".to_string());
     }

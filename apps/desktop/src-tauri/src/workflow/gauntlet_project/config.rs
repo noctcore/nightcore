@@ -119,18 +119,31 @@ impl HarnessCheckKind {
         matches!(self, HarnessCheckKind::LintMeta | HarnessCheckKind::Shell)
     }
 
-    /// Security-critical kinds are EXCLUDED from the runner's flaky-retry policy. A
-    /// `secret-scan` or `mutation-score` that fails then flips to exit-0 on a retry
-    /// must still BLOCK (a leaked secret that momentarily disappears is still a leak;
-    /// a mutation score that only clears on a re-run is not a real pass) rather than
+    /// Security-critical kinds are EXCLUDED from the runner's flaky-retry policy once a
+    /// check has actually RUN. A `secret-scan`, `mutation-score`, `lockfile-lint`, or
+    /// `env-contract` that fails then flips to exit-0 on a retry must still BLOCK (a
+    /// leaked secret that momentarily disappears is still a leak; a tampered lockfile or
+    /// a broken env contract that only clears on a re-run is not a real pass) rather than
     /// be masked as a non-blocking `flaky`. Excluding them also avoids re-running a
-    /// side-effecting check (e.g. Stryker) a second time. The greppable single source
-    /// of truth for [`super::runner::run_check_with_retry`]'s per-kind decision; kept
-    /// in lockstep with the enum by [`super::tests`].
+    /// side-effecting check (e.g. Stryker) a second time.
+    ///
+    /// `lockfile-lint` and `env-contract` join the original two here because they are
+    /// SUPPLY-CHAIN / config-integrity controls (a tampered `package-lock`/`bun.lock`
+    /// resolver, or an undeclared/leaked env var) whose fail-then-pass must block for the
+    /// same reason. Note the runner only suppresses the retry on a real VERDICT (a check
+    /// that ran and exited non-zero); a TRANSIENT infra failure (launch-fail / timeout)
+    /// still gets the one retry — see [`super::runner::run_check_with_retry`].
+    ///
+    /// The greppable single source of truth for
+    /// [`super::runner::run_check_with_retry`]'s per-kind decision; kept in lockstep with
+    /// the enum by [`super::tests`].
     pub(super) fn is_security_critical(self) -> bool {
         matches!(
             self,
-            HarnessCheckKind::SecretScan | HarnessCheckKind::MutationScore
+            HarnessCheckKind::SecretScan
+                | HarnessCheckKind::MutationScore
+                | HarnessCheckKind::LockfileLint
+                | HarnessCheckKind::EnvContract
         )
     }
 }

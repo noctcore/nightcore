@@ -288,20 +288,25 @@ fn a_flaky_check_fails_then_passes_and_is_not_a_failure() {
 }
 
 #[test]
-fn security_critical_kinds_are_secret_scan_and_mutation_score() {
-    // The greppable classification that drives the flaky-retry exclusion: only the
-    // two security kinds are security-critical; every other runnable kind is not.
+fn security_critical_kinds_include_supply_chain_controls() {
+    // The greppable classification that drives the flaky-retry exclusion: the secret /
+    // mutation kinds PLUS the supply-chain / config-integrity controls (`lockfile-lint`,
+    // `env-contract`) are security-critical; every other runnable kind is not.
     use HarnessCheckKind::*;
-    assert!(SecretScan.is_security_critical());
-    assert!(MutationScore.is_security_critical());
+    for kind in [SecretScan, MutationScore, LockfileLint, EnvContract] {
+        assert!(
+            kind.is_security_critical(),
+            "{kind:?} must be security-critical"
+        );
+    }
     for kind in [
         LintPlugin,
         DependencyCruiser,
         CoverageThreshold,
-        LockfileLint,
-        EnvContract,
         AstGrep,
         ApiExtractor,
+        LintMeta,
+        Shell,
     ] {
         assert!(
             !kind.is_security_critical(),
@@ -316,8 +321,13 @@ fn a_security_check_that_fails_then_passes_is_not_a_flaky_pass() {
     // Item 3: security-critical kinds are EXCLUDED from flaky-retry. The very same
     // fail-then-pass script that a `lint-plugin` treats as non-blocking `flaky`
     // (see `a_flaky_check_fails_then_passes_and_is_not_a_failure`) must BLOCK for a
-    // security kind — with no retry, the first failure is the verdict.
-    for kind in ["secret-scan", "mutation-score"] {
+    // security kind — with no retry on a real verdict, the first exit-1 is final.
+    for kind in [
+        "secret-scan",
+        "mutation-score",
+        "lockfile-lint",
+        "env-contract",
+    ] {
         let tmp = temp_project_with_config("{}"); // config rewritten below with the abs path
         let script = write_script(
             tmp.path(),
@@ -341,6 +351,51 @@ fn a_security_check_that_fails_then_passes_is_not_a_flaky_pass() {
         assert_eq!(result.failed_check.as_deref(), Some("sec"), "{kind}");
         assert_eq!(result.checks[0].status, StepStatus::Failed, "{kind}");
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_security_check_that_times_out_then_passes_is_retried_not_blocked() {
+    // Item 3 nit (transient-infra retry): a security kind loses its retry only for a REAL
+    // verdict (a non-zero exit code). A TRANSIENT infra failure — here a TIMEOUT on the
+    // first attempt, reported with `exit_code: None` — is not a verdict, so the one retry
+    // still applies and a clean second run is a non-blocking `flaky`, never a spurious
+    // block on a slow host. Contrast `a_security_check_that_fails_then_passes_is_not_a_
+    // flaky_pass`, where the first attempt EXITS 1 (a verdict) and blocks with no retry.
+    let tmp = temp_project_with_config("{}");
+    let script = write_script(
+        tmp.path(),
+        "slow-once.sh",
+        // First run: drop the marker, then overrun the timeout (killed ⇒ exit_code None).
+        // Second run: the marker exists ⇒ exit 0 promptly. The timeout is generous
+        // (1500ms) so the `touch` reliably lands before the kill on any host, while the
+        // 30s sleep guarantees the first attempt is the timeout, not a natural exit.
+        "if [ -f slow-marker ]; then exit 0; else touch slow-marker; sleep 30; fi",
+    );
+    std::fs::write(
+        tmp.path().join(".nightcore/harness.json"),
+        format!(
+            r#"{{ "checks": [ {{ "name": "sec", "kind": "secret-scan", "command": "{}", "timeoutMs": 1500 }} ] }}"#,
+            script.display()
+        ),
+    )
+    .expect("rewrite manifest");
+
+    let start = std::time::Instant::now();
+    let result = run(tmp.path());
+    assert!(
+        start.elapsed() < std::time::Duration::from_secs(15),
+        "the first attempt is killed at the ~1500ms timeout, not waited out for 30s"
+    );
+    assert!(
+        result.passed,
+        "a security check that only TIMED OUT (infra) then passed is retried, not blocked"
+    );
+    assert_eq!(
+        result.checks[0].status,
+        StepStatus::Flaky,
+        "the clean retry after a transient timeout is a non-blocking flake"
+    );
 }
 
 #[cfg(unix)]

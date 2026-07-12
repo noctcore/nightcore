@@ -76,8 +76,10 @@ export function useChecksManager(): ChecksManagerVM {
   // The per-check "Validate rule" trigger (issue #185): confirm an armed `lint-plugin`
   // check is a REAL rule that fires via the Bun-sidecar RuleTester runner, not a
   // placebo. Runs a structural probe (no cases) — `configPath` names the rule/plugin
-  // module to load; the runner fails SOFT (a load failure returns `outcome: 'error'`,
-  // not a rejection), so a rejection here is only a transport/engine error.
+  // module to load; the backend server-resolves the project root and contains the path
+  // (issue #194 item 4), so no project path is sent. The runner fails SOFT (a load
+  // failure returns `outcome: 'error'`, not a rejection), so a rejection here is only a
+  // transport/engine (or authorization) error.
   const startValidate = useCallback((check: ArmedCheck) => {
     const name = check.name;
     setValidatingName(name);
@@ -92,7 +94,6 @@ export function useChecksManager(): ChecksManagerVM {
         const result = await validatePluginRule({
           ruleId: name,
           rulePath: check.configPath ?? '',
-          projectPath: null,
         });
         setValidateResults((prev) => ({ ...prev, [name]: result }));
       } catch (err) {

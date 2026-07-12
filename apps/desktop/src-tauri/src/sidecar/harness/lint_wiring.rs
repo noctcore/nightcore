@@ -131,19 +131,34 @@ fn wiring_needles(plugin_rel_path: &str) -> Vec<String> {
 }
 
 /// Extract the contents of every string literal in `text` (single-, double-, or
-/// backtick-quoted), skipping anything inside `//` line comments and `/* … */`
-/// block comments. A tiny hand-rolled scanner: an ESLint config references a local
-/// plugin ONLY as a quoted module specifier (`import … from '<path>'` /
-/// `require('<path>')`), so matching against the extracted literals — never the raw
-/// text — is what makes the gate robust. A path mentioned in a COMMENT, or that is
-/// merely a substring of a longer sibling path, is no longer a false "wired" signal.
+/// backtick-quoted), skipping anything inside `//` line comments, `/* … */` block
+/// comments, AND regex literals. A tiny hand-rolled scanner: an ESLint config
+/// references a local plugin ONLY as a quoted module specifier (`import … from
+/// '<path>'` / `require('<path>')`), so matching against the extracted literals —
+/// never the raw text — is what makes the gate robust. A path mentioned in a COMMENT,
+/// or that is merely a substring of a longer sibling path, is no longer a false
+/// "wired" signal.
+///
+/// Regex-literal awareness (issue #194 item 1) is what keeps the string-quote parity
+/// from desyncing: a bare regex whose body contains a quote char (e.g. `/'/`) would
+/// otherwise open a phantom string, swallowing a real specifier AFTER it (fail-closed:
+/// a genuinely-wired plugin's arm is refused) or capturing a phantom one (fail-open: an
+/// unwired plugin arms GREEN — a placebo). We track whether a `/` sits in value
+/// position (a regex) vs operator position (division) and skip regex bodies whole, so a
+/// quote inside a pattern is never read as a delimiter. A captured literal is finally
+/// filtered to only plausible module specifiers ([`looks_like_module_specifier`]) as
+/// defense-in-depth — a multi-line / oversized blob is never a real `import` target.
 fn string_literals(text: &str) -> Vec<String> {
     let bytes = text.as_bytes();
     let mut out = Vec::new();
     let mut i = 0;
+    // Whether a `/` at the current position begins a REGEX literal (value position) vs a
+    // DIVISION operator (right after a value). Starts `true` (a leading `/` is a regex).
+    let mut expect_value = true;
     while i < bytes.len() {
         match bytes[i] {
-            // `//` line comment: skip to end of line.
+            // `//` line comment: skip to end of line. A comment is not a value token, so
+            // `expect_value` is unchanged (the code before it still governs the next `/`).
             b'/' if bytes.get(i + 1) == Some(&b'/') => {
                 i += 2;
                 while i < bytes.len() && bytes[i] != b'\n' {
@@ -158,8 +173,14 @@ fn string_literals(text: &str) -> Vec<String> {
                 }
                 i += 2;
             }
-            // A string literal: capture its contents up to the matching close quote
-            // (a `\` escapes the next byte, so `\'` does not end a single-quoted one).
+            // A `/` in value position is a REGEX literal: skip its whole body + flags so a
+            // quote char inside the pattern can never be mistaken for a string delimiter.
+            b'/' if expect_value => {
+                i = skip_regex_literal(bytes, i);
+                expect_value = false; // a regex evaluates to a value
+            }
+            // A string / template literal: capture its contents up to the matching close
+            // quote (a `\` escapes the next byte, so `\'` does not end a single-quoted one).
             quote @ (b'\'' | b'"' | b'`') => {
                 i += 1;
                 let start = i;
@@ -171,28 +192,96 @@ fn string_literals(text: &str) -> Vec<String> {
                 }
                 let end = i.min(bytes.len());
                 if let Ok(s) = std::str::from_utf8(&bytes[start..end]) {
-                    out.push(s.to_string());
+                    if looks_like_module_specifier(s) {
+                        out.push(s.to_string());
+                    }
                 }
                 i += 1; // step past the closing quote
+                expect_value = false; // a string evaluates to a value
             }
-            _ => i += 1,
+            b => {
+                if !b.is_ascii_whitespace() {
+                    // A value token ENDS on an identifier/number char or a closing bracket;
+                    // after those a `/` is division. Everything else (operators, `(`, `,`,
+                    // `{`, `[`, `=`, `:`, …) leaves us in value position where `/` is a regex.
+                    expect_value = !(b.is_ascii_alphanumeric()
+                        || b == b'_'
+                        || b == b'$'
+                        || b == b')'
+                        || b == b']'
+                        || b == b'}');
+                }
+                i += 1;
+            }
         }
     }
     out
 }
 
+/// Skip a regex literal whose opening `/` is at `bytes[start]`, returning the index just
+/// past its closing `/` and any flags. Respects `\` escapes and `[…]` character classes
+/// (a `/` inside a class does NOT terminate the regex, and neither does an escaped one).
+/// Best-effort: a regex can't span lines, so an unterminated one stops at the newline —
+/// a stray `/` can therefore never run away over the rest of the file.
+fn skip_regex_literal(bytes: &[u8], start: usize) -> usize {
+    let mut i = start + 1; // past the opening `/`
+    let mut in_class = false;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => {
+                i += 2; // an escape consumes the next byte too
+                continue;
+            }
+            b'\n' => return i, // unterminated on this line: stop here
+            b'[' => in_class = true,
+            b']' => in_class = false,
+            b'/' if !in_class => {
+                i += 1; // past the closing `/`
+                while i < bytes.len() && bytes[i].is_ascii_alphabetic() {
+                    i += 1; // skip flags (`g`, `i`, `m`, …)
+                }
+                return i;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    i
+}
+
+/// A conservative shape filter: only a value that could be a real ESLint module
+/// specifier is kept as a wiring signal. A specifier is single-line and short, so a
+/// captured literal with a newline or an implausible length is a phantom (never a real
+/// `import '<path>'`) and is dropped — removing a false wiring signal without affecting
+/// any legitimate config. Defense-in-depth behind the regex-aware scanner.
+fn looks_like_module_specifier(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 512 && !s.contains('\n')
+}
+
 /// True if the module specifier `literal` refers to the path `needle` by path-segment
-/// SUFFIX — an exact match or a `/`-anchored tail. So a sibling `…/bar.js` never
-/// matches a plugin `…/foo.js`, while a nested config's `../../tools/eslint-rules`
-/// still resolves to the root plugin. A glob pattern (an `ignores`/`files` entry,
-/// which contains `*`) is never a module specifier, so it can wire nothing.
+/// SUFFIX — an exact match or a `/`-anchored tail reached by a RELATIVE specifier. So a
+/// sibling `…/bar.js` never matches a plugin `…/foo.js`, while a nested config's
+/// `../../tools/eslint-rules` still resolves to the root plugin. A glob pattern (an
+/// `ignores`/`files` entry, which contains `*`) is never a module specifier, so it can
+/// wire nothing.
+///
+/// A SUFFIX match (the literal is longer than the needle) is accepted ONLY when the
+/// literal is a RELATIVE import (`./` / `../`). A local plugin is always referenced
+/// relatively when its path form is used, whereas a bare/scoped PACKAGE subpath like
+/// `@myorg/tools/eslint-rules` merely ENDS with the same segments — it is an unrelated
+/// published package, not the local plugin, so it must not satisfy the arm gate (issue
+/// #194 item 2). An exact match (the literal IS the needle) needs no relative prefix.
 fn literal_refers_to(literal: &str, needle: &str) -> bool {
     let lit = literal.replace('\\', "/");
     let lit = lit.trim().trim_end_matches('/');
     if lit.contains('*') {
         return false;
     }
-    lit == needle || lit.ends_with(&format!("/{needle}"))
+    if lit == needle {
+        return true;
+    }
+    let relative = lit.starts_with("./") || lit.starts_with("../");
+    relative && lit.ends_with(&format!("/{needle}"))
 }
 
 /// True if any collected config REGISTERS the plugin: some string-literal module
@@ -441,5 +530,73 @@ mod tests {
                 .any(|l| l.contains("commented") || l.contains("blocked")),
             "commented literals are not captured: {lits:?}"
         );
+    }
+
+    // --- Item 1: regex-literal awareness (no quote-parity desync) ---------------
+
+    #[test]
+    fn string_literals_are_regex_literal_aware() {
+        // A regex literal whose body holds a quote char (`/'/`) must not desync the
+        // scanner: the real specifier AFTER it is still captured, a plain division `/`
+        // introduces no phantom, and nothing from the regex body leaks in.
+        let lits = string_literals("const re = /'/;\nimport x from './real.js';\nconst y = 1 / 2;");
+        assert!(lits.iter().any(|l| l == "./real.js"), "{lits:?}");
+        assert_eq!(
+            lits.len(),
+            1,
+            "only the real specifier is captured: {lits:?}"
+        );
+    }
+
+    #[test]
+    fn a_regex_literal_with_a_quote_does_not_desync_the_arm_gate() {
+        // End to end: a regex literal with an odd number of quote chars used as a value
+        // must not throw off the wiring assessment. A genuine plugin import AFTER it is
+        // still recognized (the fail-closed regression the issue names), while a sibling
+        // path only present in a COMMENT is still not a wiring signal (the fail-open one).
+        let configs = vec![(
+            "eslint.config.mjs".to_string(),
+            "const q = /'/;\n\
+             import local from './tools/eslint-rules/index.js';\n\
+             // wire ./tools/eslint-rules/other.js once reviewed\n\
+             export default [{ plugins: { local } }];"
+                .to_string(),
+        )];
+        assert!(
+            assess_plugin_wiring(&configs, "tools/eslint-rules/index.js").is_ok(),
+            "a regex quote must not swallow the real specifier after it"
+        );
+        let err = assess_plugin_wiring(&configs, "tools/eslint-rules/other.js")
+            .expect_err("a commented sibling must not count as wiring, even after a regex");
+        assert!(err.contains("isn't referenced"), "got: {err}");
+    }
+
+    // --- Item 2: dir-import needles anchored to relative specifiers -------------
+
+    #[test]
+    fn a_published_package_subpath_does_not_false_positive_the_dir_needle() {
+        // `@myorg/tools/eslint-rules` is an unrelated PUBLISHED package whose subpath
+        // merely ends with the local plugin's directory. A local plugin is only ever
+        // imported by a RELATIVE specifier (`./` / `../`), so a bare/scoped package
+        // import must not satisfy the arm gate's dir-import branch.
+        let configs = vec![(
+            "eslint.config.mjs".to_string(),
+            "import plugin from '@myorg/tools/eslint-rules';\nexport default [plugin];".to_string(),
+        )];
+        let err = assess_plugin_wiring(&configs, "tools/eslint-rules/index.js")
+            .expect_err("a published package subpath must not wire the local plugin");
+        assert!(err.contains("isn't referenced"), "got: {err}");
+    }
+
+    #[test]
+    fn a_relative_dir_import_across_packages_still_wires() {
+        // The legitimate counterpart: a package-level config importing the ROOT plugin's
+        // directory via `../../` is relative, so it still arms — the anchoring only drops
+        // the bare/scoped package false positive, never a real relative import.
+        let configs = vec![(
+            "eslint.config.ts".to_string(),
+            "import p from '../../tools/eslint-rules';\nexport default [p];".to_string(),
+        )];
+        assert!(assess_plugin_wiring(&configs, "tools/eslint-rules/index.js").is_ok());
     }
 }

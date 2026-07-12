@@ -8,9 +8,12 @@
 //! Per-check duration is recorded. A task's own verify command folds in as an
 //! extra check, and `fix_instruction` renders the aggregate feedback the auto-fix
 //! loop feeds back on failure. Security-critical kinds (`secret-scan`,
-//! `mutation-score`) are EXCLUDED from the retry: a failure blocks immediately
+//! `mutation-score`, `lockfile-lint`, `env-contract`) are EXCLUDED from the retry
+//! ONCE THEY HAVE RUN: a real verdict (a non-zero exit code) blocks immediately
 //! rather than getting a second chance to flip green (and a side-effecting check
-//! is not run twice).
+//! is not run twice). A TRANSIENT infra failure (the tool could not be launched, or
+//! it timed out — neither of which is a verdict) still gets the one retry, so a
+//! flaky CI host doesn't spuriously block a security check.
 
 use std::path::Path;
 use std::process::Stdio;
@@ -202,10 +205,14 @@ fn run_check_once(program: &str, args: &[String], dir: &Path, timeout: Duration)
 /// a fix session — while a check that fails BOTH times is `Failed`. Each attempt
 /// is independently bounded by `timeout`, so the worst case is `2 * timeout`.
 ///
-/// When `security_critical` is true the retry is SUPPRESSED: the first failure is
-/// the verdict (`Failed`), so a security check (`secret-scan` / `mutation-score`)
-/// that ever fails BLOCKS instead of being masked as a non-blocking `flaky` pass —
-/// and a side-effecting check is never run twice. See
+/// When `security_critical` is true the retry is SUPPRESSED for a real VERDICT: a
+/// security check (`secret-scan` / `mutation-score` / `lockfile-lint` /
+/// `env-contract`) that RAN and exited non-zero is `Failed` immediately, instead of
+/// being masked as a non-blocking `flaky` pass — and a side-effecting check is never
+/// re-run. A TRANSIENT infra failure is treated differently: a launch failure or a
+/// timeout is reported by [`run_check_once`] with `exit_code: None` (the check never
+/// produced a verdict), so it STILL gets the one retry rather than spuriously blocking
+/// on a flaky/slow CI host. See
 /// [`super::config::HarnessCheckKind::is_security_critical`].
 pub(super) fn run_check_with_retry(
     program: &str,
@@ -224,9 +231,12 @@ pub(super) fn run_check_with_retry(
         };
     }
 
-    // A security-critical check gets NO second chance: a single failure blocks
-    // (never a `flaky` pass), and a side-effecting check isn't run twice.
-    if security_critical {
+    // A security-critical check gets NO second chance ONCE IT HAS RUN: a real verdict
+    // (a non-zero EXIT CODE) blocks (never a `flaky` pass), and a side-effecting check
+    // isn't run twice. A transient infra failure (launch-fail / timeout ⇒ `exit_code:
+    // None`) is NOT a verdict, so it falls through to the one retry below — this is the
+    // only difference from a non-security kind for the infra-failure case.
+    if security_critical && first.exit_code.is_some() {
         return CheckOutcome {
             status: StepStatus::Failed,
             exit_code: first.exit_code,

@@ -40,8 +40,14 @@ pub use convert::*;
 // `handle_harness_event` is crate-internal (`pub(crate)`), so re-export at crate visibility:
 // a `pub` glob over a non-`pub` item warns "doesn't reexport anything with visibility `pub`".
 pub(crate) use events::*;
-// `apply` is the impl-only file-write path; its symbols are consumed within the module
-// (by `commands::apply_harness_artifact` via `super::apply`), so nothing resolves through
-// this re-export — it exists only to keep the facade symmetric (sidecar/mod.rs:53 convention).
+// `apply` is the impl-only file-write path; most of its symbols are consumed within the
+// module (by `commands::apply_harness_artifact` via `super::apply`), so the glob resolves
+// nothing at `pub` visibility — it exists only to keep the facade symmetric
+// (sidecar/mod.rs:53 convention).
 #[allow(unused_imports)]
 pub use apply::*;
+// `safe_join` (the shared repo-relative + symlink-containment guard) is reused OUTSIDE
+// this module by the RuleTester runner to contain a caller-supplied `rule_path` before
+// it is loaded/executed (issue #194 item 4). Re-export it at crate visibility so
+// `sidecar::harness::safe_join` resolves for that sibling.
+pub(crate) use apply::safe_join;
