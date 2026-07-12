@@ -17,7 +17,7 @@ export function SectionLabel({ children }: { children: string }) {
   return (
     <div
       role="presentation"
-      className="px-2 pb-0.5 pt-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground"
+      className="px-2 pb-0.5 pt-1.5 text-3xs font-medium uppercase tracking-[0.08em] text-muted-foreground"
     >
       {children}
     </div>
@@ -55,9 +55,9 @@ export function BranchOptionRow({ row, highlighted, onHighlight, onSelect }: Bra
       <span className="flex w-3.5 shrink-0 justify-center text-primary" aria-hidden>
         {branch.isCurrent && <CheckIcon size={13} />}
       </span>
-      <span className="truncate text-[13px] text-foreground">{branch.name}</span>
+      <span className="truncate text-xs-plus2 text-foreground">{branch.name}</span>
       {tracking !== null && (
-        <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground" aria-hidden>
+        <span className="ml-auto shrink-0 font-mono text-3xs text-muted-foreground" aria-hidden>
           {tracking}
         </span>
       )}

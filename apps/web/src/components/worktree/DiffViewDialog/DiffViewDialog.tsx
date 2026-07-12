@@ -55,7 +55,7 @@ export function DiffViewDialog({
           <div className="text-base font-semibold text-foreground">{title}</div>
           {shownDiff !== null && shownDiff.summary.length > 0 && (
             <div
-              className="truncate font-mono text-[11.5px] text-muted-foreground"
+              className="truncate font-mono text-2xs-plus text-muted-foreground"
               title={shownDiff.summary}
             >
               {shownDiff.summary}
@@ -91,17 +91,17 @@ export function DiffViewDialog({
                   >
                     <span
                       title={meta.label}
-                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md font-mono text-[11px] font-semibold ${meta.pill}`}
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md font-mono text-2xs font-semibold ${meta.pill}`}
                     >
                       {meta.letter}
                     </span>
                     <span
                       title={file.path}
-                      className="min-w-0 flex-1 truncate font-mono text-[13px] text-foreground"
+                      className="min-w-0 flex-1 truncate font-mono text-xs-plus2 text-foreground"
                     >
                       {file.path}
                     </span>
-                    <span className="shrink-0 font-mono text-[11px] tabular-nums">
+                    <span className="shrink-0 font-mono text-2xs tabular-nums">
                       <span className="text-success">+{file.additions}</span>{' '}
                       <span className="text-destructive">−{file.deletions}</span>
                     </span>

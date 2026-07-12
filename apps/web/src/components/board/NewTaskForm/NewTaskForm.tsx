@@ -24,7 +24,7 @@ import type { NewTaskFormProps } from './NewTaskForm.types';
 const INPUT_CLASS =
   'w-full rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary';
 const LABEL_CLASS =
-  'font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground';
+  'font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground';
 
 /** The create-task dialog reached from the board's "New task" affordance. */
 export function NewTaskForm({ open, planGateDefault, onCreate, onClose }: NewTaskFormProps) {
@@ -143,7 +143,7 @@ export function NewTaskForm({ open, planGateDefault, onCreate, onClose }: NewTas
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 flex-col gap-0.5">
               <span className={LABEL_CLASS}>Plan first</span>
-              <span className="text-[11px] leading-snug text-muted-foreground">
+              <span className="text-2xs leading-snug text-muted-foreground">
                 {providerSupportsPlanGate
                   ? 'Review a plan before the agent writes code'
                   : 'Plan approval isn’t supported on this provider'}
@@ -156,7 +156,7 @@ export function NewTaskForm({ open, planGateDefault, onCreate, onClose }: NewTas
                 label="Plan first — review a plan before the agent writes code"
               />
             ) : (
-              <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground/60">
+              <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground/60">
                 Unavailable
               </span>
             )}

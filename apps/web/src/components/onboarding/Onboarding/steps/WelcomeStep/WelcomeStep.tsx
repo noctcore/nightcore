@@ -11,7 +11,7 @@ export function WelcomeStep() {
         <h1 className="text-[22px] font-semibold tracking-tight">
           Welcome to nightcore<span className="text-primary">.</span>
         </h1>
-        <p className="mt-1.5 max-w-[420px] text-[13px] leading-6 text-muted-foreground">
+        <p className="mt-1.5 max-w-[420px] text-xs-plus2 leading-6 text-muted-foreground">
           An autonomous Claude dev studio for shipping changes from local repos with
           visible checks, review gates, and project-scoped boards.
         </p>
@@ -26,8 +26,8 @@ export function WelcomeStep() {
               <BoltIcon size={14} />
             </div>
             <div>
-              <div className="text-[12.5px] font-semibold">{row.title}</div>
-              <div className="text-[11.5px] text-muted-foreground">{row.body}</div>
+              <div className="text-xs-plus font-semibold">{row.title}</div>
+              <div className="text-2xs-plus text-muted-foreground">{row.body}</div>
             </div>
           </div>
         ))}

@@ -33,7 +33,7 @@ function renderFinding(shown: StoryFinding): GroundedFindingView {
   return {
     title: shown.title,
     badges: (
-      <span className="inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+      <span className="inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
         High
       </span>
     ),
@@ -87,7 +87,7 @@ export const InertWithExtraSections: Story = {
         descriptionInert: true,
         afterDescription: (
           <DetailSection title="Corroboration">
-            <p className="text-[13px] text-muted-foreground">
+            <p className="text-xs-plus2 text-muted-foreground">
               Also surfaced by the Security lens.
             </p>
           </DetailSection>
@@ -97,7 +97,7 @@ export const InertWithExtraSections: Story = {
         suggestionCode: true,
         extra: (
           <DetailSection title="Evidence">
-            <p className="text-[13px] text-muted-foreground">
+            <p className="text-xs-plus2 text-muted-foreground">
               Two call sites drop the rejection.
             </p>
           </DetailSection>

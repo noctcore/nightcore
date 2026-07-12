@@ -68,7 +68,7 @@ export function DetailSection({
 }) {
   return (
     <section className="flex flex-col gap-1.5">
-      <h4 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+      <h4 className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
         {title}
       </h4>
       {children}
@@ -79,7 +79,7 @@ export function DetailSection({
 /** A grounded `file:line` location rendered as a bordered code chip. */
 export function DetailLocation({ children }: { children: ReactNode }) {
   return (
-    <code className="break-all rounded-md border border-border bg-white/[0.03] px-2 py-1 font-mono text-[11.5px] text-foreground">
+    <code className="break-all rounded-md border border-border bg-white/[0.03] px-2 py-1 font-mono text-2xs-plus text-foreground">
       {children}
     </code>
   );

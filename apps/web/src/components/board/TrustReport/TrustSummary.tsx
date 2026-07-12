@@ -12,7 +12,7 @@ function Chip({ label, tone = 'muted' }: { label: string; tone?: 'success' | 'de
         : 'text-muted-foreground';
   return (
     <span
-      className={`font-mono text-[10px] font-semibold uppercase tracking-[0.06em] ${toneClass}`}
+      className={`font-mono text-3xs font-semibold uppercase tracking-[0.06em] ${toneClass}`}
     >
       {label}
     </span>

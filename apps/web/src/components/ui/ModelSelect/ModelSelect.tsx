@@ -67,7 +67,7 @@ export function ModelSelect({
                 <SparkIcon size={15} className="shrink-0 text-muted-foreground" />
               )}
               <span className="text-sm font-medium text-foreground">{v.selected.label}</span>
-              <span className="ml-auto truncate pl-2 text-[11px] text-muted-foreground" aria-hidden>
+              <span className="ml-auto truncate pl-2 text-2xs text-muted-foreground" aria-hidden>
                 {v.selected.description}
               </span>
               <ChevronDownIcon size={14} className="shrink-0 text-muted-foreground" aria-hidden />

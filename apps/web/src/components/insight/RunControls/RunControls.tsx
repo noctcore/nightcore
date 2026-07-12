@@ -41,7 +41,7 @@ export function RunControls({ config, isStarting, onAnalyze }: RunControlsProps)
       }
       beforeChips={
         <div className="flex flex-col gap-1.5">
-          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+          <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
             Scope
           </span>
           <div role="radiogroup" aria-label="Scope" className="flex gap-2">

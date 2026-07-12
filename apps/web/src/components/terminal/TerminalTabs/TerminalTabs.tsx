@@ -73,7 +73,7 @@ function AttentionBadge({ attention }: { attention: TerminalAttention }) {
   return (
     <span
       aria-label={unreadBadgeLabel(attention.unread)}
-      className="shrink-0 rounded-full bg-primary/25 px-1.5 text-[10px] font-semibold leading-4 text-primary"
+      className="shrink-0 rounded-full bg-primary/25 px-1.5 text-3xs font-semibold leading-4 text-primary"
     >
       {unreadBadge(attention.unread)}
     </span>
@@ -134,7 +134,7 @@ function Tab({
             onKeyDown={rename.onKeyDown}
             onBlur={rename.onBlur}
             size={Math.max(rename.draft.length, 4)}
-            className="min-w-0 rounded-sm bg-white/10 px-1 text-[12.5px] font-medium text-foreground outline-none ring-1 ring-primary/60"
+            className="min-w-0 rounded-sm bg-white/10 px-1 text-xs-plus font-medium text-foreground outline-none ring-1 ring-primary/60"
           />
         </span>
       ) : (
@@ -150,7 +150,7 @@ function Tab({
           className="flex min-w-0 items-center gap-1.5"
         >
           <IdentityDot confined={session.confined} />
-          <span className="max-w-[12rem] truncate text-[12.5px] font-medium">{label}</span>
+          <span className="max-w-[12rem] truncate text-xs-plus font-medium">{label}</span>
         </button>
       )}
       {ungoverned && <UngovernedMarker />}
@@ -201,7 +201,7 @@ function RestoredTab({
         className="flex min-w-0 items-center gap-1.5"
       >
         <HistoryIcon size={12} className="shrink-0 opacity-70" aria-hidden />
-        <span className="max-w-[12rem] truncate text-[12.5px] font-medium italic">{label}</span>
+        <span className="max-w-[12rem] truncate text-xs-plus font-medium italic">{label}</span>
       </button>
       <IconButton
         label={`Dismiss ${label}`}
@@ -233,7 +233,7 @@ function ViewModeToggle({
       aria-pressed={!toGrid}
       title={`${label}${toGrid ? ' — arrange every terminal at once' : ''}`}
       onClick={onToggleViewMode}
-      className="my-0.5 flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground"
+      className="my-0.5 flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-2xs font-medium text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground"
     >
       {toGrid ? <GridIcon size={13} aria-hidden /> : <TabsIcon size={13} aria-hidden />}
       <span>{label}</span>
@@ -263,7 +263,7 @@ function BroadcastToggle({
       title={broadcastToggleTitle(armed, eligible)}
       disabled={!eligible && !armed}
       onClick={onToggle}
-      className={`my-0.5 flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+      className={`my-0.5 flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-2xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
         armed
           ? 'bg-amber-400/20 text-amber-300 ring-1 ring-amber-400/70'
           : 'text-muted-foreground hover:bg-white/[0.08] hover:text-foreground'
@@ -290,7 +290,7 @@ function JumpAttentionButton({ count, onJump }: { count: number; onJump: () => v
       aria-label={label}
       title={label}
       onClick={onJump}
-      className="my-0.5 flex shrink-0 items-center gap-1.5 rounded-md bg-warning/15 px-2 py-1 text-[11px] font-semibold text-warning ring-1 ring-warning/40 transition-colors hover:bg-warning/25"
+      className="my-0.5 flex shrink-0 items-center gap-1.5 rounded-md bg-warning/15 px-2 py-1 text-2xs font-semibold text-warning ring-1 ring-warning/40 transition-colors hover:bg-warning/25"
     >
       <span
         aria-hidden

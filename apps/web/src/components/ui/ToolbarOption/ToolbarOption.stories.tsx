@@ -42,7 +42,7 @@ export const On: Story = {
 export const WithBadge: Story = {
   args: {
     badge: (
-      <span className="font-mono text-[10px] font-semibold text-muted-foreground">5</span>
+      <span className="font-mono text-3xs font-semibold text-muted-foreground">5</span>
     ),
   },
 };
@@ -53,7 +53,7 @@ export const WithSettings: Story = {
     settingsLabel: 'Auto Mode options',
     settings: (
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[12.5px] font-semibold text-foreground">Sample option</span>
+        <span className="text-xs-plus font-semibold text-foreground">Sample option</span>
         <Toggle on={false} onChange={() => {}} label="Sample option" />
       </div>
     ),

@@ -31,11 +31,11 @@ export function ProposedSubtasksPanel({
     const reason = error !== null && error.trim().length > 0 ? error : null;
     return (
       <div className="rounded-md border border-border bg-white/[0.02] px-3 py-2.5">
-        <p className="text-[13px] text-foreground/90">
+        <p className="text-xs-plus2 text-foreground/90">
           Decompose produced no convertible sub-tasks.
         </p>
         {reason !== null && (
-          <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+          <p className="mt-1 text-2xs leading-snug text-muted-foreground">
             {reason}
           </p>
         )}
@@ -46,7 +46,7 @@ export function ProposedSubtasksPanel({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+        <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
           {convertedCount > 0
             ? `${convertedCount}/${total} converted`
             : `${total} proposed`}
@@ -74,17 +74,17 @@ export function ProposedSubtasksPanel({
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="truncate text-[13px] font-semibold text-foreground">
+                  <p className="truncate text-xs-plus2 font-semibold text-foreground">
                     {sub.title}
                   </p>
                   {sub.prompt.trim().length > 0 && (
-                    <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+                    <p className="mt-0.5 line-clamp-2 text-2xs leading-snug text-muted-foreground">
                       {sub.prompt}
                     </p>
                   )}
                 </div>
                 {converted ? (
-                  <span className="flex shrink-0 items-center gap-1 rounded-md bg-success/[0.12] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-success">
+                  <span className="flex shrink-0 items-center gap-1 rounded-md bg-success/[0.12] px-1.5 py-0.5 font-mono text-3xs font-semibold text-success">
                     <CheckIcon size={11} />
                     task
                   </span>

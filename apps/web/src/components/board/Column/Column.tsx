@@ -63,15 +63,15 @@ function ColumnImpl({
           className="h-2 w-2 shrink-0 rounded-full"
           style={{ background: dotColor, boxShadow: `0 0 8px ${dotColor}` }}
         />
-        <h2 className="text-[13px] font-semibold">{title}</h2>
-        <span className="rounded-md bg-white/[0.05] px-1.5 py-px font-mono text-[11px] tabular-nums text-muted-foreground">
+        <h2 className="text-xs-plus2 font-semibold">{title}</h2>
+        <span className="rounded-md bg-white/[0.05] px-1.5 py-px font-mono text-2xs tabular-nums text-muted-foreground">
           {tasks.length}
         </span>
         {showClear && (
           <button
             type="button"
             onClick={onClear}
-            className="ml-auto flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground"
+            className="ml-auto flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground"
           >
             <TrashIcon size={13} />
             Clear

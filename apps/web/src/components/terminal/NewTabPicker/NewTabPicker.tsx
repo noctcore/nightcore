@@ -32,9 +32,9 @@ function TargetRow({
     >
       <Icon size={15} className="shrink-0 text-muted-foreground" />
       <span className="flex min-w-0 flex-col">
-        <span className="truncate text-[13px] font-medium text-foreground">{target.label}</span>
+        <span className="truncate text-xs-plus2 font-medium text-foreground">{target.label}</span>
         {target.detail !== undefined && (
-          <span className="truncate font-mono text-[11px] text-muted-foreground">
+          <span className="truncate font-mono text-2xs text-muted-foreground">
             {target.detail}
           </span>
         )}
@@ -75,7 +75,7 @@ export function NewTabPicker({
     >
       <div className="flex flex-col gap-1 px-5 pb-3 pt-5">
         <h2 className="text-base font-semibold text-foreground">Open a terminal</h2>
-        <p className="text-[12px] text-muted-foreground">
+        <p className="text-xs-flat text-muted-foreground">
           Your shell runs with full permissions, outside the agent guardrails.
         </p>
       </div>
@@ -91,7 +91,7 @@ export function NewTabPicker({
             />
           ))
         ) : (
-          <p className="py-3 text-[13px] text-muted-foreground">
+          <p className="py-3 text-xs-plus2 text-muted-foreground">
             No open project — browse for a folder to start a terminal.
           </p>
         )}
@@ -106,8 +106,8 @@ export function NewTabPicker({
         >
           <SearchIcon size={15} className="shrink-0 text-muted-foreground" />
           <span className="flex min-w-0 flex-col">
-            <span className="truncate text-[13px] font-medium text-foreground">Browse…</span>
-            <span className="truncate text-[11px] text-muted-foreground">
+            <span className="truncate text-xs-plus2 font-medium text-foreground">Browse…</span>
+            <span className="truncate text-2xs text-muted-foreground">
               Open a shell in any folder on your machine
             </span>
           </span>
@@ -124,10 +124,10 @@ export function NewTabPicker({
           >
             <BranchIcon size={15} className="shrink-0 text-muted-foreground" />
             <span className="flex min-w-0 flex-col">
-              <span className="truncate text-[13px] font-medium text-foreground">
+              <span className="truncate text-xs-plus2 font-medium text-foreground">
                 Create new worktree…
               </span>
-              <span className="truncate text-[11px] text-muted-foreground">
+              <span className="truncate text-2xs text-muted-foreground">
                 Branch off a base and open a shell in the new worktree
               </span>
             </span>
@@ -145,7 +145,7 @@ export function NewTabPicker({
               label="Confined (writes limited to this folder)"
               disabled={busy}
             />
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               Runs the shell inside the macOS write-containment sandbox, scoped to the
               chosen folder. Off by default — your shell is otherwise unconfined.
             </span>
@@ -154,14 +154,14 @@ export function NewTabPicker({
       )}
 
       {hasPickerError(shown.error) && (
-        <div className="mx-5 mt-1 rounded-[8px] border border-destructive/40 bg-destructive/[0.12] px-3 py-2 text-[12px] text-destructive">
+        <div className="mx-5 mt-1 rounded-[8px] border border-destructive/40 bg-destructive/[0.12] px-3 py-2 text-xs-flat text-destructive">
           {shown.error}
         </div>
       )}
 
       <div className="mt-2 flex items-center justify-end gap-2 border-t border-border bg-black/15 px-5 py-3.5">
         {busy && (
-          <span className="mr-auto flex items-center gap-1.5 text-[12px] text-muted-foreground">
+          <span className="mr-auto flex items-center gap-1.5 text-xs-flat text-muted-foreground">
             <Spinner size={13} />
             Opening…
           </span>

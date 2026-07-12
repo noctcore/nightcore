@@ -25,10 +25,10 @@ export function AutoModeOptions({
         className="flex w-full items-start gap-3 rounded-lg border border-border bg-white/[0.02] p-2.5 text-left transition-colors hover:border-white/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <span className="min-w-0 flex-1">
-          <span className="block text-[12.5px] font-semibold text-foreground">
+          <span className="block text-xs-plus font-semibold text-foreground">
             Auto-commit on verified
           </span>
-          <span className="mt-0.5 block text-[11.5px] leading-snug text-muted-foreground">
+          <span className="mt-0.5 block text-2xs-plus leading-snug text-muted-foreground">
             While Auto Mode runs, each task is committed automatically the moment
             it's verified — before the next one starts. In a shared (main)
             checkout, run one task at a time so per-task commits stay clean.
@@ -52,11 +52,11 @@ export function AutoModeOptions({
         <div className="flex items-baseline justify-between gap-3">
           <label
             htmlFor="auto-pause-usage-threshold"
-            className="text-[12.5px] font-semibold text-foreground"
+            className="text-xs-plus font-semibold text-foreground"
           >
             Pause Auto Mode at usage
           </label>
-          <span className="font-mono text-[12px] font-semibold tabular-nums text-foreground">
+          <span className="font-mono text-xs-flat font-semibold tabular-nums text-foreground">
             {autoPauseUsageThreshold}%
           </span>
         </div>
@@ -71,7 +71,7 @@ export function AutoModeOptions({
           onChange={(e) => onThresholdChange(clampThreshold(Number(e.target.value)))}
           className="mt-2 w-full accent-primary disabled:cursor-not-allowed disabled:opacity-40"
         />
-        <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground">
+        <p className="mt-1 text-2xs-plus leading-snug text-muted-foreground">
           {usageMeterEnabled
             ? 'When any Claude rate-limit window reaches this level, Auto Mode stops picking up new runs. In-flight runs finish, and it resumes automatically once usage cools.'
             : 'Enable the usage meter to use this.'}

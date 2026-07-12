@@ -40,12 +40,12 @@ export function ReadingDetailPanel({
       ),
       badges: (
         <>
-          <span className="inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
             <Icon size={11} />
             {Meta.label}
           </span>
           {shown.confidence !== null && (
-            <span className="font-mono text-[10px] text-muted-foreground">
+            <span className="font-mono text-3xs text-muted-foreground">
               {Math.round(shown.confidence * 100)}% confidence
             </span>
           )}
@@ -81,11 +81,11 @@ export function ReadingDetailPanel({
               {shown.findings.map((ev, i) => (
                 <li
                   key={`${ev.detail}-${i}`}
-                  className="text-[12.5px] leading-relaxed text-muted-foreground"
+                  className="text-xs-plus leading-relaxed text-muted-foreground"
                 >
                   {ev.detail}
                   {ev.location !== null && (
-                    <code className="ml-1.5 font-mono text-[11px] text-muted-foreground">
+                    <code className="ml-1.5 font-mono text-2xs text-muted-foreground">
                       {ev.location.file}
                       {ev.location.startLine !== null
                         ? `:${ev.location.startLine}`

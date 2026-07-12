@@ -41,7 +41,7 @@ export function ConfirmDialog({
     >
       <div className="flex flex-col gap-2 px-5 pb-4 pt-5">
         <h2 className="text-base font-semibold text-foreground">{shown.title}</h2>
-        <div className="text-[13px] leading-relaxed text-muted-foreground">{shown.message}</div>
+        <div className="text-xs-plus2 leading-relaxed text-muted-foreground">{shown.message}</div>
       </div>
       <div className="flex items-center justify-end gap-2 border-t border-border bg-black/15 px-5 py-3.5">
         <ConfirmHint>to confirm</ConfirmHint>

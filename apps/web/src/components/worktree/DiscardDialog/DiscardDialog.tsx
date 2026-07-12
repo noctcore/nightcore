@@ -41,25 +41,25 @@ export function DiscardDialog({
     >
       <div className="flex flex-col gap-2.5 px-5 pb-4 pt-5">
         <h2 className="text-base font-semibold text-foreground">Discard worktree</h2>
-        <p className="text-[13px] leading-relaxed text-muted-foreground">
+        <p className="text-xs-plus2 leading-relaxed text-muted-foreground">
           This permanently removes the worktree for{' '}
           <span className="font-medium text-foreground">{shown.branch ?? 'this task'}</span> and
           deletes its branch. Uncommitted changes are lost.
         </p>
         {hasUncommittedChanges(shown.changedFiles) && (
-          <p className="flex items-center gap-1.5 text-[12px] font-medium text-warning">
+          <p className="flex items-center gap-1.5 text-xs-flat font-medium text-warning">
             <AlertIcon size={13} className="shrink-0" />
             {shown.changedFiles} uncommitted file(s) will be lost.
           </p>
         )}
         {shown.terminalSessions > 0 && (
-          <p className="flex items-center gap-1.5 text-[12px] font-medium text-warning">
+          <p className="flex items-center gap-1.5 text-xs-flat font-medium text-warning">
             <AlertIcon size={13} className="shrink-0" />
             {shown.terminalSessions} terminal session(s) open in this worktree will be closed.
           </p>
         )}
         {hasDiscardError(shown.error) && (
-          <p className="rounded-[8px] border border-destructive/40 bg-destructive/[0.12] px-3 py-2 text-[12px] text-destructive">
+          <p className="rounded-[8px] border border-destructive/40 bg-destructive/[0.12] px-3 py-2 text-xs-flat text-destructive">
             {shown.error}
           </p>
         )}

@@ -15,7 +15,7 @@ export function ProjectStep({ props, view }: ProjectStepProps) {
     <div className="flex flex-col gap-3.5">
       <div>
         <h1 className="text-[19px] font-semibold tracking-tight">First project</h1>
-        <p className="mt-1 text-[12.5px] text-muted-foreground">
+        <p className="mt-1 text-xs-plus text-muted-foreground">
           Point Nightcore at a git repo. Each project gets its own board, worktrees,
           and settings.
         </p>
@@ -34,17 +34,17 @@ export function ProjectStep({ props, view }: ProjectStepProps) {
         </div>
         <div className="min-w-0 flex-1">
           <div
-            className={`text-[12.5px] font-semibold ${
+            className={`text-xs-plus font-semibold ${
               folderPicked ? 'text-foreground' : 'text-muted-foreground'
             }`}
           >
             {folderPicked ? 'Repository selected' : 'Choose repository folder'}
           </div>
-          <div className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
+          <div className="mt-0.5 truncate font-mono text-3xs text-muted-foreground">
             {props.folder ?? 'No folder selected'}
           </div>
         </div>
-        <span className="shrink-0 text-[12px] font-semibold text-primary">
+        <span className="shrink-0 text-xs-flat font-semibold text-primary">
           {folderPicked ? 'Change' : 'Choose'}
         </span>
       </button>
@@ -52,13 +52,13 @@ export function ProjectStep({ props, view }: ProjectStepProps) {
         <>
           <GitStatus gitState={props.gitState} onInitGit={props.onInitGit} />
           <label className="block">
-            <span className="mb-1.5 block text-[11px] font-semibold text-muted-foreground">
+            <span className="mb-1.5 block text-2xs font-semibold text-muted-foreground">
               Project name
             </span>
             <input
               value={view.projectName}
               onChange={(event) => view.setProjectName(event.target.value)}
-              className="w-full rounded-[9px] border border-border bg-black/25 px-3 py-2.5 text-[13px] text-foreground outline-none focus:border-primary"
+              className="w-full rounded-[9px] border border-border bg-black/25 px-3 py-2.5 text-xs-plus2 text-foreground outline-none focus:border-primary"
               placeholder="my-project"
             />
           </label>
@@ -75,19 +75,19 @@ function GitStatus({
   return (
     <div className="flex flex-wrap gap-1.5">
       {gitState === 'valid' && (
-        <span className="flex items-center gap-1.5 rounded-[6px] border border-success/30 bg-success/[0.06] px-2 py-1 font-mono text-[10px] text-success">
+        <span className="flex items-center gap-1.5 rounded-[6px] border border-success/30 bg-success/[0.06] px-2 py-1 font-mono text-3xs text-success">
           <CheckIcon size={11} />
           git repo detected
         </span>
       )}
       {gitState === 'checking' && (
-        <span className="flex items-center gap-1.5 rounded-[6px] border border-border bg-white/[0.03] px-2 py-1 font-mono text-[10px] text-muted-foreground">
+        <span className="flex items-center gap-1.5 rounded-[6px] border border-border bg-white/[0.03] px-2 py-1 font-mono text-3xs text-muted-foreground">
           <Spinner size={11} />
           checking git
         </span>
       )}
       {gitState === 'invalid' && (
-        <span className="flex items-center gap-1.5 rounded-[6px] border border-warning/35 bg-warning/[0.08] px-2 py-1 font-mono text-[10px] text-warning">
+        <span className="flex items-center gap-1.5 rounded-[6px] border border-warning/35 bg-warning/[0.08] px-2 py-1 font-mono text-3xs text-warning">
           <AlertIcon size={11} />
           not a git repo
         </span>
@@ -96,7 +96,7 @@ function GitStatus({
         <button
           type="button"
           onClick={() => void onInitGit()}
-          className="rounded-[6px] border border-border px-2 py-1 text-[10px] font-semibold text-primary"
+          className="rounded-[6px] border border-border px-2 py-1 text-3xs font-semibold text-primary"
         >
           git init
         </button>

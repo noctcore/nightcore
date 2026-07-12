@@ -24,7 +24,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
     >
       <div className="flex flex-col gap-4 px-5 pb-4 pt-5">
         <h2 className="text-base font-semibold text-foreground">Edit project</h2>
-        <label className="flex flex-col gap-1.5 text-[12.5px] font-medium text-muted-foreground">
+        <label className="flex flex-col gap-1.5 text-xs-plus font-medium text-muted-foreground">
           Name
           <input
             value={dialog.name}
@@ -56,7 +56,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
           }}
         />
         {dialog.error !== null && (
-          <p className="text-[12.5px] text-destructive" role="alert">
+          <p className="text-xs-plus text-destructive" role="alert">
             {dialog.error}
           </p>
         )}

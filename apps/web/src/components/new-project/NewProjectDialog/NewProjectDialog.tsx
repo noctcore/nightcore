@@ -14,7 +14,7 @@ import { useNewProjectDialog } from './NewProjectDialog.hooks';
 import type { NewProjectDialogProps } from './NewProjectDialog.types';
 
 const FIELD_LABEL =
-  'mb-1.5 block text-[11.5px] font-semibold text-muted-foreground';
+  'mb-1.5 block text-2xs-plus font-semibold text-muted-foreground';
 const FIELD_INPUT =
   'w-full rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary';
 
@@ -90,7 +90,7 @@ export function NewProjectDialog({
             >
               <FolderIcon size={16} className="text-muted-foreground" />
               <span
-                className={`flex-1 truncate font-mono text-[13px] ${folder !== null ? 'text-foreground' : 'text-muted-foreground'}`}
+                className={`flex-1 truncate font-mono text-xs-plus2 ${folder !== null ? 'text-foreground' : 'text-muted-foreground'}`}
               >
                 {folder ?? 'No folder selected'}
               </span>
@@ -98,7 +98,7 @@ export function NewProjectDialog({
             </button>
             {folder !== null && gitState !== 'unknown' && gitState !== 'valid' && (
               <div
-                className={`mt-2.5 flex items-center gap-2 font-mono text-[12px] ${GIT_ROW[gitState]}`}
+                className={`mt-2.5 flex items-center gap-2 font-mono text-xs-flat ${GIT_ROW[gitState]}`}
               >
                 <span>{GIT_TEXT[gitState]}</span>
                 {gitState === 'invalid' && onInitGit !== undefined && (
@@ -113,7 +113,7 @@ export function NewProjectDialog({
               </div>
             )}
             {folder !== null && gitState === 'valid' && (
-              <div className={`mt-2.5 flex items-center gap-2 font-mono text-[12px] ${GIT_ROW.valid}`}>
+              <div className={`mt-2.5 flex items-center gap-2 font-mono text-xs-flat ${GIT_ROW.valid}`}>
                 <span>{GIT_TEXT.valid}</span>
               </div>
             )}

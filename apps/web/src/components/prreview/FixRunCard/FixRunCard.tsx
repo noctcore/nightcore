@@ -41,7 +41,7 @@ export function FixRunCard({
         className="flex items-center gap-3 rounded-[10px] border border-border bg-white/[0.02] px-4 py-3"
       >
         <Spinner size={14} />
-        <span className="text-[12.5px] text-muted-foreground">
+        <span className="text-xs-plus text-muted-foreground">
           <span className="sr-only">{`PR #${fix.prNumber} fix in progress: `}</span>
           {runningLabel(fix)}
         </span>
@@ -63,7 +63,7 @@ export function FixRunCard({
         className="flex items-center gap-3 rounded-[10px] border border-border bg-white/[0.02] px-4 py-3"
       >
         <Spinner size={14} />
-        <span className="text-[12.5px] text-muted-foreground">
+        <span className="text-xs-plus text-muted-foreground">
           <span className="sr-only">{`PR #${fix.prNumber} fix: `}</span>
           Committing changes…
         </span>
@@ -80,7 +80,7 @@ export function FixRunCard({
         <span className="sr-only">{`PR #${fix.prNumber} fix awaiting push.`}</span>
         <div className="flex items-center gap-2">
           <RefactorIcon size={14} className="shrink-0 text-primary" />
-          <span className="text-[12.5px] font-medium text-foreground">
+          <span className="text-xs-plus font-medium text-foreground">
             Fix ready on{' '}
             <span className="font-mono text-foreground">{fix.branch}</span>
           </span>
@@ -103,12 +103,12 @@ export function FixRunCard({
           // are stripped, anchors hardened) — scrollable past a screenful so
           // a long summary never swallows the card's actions.
           <div className="max-h-[420px] overflow-y-auto">
-            <Markdown className="text-[12.5px] text-muted-foreground">
+            <Markdown className="text-xs-plus text-muted-foreground">
               {fix.summary}
             </Markdown>
           </div>
         )}
-        <p className="text-[11.5px] text-muted-foreground/70">{LOCAL_COMMIT_NOTE}</p>
+        <p className="text-2xs-plus text-muted-foreground/70">{LOCAL_COMMIT_NOTE}</p>
       </div>
     );
   }
@@ -120,7 +120,7 @@ export function FixRunCard({
         className="flex items-center gap-3 rounded-[10px] border border-success/40 bg-success/[0.06] px-4 py-3"
       >
         <CheckIcon size={14} className="shrink-0 text-success" />
-        <span className="text-[12.5px] text-muted-foreground">
+        <span className="text-xs-plus text-muted-foreground">
           Fix pushed to{' '}
           <span className="font-mono text-foreground">{fix.branch}</span> on PR #
           {fix.prNumber}.
@@ -141,7 +141,7 @@ export function FixRunCard({
       >
         <span className="sr-only">{`PR #${fix.prNumber}: `}</span>
         <AlertIcon size={14} className="mt-0.5 shrink-0 text-destructive" />
-        <span className="text-[12.5px] text-destructive">
+        <span className="text-xs-plus text-destructive">
           {fix.error !== null && fix.error.length > 0
             ? `Fix failed: ${fix.error}`
             : 'Fix failed.'}

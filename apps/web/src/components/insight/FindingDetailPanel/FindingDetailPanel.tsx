@@ -36,19 +36,19 @@ export function FindingDetailPanel({
       badges: (
         <>
           <span
-            className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-semibold ${sev.chip} ${sev.tone}`}
+            className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-3xs font-semibold ${sev.chip} ${sev.tone}`}
           >
             {sev.label}
           </span>
-          <span className="inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
             <Icon size={11} />
             {Meta.label}
           </span>
-          <span className="font-mono text-[10px] text-muted-foreground">
+          <span className="font-mono text-3xs text-muted-foreground">
             {EFFORT_META[shown.effort].label} effort
           </span>
           {shown.confidence !== null && (
-            <span className="font-mono text-[10px] text-muted-foreground">
+            <span className="font-mono text-3xs text-muted-foreground">
               {Math.round(shown.confidence * 100)}% confidence
             </span>
           )}

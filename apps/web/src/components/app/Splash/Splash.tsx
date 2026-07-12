@@ -34,7 +34,7 @@ export function Splash({
           <div className="flex items-baseline text-[34px] font-semibold tracking-tight">
             nightcore<span className="text-primary">.</span>
           </div>
-          <div className="font-mono text-[11.5px] uppercase tracking-[0.32em] text-muted-foreground">
+          <div className="font-mono text-2xs-plus uppercase tracking-[0.32em] text-muted-foreground">
             autonomous claude dev studio
           </div>
         </m.div>
@@ -47,11 +47,11 @@ export function Splash({
             style={{ animation: 'nc-bar 1.15s ease-in-out infinite' }}
           />
         </m.div>
-        <m.div variants={fadeRise} className="font-mono text-[11px] text-muted-foreground/80">
+        <m.div variants={fadeRise} className="font-mono text-2xs text-muted-foreground/80">
           {bootLine}
         </m.div>
       </m.div>
-      <div className="absolute bottom-6 font-mono text-[10.5px] tracking-[0.1em] text-muted-foreground/50">
+      <div className="absolute bottom-6 font-mono text-3xs-plus tracking-[0.1em] text-muted-foreground/50">
         {version} · rewrite of automaker
       </div>
     </div>

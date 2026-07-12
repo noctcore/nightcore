@@ -16,7 +16,7 @@ export function TaskCardUsageChip() {
       title={`${providerDisplay(hot.provider)} ${hot.windowLabel} at ${Math.round(
         hot.usedPercent,
       )}% — this run counts against your limit.`}
-      className="flex items-center gap-1 rounded-lg bg-warning/[0.14] px-2 py-1.5 font-mono text-[10.5px] font-semibold text-warning"
+      className="flex items-center gap-1 rounded-lg bg-warning/[0.14] px-2 py-1.5 font-mono text-3xs-plus font-semibold text-warning"
     >
       <AlertIcon size={12} />
       usage high

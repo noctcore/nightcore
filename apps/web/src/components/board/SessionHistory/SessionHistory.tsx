@@ -31,13 +31,13 @@ function TranscriptMessage({ message }: { message: SessionMessage }) {
   const roleLabel = message.type === 'assistant' ? 'Assistant' : message.type === 'user' ? 'User' : 'System';
   return (
     <li className="border-l border-border pl-2.5">
-      <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground">
+      <span className="font-mono text-4xs uppercase tracking-[0.1em] text-muted-foreground">
         {roleLabel}
       </span>
       {text.trim().length > 0 ? (
         <Markdown className="mt-0.5 text-sm text-foreground/90">{text}</Markdown>
       ) : (
-        <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">(tool activity)</p>
+        <p className="mt-0.5 font-mono text-2xs text-muted-foreground">(tool activity)</p>
       )}
     </li>
   );
@@ -141,7 +141,7 @@ function SessionRow({
                 {sessionTitle(session)}
               </span>
             )}
-            <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px] text-muted-foreground">
+            <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-3xs text-muted-foreground">
               {formatTimestamp(session.lastModified) !== '' && (
                 <span className="inline-flex items-center gap-1">
                   <ClockIcon size={10} />
@@ -196,7 +196,7 @@ function SessionRow({
               aria-label="Resume session"
               title="Resume this session (reattaches with prior context)"
               onClick={onResume}
-              className="inline-flex items-center gap-1 rounded border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-foreground transition-colors hover:border-primary focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="inline-flex items-center gap-1 rounded border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-2xs text-foreground transition-colors hover:border-primary focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               <PlayIcon size={11} />
               Resume

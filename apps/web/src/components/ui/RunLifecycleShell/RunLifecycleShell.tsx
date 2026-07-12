@@ -40,14 +40,14 @@ export function RunLifecycleShell({
         <div className="flex min-w-0 flex-col gap-0.5">
           <h2 className="truncate text-sm font-semibold text-foreground">{title}</h2>
           {subtitle !== undefined && (
-            <span className="truncate text-[12px] text-muted-foreground">{subtitle}</span>
+            <span className="truncate text-xs-flat text-muted-foreground">{subtitle}</span>
           )}
         </div>
         {actions !== undefined && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
       </header>
 
       {phase !== 'configure' && summary !== undefined && (
-        <div className="border-b border-border bg-white/[0.015] px-6 py-2.5 font-mono text-[11px] text-muted-foreground">
+        <div className="border-b border-border bg-white/[0.015] px-6 py-2.5 font-mono text-2xs text-muted-foreground">
           {summary}
         </div>
       )}

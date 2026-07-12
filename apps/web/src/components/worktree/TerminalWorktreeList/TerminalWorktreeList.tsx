@@ -19,10 +19,10 @@ export function TerminalWorktreeList({
     <section className="mt-6 flex flex-col gap-3">
       <header className="flex items-center gap-2">
         <TerminalIcon size={14} className="text-muted-foreground" />
-        <h2 className="text-[13px] font-semibold text-foreground">Terminal worktrees</h2>
+        <h2 className="text-xs-plus2 font-semibold text-foreground">Terminal worktrees</h2>
         <Badge tone="neutral">{worktrees.length}</Badge>
       </header>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         Created from the terminal — a separate <span className="font-mono">term/</span> namespace,
         never touched by the task reconcile sweep. They carry no task and never affect task status.
       </p>
@@ -38,13 +38,13 @@ export function TerminalWorktreeList({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                   <BranchIcon size={13} className="shrink-0 text-muted-foreground" />
-                  <span className="truncate font-mono text-[12px] text-foreground">
+                  <span className="truncate font-mono text-xs-flat text-foreground">
                     {worktree.branch}
                   </span>
                 </div>
                 {changed !== null && (
                   <div className="mt-1.5">
-                    <span className="inline-flex items-center gap-1 rounded-md border border-warning/40 bg-warning/[0.12] px-1.5 py-0.5 font-mono text-[10px] font-medium tabular-nums text-warning">
+                    <span className="inline-flex items-center gap-1 rounded-md border border-warning/40 bg-warning/[0.12] px-1.5 py-0.5 font-mono text-3xs font-medium tabular-nums text-warning">
                       {changed}
                     </span>
                   </div>

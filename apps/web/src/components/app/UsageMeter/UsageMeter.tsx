@@ -34,7 +34,7 @@ function EnableButton({ collapsed, onEnable }: { collapsed: boolean; onEnable: (
         className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground ${collapsed ? 'justify-center' : ''}`}
       >
         <BoltIcon size={14} className="shrink-0" />
-        {!collapsed && <span className="text-[11.5px] font-medium">Enable usage meter</span>}
+        {!collapsed && <span className="text-2xs-plus font-medium">Enable usage meter</span>}
       </button>
     </div>
   );
@@ -50,9 +50,9 @@ function RowBody({ row, now }: { row: ProviderUsage; now: number }) {
     <>
       <div className="flex items-center gap-2">
         <ProviderIcon provider={row.provider} size={12} className="shrink-0 text-muted-foreground" />
-        <span className="text-[11.5px] font-medium text-foreground">{providerLabel(row.provider)}</span>
+        <span className="text-2xs-plus font-medium text-foreground">{providerLabel(row.provider)}</span>
         {meta.badge !== null && (
-          <span className={`ml-auto font-mono text-[9px] uppercase tracking-[0.06em] ${meta.tone}`}>
+          <span className={`ml-auto font-mono text-4xs uppercase tracking-[0.06em] ${meta.tone}`}>
             {meta.badge}
           </span>
         )}
@@ -65,7 +65,7 @@ function RowBody({ row, now }: { row: ProviderUsage; now: number }) {
         </div>
       ) : (
         row.status === 'unauthorized' && (
-          <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
+          <p className="mt-1 text-3xs leading-snug text-muted-foreground">
             Session expired — run <code className="font-mono">{row.provider}</code> to re-sign-in.
           </p>
         )
@@ -102,7 +102,7 @@ function ProviderRow({
         <ProviderIcon provider={row.provider} size={16} className="text-muted-foreground" />
       </div>
     ) : (
-      <div className="flex items-center gap-2 px-2 py-1 text-[11px] text-muted-foreground/70">
+      <div className="flex items-center gap-2 px-2 py-1 text-2xs text-muted-foreground/70">
         <ProviderIcon provider={row.provider} size={12} className="shrink-0" />
         <span>{label} — not connected</span>
       </div>
@@ -135,7 +135,7 @@ function ProviderRow({
           />
           <span
             aria-hidden
-            className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 translate-x-1 whitespace-nowrap rounded-lg border border-border bg-popover px-2.5 py-1.5 text-[11px] font-medium text-popover-foreground opacity-0 shadow-lg transition-all duration-200 group-hover/usage:translate-x-0 group-hover/usage:opacity-100"
+            className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 translate-x-1 whitespace-nowrap rounded-lg border border-border bg-popover px-2.5 py-1.5 text-2xs font-medium text-popover-foreground opacity-0 shadow-lg transition-all duration-200 group-hover/usage:translate-x-0 group-hover/usage:opacity-100"
           >
             {railTip}
           </span>
@@ -184,7 +184,7 @@ export function UsageMeter({ collapsed, source = LIVE_USAGE_SOURCE }: UsageMeter
   return (
     <div className="border-t border-border px-3 py-2.5">
       {!collapsed && (
-        <div className="mb-1.5 px-2 font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground/70">
+        <div className="mb-1.5 px-2 font-mono text-4xs uppercase tracking-[0.18em] text-muted-foreground/70">
           Usage
         </div>
       )}

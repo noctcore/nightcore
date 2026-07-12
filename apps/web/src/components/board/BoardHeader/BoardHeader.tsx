@@ -70,11 +70,11 @@ export function BoardHeader({
           <div className="min-w-0">
             <div className="flex items-center gap-2.5">
               <h1 className="text-[21px] font-semibold tracking-tight">Kanban Board</h1>
-              <span className="rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+              <span className="rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-2xs text-muted-foreground">
                 {taskCount} tasks
               </span>
             </div>
-            <div className="mt-1.5 flex items-center gap-2 font-mono text-[11.5px] text-muted-foreground">
+            <div className="mt-1.5 flex items-center gap-2 font-mono text-2xs-plus text-muted-foreground">
               <ProjectPathLabel path={projectPath} />
               {projectBranch !== null && (
                 <>
@@ -166,7 +166,7 @@ export function BoardHeader({
               onChange={(e) => onSearchChange(e.target.value)}
               aria-label="Search tasks"
               placeholder="Search tasks by keyword…"
-              className="flex-1 bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground"
+              className="flex-1 bg-transparent text-xs-plus2 text-foreground outline-none placeholder:text-muted-foreground"
             />
             <Kbd>/</Kbd>
           </div>

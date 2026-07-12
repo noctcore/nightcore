@@ -62,7 +62,7 @@ export function RunControls({ config, isStarting, onScan }: RunControlsProps) {
       ctaIcon={<VerifiedIcon size={16} />}
       ctaBusyIcon={<Spinner size={16} />}
       ctaLabel="Scan"
-      ctaClassName="w-full justify-center py-2.5 text-[13.5px]"
+      ctaClassName="w-full justify-center py-2.5 text-xs-plus3"
       hint={
         <>
           Scans the whole repo across {lensCount} {lensCount === 1 ? 'lens' : 'lenses'}{' '}

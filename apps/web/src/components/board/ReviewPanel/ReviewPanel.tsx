@@ -32,7 +32,7 @@ export function ReviewPanel({ task, pending }: ReviewPanelProps) {
           role="alert"
           className="mb-2.5 rounded-md border border-destructive/50 bg-destructive/[0.08] px-3 py-2"
         >
-          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-destructive">
+          <p className="font-mono text-3xs font-semibold uppercase tracking-[0.08em] text-destructive">
             Structure lock failed
           </p>
           <p className="mt-1 text-xs text-foreground/90">
@@ -48,19 +48,19 @@ export function ReviewPanel({ task, pending }: ReviewPanelProps) {
       {task.review !== null && (
         <>
           <div className="mb-1.5 flex items-center gap-2">
-        <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+        <h3 className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
           Reviewer verdict
         </h3>
         {verdict !== null && (
           <span
-            className={`flex items-center gap-1 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] ${VERDICT_TEXT[verdict]}`}
+            className={`flex items-center gap-1 font-mono text-3xs font-semibold uppercase tracking-[0.06em] ${VERDICT_TEXT[verdict]}`}
           >
             <VerifiedIcon size={12} />
             {VERDICT_LABEL[verdict]}
           </span>
         )}
         {unparseable && (
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-destructive">
+          <span className="font-mono text-3xs font-semibold uppercase tracking-[0.06em] text-destructive">
             No verdict — treated as fail
           </span>
         )}
@@ -71,7 +71,7 @@ export function ReviewPanel({ task, pending }: ReviewPanelProps) {
       </Markdown>
 
       {budgetExhausted && (
-        <p className="mt-1.5 font-mono text-[11px] text-warning">
+        <p className="mt-1.5 font-mono text-2xs text-warning">
           Auto-fix budget exhausted ({MAX_FIX_ATTEMPTS} attempts).
         </p>
       )}

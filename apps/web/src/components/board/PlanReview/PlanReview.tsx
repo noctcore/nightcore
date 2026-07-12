@@ -24,7 +24,7 @@ export function PlanReview({ task, pending }: PlanReviewProps) {
 
   return (
     <section aria-label="Plan approval">
-      <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+      <h3 className="mb-1.5 font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
         Proposed plan
       </h3>
       <Markdown className="rounded-md border border-info/40 bg-info/[0.08] px-3 py-2">
@@ -33,7 +33,7 @@ export function PlanReview({ task, pending }: PlanReviewProps) {
 
       <label
         htmlFor="plan-refine-feedback"
-        className="mb-1.5 mt-3 block font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground"
+        className="mb-1.5 mt-3 block font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground"
       >
         Refine feedback
       </label>

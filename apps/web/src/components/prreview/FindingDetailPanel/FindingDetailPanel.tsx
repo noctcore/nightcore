@@ -45,11 +45,11 @@ export function FindingDetailPanel({
       badges: (
         <>
           <span
-            className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-semibold ${sev.chip} ${sev.tone}`}
+            className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-3xs font-semibold ${sev.chip} ${sev.tone}`}
           >
             {sev.label}
           </span>
-          <span className="inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
             <Icon size={11} />
             {Meta.label}
           </span>
@@ -72,7 +72,7 @@ export function FindingDetailPanel({
         // which OTHER lenses independently surfaced this same issue.
         afterDescription: shown.corroboratedBy.length > 0 && (
           <DetailSection title="Corroboration">
-            <p className="text-[13px] leading-relaxed text-muted-foreground">
+            <p className="text-xs-plus2 leading-relaxed text-muted-foreground">
               Also independently surfaced by the{' '}
               {formatLensList(shown.corroboratedBy)}{' '}
               {shown.corroboratedBy.length === 1 ? 'lens' : 'lenses'}.

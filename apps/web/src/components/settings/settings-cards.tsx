@@ -341,7 +341,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
                   ? 'Uses CODEX_API_KEY or your local Codex login'
                   : `Authenticated via the local ${PROVIDER_LABEL} CLI`,
               control: (
-                <span className="flex items-center gap-2 text-[12.5px] font-semibold text-success">
+                <span className="flex items-center gap-2 text-xs-plus font-semibold text-success">
                   <span className="h-[7px] w-[7px] rounded-full bg-success" />
                   {settings.provider === 'codex' ? 'Codex default' : 'Claude default'}
                 </span>

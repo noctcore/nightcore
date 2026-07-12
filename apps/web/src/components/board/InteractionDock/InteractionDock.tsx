@@ -30,7 +30,7 @@ export function InteractionDock({
     >
       <header className="flex items-center gap-2 px-4 pb-2 pt-3">
         <BellIcon size={13} className="shrink-0 text-warning" />
-        <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground/80">
+        <span className="font-mono text-2xs font-semibold uppercase tracking-[0.08em] text-foreground/80">
           Needs your input
         </span>
         {total > 1 && <Badge>{total}</Badge>}

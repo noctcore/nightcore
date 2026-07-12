@@ -92,7 +92,7 @@ export function BranchPicker({
           )}
 
           {!v.hasMatches && (
-            <div role="presentation" className="px-2 py-2 text-[12.5px] text-muted-foreground">
+            <div role="presentation" className="px-2 py-2 text-xs-plus text-muted-foreground">
               No matching branches
             </div>
           )}
@@ -111,7 +111,7 @@ export function BranchPicker({
               }`}
             >
               <PlusIcon size={13} className="shrink-0 text-primary" aria-hidden />
-              <span className="truncate text-[13px] text-foreground">
+              <span className="truncate text-xs-plus2 text-foreground">
                 Create &ldquo;<span className="font-medium text-primary">{createRow.value}</span>&rdquo;
               </span>
             </button>

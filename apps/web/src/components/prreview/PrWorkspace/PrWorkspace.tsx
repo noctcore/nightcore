@@ -58,7 +58,7 @@ export function PrWorkspace({
       <div className="flex items-start justify-between gap-3">
         <span className="flex items-center gap-2">
           <span
-            className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${stateBadgeClass(pr?.state ?? 'OPEN')}`}
+            className={`rounded-full border px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide ${stateBadgeClass(pr?.state ?? 'OPEN')}`}
           >
             {pr?.state === 'CLOSED'
               ? 'Closed'
@@ -66,11 +66,11 @@ export function PrWorkspace({
                 ? 'Merged'
                 : 'Open'}
           </span>
-          <span className="font-mono text-[13px] text-muted-foreground">
+          <span className="font-mono text-xs-plus2 text-muted-foreground">
             #{prNumber}
           </span>
           {pr?.isDraft === true && (
-            <span className="rounded-full border border-border px-1.5 py-px text-[10px] uppercase tracking-wide text-muted-foreground">
+            <span className="rounded-full border border-border px-1.5 py-px text-3xs uppercase tracking-wide text-muted-foreground">
               Draft
             </span>
           )}
@@ -101,10 +101,10 @@ export function PrWorkspace({
           className={`flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-[10px] border px-3.5 py-2 ${tone.border} ${tone.bg}`}
         >
           <StatusDot colorClass={tone.dot} pulse={lifecycle.pulse} glow />
-          <span className={`text-[12.5px] font-semibold ${tone.text}`}>
+          <span className={`text-xs-plus font-semibold ${tone.text}`}>
             {lifecycle.label}
           </span>
-          <span className="text-[12px] text-muted-foreground">
+          <span className="text-xs-flat text-muted-foreground">
             {lifecycle.description}
           </span>
         </div>
@@ -113,7 +113,7 @@ export function PrWorkspace({
       {/* Meta + labels */}
       {pr !== null && (
         <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+          <div className="flex items-center gap-2 text-xs-plus2 text-muted-foreground">
             <span>@{pr.author}</span>
             {date !== null && <span>· {date}</span>}
           </div>
@@ -123,7 +123,7 @@ export function PrWorkspace({
                 <span
                   key={label.name}
                   style={labelChipStyle(label.color)}
-                  className="rounded-full border border-border px-2 py-0.5 text-[11.5px] font-medium text-muted-foreground"
+                  className="rounded-full border border-border px-2 py-0.5 text-2xs-plus font-medium text-muted-foreground"
                 >
                   {label.name}
                 </span>
@@ -134,7 +134,7 @@ export function PrWorkspace({
       )}
 
       {pr === null && (
-        <p className="text-[12.5px] text-muted-foreground">
+        <p className="text-xs-plus text-muted-foreground">
           This PR isn&apos;t in the open list — Nightcore will review it by number.
         </p>
       )}
@@ -149,7 +149,7 @@ export function PrWorkspace({
             type="button"
             onClick={changed.toggle}
             aria-expanded={changed.expanded}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white/[0.02] px-2.5 py-1 text-[12.5px] font-medium text-muted-foreground transition-colors hover:border-white/20 hover:text-foreground"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white/[0.02] px-2.5 py-1 text-xs-plus font-medium text-muted-foreground transition-colors hover:border-white/20 hover:text-foreground"
           >
             {changed.loading ? <Spinner size={12} /> : <LayersIcon size={13} />}
             <span>
@@ -164,7 +164,7 @@ export function PrWorkspace({
             )}
           </button>
           {pr !== null && (pr.additions > 0 || pr.deletions > 0) && (
-            <span className="inline-flex items-center gap-1.5 font-mono text-[11.5px]">
+            <span className="inline-flex items-center gap-1.5 font-mono text-2xs-plus">
               <span className="rounded bg-success/10 px-1.5 py-0.5 text-success">
                 +{pr.additions}
               </span>
@@ -182,26 +182,26 @@ export function PrWorkspace({
             {changed.loading ? (
               <div
                 role="status"
-                className="flex items-center gap-2 px-3 py-3 text-[12.5px] text-muted-foreground"
+                className="flex items-center gap-2 px-3 py-3 text-xs-plus text-muted-foreground"
               >
                 <Spinner size={13} /> Loading changed files…
               </div>
             ) : changed.error !== null ? (
               <div
                 role="alert"
-                className="flex items-center justify-between gap-3 px-3 py-3 text-[12.5px] text-destructive"
+                className="flex items-center justify-between gap-3 px-3 py-3 text-xs-plus text-destructive"
               >
                 <span className="min-w-0 break-words">{changed.error}</span>
                 <button
                   type="button"
                   onClick={changed.retry}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11.5px] font-medium text-muted-foreground transition-colors hover:border-white/20 hover:text-foreground"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-0.5 text-2xs-plus font-medium text-muted-foreground transition-colors hover:border-white/20 hover:text-foreground"
                 >
                   <RetryIcon size={12} /> Retry
                 </button>
               </div>
             ) : changed.files.length === 0 ? (
-              <p className="px-3 py-3 text-[12.5px] text-muted-foreground">
+              <p className="px-3 py-3 text-xs-plus text-muted-foreground">
                 No changed files reported.
               </p>
             ) : (
@@ -212,12 +212,12 @@ export function PrWorkspace({
                     className="flex items-center gap-3 px-3 py-1.5"
                   >
                     <span
-                      className="min-w-0 flex-1 truncate font-mono text-[12px] text-foreground"
+                      className="min-w-0 flex-1 truncate font-mono text-xs-flat text-foreground"
                       title={file.path}
                     >
                       {file.path}
                     </span>
-                    <span className="shrink-0 font-mono text-[11px]">
+                    <span className="shrink-0 font-mono text-2xs">
                       <span className="text-success">+{file.additions}</span>{' '}
                       <span className="text-destructive">-{file.deletions}</span>
                     </span>
@@ -243,10 +243,10 @@ export function PrWorkspace({
       {pr !== null && (
         <div className="flex flex-col gap-2">
           <div className="flex items-baseline gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+            <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
               Description
             </span>
-            <span className="text-[10.5px] text-muted-foreground/70">
+            <span className="text-3xs-plus text-muted-foreground/70">
               untrusted contributor content · sanitized
             </span>
           </div>
@@ -266,7 +266,7 @@ export function PrWorkspace({
                   type="button"
                   onClick={description.toggle}
                   aria-expanded={description.expanded}
-                  className="inline-flex w-fit items-center gap-1 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+                  className="inline-flex w-fit items-center gap-1 text-xs-flat font-medium text-muted-foreground transition-colors hover:text-foreground"
                 >
                   {description.expanded ? (
                     <ChevronDownIcon size={13} />
@@ -278,7 +278,7 @@ export function PrWorkspace({
               )}
             </>
           ) : (
-            <p className="text-[13px] text-muted-foreground">
+            <p className="text-xs-plus2 text-muted-foreground">
               No description provided.
             </p>
           )}

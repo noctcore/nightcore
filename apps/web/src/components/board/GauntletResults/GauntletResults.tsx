@@ -18,12 +18,12 @@ export function GauntletResults({
   return (
     <section>
       <div className="mb-1.5 flex items-center gap-2">
-        <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+        <h3 className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
           Readiness gauntlet
         </h3>
         {result !== null && (
           <span
-            className={`font-mono text-[10px] font-semibold uppercase tracking-[0.06em] ${
+            className={`font-mono text-3xs font-semibold uppercase tracking-[0.06em] ${
               result.passed ? 'text-success' : 'text-destructive'
             }`}
           >
@@ -73,11 +73,11 @@ export function GauntletResults({
       {structureLock !== null && (
         <div className="mt-3">
           <div className="mb-1.5 flex items-center gap-2">
-            <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+            <h3 className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
               Structure lock
             </h3>
             <span
-              className={`font-mono text-[10px] font-semibold uppercase tracking-[0.06em] ${
+              className={`font-mono text-3xs font-semibold uppercase tracking-[0.06em] ${
                 structureLock.passed ? 'text-success' : 'text-destructive'
               }`}
             >

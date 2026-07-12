@@ -26,7 +26,7 @@ export function WorktreeManager({
     <section className="flex flex-col gap-3">
       <header className="flex items-center gap-2">
         <BranchIcon size={14} className="text-muted-foreground" />
-        <h2 className="text-[13px] font-semibold text-foreground">Worktrees</h2>
+        <h2 className="text-xs-plus2 font-semibold text-foreground">Worktrees</h2>
         <Badge tone="neutral">{worktrees.length}</Badge>
       </header>
 

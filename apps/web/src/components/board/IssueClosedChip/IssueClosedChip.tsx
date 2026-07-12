@@ -21,7 +21,7 @@ export function IssueClosedChip({ task }: IssueClosedChipProps) {
         e.stopPropagation();
         open();
       }}
-      className="flex items-center gap-1 rounded-md bg-amber-500/[0.12] px-1.5 py-0.5 font-mono text-[9.5px] text-amber-300 transition-colors hover:bg-amber-500/20"
+      className="flex items-center gap-1 rounded-md bg-amber-500/[0.12] px-1.5 py-0.5 font-mono text-4xs-plus text-amber-300 transition-colors hover:bg-amber-500/20"
     >
       <GithubIcon size={11} />
       issue #{issueNumber} closed upstream

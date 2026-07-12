@@ -57,7 +57,7 @@ function SectionTab({
       type="button"
       aria-selected={active}
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${
+      className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs-plus font-semibold transition-colors ${
         active
           ? 'bg-primary/[0.12] text-primary'
           : 'text-muted-foreground hover:bg-white/[0.03] hover:text-foreground'
@@ -66,7 +66,7 @@ function SectionTab({
       {label}
       {count > 0 && (
         <span
-          className={`rounded-full px-1.5 text-[10px] font-semibold tabular-nums ${
+          className={`rounded-full px-1.5 text-3xs font-semibold tabular-nums ${
             active ? 'bg-primary/20 text-primary' : 'bg-white/[0.06] text-muted-foreground'
           }`}
         >
@@ -82,7 +82,7 @@ function ConfigureScreen({ view }: { view: HarnessViewModel }) {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto">
       {view.startError !== null && (
-        <p className="border-b border-destructive/40 bg-destructive/[0.1] px-6 py-2 text-[12.5px] text-destructive">
+        <p className="border-b border-destructive/40 bg-destructive/[0.1] px-6 py-2 text-xs-plus text-destructive">
           {view.startError}
         </p>
       )}
@@ -122,13 +122,13 @@ function RunningScreen({ view }: { view: HarnessViewModel }) {
       {view.peekCategory !== null && (
         <div className="flex max-h-[60vh] min-h-0 flex-col overflow-hidden rounded-[10px] border border-border bg-white/[0.015]">
           <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-            <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-muted-foreground">
+            <span className="font-mono text-2xs uppercase tracking-[0.1em] text-muted-foreground">
               {view.peekLabel}
             </span>
             <button
               type="button"
               onClick={view.clearPeek}
-              className="inline-flex items-center gap-1 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
+              className="inline-flex items-center gap-1 text-xs-flat text-muted-foreground transition-colors hover:text-foreground"
             >
               <ChevronLeftIcon size={13} />
               Back to progress
@@ -160,14 +160,14 @@ function ResultsScreen({
       {view.stream.status === 'failed' &&
         (view.stream.failureReason === 'aborted' ? (
           <div className="border-b border-border bg-white/[0.02] px-6 py-3">
-            <p className="text-[12.5px] text-muted-foreground">
+            <p className="text-xs-plus text-muted-foreground">
               Scan cancelled. Any findings that streamed before you stopped the scan
               are shown below.
             </p>
           </div>
         ) : (
           <div className="border-b border-destructive/40 bg-destructive/[0.08] px-6 py-3">
-            <p className="text-[12.5px] text-destructive">
+            <p className="text-xs-plus text-destructive">
               Scan failed
               {view.stream.error !== null ? `: ${view.stream.error}` : '.'} Any findings
               that streamed before the failure are shown below.

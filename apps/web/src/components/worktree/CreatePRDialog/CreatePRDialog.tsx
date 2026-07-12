@@ -15,7 +15,7 @@ import type { CreatePRDialogProps } from './CreatePRDialog.types';
 
 const INPUT_CLASS =
   'w-full rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary';
-const LABEL_CLASS = 'font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground';
+const LABEL_CLASS = 'font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground';
 
 /** The Create PR dialog — the human gate before anything leaves the machine:
  *  an editable title/body pre-filled by `draftPrMessage` (never posted without
@@ -45,7 +45,7 @@ export function CreatePRDialog({ open, task, onCreate, onClose }: CreatePRDialog
       <div className="flex items-start justify-between gap-3 px-5 pb-3 pt-5">
         <div className="flex min-w-0 flex-col gap-1">
           <h2 className="text-base font-semibold text-foreground">Create pull request</h2>
-          <div className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-xs-plus2 text-muted-foreground">
             <BranchIcon size={13} />
             <span className="truncate font-mono text-foreground">{branch}</span>
             <span aria-hidden>→</span>
@@ -61,7 +61,7 @@ export function CreatePRDialog({ open, task, onCreate, onClose }: CreatePRDialog
         {v.drafting && (
           <div
             role="status"
-            className="flex items-center gap-2 py-1 text-[13px] text-muted-foreground"
+            className="flex items-center gap-2 py-1 text-xs-plus2 text-muted-foreground"
           >
             <Spinner />
             <span>Drafting title and body…</span>
@@ -110,7 +110,7 @@ export function CreatePRDialog({ open, task, onCreate, onClose }: CreatePRDialog
             disabled={v.submitting}
           />
           {v.staleDraftNote !== null && (
-            <p className="text-[11px] leading-snug text-muted-foreground">{v.staleDraftNote}</p>
+            <p className="text-2xs leading-snug text-muted-foreground">{v.staleDraftNote}</p>
           )}
         </div>
 
@@ -128,21 +128,21 @@ export function CreatePRDialog({ open, task, onCreate, onClose }: CreatePRDialog
             label="Include governance receipt"
             disabled={v.submitting}
           />
-          <p className="pl-6 text-[11px] leading-snug text-muted-foreground">
+          <p className="pl-6 text-2xs leading-snug text-muted-foreground">
             Appends the Trust Report (gauntlet, guardrail ledger, flight summary) to the
             pull-request body.
           </p>
         </div>
 
         {v.error !== null && (
-          <p className="rounded-[8px] border border-destructive/40 bg-destructive/[0.12] px-3 py-2 text-[12px] text-destructive">
+          <p className="rounded-[8px] border border-destructive/40 bg-destructive/[0.12] px-3 py-2 text-xs-flat text-destructive">
             {v.error}
           </p>
         )}
       </div>
 
       <div className="mt-2 flex flex-col gap-2.5 border-t border-border bg-black/15 px-5 py-3.5">
-        <p className="text-[12px] leading-snug text-muted-foreground">
+        <p className="text-xs-flat leading-snug text-muted-foreground">
           push <span className="font-mono text-foreground">{branch}</span> to origin and open a
           pull request against <span className="font-mono text-foreground">{baseLabel}</span>
         </p>

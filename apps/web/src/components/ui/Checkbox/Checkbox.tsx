@@ -7,7 +7,7 @@ import type { CheckboxProps } from './Checkbox.types';
 export function Checkbox({ checked, onChange, label, disabled = false }: CheckboxProps) {
   return (
     <label
-      className={`flex select-none items-center gap-2.5 text-[13px] text-foreground ${
+      className={`flex select-none items-center gap-2.5 text-xs-plus2 text-foreground ${
         disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
       }`}
     >

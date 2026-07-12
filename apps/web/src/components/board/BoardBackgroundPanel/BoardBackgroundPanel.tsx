@@ -35,8 +35,8 @@ function OpacityRow({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-[13px] font-medium text-foreground">{label}</span>
-        <span className="font-mono text-[11.5px] tabular-nums text-muted-foreground">
+        <span className="text-xs-plus2 font-medium text-foreground">{label}</span>
+        <span className="font-mono text-2xs-plus tabular-nums text-muted-foreground">
           {pct(value)}%
         </span>
       </div>
@@ -83,7 +83,7 @@ export function BoardBackgroundPanel({
         </div>
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold text-foreground">Board Background Settings</h2>
-          <p className="mt-0.5 text-[12px] leading-snug text-muted-foreground">
+          <p className="mt-0.5 text-xs-flat leading-snug text-muted-foreground">
             Set a custom background image for your Kanban board and adjust card/column opacity.
           </p>
         </div>
@@ -95,7 +95,7 @@ export function BoardBackgroundPanel({
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-5">
         {/* --- Background image --- */}
         <section className="flex flex-col gap-2.5">
-          <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+          <h3 className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
             Background Image
           </h3>
           <input
@@ -115,7 +115,7 @@ export function BoardBackgroundPanel({
             ) : (
               <div className="flex h-40 w-full flex-col items-center justify-center gap-1.5 text-muted-foreground">
                 <ImageIcon size={22} className="opacity-50" />
-                <span className="text-[12px]">No custom background</span>
+                <span className="text-xs-flat">No custom background</span>
               </div>
             )}
             <div className="flex gap-2 border-t border-border p-2.5">
@@ -123,7 +123,7 @@ export function BoardBackgroundPanel({
                 type="button"
                 disabled={picker.busy}
                 onClick={picker.openPicker}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border bg-white/[0.02] px-3 py-2 text-[12.5px] font-semibold text-foreground transition-colors hover:border-white/20 disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border bg-white/[0.02] px-3 py-2 text-xs-plus font-semibold text-foreground transition-colors hover:border-white/20 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <UploadIcon size={14} className="text-muted-foreground" />
                 {picker.busy ? 'Loading…' : backgroundUrl !== null ? 'Change Image' : 'Choose Image'}
@@ -133,7 +133,7 @@ export function BoardBackgroundPanel({
                   type="button"
                   disabled={picker.busy}
                   onClick={() => void onClearImage()}
-                  className="flex items-center justify-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/[0.14] px-3 py-2 text-[12.5px] font-semibold text-destructive transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="flex items-center justify-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/[0.14] px-3 py-2 text-xs-plus font-semibold text-destructive transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <TrashIcon size={14} />
                   Clear
@@ -142,11 +142,11 @@ export function BoardBackgroundPanel({
             </div>
           </div>
           {picker.error !== null && (
-            <span role="alert" className="text-[11.5px] text-destructive">
+            <span role="alert" className="text-2xs-plus text-destructive">
               {picker.error}
             </span>
           )}
-          <p className="text-[11px] leading-snug text-muted-foreground">
+          <p className="text-2xs leading-snug text-muted-foreground">
             PNG, JPEG, WebP, or GIF · ≤ 15 MB. Lower the opacities below to let it show through.
           </p>
         </section>

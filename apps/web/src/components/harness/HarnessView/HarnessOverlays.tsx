@@ -62,11 +62,11 @@ export function HarnessOverlays({ view }: { view: HarnessViewModel }) {
         message={
           <>
             Add a Structure-Lock check to{' '}
-            <code className="rounded border border-border bg-white/[0.04] px-1 py-0.5 font-mono text-[12px] text-foreground">
+            <code className="rounded border border-border bg-white/[0.04] px-1 py-0.5 font-mono text-xs-flat text-foreground">
               .nightcore/harness.json
             </code>{' '}
             that runs before every task in this project (and again at merge). It will run:
-            <code className="mt-2 block break-all rounded border border-border bg-white/[0.04] px-2 py-1 font-mono text-[12px] text-foreground">
+            <code className="mt-2 block break-all rounded border border-border bg-white/[0.04] px-2 py-1 font-mono text-xs-flat text-foreground">
               {view.armCommand}
             </code>
           </>
@@ -90,7 +90,7 @@ export function HarnessOverlays({ view }: { view: HarnessViewModel }) {
                 {view.applyProposalTarget.title}
               </span>{' '}
               directly into the project (no agent). Existing files are never clobbered by a{' '}
-              <code className="rounded border border-border bg-white/[0.04] px-1 py-0.5 font-mono text-[12px] text-foreground">
+              <code className="rounded border border-border bg-white/[0.04] px-1 py-0.5 font-mono text-xs-flat text-foreground">
                 create
               </code>{' '}
               artifact.
@@ -99,7 +99,7 @@ export function HarnessOverlays({ view }: { view: HarnessViewModel }) {
                   {view.applyProposalPaths.map((path) => (
                     <code
                       key={path}
-                      className="block break-all rounded border border-border bg-white/[0.04] px-2 py-1 font-mono text-[12px] text-foreground"
+                      className="block break-all rounded border border-border bg-white/[0.04] px-2 py-1 font-mono text-xs-flat text-foreground"
                     >
                       {path}
                     </code>

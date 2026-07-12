@@ -45,19 +45,19 @@ export function ArtifactDetailPanel({
       title: art.title,
       badges: (
         <>
-          <span className="inline-flex items-center rounded-md border border-primary/40 bg-primary/[0.1] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-primary">
+          <span className="inline-flex items-center rounded-md border border-primary/40 bg-primary/[0.1] px-1.5 py-0.5 font-mono text-3xs font-semibold text-primary">
             {ARTIFACT_KIND_META[art.kind].label}
           </span>
-          <span className="inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+          <span className="inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
             {art.writeMode}
           </span>
           {art.groupTitle !== null && (
-            <span className="font-mono text-[10px] text-muted-foreground">
+            <span className="font-mono text-3xs text-muted-foreground">
               {art.groupTitle}
             </span>
           )}
           {applied && (
-            <span className="inline-flex items-center gap-1 rounded-md bg-success/[0.12] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-success">
+            <span className="inline-flex items-center gap-1 rounded-md bg-success/[0.12] px-1.5 py-0.5 font-mono text-3xs font-semibold text-success">
               <CheckIcon size={10} />
               applied
             </span>
@@ -118,11 +118,11 @@ export function ArtifactDetailPanel({
       sections: {
         lead: (
           <DetailSection title="Target">
-            <code className="break-all rounded-md border border-border bg-white/[0.03] px-2 py-1 font-mono text-[11.5px] text-foreground">
+            <code className="break-all rounded-md border border-border bg-white/[0.03] px-2 py-1 font-mono text-2xs-plus text-foreground">
               {art.appliedPath ?? art.targetPath}
             </code>
             {mode !== undefined && (
-              <p className="text-[12px] text-muted-foreground">
+              <p className="text-xs-flat text-muted-foreground">
                 <span className="font-mono text-foreground">{mode.label}</span> —{' '}
                 {mode.hint}
               </p>
@@ -140,7 +140,7 @@ export function ArtifactDetailPanel({
                   {art.sourceFindings.map((f) => (
                     <span
                       key={f}
-                      className="rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                      className="rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground"
                     >
                       {f}
                     </span>

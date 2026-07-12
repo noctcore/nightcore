@@ -21,7 +21,7 @@ function GridPanePreview({ session }: { session: TerminalSessionInfo }) {
         className={session.confined ? 'text-warning' : 'text-primary/80'}
         aria-hidden
       />
-      <span className="text-[11.5px] font-semibold text-foreground">{displayTitle(session)}</span>
+      <span className="text-2xs-plus font-semibold text-foreground">{displayTitle(session)}</span>
     </div>
   );
 }

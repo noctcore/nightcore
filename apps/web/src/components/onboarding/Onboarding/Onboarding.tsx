@@ -39,7 +39,7 @@ export function Onboarding(props: OnboardingProps) {
               <button
                 type="button"
                 onClick={props.onSkip}
-                className="text-[12px] text-muted-foreground transition-colors hover:text-foreground"
+                className="text-xs-flat text-muted-foreground transition-colors hover:text-foreground"
               >
                 Skip for now
               </button>

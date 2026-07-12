@@ -14,7 +14,7 @@ import type {
 } from './LensChipGrid.types';
 
 const CHIP =
-  'rounded-[10px] border px-3 py-1.5 text-[12.5px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50';
+  'rounded-[10px] border px-3 py-1.5 text-xs-plus font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50';
 
 /** Lens chip classes for the selected/unselected states. */
 export function chipClass(selected: boolean): string {
@@ -26,7 +26,7 @@ export function chipClass(selected: boolean): string {
 }
 
 const SECTION_LABEL =
-  'font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground';
+  'font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground';
 
 /** The lens chip grid: a header row (heading + All/None) over toggleable,
  *  `aria-pressed` icon chips. */
@@ -46,14 +46,14 @@ export function LensChipGrid<K extends string>({
           <button
             type="button"
             onClick={onSelectAll}
-            className="text-[11px] font-medium text-muted-foreground hover:text-foreground"
+            className="text-2xs font-medium text-muted-foreground hover:text-foreground"
           >
             All
           </button>
           <button
             type="button"
             onClick={onSelectNone}
-            className="text-[11px] font-medium text-muted-foreground hover:text-foreground"
+            className="text-2xs font-medium text-muted-foreground hover:text-foreground"
           >
             None
           </button>
@@ -121,7 +121,7 @@ export function ScanConfigForm<K extends string>({
           {isStarting ? (ctaBusyIcon ?? <Spinner size={15} />) : ctaIcon}
           {isStarting ? 'Starting…' : ctaLabel}
         </Button>
-        <p className="text-[12px] text-muted-foreground">{hint}</p>
+        <p className="text-xs-flat text-muted-foreground">{hint}</p>
       </div>
     </div>
   );

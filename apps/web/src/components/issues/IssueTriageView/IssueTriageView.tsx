@@ -32,8 +32,8 @@ export function IssueTriageView(props: IssueTriageViewProps) {
       <div className="flex h-full min-h-0 flex-col">
         <header className="flex items-center gap-2 border-b border-border px-5 py-3">
           <BugIcon size={16} className="text-primary" />
-          <h1 className="text-[14px] font-semibold text-foreground">Issue Triage</h1>
-          <span className="text-[12.5px] text-muted-foreground">
+          <h1 className="text-sm-flat font-semibold text-foreground">Issue Triage</h1>
+          <span className="text-xs-plus text-muted-foreground">
             · {view.projectName ?? 'GitHub issues'}
           </span>
         </header>
@@ -68,8 +68,8 @@ export function IssueTriageView(props: IssueTriageViewProps) {
                   <div
                     className={
                       view.failedIsCancel
-                        ? 'rounded-[10px] border border-border bg-white/[0.02] px-4 py-3 text-[12.5px] text-muted-foreground'
-                        : 'rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-4 py-3 text-[12.5px] text-destructive'
+                        ? 'rounded-[10px] border border-border bg-white/[0.02] px-4 py-3 text-xs-plus text-muted-foreground'
+                        : 'rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-4 py-3 text-xs-plus text-destructive'
                     }
                   >
                     {view.failedIsCancel

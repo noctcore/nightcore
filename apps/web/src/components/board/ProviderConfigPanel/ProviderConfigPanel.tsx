@@ -69,7 +69,7 @@ export function ProviderConfigPanel({
             </h2>
             <Badge>read-only</Badge>
           </div>
-          <p className="truncate font-mono text-[11px] text-muted-foreground">
+          <p className="truncate font-mono text-2xs text-muted-foreground">
             {projectName}
           </p>
         </div>
@@ -91,13 +91,13 @@ export function ProviderConfigPanel({
           </div>
         ) : error !== null || snapshot === null ? (
           <div className="flex flex-col items-start gap-2.5 rounded-[10px] border border-destructive/40 bg-destructive/[0.1] p-3.5">
-            <p className="text-[13px] text-foreground">
+            <p className="text-xs-plus2 text-foreground">
               {error ?? "Couldn't read the provider configuration."}
             </p>
             <button
               type="button"
               onClick={reload}
-              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground transition-[filter] hover:brightness-110"
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs-flat font-semibold text-primary-foreground transition-[filter] hover:brightness-110"
             >
               <RetryIcon size={13} />
               Retry
@@ -168,7 +168,7 @@ export function ProviderConfigPanel({
                 <span className="text-muted-foreground">
                   <TerminalIcon size={14} />
                 </span>
-                <h3 className="text-[12.5px] font-semibold">Defaults</h3>
+                <h3 className="text-xs-plus font-semibold">Defaults</h3>
               </div>
               <div className="px-3.5 py-3">
                 <Extras snapshot={snapshot} />

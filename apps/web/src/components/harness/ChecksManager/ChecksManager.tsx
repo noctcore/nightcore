@@ -57,7 +57,7 @@ const STATUS_TEXT: Record<OutcomeStatus, string> = {
 };
 
 const FIELD_INPUT =
-  'w-full rounded-[8px] border border-border bg-black/20 px-2.5 py-1.5 font-mono text-[12.5px] text-foreground outline-none focus:border-primary';
+  'w-full rounded-[8px] border border-border bg-black/20 px-2.5 py-1.5 font-mono text-xs-plus text-foreground outline-none focus:border-primary';
 
 function formatDurationMs(ms: number): string {
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
@@ -66,7 +66,7 @@ function formatDurationMs(ms: number): string {
 /** The run-level banner: pass/fail of the last on-demand run + when it ran. */
 function LastRunBanner({ lastRun }: { lastRun: ArmedChecksLastRun }) {
   return (
-    <div className="flex items-center gap-2 text-[11.5px]">
+    <div className="flex items-center gap-2 text-2xs-plus">
       <span
         className={`font-mono font-semibold uppercase tracking-[0.06em] ${
           lastRun.passed ? 'text-success' : 'text-destructive'
@@ -83,7 +83,7 @@ function LastRunBanner({ lastRun }: { lastRun: ArmedChecksLastRun }) {
 function CheckResult({ result }: { result: ArmedCheckOutcome }) {
   return (
     <div className="mt-1 flex flex-col gap-1">
-      <div className="flex items-center gap-2 font-mono text-[11px]">
+      <div className="flex items-center gap-2 font-mono text-2xs">
         <span className={STATUS_TEXT[result.status]}>
           {STATUS_GLYPH[result.status]} {result.status}
         </span>
@@ -95,7 +95,7 @@ function CheckResult({ result }: { result: ArmedCheckOutcome }) {
         )}
       </div>
       {result.output !== undefined && result.status !== 'passed' && (
-        <pre className="max-h-32 overflow-auto rounded-[6px] border border-border bg-black/30 px-2 py-1.5 font-mono text-[10.5px] text-muted-foreground">
+        <pre className="max-h-32 overflow-auto rounded-[6px] border border-border bg-black/30 px-2 py-1.5 font-mono text-3xs-plus text-muted-foreground">
           {result.output}
         </pre>
       )}
@@ -129,7 +129,7 @@ function ValidationResult({ result }: { result: RuleValidationResult }) {
   const passed = result.validPassed + result.invalidPassed;
   return (
     <div className="mt-1 flex flex-col gap-1">
-      <div className="flex items-center gap-2 font-mono text-[11px]">
+      <div className="flex items-center gap-2 font-mono text-2xs">
         <span className={VALIDATION_TONE[result.outcome]}>
           {result.outcome === 'failed' || result.outcome === 'error' ? '✕' : '✓'}{' '}
           {VALIDATION_LABEL[result.outcome]}
@@ -144,7 +144,7 @@ function ValidationResult({ result }: { result: RuleValidationResult }) {
         )}
       </div>
       {result.error !== undefined && (
-        <pre className="max-h-32 overflow-auto rounded-[6px] border border-border bg-black/30 px-2 py-1.5 font-mono text-[10.5px] text-muted-foreground">
+        <pre className="max-h-32 overflow-auto rounded-[6px] border border-border bg-black/30 px-2 py-1.5 font-mono text-3xs-plus text-muted-foreground">
           {result.error}
         </pre>
       )}
@@ -159,7 +159,7 @@ function EditForm({ edit }: { edit: ChecksEditVM }) {
   return (
     <div className="flex flex-col gap-2 rounded-[9px] border border-primary/40 bg-primary/[0.04] p-3">
       <div className="grid grid-cols-2 gap-2">
-        <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+        <label className="flex flex-col gap-1 text-2xs text-muted-foreground">
           Name
           <input
             className={FIELD_INPUT}
@@ -167,7 +167,7 @@ function EditForm({ edit }: { edit: ChecksEditVM }) {
             onChange={(e) => edit.change({ name: e.target.value })}
           />
         </label>
-        <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+        <label className="flex flex-col gap-1 text-2xs text-muted-foreground">
           Kind
           <select
             className={FIELD_INPUT}
@@ -182,7 +182,7 @@ function EditForm({ edit }: { edit: ChecksEditVM }) {
           </select>
         </label>
       </div>
-      <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+      <label className="flex flex-col gap-1 text-2xs text-muted-foreground">
         Command
         <input
           className={FIELD_INPUT}
@@ -191,7 +191,7 @@ function EditForm({ edit }: { edit: ChecksEditVM }) {
           placeholder="npx eslint ."
         />
       </label>
-      <label className="flex w-40 flex-col gap-1 text-[11px] text-muted-foreground">
+      <label className="flex w-40 flex-col gap-1 text-2xs text-muted-foreground">
         Timeout (ms)
         <input
           className={FIELD_INPUT}
@@ -201,7 +201,7 @@ function EditForm({ edit }: { edit: ChecksEditVM }) {
           inputMode="numeric"
         />
       </label>
-      {edit.error !== null && <p className="text-[11px] text-destructive">{edit.error}</p>}
+      {edit.error !== null && <p className="text-2xs text-destructive">{edit.error}</p>}
       <div className="flex items-center gap-2">
         <Button onClick={edit.save} disabled={edit.saving} aria-busy={edit.saving}>
           {edit.saving ? <Spinner size={14} /> : null}
@@ -239,8 +239,8 @@ function CheckRow({ check, vm }: { check: ArmedCheck; vm: ChecksManagerVM }) {
           onChange={(next) => vm.toggle(check.name, next)}
           label={`${check.name} enabled`}
         />
-        <span className="font-mono text-[12.5px] font-semibold text-foreground">{check.name}</span>
-        <span className="rounded-[5px] border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+        <span className="font-mono text-xs-plus font-semibold text-foreground">{check.name}</span>
+        <span className="rounded-[5px] border border-border px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
           {check.kind}
         </span>
         {vm.pendingName === check.name && <Spinner size={12} />}
@@ -276,7 +276,7 @@ function CheckRow({ check, vm }: { check: ArmedCheck; vm: ChecksManagerVM }) {
           </button>
         </div>
       </div>
-      <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-2 font-mono text-2xs text-muted-foreground">
         <span className="truncate">{check.command}</span>
         {check.timeoutMs != null && (
           <span className="shrink-0">· timeout {formatDurationMs(check.timeoutMs)}</span>
@@ -285,7 +285,7 @@ function CheckRow({ check, vm }: { check: ArmedCheck; vm: ChecksManagerVM }) {
       {check.lastResult !== undefined && <CheckResult result={check.lastResult} />}
       {validation !== undefined && <ValidationResult result={validation} />}
       {validationError !== undefined && (
-        <p className="mt-1 font-mono text-[11px] text-destructive">
+        <p className="mt-1 font-mono text-2xs text-destructive">
           Could not validate: {validationError}
         </p>
       )}
@@ -305,7 +305,7 @@ export function ChecksManager({ vm: injected }: ChecksManagerProps = {}) {
           <div className="flex items-center gap-3">
             <div className="flex flex-col">
               <h2 className="text-[15px] font-semibold text-foreground">Armed checks</h2>
-              <p className="text-[11.5px] text-muted-foreground">
+              <p className="text-2xs-plus text-muted-foreground">
                 Deterministic gates that run before every reviewer and at merge — the
                 project&apos;s own harness, enforced.
               </p>
@@ -325,25 +325,25 @@ export function ChecksManager({ vm: injected }: ChecksManagerProps = {}) {
         </header>
 
         {vm.loadError !== null && (
-          <p className="rounded-md border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-[11.5px] text-destructive">
+          <p className="rounded-md border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-2xs-plus text-destructive">
             Could not read the armed checks: {vm.loadError}
           </p>
         )}
         {vm.run.error !== null && (
-          <p className="rounded-md border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-[11.5px] text-destructive">
+          <p className="rounded-md border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-2xs-plus text-destructive">
             Run failed: {vm.run.error}
           </p>
         )}
         {vm.actionError !== null && (
-          <p className="rounded-md border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-[11.5px] text-destructive">
+          <p className="rounded-md border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-2xs-plus text-destructive">
             {vm.actionError}
           </p>
         )}
 
         {vm.loading ? (
-          <p className="text-[12.5px] text-muted-foreground">Loading armed checks…</p>
+          <p className="text-xs-plus text-muted-foreground">Loading armed checks…</p>
         ) : vm.checks.length === 0 ? (
-          <p className="rounded-[9px] border border-dashed border-border px-4 py-6 text-center text-[12.5px] text-muted-foreground">
+          <p className="rounded-[9px] border border-dashed border-border px-4 py-6 text-center text-xs-plus text-muted-foreground">
             No checks armed yet. Arm a generated ESLint plugin or convention check from the
             Harden stage to enforce it here.
           </p>

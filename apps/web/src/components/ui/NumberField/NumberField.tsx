@@ -26,7 +26,7 @@ export function NumberField({
   return (
     <div className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-black/20 px-2.5 py-1.5 focus-within:border-primary">
       {prefix !== undefined && (
-        <span className="font-mono text-[12px] text-muted-foreground">{prefix}</span>
+        <span className="font-mono text-xs-flat text-muted-foreground">{prefix}</span>
       )}
       <input
         type="number"
@@ -45,7 +45,7 @@ export function NumberField({
             (e.target as HTMLInputElement).blur();
           }
         }}
-        className="w-[88px] bg-transparent text-right font-mono text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        className="w-[88px] bg-transparent text-right font-mono text-xs-plus text-foreground outline-none placeholder:text-muted-foreground/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
       />
     </div>
   );

@@ -4,7 +4,7 @@ import { useTerminalTaskMenuItems } from './TerminalTaskMenu.hooks';
 import type { TerminalTaskMenuProps } from './TerminalTaskMenu.types';
 
 const TRIGGER_CLASS =
-  'my-0.5 flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent';
+  'my-0.5 flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-2xs font-medium text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent';
 
 /** The header task dropdown (cockpit spec PR 4, decision 2): picks a backlog task to
  *  inject its context (title + description + on-disk JSON path) into the active

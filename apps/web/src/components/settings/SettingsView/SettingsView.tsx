@@ -148,7 +148,7 @@ export function SettingsView({
         <div className="px-2 pb-3 text-lg font-semibold tracking-tight">Settings</div>
         {NAV_GROUPS.map((group) => (
           <div key={group.label}>
-            <div className="px-2.5 pb-1.5 pt-3.5 font-mono text-[9.5px] uppercase tracking-[0.18em] text-muted-foreground">
+            <div className="px-2.5 pb-1.5 pt-3.5 font-mono text-4xs-plus uppercase tracking-[0.18em] text-muted-foreground">
               {group.label}
             </div>
             {group.items.map((item) => (
@@ -163,7 +163,7 @@ export function SettingsView({
                 }`}
               >
                 <span className="shrink-0">{item.icon}</span>
-                <span className="flex-1 text-[13px]">{item.label}</span>
+                <span className="flex-1 text-xs-plus2">{item.label}</span>
               </button>
             ))}
           </div>
@@ -178,7 +178,7 @@ export function SettingsView({
               <div className="flex items-center gap-2">
                 <h1 className="text-[25px] font-semibold tracking-tight">{header.title}</h1>
               </div>
-              <div className="mt-1 font-mono text-[10.5px] uppercase tracking-[0.16em] text-muted-foreground">
+              <div className="mt-1 font-mono text-3xs-plus uppercase tracking-[0.16em] text-muted-foreground">
                 {header.subtitle}
               </div>
             </div>
@@ -192,7 +192,7 @@ export function SettingsView({
                     disabled={disabled}
                     onClick={() => setScope(v)}
                     title={disabled ? 'Activate a project to set per-project overrides' : undefined}
-                    className={`rounded-md px-3 py-1 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                    className={`rounded-md px-3 py-1 text-xs-flat font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                       v === scope
                         ? 'bg-primary text-primary-foreground'
                         : 'text-muted-foreground enabled:hover:text-foreground'
@@ -236,7 +236,7 @@ export function SettingsView({
           {note !== undefined && (
             <div className="mt-2 flex items-center gap-2.5 rounded-2xl border border-border bg-white/[0.02] px-[18px] py-3.5">
               <SparkIcon size={16} className="text-warning" />
-              <span className="text-[12.5px] text-muted-foreground">
+              <span className="text-xs-plus text-muted-foreground">
                 {scope === 'project' && page === 'models'
                   ? 'These values override the global defaults for the active project only.'
                   : note}

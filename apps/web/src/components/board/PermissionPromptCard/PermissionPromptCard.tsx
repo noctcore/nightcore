@@ -35,7 +35,7 @@ export function PermissionPromptCard({ prompt, onRespond }: PermissionPromptCard
     >
       <div className="flex items-center gap-2">
         <AlertIcon size={14} className="shrink-0 text-warning" />
-        <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-warning">
+        <span className="font-mono text-2xs font-semibold uppercase tracking-[0.08em] text-warning">
           Approval needed
         </span>
       </div>
@@ -43,7 +43,7 @@ export function PermissionPromptCard({ prompt, onRespond }: PermissionPromptCard
         <TerminalIcon size={12} />
         {prompt.toolName}
       </div>
-      <pre className="mt-1.5 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded-md bg-black/20 px-2.5 py-1.5 font-mono text-[11px] text-foreground/90">
+      <pre className="mt-1.5 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded-md bg-black/20 px-2.5 py-1.5 font-mono text-2xs text-foreground/90">
         {summarizeInput(prompt.input)}
       </pre>
       <div className="mt-2.5 flex items-center gap-2">

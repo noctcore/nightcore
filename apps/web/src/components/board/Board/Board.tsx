@@ -92,13 +92,13 @@ function BoardImpl({
       {banner.visible && breaker !== null && (
         <div className="flex items-center gap-3 border-b border-destructive/40 bg-destructive/[0.12] px-[22px] py-2.5">
           <AlertIcon size={15} className="shrink-0 text-destructive" />
-          <span className="min-w-0 text-[12.5px] text-foreground">
+          <span className="min-w-0 text-xs-plus text-foreground">
             Auto Mode paused after {breaker.failureThreshold} consecutive failures.
           </span>
           <button
             type="button"
             onClick={onResume}
-            className="ml-auto flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-1 text-[12px] font-semibold text-primary-foreground transition-[filter] hover:brightness-110"
+            className="ml-auto flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-1 text-xs-flat font-semibold text-primary-foreground transition-[filter] hover:brightness-110"
           >
             <BoltIcon size={13} />
             Resume
@@ -117,7 +117,7 @@ function BoardImpl({
       {usageBanner.visible && usagePause !== null && (
         <div className="flex items-center gap-3 border-b border-warning/40 bg-warning/[0.12] px-[22px] py-2.5">
           <BoltIcon size={15} className="shrink-0 text-warning" />
-          <span className="min-w-0 text-[12.5px] text-foreground">
+          <span className="min-w-0 text-xs-plus text-foreground">
             Auto Mode paused — {providerDisplay(usagePause.provider)} {usagePause.windowLabel} at{' '}
             {Math.round(usagePause.usedPercent)}%
             {usageResetClock !== null && `, resumes ~${usageResetClock}`}

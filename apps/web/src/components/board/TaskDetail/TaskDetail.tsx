@@ -311,7 +311,7 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
           ) : (
             task.description.trim().length > 0 && (
               <section>
-                <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+                <h3 className="mb-1.5 font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
                   Description
                 </h3>
                 <Markdown className="text-sm leading-relaxed text-foreground/90">

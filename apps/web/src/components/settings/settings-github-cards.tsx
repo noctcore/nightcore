@@ -37,7 +37,7 @@ function LabelPrefixField({
             (e.target as HTMLInputElement).blur();
           }
         }}
-        className="w-[110px] bg-transparent font-mono text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground/60"
+        className="w-[110px] bg-transparent font-mono text-xs-plus text-foreground outline-none placeholder:text-muted-foreground/60"
       />
     </div>
   );

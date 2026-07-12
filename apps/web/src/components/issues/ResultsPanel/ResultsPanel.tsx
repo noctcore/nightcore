@@ -27,7 +27,7 @@ import type { IssueVerdictView } from '../issue-triage.types';
 import type { ResultsPanelProps } from './ResultsPanel.types';
 
 const SECTION_LABEL =
-  'font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground';
+  'font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -45,17 +45,17 @@ function PrAnalysisCard({ pr }: { pr: NonNullable<IssueVerdictView['prAnalysis']
     <div className="flex flex-col gap-2 rounded-[10px] border border-primary/30 bg-primary/[0.05] px-3.5 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <GithubIcon size={13} className="text-primary/90" />
-        <span className="text-[12.5px] font-semibold text-foreground">{rec.label}</span>
+        <span className="text-xs-plus font-semibold text-foreground">{rec.label}</span>
         {pr.prNumber !== null && (
-          <span className="font-mono text-[11px] text-muted-foreground">#{pr.prNumber}</span>
+          <span className="font-mono text-2xs text-muted-foreground">#{pr.prNumber}</span>
         )}
         {pr.prFixesIssue !== null && (
-          <span className="font-mono text-[10.5px] text-muted-foreground">
+          <span className="font-mono text-3xs-plus text-muted-foreground">
             {pr.prFixesIssue ? 'fixes the issue' : 'does not fully fix it'}
           </span>
         )}
       </div>
-      <p className="text-[11.5px] text-muted-foreground">{rec.hint}</p>
+      <p className="text-2xs-plus text-muted-foreground">{rec.hint}</p>
       {pr.prSummary !== null && pr.prSummary.trim().length > 0 && (
         <div className="border-t border-border/60 pt-2">
           <Markdown>{pr.prSummary}</Markdown>
@@ -86,19 +86,19 @@ export function ResultsPanel({
       <div className="flex flex-col gap-2.5 rounded-[12px] border border-border bg-white/[0.02] px-4 py-3.5">
         <div className="flex flex-wrap items-center gap-2">
           <span
-            className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold ${verdict.chip} ${verdict.tone}`}
+            className={`inline-flex items-center rounded-md border px-2 py-0.5 text-2xs font-semibold ${verdict.chip} ${verdict.tone}`}
           >
             {verdict.label}
           </span>
-          <span className="inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10.5px] text-muted-foreground">
+          <span className="inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs-plus text-muted-foreground">
             {KIND_META[result.issueKind].label}
           </span>
-          <span className="font-mono text-[10.5px] text-muted-foreground">
+          <span className="font-mono text-3xs-plus text-muted-foreground">
             {CONFIDENCE_META[result.confidence].label}
           </span>
           {stale && (
             <span
-              className="ml-auto inline-flex items-center gap-1 rounded-md border border-warning/40 bg-warning/[0.12] px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-warning"
+              className="ml-auto inline-flex items-center gap-1 rounded-md border border-warning/40 bg-warning/[0.12] px-1.5 py-0.5 font-mono text-3xs font-semibold uppercase tracking-wide text-warning"
               title="The issue changed on GitHub after this validation — re-validate for a current verdict."
             >
               <AlertIcon size={11} />
@@ -108,7 +108,7 @@ export function ResultsPanel({
         </div>
 
         {result.issueKind === 'bug_report' && result.bugConfirmed !== null && (
-          <div className="flex items-center gap-1.5 text-[12px]">
+          <div className="flex items-center gap-1.5 text-xs-flat">
             {result.bugConfirmed ? (
               <span className="inline-flex items-center gap-1 text-success">
                 <CheckIcon size={13} /> Bug reproduced in the code
@@ -132,7 +132,7 @@ export function ResultsPanel({
 
       {result.estimatedComplexity !== null && (
         <Section title="Estimated complexity">
-          <span className="inline-flex w-fit items-center rounded-md border border-border bg-white/[0.03] px-2 py-0.5 text-[12px] text-foreground">
+          <span className="inline-flex w-fit items-center rounded-md border border-border bg-white/[0.03] px-2 py-0.5 text-xs-flat text-foreground">
             {COMPLEXITY_META[result.estimatedComplexity].label}
           </span>
         </Section>
@@ -151,7 +151,7 @@ export function ResultsPanel({
           <ul className="flex flex-col gap-1">
             {result.relatedFiles.map((file) => (
               <li key={file}>
-                <code className="font-mono text-[11.5px] text-muted-foreground">{file}</code>
+                <code className="font-mono text-2xs-plus text-muted-foreground">{file}</code>
               </li>
             ))}
           </ul>
@@ -160,7 +160,7 @@ export function ResultsPanel({
 
       {result.missingInfo.length > 0 && (
         <Section title="Missing information">
-          <ul className="flex list-disc flex-col gap-1 pl-4 text-[12.5px] text-muted-foreground">
+          <ul className="flex list-disc flex-col gap-1 pl-4 text-xs-plus text-muted-foreground">
             {result.missingInfo.map((item, i) => (
               <li key={i}>{item}</li>
             ))}
@@ -175,7 +175,7 @@ export function ResultsPanel({
             href={stream.postedCommentUrl ?? '#'}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-[9px] border border-success/40 bg-success/[0.08] px-3 py-1.5 text-[12.5px] text-success"
+            className="inline-flex items-center gap-1.5 rounded-[9px] border border-success/40 bg-success/[0.08] px-3 py-1.5 text-xs-plus text-success"
           >
             <CheckIcon size={14} /> Comment posted
             <ExternalLinkIcon size={12} />

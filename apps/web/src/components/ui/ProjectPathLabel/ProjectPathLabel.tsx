@@ -25,7 +25,7 @@ export function ProjectPathLabel({
       <span
         id={tooltipId}
         role="tooltip"
-        className="pointer-events-none absolute left-0 top-full z-50 mt-1.5 w-max max-w-[min(34rem,calc(100vw-2rem))] break-all rounded-md border border-border bg-popover px-2.5 py-1.5 font-mono text-[11px] text-foreground opacity-0 shadow-xl transition-opacity duration-150 group-hover/path:opacity-100 group-focus-within/path:opacity-100 group-focus/path-trigger:opacity-100"
+        className="pointer-events-none absolute left-0 top-full z-50 mt-1.5 w-max max-w-[min(34rem,calc(100vw-2rem))] break-all rounded-md border border-border bg-popover px-2.5 py-1.5 font-mono text-2xs text-foreground opacity-0 shadow-xl transition-opacity duration-150 group-hover/path:opacity-100 group-focus-within/path:opacity-100 group-focus/path-trigger:opacity-100"
       >
         {friendlyPath}
       </span>

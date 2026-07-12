@@ -12,7 +12,7 @@ function RestoredHeader({ shell, cwd }: { shell: string; cwd: string }) {
   return (
     <div
       title={restoredIdentityTitle()}
-      className="flex items-center gap-2 border-b border-border bg-black/25 px-3 py-1.5 text-[11px]"
+      className="flex items-center gap-2 border-b border-border bg-black/25 px-3 py-1.5 text-2xs"
     >
       <span className="flex items-center gap-1.5 font-medium text-muted-foreground">
         <HistoryIcon size={12} aria-hidden />
@@ -42,7 +42,7 @@ export function TerminalReadonlyPane({
     <div className="flex min-h-0 flex-1 flex-col bg-background">
       <RestoredHeader shell={info.shell} cwd={info.cwd} />
       <div className="flex items-center gap-3 border-b border-border/60 bg-warning/[0.06] px-3 py-2">
-        <span className="min-w-0 flex-1 text-[12px] text-muted-foreground">
+        <span className="min-w-0 flex-1 text-xs-flat text-muted-foreground">
           {canRestore
             ? 'This session ended. Start a fresh shell to continue in the same folder.'
             : 'This session ended, and its original folder is no longer available.'}
@@ -51,7 +51,7 @@ export function TerminalReadonlyPane({
           variant="secondary"
           onClick={onResumeClaude}
           disabled={!canRestore}
-          className="!py-1 text-[12px]"
+          className="!py-1 text-xs-flat"
           title={
             canRestore
               ? 'Open a new shell here and resume the most-recent Claude session (claude --continue)'
@@ -65,7 +65,7 @@ export function TerminalReadonlyPane({
           variant="secondary"
           onClick={onRestore}
           disabled={!canRestore}
-          className="!py-1 text-[12px]"
+          className="!py-1 text-xs-flat"
           title={
             canRestore
               ? 'Open a new shell in this folder'

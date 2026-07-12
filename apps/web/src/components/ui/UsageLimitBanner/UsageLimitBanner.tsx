@@ -40,10 +40,10 @@ export function UsageLimitBanner({
     >
       <AlertIcon size={15} className="mt-0.5 shrink-0 text-warning" />
       <div className="flex flex-col gap-1">
-        <p className="text-[12.5px] font-semibold text-warning">
+        <p className="text-xs-plus font-semibold text-warning">
           This {runNoun} spent $0.00 and used no tokens — likely a usage limit
         </p>
-        <p className="text-[12px] leading-snug text-muted-foreground">
+        <p className="text-xs-flat leading-snug text-muted-foreground">
           A completed {runNoun} that consumed nothing is the signature of a usage or
           rate limit, not a clean result — the provider almost certainly refused
           every request. Empty findings here do NOT mean the code is clean. Check

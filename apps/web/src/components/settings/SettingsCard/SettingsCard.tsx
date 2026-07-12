@@ -18,7 +18,7 @@ export function SettingsCard({
             <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
           </div>
           {subtitle !== undefined && (
-            <p className="mt-0.5 text-[12.5px] leading-snug text-muted-foreground">
+            <p className="mt-0.5 text-xs-plus leading-snug text-muted-foreground">
               {subtitle}
             </p>
           )}
@@ -33,9 +33,9 @@ export function SettingsCard({
             }`}
           >
             <div className="min-w-0 flex-1">
-              <div className="text-[13.5px] font-medium">{row.label}</div>
+              <div className="text-xs-plus3 font-medium">{row.label}</div>
               {row.hint !== undefined && (
-                <div className="mt-0.5 text-[11.5px] leading-snug text-muted-foreground">
+                <div className="mt-0.5 text-2xs-plus leading-snug text-muted-foreground">
                   {row.hint}
                 </div>
               )}

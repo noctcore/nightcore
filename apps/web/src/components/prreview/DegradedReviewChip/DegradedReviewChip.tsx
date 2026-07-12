@@ -14,7 +14,7 @@ export function DegradedReviewChip({ lenses }: DegradedReviewChipProps) {
   return (
     <div
       role="status"
-      className="flex items-start gap-2 rounded-[10px] border border-warning/40 bg-warning/[0.08] px-4 py-2.5 text-[12.5px] text-warning"
+      className="flex items-start gap-2 rounded-[10px] border border-warning/40 bg-warning/[0.08] px-4 py-2.5 text-xs-plus text-warning"
     >
       <AlertIcon size={14} className="mt-0.5 shrink-0" />
       <span>

@@ -58,7 +58,7 @@ export function ImageDropzone({
           className={dropzoneClass(isDragOver, enabled)}
         >
           <UploadIcon size={16} className="text-muted-foreground" />
-          <span className="text-[12.5px] text-muted-foreground">
+          <span className="text-xs-plus text-muted-foreground">
             {canAddMore ? (
               <>
                 Drop images, paste, or <span className="text-primary">browse</span>
@@ -67,14 +67,14 @@ export function ImageDropzone({
               `Maximum ${MAX_IMAGES_PER_TASK} images reached`
             )}
           </span>
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-2xs text-muted-foreground">
             {ACCEPTED_IMAGE_LABEL} · ≤10MB · {items.length}/{MAX_IMAGES_PER_TASK}
           </span>
         </button>
       )}
 
       {error !== null && (
-        <span role="alert" className="text-[11.5px] text-destructive">
+        <span role="alert" className="text-2xs-plus text-destructive">
           {error}
         </span>
       )}

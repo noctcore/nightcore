@@ -49,7 +49,7 @@ export function McpServersCard({ servers, onChange }: McpServersCardProps) {
         </div>
         <div className="min-w-0 flex-1 pt-0.5">
           <h2 className="text-lg font-semibold tracking-tight">External MCP servers</h2>
-          <p className="mt-0.5 text-[12.5px] leading-snug text-muted-foreground">
+          <p className="mt-0.5 text-xs-plus leading-snug text-muted-foreground">
             Extra Model Context Protocol servers injected into agent sessions, on top
             of your native {PROVIDER_LABEL} config. Tools run under the session permission mode.
           </p>
@@ -62,7 +62,7 @@ export function McpServersCard({ servers, onChange }: McpServersCardProps) {
 
       <div className="pt-1.5">
         {servers.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-[12.5px] text-muted-foreground">
+          <div className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-xs-plus text-muted-foreground">
             No MCP servers configured. Add one to expose its tools to new sessions.
           </div>
         ) : (

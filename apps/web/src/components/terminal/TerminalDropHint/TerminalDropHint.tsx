@@ -15,7 +15,7 @@ export function TerminalDropHint({ className }: TerminalDropHintProps) {
       aria-label={ariaLabel}
       className={`pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-md border-2 border-dashed border-primary/80 bg-primary/10 backdrop-blur-[1px] ${className ?? ''}`}
     >
-      <span className="rounded-md bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground shadow-lg">
+      <span className="rounded-md bg-primary px-2.5 py-1 text-2xs font-semibold text-primary-foreground shadow-lg">
         {label}
       </span>
     </div>

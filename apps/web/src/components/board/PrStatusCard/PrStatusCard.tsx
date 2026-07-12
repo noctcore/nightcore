@@ -30,7 +30,7 @@ import type { PrStatusCardProps } from './PrStatusCard.types';
 
 /** Shared chip classes for the state/review badges (tone comes from the hook). */
 const BADGE_BASE =
-  'inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em]';
+  'inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-3xs font-semibold uppercase tracking-[0.06em]';
 
 export function PrStatusCard({
   task,
@@ -177,7 +177,7 @@ export function PrStatusCard({
         )}
 
       {view.refreshedAt !== null && (
-        <p className="mt-2 font-mono text-[10px] text-muted-foreground">
+        <p className="mt-2 font-mono text-3xs text-muted-foreground">
           Refreshed {formatRefreshedAt(view.refreshedAt)}
         </p>
       )}

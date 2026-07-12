@@ -80,7 +80,7 @@ function BreadcrumbBar({
               type="button"
               onClick={() => onNavigate(crumb.path)}
               disabled={disabled}
-              className="rounded px-1 py-0.5 text-[12px] text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground disabled:opacity-60"
+              className="rounded px-1 py-0.5 text-xs-flat text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground disabled:opacity-60"
             >
               {crumb.label}
             </button>
@@ -104,14 +104,14 @@ function RecentChips({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <span className="mr-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+      <span className="mr-0.5 flex items-center gap-1 text-2xs text-muted-foreground">
         <ClockIcon size={12} />
         Recent
       </span>
       {recents.map((folder) => (
         <span
           key={folder}
-          className="group flex items-center gap-1 rounded-[7px] border border-border/70 bg-black/10 pl-2 pr-1 text-[11px]"
+          className="group flex items-center gap-1 rounded-[7px] border border-border/70 bg-black/10 pl-2 pr-1 text-2xs"
         >
           <button
             type="button"
@@ -164,7 +164,7 @@ function FolderRow({
       ) : (
         <FolderIcon size={15} className="shrink-0 text-muted-foreground" aria-hidden />
       )}
-      <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{name}</span>
+      <span className="min-w-0 flex-1 truncate text-xs-plus2 text-foreground">{name}</span>
       <ChevronRightIcon
         size={14}
         className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
@@ -200,7 +200,7 @@ export function FolderBrowserDialog({
           <FolderIcon size={16} className="text-primary" />
           {title}
         </h2>
-        <p className="text-[12px] text-muted-foreground">{description}</p>
+        <p className="text-xs-flat text-muted-foreground">{description}</p>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 px-5">
@@ -223,7 +223,7 @@ export function FolderBrowserDialog({
               aria-label="Filter folders in this directory"
               autoComplete="off"
               spellCheck={false}
-              className="w-full bg-transparent py-2 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/60"
+              className="w-full bg-transparent py-2 text-xs-plus2 text-foreground outline-none placeholder:text-muted-foreground/60"
             />
           </div>
           <Checkbox checked={v.showHidden} onChange={v.toggleHidden} label="Hidden" />
@@ -240,19 +240,19 @@ export function FolderBrowserDialog({
 
         <div className="scrollbar-styled min-h-[240px] flex-1 overflow-y-auto rounded-[10px] border border-border">
           {v.loading ? (
-            <div className="flex h-full items-center justify-center gap-2 py-8 text-[12px] text-muted-foreground">
+            <div className="flex h-full items-center justify-center gap-2 py-8 text-xs-flat text-muted-foreground">
               <Spinner size={14} />
               Loading folders…
             </div>
           ) : v.error !== null ? (
             <div className="flex h-full flex-col items-center justify-center gap-1 px-4 py-8 text-center">
-              <span className="text-[13px] text-destructive">{v.error}</span>
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-xs-plus2 text-destructive">{v.error}</span>
+              <span className="text-2xs text-muted-foreground">
                 Pick another folder from the breadcrumb or recents above.
               </span>
             </div>
           ) : v.entries.length === 0 ? (
-            <div className="flex h-full items-center justify-center px-4 py-8 text-[12px] text-muted-foreground">
+            <div className="flex h-full items-center justify-center px-4 py-8 text-xs-flat text-muted-foreground">
               {v.query.trim() === ''
                 ? 'No sub-folders here.'
                 : `No folders match “${v.query.trim()}”.`}
@@ -273,13 +273,13 @@ export function FolderBrowserDialog({
           )}
         </div>
 
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-3xs text-muted-foreground">
           Click a folder to open it; double-click to pick it.
         </p>
       </div>
 
       <div className="mt-3 flex items-center justify-end gap-2 border-t border-border bg-black/15 px-5 py-3.5">
-        <span className="mr-auto min-w-0 truncate font-mono text-[11px] text-muted-foreground">
+        <span className="mr-auto min-w-0 truncate font-mono text-2xs text-muted-foreground">
           {currentLeaf}
         </span>
         <Button variant="ghost" onClick={onClose}>

@@ -13,7 +13,7 @@ import type { CreateWorktreeDialogProps } from './CreateWorktreeDialog.types';
 
 const INPUT_CLASS =
   'w-full rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary';
-const LABEL_CLASS = 'font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground';
+const LABEL_CLASS = 'font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground';
 
 /** The "Create new worktree" dialog reached from the terminal new-tab picker (spec PR 5a):
  *  a name (slugged server-side), a "create branch" toggle, and a base-branch picker
@@ -42,7 +42,7 @@ export function CreateWorktreeDialog({
     >
       <div className="flex flex-col gap-1 px-5 pb-3 pt-5">
         <h2 className="text-base font-semibold text-foreground">Create new worktree</h2>
-        <p className="text-[12px] text-muted-foreground">
+        <p className="text-xs-flat text-muted-foreground">
           Branch off a base and open a shell in the new worktree. It lives under a separate{' '}
           <span className="font-mono">term/</span> namespace and is never touched by the task
           reconcile sweep.
@@ -69,11 +69,11 @@ export function CreateWorktreeDialog({
             disabled={busy}
           />
           {form.slug !== '' ? (
-            <span className="truncate font-mono text-[11px] text-muted-foreground">
+            <span className="truncate font-mono text-2xs text-muted-foreground">
               branch: term/{form.slug}
             </span>
           ) : (
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               A folder-safe slug is derived from the name.
             </span>
           )}
@@ -101,14 +101,14 @@ export function CreateWorktreeDialog({
       </div>
 
       {shownError != null && shownError !== '' && (
-        <div className="mx-5 mt-1 rounded-[8px] border border-destructive/40 bg-destructive/[0.12] px-3 py-2 text-[12px] text-destructive">
+        <div className="mx-5 mt-1 rounded-[8px] border border-destructive/40 bg-destructive/[0.12] px-3 py-2 text-xs-flat text-destructive">
           {shownError}
         </div>
       )}
 
       <div className="mt-2 flex items-center justify-end gap-2 border-t border-border bg-black/15 px-5 py-3.5">
         {busy ? (
-          <span className="mr-auto flex items-center gap-1.5 text-[12px] text-muted-foreground">
+          <span className="mr-auto flex items-center gap-1.5 text-xs-flat text-muted-foreground">
             <Spinner size={13} />
             Creating…
           </span>

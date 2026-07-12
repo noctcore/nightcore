@@ -14,7 +14,7 @@ import type { EvidenceBundleProps, EvidenceDiffStat } from './EvidenceBundle.typ
 function DiffStatLine({ diff }: { diff: EvidenceDiffStat | null }) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-      <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+      <span className="font-mono text-3xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
         Diff
       </span>
       {diff === null ? (
@@ -45,10 +45,10 @@ export function EvidenceBundle({ task, data }: EvidenceBundleProps) {
       className="space-y-3 rounded-md border border-border bg-white/[0.02] px-3 py-3"
     >
       <div className="flex items-baseline gap-2">
-        <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+        <h3 className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
           Evidence
         </h3>
-        <span className="text-[10px] text-muted-foreground/70">
+        <span className="text-3xs text-muted-foreground/70">
           the receipt for this decision · cost is approximate
         </span>
       </div>

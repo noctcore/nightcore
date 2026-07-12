@@ -39,7 +39,7 @@ export function RunUsageLine({
 
   return (
     <div
-      className={`flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground ${className ?? ''}`}
+      className={`flex items-center gap-1.5 font-mono text-2xs text-muted-foreground ${className ?? ''}`}
     >
       <span aria-hidden className="text-muted-foreground/70">
         ⌖

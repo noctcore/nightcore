@@ -75,7 +75,7 @@ export function ReviewSection({
 
       {/* Section header: label + the per-PR history + results-mode actions. */}
       <div className="flex items-center gap-2">
-        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+        <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
           Review
         </span>
         <div className="ml-auto flex items-center gap-2">
@@ -103,7 +103,7 @@ export function ReviewSection({
 
       {/* Past-run affordance: the displayed stream is a history selection. */}
       {history.viewingPastRun && (
-        <div className="flex items-center gap-3 rounded-[10px] border border-primary/40 bg-primary/[0.06] px-4 py-2 text-[12.5px] text-muted-foreground">
+        <div className="flex items-center gap-3 rounded-[10px] border border-primary/40 bg-primary/[0.06] px-4 py-2 text-xs-plus text-muted-foreground">
           <HistoryIcon size={14} className="shrink-0 text-primary" />
           Viewing a past review run.
           <button
@@ -121,7 +121,7 @@ export function ReviewSection({
           {configure.startError !== null && (
             <p
               role="alert"
-              className="rounded-[10px] border border-destructive/40 bg-destructive/[0.1] px-4 py-2 text-[12.5px] text-destructive"
+              className="rounded-[10px] border border-destructive/40 bg-destructive/[0.1] px-4 py-2 text-xs-plus text-destructive"
             >
               {configure.startError}
             </p>
@@ -129,21 +129,21 @@ export function ReviewSection({
 
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+              <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
                 Lenses ({lensCount}/{ALL_LENSES.length})
               </span>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={config.selectAll}
-                  className="text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                  className="text-2xs font-medium text-muted-foreground hover:text-foreground"
                 >
                   All
                 </button>
                 <button
                   type="button"
                   onClick={config.selectNone}
-                  className="text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                  className="text-2xs font-medium text-muted-foreground hover:text-foreground"
                 >
                   None
                 </button>
@@ -199,7 +199,7 @@ export function ReviewSection({
                 </Button>
               )}
             </div>
-            <p className="text-[12px] text-muted-foreground">
+            <p className="text-xs-flat text-muted-foreground">
               Reviews the PR diff across {lensCount}{' '}
               {lensCount === 1 ? 'lens' : 'lenses'} — no checkout, read-only ·
               ~{PROVIDER_LABEL} {config.model ?? 'default'}.
@@ -233,12 +233,12 @@ export function ReviewSection({
         <div className="flex flex-col gap-3">
           {stream.status === 'failed' &&
             (stream.failureReason === 'aborted' ? (
-              <div className="rounded-[10px] border border-border bg-white/[0.02] px-4 py-3 text-[12.5px] text-muted-foreground">
+              <div className="rounded-[10px] border border-border bg-white/[0.02] px-4 py-3 text-xs-plus text-muted-foreground">
                 Review cancelled. Any findings gathered before you stopped are
                 shown below.
               </div>
             ) : (
-              <div className="rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-4 py-3 text-[12.5px] text-destructive">
+              <div className="rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-4 py-3 text-xs-plus text-destructive">
                 {stream.error ?? 'Review failed.'}
               </div>
             ))}
@@ -316,12 +316,12 @@ export function ReviewSection({
                 Address findings ({toolbar.addressCount})
               </Button>
               {toolbar.bulkError !== null && (
-                <span className="text-[12px] text-destructive">
+                <span className="text-xs-flat text-destructive">
                   {toolbar.bulkError}
                 </span>
               )}
               {toolbar.addressError !== null && (
-                <span className="text-[12px] text-destructive">
+                <span className="text-xs-flat text-destructive">
                   {toolbar.addressError}
                 </span>
               )}
@@ -338,7 +338,7 @@ export function ReviewSection({
                 {toolbar.postedFeedback !== null && (
                   <span
                     role="status"
-                    className="inline-flex items-center gap-1.5 rounded-full border border-success/40 bg-success/[0.1] px-2.5 py-1 text-[11.5px] font-medium text-success"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-success/40 bg-success/[0.1] px-2.5 py-1 text-2xs-plus font-medium text-success"
                     style={{ animation: 'nc-rise .18s cubic-bezier(.22,1,.36,1)' }}
                   >
                     <CheckIcon size={13} />
@@ -346,7 +346,7 @@ export function ReviewSection({
                     {toolbar.postedFeedback === 1 ? 'finding' : 'findings'}
                   </span>
                 )}
-                <span className="font-mono text-[11px] text-muted-foreground">
+                <span className="font-mono text-2xs text-muted-foreground">
                   {toolbar.selectedCount} selected
                 </span>
                 {VERDICTS.map((verdict) => {

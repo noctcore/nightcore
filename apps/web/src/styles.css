@@ -140,6 +140,43 @@
   --font-sans: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
+  /* --- Micro type-scale (issue #239) -------------------------------------- *
+   * Font-size-ONLY tokens for the dense-UI font sizes this app previously wrote
+   * as hardcoded `text-[Npx]` arbitrary values. EVERY token here emits
+   * `font-size` only (no `--*--line-height` companion) — matching how a Tailwind
+   * arbitrary `text-[Npx]` sets font-size only and leaves line-height inherited.
+   * That makes each token a byte-for-byte drop-in for the value it replaces:
+   * font-size unchanged, line-height still inherited exactly as before, i.e.
+   * ZERO visual change.
+   *
+   * Naming — a micro scale below Tailwind's `sm`(14px). It extends the `xs`
+   * x-family downward (`2xs`=11 → `4xs`=9); a `-plus` suffix adds one 0.5px
+   * half-step to its base rung (`-plusN` = base + N×0.5px), so the xs(12)–sm(14)
+   * gap is `xs-plus`(12.5)/`xs-plus2`(13)/`xs-plus3`(13.5).
+   *
+   * The three sizes that EQUAL a Tailwind default (12/14/16px) get a `-flat`
+   * suffix: same font-size as the built-in `text-xs`/`text-sm`/`text-base`, but
+   * font-size ONLY. We deliberately do NOT migrate these onto the built-in
+   * utilities — those carry a default line-height, which the old `text-[Npx]`
+   * value did not, so using them would silently shift line-height on sites with
+   * no explicit `leading-*`. (Redefining the built-ins is likewise out — the app
+   * uses `text-xs`/`text-sm`/`text-base` intentionally elsewhere.)
+   *
+   * Left as arbitrary values on purpose: rare display/one-off sizes 8, 15, 15.5
+   * and everything ≥ 19px. */
+  --text-4xs: 9px; /* 9px */
+  --text-4xs-plus: 9.5px; /* 9.5px = 4xs + 0.5 */
+  --text-3xs: 10px; /* 10px */
+  --text-3xs-plus: 10.5px; /* 10.5px = 3xs + 0.5 */
+  --text-2xs: 11px; /* 11px */
+  --text-2xs-plus: 11.5px; /* 11.5px = 2xs + 0.5 */
+  --text-xs-flat: 12px; /* 12px = xs size, font-size only */
+  --text-xs-plus: 12.5px; /* 12.5px = xs + 0.5 */
+  --text-xs-plus2: 13px; /* 13px = xs + 1.0 */
+  --text-xs-plus3: 13.5px; /* 13.5px = xs + 1.5 */
+  --text-sm-flat: 14px; /* 14px = sm size, font-size only */
+  --text-base-flat: 16px; /* 16px = base size, font-size only */
+
   --radius-nc: var(--nc-radius);
 }
 
