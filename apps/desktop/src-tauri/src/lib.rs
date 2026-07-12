@@ -110,8 +110,10 @@ pub fn run() {
             // Stand up logging before anything else so every subsequent line (store
             // load, reconciliation, the auto-loop) lands in the colored console and
             // the rolling file sink. The returned guard must outlive the app, so it
-            // is parked in managed state below.
-            let log_guard = logging::init(&app.handle().clone());
+            // is parked in managed state below; the reload handle (#245) lets a
+            // `logLevel` settings patch change verbosity live and is applied to the
+            // persisted level once the settings store loads (just below).
+            let (log_guard, log_reload) = logging::init(&app.handle().clone());
 
             // The project registry + settings live in the app config dir (not in
             // any single repo). Resolve it once and load both stores from it.
@@ -175,6 +177,10 @@ pub fn run() {
             let settings_store = SettingsStore::load_from(config_dir);
             let (max_concurrency, provider_id) = settings_store
                 .with_settings(|s| (s.max_concurrency.max(1) as usize, s.provider.clone()));
+            // #245: apply the persisted `logLevel` to the live tracing subscriber now
+            // that settings are loaded. A no-op when `RUST_LOG` pinned the level at
+            // init (the developer env override wins).
+            log_reload.apply(&settings_store.with_settings(|s| s.log_level.clone()));
             // Whether to arm the usage poll loop at startup (issue #121, spec §3.3):
             // only when the meter is already opted-in. A disabled meter arms lazily
             // via `enable_usage_meter`, so a user who never opts in spawns no loop.
@@ -251,6 +257,9 @@ pub fn run() {
             app.manage(std::sync::Arc::new(sidecar::SidecarSessions)
                 as std::sync::Arc<dyn engine_api::SessionDispatch>);
             app.manage(log_guard);
+            // #245: park the log-filter reload handle so `update_settings` can change
+            // verbosity live on a `logLevel` patch (see `commands::settings`).
+            app.manage(log_reload);
 
             // Startup reconciliation: prune orphaned worktrees from the active
             // project whose tasks no longer exist (best-effort, never blocks).

@@ -42,6 +42,7 @@ function settingsWith(projectId: string, appearance: BoardAppearance): Settings 
     terminalDaemonEnabled: false,
     terminalAiNaming: false,
     terminalBellNotify: true,
+    logLevel: 'info',
     projectOverrides: { [projectId]: { boardAppearance: appearance } },
   };
 }

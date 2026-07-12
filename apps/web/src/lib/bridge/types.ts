@@ -56,6 +56,7 @@ export type { DiffFileStat } from '../generated/DiffFileStat';
 export type { DiffStatus } from '../generated/DiffStatus';
 export type { GauntletResult } from '../generated/GauntletResult';
 export type { GauntletStep } from '../generated/GauntletStep';
+export type { LogLevel } from '../generated/LogLevel';
 export type { LoopEnvelope } from '../generated/LoopEnvelope';
 export type { McpServerEntry } from '../generated/McpServerEntry';
 export type { McpServerSummary } from '../generated/McpServerSummary';

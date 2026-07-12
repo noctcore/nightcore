@@ -355,6 +355,12 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
         },
       ];
     case 'about':
-      return buildAboutCards(appInfo, onRestartOnboarding, ctx.isAppIdle);
+      return buildAboutCards(
+        appInfo,
+        onRestartOnboarding,
+        ctx.isAppIdle,
+        settings,
+        patchGlobal,
+      );
   }
 }

@@ -79,7 +79,40 @@ mod tests {
         assert!(!s.notify_on_complete);
         // T11: awaiting-input notification defaults ON (unlike Done/Failed).
         assert!(s.notify_on_awaiting_input);
+        // #245: the Rust-core log verbosity defaults to `info`.
+        assert_eq!(s.log_level, "info");
         assert!(s.project_overrides.is_empty());
+    }
+
+    #[test]
+    fn log_level_defaults_to_info_and_round_trips() {
+        // #245: the log-verbosity knob defaults to `info`, a global patch sets it, and
+        // the change survives a reload (persisted to settings.json).
+        let (store, tmp) = temp_store();
+        assert_eq!(store.get().log_level, "info");
+
+        let patch: SettingsPatch = serde_json::from_str(r#"{"logLevel":"debug"}"#).unwrap();
+        let merged = store.update(patch).expect("update");
+        assert_eq!(merged.log_level, "debug");
+
+        // Persisted: a fresh store over the same config dir reloads the patched value.
+        let reloaded = SettingsStore::load_from(tmp.path().join("config"));
+        assert_eq!(reloaded.get().log_level, "debug");
+    }
+
+    #[test]
+    fn log_level_is_global_only_and_ignored_for_a_project_override() {
+        // #245: `log_level` is a studio-wide preference (like `cleanup_worktrees`) — a
+        // patch that carries a `projectId` must NOT land it in the project's override,
+        // and the global value stays untouched.
+        let (store, _tmp) = temp_store();
+        let patch: SettingsPatch =
+            serde_json::from_str(r#"{"projectId":"p1","logLevel":"trace"}"#).unwrap();
+        store.update(patch).expect("update");
+        // The global default is unchanged, and the project override block never formed
+        // (an override carrying only ignored global-only keys collapses to empty).
+        assert_eq!(store.get().log_level, "info");
+        assert!(store.get().project_overrides.is_empty());
     }
 
     #[test]

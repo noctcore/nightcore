@@ -29,6 +29,7 @@ fn export_all_bindings() {
     use crate::gauntlet::{GauntletResult, GauntletStep};
     use crate::infra::browse::{DirectoryEntry, DirectoryListing};
     use crate::infra::editor::DetectedEditor;
+    use crate::infra::logging::LogLevel;
     use crate::orchestration::coordinator::LoopSnapshot;
     use crate::project::Project;
     use crate::settings::{
@@ -102,6 +103,9 @@ fn export_all_bindings() {
         Settings,
         SettingsOverride,
         SettingsPatch,
+        // #245: the log-verbosity vocabulary that narrows the `logLevel` Settings
+        // field (also reached transitively via Settings/SettingsPatch).
+        LogLevel,
         // The MCP server form types (also reached transitively via Settings).
         McpServerEntry,
         McpServerTransport,
@@ -269,6 +273,7 @@ mod tests {
             "Settings.ts",
             "SettingsOverride.ts",
             "SettingsPatch.ts",
+            "LogLevel.ts",
             "McpServerEntry.ts",
             "McpServerTransport.ts",
             "BoardAppearance.ts",

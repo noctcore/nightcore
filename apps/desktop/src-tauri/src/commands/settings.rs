@@ -42,17 +42,17 @@ pub fn update_settings(
     store: State<'_, SettingsStore>,
     patch: SettingsPatch,
 ) -> Result<Settings, String> {
+    // Whether this patch targets the global block (no projectId). Captured before the
+    // move so the global-only side effects (pool resize, log-filter reload) can key
+    // off it without re-reading the moved patch.
+    let is_global = patch.project_id.is_none();
     // A global (no projectId) maxConcurrency change resizes the live pool.
-    let resize = patch
-        .project_id
-        .is_none()
-        .then_some(patch.max_concurrency)
-        .flatten();
+    let resize = is_global.then_some(patch.max_concurrency).flatten();
     // Capture the resolved global provider before the merge so a change to the default
     // provider can drop the provider/auth-keyed model cache. Explicit task provider
     // picks still use the merged catalog; this clears stale fallback data for inherited
     // defaults. Only global patches touch `provider`.
-    let provider_before = patch.project_id.is_none().then(|| store.get().provider);
+    let provider_before = is_global.then(|| store.get().provider);
     let merged = store.update(patch)?;
     if let Some(n) = resize {
         crate::orchestration::coordinator::set_max_concurrency(&app, n.max(1) as usize);
@@ -63,6 +63,14 @@ pub fn update_settings(
                 cache.invalidate();
                 tracing::info!(target: "nightcore", provider = %merged.provider, "provider changed; invalidated the model catalog cache");
             }
+        }
+    }
+    // #245: a global logLevel change reloads the live tracing filter so verbosity
+    // takes effect immediately (not just next launch). Global-only, like the pool
+    // resize above; `RUST_LOG` (when set) still wins inside `apply`.
+    if is_global {
+        if let Some(handle) = app.try_state::<crate::infra::logging::LogReloadHandle>() {
+            handle.apply(&merged.log_level);
         }
     }
     Ok(merged)

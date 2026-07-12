@@ -4,8 +4,10 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-// `ts-rs` is a dev-dependency; the codegen derive + the `RunMode` narrowing it
-// references are gated to `cfg(test)`.
+// `ts-rs` is a dev-dependency; the codegen derive + the `RunMode` / `LogLevel`
+// narrowing it references are gated to `cfg(test)`.
+#[cfg(test)]
+use crate::infra::logging::LogLevel;
 #[cfg(test)]
 use crate::task::RunMode;
 #[cfg(test)]
@@ -243,6 +245,18 @@ pub struct Settings {
     /// Serde-additive: a settings file written before this field loads as `true`.
     #[serde(default = "default_true")]
     pub terminal_bell_notify: bool,
+    /// Rust-core log verbosity (#245): the `tracing` level the desktop core logs at
+    /// (`error` | `warn` | `info` | `debug` | `trace`, mapping 1:1 onto the tracing
+    /// levels). Applied to the global subscriber at startup and reloaded live on a
+    /// patch (see [`crate::infra::logging`]); `RUST_LOG`, when set, overrides it.
+    /// Global-only (a machine/user preference, like `sidebar_style`). Stored as a
+    /// free string (fail-safe: an unknown value resolves to `info`) but the wire
+    /// values are exactly the [`LogLevel`](crate::infra::logging::LogLevel) vocabulary,
+    /// so the generated TS is narrowed to it and the Settings picker type-checks.
+    /// Serde-additive: a settings file written before this field loads as `"info"`.
+    #[serde(default = "default_log_level")]
+    #[cfg_attr(test, ts(as = "LogLevel"))]
+    pub log_level: String,
     /// Per-project overrides keyed by project id.
     pub project_overrides: HashMap<String, SettingsOverride>,
 }
@@ -315,6 +329,12 @@ fn default_provider() -> String {
 /// field loads as `true` — a project's authored Constitution is injected by default).
 fn default_true() -> bool {
     true
+}
+
+/// The serde default for `log_level` (#245): a settings file written before this
+/// field loads at `"info"` — the shipped default `tracing` verbosity.
+fn default_log_level() -> String {
+    "info".to_string()
 }
 
 /// The serde default for `auto_pause_usage_threshold` (spec 2026-07-11, decision 2):
@@ -561,6 +581,9 @@ impl Default for Settings {
             // T11: terminal command-completion notifications default ON — an OSC/BEL
             // is an explicit signal the shell chose to emit, not a busy/idle guess.
             terminal_bell_notify: true,
+            // #245: the Rust core logs at `info` by default; `RUST_LOG` still
+            // overrides it, and the About → Diagnostics picker changes it live.
+            log_level: default_log_level(),
             project_overrides: HashMap::new(),
         }
     }

@@ -79,6 +79,7 @@ const SETTINGS: Settings = {
   terminalDaemonEnabled: false,
   terminalAiNaming: false,
   terminalBellNotify: true,
+  logLevel: 'info',
   projectOverrides: {},
 };
 

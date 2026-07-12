@@ -177,6 +177,7 @@ export const MOCK_SETTINGS: Settings = {
   terminalDaemonEnabled: false,
   terminalAiNaming: false,
   terminalBellNotify: true,
+  logLevel: 'info',
   projectOverrides: {},
 };
 

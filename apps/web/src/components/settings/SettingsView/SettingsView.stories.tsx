@@ -36,6 +36,7 @@ const settings: Settings = {
   terminalDaemonEnabled: false,
   terminalAiNaming: false,
   terminalBellNotify: true,
+  logLevel: 'info',
   projectOverrides: {
     nightcore: { defaultModel: 'claude-haiku-4-5' },
   },

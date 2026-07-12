@@ -5,6 +5,8 @@
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
+use crate::infra::logging::LogLevel;
+#[cfg(test)]
 use crate::task::RunMode;
 #[cfg(test)]
 use ts_rs::TS;
@@ -239,6 +241,13 @@ pub struct SettingsPatch {
     /// [`super::model::Settings::terminal_bell_notify`].
     #[cfg_attr(test, ts(optional))]
     pub terminal_bell_notify: Option<bool>,
+    /// #245: set the Rust-core log verbosity (`error` | `warn` | `info` | `debug` |
+    /// `trace`). Global-only (ignored for a per-project override target), like the
+    /// terminal knobs. The command layer reloads the live `tracing` filter after the
+    /// merge persists (`RUST_LOG`, when set, still overrides it). See
+    /// [`super::model::Settings::log_level`].
+    #[cfg_attr(test, ts(optional, as = "Option<LogLevel>"))]
+    pub log_level: Option<String>,
     /// M4.6: default run mode (`"main"` | `"worktree"`). With a `projectId` it lands
     /// in that project's override; without one, the global default.
     #[cfg_attr(test, ts(optional, as = "Option<RunMode>"))]
@@ -401,6 +410,12 @@ impl Settings {
         // per-project override), like the other terminal toggles.
         if let Some(v) = patch.terminal_bell_notify {
             self.terminal_bell_notify = v;
+        }
+        // #245: global-only Rust-core log verbosity (no per-project override), like the
+        // terminal knobs. A present value sets it; the command layer reloads the live
+        // `tracing` filter after the merge persists.
+        if let Some(v) = patch.log_level {
+            self.log_level = v;
         }
         if let Some(v) = patch.default_run_mode {
             self.default_run_mode = v;
