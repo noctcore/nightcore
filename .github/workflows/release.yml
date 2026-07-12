@@ -32,7 +32,7 @@ jobs:
     env:
       NIGHTCORE_SIDECAR_TARGET: ${{ matrix.sidecar_target }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
@@ -52,7 +52,7 @@ jobs:
       # Workspace packages expose ./dist — beforeBuildCommand runs web build which
       # imports @nightcore/contracts et al.; same gate as CI's root `tsc -b`.
       - run: bun run build
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
