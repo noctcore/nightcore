@@ -440,3 +440,36 @@ provider) is real and is the root cause.
   providers, no coupling issue found.
 - MCP, model listing, session resume, structured output — all genuinely
   provider-neutral, not stubbed.
+
+## Addendum (2026-07-12): correction from the #296 governance-feasibility research
+
+`docs/research/2026-07-12-codex-governance-feasibility.md` (kirei-research, same
+day) refines §4.5 / §7 finding #2's framing of "no PreToolUse-equivalent in
+codex-sdk":
+
+- That statement is **correct for the npm package** (`@openai/codex-sdk`, what
+  `CodexAgentProvider` actually drives) — it wraps non-interactive `codex exec`
+  with stdin closed immediately after the prompt; there is no callback and no
+  approval event anywhere in its surface. Nightcore's own
+  `codex/options.ts:35-48` docblock ("THE DEADLOCK INVARIANT") already documents
+  this precisely.
+- It is **not correct for the underlying Codex CLI protocol as a whole**: `codex
+  app-server --stdio` (a JSON-RPC surface Nightcore already speaks a narrow slice
+  of, for `model/list` in `codex/model-catalog.ts`) exposes genuine synchronous,
+  pre-execution `execCommandApproval` / `applyPatchApproval` request/response
+  events — a real analog to `PreToolUse`, just reachable only by replacing the
+  npm SDK's turn-driving with a hand-rolled client against an explicitly
+  "experimental" protocol, and with narrower coverage than Claude's hook even
+  then (a CLI-internal "trusted command" bypass, and no approval event for MCP
+  tool calls at all).
+- Finding #2's parenthetical suggestion — "ideally a coarse equivalent... if the
+  codex-sdk exposes one" — is answered: it does not, at the SDK layer; the
+  answer moves one layer down to `app-server`. §7 finding #2's recommended fix
+  (declare the gap via a capability flag / UI notice) still stands as the
+  near-term action; treat any actual enforcement port as a separate, larger
+  initiative per the feasibility doc's Option B, not a follow-on to this audit's
+  advisory fix.
+
+This doc's other findings (the scan-autonomy bug, the discarded kind-preset
+tool-surface, the silently-dropped images/budget ceilings, the Rust
+`get_capabilities` provider-id gap) are unaffected by this correction.
