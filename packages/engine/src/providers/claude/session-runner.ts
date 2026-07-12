@@ -17,7 +17,7 @@ import type {
 import type { Logger } from '@nightcore/shared';
 
 import { ToolRegistry } from '../../policy/tool-registry.js';
-import { SessionLedger } from '../../session/session-ledger.js';
+import { SessionLedger } from '../../util/session-ledger.js';
 import type { AgentSession } from '../agent-provider.js';
 import { autonomyToPermissionMode } from './capabilities.js';
 import { HookBus } from './hook-bus.js';
