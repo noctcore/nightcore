@@ -82,6 +82,12 @@ rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 [dev-dependencies]
 tempfile = "3.27"
+# Confined-terminal Codex state carve-out (issue #291): the versioned-sqlite regex
+# line in `terminal::confine` is asserted against the `regex` crate itself in tests,
+# so a typo'd Seatbelt regex is caught by a real match/non-match, not eyeballing.
+# Already resolved transitively in Cargo.lock (via ts-rs/tauri) — this only adds the
+# direct dev-only edge, zero new transitive crates.
+regex = "1"
 # E2E ladder ring 1 (issue #150): the `tauri::test` MockRuntime harness needs the
 # `test` feature enabled on `tauri`. Declared here (not on the `[dependencies]`
 # edge) so it is feature-unified into dev/test builds only — a release build never

@@ -2149,6 +2149,7 @@ dependencies = [
  "base64 0.22.1",
  "libc",
  "portable-pty",
+ "regex",
  "reqwest",
  "rustls",
  "security-framework",

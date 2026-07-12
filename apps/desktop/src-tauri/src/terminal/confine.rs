@@ -145,6 +145,145 @@ fn realpath_or(p: &Path) -> String {
         .into_owned()
 }
 
+/// The Codex CLI's per-session STATE subdirectories under `$CODEX_HOME` (else
+/// `<home>/.codex`) that a confined `codex` must be able to WRITE (verified against
+/// the shipped CLI: `state_N.sqlite` opens read-write at startup, and sessions,
+/// history, logs, the MCP OAuth lock file, and the node REPL scratch tree all live
+/// under these leaves). Each becomes its own `subpath` carve-out via
+/// [`codex_state_write_roots`], mirroring [`CLAUDE_STATE_DIRS`].
+///
+/// SECURITY — the `.codex` ROOT is DELIBERATELY ABSENT here, and so is everything
+/// else under it (`config.toml`, `auth.json`, `plugins/`, `computer-use/`, `agents/`,
+/// `skills/`, `rules/`, `AGENTS.md`, `vendor_imports/`). Those are CONFIG /
+/// CREDENTIAL / EXECUTABLE surfaces, and a confined shell that could rewrite them
+/// would ESCAPE the sandbox: `config.toml` defines a `notify` exec program and MCP
+/// server commands, `plugins/` and `computer-use/` (an app bundle) are executable
+/// code, and `agents/` / `skills/` / `rules/` / `AGENTS.md` are prompt-injection
+/// surfaces a future UNCONFINED `codex` would read and act on. `auth.json` is OAuth
+/// credentials — write access there is credential tamper, never just an escape. Only
+/// ephemeral per-session STATE is writable; config/creds/exec stay read-only.
+///
+/// `memories/` (and the versioned `memories_N.sqlite` matched by
+/// [`codex_versioned_db_regex_line`]) is a DELIBERATE, FLAGGED exception: memories are
+/// re-read by codex as context, a softer prompt-injection-persistence vector than
+/// executable config — but (a) codex opens `memories_1.sqlite` read-write at startup,
+/// so denying it reintroduces the exact fatal "readonly database" crash this
+/// carve-out exists to fix; (b) it is consistent with the existing precedent of
+/// allowing `~/.claude/projects` (transcripts re-read on `--resume`); (c) codex still
+/// gates command EXECUTION behind user approval, so a poisoned memory is not itself
+/// arbitrary code (defense in depth). Tightening this later is trivial.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+const CODEX_STATE_DIRS: [&str; 11] = [
+    "sessions",
+    "archived_sessions",
+    "log",
+    "cache",
+    "shell_snapshots",
+    "tmp",
+    ".tmp",
+    "sqlite",
+    "node_repl",
+    "mcp-oauth-locks",
+    "memories",
+];
+
+/// Fixed root-level Codex STATE files (never config/creds) that get a `literal`
+/// carve-out — see [`codex_state_file_lines`]. `history.jsonl` / `session_index.jsonl`
+/// are the terminal command-history logs; `models_cache.json` / `version.json` /
+/// `installation_id` are CLI-maintained caches/identifiers, not user config;
+/// `.codex-global-state.json(.bak)` and `.personality_migration` are internal
+/// migration/state bookkeeping the CLI writes at startup.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+const CODEX_STATE_FILES: [&str; 8] = [
+    "history.jsonl",
+    "session_index.jsonl",
+    "models_cache.json",
+    "version.json",
+    "installation_id",
+    ".codex-global-state.json",
+    ".codex-global-state.json.bak",
+    ".personality_migration",
+];
+
+/// The writable Seatbelt roots for a confined session's Codex state: each
+/// [`CODEX_STATE_DIRS`] leaf under `codex_home`, canonicalized where it already
+/// exists (else the lexical path — mirrors [`claude_state_write_roots`]). The
+/// `.codex` home ROOT itself is NEVER returned. Pure — pass an already-resolved
+/// `codex_home` (see [`codex_home_dir`]).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn codex_state_write_roots(codex_home: &Path) -> Vec<String> {
+    CODEX_STATE_DIRS
+        .iter()
+        .map(|leaf| realpath_or(&codex_home.join(leaf)))
+        .collect()
+}
+
+/// Escape every character NOT in `[A-Za-z0-9_/-]` with a backslash so a codex home
+/// path can be spliced verbatim into a Seatbelt `(regex #"…"#)` pattern without its
+/// literal characters being read as regex metacharacters — most importantly the `.`
+/// in `.codex` (and in any username containing a dot, e.g. `/Users/a.b/.codex`),
+/// which left unescaped would match ANY character and silently widen the carve-out.
+/// Pure string transform — no I/O.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn regex_escape_seatbelt(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    for c in path.chars() {
+        if c.is_ascii_alphanumeric() || matches!(c, '_' | '/' | '-') {
+            out.push(c);
+        } else {
+            out.push('\\');
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// The `(allow file-write* (literal …))` lines for each [`CODEX_STATE_FILES`] leaf
+/// directly under `codex_home`, each via `realpath_or` so a not-yet-created file
+/// still gets a rule. Pure — testable off macOS. Never emits `auth.json` or
+/// `config.toml` — those are not in [`CODEX_STATE_FILES`].
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn codex_state_file_lines(codex_home: &Path) -> Vec<String> {
+    CODEX_STATE_FILES
+        .iter()
+        .map(|leaf| {
+            format!(
+                "(allow file-write* (literal {}))",
+                seatbelt_string(&realpath_or(&codex_home.join(leaf)))
+            )
+        })
+        .collect()
+}
+
+/// The ONE `(allow file-write* (regex #"…"))` line covering codex's
+/// version-numbered SQLite state DBs + WAL/SHM/journal sidecars directly under
+/// `codex_home` (`state_5.sqlite`, `goals_1.sqlite`, `memories_1.sqlite`, …). Codex
+/// bumps the version integer across releases, so a literal list would silently
+/// re-break after every codex update; a single anchored regex survives it. Anchored
+/// `^<home>/[a-z_]+_[0-9]+\.sqlite(-wal|-shm|-journal)?$` with `codex_home` passed
+/// through [`regex_escape_seatbelt`] — the `^…$` anchors plus the `[a-z_]+_[0-9]+`
+/// filename class mean it matches ONLY a versioned DB filename directly under the
+/// home, never `auth.json`, never `config.toml`, never `state_5.sqlite.bak` (no bare
+/// dot-suffix alternation beyond the sidecars), never a nested `sessions/x_1.sqlite`
+/// (no `/` inside the class).
+///
+/// SBPL DELIMITER TRAP: a Seatbelt regex literal opens with `#"` and closes with a
+/// PLAIN `"` — there is no trailing `#`. SBPL is not Rust: a Rust raw string closes
+/// `#"..."#` with a matching `#`, but `sandbox-exec` parses that trailing `#` as a
+/// stray "sharp expression" and rejects the WHOLE profile (`undefined sharp
+/// expression`, exit 65) — which fails EVERY confined spawn (plain shell included),
+/// not just codex. Verified against `/usr/bin/sandbox-exec` directly. Pure —
+/// testable off macOS for the inner pattern, but the outer delimiter shape can only
+/// be caught by actually running `sandbox-exec` on the assembled profile (see the
+/// `sandbox_exec_actually_parses_and_enforces_the_codex_db_regex` test).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn codex_versioned_db_regex_line(codex_home: &Path) -> String {
+    let escaped = regex_escape_seatbelt(&codex_home.to_string_lossy());
+    format!(
+        "(allow file-write* (regex #\"^{escaped}/[a-z_]+_[0-9]+\\.sqlite(-wal|-shm|-journal)?$\"))"
+    )
+}
+
 /// The shell-state env redirect for a confined session: point zsh's history +
 /// completion dump and the XDG cache root (which oh-my-zsh honours) at `state_dir`,
 /// a subdir of the already-writable temp scratch tree, so first-run housekeeping
@@ -172,6 +311,24 @@ fn confined_home_dir() -> Option<PathBuf> {
         .filter(|h| !h.is_empty())
         .map(PathBuf::from)
         .map(|h| std::fs::canonicalize(&h).unwrap_or(h))
+}
+
+/// The Codex CLI's canonicalized home directory: `$CODEX_HOME` (non-empty) else
+/// `<home>/.codex`, where `<home>` is [`confined_home_dir`]. Mirrors
+/// `usage::cost::codex_dirs` / `usage::credentials::codex_auth_file`. Canonicalized
+/// so the state carve-outs match the kernel-resolved path Seatbelt sees; degrades to
+/// the lexical path when the codex home doesn't exist yet (a first-run install must
+/// still get its carve-outs BEFORE codex creates the dir — same discipline as
+/// [`realpath_or`]). `None` when neither `$CODEX_HOME` nor `HOME` resolves — the
+/// codex carve-outs are then simply omitted (the confined shell still works;
+/// in-terminal `codex` just won't run, same as the Claude `HOME`-unset path).
+#[cfg(target_os = "macos")]
+fn codex_home_dir() -> Option<PathBuf> {
+    let base = std::env::var_os("CODEX_HOME")
+        .filter(|h| !h.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| confined_home_dir().map(|h| h.join(".codex")))?;
+    Some(std::fs::canonicalize(&base).unwrap_or(base))
 }
 
 /// The writable roots for one confined session: the (canonicalized) cwd, the git
@@ -214,6 +371,19 @@ fn derive_writable_roots(cwd: &Path) -> Result<Vec<String>, String> {
             add(root);
         }
     }
+    // Codex per-session STATE dirs under $CODEX_HOME (else ~/.codex) — same
+    // discipline as the Claude carve-out above: only ephemeral STATE is writable;
+    // the `.codex` root/config/credentials/exec surfaces stay denied (see
+    // `CODEX_STATE_DIRS`). The root-level state FILES + the versioned-sqlite regex
+    // are `literal`/`regex` allows, not `subpath` roots, so `prepare()` appends them
+    // directly to the assembled profile string instead of folding them in here. When
+    // neither $CODEX_HOME nor HOME resolves the carve-outs are simply omitted
+    // (in-terminal `codex` then can't run, but the confined shell still works).
+    if let Some(codex_home) = codex_home_dir() {
+        for root in codex_state_write_roots(&codex_home) {
+            add(root);
+        }
+    }
     Ok(roots)
 }
 
@@ -227,7 +397,18 @@ pub(crate) fn prepare(cwd: &Path) -> Result<ConfinedLaunch, String> {
         ));
     }
     let roots = derive_writable_roots(cwd)?;
-    let profile = build_profile(&roots);
+    let mut profile = build_profile(&roots);
+    // Codex root-level state FILES + the versioned-sqlite DB regex are `literal`/
+    // `regex` allows (not `subpath` roots), so they're appended directly to the
+    // assembled profile string rather than folded into `derive_writable_roots`.
+    if let Some(codex_home) = codex_home_dir() {
+        for line in codex_state_file_lines(&codex_home) {
+            profile.push_str(&line);
+            profile.push('\n');
+        }
+        profile.push_str(&codex_versioned_db_regex_line(&codex_home));
+        profile.push('\n');
+    }
 
     // A per-session scratch dir under the temp tree (which is itself a writable
     // root — the profile is read once at exec, so a running session can't rewrite
@@ -376,6 +557,255 @@ mod tests {
     }
 
     #[test]
+    fn codex_state_roots_allow_each_state_dir_but_never_config_creds_or_exec_paths() {
+        let codex_home = Path::new("/Users/tester/.codex");
+        let roots = codex_state_write_roots(codex_home);
+
+        // Exactly the spec'd state dirs, each a leaf UNDER the codex home.
+        assert_eq!(roots.len(), CODEX_STATE_DIRS.len());
+        for leaf in [
+            "sessions",
+            "archived_sessions",
+            "log",
+            "cache",
+            "shell_snapshots",
+            "tmp",
+            ".tmp",
+            "sqlite",
+            "node_repl",
+            "mcp-oauth-locks",
+            "memories",
+        ] {
+            let expected = format!("/Users/tester/.codex/{leaf}");
+            assert!(
+                roots.contains(&expected),
+                "the {leaf} codex state dir must be a writable root"
+            );
+        }
+
+        // SECURITY INVARIANT: the .codex ROOT and every CONFIG/CREDENTIAL/EXEC
+        // surface under it are NEVER writable roots — a confined shell that could
+        // rewrite them would escape the sandbox (config.toml execs a `notify`
+        // program + MCP server commands; auth.json is OAuth credentials;
+        // plugins/computer-use are executable; agents/skills/rules/AGENTS.md are
+        // prompt-injection surfaces).
+        for never in [
+            "/Users/tester/.codex",
+            "/Users/tester/.codex/config.toml",
+            "/Users/tester/.codex/auth.json",
+            "/Users/tester/.codex/plugins",
+            "/Users/tester/.codex/computer-use",
+            "/Users/tester/.codex/agents",
+            "/Users/tester/.codex/skills",
+            "/Users/tester/.codex/rules",
+            "/Users/tester/.codex/AGENTS.md",
+            "/Users/tester/.codex/vendor_imports",
+        ] {
+            assert!(
+                !roots.iter().any(|r| r == never),
+                "{never} must never be a writable root"
+            );
+        }
+    }
+
+    #[test]
+    fn codex_state_file_lines_emit_each_fixed_file_but_never_auth_or_config() {
+        let codex_home = Path::new("/Users/tester/.codex");
+        let lines = codex_state_file_lines(codex_home);
+
+        assert_eq!(lines.len(), CODEX_STATE_FILES.len());
+        for leaf in [
+            "history.jsonl",
+            "session_index.jsonl",
+            "models_cache.json",
+            "version.json",
+            "installation_id",
+            ".codex-global-state.json",
+            ".codex-global-state.json.bak",
+            ".personality_migration",
+        ] {
+            let expected = format!("(allow file-write* (literal \"/Users/tester/.codex/{leaf}\"))");
+            assert!(
+                lines.contains(&expected),
+                "the {leaf} state file must get a literal allow"
+            );
+        }
+
+        // SECURITY INVARIANT: credentials + config are never fixed state files.
+        assert!(!lines.iter().any(|l| l.contains("auth.json")));
+        assert!(!lines.iter().any(|l| l.contains("config.toml")));
+    }
+
+    #[test]
+    fn codex_versioned_db_regex_matches_versioned_dbs_and_sidecars_only() {
+        let codex_home = Path::new("/Users/tester/.codex");
+        let line = codex_versioned_db_regex_line(codex_home);
+
+        let pattern = line
+            .strip_prefix("(allow file-write* (regex #\"")
+            .and_then(|s| s.strip_suffix("\"))"))
+            .expect("the regex line has the expected Seatbelt allow shape");
+        let re = regex::Regex::new(pattern).expect("the emitted pattern is a valid regex");
+
+        for matching in [
+            "/Users/tester/.codex/state_5.sqlite",
+            "/Users/tester/.codex/state_5.sqlite-wal",
+            "/Users/tester/.codex/state_5.sqlite-shm",
+            "/Users/tester/.codex/goals_1.sqlite",
+            "/Users/tester/.codex/logs_2.sqlite",
+            "/Users/tester/.codex/memories_1.sqlite",
+        ] {
+            assert!(re.is_match(matching), "{matching} must match the DB regex");
+        }
+        for non_matching in [
+            "/Users/tester/.codex/auth.json",
+            "/Users/tester/.codex/config.toml",
+            "/Users/tester/.codex/state_5.sqlite.bak",
+            "/Users/tester/.codex/sessions/x_1.sqlite",
+        ] {
+            assert!(
+                !re.is_match(non_matching),
+                "{non_matching} must NOT match the DB regex"
+            );
+        }
+    }
+
+    #[test]
+    fn regex_escape_seatbelt_escapes_dots_and_spaces_but_not_slashes_or_word_chars() {
+        let escaped = regex_escape_seatbelt("/Users/a.b/.codex home_dir-2");
+        assert_eq!(escaped, r"/Users/a\.b/\.codex\ home_dir-2");
+    }
+
+    #[test]
+    fn codex_lines_never_allow_the_config_root_or_any_denylisted_path() {
+        let codex_home = Path::new("/Users/tester/.codex");
+        let mut assembled = build_profile(&codex_state_write_roots(codex_home));
+        for line in codex_state_file_lines(codex_home) {
+            assembled.push_str(&line);
+            assembled.push('\n');
+        }
+        assembled.push_str(&codex_versioned_db_regex_line(codex_home));
+        assembled.push('\n');
+
+        // The state carve-outs are present…
+        assert!(
+            assembled.contains("(allow file-write* (subpath \"/Users/tester/.codex/sessions\"))")
+        );
+        assert!(assembled
+            .contains("(allow file-write* (literal \"/Users/tester/.codex/history.jsonl\"))"));
+        assert!(assembled.contains("[a-z_]+_[0-9]+"));
+
+        // …but no allow whose TARGET is the .codex root or a config/credential/exec
+        // path. The root check requires the bare-root path to be immediately
+        // quote-terminated, so it doesn't false-positive on a `/sessions`-suffixed
+        // carve-out that merely starts with the same prefix.
+        assert!(!assembled.contains("\"/Users/tester/.codex\""));
+        for never in [
+            "/Users/tester/.codex/config.toml",
+            "/Users/tester/.codex/auth.json",
+            "/Users/tester/.codex/plugins",
+            "/Users/tester/.codex/computer-use",
+            "/Users/tester/.codex/agents",
+            "/Users/tester/.codex/skills",
+            "/Users/tester/.codex/rules",
+            "/Users/tester/.codex/AGENTS.md",
+            "/Users/tester/.codex/vendor_imports",
+        ] {
+            assert!(
+                !assembled.contains(never),
+                "{never} must never appear as an allow target in the assembled profile"
+            );
+        }
+    }
+
+    /// Real-interpreter regression for the SBPL delimiter trap: a Seatbelt regex
+    /// literal opens with `#"` and closes with a PLAIN `"` — there is no trailing
+    /// `#`. SBPL is not Rust: a Rust raw string closes `#"..."#` with a matching `#`,
+    /// but `sandbox-exec` parses that trailing `#` as a stray "sharp expression" and
+    /// rejects the WHOLE profile (`undefined sharp expression`, exit 65) — which
+    /// fails EVERY confined spawn (plain shell included), not just codex. Compiling
+    /// only the INNER pattern with the `regex` crate (as the other tests here do)
+    /// can never catch this; only actually invoking `sandbox-exec` on the ASSEMBLED
+    /// profile can. Skips gracefully if `sandbox-exec` is absent (it is SIP-standard
+    /// on macOS, so this should not happen on a real Mac).
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn sandbox_exec_actually_parses_and_enforces_the_codex_db_regex() {
+        if !Path::new(SANDBOX_EXEC).exists() {
+            eprintln!("skipping: {SANDBOX_EXEC} not present on this host");
+            return;
+        }
+
+        let tmp = TempDir::new().unwrap();
+        let codex_home_lexical = tmp.path().join(".codex");
+        std::fs::create_dir_all(&codex_home_lexical).unwrap();
+        // Canonicalize (macOS temp dirs live under a /var → /private symlink) so the
+        // regex — built from this SAME canonicalized path — matches the
+        // kernel-resolved path Seatbelt actually sees the shell write to.
+        let codex_home = std::fs::canonicalize(&codex_home_lexical).unwrap();
+
+        let mut profile = build_profile(&codex_state_write_roots(&codex_home));
+        for line in codex_state_file_lines(&codex_home) {
+            profile.push_str(&line);
+            profile.push('\n');
+        }
+        profile.push_str(&codex_versioned_db_regex_line(&codex_home));
+        profile.push('\n');
+
+        let profile_path = tmp.path().join("profile.sb");
+        std::fs::write(&profile_path, &profile).unwrap();
+
+        // 1. The profile must PARSE at all — this alone catches the delimiter bug: a
+        // malformed profile makes sandbox-exec exit 65 before it ever runs the target.
+        let status = std::process::Command::new(SANDBOX_EXEC)
+            .args(["-f", profile_path.to_str().unwrap(), "/usr/bin/true"])
+            .status()
+            .expect("spawn sandbox-exec");
+        assert!(
+            status.success(),
+            "sandbox-exec must parse the assembled profile and exec /usr/bin/true: {status:?}"
+        );
+
+        // 2. Enforcement, in Seatbelt's own engine: a write matching the
+        // versioned-DB regex succeeds; a write to a denylisted CONFIG/CREDENTIAL
+        // path is denied.
+        let write = |target: &Path| -> bool {
+            std::process::Command::new(SANDBOX_EXEC)
+                .args([
+                    "-f",
+                    profile_path.to_str().unwrap(),
+                    "/bin/sh",
+                    "-c",
+                    &format!("echo probe > '{}'", target.display()),
+                ])
+                .status()
+                .expect("spawn sandbox-exec")
+                .success()
+        };
+
+        let allowed = codex_home.join("state_9.sqlite");
+        assert!(
+            write(&allowed),
+            "a write to a versioned DB matching the regex must be ALLOWED"
+        );
+        assert!(allowed.exists(), "the allowed write must have landed");
+
+        let auth = codex_home.join("auth.json");
+        assert!(
+            !write(&auth),
+            "a write to auth.json (OAuth credentials) must be DENIED"
+        );
+        assert!(!auth.exists(), "a denied write must not create the file");
+
+        let config = codex_home.join("config.toml");
+        assert!(
+            !write(&config),
+            "a write to config.toml (exec/MCP config) must be DENIED"
+        );
+        assert!(!config.exists(), "a denied write must not create the file");
+    }
+
+    #[test]
     fn git_common_root_is_none_for_a_normal_checkout() {
         // A `.git` DIRECTORY (normal checkout) yields no extra root — it's under cwd.
         let tmp = TempDir::new().unwrap();
@@ -444,6 +874,52 @@ mod tests {
         let prev = std::env::var_os("HOME");
         std::env::set_var("HOME", home);
         HomeGuard { _lock: lock, prev }
+    }
+
+    /// CODEX_HOME is process-global too, but `codex_home_dir` only falls back to HOME
+    /// when CODEX_HOME is unset — a SEPARATE lock (not [`HOME_LOCK`]) so a
+    /// CODEX_HOME-only test doesn't serialize against unrelated HOME-only tests.
+    /// Every test in this module that pins BOTH acquires `HOME_LOCK` (via
+    /// [`pin_home`]) first and this lock second, consistently, so the two locks can
+    /// never deadlock on lock-ordering.
+    #[cfg(target_os = "macos")]
+    static CODEX_HOME_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// RAII guard: pins (or force-unsets) CODEX_HOME for a test, restoring the prior
+    /// value (or absence) on drop, even on a panic, while holding [`CODEX_HOME_LOCK`].
+    #[cfg(target_os = "macos")]
+    struct CodexHomeGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        prev: Option<std::ffi::OsString>,
+    }
+
+    #[cfg(target_os = "macos")]
+    impl Drop for CodexHomeGuard {
+        fn drop(&mut self) {
+            match self.prev.take() {
+                Some(v) => std::env::set_var("CODEX_HOME", v),
+                None => std::env::remove_var("CODEX_HOME"),
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn pin_codex_home(codex_home: &Path) -> CodexHomeGuard {
+        let lock = CODEX_HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::var_os("CODEX_HOME");
+        std::env::set_var("CODEX_HOME", codex_home);
+        CodexHomeGuard { _lock: lock, prev }
+    }
+
+    /// Force CODEX_HOME unset for a test (so `codex_home_dir` falls back to
+    /// `<HOME>/.codex`) — guards against a real `codex` install on the CI/dev host
+    /// leaking its own `$CODEX_HOME` into a test that expects the default.
+    #[cfg(target_os = "macos")]
+    fn clear_codex_home() -> CodexHomeGuard {
+        let lock = CODEX_HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::var_os("CODEX_HOME");
+        std::env::remove_var("CODEX_HOME");
+        CodexHomeGuard { _lock: lock, prev }
     }
 
     /// Canonicalize an existing path to the kernel-resolved, symlink-free string
@@ -561,6 +1037,63 @@ mod tests {
         assert_eq!(
             occurrences, 1,
             "the cwd must appear exactly once even when it is also the git common dir"
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn derive_writable_roots_carves_codex_state_dirs_but_never_the_config_root() {
+        let tmp = TempDir::new().unwrap();
+        let home = TempDir::new().unwrap();
+        let cwd = tmp.path().join("project");
+        std::fs::create_dir_all(&cwd).unwrap();
+
+        let _home = pin_home(home.path());
+        // Deterministic: fall back to <home>/.codex regardless of the host's own
+        // $CODEX_HOME (a real codex install may have one set).
+        let _codex_home = clear_codex_home();
+        let roots = derive_writable_roots(&cwd).expect("derive roots");
+
+        let codex_root = format!("{}/.codex", canon(home.path()));
+        for leaf in ["sessions", "archived_sessions", "log", "cache", "memories"] {
+            let expected = format!("{codex_root}/{leaf}");
+            assert!(
+                roots.contains(&expected),
+                "the {leaf} codex state dir must be a writable root"
+            );
+        }
+        // SECURITY INVARIANT: the ~/.codex ROOT is NEVER a writable root — a confined
+        // shell that could rewrite config.toml / auth.json / plugins/ would escape
+        // the sandbox (config.toml defines exec surfaces; auth.json is OAuth
+        // credentials).
+        assert!(
+            !roots.contains(&codex_root),
+            "the .codex config root must never be a writable root"
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn derive_writable_roots_honors_a_custom_codex_home_over_the_default() {
+        let tmp = TempDir::new().unwrap();
+        let home = TempDir::new().unwrap();
+        let custom_codex_home = TempDir::new().unwrap();
+        let cwd = tmp.path().join("project");
+        std::fs::create_dir_all(&cwd).unwrap();
+
+        let _home = pin_home(home.path());
+        let _codex_home = pin_codex_home(custom_codex_home.path());
+        let roots = derive_writable_roots(&cwd).expect("derive roots");
+
+        let custom_root = canon(custom_codex_home.path());
+        assert!(
+            roots.contains(&format!("{custom_root}/sessions")),
+            "a custom $CODEX_HOME must be used over the default ~/.codex"
+        );
+        let default_codex_root = format!("{}/.codex", canon(home.path()));
+        assert!(
+            !roots.iter().any(|r| r.starts_with(&default_codex_root)),
+            "the default ~/.codex must not be consulted when $CODEX_HOME is set"
         );
     }
 }
