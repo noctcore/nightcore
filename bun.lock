@@ -19,7 +19,7 @@
     },
     "apps/desktop": {
       "name": "@nightcore/desktop",
-      "version": "0.1.0",
+      "version": "0.3.0",
       "devDependencies": {
         "@tauri-apps/cli": "^2.11.2",
       },
@@ -129,6 +129,19 @@
       "peerDependencies": {
         "eslint": ">=9.0.0",
         "typescript": ">=5.0.0",
+      },
+    },
+    "packages/harness": {
+      "name": "@nightcore/harness",
+      "version": "0.0.0",
+      "bin": {
+        "harness": "./dist/cli.js",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.1.0",
+        "@types/node": "^22.0.0",
+        "tsup": "^8.5.1",
+        "typescript": "^5.6.0",
       },
     },
     "packages/session-fold": {
@@ -329,6 +342,8 @@
     "@nightcore/engine": ["@nightcore/engine@workspace:packages/engine"],
 
     "@nightcore/eslint-plugin": ["@nightcore/eslint-plugin@workspace:packages/eslint-plugin"],
+
+    "@nightcore/harness": ["@nightcore/harness@workspace:packages/harness"],
 
     "@nightcore/session-fold": ["@nightcore/session-fold@workspace:packages/session-fold"],
 
