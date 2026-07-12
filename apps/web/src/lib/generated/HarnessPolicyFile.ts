@@ -7,7 +7,16 @@ import type { PolicyDiffBudget } from "./PolicyDiffBudget";
  * absent (the layer arms unless explicitly opted out), lists default empty, and
  * `diff_budget` is `None` when the manifest declares no `diffBudget` object.
  */
-export type HarnessPolicyFile = { enabled: boolean, protectedPaths: Array<string>, denyBashPatterns: Array<string>, denyReadPaths: Array<string>, disallowedTools: Array<string>, allowTools: Array<string>, askTools: Array<string>, diffBudget: PolicyDiffBudget | null, 
+export type HarnessPolicyFile = { enabled: boolean, protectedPaths: Array<string>, denyBashPatterns: Array<string>, denyReadPaths: Array<string>, disallowedTools: Array<string>, allowTools: Array<string>, askTools: Array<string>, 
+/**
+ * The exec-sink downgrade list (`policy.allowExecSinks`), read-only here: the
+ * policy editor has no controls for it (only reachable by hand-editing the
+ * manifest — see `store::harness_policy::read_policy`). Exposed on this shape
+ * purely so the web's "is this policy armed" signal
+ * (`harnessPolicyHasRules` in `apps/web/src/lib/harness-governance.ts`) can see
+ * it and match the engine's identically-named check field-for-field (#308).
+ */
+allowExecSinks: Array<string>, diffBudget: PolicyDiffBudget | null, 
 /**
  * Whether `.nightcore/harness.json` exists at all — the UI tells "editing an
  * existing manifest" apart from "saving will create one".

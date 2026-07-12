@@ -55,6 +55,7 @@ const EMPTY_POLICY_FILE: HarnessPolicyFile = {
   disallowedTools: [],
   allowTools: [],
   askTools: [],
+  allowExecSinks: [],
   diffBudget: null,
   manifestExists: true,
 };
@@ -64,6 +65,17 @@ test('harnessPolicyHasRules (#296): false for an all-empty policy, true when any
   expect(harnessPolicyHasRules({ ...EMPTY_POLICY_FILE, protectedPaths: ['bun.lock'] })).toBe(true);
   expect(
     harnessPolicyHasRules({ ...EMPTY_POLICY_FILE, denyBashPatterns: ['--no-verify'] }),
+  ).toBe(true);
+});
+
+test('harnessPolicyHasRules (#308): true for a policy armed exclusively via allowExecSinks', () => {
+  // The web governance banner's fail-safe gap: a manifest armed ONLY through the
+  // exec-sink downgrade list (hand-edited; not exposed by the policy editor) must
+  // still trip the "armed" signal so the pre-Create banner matches the engine's
+  // `harnessPolicyHasRules` (`packages/engine/src/providers/agent-provider.ts`),
+  // which checks this exact 7th array.
+  expect(
+    harnessPolicyHasRules({ ...EMPTY_POLICY_FILE, allowExecSinks: ['.github/workflows/**'] }),
   ).toBe(true);
 });
 

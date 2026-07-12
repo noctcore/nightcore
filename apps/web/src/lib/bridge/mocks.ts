@@ -220,6 +220,7 @@ export const MOCK_POLICY_FILE: HarnessPolicyFile = {
   disallowedTools: [],
   askTools: ['WebFetch'],
   allowTools: [],
+  allowExecSinks: [],
   diffBudget: null,
   manifestExists: true,
 };

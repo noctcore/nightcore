@@ -68,6 +68,13 @@ pub struct HarnessPolicyFile {
     pub disallowed_tools: Vec<String>,
     pub allow_tools: Vec<String>,
     pub ask_tools: Vec<String>,
+    /// The exec-sink downgrade list (`policy.allowExecSinks`), read-only here: the
+    /// policy editor has no controls for it (only reachable by hand-editing the
+    /// manifest — see `store::harness_policy::read_policy`). Exposed on this shape
+    /// purely so the web's "is this policy armed" signal
+    /// (`harnessPolicyHasRules` in `apps/web/src/lib/harness-governance.ts`) can see
+    /// it and match the engine's identically-named check field-for-field (#308).
+    pub allow_exec_sinks: Vec<String>,
     pub diff_budget: Option<PolicyDiffBudget>,
     /// Whether `.nightcore/harness.json` exists at all — the UI tells "editing an
     /// existing manifest" apart from "saving will create one".
@@ -86,6 +93,7 @@ impl HarnessPolicyFile {
             disallowed_tools: Vec::new(),
             allow_tools: Vec::new(),
             ask_tools: Vec::new(),
+            allow_exec_sinks: Vec::new(),
             diff_budget: None,
             manifest_exists,
         }
@@ -189,6 +197,7 @@ pub fn read_policy_file(project_path: &str) -> HarnessPolicyFile {
         disallowed_tools: string_entries(&policy, "disallowedTools"),
         allow_tools: string_entries(&policy, "allowTools"),
         ask_tools: string_entries(&policy, "askTools"),
+        allow_exec_sinks: string_entries(&policy, "allowExecSinks"),
         diff_budget,
         manifest_exists: true,
     }
@@ -584,6 +593,7 @@ mod tests {
                 "denyBashPatterns": ["--no-verify"],
                 "denyReadPaths": [".env*"],
                 "disallowedTools": ["WebSearch"],
+                "allowExecSinks": ["package.json"],
                 "diffBudget": { "maxChangedLines": 400, "maxChangedFiles": 20 }
               }
             }"#,
@@ -594,6 +604,7 @@ mod tests {
         assert_eq!(file.deny_bash_patterns, vec!["--no-verify"]);
         assert_eq!(file.deny_read_paths, vec![".env*"]);
         assert_eq!(file.disallowed_tools, vec!["WebSearch"]);
+        assert_eq!(file.allow_exec_sinks, vec!["package.json"]);
         assert_eq!(
             file.diff_budget,
             Some(PolicyDiffBudget {
@@ -601,6 +612,30 @@ mod tests {
                 max_changed_files: Some(20),
             })
         );
+    }
+
+    #[test]
+    fn allow_exec_sinks_only_policy_still_reads_as_manifest_exists_and_enabled() {
+        // The web governance banner's fail-safe gap (#308): a manifest armed
+        // EXCLUSIVELY via `policy.allowExecSinks` must round-trip through this
+        // UI-facing reader too, not just the runtime resolver
+        // (`store::harness_policy::read_policy`) — otherwise the web's "armed"
+        // signal can't see it no matter how `harnessPolicyHasRules` is written.
+        let tmp = TempDir::new().expect("temp dir");
+        write_manifest(
+            &tmp,
+            r#"{ "policy": { "allowExecSinks": [".github/workflows/**"] } }"#,
+        );
+        let file = read_policy_file(&root_of(&tmp));
+        assert!(file.manifest_exists);
+        assert!(file.enabled);
+        assert_eq!(file.allow_exec_sinks, vec![".github/workflows/**"]);
+        assert!(file.protected_paths.is_empty());
+        assert!(file.deny_bash_patterns.is_empty());
+        assert!(file.deny_read_paths.is_empty());
+        assert!(file.disallowed_tools.is_empty());
+        assert!(file.allow_tools.is_empty());
+        assert!(file.ask_tools.is_empty());
     }
 
     #[test]

@@ -59,6 +59,7 @@ test('draftFromPolicy stringifies the diff budget for the clearable inputs', () 
     disallowedTools: [],
     askTools: [],
     allowTools: [],
+    allowExecSinks: [],
     diffBudget: { maxChangedLines: 400, maxChangedFiles: null },
     manifestExists: true,
   });

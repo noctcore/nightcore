@@ -12,6 +12,7 @@ const POLICY: HarnessPolicyFile = {
   disallowedTools: ['WebSearch'],
   askTools: ['WebFetch'],
   allowTools: ['Bash(git status:*)'],
+  allowExecSinks: [],
   diffBudget: { maxChangedLines: 400, maxChangedFiles: null },
   manifestExists: true,
 };
@@ -42,6 +43,7 @@ export const NoManifest: Story = {
       disallowedTools: [],
       askTools: [],
       allowTools: [],
+      allowExecSinks: [],
       diffBudget: null,
       manifestExists: false,
     },
