@@ -24,7 +24,7 @@ export { ConfirmDialog } from './ConfirmDialog';
 export type { ConfirmDialogProps } from './ConfirmDialog/ConfirmDialog.types';
 export { ConfirmHint } from './ConfirmHint';
 export type { DetailCardGridProps, DetailCardProps } from './DetailCardGrid';
-export { DetailCard, DetailCardGrid } from './DetailCardGrid';
+export { DetailCard, DetailCardGrid, GridFullRow } from './DetailCardGrid';
 export type { DetailPanelShellProps } from './DetailPanelShell';
 export { DetailLocation, DetailPanelShell, DetailSection } from './DetailPanelShell';
 export { EditProjectDialog } from './EditProjectDialog';

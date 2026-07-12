@@ -1,43 +1,33 @@
 /** The shared responsive card grid for finding/convention results, with an
- *  empty state and streaming skeleton placeholders. Each feature maps its items
- *  to {@link DetailCard}s and passes them as `children`; the grid owns the
- *  layout, the empty message, and the in-flight skeletons. */
-import { Skeleton } from '../Skeleton';
-import { usePagedChildren } from './DetailCardGrid.hooks';
+ *  empty state and streaming skeleton placeholders. Each feature maps its
+ *  items to {@link DetailCard}s and passes them as `children`; the grid owns
+ *  the layout, the empty message, and the in-flight skeletons.
+ *
+ *  Row-chunked virtualization (`@tanstack/react-virtual`): only the rows near
+ *  the viewport (+ overscan) mount, regardless of total item count — a
+ *  repo-wide Deep scan can produce hundreds of findings. Cards pack
+ *  `columns`-per-row (matching the responsive `sm:`/`xl:` breakpoints below);
+ *  an item wrapped in {@link GridFullRow} gets its own full-width row. */
+import { useDetailCardGrid } from './DetailCardGrid.hooks';
+import { SkeletonCard } from './DetailCardGrid.parts';
 import type { DetailCardGridProps } from './DetailCardGrid.types';
 
-/** How many cards to mount before the "show more" affordance. Large scans yield
- *  hundreds of findings; capping the initial mount count keeps open/tab-switch/
- *  resize cheap while keeping the responsive multi-column layout intact. */
-const PAGE_SIZE = 60;
+export { GridFullRow } from './DetailCardGrid.parts';
 
-/** A skeleton card that preserves the card layout while a pass is still running
- *  (streaming UX). */
-function SkeletonCard() {
-  return (
-    <div className="flex flex-col gap-2 rounded-[10px] border border-border bg-white/[0.02] p-3.5">
-      <div className="flex items-center gap-2">
-        <Skeleton className="h-4 w-14" />
-        <Skeleton className="h-4 w-16" />
-        <Skeleton className="ml-auto h-4 w-10" />
-      </div>
-      <Skeleton className="h-4 w-3/4" />
-      <Skeleton className="h-3 w-1/3" />
-      <Skeleton className="h-3 w-full" />
-      <Skeleton className="h-3 w-5/6" />
-    </div>
-  );
-}
-
-/** Renders the card children, then any streaming skeletons; falls back to a
- *  centered empty message when there is nothing to show and nothing in flight. */
+/** Renders the card children as virtualized rows, then any streaming
+ *  skeletons; falls back to a centered empty message when there is nothing
+ *  to show and nothing in flight. */
 export function DetailCardGrid({
   isEmpty,
   emptyMessage,
   skeletonCount,
   children,
+  scrollsWithPage = false,
 }: DetailCardGridProps) {
-  const { visible, hiddenCount, showMore } = usePagedChildren(children, PAGE_SIZE);
+  const { setRootRef, virtualizer, rows, columns } = useDetailCardGrid(
+    children,
+    !scrollsWithPage,
+  );
 
   if (isEmpty) {
     return (
@@ -51,22 +41,46 @@ export function DetailCardGrid({
 
   return (
     <div
+      ref={setRootRef}
       aria-busy={skeletonCount > 0 || undefined}
-      className="grid flex-1 grid-cols-1 content-start gap-3 overflow-y-auto px-6 py-5 sm:grid-cols-2 xl:grid-cols-3"
+      className={`flex-1 px-6 py-5 ${scrollsWithPage ? '' : 'overflow-y-auto'}`}
     >
-      {visible}
-      {Array.from({ length: skeletonCount }).map((_, i) => (
-        <SkeletonCard key={`skeleton-${i}`} />
-      ))}
-      {hiddenCount > 0 && (
-        <div className="col-span-full flex justify-center py-2">
-          <button
-            type="button"
-            onClick={showMore}
-            className="rounded-md border border-border bg-white/[0.03] px-3 py-1.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-white/[0.05] focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            Show {hiddenCount} more
-          </button>
+      <div style={{ position: 'relative', width: '100%', height: virtualizer.getTotalSize() }}>
+        {virtualizer.getVirtualItems().map((virtualRow) => {
+          const row = rows[virtualRow.index];
+          if (row === undefined) return null;
+          return (
+            <div
+              key={row.key}
+              data-index={virtualRow.index}
+              ref={virtualizer.measureElement}
+              className="absolute left-0 top-0 w-full pb-3"
+              style={{
+                transform: `translateY(${virtualRow.start - virtualizer.options.scrollMargin}px)`,
+              }}
+            >
+              {row.fullWidth ? (
+                row.items[0]
+              ) : (
+                <div
+                  className="grid gap-3"
+                  style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+                >
+                  {row.items}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {skeletonCount > 0 && (
+        <div
+          className="grid gap-3"
+          style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+        >
+          {Array.from({ length: skeletonCount }).map((_, i) => (
+            <SkeletonCard key={`skeleton-${i}`} />
+          ))}
         </div>
       )}
     </div>
