@@ -264,6 +264,7 @@ export function useInsightView({
         config.model,
         config.effort,
         config.providerId,
+        config.deep,
       );
     },
     onCancel: () => void insight.cancel(),

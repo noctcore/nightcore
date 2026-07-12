@@ -9,7 +9,12 @@ import {
 } from '@/components/ui';
 import { type AnalysisScope, PROVIDER_LABEL } from '@/lib/bridge';
 
-import { ALL_CATEGORIES, CATEGORY_META, SCOPE_META } from '../insight.constants';
+import {
+  ALL_CATEGORIES,
+  CATEGORY_META,
+  DEEP_MODE_META,
+  SCOPE_META,
+} from '../insight.constants';
 import type { RunControlsProps } from './RunControls.types';
 
 const CHIPS = ALL_CATEGORIES.map((c) => ({
@@ -23,7 +28,7 @@ const CHIPS = ALL_CATEGORIES.map((c) => ({
  *  purely-presentational view of the lifted `config` state. The live readout +
  *  Cancel now live on the RUNNING screen (RunProgress). */
 export function RunControls({ config, isStarting, onAnalyze }: RunControlsProps) {
-  const { scope, setScope, model } = config;
+  const { scope, setScope, deep, setDeep, model } = config;
   const lensCount = config.orderedSelected.length;
   const showCost = useShowCostLine();
 
@@ -40,24 +45,46 @@ export function RunControls({ config, isStarting, onAnalyze }: RunControlsProps)
         />
       }
       beforeChips={
-        <div className="flex flex-col gap-1.5">
-          <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
-            Scope
-          </span>
-          <div role="radiogroup" aria-label="Scope" className="flex gap-2">
-            {(['repo', 'diff'] as AnalysisScope[]).map((s) => (
-              <button
-                key={s}
-                type="button"
-                role="radio"
-                aria-checked={scope === s}
-                title={SCOPE_META[s].hint}
-                onClick={() => setScope(s)}
-                className={chipClass(scope === s)}
-              >
-                {SCOPE_META[s].label}
-              </button>
-            ))}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
+              Scope
+            </span>
+            <div role="radiogroup" aria-label="Scope" className="flex gap-2">
+              {(['repo', 'diff'] as AnalysisScope[]).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  role="radio"
+                  aria-checked={scope === s}
+                  title={SCOPE_META[s].hint}
+                  onClick={() => setScope(s)}
+                  className={chipClass(scope === s)}
+                >
+                  {SCOPE_META[s].label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
+              Mode
+            </span>
+            <div role="radiogroup" aria-label="Mode" className="flex gap-2">
+              {(['standard', 'deep'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="radio"
+                  aria-checked={deep === (m === 'deep')}
+                  title={DEEP_MODE_META[m].hint}
+                  onClick={() => setDeep(m === 'deep')}
+                  className={chipClass(deep === (m === 'deep'))}
+                >
+                  {DEEP_MODE_META[m].label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       }
@@ -76,7 +103,10 @@ export function RunControls({ config, isStarting, onAnalyze }: RunControlsProps)
         <>
           Scans the whole {scope === 'diff' ? 'diff' : 'repo'} across {lensCount}{' '}
           {lensCount === 1 ? 'lens' : 'lenses'} · ~{config.providerId === 'codex' ? 'Codex' : PROVIDER_LABEL} {model ?? 'default'}
-          {showCost && ' · cost depends on repo size'}.
+          {showCost && ' · cost depends on repo size'}
+          {deep &&
+            ' · Deep mode: multiple rounds per category until convergence — can run long'}
+          .
         </>
       }
     />

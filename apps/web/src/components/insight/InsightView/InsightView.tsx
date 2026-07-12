@@ -136,6 +136,7 @@ export function InsightView(props: InsightViewProps) {
                     categories={view.progressCategories}
                     categoryState={view.stream.categoryState}
                     findingCounts={view.findingCounts}
+                    categoryRounds={view.stream.categoryRounds}
                     unitLabel="categories"
                     costUsd={view.stream.costUsd}
                     usage={view.stream.usage}

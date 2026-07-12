@@ -58,7 +58,11 @@ export interface ProjectEnvelope {
 export type LoopState = 'running' | 'drained' | 'paused';
 
 /** The Insight analysis event family streamed over `nc:insight`, narrowed from
- *  the authoritative `NightcoreEvent` union. */
+ *  the authoritative `NightcoreEvent` union. `analysis-category-round-completed`
+ *  (issue #294) is DEEP-mode only: one round of a category's multi-round loop
+ *  finished, carrying the cumulative grounded findings for that category so far.
+ *  It replaces the classic per-category terminal event for a deep run — the engine
+ *  never emits `analysis-category-completed` for a category running deep. */
 export type AnalysisEvent = Extract<
   NcEvent,
   {
@@ -66,6 +70,7 @@ export type AnalysisEvent = Extract<
       | 'analysis-started'
       | 'analysis-category-started'
       | 'analysis-category-completed'
+      | 'analysis-category-round-completed'
       | 'analysis-completed'
       | 'analysis-failed';
   }

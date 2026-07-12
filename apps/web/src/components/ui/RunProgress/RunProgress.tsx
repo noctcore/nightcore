@@ -45,6 +45,7 @@ export function RunProgress({
   categories,
   categoryState,
   findingCounts,
+  categoryRounds,
   unitLabel = 'lenses',
   synthesizing = false,
   costUsd,
@@ -129,6 +130,7 @@ export function RunProgress({
           {categories.map((category) => {
             const state = categoryState[category.key] ?? 'pending';
             const count = findingCounts[category.key] ?? 0;
+            const round = categoryRounds?.[category.key];
             const Icon = category.icon;
             const clickable = isFinished(state) && onOpenCategory !== undefined;
 
@@ -147,11 +149,18 @@ export function RunProgress({
               state === 'done' ? (
                 <span className="tabular-nums text-foreground">
                   {count} {count === 1 ? 'finding' : 'findings'}
+                  {round && ` · round ${round.round}`}
                 </span>
               ) : state === 'error' ? (
                 <span className="text-destructive">failed</span>
               ) : state === 'running' ? (
-                <span className="truncate text-muted-foreground">scanning…</span>
+                round ? (
+                  <span className="truncate tabular-nums text-muted-foreground">
+                    round {round.round} ({round.newFindingsThisRound} new)
+                  </span>
+                ) : (
+                  <span className="truncate text-muted-foreground">scanning…</span>
+                )
               ) : (
                 <span className="text-muted-foreground/60">queued</span>
               );

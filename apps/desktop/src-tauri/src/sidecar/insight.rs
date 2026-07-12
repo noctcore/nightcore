@@ -15,7 +15,9 @@
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::contracts::{AnalysisScope, EffortLevel, FindingCategory, SurfaceCommand};
+use crate::contracts::{
+    AnalysisScope, DeepScanConfig, EffortLevel, FindingCategory, SurfaceCommand,
+};
 use crate::project::ProjectStore;
 use crate::store::insight::{InsightRun, InsightStore, InsightUsage, StoredFinding};
 use crate::store::TaskStore;
@@ -43,7 +45,13 @@ scan_lifecycle_commands! {
 
 /// Start an Insight analysis run over the active project. Creates the persisted run
 /// (status `running`), dispatches the `start-analysis` command, and returns the
-/// `runId` the `analysis-*` events correlate by.
+/// `runId` the `analysis-*` events correlate by. `deep`, when present, opts the run
+/// into the multi-round convergence loop (issue #294) — the web toggle always sends
+/// EXPLICIT round/convergence/cap values (never an empty object): the generated
+/// `DeepScanConfig` fields default to `0` on deserialize (not the zod schema's
+/// 15/2/20), so an omitted field would silently zero that knob. This command passes
+/// `deep` straight through to `SurfaceCommand::StartAnalysis` with no intermediate
+/// re-serialization, so whatever the caller sends is exactly what the engine gets.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn start_analysis(
@@ -55,6 +63,7 @@ pub async fn start_analysis(
     model: Option<String>,
     effort: Option<EffortLevel>,
     provider_id: Option<String>,
+    deep: Option<DeepScanConfig>,
 ) -> Result<String, String> {
     let ScanRunInit {
         project_path,
@@ -120,9 +129,9 @@ pub async fn start_analysis(
         max_concurrency: None,
         max_turns_per_category: None,
         max_budget_usd_per_category: None,
-        // Deep mode is not yet driven from the Rust core (no web toggle in slice 1);
-        // the round-loop backbone is exercised via the contract field + engine tests.
-        deep: None,
+        // Deep mode (issue #294, slice 2): passed straight through from the web
+        // toggle. `None` ⇒ the classic single-pass path, byte-identical to pre-deep.
+        deep,
     };
     dispatch_scan_command(&app, "insight", &run_id, command, |msg| {
         insight_store

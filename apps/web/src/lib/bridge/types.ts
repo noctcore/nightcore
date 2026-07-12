@@ -158,6 +158,10 @@ export type {
   FindingEffort,
   FindingSeverity,
 } from '@nightcore/contracts';
+// Deep scan mode (issue #294): the opt-in multi-round convergence config a scan
+// command carries. See `DeepScanConfigSchema` for the field-level defaults — the
+// web toggle always sends every field explicitly (never relies on them).
+export type { DeepScanConfig } from '@nightcore/contracts';
 // The dynamic model catalog (`list_models`) + provider capability
 // descriptor (`get_capabilities`) come straight from the zod contract — the same
 // wire shapes the engine emits, so the picker reads live descriptors/capabilities

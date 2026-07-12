@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { tauriInvoke } from '../internal';
 import type {
   AnalysisScope,
+  DeepScanConfig,
   EffortLevel,
   FindingCategory,
   InsightRun,
@@ -14,11 +15,22 @@ import type {
 // --- Insight (codebase analysis) ------------------------------------------
 
 /** Start an Insight analysis run over the active project. Returns the `runId` the
- *  `analysis-*` events correlate by. Rejects outside Tauri (no active project). */
+ *  `analysis-*` events correlate by. Rejects outside Tauri (no active project).
+ *
+ *  `options.deep`, when present, opts the run into the multi-round convergence loop
+ *  (issue #294). Callers MUST pass every {@link DeepScanConfig} field explicitly —
+ *  the generated Rust struct defaults each field to `0` on deserialize (not the zod
+ *  schema's 15/2/20), so an omitted field would silently zero that knob and produce
+ *  a 0-round scan. `RunControls`' Deep toggle always supplies the full object. */
 export async function startAnalysis(
   scope: AnalysisScope,
   categories: FindingCategory[],
-  options: { model?: string | null; effort?: EffortLevel | null; providerId?: string | null } = {},
+  options: {
+    model?: string | null;
+    effort?: EffortLevel | null;
+    providerId?: string | null;
+    deep?: DeepScanConfig | null;
+  } = {},
 ): Promise<string> {
   return invoke<string>('start_analysis', {
     scope,
@@ -26,6 +38,7 @@ export async function startAnalysis(
     model: options.model ?? null,
     effort: options.effort ?? null,
     providerId: options.providerId ?? null,
+    deep: options.deep ?? null,
   });
 }
 
