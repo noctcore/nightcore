@@ -23,6 +23,7 @@ import { autonomyToPermissionMode } from './capabilities.js';
 import { HookBus } from './hook-bus.js';
 import { toModelDescriptor } from './mappers.js';
 import { type ApprovalDecision,PermissionLayer } from './permission-layer.js';
+import { withTransientProbeRetry } from './probe-retry.js';
 import { ProviderConfigReader } from './provider-config.js';
 import { ASK_USER_QUESTION_DIALOG,QuestionLayer } from './question-layer.js';
 import { checkClaudeCliVersion, resolveClaudeBinary } from './resolve-claude-binary.js';
@@ -594,13 +595,13 @@ export class SessionRunner implements AgentSession {
   }
 
   /**
-   * Open ONE transient probe (or reuse this runner's live query when no cwd
-   * override is needed) and hand it to `body`, returning `fallback` if the probe
-   * itself can't be opened. The single subprocess is shared across every control
-   * method `body` calls — letting the provider-config inspector read MCP / skills /
-   * subagents / init off ONE probe while isolating per-call failures inside `body`
-   * (so one failing section becomes that section's `unavailable`, never a failed
-   * snapshot). The query is torn down via its abort controller in `finally`.
+   * Hand `body` a probe query and return `fallback` when the probe can't answer.
+   * With a live query and no cwd override, REUSE it (the turn loop owns it — a
+   * single attempt, bounded by the deadline, NOT retried to avoid lifecycle
+   * races). Otherwise open an isolated, read-only TRANSIENT subprocess and, per
+   * issue #252, retry a transient spawn/read blip before degrading — the shared
+   * probe still lets the inspector read MCP / skills / subagents / init off ONE
+   * subprocess while `body` isolates per-section failures. Torn down in `finally`.
    */
   async withProbe<T>(
     body: (q: Query) => Promise<T>,
@@ -608,35 +609,23 @@ export class SessionRunner implements AgentSession {
     cwdOverride?: string,
   ): Promise<T> {
     if (this.query && cwdOverride === undefined) {
-      // Bound even the live-query reuse path: a wedged control request must
-      // degrade to the fallback, not hang the inspector.
+      // Live-query reuse (turn-loop-owned): one attempt, bounded by the deadline.
       return this.raceProbeDeadline(body(this.query), fallback);
     }
-
-    const abort = new AbortController();
-    let transient: Query | undefined;
-    try {
-      transient = query({
-        prompt: emptyInputStream(abort.signal),
-        options: {
-          ...this.optionsBuilder.base(),
-          ...(cwdOverride !== undefined ? { cwd: cwdOverride } : {}),
-          abortController: abort,
-        },
-      });
-      return await this.raceProbeDeadline(body(transient), fallback);
-    } catch (error) {
-      this.logger?.debug('control probe transient query failed', error);
-      return fallback;
-    } finally {
-      abort.abort();
-      await transient?.interrupt().catch((error: unknown) => {
-        // Teardown best-effort: the abort above already tore the query down, so an
-        // interrupt rejection here is expected and harmless — record it at debug
-        // rather than swallowing it silently.
-        this.logger?.debug('probe teardown interrupt failed', error);
-      });
-    }
+    // Isolated read-only transient probe: safe to retry a blip, then degrade.
+    return withTransientProbeRetry(body, fallback, cwdOverride, {
+      openProbe: (abort, cwd) =>
+        query({
+          prompt: emptyInputStream(abort.signal),
+          options: {
+            ...this.optionsBuilder.base(),
+            ...(cwd !== undefined ? { cwd } : {}),
+            abortController: abort,
+          },
+        }),
+      race: (work, fallbackValue) => this.raceProbeDeadline(work, fallbackValue),
+      logger: this.logger,
+    });
   }
 
   /**

@@ -59,10 +59,18 @@ let rejectControl = false;
 /** When set, `query()` THROWS on open — reproducing a transient probe subprocess
  *  that can't be spawned. `withProbe` must return the fallback, not reject. */
 let throwOnQuery = false;
+/** When > 0, the NEXT this-many `query()` opens throw (then succeed) —
+ *  reproducing a TRANSIENT spawn blip the probe retry (issue #252) must recover
+ *  from. Decrements per throwing open. */
+let failNextQueryOpens = 0;
 /** When true, the stubbed query's provider-config read methods (`supportedModels`
  *  et al.) REJECT — reproducing a body-call failure mid-probe. `withProbe` must
  *  still run its teardown (abort + interrupt) and return the fallback. */
 let rejectProbeRead = false;
+/** When > 0, the NEXT this-many `supportedModels()` reads REJECT (then succeed) —
+ *  reproducing a TRANSIENT read blip the probe retry (issue #252) must recover
+ *  from. Decrements per rejecting read. */
+let failNextProbeReads = 0;
 /** Scripted return value for the stubbed `supportedModels()` control read. */
 let scriptedModels: unknown[] = [];
 /** When true, the stubbed query's first exhausted `next()` PARKS a plan-mode
@@ -80,6 +88,11 @@ mock.module('@anthropic-ai/claude-agent-sdk', () => ({
     // A transient probe subprocess that fails to spawn: withProbe must degrade to
     // its fallback, not reject.
     if (throwOnQuery) throw new Error('transient probe failed to open');
+    // A TRANSIENT spawn blip that clears on retry (issue #252).
+    if (failNextQueryOpens > 0) {
+      failNextQueryOpens -= 1;
+      throw new Error('transient probe open blipped');
+    }
     const pending = [...queuedMessages];
     const iterator: AsyncGenerator<unknown> = {
       async next() {
@@ -143,6 +156,11 @@ mock.module('@anthropic-ai/claude-agent-sdk', () => ({
       // the whole probe surface (mcpServerStatus/supportedCommands/…) shares.
       async supportedModels() {
         if (rejectProbeRead) throw new Error('probe read rejected mid-flight');
+        // A TRANSIENT read blip that clears on retry (issue #252).
+        if (failNextProbeReads > 0) {
+          failNextProbeReads -= 1;
+          throw new Error('probe read blipped');
+        }
         return scriptedModels;
       },
       async mcpServerStatus() {
@@ -483,40 +501,85 @@ describe('SessionRunner — live-control probe surface (transient-probe teardown
     expect(interruptCalls).toBe(1);
   });
 
-  test('an OPEN failure (probe cannot spawn) returns the fallback without throwing', async () => {
+  test('an OPEN failure retries then degrades to the fallback without throwing', async () => {
     resolvedClaudePath = '/usr/local/bin/claude';
     queryCalls = 0;
     interruptCalls = 0;
+    failNextQueryOpens = 0;
     scriptedModels = [{ value: 'm' }];
     throwOnQuery = true;
     try {
       const runner = makeRunner(() => {});
-      // Degrade-not-throw: a probe that can't open resolves to the `[]` fallback.
+      // Degrade-not-throw: an open that fails EVERY attempt resolves to `[]`.
       await expect(runner.supportedModels()).resolves.toEqual([]);
-      expect(queryCalls).toBe(1);
-      // The transient never opened, so there is nothing to interrupt.
+      // Issue #252: the transient probe is retried (1 initial + 2 retries) before
+      // degrading, instead of masking the first blip as an empty list.
+      expect(queryCalls).toBe(3);
+      // The transient never opened on any attempt, so there is nothing to interrupt.
       expect(interruptCalls).toBe(0);
     } finally {
       throwOnQuery = false;
     }
   });
 
-  test('a body-throw (probe read rejects) still tears the transient down and returns the fallback', async () => {
+  test('a body-throw retries, tears each transient down, and degrades to the fallback', async () => {
     resolvedClaudePath = '/usr/local/bin/claude';
     queryCalls = 0;
     interruptCalls = 0;
     lastQueryOptions = undefined;
+    failNextProbeReads = 0;
     rejectProbeRead = true;
     try {
       const runner = makeRunner(() => {});
       await expect(runner.supportedModels()).resolves.toEqual([]);
-      // The transient WAS opened, so teardown (abort + interrupt) must still run —
-      // a failing read must not leak the subprocess it was reading from.
-      expect(queryCalls).toBe(1);
+      // Each of the 3 attempts opens a transient and tears it down on the failed
+      // read — a failing read must never leak the subprocess it was reading from.
+      expect(queryCalls).toBe(3);
       expect(lastAbort().signal.aborted).toBe(true);
-      expect(interruptCalls).toBe(1);
+      expect(interruptCalls).toBe(3);
     } finally {
       rejectProbeRead = false;
+    }
+  });
+
+  test('a TRANSIENT open blip is retried and recovers the real model list (issue #252)', async () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    queryCalls = 0;
+    interruptCalls = 0;
+    lastQueryOptions = undefined;
+    scriptedModels = [{ value: 'claude-opus-4-8', displayName: 'Opus' }];
+    // The FIRST open fails; the retry opens cleanly and reads the real list.
+    failNextQueryOpens = 1;
+    try {
+      const runner = makeRunner(() => {});
+      const models = await runner.supportedModels();
+      // Previously this single blip degraded to `[]`; now the retry recovers it.
+      expect(models).toEqual(scriptedModels);
+      // One failed open + one successful open = 2 spawns; the successful one is
+      // torn down in finally.
+      expect(queryCalls).toBe(2);
+      expect(interruptCalls).toBe(1);
+    } finally {
+      failNextQueryOpens = 0;
+    }
+  });
+
+  test('a TRANSIENT read blip is retried and recovers the real model list (issue #252)', async () => {
+    resolvedClaudePath = '/usr/local/bin/claude';
+    queryCalls = 0;
+    interruptCalls = 0;
+    scriptedModels = [{ value: 'reads-recover' }];
+    // The FIRST read rejects; the retry opens a fresh probe and reads cleanly.
+    failNextProbeReads = 1;
+    try {
+      const runner = makeRunner(() => {});
+      const models = await runner.supportedModels();
+      expect(models).toEqual(scriptedModels);
+      // Two attempts, each opening AND tearing down its own transient probe.
+      expect(queryCalls).toBe(2);
+      expect(interruptCalls).toBe(2);
+    } finally {
+      failNextProbeReads = 0;
     }
   });
 

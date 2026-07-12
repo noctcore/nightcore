@@ -277,4 +277,78 @@ rl.on('line', (line) => {
       else process.env.NIGHTCORE_CODEX_PATH = previousCodexPath;
     }
   });
+
+  test('retries a transient app-server blip and recovers the live catalog (issue #252)', async () => {
+    const previousAgentPath = process.env.NIGHTCORE_AGENT_PATH;
+    const previousCodexPath = process.env.NIGHTCORE_CODEX_PATH;
+    // The script exits 1 on its FIRST spawn (the transient blip) and answers on the
+    // retry — a sentinel file distinguishes the two, since each retry is a fresh
+    // process. Previously this single blip would have degraded to the static
+    // fallback; the retry must now recover the real catalog.
+    const sentinel = path.join(
+      os.tmpdir(),
+      `nightcore-codex-retry-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.flag`,
+    );
+    tempFiles.push(sentinel);
+    const script = writeTempScript(`#!/usr/bin/env node
+import { existsSync, writeFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
+
+const SENTINEL = ${JSON.stringify(sentinel)};
+if (!existsSync(SENTINEL)) {
+  writeFileSync(SENTINEL, 'blipped');
+  process.exit(1);
+}
+const rl = createInterface({ input: process.stdin });
+rl.on('line', (line) => {
+  let msg;
+  try {
+    msg = JSON.parse(line);
+  } catch {
+    return;
+  }
+  if (msg.method === 'initialize') {
+    process.stdout.write(JSON.stringify({ id: msg.id, result: {} }) + '\\n');
+    return;
+  }
+  if (msg.method === 'model/list') {
+    process.stdout.write(
+      JSON.stringify({
+        id: msg.id,
+        result: {
+          data: [
+            {
+              model: 'gpt-5.5',
+              displayName: 'GPT-5.5',
+              description: 'Recovered',
+              supportedReasoningEfforts: [{ reasoningEffort: 'high' }],
+            },
+          ],
+        },
+      }) + '\\n',
+    );
+  }
+});
+`);
+    process.env.NIGHTCORE_CODEX_PATH = script;
+    delete process.env.NIGHTCORE_AGENT_PATH;
+    try {
+      const models = await listCodexModels();
+      expect(models).toEqual([
+        {
+          providerId: 'codex',
+          value: 'gpt-5.5',
+          displayName: 'GPT-5.5',
+          description: 'Recovered',
+          supportsEffort: true,
+          supportedEffortLevels: ['high'],
+        },
+      ]);
+    } finally {
+      if (previousAgentPath === undefined) delete process.env.NIGHTCORE_AGENT_PATH;
+      else process.env.NIGHTCORE_AGENT_PATH = previousAgentPath;
+      if (previousCodexPath === undefined) delete process.env.NIGHTCORE_CODEX_PATH;
+      else process.env.NIGHTCORE_CODEX_PATH = previousCodexPath;
+    }
+  });
 });
