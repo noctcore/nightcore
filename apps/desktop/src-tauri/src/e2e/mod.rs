@@ -26,6 +26,10 @@
 //! - [`crash_requeue`] — the boot crash-recovery path: `reset_after_crash` returns
 //!   the orphaned tasks + the reconcile core requeues stranded `InProgress`/`Verifying`
 //!   tasks, over a real `TaskStore`.
+//! - [`transcript_replay`] — ring 1 **(c)** (issue #278): replay checked-in transcripts
+//!   of the shapes a REAL sidecar emits (build / Insight scan / PR review), grounded in
+//!   the codegen'd `contracts/fixtures.json`, through the reader's correlation +
+//!   finalizer seams, asserting the resulting store state + emitted-event sequence.
 //!
 //! ## Documented gap (why this is ring 1, not the whole ladder)
 //!
@@ -53,3 +57,4 @@ mod failure_breaker;
 mod harness;
 mod run_lifecycle;
 mod slot_leak;
+mod transcript_replay;

@@ -33,7 +33,12 @@ mod pr_review;
 mod provider_config;
 mod reader;
 mod rule_tester;
-mod scan;
+// `pub(crate)` so the crate-root `e2e` transcript-replay suite (issue #278) can drive
+// the scan finalizer seam (`finalize_scan_items` / `reconcile_scan_history` /
+// `ScanTelemetry`) — the exact `AppHandle`-free functions `handle_analysis_event` /
+// `handle_pr_review_event` delegate persistence to. Its contents are already
+// `pub(crate)`; only the module path was `sidecar`-private. No behavior change.
+pub(crate) mod scan;
 mod scorecard;
 mod seam;
 mod sessions;

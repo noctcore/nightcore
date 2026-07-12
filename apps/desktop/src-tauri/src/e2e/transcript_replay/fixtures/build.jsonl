@@ -1,0 +1,8 @@
+{"type":"session-ready","sessionId":7,"sdkSessionId":"c0ffee00-1a2b-4c3d-8e4f-5a6b7c8d9e0f","model":"claude-opus-4-8","tools":["Read","Edit","Bash"],"slashCommands":["/init"],"skills":["add-feature"]}
+{"type":"assistant-delta","sessionId":7,"text":"I'll add the missing await on the save() call so the rejection isn't dropped.","partial":true}
+{"type":"tool-use-requested","sessionId":7,"toolUseId":"tu-1","toolName":"Edit","input":{"file_path":"src/handler.ts","old_string":"  save();","new_string":"  await save();"}}
+{"type":"tool-result","sessionId":7,"toolUseId":"tu-1","isError":false,"content":"The file src/handler.ts has been updated."}
+{"type":"tool-use-requested","sessionId":7,"toolUseId":"tu-2","toolName":"Bash","input":{"command":"bun test src/handler.test.ts"}}
+{"type":"tool-result","sessionId":7,"toolUseId":"tu-2","isError":false,"content":"12 pass, 0 fail"}
+{"type":"assistant-delta","sessionId":7,"text":"Added the await and the tests pass.","partial":false}
+{"type":"session-completed","sessionId":7,"result":"Awaited the save() call in src/handler.ts and confirmed the test suite passes.","costUsd":0.42,"numTurns":7,"durationMs":1234,"usage":{"inputTokens":100,"outputTokens":50,"cacheReadTokens":10,"cacheCreationTokens":5,"reasoningOutputTokens":0}}
