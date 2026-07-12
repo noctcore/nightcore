@@ -65,6 +65,51 @@ test('Shift+Tab from the first focusable wraps to the last (focus trap)', async 
   await expect.element(screen.getByText('Last')).toHaveFocus();
 });
 
+test('onEnter fires on Cmd/Ctrl+Enter but never on bare Enter (house dialog rule)', async () => {
+  const onEnter = vi.fn();
+  const screen = renderModal(
+    <Modal
+      open
+      label="Confirm demo"
+      onClose={vi.fn()}
+      onEnter={onEnter}
+      initialFocus="[data-field]"
+    >
+      <div className="p-4">
+        <input data-field aria-label="field" />
+      </div>
+    </Modal>,
+  );
+  await expect.element(screen.getByLabelText('field')).toHaveFocus();
+
+  // Bare Enter must NOT confirm — it's too easy to hit by accident.
+  await userEvent.keyboard('{Enter}');
+  expect(onEnter).not.toHaveBeenCalled();
+
+  // Cmd/Ctrl+Enter is the house confirm accelerator.
+  await userEvent.keyboard('{Control>}{Enter}{/Control}');
+  expect(onEnter).toHaveBeenCalledTimes(1);
+  await userEvent.keyboard('{Meta>}{Enter}{/Meta}');
+  expect(onEnter).toHaveBeenCalledTimes(2);
+});
+
+test('Enter inside a textarea never confirms, even with a modifier — Modal never hijacks it', async () => {
+  const onEnter = vi.fn();
+  const screen = renderModal(
+    <Modal open label="Textarea demo" onClose={vi.fn()} onEnter={onEnter}>
+      <div className="p-4">
+        <textarea aria-label="notes" />
+      </div>
+    </Modal>,
+  );
+  // Focus the textarea deterministically, then type: Enter inserts a newline and
+  // even ⌘/Ctrl+Enter is left to the field (its own submit accelerator).
+  await screen.getByLabelText('notes').click();
+  await userEvent.keyboard('{Enter}');
+  await userEvent.keyboard('{Control>}{Enter}{/Control}');
+  expect(onEnter).not.toHaveBeenCalled();
+});
+
 test('renders no dialog while closed', async () => {
   const screen = renderModal(
     <Modal open={false} label="Trap demo" onClose={vi.fn()}>

@@ -25,8 +25,9 @@ export interface ModalProps {
   panelVariants?: Variants;
   /** Esc, click-outside, and the close affordance route here. */
   onClose: () => void;
-  /** Optional Enter-to-confirm. When set, Enter anywhere in the dialog (outside a
-   *  textarea) invokes it — matching the ConfirmDialog convention. */
+  /** Optional confirm-on-Cmd/Ctrl+Enter. When set, Cmd/Ctrl+Enter anywhere in the
+   *  dialog (outside a textarea) invokes it — the house dialog rule (bare Enter
+   *  never confirms). See {@link isConfirmEnter}. */
   onEnter?: () => void;
   children: ReactNode;
 }

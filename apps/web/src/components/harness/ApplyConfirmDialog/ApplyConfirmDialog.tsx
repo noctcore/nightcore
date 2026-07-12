@@ -1,4 +1,4 @@
-import { Button, Kbd, Modal, Spinner, useLastPresent } from '@/components/ui';
+import { Button, ConfirmHint, Modal, Spinner, useLastPresent } from '@/components/ui';
 
 import { ARTIFACT_KIND_META, WRITE_MODE_META } from '../harness.constants';
 import type { ApplyConfirmDialogProps } from './ApplyConfirmDialog.types';
@@ -16,8 +16,9 @@ function explainApplyError(error: string): string {
 
 /** The pre-write confirmation for applying a harness artifact to disk. Built on
  *  the shared `<Modal>` and matched to the `ConfirmDialog` sibling convention: Esc
- *  / click-outside cancel, Enter confirms (the Apply button takes initial focus via
- *  `[data-confirm]`), and the `↵ to confirm` Kbd hint sits at the footer's left.
+ *  / click-outside cancel, Cmd/Ctrl+Enter confirms (Cancel takes initial focus so a
+ *  stray bare Enter can't fire the write), and the `⌘/Ctrl+↵ to confirm` hint sits
+ *  at the footer's left.
  *
  *  Beyond ConfirmDialog it adds the write-specific chrome: the confirm is disabled
  *  while the write is in flight (so it can't double-fire), and any error the Rust
@@ -47,7 +48,7 @@ export function ApplyConfirmDialog({
       open={open}
       role="alertdialog"
       label={artifactVM !== null ? `Apply ${artifactVM.title}` : 'Apply artifact'}
-      initialFocus="[data-confirm]"
+      initialFocus="[data-cancel]"
       onClose={onCancel}
       onEnter={applying ? undefined : onConfirm}
     >
@@ -88,10 +89,8 @@ export function ApplyConfirmDialog({
         )}
       </div>
       <div className="flex items-center justify-end gap-2 border-t border-border bg-black/15 px-5 py-3.5">
-        <span className="mr-auto flex items-center gap-1 text-xs text-muted-foreground">
-          <Kbd>↵</Kbd> to confirm
-        </span>
-        <Button variant="ghost" disabled={applying} onClick={onCancel}>
+        <ConfirmHint>to confirm</ConfirmHint>
+        <Button data-cancel variant="ghost" disabled={applying} onClick={onCancel}>
           Cancel
         </Button>
         <Button data-confirm disabled={applying} aria-busy={applying} onClick={onConfirm}>

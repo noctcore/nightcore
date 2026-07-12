@@ -34,9 +34,31 @@ test('Escape invokes onCancel', async () => {
   expect(onCancel).toHaveBeenCalled();
 });
 
-test('Enter invokes onConfirm', async () => {
+test('bare Enter does not confirm — Cancel has initial focus, so it cancels instead', async () => {
   const onConfirm = vi.fn();
-  render(<Destructive onConfirm={onConfirm} />);
+  const onCancel = vi.fn();
+  const screen = render(<Destructive onConfirm={onConfirm} onCancel={onCancel} />);
+  // Cancel (the safe action) takes initial focus, so a stray Enter can't confirm.
+  await expect.element(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
   await userEvent.keyboard('{Enter}');
+  expect(onConfirm).not.toHaveBeenCalled();
+  expect(onCancel).toHaveBeenCalled();
+});
+
+test('Cmd/Ctrl+Enter invokes onConfirm (the house confirm accelerator)', async () => {
+  const onConfirm = vi.fn();
+  const onCancel = vi.fn();
+  render(<Destructive onConfirm={onConfirm} onCancel={onCancel} />);
+  await userEvent.keyboard('{Control>}{Enter}{/Control}');
   expect(onConfirm).toHaveBeenCalled();
+  expect(onCancel).not.toHaveBeenCalled();
+});
+
+test('the footer hint shows the modifier + Enter confirm pairing', async () => {
+  const screen = render(<Destructive />);
+  // The ⌘/Ctrl + ↵ chips (platform-dependent modifier) plus the "to confirm" label —
+  // no bare ↵ hint any more.
+  await expect.element(screen.getByText('↵')).toBeInTheDocument();
+  await expect.element(screen.getByText(/^(⌘|Ctrl)$/)).toBeInTheDocument();
+  await expect.element(screen.getByText(/to confirm/)).toBeInTheDocument();
 });

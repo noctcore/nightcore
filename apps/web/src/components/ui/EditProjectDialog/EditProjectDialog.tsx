@@ -1,5 +1,5 @@
 import { Button } from '../Button';
-import { Kbd } from '../Kbd';
+import { ConfirmHint } from '../ConfirmHint';
 import { Modal } from '../Modal';
 import { ProjectIconEditor } from '../ProjectIconEditor/ProjectIconEditor';
 import { useEditProjectDialog } from './EditProjectDialog.hooks';
@@ -62,9 +62,7 @@ export function EditProjectDialog(props: EditProjectDialogProps) {
         )}
       </div>
       <div className="flex items-center justify-end gap-2 border-t border-border bg-black/15 px-5 py-3.5">
-        <span className="mr-auto flex items-center gap-1 text-xs text-muted-foreground">
-          <Kbd>↵</Kbd> to save
-        </span>
+        <ConfirmHint>to save</ConfirmHint>
         <Button variant="ghost" onClick={onClose} disabled={dialog.saving}>
           Cancel
         </Button>
