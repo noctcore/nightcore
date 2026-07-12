@@ -17,7 +17,13 @@ status: string,
 /**
  * The convention lenses requested for this scan (wire strings).
  */
-categories: Array<string>, model: string, createdAt: number, updatedAt: number, costUsd: number, durationMs: number, usage: HarnessUsage, profile: StoredRepoProfile, findings: Array<StoredConventionFinding>, artifacts: Array<StoredProposedArtifact>, 
+categories: Array<string>, model: string, createdAt: number, updatedAt: number, costUsd: number, durationMs: number, usage: HarnessUsage, profile: StoredRepoProfile, findings: Array<StoredConventionFinding>, 
+/**
+ * Deep mode (issue #294): per-lens round count (1-based), keyed by the convention
+ * category wire string. Persisted so "round N" survives reconcile/resume; empty for
+ * a classic single-pass scan (which never emits round events).
+ */
+roundsByCategory: { [key in string]: number }, artifacts: Array<StoredProposedArtifact>, 
 /**
  * The task-shaped proposals synthesis produced (the unit the user converts to a
  * board task). Additive (`#[serde(default)]`) so a pre-proposals on-disk scan loads

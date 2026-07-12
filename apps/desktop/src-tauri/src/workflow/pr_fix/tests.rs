@@ -52,6 +52,7 @@ fn review_run(id: &str, pr_number: u64, findings: Vec<StoredReviewFinding>) -> P
         duration_ms: 0,
         usage: InsightUsage::default(),
         findings,
+        rounds_by_lens: std::collections::HashMap::new(),
         error: None,
         verdict: None,
         verdict_reasoning: None,

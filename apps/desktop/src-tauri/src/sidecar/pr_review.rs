@@ -16,7 +16,7 @@
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::contracts::{EffortLevel, ReviewLens, SurfaceCommand};
+use crate::contracts::{DeepScanConfig, EffortLevel, ReviewLens, SurfaceCommand};
 use crate::project::ProjectStore;
 use crate::store::insight::InsightUsage;
 use crate::store::pr_review::{PrReviewRun, PrReviewStore, StoredReviewFinding};
@@ -123,6 +123,7 @@ pub async fn start_pr_review(
     model: Option<String>,
     effort: Option<EffortLevel>,
     provider_id: Option<String>,
+    deep: Option<DeepScanConfig>,
 ) -> Result<String, String> {
     // Reject an invalid PR number before doing any work (it arrives as a u64).
     if pr_number == 0 {
@@ -156,6 +157,7 @@ pub async fn start_pr_review(
         duration_ms: 0,
         usage: InsightUsage::default(),
         findings: Vec::new(),
+        rounds_by_lens: std::collections::HashMap::new(),
         error: None,
         verdict: None,
         verdict_reasoning: None,
@@ -231,6 +233,10 @@ pub async fn start_pr_review(
         model,
         effort,
         max_concurrency: None,
+        // Deep mode (issue #294): passed straight through from the web toggle. `None` ⇒
+        // the classic single-pass path, byte-identical to pre-deep. The review is
+        // diff-bounded, so a deep run self-limits (converges in a round or two).
+        deep,
     };
     dispatch_scan_command(&app, "pr-review", &run_id, command, |msg| {
         pr_review_store
@@ -482,6 +488,49 @@ pub(crate) async fn handle_pr_review_event(app: &AppHandle, event_type: &str, ev
             );
             tracing::info!(target: "nightcore", run_id, lens, findings = count, cost_usd = cost, "pr review lens completed");
         }
+        // Deep mode (issue #294): one ROUND of a lens finished. Persist the round's
+        // cumulative DIFF-GROUNDED findings + its OWN (per-round) spend via the SAME
+        // running-only `accumulate_findings` path `pr-review-lens-completed` uses, so a
+        // multi-hour lens that crashes keeps every prior round's paid work; also record
+        // the per-lens round count for the live "round N" indicator. Both are no-ops once
+        // the run leaves `running` (the terminal event is authoritative). Mirrors Insight.
+        "pr-review-round-completed" => {
+            let lens = event.get("lens").and_then(Value::as_str).unwrap_or("");
+            let round = event.get("round").and_then(Value::as_u64).unwrap_or(0);
+            let new_this_round = event
+                .get("newFindingsThisRound")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            let cost = event.get("costUsd").and_then(Value::as_f64).unwrap_or(0.0);
+            let usage = event.get("usage");
+            let token = |key: &str| {
+                usage
+                    .and_then(|u| u.get(key))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0)
+            };
+            let parsed: Vec<StoredReviewFinding> = event
+                .get("findings")
+                .and_then(Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(StoredReviewFinding::from_wire)
+                        .collect()
+                })
+                .unwrap_or_default();
+            let count = parsed.len();
+            let dismissed = pr_review_store.dismissed_fingerprints(Some(run_id));
+            let _ = pr_review_store.accumulate_findings(
+                run_id,
+                parsed,
+                &dismissed,
+                cost,
+                token("inputTokens"),
+                token("outputTokens"),
+            );
+            pr_review_store.record_lens_round(run_id, lens, round as u32);
+            tracing::info!(target: "nightcore", run_id, lens, round, new_findings = new_this_round, cumulative = count, cost_usd = cost, "pr review lens round completed");
+        }
         _ => {}
     }
 }
@@ -505,6 +554,7 @@ mod tests {
             duration_ms: 0,
             usage: InsightUsage::default(),
             findings: Vec::new(),
+            rounds_by_lens: std::collections::HashMap::new(),
             error: None,
             verdict: None,
             verdict_reasoning: None,

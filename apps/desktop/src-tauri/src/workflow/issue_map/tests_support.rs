@@ -213,6 +213,7 @@ pub(crate) fn harness_run() -> HarnessRun {
                 "dismissed",
             ),
         ],
+        rounds_by_category: std::collections::HashMap::new(),
         artifacts: vec![],
         proposals: vec![],
         coverage: vec![

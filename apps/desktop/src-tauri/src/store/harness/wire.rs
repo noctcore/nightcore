@@ -398,6 +398,11 @@ pub struct HarnessRun {
     pub profile: StoredRepoProfile,
     #[serde(default)]
     pub findings: Vec<StoredConventionFinding>,
+    /// Deep mode (issue #294): per-lens round count (1-based), keyed by the convention
+    /// category wire string. Persisted so "round N" survives reconcile/resume; empty for
+    /// a classic single-pass scan (which never emits round events).
+    #[serde(default)]
+    pub rounds_by_category: std::collections::HashMap<String, u32>,
     #[serde(default)]
     pub artifacts: Vec<StoredProposedArtifact>,
     /// The task-shaped proposals synthesis produced (the unit the user converts to a

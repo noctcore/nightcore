@@ -15,7 +15,7 @@ use std::path::Path;
 
 use tauri::{AppHandle, Emitter, State};
 
-use crate::contracts::{ConventionCategory, EffortLevel, SurfaceCommand};
+use crate::contracts::{ConventionCategory, DeepScanConfig, EffortLevel, SurfaceCommand};
 use crate::project::ProjectStore;
 use crate::sidecar::scan::{
     begin_scan_run, dispatch_scan_command, scan_lifecycle_commands, wire_str, ScanRunInit,
@@ -67,8 +67,14 @@ scan_lifecycle_commands! {
 
 /// Start a Harness scan over the active project. Creates the persisted run (status
 /// `running`), dispatches the `start-harness-scan` command, and returns the `runId` the
-/// `harness-*` events correlate by.
+/// `harness-*` events correlate by. `deep`, when present, opts the scan into the
+/// multi-round convergence loop (issue #294) — the web toggle always sends EXPLICIT
+/// round/convergence/cap values (never an empty object): the generated `DeepScanConfig`
+/// fields default to `0` on deserialize (not the zod schema's 15/2/20), so an omitted
+/// field would silently zero that knob. This command passes `deep` straight through to
+/// `SurfaceCommand::StartHarnessScan` with no intermediate re-serialization.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn start_harness_scan(
     app: AppHandle,
     projects: State<'_, ProjectStore>,
@@ -77,6 +83,7 @@ pub async fn start_harness_scan(
     model: Option<String>,
     effort: Option<EffortLevel>,
     provider_id: Option<String>,
+    deep: Option<DeepScanConfig>,
 ) -> Result<String, String> {
     let ScanRunInit {
         project_path,
@@ -106,6 +113,7 @@ pub async fn start_harness_scan(
         usage: HarnessUsage::default(),
         profile: StoredRepoProfile::default(),
         findings: Vec::new(),
+        rounds_by_category: std::collections::HashMap::new(),
         artifacts: Vec::new(),
         proposals: Vec::new(),
         coverage: Vec::new(),
@@ -130,6 +138,9 @@ pub async fn start_harness_scan(
         max_concurrency: None,
         max_turns_per_category: None,
         max_budget_usd_per_category: None,
+        // Deep mode (issue #294): passed straight through from the web toggle.
+        // `None` ⇒ the classic single-pass path, byte-identical to pre-deep.
+        deep,
     };
     dispatch_scan_command(&app, "harness", &run_id, command, |msg| {
         harness_store

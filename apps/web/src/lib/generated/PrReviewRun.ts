@@ -18,7 +18,14 @@ status: string,
 /**
  * The lenses requested for this run (wire strings).
  */
-lenses: Array<string>, model: string, createdAt: number, updatedAt: number, costUsd: number, durationMs: number, usage: InsightUsage, findings: Array<StoredReviewFinding>, error: string | null, 
+lenses: Array<string>, model: string, createdAt: number, updatedAt: number, costUsd: number, durationMs: number, usage: InsightUsage, findings: Array<StoredReviewFinding>, 
+/**
+ * Deep mode (issue #294): per-lens round count (1-based), keyed by the review lens
+ * wire string. Persisted so "round N" survives reconcile/resume; empty for a classic
+ * single-pass review (which never emits round events). Because the review is
+ * diff-bounded, a deep run self-limits — the counts stay small.
+ */
+roundsByLens: { [key in string]: number }, error: string | null, 
 /**
  * The synthesis pass's overall merge recommendation (wire `MergeVerdict` string:
  * `ready` | `merge_with_changes` | `needs_revision` | `blocked`). Stamped from the

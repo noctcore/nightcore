@@ -297,6 +297,49 @@ pub(crate) async fn handle_harness_event(app: &AppHandle, event_type: &str, even
             );
             tracing::info!(target: "nightcore", run_id, category, findings = count, cost_usd = cost, "harness lens completed");
         }
+        // Deep mode (issue #294): one ROUND of a lens finished. Persist the round's
+        // cumulative grounded findings + its OWN (per-round) spend via the SAME
+        // running-only `accumulate_findings` path `harness-category-completed` uses, so
+        // a multi-hour lens that crashes keeps every prior round's paid work; also record
+        // the per-lens round count for the live "round N" indicator. Both are no-ops once
+        // the scan leaves `running` (the terminal event is authoritative). Mirrors Insight.
+        "harness-category-round-completed" => {
+            let category = event.get("category").and_then(Value::as_str).unwrap_or("");
+            let round = event.get("round").and_then(Value::as_u64).unwrap_or(0);
+            let new_this_round = event
+                .get("newFindingsThisRound")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            let cost = event.get("costUsd").and_then(Value::as_f64).unwrap_or(0.0);
+            let usage = event.get("usage");
+            let token = |key: &str| {
+                usage
+                    .and_then(|u| u.get(key))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0)
+            };
+            let parsed: Vec<StoredConventionFinding> = event
+                .get("findings")
+                .and_then(Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(StoredConventionFinding::from_wire)
+                        .collect()
+                })
+                .unwrap_or_default();
+            let count = parsed.len();
+            let dismissed = harness_store.dismissed_finding_fingerprints(Some(run_id));
+            let _ = harness_store.accumulate_findings(
+                run_id,
+                parsed,
+                &dismissed,
+                cost,
+                token("inputTokens"),
+                token("outputTokens"),
+            );
+            harness_store.record_category_round(run_id, category, round as u32);
+            tracing::info!(target: "nightcore", run_id, category, round, new_findings = new_this_round, cumulative = count, cost_usd = cost, "harness lens round completed");
+        }
         "harness-synthesis-started" => {
             // Persist the synthesizing flag so a reload during the (serial,
             // multi-minute) synthesis tail still projects the "Synthesizing…"

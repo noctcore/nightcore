@@ -118,4 +118,21 @@ impl HarnessStore {
             |run| &mut run.findings,
         )
     }
+
+    /// Record a deep-mode round count for a lens (1-based). Running-only, mirroring
+    /// [`accumulate_findings`] and the Insight store: a late round event after the
+    /// terminal `harness-scan-completed` must not touch a finalized scan (the status
+    /// check happens before the mutate so a non-running scan is a true no-op).
+    pub fn record_category_round(&self, run_id: &str, category: &str, round: u32) {
+        if self
+            .get(run_id)
+            .map(|r| r.status != "running")
+            .unwrap_or(true)
+        {
+            return;
+        }
+        let _ = self.mutate(run_id, |run| {
+            run.rounds_by_category.insert(category.to_string(), round);
+        });
+    }
 }

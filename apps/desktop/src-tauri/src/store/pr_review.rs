@@ -150,6 +150,12 @@ pub struct PrReviewRun {
     pub usage: InsightUsage,
     #[serde(default)]
     pub findings: Vec<StoredReviewFinding>,
+    /// Deep mode (issue #294): per-lens round count (1-based), keyed by the review lens
+    /// wire string. Persisted so "round N" survives reconcile/resume; empty for a classic
+    /// single-pass review (which never emits round events). Because the review is
+    /// diff-bounded, a deep run self-limits — the counts stay small.
+    #[serde(default)]
+    pub rounds_by_lens: std::collections::HashMap<String, u32>,
     pub error: Option<String>,
     /// The synthesis pass's overall merge recommendation (wire `MergeVerdict` string:
     /// `ready` | `merge_with_changes` | `needs_revision` | `blocked`). Stamped from the
@@ -306,6 +312,23 @@ impl PrReviewStore {
         )
     }
 
+    /// Record a deep-mode round count for a lens (1-based). Running-only, mirroring
+    /// [`accumulate_findings`] and the Insight store: a late round event after the
+    /// terminal `pr-review-completed` must not touch a finalized run (the status check
+    /// happens before the mutate so a non-running run is a true no-op).
+    pub fn record_lens_round(&self, run_id: &str, lens: &str, round: u32) {
+        if self
+            .get(run_id)
+            .map(|r| r.status != "running")
+            .unwrap_or(true)
+        {
+            return;
+        }
+        let _ = self.mutate(run_id, |run| {
+            run.rounds_by_lens.insert(lens.to_string(), round);
+        });
+    }
+
     /// Every fingerprint a user has CONVERTED to a task across all runs (optionally
     /// excluding `except_run`), mapped to the task id it was linked to. Used to carry
     /// convert-history forward: a re-discovered finding whose fingerprint was already
@@ -366,6 +389,7 @@ mod tests {
             duration_ms: 0,
             usage: InsightUsage::default(),
             findings,
+            rounds_by_lens: HashMap::new(),
             error: None,
             verdict: None,
             verdict_reasoning: None,
@@ -710,6 +734,34 @@ mod tests {
             "dismissed",
             "a re-surfaced, previously-dismissed finding stays dismissed mid-run"
         );
+    }
+
+    #[test]
+    fn record_lens_round_updates_a_running_run_but_noops_once_settled() {
+        // Deep mode (issue #294): the reader's round arm records a per-lens round count
+        // ONLY while the run is running; a late round event after the terminal
+        // `pr-review-completed` must not touch a finalized run (mirrors Insight).
+        let (store, _tmp) = store();
+        let mut r = run("live", vec![]);
+        r.status = "running".into();
+        store.upsert(&r).unwrap();
+
+        store.record_lens_round("live", "security", 2);
+        assert_eq!(
+            store.get("live").unwrap().rounds_by_lens.get("security"),
+            Some(&2)
+        );
+        // The next round overwrites (round N is 1-based, monotonic per lens).
+        store.record_lens_round("live", "security", 3);
+        assert_eq!(
+            store.get("live").unwrap().rounds_by_lens.get("security"),
+            Some(&3)
+        );
+
+        // A settled (completed) run is a true no-op — the terminal event is authoritative.
+        store.upsert(&run("done", vec![])).unwrap(); // the helper builds a `completed` run
+        store.record_lens_round("done", "security", 5);
+        assert!(store.get("done").unwrap().rounds_by_lens.is_empty());
     }
 
     #[test]

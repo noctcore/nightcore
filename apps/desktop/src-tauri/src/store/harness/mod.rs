@@ -94,6 +94,7 @@ mod tests {
             usage: HarnessUsage::default(),
             profile: StoredRepoProfile::default(),
             findings: vec![finding("f1", "fp1")],
+            rounds_by_category: std::collections::HashMap::new(),
             artifacts: vec![artifact("a1", "afp1")],
             proposals: vec![proposal("p1", "pfp1")],
             coverage: vec![coverage("fp1")],
@@ -145,6 +146,43 @@ mod tests {
         let reloaded = HarnessStore::load_from(tmp.path().join("harness"));
         assert_eq!(reloaded.get("r1").unwrap().artifacts[0].fingerprint, "afp1");
         assert_eq!(reloaded.get("r1").unwrap().proposals[0].fingerprint, "pfp1");
+    }
+
+    #[test]
+    fn record_category_round_updates_a_running_scan_but_noops_once_settled() {
+        // Deep mode (issue #294): the reader's round arm records a per-lens round count
+        // ONLY while the scan is running; a late round event after the terminal
+        // `harness-scan-completed` must not touch a finalized scan (mirrors Insight).
+        let (store, _tmp) = store();
+        let mut r = run("live");
+        r.status = "running".into();
+        r.rounds_by_category.clear();
+        store.upsert(&r).unwrap();
+
+        store.record_category_round("live", "architecture", 3);
+        assert_eq!(
+            store
+                .get("live")
+                .unwrap()
+                .rounds_by_category
+                .get("architecture"),
+            Some(&3)
+        );
+        // The next round overwrites (round N is 1-based, monotonic per lens).
+        store.record_category_round("live", "architecture", 4);
+        assert_eq!(
+            store
+                .get("live")
+                .unwrap()
+                .rounds_by_category
+                .get("architecture"),
+            Some(&4)
+        );
+
+        // A settled (completed) scan is a true no-op — the terminal event is authoritative.
+        store.upsert(&run("done")).unwrap(); // the helper builds a `completed` run
+        store.record_category_round("done", "architecture", 2);
+        assert!(store.get("done").unwrap().rounds_by_category.is_empty());
     }
 
     #[test]
