@@ -29,8 +29,10 @@ import type { MergePreviewDialogProps } from './MergePreviewDialog.types';
  *  silently revert that commit on merge, the documented silent-revert incident.
  *
  *  Built on the shared `<Modal>` primitive, so it gets the focus trap + Esc /
- *  click-outside close for free. Enter confirms the merge when it is mergeable.
- *  Purely presentational: the parent computes the preview and owns the actions. */
+ *  click-outside close for free. Cmd/Ctrl+Enter confirms the merge when it is
+ *  mergeable (bare Enter never does — the house dialog rule guards this destructive
+ *  action). Purely presentational: the parent computes the preview and owns the
+ *  actions. */
 export function MergePreviewDialog({
   open,
   preview,

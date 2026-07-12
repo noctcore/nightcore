@@ -1,6 +1,22 @@
 /** Focus-trap, escape-to-close, and focus-restore behavior for Modal. */
 import { useEffect, useRef } from 'react';
 
+/** The house dialog rule for confirm-on-Enter: a confirmation fires only on
+ *  Cmd/Ctrl+Enter, never on bare Enter (which is too easy to hit accidentally),
+ *  and never from inside a `<textarea>` (where Enter inserts a newline and ⌘↵ is
+ *  the field's own submit accelerator). Shared by {@link Modal}'s `onEnter` handler
+ *  and by any dialog that wires its own keydown (e.g. FolderBrowserDialog), so
+ *  every dialog's confirm accelerator is the same. */
+export function isConfirmEnter(
+  e: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'target'>,
+): boolean {
+  return (
+    e.key === 'Enter' &&
+    (e.metaKey || e.ctrlKey) &&
+    !(e.target instanceof HTMLTextAreaElement)
+  );
+}
+
 /** Retain the last non-nullish value so a presence-animated dialog keeps its
  *  content while it animates OUT — after the source data (a selected finding, a
  *  merge preview, a pending confirmation) has already cleared. Without this the

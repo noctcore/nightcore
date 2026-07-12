@@ -2,7 +2,7 @@
 import { createPortal } from 'react-dom';
 
 import { AnimatePresence, backdrop, m, scaleFade } from '../motion';
-import { useModal } from './Modal.hooks';
+import { isConfirmEnter, useModal } from './Modal.hooks';
 import type { ModalProps } from './Modal.types';
 
 const DEFAULT_OVERLAY =
@@ -19,9 +19,10 @@ const DEFAULT_PANEL =
  *  when closed. `MotionConfig reducedMotion="user"` (app root) collapses the
  *  transforms under OS reduced-motion, keeping only the opacity fade.
  *
- *  Esc and click-outside close; Enter (when `onEnter` is set) confirms, except
- *  inside a textarea where Enter inserts a newline. Click-outside is suppressed
- *  when the click originates inside the panel.
+ *  Esc and click-outside close; Cmd/Ctrl+Enter (when `onEnter` is set) confirms —
+ *  bare Enter never does (the house dialog rule), and Enter inside a textarea
+ *  always inserts a newline. Click-outside is suppressed when the click originates
+ *  inside the panel.
  *
  *  The overlay is portaled to `document.body` so ancestor flex/transform/stacking
  *  rules (e.g. `.nc-board-appearance`) never participate in its layout. */
@@ -63,11 +64,7 @@ export function Modal({
             exit="exit"
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
-              if (
-                onEnter !== undefined &&
-                e.key === 'Enter' &&
-                !(e.target instanceof HTMLTextAreaElement)
-              ) {
+              if (onEnter !== undefined && isConfirmEnter(e)) {
                 e.preventDefault();
                 onEnter();
               }

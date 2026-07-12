@@ -1,6 +1,6 @@
 /** Reusable confirmation modal for guarding destructive actions. */
 import { Button } from '../Button';
-import { Kbd } from '../Kbd';
+import { ConfirmHint } from '../ConfirmHint';
 import { Modal, useLastPresent } from '../Modal';
 import { Spinner } from '../Spinner';
 import type { ConfirmDialogProps } from './ConfirmDialog.types';
@@ -8,7 +8,8 @@ import type { ConfirmDialogProps } from './ConfirmDialog.types';
 /** A small centered confirmation modal — the reusable destructive-action guard.
  *  Cosmic-dark, matching the app's overlay chrome. Built on the shared `<Modal>`
  *  primitive, so it gets the focus trap + focus-restore-to-opener for free; Esc /
- *  click-outside cancel; Enter confirms; the confirm button takes initial focus. */
+ *  click-outside cancel; Cmd/Ctrl+Enter confirms. Cancel (the safe action) takes
+ *  initial focus, so a stray bare Enter can't fire the confirm. */
 export function ConfirmDialog({
   open,
   title,
@@ -33,7 +34,7 @@ export function ConfirmDialog({
       open={open}
       role="alertdialog"
       label={shown.title}
-      initialFocus="[data-confirm]"
+      initialFocus="[data-cancel]"
       onClose={onCancel}
       // Enter is inert while the action is in flight so a held key can't re-fire it.
       onEnter={shown.busy ? undefined : onConfirm}
@@ -43,10 +44,8 @@ export function ConfirmDialog({
         <div className="text-[13px] leading-relaxed text-muted-foreground">{shown.message}</div>
       </div>
       <div className="flex items-center justify-end gap-2 border-t border-border bg-black/15 px-5 py-3.5">
-        <span className="mr-auto flex items-center gap-1 text-xs text-muted-foreground">
-          <Kbd>↵</Kbd> to confirm
-        </span>
-        <Button variant="ghost" disabled={shown.busy} onClick={onCancel}>
+        <ConfirmHint>to confirm</ConfirmHint>
+        <Button data-cancel variant="ghost" disabled={shown.busy} onClick={onCancel}>
           {shown.cancelLabel}
         </Button>
         <Button

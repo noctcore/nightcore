@@ -7,8 +7,8 @@
 import {
   AlertIcon,
   Button,
+  ConfirmHint,
   DecomposeIcon,
-  Kbd,
   Modal,
   MoveIcon,
   Spinner,
@@ -58,7 +58,7 @@ export function ConvertToTaskDialog({
       open={open}
       role="dialog"
       label="Convert validation to a board task"
-      initialFocus="[data-confirm]"
+      initialFocus="[data-cancel]"
       panelClassName={PANEL}
       onClose={onClose}
       onEnter={converting || shown.alreadyLinked ? undefined : onConvert}
@@ -108,7 +108,7 @@ export function ConvertToTaskDialog({
       <div className="flex items-center justify-end gap-2 border-t border-border bg-black/15 px-5 py-3.5">
         {shown.alreadyLinked ? (
           <>
-            <Button variant="ghost" onClick={onClose}>
+            <Button data-cancel variant="ghost" onClick={onClose}>
               Close
             </Button>
             <Button data-confirm variant="primary" onClick={onGotoBoard}>
@@ -118,10 +118,8 @@ export function ConvertToTaskDialog({
           </>
         ) : (
           <>
-            <span className="mr-auto flex items-center gap-1 text-xs text-muted-foreground">
-              <Kbd>↵</Kbd> to create
-            </span>
-            <Button variant="ghost" disabled={converting} onClick={onClose}>
+            <ConfirmHint>to create</ConfirmHint>
+            <Button data-cancel variant="ghost" disabled={converting} onClick={onClose}>
               Cancel
             </Button>
             <Button
