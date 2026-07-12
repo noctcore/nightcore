@@ -392,10 +392,10 @@ mod tests {
     fn confined_untracked_path_allows_a_dotfile_the_write_path_denies() {
         // Divergence proof (issue #178): the READ path resolves a legitimate
         // `.github/workflows/*.yml` for a diff view — the shared containment core carries
-        // NO execution-sink denylist. The WRITE path (`sidecar::harness::apply::safe_join`)
+        // NO execution-sink denylist. The WRITE path (`infra::safe_join::safe_join`)
         // rejects the very same target via that denylist (see
-        // `apply::tests::safe_join_rejects_execution_sinks` and
-        // `apply::tests::write_path_denies_a_dotfile_the_read_path_core_allows`), because a
+        // `infra::safe_join::tests::safe_join_rejects_execution_sinks` and
+        // `infra::safe_join::tests::write_path_denies_a_dotfile_the_read_path_core_allows`), because a
         // synthesized artifact must never LAND an auto-executing workflow file. Same core,
         // different layering.
         let tmp = TempDir::new().unwrap();

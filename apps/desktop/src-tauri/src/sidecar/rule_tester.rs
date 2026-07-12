@@ -121,7 +121,7 @@ fn authorize_rule(
     // Contain the rule module inside the active project with the shared symlink guard the
     // harness file-write path uses. Rejects `..`/absolute/symlink-escaping paths (and, as a
     // bonus, execution sinks) — a compromised webview can never reach a file outside the repo.
-    let contained = crate::sidecar::harness::safe_join(project_root, rule_path).map_err(|e| {
+    let contained = crate::infra::safe_join::safe_join(project_root, rule_path).map_err(|e| {
         tracing::warn!(target: "nightcore::rule_tester", rule_id = %rule_id, rule_path = %rule_path, error = %e, "rule path rejected (containment)");
         e
     })?;

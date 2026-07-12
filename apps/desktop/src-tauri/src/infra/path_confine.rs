@@ -4,7 +4,7 @@
 //! trusted root and must prove it cannot escape via a symlink. They previously
 //! re-implemented the identical walk; this module is the single home for it:
 //!
-//!  * the WRITE path — [`crate::sidecar::harness::apply::safe_join`] composes this core
+//!  * the WRITE path — [`crate::infra::safe_join::safe_join`] composes this core
 //!    UNDER an execution-sink denylist. A synthesized harness artifact must never LAND a
 //!    `.github/workflows/*.yml`, `.claude/settings.json`, `package.json`, … that would
 //!    auto-execute on the next agent run, so that denylist is layered on top of the core.

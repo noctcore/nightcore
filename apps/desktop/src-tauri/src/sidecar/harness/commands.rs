@@ -16,6 +16,7 @@ use std::path::Path;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::contracts::{ConventionCategory, DeepScanConfig, EffortLevel, SurfaceCommand};
+use crate::infra::safe_join::safe_join;
 use crate::project::ProjectStore;
 use crate::sidecar::scan::{
     begin_scan_run, dispatch_scan_command, scan_lifecycle_commands, wire_str, ScanRunInit,
@@ -25,7 +26,7 @@ use crate::store::harness::{
     ApplyOutcome, HarnessRun, HarnessStore, HarnessUsage, StoredProposedArtifact, StoredRepoProfile,
 };
 
-use super::apply::{safe_join, write_create, write_merge_manifest, write_merge_section};
+use super::apply::{write_create, write_merge_manifest, write_merge_section};
 
 /// The check kinds the Structure-Lock gauntlet knows how to run — the single source
 /// of truth lives beside the runner (`workflow::gauntlet_project::ARMABLE_CHECK_KINDS`,

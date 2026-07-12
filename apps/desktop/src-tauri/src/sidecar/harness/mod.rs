@@ -46,8 +46,3 @@ pub(crate) use events::*;
 // (sidecar/mod.rs:53 convention).
 #[allow(unused_imports)]
 pub use apply::*;
-// `safe_join` (the shared repo-relative + symlink-containment guard) is reused OUTSIDE
-// this module by the RuleTester runner to contain a caller-supplied `rule_path` before
-// it is loaded/executed (issue #194 item 4). Re-export it at crate visibility so
-// `sidecar::harness::safe_join` resolves for that sibling.
-pub(crate) use apply::safe_join;
