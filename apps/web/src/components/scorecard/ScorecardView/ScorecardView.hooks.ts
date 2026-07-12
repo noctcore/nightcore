@@ -19,11 +19,13 @@ import {
   startScorecard,
   type Task,
 } from '@/lib/bridge';
-import { formatRunReceipt } from '@/lib/formatters';
 import {
+  buildRunHistory,
+  buildScanSummary,
   countOpenItems,
   deriveRunPhase,
   patchStreamItem,
+  scanEmptyMessage,
   seedStepState,
 } from '@/lib/scan-run';
 import { useBulkConvert } from '@/lib/useBulkConvert';
@@ -283,19 +285,18 @@ export function useScorecardView({
 
   const summary = useMemo(() => {
     const n = stream.requestedDimensions.length;
-    const parts = [
+    return buildScanSummary([
       stream.model ?? 'default',
       ...(config.effort != null ? [config.effort] : []),
       `${n} ${n === 1 ? 'dimension' : 'dimensions'}`,
-    ];
-    return `⌖ ${parts.join(' · ')}`;
+    ]);
   }, [stream.model, stream.requestedDimensions, config.effort]);
 
   const runHistory: MenuItem[] = useMemo(
     () =>
-      scorecard.runs.map((run) => ({
-        label: `${new Date(run.createdAt).toLocaleString()} · ${run.readings.length} graded · ${formatRunReceipt(run.costUsd, run.durationMs)}`,
-        onClick: () => {
+      buildRunHistory(scorecard.runs, (run) => ({
+        count: `${run.readings.length} graded`,
+        onSelect: () => {
           resetRun();
           void scorecard.selectRun(run.id);
         },
@@ -303,17 +304,22 @@ export function useScorecardView({
     [scorecard, resetRun],
   );
 
-  const emptyMessage = useMemo(() => {
-    if (stream.status === 'idle') {
-      return 'Grade the codebase to see per-dimension production-readiness scores.';
-    }
-    if (stream.status === 'running') return 'Grading…';
-    if (stream.status === 'failed') {
-      if (stream.failureReason === 'aborted') return 'Grading cancelled.';
-      return `Grading failed${stream.error !== null ? `: ${stream.error}` : ''}.`;
-    }
-    return 'No dimensions graded.';
-  }, [stream.status, stream.error, stream.failureReason]);
+  const emptyMessage = useMemo(
+    () =>
+      scanEmptyMessage({
+        status: stream.status,
+        failureReason: stream.failureReason,
+        error: stream.error,
+        verbs: {
+          idle: 'Grade the codebase to see per-dimension production-readiness scores.',
+          running: 'Grading…',
+          aborted: 'Grading cancelled.',
+          failed: 'Grading failed',
+          empty: 'No dimensions graded.',
+        },
+      }),
+    [stream.status, stream.error, stream.failureReason],
+  );
 
   return {
     hasProject,

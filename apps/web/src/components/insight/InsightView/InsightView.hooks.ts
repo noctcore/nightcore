@@ -9,12 +9,14 @@ import type {
 } from '@/components/ui';
 import { useToast } from '@/components/ui';
 import type { FindingCategory } from '@/lib/bridge';
-import { formatRunReceipt } from '@/lib/formatters';
 import {
   buildLensTabs,
+  buildRunHistory,
+  buildScanSummary,
   countByLens,
   countOpenItems,
   deriveRunPhase,
+  scanEmptyMessage,
   scanSkeletonCount,
 } from '@/lib/scan-run';
 import { sortBySeverityThenStatus } from '@/lib/severity';
@@ -189,20 +191,19 @@ export function useInsightView({
 
   const summary = useMemo(() => {
     const n = stream.requestedCategories.length;
-    const parts = [
+    return buildScanSummary([
       stream.model ?? 'default',
       ...(config.effort != null ? [config.effort] : []),
       stream.scope ?? 'repo',
       `${n} ${n === 1 ? 'category' : 'categories'}`,
-    ];
-    return `⌖ ${parts.join(' · ')}`;
+    ]);
   }, [stream.model, stream.scope, stream.requestedCategories, config.effort]);
 
   const runHistory: MenuItem[] = useMemo(
     () =>
-      insight.runs.map((run) => ({
-        label: `${new Date(run.createdAt).toLocaleString()} · ${run.findings.length} findings · ${formatRunReceipt(run.costUsd, run.durationMs)}`,
-        onClick: () => {
+      buildRunHistory(insight.runs, (run) => ({
+        count: `${run.findings.length} findings`,
+        onSelect: () => {
           // Selecting a past run lands on its RESULTS — drop any reconfigure/peek
           // first, else the derived phase stays on CONFIGURE (reconfiguring=true).
           resetTransient();
@@ -213,17 +214,22 @@ export function useInsightView({
     [insight, resetTransient, resetBulk],
   );
 
-  const emptyMessage = useMemo(() => {
-    if (stream.status === 'idle') {
-      return 'Run an analysis to surface findings across your codebase.';
-    }
-    if (stream.status === 'running') return 'Analyzing…';
-    if (stream.status === 'failed') {
-      if (stream.failureReason === 'aborted') return 'Analysis cancelled.';
-      return `Analysis failed${stream.error !== null ? `: ${stream.error}` : ''}.`;
-    }
-    return 'No findings in this category — a clean bill of health.';
-  }, [stream.status, stream.error, stream.failureReason]);
+  const emptyMessage = useMemo(
+    () =>
+      scanEmptyMessage({
+        status: stream.status,
+        failureReason: stream.failureReason,
+        error: stream.error,
+        verbs: {
+          idle: 'Run an analysis to surface findings across your codebase.',
+          running: 'Analyzing…',
+          aborted: 'Analysis cancelled.',
+          failed: 'Analysis failed',
+          empty: 'No findings in this category — a clean bill of health.',
+        },
+      }),
+    [stream.status, stream.error, stream.failureReason],
+  );
 
   return {
     hasProject,
