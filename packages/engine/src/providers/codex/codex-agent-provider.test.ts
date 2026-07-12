@@ -1,10 +1,13 @@
 /// <reference types="bun" />
+import { existsSync } from 'node:fs';
+import { isAbsolute } from 'node:path';
 import { describe, expect, test } from 'bun:test';
 
 import type {
   HarnessPolicy,
   NightcoreEvent,
   NightcoreEventOf,
+  WireImage,
 } from '@nightcore/contracts';
 
 import type { AgentSession } from '../agent-provider.js';
@@ -28,6 +31,7 @@ import {
 } from './options.js';
 import {
   createCodexTranslationState,
+  type Input,
   type ThreadEvent,
   translateCodexEvent,
 } from './sdk-adapter.js';
@@ -288,20 +292,28 @@ describe('Codex governance preflight (#296)', () => {
 });
 
 describe('Codex reviewer read-only posture', () => {
-  test('only the review kind is pinned read-only', () => {
+  test('the review and decompose kinds are pinned read-only', () => {
     expect(codexKindForcesReadOnly('review')).toBe(true);
+    // Decompose investigates read-only and only PROPOSES sub-tasks, so it must never
+    // mutate the repo — mirror Claude's `WRITE_TOOLS` denial by pinning it to the
+    // read-only sandbox (issue #296 item 3).
+    expect(codexKindForcesReadOnly('decompose')).toBe(true);
     expect(codexKindForcesReadOnly('build')).toBe(false);
     expect(codexKindForcesReadOnly('tdd')).toBe(false);
-    expect(codexKindForcesReadOnly('decompose')).toBe(false);
+    expect(codexKindForcesReadOnly('research')).toBe(false);
     expect(codexKindForcesReadOnly(undefined)).toBe(false);
   });
 
-  test('a review run is forced to plan regardless of the resolved autonomy', () => {
+  test('a review or decompose run is forced to plan regardless of the resolved autonomy', () => {
     // Even an elevated writable ceiling collapses to read-only `plan` for a reviewer.
     expect(codexEffectiveAutonomy('auto-accept', 'review')).toBe('plan');
     expect(codexEffectiveAutonomy('bypass', 'review')).toBe('plan');
     expect(codexEffectiveAutonomy(undefined, 'review')).toBe('plan');
-    // Non-review kinds pass the requested autonomy through (undefined → safe plan).
+    // A writable autonomy is forced read-only for decompose too (the read-only proposer).
+    expect(codexEffectiveAutonomy('auto-accept', 'decompose')).toBe('plan');
+    expect(codexEffectiveAutonomy('bypass', 'decompose')).toBe('plan');
+    expect(codexEffectiveAutonomy(undefined, 'decompose')).toBe('plan');
+    // Write-capable kinds pass the requested autonomy through (undefined → safe plan).
     expect(codexEffectiveAutonomy('auto-accept', 'build')).toBe('auto-accept');
     expect(codexEffectiveAutonomy(undefined, 'build')).toBe('plan');
   });
@@ -335,6 +347,24 @@ describe('Codex reviewer read-only posture', () => {
       emit,
     );
     // `plan` is the read-only record mode: the reviewer never gets a writable session.
+    expect(session.permissionMode).toBe('plan');
+  });
+
+  test('startSession records a decompose run as read-only even when handed auto-accept', () => {
+    const { emit } = collector();
+    const session = provider.startSession(
+      {
+        sessionId: 44,
+        prompt: 'decompose this goal',
+        model: 'gpt-5-codex',
+        cwd: '/tmp',
+        kind: 'decompose',
+        autonomyOverride: 'auto-accept',
+      },
+      emit,
+    );
+    // Decompose is a read-only proposer: it never gets a writable session, mirroring
+    // Claude's `WRITE_TOOLS` denial for the decompose preset.
     expect(session.permissionMode).toBe('plan');
   });
 
@@ -666,6 +696,171 @@ describe('Codex follow-up turns (streamInput)', () => {
     await ref.session.run();
 
     expect(inputs).toEqual(['do the thing']);
+  });
+});
+
+describe('Codex image attachments (local_image)', () => {
+  const tinyImage = (tag: string): WireImage => ({
+    format: 'png',
+    data: Buffer.from(`image-bytes-${tag}`).toString('base64'),
+  });
+
+  /** A thread that records each turn's raw `Input` and, for image turns, whether each
+   *  `local_image` path existed AT CALL TIME (i.e. while the turn ran, before run()'s
+   *  cleanup `finally` fires). Fires `onTurnOne` just before completing turn 1 so a
+   *  test can inject a mid-run follow-up. */
+  function recordingThread(
+    received: Input[],
+    existedDuringTurn: boolean[],
+    onTurnOne?: () => void,
+  ): CodexThreadLike {
+    return {
+      runStreamed(input) {
+        received.push(input);
+        if (Array.isArray(input)) {
+          for (const part of input) {
+            if (part.type === 'local_image') {
+              existedDuringTurn.push(existsSync(part.path));
+            }
+          }
+        }
+        const turnIndex = received.length;
+        async function* events(): AsyncGenerator<ThreadEvent> {
+          if (turnIndex === 1) {
+            yield { type: 'thread.started', thread_id: 'thread-img' };
+          }
+          yield { type: 'turn.started' };
+          yield {
+            type: 'item.completed',
+            item: {
+              id: `msg-${turnIndex}`,
+              type: 'agent_message',
+              text: `turn ${turnIndex}`,
+            },
+          };
+          if (turnIndex === 1) onTurnOne?.();
+          yield {
+            type: 'turn.completed',
+            usage: {
+              input_tokens: 1,
+              cached_input_tokens: 0,
+              output_tokens: 1,
+              reasoning_output_tokens: 0,
+            },
+          };
+        }
+        return Promise.resolve({ events: events() });
+      },
+    };
+  }
+
+  function imageProvider(
+    received: Input[],
+    existedDuringTurn: boolean[],
+    onTurnOne?: () => void,
+  ): CodexAgentProvider {
+    const factory: CodexFactory = () => {
+      // One thread per session; the SDK resumes it by id on each follow-up turn.
+      const thread = recordingThread(received, existedDuringTurn, onTurnOne);
+      return { startThread: () => thread, resumeThread: () => thread };
+    };
+    return new CodexAgentProvider(undefined, factory);
+  }
+
+  /** The `local_image` paths carried on a turn's input (empty for a plain-string turn). */
+  function imagePaths(input: Input | undefined): string[] {
+    if (input === undefined || !Array.isArray(input)) return [];
+    return input.flatMap((part) => (part.type === 'local_image' ? [part.path] : []));
+  }
+
+  // `research` inherits an empty preset (no appended persona), so the first-turn text
+  // equals the raw prompt — letting these tests assert the text element exactly.
+  const imageParams = (sessionId: number, images?: WireImage[]) =>
+    ({
+      sessionId,
+      prompt: 'describe these',
+      model: 'gpt-5-codex',
+      cwd: '/tmp',
+      kind: 'research' as const,
+      autonomyOverride: 'auto-accept' as const,
+      ...(images !== undefined ? { images } : {}),
+    });
+
+  test('first turn carries the text plus one local_image per image at real, existing, absolute paths', async () => {
+    const received: Input[] = [];
+    const existed: boolean[] = [];
+    const provider = imageProvider(received, existed);
+    const { emit } = collector();
+    const session = provider.startSession(
+      imageParams(50, [tinyImage('a'), tinyImage('b')]),
+      emit,
+    );
+    await session.run();
+
+    expect(received).toHaveLength(1);
+    const first = received[0];
+    expect(Array.isArray(first)).toBe(true);
+    const parts = first as Exclude<Input, string>;
+    expect(parts[0]).toEqual({ type: 'text', text: 'describe these' });
+    const images = parts.slice(1);
+    expect(images).toHaveLength(2);
+    for (const part of images) {
+      expect(part.type).toBe('local_image');
+      if (part.type === 'local_image') {
+        expect(isAbsolute(part.path)).toBe(true);
+      }
+    }
+    // Each temp file existed WHILE the turn ran (before the cleanup finally).
+    expect(existed).toEqual([true, true]);
+  });
+
+  test('a run with no images passes a plain string input (byte-identical to pre-image)', async () => {
+    const received: Input[] = [];
+    const existed: boolean[] = [];
+    const provider = imageProvider(received, existed);
+    const { emit } = collector();
+    const session = provider.startSession(imageParams(51), emit);
+    await session.run();
+
+    expect(received).toEqual(['describe these']);
+    expect(existed).toEqual([]);
+  });
+
+  test('follow-up turns never carry images (only the first turn does)', async () => {
+    const received: Input[] = [];
+    const existed: boolean[] = [];
+    const ref: { session?: AgentSession } = {};
+    const provider = imageProvider(received, existed, () => {
+      ref.session?.streamInput('and now a follow-up');
+    });
+    const { emit } = collector();
+    ref.session = provider.startSession(imageParams(52, [tinyImage('a')]), emit);
+    await ref.session.run();
+
+    expect(received).toHaveLength(2);
+    // Turn 1 carries the image UserInput[]; the follow-up turn is a plain string.
+    expect(Array.isArray(received[0])).toBe(true);
+    expect(received[1]).toBe('and now a follow-up');
+  });
+
+  test('temp image files are cleaned up after the run resolves', async () => {
+    const received: Input[] = [];
+    const existed: boolean[] = [];
+    const provider = imageProvider(received, existed);
+    const { emit } = collector();
+    const session = provider.startSession(
+      imageParams(53, [tinyImage('a'), tinyImage('b')]),
+      emit,
+    );
+    await session.run();
+
+    const paths = imagePaths(received[0]);
+    expect(paths).toHaveLength(2);
+    // Existed during the turn, gone once run() resolved (removed in the finally).
+    expect(existed).toEqual([true, true]);
+    for (const path of paths) {
+      expect(existsSync(path)).toBe(false);
+    }
   });
 });
 

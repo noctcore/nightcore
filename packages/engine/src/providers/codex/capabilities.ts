@@ -1,10 +1,10 @@
 /**
- * The Codex provider's capability descriptor (issue #18, Phase 4 — the
- * second-provider spike that validates the seam).
+ * The Codex provider's capability descriptor (issue #18, Phase 4).
  *
- * This is the real Codex capability descriptor. Codex still has no PreToolUse hook
- * seam, but it does ship native sandbox/approval controls; Nightcore treats those
- * as provider-owned write containment for the elevated `auto-accept` posture.
+ * The real, shipped Codex capability descriptor — the second provider running behind
+ * the neutral agent-provider seam. Codex has no PreToolUse hook seam, but it does
+ * ship native sandbox/approval controls; Nightcore treats those as provider-owned
+ * write containment for the elevated `auto-accept` posture.
  *
  *  - `supportsHooks: false` — there is no Claude-style PreToolUse gate.
  *  - `providesOwnWriteContainment: true` — Codex's native sandbox is the

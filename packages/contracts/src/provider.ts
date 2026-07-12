@@ -10,13 +10,17 @@ import { z } from 'zod';
  * descriptor instead of a `match provider` branch — the same graceful-degradation
  * pattern already proven by the tri-state `provider-config` inspector.
  *
- * This module is CONTRACT-ONLY. It introduces the vocabulary (`ProviderId`,
- * `AutonomyLevel`, `ProviderCapabilities`); no consumer is wired to it yet, so it
- * changes no behavior. Because nothing on the NDJSON wire (`SurfaceCommand` /
- * `NightcoreEvent` / `SurfaceQuery`) references these shapes yet, the zod→Rust
- * codegen (`gen-rust-contracts.ts`) does not emit them into `generated.rs` at this
- * phase — the canonical Rust names are pre-registered in that emitter's
- * `ENUM_NAMES` so a later wiring phase emits them without a rename. See issue #18.
+ * This module is CONTRACT-ONLY — it introduces the vocabulary (`ProviderId`,
+ * `AutonomyLevel`, `ProviderCapabilities`). The descriptor IS consumed: the web UI
+ * degrades from it (the plan-mode gate, the effort row, and the token/cost line each
+ * key off a capability flag rather than the provider id) and orchestration reads it
+ * to resolve the effective posture — degradation always flows from the descriptor,
+ * never from a `match provider` branch (coupling audit §3). Nothing on the NDJSON
+ * wire (`SurfaceCommand` / `NightcoreEvent` / `SurfaceQuery`) carries these shapes —
+ * they are resolved provider-side (engine + web) — so the zod→Rust codegen
+ * (`gen-rust-contracts.ts`) still does not emit them into `generated.rs`; the
+ * canonical Rust names stay pre-registered in that emitter's `ENUM_NAMES` for a later
+ * wiring phase to emit without a rename. See issue #18.
  */
 
 /**

@@ -28,6 +28,7 @@ import {
   CODEX_PROVIDER_ID,
   CODEX_PROVIDER_LABEL,
 } from './capabilities.js';
+import { buildCodexFirstTurnInput } from './codex-images.js';
 import { listCodexModels, probeCodexCli } from './model-catalog.js';
 import {
   buildCodexOptions,
@@ -44,6 +45,7 @@ import {
   type CodexFactory,
   createCodexTranslationState,
   defaultCodexFactory,
+  type Input,
   type ThreadEvent,
   translateCodexEvent,
   type TurnOptions,
@@ -114,6 +116,8 @@ class CodexSession implements AgentSession {
       return;
     }
 
+    // Cleanup for the first-turn image temp files (set only when the run had images).
+    let cleanupImages: (() => void) | undefined;
     try {
       const posture = codexPostureForAutonomy(this.autonomy, {
         bypassOptedIn: codexBypassOptedIn(),
@@ -151,16 +155,12 @@ class CodexSession implements AgentSession {
         ...(this.params.kind !== undefined ? { kind: this.params.kind } : {}),
       });
 
-      // The first turn carries the composed context pack + persona + prompt; each
-      // follow-up turn carries only the user's new message (the resumed thread
-      // retains the prior context, so re-sending the persona would double it up).
-      let input: string = [
-        this.params.appendContextPack,
-        preset.appendSystemPrompt,
-        this.params.prompt,
-      ]
-        .filter((part): part is string => part !== undefined && part.length > 0)
-        .join('\n\n');
+      // First turn = context pack + persona + prompt PLUS any image attachments; each
+      // follow-up turn carries only the user's new message (the resumed thread retains
+      // the prior context). Its image temp files are removed in the `finally`.
+      const firstTurn = buildCodexFirstTurnInput(this.params, preset.appendSystemPrompt);
+      cleanupImages = firstTurn.cleanup;
+      let input: Input = firstTurn.input;
 
       // A Codex turn is a one-shot `codex exec`, so a mid-run follow-up can only be
       // delivered as the NEXT turn (the SDK resumes the thread by id when
@@ -212,6 +212,10 @@ class CodexSession implements AgentSession {
       const message = error instanceof Error ? error.message : String(error);
       this.logger?.warn('codex session failed', { message });
       this.fail('runner-crash', message);
+    } finally {
+      // Remove the first-turn image temp files on EVERY exit (completion, failure, or
+      // interrupt). No-op when the run had no images.
+      cleanupImages?.();
     }
   }
 
@@ -390,12 +394,13 @@ export class CodexAgentProvider implements AgentProvider {
     // initiative tracked as #304; this refusal is the durable answer until then.
     assertGovernanceInvariant(this.capabilities(), params);
 
-    // Resolve the EFFECTIVE ceiling: a read-only KIND (the reviewer/verify identity)
-    // is pinned to `plan` — the read-only sandbox — no matter the resolved autonomy,
-    // so a Codex reviewer is provably unable to mutate the repo (Codex has no
-    // `disallowedTools` wiring, so the KIND's read-only-ness must be enforced by the
-    // kernel sandbox, not a tool denylist). Every other kind defaults the
-    // undefined-autonomy path to the safe read-only `plan` (`ask` would deadlock).
+    // Resolve the EFFECTIVE ceiling: a read-only KIND (the reviewer/verify identity
+    // OR the decompose proposer) is pinned to `plan` — the read-only sandbox — no
+    // matter the resolved autonomy, so such a run is provably unable to mutate the
+    // repo (Codex has no `disallowedTools` wiring, so the KIND's read-only-ness must
+    // be enforced by the kernel sandbox, not a tool denylist). Every other kind
+    // defaults the undefined-autonomy path to the safe read-only `plan` (`ask` would
+    // deadlock).
     const autonomy: AutonomyLevel = codexEffectiveAutonomy(
       params.autonomyOverride,
       params.kind,

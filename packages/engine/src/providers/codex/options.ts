@@ -100,18 +100,25 @@ export function codexPostureForAutonomy(
 
 /**
  * Task kinds pinned to a kernel read-only posture under Codex regardless of the
- * autonomy the run resolved to: the reviewer / verify identity.
+ * autonomy the run resolved to: the reviewer / verify identity (`review`) AND the
+ * decompose proposer (`decompose`).
  *
- * WHY THIS EXISTS: the Claude reviewer is made read-only by the `review` KIND preset
- * (`disallowedTools: [WRITE_TOOLS…]` + a `dontAsk` permission mode). Codex has NO
- * equivalent tool-surface wiring — `buildCodexThreadOptions` derives its posture
- * purely from the autonomy — so a Codex reviewer would inherit whatever ceiling the
- * run resolved (e.g. the global `bypass`/`auto-accept` default) and could WRITE. We
- * close that by pinning a read-only KIND to the `plan` posture (the codex kernel's
+ * WHY THIS EXISTS: Claude makes both kinds read-only via their KIND presets
+ * (`disallowedTools: [WRITE_TOOLS…]` — the `review` preset also adds a `dontAsk`
+ * permission mode; the `decompose` preset investigates read-only and only PROPOSES
+ * sub-tasks, so it too denies `WRITE_TOOLS`). Codex has NO equivalent tool-surface
+ * wiring — `buildCodexThreadOptions` derives its posture purely from the autonomy —
+ * so a Codex reviewer OR decompose run would inherit whatever ceiling the run
+ * resolved (e.g. the global `bypass`/`auto-accept` default) and could WRITE. We close
+ * that by pinning these read-only KINDs to the `plan` posture (the codex kernel's
  * `read-only` sandbox), which is STRONGER than a tool denylist: the OS blocks the
- * write below the tool layer, so a reviewer is provably unable to mutate the repo.
+ * write below the tool layer, so the run is provably unable to mutate the repo —
+ * exactly mirroring Claude's `WRITE_TOOLS` denial for both kinds.
  */
-const CODEX_READ_ONLY_KINDS: ReadonlySet<TaskKind> = new Set<TaskKind>(['review']);
+const CODEX_READ_ONLY_KINDS: ReadonlySet<TaskKind> = new Set<TaskKind>([
+  'review',
+  'decompose',
+]);
 
 /** Whether a task kind must run read-only under Codex no matter the resolved
  *  autonomy (see {@link CODEX_READ_ONLY_KINDS}). */
@@ -120,11 +127,12 @@ export function codexKindForcesReadOnly(kind: TaskKind | undefined): boolean {
 }
 
 /**
- * The effective autonomy a Codex run uses. A read-only KIND (the reviewer) is pinned
- * to `plan` — the read-only sandbox — so it can NEVER be handed a writable posture,
- * whatever autonomy was resolved for the task. Every other kind uses the requested
- * autonomy, defaulting to the safe read-only `plan` when none was set (`ask` is no
- * longer a supported ceiling — it would deadlock).
+ * The effective autonomy a Codex run uses. A read-only KIND (the reviewer OR the
+ * decompose proposer — see {@link CODEX_READ_ONLY_KINDS}) is pinned to `plan` — the
+ * read-only sandbox — so it can NEVER be handed a writable posture, whatever autonomy
+ * was resolved for the task. Every other kind uses the requested autonomy, defaulting
+ * to the safe read-only `plan` when none was set (`ask` is no longer a supported
+ * ceiling — it would deadlock).
  */
 export function codexEffectiveAutonomy(
   requested: AutonomyLevel | undefined,

@@ -47,10 +47,10 @@ class StaticProviderRegistry implements ProviderRegistry {
 }
 
 /** Construct the agent provider named by `config.provider`. The single engine-side
- *  provider-selection point (issue #18): `codex` → the degraded {@link
- *  CodexAgentProvider} spike; everything else (including `claude`) → the {@link
- *  ClaudeAgentProvider}. Adding a provider is a new arm HERE plus its
- *  `providers/<id>/` implementation — never a branch in the supervisor. */
+ *  provider-selection point (issue #18): `codex` → the {@link CodexAgentProvider};
+ *  everything else (including `claude`) → the {@link ClaudeAgentProvider}. Adding a
+ *  provider is a new arm HERE plus its `providers/<id>/` implementation — never a
+ *  branch in the supervisor. */
 export function buildProvider(
   config: Config,
   opts: { apiKeyFallback: boolean },
