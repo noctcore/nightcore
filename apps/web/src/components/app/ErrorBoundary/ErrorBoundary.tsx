@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 import { AlertIcon, Button, EmptyState, RetryIcon } from '@/components/ui';
+import { logger } from '@/lib/logger';
 
 import { useReload } from './ErrorBoundary.hooks';
 import type { ErrorBoundaryProps, ErrorBoundaryState } from './ErrorBoundary.types';
@@ -48,8 +49,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    // A render crash's component stack is safe to log for diagnosis.
-    console.error('Unhandled UI error', error, info.componentStack);
+    // A render crash's message + stacks are safe to log for diagnosis. Routed through
+    // the structured web logger (#245) so UI errors are greppable and carry a single
+    // seam future telemetry can hook, instead of a bare console.error.
+    logger.error('ui.error-boundary', 'Unhandled UI error', {
+      error: error.message,
+      stack: error.stack,
+      componentStack: info.componentStack,
+    });
   }
 
   render(): ReactNode {
