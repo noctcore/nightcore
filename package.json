@@ -15,6 +15,7 @@
   ],
   "scripts": {
     "typecheck": "tsc -b",
+    "prebuild": "bun run scripts/clean-dist.ts",
     "build": "tsc -b",
     "clean": "tsc -b --clean",
     "desktop": "bun run --filter @nightcore/desktop dev",
