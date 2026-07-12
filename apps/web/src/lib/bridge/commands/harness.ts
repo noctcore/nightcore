@@ -13,6 +13,7 @@ import type {
   HarnessPolicyPatch,
   HarnessRun,
   InjectionFlag,
+  RuleValidationResult,
   Task,
 } from '../types';
 
@@ -272,6 +273,44 @@ export async function updateArmedCheck(
  *  result as the last run, and return the refreshed view. Rejects outside Tauri. */
 export async function runArmedChecksNow(): Promise<ArmedChecksState> {
   return invoke<ArmedChecksState>('run_armed_checks_now', {});
+}
+
+/** The arguments to {@link validatePluginRule} — the `validate_plugin_rule` invoke
+ *  shape (issue #185). Only `ruleId` + `rulePath` are required; omit `validCases` /
+ *  `invalidCases` for a structural probe ("is this a real rule at all?"). */
+export interface ValidatePluginRuleArgs {
+  /** The rule id being validated (for reporting; e.g. the armed check's name). */
+  ruleId: string;
+  /** Absolute or `projectPath`-relative path to the rule/plugin module to load. */
+  rulePath: string;
+  /** The rule's key within a plugin's `rules` map (omit ⇒ derived from `ruleId`). */
+  ruleName?: string | null;
+  /** Project root that roots a relative `rulePath` + the ESLint toolchain (omit ⇒ engine cwd). */
+  projectPath?: string | null;
+  /** RuleTester `valid` cases (source, or a JSON case object). Empty ⇒ probe. */
+  validCases?: string[];
+  /** RuleTester `invalid` cases (JSON `{ code, errors }`, or bare source). */
+  invalidCases?: string[];
+}
+
+/** Validate an armed `lint-plugin` rule via ESLint's `RuleTester` on demand (issue
+ *  #185) — the "is this armed check a real rule that actually fires, not a placebo?"
+ *  probe. Loads the rule cross-toolchain and runs the supplied cases (or a structural
+ *  probe when none are given) against the target project's own ESLint, returning a
+ *  {@link RuleValidationResult}. Fails SOFT engine-side: a rule/toolchain that won't
+ *  load resolves as `outcome: 'error'` (not a rejection). Uses raw `invoke` (throws
+ *  outside Tauri) like the other on-demand check actions. */
+export async function validatePluginRule(
+  args: ValidatePluginRuleArgs,
+): Promise<RuleValidationResult> {
+  return invoke<RuleValidationResult>('validate_plugin_rule', {
+    ruleId: args.ruleId,
+    rulePath: args.rulePath,
+    ruleName: args.ruleName ?? null,
+    projectPath: args.projectPath ?? null,
+    validCases: args.validCases ?? null,
+    invalidCases: args.invalidCases ?? null,
+  });
 }
 
 // --- Harness policy authoring + injection scan ------------------------------

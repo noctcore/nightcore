@@ -1,5 +1,5 @@
 /** Types for the Checks Manager — the armed-checks panel on the Enforce stage. */
-import type { ArmedCheck, ArmedChecksLastRun } from '@/lib/bridge';
+import type { ArmedCheck, ArmedChecksLastRun, RuleValidationResult } from '@/lib/bridge';
 
 /** The in-progress edit of one armed check. `timeoutMs` is the raw input string
  *  (parsed to a number on save; blank ⇒ the runner default). */
@@ -40,6 +40,21 @@ export interface ChecksRemoveVM {
   confirm: () => void;
 }
 
+/** The per-check "Validate rule" slice (issue #185): confirm an armed `lint-plugin`
+ *  check is a REAL rule that fires via RuleTester, not a placebo. Keyed by check name
+ *  so each row surfaces its own last verdict / error independently. */
+export interface ChecksValidateVM {
+  /** The last {@link RuleValidationResult} per check name (populated after a run). */
+  results: Record<string, RuleValidationResult>;
+  /** A transport/invoke error per check name, distinct from a soft `outcome: 'error'`
+   *  (which is a well-formed result the runner returns without rejecting). */
+  errors: Record<string, string>;
+  /** The check with an in-flight validation, if any (its row shows a spinner). */
+  pendingName: string | null;
+  /** Validate one armed check's rule; only offered for `lint-plugin` checks. */
+  start: (check: ArmedCheck) => void;
+}
+
 /** The whole Checks Manager view model, grouped so the panel renders purely from it. */
 export interface ChecksManagerVM {
   loading: boolean;
@@ -54,6 +69,7 @@ export interface ChecksManagerVM {
   toggle: (name: string, enabled: boolean) => void;
   edit: ChecksEditVM;
   remove: ChecksRemoveVM;
+  validate: ChecksValidateVM;
 }
 
 /** Props for {@link ChecksManager}. It owns its data via `useChecksManager`, so the

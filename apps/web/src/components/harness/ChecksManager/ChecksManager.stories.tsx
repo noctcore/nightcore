@@ -33,6 +33,12 @@ function makeVm(over: Partial<ChecksManagerVM> = {}): ChecksManagerVM {
       cancel: noop,
       confirm: noop,
     },
+    validate: {
+      results: {},
+      errors: {},
+      pendingName: null,
+      start: noop,
+    },
     ...over,
   };
 }
@@ -95,6 +101,62 @@ export const WithFailure: Story = {
 
 /** No checks armed yet — the guidance empty state. */
 export const Empty: Story = { args: { vm: makeVm() } };
+
+/** A lint-plugin check whose rule was validated: the structural-probe verdict shows
+ *  inline under the row (the "real rule, not a placebo" confirmation). */
+export const Validated: Story = {
+  args: {
+    vm: makeVm({
+      checks: [LINT],
+      validate: {
+        results: {
+          'folder-per-component': {
+            ruleId: 'folder-per-component',
+            outcome: 'probed',
+            ruleLoaded: true,
+            eslintVersion: '9.11.0',
+            validPassed: 0,
+            validTotal: 0,
+            invalidPassed: 0,
+            invalidTotal: 0,
+            cases: [],
+          },
+        },
+        errors: {},
+        pendingName: null,
+        start: noop,
+      },
+    }),
+  },
+};
+
+/** A lint-plugin check whose rule could not be loaded — the soft `error` verdict with
+ *  the runner's diagnostic message. */
+export const ValidationFailed: Story = {
+  args: {
+    vm: makeVm({
+      checks: [LINT],
+      validate: {
+        results: {
+          'folder-per-component': {
+            ruleId: 'folder-per-component',
+            outcome: 'error',
+            ruleLoaded: false,
+            validPassed: 0,
+            validTotal: 0,
+            invalidPassed: 0,
+            invalidTotal: 0,
+            cases: [],
+            error: "could not load rule 'folder-per-component' from '': module not found",
+          },
+        },
+        errors: {},
+        pendingName: null,
+        start: noop,
+      },
+    }),
+  },
+};
 
 /** A check open in the inline editor. */
 export const Editing: Story = {

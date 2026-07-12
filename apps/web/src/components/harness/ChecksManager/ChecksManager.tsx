@@ -13,8 +13,14 @@ import {
   Spinner,
   Toggle,
   TrashIcon,
+  VerifiedIcon,
 } from '@/components/ui';
-import type { ArmedCheck, ArmedCheckOutcome, ArmedChecksLastRun } from '@/lib/bridge';
+import type {
+  ArmedCheck,
+  ArmedCheckOutcome,
+  ArmedChecksLastRun,
+  RuleValidationResult,
+} from '@/lib/bridge';
 import { formatRelativeTime } from '@/lib/formatters';
 
 import { useChecksManager } from './ChecksManager.hooks';
@@ -97,6 +103,55 @@ function CheckResult({ result }: { result: ArmedCheckOutcome }) {
   );
 }
 
+type ValidationOutcome = RuleValidationResult['outcome'];
+
+/** The tint per RuleTester verdict: a probe/pass is good, a failed rule is a hard
+ *  fail, a load/setup error is a warning (the check may still be fine — the runner
+ *  just couldn't reach the rule). */
+const VALIDATION_TONE: Record<ValidationOutcome, string> = {
+  passed: 'text-success',
+  probed: 'text-success',
+  failed: 'text-destructive',
+  error: 'text-warning',
+};
+
+const VALIDATION_LABEL: Record<ValidationOutcome, string> = {
+  passed: 'Rule validated',
+  probed: 'Real rule (structural probe passed)',
+  failed: 'Rule failed validation',
+  error: 'Could not validate',
+};
+
+/** One check's last "Validate rule" verdict: the RuleTester outcome + case tally +
+ *  any soft error the runner reported (a rule that wouldn't load, etc.). */
+function ValidationResult({ result }: { result: RuleValidationResult }) {
+  const total = result.validTotal + result.invalidTotal;
+  const passed = result.validPassed + result.invalidPassed;
+  return (
+    <div className="mt-1 flex flex-col gap-1">
+      <div className="flex items-center gap-2 font-mono text-[11px]">
+        <span className={VALIDATION_TONE[result.outcome]}>
+          {result.outcome === 'failed' || result.outcome === 'error' ? '✕' : '✓'}{' '}
+          {VALIDATION_LABEL[result.outcome]}
+        </span>
+        {total > 0 && (
+          <span className="text-muted-foreground">
+            {passed}/{total} cases
+          </span>
+        )}
+        {result.eslintVersion !== undefined && (
+          <span className="text-muted-foreground">eslint {result.eslintVersion}</span>
+        )}
+      </div>
+      {result.error !== undefined && (
+        <pre className="max-h-32 overflow-auto rounded-[6px] border border-border bg-black/30 px-2 py-1.5 font-mono text-[10.5px] text-muted-foreground">
+          {result.error}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 /** The inline edit form for a check (name / kind / command / timeout). */
 function EditForm({ edit }: { edit: ChecksEditVM }) {
   const draft = edit.draft;
@@ -165,6 +220,13 @@ function CheckRow({ check, vm }: { check: ArmedCheck; vm: ChecksManagerVM }) {
   const editingThis = vm.edit.draft?.originalName === check.name;
   if (editingThis) return <EditForm edit={vm.edit} />;
 
+  // Only a `lint-plugin` check is a RuleTester-validatable rule; other kinds have no
+  // rule module to probe.
+  const canValidate = check.kind === 'lint-plugin';
+  const validating = vm.validate.pendingName === check.name;
+  const validation = vm.validate.results[check.name];
+  const validationError = vm.validate.errors[check.name];
+
   return (
     <div
       className={`flex flex-col gap-1 rounded-[9px] border border-border bg-card/40 p-3 ${
@@ -183,6 +245,19 @@ function CheckRow({ check, vm }: { check: ArmedCheck; vm: ChecksManagerVM }) {
         </span>
         {vm.pendingName === check.name && <Spinner size={12} />}
         <div className="ml-auto flex items-center gap-1">
+          {canValidate && (
+            <button
+              type="button"
+              aria-label={`Validate rule ${check.name}`}
+              className="rounded-[6px] p-1 text-muted-foreground hover:text-foreground disabled:opacity-50"
+              onClick={() => vm.validate.start(check)}
+              disabled={validating}
+              aria-busy={validating}
+              title="Validate this rule with ESLint's RuleTester"
+            >
+              {validating ? <Spinner size={14} /> : <VerifiedIcon size={14} />}
+            </button>
+          )}
           <button
             type="button"
             aria-label={`Edit ${check.name}`}
@@ -208,6 +283,12 @@ function CheckRow({ check, vm }: { check: ArmedCheck; vm: ChecksManagerVM }) {
         )}
       </div>
       {check.lastResult !== undefined && <CheckResult result={check.lastResult} />}
+      {validation !== undefined && <ValidationResult result={validation} />}
+      {validationError !== undefined && (
+        <p className="mt-1 font-mono text-[11px] text-destructive">
+          Could not validate: {validationError}
+        </p>
+      )}
     </div>
   );
 }

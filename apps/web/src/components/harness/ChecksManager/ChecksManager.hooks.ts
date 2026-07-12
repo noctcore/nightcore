@@ -8,9 +8,11 @@ import {
   type ArmedChecksState,
   listArmedChecks,
   removeArmedCheck,
+  type RuleValidationResult,
   runArmedChecksNow,
   setArmedCheckEnabled,
   updateArmedCheck,
+  validatePluginRule,
 } from '@/lib/bridge';
 
 import type { ChecksEditDraft, ChecksManagerVM } from './ChecksManager.types';
@@ -37,6 +39,10 @@ export function useChecksManager(): ChecksManagerVM {
 
   const [removeTarget, setRemoveTarget] = useState<ArmedCheck | null>(null);
   const [removeBusy, setRemoveBusy] = useState(false);
+
+  const [validateResults, setValidateResults] = useState<Record<string, RuleValidationResult>>({});
+  const [validateErrors, setValidateErrors] = useState<Record<string, string>>({});
+  const [validatingName, setValidatingName] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -67,11 +73,35 @@ export function useChecksManager(): ChecksManagerVM {
     })();
   }, []);
 
-  // TODO(#185): add a per-check "Validate rule" trigger here for `lint-plugin`
-  // checks — invoke the `validate_plugin_rule` command (Bun-sidecar RuleTester
-  // runner) and surface its RuleValidationResult (passed/failed/probed/error) inline,
-  // so a user can confirm an armed check is a real rule that fires, not a placebo.
-  // The runner + Rust command shipped in this PR; the UI trigger is the deferred slice.
+  // The per-check "Validate rule" trigger (issue #185): confirm an armed `lint-plugin`
+  // check is a REAL rule that fires via the Bun-sidecar RuleTester runner, not a
+  // placebo. Runs a structural probe (no cases) — `configPath` names the rule/plugin
+  // module to load; the runner fails SOFT (a load failure returns `outcome: 'error'`,
+  // not a rejection), so a rejection here is only a transport/engine error.
+  const startValidate = useCallback((check: ArmedCheck) => {
+    const name = check.name;
+    setValidatingName(name);
+    setValidateErrors((prev) => {
+      if (prev[name] === undefined) return prev;
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
+    void (async () => {
+      try {
+        const result = await validatePluginRule({
+          ruleId: name,
+          rulePath: check.configPath ?? '',
+          projectPath: null,
+        });
+        setValidateResults((prev) => ({ ...prev, [name]: result }));
+      } catch (err) {
+        setValidateErrors((prev) => ({ ...prev, [name]: errMessage(err) }));
+      } finally {
+        setValidatingName((current) => (current === name ? null : current));
+      }
+    })();
+  }, []);
 
   const toggle = useCallback((name: string, enabled: boolean) => {
     setPendingName(name);
@@ -189,6 +219,12 @@ export function useChecksManager(): ChecksManagerVM {
       request: requestRemove,
       cancel: cancelRemove,
       confirm: confirmRemove,
+    },
+    validate: {
+      results: validateResults,
+      errors: validateErrors,
+      pendingName: validatingName,
+      start: startValidate,
     },
   };
 }

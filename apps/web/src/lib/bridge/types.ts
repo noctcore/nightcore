@@ -219,6 +219,15 @@ export type {
   RuleCoverageGap,
   WorkspaceTool,
 } from '@nightcore/contracts';
+// One-shot RuleTester validation (issue #185): the structured verdict the Checks
+// Manager renders when a user validates an armed `lint-plugin` rule via
+// `validate_plugin_rule` — a zod-contract wire shape (no ts-rs binding), read
+// straight from the engine's `ruleValidation` reply slot.
+export type {
+  RuleTesterCaseResult,
+  RuleValidationOutcome,
+  RuleValidationResult,
+} from '@nightcore/contracts';
 // PR Review (fourth scan sibling) persisted shapes (ts-rs from `store/pr_review.rs`).
 // `PrReviewRun` reuses the shared `InsightUsage` token totals; `StoredReviewFinding`
 // is the Rust `StoredReviewFinding` (its ts-rs `export_to="ReviewFinding.ts"`).

@@ -4,7 +4,8 @@ import { render } from 'vitest-browser-react';
 
 import * as stories from './ChecksManager.stories';
 
-const { Populated, WithFailure, Empty, Editing } = composeStories(stories);
+const { Populated, WithFailure, Empty, Editing, Validated, ValidationFailed } =
+  composeStories(stories);
 
 test('lists each armed check with its command and kind', async () => {
   const screen = render(<Populated />);
@@ -41,4 +42,22 @@ test('the inline editor renders the checks fields when a row is open', async () 
   const screen = render(<Editing />);
   await expect.element(screen.getByText('Command')).toBeInTheDocument();
   await expect.element(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+});
+
+test('a lint-plugin check exposes a Validate rule action', async () => {
+  const screen = render(<Populated />);
+  await expect
+    .element(screen.getByRole('button', { name: /validate rule folder-per-component/i }))
+    .toBeInTheDocument();
+});
+
+test('a validated rule shows its RuleTester verdict inline', async () => {
+  const screen = render(<Validated />);
+  await expect.element(screen.getByText(/real rule/i)).toBeInTheDocument();
+});
+
+test('a failed validation shows the runner diagnostic message', async () => {
+  const screen = render(<ValidationFailed />);
+  await expect.element(screen.getByText(/could not validate/i)).toBeInTheDocument();
+  await expect.element(screen.getByText(/module not found/i)).toBeInTheDocument();
 });
