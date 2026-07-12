@@ -24,6 +24,18 @@ use super::verdict::{merge_proposed_subtasks, parse_verdict, Verdict};
 /// (`Done`, `finish_run(Succeeded)`). Otherwise enter the verification gate: set
 /// `Verifying`, hold the slot+worktree, and dispatch a reviewer session over the
 /// same worktree.
+///
+/// Observability (#245): instrumented as the `run.build_completed` lifecycle span so
+/// the completion tail's latency (commit → structure-lock gauntlet → gate battery →
+/// reviewer dispatch) is a first-class span duration on close. `skip_all` is
+/// deliberate — it keeps `result` (the model's completion summary) and
+/// `proposed_subtasks` OUT of the span; only the correlation ids and the scalar cost
+/// are recorded.
+#[tracing::instrument(
+    name = "run.build_completed",
+    skip_all,
+    fields(task_id = %task_id, session_id = ?session_id, cost_usd = ?cost)
+)]
 pub(crate) async fn handle_build_completed(
     app: &AppHandle,
     store: &TaskStore,
@@ -363,6 +375,16 @@ async fn gate_structure_lock_failure(
 /// A reviewer session completed (M4 §B step 2). Parse the verdict from its result
 /// and route: PASS → Done+verified; CHANGES_REQUESTED → bounded auto-fix or park;
 /// FAIL/unparseable → park for approval (fail-safe: never silently pass).
+///
+/// Observability (#245): instrumented as the `run.review_completed` lifecycle span so
+/// verdict-routing latency is a first-class span duration on close. `skip_all` keeps
+/// `result` (the reviewer's verdict text) OUT of the span; only the correlation ids
+/// are recorded.
+#[tracing::instrument(
+    name = "run.review_completed",
+    skip_all,
+    fields(task_id = %task_id, session_id = ?session_id)
+)]
 pub(crate) async fn handle_review_completed(
     app: &AppHandle,
     store: &TaskStore,

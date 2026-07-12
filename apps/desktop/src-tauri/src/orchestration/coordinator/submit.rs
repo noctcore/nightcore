@@ -34,6 +34,18 @@ pub(crate) async fn launch(app: &AppHandle, task_id: &str) {
 /// auto-loop it is a benign retry-next-tick skip. The error is both recorded (via
 /// `fail_run`) and returned, so `run_task` can map it to its `Result` while the
 /// auto-loop discards it.
+///
+/// Observability (#245): instrumented as the `run.launch` lifecycle span so the
+/// launch's cross-async wall-clock latency (lease → worktree → dep-provision →
+/// sidecar → dispatch) surfaces as a first-class span duration on close, rather than
+/// being reconstructed from one-off `duration_ms` fields. `skip_all` keeps the
+/// `AppHandle` and every arg out of the span — only the correlation `task_id` and the
+/// breaker-path flag are recorded, never any prompt/model payload.
+#[tracing::instrument(
+    name = "run.launch",
+    skip_all,
+    fields(task_id = %task_id, feed_breaker)
+)]
 pub(crate) async fn submit_run(
     app: &AppHandle,
     task_id: &str,
