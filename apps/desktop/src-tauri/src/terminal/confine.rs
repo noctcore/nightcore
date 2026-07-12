@@ -255,7 +255,7 @@ fn codex_state_file_lines(codex_home: &Path) -> Vec<String> {
         .collect()
 }
 
-/// The ONE `(allow file-write* (regex #"…"#))` line covering codex's
+/// The ONE `(allow file-write* (regex #"…"))` line covering codex's
 /// version-numbered SQLite state DBs + WAL/SHM/journal sidecars directly under
 /// `codex_home` (`state_5.sqlite`, `goals_1.sqlite`, `memories_1.sqlite`, …). Codex
 /// bumps the version integer across releases, so a literal list would silently
@@ -265,12 +265,22 @@ fn codex_state_file_lines(codex_home: &Path) -> Vec<String> {
 /// filename class mean it matches ONLY a versioned DB filename directly under the
 /// home, never `auth.json`, never `config.toml`, never `state_5.sqlite.bak` (no bare
 /// dot-suffix alternation beyond the sidecars), never a nested `sessions/x_1.sqlite`
-/// (no `/` inside the class). Pure — testable off macOS.
+/// (no `/` inside the class).
+///
+/// SBPL DELIMITER TRAP: a Seatbelt regex literal opens with `#"` and closes with a
+/// PLAIN `"` — there is no trailing `#`. SBPL is not Rust: a Rust raw string closes
+/// `#"..."#` with a matching `#`, but `sandbox-exec` parses that trailing `#` as a
+/// stray "sharp expression" and rejects the WHOLE profile (`undefined sharp
+/// expression`, exit 65) — which fails EVERY confined spawn (plain shell included),
+/// not just codex. Verified against `/usr/bin/sandbox-exec` directly. Pure —
+/// testable off macOS for the inner pattern, but the outer delimiter shape can only
+/// be caught by actually running `sandbox-exec` on the assembled profile (see the
+/// `sandbox_exec_actually_parses_and_enforces_the_codex_db_regex` test).
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn codex_versioned_db_regex_line(codex_home: &Path) -> String {
     let escaped = regex_escape_seatbelt(&codex_home.to_string_lossy());
     format!(
-        "(allow file-write* (regex #\"^{escaped}/[a-z_]+_[0-9]+\\.sqlite(-wal|-shm|-journal)?$\"#))"
+        "(allow file-write* (regex #\"^{escaped}/[a-z_]+_[0-9]+\\.sqlite(-wal|-shm|-journal)?$\"))"
     )
 }
 
@@ -633,7 +643,7 @@ mod tests {
 
         let pattern = line
             .strip_prefix("(allow file-write* (regex #\"")
-            .and_then(|s| s.strip_suffix("\"#))"))
+            .and_then(|s| s.strip_suffix("\"))"))
             .expect("the regex line has the expected Seatbelt allow shape");
         let re = regex::Regex::new(pattern).expect("the emitted pattern is a valid regex");
 
@@ -706,6 +716,93 @@ mod tests {
                 "{never} must never appear as an allow target in the assembled profile"
             );
         }
+    }
+
+    /// Real-interpreter regression for the SBPL delimiter trap: a Seatbelt regex
+    /// literal opens with `#"` and closes with a PLAIN `"` — there is no trailing
+    /// `#`. SBPL is not Rust: a Rust raw string closes `#"..."#` with a matching `#`,
+    /// but `sandbox-exec` parses that trailing `#` as a stray "sharp expression" and
+    /// rejects the WHOLE profile (`undefined sharp expression`, exit 65) — which
+    /// fails EVERY confined spawn (plain shell included), not just codex. Compiling
+    /// only the INNER pattern with the `regex` crate (as the other tests here do)
+    /// can never catch this; only actually invoking `sandbox-exec` on the ASSEMBLED
+    /// profile can. Skips gracefully if `sandbox-exec` is absent (it is SIP-standard
+    /// on macOS, so this should not happen on a real Mac).
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn sandbox_exec_actually_parses_and_enforces_the_codex_db_regex() {
+        if !Path::new(SANDBOX_EXEC).exists() {
+            eprintln!("skipping: {SANDBOX_EXEC} not present on this host");
+            return;
+        }
+
+        let tmp = TempDir::new().unwrap();
+        let codex_home_lexical = tmp.path().join(".codex");
+        std::fs::create_dir_all(&codex_home_lexical).unwrap();
+        // Canonicalize (macOS temp dirs live under a /var → /private symlink) so the
+        // regex — built from this SAME canonicalized path — matches the
+        // kernel-resolved path Seatbelt actually sees the shell write to.
+        let codex_home = std::fs::canonicalize(&codex_home_lexical).unwrap();
+
+        let mut profile = build_profile(&codex_state_write_roots(&codex_home));
+        for line in codex_state_file_lines(&codex_home) {
+            profile.push_str(&line);
+            profile.push('\n');
+        }
+        profile.push_str(&codex_versioned_db_regex_line(&codex_home));
+        profile.push('\n');
+
+        let profile_path = tmp.path().join("profile.sb");
+        std::fs::write(&profile_path, &profile).unwrap();
+
+        // 1. The profile must PARSE at all — this alone catches the delimiter bug: a
+        // malformed profile makes sandbox-exec exit 65 before it ever runs the target.
+        let status = std::process::Command::new(SANDBOX_EXEC)
+            .args(["-f", profile_path.to_str().unwrap(), "/usr/bin/true"])
+            .status()
+            .expect("spawn sandbox-exec");
+        assert!(
+            status.success(),
+            "sandbox-exec must parse the assembled profile and exec /usr/bin/true: {status:?}"
+        );
+
+        // 2. Enforcement, in Seatbelt's own engine: a write matching the
+        // versioned-DB regex succeeds; a write to a denylisted CONFIG/CREDENTIAL
+        // path is denied.
+        let write = |target: &Path| -> bool {
+            std::process::Command::new(SANDBOX_EXEC)
+                .args([
+                    "-f",
+                    profile_path.to_str().unwrap(),
+                    "/bin/sh",
+                    "-c",
+                    &format!("echo probe > '{}'", target.display()),
+                ])
+                .status()
+                .expect("spawn sandbox-exec")
+                .success()
+        };
+
+        let allowed = codex_home.join("state_9.sqlite");
+        assert!(
+            write(&allowed),
+            "a write to a versioned DB matching the regex must be ALLOWED"
+        );
+        assert!(allowed.exists(), "the allowed write must have landed");
+
+        let auth = codex_home.join("auth.json");
+        assert!(
+            !write(&auth),
+            "a write to auth.json (OAuth credentials) must be DENIED"
+        );
+        assert!(!auth.exists(), "a denied write must not create the file");
+
+        let config = codex_home.join("config.toml");
+        assert!(
+            !write(&config),
+            "a write to config.toml (exec/MCP config) must be DENIED"
+        );
+        assert!(!config.exists(), "a denied write must not create the file");
     }
 
     #[test]
