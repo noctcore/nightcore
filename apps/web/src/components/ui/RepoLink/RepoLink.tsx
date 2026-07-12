@@ -10,7 +10,7 @@ export function RepoLink({ href }: { href: string }): ReactNode {
       href={href}
       target="_blank"
       rel="noreferrer"
-      className="flex items-center gap-1.5 text-[12.5px] font-semibold text-primary"
+      className="flex items-center gap-1.5 text-xs-plus font-semibold text-primary"
     >
       <GithubIcon size={15} />
       Open repo

@@ -21,7 +21,7 @@ import { DRIFT_STATUS_WITH_COUNTS } from './RuleCoverageGaps.types';
 /** One summary tally chip (e.g. "3 enforced"). */
 function Tally({ label, count, tone }: { label: string; count: number; tone: string }) {
   return (
-    <span className="inline-flex items-center gap-1 font-mono text-[11px]">
+    <span className="inline-flex items-center gap-1 font-mono text-2xs">
       <span className={`font-semibold tabular-nums ${tone}`}>{count}</span>
       <span className="text-muted-foreground">{label}</span>
     </span>
@@ -77,11 +77,11 @@ function DriftLine({ cell }: { cell: DriftCell }) {
     <div className="mt-1 flex items-center gap-1.5">
       <span
         title={display.meta.hint}
-        className={`inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-[0.04em] ${display.meta.chip} ${display.meta.tone}`}
+        className={`inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 font-mono text-4xs-plus font-semibold uppercase tracking-[0.04em] ${display.meta.chip} ${display.meta.tone}`}
       >
         {display.meta.label}
       </span>
-      <span className="truncate font-mono text-[10.5px] text-muted-foreground">
+      <span className="truncate font-mono text-3xs-plus text-muted-foreground">
         {display.detail}
       </span>
     </div>
@@ -97,13 +97,13 @@ function CoverageRow({ row }: { row: CoverageDriftRow }) {
     <div className="flex items-start gap-2.5 px-4 py-2.5">
       <span
         title={meta.hint}
-        className={`mt-0.5 inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-semibold ${meta.chip} ${meta.tone}`}
+        className={`mt-0.5 inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 font-mono text-3xs font-semibold ${meta.chip} ${meta.tone}`}
       >
         {meta.label}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[12.5px] text-foreground">{gap.title}</p>
-        <p className="truncate text-[11px] text-muted-foreground">{coverageDetail(gap)}</p>
+        <p className="truncate text-xs-plus text-foreground">{gap.title}</p>
+        <p className="truncate text-2xs text-muted-foreground">{coverageDetail(gap)}</p>
         <DriftLine cell={cell} />
       </div>
     </div>
@@ -131,7 +131,7 @@ export function RuleCoverageGaps({ gaps, drift }: RuleCoverageGapsProps) {
     >
       <header className="flex flex-col gap-1.5 border-b border-border px-4 py-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+          <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
             Rule coverage
           </span>
           <Tally label="enforced" count={summary.enforced} tone={COVERAGE_STATUS_META.enforced.tone} />
@@ -148,7 +148,7 @@ export function RuleCoverageGaps({ gaps, drift }: RuleCoverageGapsProps) {
         </div>
         {driftMeasured ? (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+            <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
               Drift
             </span>
             <Tally label="clean" count={driftSummary.clean} tone={DRIFT_STATUS_META.clean.tone} />
@@ -169,7 +169,7 @@ export function RuleCoverageGaps({ gaps, drift }: RuleCoverageGapsProps) {
             />
           </div>
         ) : null}
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Coverage answers whether a rule <em>exists</em> for each convention ({inventoryLine});
           drift answers whether it is <em>followed</em> at every site.{' '}
           {driftMeasured

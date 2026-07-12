@@ -53,7 +53,7 @@ export const ConstrainedHeight: Story = {
     slots: {
       footer: (
         <div className="border-t border-border px-3 py-2.5">
-          <div className="mb-1.5 px-2 font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground/70">
+          <div className="mb-1.5 px-2 font-mono text-4xs uppercase tracking-[0.18em] text-muted-foreground/70">
             Usage
           </div>
           <div className="flex flex-col gap-1.5 px-2">

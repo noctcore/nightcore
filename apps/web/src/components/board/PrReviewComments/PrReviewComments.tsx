@@ -90,7 +90,7 @@ export function PrReviewComments({ task, view, isActionPending }: PrReviewCommen
               className="rounded-md border border-border bg-black/15 px-2.5 py-2"
             >
               <div className="flex items-center gap-2">
-                <span className="truncate font-mono text-[11px] text-foreground/90">
+                <span className="truncate font-mono text-2xs text-foreground/90">
                   {threadAnchor(thread.path, thread.line)}
                 </span>
                 {thread.isOutdated && (
@@ -109,7 +109,7 @@ export function PrReviewComments({ task, view, isActionPending }: PrReviewCommen
               <div className="mt-1.5 space-y-1.5">
                 {thread.comments.map((comment, j) => (
                   <div key={j}>
-                    <p className="font-mono text-[10px] text-muted-foreground">{comment.author}</p>
+                    <p className="font-mono text-3xs text-muted-foreground">{comment.author}</p>
                     {/* UNTRUSTED body — plain pre-wrapped text, never HTML/markdown. */}
                     <p className="whitespace-pre-wrap break-words text-xs text-foreground/90">
                       {comment.body}
@@ -128,7 +128,7 @@ export function PrReviewComments({ task, view, isActionPending }: PrReviewCommen
                 className="rounded-md border border-border bg-black/15 px-2.5 py-2"
               >
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-[11px] text-foreground/90">{review.author}</span>
+                  <span className="font-mono text-2xs text-foreground/90">{review.author}</span>
                   <span className={`${BADGE_BASE} ${badge.className}`}>{badge.label}</span>
                 </div>
                 {/* UNTRUSTED body — plain pre-wrapped text, never HTML/markdown. */}
@@ -176,7 +176,7 @@ export function PrReviewComments({ task, view, isActionPending }: PrReviewCommen
       )}
 
       {view.refreshedAt !== null && (
-        <p className="mt-2 font-mono text-[10px] text-muted-foreground">
+        <p className="mt-2 font-mono text-3xs text-muted-foreground">
           Refreshed {formatRefreshedAt(view.refreshedAt)}
         </p>
       )}

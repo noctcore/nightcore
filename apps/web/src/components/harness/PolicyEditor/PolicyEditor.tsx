@@ -8,7 +8,7 @@ import { usePolicyEditor } from './PolicyEditor.hooks';
 import type { PolicyEditorProps, PolicyListKey } from './PolicyEditor.types';
 
 const FIELD_INPUT =
-  'w-full rounded-[8px] border border-border bg-black/20 px-2.5 py-1.5 font-mono text-[12.5px] text-foreground outline-none focus:border-primary';
+  'w-full rounded-[8px] border border-border bg-black/20 px-2.5 py-1.5 font-mono text-xs-plus text-foreground outline-none focus:border-primary';
 
 /** One list field's per-row metadata: the visible label and its one-line meaning. */
 const LIST_FIELDS: { key: PolicyListKey; label: string; hint: string; placeholder: string }[] = [
@@ -83,11 +83,11 @@ function ListEditor({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[11.5px] font-semibold text-muted-foreground">{field.label}</span>
-        <span className="text-[11px] text-muted-foreground/80">{field.hint}</span>
+        <span className="text-2xs-plus font-semibold text-muted-foreground">{field.label}</span>
+        <span className="text-2xs text-muted-foreground/80">{field.hint}</span>
       </div>
       {values.length === 0 && (
-        <p className="text-[11.5px] italic text-muted-foreground">No entries.</p>
+        <p className="text-2xs-plus italic text-muted-foreground">No entries.</p>
       )}
       {values.map((value, index) => (
         // Index keys are correct here: rows are positional drafts with no
@@ -136,7 +136,7 @@ function LimitField({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-[11.5px] font-semibold text-muted-foreground">
+      <label htmlFor={id} className="text-2xs-plus font-semibold text-muted-foreground">
         {label}
       </label>
       <input
@@ -150,7 +150,7 @@ function LimitField({
         className={`${FIELD_INPUT} max-w-[140px]`}
       />
       {error !== null && (
-        <p id={`${id}-error`} className="text-[11px] text-warning">
+        <p id={`${id}-error`} className="text-2xs text-warning">
           {error}
         </p>
       )}
@@ -180,10 +180,10 @@ export function PolicyEditor(props: PolicyEditorProps) {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
-          <h3 className="text-[13.5px] font-semibold text-foreground">Runtime policy</h3>
-          <p className="text-[11.5px] text-muted-foreground">
+          <h3 className="text-xs-plus3 font-semibold text-foreground">Runtime policy</h3>
+          <p className="text-2xs-plus text-muted-foreground">
             Enforced on every agent session in this project via{' '}
-            <code className="rounded border border-border bg-white/[0.04] px-1 font-mono text-[11px]">
+            <code className="rounded border border-border bg-white/[0.04] px-1 font-mono text-2xs">
               .nightcore/harness.json
             </code>
             {' '}— it holds even under bypass permissions.
@@ -191,7 +191,7 @@ export function PolicyEditor(props: PolicyEditorProps) {
         </div>
         {view.ready && view.draft !== null && (
           <div className="flex items-center gap-2">
-            <span className="text-[11.5px] text-muted-foreground">
+            <span className="text-2xs-plus text-muted-foreground">
               {view.draft.enabled ? 'Enabled' : 'Disabled'}
             </span>
             <EnabledSwitch on={view.draft.enabled} onToggle={view.toggleEnabled} />
@@ -204,7 +204,7 @@ export function PolicyEditor(props: PolicyEditorProps) {
       ) : (
         <>
           {!view.manifestExists && (
-            <p className="rounded-md border border-border bg-white/[0.02] px-3 py-2 text-[11.5px] text-muted-foreground">
+            <p className="rounded-md border border-border bg-white/[0.02] px-3 py-2 text-2xs-plus text-muted-foreground">
               This project has no manifest yet — saving creates{' '}
               <code className="font-mono">.nightcore/harness.json</code> with this policy.
             </p>
@@ -221,10 +221,10 @@ export function PolicyEditor(props: PolicyEditorProps) {
 
           <div className="flex flex-col gap-1.5">
             <div className="flex items-baseline justify-between gap-2">
-              <span className="text-[11.5px] font-semibold text-muted-foreground">
+              <span className="text-2xs-plus font-semibold text-muted-foreground">
                 Diff budget
               </span>
-              <span className="text-[11px] text-muted-foreground/80">
+              <span className="text-2xs text-muted-foreground/80">
                 Fail verification when a run changes more than this. Empty = no limit.
               </span>
             </div>
@@ -247,14 +247,14 @@ export function PolicyEditor(props: PolicyEditorProps) {
           </div>
 
           {view.saveError !== null && (
-            <p className="rounded-md border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-[11.5px] text-destructive">
+            <p className="rounded-md border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-2xs-plus text-destructive">
               {view.saveError}
             </p>
           )}
 
           <div className="flex items-center justify-end gap-3 border-t border-border pt-3">
             {view.dirty && (
-              <span className="text-[11.5px] text-warning" role="status">
+              <span className="text-2xs-plus text-warning" role="status">
                 Unsaved changes
               </span>
             )}

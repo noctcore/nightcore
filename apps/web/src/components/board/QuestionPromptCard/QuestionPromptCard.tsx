@@ -43,7 +43,7 @@ export function QuestionPromptCard({ prompt, onAnswer }: QuestionPromptCardProps
     >
       <div className="flex items-center gap-2">
         <QuestionIcon size={14} className="shrink-0 text-info" aria-hidden />
-        <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-info">
+        <span className="font-mono text-2xs font-semibold uppercase tracking-[0.08em] text-info">
           {PROVIDER_LABEL} asked
         </span>
       </div>
@@ -54,7 +54,7 @@ export function QuestionPromptCard({ prompt, onAnswer }: QuestionPromptCardProps
           return (
             <div key={inputId} role="group" aria-label={q.question} className="space-y-2">
               <div>
-                <span className="inline-block rounded border border-border px-1.5 py-px font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                <span className="inline-block rounded border border-border px-1.5 py-px font-mono text-3xs uppercase tracking-[0.08em] text-muted-foreground">
                   {q.header}
                 </span>
                 <p className="mt-1.5 text-sm leading-snug text-foreground/90">{q.question}</p>
@@ -92,7 +92,7 @@ export function QuestionPromptCard({ prompt, onAnswer }: QuestionPromptCardProps
                         </span>
                       </span>
                       {opt.description.length > 0 && (
-                        <span className="mt-0.5 block pl-[18px] text-[11px] leading-snug text-muted-foreground">
+                        <span className="mt-0.5 block pl-[18px] text-2xs leading-snug text-muted-foreground">
                           {opt.description}
                         </span>
                       )}
@@ -104,7 +104,7 @@ export function QuestionPromptCard({ prompt, onAnswer }: QuestionPromptCardProps
               <div>
                 <label
                   htmlFor={inputId}
-                  className="mb-1 block font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground"
+                  className="mb-1 block font-mono text-3xs uppercase tracking-[0.08em] text-muted-foreground"
                 >
                   Or type your own answer
                 </label>

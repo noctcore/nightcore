@@ -40,7 +40,7 @@ export function DiffPatchView({ patch, loading = false }: DiffPatchViewProps) {
 
   if (lines.length === 0) {
     return (
-      <p className="px-5 py-3 font-mono text-[12px] text-muted-foreground">{emptyNote(patch)}</p>
+      <p className="px-5 py-3 font-mono text-xs-flat text-muted-foreground">{emptyNote(patch)}</p>
     );
   }
 
@@ -50,7 +50,7 @@ export function DiffPatchView({ patch, loading = false }: DiffPatchViewProps) {
     // vertical scroll). `w-max min-w-full` on the block keeps every row's tint
     // spanning the full scroll width, not just the visible viewport.
     <div className="max-h-[50vh] overflow-auto border-y border-border bg-black/20">
-      <pre className="w-max min-w-full font-mono text-[12px] leading-[1.5]">
+      <pre className="w-max min-w-full font-mono text-xs-flat leading-[1.5]">
         {lines.map((line) => (
           <div key={line.id} className={`px-5 ${LINE_CLASS[line.kind]}`}>
             {line.text === '' ? ' ' : line.text}

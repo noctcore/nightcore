@@ -35,7 +35,7 @@ export function StepRail({
             <div key={item.id} className="flex min-h-[72px] gap-4">
               <div className="flex shrink-0 flex-col items-center">
                 <div
-                  className={`flex size-7 items-center justify-center rounded-full text-[13px] font-bold ${
+                  className={`flex size-7 items-center justify-center rounded-full text-xs-plus2 font-bold ${
                     complete || active
                       ? 'bg-primary text-primary-foreground'
                       : 'border border-border text-muted-foreground'
@@ -57,7 +57,7 @@ export function StepRail({
                 >
                   {item.label}
                 </div>
-                <div className="mt-1 font-mono text-[11px] text-muted-foreground">
+                <div className="mt-1 font-mono text-2xs text-muted-foreground">
                   {item.sub}
                 </div>
               </div>
@@ -65,7 +65,7 @@ export function StepRail({
           );
         })}
       </div>
-      <div className="mt-auto font-mono text-[11px] text-muted-foreground/70">
+      <div className="mt-auto font-mono text-2xs text-muted-foreground/70">
         {version === null ? 'setup' : `v${version} setup`}
       </div>
     </aside>

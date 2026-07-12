@@ -112,7 +112,7 @@ function TaskCardImpl({
         className="block w-full text-left"
       >
         <div className="mb-2 flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-3xs text-muted-foreground">
             <span
               aria-hidden
               className="inline-block h-[5px] w-[5px] rounded-full"
@@ -122,13 +122,13 @@ function TaskCardImpl({
           </span>
           <span className="ml-auto flex items-center gap-2">
             {running && (
-              <span className="flex items-center gap-1 font-mono text-[10.5px] font-semibold tabular-nums text-warning">
+              <span className="flex items-center gap-1 font-mono text-3xs-plus font-semibold tabular-nums text-warning">
                 <ClockIcon size={12} />
                 {elapsed}
               </span>
             )}
             {verifying && (
-              <span className="flex items-center gap-1 font-mono text-[10.5px] font-semibold tabular-nums text-primary">
+              <span className="flex items-center gap-1 font-mono text-3xs-plus font-semibold tabular-nums text-primary">
                 <ClockIcon size={12} />
                 {elapsed}
               </span>
@@ -136,14 +136,14 @@ function TaskCardImpl({
             {task.verified && (task.status === 'done' || task.status === 'waiting_approval') && (
               <span
                 aria-label="Verified"
-                className="flex items-center gap-1 font-mono text-[10.5px] font-semibold text-success"
+                className="flex items-center gap-1 font-mono text-3xs-plus font-semibold text-success"
               >
                 <VerifiedIcon size={12} />
                 verified
               </span>
             )}
             {!running && !verifying && task.costUsd !== null && (
-              <span className="font-mono text-[10.5px] tabular-nums text-muted-foreground">
+              <span className="font-mono text-3xs-plus tabular-nums text-muted-foreground">
                 {formatCostUsd(task.costUsd)}
               </span>
             )}
@@ -168,14 +168,14 @@ function TaskCardImpl({
           task.status === 'failed') && (
           <div className="mt-2.5 flex flex-wrap gap-1.5">
             {showBranch && (
-              <span className="flex min-w-0 max-w-full items-center gap-1 truncate rounded-md bg-white/[0.03] px-1.5 py-0.5 font-mono text-[9.5px] text-muted-foreground">
+              <span className="flex min-w-0 max-w-full items-center gap-1 truncate rounded-md bg-white/[0.03] px-1.5 py-0.5 font-mono text-4xs-plus text-muted-foreground">
                 <BranchIcon size={11} />
                 {branch}
               </span>
             )}
             {showMainChip && (
               <span
-                className="flex min-w-0 max-w-full items-center gap-1 truncate rounded-md bg-white/[0.03] px-1.5 py-0.5 font-mono text-[9.5px] text-muted-foreground"
+                className="flex min-w-0 max-w-full items-center gap-1 truncate rounded-md bg-white/[0.03] px-1.5 py-0.5 font-mono text-4xs-plus text-muted-foreground"
                 title="Runs on the project directory — no worktree"
               >
                 <BoardIcon size={11} />
@@ -183,26 +183,26 @@ function TaskCardImpl({
               </span>
             )}
             {verifying && (
-              <span className="flex items-center gap-1 rounded-md bg-primary/[0.14] px-1.5 py-0.5 font-mono text-[9.5px] text-primary">
+              <span className="flex items-center gap-1 rounded-md bg-primary/[0.14] px-1.5 py-0.5 font-mono text-4xs-plus text-primary">
                 <SparkIcon size={11} />
                 reviewing
               </span>
             )}
             {needsApproval && (
-              <span className="flex items-center gap-1 rounded-md bg-warning/[0.14] px-1.5 py-0.5 font-mono text-[9.5px] text-warning">
+              <span className="flex items-center gap-1 rounded-md bg-warning/[0.14] px-1.5 py-0.5 font-mono text-4xs-plus text-warning">
                 <AlertIcon size={11} />
                 needs approval
               </span>
             )}
             {task.conflict && (
-              <span className="flex items-center gap-1 rounded-md bg-destructive/[0.12] px-1.5 py-0.5 font-mono text-[9.5px] text-destructive">
+              <span className="flex items-center gap-1 rounded-md bg-destructive/[0.12] px-1.5 py-0.5 font-mono text-4xs-plus text-destructive">
                 <AlertIcon size={11} />
                 merge conflict
               </span>
             )}
             {blocked && (
               <span
-                className="flex max-w-full items-center gap-1 truncate rounded-md bg-warning/[0.12] px-1.5 py-0.5 font-mono text-[9.5px] text-warning"
+                className="flex max-w-full items-center gap-1 truncate rounded-md bg-warning/[0.12] px-1.5 py-0.5 font-mono text-4xs-plus text-warning"
                 title={depChip.tooltip}
               >
                 <LockIcon size={11} />
@@ -210,7 +210,7 @@ function TaskCardImpl({
               </span>
             )}
             {task.status === 'failed' && task.error !== null && (
-              <span className="flex max-w-full items-center gap-1 truncate rounded-md bg-destructive/[0.12] px-1.5 py-0.5 font-mono text-[9.5px] text-destructive">
+              <span className="flex max-w-full items-center gap-1 truncate rounded-md bg-destructive/[0.12] px-1.5 py-0.5 font-mono text-4xs-plus text-destructive">
                 <AlertIcon size={11} />
                 {task.error}
               </span>
@@ -264,7 +264,7 @@ function TaskCardImpl({
             >
               <LogsIcon size={13} />
               Logs
-              <span className="rounded bg-black/20 px-1.5 font-mono text-[10px]">{logCount}</span>
+              <span className="rounded bg-black/20 px-1.5 font-mono text-3xs">{logCount}</span>
             </button>
             <button
               type="button"

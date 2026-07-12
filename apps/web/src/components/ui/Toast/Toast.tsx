@@ -58,9 +58,9 @@ function ToastStack() {
           >
             <ToneIcon tone={toast.tone} />
             <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-semibold text-foreground">{toast.title}</p>
+              <p className="text-xs-plus2 font-semibold text-foreground">{toast.title}</p>
               {toast.description !== undefined && toast.description.length > 0 && (
-                <p className="mt-0.5 break-words font-mono text-[11.5px] text-muted-foreground">
+                <p className="mt-0.5 break-words font-mono text-2xs-plus text-muted-foreground">
                   {toast.description}
                 </p>
               )}

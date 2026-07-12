@@ -33,7 +33,7 @@ function UpdatePill({
       <span className="flex shrink-0 items-center">
         <SparkIcon size={14} />
       </span>
-      {!collapsed && <span className="font-mono text-[11px] font-semibold">v{version} ready</span>}
+      {!collapsed && <span className="font-mono text-2xs font-semibold">v{version} ready</span>}
     </button>
   );
 }

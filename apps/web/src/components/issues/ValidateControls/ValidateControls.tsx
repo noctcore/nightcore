@@ -51,7 +51,7 @@ export function ValidateControls({
           <p
             role="status"
             aria-live="polite"
-            className="text-[12.5px] text-muted-foreground"
+            className="text-xs-plus text-muted-foreground"
           >
             {stream.progressMessage}
           </p>
@@ -69,7 +69,7 @@ export function ValidateControls({
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <p className="mb-2 text-[12.5px] text-muted-foreground">
+        <p className="mb-2 text-xs-plus text-muted-foreground">
           Validate this issue against the actual codebase with a read-only session — it
           classifies the issue, grounds the related files, and proposes a plan.
         </p>
@@ -85,7 +85,7 @@ export function ValidateControls({
       </div>
 
       {startError !== null && (
-        <p className="rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-[12.5px] text-destructive">
+        <p className="rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-xs-plus text-destructive">
           {startError}
         </p>
       )}

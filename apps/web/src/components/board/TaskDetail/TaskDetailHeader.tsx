@@ -18,7 +18,7 @@ export function TaskDetailHeader({ task, cost, onClose, onOpenSourceRef }: TaskD
         <div className="flex items-center gap-2">
           <TaskStatusDot status={task.status} glow />
           <span
-            className={`font-mono text-[11px] font-semibold uppercase tracking-[0.08em] ${
+            className={`font-mono text-2xs font-semibold uppercase tracking-[0.08em] ${
               task.status === 'done' && !task.verified
                 ? 'text-muted-foreground'
                 : STATUS_TEXT[task.status]
@@ -27,7 +27,7 @@ export function TaskDetailHeader({ task, cost, onClose, onOpenSourceRef }: TaskD
             {task.status === 'done' && task.verified ? 'Verified' : STATUS_LABEL[task.status]}
           </span>
           {cost !== null && (
-            <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+            <span className="font-mono text-2xs tabular-nums text-muted-foreground">
               · {formatCostUsd(cost)}
             </span>
           )}
@@ -41,12 +41,12 @@ export function TaskDetailHeader({ task, cost, onClose, onOpenSourceRef }: TaskD
               type="button"
               onClick={() => onOpenSourceRef(task.sourceRef!)}
               title="Open the originating scan item"
-              className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+              className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
             >
               From {provenance} ↗
             </button>
           ) : (
-            <span className="mt-1.5 inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+            <span className="mt-1.5 inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
               From {provenance}
             </span>
           )

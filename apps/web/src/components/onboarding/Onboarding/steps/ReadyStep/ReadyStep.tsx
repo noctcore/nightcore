@@ -12,7 +12,7 @@ export function ReadyStep({ checks }: ReadyStepProps) {
       </div>
       <div>
         <h1 className="text-[20px] font-semibold tracking-tight">You are set.</h1>
-        <p className="mt-1 max-w-[390px] text-[12.5px] leading-6 text-muted-foreground">
+        <p className="mt-1 max-w-[390px] text-xs-plus leading-6 text-muted-foreground">
           Your first project is active. The board is ready for your first task.
         </p>
       </div>
@@ -28,13 +28,13 @@ export function ReadyStep({ checks }: ReadyStepProps) {
               className="flex items-center gap-3 border-b border-white/[0.05] px-3 py-2.5 last:border-b-0"
             >
               <span
-                className={`w-28 shrink-0 font-mono text-[9.5px] uppercase tracking-[0.08em] ${
+                className={`w-28 shrink-0 font-mono text-4xs-plus uppercase tracking-[0.08em] ${
                   row.ready ? 'text-muted-foreground' : 'text-muted-foreground/70'
                 }`}
               >
                 {label}
               </span>
-              <span className="flex-1 text-[12px] font-medium">{row.label}</span>
+              <span className="flex-1 text-xs-flat font-medium">{row.label}</span>
               {row.ready ? (
                 <CheckIcon size={13} className="text-success" />
               ) : (

@@ -39,7 +39,7 @@ export function Segmented({ options, value, onChange, disabled }: SegmentedProps
           type="button"
           disabled={disabled}
           onClick={() => onChange(v)}
-          className={`relative z-10 shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors disabled:cursor-not-allowed ${
+          className={`relative z-10 shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-xs-flat font-medium transition-colors disabled:cursor-not-allowed ${
             v === value ? 'text-primary' : 'text-muted-foreground enabled:hover:text-foreground'
           }`}
         >

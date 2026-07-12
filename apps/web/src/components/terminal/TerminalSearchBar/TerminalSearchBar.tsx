@@ -38,7 +38,7 @@ export function TerminalSearchBar({
         onChange={(e) => onQueryChange(e.target.value)}
         onKeyDown={onInputKeyDown}
         placeholder="Find"
-        className={`w-32 bg-transparent text-[12px] outline-none placeholder:text-muted-foreground/60 ${
+        className={`w-32 bg-transparent text-xs-flat outline-none placeholder:text-muted-foreground/60 ${
           noMatch ? 'text-destructive' : 'text-foreground'
         }`}
       />

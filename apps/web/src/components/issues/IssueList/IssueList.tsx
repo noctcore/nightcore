@@ -23,7 +23,7 @@ function ValidationChip({ badge }: { badge: IssueValidationBadge }) {
   if (badge === 'stale') {
     return (
       <span
-        className="inline-flex items-center gap-1 rounded-md border border-warning/40 bg-warning/[0.12] px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wide text-warning"
+        className="inline-flex items-center gap-1 rounded-md border border-warning/40 bg-warning/[0.12] px-1.5 py-0.5 font-mono text-4xs font-semibold uppercase tracking-wide text-warning"
         title="The issue changed on GitHub since it was last validated"
       >
         <AlertIcon size={10} />
@@ -33,7 +33,7 @@ function ValidationChip({ badge }: { badge: IssueValidationBadge }) {
   }
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-md border border-success/40 bg-success/[0.12] px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wide text-success"
+      className="inline-flex items-center gap-1 rounded-md border border-success/40 bg-success/[0.12] px-1.5 py-0.5 font-mono text-4xs font-semibold uppercase tracking-wide text-success"
       title="Validated"
     >
       <CheckIcon size={10} />
@@ -67,8 +67,8 @@ function IssueRow({
       }`}
     >
       <div className="flex items-baseline gap-2">
-        <span className="font-mono text-[11px] text-muted-foreground">#{issue.number}</span>
-        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
+        <span className="font-mono text-2xs text-muted-foreground">#{issue.number}</span>
+        <span className="min-w-0 flex-1 truncate text-xs-plus2 font-medium text-foreground">
           {issue.title}
         </span>
         {badge !== undefined && <ValidationChip badge={badge} />}
@@ -79,20 +79,20 @@ function IssueRow({
           {issue.labels.slice(0, 4).map((label) => (
             <span
               key={label}
-              className="rounded-md border border-border bg-white/[0.03] px-1.5 py-px font-mono text-[9.5px] text-muted-foreground"
+              className="rounded-md border border-border bg-white/[0.03] px-1.5 py-px font-mono text-4xs-plus text-muted-foreground"
             >
               {label}
             </span>
           ))}
           {issue.labels.length > 4 && (
-            <span className="font-mono text-[9.5px] text-muted-foreground/70">
+            <span className="font-mono text-4xs-plus text-muted-foreground/70">
               +{issue.labels.length - 4}
             </span>
           )}
         </div>
       )}
 
-      <div className="flex items-center gap-2 font-mono text-[10.5px] text-muted-foreground/80">
+      <div className="flex items-center gap-2 font-mono text-3xs-plus text-muted-foreground/80">
         <span className="truncate">{issue.author}</span>
         {age !== '' && (
           <>
@@ -142,7 +142,7 @@ export function IssueList({
             onChange={(e) => onFilterChange(e.target.value)}
             aria-label="Filter issues by label or text"
             placeholder="Filter issues…"
-            className="w-full rounded-[9px] border border-border bg-white/[0.02] py-1.5 pl-8 pr-2.5 text-[12.5px] text-foreground placeholder:text-muted-foreground/70 focus:border-primary/60 focus:outline-none"
+            className="w-full rounded-[9px] border border-border bg-white/[0.02] py-1.5 pl-8 pr-2.5 text-xs-plus text-foreground placeholder:text-muted-foreground/70 focus:border-primary/60 focus:outline-none"
           />
         </div>
         <button
@@ -172,7 +172,7 @@ export function IssueList({
               <button
                 type="button"
                 onClick={onRetry}
-                className="inline-flex items-center gap-1.5 rounded-[9px] border border-border bg-white/[0.03] px-3 py-1.5 text-[12.5px] text-foreground transition-colors hover:bg-white/[0.06]"
+                className="inline-flex items-center gap-1.5 rounded-[9px] border border-border bg-white/[0.03] px-3 py-1.5 text-xs-plus text-foreground transition-colors hover:bg-white/[0.06]"
               >
                 <RefreshIcon size={13} />
                 Retry

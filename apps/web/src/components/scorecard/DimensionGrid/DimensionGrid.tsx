@@ -26,7 +26,7 @@ function GradeTrendChip({ trend }: { trend: GradeTrend }) {
     <span
       aria-label={label}
       title={`${label}. Recent: ${trend.history.join(' → ')}`}
-      className={`inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.02] px-1.5 py-0.5 font-mono text-[10px] font-semibold ${meta.tone}`}
+      className={`inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.02] px-1.5 py-0.5 font-mono text-3xs font-semibold ${meta.tone}`}
     >
       <span aria-hidden>{meta.glyph}</span>
       <span>{text}</span>
@@ -89,27 +89,27 @@ function DimensionRowCard({
     <div className="flex min-w-0 flex-1 flex-col gap-1">
       <div className="flex items-center gap-2">
         <Icon size={14} className="text-muted-foreground" />
-        <span className="text-[13.5px] font-semibold text-foreground">
+        <span className="text-xs-plus3 font-semibold text-foreground">
           {Meta.label}
         </span>
         {reading !== null && row.trend !== null && <GradeTrendChip trend={row.trend} />}
         {reading?.status === 'converted' && (
-          <span className="rounded-md bg-success/[0.12] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-success">
+          <span className="rounded-md bg-success/[0.12] px-1.5 py-0.5 font-mono text-3xs font-semibold text-success">
             task
           </span>
         )}
       </div>
       {reading !== null ? (
         <>
-          <span className="truncate text-[12.5px] text-foreground/90">
+          <span className="truncate text-xs-plus text-foreground/90">
             {reading.title}
           </span>
-          <p className="line-clamp-1 text-[11.5px] leading-relaxed text-muted-foreground">
+          <p className="line-clamp-1 text-2xs-plus leading-relaxed text-muted-foreground">
             {reading.summary}
           </p>
         </>
       ) : (
-        <span className="text-[11.5px] text-muted-foreground">
+        <span className="text-2xs-plus text-muted-foreground">
           {row.state === 'running'
             ? 'Grading…'
             : row.state === 'error'

@@ -9,7 +9,7 @@ import { Checkbox } from '../Checkbox';
 import { AlertIcon, ExternalLinkIcon } from '../icons';
 import { Markdown } from '../Markdown';
 
-const LABEL_CLASS = 'font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground';
+const LABEL_CLASS = 'font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground';
 
 interface IssueMapPreviewBodyProps {
   preview: IssueMapPreview;
@@ -31,14 +31,14 @@ export function IssueMapPreviewBody({
   return (
     <div className="flex flex-col gap-4">
       {preview.softWarning !== null && (
-        <div className="flex items-start gap-2 rounded-[8px] border border-amber-500/40 bg-amber-500/[0.1] px-3 py-2 text-[12.5px] text-amber-200">
+        <div className="flex items-start gap-2 rounded-[8px] border border-amber-500/40 bg-amber-500/[0.1] px-3 py-2 text-xs-plus text-amber-200">
           <AlertIcon size={14} className="mt-0.5 shrink-0" />
           <span>{preview.softWarning}</span>
         </div>
       )}
 
       {!preview.narrativeOk && (
-        <p className="text-[11px] leading-snug text-muted-foreground">
+        <p className="text-2xs leading-snug text-muted-foreground">
           The executive summary uses a deterministic template — the AI summary step was
           skipped or unavailable. Structure, counts, and titles are unaffected.
         </p>
@@ -54,10 +54,10 @@ export function IssueMapPreviewBody({
           {preview.groups.map((g) => (
             <span
               key={g.label}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-white/[0.03] px-2.5 py-0.5 text-[11.5px] text-foreground"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-white/[0.03] px-2.5 py-0.5 text-2xs-plus text-foreground"
             >
               {g.label}
-              <span className="rounded-full bg-white/[0.06] px-1.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
+              <span className="rounded-full bg-white/[0.06] px-1.5 text-3xs font-semibold tabular-nums text-muted-foreground">
                 {g.count}
               </span>
             </span>
@@ -84,10 +84,10 @@ export function IssueMapPreviewBody({
               key={`${sub.title}-${i}`}
               className="flex items-start justify-between gap-3 px-3 py-1.5"
             >
-              <span className="min-w-0 flex-1 truncate text-[12.5px] text-foreground">
+              <span className="min-w-0 flex-1 truncate text-xs-plus text-foreground">
                 {sub.title}
               </span>
-              <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+              <span className="shrink-0 font-mono text-3xs uppercase tracking-[0.08em] text-muted-foreground">
                 {sub.groupLabel}
               </span>
             </li>
@@ -97,7 +97,7 @@ export function IssueMapPreviewBody({
 
       {supersedes !== null && (
         <div className="flex flex-col gap-1.5 rounded-[10px] border border-border bg-white/[0.02] px-3 py-2.5">
-          <div className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-xs-plus text-muted-foreground">
             <span>Supersedes</span>
             <a
               href={supersedes.url}

@@ -87,7 +87,7 @@ export function ProjectRail({
       {runningCount > 0 && (
         <div className="mt-3 flex flex-col items-center gap-2 border-t border-border pt-3">
           <span
-            className="flex items-center gap-1 font-mono text-[9px] text-warning"
+            className="flex items-center gap-1 font-mono text-4xs text-warning"
             title={`${runningCount} running`}
           >
             <StatusDot colorClass="bg-warning" pulse />

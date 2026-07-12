@@ -21,7 +21,7 @@ export function ProjectIconEditor({
 
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-[12.5px] font-medium text-muted-foreground">{label}</span>
+      <span className="text-xs-plus font-medium text-muted-foreground">{label}</span>
       <div className="flex items-center gap-3">
         <div className="flex h-12 w-12 items-center justify-center rounded-[10px] border border-border bg-white/[0.03]">
           <ProjectIcon
@@ -54,12 +54,12 @@ export function ProjectIconEditor({
           }}
         />
       </div>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         {ACCEPTED_IMAGE_LABEL} · max 5 MB
       </p>
       <IconPicker selectedIcon={hasCustomImage ? null : icon} onSelectIcon={editor.selectIcon} />
       {editor.error !== null && (
-        <p className="text-[12.5px] text-destructive" role="alert">
+        <p className="text-xs-plus text-destructive" role="alert">
           {editor.error}
         </p>
       )}

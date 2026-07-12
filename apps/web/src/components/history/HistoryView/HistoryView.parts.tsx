@@ -46,19 +46,19 @@ function HistoryRow({
       className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[0.03]"
     >
       <Badge>{FAMILY_LABEL[run.family]}</Badge>
-      <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{run.title}</span>
+      <span className="min-w-0 flex-1 truncate text-xs-plus2 text-foreground">{run.title}</span>
       <span
-        className="shrink-0 tabular-nums font-mono text-[11px] text-muted-foreground/80"
+        className="shrink-0 tabular-nums font-mono text-2xs text-muted-foreground/80"
         title={run.model.length > 0 ? `Model: ${run.model}` : undefined}
       >
         {receipt}
       </span>
-      <span className="flex shrink-0 items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+      <span className="flex shrink-0 items-center gap-1.5 font-mono text-2xs text-muted-foreground">
         <StatusDot colorClass={status.dot} pulse={run.status === 'running'} />
         {status.label}
       </span>
       {when !== '' && (
-        <span className="shrink-0 tabular-nums font-mono text-[11px] text-muted-foreground/80">
+        <span className="shrink-0 tabular-nums font-mono text-2xs text-muted-foreground/80">
           {when}
         </span>
       )}
@@ -78,7 +78,7 @@ export function HistoryList({ runs, loading, error, onOpenRun }: HistoryListProp
       {error !== null && (
         <p
           role="status"
-          className="border-b border-warning/40 bg-warning/[0.12] px-4 py-2 text-[12px] text-warning"
+          className="border-b border-warning/40 bg-warning/[0.12] px-4 py-2 text-xs-flat text-warning"
         >
           {error}
         </p>

@@ -65,33 +65,33 @@ const ArtifactCard = memo(function ArtifactCard({
       className="flex flex-col gap-2 p-3.5 text-left"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex items-center rounded-md border border-primary/40 bg-primary/[0.1] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-primary">
+        <span className="inline-flex items-center rounded-md border border-primary/40 bg-primary/[0.1] px-1.5 py-0.5 font-mono text-3xs font-semibold text-primary">
           {ARTIFACT_KIND_META[artifact.kind].label}
         </span>
-        <span className="inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+        <span className="inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
           {artifact.writeMode}
         </span>
         {artifact.status === 'applied' && (
-          <span className="ml-auto rounded-md bg-success/[0.12] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-success">
+          <span className="ml-auto rounded-md bg-success/[0.12] px-1.5 py-0.5 font-mono text-3xs font-semibold text-success">
             applied
           </span>
         )}
         {artifact.status === 'dismissed' && (
-          <span className="ml-auto rounded-md bg-white/[0.05] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground">
+          <span className="ml-auto rounded-md bg-white/[0.05] px-1.5 py-0.5 font-mono text-3xs font-semibold text-muted-foreground">
             dismissed
           </span>
         )}
       </div>
 
-      <h3 className={`text-[13.5px] font-semibold leading-snug ${dimmed ? 'text-muted-foreground' : 'text-foreground'}`}>
+      <h3 className={`text-xs-plus3 font-semibold leading-snug ${dimmed ? 'text-muted-foreground' : 'text-foreground'}`}>
         {artifact.title}
       </h3>
 
-      <code className={`truncate font-mono text-[11px] ${dimmed ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}>
+      <code className={`truncate font-mono text-2xs ${dimmed ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}>
         {artifact.appliedPath ?? artifact.targetPath}
       </code>
 
-      <pre className="max-h-32 overflow-hidden rounded-md border border-border bg-black/20 px-2.5 py-2 font-mono text-[10.5px] leading-relaxed text-muted-foreground">
+      <pre className="max-h-32 overflow-hidden rounded-md border border-border bg-black/20 px-2.5 py-2 font-mono text-3xs-plus leading-relaxed text-muted-foreground">
         {previewOf(artifact.content)}
       </pre>
     </Card>
@@ -152,7 +152,7 @@ export function HarnessProposalList({
       {groups.map((group) => (
         <section key={group.key} className="flex flex-col gap-2.5">
           {group.title !== null && (
-            <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+            <h3 className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
               {group.title}
             </h3>
           )}

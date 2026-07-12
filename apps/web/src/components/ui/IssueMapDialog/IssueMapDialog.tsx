@@ -46,7 +46,7 @@ export function IssueMapDialog({
             <GithubIcon size={16} />
             Export to GitHub
           </h2>
-          <p className="text-[13px] text-muted-foreground">
+          <p className="text-xs-plus2 text-muted-foreground">
             {kindLabel} scan map — one parent issue + one sub-issue per finding
           </p>
         </div>
@@ -59,7 +59,7 @@ export function IssueMapDialog({
         {v.loading && (
           <div
             role="status"
-            className="flex items-center gap-2 py-2 text-[13px] text-muted-foreground"
+            className="flex items-center gap-2 py-2 text-xs-plus2 text-muted-foreground"
           >
             <Spinner />
             <span>Building preview…</span>
@@ -67,7 +67,7 @@ export function IssueMapDialog({
         )}
 
         {v.loadError !== null && (
-          <p className="rounded-[8px] border border-destructive/40 bg-destructive/[0.12] px-3 py-2 text-[12px] text-destructive">
+          <p className="rounded-[8px] border border-destructive/40 bg-destructive/[0.12] px-3 py-2 text-xs-flat text-destructive">
             {v.loadError}
           </p>
         )}
@@ -84,7 +84,7 @@ export function IssueMapDialog({
         )}
 
         {v.exportError !== null && (
-          <p className="rounded-[8px] border border-destructive/40 bg-destructive/[0.12] px-3 py-2 text-[12px] text-destructive">
+          <p className="rounded-[8px] border border-destructive/40 bg-destructive/[0.12] px-3 py-2 text-xs-flat text-destructive">
             {v.exportError}
           </p>
         )}
@@ -100,7 +100,7 @@ export function IssueMapDialog({
         ) : (
           <>
             {v.preview !== null && (
-              <p className="text-[12px] leading-snug text-muted-foreground">
+              <p className="text-xs-flat leading-snug text-muted-foreground">
                 Open <span className="font-mono text-foreground">1 parent issue</span> +{' '}
                 <span className="font-mono text-foreground">
                   {total} {total === 1 ? 'sub-issue' : 'sub-issues'}

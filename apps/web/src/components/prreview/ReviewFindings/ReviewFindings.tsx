@@ -19,7 +19,7 @@ import { SeverityGroupHeader } from './ReviewFindingsGroup';
 
 /** Shared chrome for the small quick-select buttons. */
 const QUICK_BTN =
-  'rounded-[8px] border border-border bg-white/[0.02] px-2.5 py-1 font-mono text-[11px] font-medium text-muted-foreground transition-colors hover:border-white/20 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring';
+  'rounded-[8px] border border-border bg-white/[0.02] px-2.5 py-1 font-mono text-2xs font-medium text-muted-foreground transition-colors hover:border-white/20 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 
 /** The severity summary strip: '2 Critical · 3 High · …' in each severity's tone,
  *  plus an sr-only live region announcing the selected/open tally. Counts OPEN
@@ -44,10 +44,10 @@ function FindingsSummary({
                 ·
               </span>
             )}
-            <span className={`font-mono text-[11px] font-semibold ${meta.tone}`}>
+            <span className={`font-mono text-2xs font-semibold ${meta.tone}`}>
               {count}
             </span>
-            <span className="text-[11px] text-muted-foreground">{meta.label}</span>
+            <span className="text-2xs text-muted-foreground">{meta.label}</span>
           </span>
         );
       })}
@@ -76,7 +76,7 @@ function QuickSelectRow({
 }) {
   return (
     <div className="col-span-full flex flex-wrap items-center gap-2">
-      <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+      <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
         Select
       </span>
       <button
@@ -113,8 +113,8 @@ function CleanEmptyState({ message }: { message: string }) {
       <span className="flex h-11 w-11 items-center justify-center rounded-full bg-success/[0.12] text-success">
         <VerifiedIcon size={24} />
       </span>
-      <p className="text-[14px] font-semibold text-success">No findings</p>
-      <p className="max-w-[420px] text-[12.5px] text-muted-foreground">{message}</p>
+      <p className="text-sm-flat font-semibold text-success">No findings</p>
+      <p className="max-w-[420px] text-xs-plus text-muted-foreground">{message}</p>
     </div>
   );
 }
@@ -128,8 +128,8 @@ function AllTriagedBanner() {
       style={{ animation: 'nc-rise .2s cubic-bezier(.22,1,.36,1)' }}
     >
       <CheckIcon size={15} className="shrink-0 text-success" />
-      <span className="text-[12.5px] font-semibold text-success">All findings triaged</span>
-      <span className="text-[12px] text-muted-foreground">
+      <span className="text-xs-plus font-semibold text-success">All findings triaged</span>
+      <span className="text-xs-flat text-muted-foreground">
         Every finding has been converted to a task or dismissed.
       </span>
     </div>

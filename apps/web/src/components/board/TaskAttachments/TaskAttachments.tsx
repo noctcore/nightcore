@@ -17,7 +17,7 @@ export function TaskAttachments({ task, editable }: TaskAttachmentsProps) {
 
   return (
     <section>
-      <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+      <h3 className="mb-1.5 font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
         Images
       </h3>
       <ImageDropzone

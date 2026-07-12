@@ -33,14 +33,14 @@ export function WorktreeChips({ tab }: { tab: WorktreeTab }) {
   return (
     <>
       {tab.taskCount > 0 && (
-        <span className="inline-flex h-[15px] min-w-[15px] items-center justify-center rounded bg-white/[0.07] px-1 text-[10px] tabular-nums text-muted-foreground">
+        <span className="inline-flex h-[15px] min-w-[15px] items-center justify-center rounded bg-white/[0.07] px-1 text-3xs tabular-nums text-muted-foreground">
           {tab.taskCount}
         </span>
       )}
 
       {tab.runningCount > 0 && (
         <span
-          className="flex items-center gap-1 text-[10px] font-semibold text-warning"
+          className="flex items-center gap-1 text-3xs font-semibold text-warning"
           aria-label={`${tab.runningCount} running`}
         >
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />
@@ -50,7 +50,7 @@ export function WorktreeChips({ tab }: { tab: WorktreeTab }) {
 
       {tab.dirty && (
         <span
-          className="text-[10px] font-semibold tabular-nums text-warning"
+          className="text-3xs font-semibold tabular-nums text-warning"
           aria-label={
             tab.changedFiles > 0 ? `${tab.changedFiles} uncommitted files` : 'Uncommitted changes'
           }
@@ -61,7 +61,7 @@ export function WorktreeChips({ tab }: { tab: WorktreeTab }) {
 
       {tab.aheadOfBase > 0 && (
         <span
-          className="text-[10px] font-semibold tabular-nums text-success"
+          className="text-3xs font-semibold tabular-nums text-success"
           aria-label={`${tab.aheadOfBase} commits ahead of base`}
         >
           ↑{tab.aheadOfBase}
@@ -70,7 +70,7 @@ export function WorktreeChips({ tab }: { tab: WorktreeTab }) {
 
       {tab.behindOfBase > 0 && (
         <span
-          className="text-[10px] font-semibold tabular-nums text-warning"
+          className="text-3xs font-semibold tabular-nums text-warning"
           aria-label={`${tab.behindOfBase} commits behind base`}
         >
           ↓{tab.behindOfBase}
@@ -119,7 +119,7 @@ export function WorktreeTabButton({ tab, selected, rovingEntry, onSelect }: Work
       onKeyDown={rovingKeydown}
       onClick={onSelect}
       title={worktreeTitle(tab)}
-      className={`flex items-center gap-1.5 rounded-[9px] border px-3 py-1.5 font-mono text-[12px] transition-colors ${
+      className={`flex items-center gap-1.5 rounded-[9px] border px-3 py-1.5 font-mono text-xs-flat transition-colors ${
         selected
           ? 'border-primary/60 bg-primary/[0.12] text-foreground'
           : 'border-border bg-white/[0.02] text-muted-foreground hover:border-white/20 hover:text-foreground'
@@ -223,7 +223,7 @@ export function WorktreeSelectRowButton({
       onMouseDown={(e) => e.preventDefault()}
       onClick={() => onSelect(tab.branch)}
       title={worktreeTitle(tab)}
-      className={`flex w-full items-center gap-1.5 rounded-[8px] px-2 py-1.5 text-left font-mono text-[12px] transition-colors ${
+      className={`flex w-full items-center gap-1.5 rounded-[8px] px-2 py-1.5 text-left font-mono text-xs-flat transition-colors ${
         highlighted ? 'bg-primary/[0.12]' : 'hover:bg-white/[0.04]'
       }`}
     >
@@ -275,7 +275,7 @@ export function WorktreeCollapsedSelect({ tabs, active, onSelect }: WorktreeColl
             ? worktreeTitle(activeTab)
             : `${summary.count} worktrees${summary.anyRunning ? ' · running' : ''}`
         }
-        className={`flex items-center gap-1.5 rounded-[9px] border px-3 py-1.5 font-mono text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
+        className={`flex items-center gap-1.5 rounded-[9px] border px-3 py-1.5 font-mono text-xs-flat transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
           isActive
             ? 'border-primary/60 bg-primary/[0.12] text-foreground'
             : 'border-border bg-white/[0.02] text-muted-foreground hover:border-white/20 hover:text-foreground'
@@ -284,7 +284,7 @@ export function WorktreeCollapsedSelect({ tabs, active, onSelect }: WorktreeColl
         <LayersIcon size={12} className={isActive ? 'text-primary' : 'text-muted-foreground'} />
         <span className="max-w-[160px] truncate">{label}</span>
 
-        <span className="inline-flex h-[15px] min-w-[15px] items-center justify-center rounded bg-white/[0.07] px-1 text-[10px] tabular-nums text-muted-foreground">
+        <span className="inline-flex h-[15px] min-w-[15px] items-center justify-center rounded bg-white/[0.07] px-1 text-3xs tabular-nums text-muted-foreground">
           {summary.count}
         </span>
 
@@ -297,7 +297,7 @@ export function WorktreeCollapsedSelect({ tabs, active, onSelect }: WorktreeColl
 
         {summary.divergedCount > 0 && (
           <span
-            className="flex items-center gap-0.5 text-[10px] font-semibold text-warning"
+            className="flex items-center gap-0.5 text-3xs font-semibold text-warning"
             aria-label={`${summary.divergedCount} diverged`}
           >
             <AlertIcon size={11} />
@@ -334,7 +334,7 @@ export function WorktreeCollapsedSelect({ tabs, active, onSelect }: WorktreeColl
               placeholder="Search worktrees…"
               onChange={v.onQueryChange}
               onKeyDown={v.onKeyDown}
-              className="w-full bg-transparent py-1 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/60"
+              className="w-full bg-transparent py-1 text-xs-plus2 text-foreground outline-none placeholder:text-muted-foreground/60"
             />
           </div>
 
@@ -356,7 +356,7 @@ export function WorktreeCollapsedSelect({ tabs, active, onSelect }: WorktreeColl
             ))}
 
             {v.rows.length === 0 && (
-              <div role="presentation" className="px-2 py-2 text-[12.5px] text-muted-foreground">
+              <div role="presentation" className="px-2 py-2 text-xs-plus text-muted-foreground">
                 No matching worktrees
               </div>
             )}

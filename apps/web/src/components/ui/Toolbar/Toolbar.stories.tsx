@@ -51,7 +51,7 @@ export const WithFlexibleChild: Story = {
           <input
             aria-label="Search"
             placeholder="Search…"
-            className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground"
+            className="min-w-0 flex-1 bg-transparent text-xs-plus2 text-foreground outline-none placeholder:text-muted-foreground"
           />
         </div>
         <Button variant="secondary">Filter</Button>

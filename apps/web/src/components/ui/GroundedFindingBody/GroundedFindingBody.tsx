@@ -73,7 +73,7 @@ export function GroundedFindingBody<T>({
       <DetailSection title={s.descriptionTitle ?? 'What'}>
         {s.descriptionInert === true ? (
           // Model-authored body — rendered as inert text, never as HTML/Markdown.
-          <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground">
+          <p className="whitespace-pre-wrap text-xs-plus2 leading-relaxed text-foreground">
             {s.description}
           </p>
         ) : (
@@ -127,7 +127,7 @@ export function GroundedFindingBody<T>({
           <ul className="flex flex-col gap-1">
             {s.affectedFiles.map((f) => (
               <li key={f}>
-                <code className="font-mono text-[11.5px] text-muted-foreground">
+                <code className="font-mono text-2xs-plus text-muted-foreground">
                   {f}
                 </code>
               </li>
@@ -142,7 +142,7 @@ export function GroundedFindingBody<T>({
             {s.tags.map((t) => (
               <span
                 key={t}
-                className="rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                className="rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground"
               >
                 {t}
               </span>

@@ -56,9 +56,9 @@ export function ApplyConfirmDialog({
         <h2 className="text-base font-semibold text-foreground">Apply this artifact?</h2>
         {artifactVM !== null && (
           <>
-            <p className="text-[13px] leading-relaxed text-muted-foreground">
+            <p className="text-xs-plus2 leading-relaxed text-muted-foreground">
               Write{' '}
-              <code className="break-all rounded border border-border bg-white/[0.04] px-1 py-0.5 font-mono text-[12px] text-foreground">
+              <code className="break-all rounded border border-border bg-white/[0.04] px-1 py-0.5 font-mono text-xs-flat text-foreground">
                 {artifactVM.targetPath}
               </code>{' '}
               (
@@ -67,13 +67,13 @@ export function ApplyConfirmDialog({
               </span>
               {mode !== undefined ? ` — ${mode.hint}` : ''}) into the project.
             </p>
-            <p className="text-[12px] text-muted-foreground">
+            <p className="text-xs-flat text-muted-foreground">
               {ARTIFACT_KIND_META[artifactVM.kind].label} · {artifactVM.title}
             </p>
           </>
         )}
         {isCreate && (
-          <p className="rounded-md border border-border bg-white/[0.02] px-3 py-2 text-[12px] text-muted-foreground">
+          <p className="rounded-md border border-border bg-white/[0.02] px-3 py-2 text-xs-flat text-muted-foreground">
             Creates a <span className="font-medium text-foreground">new file</span>. If a
             file already exists at this path, the apply is refused (never overwritten) —
             replace it manually instead.
@@ -82,7 +82,7 @@ export function ApplyConfirmDialog({
         {shownError !== null && (
           <p
             role="alert"
-            className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-[12.5px] text-destructive"
+            className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-xs-plus text-destructive"
           >
             {explainApplyError(shownError)}
           </p>

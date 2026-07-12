@@ -24,39 +24,39 @@ function ProposalCard({
       className="flex flex-col gap-2 p-3.5 text-left"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex items-center rounded-md border border-primary/40 bg-primary/[0.1] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-primary">
+        <span className="inline-flex items-center rounded-md border border-primary/40 bg-primary/[0.1] px-1.5 py-0.5 font-mono text-3xs font-semibold text-primary">
           {meta.label}
         </span>
         {proposal.status === 'converted' && (
-          <span className="ml-auto rounded-md bg-success/[0.12] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-success">
+          <span className="ml-auto rounded-md bg-success/[0.12] px-1.5 py-0.5 font-mono text-3xs font-semibold text-success">
             converted
           </span>
         )}
         {proposal.status === 'applied' && (
-          <span className="ml-auto rounded-md bg-success/[0.12] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-success">
+          <span className="ml-auto rounded-md bg-success/[0.12] px-1.5 py-0.5 font-mono text-3xs font-semibold text-success">
             applied
           </span>
         )}
         {proposal.status === 'dismissed' && (
-          <span className="ml-auto rounded-md bg-white/[0.05] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground">
+          <span className="ml-auto rounded-md bg-white/[0.05] px-1.5 py-0.5 font-mono text-3xs font-semibold text-muted-foreground">
             dismissed
           </span>
         )}
       </div>
 
       <h3
-        className={`text-[13.5px] font-semibold leading-snug ${dimmed ? 'text-muted-foreground' : 'text-foreground'}`}
+        className={`text-xs-plus3 font-semibold leading-snug ${dimmed ? 'text-muted-foreground' : 'text-foreground'}`}
       >
         {proposal.title}
       </h3>
 
       <p
-        className={`line-clamp-2 text-[12px] leading-relaxed ${dimmed ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}
+        className={`line-clamp-2 text-xs-flat leading-relaxed ${dimmed ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}
       >
         {proposal.description}
       </p>
 
-      <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-1.5 text-3xs text-muted-foreground">
         {proposal.kind === 'apply-artifacts' && proposal.artifactIds.length > 0 && (
           <span className="rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono">
             {proposal.artifactIds.length}{' '}

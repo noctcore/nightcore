@@ -41,21 +41,21 @@ export function DetailCard({
       <div className="flex items-center gap-2">{badges}</div>
 
       <h3
-        className={`text-[13.5px] font-semibold leading-snug ${dimmed ? 'text-muted-foreground' : 'text-foreground'}`}
+        className={`text-xs-plus3 font-semibold leading-snug ${dimmed ? 'text-muted-foreground' : 'text-foreground'}`}
       >
         {title}
       </h3>
 
       {location != null && (
         <code
-          className={`truncate font-mono text-[11px] ${dimmed ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}
+          className={`truncate font-mono text-2xs ${dimmed ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}
         >
           {location}
         </code>
       )}
 
       <p
-        className={`line-clamp-2 text-[12px] leading-relaxed ${dimmed ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}
+        className={`line-clamp-2 text-xs-flat leading-relaxed ${dimmed ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}
       >
         {description}
       </p>

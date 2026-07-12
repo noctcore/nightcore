@@ -30,7 +30,7 @@ export function ProjectsView({
       <div className="mb-[22px] flex items-center gap-3.5">
         <div>
           <h1 className="text-[23px] font-semibold tracking-tight">Projects</h1>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">
+          <p className="mt-0.5 text-xs-plus2 text-muted-foreground">
             Each project is a git repo with its own board &amp; settings.
           </p>
         </div>

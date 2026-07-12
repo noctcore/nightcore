@@ -22,14 +22,14 @@ import type { PrStatusBlockProps } from './PrStatusBlock.types';
 
 /** Shared chip classes for the state/review badges (tone comes from the mapper). */
 const BADGE_BASE =
-  'inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em]';
+  'inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-3xs font-semibold uppercase tracking-[0.06em]';
 
 /** The inert-while-busy reason for the remediation buttons (sr-only + title). */
 const FIX_BUSY_TITLE = 'A fix for this PR is already in progress.';
 
 /** Shared classes for the small remediation buttons on the status rows. */
 const ACTION_BASE =
-  'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11.5px] font-medium transition-colors';
+  'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-2xs-plus font-medium transition-colors';
 
 export function PrStatusBlock({
   prNumber,
@@ -67,14 +67,14 @@ export function PrStatusBlock({
       className="flex flex-col gap-2 rounded-[12px] border border-border bg-white/[0.02] px-4 py-3"
     >
       <div className="flex items-center gap-2">
-        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+        <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
           Status
         </span>
         <button
           type="button"
           onClick={view.refresh}
           disabled={view.fetching}
-          className="ml-auto inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+          className="ml-auto inline-flex items-center gap-1 text-2xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
         >
           {view.fetching ? <Spinner size={11} /> : <RetryIcon size={11} />}
           Refresh
@@ -97,7 +97,7 @@ export function PrStatusBlock({
                 {review.label}
               </span>
             )}
-            <span className="inline-flex items-center gap-1 font-mono text-[11px] text-muted-foreground">
+            <span className="inline-flex items-center gap-1 font-mono text-2xs text-muted-foreground">
               <BranchIcon size={11} />
               base: {status.baseRefName || 'unknown'}
             </span>
@@ -109,7 +109,7 @@ export function PrStatusBlock({
           </span>
           {mergeLine !== null && (
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-[12.5px] text-muted-foreground">{mergeLine}</p>
+              <p className="text-xs-plus text-muted-foreground">{mergeLine}</p>
               {showResolveConflicts && (
                 <button
                   type="button"
@@ -129,7 +129,7 @@ export function PrStatusBlock({
           )}
           {checks !== null && (
             <div className="flex flex-wrap items-center gap-2">
-              <p className="font-mono text-[11.5px] text-muted-foreground">
+              <p className="font-mono text-2xs-plus text-muted-foreground">
                 Checks:{' '}
                 <span className="text-success">{checks.passed} passed</span>
                 {' · '}
@@ -160,7 +160,7 @@ export function PrStatusBlock({
           )}
         </div>
       ) : (
-        <p className="text-[12.5px] text-muted-foreground">
+        <p className="text-xs-plus text-muted-foreground">
           {view.fetching
             ? 'Fetching PR status…'
             : view.unavailable
@@ -172,12 +172,12 @@ export function PrStatusBlock({
       )}
 
       {view.error !== null && (
-        <p role="alert" className="text-[12px] text-destructive">
+        <p role="alert" className="text-xs-flat text-destructive">
           {view.error}
         </p>
       )}
       {view.refreshedAt !== null && (
-        <p className="text-[10.5px] text-muted-foreground/70">
+        <p className="text-3xs-plus text-muted-foreground/70">
           Refreshed {formatRefreshedAt(view.refreshedAt)}
         </p>
       )}

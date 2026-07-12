@@ -5,7 +5,7 @@ import { DetailCard } from './DetailCard';
 import { DetailCardGrid } from './DetailCardGrid';
 
 const badge = (
-  <span className="inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+  <span className="inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
     Medium
   </span>
 );

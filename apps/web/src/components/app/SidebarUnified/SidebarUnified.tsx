@@ -26,11 +26,11 @@ function ProjectSwitcherRow({ project, onPick, onEdit, onRemove }: ProjectSwitch
           <ProjectIcon {...iconProps} size={14} />
         </IconTile>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[12.5px] font-medium">{project.name}</span>
+          <span className="block truncate text-xs-plus font-medium">{project.name}</span>
           <ProjectPathLabel
             path={project.path}
             focusable={false}
-            className="font-mono text-[9.5px] text-muted-foreground"
+            className="font-mono text-4xs-plus text-muted-foreground"
           />
         </span>
       </button>
@@ -71,7 +71,7 @@ export function SidebarUnified({ switcher, collapsed }: SidebarUnifiedProps) {
           </IconTile>
           {!collapsed && (
             <>
-              <span className="min-w-0 flex-1 truncate font-mono text-[13px] font-semibold">
+              <span className="min-w-0 flex-1 truncate font-mono text-xs-plus2 font-semibold">
                 {active?.name ?? 'No project'}
               </span>
               <ChevronDownIcon size={14} className="shrink-0 text-muted-foreground" />
@@ -97,12 +97,12 @@ export function SidebarUnified({ switcher, collapsed }: SidebarUnifiedProps) {
             }
           >
             {collapsed && (
-              <div className="px-2.5 pb-1 pt-1 font-mono text-[9.5px] uppercase tracking-[0.18em] text-muted-foreground">
+              <div className="px-2.5 pb-1 pt-1 font-mono text-4xs-plus uppercase tracking-[0.18em] text-muted-foreground">
                 Projects
               </div>
             )}
             {projects.length === 0 && (
-              <div className="px-2.5 py-2 text-[12px] text-muted-foreground">No projects yet.</div>
+              <div className="px-2.5 py-2 text-xs-flat text-muted-foreground">No projects yet.</div>
             )}
             {projects.map((p) => (
               <ProjectSwitcherRow
@@ -117,7 +117,7 @@ export function SidebarUnified({ switcher, collapsed }: SidebarUnifiedProps) {
             <button
               type="button"
               onClick={onNewProject}
-              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12.5px] font-semibold text-primary hover:bg-white/[0.04]"
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs-plus font-semibold text-primary hover:bg-white/[0.04]"
             >
               <PlusIcon size={14} />
               New project

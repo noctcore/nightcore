@@ -26,14 +26,14 @@ export function EnvironmentStep({ view }: EnvironmentStepProps) {
       <div className="flex items-start gap-4">
         <div className="min-w-0 flex-1">
           <h1 className="text-[28px] font-semibold tracking-tight">Environment check</h1>
-          <p className="mt-3 max-w-[620px] text-[16px] leading-7 text-muted-foreground">
+          <p className="mt-3 max-w-[620px] text-base-flat leading-7 text-muted-foreground">
             Nightcore drives the CLIs already on your machine. Nothing is installed
             for you.
           </p>
         </div>
         <Button
           variant="secondary"
-          className="px-5 py-2.5 text-[13px]"
+          className="px-5 py-2.5 text-xs-plus2"
           onClick={view.rerunChecks}
           disabled={view.checksLoading || !animationDone}
         >
@@ -99,22 +99,22 @@ function EnvironmentRow({
           <div className="flex items-center gap-2">
             <span className="text-[15px] font-semibold">{row.label}</span>
             {row.optional === true && (
-              <span className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+              <span className="rounded border border-border px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
                 optional
               </span>
             )}
           </div>
         </div>
-        <span className={`max-w-[460px] truncate font-mono text-[13px] ${detailClass}`}>
+        <span className={`max-w-[460px] truncate font-mono text-xs-plus2 ${detailClass}`}>
           {checking ? 'checking...' : row.detail}
         </span>
       </div>
       {failed && (
         <div className="mt-4 flex flex-wrap items-center gap-3 rounded-[10px] border border-warning/30 bg-black/25 px-4 py-3">
-          <span className="min-w-[220px] flex-1 text-[14px] leading-6 text-muted-foreground">
+          <span className="min-w-[220px] flex-1 text-sm-flat leading-6 text-muted-foreground">
             {row.fixHint}
           </span>
-          <code className="rounded-[8px] border border-border bg-white/[0.06] px-3 py-1.5 font-mono text-[13px] text-foreground">
+          <code className="rounded-[8px] border border-border bg-white/[0.06] px-3 py-1.5 font-mono text-xs-plus2 text-foreground">
             {row.fixCommand}
           </code>
           <Button onClick={onRecheck}>

@@ -9,7 +9,7 @@ import type { TrustReportData, TrustSectionProps } from './TrustReport.types';
 /** A mono section heading matching the drawer idiom. */
 function SectionHeading({ children }: { children: string }) {
   return (
-    <h3 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+    <h3 className="mb-1.5 font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
       {children}
     </h3>
   );
@@ -18,7 +18,7 @@ function SectionHeading({ children }: { children: string }) {
 /** A quiet inline code span for an untrusted path / command digest. */
 function Code({ children }: { children: string }) {
   return (
-    <span className="truncate rounded bg-muted/50 px-1 font-mono text-[11px] text-foreground/90">
+    <span className="truncate rounded bg-muted/50 px-1 font-mono text-2xs text-foreground/90">
       {children}
     </span>
   );
@@ -98,7 +98,7 @@ function EventList({
       <ul className="mt-1 space-y-1 pl-4">
         {events.map((e, i) => (
           <li key={`${e.tool}-${e.ts ?? i}`} className="flex flex-wrap items-center gap-x-2">
-            <span className="font-mono text-[11px] text-foreground">{e.tool}</span>
+            <span className="font-mono text-2xs text-foreground">{e.tool}</span>
             {e.ruleId != null && (
               <span className="text-muted-foreground">rule {e.ruleId}</span>
             )}

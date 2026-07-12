@@ -11,7 +11,7 @@ export function UpdateChecker(props: UpdateCheckerProps) {
 
   if (!isTauriRuntime) {
     return (
-      <span className="text-[12.5px] text-muted-foreground">
+      <span className="text-xs-plus text-muted-foreground">
         Updates are available in the desktop app.
       </span>
     );
@@ -19,7 +19,7 @@ export function UpdateChecker(props: UpdateCheckerProps) {
 
   if (status === 'checking') {
     return (
-      <span role="status" aria-busy="true" className="text-[12.5px] text-muted-foreground">
+      <span role="status" aria-busy="true" className="text-xs-plus text-muted-foreground">
         Checking for updates…
       </span>
     );
@@ -28,7 +28,7 @@ export function UpdateChecker(props: UpdateCheckerProps) {
   if (status === 'installing') {
     return (
       <div className="flex flex-col items-end gap-1">
-        <span role="status" aria-busy="true" className="text-[12.5px] text-muted-foreground">
+        <span role="status" aria-busy="true" className="text-xs-plus text-muted-foreground">
           Downloading update…
           {progressPct !== null ? ` ${progressPct}%` : ''}
         </span>
@@ -41,7 +41,7 @@ export function UpdateChecker(props: UpdateCheckerProps) {
       <div className="flex flex-col items-end gap-2">
         <Pill>v{update.version} available</Pill>
         {update.body && (
-          <p className="max-w-[280px] text-right text-[12px] text-muted-foreground">{update.body}</p>
+          <p className="max-w-[280px] text-right text-xs-flat text-muted-foreground">{update.body}</p>
         )}
         <div className="flex gap-2">
           <Button variant="secondary" onClick={dismiss}>
@@ -57,7 +57,7 @@ export function UpdateChecker(props: UpdateCheckerProps) {
     return (
       <div className="flex flex-col items-end gap-2">
         <Pill>v{update.version} ready</Pill>
-        <p className="max-w-[280px] text-right text-[12px] text-muted-foreground">
+        <p className="max-w-[280px] text-right text-xs-flat text-muted-foreground">
           Finish active runs before installing.
         </p>
         <Button disabled>Install &amp; restart</Button>
@@ -68,7 +68,7 @@ export function UpdateChecker(props: UpdateCheckerProps) {
   if (status === 'up-to-date') {
     return (
       <div className="flex flex-col items-end gap-2">
-        <span className="text-[12.5px] text-muted-foreground">You&apos;re up to date.</span>
+        <span className="text-xs-plus text-muted-foreground">You&apos;re up to date.</span>
         <Button variant="secondary" onClick={() => void check()}>
           Check again
         </Button>
@@ -79,7 +79,7 @@ export function UpdateChecker(props: UpdateCheckerProps) {
   if (status === 'error') {
     return (
       <div className="flex flex-col items-end gap-2">
-        <p className="max-w-[280px] text-right text-[12.5px] text-destructive">{error}</p>
+        <p className="max-w-[280px] text-right text-xs-plus text-destructive">{error}</p>
         <Button variant="secondary" onClick={() => void check()}>
           Retry
         </Button>

@@ -32,7 +32,7 @@ function CoverageBadge({ status }: { status: CoverageStatus }) {
   return (
     <span
       title={meta.hint}
-      className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-semibold ${meta.chip} ${meta.tone}`}
+      className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-3xs font-semibold ${meta.chip} ${meta.tone}`}
     >
       {meta.label}
     </span>
@@ -73,27 +73,27 @@ function ConventionCard({
       badges={
         <>
           <span
-            className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-semibold ${sev.chip} ${sev.tone}`}
+            className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-3xs font-semibold ${sev.chip} ${sev.tone}`}
           >
             {sev.label}
           </span>
           <span
-            className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-semibold ${kind.chip} ${kind.tone}`}
+            className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-3xs font-semibold ${kind.chip} ${kind.tone}`}
           >
             {kind.label}
           </span>
-          <span className="inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
             <Icon size={11} />
             {Meta.label}
           </span>
           {coverage !== undefined && <CoverageBadge status={coverage} />}
           {finding.status === 'converted' && (
-            <span className="ml-auto rounded-md bg-success/[0.12] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-success">
+            <span className="ml-auto rounded-md bg-success/[0.12] px-1.5 py-0.5 font-mono text-3xs font-semibold text-success">
               task
             </span>
           )}
           {finding.status === 'dismissed' && (
-            <span className="ml-auto rounded-md bg-white/[0.05] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground">
+            <span className="ml-auto rounded-md bg-white/[0.05] px-1.5 py-0.5 font-mono text-3xs font-semibold text-muted-foreground">
               dismissed
             </span>
           )}

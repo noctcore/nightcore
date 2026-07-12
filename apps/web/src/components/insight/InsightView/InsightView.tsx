@@ -114,7 +114,7 @@ export function InsightView(props: InsightViewProps) {
         {view.phase === 'configure' && (
           <div className="flex min-h-0 flex-1 flex-col">
             {view.startError !== null && (
-              <p className="border-b border-destructive/40 bg-destructive/[0.1] px-6 py-2 text-[12.5px] text-destructive">
+              <p className="border-b border-destructive/40 bg-destructive/[0.1] px-6 py-2 text-xs-plus text-destructive">
                 {view.startError}
               </p>
             )}
@@ -154,12 +154,12 @@ export function InsightView(props: InsightViewProps) {
                   <button
                     type="button"
                     onClick={view.clearPeek}
-                    className="inline-flex w-fit items-center gap-1 font-mono text-[11px] uppercase tracking-[0.1em] text-muted-foreground transition-colors hover:text-foreground"
+                    className="inline-flex w-fit items-center gap-1 font-mono text-2xs uppercase tracking-[0.1em] text-muted-foreground transition-colors hover:text-foreground"
                   >
                     <ChevronLeftIcon size={13} />
                     Back to progress
                   </button>
-                  <span className="text-[13px] font-semibold text-foreground">
+                  <span className="text-xs-plus2 font-semibold text-foreground">
                     {view.peekLabel}
                   </span>
                   <FindingGrid
@@ -181,14 +181,14 @@ export function InsightView(props: InsightViewProps) {
                 // A user cancel isn't a failure — show a neutral notice, not the
                 // destructive banner.
                 <div className="px-6 pt-5">
-                  <div className="rounded-[10px] border border-border bg-white/[0.02] px-4 py-3 text-[12.5px] text-muted-foreground">
+                  <div className="rounded-[10px] border border-border bg-white/[0.02] px-4 py-3 text-xs-plus text-muted-foreground">
                     Analysis cancelled. Any findings gathered before you stopped are
                     shown below.
                   </div>
                 </div>
               ) : (
                 <div className="px-6 pt-5">
-                  <div className="rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-4 py-3 text-[12.5px] text-destructive">
+                  <div className="rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-4 py-3 text-xs-plus text-destructive">
                     {view.stream.error ?? 'Analysis failed.'}
                   </div>
                 </div>

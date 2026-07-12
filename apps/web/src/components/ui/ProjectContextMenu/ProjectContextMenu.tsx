@@ -25,7 +25,7 @@ export function ProjectContextMenu({ children, onEdit, onRemove }: ProjectContex
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] hover:bg-white/[0.06]"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs-plus hover:bg-white/[0.06]"
             onClick={() => {
               menu.close();
               onEdit();
@@ -40,7 +40,7 @@ export function ProjectContextMenu({ children, onEdit, onRemove }: ProjectContex
               <button
                 type="button"
                 role="menuitem"
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] text-destructive hover:bg-destructive/10"
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs-plus text-destructive hover:bg-destructive/10"
                 onClick={() => {
                   menu.close();
                   onRemove();

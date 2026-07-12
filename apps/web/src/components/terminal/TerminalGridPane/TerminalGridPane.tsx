@@ -39,7 +39,7 @@ function PaneBroadcast() {
     <span
       aria-label={broadcastBadgeLabel()}
       title={broadcastBadgeLabel()}
-      className="flex shrink-0 items-center gap-1 rounded-full bg-amber-400/20 px-1.5 text-[9.5px] font-bold uppercase leading-4 tracking-wide text-amber-300 ring-1 ring-amber-400/60"
+      className="flex shrink-0 items-center gap-1 rounded-full bg-amber-400/20 px-1.5 text-4xs-plus font-bold uppercase leading-4 tracking-wide text-amber-300 ring-1 ring-amber-400/60"
     >
       <span aria-hidden className="h-1 w-1 animate-pulse rounded-full bg-amber-400" />
       {broadcastBadge()}
@@ -67,7 +67,7 @@ function PaneAttention({ attention }: { attention: TerminalAttention }) {
   return (
     <span
       aria-label={unreadBadgeLabel(attention.unread)}
-      className="shrink-0 rounded-full bg-primary/25 px-1.5 text-[10px] font-semibold leading-4 text-primary"
+      className="shrink-0 rounded-full bg-primary/25 px-1.5 text-3xs font-semibold leading-4 text-primary"
     >
       {unreadBadge(attention.unread)}
     </span>
@@ -97,7 +97,7 @@ function GridPaneTitle({
         onKeyDown={rename.onKeyDown}
         onBlur={rename.onBlur}
         size={Math.max(rename.draft.length, 6)}
-        className="min-w-0 rounded-sm bg-white/10 px-1 text-[11.5px] font-semibold text-foreground outline-none ring-1 ring-primary/60"
+        className="min-w-0 rounded-sm bg-white/10 px-1 text-2xs-plus font-semibold text-foreground outline-none ring-1 ring-primary/60"
       />
     );
   }
@@ -107,7 +107,7 @@ function GridPaneTitle({
       onClick={() => onActivate(session.id)}
       onDoubleClick={rename.begin}
       title={identityTitle(session.confined)}
-      className="min-w-0 truncate text-left text-[11.5px] font-semibold text-foreground"
+      className="min-w-0 truncate text-left text-2xs-plus font-semibold text-foreground"
     >
       {label}
     </button>

@@ -30,7 +30,7 @@ export function UnderstandView(props: UnderstandViewProps) {
         <div role="group" aria-label="Understand lens">
           <Segmented options={MODE_OPTIONS} value={view.mode} onChange={view.selectMode} />
         </div>
-        <span className="text-[12px] text-muted-foreground">
+        <span className="text-xs-flat text-muted-foreground">
           {view.mode === 'find'
             ? 'Find issues to fix in the active project.'
             : 'Grade the active project’s production readiness.'}

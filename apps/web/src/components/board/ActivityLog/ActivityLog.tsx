@@ -48,7 +48,7 @@ export function ActivityLog({ sessions, isRunning }: ActivityLogProps) {
 
   return (
     <section aria-label="Activity">
-      <h3 className="mb-2 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+      <h3 className="mb-2 flex items-center gap-1.5 font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
         <LogsIcon size={11} />
         {isRunning ? 'Live activity' : 'Activity'}
       </h3>
@@ -126,15 +126,15 @@ const SessionLog = memo(function SessionLog({
         className="flex w-full items-center gap-2 rounded-[10px] px-3 py-2.5 text-left transition-colors hover:bg-white/[0.03] focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
         <TerminalIcon size={13} className="shrink-0 text-muted-foreground" />
-        <span className="shrink-0 font-mono text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground/90">
+        <span className="shrink-0 font-mono text-2xs font-semibold uppercase tracking-[0.06em] text-foreground/90">
           {label}
         </span>
         {isRunning && (
-          <span className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-primary">
+          <span className="shrink-0 font-mono text-3xs font-semibold uppercase tracking-[0.06em] text-primary">
             Live
           </span>
         )}
-        <span className="min-w-0 flex-1 truncate text-right font-mono text-[11px] text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate text-right font-mono text-2xs text-muted-foreground">
           {meta.join(' · ')}
         </span>
         <ChevronDownIcon
@@ -195,7 +195,7 @@ function TimelineBody({
               <button
                 type="button"
                 onClick={showEarlier}
-                className="rounded-md border border-border bg-white/[0.03] px-3 py-1.5 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-white/[0.05] focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="rounded-md border border-border bg-white/[0.03] px-3 py-1.5 font-mono text-2xs text-muted-foreground transition-colors hover:bg-white/[0.05] focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
                 Show {hiddenCount} earlier {hiddenCount === 1 ? 'entry' : 'entries'}
               </button>

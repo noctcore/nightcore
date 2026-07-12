@@ -47,7 +47,7 @@ export function WorktreeSwitcher({ tasks }: WorktreeSwitcherProps) {
       aria-label="Worktree"
       className="flex flex-wrap items-center gap-2 border-b border-border px-[22px] py-2.5"
     >
-      <span className="mr-1 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+      <span className="mr-1 flex items-center gap-1.5 font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
         <LayersIcon size={12} />
         Worktree
       </span>

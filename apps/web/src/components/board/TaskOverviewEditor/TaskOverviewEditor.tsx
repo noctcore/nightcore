@@ -3,7 +3,7 @@ import { Kbd } from '@/components/ui';
 import { useTaskOverviewEditor } from './TaskOverviewEditor.hooks';
 import type { TaskOverviewEditorProps } from './TaskOverviewEditor.types';
 
-const LABEL_CLASS = 'font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground';
+const LABEL_CLASS = 'font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground';
 const FIELD_CLASS =
   'w-full rounded-[10px] border border-border bg-black/20 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary';
 
@@ -57,7 +57,7 @@ export function TaskOverviewEditor(props: TaskOverviewEditorProps) {
             }
           }}
         />
-        <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+        <span className="flex items-center gap-1 text-2xs text-muted-foreground">
           <Kbd>⌘↵</Kbd> or blur to save
         </span>
       </div>

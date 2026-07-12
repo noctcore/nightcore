@@ -44,7 +44,7 @@ export function ReviewTimeline({ steps }: ReviewTimelineProps) {
 
   return (
     <div className="flex flex-col gap-2 rounded-[12px] border border-border bg-white/[0.02] p-4">
-      <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+      <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
         Review timeline
       </span>
       <ol className="relative ml-1 flex flex-col gap-3 border-l border-border pl-4 pt-1">
@@ -77,11 +77,11 @@ export function ReviewTimeline({ steps }: ReviewTimelineProps) {
                   <span className="h-1.5 w-1.5 rounded-full bg-current" />
                 )}
               </span>
-              <span className={`text-[12.5px] font-medium ${labelClass(step.state)}`}>
+              <span className={`text-xs-plus font-medium ${labelClass(step.state)}`}>
                 {step.label}
               </span>
               {when !== null && (
-                <span className="font-mono text-[10.5px] text-muted-foreground/70">{when}</span>
+                <span className="font-mono text-3xs-plus text-muted-foreground/70">{when}</span>
               )}
             </li>
           );

@@ -34,21 +34,21 @@ export function ConventionDetailPanel({
       badges: (
         <>
           <span
-            className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-semibold ${sev.chip} ${sev.tone}`}
+            className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-3xs font-semibold ${sev.chip} ${sev.tone}`}
           >
             {sev.label}
           </span>
           <span
-            className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-semibold ${kind.chip} ${kind.tone}`}
+            className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-3xs font-semibold ${kind.chip} ${kind.tone}`}
           >
             {kind.label}
           </span>
-          <span className="inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
             <Icon size={11} />
             {Meta.label}
           </span>
           {shown.confidence !== null && (
-            <span className="font-mono text-[10px] text-muted-foreground">
+            <span className="font-mono text-3xs text-muted-foreground">
               {Math.round(shown.confidence * 100)}% confidence
             </span>
           )}
@@ -77,7 +77,7 @@ export function ConventionDetailPanel({
                 const label = formatLocation(e, { withSymbol: true }) ?? e.file;
                 return (
                   <li key={label}>
-                    <code className="break-all font-mono text-[11.5px] text-muted-foreground">
+                    <code className="break-all font-mono text-2xs-plus text-muted-foreground">
                       {label}
                     </code>
                   </li>

@@ -49,7 +49,7 @@ function PaneTitle({
         onKeyDown={rename.onKeyDown}
         onBlur={rename.onBlur}
         size={Math.max(rename.draft.length, 6)}
-        className="rounded-sm bg-white/10 px-1 text-[12px] font-semibold text-foreground outline-none ring-1 ring-primary/60"
+        className="rounded-sm bg-white/10 px-1 text-xs-flat font-semibold text-foreground outline-none ring-1 ring-primary/60"
       />
     );
   }
@@ -58,7 +58,7 @@ function PaneTitle({
       type="button"
       onDoubleClick={rename.begin}
       title="Double-click to rename"
-      className="max-w-[24rem] truncate text-left text-[12px] font-semibold text-foreground"
+      className="max-w-[24rem] truncate text-left text-xs-flat font-semibold text-foreground"
     >
       {label}
     </button>
@@ -71,7 +71,7 @@ function PaneTitle({
 function LinkChrome({ link }: { link: TerminalPaneLink }) {
   if (!link.ungoverned && link.linkedTitle === null && !link.canLaunchClaude) return null;
   return (
-    <div className="flex items-center gap-2 text-[11px]">
+    <div className="flex items-center gap-2 text-2xs">
       {link.ungoverned && (
         <span
           title={ungovernedTitle()}
@@ -125,7 +125,7 @@ function IdentityHeader({
   return (
     <div className="flex flex-col gap-0.5 border-b border-border bg-black/25 px-3 py-1.5">
       <PaneTitle session={session} onRename={onRename} />
-      <div title={identityTitle(confined)} className="flex items-center gap-2 text-[11px]">
+      <div title={identityTitle(confined)} className="flex items-center gap-2 text-2xs">
         <span
           className={`flex items-center gap-1.5 font-medium ${
             confined ? 'text-warning' : 'text-primary/90'
@@ -141,7 +141,7 @@ function IdentityHeader({
         <span className="truncate font-mono text-muted-foreground/70">{displayPath(cwd)}</span>
       </div>
       {confined && (
-        <span className="mt-0.5 text-[10px] text-muted-foreground/70">{confinedNoiseHint()}</span>
+        <span className="mt-0.5 text-3xs text-muted-foreground/70">{confinedNoiseHint()}</span>
       )}
       <LinkChrome link={link} />
     </div>

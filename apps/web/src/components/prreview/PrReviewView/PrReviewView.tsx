@@ -48,7 +48,7 @@ export function PrReviewView(props: PrReviewViewProps) {
               <GithubIcon size={16} />
               PR Review
             </h2>
-            <span className="truncate text-[12px] text-muted-foreground">
+            <span className="truncate text-xs-flat text-muted-foreground">
               {view.projectName ?? 'Pull-request review'}
             </span>
           </div>
@@ -165,7 +165,7 @@ export function PrReviewView(props: PrReviewViewProps) {
               {view.post.postError !== null && (
                 <span
                   role="alert"
-                  className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-[12.5px] text-destructive"
+                  className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-xs-plus text-destructive"
                 >
                   {view.post.postError}
                 </span>
@@ -202,7 +202,7 @@ export function PrReviewView(props: PrReviewViewProps) {
               {view.address.addressError !== null && (
                 <span
                   role="alert"
-                  className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-[12.5px] text-destructive"
+                  className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-xs-plus text-destructive"
                 >
                   {view.address.addressError}
                 </span>
@@ -247,7 +247,7 @@ export function PrReviewView(props: PrReviewViewProps) {
               {view.fix.pushError !== null && (
                 <span
                   role="alert"
-                  className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-[12.5px] text-destructive"
+                  className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-xs-plus text-destructive"
                 >
                   {view.fix.pushError}
                 </span>
@@ -302,7 +302,7 @@ export function PrReviewView(props: PrReviewViewProps) {
               {view.fix.fixActionError !== null && (
                 <span
                   role="alert"
-                  className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-[12.5px] text-destructive"
+                  className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-xs-plus text-destructive"
                 >
                   {view.fix.fixActionError}
                 </span>

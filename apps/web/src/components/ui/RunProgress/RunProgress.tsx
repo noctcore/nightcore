@@ -65,10 +65,10 @@ export function RunProgress({
   return (
     <section aria-label="Run progress" className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+        <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
           Run progress
         </span>
-        <span className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+        <span className="flex items-center gap-1.5 font-mono text-2xs text-muted-foreground">
           <StatusDot colorClass={statusMeta.dot} pulse={status === 'running'} />
           {statusMeta.label}
         </span>
@@ -76,7 +76,7 @@ export function RunProgress({
 
       <div className="overflow-hidden rounded-[10px] border border-border bg-white/[0.015]">
         {/* Header: overall bar + live readout. */}
-        <div className="flex items-center gap-4 border-b border-border px-4 py-3 font-mono text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-4 border-b border-border px-4 py-3 font-mono text-2xs text-muted-foreground">
           <div
             role="progressbar"
             aria-label="Overall progress"
@@ -156,7 +156,7 @@ export function RunProgress({
                 <span className="text-muted-foreground/60">queued</span>
               );
 
-            const rowClass = `flex w-full items-center gap-3 px-4 py-2.5 text-left text-[12.5px] ${
+            const rowClass = `flex w-full items-center gap-3 px-4 py-2.5 text-left text-xs-plus ${
               state === 'pending' ? 'opacity-60' : ''
             }`;
             const labelTone = state === 'pending' ? 'text-muted-foreground' : 'text-foreground';
@@ -166,7 +166,7 @@ export function RunProgress({
                 <span className="flex w-4 shrink-0 items-center justify-center">{indicator}</span>
                 <Icon size={13} className="shrink-0 text-muted-foreground" />
                 <span className={`flex-1 truncate ${labelTone}`}>{category.label}</span>
-                <span className="shrink-0 font-mono text-[11px]">{trailing}</span>
+                <span className="shrink-0 font-mono text-2xs">{trailing}</span>
               </>
             );
 
@@ -205,7 +205,7 @@ export function RunProgress({
 
         {/* Synthesis row (Harness only) — kills the dead-zone after every lens reads "done". */}
         {synthesizing && (
-          <div className="flex items-center gap-3 border-t border-border px-4 py-2.5 text-[12.5px]">
+          <div className="flex items-center gap-3 border-t border-border px-4 py-2.5 text-xs-plus">
             <span className="flex w-4 shrink-0 items-center justify-center">
               <StatusDot colorClass="bg-primary" pulse />
             </span>

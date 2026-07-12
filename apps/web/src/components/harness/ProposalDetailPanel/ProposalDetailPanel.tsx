@@ -45,12 +45,12 @@ export function ProposalDetailPanel({
       title: shown.title,
       badges: (
         <>
-          <span className="inline-flex items-center rounded-md border border-primary/40 bg-primary/[0.1] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-primary">
+          <span className="inline-flex items-center rounded-md border border-primary/40 bg-primary/[0.1] px-1.5 py-0.5 font-mono text-3xs font-semibold text-primary">
             {meta.label}
           </span>
-          <span className="font-mono text-[10px] text-muted-foreground">{meta.hint}</span>
+          <span className="font-mono text-3xs text-muted-foreground">{meta.hint}</span>
           {shown.confidence !== null && (
-            <span className="font-mono text-[10px] text-muted-foreground">
+            <span className="font-mono text-3xs text-muted-foreground">
               {Math.round(shown.confidence * 100)}% confidence
             </span>
           )}
@@ -133,9 +133,9 @@ export function ProposalDetailPanel({
 
             {shown.harnessCheck !== null && (
               <DetailSection title="Suggested Structure-Lock check">
-                <p className="text-[12px] text-muted-foreground">
+                <p className="text-xs-flat text-muted-foreground">
                   After this lands, arm{' '}
-                  <code className="rounded border border-border bg-white/[0.04] px-1 py-0.5 font-mono text-[11.5px] text-foreground">
+                  <code className="rounded border border-border bg-white/[0.04] px-1 py-0.5 font-mono text-2xs-plus text-foreground">
                     {shown.harnessCheck.command}
                   </code>{' '}
                   (kind{' '}
@@ -149,7 +149,7 @@ export function ProposalDetailPanel({
 
             {shown.artifactIds.length > 0 && (
               <DetailSection title={`Bundles ${shown.artifactIds.length} artifact(s)`}>
-                <p className="text-[12px] text-muted-foreground">
+                <p className="text-xs-flat text-muted-foreground">
                   <span className="font-semibold text-foreground">Apply bundle</span>{' '}
                   writes all {shown.artifactIds.length}{' '}
                   {shown.artifactIds.length === 1 ? 'artifact' : 'artifacts'} to disk

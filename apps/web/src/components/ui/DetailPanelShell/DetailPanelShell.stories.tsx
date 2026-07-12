@@ -17,7 +17,7 @@ const meta = {
     title: 'An example finding title',
     onClose: fn(),
     badges: (
-      <span className="inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+      <span className="inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
         Medium
       </span>
     ),
@@ -25,7 +25,7 @@ const meta = {
     children: (
       <>
         <DetailSection title="What">
-          <p className="text-[13px] text-muted-foreground">
+          <p className="text-xs-plus2 text-muted-foreground">
             A short description of the finding.
           </p>
         </DetailSection>

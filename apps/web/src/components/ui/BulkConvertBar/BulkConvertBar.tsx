@@ -36,7 +36,7 @@ export function BulkConvertBar({
           : `Convert all to tasks (${count})`}
       </Button>
       {error !== null && (
-        <span className="text-[12px] text-destructive">{error}</span>
+        <span className="text-xs-flat text-destructive">{error}</span>
       )}
       {/* Announce convert-all progress + completion to assistive tech. */}
       <span role="status" aria-live="polite" className="sr-only">

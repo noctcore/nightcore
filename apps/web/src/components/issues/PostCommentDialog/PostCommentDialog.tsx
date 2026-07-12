@@ -42,7 +42,7 @@ export function PostCommentDialog({
     >
       <div className="flex flex-col gap-2 px-5 pb-3 pt-5">
         <h2 className="text-base font-semibold text-foreground">Post verdict as a GitHub comment</h2>
-        <p className="text-[12.5px] leading-relaxed text-muted-foreground">
+        <p className="text-xs-plus leading-relaxed text-muted-foreground">
           This posts the comment below to the issue on GitHub. Review the exact markdown
           first — nothing is posted until you confirm.
         </p>
@@ -50,11 +50,11 @@ export function PostCommentDialog({
 
       <div className="max-h-[46vh] overflow-y-auto px-5 pb-3">
         {loading ? (
-          <div className="flex items-center gap-2 py-6 text-[13px] text-muted-foreground">
+          <div className="flex items-center gap-2 py-6 text-xs-plus2 text-muted-foreground">
             <Spinner size={14} /> Building the comment…
           </div>
         ) : error !== null ? (
-          <div className="flex items-center gap-2 rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-[12.5px] text-destructive">
+          <div className="flex items-center gap-2 rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-xs-plus text-destructive">
             <AlertIcon size={14} />
             {error}
           </div>

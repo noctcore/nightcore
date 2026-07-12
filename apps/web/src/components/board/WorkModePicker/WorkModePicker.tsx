@@ -35,13 +35,13 @@ export function WorkModePicker({ value, onChange, disabled = false }: WorkModePi
               <span className={selected ? 'text-primary' : 'text-muted-foreground'}>
                 <Icon size={14} />
               </span>
-              <span className="text-[13px] font-semibold text-foreground">{option.label}</span>
+              <span className="text-xs-plus2 font-semibold text-foreground">{option.label}</span>
             </button>
           );
         })}
       </div>
       {selectedHint !== undefined && (
-        <p className="text-[11px] leading-snug text-muted-foreground">{selectedHint}</p>
+        <p className="text-2xs leading-snug text-muted-foreground">{selectedHint}</p>
       )}
     </div>
   );

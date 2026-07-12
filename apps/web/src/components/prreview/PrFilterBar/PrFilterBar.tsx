@@ -43,7 +43,7 @@ function statusLabel(state: ReviewLifecycleState): string {
 /** Shared trigger-button chrome — dashed + muted when idle, solid + primary-tinted
  *  once a value is chosen (the reference's dashed→solid affordance). */
 function triggerClass(active: boolean): string {
-  return `inline-flex h-7 min-w-0 items-center gap-1.5 rounded-[8px] border px-2 text-[11px] font-medium transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${
+  return `inline-flex h-7 min-w-0 items-center gap-1.5 rounded-[8px] border px-2 text-2xs font-medium transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${
     active
       ? 'border-primary/50 bg-primary/[0.08] text-foreground'
       : 'border-dashed border-border bg-transparent text-muted-foreground hover:border-white/25 hover:text-foreground'
@@ -53,7 +53,7 @@ function triggerClass(active: boolean): string {
 /** A small selected-count badge shown in a multi-select trigger. */
 function CountBadge({ count }: { count: number }) {
   return (
-    <span className="rounded-full bg-primary/20 px-1.5 py-px font-mono text-[10px] font-semibold text-primary">
+    <span className="rounded-full bg-primary/20 px-1.5 py-px font-mono text-3xs font-semibold text-primary">
       {count}
     </span>
   );
@@ -139,7 +139,7 @@ function MultiSelectDropdown<T extends string>({
           style={{ animation: 'nc-rise .14s cubic-bezier(.22,1,.36,1)' }}
         >
           <div className="border-b border-border px-3 py-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+            <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
               {title}
             </span>
             {searchable && (
@@ -155,7 +155,7 @@ function MultiSelectDropdown<T extends string>({
                   aria-label={searchPlaceholder ?? `Search ${title}`}
                   autoComplete="off"
                   spellCheck={false}
-                  className="w-full bg-transparent py-1.5 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/60"
+                  className="w-full bg-transparent py-1.5 text-xs-flat text-foreground outline-none placeholder:text-muted-foreground/60"
                 />
               </div>
             )}
@@ -171,7 +171,7 @@ function MultiSelectDropdown<T extends string>({
             className="max-h-[240px] overflow-y-auto p-1 focus:outline-none"
           >
             {dd.filteredItems.length === 0 ? (
-              <p className="px-2 py-3 text-center text-[12px] text-muted-foreground">{emptyLabel}</p>
+              <p className="px-2 py-3 text-center text-xs-flat text-muted-foreground">{emptyLabel}</p>
             ) : (
               dd.filteredItems.map((item, index) => {
                 const isSelected = selectedSet.has(item);
@@ -195,7 +195,7 @@ function MultiSelectDropdown<T extends string>({
                         toggleItem(item);
                       }
                     }}
-                    className={`flex cursor-pointer select-none items-center gap-2 rounded-[6px] px-2 py-1.5 text-[12.5px] transition-colors hover:bg-white/[0.06] ${
+                    className={`flex cursor-pointer select-none items-center gap-2 rounded-[6px] px-2 py-1.5 text-xs-plus transition-colors hover:bg-white/[0.06] ${
                       isFocused ? 'bg-white/[0.08] ring-1 ring-inset ring-primary/50' : ''
                     }`}
                   >
@@ -211,7 +211,7 @@ function MultiSelectDropdown<T extends string>({
               <button
                 type="button"
                 onClick={() => onChange([])}
-                className="w-full rounded-[6px] py-1.5 text-center text-[11.5px] font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                className="w-full rounded-[6px] py-1.5 text-center text-2xs-plus font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
               >
                 Clear
               </button>
@@ -260,7 +260,7 @@ function SortDropdown({
           style={{ animation: 'nc-rise .14s cubic-bezier(.22,1,.36,1)' }}
         >
           <div className="border-b border-border px-3 py-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+            <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
               Sort by
             </span>
           </div>
@@ -301,7 +301,7 @@ function SortDropdown({
                       dd.close();
                     }
                   }}
-                  className={`flex cursor-pointer select-none items-center gap-2 rounded-[6px] px-2 py-1.5 text-[12.5px] transition-colors hover:bg-white/[0.06] ${
+                  className={`flex cursor-pointer select-none items-center gap-2 rounded-[6px] px-2 py-1.5 text-xs-plus transition-colors hover:bg-white/[0.06] ${
                     isFocused ? 'bg-white/[0.08] ring-1 ring-inset ring-primary/50' : ''
                   }`}
                 >
@@ -360,7 +360,7 @@ export function PrFilterBar({
           type="button"
           onClick={onReset}
           disabled={disabled}
-          className="ml-auto inline-flex h-7 items-center gap-1 rounded-[8px] px-2 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          className="ml-auto inline-flex h-7 items-center gap-1 rounded-[8px] px-2 text-2xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
         >
           <CloseIcon size={12} />
           Reset

@@ -24,7 +24,7 @@ export function ToolbarOption({
   return (
     <div ref={rootRef} className={`relative inline-flex ${className ?? ''}`}>
       <div
-        className={`inline-flex items-stretch overflow-hidden rounded-[9px] border text-[12.5px] font-semibold text-foreground transition-colors ${
+        className={`inline-flex items-stretch overflow-hidden rounded-[9px] border text-xs-plus font-semibold text-foreground transition-colors ${
           on
             ? 'border-primary/55 bg-primary/[0.12]'
             : 'border-border bg-white/[0.02] hover:border-white/20'

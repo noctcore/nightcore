@@ -56,12 +56,12 @@ export function McpServerRow({
     >
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-[13.5px] font-medium">{entry.name}</span>
-          <span className="rounded bg-white/[0.06] px-1.5 py-px font-mono text-[9.5px] uppercase tracking-[0.06em] text-muted-foreground">
+          <span className="truncate text-xs-plus3 font-medium">{entry.name}</span>
+          <span className="rounded bg-white/[0.06] px-1.5 py-px font-mono text-4xs-plus uppercase tracking-[0.06em] text-muted-foreground">
             {entry.config.transport}
           </span>
         </div>
-        <div className="mt-0.5 truncate font-mono text-[11.5px] text-muted-foreground">
+        <div className="mt-0.5 truncate font-mono text-2xs-plus text-muted-foreground">
           {describe(entry)}
         </div>
       </div>

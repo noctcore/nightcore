@@ -15,7 +15,7 @@ export function TaskCardTerminalChip({ taskId }: TaskCardTerminalChipProps) {
       aria-label="Open linked terminal"
       title="A terminal is linked to this task — open it"
       onClick={onOpen}
-      className="flex items-center gap-1 rounded-md bg-primary/[0.12] px-1.5 py-0.5 font-mono text-[9.5px] text-primary transition-colors hover:bg-primary/20"
+      className="flex items-center gap-1 rounded-md bg-primary/[0.12] px-1.5 py-0.5 font-mono text-4xs-plus text-primary transition-colors hover:bg-primary/20"
     >
       <TerminalIcon size={11} />
       terminal

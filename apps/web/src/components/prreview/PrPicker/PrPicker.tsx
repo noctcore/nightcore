@@ -54,10 +54,10 @@ export function PrPicker({
     <div className="flex min-h-0 flex-1 flex-col gap-2.5 p-3">
       <div className="flex items-center justify-between px-1">
         <span className="flex items-center gap-2">
-          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+          <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
             Pull requests
           </span>
-          <span className="rounded-full border border-border px-1.5 py-px text-[10.5px] text-muted-foreground">
+          <span className="rounded-full border border-border px-1.5 py-px text-3xs-plus text-muted-foreground">
             {prs.length}
           </span>
         </span>
@@ -65,7 +65,7 @@ export function PrPicker({
           type="button"
           onClick={onRefresh}
           disabled={disabled || loading}
-          className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+          className="inline-flex items-center gap-1 text-2xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
         >
           {loading ? <Spinner size={11} /> : <RetryIcon size={11} />}
           Refresh
@@ -114,23 +114,23 @@ export function PrPicker({
       {error !== null && (
         <div
           role="alert"
-          className="rounded-[10px] border border-destructive/50 bg-destructive/[0.06] px-3 py-2 text-[12.5px] text-destructive"
+          className="rounded-[10px] border border-destructive/50 bg-destructive/[0.06] px-3 py-2 text-xs-plus text-destructive"
         >
           {error}
-          <span className="block text-[11.5px] text-muted-foreground">
+          <span className="block text-2xs-plus text-muted-foreground">
             You can still type a PR number above to review it.
           </span>
         </div>
       )}
 
       {loading && rows.length === 0 && (
-        <div className="flex items-center gap-2 px-1 py-3 text-[12.5px] text-muted-foreground">
+        <div className="flex items-center gap-2 px-1 py-3 text-xs-plus text-muted-foreground">
           <Spinner size={13} /> Loading pull requests…
         </div>
       )}
 
       {showEmpty && (
-        <p className="px-1 py-2 text-[12.5px] text-muted-foreground">
+        <p className="px-1 py-2 text-xs-plus text-muted-foreground">
           {hasQuery
             ? 'No open PR matches — type a full number above to review any PR.'
             : error === null
@@ -165,14 +165,14 @@ export function PrPicker({
                   }`}
                 >
                   <span className="flex items-center gap-2">
-                    <span className="rounded-full border border-success/40 bg-success/10 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-success">
+                    <span className="rounded-full border border-success/40 bg-success/10 px-1.5 py-px text-3xs font-semibold uppercase tracking-wide text-success">
                       Open
                     </span>
-                    <span className="font-mono text-[11.5px] text-muted-foreground">
+                    <span className="font-mono text-2xs-plus text-muted-foreground">
                       #{pr.number}
                     </span>
                     {pr.isDraft && (
-                      <span className="rounded-full border border-border px-1.5 py-px text-[9.5px] uppercase tracking-wide text-muted-foreground">
+                      <span className="rounded-full border border-border px-1.5 py-px text-4xs-plus uppercase tracking-wide text-muted-foreground">
                         Draft
                       </span>
                     )}
@@ -186,14 +186,14 @@ export function PrPicker({
                         status.state !== 'not_reviewed' &&
                         tone !== null && (
                           <span
-                            className={`inline-flex items-center gap-1.5 text-[10.5px] font-medium ${tone.text}`}
+                            className={`inline-flex items-center gap-1.5 text-3xs-plus font-medium ${tone.text}`}
                           >
                             <StatusDot colorClass={tone.dot} pulse={status.pulse} />
                             {status.shortLabel}
                           </span>
                         )}
                       {count > 0 && (
-                        <span className="inline-flex items-center rounded-full border border-warning/40 bg-warning/[0.1] px-1.5 py-px font-mono text-[10px] font-semibold text-warning">
+                        <span className="inline-flex items-center rounded-full border border-warning/40 bg-warning/[0.1] px-1.5 py-px font-mono text-3xs font-semibold text-warning">
                           {count}
                           <span className="sr-only">
                             {count === 1 ? ' open finding' : ' open findings'}
@@ -202,10 +202,10 @@ export function PrPicker({
                       )}
                     </span>
                   </span>
-                  <span className="truncate text-[13.5px] font-medium text-foreground">
+                  <span className="truncate text-xs-plus3 font-medium text-foreground">
                     {pr.title || '(no title)'}
                   </span>
-                  <span className="flex items-center gap-3 text-[11.5px] text-muted-foreground">
+                  <span className="flex items-center gap-3 text-2xs-plus text-muted-foreground">
                     <span className="inline-flex items-center gap-1">
                       <GithubIcon size={11} className="shrink-0" />@{pr.author}
                     </span>
@@ -223,7 +223,7 @@ export function PrPicker({
                         the success tone, deletions destructive). Hidden only when
                         gh reported neither — a genuine 0/0 still reads as a size. */}
                     {(pr.additions > 0 || pr.deletions > 0) && (
-                      <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 font-mono text-[10.5px]">
+                      <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 font-mono text-3xs-plus">
                         <span className="text-success">+{pr.additions}</span>
                         <span className="text-destructive">-{pr.deletions}</span>
                       </span>
@@ -241,7 +241,7 @@ export function PrPicker({
             type="button"
             disabled={disabled}
             onClick={() => onChange(manualNumber)}
-            className={`flex w-full items-center gap-2 rounded-[12px] border px-3.5 py-3 text-left text-[13px] transition-colors disabled:cursor-not-allowed ${
+            className={`flex w-full items-center gap-2 rounded-[12px] border px-3.5 py-3 text-left text-xs-plus2 transition-colors disabled:cursor-not-allowed ${
               value === manualNumber
                 ? 'border-primary/60 bg-primary/[0.08] text-foreground'
                 : 'border-dashed border-border text-muted-foreground hover:border-white/20 hover:text-foreground'
@@ -251,7 +251,7 @@ export function PrPicker({
             Select PR&nbsp;<span className="font-mono text-primary">
               #{manualNumber}
             </span>
-            <span className="text-[11.5px] text-muted-foreground">— not in the list</span>
+            <span className="text-2xs-plus text-muted-foreground">— not in the list</span>
           </button>
         )}
 
@@ -267,7 +267,7 @@ export function PrPicker({
                 {loadingMore ? 'Loading more…' : 'Load more'}
               </Button>
             ) : (
-              <span className="text-[11px] text-muted-foreground/60">All pull requests loaded</span>
+              <span className="text-2xs text-muted-foreground/60">All pull requests loaded</span>
             )}
           </div>
         )}

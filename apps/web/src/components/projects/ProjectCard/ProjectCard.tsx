@@ -54,7 +54,7 @@ export function ProjectCard({ project, onOpen, onEdit, onDelete }: ProjectCardPr
             <ProjectPathLabel
               path={project.path}
               focusable={false}
-              className="mt-0.5 font-mono text-[11px] text-muted-foreground"
+              className="mt-0.5 font-mono text-2xs text-muted-foreground"
             />
           </span>
         </button>
@@ -95,13 +95,13 @@ export function ProjectCard({ project, onOpen, onEdit, onDelete }: ProjectCardPr
             >
               {s.value}
             </div>
-            <div className="mt-0.5 text-[9.5px] uppercase tracking-[0.08em] text-muted-foreground">
+            <div className="mt-0.5 text-4xs-plus uppercase tracking-[0.08em] text-muted-foreground">
               {s.label}
             </div>
           </div>
         ))}
       </div>
-      <div className="mt-3.5 flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+      <div className="mt-3.5 flex items-center gap-1.5 text-2xs-plus text-muted-foreground">
         <ClockIcon size={12} />
         <span>{project.activity}</span>
       </div>

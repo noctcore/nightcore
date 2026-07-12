@@ -43,7 +43,7 @@ export function KindPicker({ value, onChange, compact = false, disabled = false 
               <span className={selected ? 'text-primary' : 'text-muted-foreground'}>
                 <Icon size={14} />
               </span>
-              <span className="text-[13px] font-semibold text-foreground">{option.label}</span>
+              <span className="text-xs-plus2 font-semibold text-foreground">{option.label}</span>
               {!option.enabled && (
                 <span className="ml-auto rounded bg-white/[0.06] px-1 py-px font-mono text-[8px] uppercase tracking-[0.04em] text-muted-foreground">
                   soon
@@ -51,7 +51,7 @@ export function KindPicker({ value, onChange, compact = false, disabled = false 
               )}
             </span>
             {!compact && (
-              <span className="text-[11px] leading-snug text-muted-foreground">{option.hint}</span>
+              <span className="text-2xs leading-snug text-muted-foreground">{option.hint}</span>
             )}
           </button>
         );

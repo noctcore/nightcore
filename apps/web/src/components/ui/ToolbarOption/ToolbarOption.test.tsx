@@ -28,7 +28,7 @@ test('closes the settings popover on Escape and restores focus to the trigger', 
       settingsLabel="Escape feature options"
       settings={
         <div className="flex items-center justify-between gap-3">
-          <span className="text-[12.5px] font-semibold text-foreground">Sample option</span>
+          <span className="text-xs-plus font-semibold text-foreground">Sample option</span>
           <Toggle on={false} onChange={() => {}} label="Sample option" />
         </div>
       }

@@ -75,7 +75,7 @@ function NavItemButton({
       <span className="shrink-0">{item.icon}</span>
       {!collapsed && (
         <>
-          <span className="flex-1 text-[13px] font-medium">{item.label}</span>
+          <span className="flex-1 text-xs-plus2 font-medium">{item.label}</span>
           <Kbd>{item.hint}</Kbd>
         </>
       )}
@@ -116,7 +116,7 @@ function NavGroupSection({
               : 'cursor-default'
           }`}
         >
-          <span className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-muted-foreground">
+          <span className="font-mono text-4xs-plus uppercase tracking-[0.18em] text-muted-foreground">
             {section.label}
           </span>
           {section.collapsible && (
@@ -150,7 +150,7 @@ function NavGroupSection({
           group's items explaining a stage whose surface lives elsewhere. Hidden
           in the collapsed rail (no room for prose). */}
       {!collapsed && showItems && section.note !== undefined && (
-        <p className="mt-1 px-2.5 text-[11px] leading-snug text-muted-foreground/70">
+        <p className="mt-1 px-2.5 text-2xs leading-snug text-muted-foreground/70">
           {section.note}
         </p>
       )}
@@ -232,12 +232,12 @@ export function NavSidebar({
             <BellIcon size={14} />
           </span>
           {!collapsed ? (
-            <span className="font-mono text-[11px] font-semibold">
+            <span className="font-mono text-2xs font-semibold">
               {awaitingInputCount} awaiting input
             </span>
           ) : (
             awaitingInputCount > 1 && (
-              <span className="font-mono text-[10px] font-semibold">{awaitingInputCount}</span>
+              <span className="font-mono text-3xs font-semibold">{awaitingInputCount}</span>
             )
           )}
         </button>
@@ -274,13 +274,13 @@ export function NavSidebar({
         className={`flex shrink-0 items-center gap-2.5 border-t border-border px-3.5 py-3 ${awaitingInputCount > 0 || footerSections.length > 0 || slots?.footer !== undefined ? '' : 'mt-auto'} ${collapsed ? 'justify-center' : ''}`}
       >
         {runningCount > 0 ? (
-          <span className="flex items-center gap-1.5 font-mono text-[10.5px] text-warning">
+          <span className="flex items-center gap-1.5 font-mono text-3xs-plus text-warning">
             <StatusDot colorClass="bg-warning" pulse />
             {!collapsed && `${runningCount} running`}
           </span>
         ) : (
           !collapsed && (
-            <span className="font-mono text-[11px] text-muted-foreground">{version}</span>
+            <span className="font-mono text-2xs text-muted-foreground">{version}</span>
           )
         )}
         <a

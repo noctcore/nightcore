@@ -68,7 +68,7 @@ export function ConstitutionCard({
         </div>
         <div className="min-w-0 flex-1 pt-0.5">
           <h2 className="text-lg font-semibold tracking-tight">Project Constitution</h2>
-          <p className="mt-0.5 text-[12.5px] leading-snug text-muted-foreground">
+          <p className="mt-0.5 text-xs-plus leading-snug text-muted-foreground">
             A trusted, Nightcore-controlled context pack injected into every agent run's
             system prompt — so agents start knowing the project's rules instead of
             rediscovering (or violating) them.
@@ -82,7 +82,7 @@ export function ConstitutionCard({
       </div>
 
       {!projectActive ? (
-        <div className="mt-3 rounded-xl border border-dashed border-border px-4 py-6 text-center text-[12.5px] text-muted-foreground">
+        <div className="mt-3 rounded-xl border border-dashed border-border px-4 py-6 text-center text-xs-plus text-muted-foreground">
           Activate a project to author its Constitution.
         </div>
       ) : (
@@ -94,7 +94,7 @@ export function ConstitutionCard({
                   key={v}
                   type="button"
                   onClick={() => setMode(v)}
-                  className={`rounded-md px-3 py-1 text-[12px] font-medium transition-colors ${
+                  className={`rounded-md px-3 py-1 text-xs-flat font-medium transition-colors ${
                     v === mode
                       ? 'bg-primary/[0.18] text-primary'
                       : 'text-muted-foreground hover:text-foreground'
@@ -105,7 +105,7 @@ export function ConstitutionCard({
               ))}
             </div>
             {dirty && (
-              <span className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-warning">
+              <span className="font-mono text-3xs-plus uppercase tracking-[0.1em] text-warning">
                 Unsaved
               </span>
             )}
@@ -127,7 +127,7 @@ export function ConstitutionCard({
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center gap-2 rounded-[10px] border border-border bg-white/[0.02] px-3 py-6 text-[12.5px] text-muted-foreground">
+            <div className="flex items-center justify-center gap-2 rounded-[10px] border border-border bg-white/[0.02] px-3 py-6 text-xs-plus text-muted-foreground">
               <Spinner />
               Loading…
             </div>
@@ -137,11 +137,11 @@ export function ConstitutionCard({
               onChange={(e) => onContentChange(e.target.value)}
               spellCheck={false}
               placeholder={EMPTY_PACK_PLACEHOLDER}
-              className="h-[280px] w-full resize-y rounded-[10px] border border-border bg-white/[0.02] p-3 font-mono text-[12.5px] leading-relaxed text-foreground outline-none focus:border-primary"
+              className="h-[280px] w-full resize-y rounded-[10px] border border-border bg-white/[0.02] p-3 font-mono text-xs-plus leading-relaxed text-foreground outline-none focus:border-primary"
               aria-label="Context pack markdown"
             />
           ) : content.trim().length === 0 ? (
-            <div className="rounded-[10px] border border-dashed border-border px-4 py-8 text-center text-[12.5px] text-muted-foreground">
+            <div className="rounded-[10px] border border-dashed border-border px-4 py-8 text-center text-xs-plus text-muted-foreground">
               {EMPTY_PACK_PLACEHOLDER}
             </div>
           ) : (
@@ -149,7 +149,7 @@ export function ConstitutionCard({
           )}
 
           {error !== null && (
-            <p className="mt-2 text-[11.5px] text-destructive">{error}</p>
+            <p className="mt-2 text-2xs-plus text-destructive">{error}</p>
           )}
         </>
       )}

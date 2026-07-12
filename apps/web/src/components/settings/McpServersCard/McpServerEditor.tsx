@@ -14,10 +14,10 @@ const TRANSPORTS: [value: McpTransport, label: string][] = [
 ];
 
 /** Shared Tailwind classes for the editor's labels and inputs/textareas. */
-const FIELD_LABEL = 'mb-1.5 block text-[11.5px] font-semibold text-muted-foreground';
+const FIELD_LABEL = 'mb-1.5 block text-2xs-plus font-semibold text-muted-foreground';
 const FIELD_INPUT =
   'w-full rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary';
-const FIELD_AREA = `${FIELD_INPUT} font-mono text-[12.5px] leading-relaxed`;
+const FIELD_AREA = `${FIELD_INPUT} font-mono text-xs-plus leading-relaxed`;
 
 /** The transport-aware editor body. stdio shows command/args/env; http+sse show
  *  url/headers. Secret-bearing fields (env/header values) are masked on edit. */
@@ -47,11 +47,11 @@ export function McpServerEditor({
             errors.name !== undefined ? 'mcp-name-help mcp-name-error' : 'mcp-name-help'
           }
         />
-        <p id="mcp-name-help" className="mt-1 text-[11px] text-muted-foreground">
+        <p id="mcp-name-help" className="mt-1 text-2xs text-muted-foreground">
           The tool prefix becomes <span className="font-mono">mcp__{draft.name || 'name'}__*</span>.
         </p>
         {errors.name !== undefined && (
-          <p id="mcp-name-error" className="mt-1 text-[11px] text-warning">
+          <p id="mcp-name-error" className="mt-1 text-2xs text-warning">
             {errors.name}
           </p>
         )}
@@ -65,7 +65,7 @@ export function McpServerEditor({
               key={v}
               type="button"
               onClick={() => onPatch({ transport: v })}
-              className={`rounded-md px-3 py-1 text-[12px] font-medium transition-colors ${
+              className={`rounded-md px-3 py-1 text-xs-flat font-medium transition-colors ${
                 v === draft.transport
                   ? 'bg-primary/[0.18] text-primary'
                   : 'text-muted-foreground hover:text-foreground'
@@ -95,7 +95,7 @@ export function McpServerEditor({
               }
             />
             {errors.command !== undefined && (
-              <p id="mcp-command-error" className="mt-1 text-[11px] text-warning">
+              <p id="mcp-command-error" className="mt-1 text-2xs text-warning">
                 {errors.command}
               </p>
             )}
@@ -113,7 +113,7 @@ export function McpServerEditor({
               className={FIELD_AREA}
               aria-describedby="mcp-args-help"
             />
-            <p id="mcp-args-help" className="mt-1 text-[11px] text-muted-foreground">
+            <p id="mcp-args-help" className="mt-1 text-2xs text-muted-foreground">
               One argument per line.
             </p>
           </div>
@@ -130,7 +130,7 @@ export function McpServerEditor({
               className={FIELD_AREA}
               aria-describedby="mcp-env-help"
             />
-            <p id="mcp-env-help" className="mt-1 text-[11px] text-muted-foreground">
+            <p id="mcp-env-help" className="mt-1 text-2xs text-muted-foreground">
               <span className="font-mono">KEY=value</span> per line. Existing values are
               masked — retype to change.
             </p>
@@ -152,7 +152,7 @@ export function McpServerEditor({
               aria-describedby={errors.url !== undefined ? 'mcp-url-error' : undefined}
             />
             {errors.url !== undefined && (
-              <p id="mcp-url-error" className="mt-1 text-[11px] text-warning">
+              <p id="mcp-url-error" className="mt-1 text-2xs text-warning">
                 {errors.url}
               </p>
             )}
@@ -170,7 +170,7 @@ export function McpServerEditor({
               className={FIELD_AREA}
               aria-describedby="mcp-headers-help"
             />
-            <p id="mcp-headers-help" className="mt-1 text-[11px] text-muted-foreground">
+            <p id="mcp-headers-help" className="mt-1 text-2xs text-muted-foreground">
               <span className="font-mono">Header: value</span> per line. Existing values
               are masked — retype to change.
             </p>
@@ -179,7 +179,7 @@ export function McpServerEditor({
       )}
 
       {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- wraps a custom role=switch button (a labelable element that forwards label clicks); the switch carries its own accessible name */}
-      <label className="flex items-center gap-2.5 text-[13px] text-foreground">
+      <label className="flex items-center gap-2.5 text-xs-plus2 text-foreground">
         <RowToggle
           on={draft.enabled}
           onChange={() => onPatch({ enabled: !draft.enabled })}

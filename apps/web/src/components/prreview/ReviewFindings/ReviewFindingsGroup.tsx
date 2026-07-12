@@ -68,11 +68,11 @@ export function SeverityGroupHeader({
       >
         <Chevron size={13} className="shrink-0 text-muted-foreground" />
         <span
-          className={`font-mono text-[11px] font-semibold uppercase tracking-[0.08em] ${meta.tone}`}
+          className={`font-mono text-2xs font-semibold uppercase tracking-[0.08em] ${meta.tone}`}
         >
           {meta.label}
         </span>
-        <span className="font-mono text-[11px] text-muted-foreground">
+        <span className="font-mono text-2xs text-muted-foreground">
           {group.findings.length}
         </span>
       </button>

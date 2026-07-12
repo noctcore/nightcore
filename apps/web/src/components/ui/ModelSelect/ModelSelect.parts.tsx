@@ -8,7 +8,7 @@ import type { EffortRowView, ModelRow } from './ModelSelect.types';
 
 /** The uppercase field label shared by the model + effort sections. */
 export const LABEL =
-  'font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground';
+  'font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground';
 
 /** Class string for a listbox option row in its highlighted/idle state. */
 function optionRowClass(highlighted: boolean): string {
@@ -19,14 +19,14 @@ function optionRowClass(highlighted: boolean): string {
 
 /** Class string for the per-model tier badge. */
 function tierBadgeClass(tier: string): string {
-  return `rounded px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide ${
+  return `rounded px-1.5 py-px text-4xs font-semibold uppercase tracking-wide ${
     tier === 'Premium' ? 'bg-primary/[0.16] text-primary' : 'bg-white/[0.06] text-muted-foreground'
   }`;
 }
 
 /** Class string for an effort chip in its selected/idle state. */
 function effortChipClass(selected: boolean): string {
-  return `rounded-[9px] border px-2.5 py-1.5 text-[12px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+  return `rounded-[9px] border px-2.5 py-1.5 text-xs-flat font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
     selected
       ? 'border-primary/60 bg-primary/[0.1] text-foreground'
       : 'border-border bg-white/[0.02] text-muted-foreground hover:border-white/20'
@@ -78,13 +78,13 @@ export function ModelOptionRow({
       ) : (
         <span className="w-3.5 shrink-0" aria-hidden />
       )}
-      <span className="text-[13px] font-medium text-foreground">{row.label}</span>
+      <span className="text-xs-plus2 font-medium text-foreground">{row.label}</span>
       {row.tier !== null && (
         <span className={tierBadgeClass(row.tier)} aria-hidden>
           {row.tier}
         </span>
       )}
-      <span className="ml-auto truncate pl-2 text-[11px] text-muted-foreground" aria-hidden>
+      <span className="ml-auto truncate pl-2 text-2xs text-muted-foreground" aria-hidden>
         {row.description}
       </span>
     </button>
@@ -103,7 +103,7 @@ export function ProviderGroupLabel({
   return (
     <div
       role="presentation"
-      className="flex items-center gap-1.5 px-2 pb-0.5 pt-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground"
+      className="flex items-center gap-1.5 px-2 pb-0.5 pt-1.5 text-3xs font-medium uppercase tracking-[0.08em] text-muted-foreground"
     >
       {provider !== null && (
         <ProviderIcon provider={provider} size={12} className="text-muted-foreground" />
@@ -162,7 +162,7 @@ export function EffortRow({
         <BrainIcon size={12} className="text-muted-foreground" />
         <span className={LABEL}>Reasoning effort</span>
         {effort.adaptive && effort.activeLabel !== null && (
-          <span className="text-[10px] font-medium text-primary/80">
+          <span className="text-3xs font-medium text-primary/80">
             · {effort.activeLabel} decides adaptively
           </span>
         )}
@@ -196,7 +196,7 @@ export function CatalogStatus() {
     <div
       role="status"
       aria-label="Loading models"
-      className="flex items-center gap-2 rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-[12.5px] text-muted-foreground"
+      className="flex items-center gap-2 rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-xs-plus text-muted-foreground"
     >
       <RefreshIcon size={13} className="animate-spin text-muted-foreground" aria-hidden />
       Loading models…
@@ -207,13 +207,13 @@ export function CatalogStatus() {
 /** The soft error + retry shown when the whole catalog read failed. */
 export function CatalogError({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div className="flex items-center gap-2 rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-3 py-2.5 text-[12.5px] text-foreground">
+    <div className="flex items-center gap-2 rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-3 py-2.5 text-xs-plus text-foreground">
       <span className="truncate text-muted-foreground">{message}</span>
       {onRetry !== undefined && (
         <button
           type="button"
           onClick={onRetry}
-          className="ml-auto flex shrink-0 items-center gap-1 rounded-[8px] border border-border px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:border-white/20"
+          className="ml-auto flex shrink-0 items-center gap-1 rounded-[8px] border border-border px-2 py-1 text-2xs font-medium text-foreground transition-colors hover:border-white/20"
         >
           <RefreshIcon size={12} aria-hidden />
           Retry

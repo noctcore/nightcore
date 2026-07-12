@@ -32,7 +32,7 @@ export function CategoryTabsShell<K extends string>({
             tabIndex={isActive ? 0 : -1}
             onKeyDown={rovingKeydown}
             onClick={() => onSelect(tab.key)}
-            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12.5px] font-medium transition-colors ${
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs-plus font-medium transition-colors ${
               isActive
                 ? 'bg-primary/[0.12] text-primary'
                 : 'text-muted-foreground hover:bg-white/[0.03] hover:text-foreground'
@@ -47,7 +47,7 @@ export function CategoryTabsShell<K extends string>({
               />
             ) : tab.count > 0 ? (
               <span
-                className={`ml-0.5 rounded-full px-1.5 text-[10px] font-semibold tabular-nums ${
+                className={`ml-0.5 rounded-full px-1.5 text-3xs font-semibold tabular-nums ${
                   isActive
                     ? 'bg-primary/20 text-primary'
                     : 'bg-white/[0.06] text-muted-foreground'
@@ -58,7 +58,7 @@ export function CategoryTabsShell<K extends string>({
             ) : tab.errored ? (
               <span
                 aria-label={errorLabel}
-                className="ml-0.5 text-[10px] font-semibold text-destructive"
+                className="ml-0.5 text-3xs font-semibold text-destructive"
               >
                 !
               </span>

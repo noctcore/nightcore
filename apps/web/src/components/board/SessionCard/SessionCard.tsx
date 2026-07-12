@@ -56,12 +56,12 @@ function LimitField({
   };
   return (
     <label className="flex flex-1 flex-col gap-1">
-      <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground">
+      <span className="font-mono text-4xs uppercase tracking-[0.1em] text-muted-foreground">
         {label}
       </span>
       <span className="inline-flex items-center gap-1 rounded-md border border-border bg-black/20 px-2 py-1 focus-within:border-primary">
         {prefix !== undefined && (
-          <span className="font-mono text-[11px] text-muted-foreground">{prefix}</span>
+          <span className="font-mono text-2xs text-muted-foreground">{prefix}</span>
         )}
         <input
           type="number"
@@ -80,7 +80,7 @@ function LimitField({
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className="w-full bg-transparent font-mono text-[11.5px] text-foreground outline-none placeholder:text-muted-foreground/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          className="w-full bg-transparent font-mono text-2xs-plus text-foreground outline-none placeholder:text-muted-foreground/60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
       </span>
     </label>
@@ -93,7 +93,7 @@ function LimitField({
 function SessionRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="grid grid-cols-[5.5rem_1fr] items-start gap-x-3 gap-y-1">
-      <h3 className="pt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+      <h3 className="pt-1 font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
         {label}
       </h3>
       <div className="min-w-0">{children}</div>
@@ -105,7 +105,7 @@ function SessionRow({ label, children }: { label: string; children: React.ReactN
  *  session setting. Shared by the readonly Session body's identical mono pills. */
 function ConfigPill({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+    <span className="inline-flex items-center rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-2xs text-muted-foreground">
       {children}
     </span>
   );
@@ -267,7 +267,7 @@ export function SessionCard({ task, kindEditable }: SessionCardProps) {
         className="flex w-full items-center gap-2 rounded-[10px] px-3 py-2.5 text-left transition-colors hover:bg-white/[0.03] focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
         <BoltIcon size={13} className="shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate font-mono text-2xs text-muted-foreground">
           {open ? 'Session' : summarizeSession(task)}
         </span>
         <ChevronDownIcon
@@ -330,7 +330,7 @@ export function HistoryCard({ task, canResume }: HistoryCardProps) {
         className="flex w-full items-center gap-2 rounded-[10px] px-3 py-2.5 text-left transition-colors hover:bg-white/[0.03] focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
         <HistoryIcon size={13} className="shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate font-mono text-2xs text-muted-foreground">
           History
         </span>
         <ChevronDownIcon
@@ -363,7 +363,7 @@ export function HistoryCard({ task, canResume }: HistoryCardProps) {
 export function GroupLabel({ children }: { children: ReactNode }) {
   return (
     <div className="flex items-center gap-2 pt-1">
-      <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+      <span className="font-mono text-3xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         {children}
       </span>
       <span className="h-px flex-1 bg-border" aria-hidden="true" />

@@ -60,11 +60,11 @@ export function ReviewCard({
         badges={
           <>
             <span
-              className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-semibold ${sev.chip} ${sev.tone}`}
+              className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-3xs font-semibold ${sev.chip} ${sev.tone}`}
             >
               {sev.label}
             </span>
-            <span className="inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+            <span className="inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
               <Icon size={11} />
               {Meta.label}
             </span>
@@ -72,7 +72,7 @@ export function ReviewCard({
                 a compact "also: security, tests" chip (fuller labels on hover). */}
             {corroborated && (
               <span
-                className="inline-flex items-center rounded-md border border-primary/25 bg-primary/[0.06] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                className="inline-flex items-center rounded-md border border-primary/25 bg-primary/[0.06] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground"
                 title={`Also surfaced by: ${finding.corroboratedBy
                   .map((l) => LENS_META[l].label)
                   .join(', ')}`}
@@ -83,17 +83,17 @@ export function ReviewCard({
             {/* Carried over from the previous review (follow-up comparison) —
                 subtle, so it never competes with the severity/lens badges. */}
             {recurring && finding.status === 'open' && (
-              <span className="inline-flex items-center rounded-md border border-warning/30 bg-warning/[0.08] px-1.5 py-0.5 font-mono text-[10px] font-medium text-warning/90">
+              <span className="inline-flex items-center rounded-md border border-warning/30 bg-warning/[0.08] px-1.5 py-0.5 font-mono text-3xs font-medium text-warning/90">
                 still open
               </span>
             )}
             {finding.status === 'converted' && (
-              <span className="ml-auto rounded-md bg-success/[0.12] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-success">
+              <span className="ml-auto rounded-md bg-success/[0.12] px-1.5 py-0.5 font-mono text-3xs font-semibold text-success">
                 task
               </span>
             )}
             {finding.status === 'dismissed' && (
-              <span className="ml-auto rounded-md bg-white/[0.05] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground">
+              <span className="ml-auto rounded-md bg-white/[0.05] px-1.5 py-0.5 font-mono text-3xs font-semibold text-muted-foreground">
                 dismissed
               </span>
             )}

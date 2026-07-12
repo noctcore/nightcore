@@ -44,8 +44,8 @@ export function WindowBar({
   return (
     <div className={dim ? 'opacity-50' : ''}>
       <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate text-[10px] text-muted-foreground">{win.label}</span>
-        <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+        <span className="truncate text-3xs text-muted-foreground">{win.label}</span>
+        <span className="shrink-0 font-mono text-3xs text-muted-foreground">
           {Math.round(pct)}%
         </span>
       </div>
@@ -61,7 +61,7 @@ export function WindowBar({
         />
       </div>
       {countdown !== '' && (
-        <div className="mt-0.5 flex items-center gap-1 text-[9px] text-muted-foreground/70">
+        <div className="mt-0.5 flex items-center gap-1 text-4xs text-muted-foreground/70">
           <ClockIcon size={9} />
           resets in {countdown}
         </div>
@@ -81,18 +81,18 @@ function updatedLabel(updatedAt: string, now: number): string {
  *  unlimited marker, or a plain "credits available" — popover-only. */
 function CreditsLine({ credits }: { credits: NonNullable<ProviderUsage['credits']> }) {
   if (credits.unlimited === true) {
-    return <span className="text-[11px] text-muted-foreground">Credits: unlimited</span>;
+    return <span className="text-2xs text-muted-foreground">Credits: unlimited</span>;
   }
   if (credits.balance != null) {
     const amount = formatCostUsd(credits.balance);
     return (
-      <span className="text-[11px] text-muted-foreground">
+      <span className="text-2xs text-muted-foreground">
         Credits: {credits.currency != null ? `${amount} ${credits.currency}` : amount}
       </span>
     );
   }
   if (credits.hasCredits === true) {
-    return <span className="text-[11px] text-muted-foreground">Credits available</span>;
+    return <span className="text-2xs text-muted-foreground">Credits available</span>;
   }
   return null;
 }
@@ -102,20 +102,20 @@ function CostLine({ cost }: { cost: CostState }) {
   return (
     <div className="mt-2 border-t border-border/60 pt-2">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground/70">
+        <span className="text-3xs uppercase tracking-[0.1em] text-muted-foreground/70">
           Est. cost
         </span>
         {cost.status === 'loading' && <Spinner size={11} />}
         {cost.status === 'error' && (
-          <span className="text-[11px] text-muted-foreground">unavailable</span>
+          <span className="text-2xs text-muted-foreground">unavailable</span>
         )}
         {cost.status === 'ready' && (
-          <span className="font-mono text-[11px] text-foreground">
+          <span className="font-mono text-2xs text-foreground">
             {cost.cost.costUsd != null ? `≈ ${formatCostUsd(cost.cost.costUsd)}` : '—'}
           </span>
         )}
       </div>
-      <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground/60">
+      <p className="mt-0.5 text-4xs leading-snug text-muted-foreground/60">
         ≈ approximate, from local session logs
       </p>
     </div>
@@ -167,16 +167,16 @@ export function UsageMeterPopover({
       >
         <div className="mb-2 flex items-center gap-2">
           <ProviderIcon provider={row.provider} size={14} className="text-muted-foreground" />
-          <span className="text-[12.5px] font-semibold">{providerLabel(row.provider)}</span>
+          <span className="text-xs-plus font-semibold">{providerLabel(row.provider)}</span>
           {meta.badge !== null && (
-            <span className={`ml-auto font-mono text-[9.5px] uppercase tracking-[0.06em] ${meta.tone}`}>
+            <span className={`ml-auto font-mono text-4xs-plus uppercase tracking-[0.06em] ${meta.tone}`}>
               {meta.badge}
             </span>
           )}
         </div>
 
         {row.message != null && (
-          <p className="mb-2 text-[11px] leading-snug text-muted-foreground">{row.message}</p>
+          <p className="mb-2 text-2xs leading-snug text-muted-foreground">{row.message}</p>
         )}
 
         {row.windows.length > 0 ? (
@@ -187,7 +187,7 @@ export function UsageMeterPopover({
           </div>
         ) : (
           row.message == null && (
-            <p className="text-[11px] text-muted-foreground">No usage windows reported.</p>
+            <p className="text-2xs text-muted-foreground">No usage windows reported.</p>
           )
         )}
 
@@ -198,7 +198,7 @@ export function UsageMeterPopover({
         )}
 
         {row.updatedAt != null && (
-          <p className="mt-2 text-[9px] text-muted-foreground/60">{updatedLabel(row.updatedAt, now)}</p>
+          <p className="mt-2 text-4xs text-muted-foreground/60">{updatedLabel(row.updatedAt, now)}</p>
         )}
 
         <CostLine cost={cost} />

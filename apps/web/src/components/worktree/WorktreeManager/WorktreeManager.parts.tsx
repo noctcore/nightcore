@@ -27,7 +27,7 @@ function StatusChip({ chip }: { chip: WorktreeChip }) {
   return (
     <span
       aria-label={chip.ariaLabel}
-      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-medium tabular-nums ${CHIP_TONES[chip.tone]}`}
+      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-3xs font-medium tabular-nums ${CHIP_TONES[chip.tone]}`}
     >
       {chip.dot === true && <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />}
       {chip.label}
@@ -70,7 +70,7 @@ export function WorktreeRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <BranchIcon size={13} className="shrink-0 text-muted-foreground" />
-          <span className="truncate font-mono text-[12px] text-foreground">{view.branch}</span>
+          <span className="truncate font-mono text-xs-flat text-foreground">{view.branch}</span>
           {view.pr !== null && onOpenPr !== undefined && (
             <Button
               variant="ghost"
@@ -83,7 +83,7 @@ export function WorktreeRow({
           )}
         </div>
         {view.title !== undefined && (
-          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{view.title}</p>
+          <p className="mt-0.5 truncate text-2xs text-muted-foreground">{view.title}</p>
         )}
         {view.chips.length > 0 && (
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">

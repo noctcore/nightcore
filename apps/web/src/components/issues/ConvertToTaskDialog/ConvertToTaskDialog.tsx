@@ -19,8 +19,8 @@ import type { ConvertToTaskDialogProps } from './ConvertToTaskDialog.types';
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-3 text-[12.5px]">
-      <span className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-muted-foreground">
+    <div className="flex items-center justify-between gap-3 text-xs-plus">
+      <span className="font-mono text-3xs-plus uppercase tracking-[0.1em] text-muted-foreground">
         {label}
       </span>
       <span className="min-w-0 truncate text-foreground">{value}</span>
@@ -62,7 +62,7 @@ export function ConvertToTaskDialog({
     >
       <div className="flex flex-col gap-2 px-5 pb-3 pt-5">
         <h2 className="text-base font-semibold text-foreground">Convert to board task</h2>
-        <p className="text-[12.5px] leading-relaxed text-muted-foreground">
+        <p className="text-xs-plus leading-relaxed text-muted-foreground">
           {shown.alreadyLinked
             ? 'This validation is already linked to a board task.'
             : 'Creates a Backlog task from the verdict. The full analysis is embedded as a warning-framed untrusted block, and a source reference links the task back to this validation.'}
@@ -88,7 +88,7 @@ export function ConvertToTaskDialog({
           />
         )}
         {shown.suggestedKind === 'Decompose' && (
-          <p className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+          <p className="flex items-center gap-1.5 text-2xs-plus text-muted-foreground">
             <DecomposeIcon size={12} />
             A complex feature — it lands as a Decompose task to break down first.
           </p>
@@ -96,7 +96,7 @@ export function ConvertToTaskDialog({
       </div>
 
       {error !== null && (
-        <div className="mx-5 mb-3 flex items-center gap-2 rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-[12.5px] text-destructive">
+        <div className="mx-5 mb-3 flex items-center gap-2 rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-xs-plus text-destructive">
           <AlertIcon size={14} />
           {error}
         </div>
