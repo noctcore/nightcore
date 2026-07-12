@@ -464,11 +464,9 @@ impl From<McpServerEntry> for crate::contracts::McpServerEntry {
 
 impl Settings {
     /// GitHub two-way sync (#97): resolve the status-label prefix, defaulting an unset
-    /// `issue_label_prefix` to `"nc:"`. The single source of the prefix so the
-    /// writeback engine (PR 2) never re-hardcodes the literal.
-    // Consumed by the writeback engine in PR 2; landed here (with the field) so the
-    // data model + resolver ship together. Exercised by the settings tests.
-    #[allow(dead_code)]
+    /// `issue_label_prefix` to `"nc:"`. The single source of the prefix so the issue
+    /// writeback/sync paths (`sidecar::issue_sync`, `sidecar::issue_map`) never
+    /// re-hardcode the literal.
     pub fn label_prefix(&self) -> &str {
         self.issue_label_prefix.as_deref().unwrap_or("nc:")
     }

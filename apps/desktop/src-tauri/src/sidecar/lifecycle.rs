@@ -28,14 +28,12 @@ pub(crate) enum Outcome {
     Failed { fatal: bool },
     /// `session-failed { reason: "aborted" }` (cancel / circuit-break): retain the
     /// worktree, but do NOT count toward the breaker.
+    ///
+    /// The verification-gate "holding" terminal (FAIL / auto-fix budget exhausted /
+    /// inconclusive) is NOT an `Outcome`: it routes through the standalone
+    /// [`park_for_approval`], which releases the slot and retains the worktree
+    /// without touching the breaker, so `finish_run` never sees it.
     Aborted,
-    /// M4: a verification gate terminal that parks the task for human approval
-    /// (FAIL / auto-fix budget exhausted / inconclusive). Releases the slot and
-    /// forgets the session, but RETAINS the worktree for inspection and does NOT
-    /// feed the breaker (a CHANGES_REQUESTED the agent couldn't fix, or a review
-    /// crash, is not a broken build setup). See [`park_for_approval`].
-    #[allow(dead_code)]
-    NeedsApproval,
 }
 
 /// A verification gate terminal (M4 §B "holding"): release the slot, forget the
@@ -144,12 +142,11 @@ pub(crate) fn finish_run(
     match outcome {
         Outcome::Succeeded => notify_task_complete(app, task_id, true),
         Outcome::Failed { .. } => notify_task_complete(app, task_id, false),
-        Outcome::Aborted | Outcome::NeedsApproval => {}
+        Outcome::Aborted => {}
     }
     match outcome {
         Outcome::Succeeded => engine.breaker_record_success(app),
-        // Routed through `park_for_approval`, never here; handled for exhaustiveness.
-        Outcome::Aborted | Outcome::NeedsApproval => {} // not a failure signal
+        Outcome::Aborted => {} // not a failure signal
         Outcome::Failed { fatal } => {
             // Category-based branch: a fatal-setup failure (auth/disk-full) trips the
             // breaker at once; a transient one accumulates toward the tolerant window.

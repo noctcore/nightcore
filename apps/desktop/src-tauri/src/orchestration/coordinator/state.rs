@@ -332,11 +332,6 @@ impl Orchestrator {
     }
 }
 
-/// Silence the unused-import lint for `Arc`/`Notify` when only `Notify` is used
-/// directly; `Arc` is kept available for a future shared-handle path.
-#[allow(dead_code)]
-type SharedNotify = Arc<Notify>;
-
 #[cfg(test)]
 mod tests {
     use super::*;

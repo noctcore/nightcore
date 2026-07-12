@@ -32,6 +32,9 @@ pub trait Provider: Send + Sync {
     /// that need the stdout reader use [`SidecarProvider::spawn`] directly (it
     /// returns the stdout to install a reader on); this bare method pins the seam
     /// for a future provider whose reader is self-contained.
+    // Deliberate provider-seam API (the self-contained-reader override point); the
+    // adapter's `ensure_reader` spawns via `SidecarProvider::spawn` directly, so no
+    // caller wires this bare method yet.
     #[allow(dead_code)]
     async fn ensure_started(&self) -> Result<(), String>;
 
