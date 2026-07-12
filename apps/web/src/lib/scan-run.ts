@@ -13,9 +13,11 @@
  *   - `./scan-run/results`   — location normalize, lens tabs/counts, item patch
  *   - `./scan-run/fold`      — the generic `makeScanFold` reducer factory
  *   - `./scan-run/narrow`    — safeParse-backed enum guards for persisted reads
+ *   - `./scan-run/copy`      — run-history menu, config summary, empty-state copy
  * Call sites import from `@/lib/scan-run` unchanged; the `*-stream.ts` folds and
  * the `*View.hooks.ts` view models both resolve here.
  */
+export * from './scan-run/copy';
 export * from './scan-run/fold';
 export * from './scan-run/lifecycle';
 export * from './scan-run/narrow';

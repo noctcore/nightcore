@@ -12,13 +12,14 @@ import { useCallback, useMemo, useState } from 'react';
 import type { MenuItem, RunPhase, RunProgressCategory } from '@/components/ui';
 import { useToast } from '@/components/ui';
 import type { ConventionCategory, CoverageStatus } from '@/lib/bridge';
-import { formatRunReceipt } from '@/lib/formatters';
 import { EFFORT_OPTIONS, MODEL_OPTIONS } from '@/lib/models';
 import {
   buildLensTabs,
+  buildRunHistory,
   countByLens,
   countOpenItems,
   deriveRunPhase,
+  scanEmptyMessage,
   scanSkeletonCount,
 } from '@/lib/scan-run';
 import { sortBySeverityThenStatus } from '@/lib/severity';
@@ -221,22 +222,28 @@ export function useHarnessView({
     [stream.findings, view.selectedId],
   );
 
-  const emptyMessage = useMemo(() => {
-    if (stream.status === 'idle') {
-      return 'Run a scan to surface the conventions across your codebase.';
-    }
-    if (stream.status === 'running') return 'Scanning…';
-    if (stream.status === 'failed') {
-      return `Scan failed${stream.error !== null ? `: ${stream.error}` : ''}.`;
-    }
-    return 'No conventions in this lens.';
-  }, [stream.status, stream.error]);
+  const emptyMessage = useMemo(
+    () =>
+      scanEmptyMessage({
+        status: stream.status,
+        failureReason: stream.failureReason,
+        error: stream.error,
+        verbs: {
+          idle: 'Run a scan to surface the conventions across your codebase.',
+          running: 'Scanning…',
+          aborted: 'Scan cancelled.',
+          failed: 'Scan failed',
+          empty: 'No conventions in this lens.',
+        },
+      }),
+    [stream.status, stream.error, stream.failureReason],
+  );
 
   const runHistory: MenuItem[] = useMemo(
     () =>
-      harness.runs.map((run) => ({
-        label: `${new Date(run.createdAt).toLocaleString()} · ${run.findings.length} conventions · ${formatRunReceipt(run.costUsd, run.durationMs)}`,
-        onClick: () => {
+      buildRunHistory(harness.runs, (run) => ({
+        count: `${run.findings.length} conventions`,
+        onSelect: () => {
           // Selecting a past run lands on its RESULTS — drop any reconfigure/peek.
           resetRunTransient();
           void harness.selectRun(run.id);

@@ -17,7 +17,7 @@ import {
   type ReviewLens,
   viewerLogin,
 } from '@/lib/bridge';
-import { seedStepState } from '@/lib/scan-run';
+import { scanEmptyMessage, seedStepState } from '@/lib/scan-run';
 import type { RunConfig } from '@/lib/useRunConfig';
 
 import { LENS_META } from './prreview.constants';
@@ -263,19 +263,24 @@ export function usePrReviewSection({
     return counts;
   }, [runningStream?.findings]);
 
-  const emptyMessage = useMemo(() => {
-    if (displayStream === null) {
-      return 'Review this pull request to surface findings across the review lenses.';
-    }
-    if (displayStream.status === 'running') return 'Reviewing…';
-    if (displayStream.status === 'failed') {
-      if (displayStream.failureReason === 'aborted') return 'Review cancelled.';
-      return `Review failed${
-        displayStream.error !== null ? `: ${displayStream.error}` : ''
-      }.`;
-    }
-    return 'No findings — the diff looks clean across the selected lenses.';
-  }, [displayStream]);
+  const emptyMessage = useMemo(
+    () =>
+      scanEmptyMessage({
+        // A null display stream is PR-Review's idle state (no run yet); a present
+        // stream is always a registry run, so its status is never `idle`.
+        status: displayStream?.status ?? 'idle',
+        failureReason: displayStream?.failureReason,
+        error: displayStream?.error ?? null,
+        verbs: {
+          idle: 'Review this pull request to surface findings across the review lenses.',
+          running: 'Reviewing…',
+          aborted: 'Review cancelled.',
+          failed: 'Review failed',
+          empty: 'No findings — the diff looks clean across the selected lenses.',
+        },
+      }),
+    [displayStream],
+  );
 
   // --- Review-position layer (lifecycle + banners) -----------------------
   /** The selected PR's displayed fix (latest by `updatedAt`), or null. */
