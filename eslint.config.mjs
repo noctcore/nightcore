@@ -194,7 +194,8 @@ export default tseslint.config(
     },
   },
   {
-    // Surfaces (apps/*) may not import the SDK directly — only the engine façade.
+    // Surfaces (apps/*) may not import a provider SDK directly — only the engine
+    // façade. Both the Claude and the Codex SDK are banned (issue #178 adds Codex).
     files: ['apps/**/*.ts', 'apps/**/*.tsx'],
     rules: {
       'no-restricted-imports': [
@@ -206,26 +207,86 @@ export default tseslint.config(
               message:
                 'Surfaces must not import the Claude Agent SDK directly. Go through @nightcore/engine.',
             },
+            {
+              name: '@openai/codex-sdk',
+              message:
+                'Surfaces must not import the Codex SDK directly. Go through @nightcore/engine.',
+            },
           ],
         },
       ],
     },
   },
   {
-    // Engine-internal SDK confinement (issue #18): the Claude Agent SDK — runtime
-    // AND types — is confined to the provider boundary directory
-    // `providers/claude/**`. Everything outside that directory talks
-    // NightcoreEvent / contract types / the neutral `AgentProvider` seam only, so a
-    // second provider slots in without rewriting orchestration. NO `allowTypeImports`:
-    // an SDK *type* leaking outward is the exact funnel-leak the seam seals, so it is
-    // banned too. The `apps/**` block above keeps surfaces fully SDK-free; this is its
-    // intra-engine counterpart. Tests are exempt: they stub the SDK boundary via
-    // mock.module() / await import().
+    // Engine-internal SDK confinement (issue #18 for Claude; issue #178 adds
+    // Codex). Each provider's SDK — runtime AND types — is confined to its own
+    // provider boundary directory (`providers/claude/**`, `providers/codex/**`).
+    // Everything outside those directories talks NightcoreEvent / contract types /
+    // the neutral `AgentProvider` seam only, so a provider slots in without
+    // rewriting orchestration. NO `allowTypeImports`: an SDK *type* leaking outward
+    // is the exact funnel-leak the seam seals, so it is banned too. The `apps/**`
+    // block above keeps surfaces fully SDK-free; this is its intra-engine
+    // counterpart. Tests are exempt: they stub the SDK boundary via mock.module() /
+    // await import().
+    //
+    // WHY THREE mutually-exclusive blocks (not one per SDK): flat-config
+    // `no-restricted-imports` does NOT merge across blocks (see the barrel-import
+    // note below) — two blocks that both set the rule and both match a shared engine
+    // file would have the LATER silently REPLACE the earlier, dropping the first
+    // SDK's confinement on every shared file. So the globs never overlap: the shared
+    // dirs ban BOTH SDKs; each provider dir bans only the OTHER SDK.
+    //
+    // (1) Shared engine — everything outside the two provider dirs, including the
+    //     neutral `providers/*.ts` seam files: neither SDK may be imported.
     files: ['packages/engine/src/**/*.ts'],
     ignores: [
       'packages/engine/src/providers/claude/**',
+      'packages/engine/src/providers/codex/**',
       'packages/engine/src/**/*.test.ts',
     ],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@anthropic-ai/claude-agent-sdk',
+              message:
+                'The Claude Agent SDK (runtime and types) is confined to packages/engine/src/providers/claude/**. Everything outside talks NightcoreEvent / contract types / the AgentProvider seam.',
+            },
+            {
+              name: '@openai/codex-sdk',
+              message:
+                'The Codex SDK (runtime and types) is confined to packages/engine/src/providers/codex/**. Everything outside talks NightcoreEvent / contract types / the AgentProvider seam.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // (2) The Claude provider dir may import the Claude SDK but NOT the Codex SDK.
+    files: ['packages/engine/src/providers/claude/**/*.ts'],
+    ignores: ['packages/engine/src/providers/claude/**/*.test.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@openai/codex-sdk',
+              message:
+                'The Codex SDK (runtime and types) is confined to packages/engine/src/providers/codex/**. Everything outside talks NightcoreEvent / contract types / the AgentProvider seam.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // (3) The Codex provider dir may import the Codex SDK but NOT the Claude SDK.
+    files: ['packages/engine/src/providers/codex/**/*.ts'],
+    ignores: ['packages/engine/src/providers/codex/**/*.test.ts'],
     rules: {
       '@typescript-eslint/no-restricted-imports': [
         'error',
