@@ -384,7 +384,7 @@ export abstract class ScanManager<
         buildPrompt: (round, foundSoFar) =>
           this.buildRoundPrompt(command, preset, context, inventory, round, foundSoFar),
         runPass: (prompt) => this.runPass(command, item, run, preset, prompt),
-        ground: (findings) => this.ground(findings, command.projectPath),
+        ground: (findings) => this.deepGround(command, context, findings),
         fingerprint: (finding) => this.deepFingerprint(finding),
         emitRoundCompleted: (info) => this.emitRoundCompleted(command, item, info),
         isCancelled: () => run.cancelled,
@@ -517,6 +517,22 @@ export abstract class ScanManager<
    *  overrides to the finding's own fingerprint. */
   protected deepFingerprint(finding: TFinding): string {
     return JSON.stringify(finding);
+  }
+
+  /** Deep mode: ground ONE round's raw pass output so the loop's net-new count and the
+   *  round event's cumulative set are BOTH grounded (the round-cumulative invariant).
+   *  Default: the same `ground(findings, projectPath)` hook the classic path uses — so
+   *  Insight/Harness behavior is unchanged. PR-review overrides it: its diff-relative
+   *  grounding needs the run's changed-file set, which the base `ground` hook only
+   *  threads `projectPath` for (built for disk-grounding features) — the deep `context`
+   *  carries it there. Reached ONLY on the deep path. */
+  protected deepGround(
+    command: TCommand,
+    context: TContext,
+    findings: TFinding[],
+  ): TFinding[] {
+    void context;
+    return this.ground(findings, command.projectPath);
   }
 
   /** The strict-JSON reminder appended to the ONE corrective retry prompt (differs by

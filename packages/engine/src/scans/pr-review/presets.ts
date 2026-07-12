@@ -134,10 +134,15 @@ export const PR_VERDICT_PERSONA = [
  * exact shape the engine parses — it forces `lens` (the pass owns it, not the model),
  * assigns the id + fingerprint, and grounds each `file` against the PR's changed-file
  * set — so the model supplies only the review content. `maxFindings` caps the pass.
+ * In deep mode's round ≥ 2 (`newOnly`), the lead line demands NEW findings not already
+ * listed in the round's exclusion block, so each round elicits distinct issues rather
+ * than re-reporting the ones prior rounds already found.
  */
-export function prReviewOutputContract(maxFindings: number): string {
+export function prReviewOutputContract(maxFindings: number, newOnly = false): string {
   return [
-    `Return AT MOST ${maxFindings} findings for this lens, highest-severity first.`,
+    newOnly
+      ? `Return AT MOST ${maxFindings} **NEW** findings for this lens **not already listed above**, highest-severity first.`
+      : `Return AT MOST ${maxFindings} findings for this lens, highest-severity first.`,
     'Output ONLY a JSON array (no prose, no markdown fences) where each element is:',
     '{',
     '  "severity": "info|low|medium|high|critical",',

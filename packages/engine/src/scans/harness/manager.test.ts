@@ -5,6 +5,7 @@ import {
   type Config,
   ConfigSchema,
   type ConventionCategory,
+  type DeepScanConfig,
   type NightcoreEvent,
   type SurfaceCommand,
 } from '@nightcore/contracts';
@@ -433,5 +434,175 @@ describe('HarnessManager — provider routing (supports codex and other provider
 
     await done;
     expect(seenModels).toContain('claude-sonnet-4-6');
+  });
+});
+
+// ─── Deep mode (issue #294): the multi-round convergence loop ────────────────────
+
+/** A deep `start-harness-scan` command (opts into the round loop). */
+function deepCommand(
+  categories: ConventionCategory[],
+  deep: Partial<DeepScanConfig> = {},
+): StartHarnessScan {
+  return {
+    ...startCommand(categories),
+    deep: {
+      maxRoundsPerCategory: 15,
+      convergenceEmptyRounds: 2,
+      maxFindingsPerRound: 20,
+      ...deep,
+    },
+  };
+}
+
+/** A fileless convention finding with the given title — kept by grounding (no file
+ *  to verify) and fingerprinted by `category | title`, so repeating a title reads as
+ *  zero net-new within the lens. */
+function conventionJson(title: string): string {
+  return JSON.stringify([
+    { kind: 'convention', severity: 'medium', title, description: 'd' },
+  ]);
+}
+
+describe('HarnessManager — deep mode: convergence', () => {
+  test('stops after K consecutive zero-net-new rounds', async () => {
+    let rounds = 0;
+    const factory: HarnessRunnerFactory = (cfg: SessionRunnerConfig, emit) => ({
+      async run() {
+        if (cfg.appendSystemPrompt?.includes('SYNTHESIZING')) {
+          await completing(ONE_ARTIFACT)(emit);
+          return;
+        }
+        rounds++;
+        // Always the SAME convention: round 1 is 1 net-new, every later round is 0.
+        await completing(conventionJson('Folder-per-component'))(emit);
+      },
+      async interrupt() {},
+    });
+
+    const { events, emit, done } = collect();
+    const manager = new HarnessManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      runnerFactory: factory,
+    });
+
+    manager.start(
+      deepCommand(['architecture'], {
+        convergenceEmptyRounds: 2,
+        maxRoundsPerCategory: 15,
+      }),
+    );
+    await done;
+
+    // r1: 1 new (streak 0) · r2: 0 new (streak 1) · r3: 0 new (streak 2 = K) → stop.
+    expect(rounds).toBe(3);
+    const roundEvents = events.filter(
+      (e) => e.type === 'harness-category-round-completed',
+    );
+    expect(roundEvents).toHaveLength(3);
+    expect(
+      roundEvents.map((e) =>
+        e.type === 'harness-category-round-completed' ? e.newFindingsThisRound : -1,
+      ),
+    ).toEqual([1, 0, 0]);
+    expect(
+      roundEvents.map((e) =>
+        e.type === 'harness-category-round-completed' ? e.round : -1,
+      ),
+    ).toEqual([1, 2, 3]);
+    // Deep mode NEVER emits the classic per-lens terminal (the round events carry
+    // the per-lens persistence instead — no double-count).
+    expect(
+      events.filter((e) => e.type === 'harness-category-completed'),
+    ).toHaveLength(0);
+    // The scan still finishes through synthesis on the accumulated findings.
+    expect(
+      events.some((e) => e.type === 'harness-scan-completed'),
+    ).toBe(true);
+  });
+});
+
+describe('HarnessManager — deep mode: exclusion prompt + per-round cap', () => {
+  test('round 1 has no exclusion list; round ≥ 2 excludes prior findings and asks for NEW', async () => {
+    const prompts: string[] = [];
+    let rounds = 0;
+    const factory: HarnessRunnerFactory = (cfg: SessionRunnerConfig, emit) => ({
+      async run() {
+        if (cfg.appendSystemPrompt?.includes('SYNTHESIZING')) {
+          await completing(ONE_ARTIFACT)(emit);
+          return;
+        }
+        rounds++;
+        prompts.push(cfg.prompt);
+        // A UNIQUE convention each round → 1 net-new each → the backstop stops it.
+        await completing(conventionJson(`Rule ${rounds}`))(emit);
+      },
+      async interrupt() {},
+    });
+
+    const { emit, done } = collect();
+    const manager = new HarnessManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      runnerFactory: factory,
+    });
+
+    manager.start(
+      deepCommand(['architecture'], {
+        convergenceEmptyRounds: 2,
+        maxRoundsPerCategory: 3,
+        maxFindingsPerRound: 20,
+      }),
+    );
+    await done;
+
+    expect(prompts.length).toBeGreaterThanOrEqual(2);
+    // Round 1: no exclusion list, classic cap wording at the deep per-round cap (20).
+    expect(prompts[0]).not.toContain('ALREADY FOUND');
+    expect(prompts[0]).toContain('Return AT MOST 20 convention findings');
+    // Round 2: the exclusion list (with round-1's title) + the NEW-findings contract.
+    expect(prompts[1]).toContain('ALREADY FOUND');
+    expect(prompts[1]).toContain('Rule 1');
+    expect(prompts[1]).toContain('Return AT MOST 20 **NEW** convention findings');
+  });
+});
+
+describe('HarnessManager — deep OFF path is unchanged', () => {
+  test('a non-deep command runs one lens session and emits the classic per-lens event (no round events)', async () => {
+    let lensCalls = 0;
+    const factory: HarnessRunnerFactory = (cfg: SessionRunnerConfig, emit) => ({
+      async run() {
+        if (cfg.appendSystemPrompt?.includes('SYNTHESIZING')) {
+          await completing(ONE_ARTIFACT)(emit);
+          return;
+        }
+        lensCalls++;
+        await completing(ONE_FINDING)(emit);
+      },
+      async interrupt() {},
+    });
+
+    const { events, emit, done } = collect();
+    const manager = new HarnessManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      runnerFactory: factory,
+    });
+
+    manager.start(startCommand(['architecture']));
+    await done;
+
+    // Exactly one lens session (valid JSON ⇒ no corrective retry) — byte-identical to pre-deep.
+    expect(lensCalls).toBe(1);
+    expect(
+      events.filter((e) => e.type === 'harness-category-completed'),
+    ).toHaveLength(1);
+    expect(
+      events.filter((e) => e.type === 'harness-category-round-completed'),
+    ).toHaveLength(0);
   });
 });

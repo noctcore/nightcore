@@ -30,6 +30,7 @@ import {
   type FinalizeArgs,
   type ItemCompletedArgs,
   RETRY_REMINDER_ARRAY,
+  type RoundCompletedInfo,
   type ScanFailureReason,
   ScanManager,
   type ScanManagerDeps,
@@ -48,19 +49,16 @@ import {
   ANALYSIS_ALLOWED_TOOLS,
   ANALYSIS_DISALLOWED_TOOLS,
   ANALYZER_PERSONA,
-  conventionOutputContract,
   type HarnessPreset,
   harnessPreset,
 } from './presets.js';
+import { buildCategoryPrompt, MAX_FINDINGS_PER_CATEGORY } from './prompt.js';
 import { detectRepoProfile } from './repo-profile.js';
-import { summarizeProfile, synthesizeHarness } from './synthesis.js';
+import { synthesizeHarness } from './synthesis.js';
 
 /** The `start-harness-scan` command variant (the zod schema is exported as a value,
  *  so the engine narrows the union for the type). */
 type StartHarnessScan = Extract<SurfaceCommand, { type: 'start-harness-scan' }>;
-
-/** Findings cap per convention pass. */
-const MAX_FINDINGS_PER_CATEGORY = 8;
 
 /** The runner factory + slice — REUSED from the generic base so the managers share
  *  one fake-runner injection shape in tests. */
@@ -134,6 +132,33 @@ export class HarnessManager extends ScanManager<
     return buildCategoryPrompt(command, preset, context.profile, inventory);
   }
 
+  /** Deep mode: round 1 caps at `maxFindingsPerRound`; round ≥ 2 appends the
+   *  exclusion list of `foundSoFar` (titles + evidence anchors) and flips the output
+   *  contract to "NEW convention findings not already listed above". */
+  protected buildRoundPrompt(
+    command: StartHarnessScan,
+    preset: HarnessPreset,
+    context: HarnessContext,
+    inventory: string,
+    _round: number,
+    foundSoFar: readonly ConventionFinding[],
+  ): string {
+    return buildCategoryPrompt(
+      command,
+      preset,
+      context.profile,
+      inventory,
+      command.deep?.maxFindingsPerRound ?? MAX_FINDINGS_PER_CATEGORY,
+      foundSoFar,
+    );
+  }
+
+  /** Deep mode: net-new across rounds keys on the SAME `fingerprint` the final
+   *  cross-lens `dedupeConventionFindings` collapses on, so the two can never diverge. */
+  protected deepFingerprint(finding: ConventionFinding): string {
+    return finding.fingerprint;
+  }
+
   protected parse(
     result: string,
     category: ConventionCategory,
@@ -191,6 +216,29 @@ export class HarnessManager extends ScanManager<
     });
     this.deps.logger?.info(
       `[harness] lens ${category}: completed — ${grounded.length} findings, ${fmtCost(outcome.costUsd)}, ${fmtSecs(elapsedMs)}`,
+    );
+  }
+
+  /** Deep mode: one round of a convention lens finished. Streams the cumulative
+   *  grounded findings + this round's own spend so the Rust reader persists per ROUND. */
+  protected emitRoundCompleted(
+    command: StartHarnessScan,
+    category: ConventionCategory,
+    info: RoundCompletedInfo<ConventionFinding>,
+  ): void {
+    this.deps.emit({
+      type: 'harness-category-round-completed',
+      runId: command.runId,
+      category,
+      round: info.round,
+      newFindingsThisRound: info.newFindingsThisRound,
+      findings: info.cumulative,
+      usage: info.outcome.usage,
+      costUsd: info.outcome.costUsd,
+      durationMs: info.elapsedMs,
+    });
+    this.deps.logger?.info(
+      `[harness] lens ${category}: round ${info.round} — ${info.newFindingsThisRound} new (${info.cumulative.length} total), ${fmtCost(info.outcome.costUsd)}, ${fmtSecs(info.elapsedMs)}`,
     );
   }
 
@@ -348,32 +396,4 @@ export class HarnessManager extends ScanManager<
   protected cancelledMessage(): string {
     return 'harness scan cancelled';
   }
-}
-
-/** The per-run user prompt for a convention pass. The whole repo is always scanned
- *  (conventions are repo-wide), so there is no scope branch. The deterministic
- *  profile + top-level inventory are injected so the lens starts from a known map
- *  instead of re-discovering the same structure on every pass. */
-function buildCategoryPrompt(
-  command: StartHarnessScan,
-  preset: HarnessPreset,
-  profile: RepoProfile,
-  inventory: string,
-): string {
-  return [
-    `You are auditing the CONVENTIONS of the project at: ${command.projectPath}`,
-    `Convention lens: ${preset.label}.`,
-    '',
-    'REPO PROFILE (deterministically detected — start from this, do not re-derive it):',
-    summarizeProfile(profile),
-    '',
-    'REPO MAP (deterministic top-level inventory):',
-    inventory,
-    '',
-    'Using the profile + map above, read the config, the entry points, and a ' +
-      'representative sample of files for THIS lens — do not spend turns re-listing ' +
-      'the tree — then identify the de-facto conventions and the gaps for this lens.',
-    '',
-    conventionOutputContract(MAX_FINDINGS_PER_CATEGORY),
-  ].join('\n');
 }

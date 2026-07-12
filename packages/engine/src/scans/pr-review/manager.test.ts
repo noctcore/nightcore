@@ -4,6 +4,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   type Config,
   ConfigSchema,
+  type DeepScanConfig,
   type NightcoreEvent,
   type ReviewLens,
   type SurfaceCommand,
@@ -624,5 +625,163 @@ describe('PrReviewScanManager — duplicate start', () => {
     expect(starts).toHaveLength(1);
     const lensStarts = events.filter((e) => e.type === 'pr-review-lens-started');
     expect(lensStarts).toHaveLength(1);
+  });
+});
+
+// ─── Deep mode (issue #294): the multi-round convergence loop ────────────────────
+
+/** A deep `start-pr-review` command (opts into the round loop). */
+function deepCommand(
+  lenses: ReviewLens[],
+  deep: Partial<DeepScanConfig> = {},
+): StartPrReview {
+  return {
+    ...startCommand(lenses),
+    deep: {
+      maxRoundsPerCategory: 15,
+      convergenceEmptyRounds: 2,
+      maxFindingsPerRound: 20,
+      ...deep,
+    },
+  };
+}
+
+/** A finding on the CHANGED file with the given title — survives diff-relative
+ *  grounding and is fingerprinted by `lens | file | title`, so repeating a title on
+ *  the same file reads as zero net-new. */
+function reviewJson(title: string): string {
+  return JSON.stringify([
+    { severity: 'high', file: 'src/a.ts', line: 10, title, body: 'b' },
+  ]);
+}
+
+describe('PrReviewScanManager — deep mode: convergence (diff-bounded self-limit)', () => {
+  test('stops after K consecutive zero-net-new rounds', async () => {
+    let rounds = 0;
+    const factory: PrReviewRunnerFactory = (cfg: SessionRunnerConfig, emit) => ({
+      async run() {
+        if (isValidator(cfg)) return void (await completing('[]')(emit));
+        if (isVerdict(cfg)) return void (await completing(VERDICT_JSON)(emit));
+        rounds++;
+        // Always the SAME finding: round 1 is 1 net-new, every later round is 0.
+        await completing(reviewJson('SQL injection'))(emit);
+      },
+      async interrupt() {},
+    });
+
+    const { events, emit, done } = collect();
+    const manager = new PrReviewScanManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      runnerFactory: factory,
+    });
+
+    manager.start(
+      deepCommand(['security'], { convergenceEmptyRounds: 2, maxRoundsPerCategory: 15 }),
+    );
+    await done;
+
+    // r1: 1 new (streak 0) · r2: 0 new (streak 1) · r3: 0 new (streak 2 = K) → stop.
+    expect(rounds).toBe(3);
+    const roundEvents = events.filter(
+      (e) => e.type === 'pr-review-round-completed',
+    );
+    expect(roundEvents).toHaveLength(3);
+    expect(
+      roundEvents.map((e) =>
+        e.type === 'pr-review-round-completed' ? e.newFindingsThisRound : -1,
+      ),
+    ).toEqual([1, 0, 0]);
+    // The round event's cumulative set is diff-grounded (the changed file is kept).
+    const lastRound = roundEvents[roundEvents.length - 1];
+    expect(
+      lastRound?.type === 'pr-review-round-completed' && lastRound.findings.length,
+    ).toBe(1);
+    // Deep mode NEVER emits the classic per-lens terminal (no double-count).
+    expect(
+      events.filter((e) => e.type === 'pr-review-lens-completed'),
+    ).toHaveLength(0);
+    // The run still finishes through validator + verdict.
+    expect(events.some((e) => e.type === 'pr-review-completed')).toBe(true);
+  });
+});
+
+describe('PrReviewScanManager — deep mode: exclusion prompt', () => {
+  test('round 1 has no exclusion list; round ≥ 2 excludes prior findings and asks for NEW', async () => {
+    const prompts: string[] = [];
+    let rounds = 0;
+    const factory: PrReviewRunnerFactory = (cfg: SessionRunnerConfig, emit) => ({
+      async run() {
+        if (isValidator(cfg)) return void (await completing('[]')(emit));
+        if (isVerdict(cfg)) return void (await completing(VERDICT_JSON)(emit));
+        rounds++;
+        prompts.push(cfg.prompt);
+        // A UNIQUE finding each round → 1 net-new each → the backstop stops it.
+        await completing(reviewJson(`Issue ${rounds}`))(emit);
+      },
+      async interrupt() {},
+    });
+
+    const { emit, done } = collect();
+    const manager = new PrReviewScanManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      runnerFactory: factory,
+    });
+
+    manager.start(
+      deepCommand(['security'], {
+        convergenceEmptyRounds: 2,
+        maxRoundsPerCategory: 3,
+        maxFindingsPerRound: 20,
+      }),
+    );
+    await done;
+
+    expect(prompts.length).toBeGreaterThanOrEqual(2);
+    // Round 1: no exclusion list, classic cap wording at the deep per-round cap (20).
+    expect(prompts[0]).not.toContain('ALREADY FOUND');
+    expect(prompts[0]).toContain('Return AT MOST 20 findings for this lens');
+    // Round 2: the exclusion list (with round-1's title) + the NEW-findings contract.
+    expect(prompts[1]).toContain('ALREADY FOUND');
+    expect(prompts[1]).toContain('Issue 1');
+    expect(prompts[1]).toContain('Return AT MOST 20 **NEW** findings for this lens');
+  });
+});
+
+describe('PrReviewScanManager — deep OFF path is unchanged', () => {
+  test('a non-deep command runs one lens session and emits the classic per-lens event (no round events)', async () => {
+    let lensCalls = 0;
+    const factory: PrReviewRunnerFactory = (cfg: SessionRunnerConfig, emit) => ({
+      async run() {
+        if (isValidator(cfg)) return void (await completing('[]')(emit));
+        if (isVerdict(cfg)) return void (await completing(VERDICT_JSON)(emit));
+        lensCalls++;
+        await completing(ONE_FINDING)(emit);
+      },
+      async interrupt() {},
+    });
+
+    const { events, emit, done } = collect();
+    const manager = new PrReviewScanManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      runnerFactory: factory,
+    });
+
+    manager.start(startCommand(['security']));
+    await done;
+
+    // Exactly one lens session (valid JSON ⇒ no corrective retry) — byte-identical to pre-deep.
+    expect(lensCalls).toBe(1);
+    expect(
+      events.filter((e) => e.type === 'pr-review-lens-completed'),
+    ).toHaveLength(1);
+    expect(
+      events.filter((e) => e.type === 'pr-review-round-completed'),
+    ).toHaveLength(0);
   });
 });

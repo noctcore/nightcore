@@ -111,10 +111,15 @@ export function harnessPreset(category: ConventionCategory): HarnessPreset {
  * Build the JSON output contract appended to every convention pass. Describes the
  * exact shape the engine will parse (it forces `category`, assigns ids, grounds
  * file refs — so the model need not supply those). `maxFindings` caps the pass.
+ * In deep mode's round ≥ 2 (`newOnly`), the lead line demands NEW conventions/gaps
+ * not already listed in the round's exclusion block, so each round elicits distinct
+ * findings rather than re-reporting the ones prior rounds already found.
  */
-export function conventionOutputContract(maxFindings: number): string {
+export function conventionOutputContract(maxFindings: number, newOnly = false): string {
   return [
-    `Return AT MOST ${maxFindings} convention findings, highest-signal first.`,
+    newOnly
+      ? `Return AT MOST ${maxFindings} **NEW** convention findings **not already listed above**, highest-signal first.`
+      : `Return AT MOST ${maxFindings} convention findings, highest-signal first.`,
     'Output ONLY a JSON array (no prose, no markdown fences) where each element is:',
     '{',
     '  "kind": "convention|gap",',
