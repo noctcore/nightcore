@@ -91,7 +91,7 @@ test('a legacy insight provenance chip routes through to the Understand surface'
   // The Understand stage shell mounted (its Find | Grade toggle group) — proof the
   // token → REGISTRY → union → render-branch chain resolved (no blank screen).
   await expect
-    .element(screen.getByRole('group', { name: 'Understand lens' }))
+    .element(screen.getByRole('radiogroup', { name: 'Understand lens' }))
     .toBeInTheDocument();
 });
 
@@ -107,7 +107,7 @@ test('a History row opens its run on the owning stage', async () => {
   await expect.element(row).toBeInTheDocument();
   (row.element() as HTMLElement).click();
   await expect
-    .element(screen.getByRole('group', { name: 'Understand lens' }))
+    .element(screen.getByRole('radiogroup', { name: 'Understand lens' }))
     .toBeInTheDocument();
 });
 

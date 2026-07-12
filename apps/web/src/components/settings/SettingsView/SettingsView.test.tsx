@@ -65,7 +65,7 @@ test('surfaces the default run mode selector and routes it scoped', async () => 
   const onUpdate = vi.fn();
   const screen = render(<Global onUpdate={onUpdate} />);
   await screen.getByRole('button', { name: /git worktrees/i }).click();
-  await screen.getByRole('button', { name: 'Worktree', exact: true }).click();
+  await screen.getByRole('radio', { name: 'Worktree', exact: true }).click();
   expect(onUpdate).toHaveBeenCalledWith({ defaultRunMode: 'worktree' });
 });
 

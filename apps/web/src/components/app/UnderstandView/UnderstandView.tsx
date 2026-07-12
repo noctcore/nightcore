@@ -27,9 +27,12 @@ export function UnderstandView(props: UnderstandViewProps) {
           Both mount ONE inner view at a time (the other unmounts); a live run in
           the hidden mode keeps running and reconnects via `useScanRun` on remount. */}
       <div className="flex items-center gap-3 border-b border-border px-4 py-2.5">
-        <div role="group" aria-label="Understand lens">
-          <Segmented options={MODE_OPTIONS} value={view.mode} onChange={view.selectMode} />
-        </div>
+        <Segmented
+          ariaLabel="Understand lens"
+          options={MODE_OPTIONS}
+          value={view.mode}
+          onChange={view.selectMode}
+        />
         <span className="text-xs-flat text-muted-foreground">
           {view.mode === 'find'
             ? 'Find issues to fix in the active project.'

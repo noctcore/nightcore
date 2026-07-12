@@ -7,6 +7,7 @@ const meta = {
   title: 'UI/Segmented',
   component: Segmented,
   args: {
+    ariaLabel: 'Model',
     options: [
       ['opus', 'Opus'],
       ['sonnet', 'Sonnet'],
@@ -28,7 +29,7 @@ export const Default: Story = {};
 export const FiresOnChange: Story = {
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole('button', { name: 'Haiku' }));
+    await userEvent.click(canvas.getByRole('radio', { name: 'Haiku' }));
     await expect(args.onChange).toHaveBeenCalledWith('haiku');
   },
 };
