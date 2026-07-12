@@ -19,12 +19,14 @@ import {
   type AppInfo,
   type DetectedEditor,
   PROVIDER_LABEL,
+  type ProviderCapabilities,
   type Settings,
   type SettingsPatch,
 } from '@/lib/bridge';
 import {
   isEffortSupported,
 } from '@/lib/models';
+import { runCeilingCaveatFor } from '@/lib/provider-capabilities';
 import type { UsageMeterEnabledState } from '@/lib/useUsageMeterEnabled';
 
 import { buildAboutCards } from './settings-about-cards';
@@ -83,6 +85,12 @@ export interface CardContext {
   /** The shared reactive usage-meter enabled signal (issue #305) the Usage page's
    *  toggle binds to. */
   usageMeter: UsageMeterEnabledState;
+  /** The engine's DEFAULT provider's capability descriptor (issue #313), or `null`
+   *  while it loads / outside Tauri. Backs the Limits card's run-ceiling caveat —
+   *  a provider that can't enforce `maxTurns`/`maxBudgetUsd` (Codex) still shows
+   *  those controls (they apply once a task resolves to a provider that DOES honor
+   *  them), but the card notes they're silently ignored under the current default. */
+  defaultProviderCapabilities: ProviderCapabilities | null;
 }
 
 /** Build the card set for a settings page. The run-shaping controls (model,
@@ -100,6 +108,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
     editors,
     onNavigate,
     usageMeter,
+    defaultProviderCapabilities,
   } = ctx;
   switch (page) {
     case 'models':
@@ -196,6 +205,12 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
               ),
             },
           ],
+          // Run-ceiling caveat (issue #313, completing #296 item 5): the default
+          // provider (e.g. Codex) may not enforce these ceilings at all. The
+          // controls stay live — they're honored for a provider that DOES support
+          // them — this is purely informational. `null` (Claude, or capabilities
+          // still loading) renders nothing extra.
+          note: runCeilingCaveatFor(defaultProviderCapabilities) ?? undefined,
         },
       ];
     case 'permissions':

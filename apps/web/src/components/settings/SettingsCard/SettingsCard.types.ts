@@ -16,4 +16,7 @@ export interface SettingsCardProps {
   title: string;
   subtitle?: string;
   rows: SettingsRow[];
+  /** An optional caveat line rendered beneath the rows (e.g. issue #313: the
+   *  default provider can't enforce a ceiling the rows above configure). */
+  note?: string;
 }

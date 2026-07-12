@@ -17,6 +17,7 @@ import {
   SlidersIcon,
   SparkIcon,
   TerminalIcon,
+  useProviderCapabilities,
 } from '@/components/ui';
 
 import { ConstitutionCard } from '../ConstitutionCard';
@@ -148,6 +149,9 @@ export function SettingsView({
 
   const appInfo = useAppInfo();
   const editors = useEditors();
+  // The default provider's capability descriptor (issue #313), fed to the Limits
+  // card so it can caveat an unenforced maxTurns/maxBudget ceiling (Codex).
+  const defaultProviderCapabilities = useProviderCapabilities();
   const header = PAGE_HEADERS[page];
   const cards = buildCards(page, {
     effective,
@@ -161,6 +165,7 @@ export function SettingsView({
     editors,
     onNavigate: setPage,
     usageMeter,
+    defaultProviderCapabilities,
   });
   const note = PAGE_NOTES[page];
 

@@ -6,6 +6,7 @@ export function SettingsCard({
   title,
   subtitle,
   rows,
+  note,
 }: SettingsCardProps) {
   return (
     <section className="mb-[18px] rounded-2xl border border-border bg-card px-[22px] pb-2 pt-[22px]">
@@ -44,6 +45,11 @@ export function SettingsCard({
           </div>
         ))}
       </div>
+      {note !== undefined && (
+        <p className="pb-2.5 pt-1 text-2xs-plus leading-snug text-muted-foreground">
+          {note}
+        </p>
+      )}
     </section>
   );
 }
