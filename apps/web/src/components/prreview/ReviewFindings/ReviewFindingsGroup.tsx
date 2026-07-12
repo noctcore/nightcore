@@ -48,7 +48,7 @@ export function SeverityGroupHeader({
         : false;
 
   return (
-    <div className="col-span-full flex items-center gap-2.5 pt-3 first:pt-0">
+    <div className="flex items-center gap-2.5 pt-3">
       <button
         type="button"
         role="checkbox"

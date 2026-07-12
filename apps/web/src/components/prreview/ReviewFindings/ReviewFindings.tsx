@@ -5,10 +5,11 @@
  *  carries a selection {@link Checkbox} whose checked findings compose the posted
  *  GitHub review, and a corroboration chip when other lenses agree. Cards use the
  *  shared {@link DetailCard} / {@link DetailCardGrid} chrome (group headers +
- *  affordances span the grid via `col-span-full`). */
+ *  affordances each get their own full-width virtualized row via
+ *  {@link GridFullRow}). */
 import type { ReactNode } from 'react';
 
-import { CheckIcon, DetailCardGrid, VerifiedIcon } from '@/components/ui';
+import { CheckIcon, DetailCardGrid, GridFullRow, VerifiedIcon } from '@/components/ui';
 import type { Severity } from '@/lib/severity';
 
 import { SEVERITY_META } from '../prreview.constants';
@@ -34,7 +35,7 @@ function FindingsSummary({
   selectedCount: number;
 }) {
   return (
-    <div className="col-span-full flex flex-wrap items-center gap-x-2 gap-y-1">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
       {summary.map(({ severity, count }, i) => {
         const meta = SEVERITY_META[severity];
         return (
@@ -75,7 +76,7 @@ function QuickSelectRow({
   onSelectNone: () => void;
 }) {
   return (
-    <div className="col-span-full flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
         Select
       </span>
@@ -124,7 +125,7 @@ function CleanEmptyState({ message }: { message: string }) {
 function AllTriagedBanner() {
   return (
     <div
-      className="col-span-full flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-[10px] border border-success/25 bg-success/[0.06] px-4 py-3"
+      className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-[10px] border border-success/25 bg-success/[0.06] px-4 py-3"
       style={{ animation: 'nc-rise .2s cubic-bezier(.22,1,.36,1)' }}
     >
       <CheckIcon size={15} className="shrink-0 text-success" />
@@ -176,33 +177,40 @@ export function ReviewFindings({
   // a positive "all triaged" banner replaces the triage row atop the dimmed cards.
   if (openCount > 0) {
     children.push(
-      <FindingsSummary
-        key="summary"
-        summary={summary}
-        openCount={openCount}
-        selectedCount={selectedOpenCount}
-      />,
-      <QuickSelectRow
-        key="quick-select"
-        importantCount={importantCount}
-        selectedCount={selectedOpenCount}
-        onSelectImportant={onSelectImportant}
-        onSelectAll={onSelectAll}
-        onSelectNone={onSelectNone}
-      />,
+      <GridFullRow key="summary">
+        <FindingsSummary
+          summary={summary}
+          openCount={openCount}
+          selectedCount={selectedOpenCount}
+        />
+      </GridFullRow>,
+      <GridFullRow key="quick-select">
+        <QuickSelectRow
+          importantCount={importantCount}
+          selectedCount={selectedOpenCount}
+          onSelectImportant={onSelectImportant}
+          onSelectAll={onSelectAll}
+          onSelectNone={onSelectNone}
+        />
+      </GridFullRow>,
     );
   } else if (findings.length > 0) {
-    children.push(<AllTriagedBanner key="all-triaged" />);
+    children.push(
+      <GridFullRow key="all-triaged">
+        <AllTriagedBanner />
+      </GridFullRow>,
+    );
   }
 
   for (const group of groups) {
     children.push(
-      <SeverityGroupHeader
-        key={`section-${group.severity}`}
-        group={group}
-        onToggleExpand={() => toggleExpand(group.severity)}
-        onToggleGroup={() => onToggleGroup(group.severity)}
-      />,
+      <GridFullRow key={`section-${group.severity}`}>
+        <SeverityGroupHeader
+          group={group}
+          onToggleExpand={() => toggleExpand(group.severity)}
+          onToggleGroup={() => onToggleGroup(group.severity)}
+        />
+      </GridFullRow>,
     );
     if (!group.expanded) continue;
     for (const finding of group.findings) {
@@ -224,9 +232,12 @@ export function ReviewFindings({
       isEmpty={findings.length === 0}
       emptyMessage={emptyMessage}
       skeletonCount={0}
+      scrollsWithPage
     >
       {/* `children` is a flat list of already-keyed affordances + section
-          headers + cards (headers span the grid via `col-span-full`). */}
+          headers + cards — headers/banners are `GridFullRow`-wrapped so the
+          virtualizer gives each its own full-width row instead of packing it
+          beside cards. */}
       {children}
     </DetailCardGrid>
   );
