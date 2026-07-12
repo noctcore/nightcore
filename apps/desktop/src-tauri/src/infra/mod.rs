@@ -7,6 +7,7 @@
 pub(crate) mod browse;
 pub(crate) mod editor;
 pub(crate) mod logging;
+pub(crate) mod path_confine;
 pub(crate) mod platform;
 pub(crate) mod proc;
 pub(crate) mod text;

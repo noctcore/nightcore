@@ -95,14 +95,22 @@ const DENIED_TARGET_BASENAMES: &[&str] = &[
 const MERGE_SECTION_ALLOWED_BASENAMES: &[&str] = &["claude.md", "agents.md", "agent_contract.md"];
 
 /// Resolve a repo-relative artifact path against `root`, rejecting anything that could
-/// escape the project. Defence in layers:
+/// escape the project OR land in an auto-executing sink. Defence in layers:
 ///  1. lexical: reject empty / absolute / any `..` or root/prefix component, so the join
 ///     can't climb out before we ever touch the filesystem;
-///  2. canonical: ensure the deepest EXISTING ancestor of the destination canonicalizes
-///     to inside the canonical project root — this defeats a symlinked directory in the
-///     path that lexical checks can't see.
+///  2. execution-sink denylist (WRITE-path only): reject targets inside CI / git-hook /
+///     editor-config dirs and auto-exec basenames (see `DENIED_TARGET_*`) — a synthesized
+///     artifact must never LAND a file that runs on the next agent run;
+///  3. containment core: the shared canonicalized symlink-walk
+///     ([`crate::infra::path_confine::confine`]) — reject any symlink in the path (defeats
+///     a symlinked directory/leaf the lexical check can't see) and assert canonical
+///     containment. This is the SAME guard the read path uses;
+///  4. defence in depth: the deepest EXISTING ancestor of the destination must still
+///     canonicalize to inside the canonical project root.
 ///
-/// Returns the absolute destination path (which may not exist yet, for `create`).
+/// Layer 3 is the read path's ENTIRE guard ([`crate::worktree::diff`]); layers 2 + 4 are
+/// write-path-specific. Returns the absolute destination path (which may not exist yet,
+/// for `create`).
 pub(super) fn safe_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
     if rel.trim().is_empty() {
         return Err("artifact target path is empty".to_string());
@@ -151,34 +159,15 @@ pub(super) fn safe_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
         ));
     }
 
-    let root_canon = root
-        .canonicalize()
-        .map_err(|e| format!("project root {} is not accessible: {e}", root.display()))?;
+    // Shared symlink-walk containment core (issue #178): canonicalize the root, walk the
+    // path component-by-component rejecting ANY existing symlink (dangling or live — the
+    // real escape guard, since lstat sees the link where `exists()` would follow it), and
+    // assert canonical containment. This is the SAME guard the READ path
+    // (`worktree::diff::confined_untracked_path`) uses; the execution-sink denylist above
+    // is the WRITE-path-only layer that must NOT reject a read of a legitimate file.
+    let root_canon =
+        crate::infra::path_confine::confine(root, rel, "artifact path", "project root")?.root;
     let dest = root_canon.join(rel_path);
-
-    // Walk the destination component-by-component from the root, using lstat
-    // (`symlink_metadata`, which does NOT follow links — unlike `exists()`) and reject
-    // ANY existing component that is a symlink, dangling or live. This is the real
-    // symlink-escape guard: a DANGLING symlink leaf (e.g. an untrusted scanned repo
-    // shipping `AGENTS.md -> /outside`) reports `exists() == false`, so a naive
-    // ancestor walk skips past it and a later `fs::write` follows it OUT of the project
-    // root. lstat sees the link itself. An in-root symlink (`AGENTS.md -> src/main.rs`)
-    // is likewise rejected so a merge can't corrupt an unrelated repo file. A
-    // not-yet-existing component is fine — there is nothing to follow.
-    let mut current = root_canon.clone();
-    for comp in rel_path.components() {
-        let Component::Normal(name) = comp else {
-            continue;
-        };
-        current.push(name);
-        if let Ok(meta) = std::fs::symlink_metadata(&current) {
-            if meta.file_type().is_symlink() {
-                return Err(format!(
-                    "artifact path passes through a symlink (rejected): {rel}"
-                ));
-            }
-        }
-    }
 
     // Defence in depth: the deepest existing ancestor must still canonicalize to
     // inside the root (catches any non-symlink escape the lexical check missed). With
@@ -592,6 +581,31 @@ mod tests {
                 "must allow non-sink path {ok:?}"
             );
         }
+    }
+
+    #[test]
+    fn write_path_denies_a_dotfile_the_read_path_core_allows() {
+        // Issue #178 divergence, proven at the write site. `safe_join` (containment core +
+        // execution-sink denylist) REJECTS a `.github/workflows/*.yml` target so a
+        // synthesized artifact can never LAND an auto-executing workflow file. The shared
+        // containment CORE alone — exactly what the read path (`worktree::diff`) uses —
+        // ALLOWS the same path, because viewing a diff of a legit workflow file is safe.
+        // The denylist is a WRITE-path-only layer, NOT part of the core.
+        let tmp = TempDir::new().unwrap();
+        assert!(
+            safe_join(tmp.path(), ".github/workflows/x.yml").is_err(),
+            "the write path denies a workflow-file target"
+        );
+        assert!(
+            crate::infra::path_confine::confine(
+                tmp.path(),
+                ".github/workflows/x.yml",
+                "diff path",
+                "worktree",
+            )
+            .is_ok(),
+            "the read-path core allows the same path (no denylist)"
+        );
     }
 
     #[test]
