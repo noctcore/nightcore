@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { RepoProfile } from '@nightcore/contracts';
 
-import { hardeningReference } from './reference.js';
+import { hardeningReference } from './hardening-catalog.js';
 
 /**
  * Coverage for the hardening-catalog producer guidance. These tests pin the SECURITY
