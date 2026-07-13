@@ -4,7 +4,7 @@
  *  seat prompt (the conductor-mediated, quoted, injection-scanned bus stays the sole
  *  cross-seat path — safety #1/#2). */
 import { tauriInvoke } from '../internal';
-import type { CouncilPresetId } from '../types';
+import type { CouncilConvergeDecision, CouncilPresetId } from '../types';
 
 /** Start a governed Council debate run over the active project. Unlike the scan
  *  `start-*` families — where Rust assigns the `runId` — the web MINTS it here and
@@ -31,4 +31,29 @@ export async function startCouncil(
  *  the sidecar isn't up. No-ops outside Tauri (browser preview). */
 export async function killCouncil(runId: string): Promise<void> {
   await tauriInvoke<void>('kill_council', { runId }, undefined);
+}
+
+/** Resolve a run's PARKED Converge decision with the human judge's verdict (issue #353,
+ *  safety non-negotiable #7 — the human is the terminal authority in P1's HUMAN-only
+ *  Converge). The verdict flows through the engine's Conductor (the sole bus writer),
+ *  which records it onto the append-only transcript and closes the run; the recorded
+ *  verdict streams back over `nc:debate`, so this is fire-and-forget — the transcript
+ *  entry is the confirmation. `seatId` names the adopted seat for an `accept`; `note` is
+ *  the ruling for a `judge` (or an optional reason for `accept`/`reject`). Best-effort +
+ *  idempotent: a no-op for an unknown/already-resolved run. No-ops outside Tauri. */
+export async function resolveCouncilConverge(
+  runId: string,
+  decision: CouncilConvergeDecision,
+  options: { seatId?: string | null; note?: string | null } = {},
+): Promise<void> {
+  await tauriInvoke<void>(
+    'resolve_council_converge',
+    {
+      runId,
+      decision,
+      seatId: options.seatId ?? null,
+      note: options.note ?? null,
+    },
+    undefined,
+  );
 }

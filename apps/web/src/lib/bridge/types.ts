@@ -311,6 +311,7 @@ export type { QuestionAnswer, QuestionItem, QuestionOption } from '@nightcore/co
 // preset VALUE (seats/stages/budget) stays engine-side; the canvas derives its seat
 // nodes from the live transcript, so only these contract types cross to the web.
 export type {
+  CouncilConvergeDecision,
   CouncilPresetId,
   DebateEntryKind,
   DebateSeatRole,
