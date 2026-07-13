@@ -15,6 +15,14 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
+import { createNodeCtx } from './lint-meta/ctx.js';
+import {
+  DEFAULT_REGISTRY_RELATIVE_PATH,
+  defaultImporter,
+  loadRegistry,
+  type ModuleImporter,
+} from './lint-meta/registry.js';
+import { exitCodeFor, reportMetaOutcomes, runMetaRules } from './lint-meta/run.js';
 import { type FileReader,loadChecks } from './manifest.js';
 import { emptyPass, fixInstruction, runChecks, type SpawnFn } from './run.js';
 
@@ -25,27 +33,38 @@ export interface CliIO {
   spawn: SpawnFn;
   stdout: (line: string) => void;
   stderr: (line: string) => void;
+  /**
+   * Dynamic module import for the `lint-meta` bounded eval — real (`defaultImporter`)
+   * or a recording fake in tests. Optional: the `check` path never imports, and
+   * `runLintMeta` falls back to {@link defaultImporter} when it is absent.
+   */
+  importModule?: ModuleImporter;
 }
 
 const HELP = `@noctcore/harness — portable Structure-Lock runner
 
 Usage:
   harness [check] [options]      Run the checks declared in .nightcore/harness.json
+  harness lint-meta [options]    Run the portable lint-meta rules from the enumerated registry
 
 Options:
-  --dir <path>   Target directory to check (default: current directory)
-  --json         Emit the machine-readable result to stdout instead of a summary
-  --version      Print the runner version and exit
-  --help         Print this help and exit
+  --dir <path>        Target directory to operate in (default: current directory)
+  --registry <path>   lint-meta only: the rule registry to load
+                      (default: ${DEFAULT_REGISTRY_RELATIVE_PATH}, relative to --dir)
+  --json              check only: emit the machine-readable result to stdout instead of a summary
+  --version           Print the runner version and exit
+  --help              Print this help and exit
 
 Exit codes:
-  0  every check passed (or no structure lock is configured)
-  1  a check failed, or the manifest requires a newer runner
+  0  every check/rule passed (or nothing is configured to enforce)
+  1  a check failed, a rule reported a critical violation or threw, or the manifest requires a newer runner
   2  a usage error`;
 
 interface ParsedArgs {
   command: string;
   dir: string;
+  /** lint-meta: an explicit registry path (`--registry`), else the fixed default. */
+  registry: string | undefined;
   json: boolean;
   help: boolean;
   version: boolean;
@@ -56,6 +75,7 @@ function parseArgs(argv: string[], cwd: string): ParsedArgs {
   let command = 'check';
   let sawCommand = false;
   let dir = cwd;
+  let registry: string | undefined;
   let json = false;
   let help = false;
   let version = false;
@@ -77,13 +97,21 @@ function parseArgs(argv: string[], cwd: string): ParsedArgs {
       }
     } else if (arg.startsWith('--dir=')) {
       dir = arg.slice('--dir='.length);
+    } else if (arg === '--registry') {
+      const next = argv[i + 1];
+      if (next !== undefined) {
+        registry = next;
+        i += 1;
+      }
+    } else if (arg.startsWith('--registry=')) {
+      registry = arg.slice('--registry='.length);
     } else if (!arg.startsWith('-') && !sawCommand) {
       command = arg;
       sawCommand = true;
     }
   }
 
-  return { command, dir: path.resolve(cwd, dir), json, help, version };
+  return { command, dir: path.resolve(cwd, dir), registry, json, help, version };
 }
 
 /** Read this package's version from its committed `package.json`. */
@@ -128,6 +156,7 @@ export function nodeIO(): CliIO {
     },
     stdout: (line) => process.stdout.write(`${line}\n`),
     stderr: (line) => process.stderr.write(`${line}\n`),
+    importModule: defaultImporter,
   };
 }
 
@@ -185,8 +214,58 @@ function runCheck(parsed: ParsedArgs, io: CliIO): number {
   return 1;
 }
 
-/** Parse argv and dispatch. Returns the process exit code (never exits). */
-export function runCli(argv: string[], io: CliIO = nodeIO()): number {
+/**
+ * Run the `lint-meta` subcommand: BOUNDED-EVAL the enumerated rule registry
+ * (§3.5/§5) and run its rules against a real Node ctx rooted at the target dir.
+ *
+ * Opt-in-by-presence, mirroring `check`: an ABSENT registry ⇒ exit 0 ("nothing to
+ * enforce"). A PRESENT-but-broken registry (import throws, or no `META_RULES`
+ * array) reds the build — a bundle that meant to enforce rules must not silently
+ * pass because its registry is malformed. Only the ONE declared registry file is
+ * imported; a stray `.js` beside it is never loaded.
+ */
+async function runLintMeta(parsed: ParsedArgs, io: CliIO): Promise<number> {
+  const registryPath = parsed.registry
+    ? path.resolve(parsed.dir, parsed.registry)
+    : path.join(parsed.dir, DEFAULT_REGISTRY_RELATIVE_PATH);
+
+  // Presence check via a plain read (no import): an absent registry opts out.
+  if (io.read(registryPath) === null) {
+    io.stdout(
+      `No lint-meta registry at ${registryPath} — nothing to enforce. ` +
+        '(Point --registry at your rule registry, or commit one at ' +
+        `${DEFAULT_REGISTRY_RELATIVE_PATH}.)`,
+    );
+    return 0;
+  }
+
+  const loaded = await loadRegistry(registryPath, io.importModule ?? defaultImporter);
+  if (loaded.error !== undefined) {
+    io.stderr(`Failed to load the lint-meta registry at ${registryPath}: ${loaded.error}`);
+    return 1;
+  }
+
+  const n = loaded.rules.length;
+  io.stdout(`lint-meta: running ${n} rule${n === 1 ? '' : 's'} from ${registryPath}`);
+
+  const ctx = createNodeCtx(parsed.dir);
+  // Legibility (§5): echo every rule before it runs.
+  const outcomes = runMetaRules(loaded.rules, ctx, (rule) => io.stdout(`→ ${rule.id}`));
+  const report = reportMetaOutcomes(outcomes);
+
+  for (const line of report.lines) io.stderr(line);
+  if (report.lines.length === 0) io.stdout('lint-meta: no violations');
+
+  return exitCodeFor(report);
+}
+
+/**
+ * Parse argv and dispatch. Returns the process exit code (never exits). The
+ * `check` path stays synchronous (`number`); the `lint-meta` path is async
+ * (bounded dynamic import), so the return type is `number | Promise<number>` and
+ * the bin entry awaits it.
+ */
+export function runCli(argv: string[], io: CliIO = nodeIO()): number | Promise<number> {
   const parsed = parseArgs(argv, io.cwd);
 
   if (parsed.help) {
@@ -197,11 +276,10 @@ export function runCli(argv: string[], io: CliIO = nodeIO()): number {
     io.stdout(readVersion());
     return 0;
   }
-  if (parsed.command !== 'check') {
-    io.stderr(`Unknown command: ${parsed.command}. Run \`harness --help\`.`);
-    return 2;
-  }
-  return runCheck(parsed, io);
+  if (parsed.command === 'check') return runCheck(parsed, io);
+  if (parsed.command === 'lint-meta') return runLintMeta(parsed, io);
+  io.stderr(`Unknown command: ${parsed.command}. Run \`harness --help\`.`);
+  return 2;
 }
 
 /**
@@ -220,5 +298,9 @@ function isMainModule(): boolean {
 }
 
 if (isMainModule()) {
-  process.exit(runCli(process.argv.slice(2)));
+  // `runCli` is sync for `check`/`--help`/`--version` and async for `lint-meta`
+  // (bounded dynamic import); normalize both to a resolved exit code.
+  void Promise.resolve(runCli(process.argv.slice(2))).then((code) => {
+    process.exit(code);
+  });
 }

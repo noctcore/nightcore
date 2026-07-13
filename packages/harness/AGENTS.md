@@ -54,11 +54,19 @@ port of the in-process Rust runner in `apps/desktop/src-tauri/src/workflow/gaunt
 - `src/manifest.ts` — the port of `config.rs` (load + plan), pure over an injected `FileReader`.
 - `src/run.ts` — the port of `runner.rs` (full-run execute + `fixInstruction`), pure over an
   injected `SpawnFn`.
-- `src/cli.ts` — arg parse + subcommand dispatch (`check` [default], `--json`, `--dir`, `--help`,
-  `--version`). `runCli(argv, io)` is pure over an injected `CliIO`; the module self-invokes only as
-  the `harness` bin (a symlink-safe entry check). The `lint-meta` subcommand is PR 2 — unregistered.
-- `src/index.ts` — the public type barrel (manifest + result shapes). PR 2 adds the lint-meta
-  contract here.
+- `src/cli.ts` — arg parse + subcommand dispatch (`check` [default], `lint-meta`, `--json`, `--dir`,
+  `--registry`, `--help`, `--version`). `runCli(argv, io)` is pure over an injected `CliIO`; the
+  module self-invokes only as the `harness` bin (a symlink-safe entry check). `check` stays
+  synchronous; `lint-meta` is async (bounded dynamic import), so `runCli` returns
+  `number | Promise<number>` and the bin entry awaits it.
+- `src/lint-meta/` — the ported, portable lint-meta engine (PR 2): the plain-Node `IMetaCtx`
+  (`ctx.ts`, `fs.globSync` replacing Bun's `Glob`), the run loop + `[ERROR] <rule> (<file>):
+  <message>` reporter (`run.ts`), the ratchet/baseline mechanism (`baseline.ts`), and the
+  BOUNDED-EVAL registry loader (`registry.ts` — imports ONLY the enumerated
+  `.nightcore/lint-meta/registry.js`, never scan-and-imports arbitrary `.js`). A throwing rule is a
+  critical failure (fail-safe). `create-fake-ctx.ts` is a test-only in-memory ctx (never bundled).
+- `src/index.ts` — the public type barrel (manifest + result shapes) PLUS the portable lint-meta
+  contract (`IMetaRule` / `IMetaCtx` / `IViolation`) + the ratchet helpers a generated rule imports.
 
 ## Tests + gate
 

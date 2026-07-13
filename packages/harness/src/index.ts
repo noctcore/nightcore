@@ -1,9 +1,10 @@
 /**
- * Public type surface of `@noctcore/harness`. Today this exposes the
- * `.nightcore/harness.json` manifest shape plus the `StructureLockResult`-shaped
+ * Public type surface of `@noctcore/harness`. Exposes the
+ * `.nightcore/harness.json` manifest shape, the `StructureLockResult`-shaped
  * verdict the runner emits (camelCase, wire-compatible with the Rust
- * `StructureLockResult` / `StructureLockCheck`). PR 2 adds the portable lint-meta
- * contract (`IMetaRule` / `IMetaCtx` / `IViolation`) here.
+ * `StructureLockResult` / `StructureLockCheck`), AND the portable lint-meta
+ * contract (`IMetaRule` / `IMetaCtx` / `IViolation`) a target repo's generated
+ * `lint-meta-rule` artifacts implement.
  *
  * This barrel exists so generated artifacts and downstream tooling can
  * `import type` from the published package.
@@ -14,6 +15,21 @@ export type {
   StructureLockCheck,
   StructureLockResult,
 } from './run.js';
+
+// The PORTABLE lint-meta contract. A generated rule in a stranger's repo does
+// `import type { IMetaRule } from '@noctcore/harness'` and implements it against
+// the runner's `lint-meta` subcommand — NOT against Nightcore's internal
+// `tools/lint-meta/types.ts`.
+export type { IMetaCtx, IMetaRule, IViolation } from './lint-meta/types.js';
+// The ratchet mechanism a ratcheting rule calls at runtime (`baseline?(ctx)` +
+// `loadBaseline`/`isGrandfathered` inside `run`), published as values so a
+// generated rule can ratchet in its own CI.
+export {
+  DEFAULT_BASELINE_DIR,
+  isGrandfathered,
+  loadBaseline,
+  serializeBaseline,
+} from './lint-meta/baseline.js';
 
 /** One check as declared in `.nightcore/harness.json`. */
 export interface HarnessManifestCheck {

@@ -54,8 +54,15 @@ describe('runCli — flags', () => {
 
   test('an unknown subcommand is a usage error (exit 2)', () => {
     const h = harness();
-    expect(runCli(['lint-meta'], h.io)).toBe(2);
+    expect(runCli(['frobnicate'], h.io)).toBe(2);
     expect(h.err.join('\n')).toContain('Unknown command');
+  });
+
+  test('--help documents the lint-meta subcommand', () => {
+    const h = harness();
+    expect(runCli(['--help'], h.io)).toBe(0);
+    expect(h.out.join('\n')).toContain('lint-meta');
+    expect(h.out.join('\n')).toContain('--registry');
   });
 });
 
