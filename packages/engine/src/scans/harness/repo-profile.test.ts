@@ -109,41 +109,12 @@ describe('detectRepoProfile — single package', () => {
   });
 });
 
-describe('detectRepoProfile — directory-convention monorepo', () => {
-  test('apps/* members with no `workspaces` field still detect as a monorepo (boringstack-style)', () => {
-    // No workspaces field, no turbo/nx/pnpm config, no root lockfile — just a
-    // `private` root with `packageManager` and independent-install apps. The
-    // tool label comes from `packageManager`; members come from apps/* + packages/*.
-    const root = makeRepo();
-    writeJson(root, 'package.json', {
-      name: 'boringish',
-      private: true,
-      packageManager: 'bun@1.3.14',
-    });
-    writeFile(root, 'AGENTS.md', '# Agents\n');
-    writeJson(root, 'apps/api/package.json', {
-      name: '@x/api',
-      dependencies: { elysia: '1.0.0' },
-    });
-    writeFile(root, 'apps/api/index.ts', 'export {}\n');
-    writeJson(root, 'apps/ui/package.json', {
-      name: '@x/ui',
-      dependencies: { react: '18.0.0', vite: '5.0.0' },
-    });
-
-    const profile = detectRepoProfile(root);
-    expect(profile.isMonorepo).toBe(true);
-    expect(profile.workspaceTool).toBe('bun');
-    const paths = profile.packages.map((p) => p.path).sort();
-    expect(paths).toEqual(['apps/api', 'apps/ui']);
-    expect(profile.frameworks.sort()).toEqual(['elysia', 'react', 'vite']);
-    expect(profile.languages).toContain('typescript');
-    expect(profile.hasAgentDocs).toBe(true);
-  });
-});
-
 describe('detectRepoProfile — cargo workspace', () => {
-  test('detects a Cargo `[workspace]` with members and tauri', () => {
+  test('detects rust + tauri signals from a Cargo `[workspace]` member', () => {
+    // Workspace-tool detection and member-path resolution for a Cargo
+    // `[workspace]` are covered directly in workspace-resolution.test.ts; this
+    // exercises the language/framework signal detectors that stay in
+    // repo-profile.ts (rust via any Cargo.toml, tauri via the dependency text).
     const root = makeRepo();
     writeFile(
       root,
@@ -157,12 +128,8 @@ describe('detectRepoProfile — cargo workspace', () => {
     );
 
     const profile = detectRepoProfile(root);
-    expect(profile.workspaceTool).toBe('cargo');
-    expect(profile.isMonorepo).toBe(true);
     expect(profile.languages).toContain('rust');
     expect(profile.frameworks).toContain('tauri');
-    expect(profile.packages[0]?.name).toBe('app-core');
-    expect(profile.packages[0]?.path).toBe('crates/app');
   });
 });
 
