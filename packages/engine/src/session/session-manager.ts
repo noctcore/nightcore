@@ -25,6 +25,7 @@ import type {
 import { createMonotonicCounter, type Logger } from '@nightcore/shared';
 import { SessionStore } from '@nightcore/storage';
 
+import { CouncilRouter } from '../debate/council-router.js';
 import type {
   AgentProvider,
   AgentSession,
@@ -39,6 +40,7 @@ import {
   type ProviderRegistry,
 } from '../providers/provider-factory.js';
 import { ScanRouter } from '../scans/scan-router.js';
+import { probeModels } from './session-models.js';
 import { handleSessionQuery } from './session-query.js';
 import { resolveStartSessionParams } from './session-start-params.js';
 
@@ -68,6 +70,7 @@ export class SessionManager {
   private readonly sessionApi: SessionApi;
   private readonly providers: ProviderRegistry;
   private readonly scans: ScanRouter;
+  private readonly council: CouncilRouter;
 
   constructor(
     private readonly config: Config,
@@ -97,6 +100,13 @@ export class SessionManager {
       emit: (event) => this.emit(event),
       providers: this.providers,
       ...(logger !== undefined ? { logger } : {}),
+    });
+    // The Council conductor drives its seats as one-shot sessions through this
+    // supervisor (issue #350), routed by a sibling collaborator like the scans.
+    this.council = new CouncilRouter({
+      startSession: (command) => this.startSession(command),
+      subscribe: (listener) => this.on(listener),
+      logger,
     });
     // Seed the id counter past the highest persisted id so a restart never
     // reuses an id and clobbers a prior record (the SessionStore collapses by id,
@@ -130,6 +140,13 @@ export class SessionManager {
     // a `sessionId`).
     if (this.scans.handles(command)) {
       this.scans.dispatch(command);
+      return;
+    }
+
+    // The Council command family (issue #350) is `runId`-keyed, not session-id-keyed,
+    // like the scans — route it to the Conductor before the `command.sessionId` lookup.
+    if (this.council.handles(command)) {
+      this.council.dispatch(command);
       return;
     }
 
@@ -200,35 +217,11 @@ export class SessionManager {
     return this.sessions.size;
   }
 
-  /**
-   * List the models the SDK currently offers (dynamic — fetched at runtime, not
-   * hardcoded), each with its supported effort levels. Powers the surface's
-   * `/model` picker.
-   *
-   * Reuses a live session's runner when one exists; otherwise spins a transient,
-   * input-less runner whose `supportedModels()` probe tears its own query down.
-   * Degrades to `[]` on any error (logged at debug) — never throws.
-   */
+  /** List the models every configured provider offers, each with its supported effort
+   *  levels — powers the surface's `/model` picker. Delegates to {@link probeModels}
+   *  (extracted for the file-size ratchet; behavior verbatim). Never throws. */
   async listModels(): Promise<ModelDescriptor[]> {
-    try {
-      const models = await Promise.all(
-        this.providers.all().map(async (provider) => {
-          try {
-            return await provider.createProbeSession(this.logger?.child('model-probe')).listModels();
-          } catch (error) {
-            this.logger?.debug('provider listModels() failed; using empty list', {
-              providerId: provider.capabilities().id,
-              error,
-            });
-            return [];
-          }
-        }),
-      );
-      return models.flat();
-    } catch (error) {
-      this.logger?.debug('listModels() failed; returning empty list', error);
-      return [];
-    }
+    return probeModels(this.providers, this.logger);
   }
 
   /** Any currently-live session, to piggyback its already-open query. */

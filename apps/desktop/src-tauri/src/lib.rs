@@ -304,6 +304,12 @@ pub fn run() {
             sidecar::send_input,
             sidecar::respond_permission,
             sidecar::answer_question,
+            // Council debate run lifecycle (issue #350): start / kill a governed
+            // multi-agent debate. Both dispatch a `runId`-keyed SurfaceCommand to the
+            // engine's Conductor (the sole bus writer). The canvas + transcript stream
+            // are #352; these are the run-control surface.
+            sidecar::start_council,
+            sidecar::kill_council,
             sidecar::list_task_sessions,
             sidecar::get_task_session_messages,
             sidecar::resume_session,

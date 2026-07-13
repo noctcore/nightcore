@@ -1,10 +1,7 @@
 import { z } from 'zod';
 
-import {
-  EffortLevelSchema,
-  McpServerEntrySchema,
-  TaskKindSchema,
-} from './config.js';
+import { EffortLevelSchema, McpServerEntrySchema, TaskKindSchema } from './config.js';
+import { CouncilPresetIdSchema } from './council-preset.js';
 import { ConventionCategorySchema, HarnessPolicySchema } from './harness.js';
 import { AnalysisScopeSchema, FindingCategorySchema } from './insight.js';
 import {
@@ -432,6 +429,36 @@ export const CancelIssueValidationCommand = z.object({
   runId: z.string(),
 });
 
+/**
+ * Start a governed Council debate run (issue #350). Like the scan `start-*` families
+ * this is NOT a single session — the engine's Conductor drives the
+ * `Frame → Propose(blind) → Debate(≤2) → Converge(human)` state machine over N seats,
+ * keyed by `runId`. The Rust core assigns `runId`; the engine owns the run + its
+ * append-only transcript. The seats, stages, routing, and hard budget/round caps all
+ * come from the preset `presetId` resolves to (validated at Frame). The Conductor is
+ * the sole bus writer — seats have zero agent-to-agent authority (safety #1).
+ */
+export const StartCouncilCommand = z.object({
+  type: z.literal('start-council'),
+  /** The council run id the engine keys the transcript by (Rust-assigned). */
+  runId: z.string(),
+  /** The preset to seed the run from — resolved + validated by the engine. */
+  presetId: CouncilPresetIdSchema,
+  /** The task the council debates. */
+  objective: z.string(),
+  /** The working directory seat sessions run in (the active project root). Absent ⇒
+   *  the engine process cwd. */
+  projectPath: z.string().optional(),
+});
+
+/** Kill a running Council debate run immediately (safety non-negotiable #4 — the kill
+ *  switch; never "run until they agree"). Halts turn-taking at the next checkpoint and
+ *  aborts the in-flight seat turn. A no-op for an unknown/finished run. */
+export const KillCouncilCommand = z.object({
+  type: z.literal('kill-council'),
+  runId: z.string(),
+});
+
 /** The discriminated union of every surface → engine command, keyed by `type`. */
 export const SurfaceCommandSchema = z.discriminatedUnion('type', [
   StartSessionCommand,
@@ -451,6 +478,8 @@ export const SurfaceCommandSchema = z.discriminatedUnion('type', [
   CancelPrReviewCommand,
   StartIssueValidationCommand,
   CancelIssueValidationCommand,
+  StartCouncilCommand,
+  KillCouncilCommand,
 ]);
 export type SurfaceCommand = z.infer<typeof SurfaceCommandSchema>;
 

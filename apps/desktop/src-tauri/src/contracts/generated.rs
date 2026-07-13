@@ -189,6 +189,16 @@ pub enum SurfaceCommand {
     },
     #[serde(rename_all = "camelCase")]
     CancelIssueValidation { run_id: String },
+    #[serde(rename_all = "camelCase")]
+    StartCouncil {
+        run_id: String,
+        preset_id: CouncilPresetId,
+        objective: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        project_path: Option<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    KillCouncil { run_id: String },
 }
 
 // === Surface → engine queries (Rust SERIALIZES these; replies arrive as the

@@ -294,6 +294,56 @@ pub async fn send_input(
     provider.stream_input(session_id, text).await
 }
 
+/// Start a governed Council debate run (issue #350). Ensures the sidecar is up, then
+/// dispatches a `start-council` SurfaceCommand to the engine, whose Conductor drives
+/// the `Frame → Propose(blind) → Debate(≤2) → Converge(human)` state machine over the
+/// preset's seats — the sole bus writer, so seats have zero agent-to-agent authority
+/// (safety #1). Fire-and-forget: the run + its append-only transcript live in the
+/// engine; the `nc:debate` transcript stream is the canvas slice (#352), so this
+/// command only STARTS the run.
+///
+/// Async like its `send_input`/`respond_permission` siblings — the write is fully
+/// async tokio I/O, so it never blocks the WKWebView. `objective` is user content and
+/// is never logged.
+#[tauri::command]
+pub async fn start_council(
+    app: AppHandle,
+    provider: State<'_, Arc<SidecarProvider>>,
+    run_id: String,
+    preset_id: crate::contracts::CouncilPresetId,
+    objective: String,
+    project_path: Option<String>,
+) -> Result<(), String> {
+    crate::sidecar::ensure_reader(&app).await?;
+    tracing::debug!(target: "nightcore", run_id, "start-council dispatched to engine");
+    let command = crate::contracts::SurfaceCommand::StartCouncil {
+        run_id,
+        preset_id,
+        objective,
+        project_path,
+    };
+    provider.dispatch_command(command).await
+}
+
+/// Kill a running Council debate run immediately (safety non-negotiable #4 — the kill
+/// switch; never "run until they agree"). Best-effort: when the sidecar is up, dispatch
+/// a `kill-council` SurfaceCommand — the engine's Conductor throws the run's kill switch,
+/// halting turn-taking at the next checkpoint and aborting the in-flight seat turn. When
+/// the sidecar isn't running there is no live run to kill, so this is a no-op. Async like
+/// its siblings.
+#[tauri::command]
+pub async fn kill_council(
+    provider: State<'_, Arc<SidecarProvider>>,
+    run_id: String,
+) -> Result<(), String> {
+    if !provider.is_running().await {
+        return Ok(());
+    }
+    tracing::debug!(target: "nightcore", run_id, "kill-council dispatched to engine");
+    let command = crate::contracts::SurfaceCommand::KillCouncil { run_id };
+    provider.dispatch_command(command).await
+}
+
 /// Best-effort interrupt of a task's run. Aborts the slot's driver (if the loop
 /// spawned one) and sends an `interrupt` for the task's session; the terminal
 /// transition still arrives via the sidecar's `session-failed (aborted)` event,

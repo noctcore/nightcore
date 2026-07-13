@@ -106,8 +106,8 @@ mod tests {
             .expect("fixtures.commands is an object");
         assert_eq!(
             commands.len(),
-            17,
-            "all 17 SurfaceCommand variants must have a fixture"
+            19,
+            "all 19 SurfaceCommand variants must have a fixture"
         );
         for (tag, wire) in commands {
             let cmd: SurfaceCommand = serde_json::from_value(wire.clone())

@@ -1097,6 +1097,17 @@ const COMMAND_INPUTS: Record<string, unknown> = {
     type: 'cancel-issue-validation',
     runId: 'run-iv1',
   },
+  'start-council': {
+    type: 'start-council',
+    runId: 'run-council1',
+    presetId: 'research',
+    objective: 'Recommend a caching strategy for the session store.',
+    projectPath: '/proj',
+  },
+  'kill-council': {
+    type: 'kill-council',
+    runId: 'run-council1',
+  },
 };
 
 /** A representative raw input per query variant (the request/reply stream). */
