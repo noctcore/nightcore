@@ -66,6 +66,13 @@ pub trait Provider: Send + Sync {
     /// Best-effort interrupt of a run by session id.
     async fn interrupt(&self, session_id: u64) -> Result<(), String>;
 
+    /// Stream a user message into a LIVE run by session id — the sanctioned
+    /// human→running-agent chat path (`send-input`). Writes a `send-input`
+    /// SurfaceCommand; the engine's session runner enqueues `text` as the next user
+    /// turn. Fire-and-forget like [`Provider::interrupt`] (no correlated reply). The
+    /// `text` is user content — never logged.
+    async fn stream_input(&self, session_id: u64, text: String) -> Result<(), String>;
+
     /// Change a live run's autonomy ceiling. Carries the neutral [`AutonomyLevel`];
     /// the provider bridges it to its own primitive (for Claude, an SDK
     /// `setPermissionMode` control request). Used by the plan-approval gate to switch

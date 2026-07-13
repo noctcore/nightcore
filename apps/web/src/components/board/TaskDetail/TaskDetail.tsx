@@ -15,6 +15,7 @@ import { PrReviewComments, usePrReviewComments } from '../PrReviewComments';
 import { PrStatusCard, usePrStatus } from '../PrStatusCard';
 import { ReviewPanel } from '../ReviewPanel';
 import { GroupLabel, HistoryCard, SessionCard } from '../SessionCard';
+import { SessionComposer } from '../SessionComposer';
 import { TaskAttachments } from '../TaskAttachments';
 import { TaskOverviewEditor } from '../TaskOverviewEditor';
 import { TrustReport } from '../TrustReport';
@@ -28,6 +29,11 @@ import type { TaskDetailChromeProps, TaskDetailProps } from './TaskDetail.types'
 import { TaskDetailFooter } from './TaskDetailFooter';
 import { TaskDetailHeader } from './TaskDetailHeader';
 
+/** Stable empty fallback for `liveSessionIds` — a module-level ref so a stories/test
+ *  render that omits the prop doesn't mint a fresh `[]` each frame and defeat the
+ *  `TaskDetailChrome` memo (the same discipline the shell uses for the prompt
+ *  fallbacks). The app always passes its own memoized array. */
+const NO_LIVE_SESSIONS: readonly string[] = [];
 
 /** The logs / detail drawer. A thin coordinator over two halves: the static
  *  `TaskDetailChrome` (title, verdict, gauntlet, description, session config, and
@@ -42,6 +48,7 @@ export function TaskDetail({
   task,
   stream,
   anyRunning,
+  liveSessionIds = NO_LIVE_SESSIONS,
   prompts = [],
   questions = [],
   gauntlet = null,
@@ -84,6 +91,7 @@ export function TaskDetail({
         kindEditable={kindEditable}
         isDoneColumn={isDoneColumn}
         anyRunning={anyRunning}
+        liveSessionIds={liveSessionIds}
         prompts={prompts}
         questions={questions}
         gauntlet={gauntlet}
@@ -127,6 +135,7 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
   kindEditable,
   isDoneColumn,
   anyRunning,
+  liveSessionIds,
   prompts,
   questions,
   gauntlet,
@@ -358,6 +367,15 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
           permissionPrompts={prompts}
           questionPrompts={questions}
         />
+      )}
+
+      {/* Live-session chat composer (send-input): stream a message into the running
+          build session, with a broadcast toggle to reach every live session. Pinned
+          below the interaction dock and shown only while this task's build session is
+          live; gated on the send handler (co-provided by the shell). The sanctioned
+          human→running-agent path — never an agent-reachable surface. */}
+      {isRunning && actions.onSendInput !== undefined && (
+        <SessionComposer taskId={task.id} liveSessionIds={liveSessionIds} />
       )}
 
       <TaskDetailFooter

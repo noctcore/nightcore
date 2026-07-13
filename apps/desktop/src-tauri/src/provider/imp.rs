@@ -199,6 +199,20 @@ impl Provider for SidecarProvider {
         Ok(())
     }
 
+    async fn stream_input(&self, session_id: u64, text: String) -> Result<(), String> {
+        // Fire-and-forget, exactly like `interrupt`: the `send-input` SurfaceCommand
+        // is routed to the session by `sessionId`, and the runner enqueues `text` as
+        // the next user turn. No pending-launch FIFO push (this is not a session
+        // start) and no correlated reply. `text` is user content — never logged.
+        let command = serde_json::to_value(SurfaceCommand::SendInput { session_id, text })
+            .map_err(|e| e.to_string())?;
+        let mut guard = self.stdin.lock().await;
+        if let Some(stdin) = guard.as_mut() {
+            Self::write_line(stdin, &command).await?;
+        }
+        Ok(())
+    }
+
     async fn set_autonomy(&self, session_id: u64, autonomy: AutonomyLevel) -> Result<(), String> {
         let command = serde_json::to_value(SurfaceCommand::SetAutonomy {
             session_id,

@@ -74,6 +74,17 @@ export async function answerQuestion(
   );
 }
 
+// --- Live-session chat ----------------------------------------------------
+
+/** Stream a user message into a task's LIVE running session — the sanctioned
+ *  human→running-agent chat path (`send_input`). The Rust core resolves the task's
+ *  live session id and forwards a `send-input` command to the sidecar, where the
+ *  session runner enqueues `text` as the next user turn. Rejects if the task has no
+ *  live session. No-ops outside Tauri (browser preview). */
+export async function sendInput(taskId: string, text: string): Promise<void> {
+  await tauriInvoke<void>('send_input', { taskId, text }, undefined);
+}
+
 // --- Plan approval --------------------------------------------------------
 
 /** Approve a waiting plan: the same session switches to building it. */

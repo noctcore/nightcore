@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react';
 
 import { type TaskDetailActions } from '@/components/board';
 import type { ToastApi } from '@/components/ui';
-import type { CreateTaskOptions, RunMode, TaskKind, TaskStatus } from '@/lib/bridge';
+import { type CreateTaskOptions, type RunMode, sendInput, type TaskKind, type TaskStatus } from '@/lib/bridge';
 
 import type { ActionGuard } from './useActionGuard.hooks';
 import type { useBoard } from './useBoard.hooks';
@@ -91,6 +91,22 @@ export function useBoardActions({
   // / `workflow` container objects re-identify each render, so the memo lists the
   // individual handlers as deps — never those objects.)
   const closeDetail = useCallback(() => setSelectedId(null), [setSelectedId]);
+
+  // Live-session chat relay (send-input): fire-and-forget into the running session.
+  // There is no optimistic board state to touch (the message surfaces as the next
+  // user turn in the activity log), so a failed relay only toasts. Defined here in
+  // the composition seam rather than in `useTaskLifecycleActions` to keep that hook's
+  // return surface under the god-controller cap.
+  const handleSendInput = useCallback(
+    (id: string, text: string) => {
+      void sendInput(id, text).catch((err) => {
+        console.error('send_input failed', err);
+        toast.error('Could not send the message', err);
+      });
+    },
+    [toast],
+  );
+
   const detailActions = useMemo<TaskDetailActions>(
     () => ({
       onSelect: setSelectedId,
@@ -100,6 +116,7 @@ export function useBoardActions({
       onDuplicate: lifecycle.handleDuplicate,
       onRespondPermission: permissions.respond,
       onAnswerQuestion: questions.answer,
+      onSendInput: handleSendInput,
       onApprove: workflow.handleApprove,
       onReject: workflow.handleReject,
       onRefine: workflow.handleRefine,
@@ -144,6 +161,7 @@ export function useBoardActions({
       lifecycle.handleDuplicate,
       permissions.respond,
       questions.answer,
+      handleSendInput,
       workflow.handleApprove,
       workflow.handleReject,
       workflow.handleRefine,

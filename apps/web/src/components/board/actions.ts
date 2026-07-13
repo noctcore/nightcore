@@ -39,6 +39,10 @@ export interface TaskDetailActions {
   onRespondPermission?: (taskId: string, requestId: string, decision: 'allow' | 'deny') => void;
   /** Answer a parked AskUserQuestion prompt (submit choices or skip). */
   onAnswerQuestion?: (taskId: string, requestId: string, answer: QuestionAnswer) => void;
+  /** Stream a user message into a task's LIVE running session — the sanctioned
+   *  human→running-agent chat path (`send-input`). Enables the SessionComposer
+   *  while the task's build session is live. */
+  onSendInput?: (taskId: string, text: string) => void;
   /** Plan-approval actions (shown for a plan-parked `waiting_approval`). Refine
    *  carries the reviewer's feedback: it re-enters the SAME session as the
    *  refinement prompt (T6, #147) rather than re-running from scratch. */

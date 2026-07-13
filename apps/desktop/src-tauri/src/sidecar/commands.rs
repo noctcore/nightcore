@@ -240,6 +240,35 @@ pub async fn answer_question(
     provider.send_answer(session_id, &request_id, answer).await
 }
 
+/// Stream a user message into a task's LIVE running session — the sanctioned
+/// human→running-agent chat path (`send-input`). Resolves the task's live session
+/// id (the same live-binding-then-persisted fallback the permission/question
+/// relays use) and forwards a `send-input` SurfaceCommand to the sidecar, where the
+/// session runner enqueues it as the next user turn.
+///
+/// This is a USER-gesture-driven webview command ONLY (the composer's send/broadcast
+/// action) — the SANCTIONED path for a human to talk to a running agent. It is never
+/// wired to any agent-reachable/event surface (real PTY terminals stay user-only and
+/// agent-inaccessible; this is the deliberate exception FOR the human, not the agent).
+/// Async like its `answer_question`/`respond_permission` siblings: the write is fully
+/// async tokio I/O, so it never blocks the WKWebView. The `text` is user content and
+/// is never logged.
+#[tauri::command]
+pub async fn send_input(
+    store: State<'_, TaskStore>,
+    provider: State<'_, Arc<SidecarProvider>>,
+    task_id: String,
+    text: String,
+) -> Result<(), String> {
+    let session_id = provider
+        .session_for(&task_id)
+        .or_else(|| store.get(&task_id).and_then(|t| t.session_id))
+        .ok_or_else(|| format!("no live session for task {task_id}"))?;
+
+    tracing::debug!(target: "nightcore", task_id, session_id, "send-input relayed to session");
+    provider.stream_input(session_id, text).await
+}
+
 /// Best-effort interrupt of a task's run. Aborts the slot's driver (if the loop
 /// spawned one) and sends an `interrupt` for the task's session; the terminal
 /// transition still arrives via the sidecar's `session-failed (aborted)` event,

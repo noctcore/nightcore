@@ -109,7 +109,7 @@ export function AppShellViews({
 }: AppShellViewsProps) {
   const { active } = registry;
   const { view } = routing;
-  const { tasks, selected, selectedId, anyRunning } = board;
+  const { tasks, selected, selectedId, anyRunning, liveSessionIds } = board;
 
   return (
     // View-transition seam: the in-<main> view chain cross-fades on `view`
@@ -173,6 +173,7 @@ export function AppShellViews({
                     task={selected}
                     stream={drawer.streams[selected.id] ?? EMPTY_TRANSCRIPT}
                     anyRunning={anyRunning}
+                    liveSessionIds={liveSessionIds}
                     prompts={drawer.prompts[selected.id] ?? NO_PROMPTS}
                     questions={drawer.questions[selected.id] ?? NO_QUESTIONS}
                     gauntlet={drawer.gauntletResults[selected.id] ?? null}

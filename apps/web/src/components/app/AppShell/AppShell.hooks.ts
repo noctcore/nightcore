@@ -61,6 +61,10 @@ export interface BoardData {
   anyRunning: boolean;
   /** Concurrently running tasks (`in_progress` + `verifying`) — sidebar footer. */
   runningCount: number;
+  /** Every LIVE build session (task id, `in_progress`) — the drawer composer's
+   *  send-input broadcast set. Scoped to `in_progress` (the composer's own gate), so
+   *  a broadcast reaches only running build agents, not the automated verifiers. */
+  liveSessionIds: string[];
   /** Streamed log-line counts per task id (running card Logs badge). */
   logCounts: Record<string, number>;
   /** Backend-computed blocked task ids (unfinished dependency). */
@@ -250,6 +254,14 @@ export function useAppShell(): AppShellState {
   // yes/no used for the card pulse, TaskDetail, and the Projects running-dots.
   const runningCount = useMemo(() => runningTaskCount(tasks), [tasks]);
   const anyRunning = runningCount > 0;
+  // The drawer composer's send-input broadcast set: every LIVE build session (task
+  // id, `in_progress`). Memoized on `tasks` (which turns over on a `nc:task` event,
+  // never a per-frame stream flush) so the referentially-stable array doesn't defeat
+  // the memoized TaskDetailChrome on a flush.
+  const liveSessionIds = useMemo(
+    () => tasks.filter((t) => t.status === 'in_progress').map((t) => t.id),
+    [tasks],
+  );
   // The board-wide run-slot availability (T13): a free slot exists when fewer tasks run
   // than the configured concurrency — the same gate the backend enforces. Memoized on the
   // boolean so the RunGate context flips (re-rendering subscribed cards) only when
@@ -295,6 +307,7 @@ export function useAppShell(): AppShellState {
       setSelectedId,
       anyRunning,
       runningCount,
+      liveSessionIds,
       logCounts,
       blockedIds,
       promptIds,

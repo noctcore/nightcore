@@ -23,6 +23,9 @@ export interface TaskDetailProps {
   stream: TaskTranscript | undefined;
   /** True when ANY task is in_progress/verifying — gates history resume. */
   anyRunning: boolean;
+  /** Every LIVE session id (task id) on the board — the send-input broadcast set the
+   *  composer fans a message across. Defaults to empty (stories/tests). */
+  liveSessionIds?: readonly string[];
   /** Parked permission prompts for this task (interactive approval). */
   prompts?: PermissionPrompt[];
   /** Parked AskUserQuestion prompts for this task (interactive answer). */
@@ -92,6 +95,8 @@ export interface TaskDetailChromeProps {
   isDoneColumn: boolean;
   /** True when ANY task is in_progress/verifying — gates history resume. */
   anyRunning: boolean;
+  /** Every LIVE session id (task id) on the board — the send-input broadcast set. */
+  liveSessionIds: readonly string[];
   prompts: PermissionPrompt[];
   questions: QuestionPrompt[];
   gauntlet: GauntletResult | null;
