@@ -42,6 +42,12 @@ export const CHANNELS = {
   prFix: 'nc:pr-fix',
   /** The provider usage meter snapshot, pushed on every poll change (issue #121). */
   usage: 'nc:usage',
+  /** One append-only Council debate-transcript entry for a council run (`nc:debate`,
+   *  issue #348). Payload is a {@link import('./debate.js').DebateTranscriptEntry}
+   *  scoped by its council-run id. Registered ahead of its emitter: the moderated bus
+   *  and transcript store are the Council P1 foundation; the Rust Conductor emit seam
+   *  arrives in a downstream slice. */
+  debate: 'nc:debate',
 } as const;
 
 /** A registry symbol (e.g. `'prReview'`) — the key side of {@link CHANNELS}. */

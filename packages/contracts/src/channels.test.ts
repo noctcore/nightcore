@@ -30,6 +30,7 @@ describe('CHANNELS is the single nc:* channel registry', () => {
       issueTriage: 'nc:issue-triage',
       prFix: 'nc:pr-fix',
       usage: 'nc:usage',
+      debate: 'nc:debate',
     });
   });
 });

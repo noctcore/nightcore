@@ -1666,6 +1666,7 @@ pub enum WorkspaceTool {
 /// entry here, so a channel renamed/added/removed on either tier fails
 /// `cargo test` (and a rename in the zod source also reds `codegen-drift`).
 pub const NIGHTCORE_CHANNELS: &[(&str, &str)] = &[
+    ("debate", "nc:debate"),
     ("harness", "nc:harness"),
     ("insight", "nc:insight"),
     ("issueTriage", "nc:issue-triage"),
