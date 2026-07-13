@@ -301,6 +301,7 @@ pub fn run() {
             commands::task::blocked_task_ids,
             sidecar::run_task,
             sidecar::cancel_task,
+            sidecar::send_input,
             sidecar::respond_permission,
             sidecar::answer_question,
             sidecar::list_task_sessions,
