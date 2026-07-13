@@ -18,7 +18,7 @@ maintainer's discretion.
 If you believe you have found a security issue in Nightcore:
 
 1. **Email or DM the maintainer** via GitHub (`@Shironex`) with a private message, **or**
-2. Open a **[GitHub Security Advisory](https://github.com/Shironex/nightcore/security/advisories/new)** (preferred when the repo is public).
+2. Open a **[GitHub Security Advisory](https://github.com/noctcore/nightcore/security/advisories/new)** (preferred when the repo is public).
 
 Include as much detail as you can:
 

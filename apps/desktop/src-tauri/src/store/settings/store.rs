@@ -283,4 +283,4 @@ pub struct AppInfo {
 }
 
 /// The repository URL, compiled in (no fake `github.com/you` literal in the UI).
-pub(crate) const REPOSITORY_URL: &str = "https://github.com/Shironex/nightcore";
+pub(crate) const REPOSITORY_URL: &str = "https://github.com/noctcore/nightcore";

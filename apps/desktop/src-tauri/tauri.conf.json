@@ -51,7 +51,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhFMTY0OTI0REE0RDRBRkYKUldUL1NrM2FKRWtXamdtZW0rSlRBblE1RWRmckx6Z2N5aEE0OUUreGJabDVrbWc3MUlrUHBKMWoK",
       "endpoints": [
-        "https://github.com/Shironex/nightcore/releases/latest/download/latest.json"
+        "https://github.com/noctcore/nightcore/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"

@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
-  <a href="https://github.com/Shironex/nightcore/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Shironex/nightcore/ci.yml?branch=main&label=CI" alt="CI" /></a>
+  <a href="https://github.com/noctcore/nightcore/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/noctcore/nightcore/ci.yml?branch=main&label=CI" alt="CI" /></a>
   <img src="https://img.shields.io/badge/status-alpha-orange.svg" alt="Alpha" />
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/runtime-Bun-000000?logo=bun&logoColor=white" alt="Bun" /></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/core-Rust-orange?logo=rust&logoColor=white" alt="Rust" /></a>
@@ -255,7 +255,7 @@ docs/        architecture, decisions, research
 ### Install
 
 Grab the latest release from the
-[releases page](https://github.com/Shironex/nightcore/releases/latest) —
+[releases page](https://github.com/noctcore/nightcore/releases/latest) —
 macOS (`.dmg`, Apple Silicon + Intel) and Windows (`setup.exe` / `.msi`)
 installers, with signed in-app auto-update built in.
 
@@ -282,7 +282,7 @@ Building from source additionally needs:
 ### Build from source
 
 ```bash
-git clone https://github.com/Shironex/nightcore.git
+git clone https://github.com/noctcore/nightcore.git
 cd nightcore
 bun install
 bun run desktop      # Tauri dev — full studio (macOS / Windows)
@@ -301,7 +301,7 @@ Claude CLI login.
 
 ## Status
 
-**Alpha** — [v0.1.0](https://github.com/Shironex/nightcore/releases/latest) is
+**Alpha** — [v0.1.0](https://github.com/noctcore/nightcore/releases/latest) is
 out with macOS/Windows installers and signed auto-update. Functional and
 dogfooded daily — Nightcore's own backlog is built by Nightcore — but not
 production-ready yet. Expect breaking changes.
@@ -313,7 +313,7 @@ research → build-ready specs → gated PRs — and the roadmap is public.
 
 - **[Roadmap board](https://github.com/users/Shironex/projects/8)** — live
   ticket status.
-- **[Planning map](https://github.com/Shironex/nightcore/issues/141)** — the
+- **[Planning map](https://github.com/noctcore/nightcore/issues/141)** — the
   tracking issue linking every ticket.
 - **[Full roadmap doc](docs/research/2026-07-11-roadmap-v0.3-v0.5.md)** —
   strategic verdicts, fast-track fixes, and the open decisions behind the

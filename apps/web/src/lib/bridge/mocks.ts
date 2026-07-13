@@ -30,7 +30,7 @@ import type {
  *  catalog default is never re-hardcoded per surface. */
 // A zod enum always has at least one option, so the first `KnownModel` is present.
 const DEFAULT_MODEL_ID = KnownModelSchema.options[0]!;
-export const DEFAULT_REPO_URL = 'https://github.com/Shironex/nightcore';
+export const DEFAULT_REPO_URL = 'https://github.com/noctcore/nightcore';
 
 /** A populated mock snapshot so the inspector renders outside Tauri (browser
  *  preview / Storybook). Exercises all three per-section tri-states so the panel's

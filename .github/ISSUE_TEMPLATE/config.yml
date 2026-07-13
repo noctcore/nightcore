@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/Shironex/nightcore/security/advisories/new
+    url: https://github.com/noctcore/nightcore/security/advisories/new
     about: Report security issues privately — see SECURITY.md. Do not open a public issue.
   - name: Question / discussion
-    url: https://github.com/Shironex/nightcore/discussions
+    url: https://github.com/noctcore/nightcore/discussions
     about: Ask questions or discuss ideas before opening a feature request.

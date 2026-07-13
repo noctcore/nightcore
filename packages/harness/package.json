@@ -5,14 +5,14 @@
   "sideEffects": false,
   "description": "Portable Structure-Lock runner — enforces a repo's .nightcore/harness.json checks in any CI, with no Nightcore install.",
   "license": "MIT",
-  "homepage": "https://github.com/Shironex/nightcore/tree/main/packages/harness#readme",
+  "homepage": "https://github.com/noctcore/nightcore/tree/main/packages/harness#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Shironex/nightcore.git",
+    "url": "git+https://github.com/noctcore/nightcore.git",
     "directory": "packages/harness"
   },
   "bugs": {
-    "url": "https://github.com/Shironex/nightcore/issues"
+    "url": "https://github.com/noctcore/nightcore/issues"
   },
   "publishConfig": {
     "access": "public",

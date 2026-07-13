@@ -38,7 +38,7 @@ Read these first — they are enforced by CI, not suggestions:
 ## Development Setup
 
 ```bash
-git clone https://github.com/Shironex/nightcore.git
+git clone https://github.com/noctcore/nightcore.git
 cd nightcore
 bun install
 bun run typecheck
@@ -121,7 +121,7 @@ See [`AGENTS.md`](AGENTS.md) for the full contract.
 
 ### Bug reports
 
-Use the **[Bug Report](https://github.com/Shironex/nightcore/issues/new?template=bug_report.yml)**
+Use the **[Bug Report](https://github.com/noctcore/nightcore/issues/new?template=bug_report.yml)**
 template when filing on GitHub. Include:
 
 - Nightcore version / commit SHA
@@ -132,7 +132,7 @@ template when filing on GitHub. Include:
 
 ### Feature requests
 
-Use the **[Feature Request](https://github.com/Shironex/nightcore/issues/new?template=feature_request.yml)**
+Use the **[Feature Request](https://github.com/noctcore/nightcore/issues/new?template=feature_request.yml)**
 template. Describe the workflow problem, not just the implementation. Link related
 issues or decision docs if you have them.
 

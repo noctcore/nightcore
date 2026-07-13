@@ -6,5 +6,5 @@ import { ESLintUtils } from '@typescript-eslint/utils';
  */
 export const createRule = ESLintUtils.RuleCreator(
   (ruleName) =>
-    `https://github.com/Shironex/nightcore/blob/main/packages/eslint-plugin/docs/rules/${ruleName}.md`,
+    `https://github.com/noctcore/nightcore/blob/main/packages/eslint-plugin/docs/rules/${ruleName}.md`,
 );

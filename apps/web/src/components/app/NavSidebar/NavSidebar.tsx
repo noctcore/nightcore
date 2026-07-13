@@ -284,7 +284,7 @@ export function NavSidebar({
           )
         )}
         <a
-          href="https://github.com/Shironex/nightcore"
+          href="https://github.com/noctcore/nightcore"
           target="_blank"
           rel="noreferrer"
           aria-label="View on GitHub"
