@@ -49,6 +49,10 @@
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "@nightcore/eslint-plugin": "workspace:*",
+    "@noctcore/eslint-plugin-architecture": "^0.2.0",
+    "@noctcore/eslint-plugin-contracts": "^0.2.0",
+    "@noctcore/eslint-plugin-monorepo": "^0.2.0",
+    "@noctcore/eslint-plugin-react": "^0.2.0",
     "@types/bun": "^1.1.0",
     "@types/node": "^22.0.0",
     "eslint": "^9.0.0",

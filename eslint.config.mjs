@@ -1,5 +1,9 @@
 // @ts-check
 import eslint from '@eslint/js';
+import architecture from '@noctcore/eslint-plugin-architecture';
+import contracts from '@noctcore/eslint-plugin-contracts';
+import monorepo from '@noctcore/eslint-plugin-monorepo';
+import react from '@noctcore/eslint-plugin-react';
 import jsxA11y from 'eslint-plugin-jsx-a11y';
 import simpleImportSort from 'eslint-plugin-simple-import-sort';
 import tseslint from 'typescript-eslint';
@@ -114,13 +118,16 @@ const BOARD_CONTEXT_REGISTRY = {
  * must never reach for the SDK or the engine directly.
  *
  * The component-architecture rules (folder-per-component, decoupled features,
- * thin component shells) come from @nightcore/eslint-plugin, scoped below. The
- * remaining frontend layer enforcement (single Tauri seam, components/ui purity)
- * lives in `tools/lint-meta` and is spread in as `layerRules`.
+ * thin component shells) come from the published @noctcore/eslint-plugin-*
+ * packages (react / architecture / monorepo / contracts), scoped below; the one
+ * rule not yet published — `enforce-context-consumption` — stays in the local
+ * @nightcore/eslint-plugin. The remaining frontend layer enforcement (single
+ * Tauri seam, components/ui purity) lives in `tools/lint-meta` and is spread in
+ * as `layerRules`.
  *
- * The nightcore plugin is registered ONCE, globally, so every scoped block can
- * reference `nightcore/*` rules without re-declaring `plugins` (which would trip
- * flat config's "Cannot redefine plugin" check on overlapping file globs).
+ * Every plugin is registered ONCE, globally, so each scoped block can reference
+ * its rules without re-declaring `plugins` (which would trip flat config's
+ * "Cannot redefine plugin" check on overlapping file globs).
  */
 export default tseslint.config(
   {
@@ -147,9 +154,17 @@ export default tseslint.config(
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
-  // Register the nightcore plugin once, globally (no rules enabled here).
+  // Register the local + published plugins once, globally (no rules enabled
+  // here). `nightcore` retains only `enforce-context-consumption`; the migrated
+  // rules now live under the published `noctcore-*` plugins.
   {
-    plugins: { nightcore },
+    plugins: {
+      nightcore,
+      'noctcore-react': react,
+      'noctcore-architecture': architecture,
+      'noctcore-monorepo': monorepo,
+      'noctcore-contracts': contracts,
+    },
   },
   // Import ordering is mechanical, not authorial: node/bun builtins →
   // third-party → workspace (@nightcore/*, @/ alias) → relative, blank-line
@@ -328,7 +343,13 @@ export default tseslint.config(
   {
     files: ['apps/**/*.{ts,tsx}', 'packages/**/*.{ts,tsx}'],
     rules: {
-      'nightcore/no-deep-package-imports': 'error',
+      // The published rule is scope-agnostic and inert without `scopes`; pass
+      // the workspace scope to reproduce the local rule's hard-coded @nightcore
+      // barrel enforcement.
+      'noctcore-monorepo/no-deep-package-imports': [
+        'error',
+        { scopes: ['@nightcore'] },
+      ],
     },
   },
   // Wire-message naming: a message-schema const whose name ends Event/Command/
@@ -339,11 +360,15 @@ export default tseslint.config(
   {
     files: ['packages/contracts/src/**/*.ts'],
     rules: {
-      'nightcore/wire-message-naming': 'error',
+      // Published default roleSuffixes already are Event/Command/Query.
+      'noctcore-contracts/wire-message-naming': 'error',
       // Standalone schemas must be `<Pascal>Schema` + inferred sibling type.
       // Discriminated-union members (role suffixes Event/Command/Query) are
-      // carved out inside the rule — that carve-out is what un-dormanted it.
-      'nightcore/zod-schema-naming': 'error',
+      // carved out via `roleSuffixes` — that carve-out is what un-dormants it.
+      'noctcore-contracts/zod-schema-naming': [
+        'error',
+        { roleSuffixes: ['Event', 'Command', 'Query'] },
+      ],
     },
   },
   // Component-architecture rules (Tier C), scoped to the component folders.
@@ -353,19 +378,19 @@ export default tseslint.config(
     files: [`${COMPONENTS_GLOB}/*.{ts,tsx}`],
     ignores: [`${COMPONENTS_GLOB}/*.{stories,test}.{ts,tsx}`, FEATURE_ROOT_FILES],
     rules: {
-      'nightcore/component-folder-structure': 'error',
-      'nightcore/no-state-in-component-body': 'error',
+      'noctcore-architecture/component-folder-structure': 'error',
+      'noctcore-react/no-state-in-component-body': 'error',
       // ui = shadcn primitives (the cross-feature escape hatch, skipped dir).
       // Type-only cross-feature imports are banned too (issue #55): type-level
       // coupling ripples exactly like runtime coupling, and the tree is clean.
-      'nightcore/no-cross-feature-imports': [
+      'noctcore-architecture/no-cross-feature-imports': [
         'error',
         { sharedFeatures: ['ui'], allowTypeImports: false },
       ],
-      'nightcore/max-hooks-per-file': 'error',
-      'nightcore/max-hook-return-surface': 'error',
-      'nightcore/max-props-per-component': 'error',
-      'nightcore/no-prop-drilling': 'error',
+      'noctcore-react/max-hooks-per-file': 'error',
+      'noctcore-react/max-hook-return-surface': 'error',
+      'noctcore-react/max-props-per-component': 'error',
+      'noctcore-react/no-prop-drilling': 'error',
     },
   },
   // Context lock-in (issue #56), scoped to `board` — the feature whose drilled
@@ -381,11 +406,13 @@ export default tseslint.config(
     files: ['apps/web/src/components/board/**/*.{ts,tsx}'],
     ignores: ['apps/web/src/components/board/**/*.{stories,test}.{ts,tsx}'],
     rules: {
+      // enforce-context-consumption is the one rule not yet published — it
+      // stays in the local @nightcore/eslint-plugin.
       'nightcore/enforce-context-consumption': ['error', BOARD_CONTEXT_REGISTRY],
-      'nightcore/context-value-must-be-memoized': 'error',
+      'noctcore-react/context-value-must-be-memoized': 'error',
     },
   },
-  // Freeze-at-worst carve-out for `nightcore/max-props-per-component` (issue
+  // Freeze-at-worst carve-out for `noctcore-react/max-props-per-component` (issue
   // #51). The board refactor (scoped contexts) retired the wide Board (39→12),
   // Column (22→12), and TaskCard (16→7) contracts — they now pass the default
   // (12) and were removed from this list (issue #57). Two pre-existing wide
@@ -399,7 +426,7 @@ export default tseslint.config(
       'apps/web/src/components/board/TaskDetail/TaskDetail.types.ts',
     ],
     rules: {
-      'nightcore/max-props-per-component': ['error', { max: 40 }],
+      'noctcore-react/max-props-per-component': ['error', { max: 40 }],
     },
   },
   // Feature-root data/util modules (`components/<feature>/*.ts` — streams,
@@ -410,14 +437,14 @@ export default tseslint.config(
   {
     files: [FEATURE_ROOT_FILES],
     rules: {
-      'nightcore/no-cross-feature-imports': [
+      'noctcore-architecture/no-cross-feature-imports': [
         'error',
         { sharedFeatures: ['ui'], allowTypeImports: false },
       ],
-      'nightcore/max-hooks-per-file': 'error',
+      'noctcore-react/max-hooks-per-file': 'error',
     },
   },
-  // Freeze-at-worst carve-out for `nightcore/max-hook-return-surface` (issue
+  // Freeze-at-worst carve-out for `noctcore-react/max-hook-return-surface` (issue
   // #53). The AppShell controller split dropped its hook return under the default
   // (20), so AppShell.hooks.ts was removed from this list (issue #57). Six
   // pre-existing god-controller returns remain and may not grow past 80:
@@ -434,10 +461,10 @@ export default tseslint.config(
       'apps/web/src/components/scorecard/ScorecardView/ScorecardView.hooks.ts',
     ],
     rules: {
-      'nightcore/max-hook-return-surface': ['error', { max: 80 }],
+      'noctcore-react/max-hook-return-surface': ['error', { max: 80 }],
     },
   },
-  // Carve-out for `nightcore/no-prop-drilling` (issue #52). The board refactor
+  // Carve-out for `noctcore-react/no-prop-drilling` (issue #52). The board refactor
   // dismantled the Column→TaskCard chain — Column.tsx no longer forwards a
   // bundle (its card handlers arrive via TaskActionsContext), so it was removed
   // from this list (issue #57). Four forwarded-bundle chains remain: Board
@@ -453,7 +480,7 @@ export default tseslint.config(
       'apps/web/src/components/worktree/WorktreeManager/WorktreeManager.tsx',
     ],
     rules: {
-      'nightcore/no-prop-drilling': 'off',
+      'noctcore-react/no-prop-drilling': 'off',
     },
   },
   // Composition roots (the app shell) wire features together by design, so the
@@ -464,7 +491,7 @@ export default tseslint.config(
     files: COMPOSITION_ROOT_GLOBS.map((glob) => `${glob}/*.{ts,tsx}`),
     ignores: [`${COMPONENTS_GLOB}/*.{stories,test}.{ts,tsx}`, FEATURE_ROOT_FILES],
     rules: {
-      'nightcore/no-cross-feature-imports': 'off',
+      'noctcore-architecture/no-cross-feature-imports': 'off',
     },
   },
   // File-size governance (issue #50) — the in-editor half of a two-cap split:
