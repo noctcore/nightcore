@@ -240,11 +240,39 @@ pub async fn answer_question(
     provider.send_answer(session_id, &request_id, answer).await
 }
 
+/// Resolve `task_id` to a session id the provider currently considers LIVE — the
+/// same live-binding-then-persisted-fallback order `respond_permission`/
+/// `answer_question` use, but with one extra check the fire-and-forget relays don't
+/// need: the persisted fallback is validated against [`SidecarProvider::live_sessions`]
+/// before it's trusted. A `task_id` whose ONLY binding left is a stale
+/// `store`-persisted `session_id` (the live correlation forgot it — e.g. a sidecar
+/// crash reset, or the session simply already ended) would otherwise resolve to a
+/// session id the sidecar no longer recognizes, which it drops on the floor with no
+/// signal back. `send_input` is the one caller that must not let that happen
+/// silently — a chat message the user believes was sent has to either arrive or
+/// bubble a toast.
+fn resolve_live_session(
+    provider: &SidecarProvider,
+    store: &TaskStore,
+    task_id: &str,
+) -> Result<u64, String> {
+    let session_id = provider
+        .session_for(task_id)
+        .or_else(|| store.get(task_id).and_then(|t| t.session_id))
+        .ok_or_else(|| format!("no live session for task {task_id}"))?;
+
+    if !provider.live_sessions().contains(&session_id) {
+        return Err(format!(
+            "session {session_id} for task {task_id} is no longer live; message was not delivered"
+        ));
+    }
+    Ok(session_id)
+}
+
 /// Stream a user message into a task's LIVE running session — the sanctioned
 /// human→running-agent chat path (`send-input`). Resolves the task's live session
-/// id (the same live-binding-then-persisted fallback the permission/question
-/// relays use) and forwards a `send-input` SurfaceCommand to the sidecar, where the
-/// session runner enqueues it as the next user turn.
+/// id via [`resolve_live_session`] and forwards a `send-input` SurfaceCommand to the
+/// sidecar, where the session runner enqueues it as the next user turn.
 ///
 /// This is a USER-gesture-driven webview command ONLY (the composer's send/broadcast
 /// action) — the SANCTIONED path for a human to talk to a running agent. It is never
@@ -260,10 +288,7 @@ pub async fn send_input(
     task_id: String,
     text: String,
 ) -> Result<(), String> {
-    let session_id = provider
-        .session_for(&task_id)
-        .or_else(|| store.get(&task_id).and_then(|t| t.session_id))
-        .ok_or_else(|| format!("no live session for task {task_id}"))?;
+    let session_id = resolve_live_session(&provider, &store, &task_id)?;
 
     tracing::debug!(target: "nightcore", task_id, session_id, "send-input relayed to session");
     provider.stream_input(session_id, text).await
@@ -307,4 +332,76 @@ pub async fn cancel_task(
         provider.evict_pending(&id);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::task::Task;
+
+    fn provider() -> SidecarProvider {
+        SidecarProvider::new(
+            std::path::PathBuf::from("/tmp/entry.ts"),
+            std::path::PathBuf::from("/tmp"),
+            "claude".to_string(),
+        )
+    }
+
+    fn store() -> TaskStore {
+        TaskStore::load_from(
+            std::env::temp_dir().join(format!("nc-send-input-test-{}", uuid::Uuid::new_v4())),
+        )
+    }
+
+    #[test]
+    fn resolve_live_session_errs_with_no_binding_at_all() {
+        let p = provider();
+        let s = store();
+        let err = resolve_live_session(&p, &s, "unknown-task").unwrap_err();
+        assert!(err.contains("no live session"), "got: {err}");
+    }
+
+    #[test]
+    fn resolve_live_session_errs_when_only_a_stale_persisted_session_id_exists() {
+        // The task carries a persisted `session_id` from a prior run, but the
+        // provider's live correlation map never bound it (e.g. a sidecar crash
+        // reset, or the run simply never reached a live session) — the stale
+        // fallback must NOT be treated as deliverable.
+        let p = provider();
+        let s = store();
+        let mut task = Task::new("t".to_string(), "d".to_string());
+        task.session_id = Some(999);
+        s.upsert(&task).expect("seed task persists");
+
+        let err = resolve_live_session(&p, &s, &task.id).unwrap_err();
+        assert!(err.contains("no longer live"), "got: {err}");
+    }
+
+    #[test]
+    fn resolve_live_session_ok_when_the_provider_has_a_live_binding() {
+        let p = provider();
+        let s = store();
+        p.push_pending_for_test("task-live");
+        let bound = p.correlate(7);
+        assert_eq!(bound.as_deref(), Some("task-live"));
+
+        assert_eq!(resolve_live_session(&p, &s, "task-live"), Ok(7));
+    }
+
+    #[test]
+    fn resolve_live_session_prefers_the_live_binding_over_a_different_persisted_id() {
+        // A task can have BOTH a live correlation binding and an older persisted
+        // `session_id` from a prior run; the live binding must win.
+        let p = provider();
+        let s = store();
+        let mut task = Task::new("t".to_string(), "d".to_string());
+        task.id = "task-live".to_string();
+        task.session_id = Some(111);
+        s.upsert(&task).expect("seed task persists");
+
+        p.push_pending_for_test("task-live");
+        p.correlate(7);
+
+        assert_eq!(resolve_live_session(&p, &s, "task-live"), Ok(7));
+    }
 }
