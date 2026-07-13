@@ -310,6 +310,10 @@ pub fn run() {
             // are #352; these are the run-control surface.
             sidecar::start_council,
             sidecar::kill_council,
+            // The human Converge gavel (issue #353, safety #7): the terminal human
+            // verdict that resolves a parked run. Routes through the engine's Conductor
+            // (the sole bus writer) → append-only transcript, never a direct store write.
+            sidecar::resolve_council_converge,
             sidecar::list_task_sessions,
             sidecar::get_task_session_messages,
             sidecar::resume_session,

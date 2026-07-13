@@ -344,6 +344,41 @@ pub async fn kill_council(
     provider.dispatch_command(command).await
 }
 
+/// Resolve a Council run's PARKED Converge decision with the human judge's verdict
+/// (issue #353, safety non-negotiable #7 — the human is the terminal authority in P1's
+/// HUMAN-only Converge). Dispatches a `resolve-council-converge` SurfaceCommand: the
+/// engine's Conductor — the SOLE bus writer — records the verdict onto the append-only
+/// transcript (never a direct store write from the surface, safety #1) and closes the
+/// run. The verdict streams back over `nc:debate`, so this is fire-and-forget like its
+/// `start_council`/`kill_council` siblings — the transcript entry is the confirmation.
+///
+/// `seat_id` names the adopted seat for an `accept` verdict; `note` is the ruling for a
+/// `judge` (or an optional reason for `accept`/`reject`) and is user content, never
+/// logged. When the sidecar isn't running there is no parked run to resolve, so this is
+/// a no-op. Async like its siblings — fully async tokio I/O, never blocks the WKWebView.
+#[tauri::command]
+pub async fn resolve_council_converge(
+    provider: State<'_, Arc<SidecarProvider>>,
+    run_id: String,
+    decision: crate::contracts::CouncilConvergeDecision,
+    seat_id: Option<String>,
+    note: Option<String>,
+) -> Result<(), String> {
+    if !provider.is_running().await {
+        return Ok(());
+    }
+    // Decision KIND is debug-only (the verdict category); the ruling `note` is user
+    // content and is never logged.
+    tracing::debug!(target: "nightcore", run_id, ?decision, "resolve-council-converge dispatched to engine");
+    let command = crate::contracts::SurfaceCommand::ResolveCouncilConverge {
+        run_id,
+        decision,
+        seat_id,
+        note,
+    };
+    provider.dispatch_command(command).await
+}
+
 /// Best-effort interrupt of a task's run. Aborts the slot's driver (if the loop
 /// spawned one) and sends an `interrupt` for the task's session; the terminal
 /// transition still arrives via the sidecar's `session-failed (aborted)` event,
