@@ -122,6 +122,11 @@ export type { IssueMapPreview } from '../generated/IssueMapPreview';
 export type { IssueMapResult } from '../generated/IssueMapResult';
 export type { PriorMap } from '../generated/PriorMap';
 export type { SubIssuePreview } from '../generated/SubIssuePreview';
+// Portable Structure-Lock export (ts-rs from `sidecar/harness/export.rs`, #134 PR 3).
+// The staging-bundle descriptor the Enforce-stage "Export portable lock" button renders:
+// the staging path, the files written, the `nightcore-lock.yml` text (for the copy
+// button), and the pinned `@noctcore/harness` runner version.
+export type { PortableLockExport } from '../generated/PortableLockExport';
 // User terminal (PTY) command-return shapes (ts-rs from `terminal/types.rs`). PR B
 // consumes the live-session descriptor; PR C's restore UI adds the persisted-
 // scrollback metadata (`PersistedTerminalInfo`) + replay bytes

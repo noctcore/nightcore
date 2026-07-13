@@ -9,6 +9,7 @@ import {
   HistoryIcon,
   IssueMapExportButton,
   Menu,
+  PortableLockExportButton,
   RetryIcon,
   RunLifecycleShell,
   RunProgress,
@@ -152,9 +153,14 @@ function RunningScreen({ view }: { view: HarnessViewModel }) {
 function ResultsScreen({
   view,
   setSection,
+  projectPath,
 }: {
   view: HarnessViewModel;
   setSection: (section: HarnessSection) => void;
+  /** The active project's path — the root the Enforce-stage "Export portable lock"
+   *  action stages its bundle into. Threaded from the shell's props (not the view
+   *  model) to keep the budgeted `useHarnessView` return surface at its cap. */
+  projectPath: string | null;
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -204,7 +210,10 @@ function ResultsScreen({
             <BulkConvertBar
               {...view.conventionsBulk}
               trailing={
-                <IssueMapExportButton scanKind="enforce" runId={view.stream.runId} />
+                <>
+                  <PortableLockExportButton projectPath={projectPath} />
+                  <IssueMapExportButton scanKind="enforce" runId={view.stream.runId} />
+                </>
               }
             />
           )}
@@ -334,7 +343,11 @@ export function HarnessView(props: HarnessViewProps) {
         {view.phase === 'configure' && <ConfigureScreen view={view} />}
         {view.phase === 'running' && <RunningScreen view={view} />}
         {view.phase === 'results' && (
-          <ResultsScreen view={view} setSection={view.setSection} />
+          <ResultsScreen
+            view={view}
+            setSection={view.setSection}
+            projectPath={props.projectPath}
+          />
         )}
       </RunLifecycleShell>
 

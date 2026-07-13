@@ -94,6 +94,8 @@ export * from './motion';
 export { NumberField } from './NumberField';
 export type { NumberFieldProps } from './NumberField/NumberField.types';
 export { Pill } from './Pill';
+export type { PortableLockExportButtonProps } from './PortableLockExportButton';
+export { PortableLockExportButton } from './PortableLockExportButton';
 export { ProjectContextMenu } from './ProjectContextMenu';
 export type { ProjectContextMenuProps } from './ProjectContextMenu/ProjectContextMenu.types';
 export { ProjectIcon } from './ProjectIcon';
