@@ -4,6 +4,12 @@
  * each `SDKMessage` into `NightcoreEvent`s (via `translateMessage`), proxies
  * control requests (interrupt/setModel/permissions/questions), and degrades
  * crashes into `session-failed` events rather than throwing.
+ *
+ * Cohesive sub-concerns live in siblings: the streaming-input queue
+ * (`input-stream-queue.ts`), idle watchdog (`idle-watchdog.ts`), control-probe
+ * surface (`control-probe.ts`), guard wiring (`session-guards.ts`), and the
+ * `session-failed` builder (`session-failure.ts`). This module keeps the turn
+ * loop and the {@link AgentSession} surface.
  */
 import type {
   AutonomyLevel,
@@ -12,25 +18,28 @@ import type {
   PermissionMode,
   ProviderConfigSnapshot,
   QuestionAnswer,
-  WireImage,
 } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
 
-import { ToolRegistry } from '../../policy/tool-registry.js';
 import { SessionLedger } from '../../util/session-ledger.js';
 import type { AgentSession } from '../agent-provider.js';
 import { autonomyToPermissionMode } from './capabilities.js';
-import { HookBus } from './hook-bus.js';
+import { ControlProbe } from './control-probe.js';
+import type { HookBus } from './hook-bus.js';
+import {
+  DEFAULT_IDLE_TIMEOUT_MS,
+  IDLE_STALLED,
+  nextWithIdleDeadline,
+} from './idle-watchdog.js';
+import { InputStreamQueue } from './input-stream-queue.js';
 import { toModelDescriptor } from './mappers.js';
-import { type ApprovalDecision,PermissionLayer } from './permission-layer.js';
-import { withTransientProbeRetry } from './probe-retry.js';
+import type { ApprovalDecision, PermissionLayer } from './permission-layer.js';
 import { ProviderConfigReader } from './provider-config.js';
-import { ASK_USER_QUESTION_DIALOG,QuestionLayer } from './question-layer.js';
+import { ASK_USER_QUESTION_DIALOG, type QuestionLayer } from './question-layer.js';
 import { checkClaudeCliVersion, resolveClaudeBinary } from './resolve-claude-binary.js';
 import { prepareWriteSandbox } from './sandbox.js';
 import {
   type AgentInfo,
-  detailForReason,
   type McpServerStatus,
   type ModelInfo,
   type Query,
@@ -38,104 +47,31 @@ import {
   type RewindFilesResult,
   type SDKControlGetContextUsageResponse,
   type SDKControlInitializeResponse,
-  type SDKMessage,
-  type SDKUserMessage,
   type SlashCommand,
   translateMessage,
 } from './sdk-adapter.js';
-import {
-  buildUserMessageContent,
-  SessionOptionsBuilder,
-  type SessionRunnerConfig,
-} from './session-options.js';
+import { CLAUDE_CLI_MISSING_MESSAGE, sessionFailedEvent } from './session-failure.js';
+import { createSessionGuards } from './session-guards.js';
+import { SessionOptionsBuilder, type SessionRunnerConfig } from './session-options.js';
 
-// The option-composition surface (`SessionOptionsBuilder` + the pure compose
-// helpers) lives in `session-options.ts` so it is unit-testable without spinning a
-// query. `SessionRunnerConfig` is re-exported here because the engine façade
-// (`index.ts`) and the scan managers import it from this module — keeping that
-// public path stable.
+// `SessionRunnerConfig` is re-exported here because the engine façade (`index.ts`)
+// and the scan managers import it from this module — keeping that public path
+// stable. The option-composition surface itself lives in `session-options.ts` so
+// it is unit-testable without spinning a query.
 export type { SessionRunnerConfig } from './session-options.js';
 
 /**
- * A streaming input that yields NO user message and parks until `signal` aborts.
- * Used by the transient model probe so the SDK enters streaming mode (control
- * requests like `supportedModels()` require it) without starting a real turn.
- *
- * Deliberately yield-less: it must be an async generator to satisfy the SDK's
- * streaming-input contract, but it never emits a turn — it just keeps the input
- * stream open until teardown.
- */
-// eslint-disable-next-line require-yield
-async function* emptyInputStream(
-  signal: AbortSignal,
-): AsyncGenerator<SDKUserMessage> {
-  if (signal.aborted) return;
-  await new Promise<void>((resolve) => {
-    signal.addEventListener('abort', () => resolve(), { once: true });
-  });
-}
-
-/**
- * Actionable guidance shown when no `claude` resolves at session start. Nightcore
- * does NOT bundle the Claude CLI — the user installs it themselves. The install
- * command is the canonical method from the Claude Code setup docs (the install
- * script; npm global install is deprecated upstream), picked per platform so a
- * Windows user gets the PowerShell command, not the macOS/Linux one. Static
- * text, no secrets.
- */
-const CLAUDE_INSTALL_COMMAND =
-  process.platform === 'win32'
-    ? 'irm https://claude.ai/install.ps1 | iex'
-    : 'curl -fsSL https://claude.ai/install.sh | bash';
-const CLAUDE_CLI_MISSING_MESSAGE =
-  'Claude CLI not found. Nightcore requires the Claude CLI — install it with ' +
-  `\`${CLAUDE_INSTALL_COMMAND}\` ` +
-  '(see https://code.claude.com/docs/en/setup), then retry.';
-
-/**
- * Default idle watchdog deadline for the main run loop: 30 minutes with NO SDK
- * message resets the timer on every yield. It is deliberately generous — one
- * long tool call (a multi-minute build, a full test suite, a large download)
- * produces no intermediate SDK messages, so a tight deadline would kill healthy
- * work. Only a genuinely wedged subprocess (stopped yielding, no terminal
- * `result`) should trip it, freeing the concurrency slot it would otherwise
- * leak forever. Overridable per-session via `SessionRunnerConfig.idleTimeoutMs`.
- */
-const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
-
-/**
- * Bounded deadline for a transient control probe (model list / MCP status /
- * slash commands / subagents / init). These are cheap control reads, not model
- * turns, so a probe that hasn't answered within this window is wedged — degrade
- * to the caller's `[]`/`undefined` fallback rather than hang the inspector.
- */
-const PROBE_TIMEOUT_MS = 30 * 1000;
-
-/** Sentinel returned by [`SessionRunner.nextWithIdleDeadline`] when the idle
- *  watchdog fires before the SDK yields the next message. */
-const IDLE_STALLED = Symbol('idle-stalled');
-
-/** Internal sentinel for one elapsed idle window inside
- *  [`SessionRunner.nextWithIdleDeadline`]. Distinct from [`IDLE_STALLED`]: an
- *  elapsed window only STALLS when no human decision is pending; otherwise the
- *  deadline re-arms (a parked plan/question may wait indefinitely — T6 #147). */
-const IDLE_TICK = Symbol('idle-tick');
-
-/**
  * Owns a single SDK `query()` loop and translates each `SDKMessage` into a
- * `NightcoreEvent`. Control methods (`interrupt`, `setModel`,
- * `setPermissionMode`, `streamInput`) proxy to the SDK `Query`.
- *
- * Uses streaming input mode (prompt is an `AsyncIterable<SDKUserMessage>`) so
- * the SDK's control requests are available — `interrupt()` / `setModel()` etc.
- * are only supported in streaming mode.
+ * `NightcoreEvent`. Control methods (`interrupt`, `setModel`, `setPermissionMode`,
+ * `streamInput`) proxy to the SDK `Query`. Uses streaming input mode (prompt is an
+ * `AsyncIterable<SDKUserMessage>`) because the SDK's control requests are only
+ * available then.
  */
 export class SessionRunner implements AgentSession {
   private query?: Query;
   private readonly abort = new AbortController();
   private readonly permissions: PermissionLayer;
   private readonly questions: QuestionLayer;
-  private readonly registry = new ToolRegistry();
   private readonly hooks: HookBus;
   /** The session flight recorder (module #5): appends every PreToolUse gate
    *  evaluation + start/end markers to the per-task ledger the core computed.
@@ -143,15 +79,13 @@ export class SessionRunner implements AgentSession {
   private readonly ledger?: SessionLedger;
   /** Composes the SDK `Options` from `cfg` for both the run loop and the probes. */
   private readonly optionsBuilder: SessionOptionsBuilder;
-  /** Idle watchdog deadline (ms) for the main run loop — see
-   *  [`DEFAULT_IDLE_TIMEOUT_MS`]. Resolved once from `cfg` at construction. */
+  /** Idle watchdog deadline (ms) for the main run loop. Resolved once from `cfg`. */
   private readonly idleTimeoutMs: number;
-
-  /** Streaming input plumbing: a queue of user messages + a waiter the input
-   *  generator parks on between messages. */
-  private readonly inputQueue: SDKUserMessage[] = [];
-  private inputWaiter?: () => void;
-  private inputClosed = false;
+  /** Streaming input plumbing: a queue of user messages + a parked waiter. */
+  private readonly input = new InputStreamQueue();
+  /** The read-only control-probe surface (model list / MCP / skills / subagents /
+   *  init). */
+  private readonly probe: ControlProbe;
 
   constructor(
     private readonly cfg: SessionRunnerConfig,
@@ -164,44 +98,13 @@ export class SessionRunner implements AgentSession {
       cfg.ledgerPath !== undefined
         ? new SessionLedger(cfg.ledgerPath, logger)
         : undefined;
-    // Confine file mutations to the run cwd (worktree isolation) and enforce the
-    // project's harness runtime policy (protected paths + Bash deny patterns) —
-    // the PreToolUse gate enforces both even under `bypassPermissions`. The
-    // flight recorder rides the same gate's decision seam (one writer sees
-    // every allow AND deny).
-    this.hooks = new HookBus(logger, {
-      cwd: cfg.cwd,
-      ...(cfg.harnessPolicy !== undefined
-        ? { harnessPolicy: cfg.harnessPolicy }
-        : {}),
-      ...(this.ledger !== undefined
-        ? { onToolDecision: this.ledger.recordToolDecision }
-        : {}),
-    });
-    this.permissions = new PermissionLayer(
-      cfg.permissionPolicy,
-      (req) =>
-        this.emit({
-          type: 'permission-required',
-          sessionId: cfg.sessionId,
-          requestId: req.requestId,
-          toolName: req.toolName,
-          input: req.input,
-          risk: req.risk,
-          title: req.title,
-        }),
-      (name) => this.registry.riskOf(name),
-      logger,
-    );
-    this.questions = new QuestionLayer(
-      (req) =>
-        this.emit({
-          type: 'question-required',
-          sessionId: cfg.sessionId,
-          requestId: req.requestId,
-          ...(req.toolUseId !== undefined ? { toolUseId: req.toolUseId } : {}),
-          questions: req.questions,
-        }),
+    const guards = createSessionGuards(cfg, emit, this.ledger, logger);
+    this.hooks = guards.hooks;
+    this.permissions = guards.permissions;
+    this.questions = guards.questions;
+    this.probe = new ControlProbe(
+      () => this.query,
+      () => this.optionsBuilder.base(),
       logger,
     );
   }
@@ -219,8 +122,7 @@ export class SessionRunner implements AgentSession {
   async run(): Promise<void> {
     // Flight-recorder markers bracket the whole run so the Rust-side readers can
     // segment the shared per-task ledger by session. The end marker rides a
-    // finally: every exit path (terminal, crash, CLI-missing preflight) closes
-    // the segment.
+    // finally: every exit path (terminal, crash, CLI-missing preflight) closes it.
     this.ledger?.recordSessionStart(this.cfg.sessionId);
     try {
       await this.runQueryLoop();
@@ -230,13 +132,10 @@ export class SessionRunner implements AgentSession {
   }
 
   private async runQueryLoop(): Promise<void> {
-    // Preflight: the Claude CLI is a REQUIRED, user-installed prerequisite —
-    // Nightcore does not bundle it. If `resolveClaudeBinary()` finds nothing on
-    // disk, the SDK would boot and then crash at session init with a cryptic
-    // "Native CLI binary not found" message. Fail fast with actionable guidance
-    // instead, surfaced through the same degrade-not-throw `session-failed`
-    // channel (reuses `reason: 'runner-crash'`, the reason this case already
-    // maps to today) so it reaches the board/transcript like any other failure.
+    // Preflight: the Claude CLI is a REQUIRED, user-installed prerequisite that
+    // Nightcore does not bundle. If nothing resolves, fail fast with actionable
+    // guidance through the same degrade-not-throw `session-failed` channel, rather
+    // than let the SDK boot and crash at init with a cryptic message.
     const claudePath = resolveClaudeBinary();
     if (claudePath === undefined) {
       this.emitClaudeCliMissing();
@@ -244,15 +143,13 @@ export class SessionRunner implements AgentSession {
     }
 
     // Warn (never fail) if the resolved external CLI is below the SDK's expected
-    // floor: in the shipped binary the version-pinned SDK drives whatever `claude`
-    // is on PATH, whose version is uncoupled from the build-time pin. A one-time
-    // probe turns silent mid-session breakage into an actionable upgrade message.
+    // floor — the version-pinned SDK drives whatever `claude` is on PATH.
     const versionWarning = checkClaudeCliVersion(claudePath);
     if (versionWarning !== undefined) {
       this.logger?.warn(versionWarning, { claudePath });
     }
 
-    this.enqueueInput(this.cfg.prompt, this.cfg.images);
+    this.input.push(this.cfg.prompt, this.cfg.images);
 
     const options = this.optionsBuilder.run({
       canUseTool: this.permissions.canUseTool,
@@ -265,14 +162,10 @@ export class SessionRunner implements AgentSession {
     });
 
     // OPT-IN macOS OS-level WRITE containment (hardening module #15): swap the
-    // SDK's executable for a Seatbelt wrapper that denies file-writes outside
-    // the session's writable roots (cwd, worktree git common dir, temp trees,
-    // Claude CLI state). Closes the lexical PreToolUse gate's documented gaps
-    // (Bash redirects, symlinks) at the OS layer. When requested but the host
-    // can't provide it, `prepareWriteSandbox` warns LOUDLY and returns
-    // undefined — the session runs unwrapped (fail-open: default-off,
-    // experimental). Probes (`withProbe`/`base()`) stay unwrapped: they never
-    // run a model turn, so they perform no agent writes.
+    // SDK's executable for a Seatbelt wrapper that denies file-writes outside the
+    // session's writable roots (closing the lexical PreToolUse gate's redirect /
+    // symlink gaps). When the host can't provide it, `prepareWriteSandbox` warns
+    // and returns undefined — the session runs unwrapped (fail-open: default-off).
     if (this.cfg.sandboxWrites === true) {
       const sandbox = prepareWriteSandbox({
         claudePath,
@@ -295,18 +188,19 @@ export class SessionRunner implements AgentSession {
     }
 
     try {
-      this.query = query({ prompt: this.inputStream(), options });
-      // The terminal `result` message never carries the assistant-level error
-      // (auth/rate-limit/overloaded/…); track the most recent one off the
-      // assistant frames so `translateResult` can refine an otherwise-`unknown`
-      // failure reason instead of collapsing it.
+      this.query = query({ prompt: this.input.stream(), options });
+      // The terminal `result` never carries the assistant-level error
+      // (auth/rate-limit/overloaded/…); track the most recent one off the assistant
+      // frames so `translateResult` can refine an otherwise-`unknown` reason.
       let assistantError: string | undefined;
-      // Drive the iterator by hand (not `for await`) so each `next()` can race an
-      // idle watchdog: a wedged subprocess that stops yielding without a terminal
-      // `result` would otherwise hang here forever, leaking the concurrency slot.
+      // Drive the iterator by hand (not `for await`) so each `next()` can race the
+      // idle watchdog — a wedged subprocess would otherwise hang the loop forever.
       const iterator = this.query[Symbol.asyncIterator]();
       for (;;) {
-        const next = await this.nextWithIdleDeadline(iterator);
+        const next = await nextWithIdleDeadline(iterator, {
+          idleTimeoutMs: this.idleTimeoutMs,
+          awaitingHumanDecision: () => this.awaitingHumanDecision(),
+        });
         if (next === IDLE_STALLED) {
           this.handleStall();
           return;
@@ -326,7 +220,7 @@ export class SessionRunner implements AgentSession {
         );
         for (const event of events) this.emit(event);
         if (terminal) {
-          this.closeInput();
+          this.input.close();
           return;
         }
       }
@@ -338,89 +232,29 @@ export class SessionRunner implements AgentSession {
     }
   }
 
-  /**
-   * True while the run is legitimately parked awaiting a HUMAN decision — a pending
-   * interactive permission (which includes a plan-mode `ExitPlanMode` awaiting
-   * approve/refine/reject) or a pending `AskUserQuestion` dialog. The idle watchdog
-   * consults this so it NEVER trips while a person is being waited on.
-   *
-   * This is the T6 (#147) guarantee's engine half: a parked plan waits INDEFINITELY
-   * for a human decision — no idle/timeout path may ever auto-fail (and thereby
-   * effectively auto-reject) it. Blocking on `canUseTool`/`onUserDialog` is exactly
-   * how the SDK stops yielding while parked, which is why the raw idle timer would
-   * otherwise fire.
-   */
+  /** True while the run is legitimately parked awaiting a HUMAN decision — a pending
+   *  interactive permission (incl. a plan-mode `ExitPlanMode`) or `AskUserQuestion`.
+   *  The idle watchdog consults this so it NEVER trips while a person is being waited
+   *  on (T6 #147; see `idle-watchdog.ts` for the full rationale). */
   private awaitingHumanDecision(): boolean {
     return this.permissions.hasPending() || this.questions.hasPending();
   }
 
   /**
-   * Await the iterator's next message under an idle deadline. Returns the
-   * `IteratorResult` when the SDK yields (or completes) in time, or
-   * [`IDLE_STALLED`] when [`idleTimeoutMs`] elapses with the stream genuinely
-   * wedged. The deadline is a fresh timer per elapsed window, so it resets on every
-   * yielded message — only a genuinely quiet (wedged) stream trips it.
-   *
-   * CRITICAL (T6 #147): an elapsed window while a human decision is pending (a parked
-   * plan, permission, or question — see {@link awaitingHumanDecision}) is NOT a stall.
-   * A run may wait indefinitely for the user, so the deadline re-arms and keeps
-   * awaiting the SAME `next()` instead of failing the run. The exclusion covers a
-   * decision that becomes pending mid-window too: the check runs when the timer
-   * fires, not just at entry. When the SDK finally yields (or the timer wins with no
-   * pending decision) the dangling `next()` rejection from teardown is swallowed so
-   * it never surfaces as an unhandled rejection.
-   */
-  private async nextWithIdleDeadline(
-    iterator: AsyncIterator<SDKMessage>,
-  ): Promise<IteratorResult<SDKMessage> | typeof IDLE_STALLED> {
-    const nextPromise = iterator.next();
-    for (;;) {
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const idle = new Promise<typeof IDLE_TICK>((resolve) => {
-        timer = setTimeout(() => resolve(IDLE_TICK), this.idleTimeoutMs);
-      });
-      try {
-        const result = await Promise.race([nextPromise, idle]);
-        // The SDK yielded or completed in time — hand it straight back.
-        if (result !== IDLE_TICK) return result;
-        // A full idle window elapsed. If a human decision is pending, this is BY
-        // DESIGN — re-arm the deadline and keep awaiting the same next() (never
-        // stall a parked plan). Otherwise the stream is genuinely wedged.
-        if (this.awaitingHumanDecision()) continue;
-        // The next() promise may reject later when teardown aborts the query —
-        // attach a no-op catch now so it never bubbles as unhandled.
-        void Promise.resolve(nextPromise).catch(() => {});
-        return IDLE_STALLED;
-      } finally {
-        if (timer !== undefined) clearTimeout(timer);
-      }
-    }
-  }
-
-  /**
-   * Handle a wedged stream: emit a `session-failed` (`reason: 'runner-crash'`,
-   * 'stream stalled') through the normal degrade-not-throw channel so the board
-   * shows a terminal state and the slot is retired, then tear the subprocess
-   * down (abort + best-effort interrupt). Distinct from `handleCrash` so an
-   * idle-stall reports as a runner crash, not `aborted` — we abort AFTER
+   * Handle a wedged stream: emit a `session-failed` (`reason: 'runner-crash'`)
+   * through the degrade-not-throw channel so the slot is retired, then tear the
+   * subprocess down (abort + best-effort interrupt). Distinct from `handleCrash` so
+   * an idle-stall reports as a runner crash, not `aborted` — we abort AFTER
    * classifying, so the abort flag must not decide the reason.
    */
   private handleStall(): void {
-    this.logger?.warn('session runner stream stalled — no SDK message within idle deadline', {
-      sessionId: this.cfg.sessionId,
-      idleTimeoutMs: this.idleTimeoutMs,
-    });
-    {
-      const message = `stream stalled: no SDK activity for ${this.idleTimeoutMs}ms`;
-      this.emit({
-        type: 'session-failed',
-        sessionId: this.cfg.sessionId,
-        reason: 'runner-crash',
-        message,
-        detail: detailForReason('runner-crash', message),
-      });
-    }
-    this.closeInput();
+    this.logger?.warn(
+      'session runner stream stalled — no SDK message within idle deadline',
+      { sessionId: this.cfg.sessionId, idleTimeoutMs: this.idleTimeoutMs },
+    );
+    const message = `stream stalled: no SDK activity for ${this.idleTimeoutMs}ms`;
+    this.emit(sessionFailedEvent(this.cfg.sessionId, 'runner-crash', message));
+    this.input.close();
     this.abort.abort();
     void this.query?.interrupt().catch((error: unknown) => {
       this.logger?.debug('stall teardown interrupt failed', error);
@@ -429,7 +263,7 @@ export class SessionRunner implements AgentSession {
 
   /** Stream additional user input into a running session. */
   streamInput(text: string): void {
-    this.enqueueInput(text);
+    this.input.push(text);
   }
 
   async interrupt(): Promise<void> {
@@ -440,48 +274,36 @@ export class SessionRunner implements AgentSession {
   }
 
   async setModel(model: string): Promise<void> {
-    // Mirror interrupt(): the SDK control request can reject when the session is
-    // mid-teardown or the transport has closed. Swallow that so a doomed model
-    // switch degrades to a no-op with a session-scoped log rather than bubbling
-    // up as a generic sidecar 'dispatch failed' warning.
+    // Mirror interrupt(): a control request that rejects mid-teardown / on a closed
+    // transport degrades to a no-op with a session-scoped log, not a bubbled error.
     await this.query?.setModel(model).catch((error: unknown) => {
       this.logger?.warn('setModel rejected (session may be stopping)', error);
     });
   }
 
   async setPermissionMode(mode: PermissionMode): Promise<void> {
-    // Same degrade-not-throw contract as setModel()/interrupt(): a rejected
-    // control request must not surface as an unhandled sidecar dispatch error.
+    // Same degrade-not-throw contract as setModel()/interrupt().
     await this.query?.setPermissionMode(mode).catch((error: unknown) => {
       this.logger?.warn('setPermissionMode rejected (session may be stopping)', error);
     });
   }
 
-  /**
-   * The neutral {@link AgentSession} autonomy control. Takes the wire's neutral
-   * {@link AutonomyLevel} vocabulary and lowers it to the SDK `setPermissionMode`
-   * control request via {@link autonomyToPermissionMode} — the Claude provider owns
-   * the mapping, so the supervisor never touches an SDK mode string.
-   */
+  /** The neutral {@link AgentSession} autonomy control: lowers the wire's neutral
+   *  {@link AutonomyLevel} to an SDK `setPermissionMode` request via {@link
+   *  autonomyToPermissionMode}, so the supervisor never touches an SDK mode string. */
   async setAutonomy(autonomy: AutonomyLevel): Promise<void> {
     await this.setPermissionMode(autonomyToPermissionMode(autonomy));
   }
 
-  /**
-   * Live context-window usage for this session (`Query.getContextUsage()`).
-   * Returns `undefined` when no live query is open. This is the engine-side proxy
-   * a future surface gauge can consume.
-   */
+  /** Live context-window usage (`Query.getContextUsage()`); `undefined` when no
+   *  live query is open. */
   async contextUsage(): Promise<SDKControlGetContextUsageResponse | undefined> {
     return this.query?.getContextUsage();
   }
 
-  /**
-   * Rewind this session's tracked file changes to a prior user message
-   * (`Query.rewindFiles()`). Requires the session to have been started with
-   * `enableFileCheckpointing`. Returns `undefined` when no live query is open.
-   * This is the engine-side proxy a future rewind command + UI can consume.
-   */
+  /** Rewind this session's tracked file changes to a prior user message
+   *  (`Query.rewindFiles()`). Requires `enableFileCheckpointing`; `undefined` when
+   *  no live query is open. */
   async rewindFiles(
     userMessageId: string,
     options?: { dryRun?: boolean },
@@ -499,32 +321,20 @@ export class SessionRunner implements AgentSession {
     return this.questions.resolve(requestId, answer);
   }
 
-  /**
-   * Fetch the SDK's dynamic model list. `supportedModels()` is a control request
-   * that needs a live streaming query: if this runner already owns one, reuse it;
-   * otherwise spin a TRANSIENT query (a streaming input that sends no user turn),
-   * ask, then tear it down via its abort controller in `finally` so no subprocess
-   * leaks. Degrades to `[]` on any error.
-   */
-  async supportedModels(): Promise<ModelInfo[]> {
-    return this.probeControl((q) => q.supportedModels(), []);
+  /** Fetch the SDK's dynamic model list ({@link ControlProbe}). Degrades to `[]`. */
+  supportedModels(): Promise<ModelInfo[]> {
+    return this.probe.supportedModels();
   }
 
-  /**
-   * The {@link AgentSession} model list: the SDK's dynamic models mapped to wire
-   * `ModelDescriptor`s so the supervisor never touches an SDK `ModelInfo`. Degrades
-   * to `[]` via `supportedModels()`.
-   */
+  /** The {@link AgentSession} model list: the SDK's dynamic models mapped to wire
+   *  `ModelDescriptor`s so the supervisor never touches an SDK `ModelInfo`. */
   async listModels(): Promise<ModelDescriptor[]> {
-    return (await this.supportedModels()).map(toModelDescriptor);
+    return (await this.probe.supportedModels()).map(toModelDescriptor);
   }
 
-  /**
-   * The {@link AgentSession} provider-config read: the resolved, scope-aware config
-   * for `projectPath`, probed off this runner's shared subprocess (reused when live,
-   * transient otherwise) and returned as a wire {@link ProviderConfigSnapshot}. The
-   * reader degrades per section, so the snapshot always resolves.
-   */
+  /** The {@link AgentSession} provider-config read: the resolved, scope-aware config
+   *  for `projectPath`, probed off this runner's shared subprocess, as a wire
+   *  {@link ProviderConfigSnapshot}. */
   async probeConfig(projectPath: string): Promise<ProviderConfigSnapshot> {
     return new ProviderConfigReader(this.logger?.child('provider-config')).read(
       this,
@@ -532,157 +342,37 @@ export class SessionRunner implements AgentSession {
     );
   }
 
-  /**
-   * Read the SDK's resolved MCP server status (the provider-config inspector). The
-   * SDK applies scope precedence and reports each server's live connection status,
-   * so this is authoritative over hand-parsing `.mcp.json`. Probes transiently
-   * (no model turn) on the `supportedModels()` template; degrades to `[]`.
-   * `cwdOverride` re-roots resolution at a project root other than this runner's.
-   */
-  async mcpServerStatus(cwdOverride?: string): Promise<McpServerStatus[]> {
-    return this.probeControl((q) => q.mcpServerStatus(), [], cwdOverride);
+  /** The SDK's resolved MCP server status ({@link ControlProbe}). */
+  mcpServerStatus(cwdOverride?: string): Promise<McpServerStatus[]> {
+    return this.probe.mcpServerStatus(cwdOverride);
   }
 
-  /**
-   * Read the SDK's resolved slash commands (skills surface as slash commands) for
-   * the project (the provider-config inspector). Probes transiently; degrades to
-   * `[]`. `cwdOverride` re-roots resolution at a project root.
-   */
-  async supportedCommands(cwdOverride?: string): Promise<SlashCommand[]> {
-    return this.probeControl((q) => q.supportedCommands(), [], cwdOverride);
+  /** The SDK's resolved slash commands (skills) for the project ({@link ControlProbe}). */
+  supportedCommands(cwdOverride?: string): Promise<SlashCommand[]> {
+    return this.probe.supportedCommands(cwdOverride);
   }
 
-  /**
-   * Read the SDK's resolved subagents (invokable via the Task tool) for the
-   * project (the provider-config inspector). Probes transiently; degrades to `[]`.
-   * `cwdOverride` re-roots resolution at a project root.
-   */
-  async supportedAgents(cwdOverride?: string): Promise<AgentInfo[]> {
-    return this.probeControl((q) => q.supportedAgents(), [], cwdOverride);
+  /** The SDK's resolved subagents for the project ({@link ControlProbe}). */
+  supportedAgents(cwdOverride?: string): Promise<AgentInfo[]> {
+    return this.probe.supportedAgents(cwdOverride);
   }
 
-  /**
-   * Read the SDK's initialize response — the cheap scalar summary
-   * (model / output style / available styles) that backs the inspector's extras
-   * row. Probes transiently; degrades to `undefined`. `cwdOverride` re-roots
-   * resolution at a project root.
-   */
-  async initializationResult(
+  /** The SDK's initialize response ({@link ControlProbe}). */
+  initializationResult(
     cwdOverride?: string,
   ): Promise<SDKControlInitializeResponse | undefined> {
-    return this.probeControl(
-      (q) => q.initializationResult(),
-      undefined,
-      cwdOverride,
-    );
+    return this.probe.initializationResult(cwdOverride);
   }
 
-  /**
-   * Run one SDK control request against a live streaming query, returning
-   * `fallback` on any failure (degrade-not-throw). Reuses this runner's open query
-   * when it has one (and no cwd override is needed); otherwise spins a TRANSIENT
-   * query (a streaming input that sends no user turn), asks, and tears it down via
-   * its abort controller in `finally` so no subprocess leaks — the exact lifecycle
-   * `supportedModels()` proved. `cwdOverride` forces the transient path (the live
-   * query is rooted at this runner's own cwd, which may differ).
-   */
-  private async probeControl<T>(
-    call: (q: Query) => Promise<T>,
-    fallback: T,
-    cwdOverride?: string,
-  ): Promise<T> {
-    return this.withProbe((q) => call(q), fallback, cwdOverride);
-  }
-
-  /**
-   * Hand `body` a probe query and return `fallback` when the probe can't answer.
-   * With a live query and no cwd override, REUSE it (the turn loop owns it — a
-   * single attempt, bounded by the deadline, NOT retried to avoid lifecycle
-   * races). Otherwise open an isolated, read-only TRANSIENT subprocess and, per
-   * issue #252, retry a transient spawn/read blip before degrading — the shared
-   * probe still lets the inspector read MCP / skills / subagents / init off ONE
-   * subprocess while `body` isolates per-section failures. Torn down in `finally`.
-   */
+  /** Run one SDK control request against a probe query (reused live or transient),
+   *  returning `fallback` on any failure — the seam the provider-config inspector
+   *  reads its whole snapshot off ONE shared probe through. */
   async withProbe<T>(
     body: (q: Query) => Promise<T>,
     fallback: T,
     cwdOverride?: string,
   ): Promise<T> {
-    if (this.query && cwdOverride === undefined) {
-      // Live-query reuse (turn-loop-owned): one attempt, bounded by the deadline.
-      return this.raceProbeDeadline(body(this.query), fallback);
-    }
-    // Isolated read-only transient probe: safe to retry a blip, then degrade.
-    return withTransientProbeRetry(body, fallback, cwdOverride, {
-      openProbe: (abort, cwd) =>
-        query({
-          prompt: emptyInputStream(abort.signal),
-          options: {
-            ...this.optionsBuilder.base(),
-            ...(cwd !== undefined ? { cwd } : {}),
-            abortController: abort,
-          },
-        }),
-      race: (work, fallbackValue) => this.raceProbeDeadline(work, fallbackValue),
-      logger: this.logger,
-    });
-  }
-
-  /**
-   * Race a control-probe promise against [`PROBE_TIMEOUT_MS`], resolving to
-   * `fallback` if the probe hasn't answered in time. Keeps the provider-config
-   * inspector responsive when a subprocess wedges mid-read: the section degrades
-   * to `unavailable` instead of hanging the whole snapshot. A probe rejection is
-   * NOT caught here — `withProbe`'s own `catch` maps it to the fallback.
-   */
-  private async raceProbeDeadline<T>(work: Promise<T>, fallback: T): Promise<T> {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const deadline = new Promise<typeof IDLE_STALLED>((resolve) => {
-      timer = setTimeout(() => resolve(IDLE_STALLED), PROBE_TIMEOUT_MS);
-    });
-    try {
-      const result = await Promise.race([work, deadline]);
-      if (result === IDLE_STALLED) {
-        void Promise.resolve(work).catch(() => {});
-        this.logger?.debug('control probe timed out — degrading to fallback');
-        return fallback;
-      }
-      return result;
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
-    }
-  }
-
-  // --- streaming input internals ---------------------------------------------
-
-  private enqueueInput(text: string, images: WireImage[] = []): void {
-    if (this.inputClosed) return;
-    this.inputQueue.push({
-      type: 'user',
-      message: { role: 'user', content: buildUserMessageContent(text, images) },
-      parent_tool_use_id: null,
-      session_id: '',
-    });
-    this.inputWaiter?.();
-    this.inputWaiter = undefined;
-  }
-
-  private closeInput(): void {
-    this.inputClosed = true;
-    this.inputWaiter?.();
-    this.inputWaiter = undefined;
-  }
-
-  private async *inputStream(): AsyncGenerator<SDKUserMessage> {
-    for (;;) {
-      while (this.inputQueue.length > 0) {
-        yield this.inputQueue.shift() as SDKUserMessage;
-      }
-      if (this.inputClosed) return;
-      await new Promise<void>((resolve) => {
-        this.inputWaiter = resolve;
-      });
-    }
+    return this.probe.withProbe(body, fallback, cwdOverride);
   }
 
   /** Emit the friendly preflight failure when no `claude` resolves on disk. Uses
@@ -690,14 +380,10 @@ export class SessionRunner implements AgentSession {
    *  through the normal degrade-not-throw channel to the board/transcript. */
   private emitClaudeCliMissing(): void {
     this.logger?.warn(CLAUDE_CLI_MISSING_MESSAGE);
-    this.emit({
-      type: 'session-failed',
-      sessionId: this.cfg.sessionId,
-      reason: 'runner-crash',
-      message: CLAUDE_CLI_MISSING_MESSAGE,
-      detail: detailForReason('runner-crash', CLAUDE_CLI_MISSING_MESSAGE),
-    });
-    this.closeInput();
+    this.emit(
+      sessionFailedEvent(this.cfg.sessionId, 'runner-crash', CLAUDE_CLI_MISSING_MESSAGE),
+    );
+    this.input.close();
   }
 
   private handleCrash(error: unknown): void {
@@ -705,13 +391,7 @@ export class SessionRunner implements AgentSession {
     const message = error instanceof Error ? error.message : String(error);
     this.logger?.warn('session runner crashed', error);
     const reason = aborted ? 'aborted' : 'runner-crash';
-    this.emit({
-      type: 'session-failed',
-      sessionId: this.cfg.sessionId,
-      reason,
-      message,
-      detail: detailForReason(reason, message),
-    });
-    this.closeInput();
+    this.emit(sessionFailedEvent(this.cfg.sessionId, reason, message));
+    this.input.close();
   }
 }
