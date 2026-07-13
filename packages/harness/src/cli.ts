@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `@nightcore/harness` CLI — the portable Structure-Lock runner. Thin arg
+ * `@noctcore/harness` CLI — the portable Structure-Lock runner. Thin arg
  * parsing + subcommand dispatch over {@link loadChecks} and {@link runChecks};
  * runs under plain Node ≥ 22 with zero runtime dependencies.
  *
@@ -27,7 +27,7 @@ export interface CliIO {
   stderr: (line: string) => void;
 }
 
-const HELP = `@nightcore/harness — portable Structure-Lock runner
+const HELP = `@noctcore/harness — portable Structure-Lock runner
 
 Usage:
   harness [check] [options]      Run the checks declared in .nightcore/harness.json
@@ -151,7 +151,7 @@ function runCheck(parsed: ParsedArgs, io: CliIO): number {
     io.stderr(
       `This .nightcore/harness.json declares schemaVersion ${label}, which this ` +
         'runner does not understand. This bundle was authored by a newer ' +
-        'Nightcore — upgrade @nightcore/harness.',
+        'Nightcore — upgrade @noctcore/harness.',
     );
     return 1;
   }

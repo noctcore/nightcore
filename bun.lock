@@ -132,8 +132,8 @@
       },
     },
     "packages/harness": {
-      "name": "@nightcore/harness",
-      "version": "0.0.0",
+      "name": "@noctcore/harness",
+      "version": "0.1.0",
       "bin": {
         "harness": "./dist/cli.js",
       },
@@ -343,8 +343,6 @@
 
     "@nightcore/eslint-plugin": ["@nightcore/eslint-plugin@workspace:packages/eslint-plugin"],
 
-    "@nightcore/harness": ["@nightcore/harness@workspace:packages/harness"],
-
     "@nightcore/session-fold": ["@nightcore/session-fold@workspace:packages/session-fold"],
 
     "@nightcore/shared": ["@nightcore/shared@workspace:packages/shared"],
@@ -354,6 +352,8 @@
     "@nightcore/storage": ["@nightcore/storage@workspace:packages/storage"],
 
     "@nightcore/web": ["@nightcore/web@workspace:apps/web"],
+
+    "@noctcore/harness": ["@noctcore/harness@workspace:packages/harness"],
 
     "@openai/codex": ["@openai/codex@0.142.5", "", { "optionalDependencies": { "@openai/codex-darwin-arm64": "npm:@openai/codex@0.142.5-darwin-arm64", "@openai/codex-darwin-x64": "npm:@openai/codex@0.142.5-darwin-x64", "@openai/codex-linux-arm64": "npm:@openai/codex@0.142.5-linux-arm64", "@openai/codex-linux-x64": "npm:@openai/codex@0.142.5-linux-x64", "@openai/codex-win32-arm64": "npm:@openai/codex@0.142.5-win32-arm64", "@openai/codex-win32-x64": "npm:@openai/codex@0.142.5-win32-x64" }, "bin": { "codex": "bin/codex.js" } }, "sha512-WQEpD7l3k68eIAP0aq28EdR18ENBAf8DyprzFhzNwCOQJSv4nHzpwT8Fl30IJacprko2ZCmUBZjM2u941l2yLw=="],
 

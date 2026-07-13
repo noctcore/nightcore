@@ -1,6 +1,6 @@
-# `@nightcore/harness` — agent contract
+# `@noctcore/harness` — agent contract
 
-The **portable Structure-Lock runner**. A thin, published CLI (`npx @nightcore/harness check`)
+The **portable Structure-Lock runner**. A thin, published CLI (`npx @noctcore/harness check`)
 that enforces a repo's `.nightcore/harness.json` `checks[]` in any CI, with **no Nightcore
 install**. This is `check` PR 1 of the portable-lock series (issue #134); it is a faithful Node
 port of the in-process Rust runner in `apps/desktop/src-tauri/src/workflow/gauntlet_project/`
@@ -20,7 +20,13 @@ port of the in-process Rust runner in `apps/desktop/src-tauri/src/workflow/gaunt
   telemetry, no rule-fetching, no self-update.
 - **Own build.** This package ships its own `tsup` `dist` (unlike `@nightcore/engine`, which the
   root `tsc -b` builds). A `files: ["dist"]` allowlist + the `build` script are load-bearing.
-- **`private: true` for now.** Un-privating + the publish pipeline are a later PR (PR 4).
+- **Published to npm as `@noctcore/harness` (public).** This is the ONE workspace that ships to
+  npmjs.com — under the separate `@noctcore` org, so `package-shape` has a targeted exception (its
+  name is `@noctcore/harness`, not `@nightcore/harness`). `version` MUST stay in lockstep with
+  `PORTABLE_LOCK_RUNNER_VERSION` (`sidecar/harness/export.rs`, currently `0.1.0`) — the exported CI
+  template pins `npx --yes @noctcore/harness@<that version> check`. Publishing is human-triggered by
+  pushing a `harness-v<version>` tag (`.github/workflows/publish-harness.yml`); merging never
+  publishes. Requires the `NPM_TOKEN` repo secret + the `noctcore` npm org.
 
 ## Behavior (parity target: the LIVE Rust runner)
 
@@ -60,7 +66,7 @@ port of the in-process Rust runner in `apps/desktop/src-tauri/src/workflow/gaunt
 actually runs them). Run before declaring work done:
 
 ```
-bun run --filter @nightcore/harness build
+bun run --filter @noctcore/harness build
 node packages/harness/dist/cli.js --version   # must run under plain node
 bun run test:node
 bun run lint:meta                             # package-shape / workspace-graph / enrollment / segregation

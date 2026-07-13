@@ -16,6 +16,18 @@ function baseName(dir: string): string {
   return parts[parts.length - 1];
 }
 
+/**
+ * Externally-published packages that intentionally live OUTSIDE the internal
+ * `@nightcore/<dir>` naming rule. The portable Structure-Lock runner ships to
+ * npmjs.com public under the separate `@noctcore` org (issue #134, PR 4) — it is
+ * the one workspace a stranger `npx`-installs, so its published identity differs
+ * from the monorepo scope. Every OTHER package keeps the `@nightcore/<dir>` rule,
+ * and this one still passes the library barrel + `dist/` build-output checks.
+ */
+const EXTERNAL_PUBLISH_NAMES: Record<string, string> = {
+  'packages/harness': '@noctcore/harness',
+};
+
 export const packageShapeRule: IMetaRule = {
   id: 'package-shape',
   category: 'config',
@@ -39,7 +51,7 @@ export const packageShapeRule: IMetaRule = {
         continue;
       }
       const dir = dirOf(rel);
-      const expected = `@nightcore/${baseName(dir)}`;
+      const expected = EXTERNAL_PUBLISH_NAMES[dir] ?? `@nightcore/${baseName(dir)}`;
       if (pkg.name !== expected) {
         violations.push({
           file: rel,

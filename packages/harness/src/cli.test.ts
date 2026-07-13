@@ -83,7 +83,7 @@ describe('runCli check — schemaVersion gate', () => {
   test('a newer MAJOR reds the build with an upgrade message', () => {
     const h = harness({ read: () => manifest([], { schemaVersion: 2 }) });
     expect(runCli(['check'], h.io)).toBe(1);
-    expect(h.err.join('\n')).toContain('upgrade @nightcore/harness');
+    expect(h.err.join('\n')).toContain('upgrade @noctcore/harness');
   });
 });
 

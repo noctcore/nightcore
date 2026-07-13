@@ -1,11 +1,23 @@
 {
-  "name": "@nightcore/harness",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@noctcore/harness",
+  "version": "0.1.0",
   "type": "module",
   "sideEffects": false,
   "description": "Portable Structure-Lock runner — enforces a repo's .nightcore/harness.json checks in any CI, with no Nightcore install.",
   "license": "MIT",
+  "homepage": "https://github.com/Shironex/nightcore/tree/main/packages/harness#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Shironex/nightcore.git",
+    "directory": "packages/harness"
+  },
+  "bugs": {
+    "url": "https://github.com/Shironex/nightcore/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "engines": {
     "node": ">=22"
   },
@@ -27,6 +39,7 @@
   ],
   "scripts": {
     "build": "tsup src/cli.ts src/index.ts --format esm,cjs --dts --clean",
+    "prepack": "npm run build",
     "check-types": "tsc --noEmit",
     "test": "bun test"
   },

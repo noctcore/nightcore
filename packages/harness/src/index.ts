@@ -1,5 +1,5 @@
 /**
- * Public type surface of `@nightcore/harness`. Today this exposes the
+ * Public type surface of `@noctcore/harness`. Today this exposes the
  * `.nightcore/harness.json` manifest shape plus the `StructureLockResult`-shaped
  * verdict the runner emits (camelCase, wire-compatible with the Rust
  * `StructureLockResult` / `StructureLockCheck`). PR 2 adds the portable lint-meta

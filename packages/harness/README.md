@@ -1,11 +1,11 @@
-# @nightcore/harness
+# @noctcore/harness
 
 A **portable Structure-Lock runner**. It reads a repo's `.nightcore/harness.json` and runs each
 declared check, reddening the build on any violation — so a project's structure lock is enforced in
 its **own CI**, with no Nightcore install, no server, and no account.
 
 ```bash
-npx @nightcore/harness check
+npx @noctcore/harness check
 ```
 
 Run it from the repo root (or pass `--dir <path>`). If there is no `.nightcore/harness.json`, the
