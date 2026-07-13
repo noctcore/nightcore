@@ -9,8 +9,11 @@
  * Like the scan families, council commands are keyed by `runId` (not a session id)
  * and drive their own sessions: each seat turn is a one-shot session the {@link
  * SessionSeatDriver} spawns and collects through the `startSession` / `subscribe`
- * seams the supervisor hands in. The `nc:debate` transcript stream is the canvas
- * slice (#352); the per-seat OS sandbox is #354.
+ * seams the supervisor hands in. This router is ALSO the `nc:debate` emit seam (the
+ * canvas slice, #352): it wraps every appended transcript entry into a `debate-entry`
+ * `NightcoreEvent` on the supervisor's `emit` sink, so the stream rides the same
+ * engine → sidecar → Rust `reader.rs` path every other `nc:*` family uses. The
+ * per-seat OS sandbox is #354.
  */
 import type { NightcoreEvent, SurfaceCommand } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
@@ -40,6 +43,9 @@ export interface CouncilRouterOptions {
   ) => number;
   /** Subscribe to the supervisor's engine event stream. */
   subscribe: (listener: (event: NightcoreEvent) => void) => () => void;
+  /** Emit a `NightcoreEvent` onto the supervisor's event stream — the `nc:debate` wire
+   *  point (#352). Every appended transcript entry becomes a `debate-entry` event. */
+  emit: (event: NightcoreEvent) => void;
   /** Parent logger (nullable so the supervisor passes its own `logger` directly). */
   logger: Logger | undefined;
 }
@@ -48,8 +54,14 @@ export class CouncilRouter {
   private readonly council: CouncilManager;
 
   constructor(options: CouncilRouterOptions) {
-    const { startSession, subscribe, logger } = options;
+    const { startSession, subscribe, emit, logger } = options;
     this.council = new CouncilManager({
+      // The `nc:debate` emit seam (#352): every appended transcript entry becomes a
+      // `debate-entry` `NightcoreEvent` tagged with its council-run id, so the canvas
+      // filters a run's stream by `runId`. Nothing is fed BACK into a seat prompt — the
+      // canvas is a pure reader of the moderated bus (the injection firewall, safety #1).
+      emit: (councilRunId, entry) =>
+        emit({ type: 'debate-entry', runId: councilRunId, entry }),
       seatDriver: new SessionSeatDriver({
         backend: {
           // Seats run as `research`-kind (read-mostly reasoning) sessions; the

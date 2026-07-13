@@ -1130,6 +1130,21 @@
       "issueNumber": 128,
       "taskId": "task-42"
     },
+    "debate-entry": {
+      "type": "debate-entry",
+      "runId": "council-run-1",
+      "entry": {
+        "stage": "debate",
+        "seatId": "proposer-1",
+        "role": "critic",
+        "kind": "delivery",
+        "seq": 3,
+        "content": "Seat proposer-1 said: \"consider the isolated-worktree path\"",
+        "broadcastId": "bc-1",
+        "at": 1718900000000,
+        "injectionFlags": []
+      }
+    },
     "query-result": {
       "type": "query-result",
       "requestId": "q-1",

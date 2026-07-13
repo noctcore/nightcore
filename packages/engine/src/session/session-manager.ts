@@ -106,6 +106,7 @@ export class SessionManager {
     this.council = new CouncilRouter({
       startSession: (command) => this.startSession(command),
       subscribe: (listener) => this.on(listener),
+      emit: (event) => this.emit(event),
       logger,
     });
     // Seed the id counter past the highest persisted id so a restart never

@@ -687,6 +687,11 @@ pub enum NightcoreEvent {
         issue_number: u64,
         task_id: String,
     },
+    #[serde(rename_all = "camelCase")]
+    DebateEntry {
+        run_id: String,
+        entry: DebateTranscriptEntry,
+    },
 }
 
 // === Referenced enums and nested structs ===
@@ -803,6 +808,52 @@ pub enum CoverageStatus {
     Enforced,
     DocumentedOnly,
     Unenforced,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DebateEntryKind {
+    Broadcast,
+    Message,
+    Delivery,
+    Note,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DebateSeatRole {
+    Proposer,
+    Critic,
+    Judge,
+    Conductor,
+    Human,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DebateStage {
+    Frame,
+    Propose,
+    Debate,
+    Converge,
+    Build,
+    Review,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DebateTranscriptEntry {
+    pub stage: DebateStage,
+    pub seat_id: String,
+    pub role: DebateSeatRole,
+    pub kind: DebateEntryKind,
+    pub seq: u64,
+    pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub broadcast_id: Option<String>,
+    pub at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub injection_flags: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -50,6 +50,12 @@ const TerminalView = lazy(() =>
 const HistoryView = lazy(() =>
   import('@/components/history').then((m) => ({ default: m.HistoryView })),
 );
+// The Council canvas (issue #352) is a heavy, rarely-first-paint surface (its own
+// seat-grid + team-chat + Markdown rendering), so it is code-split behind its own lazy
+// chunk like the other Project-group destinations.
+const CouncilView = lazy(() =>
+  import('@/components/council').then((m) => ({ default: m.CouncilView })),
+);
 
 /** Map a History row (family + run) to a run-level provenance target: Insight and
  *  Scorecard both land on the Understand stage (its shell splits by `family`),
@@ -252,6 +258,18 @@ export function AppShellViews({
             standalone `insight` / `scorecard` routes were removed in the flip —
             legacy `insight:` / `scorecard:` provenance tokens now retarget here
             through the source-ref REGISTRY. */}
+        {/* Council debate canvas (issue #352): a governed multi-agent debate board —
+            the seat-node grid beside the team-chat projection of the nc:debate bus.
+            Reads the active project root off the registry (seats debate over it). */}
+        {view === 'council' && (
+          <Suspense fallback={<RouteFallback />}>
+            <CouncilView
+              projectPath={active?.path ?? null}
+              projectName={active?.name ?? null}
+            />
+          </Suspense>
+        )}
+
         {view === 'understand' && (
           <Suspense fallback={<RouteFallback />}>
             <UnderstandView

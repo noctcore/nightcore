@@ -16,6 +16,7 @@ import {
   isQuestionPrompt,
   isTask,
   isUsageMeter,
+  parseDebateEvent,
   parseHarnessEvent,
   parseInsightEvent,
   parseIssueMapProgress,
@@ -25,6 +26,7 @@ import {
   parseSessionEnvelope,
 } from './events.narrowers';
 import type {
+  DebateEvent,
   HarnessEvent,
   InsightEvent,
   IssueMapProgress,
@@ -42,6 +44,7 @@ import type { LoopEnvelope, PrFixState, Task, UsageMeter } from './types';
 export type {
   AnalysisEvent,
   ArtifactAppliedEvent,
+  DebateEvent,
   FindingConvertedEvent,
   HarnessCheckArmedEvent,
   HarnessEvent,
@@ -185,6 +188,16 @@ export async function onPrFixEvent(
   handler: (state: PrFixState) => void,
 ): Promise<UnlistenFn> {
   return subscribeChannel(CHANNELS.prFix, (v) => (isPrFixState(v) ? v : null), handler);
+}
+
+/** Subscribe to `nc:debate` streamed transcript entries (issue #352). Each event is
+ *  one append-only entry tagged with its council `runId`; the canvas folds them into
+ *  seat nodes + the team-chat projection. Returns an unlisten function (a no-op outside
+ *  Tauri). */
+export async function onDebateEvent(
+  handler: (event: DebateEvent) => void,
+): Promise<UnlistenFn> {
+  return subscribeChannel(CHANNELS.debate, parseDebateEvent, handler);
 }
 
 /** Subscribe to `nc:scorecard` streamed events. Returns an unlisten function (a

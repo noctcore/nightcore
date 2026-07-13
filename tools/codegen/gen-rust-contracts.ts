@@ -384,6 +384,11 @@ const STRUCT_NAMES: Record<string, string> = {
   // Structured error taxonomy carried alongside a `session-failed`'s `message`
   // (the auto-loop + breaker branch on `category`).
   'category|message|retriable': 'ErrorDetail',
+  // Council debate (issue #348/#352): one append-only transcript entry, wrapped by
+  // the `debate-entry` event the `nc:debate` canvas emit seam rides. Its `stage` /
+  // `role` / `kind` are the three enums registered in ENUM_NAMES below.
+  'at|broadcastId|content|injectionFlags|kind|role|seatId|seq|stage':
+    'DebateTranscriptEntry',
 };
 
 /** Stable Rust enum name for a referenced/inline `z.enum`. Named enums in the
@@ -402,6 +407,13 @@ const ENUM_NAMES: Record<string, string> = {
   // is FORCE-EMITTED below (like `KnownModel`) rather than walked, pre-registering the
   // canonical name so the conductor slice consumes it without a rename.
   'research': 'CouncilPresetId',
+  // Council debate transcript (issue #348/#352) — the three enums inside a
+  // `DebateTranscriptEntry`, now wire-reachable via the `debate-entry` event. Distinct
+  // value-sets (no collapse): the state-machine stage, the author's asymmetric role,
+  // and what kind of bus write produced the entry.
+  'frame|propose|debate|converge|build|review': 'DebateStage',
+  'proposer|critic|judge|conductor|human': 'DebateSeatRole',
+  'broadcast|message|delivery|note': 'DebateEntryKind',
   'safe|mutating|dangerous': 'ToolRisk',
   'starting|running|awaiting-permission|completed|failed|interrupted':
     'SessionStatus',
@@ -1863,6 +1875,25 @@ const EVENT_INPUTS: Record<string, unknown> = {
     runId: 'run-iv1',
     issueNumber: 128,
     taskId: 'task-42',
+  },
+  // Council debate (issue #348/#352): one append-only transcript entry wrapped with
+  // its council-run id. A `delivery` entry carries every optional field (the
+  // broadcast link + the injection-scan flags), so this fixture exercises the full
+  // `DebateTranscriptEntry` struct.
+  'debate-entry': {
+    type: 'debate-entry',
+    runId: 'council-run-1',
+    entry: {
+      stage: 'debate',
+      seatId: 'proposer-1',
+      role: 'critic',
+      kind: 'delivery',
+      seq: 3,
+      content: 'Seat proposer-1 said: "consider the isolated-worktree path"',
+      broadcastId: 'bc-1',
+      at: 1718900000000,
+      injectionFlags: [],
+    },
   },
   'query-result': {
     type: 'query-result',

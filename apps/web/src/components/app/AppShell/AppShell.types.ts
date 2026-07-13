@@ -12,6 +12,11 @@ export type AppView =
   // stage shells, it isn't a provenance target) — so `nav-render-parity` is
   // unaffected, but its render branch lands in the SAME commit as this member.
   | 'history'
+  // The Council debate canvas (issue #352) — a governed multi-agent debate board. A
+  // Project-group destination, NOT a source-ref REGISTRY view (a council run has no
+  // provenance token), so `nav-render-parity` is unaffected; its render branch lands
+  // in the SAME commit as this member.
+  | 'council'
   // The five stage destinations (Phase-1 view rethink, PR 3): Understand hosts
   // Insight's Find + Scorecard's Grade behind one shell; Harden / Enforce are two
   // view filters over the ONE HarnessView run/store; PR Review + Issue Triage keep

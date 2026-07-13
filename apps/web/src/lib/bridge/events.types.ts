@@ -247,6 +247,14 @@ export type HarnessEvent =
   | HarnessProposalAppliedEvent
   | HarnessCheckArmedEvent;
 
+/** The Council debate event streamed over `nc:debate` (issue #352), narrowed from the
+ *  authoritative `NightcoreEvent` union. P1 has ONE member — `debate-entry`, one
+ *  append-only transcript entry tagged with its council `runId` — so the whole channel
+ *  narrows as a single validated family (like PR Review). The canvas filters a run's
+ *  stream by `runId` and folds the entries into seat nodes + the team-chat projection;
+ *  #353 will extend this family with the converge decision. */
+export type DebateEvent = Extract<NcEvent, { type: 'debate-entry' }>;
+
 /** The transient progress payload the Rust core emits on the raw `nc:issue-map`
  *  channel while `export_issue_map` mints the map (one per sub-issue created +
  *  attached). Purely cosmetic — the terminal `IssueMapResult` is the source of

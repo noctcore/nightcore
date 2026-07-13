@@ -305,3 +305,15 @@ export type { SubtaskStatus } from '../generated/SubtaskStatus';
 export type NcEvent = NightcoreEvent;
 export type { NightcoreEvent } from '@nightcore/contracts';
 export type { QuestionAnswer, QuestionItem, QuestionOption } from '@nightcore/contracts';
+
+// Council debate (issues #348/#352) — the preset id the `start_council` command
+// carries and the transcript-entry shape the `nc:debate` canvas folds. The concrete
+// preset VALUE (seats/stages/budget) stays engine-side; the canvas derives its seat
+// nodes from the live transcript, so only these contract types cross to the web.
+export type {
+  CouncilPresetId,
+  DebateEntryKind,
+  DebateSeatRole,
+  DebateStage,
+  DebateTranscriptEntry,
+} from '@nightcore/contracts';

@@ -9,6 +9,7 @@ import { NightcoreEventSchema, QuestionItemSchema } from '@nightcore/contracts';
 import type {
   AnalysisEvent,
   ArtifactAppliedEvent,
+  DebateEvent,
   FindingConvertedEvent,
   HarnessEvent,
   HarnessScanEvent,
@@ -195,6 +196,19 @@ export function parseIssueTriageEvent(value: unknown): IssueTriageEvent | null {
   const parsed = NightcoreEventSchema.safeParse(value);
   if (parsed.success && parsed.data.type.startsWith('issue-validation-')) {
     return parsed.data as IssueTriageEvent;
+  }
+  return null;
+}
+
+/** Narrow an unknown `nc:debate` payload to a `DebateEvent` (issue #352). The whole
+ *  `debate-*` family is a `NightcoreEvent`, so a single `NightcoreEventSchema`
+ *  validation + exact-`type` check is enough — the inner transcript entry is validated
+ *  by the union member, so a malformed/future payload is dropped rather than folded
+ *  into the canvas. */
+export function parseDebateEvent(value: unknown): DebateEvent | null {
+  const parsed = NightcoreEventSchema.safeParse(value);
+  if (parsed.success && parsed.data.type === 'debate-entry') {
+    return parsed.data as DebateEvent;
   }
   return null;
 }
