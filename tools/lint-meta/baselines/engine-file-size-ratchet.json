@@ -1,7 +1,6 @@
 {
   "packages/engine/src/policy/tool-deny-policy.ts": 641,
   "packages/engine/src/providers/claude/session-runner.ts": 717,
-  "packages/engine/src/providers/codex/codex-agent-provider.ts": 448,
   "packages/engine/src/scans/harness/reference.ts": 479,
   "packages/engine/src/scans/harness/repo-profile.ts": 468,
   "packages/engine/src/scans/harness/synthesis.ts": 707,

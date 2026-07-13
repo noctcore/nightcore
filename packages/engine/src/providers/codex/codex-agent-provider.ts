@@ -1,7 +1,6 @@
 import type {
   AutonomyLevel,
   ModelDescriptor,
-  NightcoreEvent,
   PermissionMode,
   ProviderCapabilities,
   ProviderConfigSection,
@@ -46,30 +45,22 @@ import {
   createCodexTranslationState,
   defaultCodexFactory,
   type Input,
-  type ThreadEvent,
-  translateCodexEvent,
   type TurnOptions,
 } from './sdk-adapter.js';
+import {
+  CODEX_IDLE_STALLED,
+  CODEX_IDLE_TIMEOUT_MS,
+  drainTurnEvents,
+} from './turn-stream.js';
 
 // The minimal Codex SDK surface a session drives, and its production factory over
 // the real `@openai/codex-sdk` client — both defined in `sdk-adapter.ts` (the SDK
 // boundary module) and re-exported here for `CodexAgentProvider`'s test fakes.
 export type { CodexFactory, CodexLike, CodexThreadLike } from './sdk-adapter.js';
-
-/**
- * Default idle watchdog deadline for a Codex turn: 30 minutes with NO stream event
- * resets the timer on every yield. Mirrors the Claude runner's
- * `DEFAULT_IDLE_TIMEOUT_MS` — deliberately generous so one long tool call (a
- * multi-minute build) that emits no `ThreadEvent`s isn't killed, while a genuinely
- * wedged `codex exec` (stopped yielding, no terminal `turn.completed`/`turn.failed`)
- * is reaped instead of hanging the run and leaking its concurrency slot forever.
- * Injectable via the provider/session constructor for tests only.
- */
-export const CODEX_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
-
-/** Sentinel returned by {@link CodexSession.nextWithIdleDeadline} when the idle
- *  watchdog fires before the turn's event stream yields its next event. */
-const CODEX_IDLE_STALLED = Symbol('codex-idle-stalled');
+// The idle watchdog deadline default, re-exported here for backward compatibility —
+// its implementation (and the turn-draining logic it configures) lives in
+// `turn-stream.ts`.
+export { CODEX_IDLE_TIMEOUT_MS } from './turn-stream.js';
 
 function autonomyToRecordMode(autonomy: AutonomyLevel): PermissionMode {
   switch (autonomy) {
@@ -170,7 +161,12 @@ class CodexSession implements AgentSession {
       // intermediate one must not, or the supervisor would retire the run early.
       for (;;) {
         const streamed = await thread.runStreamed(input, turnOptions);
-        const held = await this.drainTurnEvents(streamed.events, state);
+        const held = await drainTurnEvents(
+          streamed.events,
+          state,
+          this.emit,
+          this.idleTimeoutMs,
+        );
         if (held === CODEX_IDLE_STALLED) {
           // A wedged `codex exec` that stopped yielding without a terminal event
           // would otherwise hang this loop forever, leaking the run's concurrency
@@ -216,57 +212,6 @@ class CodexSession implements AgentSession {
       // Remove the first-turn image temp files on EVERY exit (completion, failure, or
       // interrupt). No-op when the run had no images.
       cleanupImages?.();
-    }
-  }
-
-  /**
-   * Drive one turn's event stream to its terminal event under an idle deadline.
-   * Returns the held terminal events when the turn completes/fails in time,
-   * `undefined` when the stream ends with no terminal event, or
-   * {@link CODEX_IDLE_STALLED} when the watchdog fires first (a wedged subprocess).
-   * Non-terminal events are emitted as they arrive, exactly like the prior
-   * `for await` loop — the only change is the per-`next()` idle race.
-   */
-  private async drainTurnEvents(
-    events: AsyncIterable<ThreadEvent>,
-    state: ReturnType<typeof createCodexTranslationState>,
-  ): Promise<NightcoreEvent[] | undefined | typeof CODEX_IDLE_STALLED> {
-    const iterator = events[Symbol.asyncIterator]();
-    for (;;) {
-      const next = await this.nextWithIdleDeadline(iterator);
-      if (next === CODEX_IDLE_STALLED) return CODEX_IDLE_STALLED;
-      if (next.done === true) return undefined;
-      const translated = translateCodexEvent(next.value, state);
-      if (translated.terminal) return translated.events;
-      for (const event of translated.events) this.emit(event);
-    }
-  }
-
-  /**
-   * Await the stream's next event under an idle deadline. Returns the
-   * `IteratorResult` when the turn yields (or ends) in time, or
-   * {@link CODEX_IDLE_STALLED} when {@link idleTimeoutMs} elapses first. A fresh
-   * timer per call, so every yielded event resets it — only a genuinely quiet
-   * (wedged) stream trips it. When the timer wins, the dangling `next()` promise's
-   * eventual rejection (from the turn abort) is swallowed so it never surfaces as an
-   * unhandled rejection. Mirrors the Claude runner's `nextWithIdleDeadline`.
-   */
-  private async nextWithIdleDeadline(
-    iterator: AsyncIterator<ThreadEvent>,
-  ): Promise<IteratorResult<ThreadEvent> | typeof CODEX_IDLE_STALLED> {
-    const nextPromise = iterator.next();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const idle = new Promise<typeof CODEX_IDLE_STALLED>((resolve) => {
-      timer = setTimeout(() => resolve(CODEX_IDLE_STALLED), this.idleTimeoutMs);
-    });
-    try {
-      const result = await Promise.race([nextPromise, idle]);
-      if (result === CODEX_IDLE_STALLED) {
-        void Promise.resolve(nextPromise).catch(() => {});
-      }
-      return result;
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
     }
   }
 
