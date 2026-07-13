@@ -10,6 +10,19 @@
  * yet; the Conductor is their first consumer.
  */
 export type {
+  BroadcastClock,
+  BroadcastDispatch,
+  BroadcastResult,
+  CollectBroadcastInput,
+  SeatBroadcastOutcome,
+  SeatBroadcastStatus,
+} from './broadcast-collector.js';
+export {
+  collectBroadcast,
+  DEFAULT_SEAT_CONCURRENCY,
+  DEFAULT_SEAT_TIMEOUT_MS,
+} from './broadcast-collector.js';
+export type {
   ConductorBus,
   DeliveryOutcome,
   InterSeatDelivery,
@@ -31,6 +44,7 @@ export type {
   SeatPosition,
   SeatTurnRequest,
   SeatTurnResult,
+  TurnEstimate,
 } from './conductor-types.js';
 export type {
   CouncilManagerDeps,
@@ -38,6 +52,7 @@ export type {
 } from './council-manager.js';
 export { CouncilManager } from './council-manager.js';
 export type {
+  DebateDispatchConfig,
   DebateHalt,
   DebateOutcome,
   DebateRoundHooks,

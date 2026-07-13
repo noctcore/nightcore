@@ -63,6 +63,41 @@ describe('RunGovernor — token/cost caps', () => {
   });
 });
 
+describe('RunGovernor — per-turn reservation (#351, LOW-A)', () => {
+  test('a reservation makes an in-flight turn visible to the cap check', () => {
+    const g = new RunGovernor(BUDGET); // maxTotalTokens 300
+    expect(g.tryReserve({ tokens: 200, costUsd: 0 })).toBe(true);
+    // Committed is still 0, but the outstanding reservation counts toward the cap...
+    expect(g.tryReserve({ tokens: 200, costUsd: 0 })).toBe(true); // 200 reserved < 300
+    expect(g.tryReserve({ tokens: 1, costUsd: 0 })).toBe(false); // 400 reserved >= 300
+  });
+
+  test('settling a reservation nets exactly the turn’s actual spend', () => {
+    const g = new RunGovernor(BUDGET);
+    g.tryReserve({ tokens: 250, costUsd: 5 });
+    g.settleReservation({ tokens: 250, costUsd: 5 }, turn(40, 1));
+    // The estimate is dropped; only the ACTUAL spend is charged.
+    expect(g.totals).toEqual({ totalTokens: 40, costUsd: 1, rounds: 0 });
+    // No residual reservation blocks the next turn.
+    expect(g.tryReserve({ tokens: 1, costUsd: 0 })).toBe(true);
+  });
+
+  test('releasing a reservation drops the estimate without charging', () => {
+    const g = new RunGovernor(BUDGET);
+    g.tryReserve({ tokens: 250, costUsd: 0 });
+    g.releaseReservation({ tokens: 250, costUsd: 0 });
+    expect(g.totals.totalTokens).toBe(0);
+    // Fully released — the cap is clear again.
+    expect(g.tryReserve({ tokens: 299, costUsd: 0 })).toBe(true);
+  });
+
+  test('refuses a reservation once committed spend already reached the cap', () => {
+    const g = new RunGovernor(BUDGET);
+    g.chargeTurn(turn(300)); // at the token ceiling
+    expect(g.tryReserve({ tokens: 1, costUsd: 0 })).toBe(false);
+  });
+});
+
 describe('RunGovernor — round cap', () => {
   test('roundBudgetRemaining is the MIN of the stage cap and the budget cap', () => {
     const g = new RunGovernor({ ...BUDGET, maxRounds: 5 });

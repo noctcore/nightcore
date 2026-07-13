@@ -98,39 +98,56 @@ export class SessionSeatDriver implements SeatDriver {
       };
       request.signal.addEventListener('abort', onAbort, { once: true });
 
-      // Subscribe BEFORE spawning so a fast terminal event is never missed. Only the
-      // two terminal, session-scoped events matter — narrow first so `sessionId` is
-      // known to exist (query-result events carry no session id).
-      unsubscribe = this.deps.backend.on((event) => {
-        if (event.type !== 'session-completed' && event.type !== 'session-failed') {
-          return;
-        }
-        if (
-          correlation.sessionId === undefined ||
-          event.sessionId !== correlation.sessionId
-        ) {
-          return;
-        }
-        if (event.type === 'session-completed') {
-          finish({
-            content: event.result,
-            usage: event.usage ?? ZERO_USAGE,
-            costUsd: event.costUsd ?? 0,
-          });
-        } else {
-          this.deps.logger?.warn('seat session failed; contributing an empty turn', {
-            seatId: request.seat.seatId,
-            reason: event.reason,
-          });
-          finish(this.empty());
-        }
-      });
+      // Subscribe + spawn under a guard: if EITHER throws synchronously (an unexpected
+      // hard error, not one of the two refusals converted upstream), tear the turn down
+      // on that exit path too — `finish` removes the abort listener AND unsubscribes —
+      // and degrade to an EMPTY turn instead of leaking a live listener while the run
+      // fails (issue #351, LOW-B). Without this, a synchronous `spawn`/`on` throw
+      // rejected the executor with the subscription still registered.
+      try {
+        // Subscribe BEFORE spawning so a fast terminal event is never missed. Only the
+        // two terminal, session-scoped events matter — narrow first so `sessionId` is
+        // known to exist (query-result events carry no session id).
+        unsubscribe = this.deps.backend.on((event) => {
+          if (
+            event.type !== 'session-completed' &&
+            event.type !== 'session-failed'
+          ) {
+            return;
+          }
+          if (
+            correlation.sessionId === undefined ||
+            event.sessionId !== correlation.sessionId
+          ) {
+            return;
+          }
+          if (event.type === 'session-completed') {
+            finish({
+              content: event.result,
+              usage: event.usage ?? ZERO_USAGE,
+              costUsd: event.costUsd ?? 0,
+            });
+          } else {
+            this.deps.logger?.warn(
+              'seat session failed; contributing an empty turn',
+              { seatId: request.seat.seatId, reason: event.reason },
+            );
+            finish(this.empty());
+          }
+        });
 
-      correlation.sessionId = this.deps.backend.spawn({
-        prompt: request.prompt,
-        model: request.seat.model,
-        ...(request.cwd !== undefined ? { cwd: request.cwd } : {}),
-      });
+        correlation.sessionId = this.deps.backend.spawn({
+          prompt: request.prompt,
+          model: request.seat.model,
+          ...(request.cwd !== undefined ? { cwd: request.cwd } : {}),
+        });
+      } catch (error) {
+        this.deps.logger?.warn(
+          'seat session spawn threw; tearing down and contributing an empty turn',
+          { seatId: request.seat.seatId, error },
+        );
+        finish(this.empty());
+      }
     });
   }
 

@@ -345,6 +345,88 @@ describe('Conductor — the kill switch halts a running council immediately (saf
   });
 });
 
+// ── Propose dispatch hardening (#351: bounded broadcast collector) ─────────────
+
+describe('Conductor — Propose reserves budget so it cannot overshoot the cap (#351, LOW-A)', () => {
+  test('a Propose that would breach the token cap refuses the cap-breaching seats', async () => {
+    // Each Propose turn costs 100 tokens; the cap is 150. Pre-#351 all three seats fired
+    // in parallel (a full-round overshoot); now the collector reserves before dispatch
+    // and refuses the seat that would breach, halting the run on the cap.
+    const driver = new FakeSeatDriver((req) => ({
+      content: `p-${req.seat.seatId}`,
+      usage: usage(req.stage === 'propose' ? 100 : 0),
+    }));
+    const bus = new DebateBus();
+    // Concurrency 1 makes the reservation gate observable turn-by-turn.
+    const conductor = new Conductor({ bus, seatDriver: driver, maxSeatConcurrency: 1 });
+
+    const result = await conductor.run({
+      councilRunId: 'run-low-a',
+      preset: preset({
+        budget: { maxRounds: 2, maxTotalTokens: 150, maxCostUsd: 1_000_000 },
+      }),
+      objective: 'o',
+    });
+
+    expect(result.status).toBe('budget-exhausted');
+    expect(result.haltedBy).toBe('maxTotalTokens');
+    // NOT all three seats were dispatched — the cap-breaching seat was refused.
+    expect(driver.forStage('propose').length).toBeLessThan(3);
+  });
+});
+
+describe('Conductor — a hung seat cannot stall the board (#351: quorum/timeout collector)', () => {
+  test('a Propose seat that never responds times out; the run proceeds without it', async () => {
+    // proposer-opus hangs every turn (honoring abort like the real driver on timeout);
+    // the others answer. A short per-seat timeout lets the stage resolve with just the
+    // responders rather than hang — the whole run still reaches Converge.
+    class HangingDriver implements SeatDriver {
+      readonly calls: SeatTurnRequest[] = [];
+      runTurn(request: SeatTurnRequest): Promise<SeatTurnResult> {
+        this.calls.push(request);
+        if (request.seat.seatId === 'proposer-opus') {
+          return new Promise<SeatTurnResult>((resolve) => {
+            request.signal.addEventListener(
+              'abort',
+              () => resolve({ content: '', usage: NO_USAGE, costUsd: 0 }),
+              { once: true },
+            );
+          });
+        }
+        return Promise.resolve({
+          content: `ok-${request.seat.seatId}`,
+          usage: NO_USAGE,
+          costUsd: 0,
+        });
+      }
+    }
+
+    const bus = new DebateBus();
+    const conductor = new Conductor({
+      bus,
+      seatDriver: new HangingDriver(),
+      seatTimeoutMs: 20,
+    });
+
+    const result = await conductor.run({
+      councilRunId: 'run-hang',
+      preset: preset(),
+      objective: 'o',
+    });
+
+    // The run did NOT hang — it reached the human-judge park.
+    expect(result.status).toBe('converged');
+    // The hung seat contributed no Propose message; the two responders did.
+    const proposeMessages = result.transcript.filter(
+      (e) => e.stage === 'propose' && e.kind === 'message',
+    );
+    expect(proposeMessages.map((e) => e.seatId).sort()).toEqual([
+      'critic-opus',
+      'proposer-sonnet',
+    ]);
+  });
+});
+
 // ── Converge (HUMAN) ──────────────────────────────────────────────────────────
 
 describe('Conductor — Converge parks a decision for the HUMAN judge (safety #7)', () => {

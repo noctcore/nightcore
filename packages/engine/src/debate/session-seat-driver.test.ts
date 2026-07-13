@@ -149,4 +149,61 @@ describe('SessionSeatDriver', () => {
     expect(result.content).toBe('');
     expect(backend.listenerCount).toBe(0);
   });
+
+  // ── LOW-B (#351): teardown on a synchronous hard throw ──────────────────────
+
+  test('a synchronous spawn throw tears down (unsubscribes) and degrades to an empty turn', async () => {
+    // An UNEXPECTED hard error thrown synchronously inside the Promise executor (not one
+    // of the two refusals converted upstream) must still remove the abort listener AND
+    // unsubscribe — pre-#351 it leaked the subscription while the run degraded.
+    class SpawnThrowsBackend implements SeatSessionBackend {
+      private readonly listeners = new Set<(event: NightcoreEvent) => void>();
+      spawn(): number {
+        throw new Error('spawn boom');
+      }
+      on(listener: (event: NightcoreEvent) => void): () => void {
+        this.listeners.add(listener);
+        return () => this.listeners.delete(listener);
+      }
+      get listenerCount(): number {
+        return this.listeners.size;
+      }
+    }
+
+    const backend = new SpawnThrowsBackend();
+    const driver = new SessionSeatDriver({ backend });
+    const controller = new AbortController();
+
+    // Resolves (does NOT reject) with an empty turn...
+    const result = await driver.runTurn(request(controller.signal));
+    expect(result.content).toBe('');
+    expect(result.costUsd).toBe(0);
+    // ...and the subscription registered before the throw is torn down (no leak).
+    expect(backend.listenerCount).toBe(0);
+
+    // A late abort after the hard-throw teardown is an inert no-op (already settled).
+    expect(() => controller.abort()).not.toThrow();
+  });
+
+  test('a synchronous subscription throw also degrades to an empty turn without leaking', async () => {
+    class OnThrowsBackend implements SeatSessionBackend {
+      spawnCount = 0;
+      spawn(): number {
+        this.spawnCount += 1;
+        return 1;
+      }
+      on(): () => void {
+        throw new Error('subscribe boom');
+      }
+    }
+
+    const backend = new OnThrowsBackend();
+    const driver = new SessionSeatDriver({ backend });
+    const controller = new AbortController();
+
+    const result = await driver.runTurn(request(controller.signal));
+    expect(result.content).toBe('');
+    // The subscription threw before spawning, so no session was ever started.
+    expect(backend.spawnCount).toBe(0);
+  });
 });

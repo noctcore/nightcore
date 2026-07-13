@@ -22,12 +22,14 @@
  * The loop drives seats through the provider-neutral {@link SeatDriver} seam (via the
  * injected `runTurn`), so it is unit-tested with deterministic fake seats.
  */
+import { collectBroadcast } from './broadcast-collector.js';
 import type { ConductorBus } from './bus.js';
 import type { RunGovernor } from './conductor-budget.js';
 import type {
   BudgetHaltCause,
   SeatContext,
   SeatTurnResult,
+  TurnEstimate,
 } from './conductor-types.js';
 import { assemblePeerContext, type PeerOutput } from './peer-context.js';
 
@@ -50,6 +52,16 @@ export interface DebateOutcome {
   readonly stableEarlyStop: boolean;
 }
 
+/** The broadcast-collector knobs the debate loop dispatches each round through. */
+export interface DebateDispatchConfig {
+  /** Max seats dispatched at once (bounded concurrency). */
+  readonly maxConcurrency?: number;
+  /** Per-seat dispatch timeout (ms) so a hung seat can't stall a round. */
+  readonly timeoutMs?: number;
+  /** Per-turn budget reserved before dispatch (LOW-A: no cap overshoot). */
+  readonly estimate?: TurnEstimate;
+}
+
 /** The seams the debate loop drives. `bus` is the OBSERVING conductor bus (writes are
  *  recorded + streamed by the Conductor); `runTurn` wraps the {@link SeatDriver}. */
 export interface DebateRoundHooks {
@@ -60,11 +72,19 @@ export interface DebateRoundHooks {
   readonly stageMaxRounds: number;
   /** The seats' latest outputs entering Debate (from Propose), keyed by seat id. */
   readonly priorOutputs: ReadonlyMap<string, string>;
+  /** Bounded-concurrency + timeout + reservation config for the per-round broadcast.
+   *  Absent ⇒ the collector's defaults (unbounded-estimate, default concurrency/timeout). */
+  readonly dispatch?: DebateDispatchConfig;
   /** Build a seat's debate prompt for `round`, embedding the mediated `peerText`
    *  (which contains ONLY quoted+scanned peer content). */
   buildPrompt(seat: SeatContext, round: number, peerText: string): string;
-  /** Drive one seat turn through the {@link SeatDriver} seam. */
-  runTurn(seat: SeatContext, prompt: string): Promise<SeatTurnResult>;
+  /** Drive one seat turn through the {@link SeatDriver} seam, threading the collector's
+   *  per-seat abort `signal` (kill/budget/timeout/quorum). */
+  runTurn(
+    seat: SeatContext,
+    prompt: string,
+    signal: AbortSignal,
+  ): Promise<SeatTurnResult>;
 }
 
 /** The first hard stop the governor reports right now, if any. */
@@ -101,31 +121,45 @@ export async function runDebateRounds(
       content: current.get(seat.seatId) ?? '',
     }));
 
+    // Assemble every seat's mediated prompt FIRST, sequentially, from that fixed
+    // snapshot. Peer-text routing is UNCHANGED (the collector governs dispatch, not
+    // delivery): each prompt's peer content is the quoted, injection-scanned delivery
+    // text — never raw `read()` content (MEDIUM guard). Doing this before dispatch keeps
+    // the delivery transcript order deterministic and out of the concurrent section.
+    const prompts = new Map<string, string>();
+    for (const seat of seats) {
+      const peers = assemblePeerContext(bus, 'debate', seat.seatId, snapshot);
+      prompts.set(seat.seatId, hooks.buildPrompt(seat, round, peers.text));
+    }
+
+    // Dispatch the round as ONE broadcast: bounded concurrency + per-seat timeout +
+    // budget reservation. A hung seat is recorded timed-out and keeps its prior
+    // position rather than stalling the round.
+    const broadcast = await collectBroadcast<SeatContext>({
+      broadcastId: `debate-r${round}`,
+      seats,
+      governor,
+      ...(hooks.dispatch ?? {}),
+      signal: governor.signal,
+      run: (seat, dispatch) =>
+        hooks.runTurn(seat, prompts.get(seat.seatId) ?? '', dispatch.signal),
+    });
+
     const next = new Map(current);
     let changed = false;
+    for (const outcome of broadcast.responders) {
+      const { seatId, role } = outcome.seat;
+      const content = outcome.result?.content ?? '';
+      bus.postSeatMessage({ stage: 'debate', seatId, role, content });
+      if (content !== (current.get(seatId) ?? '')) changed = true;
+      next.set(seatId, content);
+    }
 
-    for (const seat of seats) {
-      const turnHalt = governorHalt(governor);
-      if (turnHalt !== null) {
-        return { finalOutputs: next, halt: turnHalt, stableEarlyStop };
-      }
-
-      // MEDIUM guard: the ONLY source of peer content in the prompt is the mediated,
-      // quoted, injection-scanned delivery text — never raw `read()` content.
-      const peers = assemblePeerContext(bus, 'debate', seat.seatId, snapshot);
-      const prompt = hooks.buildPrompt(seat, round, peers.text);
-      const result = await hooks.runTurn(seat, prompt);
-
-      governor.chargeTurn(result);
-      bus.postSeatMessage({
-        stage: 'debate',
-        seatId: seat.seatId,
-        role: seat.role,
-        content: result.content,
-      });
-
-      if (result.content !== (current.get(seat.seatId) ?? '')) changed = true;
-      next.set(seat.seatId, result.content);
+    // A kill or a hard cap tripped mid-round: halt WITHOUT counting the round (the
+    // partial responders are still folded into `next` for the transcript/converge).
+    const roundHalt = governorHalt(governor);
+    if (roundHalt !== null) {
+      return { finalOutputs: next, halt: roundHalt, stableEarlyStop };
     }
 
     governor.countRound();

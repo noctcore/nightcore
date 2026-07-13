@@ -61,6 +61,19 @@ export interface SeatTurnResult {
 }
 
 /**
+ * A per-turn budget estimate the broadcast collector RESERVES against the {@link
+ * import('./conductor-budget.js').RunGovernor} BEFORE it dispatches a seat, so a
+ * bounded parallel broadcast cannot overshoot the hard caps by a whole round (issue
+ * #351, carry-forward LOW-A). The reservation makes an in-flight turn visible to
+ * concurrent cap checks; it is reconciled to the turn's ACTUAL spend the instant the
+ * turn lands (or released if the turn is refused/timed-out and never charges).
+ */
+export interface TurnEstimate {
+  readonly tokens: number;
+  readonly costUsd: number;
+}
+
+/**
  * The provider-neutral seam the Conductor drives a seat through. ONE method: run a
  * turn and return its output. The Conductor owns the prompt (including the mediated
  * peer context) and the transcript; the driver only maps `prompt → output`. Fakes
