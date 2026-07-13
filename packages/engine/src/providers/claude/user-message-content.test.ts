@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import type { WireImage } from '@nightcore/contracts';
 
-import { buildUserMessageContent } from './session-options.js';
+import { buildUserMessageContent } from './user-message-content.js';
 
 describe('buildUserMessageContent', () => {
   it('returns a plain string when there are no images (byte-identical to before)', () => {

@@ -1,12 +1,7 @@
 /// <reference types="bun" />
 import { afterAll, describe, expect, mock, test } from 'bun:test';
 
-import type {
-  McpServerEntry,
-  NightcoreEvent,
-  PermissionPolicy,
-  SettingSource,
-} from '@nightcore/contracts';
+import type { NightcoreEvent, PermissionPolicy, SettingSource } from '@nightcore/contracts';
 
 // bun's `mock.module` is a PROCESS-GLOBAL, permanent registry override with no
 // built-in un-mock, so a partial stub here would leak into any later test file
@@ -172,10 +167,6 @@ mock.module('@anthropic-ai/claude-agent-sdk', () => ({
 
 // Imported AFTER the mocks are registered so the runner picks up the stubs.
 const { SessionRunner } = await import('./session-runner.js');
-// The pure option-composition helpers now live in `session-options.ts` (extracted
-// from the runner so they are testable without spinning a query).
-const { toSdkMcpServers, composeAppendSystemPrompt, CONTEXT_PACK_MAX_CHARS } =
-  await import('./session-options.js');
 
 const policy: PermissionPolicy = { allow: [], deny: [], mode: 'default' };
 const settingSources: SettingSource[] = [];
@@ -629,118 +620,6 @@ describe('SessionRunner — live-control probe surface (transient-probe teardown
   });
 });
 
-describe('toSdkMcpServers — contract → SDK Options.mcpServers', () => {
-  const stdio = (
-    id: string,
-    name: string,
-    enabled: boolean,
-    extra: Partial<{ args: string[]; env: Record<string, string> }> = {},
-  ): McpServerEntry => ({
-    id,
-    name,
-    enabled,
-    config: {
-      transport: 'stdio',
-      command: 'npx',
-      args: extra.args ?? [],
-      env: extra.env ?? {},
-    },
-  });
-
-  test('an absent or empty list yields undefined (the key is omitted)', () => {
-    // Byte-identical to the pre-feature options: no `mcpServers` key at all.
-    expect(toSdkMcpServers(undefined)).toBeUndefined();
-    expect(toSdkMcpServers([])).toBeUndefined();
-  });
-
-  test('a list of only-disabled entries yields undefined', () => {
-    expect(toSdkMcpServers([stdio('a', 'alpha', false)])).toBeUndefined();
-  });
-
-  test('disabled entries are dropped; the name becomes the record key', () => {
-    const servers = toSdkMcpServers([
-      stdio('a', 'alpha', true, { args: ['-y', 'pkg'], env: { ROOT: '/x' } }),
-      stdio('b', 'bravo', false),
-      stdio('c', 'charlie', true),
-    ]);
-    expect(servers).toBeDefined();
-    expect(Object.keys(servers ?? {}).sort()).toEqual(['alpha', 'charlie']);
-  });
-
-  test('stdio OMITS `type` and only sets env when non-empty', () => {
-    const servers = toSdkMcpServers([
-      stdio('a', 'with-env', true, { args: ['-y', 'pkg'], env: { K: 'v' } }),
-      stdio('b', 'no-env', true),
-    ]);
-    const withEnv = servers?.['with-env'];
-    const noEnv = servers?.['no-env'];
-    // stdio config has no `type` key (the SDK defaults `type?: 'stdio'`).
-    expect(withEnv).toEqual({ command: 'npx', args: ['-y', 'pkg'], env: { K: 'v' } });
-    expect(withEnv && 'type' in withEnv).toBe(false);
-    // An empty env map is omitted entirely.
-    expect(noEnv).toEqual({ command: 'npx', args: [] });
-    expect(noEnv && 'env' in noEnv).toBe(false);
-  });
-
-  test('http SETS type=http and only sets headers when non-empty', () => {
-    const servers = toSdkMcpServers([
-      {
-        id: 'h1',
-        name: 'github',
-        enabled: true,
-        config: {
-          transport: 'http',
-          url: 'https://example.com/mcp',
-          headers: { Authorization: 'Bearer t' },
-        },
-      },
-      {
-        id: 'h2',
-        name: 'plain',
-        enabled: true,
-        config: { transport: 'http', url: 'https://example.com/x', headers: {} },
-      },
-    ]);
-    expect(servers?.['github']).toEqual({
-      type: 'http',
-      url: 'https://example.com/mcp',
-      headers: { Authorization: 'Bearer t' },
-    });
-    const plain = servers?.['plain'];
-    expect(plain).toEqual({ type: 'http', url: 'https://example.com/x' });
-    expect(plain && 'headers' in plain).toBe(false);
-  });
-
-  test('sse SETS type=sse', () => {
-    const servers = toSdkMcpServers([
-      {
-        id: 's1',
-        name: 'legacy',
-        enabled: true,
-        config: {
-          transport: 'sse',
-          url: 'https://example.com/sse',
-          headers: { 'X-Key': 'abc' },
-        },
-      },
-    ]);
-    expect(servers?.['legacy']).toEqual({
-      type: 'sse',
-      url: 'https://example.com/sse',
-      headers: { 'X-Key': 'abc' },
-    });
-  });
-
-  test('a later duplicate name wins (last write to the record key)', () => {
-    const servers = toSdkMcpServers([
-      stdio('a', 'dup', true, { args: ['first'] }),
-      stdio('b', 'dup', true, { args: ['second'] }),
-    ]);
-    expect(Object.keys(servers ?? {})).toEqual(['dup']);
-    expect(servers?.['dup']).toEqual({ command: 'npx', args: ['second'] });
-  });
-});
-
 describe('SessionRunner — policy deny list → SDK disallowedTools (sec-22ee938b)', () => {
   test('a deny entry appears in SDK disallowedTools even under bypassPermissions', async () => {
     resolvedClaudePath = '/usr/local/bin/claude';
@@ -896,56 +775,6 @@ describe('SessionRunner — curated subprocess env (no wholesale process.env)', 
       if (prev === undefined) delete process.env.NIGHTCORE_TEST_FAKE_SECRET;
       else process.env.NIGHTCORE_TEST_FAKE_SECRET = prev;
     }
-  });
-});
-
-describe('composeAppendSystemPrompt — Pre-flight Context Pack (Lock, feature #4)', () => {
-  const persona = 'You are an independent code reviewer.';
-  const pack = 'PROJECT CONSTITUTION: never break the folder-per-component rule.';
-
-  const root = '# Working directory (authoritative)\n\n  /repo/wt';
-
-  test('orders the working root BEFORE the pack, and the pack BEFORE the persona', () => {
-    const composed = composeAppendSystemPrompt(root, pack, persona);
-    expect(composed).toBeDefined();
-    expect(composed!.indexOf(root)).toBe(0);
-    expect(composed!.indexOf(root)).toBeLessThan(composed!.indexOf(pack));
-    expect(composed!.indexOf(pack)).toBeLessThan(composed!.indexOf(persona));
-  });
-
-  test('orders the context pack BEFORE the kind-preset persona (no working root)', () => {
-    const composed = composeAppendSystemPrompt(undefined, pack, persona);
-    expect(composed).toBeDefined();
-    const packAt = composed!.indexOf(pack);
-    const personaAt = composed!.indexOf(persona);
-    expect(packAt).toBe(0);
-    expect(packAt).toBeLessThan(personaAt);
-  });
-
-  test('returns just the pack when there is no working root or persona', () => {
-    expect(composeAppendSystemPrompt(undefined, pack, undefined)).toBe(pack);
-  });
-
-  test('returns just the persona when there is no working root or pack', () => {
-    expect(composeAppendSystemPrompt(undefined, undefined, persona)).toBe(persona);
-    expect(composeAppendSystemPrompt(undefined, '   ', persona)).toBe(persona);
-  });
-
-  test('returns undefined when every part is absent (omits the SDK option)', () => {
-    expect(composeAppendSystemPrompt(undefined, undefined, undefined)).toBeUndefined();
-    expect(composeAppendSystemPrompt('', '', '')).toBeUndefined();
-  });
-
-  test('truncates an oversized pack to the budget with a notice', () => {
-    const huge = 'x'.repeat(CONTEXT_PACK_MAX_CHARS + 5000);
-    const composed = composeAppendSystemPrompt(undefined, huge, persona);
-    expect(composed).toBeDefined();
-    // The bounded pack is at most the budget plus the short truncation notice, and
-    // is far shorter than the raw input — it cannot crowd out the task.
-    expect(composed!.length).toBeLessThan(huge.length);
-    expect(composed).toContain('truncated');
-    // The persona still survives at the end (the pack didn't swallow it).
-    expect(composed!.endsWith(persona)).toBe(true);
   });
 });
 

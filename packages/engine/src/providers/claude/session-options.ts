@@ -12,9 +12,10 @@
  *    autonomy ceilings, resume, checkpointing) plus the runtime collaborators the
  *    runner owns (`canUseTool` / `onUserDialog` / `hooks` / the abort controller).
  *
- * The pure compose helpers (`toSdkMcpServers`, `composeAppendSystemPrompt`,
- * `buildUserMessageContent`) stay exported so each translation is testable in
- * isolation.
+ * The pure compose helpers each live in their own module so each translation is
+ * testable in isolation (`mcp-server-options.ts`, `user-message-content.ts`,
+ * `system-prompt.ts`) and are re-exported here so this stays the single import
+ * path callers already use.
  */
 import type {
   EffortLevel,
@@ -28,103 +29,19 @@ import type {
 } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
 
+import { toSdkMcpServers } from './mcp-server-options.js';
 import { resolveClaudeBinary } from './resolve-claude-binary.js';
-import type { McpServerConfig, Options, OutputFormat } from './sdk-adapter.js';
+import type { Options, OutputFormat } from './sdk-adapter.js';
 import { buildSubprocessEnv } from './subprocess-env.js';
+import { composeAppendSystemPrompt, workingRootDirective } from './system-prompt.js';
 
-/**
- * Translate the user-configured external MCP server entries (the `transport`-tagged
- * contract shape) into the SDK's `Options.mcpServers` map (`Record<name,
- * McpServerConfig>`). Pure, so it is unit-testable without spinning a query.
- *
- * Three translations matter:
- *  - filter to `enabled` entries (the Rust core already does this, but re-filtering
- *    here keeps the helper correct on any caller);
- *  - the entry `name` becomes the record KEY (the SDK keys on it, and it is the
- *    `mcp__<name>__*` tool prefix) — a later duplicate name wins (last write);
- *  - `transport` → the SDK's `type`: OMITTED for stdio (the SDK's `type?: 'stdio'`
- *    defaults to stdio), SET to `'http'`/`'sse'` for the remote transports.
- *
- * Returns `undefined` when no enabled entry survives, so the caller can omit the
- * `mcpServers` key entirely (byte-identical to the pre-feature options).
- */
-export function toSdkMcpServers(
-  entries: McpServerEntry[] | undefined,
-): Record<string, McpServerConfig> | undefined {
-  if (entries === undefined || entries.length === 0) return undefined;
-  const servers: Record<string, McpServerConfig> = {};
-  for (const entry of entries) {
-    if (!entry.enabled) continue;
-    const { config } = entry;
-    if (config.transport === 'stdio') {
-      // stdio: OMIT `type` (the SDK defaults it). Only set `env` when non-empty so
-      // the options stay minimal.
-      servers[entry.name] = {
-        command: config.command,
-        args: config.args,
-        ...(Object.keys(config.env).length > 0 ? { env: config.env } : {}),
-      };
-    } else {
-      // http / sse: SET `type` to the transport; only set `headers` when non-empty.
-      servers[entry.name] = {
-        type: config.transport,
-        url: config.url,
-        ...(Object.keys(config.headers).length > 0
-          ? { headers: config.headers }
-          : {}),
-      };
-    }
-  }
-  return Object.keys(servers).length > 0 ? servers : undefined;
-}
-
-/** Map a contract image `format` token to the SDK base64 source `media_type`. The
- *  contract uses bare tokens (codegen-clean Rust enum variants); the SDK wants the
- *  full MIME type. */
-const WIRE_IMAGE_MEDIA_TYPE: Record<
-  WireImage['format'],
-  'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
-> = {
-  png: 'image/png',
-  jpeg: 'image/jpeg',
-  webp: 'image/webp',
-  gif: 'image/gif',
-};
-
-/** Build the SDK user-message content for a prompt + optional image attachments.
- *  Text-only stays a plain string (byte-identical to the pre-image shape); with
- *  attachments it becomes a content-block array — a text block followed by one
- *  base64 image block per attachment. `MessageParam.content` accepts both shapes.
- *  Exported for unit testing the block assembly. */
-export function buildUserMessageContent(
-  text: string,
-  images: WireImage[] = [],
-):
-  | string
-  | Array<
-      | { type: 'text'; text: string }
-      | {
-          type: 'image';
-          source: {
-            type: 'base64';
-            media_type: (typeof WIRE_IMAGE_MEDIA_TYPE)[WireImage['format']];
-            data: string;
-          };
-        }
-    > {
-  if (images.length === 0) return text;
-  return [
-    { type: 'text' as const, text },
-    ...images.map((image) => ({
-      type: 'image' as const,
-      source: {
-        type: 'base64' as const,
-        media_type: WIRE_IMAGE_MEDIA_TYPE[image.format],
-        data: image.data,
-      },
-    })),
-  ];
-}
+export { toSdkMcpServers } from './mcp-server-options.js';
+export {
+  composeAppendSystemPrompt,
+  CONTEXT_PACK_MAX_CHARS,
+  workingRootDirective,
+} from './system-prompt.js';
+export { buildUserMessageContent } from './user-message-content.js';
 
 /** Everything a [`SessionRunner`] needs to construct and drive one SDK query:
  *  the prompt + optional images, model/effort, permission policy, cwd, and the
@@ -227,76 +144,6 @@ export interface SessionRunnerConfig {
    *  this must clear the longest legitimate quiet gap. Absent ⇒
    *  [`DEFAULT_IDLE_TIMEOUT_MS`]. */
   idleTimeoutMs?: number;
-}
-
-/**
- * A conservative character budget for the injected context pack.
- * The pack leads the system prompt, so an unbounded pack could crowd out the task
- * and the model's own reasoning budget. ~12k characters is roughly 3k tokens — a
- * generous Constitution + arch summary + convention rules + memory excerpts, while
- * leaving the bulk of the window for the actual run. Truncation is hard-capped here
- * (not at the Rust source) so the engine is the last line of defence regardless of
- * what the core hands over.
- */
-export const CONTEXT_PACK_MAX_CHARS = 12_000;
-
-/** A visible marker appended when the pack is truncated, so a reader (human or
- *  model) knows the Constitution was clipped rather than silently ending. */
-const CONTEXT_PACK_TRUNCATION_NOTICE =
-  '\n\n…[context pack truncated to fit the pre-flight budget]';
-
-/** Separator between the working-root directive, the context pack, and the
- *  kind-preset persona in the composed `appendSystemPrompt`. A blank line keeps
- *  the trusted blocks visually distinct in the assembled system prompt. */
-const CONTEXT_PACK_SEPARATOR = '\n\n';
-
-/**
- * The authoritative working-directory directive that LEADS every run's system
- * prompt. Nightcore worktrees live nested inside the main checkout
- * (`<repo>/.nightcore/worktrees/<taskId>`), so a model that sees the worktree cwd
- * can trivially resolve "up" to the main repo root and edit the wrong tree
- * (observed 2026-07-01). This states plainly that the run cwd IS the repository
- * for the task and out-of-cwd writes are blocked — the prevent half of the pair
- * whose enforce half is `evaluateWorkspaceConfinement` (the PreToolUse gate).
- */
-export function workingRootDirective(cwd: string): string {
-  return (
-    `# Working directory (authoritative)\n\n` +
-    `Your working directory for this task is:\n  ${cwd}\n\n` +
-    `Treat THIS directory as the repository root for the task. Make every file ` +
-    `read, write, and edit inside it, and prefer paths relative to it. Do NOT ` +
-    `operate on any other copy of the repository — do not \`cd\` to a parent ` +
-    `directory, and do not use an absolute path that points outside this ` +
-    `directory. Writes outside this directory are blocked and will fail.`
-  );
-}
-
-/**
- * Compose the final `appendSystemPrompt` from the working-root directive, the
- * (optional) trusted context pack, and the (optional) kind-preset persona — in
- * that order, so the authoritative working root leads, then project rules, then
- * the reviewer/build persona. The pack is truncated to [`CONTEXT_PACK_MAX_CHARS`]
- * so it can't crowd out the task. Returns `undefined` only when every part is
- * absent (the working-root directive is always present for a real run, so the
- * option is effectively always set). Pure + exported so the ordering is
- * unit-testable without spinning a query.
- */
-export function composeAppendSystemPrompt(
-  workingRoot: string | undefined,
-  contextPack: string | undefined,
-  persona: string | undefined,
-): string | undefined {
-  const pack = contextPack?.trim();
-  const boundedPack =
-    pack !== undefined && pack.length > 0
-      ? pack.length > CONTEXT_PACK_MAX_CHARS
-        ? pack.slice(0, CONTEXT_PACK_MAX_CHARS) + CONTEXT_PACK_TRUNCATION_NOTICE
-        : pack
-      : undefined;
-  const parts = [workingRoot?.trim() || undefined, boundedPack, persona].filter(
-    (part): part is string => part !== undefined && part.length > 0,
-  );
-  return parts.length > 0 ? parts.join(CONTEXT_PACK_SEPARATOR) : undefined;
 }
 
 /**
