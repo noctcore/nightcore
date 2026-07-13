@@ -4,7 +4,6 @@ import { describe, expect, mock, test } from 'bun:test';
 import type { Logger } from '@nightcore/shared';
 
 import {
-  BASH_COMMAND_SCAN_LIMIT,
   type CompiledHarnessPolicy,
   compileHarnessPolicy,
   evaluateHarnessPolicy,
@@ -14,7 +13,6 @@ import {
   HARNESS_TOOL_ASK_RULE_ID,
   HARNESS_TOOL_DENY_RULE_ID,
   MANIFEST_PROTECTED_PATTERN,
-  MAX_BASH_PATTERN_LENGTH,
 } from './harness-policy.js';
 
 const CWD = '/repo';
@@ -62,67 +60,6 @@ function read(policy: CompiledHarnessPolicy, filePath: string, cwd: string | und
   return evaluateHarnessPolicy('Read', { file_path: filePath }, policy, cwd);
 }
 
-describe('protected paths — anchored patterns', () => {
-  test('a glob pattern blocks a matching write and allows a non-match', () => {
-    const policy = compiled(['migrations/**']);
-    expect(write(policy, 'migrations/001_init.sql').denied).toBe(true);
-    expect(write(policy, 'migrations/001_init.sql').ruleId).toBe(
-      HARNESS_PROTECTED_PATH_RULE_ID,
-    );
-    expect(write(policy, 'src/app.ts').denied).toBe(false);
-  });
-
-  test('a non-glob anchored pattern protects its whole subtree', () => {
-    const policy = compiled(['src/generated']);
-    expect(write(policy, 'src/generated/api.ts').denied).toBe(true);
-    expect(write(policy, 'src/generated').denied).toBe(true);
-    expect(write(policy, 'src/generate/api.ts').denied).toBe(false);
-    // `/repo/src/generated-extra` must not match `src/generated` (segment, not prefix).
-    expect(write(policy, 'src/generated-extra/api.ts').denied).toBe(false);
-  });
-
-  test('an absolute in-cwd target is matched repo-relative', () => {
-    const policy = compiled(['bun.lock']);
-    expect(write(policy, '/repo/bun.lock').denied).toBe(true);
-  });
-
-  test('`**` in the middle of a pattern spans segments', () => {
-    const policy = compiled(['packages/**/generated/**']);
-    expect(write(policy, 'packages/a/b/generated/x.ts').denied).toBe(true);
-    expect(write(policy, 'packages/a/generated/x.ts').denied).toBe(true);
-    expect(write(policy, 'packages/a/src/x.ts').denied).toBe(false);
-  });
-
-  test('`*` matches within a segment only', () => {
-    const policy = compiled(['*.sql']);
-    // Floating basename pattern: any depth.
-    expect(write(policy, 'db/001.sql').denied).toBe(true);
-    const anchored = compiled(['db/*.sql']);
-    expect(write(anchored, 'db/001.sql').denied).toBe(true);
-    expect(write(anchored, 'db/deep/001.sql').denied).toBe(false);
-  });
-});
-
-describe('protected paths — floating patterns', () => {
-  test('a bare filename pattern matches at any depth', () => {
-    const policy = compiled(['bun.lock']);
-    expect(write(policy, 'bun.lock').denied).toBe(true);
-    expect(write(policy, 'packages/web/bun.lock').denied).toBe(true);
-    expect(write(policy, 'src/app.ts').denied).toBe(false);
-  });
-
-  test('a floating glob matches lockfiles anywhere', () => {
-    const policy = compiled(['*.lock']);
-    expect(write(policy, 'deep/nested/Cargo.lock').denied).toBe(true);
-    expect(write(policy, 'deep/nested/cargo.toml').denied).toBe(false);
-  });
-
-  test('matching is case-insensitive (case-variant writes cannot slip through)', () => {
-    const policy = compiled(['bun.lock']);
-    expect(write(policy, 'BUN.LOCK').denied).toBe(true);
-  });
-});
-
 describe('protected paths — implicit self-protection', () => {
   test('.nightcore/** is protected even with an EMPTY policy', () => {
     const policy = compiled([]);
@@ -154,6 +91,11 @@ describe('protected paths — implicit self-protection', () => {
 });
 
 describe('protected paths — jurisdiction boundaries', () => {
+  test('an absolute in-cwd target is matched repo-relative', () => {
+    const policy = compiled(['bun.lock']);
+    expect(write(policy, '/repo/bun.lock').denied).toBe(true);
+  });
+
   test('a target OUTSIDE the run cwd is left alone (confinement owns it)', () => {
     const policy = compiled(['bun.lock']);
     expect(write(policy, '/elsewhere/bun.lock').denied).toBe(false);
@@ -214,12 +156,6 @@ describe('bash deny patterns', () => {
     expect(bash(policy, 'git commit -m "ok"').denied).toBe(false);
   });
 
-  test('patterns are real regexes', () => {
-    const policy = compiled([], ['npm\\s+install\\s+(?!--package-lock-only)']);
-    expect(bash(policy, 'npm install left-pad').denied).toBe(true);
-    expect(bash(policy, 'npm install --package-lock-only').denied).toBe(false);
-  });
-
   test('bash rules enforce even without a cwd', () => {
     const policy = compiled([], ['--no-verify']);
     // Call directly: the `bash` helper's default param would re-supply a cwd.
@@ -232,7 +168,7 @@ describe('bash deny patterns', () => {
     expect(verdict.denied).toBe(true);
   });
 
-  test('an invalid regex is warn-and-skipped; valid rules still enforce', () => {
+  test('an invalid pattern is warn-and-skipped at compile; valid rules still enforce', () => {
     const logger = fakeLogger();
     const policy = compiled([], ['(unclosed', '--no-verify'], logger);
     expect(logger.warn).toHaveBeenCalledTimes(1);
@@ -255,18 +191,6 @@ describe('compile hygiene', () => {
     // Only the implicit manifest rule survives.
     expect(policy.pathRules).toHaveLength(1);
     expect(policy.pathRules[0]!.pattern).toBe(MANIFEST_PROTECTED_PATTERN);
-  });
-
-  test('author sugar is tolerated: leading ./ or / and a trailing /', () => {
-    const policy = compiled(['./migrations/', '/src/generated/']);
-    expect(write(policy, 'migrations/001.sql').denied).toBe(true);
-    expect(write(policy, 'src/generated/api.ts').denied).toBe(true);
-  });
-
-  test('regex metacharacters in a path pattern are literal', () => {
-    const policy = compiled(['file.(x)+?.ts']);
-    expect(write(policy, 'file.(x)+?.ts').denied).toBe(true);
-    expect(write(policy, 'fileA(x)Bts').denied).toBe(false);
   });
 });
 
@@ -359,9 +283,6 @@ describe('least-privilege tool denial (module #9)', () => {
     expect(
       evaluateHarnessPolicy('WebSearch', {}, policy, undefined).denied,
     ).toBe(false);
-    // The glob is a prefix, not an exact entry.
-    expect(policy.disallowedTools.exact.size).toBe(0);
-    expect(policy.disallowedTools.prefixes).toEqual(['mcp__acme__']);
   });
 
   test('a disallowed mutation tool is denied by the tool rule, not path rules', () => {
@@ -369,12 +290,6 @@ describe('least-privilege tool denial (module #9)', () => {
     const denied = write(policy, 'src/app.ts');
     expect(denied.denied).toBe(true);
     expect(denied.ruleId).toBe(HARNESS_TOOL_DENY_RULE_ID);
-  });
-
-  test('empty/whitespace tool entries are skipped at compile', () => {
-    const logger = fakeLogger();
-    const policy = compiled([], [], logger, [], ['', '  ', 'WebSearch']);
-    expect(policy.disallowedTools.exact.size).toBe(1);
   });
 });
 
@@ -474,12 +389,6 @@ describe('interactive ask tier (module #9)', () => {
     expect(read(policy, 'src/app.ts').ask).toBe(true);
   });
 
-  test('empty/whitespace ask entries are skipped at compile', () => {
-    const logger = fakeLogger();
-    const policy = compiled([], [], logger, [], [], ['', '  ', 'WebFetch']);
-    expect(policy.askTools.exact.size).toBe(1);
-  });
-
   test('allowTools is NOT compiled into the hook policy (SDK-side only)', () => {
     const policy = compiled([], [], undefined, [], [], [], ['WebSearch']);
     // An allow entry must not produce any hook opinion — and must never
@@ -487,36 +396,5 @@ describe('interactive ask tier (module #9)', () => {
     expect(evaluateHarnessPolicy('WebSearch', {}, policy, CWD)).toEqual({
       denied: false,
     });
-  });
-});
-
-describe('regex-guard caps (module #3 hardening)', () => {
-  test('a pattern over MAX_BASH_PATTERN_LENGTH is warn-and-skipped; valid rules enforce', () => {
-    const logger = fakeLogger();
-    const oversized = 'a'.repeat(MAX_BASH_PATTERN_LENGTH + 1);
-    const policy = compiled([], [oversized, '--no-verify'], logger);
-    expect(logger.warn).toHaveBeenCalledTimes(1);
-    expect(policy.bashRules).toHaveLength(1);
-    expect(bash(policy, 'git commit --no-verify').denied).toBe(true);
-  });
-
-  test('a pattern exactly at the cap still compiles', () => {
-    const policy = compiled([], ['b'.repeat(MAX_BASH_PATTERN_LENGTH)]);
-    expect(policy.bashRules).toHaveLength(1);
-  });
-
-  test('only the first 16 KiB of a command are tested (match past the cap fails open)', () => {
-    const policy = compiled([], ['--no-verify']);
-    const pastCap = `${'x'.repeat(BASH_COMMAND_SCAN_LIMIT)} --no-verify`;
-    expect(bash(policy, pastCap).denied).toBe(false);
-    const withinCap = `--no-verify ${'x'.repeat(BASH_COMMAND_SCAN_LIMIT)}`;
-    expect(bash(policy, withinCap).denied).toBe(true);
-  });
-
-  test('a match straddling the cap boundary does not fire (sliced input)', () => {
-    const policy = compiled([], ['--no-verify']);
-    // Place the pattern so it starts before the cap but completes after it.
-    const prefix = 'y'.repeat(BASH_COMMAND_SCAN_LIMIT - 4);
-    expect(bash(policy, `${prefix}--no-verify`).denied).toBe(false);
   });
 });

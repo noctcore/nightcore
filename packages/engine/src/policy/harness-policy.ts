@@ -66,19 +66,41 @@
  * left alone (confinement's jurisdiction — deny or the temp-dir allowance);
  * protected patterns are meaningful only as repo-relative paths.
  *
- * GLOB SEMANTICS (documented on the wire schema, tested here):
- *   - `*` matches within a path segment, `**` matches zero or more segments.
- *   - A pattern containing `/` is ANCHORED at the run cwd (repo root).
- *   - A pattern without `/` FLOATS: it matches its segment at any depth
- *     (`*.lock` ⇒ any lockfile anywhere, gitignore-style).
- *   - A matched PREFIX protects the whole subtree (`migrations` ⇒ every file
- *     under `migrations/`), so non-glob patterns read naturally.
+ * The path-glob engine (anchored/floating/`**`/case-insensitivity — see
+ * {@link compilePathRule} / {@link ruleProtects}) and the MCP-aware tool-tier
+ * matcher (`disallowedTools`/`askTools` exact + `mcp__server__*` prefix
+ * matching — see {@link toolMatches}) now live in `./harness/path-rules.ts` and
+ * `./harness/tool-matcher.ts`; this module remains the FACADE: it owns the
+ * orchestrator + the whole-gate documentation above, and re-exports the public
+ * surface so every consumer keeps one import site.
  */
 import * as path from 'node:path';
 
 import type { HarnessPolicy } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
 
+import {
+  compileBashRules,
+  type CompiledBashRule,
+  matchBashRule,
+} from './harness/bash-rules.js';
+import {
+  type CompiledPathRule,
+  compilePathRule,
+  ruleProtects,
+} from './harness/path-rules.js';
+import {
+  bashDenyReason,
+  protectedPathReason,
+  readDenyReason,
+  toolAskReason,
+  toolDenyReason,
+} from './harness/reasons.js';
+import {
+  type CompiledToolMatcher,
+  compileToolMatcher,
+  toolMatches,
+} from './harness/tool-matcher.js';
 import {
   BASH_TOOL,
   type ToolDenyVerdict,
@@ -89,6 +111,13 @@ import {
   resolveAgainst,
   targetUnderKey,
 } from './workspace-confinement.js';
+
+export {
+  BASH_COMMAND_SCAN_LIMIT,
+  MAX_BASH_PATTERN_LENGTH,
+} from './harness/bash-rules.js';
+export { type CompiledPathRule, compilePathRule, ruleProtects } from './harness/path-rules.js';
+export { type CompiledToolMatcher,toolMatches } from './harness/tool-matcher.js';
 
 /** Stable id surfaced in logs/telemetry when a protected-path rule denies. */
 export const HARNESS_PROTECTED_PATH_RULE_ID = 'harness-protected-path';
@@ -107,19 +136,6 @@ export const HARNESS_TOOL_DENY_RULE_ID = 'harness-tool-deny';
 /** Stable id surfaced when the project's `askTools` list (module #9 ask tier)
  *  escalates a tool call to an interactive permission ask. */
 export const HARNESS_TOOL_ASK_RULE_ID = 'harness-tool-ask';
-
-/** Max length of one `denyBashPatterns` regex; longer patterns are
- *  warn-and-skipped at compile (same path as an invalid regex). Caps the
- *  pattern half of the catastrophic-backtracking surface: the sidecar is a
- *  single process, so one pathological `RegExp.test` stalls every session. */
-export const MAX_BASH_PATTERN_LENGTH = 512;
-
-/** Only this many chars of a Bash command are tested against the deny
- *  patterns — the input half of the backtracking mitigation. A >16 KiB command
- *  is already pathological; a deny pattern that would only match PAST the cap
- *  fails open, which is acceptable for a heuristic gate (the destructive deny
- *  list and the OS-sandbox roadmap remain the hard lines). */
-export const BASH_COMMAND_SCAN_LIMIT = 16 * 1024;
 
 /** The path-bearing native READ tools the `denyReadPaths` rules inspect → input
  *  key. `Grep`/`Glob` are covered only when they carry an explicit `path` — a
@@ -141,38 +157,6 @@ const FILE_READ_TARGET_KEY: Record<string, string> = {
  *  holds the harness manifest, the task store, and future enforcement state
  *  (ratchet baselines); none of it is ever an agent's legitimate write target. */
 export const MANIFEST_PROTECTED_PATTERN = '.nightcore/**';
-
-/** One compiled protected-path rule: the original pattern (for the deny reason)
- *  plus its segment matchers (`'**'` sentinel | a per-segment regex). Exported
- *  (with {@link compilePathRule} / {@link ruleProtects}) so the exec-sink ASK gate
- *  reuses the SAME repo-relative glob engine — one home for the anchored/floating
- *  + subtree-prefix semantics both gates match against. */
-export interface CompiledPathRule {
-  pattern: string;
-  segments: (RegExp | '**')[];
-  /** True for a pattern without `/` — matched at any depth (gitignore-style). */
-  floating: boolean;
-}
-
-/** One compiled Bash deny rule: the original pattern text + its regex. */
-interface CompiledBashRule {
-  pattern: string;
-  regex: RegExp;
-}
-
-/** A compiled tool-tier matcher: exact SDK tool names plus `mcp__server__*` prefix
- *  globs. An entry like `mcp__acme__*` gates EVERY tool from the `acme` server with
- *  one line — a whole external MCP server can be denied/asked without enumerating
- *  its tools, so a server that later adds a tool doesn't silently escape the tier
- *  (#223). Every other entry, MCP or native, matches EXACTLY, so a literal tool
- *  name can never widen into a wildcard. Match with {@link toolMatches}. */
-export interface CompiledToolMatcher {
-  /** Entries matched by identity (`WebSearch`, `mcp__acme__push`). */
-  exact: ReadonlySet<string>;
-  /** Prefixes from `mcp__…__*` entries — a call matches when its name STARTS WITH
-   *  the prefix (`mcp__acme__*` ⇒ prefix `mcp__acme__`). */
-  prefixes: readonly string[];
-}
 
 /** The compiled form {@link HookBus} holds for the session's lifetime — compile
  *  once at construction, evaluate per tool call. */
@@ -201,79 +185,6 @@ export interface HarnessPolicyVerdict extends ToolDenyVerdict {
   ask?: boolean;
 }
 
-/** Escape regex metacharacters, then translate `*` → "any run of non-separator
- *  characters". Case-insensitive (see the module header). */
-function segmentToRegex(segment: string): RegExp {
-  const escaped = segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`^${escaped.replace(/\\\*/g, '[^/\\\\]*')}$`, 'i');
-}
-
-/** Compile one protected-path pattern, or undefined for an unusable (empty)
- *  one. Leading `./`/`/` and a trailing `/` are tolerated author sugar. */
-export function compilePathRule(raw: string): CompiledPathRule | undefined {
-  const trimmed = raw.trim().replace(/^\.?\//, '').replace(/\/+$/, '');
-  if (trimmed.length === 0) return undefined;
-  const parts = trimmed.split('/').filter((p) => p.length > 0);
-  if (parts.length === 0) return undefined;
-  return {
-    pattern: raw,
-    segments: parts.map((p) => (p === '**' ? '**' : segmentToRegex(p))),
-    floating: !trimmed.includes('/'),
-  };
-}
-
-/** True for an `mcp__…__*` tier entry — the only entries that glob. A trailing
- *  `*` on an MCP entry becomes a server/prefix match (`mcp__acme__*` gates every
- *  `mcp__acme__…` tool); every other entry, including native tool names, is exact,
- *  so a literal name can never accidentally become a wildcard. */
-function isMcpGlob(entry: string): boolean {
-  return entry.startsWith('mcp__') && entry.endsWith('*');
-}
-
-/** True when `toolName` is gated by the matcher — an exact-name hit, or an
- *  `mcp__server__*` prefix the name starts with. Exported so the ask and deny
- *  tiers share one matching rule. */
-export function toolMatches(matcher: CompiledToolMatcher, toolName: string): boolean {
-  if (matcher.exact.has(toolName)) return true;
-  return matcher.prefixes.some((prefix) => toolName.startsWith(prefix));
-}
-
-/**
- * Compile a tool-tier list into a {@link CompiledToolMatcher}. Empty/whitespace
- * entries are warn-and-skipped (one typo must never brick the layer). An
- * `mcp__…__*` entry becomes a prefix glob (its trailing `*` dropped) so it gates a
- * whole MCP server; every other entry is exact. When `denyMatcher` is supplied
- * (the askTools pass), an entry it already gates is flagged as dead config — deny
- * wins over ask, so the author learns the ask entry is not a softer deny.
- */
-function compileToolMatcher(
-  tools: readonly string[],
-  listName: string,
-  logger?: Logger,
-  denyMatcher?: CompiledToolMatcher,
-): CompiledToolMatcher {
-  const exact = new Set<string>();
-  const prefixes: string[] = [];
-  for (const tool of tools) {
-    const trimmed = tool.trim();
-    if (trimmed.length === 0) {
-      logger?.warn(`skipping empty harness ${listName} entry`);
-      continue;
-    }
-    if (denyMatcher !== undefined && toolMatches(denyMatcher, trimmed)) {
-      logger?.warn(`${listName} entry is also in disallowedTools; deny wins`, {
-        tool: trimmed,
-      });
-    }
-    if (isMcpGlob(trimmed)) {
-      prefixes.push(trimmed.slice(0, -1));
-    } else {
-      exact.add(trimmed);
-    }
-  }
-  return { exact, prefixes };
-}
-
 /**
  * Compile the wire policy into per-session matchers. Invalid entries are
  * warn-and-skipped (one typo must never brick the layer — the valid rules still
@@ -294,28 +205,7 @@ export function compileHarnessPolicy(
     pathRules.push(rule);
   }
 
-  const bashRules: CompiledBashRule[] = [];
-  for (const pattern of policy.denyBashPatterns) {
-    // Length cap before compile: a very long project-authored pattern is the
-    // easiest way to smuggle in catastrophic backtracking. Same warn-and-skip
-    // posture as an invalid regex — the remaining rules still enforce.
-    if (pattern.length > MAX_BASH_PATTERN_LENGTH) {
-      logger?.warn('skipping oversized harness denyBashPatterns regex', {
-        pattern: pattern.slice(0, 64),
-        length: pattern.length,
-        max: MAX_BASH_PATTERN_LENGTH,
-      });
-      continue;
-    }
-    try {
-      bashRules.push({ pattern, regex: new RegExp(pattern) });
-    } catch (error) {
-      logger?.warn('skipping invalid harness denyBashPatterns regex', {
-        pattern,
-        error,
-      });
-    }
-  }
+  const bashRules = compileBashRules(policy.denyBashPatterns, logger);
 
   const readRules: CompiledPathRule[] = [];
   for (const pattern of policy.denyReadPaths) {
@@ -342,95 +232,6 @@ export function compileHarnessPolicy(
   );
 
   return { pathRules, bashRules, readRules, disallowedTools, askTools };
-}
-
-/** True when `rule` matches a prefix of `segments` starting at `from` — a full
- *  match protects the file, a prefix match protects the subtree beneath it. */
-function matchesFrom(
-  rule: CompiledPathRule,
-  segments: readonly string[],
-  from: number,
-): boolean {
-  const walk = (pi: number, si: number): boolean => {
-    // Pattern exhausted ⇒ the consumed prefix matched (file itself or subtree).
-    if (pi === rule.segments.length) return true;
-    const part = rule.segments[pi]!;
-    if (part === '**') {
-      // `**` matches zero or more whole segments.
-      for (let k = si; k <= segments.length; k += 1) {
-        if (walk(pi + 1, k)) return true;
-      }
-      return false;
-    }
-    if (si >= segments.length) return false;
-    return part.test(segments[si]!) && walk(pi + 1, si + 1);
-  };
-  return walk(0, from);
-}
-
-/** True when `rule` protects the cwd-relative path split into `segments`. An
- *  anchored rule matches from the root only; a floating rule from any depth. */
-export function ruleProtects(rule: CompiledPathRule, segments: readonly string[]): boolean {
-  if (!rule.floating) return matchesFrom(rule, segments, 0);
-  for (let i = 0; i < segments.length; i += 1) {
-    if (matchesFrom(rule, segments, i)) return true;
-  }
-  return false;
-}
-
-/** The deny reason for a protected-path match — names the target AND the pattern
- *  so the model understands the rail rather than retrying variants, and points it
- *  at the honest escalation path (report to the user). */
-function protectedPathReason(target: string, pattern: string): string {
-  return (
-    `Blocked by this project's harness policy: ${target} matches the protected ` +
-    `pattern "${pattern}" and must not be modified in an autonomous run. Protected ` +
-    `paths are enforcement config or machine-owned files (lockfiles, migrations, ` +
-    `generated code, the .nightcore manifest). If the task genuinely requires ` +
-    `changing this file, stop and report that to the user instead of working ` +
-    `around the protection.`
-  );
-}
-
-/** The deny reason for a Bash deny-pattern match. */
-function bashDenyReason(pattern: string): string {
-  return (
-    `Blocked by this project's harness policy: this command matches the project's ` +
-    `deny pattern "${pattern}". The project forbids this command form in autonomous ` +
-    `runs (typically because it bypasses hooks, verification, or dependency ` +
-    `integrity). Accomplish the task without it, or stop and report to the user.`
-  );
-}
-
-/** The deny reason for a read-deny match — the target is secret material or a
- *  quarantined (injection-flagged) file the project declared off-limits. */
-function readDenyReason(target: string, pattern: string): string {
-  return (
-    `Blocked by this project's harness policy: reading ${target} is refused — it ` +
-    `matches the read-denied pattern "${pattern}". Read-denied paths hold secret ` +
-    `material (.env files, keys) or content quarantined as a prompt-injection ` +
-    `risk. The task must not depend on this file's contents; if it genuinely ` +
-    `does, stop and report that to the user.`
-  );
-}
-
-/** The deny reason when a tool is disallowed outright for this project. */
-function toolDenyReason(toolName: string): string {
-  return (
-    `Blocked by this project's harness policy: the ${toolName} tool is disallowed ` +
-    `for autonomous runs in this project (least-privilege configuration). ` +
-    `Accomplish the task with the remaining tools, or stop and report to the user.`
-  );
-}
-
-/** The reason carried on an ask escalation — shown as the permission prompt's
- *  context (user) and as the decision reason (agent transcript). */
-function toolAskReason(toolName: string): string {
-  return (
-    `This project's harness policy requires interactive approval for the ` +
-    `${toolName} tool (ask tier, least-privilege configuration). The call has ` +
-    `been escalated to the user; wait for their decision.`
-  );
 }
 
 /**
@@ -521,20 +322,13 @@ function evaluateDenyTiers(
   if (toolName === BASH_TOOL && policy.bashRules.length > 0) {
     const command = targetUnderKey(toolInput, 'command');
     if (command === undefined) return { denied: false };
-    // Input cap (the pattern cap's counterpart, see BASH_COMMAND_SCAN_LIMIT):
-    // bound the text a project regex can backtrack over.
-    const bounded =
-      command.length > BASH_COMMAND_SCAN_LIMIT
-        ? command.slice(0, BASH_COMMAND_SCAN_LIMIT)
-        : command;
-    for (const rule of policy.bashRules) {
-      if (rule.regex.test(bounded)) {
-        return {
-          denied: true,
-          ruleId: HARNESS_BASH_DENY_RULE_ID,
-          reason: bashDenyReason(rule.pattern),
-        };
-      }
+    const matched = matchBashRule(command, policy.bashRules);
+    if (matched !== undefined) {
+      return {
+        denied: true,
+        ruleId: HARNESS_BASH_DENY_RULE_ID,
+        reason: bashDenyReason(matched.pattern),
+      };
     }
   }
 
