@@ -1580,7 +1580,7 @@ const EVENT_INPUTS: Record<string, unknown> = {
         category: 'folder-structure',
         title: 'Components follow strict folder-per-component',
         status: 'enforced',
-        enforcedBy: ['nightcore/component-folder-structure'],
+        enforcedBy: ['noctcore-architecture/component-folder-structure'],
         documentedIn: ['Components are folder-per-component.'],
         suggestedArtifactKind: 'eslint-rule',
         fingerprint: 'folder-structure:folder-per-component',

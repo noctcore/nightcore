@@ -110,7 +110,7 @@ mod tests {
             category: "folder-structure".into(),
             title: "t".into(),
             status: "enforced".into(),
-            enforced_by: vec!["nightcore/component-folder-structure".into()],
+            enforced_by: vec!["noctcore-architecture/component-folder-structure".into()],
             documented_in: vec![],
             suggested_artifact_kind: Some("eslint-rule".into()),
             fingerprint: convention_fp.to_string(),
@@ -253,7 +253,7 @@ mod tests {
         assert_eq!(cov[0].status, "enforced");
         assert_eq!(
             cov[0].enforced_by,
-            vec!["nightcore/component-folder-structure"]
+            vec!["noctcore-architecture/component-folder-structure"]
         );
         assert_eq!(cov[0].convention_fingerprint, "fp1");
     }

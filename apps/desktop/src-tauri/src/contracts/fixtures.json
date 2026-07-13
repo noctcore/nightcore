@@ -823,7 +823,7 @@
           "title": "Components follow strict folder-per-component",
           "status": "enforced",
           "enforcedBy": [
-            "nightcore/component-folder-structure"
+            "noctcore-architecture/component-folder-structure"
           ],
           "documentedIn": [
             "Components are folder-per-component."
