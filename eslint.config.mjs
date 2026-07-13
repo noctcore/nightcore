@@ -378,7 +378,13 @@ export default tseslint.config(
     files: [`${COMPONENTS_GLOB}/*.{ts,tsx}`],
     ignores: [`${COMPONENTS_GLOB}/*.{stories,test}.{ts,tsx}`, FEATURE_ROOT_FILES],
     rules: {
-      'noctcore-architecture/component-folder-structure': 'error',
+      // Explicit ignorePaths matches the local rule's original scope exactly
+      // (the published default `**/ui/**` is broader; nightcore only excludes
+      // components/ui). Behavior-preserving parity.
+      'noctcore-architecture/component-folder-structure': [
+        'error',
+        { ignorePaths: ['**/components/ui/**'] },
+      ],
       'noctcore-react/no-state-in-component-body': 'error',
       // ui = shadcn primitives (the cross-feature escape hatch, skipped dir).
       // Type-only cross-feature imports are banned too (issue #55): type-level
