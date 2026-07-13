@@ -3,13 +3,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { NightcoreEvent } from '@nightcore/contracts';
 
-import {
-  categoryForReason,
-  detailForReason,
-  mapAssistantError,
-  type SDKMessage,
-  translateMessage,
-} from './sdk-adapter.js';
+import { type SDKMessage, translateMessage } from './sdk-adapter.js';
 
 const SID = 7;
 
@@ -76,8 +70,8 @@ describe('translateMessage — system init', () => {
   });
 });
 
-describe('translateMessage — task lifecycle system messages', () => {
-  test('maps task_started to a running task-updated (ambient from skip_transcript)', () => {
+describe('translateMessage — system messages delegate task lifecycle to translateTask', () => {
+  test('wires a task_started system message through to a task-updated event, no terminal', () => {
     const result = translateMessage(
       SID,
       sdk({
@@ -103,116 +97,9 @@ describe('translateMessage — task lifecycle system messages', () => {
     ]);
   });
 
-  test('defaults ambient to false when skip_transcript is absent', () => {
-    const result = translateMessage(
-      SID,
-      sdk({ type: 'system', subtype: 'task_started', task_id: 'task-2', description: 'go' }),
-    );
-    const event = result.events[0] as Extract<
-      NightcoreEvent,
-      { type: 'task-updated' }
-    >;
-    expect(event.ambient).toBe(false);
-    expect(event.subagentType).toBeUndefined();
-  });
-
-  test('maps task_updated patch (status + error → summary)', () => {
-    const result = translateMessage(
-      SID,
-      sdk({
-        type: 'system',
-        subtype: 'task_updated',
-        task_id: 'task-3',
-        patch: { status: 'failed', description: 'retrying', error: 'boom' },
-      }),
-    );
-    expect(result.events).toEqual([
-      {
-        type: 'task-updated',
-        sessionId: SID,
-        taskId: 'task-3',
-        status: 'failed',
-        description: 'retrying',
-        summary: 'boom',
-        ambient: false,
-      },
-    ]);
-  });
-
-  test('maps task_progress (description + summary + subagent, no status)', () => {
-    const result = translateMessage(
-      SID,
-      sdk({
-        type: 'system',
-        subtype: 'task_progress',
-        task_id: 'task-4',
-        description: 'still working',
-        summary: 'half done',
-        subagent_type: 'builder',
-      }),
-    );
-    const event = result.events[0] as Extract<
-      NightcoreEvent,
-      { type: 'task-updated' }
-    >;
-    expect(event.status).toBeUndefined();
-    expect(event).toMatchObject({
-      taskId: 'task-4',
-      description: 'still working',
-      summary: 'half done',
-      subagentType: 'builder',
-      ambient: false,
-    });
-  });
-
-  test('maps task_notification stopped → killed', () => {
-    const result = translateMessage(
-      SID,
-      sdk({
-        type: 'system',
-        subtype: 'task_notification',
-        task_id: 'task-5',
-        status: 'stopped',
-        summary: 'user cancelled',
-      }),
-    );
-    expect(result.events).toEqual([
-      {
-        type: 'task-updated',
-        sessionId: SID,
-        taskId: 'task-5',
-        status: 'killed',
-        summary: 'user cancelled',
-        ambient: false,
-      },
-    ]);
-  });
-
-  test('maps task_notification completed as-is', () => {
-    const result = translateMessage(
-      SID,
-      sdk({
-        type: 'system',
-        subtype: 'task_notification',
-        task_id: 'task-6',
-        status: 'completed',
-        summary: 'done',
-      }),
-    );
-    const event = result.events[0] as Extract<
-      NightcoreEvent,
-      { type: 'task-updated' }
-    >;
-    expect(event.status).toBe('completed');
-  });
-
-  test('ignores a task subtype with no task_id', () => {
-    const result = translateMessage(
-      SID,
-      sdk({ type: 'system', subtype: 'task_progress', description: 'orphan' }),
-    );
-    expect(result.events).toEqual([]);
-  });
+  // Full task-lifecycle subtype coverage (task_updated / task_progress /
+  // task_notification / no-task_id) lives in `sdk-task-events.test.ts`, unit
+  // tested directly against `translateTask`.
 });
 
 describe('translateMessage — assistant message blocks', () => {
@@ -672,51 +559,5 @@ describe('translateMessage — unknown message types', () => {
   });
 });
 
-describe('mapAssistantError', () => {
-  type Reason = ReturnType<typeof mapAssistantError>;
-  const cases: ReadonlyArray<readonly [string | undefined, Reason]> = [
-    ['authentication_failed', 'authentication'],
-    ['oauth_org_not_allowed', 'authentication'],
-    ['rate_limit', 'rate-limit'],
-    ['overloaded', 'rate-limit'],
-    ['max_output_tokens', 'max-turns'],
-    ['server_error', 'unknown'],
-    [undefined, 'unknown'],
-  ];
-  test.each(cases)('maps %p to %p', (input, expected) => {
-    expect(mapAssistantError(input)).toBe(expected);
-  });
-});
-
-describe('categoryForReason — structured error taxonomy', () => {
-  const cases: ReadonlyArray<
-    readonly [Parameters<typeof categoryForReason>[0], string, string]
-  > = [
-    ['authentication', 'no', 'auth'],
-    ['rate-limit', 'slow down', 'rate-limit'],
-    ['aborted', 'cancelled', 'aborted'],
-    ['max-turns', 'cap', 'resource-exhausted'],
-    ['max-budget', 'cap', 'resource-exhausted'],
-    ['runner-crash', 'boom', 'runner-crash'],
-    ['unknown', 'huh', 'unknown'],
-    // A generic crash/unknown is promoted to disk-full when the OS said ENOSPC.
-    ['runner-crash', 'write failed: ENOSPC', 'disk-full'],
-    ['unknown', 'no space left on device', 'disk-full'],
-  ];
-  test.each(cases)('%p (%p) → %p', (reason, message, expected) => {
-    expect(categoryForReason(reason, message)).toBe(expected);
-  });
-});
-
-describe('detailForReason — retriability', () => {
-  test('marks rate-limit and runner-crash retriable', () => {
-    expect(detailForReason('rate-limit', 'x').retriable).toBe(true);
-    expect(detailForReason('runner-crash', 'boom').retriable).toBe(true);
-  });
-  test('marks auth, resource ceilings, and disk-full non-retriable', () => {
-    expect(detailForReason('authentication', 'x').retriable).toBe(false);
-    expect(detailForReason('max-turns', 'x').retriable).toBe(false);
-    expect(detailForReason('runner-crash', 'ENOSPC').category).toBe('disk-full');
-    expect(detailForReason('runner-crash', 'ENOSPC').retriable).toBe(false);
-  });
-});
+// `mapAssistantError` / `categoryForReason` / `detailForReason` unit tests live
+// in `sdk-error-classification.test.ts`, colocated with their implementation.
