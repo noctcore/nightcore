@@ -36,16 +36,16 @@ import {
   tagSession,
 } from '@anthropic-ai/claude-agent-sdk';
 
-import type {
-  ErrorCategory,
-  ErrorDetail,
-  NightcoreEvent,
-  TaskKind,
-} from '@nightcore/contracts';
+import type { NightcoreEvent, TaskKind } from '@nightcore/contracts';
 
-import { getBoolean, getObject, getString } from '../../util/field-extract.js';
 import { asStructuredOutput } from '../../util/json-extract.js';
 import { parseSubtasks, subtasksFromStructuredOutput } from './decompose.js';
+import {
+  detailForReason,
+  mapAssistantError,
+  type NightcoreEventOfReason,
+} from './sdk-error-classification.js';
+import { translateTask } from './sdk-task-events.js';
 
 export type {
   AgentDefinition,
@@ -78,93 +78,11 @@ export {
   renameSession,
   tagSession,
 };
-
-/** Map an `SDKAssistantMessageError` onto a stable Nightcore failure reason. */
-export function mapAssistantError(
-  error: string | undefined,
-): NightcoreEventOfReason {
-  switch (error) {
-    case 'authentication_failed':
-    case 'oauth_org_not_allowed':
-      return 'authentication';
-    case 'rate_limit':
-    case 'overloaded':
-      return 'rate-limit';
-    case 'max_output_tokens':
-      return 'max-turns';
-    default:
-      return 'unknown';
-  }
-}
-
-type NightcoreEventOfReason = Extract<
-  NightcoreEvent,
-  { type: 'session-failed' }
->['reason'];
-
-/** Map a session failure `reason` (+ its message) onto the coarse, structured
- *  {@link ErrorCategory} the auto-loop + circuit breaker branch on. The reason
- *  drives the bucket; the message is sniffed only to promote a generic
- *  runner-crash/unknown into a `disk-full` when the OS reported ENOSPC (a
- *  fatal-setup cause the breaker must stop on, not retry). */
-export function categoryForReason(
-  reason: NightcoreEventOfReason,
-  message: string,
-): ErrorCategory {
-  switch (reason) {
-    case 'authentication':
-      return 'auth';
-    case 'rate-limit':
-      return 'rate-limit';
-    case 'aborted':
-      return 'aborted';
-    // `max-turns`/`max-budget` hit an autonomy ceiling; `structured-output-failed`
-    // means the SDK exhausted its INTERNAL structured-output retries (a decompose
-    // run whose output never conformed to the requested schema). All three are
-    // terminal + needs-attention — the ceiling/contract was hit and a blind full
-    // re-run is unlikely to help — so they bucket as `resource-exhausted`
-    // (non-retriable; does not fatal-stop the breaker).
-    case 'max-turns':
-    case 'max-budget':
-    case 'structured-output-failed':
-      return 'resource-exhausted';
-    case 'runner-crash':
-    case 'unknown':
-      return looksLikeDiskFull(message) ? 'disk-full' : reason === 'runner-crash'
-        ? 'runner-crash'
-        : 'unknown';
-    default: {
-      // Exhaustiveness guard: a new reason must decide its category here.
-      const _never: never = reason;
-      return _never;
-    }
-  }
-}
-
-/** True when a failure message names an out-of-disk condition (ENOSPC / "no
- *  space left on device"), so a generic crash is promoted to `disk-full`. */
-function looksLikeDiskFull(message: string): boolean {
-  return /ENOSPC|no space left on device/i.test(message);
-}
-
-/** Categories a retry of the SAME operation could plausibly clear. Everything
- *  else (auth, resource ceiling, not-found, disk-full, aborted, unknown) is a
- *  terminal/setup cause the auto-loop must not blindly re-run. */
-const RETRIABLE_CATEGORIES: ReadonlySet<ErrorCategory> = new Set([
-  'rate-limit',
-  'runner-crash',
-]);
-
-/** Build the structured {@link ErrorDetail} carried alongside a `session-failed`
- *  event's `reason`/`message`, so Rust consumers branch on `category`/`retriable`
- *  instead of scraping the string. */
-export function detailForReason(
-  reason: NightcoreEventOfReason,
-  message: string,
-): ErrorDetail {
-  const category = categoryForReason(reason, message);
-  return { category, message, retriable: RETRIABLE_CATEGORIES.has(category) };
-}
+export {
+  categoryForReason,
+  detailForReason,
+  mapAssistantError,
+} from './sdk-error-classification.js';
 
 /** A minimal text content block. */
 interface TextBlock {
@@ -250,31 +168,6 @@ export interface TranslateResult {
     | { kind: 'failed'; reason: NightcoreEventOfReason; message: string };
 }
 
-/** Normalize the SDK's task-status superset onto the Nightcore
- *  `SubagentStepStatus` set. The only divergence is `'stopped'` (used by
- *  `task_notification`), which maps to `'killed'`; every other value already
- *  matches the contract enum. */
-function normalizeTaskStatus(
-  status: string | undefined,
-): TaskUpdatedEvent['status'] {
-  if (status === undefined) return undefined;
-  if (status === 'stopped') return 'killed';
-  if (
-    status === 'pending' ||
-    status === 'running' ||
-    status === 'completed' ||
-    status === 'failed' ||
-    status === 'killed' ||
-    status === 'paused' ||
-    status === 'in_progress'
-  ) {
-    return status === 'in_progress' ? 'running' : status;
-  }
-  return undefined;
-}
-
-type TaskUpdatedEvent = Extract<NightcoreEvent, { type: 'task-updated' }>;
-
 function translateSystem(
   sessionId: number,
   msg: Extract<SDKMessage, { type: 'system' }>,
@@ -300,85 +193,6 @@ function translateSystem(
   if (task) return { events: [task] };
 
   return { events: [] };
-}
-
-/**
- * Translate the SDK's task lifecycle system messages
- * (`task_started` / `task_updated` / `task_progress` / `task_notification`)
- * into a single `task-updated` event. Keys are read defensively because the SDK
- * marks most of them optional. Returns `undefined` for any other subtype so the
- * caller can fall through.
- *
- * These events are NOT terminal — they describe subagent/task progress, not the
- * end of the session.
- */
-function translateTask(
-  sessionId: number,
-  msg: Extract<SDKMessage, { type: 'system' }>,
-): TaskUpdatedEvent | undefined {
-  const m = msg as Record<string, unknown>;
-  const taskId = getString(m, 'task_id');
-  if (taskId === undefined) return undefined;
-
-  const subagentType = getString(m, 'subagent_type');
-  const description = getString(m, 'description');
-  const summary = getString(m, 'summary');
-
-  switch (msg.subtype) {
-    case 'task_started': {
-      const ambient = getBoolean(m, 'skip_transcript') ?? false;
-      return {
-        type: 'task-updated',
-        sessionId,
-        taskId,
-        status: 'running',
-        ...(description !== undefined ? { description } : {}),
-        ...(subagentType !== undefined ? { subagentType } : {}),
-        ambient,
-      };
-    }
-    case 'task_updated': {
-      const patch = getObject(m, 'patch') ?? {};
-      const status = normalizeTaskStatus(getString(patch, 'status'));
-      const patchDescription = getString(patch, 'description');
-      const patchError = getString(patch, 'error');
-      return {
-        type: 'task-updated',
-        sessionId,
-        taskId,
-        ...(status !== undefined ? { status } : {}),
-        ...(patchDescription !== undefined
-          ? { description: patchDescription }
-          : {}),
-        ...(patchError !== undefined ? { summary: patchError } : {}),
-        ambient: false,
-      };
-    }
-    case 'task_progress': {
-      return {
-        type: 'task-updated',
-        sessionId,
-        taskId,
-        ...(description !== undefined ? { description } : {}),
-        ...(summary !== undefined ? { summary } : {}),
-        ...(subagentType !== undefined ? { subagentType } : {}),
-        ambient: false,
-      };
-    }
-    case 'task_notification': {
-      const status = normalizeTaskStatus(getString(m, 'status'));
-      return {
-        type: 'task-updated',
-        sessionId,
-        taskId,
-        ...(status !== undefined ? { status } : {}),
-        ...(summary !== undefined ? { summary } : {}),
-        ambient: false,
-      };
-    }
-    default:
-      return undefined;
-  }
 }
 
 function translateAssistant(
