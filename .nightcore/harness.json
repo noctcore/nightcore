@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "checks": [
+    {
+      "name": "structure-lock",
+      "kind": "lint-meta",
+      "command": "bun run lint:meta",
+      "enabled": true
+    }
+  ]
+}

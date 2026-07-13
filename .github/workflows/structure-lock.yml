@@ -1,0 +1,32 @@
+# Dogfoods the published portable Structure-Lock runner (@noctcore/harness, #134)
+# against Nightcore's own repo: reads .nightcore/harness.json and runs each declared
+# check via `npx @noctcore/harness check` — the EXACT command a downstream repo runs.
+# This proves the published runner works on a real project and guards against
+# regressions in the package. The declared check spawns `bun run lint:meta`, so this
+# job installs bun + deps (a plain downstream repo would only need the check's own
+# toolchain). Pinned runner version — never @latest (§5 supply-chain).
+#
+# NOTE: uses `bunx`, not `npx`. This repo is a Bun workspace that CONTAINS the
+# `@noctcore/harness` source (packages/harness), which shadows npm's `npx` resolution
+# (npx picks the un-built local workspace copy and fails). `bunx @noctcore/harness@<ver>`
+# fetches the PUBLISHED artifact instead. A downstream repo has no local copy, so the
+# exported workflow template uses `npx` (which works there) — this bunx swap is
+# nightcore-dogfood-specific.
+name: structure-lock
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  structure-lock:
+    name: portable structure-lock (npx @noctcore/harness)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - run: bunx @noctcore/harness@0.1.0 check
