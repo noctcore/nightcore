@@ -199,6 +199,15 @@ pub enum SurfaceCommand {
     },
     #[serde(rename_all = "camelCase")]
     KillCouncil { run_id: String },
+    #[serde(rename_all = "camelCase")]
+    ResolveCouncilConverge {
+        run_id: String,
+        decision: CouncilConvergeDecision,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        seat_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
+    },
 }
 
 // === Surface → engine queries (Rust SERIALIZES these; replies arrive as the
@@ -794,6 +803,14 @@ pub enum CostTelemetry {
     Full,
     TokensOnly,
     None,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CouncilConvergeDecision {
+    Accept,
+    Reject,
+    Judge,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -459,6 +459,41 @@ export const KillCouncilCommand = z.object({
   runId: z.string(),
 });
 
+/**
+ * The human judge's terminal Converge verdict (issue #353). P1's Converge stage is
+ * HUMAN-only — no agent-judge, no vote — so this is the sole way a run's parked seat
+ * positions are resolved (safety non-negotiable #7: the human is the terminal
+ * authority). Three verdicts:
+ *  - `accept` — adopt ONE seat's position as the run outcome (`seatId` names it).
+ *  - `reject` — reject every position; the run closes with no adopted outcome.
+ *  - `judge`  — the human writes their OWN ruling (`note` carries it).
+ */
+export const CouncilConvergeDecisionSchema = z.enum(['accept', 'reject', 'judge']);
+export type CouncilConvergeDecision = z.infer<typeof CouncilConvergeDecisionSchema>;
+
+/**
+ * Resolve a council run's PARKED Converge decision with the human judge's verdict
+ * (issue #353) — the human gavel that closes the run (safety non-negotiable #7). The
+ * verdict flows through the engine's Conductor — the sole bus writer — which records
+ * it onto the append-only transcript and closes the Converge stage. It is NEVER a
+ * direct transcript-store write from the surface (that would bypass the mediated write
+ * path, safety #1). `seatId` is REQUIRED for `accept` (the seat whose position is
+ * adopted) and ignored otherwise; `note` is REQUIRED for `judge` (the ruling) and
+ * optional context for `accept`/`reject`. A no-op for a run with no parked decision
+ * (unknown / already resolved).
+ */
+export const ResolveCouncilConvergeCommand = z.object({
+  type: z.literal('resolve-council-converge'),
+  /** The council run whose parked Converge decision is being resolved. */
+  runId: z.string(),
+  /** The human judge's verdict. */
+  decision: CouncilConvergeDecisionSchema,
+  /** The seat whose position is adopted — REQUIRED for `accept`, ignored otherwise. */
+  seatId: z.string().optional(),
+  /** The human's ruling (REQUIRED for `judge`) or a short reason for `accept`/`reject`. */
+  note: z.string().optional(),
+});
+
 /** The discriminated union of every surface → engine command, keyed by `type`. */
 export const SurfaceCommandSchema = z.discriminatedUnion('type', [
   StartSessionCommand,
@@ -480,6 +515,7 @@ export const SurfaceCommandSchema = z.discriminatedUnion('type', [
   CancelIssueValidationCommand,
   StartCouncilCommand,
   KillCouncilCommand,
+  ResolveCouncilConvergeCommand,
 ]);
 export type SurfaceCommand = z.infer<typeof SurfaceCommandSchema>;
 

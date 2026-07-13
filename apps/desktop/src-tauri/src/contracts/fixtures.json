@@ -248,6 +248,13 @@
     "kill-council": {
       "type": "kill-council",
       "runId": "run-council1"
+    },
+    "resolve-council-converge": {
+      "type": "resolve-council-converge",
+      "runId": "run-council1",
+      "decision": "accept",
+      "seatId": "proposer-opus",
+      "note": "Clearest migration plan with the least dual-write risk."
     }
   },
   "queries": {

@@ -407,6 +407,9 @@ const ENUM_NAMES: Record<string, string> = {
   // is FORCE-EMITTED below (like `KnownModel`) rather than walked, pre-registering the
   // canonical name so the conductor slice consumes it without a rename.
   'research': 'CouncilPresetId',
+  // The human judge's terminal Converge verdict (issue #353) carried by the
+  // `resolve-council-converge` command — the human gavel (safety #7).
+  'accept|reject|judge': 'CouncilConvergeDecision',
   // Council debate transcript (issue #348/#352) — the three enums inside a
   // `DebateTranscriptEntry`, now wire-reachable via the `debate-entry` event. Distinct
   // value-sets (no collapse): the state-machine stage, the author's asymmetric role,
@@ -1119,6 +1122,13 @@ const COMMAND_INPUTS: Record<string, unknown> = {
   'kill-council': {
     type: 'kill-council',
     runId: 'run-council1',
+  },
+  'resolve-council-converge': {
+    type: 'resolve-council-converge',
+    runId: 'run-council1',
+    decision: 'accept',
+    seatId: 'proposer-opus',
+    note: 'Clearest migration plan with the least dual-write risk.',
   },
 };
 

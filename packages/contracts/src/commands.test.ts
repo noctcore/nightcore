@@ -56,6 +56,22 @@ describe('SurfaceCommandSchema round-trips', () => {
       requestId: 'q_req_2',
       answer: { behavior: 'cancel' },
     },
+    { type: 'start-council', runId: 'c-1', presetId: 'research', objective: 'o' },
+    { type: 'kill-council', runId: 'c-1' },
+    {
+      type: 'resolve-council-converge',
+      runId: 'c-1',
+      decision: 'accept',
+      seatId: 'proposer-opus',
+      note: 'clearest plan',
+    },
+    { type: 'resolve-council-converge', runId: 'c-1', decision: 'reject' },
+    {
+      type: 'resolve-council-converge',
+      runId: 'c-1',
+      decision: 'judge',
+      note: 'Adopt A but stage the cutover behind a flag.',
+    },
   ];
 
   for (const command of valid) {
