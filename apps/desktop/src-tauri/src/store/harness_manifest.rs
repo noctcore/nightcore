@@ -35,9 +35,57 @@ use ts_rs::TS;
 /// resolves through (the apply writer routes it through its own `safe_join`).
 pub(crate) const MANIFEST_REL_PATH: &str = ".nightcore/harness.json";
 
+/// The current portable-lock manifest schema version — the additive root stamp the
+/// portable-lock exporter (`sidecar::harness::export`, #134 PR 3) writes so the
+/// standalone `@noctcore/harness` runner can parse `.nightcore/harness.json`
+/// forward-compatibly. It is a root-level FORMAT stamp, orthogonal to the check
+/// vocabulary (`HarnessCheckKind`) — never a `checks[]` kind and never on the arm
+/// allowlist. The runner treats an absent stamp as `1` (a manifest armed before this
+/// feature is a valid v1 bundle) and fails only on an unknown MAJOR.
+pub const HARNESS_SCHEMA_VERSION: u64 = 1;
+
 /// The per-project structure-lock manifest: `<project_path>/.nightcore/harness.json`.
 pub(crate) fn manifest_file(project_path: &std::path::Path) -> std::path::PathBuf {
     project_path.join(MANIFEST_REL_PATH)
+}
+
+/// Load the manifest at `path` as a JSON object for a merge-write: an absent file
+/// yields a fresh `{}`; a present-but-unparseable OR non-object manifest is a HARD
+/// error (never clobber the user's config — every merge writer needs a parseable base).
+/// `action` names the edit in the error ("editing the policy" / "editing checks" /
+/// "exporting the portable lock"). The returned [`Value`] is always an object, so callers
+/// may `.as_object_mut().expect(...)` it. This is the single load posture the policy,
+/// checks, and schemaVersion writers share (extracted so a fix lands in one place).
+fn load_manifest_for_merge(path: &std::path::Path, action: &str) -> Result<Value, String> {
+    let root: Value = match std::fs::read_to_string(path) {
+        Ok(raw) => serde_json::from_str(&raw).map_err(|e| {
+            format!(
+                "{} is not valid JSON ({e}); fix it by hand before {action}",
+                path.display()
+            )
+        })?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => json!({}),
+        Err(e) => return Err(format!("cannot read {}: {e}", path.display())),
+    };
+    if !root.is_object() {
+        return Err(format!(
+            "{} has a non-object root; fix it by hand before {action}",
+            path.display()
+        ));
+    }
+    Ok(root)
+}
+
+/// Persist a merge-written manifest to `path` atomically (temp + rename), creating the
+/// `.nightcore/` parent if absent. The shared write tail every merge writer uses — a
+/// concurrent gauntlet/policy reader sees the old file or the new one, never a torn write.
+fn persist_manifest(path: &std::path::Path, json: &str) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("failed to create {}: {e}", parent.display()))?;
+    }
+    crate::store::write_atomic(path, json.as_bytes())
+        .map_err(|e| format!("failed to write {}: {e}", path.display()))
 }
 
 /// The `policy.diffBudget` shape as authored in the manifest (both limits
@@ -215,24 +263,12 @@ pub fn write_policy_patch(
     let path = manifest_file(std::path::Path::new(project_path));
 
     // Load the raw manifest (or a fresh object). Unlike the lenient readers, a
-    // present-but-unparseable file must FAIL the write: merging requires a
+    // present-but-unparseable/non-object file must FAIL the write: merging requires a
     // parseable base, and clobbering it would eat the gauntlet's `checks` etc.
-    let mut root: Value = match std::fs::read_to_string(&path) {
-        Ok(raw) => serde_json::from_str(&raw).map_err(|e| {
-            format!(
-                "{} is not valid JSON ({e}); fix it by hand before editing the policy",
-                path.display()
-            )
-        })?,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => json!({}),
-        Err(e) => return Err(format!("cannot read {}: {e}", path.display())),
-    };
-    let Some(root_map) = root.as_object_mut() else {
-        return Err(format!(
-            "{} has a non-object root; fix it by hand before editing the policy",
-            path.display()
-        ));
-    };
+    let mut root = load_manifest_for_merge(&path, "editing the policy")?;
+    let root_map = root
+        .as_object_mut()
+        .expect("load_manifest_for_merge guarantees a JSON object");
 
     // `policy`: reuse the existing object so its unknown keys survive. A present
     // non-object `policy` carries no keys worth preserving — replace it.
@@ -294,16 +330,43 @@ pub fn write_policy_patch(
 
     let json = serde_json::to_string_pretty(&root)
         .map_err(|e| format!("failed to serialize harness manifest: {e}"))?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("failed to create {}: {e}", parent.display()))?;
-    }
-    // Atomic temp+rename: a crash or concurrent reader (the gauntlet, the policy
-    // resolver at dispatch) sees the old manifest or the new one, never a torn write.
-    crate::store::write_atomic(&path, json.as_bytes())
-        .map_err(|e| format!("failed to write {}: {e}", path.display()))?;
+    persist_manifest(&path, &json)?;
 
     Ok(read_policy_file(project_path))
+}
+
+/// Stamp the additive `schemaVersion` root key onto the live manifest and return the
+/// stamped manifest text (the portable-lock exporter writes the SAME bytes into the
+/// bundle's `harness.json` copy — §3.3/§3.4). Merge-by-key over the raw [`Value`]: the
+/// `checks` array, the `policy` block, and every unknown root key survive verbatim;
+/// only `schemaVersion` is inserted. Creates `.nightcore/harness.json` as
+/// `{ "schemaVersion": N }` when absent, and ERRORS on a malformed manifest (never
+/// clobber the user's config) — the same posture as [`write_policy_patch`]. Idempotent:
+/// a manifest already stamped at the current version is left byte-for-byte unchanged on
+/// disk, so a re-export never rewrites the live file (the write is gated on the parsed
+/// version, not the serialized string, which may differ in formatting).
+pub fn stamp_live_manifest(project_path: &str) -> Result<String, String> {
+    let path = manifest_file(std::path::Path::new(project_path));
+
+    // A present-but-unparseable/non-object manifest must FAIL the stamp (shared merge
+    // posture): merging requires a parseable base, never clobber the user's `checks`.
+    let mut root = load_manifest_for_merge(&path, "exporting the portable lock")?;
+    let root_map = root
+        .as_object_mut()
+        .expect("load_manifest_for_merge guarantees a JSON object");
+
+    let already_stamped =
+        root_map.get("schemaVersion").and_then(Value::as_u64) == Some(HARNESS_SCHEMA_VERSION);
+    root_map.insert("schemaVersion".to_string(), json!(HARNESS_SCHEMA_VERSION));
+
+    let json = serde_json::to_string_pretty(&root)
+        .map_err(|e| format!("failed to serialize harness manifest: {e}"))?;
+
+    // Idempotent: only touch the live file when the stamp actually changes something.
+    if !already_stamped {
+        persist_manifest(&path, &json)?;
+    }
+    Ok(json)
 }
 
 // --- Armed checks (the `checks` block) --------------------------------------
@@ -396,22 +459,10 @@ fn mutate_armed_checks(
     edit: impl FnOnce(&mut Vec<Value>) -> Result<(), String>,
 ) -> Result<Vec<ArmedCheckFile>, String> {
     let path = manifest_file(std::path::Path::new(project_path));
-    let mut root: Value = match std::fs::read_to_string(&path) {
-        Ok(raw) => serde_json::from_str(&raw).map_err(|e| {
-            format!(
-                "{} is not valid JSON ({e}); fix it by hand before editing checks",
-                path.display()
-            )
-        })?,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => json!({}),
-        Err(e) => return Err(format!("cannot read {}: {e}", path.display())),
-    };
-    let Some(root_map) = root.as_object_mut() else {
-        return Err(format!(
-            "{} has a non-object root; fix it by hand before editing checks",
-            path.display()
-        ));
-    };
+    let mut root = load_manifest_for_merge(&path, "editing checks")?;
+    let root_map = root
+        .as_object_mut()
+        .expect("load_manifest_for_merge guarantees a JSON object");
 
     let mut checks: Vec<Value> = match root_map.remove("checks") {
         Some(Value::Array(items)) => items,
@@ -431,12 +482,7 @@ fn mutate_armed_checks(
     root_map.insert("checks".to_string(), Value::Array(checks));
     let json = serde_json::to_string_pretty(&root)
         .map_err(|e| format!("failed to serialize harness manifest: {e}"))?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("failed to create {}: {e}", parent.display()))?;
-    }
-    crate::store::write_atomic(&path, json.as_bytes())
-        .map_err(|e| format!("failed to write {}: {e}", path.display()))?;
+    persist_manifest(&path, &json)?;
     Ok(read_armed_checks(project_path))
 }
 
@@ -793,6 +839,89 @@ mod tests {
             .expect("runtime reader arms the layer");
         assert_eq!(armed.deny_read_paths, vec!["secrets/**"]);
         assert_eq!(armed.deny_bash_patterns, vec!["--no-verify"]);
+    }
+
+    // --- schemaVersion stamp (portable lock, #134 PR 3) ---------------------
+
+    #[test]
+    fn schema_version_stamp_is_additive_at_every_level() {
+        // Cloned from `unknown_keys_survive_a_round_trip_at_every_level`: stamping
+        // `schemaVersion` must leave `checks`, `policy` (incl. unknown policy keys),
+        // and unknown root siblings verbatim — it is a one-key additive root stamp.
+        let tmp = TempDir::new().expect("temp dir");
+        write_manifest(
+            &tmp,
+            r#"{
+              "checks": [{ "name": "lint", "kind": "lint-plugin", "command": "npx eslint ." }],
+              "rootExtra": { "nested": true },
+              "policy": { "enabled": true, "futureKnob": ["keep-me"] }
+            }"#,
+        );
+        let stamped = stamp_live_manifest(&root_of(&tmp)).expect("stamp");
+
+        // The returned text (the bundle copy) carries the stamp.
+        let returned: Value = serde_json::from_str(&stamped).expect("returned text parses");
+        assert_eq!(returned["schemaVersion"], HARNESS_SCHEMA_VERSION);
+
+        // On disk: the stamp landed and every prior key survived untouched.
+        let value = read_manifest_value(&tmp);
+        assert_eq!(value["schemaVersion"], 1);
+        assert_eq!(value["checks"][0]["name"], "lint");
+        assert_eq!(value["rootExtra"]["nested"], true);
+        assert_eq!(value["policy"]["enabled"], true);
+        assert_eq!(value["policy"]["futureKnob"][0], "keep-me");
+    }
+
+    #[test]
+    fn schema_version_stamp_is_idempotent_on_disk() {
+        // A re-export must NOT rewrite an already-stamped live manifest (the on-disk
+        // bytes stay identical) — re-export's only diff is in the staging dir.
+        let tmp = TempDir::new().expect("temp dir");
+        write_manifest(
+            &tmp,
+            r#"{ "checks": [{ "name": "lint", "kind": "lint-plugin", "command": "npx eslint ." }] }"#,
+        );
+        stamp_live_manifest(&root_of(&tmp)).expect("first stamp");
+        let after_first =
+            std::fs::read_to_string(tmp.path().join(".nightcore/harness.json")).expect("read");
+        // Second stamp: already at the current version ⇒ no write.
+        let returned = stamp_live_manifest(&root_of(&tmp)).expect("second stamp");
+        let after_second =
+            std::fs::read_to_string(tmp.path().join(".nightcore/harness.json")).expect("read");
+        assert_eq!(
+            after_first, after_second,
+            "re-stamping an already-stamped manifest leaves the file byte-identical"
+        );
+        // The returned bundle text still reflects the stamped manifest.
+        assert_eq!(
+            serde_json::from_str::<Value>(&returned).unwrap()["schemaVersion"],
+            1
+        );
+    }
+
+    #[test]
+    fn schema_version_stamp_creates_an_absent_manifest() {
+        let tmp = TempDir::new().expect("temp dir");
+        let stamped = stamp_live_manifest(&root_of(&tmp)).expect("stamp creates");
+        assert_eq!(
+            serde_json::from_str::<Value>(&stamped).unwrap()["schemaVersion"],
+            1
+        );
+        let value = read_manifest_value(&tmp);
+        assert_eq!(value["schemaVersion"], 1);
+    }
+
+    #[test]
+    fn schema_version_stamp_refuses_a_malformed_manifest() {
+        // Same never-clobber posture as the policy/checks writers: a malformed manifest
+        // errors and is preserved byte-for-byte rather than being reset into the bundle.
+        let tmp = TempDir::new().expect("temp dir");
+        write_manifest(&tmp, "{ not json");
+        let err = stamp_live_manifest(&root_of(&tmp)).expect_err("must not clobber");
+        assert!(err.contains("not valid JSON"), "got: {err}");
+        let raw =
+            std::fs::read_to_string(tmp.path().join(".nightcore/harness.json")).expect("kept");
+        assert_eq!(raw, "{ not json");
     }
 
     // --- armed checks (Checks Manager) --------------------------------------
