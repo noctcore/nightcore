@@ -12,10 +12,11 @@
  *
  * Every appended transcript entry is forwarded to the optional {@link
  * CouncilManagerDeps.emit} sink — the SINGLE point where the `nc:debate` stream is
- * wired in the canvas slice (#352). Until then the sink is unset (the transcript is
- * still fully captured in the append-only store and returned by the run result, so
- * the run stays auditable — safety #7), and no debate event crosses the sidecar
- * boundary.
+ * wired (the canvas slice, #352). The {@link
+ * import('./council-router.js').CouncilRouter} supplies it in production (wrapping each
+ * entry into a `debate-entry` `NightcoreEvent`); it stays unset in unit tests, where
+ * the transcript is still fully captured in the append-only store and returned by the
+ * run result, so the run stays auditable — safety #7.
  */
 import type {
   CouncilPresetId,
@@ -33,9 +34,11 @@ export interface CouncilManagerDeps {
   readonly seatDriver: SeatDriver;
   /** The debate bus (owns the append-only transcript store). Defaults to a fresh one. */
   readonly bus?: DebateBus;
-  /** Forward every appended transcript entry — the `nc:debate` wire point (#352).
-   *  Absent ⇒ transcript entries stay in-engine (captured in the store + run result). */
-  readonly emit?: (entry: DebateTranscriptEntry) => void;
+  /** Forward every appended transcript entry, tagged with its `councilRunId` — the
+   *  `nc:debate` wire point (#352). The router wraps this into a `debate-entry`
+   *  `NightcoreEvent`. Absent ⇒ transcript entries stay in-engine (captured in the
+   *  store + run result, so the run is still auditable — safety #7). */
+  readonly emit?: (councilRunId: string, entry: DebateTranscriptEntry) => void;
   readonly logger?: Logger;
 }
 

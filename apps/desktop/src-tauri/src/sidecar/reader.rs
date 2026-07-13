@@ -19,7 +19,8 @@ use super::permission::{
 };
 use super::verification::{handle_build_completed, handle_review_completed};
 use super::{
-    apply_and_emit, finish_run, notify_awaiting_input, park_for_approval, Outcome, SESSION_EVENT,
+    apply_and_emit, finish_run, notify_awaiting_input, park_for_approval, Outcome, DEBATE_EVENT,
+    SESSION_EVENT,
 };
 
 /// The `nc:session` wire envelope: a streamed engine event tagged with its task.
@@ -186,6 +187,19 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
     // correlation (which would otherwise drop it for lacking a sessionId).
     if event_type.starts_with("issue-validation-") {
         super::issue_triage::handle_issue_validation_event(app, event_type, &event).await;
+        return;
+    }
+
+    // The Council `debate-*` family (the `debate-entry` transcript stream, issue #352)
+    // correlates by its wrapped `runId` (no `sessionId`) and is owned by the dedicated
+    // `nc:debate` channel, so it is routed BEFORE session-id correlation. There is no
+    // Rust-side store: the append-only transcript lives in the engine (auditable +
+    // replayable — safety #7), and the canvas folds the LIVE stream, so the reader just
+    // forwards the entry verbatim (like Insight forwards `analysis-*`). The canvas only
+    // READS this stream — nothing here feeds text back into a seat prompt (the mediated,
+    // quoted, injection-scanned bus stays the sole cross-seat path — safety #1/#2).
+    if event_type.starts_with("debate-") {
+        let _ = app.emit(DEBATE_EVENT, &event);
         return;
     }
 
@@ -798,6 +812,31 @@ mod tests {
         assert!(
             !events.contains_key("harness-failed"),
             "`harness-failed` is not a contract event — the reap must never emit it"
+        );
+    }
+
+    #[test]
+    fn debate_family_forwards_on_its_channel_before_session_correlation() {
+        // The Council `debate-*` family (`debate-entry`) correlates by its wrapped
+        // `runId` (no `sessionId`), so it MUST forward onto the `DEBATE_EVENT` channel
+        // and `return` BEFORE the session-id correlation below (which would otherwise
+        // drop it for lacking a `sessionId`) — mirroring the scan families'
+        // pre-correlation routing. The arm needs a full `AppHandle` to exercise live, so
+        // this is a source-level guard (like the pr-fix + offload guards above).
+        let src = include_str!("reader.rs");
+        let arm_at = src
+            .find("if event_type.starts_with(\"debate-\")")
+            .expect("the debate routing arm exists");
+        let emit = src[arm_at..]
+            .find("app.emit(DEBATE_EVENT")
+            .map(|rel| arm_at + rel)
+            .expect("the debate arm forwards on the DEBATE_EVENT channel");
+        let correlation = src
+            .find("let session_id = event.get(\"sessionId\")")
+            .expect("the session-id correlation exists");
+        assert!(
+            arm_at < correlation && emit < correlation,
+            "the debate family must forward + return BEFORE the session-id correlation"
         );
     }
 }

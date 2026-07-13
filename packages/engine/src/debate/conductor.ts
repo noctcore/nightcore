@@ -60,8 +60,13 @@ export interface ConductorDeps {
   readonly seatDriver: SeatDriver;
   readonly logger?: Logger;
   /** Observe every transcript entry as it is appended — the single emit chokepoint the
-   *  `nc:debate` stream wires here in the canvas slice (#352). Default: no-op. */
-  readonly onEntry?: (entry: DebateTranscriptEntry) => void;
+   *  `nc:debate` stream wires (the canvas slice, #352). Carries the `councilRunId` the
+   *  entry belongs to (the entry keys externally in the store), so a downstream sink can
+   *  tag the wire event with its run. Default: no-op. */
+  readonly onEntry?: (
+    councilRunId: string,
+    entry: DebateTranscriptEntry,
+  ) => void;
   /** Max seats the broadcast collector dispatches at once (bounded concurrency, #351).
    *  Default: the collector's {@link
    *  import('./broadcast-collector.js').DEFAULT_SEAT_CONCURRENCY}. */
@@ -132,7 +137,7 @@ export class Conductor {
     this.active.set(councilRunId, governor);
     const bus = observeBus(
       this.deps.bus.conductor(councilRunId),
-      (entry) => this.deps.onEntry?.(entry),
+      (entry) => this.deps.onEntry?.(councilRunId, entry),
     );
     const seats: SeatContext[] = preset.seats.map((seat) => ({
       seatId: seat.id,

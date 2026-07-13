@@ -12,12 +12,12 @@ import { z } from 'zod';
  * auditable and replayable in order (safety non-negotiable #7).
  *
  * This is the SINGLE SOURCE OF TRUTH for the transcript-entry shape the engine's
- * append-only store persists and the `nc:debate` Tauri channel will carry (see
- * `CHANNELS.debate`). It is a standalone zod schema, NOT a `NightcoreEvent` union
- * member: no debate events are emitted yet (the Rust Conductor emit seam is a
- * downstream slice), so the entry is a data-model contract, not a wire event that
- * rides the zod→Rust event-union codegen. The engine transcript store consumes it
- * directly.
+ * append-only store persists AND the `nc:debate` Tauri channel carries (see
+ * `CHANNELS.debate`). It is the DATA-MODEL contract the store consumes directly; the
+ * WIRE event that rides the zod→Rust event-union codegen is {@link DebateEntryEvent}
+ * below, which wraps one entry with its council-run id. The canvas emit seam (#352)
+ * emits a `debate-entry` event per appended entry: engine `CouncilManager.emit` →
+ * sidecar stdout → Rust `reader.rs` → `DEBATE_EVENT` channel → web bridge.
  */
 
 /**
@@ -102,3 +102,23 @@ export const DebateTranscriptEntrySchema = z.object({
   injectionFlags: z.array(z.string()).optional(),
 });
 export type DebateTranscriptEntry = z.infer<typeof DebateTranscriptEntrySchema>;
+
+/**
+ * The `nc:debate` WIRE event: one appended {@link DebateTranscriptEntry} tagged with
+ * the council run it belongs to. A member of the `NightcoreEvent` union, so it flows
+ * the SAME engine → sidecar → Rust `reader.rs` path every other `nc:*` family event
+ * uses; the reader forwards it verbatim onto the `DEBATE_EVENT` channel, where the web
+ * bridge narrows and folds it into the canvas (the emit seam, #352). The entry carries
+ * no run id of its own (the store keys it externally), so `runId` rides HERE — it is
+ * the correlation key the canvas filters a run's stream by. Unlike every session-stream
+ * event it has NO `sessionId`: a council run correlates by `runId`, like the scan
+ * families, so the reader routes it BEFORE the session-id correlation.
+ */
+export const DebateEntryEvent = z.object({
+  type: z.literal('debate-entry'),
+  /** The council run this transcript entry belongs to (the canvas correlation key). */
+  runId: z.string(),
+  /** The append-only transcript entry the engine just recorded. */
+  entry: DebateTranscriptEntrySchema,
+});
+export type DebateEntryEvent = z.infer<typeof DebateEntryEvent>;

@@ -44,7 +44,7 @@ describe('CouncilManager', () => {
     const manager = new CouncilManager({
       seatDriver: driver,
       bus,
-      emit: (entry) => emitted.push(entry),
+      emit: (_runId, entry) => emitted.push(entry),
     });
 
     manager.start({
@@ -76,7 +76,7 @@ describe('CouncilManager', () => {
     const emitted: DebateTranscriptEntry[] = [];
     const manager = new CouncilManager({
       seatDriver: driver,
-      emit: (entry) => emitted.push(entry),
+      emit: (_runId, entry) => emitted.push(entry),
     });
 
     // Two synchronous starts with the SAME id: the first is still active (paused on

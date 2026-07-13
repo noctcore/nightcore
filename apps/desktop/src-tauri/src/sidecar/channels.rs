@@ -56,12 +56,10 @@ pub(crate) const ISSUE_TRIAGE_EVENT: &str = "nc:issue-triage";
 /// (`DebateTranscriptEntry`, scoped by its council-run id) — the moderated `nc:debate`
 /// bus (issue #348). Payload SHAPE is the `@nightcore/contracts` `DebateTranscriptEntry`.
 ///
-/// Registered here ahead of its emitter so the single-source channel registry, the
-/// scattered runtime consts, and the web bridge all agree from day one (the
-/// `channel_consts_match_generated_registry` parity guard covers it below). The Council
-/// P1 foundation — the bus + append-only transcript store — lives in the engine
-/// (`packages/engine/src/debate/`); the Rust Conductor emit seam that will actually emit
-/// on this channel arrives in a downstream slice, so `#[allow(dead_code)]` marks the
-/// as-yet-unwired const (its only reference today is the parity test).
-#[allow(dead_code)]
+/// Registered in the single-source channel registry, the scattered runtime consts, and
+/// the web bridge (the `channel_consts_match_generated_registry` parity guard covers it
+/// below). The Council P1 foundation — the bus + append-only transcript store — lives in
+/// the engine (`packages/engine/src/debate/`); the canvas slice (#352) wired the emit
+/// seam, so `sidecar/reader.rs` now forwards every `debate-entry` event onto this channel
+/// (the const is live — no longer dead).
 pub(crate) const DEBATE_EVENT: &str = "nc:debate";
