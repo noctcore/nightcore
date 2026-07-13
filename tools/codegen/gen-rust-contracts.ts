@@ -42,6 +42,7 @@ import { z } from 'zod';
 // specifiers to their `.ts` sources, so the relative source entry works as-is.
 import {
   CHANNELS,
+  CouncilPresetIdSchema,
   KnownModelSchema,
   NightcoreEventSchema,
   SurfaceCommandSchema,
@@ -393,6 +394,14 @@ const ENUM_NAMES: Record<string, string> = {
   'png|jpeg|webp|gif': 'ImageFormat',
   'default|acceptEdits|bypassPermissions|plan|dontAsk|auto': 'PermissionMode',
   'build|research|review|decompose|tdd': 'TaskKind',
+  // Council preset-as-data (issue #349). The shared preset-id vocabulary, mirroring
+  // `TaskKind`: the zod `CouncilPresetIdSchema` and this generated Rust enum are the
+  // ONE cross-tier thing; the concrete preset VALUE stays engine-side
+  // (`packages/engine/src/debate/preset-registry.ts`). Not wire-reachable yet (no
+  // command/event carries it — the Rust Conductor seam is a downstream slice), so it
+  // is FORCE-EMITTED below (like `KnownModel`) rather than walked, pre-registering the
+  // canonical name so the conductor slice consumes it without a rename.
+  'research': 'CouncilPresetId',
   'safe|mutating|dangerous': 'ToolRisk',
   'starting|running|awaiting-permission|completed|failed|interrupted':
     'SessionStatus',
@@ -856,6 +865,13 @@ function emitRust(): string {
   // catalog + default from the contract. Registered here as a standalone enum so it
   // lands in `ctx.decls` alongside the wire-derived supporting types.
   registerInlineEnum(KnownModelSchema, 'KnownModel', ctx);
+
+  // Force-emit `CouncilPresetId` (issue #349): the council preset-id vocabulary is
+  // not yet wire-reachable (no command/event references it — the Rust Conductor is a
+  // downstream slice), but the Rust core needs the enum parity NOW so the conductor
+  // can key its orchestration policy off the same ids the engine registry serves.
+  // Mirrors the `KnownModel` force-emit and the `TaskKind` three-site house rule.
+  registerInlineEnum(CouncilPresetIdSchema, 'CouncilPresetId', ctx);
 
   // Supporting types (enums + nested structs) declared in a stable order so the
   // output is deterministic regardless of discovery order.
