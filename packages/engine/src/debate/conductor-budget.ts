@@ -22,7 +22,11 @@
  */
 import type { CouncilBudget } from '@nightcore/contracts';
 
-import type { BudgetHaltCause, SeatTurnResult } from './conductor-types.js';
+import type {
+  BudgetHaltCause,
+  SeatTurnResult,
+  TurnEstimate,
+} from './conductor-types.js';
 
 /** The running totals the governor accumulates. */
 export interface GovernorTotals {
@@ -35,6 +39,11 @@ export class RunGovernor {
   private tokens = 0;
   private cost = 0;
   private rounds = 0;
+  /** Budget reserved for in-flight (dispatched-but-not-yet-charged) turns, so a
+   *  concurrent broadcast's cap check sees turns already committed to. Always net-zero
+   *  between broadcasts (every reservation is settled or released). */
+  private reservedTokens = 0;
+  private reservedCost = 0;
   private readonly controller = new AbortController();
   private killedFlag = false;
 
@@ -80,6 +89,36 @@ export class RunGovernor {
       cacheCreationTokens +
       reasoningOutputTokens;
     this.cost += result.costUsd;
+  }
+
+  /**
+   * Reserve a per-turn estimate BEFORE a seat is dispatched (issue #351, LOW-A). The
+   * reservation is gated on the ACCUMULATED committed spend PLUS all reservations
+   * already outstanding — so once the caps are reached, no further seat is admitted and
+   * a bounded parallel broadcast can overshoot by at most one in-flight estimate, never
+   * a whole round. Returns `false` when the cap is already reached (the caller MUST NOT
+   * dispatch); `true` when the estimate was reserved.
+   */
+  tryReserve(estimate: TurnEstimate): boolean {
+    if (this.tokens + this.reservedTokens >= this.budget.maxTotalTokens) return false;
+    if (this.cost + this.reservedCost >= this.budget.maxCostUsd) return false;
+    this.reservedTokens += estimate.tokens;
+    this.reservedCost += estimate.costUsd;
+    return true;
+  }
+
+  /** Settle a reservation once the turn LANDED: drop the estimate and charge the turn's
+   *  ACTUAL spend. Net effect on the caps is exactly {@link chargeTurn}. */
+  settleReservation(estimate: TurnEstimate, result: SeatTurnResult): void {
+    this.releaseReservation(estimate);
+    this.chargeTurn(result);
+  }
+
+  /** Release a reservation for a turn that never ran (refused, timed-out, or superseded
+   *  by quorum) — the estimate is dropped and nothing is charged. */
+  releaseReservation(estimate: TurnEstimate): void {
+    this.reservedTokens = Math.max(0, this.reservedTokens - estimate.tokens);
+    this.reservedCost = Math.max(0, this.reservedCost - estimate.costUsd);
   }
 
   /** Record that a full debate round completed (for the round cap + telemetry). */
