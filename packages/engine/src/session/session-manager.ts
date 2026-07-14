@@ -257,13 +257,12 @@ export class SessionManager {
     // file-size ratchet; behavior verbatim).
     const params = resolveStartSessionParams(id, command, this.config);
 
-    // Construct the run through the provider seam. The fail-closed hooks invariant
-    // AND the fail-closed governance invariant (issue #296) both run inside
-    // `startSession`: a provider that can't enforce PreToolUse confinement at the
-    // requested autonomy, or can't enforce an ARMED Harness policy, REFUSES here
-    // rather than silently dropping confinement or governance. Surface the refusal
-    // as a terminal `session-failed` so the board shows it like any other failure
-    // and the concurrency slot is never taken.
+    // Construct the run through the provider seam. The fail-closed hooks AND
+    // governance invariants (issue #296) run inside `startSession`: a provider that
+    // can't enforce PreToolUse confinement at the requested autonomy, or an ARMED
+    // Harness policy, REFUSES here rather than silently dropping it. Surface the
+    // refusal as a terminal `session-failed` so the board shows it like any other
+    // failure and the concurrency slot is never taken.
     let runner: AgentSession;
     try {
       runner = provider.startSession(
@@ -286,9 +285,7 @@ export class SessionManager {
       throw error;
     }
 
-    // The provider resolved the effective autonomy (override / kind preset /
-    // configured default); read it back for the persisted record + the
-    // `session-started` event.
+    // Read the provider-resolved effective autonomy back for the record + event.
     const permissionMode = runner.permissionMode;
     const record: SessionRecord = {
       id,
@@ -317,6 +314,9 @@ export class SessionManager {
       prompt: command.prompt,
       model: params.model,
       permissionMode,
+      // Council seat marker (issue #364): echo the command flag so the Rust reader
+      // skips board-FIFO correlation for a debate seat. Absent for a board session.
+      ...(command.council ? { council: true } : {}),
     });
     this.setStatus(session, 'running');
 

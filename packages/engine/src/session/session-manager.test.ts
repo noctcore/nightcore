@@ -226,6 +226,35 @@ describe('SessionManager happy path', () => {
     expect(fs.existsSync(indexFile)).toBe(true);
     expect(fs.readFileSync(indexFile, 'utf8')).toContain('persist me');
   });
+
+  test('echoes the council seat marker onto session-started, absent for a board session (issue #364)', async () => {
+    scripts = [
+      { kind: 'messages', messages: [initMessage(), successMessage()] },
+      { kind: 'messages', messages: [initMessage(), successMessage()] },
+    ];
+    const manager = new SessionManager(makeConfig());
+    const started: Extract<NightcoreEvent, { type: 'session-started' }>[] = [];
+    let completed = 0;
+    let resolve!: () => void;
+    const allDone = new Promise<void>((r) => (resolve = r));
+    manager.on((e) => {
+      if (e.type === 'session-started') started.push(e);
+      if (e.type === 'session-completed' && ++completed === 2) resolve();
+    });
+
+    // A council seat command carries `council: true`; a normal board command does not.
+    await manager.dispatch({ type: 'start-session', prompt: 'seat', council: true });
+    await manager.dispatch({ type: 'start-session', prompt: 'board' });
+    await allDone;
+
+    const seat = started.find((e) => e.prompt === 'seat');
+    const board = started.find((e) => e.prompt === 'board');
+    // The seat's session-started carries the marker so the Rust reader skips board-FIFO
+    // correlation for it (no desync warn, no mis-bind of a concurrently-pending board task).
+    expect(seat?.council).toBe(true);
+    // A board session's shape is byte-for-byte unchanged — the marker is absent.
+    expect(board?.council).toBeUndefined();
+  });
 });
 
 describe('SessionManager monotonic ids', () => {

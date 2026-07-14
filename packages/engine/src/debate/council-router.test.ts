@@ -187,4 +187,25 @@ describe('CouncilRouter — the nc:debate emit seam', () => {
       expect(start.sandboxWrites).toBe(true);
     }
   });
+
+  test('every seat session carries the council marker so the reader skips board-FIFO correlation (issue #364)', async () => {
+    const { router, starts } = setup();
+
+    router.dispatch({
+      type: 'start-council',
+      runId: 'council-run-4',
+      presetId: 'research',
+      objective: 'Pick a strategy.',
+    });
+    await waitFor(() => starts.length > 0);
+
+    // A seat is driven inside the engine, so the Rust core pushed no pending-launch
+    // slot for it. The marker makes the supervisor echo `council: true` onto the seat's
+    // `session-started`, so the reader never runs board-FIFO correlation for the seat
+    // (no desync warn, no mis-bind of a concurrently-pending board task).
+    expect(starts.length).toBeGreaterThan(0);
+    for (const start of starts) {
+      expect(start.council).toBe(true);
+    }
+  });
 });

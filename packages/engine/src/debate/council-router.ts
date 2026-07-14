@@ -86,6 +86,13 @@ export class CouncilRouter {
               model: params.model,
               autonomy: params.autonomy,
               sandboxWrites: params.sandboxWrites,
+              // Council seat marker (issue #364): a seat is driven here, INSIDE the
+              // engine — never via the board's `start_session` command — so the Rust
+              // core pushed no pending-launch FIFO slot for it. Marking the command
+              // makes the supervisor echo `council: true` onto the seat's
+              // `session-started`, so the reader skips board-FIFO correlation for the
+              // seat (no desync warn, no mis-bind of a concurrent board task).
+              council: true,
               ...(params.cwd !== undefined ? { cwd: params.cwd } : {}),
             }),
           on: subscribe,
