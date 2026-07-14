@@ -192,19 +192,36 @@ export async function collectBroadcast<S extends { readonly seatId: string }>(
       signal: seatController.signal,
     };
 
+    // Invoke the dispatch thunk under a guard that converts a SYNCHRONOUS throw into an
+    // aborted (non-response) settle, exactly like an async rejection (LOW-A, PR #359). A
+    // thunk that throws BEFORE returning a Promise would otherwise escape the `.then`
+    // below — rejecting `dispatchOne` while the budget stayed RESERVED (leaked) and
+    // bubbling out to reject `collectBroadcast`, violating its never-reject contract. Not
+    // reachable via `SessionSeatDriver.runTurn` (it always returns a Promise), but the
+    // collector holds the never-reject / never-leak line for ANY dispatch thunk.
+    const dispatched: Promise<
+      { kind: 'responded'; result: SeatTurnResult } | { kind: 'aborted' }
+    > = (() => {
+      try {
+        return run(seat, dispatch).then(
+          (result) => ({ kind: 'responded', result }) as const,
+          // A dispatch that REJECTS is a non-response, never a rejected board — the driver
+          // contract already degrades a seat error to empty, but the collector holds the
+          // never-reject line defensively.
+          () => ({ kind: 'aborted' }) as const,
+        );
+      } catch {
+        return Promise.resolve({ kind: 'aborted' } as const);
+      }
+    })();
+
     // Race the dispatch against the abort/timeout: a driver that IGNORES its signal
     // still cannot stall the collector — the timeout settles the slot and the run is
     // abandoned (never charged).
     const raced = await Promise.race<
       { kind: 'responded'; result: SeatTurnResult } | { kind: 'aborted' }
     >([
-      run(seat, dispatch).then(
-        (result) => ({ kind: 'responded', result }) as const,
-        // A dispatch that THROWS is a non-response, never a rejected board — the driver
-        // contract already degrades a seat error to empty, but the collector holds the
-        // never-reject line defensively.
-        () => ({ kind: 'aborted' }) as const,
-      ),
+      dispatched,
       whenAborted(seatController.signal).then(() => ({ kind: 'aborted' }) as const),
     ]);
 

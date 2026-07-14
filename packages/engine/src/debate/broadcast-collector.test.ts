@@ -385,4 +385,41 @@ describe('collectBroadcast — one broken seat never rejects the whole board', (
       'timed-out',
     );
   });
+
+  // ── PR #359 LOW-A: a SYNCHRONOUS dispatch throw is caught like an async rejection ─
+
+  test('a dispatch thunk that throws SYNCHRONOUSLY never rejects and never leaks its reservation', async () => {
+    const governor = new RunGovernor(OPEN_BUDGET);
+    const estimate: TurnEstimate = { tokens: 100, costUsd: 1 };
+    const seats = [seat('a'), seat('sync-boom'), seat('c')];
+
+    // `sync-boom`'s thunk throws BEFORE returning a Promise — the pre-fix `.then` never
+    // attached, which rejected collectBroadcast AND left the reservation charged. The
+    // collector must instead settle the seat `timed-out` and release its reservation.
+    const result = await collectBroadcast({
+      broadcastId: 'bc',
+      seats,
+      governor,
+      estimate,
+      // Concurrency 1 so the reservation math is observable turn-by-turn.
+      maxConcurrency: 1,
+      run: (s) => {
+        if (s.seatId === 'sync-boom') throw new Error('synchronous dispatch boom');
+        return Promise.resolve({ ...EMPTY, content: `reply-${s.seatId}` });
+      },
+    });
+
+    // Never rejected: the promise resolved with an outcome per seat.
+    expect(result.outcomes.map((o) => o.seat.seatId)).toEqual(['a', 'sync-boom', 'c']);
+    expect(result.outcomes.find((o) => o.seat.seatId === 'sync-boom')?.status).toBe(
+      'timed-out',
+    );
+    expect(result.responders.map((o) => o.seat.seatId).sort()).toEqual(['a', 'c']);
+    // The reservation for the sync-throwing seat was RELEASED (not leaked): only the two
+    // responders' zero-token turns are charged; no phantom reservation remains.
+    expect(governor.totals.totalTokens).toBe(0);
+    // Headroom is intact — a follow-up reservation still succeeds (a leaked reservation
+    // would have eaten into the cap).
+    expect(governor.tryReserve(estimate)).toBe(true);
+  });
 });
