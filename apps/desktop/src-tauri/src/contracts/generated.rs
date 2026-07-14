@@ -50,6 +50,8 @@ pub enum SurfaceCommand {
         sandbox_writes: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         images: Option<Vec<WireImage>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        council: Option<bool>,
     },
     #[serde(rename_all = "camelCase")]
     SendInput { session_id: u64, text: String },
@@ -308,6 +310,8 @@ pub enum NightcoreEvent {
         prompt: String,
         model: String,
         permission_mode: PermissionMode,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        council: Option<bool>,
     },
     #[serde(rename_all = "camelCase")]
     SessionReady {

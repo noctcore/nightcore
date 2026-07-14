@@ -77,6 +77,15 @@ export const SessionStartedEvent = z.object({
   prompt: z.string(),
   model: z.string(),
   permissionMode: PermissionModeSchema,
+  /** Council SEAT marker (issue #364): true when this session is a debate seat the
+   *  engine's Conductor drives, echoed from the `start-session` command's `council`
+   *  flag. The Rust core's `reader.rs` uses it to SKIP the board-task pending-launch
+   *  FIFO (a seat pushed no slot): no correlation, no "correlation desync" warn, and no
+   *  mis-bind of a concurrently-pending board task. A seat's output reaches the canvas
+   *  over the moderated `nc:debate` stream (run-id-keyed), so its raw `nc:session`
+   *  stream is intentionally dropped by the reader. Absent ⇒ a normal board/scan
+   *  session (the pre-feature shape). */
+  council: z.boolean().optional(),
 });
 
 /** The SDK emitted its `init` system message; carries the real SDK session id

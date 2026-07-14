@@ -14,6 +14,16 @@ describe('NightcoreEventSchema round-trips', () => {
       model: 'claude-opus-4-8',
       permissionMode: 'default',
     },
+    // A council SEAT session-started carries the `council` marker (issue #364) — the
+    // signal the Rust reader uses to skip board-FIFO correlation for the seat.
+    {
+      type: 'session-started',
+      sessionId: 209,
+      prompt: 'debate',
+      model: 'claude-opus-4-8',
+      permissionMode: 'plan',
+      council: true,
+    },
     {
       type: 'session-ready',
       sessionId: 1,

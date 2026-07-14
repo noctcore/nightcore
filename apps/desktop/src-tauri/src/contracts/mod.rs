@@ -203,6 +203,7 @@ mod tests {
             ledger_path: None,
             sandbox_writes: None,
             images: None,
+            council: None,
         };
         let wire = serde_json::to_value(&cmd).expect("serializes");
         let obj = wire.as_object().expect("an object");
@@ -226,6 +227,7 @@ mod tests {
             "ledgerPath",
             "sandboxWrites",
             "images",
+            "council",
         ] {
             assert!(
                 !obj.contains_key(absent),

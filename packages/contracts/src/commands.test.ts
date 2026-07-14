@@ -25,6 +25,9 @@ describe('SurfaceCommandSchema round-trips', () => {
       maxBudgetUsd: 3.25,
       resumeSessionId: 'sdk-uuid-prior',
     },
+    // A council seat carries the `council` marker (issue #364) so the Rust reader
+    // skips board-FIFO correlation for it.
+    { type: 'start-session', prompt: 'debate seat', council: true },
     { type: 'send-input', sessionId: 1, text: 'more' },
     { type: 'interrupt', sessionId: 1 },
     { type: 'set-model', sessionId: 1, model: 'claude-haiku-4-5' },

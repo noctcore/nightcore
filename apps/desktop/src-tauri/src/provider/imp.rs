@@ -170,6 +170,12 @@ impl Provider for SidecarProvider {
             // serializes as an OMITTED field — byte-identical to the pre-feature
             // `start-session` (a text-only user message).
             images: (!images.is_empty()).then_some(images),
+            // Council seat marker (issue #364): ALWAYS `None` here. This is the BOARD
+            // task launch path — the Rust core never launches council seats (those are
+            // driven inside the engine by the Conductor). Omitted on the wire, so a
+            // board `start-session` stays byte-identical and the reader runs normal
+            // FIFO correlation for it.
+            council: None,
         };
         let command = serde_json::to_value(&command).map_err(|e| e.to_string())?;
 

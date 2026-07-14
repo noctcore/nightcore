@@ -158,6 +158,15 @@ export const StartSessionCommand = z.object({
    *  Absent/empty ⇒ a text-only message.
    *  Carries user-content bytes — never logged at info/telemetry. */
   images: z.array(WireImageSchema).optional(),
+  /** Council SEAT marker (issue #364): set ONLY by the engine's `CouncilRouter` when
+   *  it spawns a debate seat session — never by the board. A seat is driven INSIDE the
+   *  engine by the Conductor, so — unlike a board task — it pushes NO pending-launch
+   *  slot in the Rust core's session↔task FIFO. The engine echoes this onto the seat's
+   *  `session-started` event (see `SessionStartedEvent.council`) so the reader SKIPS
+   *  board-FIFO correlation for it: no "correlation desync" warn, and — critically — no
+   *  mis-bind that would pop a concurrently-pending board task's slot and poison its
+   *  correlation. Absent ⇒ a normal board/scan session (the pre-feature shape). */
+  council: z.boolean().optional(),
 });
 
 const sessionTarget = {
