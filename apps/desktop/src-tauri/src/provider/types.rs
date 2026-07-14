@@ -7,7 +7,7 @@
 //! via `use super::*`; `SidecarProvider`/`Correlation` fields are `pub(super)` so
 //! those descendants keep accessing them.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -294,4 +294,14 @@ pub(super) struct Correlation {
     pub(super) by_session: HashMap<u64, String>,
     pub(super) pending: VecDeque<String>,
     pub(super) started_at: HashMap<u64, std::time::Instant>,
+    /// Council SEAT session ids (issue #364). A debate seat is driven INSIDE the
+    /// engine by the Conductor — not launched via the board's `start_session` command
+    /// — so it pushed no `pending` slot. The reader records a seat here on its
+    /// `council: true` `session-started` and then SHORT-CIRCUITS every event for that
+    /// id: no [`correlate`](SidecarProvider::correlate) call (which would warn on the
+    /// empty FIFO or, worse, pop a concurrently-pending board task's slot and mis-bind
+    /// the seat to it), and no board `nc:session` forward (the canvas renders seat
+    /// output from the moderated `nc:debate` stream). Deregistered on the seat's
+    /// terminal via [`forget`](SidecarProvider::forget) so it can't grow unbounded.
+    pub(super) council_sessions: HashSet<u64>,
 }

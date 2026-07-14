@@ -48,6 +48,28 @@ impl SidecarProvider {
         Some(task_id)
     }
 
+    /// Record that `session_id` is a Council SEAT session (issue #364). Called by the
+    /// reader on a seat's `council: true` `session-started`. A seat is driven inside the
+    /// engine by the Conductor — it pushed NO pending-launch slot — so it must never
+    /// enter the board-task FIFO: once noted here, the reader short-circuits every event
+    /// for this id (skips [`correlate`](Self::correlate) entirely, so no desync warn and
+    /// no mis-bind of a concurrently-pending board task). Idempotent.
+    pub fn note_council_session(&self, session_id: u64) {
+        crate::sync::lock_or_recover(&self.correlation)
+            .council_sessions
+            .insert(session_id);
+    }
+
+    /// Whether `session_id` is a known Council seat session (recorded by
+    /// [`note_council_session`](Self::note_council_session) on its `session-started`).
+    /// The reader consults this BEFORE [`correlate`](Self::correlate) so a seat's events
+    /// bypass the board FIFO. Dropped on the seat's terminal by [`forget`](Self::forget).
+    pub fn is_council_session(&self, session_id: u64) -> bool {
+        crate::sync::lock_or_recover(&self.correlation)
+            .council_sessions
+            .contains(&session_id)
+    }
+
     /// The wall-clock duration since a session first correlated, in milliseconds, if
     /// it is still tracked. Read on a terminal event to log the run's `duration_ms`
     /// (observability #5). `None` once the session has been forgotten.
@@ -91,11 +113,15 @@ impl SidecarProvider {
     }
 
     /// Forget a session↔task binding once the run reaches a terminal state, so the
-    /// map doesn't grow unboundedly across a long session.
+    /// map doesn't grow unboundedly across a long session. Also drops any Council seat
+    /// registration for the id (issue #364) — a harmless no-op for a normal session
+    /// (never in that set), and the terminal cleanup for a seat (which is never in
+    /// `by_session`/`started_at`).
     pub fn forget(&self, session_id: u64) {
         let mut c = crate::sync::lock_or_recover(&self.correlation);
         c.by_session.remove(&session_id);
         c.started_at.remove(&session_id);
+        c.council_sessions.remove(&session_id);
     }
 
     /// The session id currently bound to `task_id`, if any. Used to interrupt a
@@ -136,6 +162,10 @@ impl SidecarProvider {
         c.by_session.clear();
         c.pending.clear();
         c.started_at.clear();
+        // Clear Council seat registrations too (issue #364): after a crash the id
+        // counter continues, but nothing should treat a post-crash session id as a
+        // pre-crash seat.
+        c.council_sessions.clear();
         orphaned
     }
 }
@@ -284,6 +314,92 @@ mod tests {
     }
 
     #[test]
+    fn council_seat_is_noted_and_read_back() {
+        // A council seat self-identifies on its `session-started`; the reader notes it
+        // so every later event for that id can be short-circuited (skip correlate).
+        let p = provider();
+        assert!(
+            !p.is_council_session(209),
+            "unknown id is not a council seat"
+        );
+        p.note_council_session(209);
+        assert!(
+            p.is_council_session(209),
+            "a noted seat reads back as council"
+        );
+        // Idempotent — a second note is a no-op.
+        p.note_council_session(209);
+        assert!(p.is_council_session(209));
+    }
+
+    #[test]
+    fn council_seat_never_pops_a_pending_board_task_slot() {
+        // The mis-binding regression (issue #364): a board task launch is PENDING (its
+        // `session-started` has not arrived) when a council convene spawns seat sessions.
+        // Because a seat pushed no FIFO slot, the OLD reader called `correlate` on the
+        // seat's `session-started`, which POPPED the board task's slot and mis-bound the
+        // seat to it — poisoning the board task's correlation (its real session then found
+        // an empty FIFO and its stream/terminal were dropped, leaving it stuck `running`).
+        //
+        // The fix records the seat via `note_council_session` and the reader skips
+        // `correlate` entirely for it, so the board task's slot is UNTOUCHED and its real
+        // session still correlates. This test pins the provider contract the reader relies
+        // on: a noted seat is recognizable, and correlating the board task's real session
+        // still binds it correctly with a seat id already in flight.
+        let p = provider();
+        p.push_pending("board-task"); // a board launch is queued, awaiting its session
+
+        // A council seat's `session-started` arrives FIRST. The reader notes it and, seeing
+        // `is_council_session`, returns WITHOUT calling `correlate` — so the FIFO is intact.
+        p.note_council_session(209);
+        assert!(p.is_council_session(209));
+        assert!(
+            p.task_for(209).is_none(),
+            "the seat is never bound to any task (it skips correlation entirely)"
+        );
+
+        // The board task's REAL session-started now correlates and binds correctly — its
+        // slot was never stolen by the seat.
+        assert_eq!(
+            p.correlate(300).as_deref(),
+            Some("board-task"),
+            "the pending board task still correlates — the seat never popped its slot"
+        );
+        assert_eq!(p.task_for(300).as_deref(), Some("board-task"));
+    }
+
+    #[test]
+    fn forget_clears_a_council_seat_registration() {
+        // On the seat's terminal the reader calls `forget`, which must drop the council
+        // registration so the id set can't grow unbounded across many councils.
+        let p = provider();
+        p.note_council_session(209);
+        assert!(p.is_council_session(209));
+        p.forget(209);
+        assert!(
+            !p.is_council_session(209),
+            "forget deregisters the seat on its terminal"
+        );
+    }
+
+    #[test]
+    fn forget_of_a_normal_session_is_unaffected_by_the_council_set() {
+        // The council carve-out must not perturb normal terminal cleanup: forgetting a
+        // correlated board session still drops its binding, and touching the (empty)
+        // council set is a harmless no-op.
+        let p = provider();
+        p.push_pending("t");
+        p.correlate(5);
+        assert_eq!(p.task_for(5).as_deref(), Some("t"));
+        assert!(
+            !p.is_council_session(5),
+            "a board session is not a council seat"
+        );
+        p.forget(5);
+        assert!(p.task_for(5).is_none(), "binding cleared on terminal");
+    }
+
+    #[test]
     fn run_duration_ms_tracks_until_forgotten() {
         let p = provider();
         p.push_pending("t");
@@ -350,6 +466,8 @@ mod tests {
         assert_eq!(p.correlate(0).as_deref(), Some("task-a"));
         assert_eq!(p.correlate(1).as_deref(), Some("task-b"));
         // task-c never correlated (still pending).
+        // A council seat was in flight too (issue #364); reset must clear it as well.
+        p.note_council_session(42);
 
         let mut orphaned = p.reset_after_crash().await;
         orphaned.sort();
@@ -369,6 +487,12 @@ mod tests {
         assert!(
             p.correlate(9).is_none(),
             "pending launches cleared — no stale mis-bind after a crash"
+        );
+        // Council seat registrations are cleared, so a reused post-crash id is never
+        // mistaken for a pre-crash seat.
+        assert!(
+            !p.is_council_session(42),
+            "council seat registrations cleared on crash reset"
         );
     }
 }

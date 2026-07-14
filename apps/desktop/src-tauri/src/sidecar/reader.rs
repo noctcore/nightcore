@@ -205,6 +205,29 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
 
     let session_id = event.get("sessionId").and_then(Value::as_u64);
 
+    // Council SEAT carve-out (issue #364). A debate seat session is driven INSIDE the
+    // engine by the Conductor — NOT launched via the board's `start_session` command —
+    // so it pushed no pending-launch slot in the board-task FIFO. It self-identifies with
+    // `council: true` on its `session-started`. For any seat event we must SKIP the FIFO
+    // correlation below: `correlate` would otherwise find an empty FIFO and warn (the
+    // "correlation desync" flood) or — under concurrent board+council use — POP a
+    // still-pending board task's slot and mis-bind the seat to it, poisoning that task's
+    // correlation. The seat's output reaches the canvas over the moderated `nc:debate`
+    // stream (run-id-keyed, forwarded above), so the raw seat `nc:session` stream is
+    // intentionally dropped here. Registered on `session-started`; every later seat event
+    // short-circuits on the id set; the terminal deregisters so the set can't grow.
+    if let Some(sid) = session_id {
+        if is_council_session_start(event_type, &event) {
+            provider.note_council_session(sid);
+        }
+        if provider.is_council_session(sid) {
+            if matches!(event_type, "session-completed" | "session-failed") {
+                provider.forget(sid);
+            }
+            return;
+        }
+    }
+
     // Correlate the event to its task. The first sighting of a session id binds it
     // to the task at the front of the pending-launch FIFO; later events read back
     // the binding. An uncorrelatable event (no pending launch) is dropped.
@@ -548,6 +571,17 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
     }
 }
 
+/// Whether `event` is a Council SEAT session's `session-started` (issue #364) — a
+/// `session-started` carrying `council: true`. A seat is driven inside the engine by
+/// the Conductor, not launched via the board's `start_session` command, so it pushed no
+/// pending-launch FIFO slot; the reader records the seat on this event and thereafter
+/// skips `correlate` for it (no desync warn, no mis-bind of a concurrently-pending board
+/// task). Any non-`session-started` type, or a `session-started` without the flag, is a
+/// normal board/scan session (false), so this leaves every non-council path unchanged.
+fn is_council_session_start(event_type: &str, event: &Value) -> bool {
+    event_type == "session-started" && event.get("council").and_then(Value::as_bool) == Some(true)
+}
+
 /// A terminal event is STALE when the task is currently bound to a *different*
 /// session than the one the event carries — i.e. a newer run has superseded the one
 /// this terminal belongs to. Only fires when both ids are known and differ; an
@@ -592,6 +626,73 @@ mod tests {
         // No event session id → nothing to compare → fresh.
         assert!(!is_stale_terminal(None, Some(11)));
         assert!(!is_stale_terminal(None, None));
+    }
+
+    #[test]
+    fn council_session_start_only_matches_a_marked_session_started() {
+        // Only a `session-started` carrying `council: true` is a seat (issue #364).
+        let seat = json!({
+            "type": "session-started", "sessionId": 209, "prompt": "debate",
+            "model": "claude-opus-4-8", "permissionMode": "plan", "council": true
+        });
+        assert!(is_council_session_start("session-started", &seat));
+
+        // A normal board `session-started` (no marker) is NOT a seat — the field is
+        // absent, so every non-council launch is left byte-for-byte on the FIFO path.
+        let board = json!({
+            "type": "session-started", "sessionId": 1, "prompt": "build",
+            "model": "claude-opus-4-8", "permissionMode": "default"
+        });
+        assert!(!is_council_session_start("session-started", &board));
+
+        // An explicit `council: false` is also not a seat.
+        let board_false = json!({
+            "type": "session-started", "sessionId": 2, "prompt": "build",
+            "model": "claude-opus-4-8", "permissionMode": "default", "council": false
+        });
+        assert!(!is_council_session_start("session-started", &board_false));
+
+        // The marker only means "seat" on `session-started`: a later seat event carries
+        // no marker, so it is recognized via the tracked id set, not this predicate.
+        let later = json!({ "type": "session-completed", "sessionId": 209, "council": true });
+        assert!(
+            !is_council_session_start("session-completed", &later),
+            "only session-started registers a seat; later events route via the id set"
+        );
+    }
+
+    #[test]
+    fn council_seat_carve_out_precedes_and_bypasses_fifo_correlation() {
+        // Structure guard (issue #364): the council-seat carve-out must run BEFORE the
+        // board-FIFO `correlate` call, register the seat (`note_council_session`), skip
+        // every seat event (`is_council_session` → `return`), and deregister on the
+        // terminal (`forget`). This proves a seat never reaches `provider.correlate`
+        // (the desync-warn + mis-bind site). The arm needs a full `AppHandle` to run
+        // live, so this is a source-level guard like the sibling reader tests.
+        let src = include_str!("reader.rs");
+        let carve = src
+            .find("if is_council_session_start(event_type, &event)")
+            .expect("the council carve-out exists");
+        let correlate = src
+            .find("session_id.and_then(|sid| provider.correlate(sid))")
+            .expect("the board-FIFO correlation exists");
+        assert!(
+            carve < correlate,
+            "the council carve-out must run BEFORE the board-FIFO correlation"
+        );
+        let carve_block = &src[carve..correlate];
+        assert!(
+            carve_block.contains("provider.note_council_session(sid)"),
+            "the carve-out registers a seat on its session-started"
+        );
+        assert!(
+            carve_block.contains("provider.is_council_session(sid)"),
+            "the carve-out short-circuits every event for a registered seat"
+        );
+        assert!(
+            carve_block.contains("provider.forget(sid)"),
+            "the carve-out deregisters the seat on its terminal"
+        );
     }
 
     #[test]
