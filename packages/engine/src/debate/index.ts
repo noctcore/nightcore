@@ -77,11 +77,13 @@ export type {
 export {
   COUNCIL_MAX_SEATS,
   COUNCIL_MIN_DISTINCT_MODELS,
+  COUNCIL_SEAT_ROLES,
   validateCouncilPreset,
 } from './preset-validator.js';
 export type { QuotedDelivery } from './quoted-delivery.js';
 export { quoteForSeat } from './quoted-delivery.js';
 export {
+  SEAT_SESSION_HARDENING,
   type SeatSessionBackend,
   type SeatSessionParams,
   SessionSeatDriver,

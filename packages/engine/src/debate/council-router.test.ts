@@ -26,16 +26,23 @@ const isDebateEntry = (e: NightcoreEvent): e is DebateEntryEvent =>
 /** A router wired to fake seat sessions: each seat turn completes on the next macrotask
  *  with stable content, so the run drives Frame → Propose → Debate → Converge and the
  *  emit seam forwards every appended entry into `emitted`. */
+type StartSessionCommand = Extract<SurfaceCommand, { type: 'start-session' }>;
+
 function setup(): {
   router: CouncilRouter;
   emitted: NightcoreEvent[];
+  starts: StartSessionCommand[];
+  interrupted: number[];
 } {
   let nextSessionId = 1;
   const listeners = new Set<(event: NightcoreEvent) => void>();
   const emitted: NightcoreEvent[] = [];
+  const starts: StartSessionCommand[] = [];
+  const interrupted: number[] = [];
 
   const router = new CouncilRouter({
-    startSession: () => {
+    startSession: (command) => {
+      starts.push(command);
       const sessionId = nextSessionId++;
       setTimeout(() => {
         const completed = {
@@ -54,10 +61,11 @@ function setup(): {
       return () => listeners.delete(listener);
     },
     emit: (event) => emitted.push(event),
+    interruptSession: (sessionId) => interrupted.push(sessionId),
     logger: undefined,
   });
 
-  return { router, emitted };
+  return { router, emitted, starts, interrupted };
 }
 
 describe('CouncilRouter — the nc:debate emit seam', () => {
@@ -156,5 +164,27 @@ describe('CouncilRouter — the nc:debate emit seam', () => {
     expect(() =>
       router.dispatch({ type: 'kill-council', runId: 'nope' }),
     ).not.toThrow();
+  });
+
+  test('every seat session is dispatched OS-sandboxed + governed at the plan tier (safety #3)', async () => {
+    const { router, starts } = setup();
+
+    router.dispatch({
+      type: 'start-council',
+      runId: 'council-run-3',
+      presetId: 'research',
+      objective: 'Pick a strategy.',
+    });
+    await waitFor(() => starts.length > 0);
+
+    // The production wiring forwards SEAT_SESSION_HARDENING onto the underlying
+    // `start-session` command, so the existing per-session confinement machinery
+    // (Seatbelt + the SDK permission mode) applies to every seat.
+    expect(starts.length).toBeGreaterThan(0);
+    for (const start of starts) {
+      expect(start.kind).toBe('research');
+      expect(start.autonomy).toBe('plan');
+      expect(start.sandboxWrites).toBe(true);
+    }
   });
 });

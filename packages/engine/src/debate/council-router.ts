@@ -13,7 +13,11 @@
  * canvas slice, #352): it wraps every appended transcript entry into a `debate-entry`
  * `NightcoreEvent` on the supervisor's `emit` sink, so the stream rides the same
  * engine → sidecar → Rust `reader.rs` path every other `nc:*` family uses. The
- * per-seat OS sandbox is #354.
+ * per-seat OS sandbox + governance tier (issue #354, safety #3) rides on the
+ * `SessionSeatDriver`'s spawn params ({@link
+ * import('./session-seat-driver.js').SEAT_SESSION_HARDENING}) — this router forwards
+ * them onto the underlying `start-session` command, and wires the seat cancel seam
+ * (`interruptSession`) so an abandoned seat stops spending provider-side (PR #359).
  */
 import type { NightcoreEvent, SurfaceCommand } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
@@ -47,6 +51,10 @@ export interface CouncilRouterOptions {
   /** Emit a `NightcoreEvent` onto the supervisor's event stream — the `nc:debate` wire
    *  point (#352). Every appended transcript entry becomes a `debate-entry` event. */
   emit: (event: NightcoreEvent) => void;
+  /** Cancel a seat's underlying provider session by id (PR #359 LOW-B) — the supervisor
+   *  interrupts the live session, so an abandoned seat (timed out / superseded by quorum
+   *  / killed) stops spending provider-side. Best-effort; an unknown id is a no-op. */
+  interruptSession: (sessionId: number) => void;
   /** Parent logger (nullable so the supervisor passes its own `logger` directly). */
   logger: Logger | undefined;
 }
@@ -55,7 +63,7 @@ export class CouncilRouter {
   private readonly council: CouncilManager;
 
   constructor(options: CouncilRouterOptions) {
-    const { startSession, subscribe, emit, logger } = options;
+    const { startSession, subscribe, emit, interruptSession, logger } = options;
     this.council = new CouncilManager({
       // The `nc:debate` emit seam (#352): every appended transcript entry becomes a
       // `debate-entry` `NightcoreEvent` tagged with its council-run id, so the canvas
@@ -65,17 +73,25 @@ export class CouncilRouter {
         emit({ type: 'debate-entry', runId: councilRunId, entry }),
       seatDriver: new SessionSeatDriver({
         backend: {
-          // Seats run as `research`-kind (read-mostly reasoning) sessions; the
-          // per-seat OS sandbox + governance tier is issue #354.
+          // Seats run as `research`-kind (reasoning) sessions, forced OS-sandboxed +
+          // governed at the read-only `plan` tier (safety #3): the driver stamps the
+          // posture onto `params` from SEAT_SESSION_HARDENING and this thunk forwards it
+          // onto the `start-session` command, where the existing per-session confinement
+          // machinery applies it (Seatbelt + the SDK permission mode).
           spawn: (params) =>
             startSession({
               type: 'start-session',
               prompt: params.prompt,
               kind: 'research',
               model: params.model,
+              autonomy: params.autonomy,
+              sandboxWrites: params.sandboxWrites,
               ...(params.cwd !== undefined ? { cwd: params.cwd } : {}),
             }),
           on: subscribe,
+          // PR #359 LOW-B: cancel an abandoned seat's provider session so it can't keep
+          // spending after timeout/quorum/kill.
+          cancel: (sessionId) => interruptSession(sessionId),
         },
         ...(logger !== undefined ? { logger: logger.child('council-seat') } : {}),
       }),

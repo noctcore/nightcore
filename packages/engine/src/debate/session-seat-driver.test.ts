@@ -5,6 +5,7 @@ import type { NightcoreEvent, TokenUsage } from '@nightcore/contracts';
 
 import type { SeatContext, SeatTurnRequest } from './conductor-types.js';
 import {
+  SEAT_SESSION_HARDENING,
   type SeatSessionBackend,
   type SeatSessionParams,
   SessionSeatDriver,
@@ -30,6 +31,7 @@ class FakeBackend implements SeatSessionBackend {
   private nextId = 1;
   private readonly listeners = new Set<(event: NightcoreEvent) => void>();
   readonly spawns: SeatSessionParams[] = [];
+  readonly cancelled: number[] = [];
 
   spawn(params: SeatSessionParams): number {
     this.spawns.push(params);
@@ -39,6 +41,10 @@ class FakeBackend implements SeatSessionBackend {
   on(listener: (event: NightcoreEvent) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  cancel(sessionId: number): void {
+    this.cancelled.push(sessionId);
   }
 
   emit(event: NightcoreEvent): void {
@@ -82,9 +88,15 @@ describe('SessionSeatDriver', () => {
     const controller = new AbortController();
 
     const pending = driver.runTurn(request(controller.signal));
-    // The seat spawned exactly one session with its own model + prompt.
+    // The seat spawned exactly one session with its own model + prompt, forced under
+    // the per-seat OS sandbox + read-only governance tier (safety #3).
     expect(backend.spawns).toEqual([
-      { prompt: 'propose your answer', model: 'claude-opus-4-8' },
+      {
+        prompt: 'propose your answer',
+        model: 'claude-opus-4-8',
+        autonomy: 'plan',
+        sandboxWrites: true,
+      },
     ]);
 
     backend.emit(completed(1, 'my proposal'));
@@ -148,6 +160,53 @@ describe('SessionSeatDriver', () => {
 
     expect(result.content).toBe('');
     expect(backend.listenerCount).toBe(0);
+  });
+
+  // ── Safety #3: every seat session is spawned OS-sandboxed + governed ────────────
+
+  test('a seat is ALWAYS spawned under the hardened posture (plan tier + OS sandbox)', async () => {
+    const backend = new FakeBackend();
+    const driver = new SessionSeatDriver({ backend });
+    const controller = new AbortController();
+
+    const pending = driver.runTurn(request(controller.signal));
+    const [spawn] = backend.spawns;
+    // The exact per-seat posture is the single source of truth SEAT_SESSION_HARDENING —
+    // read-only `plan` governance tier + Seatbelt write containment. A regression that
+    // drops either field (an ungoverned seat) fails HERE.
+    expect(spawn?.autonomy).toBe(SEAT_SESSION_HARDENING.autonomy);
+    expect(spawn?.sandboxWrites).toBe(SEAT_SESSION_HARDENING.sandboxWrites);
+    expect(SEAT_SESSION_HARDENING).toEqual({ autonomy: 'plan', sandboxWrites: true });
+
+    backend.emit(completed(1, 'ok'));
+    await pending;
+  });
+
+  // ── PR #359 LOW-B: an abandoned seat's provider session is cancelled ────────────
+
+  test('an abort cancels the underlying provider session so it stops spending', async () => {
+    const backend = new FakeBackend();
+    const driver = new SessionSeatDriver({ backend });
+    const controller = new AbortController();
+
+    const pending = driver.runTurn(request(controller.signal)); // spawns session id 1
+    controller.abort();
+    await pending;
+
+    // The seat's session was cancelled on abort — an abandoned seat can't keep spending
+    // provider-side after timeout/quorum/kill.
+    expect(backend.cancelled).toEqual([1]);
+  });
+
+  test('an already-aborted turn never spawned, so there is nothing to cancel', async () => {
+    const backend = new FakeBackend();
+    const driver = new SessionSeatDriver({ backend });
+    const controller = new AbortController();
+    controller.abort();
+
+    await driver.runTurn(request(controller.signal));
+    expect(backend.spawns).toHaveLength(0);
+    expect(backend.cancelled).toHaveLength(0);
   });
 
   // ── LOW-B (#351): teardown on a synchronous hard throw ──────────────────────

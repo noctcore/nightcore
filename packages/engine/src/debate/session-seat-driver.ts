@@ -15,11 +15,20 @@
  * learn the exact id, then folds only that id's events — so concurrent blind-Propose
  * turns never cross wires.
  *
- * Sandbox posture is out of scope here: per-seat OS sandbox + governance tier is
- * issue #354. A seat runs as an ordinary read-mostly session; the injection firewall
- * (mediated, quoted, scanned peer delivery) is enforced by the Conductor, not here.
+ * Sandbox + governance posture (issue #354, safety non-negotiable #3): EVERY seat
+ * session is spawned under {@link SEAT_SESSION_HARDENING} — the OS write sandbox
+ * (`sandboxWrites`) + the read-only `plan` governance tier — reusing the existing
+ * per-session confinement machinery (`resolveStartSessionParams` →
+ * `providers/claude/sandbox.ts` Seatbelt + the SDK permission mode). The posture is
+ * stamped HERE, unconditionally, so a seat can never be spawned ungoverned; the
+ * injection firewall (mediated, quoted, scanned peer delivery) is enforced by the
+ * Conductor.
  */
-import type { NightcoreEvent, TokenUsage } from '@nightcore/contracts';
+import type {
+  AutonomyLevel,
+  NightcoreEvent,
+  TokenUsage,
+} from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
 
 import type {
@@ -36,11 +45,39 @@ const ZERO_USAGE: TokenUsage = {
   reasoningOutputTokens: 0,
 };
 
-/** The parameters a seat turn starts its one-shot session with. */
+/**
+ * The per-seat OS sandbox + governance tier (safety non-negotiable #3). A debating
+ * seat REASONS — it never types keystrokes (the design: "debate plans, it never types
+ * keystrokes"), so it runs at the MOST restrictive posture that still lets it answer:
+ *
+ *  - `autonomy: 'plan'` — the read-only governance tier. The provider lowers it to the
+ *    SDK `plan` permission mode, so a seat structurally cannot execute an edit/write
+ *    tool (it can only read + reason). No human approves per-seat tool calls in a
+ *    council, so `plan` (deny writes) is correct where `ask` (await approval) would hang.
+ *  - `sandboxWrites: true` — OS-level write containment (Seatbelt) as the compensating
+ *    control, closing the lexical gate's gaps (Bash redirects, symlinks). Fail-open on a
+ *    host without `sandbox-exec` (a loud warning), where the `plan` tier still governs.
+ *
+ * Stamped onto EVERY seat spawn unconditionally (not a per-run knob) — the governed
+ * posture is the whole point of a council seat, never opt-in.
+ */
+export const SEAT_SESSION_HARDENING: {
+  readonly autonomy: AutonomyLevel;
+  readonly sandboxWrites: boolean;
+} = { autonomy: 'plan', sandboxWrites: true };
+
+/** The parameters a seat turn starts its one-shot session with. `autonomy` +
+ *  `sandboxWrites` are the per-seat governance tier + OS sandbox (safety #3), stamped
+ *  by the driver from {@link SEAT_SESSION_HARDENING} — required, so the backend wiring
+ *  MUST forward them onto the underlying `start-session` command. */
 export interface SeatSessionParams {
   readonly prompt: string;
   readonly model: string;
   readonly cwd?: string;
+  /** The seat's governance tier (safety #3) — the read-only `plan` mode. */
+  readonly autonomy: AutonomyLevel;
+  /** The seat's OS write sandbox (safety #3) — Seatbelt write containment. */
+  readonly sandboxWrites: boolean;
 }
 
 /**
@@ -54,6 +91,11 @@ export interface SeatSessionBackend {
   spawn(params: SeatSessionParams): number;
   /** Subscribe to the engine event stream; returns an unsubscribe fn. */
   on(listener: (event: NightcoreEvent) => void): () => void;
+  /** Cancel a seat's underlying provider session by id (PR #359 LOW-B): on
+   *  timeout/quorum/kill the driver asks the backend to STOP the session so an
+   *  abandoned seat can't keep spending provider-side. Best-effort + optional (a fake
+   *  backend may omit it); a throw here never turns an abort into a rejection. */
+  cancel?(sessionId: number): void;
 }
 
 export interface SessionSeatDriverDeps {
@@ -94,6 +136,22 @@ export class SessionSeatDriver implements SeatDriver {
         this.deps.logger?.debug('seat turn aborted before completion', {
           seatId: request.seat.seatId,
         });
+        // Cancel the underlying provider session so an abandoned seat (timed out,
+        // superseded by quorum, or killed) stops spending provider-side (PR #359
+        // LOW-B). Only when a session was actually spawned; best-effort — a missing
+        // cancel seam or a throw must never turn the abort into a rejection.
+        const sessionId = correlation.sessionId;
+        if (sessionId !== undefined) {
+          try {
+            this.deps.backend.cancel?.(sessionId);
+          } catch (error) {
+            this.deps.logger?.debug('seat session cancel failed', {
+              seatId: request.seat.seatId,
+              sessionId,
+              error,
+            });
+          }
+        }
         finish(this.empty());
       };
       request.signal.addEventListener('abort', onAbort, { once: true });
@@ -139,6 +197,9 @@ export class SessionSeatDriver implements SeatDriver {
         correlation.sessionId = this.deps.backend.spawn({
           prompt: request.prompt,
           model: request.seat.model,
+          // Safety #3: every seat session is spawned OS-sandboxed + governed at the
+          // read-only `plan` tier — stamped here so a seat can never run ungoverned.
+          ...SEAT_SESSION_HARDENING,
           ...(request.cwd !== undefined ? { cwd: request.cwd } : {}),
         });
       } catch (error) {

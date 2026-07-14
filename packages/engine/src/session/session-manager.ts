@@ -107,6 +107,15 @@ export class SessionManager {
       startSession: (command) => this.startSession(command),
       subscribe: (listener) => this.on(listener),
       emit: (event) => this.emit(event),
+      // Cancel an abandoned seat's session (PR #359 LOW-B): best-effort + fire-and-forget
+      // so it stops spending provider-side; an unknown/torn-down id is a no-op.
+      interruptSession: (sessionId) =>
+        void this.sessions
+          .get(sessionId)
+          ?.runner.interrupt()
+          .catch((error: unknown) =>
+            this.logger?.debug('seat interrupt failed', { sessionId, error }),
+          ),
       logger,
     });
     // Seed the id counter past the highest persisted id so a restart never
