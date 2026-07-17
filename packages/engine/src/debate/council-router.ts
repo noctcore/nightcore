@@ -65,6 +65,14 @@ export class CouncilRouter {
 
   constructor(options: CouncilRouterOptions) {
     const { startSession, subscribe, emit, interruptSession, logger } = options;
+    // The objective-preset gate + single-writer Build stay DORMANT in production (issue
+    // #367): no `gauntletRunner` and no `buildDriver` are injected here yet. The UI-bug
+    // preset's `repro` gate and its write step activate TOGETHER when the write-capable
+    // `SessionBuildDriver` + its engine↔Rust worktree seam land (a tracked follow-up — see
+    // `objective-preset.ts`): the driver's isolated worktree is the dir the injected
+    // gauntlet runner would run the repro in, so a gate with no writer-produced worktree
+    // would have nothing to judge. Until then a UI-bug council debates a repro + fix plan
+    // and parks for the human — it never writes (a council debates plans, it never types).
     this.council = new CouncilManager({
       // The `nc:debate` emit seam (#352): every appended transcript entry becomes a
       // `debate-entry` `NightcoreEvent` tagged with its council-run id, so the canvas

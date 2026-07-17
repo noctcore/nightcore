@@ -96,6 +96,7 @@ export {
 } from './no-progress-detector.js';
 export type {
   GauntletLikeResult,
+  GauntletRunner,
   ObjectiveGate,
   ObjectiveGateCheck,
   ObjectiveGateContext,
@@ -103,12 +104,17 @@ export type {
   ObjectiveGateVerdict,
 } from './objective-gate.js';
 export { gauntletObjectiveGate } from './objective-gate.js';
+export {
+  isObjectivePreset,
+  objectiveGateForPreset,
+} from './objective-preset.js';
 export type { PeerContext, PeerOutput } from './peer-context.js';
 export { assemblePeerContext } from './peer-context.js';
 export {
   COUNCIL_PRESETS,
   RESEARCH_COUNCIL_PRESET,
   resolveCouncilPreset,
+  UI_BUG_COUNCIL_PRESET,
 } from './preset-registry.js';
 export type {
   CouncilPresetIssue,

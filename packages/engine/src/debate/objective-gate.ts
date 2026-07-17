@@ -98,6 +98,17 @@ export interface GauntletLikeResult {
 }
 
 /**
+ * The INJECTED gauntlet runner a production gate reuses: `context → gauntlet result`. In
+ * production it is the harness `runChecks` bound to the run's worktree + a spawn (the
+ * gauntlet's OWN exec sink — never a new one); in tests a deterministic fake. Named so the
+ * preset-aware gate resolver (`objective-preset.ts`) and the Conductor can thread it
+ * without re-typing the closure.
+ */
+export type GauntletRunner = (
+  context: ObjectiveGateContext,
+) => GauntletLikeResult | Promise<GauntletLikeResult>;
+
+/**
  * Build an {@link ObjectiveGate} that runs a deterministic Structure-Lock gauntlet and
  * maps its result to a verdict. `runGauntlet` is the INJECTED gauntlet runner — in
  * production the harness `runChecks` bound to the run's worktree + a spawn; in tests a
@@ -105,11 +116,7 @@ export interface GauntletLikeResult {
  * instead of inventing a new exec sink: the exec belongs to the gauntlet, this only
  * adapts its shape.
  */
-export function gauntletObjectiveGate(
-  runGauntlet: (
-    context: ObjectiveGateContext,
-  ) => GauntletLikeResult | Promise<GauntletLikeResult>,
-): ObjectiveGate {
+export function gauntletObjectiveGate(runGauntlet: GauntletRunner): ObjectiveGate {
   return {
     async evaluate(context) {
       const result = await runGauntlet(context);

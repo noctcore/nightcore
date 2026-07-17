@@ -28,6 +28,7 @@ import type { CouncilRunInput } from './conductor.js';
 import type { RunGovernor } from './conductor-budget.js';
 import type { SeatContext } from './conductor-types.js';
 import { assemblePeerContext, type PeerOutput } from './peer-context.js';
+import { debatingSeats } from './preset-validator.js';
 
 /**
  * The recipient id the converged plan is assembled FOR (safety #2). It is deliberately a
@@ -89,7 +90,12 @@ export async function runBuild(
   // Never start a write turn on an already-halted run (killed or at a hard cap, safety #4).
   if (input.governor.killed || input.governor.capBreached() !== null) return null;
 
-  const writer = electWriter(input.seats);
+  // Elect the writer from the DEBATERS only — never a dedicated `judge` seat (#380 gate
+  // carry-forward). A judge rules on the debate at Converge; it must not also author the
+  // code it will (via the gate) judge. This preset (#367) has no judge seat, so this is a
+  // no-op here, but it keeps the SHARED Build path safe for a future preset (#368) that
+  // pairs a `build` stage with a `judge-agent` convergence — the writer is a debater, always.
+  const writer = electWriter(debatingSeats(input.seats));
   if (writer === null) return null;
 
   input.bus.note(

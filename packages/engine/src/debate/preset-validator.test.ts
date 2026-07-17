@@ -201,4 +201,48 @@ describe('validateCouncilPreset', () => {
     };
     expect(validateCouncilPreset(humanWithJudge)).toEqual({ valid: true });
   });
+
+  // ── Objective-preset invariants: build ⟺ objectiveGate (issue #367, safety #6) ────
+
+  /** A valid reproduce-first UI-bug-shaped preset the objective cases mutate. */
+  const objectivePreset: CouncilPreset = {
+    ...basePreset,
+    stages: [
+      { stage: 'frame', blind: false },
+      { stage: 'propose', blind: true },
+      { stage: 'debate', blind: false, maxRounds: 2 },
+      { stage: 'build', blind: false },
+      { stage: 'converge', blind: false },
+    ],
+    objectiveGate: 'repro',
+    successCriterion: 'The repro goes RED → GREEN.',
+  };
+
+  test('ACCEPTS a reproduce-first preset: a `build` stage paired with a `repro` gate', () => {
+    expect(validateCouncilPreset(objectivePreset)).toEqual({ valid: true });
+  });
+
+  test('REJECTS a `build` stage with NO objective gate (no un-gated write, safety #6)', () => {
+    const unGatedBuild: CouncilPreset = { ...objectivePreset, objectiveGate: undefined };
+    expect(issueCodes(unGatedBuild)).toContain('build-stage-requires-objective-gate');
+  });
+
+  test('REJECTS a `repro` gate with NO build stage (nothing turns the repro green)', () => {
+    const gateNoBuild: CouncilPreset = {
+      ...objectivePreset,
+      stages: [
+        { stage: 'frame', blind: false },
+        { stage: 'propose', blind: true },
+        { stage: 'debate', blind: false, maxRounds: 2 },
+        { stage: 'converge', blind: false },
+      ],
+    };
+    expect(issueCodes(gateNoBuild)).toContain('objective-gate-requires-build-stage');
+  });
+
+  test('a pure-reasoning preset (no build, no gate) satisfies the objective invariants', () => {
+    // The P1 `basePreset` has neither a build stage nor an objective gate — both trivially
+    // satisfied, so the new rules never regress the pure-reasoning path.
+    expect(validateCouncilPreset(basePreset)).toEqual({ valid: true });
+  });
 });
