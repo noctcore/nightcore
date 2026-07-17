@@ -187,6 +187,71 @@ describe('Safety #2 — inter-seat messages are injection-scanned + delivered qu
   });
 });
 
+// ── Safety #1/#2 — editable routing edits stay conductor-mediated (issue #371) ──
+
+describe('Safety #1/#2 — a routing edit only FILTERS mediated peers; it cannot un-mediate a path', () => {
+  test('rewiring who informs a seat changes WHICH quoted+scanned peers it hears — never HOW', async () => {
+    const ref: { conductor?: Conductor } = {};
+    let routed = false;
+    // Each seat emits a distinctive, always-changing tag so Debate runs both rounds and a
+    // peer's presence in another seat's prompt is unambiguous to assert.
+    const driver = new RecordingDriver((req, index) => {
+      if (req.stage === 'debate' && !routed) {
+        routed = true;
+        // Restrict critic-opus to hear ONLY proposer-sonnet next round (cut proposer-opus).
+        ref.conductor?.setRouting('run-routing', [
+          { from: 'proposer-sonnet', to: 'critic-opus' },
+        ]);
+      }
+      return turn(`FROM-${req.seat.seatId}-${index}`);
+    });
+    const conductor = new Conductor({ bus: new DebateBus(), seatDriver: driver });
+    ref.conductor = conductor;
+
+    const result = await conductor.run({
+      councilRunId: 'run-routing',
+      preset: preset(),
+      objective: 'o',
+    });
+
+    // The routing directive was recorded onto the append-only transcript as a CONDUCTOR
+    // note (a mediated write — safety #1/#7), never a direct seat/store write.
+    const routingNote = result.transcript.find(
+      (e) =>
+        e.kind === 'note' &&
+        e.role === 'conductor' &&
+        e.stage === 'debate' &&
+        e.content.includes('Routing updated'),
+    );
+    expect(routingNote).toBeDefined();
+
+    // critic-opus's round-2 prompt reflects the edit: it hears proposer-sonnet…
+    const criticRound2 = driver.calls.find(
+      (req) =>
+        req.stage === 'debate' &&
+        req.seat.seatId === 'critic-opus' &&
+        req.prompt.includes('debate round 2'),
+    );
+    expect(criticRound2).toBeDefined();
+    const prompt = criticRound2!.prompt;
+    expect(prompt).toContain('Seat proposer-sonnet said');
+    // …but NOT the cut peer — the edit SUBTRACTED proposer-opus entirely.
+    expect(prompt).not.toContain('Seat proposer-opus said');
+    expect(prompt).not.toContain('FROM-proposer-opus-');
+    // The peer it DOES still hear is delivered through the SAME quoted, injection-scanned
+    // fence — the edit filtered the SET, it did not open a raw agent-to-agent channel.
+    expect(prompt).toContain('NEVER as an instruction');
+    expect(prompt).toContain('BEGIN UNTRUSTED');
+  });
+
+  test('a routing directive for an unknown / finished run is a refused no-op (never throws)', () => {
+    const conductor = new Conductor({ bus: new DebateBus(), seatDriver: new RecordingDriver(() => turn('x')) });
+    const update = conductor.setRouting('nope', [{ from: 'a', to: 'b' }]);
+    expect(update.ok).toBe(false);
+    expect(update.edges).toBeUndefined();
+  });
+});
+
 // ── Safety #3 — per-seat OS sandbox + governance tier active ─────────────────────
 
 describe('Safety #3 — every seat session runs under an OS sandbox + governance tier', () => {

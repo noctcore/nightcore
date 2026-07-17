@@ -75,6 +75,13 @@ export interface DebateRoundHooks {
   /** Bounded-concurrency + timeout + reservation config for the per-round broadcast.
    *  Absent ⇒ the collector's defaults (unbounded-estimate, default concurrency/timeout). */
   readonly dispatch?: DebateDispatchConfig;
+  /** The editable routing FILTER (issue #371): the seat ids that may inform `toSeatId`
+   *  this round, or `null` for the OPEN default (every peer informs it). Read FRESH each
+   *  round so a live routing edit takes effect on the next round. It only NARROWS which
+   *  mediated peers a seat hears — it is applied BEFORE {@link assemblePeerContext}, so
+   *  every surviving peer still flows through the quoted+scanned delivery path (safety
+   *  #1/#2). Absent ⇒ open routing (unit tests that don't exercise routing omit it). */
+  informers?(toSeatId: string): ReadonlySet<string> | null;
   /** Build a seat's debate prompt for `round`, embedding the mediated `peerText`
    *  (which contains ONLY quoted+scanned peer content). */
   buildPrompt(seat: SeatContext, round: number, peerText: string): string;
@@ -122,13 +129,21 @@ export async function runDebateRounds(
     }));
 
     // Assemble every seat's mediated prompt FIRST, sequentially, from that fixed
-    // snapshot. Peer-text routing is UNCHANGED (the collector governs dispatch, not
-    // delivery): each prompt's peer content is the quoted, injection-scanned delivery
-    // text — never raw `read()` content (MEDIUM guard). Doing this before dispatch keeps
-    // the delivery transcript order deterministic and out of the concurrent section.
+    // snapshot. Each prompt's peer content is the quoted, injection-scanned delivery text
+    // — never raw `read()` content (MEDIUM guard). The routing FILTER (issue #371) is
+    // applied HERE, before delivery: it only narrows the snapshot to the seat's informers,
+    // so every surviving peer still flows through `assemblePeerContext` → the quoted+
+    // scanned path. A routing edit can therefore never introduce an un-mediated peer path
+    // — it can only subtract peers (safety #1/#2). Doing this before dispatch keeps the
+    // delivery transcript order deterministic and out of the concurrent section.
     const prompts = new Map<string, string>();
     for (const seat of seats) {
-      const peers = assemblePeerContext(bus, 'debate', seat.seatId, snapshot);
+      const allowed = hooks.informers?.(seat.seatId) ?? null;
+      const visible =
+        allowed === null
+          ? snapshot
+          : snapshot.filter((peer) => allowed.has(peer.seatId));
+      const peers = assemblePeerContext(bus, 'debate', seat.seatId, visible);
       prompts.set(seat.seatId, hooks.buildPrompt(seat, round, peers.text));
     }
 

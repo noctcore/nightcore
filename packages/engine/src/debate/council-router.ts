@@ -32,6 +32,7 @@ const COUNCIL_COMMAND_TYPES = [
   'start-council',
   'kill-council',
   'resolve-council-converge',
+  'set-council-routing',
 ] as const satisfies readonly SurfaceCommand['type'][];
 
 type CouncilCommandType = (typeof COUNCIL_COMMAND_TYPES)[number];
@@ -133,6 +134,14 @@ export class CouncilRouter {
         ...(command.seatId !== undefined ? { seatId: command.seatId } : {}),
         ...(command.note !== undefined ? { note: command.note } : {}),
       });
+      return;
+    }
+    if (command.type === 'set-council-routing') {
+      // The editable canvas edges (issue #371). A CONDUCTOR DIRECTIVE, never a direct seat
+      // write: the Conductor replaces the run's routing graph and records the change onto
+      // the append-only transcript, which streams it back over `nc:debate` (the canvas
+      // reflects it) — the injection firewall (safety #1) is untouched.
+      this.council.setRouting(command.runId, command.edges);
       return;
     }
     this.council.kill(command.runId);
