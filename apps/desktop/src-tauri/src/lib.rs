@@ -314,6 +314,10 @@ pub fn run() {
             // verdict that resolves a parked run. Routes through the engine's Conductor
             // (the sole bus writer) → append-only transcript, never a direct store write.
             sidecar::resolve_council_converge,
+            // The editable canvas edges (issue #371): rewire a live run's routing policy.
+            // A CONDUCTOR DIRECTIVE, not a direct seat write — the Conductor filters which
+            // mediated, quoted peers inform a seat next Debate round (safety #1 intact).
+            sidecar::set_council_routing,
             sidecar::list_task_sessions,
             sidecar::get_task_session_messages,
             sidecar::resume_session,

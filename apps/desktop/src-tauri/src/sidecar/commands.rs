@@ -379,6 +379,33 @@ pub async fn resolve_council_converge(
     provider.dispatch_command(command).await
 }
 
+/// Rewire a live Council run's routing policy — the editable canvas edges (issue #371).
+/// A routing edge is "A informs B": which seats' outputs reach a recipient seat as its
+/// MEDIATED, quoted, injection-scanned peer context in the Debate stage. `edges` REPLACES
+/// the run's current edge set (an empty list restores the open default — every seat
+/// informs every other).
+///
+/// This is a CONDUCTOR DIRECTIVE, not a direct seat write (safety non-negotiable #1 — the
+/// injection firewall): dispatch a `set-council-routing` SurfaceCommand, and the engine's
+/// Conductor — the sole bus writer — applies the new policy to the next Debate round and
+/// records the change onto the append-only transcript, which streams back over
+/// `nc:debate`. Fire-and-forget like its `resolve_council_converge` sibling — the recorded
+/// routing note is the confirmation. When the sidecar isn't running there is no live run
+/// to route, so this is a no-op. Async — fully async tokio I/O, never blocks the WKWebView.
+#[tauri::command]
+pub async fn set_council_routing(
+    provider: State<'_, Arc<SidecarProvider>>,
+    run_id: String,
+    edges: Vec<crate::contracts::CouncilRoutingEdge>,
+) -> Result<(), String> {
+    if !provider.is_running().await {
+        return Ok(());
+    }
+    tracing::debug!(target: "nightcore", run_id, edges = edges.len(), "set-council-routing dispatched to engine");
+    let command = crate::contracts::SurfaceCommand::SetCouncilRouting { run_id, edges };
+    provider.dispatch_command(command).await
+}
+
 /// Best-effort interrupt of a task's run. Aborts the slot's driver (if the loop
 /// spawned one) and sends an `interrupt` for the task's session; the terminal
 /// transition still arrives via the sidecar's `session-failed (aborted)` event,

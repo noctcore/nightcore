@@ -53,6 +53,8 @@ export type {
   StartCouncilInput,
 } from './council-manager.js';
 export { CouncilManager } from './council-manager.js';
+export type { RoutingUpdate } from './council-routing.js';
+export { RoutingPolicy } from './council-routing.js';
 export type {
   DebateDispatchConfig,
   DebateHalt,

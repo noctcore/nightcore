@@ -210,6 +210,11 @@ pub enum SurfaceCommand {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         note: Option<String>,
     },
+    #[serde(rename_all = "camelCase")]
+    SetCouncilRouting {
+        run_id: String,
+        edges: Vec<CouncilRoutingEdge>,
+    },
 }
 
 // === Surface → engine queries (Rust SERIALIZES these; replies arrive as the
@@ -821,6 +826,13 @@ pub enum CouncilConvergeDecision {
 #[serde(rename_all = "lowercase")]
 pub enum CouncilPresetId {
     Research,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CouncilRoutingEdge {
+    pub from: String,
+    pub to: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

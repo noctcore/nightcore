@@ -255,6 +255,20 @@
       "decision": "accept",
       "seatId": "proposer-opus",
       "note": "Clearest migration plan with the least dual-write risk."
+    },
+    "set-council-routing": {
+      "type": "set-council-routing",
+      "runId": "run-council1",
+      "edges": [
+        {
+          "from": "proposer-opus",
+          "to": "critic-opus"
+        },
+        {
+          "from": "proposer-sonnet",
+          "to": "critic-opus"
+        }
+      ]
     }
   },
   "queries": {

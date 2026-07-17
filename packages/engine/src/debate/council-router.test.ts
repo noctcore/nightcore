@@ -159,6 +159,65 @@ describe('CouncilRouter — the nc:debate emit seam', () => {
     expect(verdictEvent?.runId).toBe('council-run-2');
   });
 
+  test('set-council-routing routes the routing directive through the Conductor onto the stream (issue #371)', async () => {
+    const { router, emitted } = setup();
+
+    const start: SurfaceCommand = {
+      type: 'start-council',
+      runId: 'council-run-routing',
+      presetId: 'research',
+      objective: 'Pick a strategy.',
+    };
+    router.dispatch(start);
+
+    // The run's routing handle is live synchronously after start (run() sets it before its
+    // first await), so the edit reaches the Conductor while the run is in flight.
+    const setRouting: SurfaceCommand = {
+      type: 'set-council-routing',
+      runId: 'council-run-routing',
+      edges: [{ from: 'proposer-sonnet', to: 'critic-opus' }],
+    };
+    expect(router.handles(setRouting)).toBe(true);
+    router.dispatch(setRouting);
+
+    // The directive is recorded onto the append-only transcript as a CONDUCTOR note (a
+    // mediated write — safety #1) and streams over nc:debate like every other entry.
+    await waitFor(() =>
+      emitted
+        .filter(isDebateEntry)
+        .some(
+          (e) =>
+            e.entry.kind === 'note' &&
+            e.entry.role === 'conductor' &&
+            e.entry.stage === 'debate' &&
+            e.entry.content.includes('Routing updated'),
+        ),
+    );
+
+    const note = emitted
+      .filter(isDebateEntry)
+      .map((e) => e.entry)
+      .find(
+        (entry) =>
+          entry.stage === 'debate' &&
+          entry.kind === 'note' &&
+          entry.content.includes('Routing updated'),
+      );
+    expect(note).toBeDefined();
+    expect(note?.content).toContain('critic-opus ← proposer-sonnet');
+  });
+
+  test('set-council-routing for an unknown run is a no-op (never throws)', () => {
+    const { router } = setup();
+    expect(() =>
+      router.dispatch({
+        type: 'set-council-routing',
+        runId: 'nope',
+        edges: [{ from: 'a', to: 'b' }],
+      }),
+    ).not.toThrow();
+  });
+
   test('kill-council for an unknown run is a no-op (never throws)', () => {
     const { router } = setup();
     expect(() =>

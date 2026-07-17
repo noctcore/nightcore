@@ -31,6 +31,7 @@
  */
 import type {
   CouncilPreset,
+  CouncilRoutingEdge,
   DebateStage,
   DebateTranscriptEntry,
 } from '@nightcore/contracts';
@@ -44,8 +45,17 @@ import {
   resolveParkedConverge,
   runConverge,
 } from './conductor-converge.js';
+import {
+  debateMaxRounds,
+  stageDispatchConfig,
+} from './conductor-dispatch.js';
 import { observeBus } from './conductor-observer.js';
 import { debatePrompt, proposePrompt } from './conductor-prompts.js';
+import {
+  applyRoutingDirective,
+  type RunRoutingRuntime,
+  seedRoutingRuntime,
+} from './conductor-routing.js';
 import type {
   BudgetHaltCause,
   ConvergeDecision,
@@ -55,8 +65,8 @@ import type {
   SeatContext,
   SeatDriver,
   SeatTurnResult,
-  TurnEstimate,
 } from './conductor-types.js';
+import type { RoutingPolicy, RoutingUpdate } from './council-routing.js';
 import { runDebateRounds } from './debate-round.js';
 import type { ObjectiveGate } from './objective-gate.js';
 import { validateCouncilPreset } from './preset-validator.js';
@@ -105,6 +115,10 @@ export class Conductor {
   /** Governors of currently-running councils, so {@link kill} can reach a live run. */
   private readonly active = new Map<string, RunGovernor>();
 
+  /** Live routing handles per running council, so {@link setRouting} can rewire the
+   *  Debate graph of a run in flight (issue #371). Set + cleared alongside {@link active}. */
+  private readonly runtimes = new Map<string, RunRoutingRuntime>();
+
   /** Runs parked at Converge, awaiting the human judge's verdict ({@link
    *  resolveConverge}) — the P1 terminal authority is the human (safety #7). */
   private readonly parked = new Map<string, ParkedConverge>();
@@ -124,6 +138,24 @@ export class Conductor {
   /** Whether a council run is currently active. */
   isActive(councilRunId: string): boolean {
     return this.active.has(councilRunId);
+  }
+
+  /** Rewire a LIVE run's routing graph — the editable canvas edges (issue #371). A
+   *  CONDUCTOR DIRECTIVE, never a direct seat write: it only changes WHICH already-
+   *  mediated, quoted, injection-scanned peers reach a seat next Debate round (safety
+   *  #1/#2). Delegates to {@link applyRoutingDirective}, which replaces the edge set and
+   *  records the change onto the append-only transcript. Refused for an unknown/finished
+   *  run. */
+  setRouting(
+    councilRunId: string,
+    edges: readonly CouncilRoutingEdge[],
+  ): RoutingUpdate {
+    return applyRoutingDirective(
+      this.runtimes.get(councilRunId),
+      councilRunId,
+      edges,
+      this.deps.logger,
+    );
   }
 
   /**
@@ -161,14 +193,19 @@ export class Conductor {
       role: seat.role,
       model: seat.model,
     }));
+    // The run's live routing handle, seeded from the preset (issue #371). The human
+    // rewires it live through {@link setRouting}; the Debate loop reads it fresh each round.
+    const runtime = seedRoutingRuntime(bus, preset.routing, seats);
+    this.runtimes.set(councilRunId, runtime);
 
     try {
-      return await this.drive(input, bus, governor, seats);
+      return await this.drive(input, bus, governor, seats, runtime.routing);
     } catch (error) {
       this.deps.logger?.warn('council run crashed', { councilRunId, error });
       return this.result(councilRunId, 'failed', governor);
     } finally {
       this.active.delete(councilRunId);
+      this.runtimes.delete(councilRunId);
     }
   }
 
@@ -178,6 +215,7 @@ export class Conductor {
     bus: ConductorBus,
     governor: RunGovernor,
     seats: SeatContext[],
+    routing: RoutingPolicy,
   ): Promise<CouncilRunResult> {
     const { councilRunId, preset, objective } = input;
 
@@ -199,9 +237,12 @@ export class Conductor {
       bus,
       seats,
       governor,
-      stageMaxRounds: this.debateMaxRounds(preset),
+      stageMaxRounds: debateMaxRounds(preset),
       priorOutputs: proposeOutputs,
-      dispatch: this.dispatchConfig(preset, seats),
+      dispatch: stageDispatchConfig(preset, seats, this.deps),
+      // The editable routing filter (issue #371), read FRESH each round so a live rewire
+      // applies on the next round. It only narrows which mediated peers a seat hears.
+      informers: (toSeatId) => routing.informers(toSeatId),
       buildPrompt: (seat, round, peerText) =>
         debatePrompt(objective, seat, round, peerText),
       runTurn: (seat, prompt, signal) =>
@@ -249,7 +290,7 @@ export class Conductor {
       broadcastId,
       seats,
       governor,
-      ...this.dispatchConfig(input.preset, seats),
+      ...stageDispatchConfig(input.preset, seats, this.deps),
       signal: governor.signal,
       run: (seat, dispatch) =>
         this.runTurn(
@@ -318,47 +359,6 @@ export class Conductor {
     });
   }
 
-  /** The broadcast-collector knobs shared by Propose + Debate: bounded concurrency, the
-   *  per-seat timeout, and the per-turn budget reservation (LOW-A). Both stages dispatch
-   *  through the same collector, so their concurrency + overshoot bounds are identical. */
-  private dispatchConfig(
-    preset: CouncilPreset,
-    seats: readonly SeatContext[],
-  ): {
-    maxConcurrency?: number;
-    timeoutMs?: number;
-    estimate: TurnEstimate;
-  } {
-    return {
-      ...(this.deps.maxSeatConcurrency !== undefined
-        ? { maxConcurrency: this.deps.maxSeatConcurrency }
-        : {}),
-      ...(this.deps.seatTimeoutMs !== undefined
-        ? { timeoutMs: this.deps.seatTimeoutMs }
-        : {}),
-      estimate: this.turnEstimate(preset, seats),
-    };
-  }
-
-  /** A conservative per-turn budget estimate the collector RESERVES before dispatch
-   *  (#351, LOW-A): each turn's fair share of the run budget over every turn the run may
-   *  take (`seats × (1 Propose + Debate maxRounds)`). Under-estimates settle down and
-   *  free headroom; over-estimates are caught by the post-stage cap check. This bounds a
-   *  parallel broadcast's overshoot to at most one in-flight estimate, never a round. */
-  private turnEstimate(
-    preset: CouncilPreset,
-    seats: readonly SeatContext[],
-  ): TurnEstimate {
-    const plannedTurns = Math.max(
-      1,
-      seats.length * (1 + this.debateMaxRounds(preset)),
-    );
-    return {
-      tokens: Math.ceil(preset.budget.maxTotalTokens / plannedTurns),
-      costUsd: preset.budget.maxCostUsd / plannedTurns,
-    };
-  }
-
   /** The terminal status the governor implies after a stage, or null to continue.
    *  Separates a kill from a specific budget cap. */
   private governorStatus(
@@ -386,10 +386,4 @@ export class Conductor {
     };
   }
 
-  /** The Debate stage's `maxRounds` from the preset (`≤2`); defaults to 1 if the preset
-   *  declares no Debate step. */
-  private debateMaxRounds(preset: CouncilPreset): number {
-    const debate = preset.stages.find((step) => step.stage === 'debate');
-    return debate?.maxRounds ?? (debate !== undefined ? 1 : 0);
-  }
 }

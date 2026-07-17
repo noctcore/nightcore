@@ -313,6 +313,9 @@ export type { QuestionAnswer, QuestionItem, QuestionOption } from '@nightcore/co
 export type {
   CouncilConvergeDecision,
   CouncilPresetId,
+  // Editable routing edges (issue #371): one "A informs B" edge the `set_council_routing`
+  // command carries. The canvas edits the run's routing graph as a set of these.
+  CouncilRoutingEdge,
   DebateEntryKind,
   DebateSeatRole,
   DebateStage,

@@ -20,6 +20,7 @@
  */
 import type {
   CouncilPresetId,
+  CouncilRoutingEdge,
   DebateTranscriptEntry,
 } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
@@ -31,6 +32,7 @@ import type {
   ConvergeResolution,
   SeatDriver,
 } from './conductor-types.js';
+import type { RoutingUpdate } from './council-routing.js';
 import { resolveCouncilPreset } from './preset-registry.js';
 
 export interface CouncilManagerDeps {
@@ -104,6 +106,26 @@ export class CouncilManager {
           error,
         });
       });
+  }
+
+  /** Rewire a live run's routing graph — the editable canvas edges (issue #371). The
+   *  edit flows through the {@link Conductor} (the sole bus writer), which REPLACES the
+   *  run's "A informs B" edge set and records the change onto the append-only transcript
+   *  — never a direct seat write (safety #1). A refused directive (unknown/finished run)
+   *  is logged, not thrown, mirroring the fire-and-forget dispatch every council command
+   *  uses. Returns the applied edge set so a caller/test can confirm what took effect. */
+  setRouting(
+    councilRunId: string,
+    edges: readonly CouncilRoutingEdge[],
+  ): RoutingUpdate {
+    const update = this.conductor.setRouting(councilRunId, edges);
+    if (!update.ok) {
+      this.logger?.debug('council routing directive for unknown/finished run ignored', {
+        councilRunId,
+        reason: update.reason,
+      });
+    }
+    return update;
   }
 
   /** Throw the kill switch for a running council (safety #4). No-op for an unknown id. */
