@@ -38,6 +38,14 @@ export type {
 export { DebateBus } from './bus.js';
 export type { ConductorDeps, CouncilRunInput } from './conductor.js';
 export { Conductor } from './conductor.js';
+export type {
+  AutonomousConvergence,
+  AutonomousVerdict,
+} from './conductor-autoconverge.js';
+export {
+  parseConvergeVerdict,
+  runAutonomousConverge,
+} from './conductor-autoconverge.js';
 export { RunGovernor } from './conductor-budget.js';
 export type { BuildOutcome, RunBuildInput } from './conductor-build.js';
 export { presetHasBuildStage, runBuild } from './conductor-build.js';
@@ -102,7 +110,10 @@ export type {
 export {
   COUNCIL_MAX_SEATS,
   COUNCIL_MIN_DISTINCT_MODELS,
+  COUNCIL_MIN_VOTE_SEATS,
   COUNCIL_SEAT_ROLES,
+  debatingSeats,
+  judgeSeat,
   validateCouncilPreset,
 } from './preset-validator.js';
 export type { QuotedDelivery } from './quoted-delivery.js';

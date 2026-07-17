@@ -46,6 +46,7 @@ import type { Logger } from '@nightcore/shared';
 
 import type { BuildDriver } from './build-writer.js';
 import type { ConductorBus, DebateBus } from './bus.js';
+import { runAutonomousConverge } from './conductor-autoconverge.js';
 import { RunGovernor } from './conductor-budget.js';
 import { runBuild } from './conductor-build.js';
 import {
@@ -78,7 +79,11 @@ import type {
 import type { RoutingPolicy, RoutingUpdate } from './council-routing.js';
 import { runDebateRounds } from './debate-round.js';
 import type { ObjectiveGate } from './objective-gate.js';
-import { validateCouncilPreset } from './preset-validator.js';
+import {
+  debatingSeats,
+  judgeSeat,
+  validateCouncilPreset,
+} from './preset-validator.js';
 
 export interface ConductorDeps {
   /** The debate bus (owns the append-only transcript store). A fresh bus per run
@@ -238,6 +243,13 @@ export class Conductor {
   ): Promise<CouncilRunResult> {
     const { councilRunId, preset, objective } = input;
 
+    // The DEDICATED judge seat (issue #370) does not debate — it rules at Converge for a
+    // `judge-agent` preset. Propose/Debate/vote run over the debating (non-judge) seats;
+    // for a `human`/`vote` preset there is no judge seat, so `debaters` is every seat
+    // (P1 behaviour unchanged).
+    const debaters = debatingSeats(seats);
+    const judge = judgeSeat(seats);
+
     bus.note(
       'frame',
       `Council "${preset.label}" framed. Objective: ${objective}. ` +
@@ -247,9 +259,9 @@ export class Conductor {
     // ── Propose (BLIND, parallel): no peer content enters a Propose prompt. ─────
     const proposeOutputs = await runProposeStage({
       bus,
-      seats,
+      seats: debaters,
       governor,
-      dispatch: stageDispatchConfig(preset, seats, this.deps),
+      dispatch: stageDispatchConfig(preset, debaters, this.deps),
       buildPrompt: (seat) => proposePrompt(objective, seat),
       runTurn: (seat, prompt, signal) =>
         this.runTurn(input, seat, 'propose', prompt, signal),
@@ -262,11 +274,11 @@ export class Conductor {
     // ── Debate (≤2 rounds, early-stop on stability). ───────────────────────────
     const debate = await runDebateRounds({
       bus,
-      seats,
+      seats: debaters,
       governor,
       stageMaxRounds: debateMaxRounds(preset),
       priorOutputs: proposeOutputs,
-      dispatch: stageDispatchConfig(preset, seats, this.deps),
+      dispatch: stageDispatchConfig(preset, debaters, this.deps),
       // The editable routing filter (issue #371), read FRESH each round so a live rewire
       // applies on the next round. It only narrows which mediated peers a seat hears.
       informers: (toSeatId) => routing.informers(toSeatId),
@@ -303,20 +315,43 @@ export class Conductor {
     }
 
     // ── Converge: run the OBJECTIVE GATE (safety #6; a red verdict overrides
-    // consensus) — over the BUILD OUTPUT when a build ran — then park the positions
-    // for the human judge. ─────────────────────────────────────────────────────
+    // consensus) — over the BUILD OUTPUT when a build ran — then park the debaters'
+    // positions for the human judge (non-human convergence may auto-adopt, #370). ─
     const pending = await runConverge({
       parked: this.parked,
       bus,
       gate: this.deps.objectiveGate,
       run: input,
-      seats,
+      seats: debaters,
       finalOutputs: debate.finalOutputs,
       rounds: governor.totals.rounds,
       signal: governor.signal,
       logger: this.deps.logger,
       ...(buildOutcome !== null ? { buildOutput: buildOutcome } : {}),
     });
+
+    // ── Non-human convergence (issue #370): a judge-agent rules or the seats vote.
+    // The objective gate still OUTRANKS the mode (a red gate parks for the human) and
+    // an auto-adopt is a conductor note, never a forged human verdict. Skipped when a
+    // budget cap tripped during Converge's gate so the human decides. ──────────────
+    if (preset.convergence !== 'human' && this.governorStatus(governor) === null) {
+      await runAutonomousConverge({
+        convergence: preset.convergence,
+        parked: this.parked,
+        bus,
+        pending,
+        objective,
+        judgeSeat: judge,
+        voterSeats: debaters,
+        governor,
+        dispatch: stageDispatchConfig(preset, debaters, this.deps),
+        runTurn: (seat, prompt, signal) =>
+          this.runTurn(input, seat, 'converge', prompt, signal),
+        signal: governor.signal,
+        ...(this.deps.logger !== undefined ? { logger: this.deps.logger } : {}),
+      });
+    }
+
     return { ...this.result(councilRunId, 'converged', governor), pendingDecision: pending };
   }
 
@@ -388,5 +423,4 @@ export class Conductor {
       ...(haltedBy !== undefined ? { haltedBy } : {}),
     };
   }
-
 }
