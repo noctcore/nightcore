@@ -147,62 +147,75 @@ const DECOMPOSE_SYSTEM_PROMPT = [
 ].join(' ');
 
 /**
- * Resolve a task kind to its agent preset. Every kind EXCEPT `research` denies the
- * network-egress tools ({@link NETWORK_EGRESS_TOOLS}) so that under the default
- * `bypassPermissions` a prompt-injected task cannot exfiltrate a secret via
- * `WebFetch`/`WebSearch`; `research` is the deliberate web-enabled opt-in and is
- * the only kind that inherits an unrestricted toolset. `review` is the internal
- * verification reviewer; `tdd` adds a test-first persona; `decompose` adds a
- * read-only planning persona AND requests SDK-native structured output
- * (`outputFormat`) so its sub-task proposals come back as a schema-conforming
- * object the engine reads into `proposedSubtasks`.
+ * The builtin per-kind presets AS DATA (issue #158 — data-driven builtin kinds). A
+ * `Record<TaskKind, KindPreset>` rather than a `switch`: TypeScript requires an entry for
+ * EVERY `TaskKind` (a missing kind is a COMPILE error — the same exhaustiveness the old
+ * switch had), and expressing them as a table lets a future skill registry ENUMERATE the
+ * builtins. Behavior is identical to the prior switch; `resolveKindPreset` maps the absent
+ * kind to `build` exactly as the old `case 'build': case undefined:` did.
+ *
+ * Every kind EXCEPT `research` denies the network-egress tools ({@link NETWORK_EGRESS_TOOLS})
+ * so that under the default `bypassPermissions` a prompt-injected task cannot exfiltrate a
+ * secret via `WebFetch`/`WebSearch`; `research` is the deliberate web-enabled opt-in and is
+ * the only kind that inherits an unrestricted toolset.
+ *
+ * The presets are SHARED, read-only data — every consumer (`claude-agent-provider`,
+ * `codex-agent-provider`) only READS the fields (spreading them into SDK `Options`), never
+ * mutating them, so a single instance per kind is safe.
+ */
+const KIND_PRESETS: Record<TaskKind, KindPreset> = {
+  // The default kind. It writes code but has no inherent need to reach the live web, so web
+  // egress is denied by default (closing the automated exfil path under bypass). The
+  // injection guard defends the common convert-to-task path (Insight/Scorecard findings →
+  // build task).
+  build: {
+    appendSystemPrompt: INJECTION_GUARD,
+    disallowedTools: [...NETWORK_EGRESS_TOOLS],
+  },
+  // The ONE web-enabled kind: selecting `research` is the explicit, per-task opt-in to
+  // network egress, so it inherits an unrestricted toolset (empty preset).
+  research: {},
+  review: {
+    appendSystemPrompt: REVIEWER_SYSTEM_PROMPT,
+    // Read-only reviewer: deny writes AND web egress (it inspects a diff, it never needs
+    // the network).
+    disallowedTools: [...WRITE_TOOLS, ...NETWORK_EGRESS_TOOLS],
+    // Verification is unattended; `dontAsk` never prompts. A tool that would need a prompt
+    // is refused, so the reviewer can't hang the gate.
+    permissionMode: 'dontAsk',
+  },
+  // Build-like: writes code, so no WRITE restriction; only the persona differs. Web egress
+  // is denied (like `build`) — a code-writing run has no need to reach the live web and it
+  // is an exfil channel under bypass. Prepend the injection guard: a TDD task is just as
+  // likely to be convert-minted from analysis output as a build task.
+  tdd: {
+    appendSystemPrompt: `${INJECTION_GUARD} ${TDD_SYSTEM_PROMPT}`,
+    disallowedTools: [...NETWORK_EGRESS_TOOLS],
+  },
+  // Read-only analysis: deny writes so it can only propose, never mutate — and deny web
+  // egress (it investigates the local codebase, not the network). `outputFormat` requests
+  // SDK-native structured output so the sub-task proposals come back as a schema-conforming
+  // `{ subtasks }` object (the SDK retries non-conforming output; terminal failure is
+  // surfaced, not silent).
+  decompose: {
+    appendSystemPrompt: DECOMPOSE_SYSTEM_PROMPT,
+    disallowedTools: [...WRITE_TOOLS, ...NETWORK_EGRESS_TOOLS],
+    outputFormat: DECOMPOSE_OUTPUT_FORMAT,
+  },
+};
+
+/**
+ * Resolve a task kind to its agent preset from the {@link KIND_PRESETS} table. An absent
+ * kind ({@link undefined}) defaults to `build`, exactly as the prior switch's
+ * `case 'build': case undefined:` arm did.
  */
 export function resolveKindPreset(kind: TaskKind | undefined): KindPreset {
-  switch (kind) {
-    case 'review':
-      return {
-        appendSystemPrompt: REVIEWER_SYSTEM_PROMPT,
-        // Read-only reviewer: deny writes AND web egress (it inspects a diff, it
-        // never needs the network).
-        disallowedTools: [...WRITE_TOOLS, ...NETWORK_EGRESS_TOOLS],
-        // Verification is unattended; `dontAsk` never prompts. A tool that would
-        // need a prompt is refused, so the reviewer can't hang the gate.
-        permissionMode: 'dontAsk',
-      };
-    case 'tdd':
-      // Build-like: writes code, so no WRITE restriction; only the persona differs.
-      // Web egress is denied (like the default `build` kind) — a code-writing run
-      // has no need to reach the live web and it is an exfil channel under bypass.
-      // Prepend the injection guard: a TDD task is just as likely to be convert-minted
-      // from analysis output as a build task.
-      return {
-        appendSystemPrompt: `${INJECTION_GUARD} ${TDD_SYSTEM_PROMPT}`,
-        disallowedTools: [...NETWORK_EGRESS_TOOLS],
-      };
-    case 'decompose':
-      // Read-only analysis: deny writes so it can only propose, never mutate — and
-      // deny web egress (it investigates the local codebase, not the network).
-      // `outputFormat` requests SDK-native structured output so the sub-task
-      // proposals come back as a schema-conforming `{ subtasks }` object (the SDK
-      // retries non-conforming output; terminal failure is surfaced, not silent).
-      return {
-        appendSystemPrompt: DECOMPOSE_SYSTEM_PROMPT,
-        disallowedTools: [...WRITE_TOOLS, ...NETWORK_EGRESS_TOOLS],
-        outputFormat: DECOMPOSE_OUTPUT_FORMAT,
-      };
-    case 'build':
-    case undefined:
-      // The default kind. It writes code but has no inherent need to reach the live
-      // web, so web egress is denied by default (closing the automated exfil path
-      // under bypass). The injection guard defends the common convert-to-task path
-      // (Insight/Scorecard findings → build task). Everything else inherits the default.
-      return {
-        appendSystemPrompt: INJECTION_GUARD,
-        disallowedTools: [...NETWORK_EGRESS_TOOLS],
-      };
-    case 'research':
-      // The ONE web-enabled kind: selecting `research` is the explicit, per-task
-      // opt-in to network egress, so it inherits an unrestricted toolset.
-      return {};
-  }
+  return KIND_PRESETS[kind ?? 'build'];
+}
+
+/** The kinds that have a builtin preset — the enumerable key set of {@link KIND_PRESETS}.
+ *  Exposed so a future skill registry (and the parity test) can iterate the builtins as
+ *  data rather than re-listing them (issue #158). */
+export function builtinKindKeys(): readonly TaskKind[] {
+  return Object.keys(KIND_PRESETS) as TaskKind[];
 }

@@ -1,11 +1,30 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
 
+import { TaskKindSchema } from '@nightcore/contracts';
+
 import {
+  builtinKindKeys,
   NETWORK_EGRESS_TOOLS,
   resolveKindPreset,
   WRITE_TOOLS,
 } from './kind-presets.js';
+
+describe('KIND_PRESETS builtin table (issue #158)', () => {
+  test('the builtin preset table covers EXACTLY the TaskKind enum (parity)', () => {
+    // The `Record<TaskKind, KindPreset>` type already forces this at compile time; this
+    // pins it at runtime too, so a data-driven builtin table can never silently drift from
+    // the wire enum (the parity-test the issue asks for). Same guarantee the old exhaustive
+    // switch gave, now over data.
+    expect([...builtinKindKeys()].sort()).toEqual([...TaskKindSchema.options].sort());
+  });
+
+  test('every builtin kind resolves to a defined preset', () => {
+    for (const kind of TaskKindSchema.options) {
+      expect(resolveKindPreset(kind)).toBeDefined();
+    }
+  });
+});
 
 describe('resolveKindPreset', () => {
   test('build (and the default undefined kind) denies web egress and adds the injection guard', () => {
