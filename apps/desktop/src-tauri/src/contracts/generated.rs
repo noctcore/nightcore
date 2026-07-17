@@ -823,9 +823,10 @@ pub enum CouncilConvergeDecision {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "kebab-case")]
 pub enum CouncilPresetId {
     Research,
+    UiBug,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

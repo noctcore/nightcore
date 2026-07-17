@@ -410,8 +410,10 @@ const ENUM_NAMES: Record<string, string> = {
   // (`packages/engine/src/debate/preset-registry.ts`). Not wire-reachable yet (no
   // command/event carries it — the Rust Conductor seam is a downstream slice), so it
   // is FORCE-EMITTED below (like `KnownModel`) rather than walked, pre-registering the
-  // canonical name so the conductor slice consumes it without a rename.
-  'research': 'CouncilPresetId',
+  // canonical name so the conductor slice consumes it without a rename. P2 adds
+  // `ui-bug` (issue #367 — the reproduce-first council); the value-set signature grows
+  // to `research|ui-bug` so this entry moves with the enum.
+  'research|ui-bug': 'CouncilPresetId',
   // The human judge's terminal Converge verdict (issue #353) carried by the
   // `resolve-council-converge` command — the human gavel (safety #7).
   'accept|reject|judge': 'CouncilConvergeDecision',
