@@ -98,6 +98,10 @@ export interface ConductorDeps {
    *  tests/repro/build check whose RED verdict OVERRIDES debate consensus. Absent ⇒ a
    *  pure-reasoning run — the human decides the parked positions alone (P1 behaviour). */
   readonly objectiveGate?: ObjectiveGate;
+  /** Consecutive no-progress Debate rounds that trip the #372 stall early-stop (churn
+   *  without a new distinct position → route to Converge). A STRICT SHORTENER — only ends a
+   *  run sooner, never extends it (safety #4). Default: `DEFAULT_NO_PROGRESS_ROUNDS`. */
+  readonly noProgressRounds?: number;
 }
 
 /** The inputs one council run is configured from. */
@@ -243,6 +247,8 @@ export class Conductor {
       // The editable routing filter (issue #371), read FRESH each round so a live rewire
       // applies on the next round. It only narrows which mediated peers a seat hears.
       informers: (toSeatId) => routing.informers(toSeatId),
+      // The #372 no-progress stall stop (a strict shortener; absent ⇒ default rounds).
+      ...(this.deps.noProgressRounds !== undefined ? { noProgressRounds: this.deps.noProgressRounds } : {}),
       buildPrompt: (seat, round, peerText) =>
         debatePrompt(objective, seat, round, peerText),
       runTurn: (seat, prompt, signal) =>

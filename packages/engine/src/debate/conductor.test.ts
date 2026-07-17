@@ -266,6 +266,108 @@ describe('Conductor — Debate early-stops on stability, else halts at the round
   });
 });
 
+// ── Debate: no-progress (stall) early-stop (issue #372) ────────────────────────
+
+describe('Conductor — a CHURNING debate stops early and routes to Converge (issue #372)', () => {
+  /** The three research-preset seats, in order, mapped to a slot in a fixed 3-position
+   *  pool. Each debate round ROTATES the assignment by one, so every seat's position
+   *  changes every round (stability never fires) yet the DISTINCT set never grows — pure
+   *  churn. Propose seeds the pool, so the stall trips at the threshold (2 rounds). */
+  const POOL = ['P', 'Q', 'R'];
+  const SEAT_SLOT: Record<string, number> = {
+    'proposer-opus': 0,
+    'proposer-sonnet': 1,
+    'critic-opus': 2,
+  };
+
+  function churnDriver(): FakeSeatDriver {
+    const debateRoundBySeat = new Map<string, number>();
+    return new FakeSeatDriver((req) => {
+      const slot = SEAT_SLOT[req.seat.seatId] ?? 0;
+      if (req.stage !== 'debate') return { content: POOL[slot]! }; // Propose seeds the pool
+      const round = (debateRoundBySeat.get(req.seat.seatId) ?? 0) + 1;
+      debateRoundBySeat.set(req.seat.seatId, round);
+      return { content: POOL[(slot + round) % POOL.length]! };
+    });
+  }
+
+  /** A research preset with room to churn: 4 debate rounds so the stall (at 2) stops the
+   *  run WELL before the cap. */
+  function churnPreset(): CouncilPreset {
+    return preset({
+      stages: [
+        { stage: 'frame', blind: false },
+        { stage: 'propose', blind: true },
+        { stage: 'debate', blind: false, maxRounds: 4 },
+        { stage: 'converge', blind: false },
+      ],
+      budget: { maxRounds: 4, maxTotalTokens: 400_000, maxCostUsd: 5 },
+    });
+  }
+
+  test('churn stops at the threshold, parks for the human judge, and never runs the cap', async () => {
+    const driver = churnDriver();
+    const { conductor } = makeConductor(driver);
+
+    const result = await conductor.run({
+      councilRunId: 'run-churn',
+      preset: churnPreset(),
+      objective: 'o',
+    });
+
+    // Routed to Converge exactly like any halt-free debate — the human judge decides.
+    expect(result.status).toBe('converged');
+    expect(result.pendingDecision).toBeDefined();
+    expect(result.pendingDecision?.positions).toHaveLength(3);
+    expect(conductor.isAwaitingConverge('run-churn')).toBe(true);
+
+    // Stopped at the 2-round stall threshold — NOT the 4-round cap. Strictly fewer rounds.
+    expect(result.usage.rounds).toBe(2);
+    expect(driver.forStage('debate')).toHaveLength(6); // 2 rounds × 3 seats, not 12
+  });
+
+  test('the stall is audited on the transcript as a debate-stage conductor note', async () => {
+    const driver = churnDriver();
+    const { conductor } = makeConductor(driver);
+
+    const result = await conductor.run({
+      councilRunId: 'run-churn-note',
+      preset: churnPreset(),
+      objective: 'o',
+    });
+
+    const stallNote = result.transcript.find(
+      (entry) =>
+        entry.stage === 'debate' &&
+        entry.kind === 'note' &&
+        entry.role === 'conductor' &&
+        entry.content.includes('No-progress detected'),
+    );
+    expect(stallNote).toBeDefined();
+  });
+
+  test('genuine progress (a new distinct position each round) does NOT stall — no false positive', async () => {
+    // Unique content every turn ⇒ a new distinct position each round ⇒ the detector never
+    // fires; the run terminates at the 4-round cap, not the stall.
+    const driver = new FakeSeatDriver((_req, index) => ({ content: `fresh-${index}` }));
+    const { conductor } = makeConductor(driver);
+
+    const result = await conductor.run({
+      councilRunId: 'run-progress',
+      preset: churnPreset(),
+      objective: 'o',
+    });
+
+    expect(result.status).toBe('converged');
+    expect(result.usage.rounds).toBe(4); // ran the FULL cap — no early stall
+    expect(driver.forStage('debate')).toHaveLength(12); // 4 rounds × 3 seats
+    const stallNote = result.transcript.find(
+      (entry) => entry.kind === 'note' && entry.content.includes('No-progress detected'),
+    );
+    expect(stallNote).toBeUndefined();
+  });
+});
+
 // ── Budget caps ───────────────────────────────────────────────────────────────
 
 describe('Conductor — hard budget caps halt the run (safety #4)', () => {

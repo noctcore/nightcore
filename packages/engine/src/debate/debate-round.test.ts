@@ -142,5 +142,128 @@ describe('runDebateRounds (the forked convergence loop)', () => {
     });
     const outcome = await runDebateRounds(hooks);
     expect(outcome.halt).toEqual({ kind: 'budget', cause: 'maxTotalTokens' });
+    expect(outcome.noProgressEarlyStop).toBe(false);
+  });
+});
+
+// ── No-progress (stall) early-stop (issue #372) ────────────────────────────────
+
+/** A driver whose seats KEEP changing every round (so stability never fires) yet only
+ *  ever reshuffle two fixed positions — the reply diff sees no NEW distinct position, so
+ *  the debate is churning. Seat `a` and seat `b` swap which pooled position they hold each
+ *  round. Pair with `priorOutputs` seeded to the same pool so the churn is immediate. */
+function churnDriver(
+  poolA: string,
+  poolB: string,
+): (seat: SeatContext) => Promise<SeatTurnResult> {
+  const roundBySeat = new Map<string, number>();
+  return (seat: SeatContext): Promise<SeatTurnResult> => {
+    const round = (roundBySeat.get(seat.seatId) ?? 0) + 1;
+    roundBySeat.set(seat.seatId, round);
+    const odd = round % 2 === 1;
+    const content = seat.seatId === 'a' ? (odd ? poolB : poolA) : odd ? poolA : poolB;
+    return Promise.resolve({ content, usage: NO_USAGE, costUsd: 0 });
+  };
+}
+
+describe('runDebateRounds — no-progress churn early-stop (issue #372)', () => {
+  test('churn (positions reshuffled, never stabilizing) stops EARLY and routes to Converge', async () => {
+    // Seed the two positions {P, Q}; the churn driver just swaps who holds which each
+    // round. Stability never fires (every round changes), but no new distinct position is
+    // ever introduced ⇒ the no-progress detector stops at the threshold (2 rounds).
+    const { hooks } = harness({
+      stageMaxRounds: 5,
+      priorOutputs: new Map([
+        ['a', 'P'],
+        ['b', 'Q'],
+      ]),
+      runTurn: churnDriver('P', 'Q'),
+    });
+
+    const outcome = await runDebateRounds(hooks);
+
+    expect(outcome.noProgressEarlyStop).toBe(true);
+    // Distinct from the #350 stability stop — the seats DID keep moving.
+    expect(outcome.stableEarlyStop).toBe(false);
+    expect(outcome.halt).toBeNull(); // halt-free ⇒ the Conductor routes it to Converge
+    // Stopped at the threshold, well before the 5-round cap.
+    expect(hooks.governor.totals.rounds).toBe(2);
+  });
+
+  test('a no-progress stop records an auditable note on the transcript (the human flag)', async () => {
+    const debateBus = new DebateBus();
+    const outcome = await runDebateRounds({
+      bus: debateBus.conductor('r'),
+      seats: SEATS,
+      governor: new RunGovernor(OPEN_BUDGET),
+      stageMaxRounds: 5,
+      priorOutputs: new Map([
+        ['a', 'P'],
+        ['b', 'Q'],
+      ]),
+      buildPrompt: (seat: SeatContext, round: number) => `${seat.seatId}#${round}`,
+      runTurn: churnDriver('P', 'Q'),
+    });
+
+    expect(outcome.noProgressEarlyStop).toBe(true);
+    // The stall reason is appended to the run's append-only transcript as a debate-stage
+    // conductor note — auditable + replayable (safety #7), streamed over nc:debate by the
+    // observer with no new channel.
+    const transcript = debateBus.seatView('r', 'conductor').read();
+    const stallNote = transcript.find(
+      (entry) =>
+        entry.stage === 'debate' &&
+        entry.kind === 'note' &&
+        entry.content.includes('No-progress detected'),
+    );
+    expect(stallNote).toBeDefined();
+  });
+
+  test('genuine progress (a new distinct position every round) runs the FULL cap — no false stall', async () => {
+    let n = 0;
+    const { hooks } = harness({
+      stageMaxRounds: 5,
+      runTurn: (): Promise<SeatTurnResult> =>
+        // Unique content every turn ⇒ a new distinct position each round ⇒ never a stall.
+        Promise.resolve({ content: `new-${n++}`, usage: NO_USAGE, costUsd: 0 }),
+    });
+
+    const outcome = await runDebateRounds(hooks);
+
+    expect(outcome.noProgressEarlyStop).toBe(false);
+    expect(outcome.stableEarlyStop).toBe(false);
+    expect(outcome.halt).toBeNull();
+    // Ran to the round cap — the detector never cut a productive debate short.
+    expect(hooks.governor.totals.rounds).toBe(5);
+  });
+
+  test('STRICT SHORTENER: the detector never lets a run exceed the round cap', async () => {
+    const cap = 5;
+
+    // Churn: the detector SHORTENS the run (fewer rounds than the cap)…
+    const churn = harness({
+      stageMaxRounds: cap,
+      priorOutputs: new Map([
+        ['a', 'P'],
+        ['b', 'Q'],
+      ]),
+      runTurn: churnDriver('P', 'Q'),
+    });
+    const churnOutcome = await runDebateRounds(churn.hooks);
+    expect(churnOutcome.noProgressEarlyStop).toBe(true);
+    expect(churn.hooks.governor.totals.rounds).toBeLessThan(cap);
+
+    // …and even under relentless (never-repeating) progress it stops AT the cap, never
+    // past it — the stall detector can only tighten the bound, never loosen it (safety #4).
+    let n = 0;
+    const progress = harness({
+      stageMaxRounds: cap,
+      runTurn: (): Promise<SeatTurnResult> =>
+        Promise.resolve({ content: `p-${n++}`, usage: NO_USAGE, costUsd: 0 }),
+    });
+    const progressOutcome = await runDebateRounds(progress.hooks);
+    expect(progressOutcome.halt).toBeNull();
+    expect(progress.hooks.governor.totals.rounds).toBe(cap);
+    expect(progress.hooks.governor.totals.rounds).toBeLessThanOrEqual(cap);
   });
 });

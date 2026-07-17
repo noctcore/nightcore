@@ -14,10 +14,15 @@
  *    chokepoint → {@link ConductorBus.deliverBetweenSeats} (quoted + injection-scanned).
  *    Raw peer output NEVER reaches a prompt (carry-forward guard MEDIUM).
  *  - "Stable" = a round in which NO seat changed its position vs the prior round. The
- *    loop early-stops then — debate that stopped moving adds only cost.
+ *    loop early-stops then — debate that stopped moving adds only cost (issue #350).
+ *  - "No progress" = successive rounds that KEEP changing (so never stabilize) yet add no
+ *    new distinct position — unproductive churn. The loop early-stops on that too (issue
+ *    #372), reusing the #353 reply-diff distinct-position rule (`no-progress-detector.ts`).
+ *    It is a STRICT SHORTENER: it can only end the debate sooner, never extend it.
  *  - Termination is guaranteed three ways: the preset's Debate `maxRounds` (`≤2`), the
  *    {@link RunGovernor}'s absolute round cap, and its token/cost caps — checked before
- *    every turn so a run halts AT a cap, never past it (safety #4).
+ *    every turn so a run halts AT a cap, never past it (safety #4). The two early-stops
+ *    only tighten these bounds; they never loosen them.
  *
  * The loop drives seats through the provider-neutral {@link SeatDriver} seam (via the
  * injected `runTurn`), so it is unit-tested with deterministic fake seats.
@@ -31,6 +36,7 @@ import type {
   SeatTurnResult,
   TurnEstimate,
 } from './conductor-types.js';
+import { DEFAULT_NO_PROGRESS_ROUNDS, NoProgressDetector } from './no-progress-detector.js';
 import { assemblePeerContext, type PeerOutput } from './peer-context.js';
 
 /** Why a debate loop stopped short of its round cap. */
@@ -48,8 +54,14 @@ export interface DebateOutcome {
   readonly finalOutputs: Map<string, string>;
   /** Non-null when the run was killed or hit a budget cap mid-Debate. */
   readonly halt: DebateHalt | null;
-  /** True when the loop early-stopped because positions stabilized (vs the round cap). */
+  /** True when the loop early-stopped because positions stabilized — AGREEMENT (a round
+   *  that changed nothing; the #350 stability stop). Mutually exclusive with {@link
+   *  noProgressEarlyStop}. */
   readonly stableEarlyStop: boolean;
+  /** True when the loop early-stopped because the debate CHURNED — successive rounds that
+   *  kept changing but added no new distinct position (the #372 no-progress stop). Distinct
+   *  from stability: the seats DID move, they just restated prior positions. */
+  readonly noProgressEarlyStop: boolean;
 }
 
 /** The broadcast-collector knobs the debate loop dispatches each round through. */
@@ -82,6 +94,10 @@ export interface DebateRoundHooks {
    *  every surviving peer still flows through the quoted+scanned delivery path (safety
    *  #1/#2). Absent ⇒ open routing (unit tests that don't exercise routing omit it). */
   informers?(toSeatId: string): ReadonlySet<string> | null;
+  /** Consecutive no-progress rounds that trip the #372 stall early-stop (a strict
+   *  shortener — it can only end the debate sooner, never extend it). Absent ⇒ {@link
+   *  DEFAULT_NO_PROGRESS_ROUNDS}. */
+  readonly noProgressRounds?: number;
   /** Build a seat's debate prompt for `round`, embedding the mediated `peerText`
    *  (which contains ONLY quoted+scanned peer content). */
   buildPrompt(seat: SeatContext, round: number, peerText: string): string;
@@ -103,9 +119,11 @@ function governorHalt(governor: RunGovernor): DebateHalt | null {
 
 /**
  * Run the Debate stage: at most `min(stageMaxRounds, budget.maxRounds)` rounds,
- * early-stopping when a full round changes no seat's position. Kill + token/cost caps
- * are checked before every turn (safety #4). Returns each seat's final output plus how
- * the loop terminated.
+ * early-stopping either when a full round changes no seat's position (stability, #350) or
+ * when successive changing rounds add no new distinct position (no-progress churn, #372).
+ * Both early-stops are strict shorteners — the round cap is the outer bound. Kill +
+ * token/cost caps are checked before every turn (safety #4). Returns each seat's final
+ * output plus how the loop terminated.
  */
 export async function runDebateRounds(
   hooks: DebateRoundHooks,
@@ -114,11 +132,19 @@ export async function runDebateRounds(
   const roundBudget = governor.roundBudgetRemaining(stageMaxRounds);
   let current = new Map(hooks.priorOutputs);
   let stableEarlyStop = false;
+  let noProgressEarlyStop = false;
+  // Seeded with the positions ALREADY on the table (the Propose outputs): a Debate round
+  // makes progress only by adding a position not already among them (issue #372). Reuses
+  // the #353 reply-diff distinct-position rule — it can only SHORTEN the loop (safety #4).
+  const noProgress = new NoProgressDetector(
+    current.values(),
+    hooks.noProgressRounds ?? DEFAULT_NO_PROGRESS_ROUNDS,
+  );
 
   for (let round = 1; round <= roundBudget; round++) {
     const preRoundHalt = governorHalt(governor);
     if (preRoundHalt !== null) {
-      return { finalOutputs: current, halt: preRoundHalt, stableEarlyStop };
+      return { finalOutputs: current, halt: preRoundHalt, stableEarlyStop, noProgressEarlyStop };
     }
 
     // Every seat this round reacts to the SAME snapshot of last round's outputs.
@@ -182,17 +208,33 @@ export async function runDebateRounds(
     // partial responders are still folded into `next` for the transcript/converge).
     const roundHalt = governorHalt(governor);
     if (roundHalt !== null) {
-      return { finalOutputs: next, halt: roundHalt, stableEarlyStop };
+      return { finalOutputs: next, halt: roundHalt, stableEarlyStop, noProgressEarlyStop };
     }
 
     governor.countRound();
     current = next;
 
+    // AGREEMENT (issue #350): a round that changed nothing — the debate stopped moving.
     if (!changed) {
       stableEarlyStop = true;
       break;
     }
+
+    // CHURN (issue #372): the round changed (so stability did NOT fire) but added no new
+    // distinct position. Once that persists for the threshold, the debate is churning
+    // without converging — stop early and route to Converge (never run to the cap for
+    // nothing). This can only SHORTEN the loop; the round cap above is the outer bound.
+    if (noProgress.observeRound(current.values())) {
+      noProgressEarlyStop = true;
+      bus.note(
+        'debate',
+        `No-progress detected: ${round} debate round(s) revised positions without ` +
+          `introducing a new distinct position. Stopping the debate early and routing to ` +
+          `Converge for the human judge (issue #372 — churn without convergence).`,
+      );
+      break;
+    }
   }
 
-  return { finalOutputs: current, halt: null, stableEarlyStop };
+  return { finalOutputs: current, halt: null, stableEarlyStop, noProgressEarlyStop };
 }

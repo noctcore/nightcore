@@ -64,6 +64,12 @@ export type {
 export { runDebateRounds } from './debate-round.js';
 export type { InjectionScanResult } from './injection-scan.js';
 export { scanForInjection } from './injection-scan.js';
+export {
+  DEFAULT_NO_PROGRESS_ROUNDS,
+  distinctPositions,
+  NoProgressDetector,
+  normalizePosition,
+} from './no-progress-detector.js';
 export type {
   GauntletLikeResult,
   ObjectiveGate,
