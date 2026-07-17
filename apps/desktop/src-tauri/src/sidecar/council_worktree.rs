@@ -39,6 +39,21 @@ pub(crate) fn preset_is_build_capable(preset_id: &CouncilPresetId) -> bool {
     matches!(preset_id, CouncilPresetId::UiBug | CouncilPresetId::Coding)
 }
 
+/// Whether a run id is safe to use as a SINGLE filesystem path component. Council run ids are
+/// `crypto.randomUUID()` today (hex + `-`), so this always holds — but `worktree_path` joins
+/// the id blindly and `is_under` compares components lexically WITHOUT collapsing `..`
+/// (`path.rs`), so the traversal-refusal currently rests solely on the id staying UUID-shaped.
+/// Validating the charset explicitly (issue #387) means it does NOT silently regress if run-id
+/// minting ever changes. The allowlist `[A-Za-z0-9-]` refuses `/`, `\`, `.` (so `.` and `..`),
+/// absolute paths, and whitespace; a length cap bounds absurd input.
+fn is_filesystem_safe_run_id(run_id: &str) -> bool {
+    !run_id.is_empty()
+        && run_id.len() <= 128
+        && run_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+}
+
 /// A host-trusted binding of `councilRunId → (project root, build-capable)`, populated at
 /// `start-council` from the WEBVIEW-supplied project path. It is the SOLE authority the
 /// worktree-op handler consults for the project root — the engine only NAMES a run over the
@@ -56,8 +71,15 @@ struct CouncilRunInfo {
 
 impl CouncilRunRegistry {
     /// Record a run's TRUSTED project root at `start-council`. Only called with a project
-    /// path the webview supplied; the value is never taken from the engine.
+    /// path the webview supplied; the value is never taken from the engine. A run id that is
+    /// not filesystem-safe is REFUSED registration (skipped + warned) so it can never become
+    /// build-capable — fail-closed, keeping the map free of ids that could form a bad path
+    /// (issue #387). Unreachable today (ids are UUIDs); this guards against future minting.
     pub(crate) fn register(&self, run_id: &str, project_path: PathBuf, build_capable: bool) {
+        if !is_filesystem_safe_run_id(run_id) {
+            tracing::warn!(target: "nightcore::council", "refusing to register a council run with a non-filesystem-safe run id");
+            return;
+        }
         crate::sync::lock_or_recover(&self.runs).insert(
             run_id.to_string(),
             CouncilRunInfo {
@@ -72,6 +94,12 @@ impl CouncilRunRegistry {
     /// run the host itself registered as build-capable, so a compromised engine naming a
     /// research / foreign / forged run id gets no path derived at all.
     pub(crate) fn build_project_path(&self, run_id: &str) -> Option<PathBuf> {
+        // Belt-and-suspenders: the hard gate right before the host derives a path. Even if a
+        // future insert path ever admitted an unsafe id, no worktree path is derived from one
+        // here — `worktree_path` is only ever joined with a validated component (issue #387).
+        if !is_filesystem_safe_run_id(run_id) {
+            return None;
+        }
         let guard = crate::sync::lock_or_recover(&self.runs);
         guard
             .get(run_id)
@@ -343,6 +371,56 @@ mod tests {
                 "a foreign / traversal run id {forged:?} must be refused, never resolved"
             );
         }
+    }
+
+    #[test]
+    fn only_filesystem_safe_run_ids_pass_validation() {
+        // A real minted id (UUID) and the test-style `run-*` ids are safe.
+        assert!(is_filesystem_safe_run_id(
+            "550e8400-e29b-41d4-a716-446655440000"
+        ));
+        assert!(is_filesystem_safe_run_id("run-build"));
+        // Anything that could form a bad path component is refused: traversal, separators,
+        // dots, absolute paths, whitespace, empty, and absurd length.
+        for bad in [
+            "",
+            "..",
+            "../../etc",
+            "run-build/../../escape",
+            "/abs/evil",
+            "a.b",
+            "run build",
+            "run_build\n",
+            "run\\build",
+        ] {
+            assert!(
+                !is_filesystem_safe_run_id(bad),
+                "an unsafe run id {bad:?} must be refused"
+            );
+        }
+        assert!(!is_filesystem_safe_run_id(&"a".repeat(129)));
+    }
+
+    #[test]
+    fn register_refuses_a_non_filesystem_safe_run_id() {
+        // Defense-in-depth (issue #387): even if run-id minting ever produced a traversal id,
+        // register skips it so it never enters the map and never becomes build-capable — the
+        // whole seam then refuses every op for it (fail-closed), never deriving a path.
+        let registry = CouncilRunRegistry::default();
+        registry.register("../../etc", PathBuf::from("/proj"), true);
+        registry.register("run-build/../escape", PathBuf::from("/proj"), true);
+
+        assert!(!registry.is_registered("../../etc"));
+        assert!(!registry.is_registered("run-build/../escape"));
+        assert_eq!(registry.build_project_path("../../etc"), None);
+        assert_eq!(registry.build_project_path("run-build/../escape"), None);
+
+        // A safe id in the same registry still registers + resolves normally.
+        registry.register("run-safe", PathBuf::from("/proj"), true);
+        assert_eq!(
+            registry.build_project_path("run-safe"),
+            Some(PathBuf::from("/proj"))
+        );
     }
 
     #[test]
