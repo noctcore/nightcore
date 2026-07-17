@@ -21,6 +21,10 @@ mod capabilities;
 mod channels;
 mod commands;
 mod convert;
+// The Council write-capable worktree seam (issue #383): the host handler + run registry for
+// the path-less `worktree-op-required` → `resolve-worktree-op` RPC. `pub(crate)` so `lib.rs`
+// can `manage` the registry and `commands.rs` can register/forget runs.
+pub(crate) mod council_worktree;
 mod harness;
 mod insight;
 mod issue_map;
@@ -103,3 +107,6 @@ pub(crate) use transport::*;
 // split out for issue #17 D; the glob preserves the historical `crate::sidecar::*`
 // paths.
 pub(crate) use channels::*;
+// The Council run registry (issue #383): the host-trusted `councilRunId → project root`
+// binding the worktree-op handler consults. Managed in `lib.rs`, written by `commands.rs`.
+pub(crate) use council_worktree::CouncilRunRegistry;

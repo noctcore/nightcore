@@ -203,6 +203,22 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
         return;
     }
 
+    // The Council write-capable worktree seam (issue #383): a `worktree-op-required` event
+    // is the in-engine Council asking the host to `allocate`/`commit`/`gauntlet` on its
+    // behalf. It correlates by its `councilRunId` (no `sessionId`), so — like the scan
+    // families + `debate-*` — it is routed BEFORE the session-id correlation and consumed
+    // INTERNALLY (never forwarded to the web; it rides no `nc:*` channel). The host derives
+    // every path from the run id (never an engine-sent path — the escape guard) and replies
+    // with a `resolve-worktree-op` command. Offloaded off the reader (git/gauntlet work
+    // blocks) via the guarded async spawn, so it never head-of-line-blocks the event stream.
+    if event_type == "worktree-op-required" {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            super::council_worktree::handle_worktree_op(&app, event).await;
+        });
+        return;
+    }
+
     let session_id = event.get("sessionId").and_then(Value::as_u64);
 
     // Council SEAT carve-out (issue #364). A debate seat session is driven INSIDE the

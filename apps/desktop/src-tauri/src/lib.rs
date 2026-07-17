@@ -245,6 +245,11 @@ pub fn run() {
             // forgets the entries but never the work (the auto-commit survives
             // on the PR branch in its checkout).
             app.manage(workflow::pr_fix::PrFixRegistry::default());
+            // The Council run registry (issue #383): the host-trusted `councilRunId →
+            // project root` binding the write-capable worktree seam derives every path
+            // from. In-memory, populated at `start_council` — the engine can never supply a
+            // path, only name a run the host recorded.
+            app.manage(sidecar::CouncilRunRegistry::default());
             // The per-provider model catalog cache (issue #80): DERIVED, in-memory —
             // never persisted. A restart starts cold and `list_models` re-fetches; the
             // `(provider, auth-state)` key self-invalidates across provider/auth changes.

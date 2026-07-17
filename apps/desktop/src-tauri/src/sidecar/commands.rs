@@ -309,12 +309,25 @@ pub async fn send_input(
 pub async fn start_council(
     app: AppHandle,
     provider: State<'_, Arc<SidecarProvider>>,
+    council_runs: State<'_, crate::sidecar::CouncilRunRegistry>,
     run_id: String,
     preset_id: crate::contracts::CouncilPresetId,
     objective: String,
     project_path: Option<String>,
 ) -> Result<(), String> {
     crate::sidecar::ensure_reader(&app).await?;
+    // Record the run's TRUSTED project root for the write-capable worktree seam (issue
+    // #383): when the engine later asks to allocate/commit/gate this run's worktree, the
+    // host maps THIS run id → this project root (never a path the engine sends). Only
+    // build-capable presets (ui-bug/coding) may reach a worktree op; only recorded when a
+    // project path is present (a build council without one simply cannot build).
+    if let Some(ref path) = project_path {
+        council_runs.register(
+            &run_id,
+            std::path::PathBuf::from(path),
+            crate::sidecar::council_worktree::preset_is_build_capable(&preset_id),
+        );
+    }
     tracing::debug!(target: "nightcore", run_id, "start-council dispatched to engine");
     let command = crate::contracts::SurfaceCommand::StartCouncil {
         run_id,
@@ -334,8 +347,12 @@ pub async fn start_council(
 #[tauri::command]
 pub async fn kill_council(
     provider: State<'_, Arc<SidecarProvider>>,
+    council_runs: State<'_, crate::sidecar::CouncilRunRegistry>,
     run_id: String,
 ) -> Result<(), String> {
+    // The run is closing — drop its worktree-seam binding (issue #383) so a later worktree
+    // op for this id is refused. Done unconditionally (even when the sidecar is down).
+    council_runs.forget(&run_id);
     if !provider.is_running().await {
         return Ok(());
     }
@@ -359,11 +376,16 @@ pub async fn kill_council(
 #[tauri::command]
 pub async fn resolve_council_converge(
     provider: State<'_, Arc<SidecarProvider>>,
+    council_runs: State<'_, crate::sidecar::CouncilRunRegistry>,
     run_id: String,
     decision: crate::contracts::CouncilConvergeDecision,
     seat_id: Option<String>,
     note: Option<String>,
 ) -> Result<(), String> {
+    // The human verdict closes the run — drop its worktree-seam binding (issue #383) so no
+    // further worktree op is honored for it. The writer's worktree/branch persist on disk;
+    // the human's merge/discard go through the board's own paths, not this registry.
+    council_runs.forget(&run_id);
     if !provider.is_running().await {
         return Ok(());
     }
