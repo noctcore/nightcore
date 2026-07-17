@@ -75,6 +75,17 @@ describe('SurfaceCommandSchema round-trips', () => {
       decision: 'judge',
       note: 'Adopt A but stage the cutover behind a flag.',
     },
+    // Editable routing edges (issue #371) — a live "A informs B" rewire.
+    {
+      type: 'set-council-routing',
+      runId: 'c-1',
+      edges: [
+        { from: 'proposer-opus', to: 'critic-opus' },
+        { from: 'proposer-sonnet', to: 'critic-opus' },
+      ],
+    },
+    // An empty edge set restores the open default (every seat informs every other).
+    { type: 'set-council-routing', runId: 'c-1', edges: [] },
   ];
 
   for (const command of valid) {

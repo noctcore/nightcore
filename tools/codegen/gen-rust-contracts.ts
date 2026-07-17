@@ -389,6 +389,11 @@ const STRUCT_NAMES: Record<string, string> = {
   // `role` / `kind` are the three enums registered in ENUM_NAMES below.
   'at|broadcastId|content|injectionFlags|kind|role|seatId|seq|stage':
     'DebateTranscriptEntry',
+  // Editable routing edges (issue #371): one "A informs B" edge carried by the
+  // `set-council-routing` command — the data behind an editable canvas edge. This
+  // makes `CouncilRoutingEdge` (defined in `council-preset.ts`) wire-reachable, so the
+  // codegen emits the Rust struct the `set_council_routing` command serializes.
+  'from|to': 'CouncilRoutingEdge',
 };
 
 /** Stable Rust enum name for a referenced/inline `z.enum`. Named enums in the
@@ -1129,6 +1134,14 @@ const COMMAND_INPUTS: Record<string, unknown> = {
     decision: 'accept',
     seatId: 'proposer-opus',
     note: 'Clearest migration plan with the least dual-write risk.',
+  },
+  'set-council-routing': {
+    type: 'set-council-routing',
+    runId: 'run-council1',
+    edges: [
+      { from: 'proposer-opus', to: 'critic-opus' },
+      { from: 'proposer-sonnet', to: 'critic-opus' },
+    ],
   },
 };
 

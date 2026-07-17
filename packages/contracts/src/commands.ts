@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { EffortLevelSchema, McpServerEntrySchema, TaskKindSchema } from './config.js';
-import { CouncilPresetIdSchema } from './council-preset.js';
+import { CouncilPresetIdSchema, CouncilRoutingEdgeSchema } from './council-preset.js';
 import { ConventionCategorySchema, HarnessPolicySchema } from './harness.js';
 import { AnalysisScopeSchema, FindingCategorySchema } from './insight.js';
 import {
@@ -503,6 +503,29 @@ export const ResolveCouncilConvergeCommand = z.object({
   note: z.string().optional(),
 });
 
+/**
+ * Rewire a LIVE Council run's routing policy — the editable canvas edges (issue #371).
+ * A routing edge is "A informs B": which seats' outputs reach a recipient seat as its
+ * MEDIATED, quoted, injection-scanned peer context in the Debate stage. `edges` REPLACES
+ * the run's current edge set (an empty list restores the open default — every seat
+ * informs every other).
+ *
+ * This is a CONDUCTOR DIRECTIVE, never a direct seat write (safety non-negotiable #1 —
+ * the injection firewall). The engine's Conductor — the sole bus writer — applies the
+ * new policy to the next Debate round and records the change onto the append-only
+ * transcript (safety #7). An edge only FILTERS which already-mediated peer content a seat
+ * receives; it can never introduce an un-mediated agent-to-agent path. Edges naming a
+ * seat the run does not define are dropped. A no-op for an unknown/finished run.
+ */
+export const SetCouncilRoutingCommand = z.object({
+  type: z.literal('set-council-routing'),
+  /** The live council run whose routing policy is being rewired. */
+  runId: z.string(),
+  /** The new "A informs B" edge set — REPLACES the run's current edges. Empty ⇒ the open
+   *  default (every seat informs every other). */
+  edges: z.array(CouncilRoutingEdgeSchema),
+});
+
 /** The discriminated union of every surface → engine command, keyed by `type`. */
 export const SurfaceCommandSchema = z.discriminatedUnion('type', [
   StartSessionCommand,
@@ -525,6 +548,7 @@ export const SurfaceCommandSchema = z.discriminatedUnion('type', [
   StartCouncilCommand,
   KillCouncilCommand,
   ResolveCouncilConvergeCommand,
+  SetCouncilRoutingCommand,
 ]);
 export type SurfaceCommand = z.infer<typeof SurfaceCommandSchema>;
 
