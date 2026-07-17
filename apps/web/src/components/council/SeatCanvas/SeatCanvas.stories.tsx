@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import type { SeatStream } from '../council.types';
+import type { CouncilRoutingControls, SeatStream } from '../council.types';
 import { SeatCanvas } from './SeatCanvas';
 
 const SEATS: SeatStream[] = [
@@ -25,16 +25,30 @@ const SEATS: SeatStream[] = [
   },
 ];
 
+/** An OPEN, editable routing controller — every seat informs every other (the P1 default),
+ *  edits enabled. The toggle is a no-op in the static story (behavior is unit-tested). */
+const OPEN_ROUTING: CouncilRoutingControls = {
+  editable: true,
+  open: true,
+  informs: (from, to) => from !== to,
+  toggle: () => {},
+};
+
 const meta = {
   title: 'Council/SeatCanvas',
   component: SeatCanvas,
-  args: { seats: SEATS, phase: 'running' },
+  args: { seats: SEATS, phase: 'running', routing: OPEN_ROUTING },
 } satisfies Meta<typeof SeatCanvas>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const TwoSeats: Story = {};
+
+/** A settled run: routing is shown read-only (editing is live-only). */
+export const ReadOnlyRouting: Story = {
+  args: { routing: { ...OPEN_ROUTING, editable: false } },
+};
 
 export const Waiting: Story = { args: { seats: [], phase: 'running' } };
 

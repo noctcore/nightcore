@@ -8,10 +8,15 @@
  * components render; the wire shape is the contract `DebateTranscriptEntry`.
  */
 import type {
+  CouncilRoutingEdge,
   DebateEntryKind,
   DebateSeatRole,
   DebateStage,
 } from '@/lib/bridge';
+
+/** One "A informs B" routing edge — the data behind an editable canvas edge (issue #371).
+ *  Re-exported so the council feature has ONE import surface for the routing shape. */
+export type { CouncilRoutingEdge };
 
 /** One of a seat's own contributions onto the bus (a `message` entry), kept in seq
  *  order so a seat node renders its stream oldest → newest. */
@@ -37,6 +42,27 @@ export interface SeatStream {
   latestContent: string;
   /** The stage the seat's latest contribution belongs to. */
   latestStage: DebateStage;
+}
+
+/** The editable routing controller (issue #371) — the canvas edges as a policy the human
+ *  rewires live. A routing edge is "A informs B": which seats' outputs reach a recipient
+ *  seat as its MEDIATED, quoted, injection-scanned peer context in the Debate stage. The
+ *  controller is web-authoritative for DISPLAY (the canvas is the editor) and dispatches
+ *  every edit through the Conductor, which owns the EFFECT — a routing edit only filters
+ *  which already-mediated peers a seat hears, never a direct seat→seat path (safety #1). */
+export interface CouncilRoutingControls {
+  /** Whether routing is editable right now — true only for a LIVE run (an edit applies to
+   *  the next Debate round). Read-only otherwise (a settled/killed run is shown, not
+   *  edited). */
+  editable: boolean;
+  /** Whether the graph is the OPEN default — every seat informs every other (no explicit
+   *  edges yet). The first edit materializes the graph, then constrains it. */
+  open: boolean;
+  /** Whether `fromSeatId` currently informs `toSeatId` (drives a chip's pressed state). */
+  informs: (fromSeatId: string, toSeatId: string) => boolean;
+  /** Toggle the "fromSeatId informs toSeatId" edge and dispatch the change through the
+   *  Conductor's mediated bus. A no-op when not {@link editable}. */
+  toggle: (fromSeatId: string, toSeatId: string) => void;
 }
 
 /** One line in the team-chat projection — a human-readable rendering of a single bus

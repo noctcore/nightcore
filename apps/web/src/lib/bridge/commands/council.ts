@@ -4,7 +4,11 @@
  *  seat prompt (the conductor-mediated, quoted, injection-scanned bus stays the sole
  *  cross-seat path — safety #1/#2). */
 import { tauriInvoke } from '../internal';
-import type { CouncilConvergeDecision, CouncilPresetId } from '../types';
+import type {
+  CouncilConvergeDecision,
+  CouncilPresetId,
+  CouncilRoutingEdge,
+} from '../types';
 
 /** Start a governed Council debate run over the active project. Unlike the scan
  *  `start-*` families — where Rust assigns the `runId` — the web MINTS it here and
@@ -56,4 +60,20 @@ export async function resolveCouncilConverge(
     },
     undefined,
   );
+}
+
+/** Rewire a live Council run's routing policy — the editable canvas edges (issue #371).
+ *  A routing edge is "A informs B": which seats' outputs reach a recipient seat as its
+ *  MEDIATED, quoted, injection-scanned peer context in the Debate stage. `edges` REPLACES
+ *  the run's current edge set (an empty list restores the open default — every seat
+ *  informs every other). This is a CONDUCTOR DIRECTIVE, never a direct seat write (safety
+ *  #1): the engine's Conductor — the sole bus writer — applies it to the next Debate round
+ *  and records the change onto the append-only transcript, streamed back over `nc:debate`.
+ *  Fire-and-forget + idempotent: a no-op for an unknown/finished run, or outside Tauri
+ *  (browser preview) — the recorded routing note is the confirmation. */
+export async function setCouncilRouting(
+  runId: string,
+  edges: CouncilRoutingEdge[],
+): Promise<void> {
+  await tauriInvoke<void>('set_council_routing', { runId, edges }, undefined);
 }

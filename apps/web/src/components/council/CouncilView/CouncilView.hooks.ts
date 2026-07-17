@@ -14,17 +14,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useToast } from '@/components/ui';
-import type { CouncilConvergeDecision, DebateTranscriptEntry } from '@/lib/bridge';
+import type {
+  CouncilConvergeDecision,
+  CouncilRoutingEdge,
+  DebateTranscriptEntry,
+} from '@/lib/bridge';
 import {
   killCouncil,
   onDebateEvent,
   resolveCouncilConverge,
+  setCouncilRouting,
   startCouncil,
 } from '@/lib/bridge';
 
 import type {
   ConvergePosition,
   CouncilPhase,
+  CouncilRoutingControls,
   CouncilTranscript,
 } from '../council.types';
 import {
@@ -38,6 +44,19 @@ import type { CouncilViewProps } from './CouncilView.types';
 
 /** The only P1 preset (a `research` council of ≥2 distinct models). */
 const COUNCIL_PRESET = 'research' as const;
+
+/** Every directed peer pair (`a → b`, a ≠ b) — the materialized OPEN routing graph.
+ *  The first routing edit expands the implicit "everyone informs everyone" default into
+ *  explicit edges so a single toggle can then constrain it. */
+function directedPairs(seatIds: readonly string[]): CouncilRoutingEdge[] {
+  const edges: CouncilRoutingEdge[] = [];
+  for (const from of seatIds) {
+    for (const to of seatIds) {
+      if (from !== to) edges.push({ from, to });
+    }
+  }
+  return edges;
+}
 
 /** Read-only replay affordance for a finished run (safety #7). */
 export interface CouncilReplayControls {
@@ -75,6 +94,8 @@ export interface CouncilViewModel {
   resolved: boolean;
   /** The recorded human verdict text, shown read-only once `resolved`. */
   verdict: string | null;
+  /** The editable routing controller (issue #371) — the canvas edges as a live policy. */
+  routing: CouncilRoutingControls;
   /** Read-only transcript REPLAY of a finished run (safety #7). Bundled so the view can
    *  offer + drive replay without growing the model surface. */
   replay: CouncilReplayControls;
@@ -99,11 +120,21 @@ export function useCouncilView(props: CouncilViewProps): CouncilViewModel {
   const [runId, setRunId] = useState<string | null>(null);
   const [entries, setEntries] = useState<DebateTranscriptEntry[]>([]);
   const [replayActive, setReplayActive] = useState(false);
+  // The run's routing graph (issue #371). `null` = the OPEN default (every seat informs
+  // every other, matching the engine's empty-edges behavior); a non-null array is the
+  // EXPLICIT graph the human materialized by editing. Web-authoritative for DISPLAY; every
+  // edit is dispatched through the Conductor, which owns the effect (safety #1).
+  const [routingEdges, setRoutingEdges] = useState<CouncilRoutingEdge[] | null>(null);
 
   // The active run id, read INSIDE the once-installed stream subscription without
   // re-installing it on every run change (the subscription is stable for the view).
   const runIdRef = useRef<string | null>(null);
   runIdRef.current = runId;
+  // Mirror the routing edges + the run's seat ids so `toggleInformer` reads the freshest
+  // values synchronously (like `runIdRef`), without re-creating the callback each edit.
+  const routingEdgesRef = useRef<CouncilRoutingEdge[] | null>(null);
+  routingEdgesRef.current = routingEdges;
+  const seatIdsRef = useRef<string[]>([]);
 
   // Subscribe ONCE to the live `nc:debate` stream and fold only the ACTIVE run's
   // entries (a foreign run's stream is dropped). The append-only transcript lives in
@@ -141,6 +172,7 @@ export function useCouncilView(props: CouncilViewProps): CouncilViewModel {
       setRunId(id);
       setEntries([]);
       setReplayActive(false);
+      setRoutingEdges(null);
       setPhase('running');
       void startCouncil(id, COUNCIL_PRESET, trimmed, props.projectPath).catch(
         (error: unknown) => {
@@ -188,8 +220,36 @@ export function useCouncilView(props: CouncilViewProps): CouncilViewModel {
     setRunId(null);
     setEntries([]);
     setReplayActive(false);
+    setRoutingEdges(null);
     setPhase('idle');
   }, []);
+
+  // Toggle the "fromSeatId informs toSeatId" edge and dispatch the rewire through the
+  // Conductor (issue #371). Materializes the OPEN default to explicit edges on the first
+  // edit, then adds/removes the one edge. The dispatch is a CONDUCTOR DIRECTIVE — it only
+  // changes which mediated, quoted peers a seat hears next Debate round; it never writes
+  // into a seat (safety #1). Reads the freshest edges + seat ids from refs.
+  const toggleInformer = useCallback(
+    (fromSeatId: string, toSeatId: string) => {
+      const id = runIdRef.current;
+      if (id === null) return;
+      const current = routingEdgesRef.current ?? directedPairs(seatIdsRef.current);
+      const exists = current.some(
+        (edge) => edge.from === fromSeatId && edge.to === toSeatId,
+      );
+      const next = exists
+        ? current.filter(
+            (edge) => !(edge.from === fromSeatId && edge.to === toSeatId),
+          )
+        : [...current, { from: fromSeatId, to: toSeatId }];
+      routingEdgesRef.current = next;
+      setRoutingEdges(next);
+      void setCouncilRouting(id, next).catch((error: unknown) => {
+        toast.error('Could not update routing', error);
+      });
+    },
+    [toast],
+  );
 
   // Replay is offered only for a FINISHED run that captured a transcript — never mid-run
   // (a live run has no terminal record to reconstruct). Entering swaps the board for the
@@ -200,6 +260,10 @@ export function useCouncilView(props: CouncilViewProps): CouncilViewModel {
   const exitReplay = useCallback(() => setReplayActive(false), []);
 
   const transcript = useMemo(() => foldCouncilTranscript(entries), [entries]);
+  // Mirror the current seat ids so a routing edit can materialize the OPEN graph over the
+  // seats the run actually has (they've all spoken in Propose by the time Debate routing
+  // matters). Assigned after the fold, read synchronously by `toggleInformer`.
+  seatIdsRef.current = transcript.seats.map((seat) => seat.seatId);
   const replyRounds = useMemo(() => groupReplyRounds(entries), [entries]);
   const verdict = useMemo(() => convergeVerdictText(entries), [entries]);
   const positions = useMemo<ConvergePosition[]>(
@@ -223,6 +287,19 @@ export function useCouncilView(props: CouncilViewProps): CouncilViewModel {
     isLive: phase === 'running',
     resolved: phase === 'resolved',
     verdict,
+    routing: {
+      // Editable only while the run is LIVE — an edit takes effect on the next Debate
+      // round, so it is meaningless once the debate has settled (converged/stopped).
+      editable: phase === 'running',
+      open: routingEdges === null,
+      informs: (fromSeatId: string, toSeatId: string) =>
+        routingEdges === null
+          ? fromSeatId !== toSeatId
+          : routingEdges.some(
+              (edge) => edge.from === fromSeatId && edge.to === toSeatId,
+            ),
+      toggle: toggleInformer,
+    },
     replay: {
       available: replayAvailable,
       active: replayActive,

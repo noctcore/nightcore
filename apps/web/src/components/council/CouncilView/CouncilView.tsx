@@ -101,7 +101,11 @@ export function CouncilView(props: CouncilViewProps) {
             {atConverge ? (
               <ReplyDiff rounds={view.replyRounds} />
             ) : (
-              <SeatCanvas seats={view.transcript.seats} phase={view.phase} />
+              <SeatCanvas
+                seats={view.transcript.seats}
+                phase={view.phase}
+                routing={view.routing}
+              />
             )}
             {atConverge ? (
               // The human Converge gavel (#353) — P1's terminal authority (safety #7).
