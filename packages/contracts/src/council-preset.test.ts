@@ -50,15 +50,20 @@ describe('CouncilPresetSchema', () => {
     expect(CouncilPresetSchema.safeParse(badRole).success).toBe(false);
   });
 
-  test('leaves the schema open for judge/vote convergence', () => {
+  test('accepts the judge-agent / vote convergence modes (issue #370)', () => {
     expect(
-      CouncilPresetSchema.safeParse({ ...validPreset, convergence: 'judge' })
+      CouncilPresetSchema.safeParse({ ...validPreset, convergence: 'judge-agent' })
         .success,
     ).toBe(true);
     expect(
       CouncilPresetSchema.safeParse({ ...validPreset, convergence: 'vote' })
         .success,
     ).toBe(true);
+    // The renamed-away placeholder no longer parses (the mode is `judge-agent`).
+    expect(
+      CouncilPresetSchema.safeParse({ ...validPreset, convergence: 'judge' })
+        .success,
+    ).toBe(false);
   });
 });
 

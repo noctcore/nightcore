@@ -22,7 +22,7 @@ import { DebateSeatRoleSchema, DebateStageSchema } from './debate.js';
  *
  * P1 ships one preset (`research`) whose stage sequence is
  * `Frame → Propose(blind) → Debate(≤2) → Converge(human)`. The schema is kept open
- * enough to grow (more preset ids; `judge`/`vote` convergence; editable routing
+ * enough to grow (more preset ids; `judge-agent`/`vote` convergence; editable routing
  * edges) without a breaking change, but P1 only exercises the human-judged, blind-
  * propose, moderated-bus subset.
  */
@@ -37,12 +37,28 @@ export const CouncilPresetIdSchema = z.enum(['research']);
 export type CouncilPresetId = z.infer<typeof CouncilPresetIdSchema>;
 
 /**
- * How a council's Converge stage reaches a decision. P1 ships `human` ONLY — the
- * human is the terminal authority (safety non-negotiable #7). `judge` (an
- * agent-judge) and `vote` are declared so the schema can grow without a breaking
- * change, but no P1 preset selects them.
+ * How a council's Converge stage reaches a decision.
+ *
+ *  - `human` — the human judge is the sole terminal authority (safety non-negotiable
+ *    #7). The Conductor parks the seats' final positions for a human `accept`/`reject`/
+ *    `judge` gavel. This is the P1 mode.
+ *  - `judge-agent` — a DEDICATED judge seat (asymmetric `judge` role, excluded from the
+ *    debate) rules on the debating seats' positions (issue #370, P2). Its ruling is an
+ *    UNTRUSTED seat output: injection-scanned + mediated + delivered quoted, exactly like
+ *    any other seat's text (safety #1/#2). It cannot bypass the objective gate (safety
+ *    #6) or the human (safety #7): a red gate refuses its adoption and parks for the
+ *    human, who alone can override the gate.
+ *  - `vote` — the debating seats vote on the positions and a quorum (strict majority)
+ *    resolves the winner (issue #370, P2). Each vote is untrusted, scanned data too, and
+ *    the same gate/human overrides apply.
+ *
+ * A non-human mode still AUTO-CLOSES the run only when it cleanly adopts a position over
+ * a green/absent objective gate; on a red gate, a reject, or no quorum it records its
+ * finding onto the append-only transcript (via the Conductor, never a direct store write)
+ * and parks for the human. The convergence value is engine-internal preset data — it is
+ * NOT part of the cross-tier `CouncilPresetId` vocabulary, so it never crosses to Rust.
  */
-export const CouncilConvergenceSchema = z.enum(['human', 'judge', 'vote']);
+export const CouncilConvergenceSchema = z.enum(['human', 'judge-agent', 'vote']);
 export type CouncilConvergence = z.infer<typeof CouncilConvergenceSchema>;
 
 /**

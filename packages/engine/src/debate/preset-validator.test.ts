@@ -125,4 +125,80 @@ describe('validateCouncilPreset', () => {
     } as unknown as CouncilPreset;
     expect(issueCodes(missingCap)).toContain('missing-budget-cap');
   });
+
+  // ── Non-human convergence seat shape (issue #370) ─────────────────────────────
+
+  test('ACCEPTS a judge-agent preset with exactly one judge seat + debaters', () => {
+    const judgeAgent: CouncilPreset = {
+      ...basePreset,
+      convergence: 'judge-agent',
+      seats: [
+        { id: 'p1', role: 'proposer', model: 'claude-opus-4-8' },
+        { id: 'p2', role: 'proposer', model: 'claude-sonnet-4-6' },
+        { id: 'j', role: 'judge', model: 'claude-haiku-4-5' },
+      ],
+    };
+    expect(validateCouncilPreset(judgeAgent)).toEqual({ valid: true });
+  });
+
+  test('REJECTS judge-agent with no judge seat', () => {
+    const noJudge: CouncilPreset = { ...basePreset, convergence: 'judge-agent' };
+    expect(issueCodes(noJudge)).toContain('judge-agent-requires-one-judge-seat');
+  });
+
+  test('REJECTS judge-agent with two judge seats (ambiguous ruler)', () => {
+    const twoJudges: CouncilPreset = {
+      ...basePreset,
+      convergence: 'judge-agent',
+      seats: [
+        { id: 'p1', role: 'proposer', model: 'claude-opus-4-8' },
+        { id: 'j1', role: 'judge', model: 'claude-sonnet-4-6' },
+        { id: 'j2', role: 'judge', model: 'claude-haiku-4-5' },
+      ],
+    };
+    expect(issueCodes(twoJudges)).toContain('judge-agent-requires-one-judge-seat');
+  });
+
+  test('REJECTS judge-agent with a judge but no debaters to rule on', () => {
+    const judgeOnly: CouncilPreset = {
+      ...basePreset,
+      convergence: 'judge-agent',
+      // Two judge seats would trip the one-judge rule; a single judge + no debaters
+      // trips the debaters rule. Use one judge only.
+      seats: [{ id: 'j', role: 'judge', model: 'claude-opus-4-8' }],
+    };
+    const codes = issueCodes(judgeOnly);
+    expect(codes).toContain('judge-agent-requires-debaters');
+  });
+
+  test('ACCEPTS a vote preset with two+ debating seats', () => {
+    const vote: CouncilPreset = { ...basePreset, convergence: 'vote' };
+    expect(validateCouncilPreset(vote)).toEqual({ valid: true });
+  });
+
+  test('REJECTS a vote preset with fewer than two debating seats', () => {
+    const oneVoter: CouncilPreset = {
+      ...basePreset,
+      convergence: 'vote',
+      // A single proposer + a judge → only one DEBATING seat, so no quorum is possible.
+      seats: [
+        { id: 'p1', role: 'proposer', model: 'claude-opus-4-8' },
+        { id: 'j', role: 'judge', model: 'claude-sonnet-4-6' },
+      ],
+    };
+    expect(issueCodes(oneVoter)).toContain('vote-requires-debaters');
+  });
+
+  test('a judge seat stays VALID under human convergence (backward-compatible)', () => {
+    const humanWithJudge: CouncilPreset = {
+      ...basePreset,
+      convergence: 'human',
+      seats: [
+        { id: 'p1', role: 'proposer', model: 'claude-opus-4-8' },
+        { id: 'c1', role: 'critic', model: 'claude-sonnet-4-6' },
+        { id: 'j', role: 'judge', model: 'claude-haiku-4-5' },
+      ],
+    };
+    expect(validateCouncilPreset(humanWithJudge)).toEqual({ valid: true });
+  });
 });

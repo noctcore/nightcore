@@ -253,9 +253,17 @@ function renderVerdict(
       }
       // Audit a deliberate override of a red objective gate (safety #6 → #7): the human
       // is the ultimate authority, but adopting the debate over a failing gate is
-      // recorded as an explicit override, never silently.
+      // recorded as an explicit override, never silently. Keyed on the EXPLICIT
+      // `overrideGate` flag (defense-in-depth, issue #370 / #375 gate LOW) — NOT merely
+      // on the gate being red — so that as new convergence modes reach this path, only a
+      // deliberate human override is audited: `gateOverridesAccept` above already refuses
+      // a red-gate accept that did NOT set the flag, so an un-flagged accept can never
+      // reach here over a red gate, and a flag set on a green/absent gate (nothing to
+      // override) is never mis-audited. The red-gate guard keeps the message accurate.
       const overrodeGate =
-        pending.gateVerdict !== undefined && !pending.gateVerdict.passed;
+        decision.overrideGate === true &&
+        pending.gateVerdict !== undefined &&
+        !pending.gateVerdict.passed;
       return {
         ok: true,
         content:

@@ -42,6 +42,31 @@ function isSeatRole(role: DebateSeatRole): boolean {
   return (COUNCIL_SEAT_ROLES as readonly DebateSeatRole[]).includes(role);
 }
 
+/**
+ * The seats that PROPOSE + DEBATE — every seat except the dedicated `judge` seat (issue
+ * #370). A `judge`-role seat is the convergence judge for `judge-agent` presets: it rules
+ * on the debaters' positions at Converge and does NOT take a debating turn (a judge that
+ * proposed a position would be ruling on its own). For `human`/`vote` presets there is no
+ * judge seat, so this is every seat (P1 behaviour is unchanged).
+ */
+export function debatingSeats<T extends { readonly role: DebateSeatRole }>(
+  seats: readonly T[],
+): readonly T[] {
+  return seats.filter((seat) => seat.role !== 'judge');
+}
+
+/** The dedicated judge seat for a `judge-agent` preset, or `undefined` when none is
+ *  defined. The validator guarantees a `judge-agent` preset has EXACTLY one, so callers
+ *  on the validated path can treat a present value as the sole judge. */
+export function judgeSeat<T extends { readonly role: DebateSeatRole }>(
+  seats: readonly T[],
+): T | undefined {
+  return seats.find((seat) => seat.role === 'judge');
+}
+
+/** The minimum debating seats a `vote` convergence needs (a quorum needs voters). */
+export const COUNCIL_MIN_VOTE_SEATS = 2;
+
 /** A machine-branchable code for one preset-validation failure. */
 export type CouncilPresetIssueCode =
   | 'no-seats'
@@ -49,7 +74,13 @@ export type CouncilPresetIssueCode =
   | 'insufficient-model-diversity'
   | 'reserved-seat-role'
   | 'missing-budget-cap'
-  | 'non-positive-budget-cap';
+  | 'non-positive-budget-cap'
+  /** `judge-agent` convergence needs EXACTLY one `judge`-role seat (issue #370). */
+  | 'judge-agent-requires-one-judge-seat'
+  /** `judge-agent` convergence needs at least one debating (non-judge) seat (#370). */
+  | 'judge-agent-requires-debaters'
+  /** `vote` convergence needs at least two debating seats to tally a quorum (#370). */
+  | 'vote-requires-debaters';
 
 /** One reason a preset is invalid — a code to branch on and a human-readable message. */
 export interface CouncilPresetIssue {
@@ -138,9 +169,55 @@ export function validateCouncilPreset(
     }
   }
 
+  checkConvergence(preset, issues);
+
   for (const cap of BUDGET_CAPS) {
     checkCap(cap, preset.budget[cap], issues);
   }
 
   return issues.length === 0 ? { valid: true } : { valid: false, issues };
+}
+
+/**
+ * Enforce the seat shape a non-human convergence mode requires (issue #370). `human`
+ * imposes nothing new (P1). `judge-agent` needs EXACTLY one dedicated `judge` seat to
+ * rule plus at least one debating seat for it to rule ON. `vote` needs at least two
+ * debating seats so a quorum is meaningful. A `judge` seat under `human`/`vote` stays
+ * VALID (it is simply unused) so the mode change is backward-compatible — only
+ * `judge-agent` requires one.
+ */
+function checkConvergence(
+  preset: CouncilPreset,
+  issues: CouncilPresetIssue[],
+): void {
+  const judges = preset.seats.filter((seat) => seat.role === 'judge');
+  const debaters = debatingSeats(preset.seats);
+
+  if (preset.convergence === 'judge-agent') {
+    if (judges.length !== 1) {
+      issues.push({
+        code: 'judge-agent-requires-one-judge-seat',
+        message:
+          `judge-agent convergence needs EXACTLY one seat with role "judge" (the ` +
+          `dedicated judge that rules on the debate); got ${judges.length}.`,
+      });
+    }
+    if (debaters.length === 0) {
+      issues.push({
+        code: 'judge-agent-requires-debaters',
+        message:
+          'judge-agent convergence needs at least one debating (non-judge) seat for ' +
+          'the judge to rule on.',
+      });
+    }
+  }
+
+  if (preset.convergence === 'vote' && debaters.length < COUNCIL_MIN_VOTE_SEATS) {
+    issues.push({
+      code: 'vote-requires-debaters',
+      message:
+        `vote convergence needs at least ${COUNCIL_MIN_VOTE_SEATS} debating seats to ` +
+        `tally a quorum; got ${debaters.length}.`,
+    });
+  }
 }

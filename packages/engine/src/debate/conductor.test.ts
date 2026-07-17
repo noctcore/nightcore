@@ -9,6 +9,7 @@ import type {
 
 import { DebateBus } from './bus.js';
 import { Conductor } from './conductor.js';
+import { parseConvergeVerdict } from './conductor-autoconverge.js';
 import type {
   SeatDriver,
   SeatTurnRequest,
@@ -767,5 +768,214 @@ describe('Conductor — the objective gate is the terminal judge at Converge (sa
     expect(conductor.resolveConverge('run-no-gate', { kind: 'accept', seatId: adopted }).ok).toBe(
       true,
     );
+  });
+});
+
+// ── Non-human convergence: judge-agent + vote (issue #370) ──────────────────────
+
+describe('Conductor — non-human convergence (judge-agent + vote)', () => {
+  function judgeAgentPreset(): CouncilPreset {
+    return preset({
+      convergence: 'judge-agent',
+      seats: [
+        { id: 'proposer-opus', role: 'proposer', model: 'claude-opus-4-8' },
+        { id: 'proposer-sonnet', role: 'proposer', model: 'claude-sonnet-4-6' },
+        { id: 'judge-haiku', role: 'judge', model: 'claude-haiku-4-5' },
+      ],
+    });
+  }
+
+  function votePreset(): CouncilPreset {
+    return preset({
+      convergence: 'vote',
+      seats: [
+        { id: 'proposer-opus', role: 'proposer', model: 'claude-opus-4-8' },
+        { id: 'proposer-sonnet', role: 'proposer', model: 'claude-sonnet-4-6' },
+        { id: 'critic-haiku', role: 'critic', model: 'claude-haiku-4-5' },
+      ],
+    });
+  }
+
+  test('a judge-agent AUTO-CLOSES the run when it adopts a seat over no/green gate', async () => {
+    const driver = new FakeSeatDriver((req) => {
+      if (req.stage === 'converge' && req.seat.role === 'judge') {
+        return { content: 'opus is clearest.\nVERDICT: adopt proposer-opus' };
+      }
+      return { content: `plan-${req.seat.seatId}` };
+    });
+    const { conductor } = makeConductor(driver);
+
+    const result = await conductor.run({
+      councilRunId: 'run-ja-close',
+      preset: judgeAgentPreset(),
+      objective: 'o',
+    });
+
+    expect(result.status).toBe('converged');
+    // The judge ruled and the run converged autonomously — it is CLOSED, not awaiting.
+    expect(conductor.isAwaitingConverge('run-ja-close')).toBe(false);
+    // Recorded as a CONDUCTOR note (never a forged human verdict).
+    const closeNote = result.transcript.find(
+      (e) =>
+        e.stage === 'converge' &&
+        e.role === 'conductor' &&
+        e.content.includes('converged by judge-agent') &&
+        e.content.includes('proposer-opus'),
+    );
+    expect(closeNote).toBeDefined();
+    // A second resolution is a refused no-op — the run is closed.
+    expect(conductor.resolveConverge('run-ja-close', { kind: 'reject' }).ok).toBe(false);
+  });
+
+  test('the dedicated judge seat does NOT debate — it only rules at Converge', async () => {
+    const driver = new FakeSeatDriver((req) => {
+      if (req.stage === 'converge' && req.seat.role === 'judge') {
+        return { content: 'VERDICT: adopt proposer-opus' };
+      }
+      return { content: `plan-${req.seat.seatId}` };
+    });
+    const { conductor } = makeConductor(driver);
+    await conductor.run({
+      councilRunId: 'run-ja-noseat',
+      preset: judgeAgentPreset(),
+      objective: 'o',
+    });
+
+    const judgeCalls = driver.calls.filter((c) => c.seat.seatId === 'judge-haiku');
+    // The judge took NO propose/debate turn — only the single Converge ruling.
+    expect(judgeCalls.every((c) => c.stage === 'converge')).toBe(true);
+    expect(judgeCalls).toHaveLength(1);
+    // No debater was handed a judge role, and the parked positions are the debaters only.
+    expect(driver.forStage('propose').map((c) => c.seat.seatId).sort()).toEqual([
+      'proposer-opus',
+      'proposer-sonnet',
+    ]);
+  });
+
+  test('a judge-agent with no parseable verdict PARKS for the human (no adoption smuggled)', async () => {
+    const driver = new FakeSeatDriver((req) => {
+      if (req.stage === 'converge' && req.seat.role === 'judge') {
+        return { content: 'I cannot decide between these positions.' };
+      }
+      return { content: `plan-${req.seat.seatId}` };
+    });
+    const { conductor } = makeConductor(driver);
+    const result = await conductor.run({
+      councilRunId: 'run-ja-undecided',
+      preset: judgeAgentPreset(),
+      objective: 'o',
+    });
+
+    expect(conductor.isAwaitingConverge('run-ja-undecided')).toBe(true);
+    expect(
+      result.transcript.some(
+        (e) => e.role === 'conductor' && e.content.includes('no adoptable outcome'),
+      ),
+    ).toBe(true);
+    // The human still gavels.
+    expect(
+      conductor.resolveConverge('run-ja-undecided', {
+        kind: 'accept',
+        seatId: 'proposer-opus',
+      }).ok,
+    ).toBe(true);
+  });
+
+  test('a vote AUTO-CLOSES when a seat reaches quorum', async () => {
+    const driver = new FakeSeatDriver((req) => {
+      if (req.stage === 'converge') return { content: 'VERDICT: proposer-opus' };
+      return { content: `plan-${req.seat.seatId}` };
+    });
+    const { conductor } = makeConductor(driver);
+    const result = await conductor.run({
+      councilRunId: 'run-vote-close',
+      preset: votePreset(),
+      objective: 'o',
+    });
+
+    expect(conductor.isAwaitingConverge('run-vote-close')).toBe(false);
+    expect(
+      result.transcript.some(
+        (e) =>
+          e.role === 'conductor' &&
+          e.content.includes('converged by vote') &&
+          e.content.includes('proposer-opus'),
+      ),
+    ).toBe(true);
+  });
+
+  test('a split vote with NO quorum PARKS for the human', async () => {
+    // Each seat votes for ITSELF → 1 vote each → no strict majority of 3 voters.
+    const driver = new FakeSeatDriver((req) => {
+      if (req.stage === 'converge') return { content: `VERDICT: ${req.seat.seatId}` };
+      return { content: `plan-${req.seat.seatId}` };
+    });
+    const { conductor } = makeConductor(driver);
+    const result = await conductor.run({
+      councilRunId: 'run-vote-split',
+      preset: votePreset(),
+      objective: 'o',
+    });
+
+    expect(conductor.isAwaitingConverge('run-vote-split')).toBe(true);
+    expect(
+      result.transcript.some(
+        (e) => e.role === 'conductor' && e.content.includes('no adoptable outcome'),
+      ),
+    ).toBe(true);
+  });
+});
+
+// ── Verdict parsing (issue #370) ────────────────────────────────────────────────
+
+describe('parseConvergeVerdict', () => {
+  const seats = new Set(['proposer-opus', 'proposer-sonnet', 'critic']);
+
+  test('adopts a named seat from the trusted whitelist', () => {
+    expect(parseConvergeVerdict('VERDICT: adopt proposer-opus', seats)).toEqual({
+      kind: 'adopt',
+      seatId: 'proposer-opus',
+    });
+    expect(parseConvergeVerdict('reasoning...\nVERDICT: proposer-sonnet', seats)).toEqual({
+      kind: 'adopt',
+      seatId: 'proposer-sonnet',
+    });
+  });
+
+  test('the LAST verdict line wins', () => {
+    expect(
+      parseConvergeVerdict('VERDICT: proposer-opus\n...\nVERDICT: proposer-sonnet', seats),
+    ).toEqual({ kind: 'adopt', seatId: 'proposer-sonnet' });
+  });
+
+  test('parses an explicit reject', () => {
+    expect(parseConvergeVerdict('none is adequate.\nVERDICT: reject', seats)).toEqual({
+      kind: 'reject',
+    });
+  });
+
+  test('an id NOT on the whitelist yields undecided (no injection of a phantom seat)', () => {
+    expect(parseConvergeVerdict('VERDICT: adopt rm-rf-seat', seats)).toEqual({
+      kind: 'undecided',
+    });
+  });
+
+  test('an ambiguous verdict naming two seats is undecided', () => {
+    expect(
+      parseConvergeVerdict('VERDICT: adopt proposer-opus and proposer-sonnet', seats),
+    ).toEqual({ kind: 'undecided' });
+  });
+
+  test('no VERDICT line is undecided', () => {
+    expect(parseConvergeVerdict('I like the opus plan.', seats)).toEqual({
+      kind: 'undecided',
+    });
+  });
+
+  test('a seat id is matched as a whole token, never a substring of a longer id', () => {
+    // "critic" must not match inside "critic-haiku".
+    expect(parseConvergeVerdict('VERDICT: adopt critic-haiku', new Set(['critic']))).toEqual({
+      kind: 'undecided',
+    });
   });
 });

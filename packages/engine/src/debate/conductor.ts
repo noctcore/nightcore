@@ -39,44 +39,32 @@
 import type {
   CouncilPreset,
   CouncilRoutingEdge,
-  DebateStage,
   DebateTranscriptEntry,
 } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
 
 import type { BuildDriver } from './build-writer.js';
-import type { ConductorBus, DebateBus } from './bus.js';
+import type { DebateBus } from './bus.js';
 import { RunGovernor } from './conductor-budget.js';
-import { runBuild } from './conductor-build.js';
 import {
   type ParkedConverge,
   resolveParkedConverge,
-  runConverge,
 } from './conductor-converge.js';
-import {
-  debateMaxRounds,
-  stageDispatchConfig,
-} from './conductor-dispatch.js';
+import { buildResult, driveCouncil } from './conductor-drive.js';
 import { observeBus } from './conductor-observer.js';
-import { debatePrompt, proposePrompt } from './conductor-prompts.js';
-import { runProposeStage } from './conductor-propose.js';
 import {
   applyRoutingDirective,
   type RunRoutingRuntime,
   seedRoutingRuntime,
 } from './conductor-routing.js';
 import type {
-  BudgetHaltCause,
   ConvergeDecision,
   ConvergeResolution,
   CouncilRunResult,
-  CouncilRunStatus,
   SeatContext,
   SeatDriver,
-  SeatTurnResult,
 } from './conductor-types.js';
-import type { RoutingPolicy, RoutingUpdate } from './council-routing.js';
-import { runDebateRounds } from './debate-round.js';
+import type { RoutingUpdate } from './council-routing.js';
 import type { ObjectiveGate } from './objective-gate.js';
 import { validateCouncilPreset } from './preset-validator.js';
 
@@ -218,106 +206,22 @@ export class Conductor {
     this.runtimes.set(councilRunId, runtime);
 
     try {
-      return await this.drive(input, bus, governor, seats, runtime.routing);
+      return await driveCouncil(
+        this.deps,
+        input,
+        bus,
+        governor,
+        seats,
+        runtime.routing,
+        this.parked,
+      );
     } catch (error) {
       this.deps.logger?.warn('council run crashed', { councilRunId, error });
-      return this.result(councilRunId, 'failed', governor);
+      return buildResult(this.deps, councilRunId, 'failed', governor);
     } finally {
       this.active.delete(councilRunId);
       this.runtimes.delete(councilRunId);
     }
-  }
-
-  /** The Frame → Propose → Debate → Converge sequence for a validated preset. */
-  private async drive(
-    input: CouncilRunInput,
-    bus: ConductorBus,
-    governor: RunGovernor,
-    seats: SeatContext[],
-    routing: RoutingPolicy,
-  ): Promise<CouncilRunResult> {
-    const { councilRunId, preset, objective } = input;
-
-    bus.note(
-      'frame',
-      `Council "${preset.label}" framed. Objective: ${objective}. ` +
-        `Success criterion: ${preset.successCriterion}.`,
-    );
-
-    // ── Propose (BLIND, parallel): no peer content enters a Propose prompt. ─────
-    const proposeOutputs = await runProposeStage({
-      bus,
-      seats,
-      governor,
-      dispatch: stageDispatchConfig(preset, seats, this.deps),
-      buildPrompt: (seat) => proposePrompt(objective, seat),
-      runTurn: (seat, prompt, signal) =>
-        this.runTurn(input, seat, 'propose', prompt, signal),
-    });
-    const proposeHalt = this.governorStatus(governor);
-    if (proposeHalt !== null) {
-      return this.result(councilRunId, proposeHalt.status, governor, proposeHalt.haltedBy);
-    }
-
-    // ── Debate (≤2 rounds, early-stop on stability). ───────────────────────────
-    const debate = await runDebateRounds({
-      bus,
-      seats,
-      governor,
-      stageMaxRounds: debateMaxRounds(preset),
-      priorOutputs: proposeOutputs,
-      dispatch: stageDispatchConfig(preset, seats, this.deps),
-      // The editable routing filter (issue #371), read FRESH each round so a live rewire
-      // applies on the next round. It only narrows which mediated peers a seat hears.
-      informers: (toSeatId) => routing.informers(toSeatId),
-      // The #372 no-progress stall stop (a strict shortener; absent ⇒ default rounds).
-      ...(this.deps.noProgressRounds !== undefined ? { noProgressRounds: this.deps.noProgressRounds } : {}),
-      buildPrompt: (seat, round, peerText) =>
-        debatePrompt(objective, seat, round, peerText),
-      runTurn: (seat, prompt, signal) =>
-        this.runTurn(input, seat, 'debate', prompt, signal),
-    });
-    if (debate.halt !== null) {
-      const status: CouncilRunStatus =
-        debate.halt.kind === 'killed' ? 'killed' : 'budget-exhausted';
-      return this.result(councilRunId, status, governor, debate.halt.cause);
-    }
-
-    // ── Build (SINGLE writer, isolated worktree — issue #366, safety #5). DORMANT
-    // unless the preset declares a `build` stage AND a buildDriver is injected; then
-    // ONE elected writer executes the plan write-capable-but-sandboxed and the
-    // objective gate below judges the BUILD OUTPUT. ─────────────────────────────
-    const buildOutcome = await runBuild({
-      bus,
-      driver: this.deps.buildDriver,
-      preset,
-      run: input,
-      seats,
-      finalOutputs: debate.finalOutputs,
-      governor,
-      logger: this.deps.logger,
-    });
-    const buildHalt = this.governorStatus(governor);
-    if (buildHalt !== null) {
-      return this.result(councilRunId, buildHalt.status, governor, buildHalt.haltedBy);
-    }
-
-    // ── Converge: run the OBJECTIVE GATE (safety #6; a red verdict overrides
-    // consensus) — over the BUILD OUTPUT when a build ran — then park the positions
-    // for the human judge. ─────────────────────────────────────────────────────
-    const pending = await runConverge({
-      parked: this.parked,
-      bus,
-      gate: this.deps.objectiveGate,
-      run: input,
-      seats,
-      finalOutputs: debate.finalOutputs,
-      rounds: governor.totals.rounds,
-      signal: governor.signal,
-      logger: this.deps.logger,
-      ...(buildOutcome !== null ? { buildOutput: buildOutcome } : {}),
-    });
-    return { ...this.result(councilRunId, 'converged', governor), pendingDecision: pending };
   }
 
   /** Whether a run is parked at Converge, awaiting the human judge's verdict. */
@@ -342,51 +246,4 @@ export class Conductor {
       this.deps.logger,
     );
   }
-
-  /** Drive one seat turn through the {@link SeatDriver} seam, threading the collector's
-   *  per-seat abort `signal` (which fires on kill/budget OR the collector's own timeout /
-   *  quorum cutoff) so the driver can bail on any of them. */
-  private runTurn(
-    input: CouncilRunInput,
-    seat: SeatContext,
-    stage: DebateStage,
-    prompt: string,
-    signal: AbortSignal,
-  ): Promise<SeatTurnResult> {
-    return this.deps.seatDriver.runTurn({
-      seat,
-      stage,
-      prompt,
-      ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
-      signal,
-    });
-  }
-
-  /** The terminal status the governor implies after a stage, or null to continue.
-   *  Separates a kill from a specific budget cap. */
-  private governorStatus(
-    governor: RunGovernor,
-  ): { status: CouncilRunStatus; haltedBy?: BudgetHaltCause } | null {
-    if (governor.killed) return { status: 'killed' };
-    const cause = governor.capBreached();
-    if (cause !== null) return { status: 'budget-exhausted', haltedBy: cause };
-    return null;
-  }
-
-  /** Assemble a terminal {@link CouncilRunResult} from the run's transcript + totals. */
-  private result(
-    councilRunId: string,
-    status: CouncilRunStatus,
-    governor: RunGovernor,
-    haltedBy?: BudgetHaltCause,
-  ): CouncilRunResult {
-    return {
-      councilRunId,
-      status,
-      transcript: this.deps.bus.seatView(councilRunId, 'conductor').read(),
-      usage: governor.totals,
-      ...(haltedBy !== undefined ? { haltedBy } : {}),
-    };
-  }
-
 }
