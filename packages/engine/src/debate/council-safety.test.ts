@@ -43,10 +43,17 @@ import type {
   SeatTurnResult,
 } from './conductor-types.js';
 import { scanForInjection } from './injection-scan.js';
-import type { ObjectiveGateContext } from './objective-gate.js';
-import type { ObjectiveGate } from './objective-gate.js';
+import type {
+  GauntletLikeResult,
+  GauntletRunner,
+  ObjectiveGate,
+  ObjectiveGateContext,
+} from './objective-gate.js';
 import { assemblePeerContext } from './peer-context.js';
-import { RESEARCH_COUNCIL_PRESET } from './preset-registry.js';
+import {
+  RESEARCH_COUNCIL_PRESET,
+  UI_BUG_COUNCIL_PRESET,
+} from './preset-registry.js';
 import { COUNCIL_SEAT_ROLES, validateCouncilPreset } from './preset-validator.js';
 import {
   SEAT_SESSION_HARDENING,
@@ -414,8 +421,9 @@ describe('Safety #5 (P2) — one elected writer builds on an isolated worktree; 
    *  judges (safety #6). In production this is `<project>/.nightcore/worktrees/…`. */
   const WORKTREE = '/project/.nightcore/worktrees/council-run';
 
-  /** A build-capable preset: the research preset + a `build` stage. Real Build presets are
-   *  #367/#368; the id stays `research` so it still validates (stages aren't validated). */
+  /** A build-capable preset: the research preset + a `build` stage. The id stays `research`
+   *  so it still validates; the `build` stage now REQUIRES an `objectiveGate` (#367 — no
+   *  un-gated write, safety #6), so it carries the `repro` gate like the real UI-bug preset. */
   function buildPreset(): CouncilPreset {
     return preset({
       stages: [
@@ -423,6 +431,7 @@ describe('Safety #5 (P2) — one elected writer builds on an isolated worktree; 
         { stage: 'build', blind: false },
         { stage: 'converge', blind: false },
       ],
+      objectiveGate: 'repro',
     });
   }
 
@@ -470,6 +479,41 @@ describe('Safety #5 (P2) — one elected writer builds on an isolated worktree; 
     expect(seats.filter((s) => s.seatId === writer?.seatId)).toHaveLength(1);
     // An empty council elects no writer (the Build stage is then skipped).
     expect(electWriter([])).toBeNull();
+  });
+
+  test('the Build writer is elected from DEBATERS only — never a dedicated judge seat (#380)', async () => {
+    // A build preset that ALSO carries a `judge` seat (valid under human convergence): the
+    // writer must be a debater (a proposer), never the judge — a judge rules on the debate,
+    // it must not also author the code it will judge (safety #1/#5, #380 gate carry-forward).
+    const driver = new RecordingBuildDriver();
+    const conductor = new Conductor({
+      bus: new DebateBus(),
+      seatDriver: new RecordingDriver(() => turn('plan')),
+      buildDriver: driver,
+    });
+
+    const result = await conductor.run({
+      councilRunId: 'run-build-judge',
+      preset: preset({
+        seats: [
+          { id: 'p1', role: 'proposer', model: 'claude-opus-4-8' },
+          { id: 'c1', role: 'critic', model: 'claude-sonnet-4-6' },
+          { id: 'j1', role: 'judge', model: 'claude-haiku-4-5' },
+        ],
+        stages: [
+          ...RESEARCH_COUNCIL_PRESET.stages.slice(0, 3),
+          { stage: 'build', blind: false },
+          { stage: 'converge', blind: false },
+        ],
+        objectiveGate: 'repro',
+      }),
+      objective: 'o',
+    });
+
+    expect(result.status).toBe('converged');
+    expect(driver.calls).toHaveLength(1);
+    expect(driver.calls[0]?.writer.role).toBe('proposer');
+    expect(driver.calls[0]?.writer.role).not.toBe('judge');
   });
 
   test('a Build runs the elected writer EXACTLY ONCE, handed the plan as MEDIATED quoted data', async () => {
@@ -608,6 +652,7 @@ describe('Safety #6 (P2, Build) — a red objective gate over the BUILD OUTPUT r
         { stage: 'build', blind: false },
         { stage: 'converge', blind: false },
       ],
+      objectiveGate: 'repro',
     });
   }
 
@@ -678,8 +723,10 @@ describe('Safety #2/#6/#7 (P2) — the adversarial Review verdict is advisory da
   const WORKTREE = '/project/.nightcore/worktrees/council-review';
 
   /** A build+review-capable preset: research + a `build` stage + a `review` stage. Real
-   *  Build+Review presets are #367/#368; the id stays `research` so it still validates
-   *  (stages aren't validated). */
+   *  Build+Review presets are #367/#368; the id stays `research` so it still validates. The
+   *  `build` stage now REQUIRES an `objectiveGate` (#367 — no un-gated write, safety #6), so
+   *  it carries the `repro` gate marker (behaviour-preserving: no `gauntletRunner` is
+   *  injected here, so the gate still resolves to the fixed `objectiveGate` a test wires). */
   function buildReviewPreset(): CouncilPreset {
     return preset({
       stages: [
@@ -688,10 +735,12 @@ describe('Safety #2/#6/#7 (P2) — the adversarial Review verdict is advisory da
         { stage: 'review', blind: false },
         { stage: 'converge', blind: false },
       ],
+      objectiveGate: 'repro',
     });
   }
 
-  /** A build-only preset (a `build` stage but NO `review` stage) — for the dormancy gate. */
+  /** A build-only preset (a `build` stage but NO `review` stage) — for the dormancy gate.
+   *  Carries the `repro` gate marker for the same reason `buildReviewPreset` does (#367). */
   function buildOnlyPreset(): CouncilPreset {
     return preset({
       stages: [
@@ -699,6 +748,7 @@ describe('Safety #2/#6/#7 (P2) — the adversarial Review verdict is advisory da
         { stage: 'build', blind: false },
         { stage: 'converge', blind: false },
       ],
+      objectiveGate: 'repro',
     });
   }
 
@@ -923,6 +973,178 @@ describe('Safety #2/#6/#7 (P2) — the adversarial Review verdict is advisory da
     // A passing Review carrying an "accept" payload CANNOT forge acceptance: nothing parses
     // the review to decide, the human is still terminal — nothing was adopted.
     expect(conductor.isAwaitingConverge('run-review-injection')).toBe(true);
+  });
+});
+
+// ── Safety #6 (P2) — UI-bug preset: reproduce-first repro gate is terminal (issue #367) ─
+
+describe('Safety #6 (P2) — UI-bug preset: the reproduce-first repro gate is the terminal judge (issue #367)', () => {
+  /** The isolated worktree the (fake) writer builds in — the dir the repro gate then runs
+   *  the repro in (safety #5/#6). In production this is `<project>/.nightcore/worktrees/…`. */
+  const WORKTREE = '/project/.nightcore/worktrees/council-ui-bug';
+
+  /** A fake single-writer Build driver: "applies the fix" and returns the isolated worktree
+   *  the repro gate judges. No live worktree/session — the driver seam is exec-neutral. */
+  function recordingDriver(): { driver: BuildDriver; calls: BuildContext[] } {
+    const calls: BuildContext[] = [];
+    return {
+      calls,
+      driver: {
+        build: (context) => {
+          calls.push(context);
+          return Promise.resolve({
+            content: `fix by ${context.writer.seatId}`,
+            usage: NO_USAGE,
+            costUsd: 0,
+            worktreePath: WORKTREE,
+          });
+        },
+      },
+    };
+  }
+
+  /** A fake gauntlet runner — the injected repro exec (the harness `runChecks` in
+   *  production). `green` picks whether the repro passes. */
+  function reproRunner(green: boolean): GauntletRunner {
+    return (): GauntletLikeResult =>
+      green
+        ? { passed: true, checks: [{ name: 'repro', status: 'passed' }] }
+        : {
+            passed: false,
+            failedCheck: 'repro',
+            checks: [
+              { name: 'repro', status: 'failed', output: 'repro still RED: 1 test fails' },
+            ],
+          };
+  }
+
+  test('the registered UI-bug preset is a reproduce-first, build-then-gate council', () => {
+    expect(UI_BUG_COUNCIL_PRESET.objectiveGate).toBe('repro');
+    expect(UI_BUG_COUNCIL_PRESET.stages.map((s) => s.stage)).toEqual([
+      'frame',
+      'propose',
+      'debate',
+      'build',
+      'converge',
+    ]);
+    // The whole real preset validates (the build ⟺ gate invariants, #367).
+    expect(validateCouncilPreset(UI_BUG_COUNCIL_PRESET)).toEqual({ valid: true });
+  });
+
+  test('a still-RED repro OVERRIDES debate consensus even when every seat agrees', async () => {
+    const { driver, calls } = recordingDriver();
+    const conductor = new Conductor({
+      bus: new DebateBus(),
+      seatDriver: new RecordingDriver(() => turn('we all agree: ship it')),
+      buildDriver: driver,
+      gauntletRunner: reproRunner(false), // the repro stays RED (fix insufficient)
+    });
+
+    const result = await conductor.run({
+      councilRunId: 'run-ui-red',
+      preset: UI_BUG_COUNCIL_PRESET,
+      objective: 'fix the broken submit button',
+    });
+
+    // EXACTLY ONE writer wrote, and it is the conductor-elected proposer, not the critic
+    // (safety #5/#1) — the reproduce-first fix has one author.
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.writer.role).toBe('proposer');
+
+    // The gate was built DATA-DRIVEN from the preset's `repro` marker (no fixed gate wired)
+    // and is RED.
+    expect(result.pendingDecision?.gateVerdict?.passed).toBe(false);
+
+    // Debate consensus cannot be adopted over the red repro: `accept` is refused, the run
+    // stays parked (safety #6 — the gate, not the debate, decides).
+    const seat = result.pendingDecision!.positions[0]!.seatId;
+    const refused = conductor.resolveConverge('run-ui-red', { kind: 'accept', seatId: seat });
+    expect(refused.ok).toBe(false);
+    expect(conductor.isAwaitingConverge('run-ui-red')).toBe(true);
+
+    // The human stays terminal (safety #7): a deliberate override adopts it, audited.
+    const override = conductor.resolveConverge('run-ui-red', {
+      kind: 'accept',
+      seatId: seat,
+      overrideGate: true,
+    });
+    expect(override.ok).toBe(true);
+    expect(override.entry?.content).toContain('OVERRODE the red objective gate');
+  });
+
+  test("a GREEN repro over the writer's worktree lets consensus stand (pending the human)", async () => {
+    const { driver } = recordingDriver();
+    let judgedCwd: string | undefined = 'unset';
+    const conductor = new Conductor({
+      bus: new DebateBus(),
+      seatDriver: new RecordingDriver(() => turn('plan the fix')),
+      buildDriver: driver,
+      gauntletRunner: (context): GauntletLikeResult => {
+        judgedCwd = context.cwd;
+        return { passed: true, checks: [{ name: 'repro', status: 'passed' }] };
+      },
+    });
+
+    const result = await conductor.run({
+      councilRunId: 'run-ui-green',
+      preset: UI_BUG_COUNCIL_PRESET,
+      objective: 'o',
+      cwd: '/project',
+    });
+
+    // The repro ran over the BUILD OUTPUT (the writer's isolated worktree), not the run cwd
+    // (safety #6, reproduce-first): the fix that turns the repro GREEN lives in the worktree.
+    expect(judgedCwd).toBe(WORKTREE);
+    expect(result.pendingDecision?.gateVerdict?.passed).toBe(true);
+    // A green repro no longer blocks adoption — the human remains terminal.
+    const seat = result.pendingDecision!.positions[0]!.seatId;
+    expect(conductor.resolveConverge('run-ui-green', { kind: 'accept', seatId: seat }).ok).toBe(
+      true,
+    );
+  });
+
+  test('research on the SAME injected gauntlet runner stays GATE-LESS (gate is per-preset)', async () => {
+    // A CouncilManager serves both presets; a runner injected for the UI-bug preset must NOT
+    // turn `research` (no `objectiveGate` marker) into a gated run — the gate is data-driven.
+    const conductor = new Conductor({
+      bus: new DebateBus(),
+      seatDriver: new RecordingDriver(() => turn('a recommendation')),
+      gauntletRunner: reproRunner(false),
+    });
+
+    const result = await conductor.run({
+      councilRunId: 'run-research-nogate',
+      preset: RESEARCH_COUNCIL_PRESET,
+      objective: 'o',
+    });
+
+    // No gate ran: research parks a pure-reasoning decision (no gateVerdict), and a plain
+    // accept is not blocked by any objective gate.
+    expect(result.pendingDecision?.gateVerdict).toBeUndefined();
+    const seat = result.pendingDecision!.positions[0]!.seatId;
+    expect(conductor.resolveConverge('run-research-nogate', { kind: 'accept', seatId: seat }).ok).toBe(
+      true,
+    );
+  });
+
+  test('DORMANT in production: no buildDriver + no gauntletRunner ⇒ the council debates but never writes/gates', async () => {
+    // The production Conductor is built WITHOUT a writer or a gauntlet runner (the write step
+    // is a tracked follow-up), so a UI-bug council debates a repro + fix plan and parks for
+    // the human — it never writes and no repro runs (a council debates plans, it never types).
+    const conductor = new Conductor({
+      bus: new DebateBus(),
+      seatDriver: new RecordingDriver(() => turn('plan the repro + fix')),
+    });
+
+    const result = await conductor.run({
+      councilRunId: 'run-ui-dormant',
+      preset: UI_BUG_COUNCIL_PRESET,
+      objective: 'o',
+    });
+
+    expect(result.status).toBe('converged');
+    expect(result.transcript.some((e) => e.stage === 'build')).toBe(false);
+    expect(result.pendingDecision?.gateVerdict).toBeUndefined();
   });
 });
 

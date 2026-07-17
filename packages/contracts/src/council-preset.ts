@@ -29,12 +29,35 @@ import { DebateSeatRoleSchema, DebateStageSchema } from './debate.js';
 
 /**
  * The id of a council preset — the shared cross-tier vocabulary (mirrors
- * `TaskKind`). P1 ships exactly one: `research`. Adding a preset id touches this
- * enum, the Rust `CouncilPresetId` (force-emitted by `gen-rust-contracts.ts`), and
- * `ENUM_NAMES` — the same three-site house rule `TaskKind` follows.
+ * `TaskKind`). P1 shipped `research`; P2 adds `ui-bug` (issue #367 — the
+ * reproduce-first council whose objective gate is a repro that must go RED → GREEN).
+ * Adding a preset id touches this enum, the Rust `CouncilPresetId` (force-emitted by
+ * `gen-rust-contracts.ts`), and `ENUM_NAMES` — the same three-site house rule
+ * `TaskKind` follows.
  */
-export const CouncilPresetIdSchema = z.enum(['research']);
+export const CouncilPresetIdSchema = z.enum(['research', 'ui-bug']);
 export type CouncilPresetId = z.infer<typeof CouncilPresetIdSchema>;
+
+/**
+ * The KIND of objective gate a preset's Converge runs (issue #365 foundation, #367).
+ * An objective preset names the deterministic terminal judge whose RED verdict
+ * OVERRIDES debate consensus (safety non-negotiable #6): the gate, not the debate,
+ * decides success.
+ *
+ *  - `repro` — the **reproduce-first** repro gate (the P2 UI-bug preset, #367). The
+ *    council first establishes a RED repro (a failing check proving it understood the
+ *    bug), the single-writer Build then turns it GREEN, and this gate — run over the
+ *    build output — is the terminal check: a still-RED repro cannot be adopted over a
+ *    confident debate consensus.
+ *
+ * This is ENGINE-INTERNAL preset data (like {@link CouncilConvergenceSchema}), NOT part
+ * of the cross-tier `CouncilPresetId` vocabulary, so it never crosses to Rust. The
+ * concrete gate is built engine-side from this marker plus an injected gauntlet runner
+ * (`packages/engine/src/debate/objective-preset.ts`), reusing the existing pre-merge
+ * gauntlet exec — no new exec sink.
+ */
+export const CouncilObjectiveGateSchema = z.enum(['repro']);
+export type CouncilObjectiveGate = z.infer<typeof CouncilObjectiveGateSchema>;
 
 /**
  * How a council's Converge stage reaches a decision.
@@ -161,10 +184,25 @@ export const CouncilPresetSchema = z.object({
   stages: z.array(CouncilStageStepSchema),
   /** The bus routing policy. */
   routing: CouncilRoutingSchema,
-  /** What "done" means for this council — the success criterion the judge weighs. */
+  /** What "done" means for this council — the success criterion the judge weighs. For an
+   *  objective preset (`objectiveGate` set) this is the human-readable statement of the
+   *  gate's pass condition (the UI-bug preset: "the repro goes RED → GREEN"). */
   successCriterion: z.string(),
   /** How the Converge stage decides (`human` for P1). */
   convergence: CouncilConvergenceSchema,
+  /**
+   * The objective gate this council's Converge runs as the terminal judge (issue #365,
+   * safety #6), when the preset is an OBJECTIVE task. Absent ⇒ a pure-reasoning council
+   * (the human decides the parked positions alone — P1 behaviour). Present ⇒ a
+   * deterministic gate (`repro` for the reproduce-first UI-bug preset, #367) runs at
+   * Converge and its RED verdict OVERRIDES debate consensus. Engine-internal preset data
+   * (never crosses to Rust); the concrete gate is built from this marker plus an injected
+   * gauntlet runner (`objective-preset.ts`), reusing the existing gauntlet exec. The
+   * engine's `validateCouncilPreset` pairs it with the `build` stage: a `build` stage
+   * requires a gate (no un-gated write), and the `repro` gate requires a `build` stage
+   * (the write is what turns the repro GREEN).
+   */
+  objectiveGate: CouncilObjectiveGateSchema.optional(),
   /** The hard budget/round caps. */
   budget: CouncilBudgetSchema,
 });

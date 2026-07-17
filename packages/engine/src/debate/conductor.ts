@@ -71,7 +71,7 @@ import type {
   SeatDriver,
 } from './conductor-types.js';
 import type { RoutingUpdate } from './council-routing.js';
-import type { ObjectiveGate } from './objective-gate.js';
+import type { GauntletRunner, ObjectiveGate } from './objective-gate.js';
 import { validateCouncilPreset } from './preset-validator.js';
 
 export interface ConductorDeps {
@@ -99,8 +99,20 @@ export interface ConductorDeps {
   readonly seatTimeoutMs?: number;
   /** The objective gate run at Converge (issue #365, safety #6): a DETERMINISTIC
    *  tests/repro/build check whose RED verdict OVERRIDES debate consensus. Absent ⇒ a
-   *  pure-reasoning run — the human decides the parked positions alone (P1 behaviour). */
+   *  pure-reasoning run — the human decides the parked positions alone (P1 behaviour). A
+   *  gate resolved per-preset from {@link gauntletRunner} takes precedence over this fixed
+   *  gate (see `conductor-drive.ts`), so a mixed CouncilManager can serve both an objective
+   *  preset (gets its gate) and `research` (stays gate-less). */
   readonly objectiveGate?: ObjectiveGate;
+  /** The INJECTED gauntlet runner (issue #367, safety #6) an OBJECTIVE preset's gate reuses
+   *  — the harness `runChecks` bound to the run's worktree in production, a fake in tests.
+   *  When present AND the run's preset declares an `objectiveGate` (e.g. the UI-bug preset's
+   *  `repro` gate), `driveCouncil` builds the concrete gate from the preset marker via
+   *  `objectiveGateForPreset` — no new exec sink (the gauntlet owns the exec). Absent ⇒ no
+   *  data-driven gate; the run falls back to {@link objectiveGate} (a pure-reasoning run for
+   *  a preset with no marker). DORMANT in production until the write-capable driver + its
+   *  worktree land (a tracked follow-up — see `objective-preset.ts`). */
+  readonly gauntletRunner?: GauntletRunner;
   /** Consecutive no-progress Debate rounds that trip the #372 stall early-stop (churn
    *  without a new distinct position → route to Converge). A STRICT SHORTENER — only ends a
    *  run sooner, never extends it (safety #4). Default: `DEFAULT_NO_PROGRESS_ROUNDS`. */

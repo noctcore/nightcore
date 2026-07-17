@@ -35,7 +35,7 @@ import type {
   SeatDriver,
 } from './conductor-types.js';
 import type { RoutingUpdate } from './council-routing.js';
-import type { ObjectiveGate } from './objective-gate.js';
+import type { GauntletRunner, ObjectiveGate } from './objective-gate.js';
 import { resolveCouncilPreset } from './preset-registry.js';
 
 export interface CouncilManagerDeps {
@@ -52,6 +52,12 @@ export interface CouncilManagerDeps {
    *  objective-task preset (#367/#368); ABSENT in production today, so P1 councils are
    *  pure-reasoning (the human decides alone). See {@link Conductor}. */
   readonly objectiveGate?: ObjectiveGate;
+  /** The INJECTED gauntlet runner an OBJECTIVE preset's gate reuses (issue #367, safety #6):
+   *  the UI-bug preset's `repro` gate is built per-run from this + the preset's marker
+   *  (`objectiveGateForPreset`), reusing the existing gauntlet exec — no new sink. ABSENT in
+   *  production today (DORMANT with the write-capable driver — a tracked follow-up); a fake
+   *  in tests. See {@link Conductor} / `objective-preset.ts`. */
+  readonly gauntletRunner?: GauntletRunner;
   /** The SINGLE-writer Build driver (issue #366, safety #5). Injected ONLY by a
    *  Build-capable preset (#367/#368) alongside a `build` stage; ABSENT in production
    *  today, so the Build stage stays DORMANT (a council debates plans, it never writes).
@@ -89,6 +95,9 @@ export class CouncilManager {
       ...(deps.emit !== undefined ? { onEntry: deps.emit } : {}),
       ...(deps.objectiveGate !== undefined
         ? { objectiveGate: deps.objectiveGate }
+        : {}),
+      ...(deps.gauntletRunner !== undefined
+        ? { gauntletRunner: deps.gauntletRunner }
         : {}),
       ...(deps.buildDriver !== undefined ? { buildDriver: deps.buildDriver } : {}),
       ...(deps.reviewDriver !== undefined ? { reviewDriver: deps.reviewDriver } : {}),

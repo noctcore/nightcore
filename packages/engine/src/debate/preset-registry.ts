@@ -49,11 +49,52 @@ export const RESEARCH_COUNCIL_PRESET: CouncilPreset = {
   budget: { maxRounds: 2, maxTotalTokens: 400_000, maxCostUsd: 5 },
 };
 
+/**
+ * The P2 **UI-bug** council (issue #367): a REPRODUCE-FIRST debate whose objective gate is
+ * a repro that must go RED → GREEN. The gate — not the debate — decides success.
+ *
+ * - **Reproduce-first** — the council first establishes a RED repro (a failing check that
+ *   proves it understood the bug), then the single-writer Build turns it GREEN. The
+ *   `objectiveGate: 'repro'` gate runs over the build output at Converge and is the terminal
+ *   judge: a still-RED repro cannot be adopted over a confident debate consensus (safety #6).
+ * - **Seats** — two proposers on DISTINCT models plus a critic (three seats, two distinct
+ *   models, under the `≤4` cap). The Build's single writer is elected from the proposers
+ *   (`electWriter`), never the critic — so the reproduce-first fix has one author.
+ * - **Stages** — `Frame → Propose(blind) → Debate(≤2) → Build → Converge`. The `build` stage
+ *   is where the fix that flips the repro is written (DORMANT until a `BuildDriver` is
+ *   injected — see `objective-preset.ts`); the gate judges its output.
+ * - **Routing / Budget** — the conductor-`moderated-bus` (safety #1); hard caps (safety #4).
+ */
+export const UI_BUG_COUNCIL_PRESET: CouncilPreset = {
+  id: 'ui-bug',
+  label: 'UI-bug council',
+  seats: [
+    { id: 'proposer-opus', role: 'proposer', model: 'claude-opus-4-8' },
+    { id: 'proposer-sonnet', role: 'proposer', model: 'claude-sonnet-4-6' },
+    { id: 'critic-opus', role: 'critic', model: 'claude-opus-4-8' },
+  ],
+  stages: [
+    { stage: 'frame', blind: false },
+    { stage: 'propose', blind: true },
+    { stage: 'debate', blind: false, maxRounds: 2 },
+    { stage: 'build', blind: false },
+    { stage: 'converge', blind: false },
+  ],
+  routing: { mode: 'moderated-bus', edges: [] },
+  successCriterion:
+    'A repro (a failing check that reproduces the bug) that the Build turns from RED to ' +
+    'GREEN — the objective gate, not the debate, decides success.',
+  convergence: 'human',
+  objectiveGate: 'repro',
+  budget: { maxRounds: 2, maxTotalTokens: 500_000, maxCostUsd: 6 },
+};
+
 /** Every council preset, keyed by its id. Total over `CouncilPresetId`, so a new
  *  preset id fails to type-check until a value is registered here. */
 export const COUNCIL_PRESETS: Readonly<Record<CouncilPresetId, CouncilPreset>> =
   Object.freeze({
     research: RESEARCH_COUNCIL_PRESET,
+    'ui-bug': UI_BUG_COUNCIL_PRESET,
   });
 
 /** Resolve a council preset by its typed id. Total: every `CouncilPresetId` has a

@@ -33,6 +33,7 @@ import type {
 } from './conductor-types.js';
 import type { RoutingPolicy } from './council-routing.js';
 import { runDebateRounds } from './debate-round.js';
+import { objectiveGateForPreset } from './objective-preset.js';
 import { debatingSeats, judgeSeat } from './preset-validator.js';
 
 /** The terminal status the governor implies after a stage, or null to continue.
@@ -101,6 +102,14 @@ export async function driveCouncil(
   // (P1 behaviour unchanged).
   const debaters = debatingSeats(seats);
   const judge = judgeSeat(seats);
+
+  // The Converge gate, resolved PER-PRESET (issue #367, safety #6): an OBJECTIVE preset
+  // (e.g. the UI-bug preset's `repro` gate) builds its gate from the preset marker + the
+  // injected gauntlet runner, so `research` on the SAME CouncilManager stays gate-less. A
+  // preset-resolved gate takes precedence; otherwise the fixed `deps.objectiveGate` (used by
+  // the unit/safety tests) applies. Reuses the gauntlet exec — no new sink.
+  const gate =
+    objectiveGateForPreset(preset, deps.gauntletRunner) ?? deps.objectiveGate;
 
   bus.note(
     'frame',
@@ -193,7 +202,7 @@ export async function driveCouncil(
   const pending = await runConverge({
     parked,
     bus,
-    gate: deps.objectiveGate,
+    gate,
     run: input,
     seats: debaters,
     finalOutputs: debate.finalOutputs,
