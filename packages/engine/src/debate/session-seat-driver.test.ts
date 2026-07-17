@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { NightcoreEvent, TokenUsage } from '@nightcore/contracts';
 
+import { BUILD_WRITER_HARDENING } from './build-writer.js';
 import type { SeatContext, SeatTurnRequest } from './conductor-types.js';
 import {
   SEAT_SESSION_HARDENING,
@@ -178,6 +179,55 @@ describe('SessionSeatDriver', () => {
     expect(spawn?.sandboxWrites).toBe(SEAT_SESSION_HARDENING.sandboxWrites);
     expect(SEAT_SESSION_HARDENING).toEqual({ autonomy: 'plan', sandboxWrites: true });
 
+    backend.emit(completed(1, 'ok'));
+    await pending;
+  });
+
+  // ── issue #383: the single elected writer runs write-capable-but-sandboxed ──────
+
+  test('runWriterTurn spawns the WRITE-CAPABLE posture (auto-accept + sandbox) in the writer worktree', async () => {
+    const backend = new FakeBackend();
+    const driver = new SessionSeatDriver({ backend });
+    const controller = new AbortController();
+    const worktree = '/proj/.nightcore/worktrees/council-run';
+
+    const pending = driver.runWriterTurn({
+      seat: SEAT,
+      stage: 'build',
+      prompt: 'implement the converged plan',
+      cwd: worktree,
+      signal: controller.signal,
+    });
+
+    // The writer session is spawned WRITE-CAPABLE — the ONLY session in a council that can
+    // edit — but the OS write sandbox STAYS on (never `bypass`), and it runs in its ISOLATED
+    // worktree cwd. This is the single source of truth BUILD_WRITER_HARDENING.
+    expect(backend.spawns).toEqual([
+      {
+        prompt: 'implement the converged plan',
+        model: 'claude-opus-4-8',
+        autonomy: 'auto-accept',
+        sandboxWrites: true,
+        cwd: worktree,
+      },
+    ]);
+    expect(backend.spawns[0]?.autonomy).toBe(BUILD_WRITER_HARDENING.autonomy);
+    expect(backend.spawns[0]?.sandboxWrites).toBe(BUILD_WRITER_HARDENING.sandboxWrites);
+    expect(BUILD_WRITER_HARDENING.autonomy).not.toBe('bypass');
+
+    backend.emit(completed(1, 'wrote the fix'));
+    expect((await pending).content).toBe('wrote the fix');
+  });
+
+  test('runTurn stays read-only `plan` even though runWriterTurn can write — the two are distinct', async () => {
+    const backend = new FakeBackend();
+    const driver = new SessionSeatDriver({ backend });
+    const controller = new AbortController();
+
+    const pending = driver.runTurn(request(controller.signal));
+    // A DEBATING seat is never write-capable — its posture is unchanged by the writer path.
+    expect(backend.spawns[0]?.autonomy).toBe('plan');
+    expect(backend.spawns[0]?.autonomy).not.toBe(BUILD_WRITER_HARDENING.autonomy);
     backend.emit(completed(1, 'ok'));
     await pending;
   });

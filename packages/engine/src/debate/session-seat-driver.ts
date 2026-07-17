@@ -31,6 +31,7 @@ import type {
 } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
 
+import { BUILD_WRITER_HARDENING } from './build-writer.js';
 import type {
   SeatDriver,
   SeatTurnRequest,
@@ -107,13 +108,45 @@ export class SessionSeatDriver implements SeatDriver {
   constructor(private readonly deps: SessionSeatDriverDeps) {}
 
   /**
-   * Run one seat turn: spawn a session for `prompt`, then resolve on that session's
-   * terminal event. A `session-completed` yields the seat's `result` + spend; a
-   * `session-failed` (or an abort) degrades to an EMPTY turn (zero content + zero
-   * spend) so one broken seat never rejects the whole council — the debate proceeds
-   * with the remaining positions.
+   * Run one DEBATING seat turn: spawn a session for `prompt` under {@link
+   * SEAT_SESSION_HARDENING} (read-only `plan` tier + OS sandbox, safety #3), then resolve
+   * on that session's terminal event. A `session-completed` yields the seat's `result` +
+   * spend; a `session-failed` (or an abort) degrades to an EMPTY turn (zero content + zero
+   * spend) so one broken seat never rejects the whole council — the debate proceeds with
+   * the remaining positions. This is the ONLY posture a debating seat ever runs at.
    */
   runTurn(request: SeatTurnRequest): Promise<SeatTurnResult> {
+    return this.collectSession(request, SEAT_SESSION_HARDENING);
+  }
+
+  /**
+   * Run the SINGLE elected writer's Build turn (issue #383, safety #5 + #3) — the ONE
+   * write-capable session in a whole council. It reuses the EXACT same spawn/correlate/
+   * teardown machinery as {@link runTurn} (never a second session-spawn path), but stamps
+   * {@link BUILD_WRITER_HARDENING} (`auto-accept` — write-capable, prompt suppressed — with
+   * the OS write sandbox STILL on, deliberately NOT `bypass`) and runs with `request.cwd`
+   * = the elected writer's ISOLATED worktree. Everything else — the PreToolUse
+   * workspace-confinement gate (auto-scoped to that cwd), `platform::git_command`
+   * isolation, the Seatbelt sandbox — is enforced by the existing per-session confinement
+   * chokepoints from that posture + cwd, so no new exec sink is introduced. Only the
+   * Council `SessionBuildDriver` (for the conductor-elected writer) ever calls this; every
+   * debating seat stays on {@link runTurn}'s read-only `plan` posture (safety #5).
+   */
+  runWriterTurn(request: SeatTurnRequest): Promise<SeatTurnResult> {
+    return this.collectSession(request, BUILD_WRITER_HARDENING);
+  }
+
+  /**
+   * The shared spawn → correlate → collect core behind {@link runTurn} (read-only) and
+   * {@link runWriterTurn} (write-capable). Stamps `hardening` (the ONLY difference between
+   * a debating seat and the elected writer) onto the spawn and folds ONLY the correlated
+   * session's terminal event. Kept private so the write-capable posture can never be
+   * requested without going through the two named entry points above.
+   */
+  private collectSession(
+    request: SeatTurnRequest,
+    hardening: { readonly autonomy: AutonomyLevel; readonly sandboxWrites: boolean },
+  ): Promise<SeatTurnResult> {
     if (request.signal.aborted) return Promise.resolve(this.empty());
 
     return new Promise<SeatTurnResult>((resolve) => {
@@ -197,9 +230,13 @@ export class SessionSeatDriver implements SeatDriver {
         correlation.sessionId = this.deps.backend.spawn({
           prompt: request.prompt,
           model: request.seat.model,
-          // Safety #3: every seat session is spawned OS-sandboxed + governed at the
-          // read-only `plan` tier — stamped here so a seat can never run ungoverned.
-          ...SEAT_SESSION_HARDENING,
+          // Safety #3: the session is spawned OS-sandboxed + governed — a debating seat
+          // at the read-only `plan` tier (SEAT_SESSION_HARDENING), the single elected
+          // writer at the write-capable-but-sandboxed `auto-accept` tier
+          // (BUILD_WRITER_HARDENING). Stamped here from the caller-selected posture so a
+          // session can never run ungoverned, and the write-capable posture is reachable
+          // ONLY through `runWriterTurn`.
+          ...hardening,
           ...(request.cwd !== undefined ? { cwd: request.cwd } : {}),
         });
       } catch (error) {

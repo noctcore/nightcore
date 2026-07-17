@@ -72,6 +72,7 @@ export type {
   SeatTurnResult,
   TurnEstimate,
 } from './conductor-types.js';
+export { createCouncilGauntletRunner } from './council-gauntlet.js';
 export type {
   CouncilManagerDeps,
   StartCouncilInput,
@@ -134,6 +135,11 @@ export {
 export type { QuotedDelivery } from './quoted-delivery.js';
 export { quoteForSeat } from './quoted-delivery.js';
 export {
+  buildWriterPrompt,
+  SessionBuildDriver,
+  type SessionBuildDriverDeps,
+} from './session-build-driver.js';
+export {
   SEAT_SESSION_HARDENING,
   type SeatSessionBackend,
   type SeatSessionParams,
@@ -145,3 +151,8 @@ export {
   type DebateEntryInput,
   DebateTranscriptStore,
 } from './transcript-store.js';
+export {
+  WorktreeOpBroker,
+  type WorktreeOpBrokerDeps,
+  type WorktreeOpReply,
+} from './worktree-rpc.js';

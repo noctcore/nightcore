@@ -247,6 +247,93 @@ describe('CouncilRouter — the nc:debate emit seam', () => {
     }
   });
 
+  test('a build-capable council drives allocate → commit → gauntlet over the PATH-LESS worktree seam, and resolve-worktree-op progresses it (issue #383)', async () => {
+    let nextSessionId = 1;
+    const listeners = new Set<(event: NightcoreEvent) => void>();
+    const emitted: NightcoreEvent[] = [];
+    const worktreeOps: string[] = [];
+    const ref: { router?: CouncilRouter } = {};
+
+    ref.router = new CouncilRouter({
+      startSession: () => {
+        const sessionId = nextSessionId++;
+        setTimeout(() => {
+          const completed = {
+            type: 'session-completed',
+            sessionId,
+            result: `seat-${sessionId} position`,
+            numTurns: 1,
+            durationMs: 0,
+          } as unknown as NightcoreEvent;
+          for (const listener of [...listeners]) listener(completed);
+        }, 0);
+        return sessionId;
+      },
+      subscribe: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      emit: (event) => {
+        emitted.push(event);
+        if (event.type !== 'worktree-op-required') return;
+        worktreeOps.push(event.op);
+        // Simulate the Rust host: reply through the router's OWN `resolve-worktree-op`
+        // command (the real resolve path). A red gauntlet exercises the gate override.
+        const reply: SurfaceCommand = {
+          type: 'resolve-worktree-op',
+          requestId: event.requestId,
+          ...(event.op === 'allocate'
+            ? { worktreePath: `/project/.nightcore/worktrees/${event.councilRunId}` }
+            : {}),
+          ...(event.op === 'gauntlet'
+            ? { gauntletPassed: false, gauntletSummary: 'build output red' }
+            : {}),
+        };
+        queueMicrotask(() => ref.router?.dispatch(reply));
+      },
+      interruptSession: () => {},
+      logger: undefined,
+    });
+
+    // `resolve-worktree-op` is a council command the router owns.
+    expect(
+      ref.router.handles({ type: 'resolve-worktree-op', requestId: 'x' } as SurfaceCommand),
+    ).toBe(true);
+
+    ref.router.dispatch({
+      type: 'start-council',
+      runId: 'council-383',
+      presetId: 'ui-bug',
+      objective: 'fix the broken submit button',
+      projectPath: '/project',
+    });
+
+    // The run only reaches Converge AFTER the whole build + gate round-trip completes.
+    await waitFor(
+      () =>
+        emitted
+          .filter(isDebateEntry)
+          .some((e) => e.entry.stage === 'converge' && e.entry.kind === 'note'),
+      400,
+    );
+
+    // All three worktree verbs crossed the seam, in order, keyed by the run id — and every
+    // request is PATH-LESS (only type/op/councilRunId/requestId; no filesystem path).
+    expect(worktreeOps).toEqual(['allocate', 'commit', 'gauntlet']);
+    const wtEvents = emitted.filter(
+      (e): e is Extract<NightcoreEvent, { type: 'worktree-op-required' }> =>
+        e.type === 'worktree-op-required',
+    );
+    expect(wtEvents).toHaveLength(3);
+    for (const e of wtEvents) {
+      expect(e.councilRunId).toBe('council-383');
+      expect(Object.keys(e).sort()).toEqual(['councilRunId', 'op', 'requestId', 'type']);
+    }
+    // The Build stage actually ran (the writer session was driven), and the red gate rode
+    // the parked decision.
+    expect(emitted.filter(isDebateEntry).some((e) => e.entry.stage === 'build')).toBe(true);
+  });
+
   test('every seat session carries the council marker so the reader skips board-FIFO correlation (issue #364)', async () => {
     const { router, starts } = setup();
 

@@ -22,8 +22,11 @@
 import type { NightcoreEvent, SurfaceCommand } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
 
+import { createCouncilGauntletRunner } from './council-gauntlet.js';
 import { CouncilManager } from './council-manager.js';
+import { SessionBuildDriver } from './session-build-driver.js';
 import { SessionSeatDriver } from './session-seat-driver.js';
+import { WorktreeOpBroker } from './worktree-rpc.js';
 
 /** The council command family this router owns — the SINGLE source of truth for both
  *  the {@link CouncilCommand} type and the {@link CouncilRouter.handles} membership
@@ -33,6 +36,11 @@ const COUNCIL_COMMAND_TYPES = [
   'kill-council',
   'resolve-council-converge',
   'set-council-routing',
+  // The host → engine RESOLUTION of a `worktree-op-required` request (issue #383). It is
+  // `requestId`-correlated, but routed through this council family because the run it
+  // resolves is council-scoped (like `resolve-council-converge`), so it lands before the
+  // supervisor's session-id dispatch.
+  'resolve-worktree-op',
 ] as const satisfies readonly SurfaceCommand['type'][];
 
 type CouncilCommandType = (typeof COUNCIL_COMMAND_TYPES)[number];
@@ -62,17 +70,72 @@ export interface CouncilRouterOptions {
 
 export class CouncilRouter {
   private readonly council: CouncilManager;
+  /** The path-less, `councilRunId`-keyed worktree RPC to the Rust host (issue #383) — the
+   *  ONE new cross-process seam. Its host replies arrive as `resolve-worktree-op` commands
+   *  routed to {@link WorktreeOpBroker.resolve} in {@link dispatch}. */
+  private readonly worktree: WorktreeOpBroker;
+  private readonly logger: Logger | undefined;
 
   constructor(options: CouncilRouterOptions) {
     const { startSession, subscribe, emit, interruptSession, logger } = options;
-    // The objective-preset gate + single-writer Build stay DORMANT in production (issue
-    // #367): no `gauntletRunner` and no `buildDriver` are injected here yet. The UI-bug
-    // preset's `repro` gate and its write step activate TOGETHER when the write-capable
-    // `SessionBuildDriver` + its engine↔Rust worktree seam land (a tracked follow-up — see
-    // `objective-preset.ts`): the driver's isolated worktree is the dir the injected
-    // gauntlet runner would run the repro in, so a gate with no writer-produced worktree
-    // would have nothing to judge. Until then a UI-bug council debates a repro + fix plan
-    // and parks for the human — it never writes (a council debates plans, it never types).
+    this.logger = logger;
+
+    // The seat driver is constructed ONCE and shared: its read-only `runTurn` (SEAT_SESSION_
+    // HARDENING — `plan` + sandbox) drives every debating seat, and its write-capable
+    // `runWriterTurn` (BUILD_WRITER_HARDENING — `auto-accept` + sandbox) drives the SINGLE
+    // elected writer through the SAME spawn/correlation machinery (issue #383, no second
+    // session-spawn path).
+    const seatDriver = new SessionSeatDriver({
+      backend: {
+        // Seats + the writer run as `research`-kind sessions; the driver stamps the posture
+        // onto `params` (SEAT_SESSION_HARDENING for a debater, BUILD_WRITER_HARDENING for
+        // the writer) and this thunk forwards it onto `start-session`, where the existing
+        // per-session confinement machinery applies it (Seatbelt + the SDK permission mode +
+        // the PreToolUse workspace-confinement gate, auto-scoped to `cwd`).
+        spawn: (params) =>
+          startSession({
+            type: 'start-session',
+            prompt: params.prompt,
+            kind: 'research',
+            model: params.model,
+            autonomy: params.autonomy,
+            sandboxWrites: params.sandboxWrites,
+            // Council seat marker (issue #364): a seat/writer is driven here, INSIDE the
+            // engine — never via the board's `start_session` command — so the Rust core
+            // pushed no pending-launch FIFO slot for it. Marking the command makes the
+            // supervisor echo `council: true` onto the `session-started`, so the reader
+            // skips board-FIFO correlation for it (no desync warn, no mis-bind).
+            council: true,
+            ...(params.cwd !== undefined ? { cwd: params.cwd } : {}),
+          }),
+        on: subscribe,
+        // PR #359 LOW-B: cancel an abandoned seat's provider session so it can't keep
+        // spending after timeout/quorum/kill.
+        cancel: (sessionId) => interruptSession(sessionId),
+      },
+      ...(logger !== undefined ? { logger: logger.child('council-seat') } : {}),
+    });
+
+    // The engine↔Rust worktree seam (issue #383): shared by the write-capable build driver
+    // (allocate/commit) and the Converge gauntlet runner (the gate). Every worktree path is
+    // DERIVED host-side from the `councilRunId` — the engine never sends one.
+    this.worktree = new WorktreeOpBroker({
+      emit,
+      ...(logger !== undefined ? { logger: logger.child('council-worktree') } : {}),
+    });
+
+    // The write-capable single-writer Build driver (issue #383) — the FIRST time a council
+    // WRITES. It allocates the isolated worktree over the seam, runs the elected writer
+    // write-capable-but-sandboxed inside it, and commits the edits so the human can merge.
+    // Injecting it (+ the gauntlet runner below) ACTIVATES the previously-dormant Build for
+    // the build-capable presets (ui-bug #367, coding #368); `research` stays gate-less +
+    // write-less because it declares no `build` stage / `objectiveGate`.
+    const buildDriver = new SessionBuildDriver({
+      broker: this.worktree,
+      runWriter: (request) => seatDriver.runWriterTurn(request),
+      ...(logger !== undefined ? { logger: logger.child('council-build') } : {}),
+    });
+
     this.council = new CouncilManager({
       // The `nc:debate` emit seam (#352): every appended transcript entry becomes a
       // `debate-entry` `NightcoreEvent` tagged with its council-run id, so the canvas
@@ -80,37 +143,15 @@ export class CouncilRouter {
       // canvas is a pure reader of the moderated bus (the injection firewall, safety #1).
       emit: (councilRunId, entry) =>
         emit({ type: 'debate-entry', runId: councilRunId, entry }),
-      seatDriver: new SessionSeatDriver({
-        backend: {
-          // Seats run as `research`-kind (reasoning) sessions, forced OS-sandboxed +
-          // governed at the read-only `plan` tier (safety #3): the driver stamps the
-          // posture onto `params` from SEAT_SESSION_HARDENING and this thunk forwards it
-          // onto the `start-session` command, where the existing per-session confinement
-          // machinery applies it (Seatbelt + the SDK permission mode).
-          spawn: (params) =>
-            startSession({
-              type: 'start-session',
-              prompt: params.prompt,
-              kind: 'research',
-              model: params.model,
-              autonomy: params.autonomy,
-              sandboxWrites: params.sandboxWrites,
-              // Council seat marker (issue #364): a seat is driven here, INSIDE the
-              // engine — never via the board's `start_session` command — so the Rust
-              // core pushed no pending-launch FIFO slot for it. Marking the command
-              // makes the supervisor echo `council: true` onto the seat's
-              // `session-started`, so the reader skips board-FIFO correlation for the
-              // seat (no desync warn, no mis-bind of a concurrent board task).
-              council: true,
-              ...(params.cwd !== undefined ? { cwd: params.cwd } : {}),
-            }),
-          on: subscribe,
-          // PR #359 LOW-B: cancel an abandoned seat's provider session so it can't keep
-          // spending after timeout/quorum/kill.
-          cancel: (sessionId) => interruptSession(sessionId),
-        },
-        ...(logger !== undefined ? { logger: logger.child('council-seat') } : {}),
-      }),
+      seatDriver,
+      buildDriver,
+      // The objective gate's exec (issue #383, safety #6): a build-capable preset's Converge
+      // runs the Structure-Lock gauntlet over the writer's worktree via the SAME seam — the
+      // Rust host reuses the board's audited `run_from` (manifest from the TRUSTED project
+      // root, checks in the worktree), so NO new exec sink is added. A RED verdict OVERRIDES
+      // consensus. `objectiveGateForPreset` keeps this DATA-DRIVEN: `research` (no
+      // `objectiveGate` marker) stays gate-less on the same runner.
+      gauntletRunner: createCouncilGauntletRunner(this.worktree),
       ...(logger !== undefined ? { logger: logger.child('council') } : {}),
     });
   }
@@ -150,6 +191,29 @@ export class CouncilRouter {
       // the append-only transcript, which streams it back over `nc:debate` (the canvas
       // reflects it) — the injection firewall (safety #1) is untouched.
       this.council.setRouting(command.runId, command.edges);
+      return;
+    }
+    if (command.type === 'resolve-worktree-op') {
+      // The host's reply to a `worktree-op-required` request (issue #383): the Rust host
+      // performed the op against a worktree path IT derived from the run id, and echoes the
+      // result here. Resolve the awaiting build-driver / gauntlet call. A stale reply (its
+      // request timed out or the run was killed) resolves nothing — logged, never thrown.
+      const resolved = this.worktree.resolve(command.requestId, {
+        ...(command.worktreePath !== undefined ? { worktreePath: command.worktreePath } : {}),
+        ...(command.gauntletPassed !== undefined
+          ? { gauntletPassed: command.gauntletPassed }
+          : {}),
+        ...(command.gauntletSummary !== undefined
+          ? { gauntletSummary: command.gauntletSummary }
+          : {}),
+        ...(command.error !== undefined ? { error: command.error } : {}),
+      });
+      if (!resolved) {
+        this.logger?.debug(
+          'resolve-worktree-op for an unknown/expired request; dropping',
+          { requestId: command.requestId },
+        );
+      }
       return;
     }
     this.council.kill(command.runId);

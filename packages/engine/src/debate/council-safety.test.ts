@@ -19,8 +19,13 @@ import type {
   MergeVerdict,
   ReviewFinding,
   TokenUsage,
+  WorktreeOpKind,
 } from '@nightcore/contracts';
 
+import { evaluateWorkspaceConfinement } from '../policy/workspace-confinement.js';
+// The REAL confinement functions the writer's session runs under — exercised DIRECTLY (not
+// mocked) so a regression that widened the writer's blast radius fails here (issue #383).
+import { deriveWritableRoots } from '../providers/claude/sandbox.js';
 import {
   BUILD_WRITER_HARDENING,
   type BuildContext,
@@ -42,6 +47,7 @@ import type {
   SeatTurnRequest,
   SeatTurnResult,
 } from './conductor-types.js';
+import { createCouncilGauntletRunner } from './council-gauntlet.js';
 import { scanForInjection } from './injection-scan.js';
 import type {
   GauntletLikeResult,
@@ -56,6 +62,7 @@ import {
   UI_BUG_COUNCIL_PRESET,
 } from './preset-registry.js';
 import { COUNCIL_SEAT_ROLES, validateCouncilPreset } from './preset-validator.js';
+import { SessionBuildDriver } from './session-build-driver.js';
 import {
   SEAT_SESSION_HARDENING,
   type SeatSessionBackend,
@@ -63,6 +70,7 @@ import {
   SessionSeatDriver,
 } from './session-seat-driver.js';
 import { DebateTranscriptStore } from './transcript-store.js';
+import { WorktreeOpBroker, type WorktreeOpReply } from './worktree-rpc.js';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -1719,6 +1727,211 @@ describe('Safety #7 — append-only transcript reconstructs the run in exact ord
     // The transcript is ordered by seq and starts at 0 — a replay can drive it verbatim.
     expect(result.transcript.map((e) => e.seq)).toEqual(
       result.transcript.map((_, i) => i),
+    );
+  });
+});
+
+// ── Issue #383 — write-capable single-writer Build: LIVE confinement (real funcs) ──
+//
+// These exercise the ACTUAL confinement code paths a real writer session runs under, not
+// stubs. What CANNOT be exercised in CI (and needs manual live verification) is a real
+// Claude session physically writing to disk + trying to escape — the driver seam stays
+// exec-neutral here (a fake `runWriter`), while the confinement FUNCTIONS the real session
+// is bound to are asserted DIRECTLY. Two more non-negotiables are covered elsewhere: the
+// RPC path-injection guard is a Rust test (`sidecar/council_worktree.rs`) plus the
+// path-less-event assertion in `worktree-rpc.test.ts`; "exactly one writer, from debaters"
+// is the `electWriter` / "elected from DEBATERS only" tests in the Safety #5 (P2) block
+// above and is re-asserted end-to-end here with the REAL driver.
+describe('Issue #383 — write-capable single-writer Build stays confined (live confinement)', () => {
+  /** A plausible allocated worktree (absolute, non-existent → the confinement + sandbox
+   *  functions resolve it purely/lexically, so no live repo is needed). */
+  const WORKTREE = '/project/.nightcore/worktrees/council-383';
+  const PROJECT = '/project';
+
+  // #1 — the writer physically cannot escape its worktree (REAL PreToolUse gate).
+  test('the writer CANNOT write/edit/redirect outside its worktree, nor touch .git/config', () => {
+    // An out-of-worktree Write (up into the main checkout — the exact observed incident) is
+    // DENIED when the cwd is the writer's worktree.
+    expect(
+      evaluateWorkspaceConfinement('Write', { file_path: `${PROJECT}/apps/web/x.ts`, content: 'x' }, WORKTREE)
+        .denied,
+    ).toBe(true);
+    // An Edit escaping via an absolute parent path is DENIED.
+    expect(
+      evaluateWorkspaceConfinement('Edit', { file_path: '/etc/passwd' }, WORKTREE).denied,
+    ).toBe(true);
+    // A Bash redirect to an absolute path outside the worktree is DENIED (closes the
+    // `> /abs` write-via-shell vector the lexical gate covers).
+    expect(
+      evaluateWorkspaceConfinement('Bash', { command: `echo pwned > ${PROJECT}/apps/web/x.ts` }, WORKTREE)
+        .denied,
+    ).toBe(true);
+    // `.git/config` is DENIED even INSIDE the worktree (a merge-driver / clean-smudge filter
+    // git would execute on the host — issue #221).
+    expect(
+      evaluateWorkspaceConfinement('Write', { file_path: `${WORKTREE}/.git/config`, content: 'x' }, WORKTREE)
+        .denied,
+    ).toBe(true);
+    // A write INSIDE the worktree is allowed — confinement scopes the writer TO its worktree,
+    // it does not forbid the writer from doing its job.
+    expect(
+      evaluateWorkspaceConfinement('Write', { file_path: `${WORKTREE}/src/fix.ts`, content: 'x' }, WORKTREE)
+        .denied,
+    ).toBe(false);
+  });
+
+  // #2 — the OS write sandbox's writable roots are the worktree (+ git common / temp), NOT
+  //      the project root at large (REAL sandbox root derivation).
+  test('deriveWritableRoots for the writer cwd yields the worktree + scratch, never the project root at large', () => {
+    const roots = deriveWritableRoots({ cwd: WORKTREE });
+    // The writer's own worktree is writable (it must edit there).
+    expect(roots).toContain(WORKTREE);
+    // The project root at large is NOT a writable root — the writer is contained to its
+    // worktree, so it cannot Seatbelt-write into the main checkout.
+    expect(roots).not.toContain(PROJECT);
+    expect(roots).not.toContain(`${PROJECT}/apps`);
+    // Scratch stays writable (so a tool's temp files still work) — `/dev` is always a root.
+    expect(roots).toContain('/dev');
+  });
+
+  /** Build the REAL production write stack — the `SessionBuildDriver` + the Converge gauntlet
+   *  runner over a REAL `WorktreeOpBroker` whose fake `emit` answers each op — so a Conductor
+   *  drives the actual driver/gate wiring. The writer/host exec is faked (no live session),
+   *  but the driver, the broker round-trip, the gauntlet mapping, and the gate override are
+   *  all real. `reply` decides the host's answer per op. */
+  function councilBuildStack(reply: (op: WorktreeOpKind) => WorktreeOpReply): {
+    buildDriver: SessionBuildDriver;
+    gauntletRunner: GauntletRunner;
+    worktreeOps: WorktreeOpKind[];
+    writerCalls: SeatTurnRequest[];
+  } {
+    const worktreeOps: WorktreeOpKind[] = [];
+    const writerCalls: SeatTurnRequest[] = [];
+    const broker = new WorktreeOpBroker({
+      emit: (event) => {
+        if (event.type !== 'worktree-op-required') return;
+        worktreeOps.push(event.op);
+        // The resolver is registered before `request` emits, so a synchronous host reply
+        // settles it — the real correlate/resolve path, minus the process hop.
+        broker.resolve(event.requestId, reply(event.op));
+      },
+    });
+    const buildDriver = new SessionBuildDriver({
+      broker,
+      runWriter: (request): Promise<SeatTurnResult> => {
+        writerCalls.push(request as SeatTurnRequest);
+        return Promise.resolve(turn(`wrote by ${request.seat.seatId}`));
+      },
+    });
+    return {
+      buildDriver,
+      gauntletRunner: createCouncilGauntletRunner(broker),
+      worktreeOps,
+      writerCalls,
+    };
+  }
+
+  // #5 — the real driver runs ONE writer (from debaters), and a RED gate over the worktree
+  //      rejects the build; GREEN lets consensus stand; the human override is audited.
+  test('a RED gate over the writer worktree REJECTS the build; GREEN lets consensus stand (real driver)', async () => {
+    const stack = councilBuildStack((op) =>
+      op === 'allocate'
+        ? { worktreePath: WORKTREE }
+        : op === 'gauntlet'
+          ? { gauntletPassed: false, gauntletSummary: 'build output red: 2 tests fail' }
+          : {},
+    );
+    const conductor = new Conductor({
+      bus: new DebateBus(),
+      seatDriver: new RecordingDriver(() => turn('we all agree: ship it')),
+      buildDriver: stack.buildDriver,
+      gauntletRunner: stack.gauntletRunner,
+    });
+
+    const red = await conductor.run({
+      councilRunId: 'run-383-red',
+      preset: UI_BUG_COUNCIL_PRESET,
+      objective: 'fix the broken submit button',
+      cwd: PROJECT,
+    });
+
+    // EXACTLY ONE writer ran, elected from the DEBATERS (a proposer, never a judge/critic).
+    expect(stack.writerCalls).toHaveLength(1);
+    expect(stack.writerCalls[0]?.seat.role).toBe('proposer');
+    // …and it wrote in the ALLOCATED worktree, not the project root (safety #5).
+    expect(stack.writerCalls[0]?.cwd).toBe(WORKTREE);
+    // The real driver drove allocate → commit during Build, and the gate ran the gauntlet at
+    // Converge — all over the path-less seam.
+    expect(stack.worktreeOps).toEqual(['allocate', 'commit', 'gauntlet']);
+
+    // The RED gate OVERRIDES consensus: a plain accept is refused, the run stays parked.
+    expect(red.pendingDecision?.gateVerdict?.passed).toBe(false);
+    const redSeat = red.pendingDecision!.positions[0]!.seatId;
+    expect(conductor.resolveConverge('run-383-red', { kind: 'accept', seatId: redSeat }).ok).toBe(false);
+    expect(conductor.isAwaitingConverge('run-383-red')).toBe(true);
+    // The human is terminal — a deliberate override adopts it, audited.
+    const override = conductor.resolveConverge('run-383-red', {
+      kind: 'accept',
+      seatId: redSeat,
+      overrideGate: true,
+    });
+    expect(override.ok).toBe(true);
+    expect(override.entry?.content).toContain('OVERRODE the red objective gate');
+
+    // GREEN over the worktree: consensus may stand pending the human (no override needed).
+    const greenStack = councilBuildStack((op) =>
+      op === 'allocate'
+        ? { worktreePath: WORKTREE }
+        : op === 'gauntlet'
+          ? { gauntletPassed: true, gauntletSummary: 'Structure-Lock gauntlet passed (2 check(s)).' }
+          : {},
+    );
+    const greenConductor = new Conductor({
+      bus: new DebateBus(),
+      seatDriver: new RecordingDriver(() => turn('plan the fix')),
+      buildDriver: greenStack.buildDriver,
+      gauntletRunner: greenStack.gauntletRunner,
+    });
+    const green = await greenConductor.run({
+      councilRunId: 'run-383-green',
+      preset: UI_BUG_COUNCIL_PRESET,
+      objective: 'o',
+      cwd: PROJECT,
+    });
+    expect(green.pendingDecision?.gateVerdict?.passed).toBe(true);
+    const greenSeat = green.pendingDecision!.positions[0]!.seatId;
+    expect(
+      greenConductor.resolveConverge('run-383-green', { kind: 'accept', seatId: greenSeat }).ok,
+    ).toBe(true);
+  });
+
+  // #6 — dormancy is preserved for a non-build preset EVEN with the real driver + gauntlet
+  //      injected: `research` declares no `build` stage / `objectiveGate`, so neither fires.
+  test('a research preset injects the real driver/gauntlet yet emits NO worktree op and no gate', async () => {
+    const stack = councilBuildStack(() => ({}));
+    const conductor = new Conductor({
+      bus: new DebateBus(),
+      seatDriver: new RecordingDriver(() => turn('a recommendation')),
+      buildDriver: stack.buildDriver,
+      gauntletRunner: stack.gauntletRunner,
+    });
+
+    const result = await conductor.run({
+      councilRunId: 'run-383-research',
+      preset: RESEARCH_COUNCIL_PRESET,
+      objective: 'o',
+    });
+
+    // The write-capable driver + the gauntlet are WIRED, but `research` never triggers them:
+    // ZERO worktree ops crossed the seam, no writer ran, no gate verdict rode the decision.
+    expect(stack.worktreeOps).toEqual([]);
+    expect(stack.writerCalls).toHaveLength(0);
+    expect(result.pendingDecision?.gateVerdict).toBeUndefined();
+    expect(result.transcript.some((e) => e.stage === 'build')).toBe(false);
+    // A plain accept is unblocked — a research run stays human-only, as in P1.
+    const seat = result.pendingDecision!.positions[0]!.seatId;
+    expect(conductor.resolveConverge('run-383-research', { kind: 'accept', seatId: seat }).ok).toBe(
+      true,
     );
   });
 });
