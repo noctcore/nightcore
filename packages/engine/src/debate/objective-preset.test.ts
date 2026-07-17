@@ -78,9 +78,26 @@ describe('objectiveGateForPreset — data-driven gate resolution', () => {
     expect(gate).toBeUndefined();
   });
 
-  test('no injected gauntlet runner ⇒ no gate (the DORMANT production state)', () => {
+  test('no injected gauntlet runner ⇒ no gate (defensive degrade — production DOES inject one)', () => {
+    // Production now injects the runner (the driver shipped in #383/#386), so a build-capable
+    // council gates for real. This guards the DEGRADE path: with no runner there is nothing to
+    // run, so the resolver returns no gate rather than a gate that would throw at evaluate.
     const gate = objectiveGateForPreset(UI_BUG_COUNCIL_PRESET, undefined);
     expect(gate).toBeUndefined();
+  });
+
+  test('an UNHANDLED objective-gate kind THROWS — fail-CLOSED backstop (issue #385)', () => {
+    // A future `CouncilObjectiveGate` kind reaching the resolver without a case is a COMPILE
+    // error (`kind` narrows to `never`); this exercises the runtime backstop should an
+    // un-typed value ever slip in. It MUST throw, not silently return `undefined` — an absent
+    // gate = the terminal deterministic judge never runs (fail-OPEN on safety #6).
+    const bogus = {
+      ...UI_BUG_COUNCIL_PRESET,
+      objectiveGate: 'teleport',
+    } as unknown as CouncilPreset;
+    expect(() => objectiveGateForPreset(bogus, reproRunner(true))).toThrow(
+      /unhandled council objective-gate kind/,
+    );
   });
 
   test("the `repro` gate maps a RED repro to a FAILED verdict (overrides consensus)", async () => {
@@ -136,9 +153,10 @@ describe('objectiveGateForPreset — data-driven gate resolution', () => {
     expect(verdict.summary).toContain('passed');
   });
 
-  test('no injected gauntlet runner ⇒ the Coding preset resolves NO gate (DORMANT production)', () => {
-    // Symmetry with the UI-bug DORMANT case: production injects no runner, so the Coding
-    // council debates the plan but never gates (the write step is deferred to #383).
+  test('no injected gauntlet runner ⇒ the Coding preset resolves NO gate (defensive degrade)', () => {
+    // Symmetry with the UI-bug degrade case: with no runner there is nothing to run, so the
+    // resolver returns no gate rather than one that would throw at evaluate. Production injects
+    // the runner (the write-capable driver shipped in #383/#386).
     expect(objectiveGateForPreset(CODING_COUNCIL_PRESET, undefined)).toBeUndefined();
   });
 });

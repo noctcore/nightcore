@@ -108,6 +108,26 @@ describe('SessionBuildDriver', () => {
     expect(writerRan).toBe(false);
   });
 
+  test('FAILS CLOSED on an EMPTY-string worktree path — never runs the writer at the process root (issue #387)', async () => {
+    // A host bug returning `worktreePath: ''` (rather than a real path or an error) must not
+    // slip past the guard and run the write-capable writer with an empty cwd — that would
+    // execute at the process root, outside every worktree confinement.
+    const { broker } = respondingBroker((op) =>
+      op === 'allocate' ? { worktreePath: '' } : {},
+    );
+    let writerRan = false;
+    const driver = new SessionBuildDriver({
+      broker,
+      runWriter: () => {
+        writerRan = true;
+        return Promise.resolve({ content: '', usage: NO_USAGE, costUsd: 0 });
+      },
+    });
+
+    await expect(driver.build(context())).rejects.toThrow(/could not allocate/);
+    expect(writerRan).toBe(false);
+  });
+
   test('a failed commit does NOT fail the build — the gate judges the working tree regardless', async () => {
     const { broker, ops } = respondingBroker((op) => {
       if (op === 'allocate') return { worktreePath: WORKTREE };

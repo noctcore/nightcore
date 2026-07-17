@@ -11,9 +11,9 @@
  *     gate-less). This is the injection point the Conductor calls per run — the gate is
  *     DATA-DRIVEN off the preset's `objectiveGate` marker, so a new objective preset needs
  *     no new wiring.
- *  2. The DORMANT single-writer Build contract (documented below) — the write step that
- *     turns a RED repro GREEN. It is deliberately NOT implemented in this slice; see
- *     {@link BuildDriver} and the note below.
+ *  2. The single-writer Build contract (documented below) — the write step that turns a RED
+ *     repro GREEN. Its real, write-capable driver shipped in #383/#386; see {@link
+ *     BuildDriver} and the note below for how this resolver + that driver activate together.
  *
  * ── The reproduce-first gate is REAL and REUSES the gauntlet, no new exec sink ──
  * The `repro` gate is a Structure-Lock gauntlet check: {@link objectiveGateForPreset}
@@ -25,21 +25,22 @@
  * expressed by the preset's stage sequence (`… → build → converge`) and enforced by
  * `validateCouncilPreset`; this gate is the terminal green check over the build output.
  *
- * ── DORMANT: the write-capable Build driver is a tracked follow-up ──
+ * ── The write-capable Build driver is LIVE (issue #383, shipped #386) ──
  * The `build` stage runs ONLY when a {@link BuildDriver} is injected (see
- * `conductor-build.ts`'s double gate). Production injects NONE today, so a UI-bug council
- * debates a repro + fix plan but does not yet WRITE the fix (the repro stays RED and the
- * gate correctly refuses to auto-adopt over it). The real write-capable
- * `SessionBuildDriver` — one elected writer editing on an ISOLATED worktree at
+ * `conductor-build.ts`'s double gate). Production NOW injects the real write-capable
+ * `SessionBuildDriver` (`session-build-driver.ts`, wired at `council-router.ts`) — one
+ * elected writer editing on an ISOLATED worktree at
  * {@link import('./build-writer.js').BUILD_WRITER_HARDENING} (write-capable + Seatbelt),
  * routing every tool call through the SAME confinement chokepoints a board task uses
- * (worktree `allocate`/`merge`/`remove`, the PreToolUse workspace-confinement gate,
- * `platform::git_command`, the `CommitLease` single-flight) with NO new exec sink —
- * requires an engine↔Rust worktree-allocation/merge seam that does not exist yet, so it is
- * its own security-critical slice (a tracked follow-up), NOT bolted onto this preset PR.
- * When it lands it is injected here (via `buildDriver`) and the injected gauntlet runner is
- * pointed at its worktree — the gate + writer activate together. #368 (Coding preset)
- * REUSES this module's resolver and, when it exists, that shared driver.
+ * (worktree `allocate`/`commit`/`merge`/`remove`, the PreToolUse workspace-confinement gate,
+ * `platform::git_command`, the `CommitLease` single-flight) with NO new exec sink. It reaches
+ * `crate::worktree` over the path-less, `councilRunId`-keyed engine↔Rust seam (the host
+ * DERIVES every path from the run id — the engine never sends one). The driver + the injected
+ * gauntlet runner activate TOGETHER: the runner is pointed at the writer's worktree so the
+ * terminal gate judges the BUILD OUTPUT, and a RED verdict overrides consensus (safety #6).
+ * Merge/discard stay HUMAN-only (the council parks at Converge). A build-capable preset
+ * (ui-bug #367, coding #368) activates both; `research` declares no `build` stage /
+ * `objectiveGate`, so it stays gate-less + write-less on the same wiring.
  */
 import type { CouncilPreset } from '@nightcore/contracts';
 
@@ -70,8 +71,9 @@ export function isObjectivePreset(preset: CouncilPreset): boolean {
  *    preset's `build` build/test gate (#368). A RED gauntlet FAILS the gate and overrides
  *    consensus; a GREEN one passes it (pending the human, who stays terminal — safety #7).
  *
- * The `objectiveGate` enum is exhaustive: every kind maps to a gate here, so adding a kind
- * fails to type-check until it is handled.
+ * The `objectiveGate` enum is exhaustive: every kind maps to a gate here, and the switch ends
+ * in `default: assertNever(kind)` (issue #385) so adding a kind without a resolver is a
+ * COMPILE error, never a silent `undefined` (which would fail-OPEN — no terminal gate).
  */
 export function objectiveGateForPreset(
   preset: CouncilPreset,
@@ -80,7 +82,8 @@ export function objectiveGateForPreset(
   if (preset.objectiveGate === undefined || runGauntlet === undefined) {
     return undefined;
   }
-  switch (preset.objectiveGate) {
+  const kind = preset.objectiveGate;
+  switch (kind) {
     case 'repro':
       // The reproduce-first repro gate: the repro check runs as a Structure-Lock gauntlet
       // over the build output. Reuse the gauntlet adapter — this module invents no exec.
@@ -90,5 +93,20 @@ export function objectiveGateForPreset(
       // over the writer's worktree — the SAME gauntlet adapter, no new exec sink. The
       // council debates the PLAN; this gate judges whether the built plan compiles + passes.
       return gauntletObjectiveGate(runGauntlet);
+    default:
+      // A new `CouncilObjectiveGate` kind added without a resolver here is a COMPILE error
+      // (`kind` narrows to `never`), not a silent `undefined` return. That matters: an absent
+      // objective gate = the terminal deterministic judge never runs, i.e. fail-OPEN on
+      // safety non-negotiable #6. `strict` alone would let the unhandled kind fall through and
+      // return `undefined` (no `noImplicitReturns`), so this guard is what keeps it fail-CLOSED
+      // — adding a gate kind is forced to add its resolver (issue #385).
+      return assertNever(kind);
   }
+}
+
+/** Exhaustiveness guard: reachable only if a `CouncilObjectiveGate` kind gains no resolver
+ *  in the switch above. The `never` parameter makes that a compile error; the throw is the
+ *  fail-CLOSED runtime backstop should an un-typed value ever reach it. */
+function assertNever(kind: never): never {
+  throw new Error(`unhandled council objective-gate kind: ${JSON.stringify(kind)}`);
 }

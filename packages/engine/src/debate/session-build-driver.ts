@@ -101,10 +101,16 @@ export class SessionBuildDriver implements BuildDriver {
     const { councilRunId, signal } = context;
 
     const allocation = await this.deps.broker.request('allocate', councilRunId, signal);
-    if (allocation.error !== undefined || allocation.worktreePath === undefined) {
-      // Fail CLOSED: no isolated worktree ⇒ no safe place to build. Surfacing this as a
-      // thrown error degrades the run to `failed` (the Conductor's degrade-not-throw), so
-      // nothing un-built is ever parked for adoption.
+    if (
+      allocation.error !== undefined ||
+      allocation.worktreePath === undefined ||
+      allocation.worktreePath.length === 0
+    ) {
+      // Fail CLOSED: no isolated worktree ⇒ no safe place to build. An empty-string path is
+      // treated as "no path" too (belt-and-suspenders — the host returns a real path or an
+      // error today, but an empty cwd would silently run the writer at the process root,
+      // outside any worktree confinement). Surfacing this as a thrown error degrades the run
+      // to `failed` (the Conductor's degrade-not-throw), so nothing un-built is ever parked.
       throw new Error(
         `Council build could not allocate an isolated worktree for run ${councilRunId}: ` +
           `${allocation.error ?? 'the host returned no worktree path'}`,

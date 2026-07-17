@@ -37,10 +37,12 @@ export function seedRoutingRuntime(
   routing: CouncilRouting,
   seats: readonly SeatContext[],
 ): RunRoutingRuntime {
+  const seatIds = new Set(seats.map((seat) => seat.seatId));
   return {
     bus,
-    routing: new RoutingPolicy(routing),
-    seatIds: new Set(seats.map((seat) => seat.seatId)),
+    // Validate the preset seed against the run's real seats, identical to a live edit (#377).
+    routing: new RoutingPolicy(routing, seatIds),
+    seatIds,
   };
 }
 
