@@ -8,7 +8,9 @@ export interface ProjectSummary {
   icon: string | null;
   customIconPath: string | null;
   running: boolean;
-  stats: { label: string; value: number; tone: 'neutral' | 'success' | 'warning' }[];
+  /** Stat tiles. `value` is `null` for projects that aren't the active one — their
+   *  tasks aren't loaded, so the tile renders a muted "–" rather than a fake 0. */
+  stats: { label: string; value: number | null; tone: 'neutral' | 'success' | 'warning' }[];
   activity: string;
 }
 
@@ -19,8 +21,6 @@ export interface ProjectCardProps {
   onOpen: (id: string) => void;
   /** Open the edit dialog for name & icon. When omitted, the menu entry is hidden. */
   onEdit?: (id: string) => void;
-  /** @deprecated Use {@link onEdit} — kept for tests that still call rename directly. */
-  onRename?: (id: string, name: string) => void;
   /** Remove the project from Nightcore (registry-only; files on disk untouched). */
   onDelete?: (id: string) => void;
 }

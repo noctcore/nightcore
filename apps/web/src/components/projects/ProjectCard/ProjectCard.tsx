@@ -91,9 +91,9 @@ export function ProjectCard({ project, onOpen, onEdit, onDelete }: ProjectCardPr
             className="flex-1 rounded-nc bg-white/[0.025] px-1 py-2 text-center"
           >
             <div
-              className={`font-mono text-base font-semibold tabular-nums ${STAT_TONE[s.tone]}`}
+              className={`font-mono text-base font-semibold tabular-nums ${s.value === null ? 'text-muted-foreground' : STAT_TONE[s.tone]}`}
             >
-              {s.value}
+              {s.value === null ? '–' : s.value}
             </div>
             <div className="mt-0.5 text-4xs-plus uppercase tracking-[0.08em] text-muted-foreground">
               {s.label}

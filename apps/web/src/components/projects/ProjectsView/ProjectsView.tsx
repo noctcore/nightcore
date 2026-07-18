@@ -14,7 +14,6 @@ export function ProjectsView({
   runningProjectIds,
   onOpen,
   onEdit,
-  onRename,
   onDelete,
   onNewProject,
 }: ProjectsViewProps) {
@@ -55,7 +54,6 @@ export function ProjectsView({
               project={project}
               onOpen={onOpen}
               onEdit={() => onEdit(project.id)}
-              onRename={onRename}
               onDelete={onDelete}
             />
           ))}

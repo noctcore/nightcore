@@ -21,6 +21,13 @@ test('derives done/failed counts for the active project', async () => {
   await expect.element(screen.getByText('failed').first()).toBeInTheDocument();
 });
 
+test('renders a muted dash for non-active projects instead of fake zeroes', async () => {
+  const screen = render(<Populated />);
+  // The active project (nightcore) shows real counts; the other project has no
+  // loaded tasks, so its three stat tiles render "–" rather than 0/0/0.
+  await expect.element(screen.getByText('–').first()).toBeInTheDocument();
+});
+
 test('shows the empty state and triggers new project', async () => {
   const onNewProject = vi.fn();
   const screen = render(<Empty onNewProject={onNewProject} />);

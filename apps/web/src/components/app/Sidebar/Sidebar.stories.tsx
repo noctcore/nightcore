@@ -40,6 +40,7 @@ const switcher: ProjectSwitcherSurface = {
   active: PROJECTS[0] ?? null,
   switcherOpen: false,
   onToggleSwitcher: fn(),
+  onCloseSwitcher: fn(),
   onPickProject: fn(),
   onNewProject: fn(),
   onEditProject: fn(),

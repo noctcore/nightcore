@@ -30,7 +30,6 @@ function SidebarCollapseToggle({
       type="button"
       onClick={onToggle}
       aria-label={label}
-      title={label}
       className="group/toggle absolute -right-3.5 top-10 z-50 flex h-7 w-7 items-center justify-center rounded-full border border-border/80 bg-card/95 text-muted-foreground shadow-lg shadow-black/5 backdrop-blur-sm transition-all duration-[var(--nc-motion-fast)] ease-[var(--nc-ease-out-quint)] hover:scale-110 hover:border-primary/30 hover:bg-accent/80 hover:text-primary hover:shadow-xl hover:shadow-primary/10 active:scale-90"
     >
       {collapsed ? (
@@ -64,7 +63,7 @@ function NavItemButton({
       key={item.view}
       type="button"
       onClick={() => onNavigate(item.view)}
-      title={item.label}
+      title={collapsed ? `${item.label} (${item.hint})` : undefined}
       aria-current={active ? 'page' : undefined}
       className={`${NAV_BASE} ${collapsed ? 'justify-center' : ''} ${
         active

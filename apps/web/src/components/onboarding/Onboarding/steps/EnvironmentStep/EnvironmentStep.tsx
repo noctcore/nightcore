@@ -109,7 +109,7 @@ function EnvironmentRow({
           title={row.detail}
           className={`max-w-[460px] truncate font-mono text-xs-plus2 ${detailClass}`}
         >
-          {checking ? 'checking...' : row.detail}
+          {checking ? 'Checking…' : row.detail}
         </span>
       </div>
       {failed && (
@@ -122,7 +122,7 @@ function EnvironmentRow({
           </code>
           <Button onClick={onRecheck}>
             <RefreshIcon size={14} />
-            I have done it - re-check
+            Re-check
           </Button>
         </div>
       )}

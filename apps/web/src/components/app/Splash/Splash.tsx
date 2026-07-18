@@ -6,7 +6,7 @@ import type { SplashProps } from './Splash.types';
  *  boot line. Faithful to the design's cosmic-dark splash. */
 export function Splash({
   bootLine = 'initializing workspace…',
-  version = 'v0.1.0',
+  version,
 }: SplashProps) {
   return (
     <div
@@ -51,9 +51,11 @@ export function Splash({
           {bootLine}
         </m.div>
       </m.div>
-      <div className="absolute bottom-6 font-mono text-3xs-plus tracking-[0.1em] text-muted-foreground/50">
-        {version} · rewrite of automaker
-      </div>
+      {version !== undefined && version !== '' && (
+        <div className="absolute bottom-6 font-mono text-3xs-plus tracking-[0.1em] text-muted-foreground/50">
+          {version}
+        </div>
+      )}
     </div>
   );
 }

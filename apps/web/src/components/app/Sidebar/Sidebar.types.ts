@@ -12,6 +12,8 @@ export interface ProjectSwitcherSurface {
   active: Project | null;
   switcherOpen: boolean;
   onToggleSwitcher: () => void;
+  /** Dismiss the switcher popover (Escape / outside pointer-down). */
+  onCloseSwitcher: () => void;
   onPickProject: (id: string) => void;
   onNewProject: () => void;
   onEditProject: (project: Project) => void;

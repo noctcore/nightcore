@@ -37,6 +37,17 @@ test('enables create once a folder and name are present, then emits the draft', 
   );
 });
 
+test('submits on plain Enter in the name field once creatable', async () => {
+  const onCreate = vi.fn();
+  const screen = render(<FolderChosen onCreate={onCreate} />);
+  const input = screen.getByLabelText('Project name');
+  await expect.element(input).toHaveValue('my-project');
+  await userEvent.type(input.element(), '{Enter}');
+  expect(onCreate).toHaveBeenCalledWith(
+    expect.objectContaining({ folder: '~/dev/my-project', name: 'my-project' }),
+  );
+});
+
 test('does not replace a manually edited name when the folder changes', async () => {
   const screen = render(<FolderChosen />);
   const input = screen.getByLabelText('Project name');
