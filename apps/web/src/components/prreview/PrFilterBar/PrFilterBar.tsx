@@ -135,8 +135,7 @@ function MultiSelectDropdown<T extends string>({
       </button>
       {dd.open && (
         <div
-          className="absolute left-0 top-full z-30 mt-1 w-[228px] overflow-hidden rounded-nc border border-border bg-popover shadow-2xl"
-          style={{ animation: 'nc-rise .14s cubic-bezier(.22,1,.36,1)' }}
+          className="nc-popover-rise absolute left-0 top-full z-30 mt-1 w-[228px] overflow-hidden rounded-nc border border-border bg-popover shadow-2xl"
         >
           <div className="border-b border-border px-3 py-2">
             <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
@@ -256,8 +255,7 @@ function SortDropdown({
       </button>
       {dd.open && (
         <div
-          className="absolute left-0 top-full z-30 mt-1 w-[180px] overflow-hidden rounded-nc border border-border bg-popover shadow-2xl"
-          style={{ animation: 'nc-rise .14s cubic-bezier(.22,1,.36,1)' }}
+          className="nc-popover-rise absolute left-0 top-full z-30 mt-1 w-[180px] overflow-hidden rounded-nc border border-border bg-popover shadow-2xl"
         >
           <div className="border-b border-border px-3 py-2">
             <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">

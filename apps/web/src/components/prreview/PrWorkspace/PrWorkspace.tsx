@@ -177,7 +177,7 @@ export function PrWorkspace({
         {changed.expanded && (
           <div
             className="overflow-hidden rounded-nc border border-border"
-            style={{ animation: 'nc-rise .16s cubic-bezier(.22,1,.36,1)' }}
+            style={{ animation: 'nc-rise var(--nc-motion-fast) var(--nc-ease-out-quint)' }}
           >
             {changed.loading ? (
               <div

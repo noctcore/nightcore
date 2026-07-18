@@ -339,7 +339,7 @@ export function ReviewSection({
                   <span
                     role="status"
                     className="inline-flex items-center gap-1.5 rounded-full border border-success/40 bg-success/[0.1] px-2.5 py-1 text-2xs-plus font-medium text-success"
-                    style={{ animation: 'nc-rise .18s cubic-bezier(.22,1,.36,1)' }}
+                    style={{ animation: 'nc-rise var(--nc-motion-fast) var(--nc-ease-out-quint)' }}
                   >
                     <CheckIcon size={13} />
                     Posted {toolbar.postedFeedback}{' '}

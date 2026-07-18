@@ -90,7 +90,7 @@ export function RunProgress({
                 and clipped by the rounded container; the fill scales from the left.
                 The global reduced-motion guard still zeroes this CSS transition. */}
             <div
-              className="h-full w-full origin-left rounded-full bg-primary transition-transform duration-500 ease-out"
+              className="h-full w-full origin-left rounded-full bg-primary transition-transform duration-[var(--nc-motion-slower)] ease-[var(--nc-ease-out-quint)]"
               style={{ transform: `scaleX(${synthesizing ? 1 : pct / 100})` }}
             />
             {synthesizing && (

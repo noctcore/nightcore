@@ -61,7 +61,7 @@ export function RunLifecycleShell({
       <div
         ref={bodyRef}
         tabIndex={-1}
-        className="flex min-h-0 flex-1 flex-col outline-none transition-opacity duration-150 ease-out"
+        className="flex min-h-0 flex-1 flex-col outline-none transition-opacity duration-[var(--nc-motion-fast)] ease-[var(--nc-ease-out-quint)]"
         style={{ opacity }}
       >
         {children}
