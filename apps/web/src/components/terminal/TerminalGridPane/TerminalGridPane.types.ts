@@ -29,7 +29,7 @@ export interface TerminalGridPaneProps {
   /** Whether reorder drag is enabled (false while any pane is zoomed). */
   draggable: boolean;
   /** Whether broadcast input is armed (round-2 PR B): this pane is RECEIVING the
-   *  fanned-out keystrokes, so it shows the LOUD amber ring + "BCAST" badge. */
+   *  fanned-out keystrokes, so it shows the LOUD warning ring + "BCAST" badge. */
   broadcasting: boolean;
   /** Whether a dragged file is currently over this pane (round-2 PR C): shows the
    *  drop-hint overlay. Dropping types the file's shell-escaped absolute path. */

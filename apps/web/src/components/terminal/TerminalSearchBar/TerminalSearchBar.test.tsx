@@ -8,6 +8,8 @@ function setup(over: Partial<Parameters<typeof TerminalSearchBar>[0]> = {}) {
   const props = {
     query: 'ls',
     noMatch: false,
+    resultIndex: 0,
+    resultCount: 3,
     onQueryChange: vi.fn(),
     onNext: vi.fn(),
     onPrev: vi.fn(),
@@ -58,4 +60,14 @@ test('a no-match query flags the input as invalid-styled', () => {
   const { screen } = setup({ query: 'nope', noMatch: true });
   const input = screen.getByLabelText('Search terminal scrollback');
   expect(input.element().className).toContain('text-destructive');
+});
+
+test('shows a 1-based n/m match counter for the active query', async () => {
+  const { screen } = setup({ query: 'ls', resultIndex: 1, resultCount: 5 });
+  await expect.element(screen.getByText('2/5')).toBeInTheDocument();
+});
+
+test('hides the counter when the query is empty', () => {
+  const { screen } = setup({ query: '', resultIndex: -1, resultCount: 0 });
+  expect(screen.container.textContent).not.toContain('/');
 });

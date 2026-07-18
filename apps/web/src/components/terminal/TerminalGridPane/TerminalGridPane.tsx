@@ -39,9 +39,9 @@ function PaneBroadcast() {
     <span
       aria-label={broadcastBadgeLabel()}
       title={broadcastBadgeLabel()}
-      className="flex shrink-0 items-center gap-1 rounded-full bg-amber-400/20 px-1.5 text-4xs-plus font-bold uppercase leading-4 tracking-wide text-amber-300 ring-1 ring-amber-400/60"
+      className="flex shrink-0 items-center gap-1 rounded-full bg-warning/20 px-1.5 text-4xs-plus font-bold uppercase leading-4 tracking-wide text-warning ring-1 ring-warning/60"
     >
-      <span aria-hidden className="h-1 w-1 animate-pulse rounded-full bg-amber-400" />
+      <span aria-hidden className="h-1 w-1 animate-pulse rounded-full bg-warning" />
       {broadcastBadge()}
     </span>
   );
@@ -144,7 +144,7 @@ export function TerminalGridPane({
       className={`group flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-background transition-colors ${
         v.isOver ? 'border-primary/70' : 'border-border'
       } ${v.isDragging ? 'opacity-40' : ''} ${
-        broadcasting ? 'ring-2 ring-amber-400/80 ring-inset' : ''
+        broadcasting ? 'ring-2 ring-warning/80 ring-inset' : ''
       }`}
     >
       <div className="flex items-center gap-1.5 border-b border-border bg-black/25 px-2 py-1">
@@ -196,6 +196,8 @@ export function TerminalGridPane({
             <TerminalSearchBar
               query={v.search.query}
               noMatch={v.search.noMatch}
+              resultIndex={v.search.resultIndex}
+              resultCount={v.search.resultCount}
               onQueryChange={v.search.onQueryChange}
               onNext={v.search.next}
               onPrev={v.search.prev}
