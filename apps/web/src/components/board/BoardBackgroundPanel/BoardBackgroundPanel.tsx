@@ -3,6 +3,7 @@
  *  borders, glassmorphism, and scrollbar visibility. Presentational — the parent
  *  owns the appearance + persistence. */
 import {
+  Button,
   Checkbox,
   CloseIcon,
   IconButton,
@@ -119,25 +120,24 @@ export function BoardBackgroundPanel({
               </div>
             )}
             <div className="flex gap-2 border-t border-border p-2.5">
-              <button
-                type="button"
+              <Button
+                variant="secondary"
                 disabled={picker.busy}
                 onClick={picker.openPicker}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border bg-white/[0.02] px-3 py-2 text-xs-plus font-semibold text-foreground transition-colors hover:border-white/20 disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex-1"
               >
                 <UploadIcon size={14} className="text-muted-foreground" />
                 {picker.busy ? 'Loading…' : backgroundUrl !== null ? 'Change Image' : 'Choose Image'}
-              </button>
+              </Button>
               {backgroundUrl !== null && (
-                <button
-                  type="button"
+                <Button
+                  variant="danger"
                   disabled={picker.busy}
                   onClick={() => void onClearImage()}
-                  className="flex items-center justify-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/[0.14] px-3 py-2 text-xs-plus font-semibold text-destructive transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <TrashIcon size={14} />
                   Clear
-                </button>
+                </Button>
               )}
             </div>
           </div>

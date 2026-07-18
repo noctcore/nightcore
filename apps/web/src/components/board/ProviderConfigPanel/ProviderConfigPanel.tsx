@@ -3,6 +3,7 @@ import {
   AgentsIcon,
   Badge,
   BoltIcon,
+  Button,
   CloseIcon,
   IconButton,
   LayersIcon,
@@ -94,14 +95,10 @@ export function ProviderConfigPanel({
             <p className="text-xs-plus2 text-foreground">
               {error ?? "Couldn't read the provider configuration."}
             </p>
-            <button
-              type="button"
-              onClick={reload}
-              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs-flat font-semibold text-primary-foreground transition-[filter] hover:brightness-110"
-            >
+            <Button onClick={reload}>
               <RetryIcon size={13} />
               Retry
-            </button>
+            </Button>
           </div>
         ) : (
           <>

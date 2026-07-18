@@ -133,15 +133,13 @@ export function BoardHeader({
             >
               <RefreshIcon size={15} className="text-muted-foreground" />
             </IconButton>
-            <button
-              type="button"
+            <IconButton
+              label="Board background settings"
               onClick={bgPanel.show}
-              title="Customize the board background"
-              aria-label="Board background settings"
-              className="flex items-center justify-center rounded-nc border border-border bg-white/[0.02] p-2 text-foreground transition-colors hover:border-white/20"
+              className="border border-border bg-white/[0.02] p-2 hover:border-white/20"
             >
               <ImageIcon size={15} className="text-muted-foreground" />
-            </button>
+            </IconButton>
             <Button
               variant="secondary"
               onClick={inspector.show}

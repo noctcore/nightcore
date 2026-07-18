@@ -2,7 +2,7 @@
  *  tri-state section cards plus the row/pill/extras building blocks they compose. */
 import type { ReactNode } from 'react';
 
-import { RetryIcon } from '@/components/ui';
+import { Button, RetryIcon } from '@/components/ui';
 import type {
   McpServerSummary,
   ProviderConfigSection,
@@ -78,14 +78,10 @@ export function Section({
             <p className="min-w-0 text-xs-flat text-destructive">
               {section.error ?? "Couldn't read this section"}
             </p>
-            <button
-              type="button"
-              onClick={onRetry}
-              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-white/[0.02] px-2.5 py-1 text-2xs-plus font-semibold text-foreground transition-colors hover:border-white/20"
-            >
+            <Button variant="secondary" onClick={onRetry} className="shrink-0">
               <RetryIcon size={12} />
               Retry
-            </button>
+            </Button>
           </div>
         ) : count === 0 ? (
           <p className="text-xs-flat text-muted-foreground">{emptyText}</p>
