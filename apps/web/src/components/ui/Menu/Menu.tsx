@@ -42,7 +42,7 @@ export function Menu({ trigger, label, items, align = 'right' }: MenuProps) {
                 role="menuitem"
                 onClick={() => select(item)}
                 onKeyDown={(e) => onItemKeyDown(e, index)}
-                className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm transition-colors hover:bg-white/[0.06] focus-visible:bg-white/[0.12] focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring ${
+                className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm transition-colors hover:bg-white/[0.06] focus-visible:bg-white/[0.12] ${
                   item.destructive
                     ? 'text-destructive hover:text-destructive'
                     : 'text-foreground'

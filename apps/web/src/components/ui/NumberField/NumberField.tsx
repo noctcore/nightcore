@@ -24,7 +24,7 @@ export function NumberField({
     if (parsed !== null) onCommit(parsed);
   };
   return (
-    <div className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-black/20 px-2.5 py-1.5 focus-within:border-primary">
+    <div className="nc-focus-ring-host inline-flex items-center gap-1.5 rounded-lg border border-border bg-black/20 px-2.5 py-1.5 focus-within:border-primary">
       {prefix !== undefined && (
         <span className="font-mono text-xs-flat text-muted-foreground">{prefix}</span>
       )}

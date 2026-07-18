@@ -55,7 +55,7 @@ export function ModelSelect({
               disabled={disabled}
               onClick={v.onTriggerClick}
               onKeyDown={v.onTriggerKeyDown}
-              className="nc-focus-ring-host flex w-full items-center gap-2 rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-left transition-colors focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex w-full items-center gap-2 rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-left transition-colors focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-60"
             >
               {v.selected.provider !== null ? (
                 <ProviderIcon

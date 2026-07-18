@@ -35,7 +35,7 @@ export function ToolbarOption({
           onClick={onToggle}
           aria-pressed={on}
           title={title}
-          className="flex items-center gap-2.5 px-3.5 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="flex items-center gap-2.5 px-3.5 py-1.5 transition-colors"
         >
           {icon}
           <span>{label}</span>

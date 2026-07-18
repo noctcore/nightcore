@@ -48,7 +48,7 @@ export const SettingsTrigger = forwardRef<HTMLButtonElement, SettingsTriggerProp
         aria-label={label}
         aria-expanded={open}
         title={label}
-        className={`flex items-center justify-center rounded-r-[8px] border-l border-border/60 px-2 py-1.5 text-foreground transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
+        className={`flex items-center justify-center rounded-r-[8px] border-l border-border/60 px-2 py-1.5 text-foreground transition-colors ${
           open
             ? 'bg-white/[0.04]'
             : 'hover:bg-white/[0.03]'
