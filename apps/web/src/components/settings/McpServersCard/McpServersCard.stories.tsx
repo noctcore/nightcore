@@ -74,9 +74,9 @@ export const AddsAnHttpServer: Story = {
     await userEvent.click(canvas.getByRole('button', { name: /add server/i }));
     const modal = portaledSurface();
     await userEvent.type(modal.getByLabelText('Server name'), 'linear');
-    await userEvent.click(modal.getByRole('button', { name: 'HTTP' }));
+    await userEvent.click(modal.getByRole('radio', { name: 'HTTP' }));
     await userEvent.type(modal.getByLabelText('URL'), 'https://mcp.linear.app/sse');
-    await userEvent.click(modal.getByRole('button', { name: /^Add$/ }));
+    await userEvent.click(modal.getByRole('button', { name: 'Add server' }));
     await expect(args.onChange).toHaveBeenCalledTimes(1);
     const call = (args.onChange as ReturnType<typeof fn>).mock.calls[0];
     const next = (call?.[0] ?? []) as McpServerEntry[];
