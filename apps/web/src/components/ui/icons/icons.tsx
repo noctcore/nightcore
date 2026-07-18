@@ -30,6 +30,7 @@ export {
   X as CloseIcon,
   Columns2 as Columns2Icon,
   GitCommitHorizontal as CommitIcon,
+  Copy as CopyIcon,
   GitFork as DecomposeIcon,
   Package as DepsIcon,
   Palette as DesignIcon,
