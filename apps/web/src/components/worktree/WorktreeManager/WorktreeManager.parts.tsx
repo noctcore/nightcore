@@ -72,14 +72,16 @@ export function WorktreeRow({
           <BranchIcon size={13} className="shrink-0 text-muted-foreground" />
           <span className="truncate font-mono text-xs-flat text-foreground">{view.branch}</span>
           {view.pr !== null && onOpenPr !== undefined && (
-            <Button
-              variant="ghost"
+            <button
+              type="button"
               onClick={() => onOpenPr(view.pr!.url)}
               title="Open the pull request in your browser"
+              className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs font-medium text-muted-foreground transition-colors hover:bg-white/[0.06] hover:text-foreground"
             >
-              <GithubIcon size={12} />
-              {view.pr.number !== null ? `PR #${view.pr.number}` : 'PR'} ↗
-            </Button>
+              <GithubIcon size={11} />
+              {view.pr.number !== null ? `PR #${view.pr.number}` : 'PR'}
+              <ExternalLinkIcon size={11} />
+            </button>
           )}
         </div>
         {view.title !== undefined && (
