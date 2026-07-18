@@ -51,7 +51,7 @@ export function ProposalDetailPanel({
           </span>
           <span className="font-mono text-3xs text-muted-foreground">{meta.hint}</span>
           {shown.confidence !== null && (
-            <span className="font-mono text-3xs text-muted-foreground">
+            <span className="inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
               {Math.round(shown.confidence * 100)}% confidence
             </span>
           )}
@@ -73,19 +73,21 @@ export function ProposalDetailPanel({
             <>
               {canApply && (
                 <Button
-                  disabled={pending || dismissed}
+                  busy={pending}
+                  disabled={dismissed}
                   onClick={() => onApply(shown.id)}
                 >
-                  <PlusIcon size={15} />
+                  {!pending && <PlusIcon size={15} />}
                   Apply bundle
                 </Button>
               )}
               <Button
                 variant={canApply ? 'secondary' : undefined}
-                disabled={pending || dismissed}
+                busy={pending}
+                disabled={dismissed}
                 onClick={() => onConvert(shown.id)}
               >
-                <MoveIcon size={15} />
+                {!pending && <MoveIcon size={15} />}
                 Convert to task
               </Button>
             </>

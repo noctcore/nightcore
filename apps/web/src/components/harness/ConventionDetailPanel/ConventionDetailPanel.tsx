@@ -2,11 +2,11 @@
  *  the shared GroundedFindingBody. */
 import {
   DetailSection,
+  EvidenceList,
   GroundedFindingBody,
   type GroundedFindingView,
   GroundedLifecycleFooter,
 } from '@/components/ui';
-import { formatLocation } from '@/lib/formatters';
 
 import { CATEGORY_META, KIND_META, SEVERITY_META } from '../harness.constants';
 import type { ConventionFindingVM } from '../harness.types';
@@ -48,7 +48,7 @@ export function ConventionDetailPanel({
             {Meta.label}
           </span>
           {shown.confidence !== null && (
-            <span className="font-mono text-3xs text-muted-foreground">
+            <span className="inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
               {Math.round(shown.confidence * 100)}% confidence
             </span>
           )}
@@ -72,18 +72,7 @@ export function ConventionDetailPanel({
           shown.kind === 'gap' ? 'Change to adopt' : 'Rule to codify',
         extra: shown.evidence.length > 0 && (
           <DetailSection title="Evidence">
-            <ul className="flex flex-col gap-1">
-              {shown.evidence.map((e) => {
-                const label = formatLocation(e, { withSymbol: true }) ?? e.file;
-                return (
-                  <li key={label}>
-                    <code className="break-all font-mono text-2xs-plus text-muted-foreground">
-                      {label}
-                    </code>
-                  </li>
-                );
-              })}
-            </ul>
+            <EvidenceList items={shown.evidence.map((e) => ({ location: e }))} />
           </DetailSection>
         ),
         tags: shown.tags,
