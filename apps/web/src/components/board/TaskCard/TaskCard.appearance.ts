@@ -41,7 +41,7 @@ export const TIMER_CHIP = 'flex items-center gap-1 font-mono text-3xs-plus font-
 export const LOGS_COUNT = 'rounded bg-black/20 px-1.5 font-mono text-3xs tabular-nums';
 
 export const ACTION_BASE =
-  'inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-[filter,background] disabled:cursor-not-allowed';
+  'inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-[filter,background] active:brightness-95 active:scale-[0.98] disabled:cursor-not-allowed';
 export const ACTION_PRIMARY = 'flex-1 bg-primary text-primary-foreground hover:brightness-110';
 export const ACTION_GHOST = 'flex-1 border border-border text-foreground hover:bg-white/[0.05]';
 export const ACTION_DANGER =

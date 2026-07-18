@@ -2,15 +2,15 @@ import { composeStories } from '@storybook/react-vite';
 import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
-import { formatElapsed, subscribeSecondTick } from './TaskCard.hooks';
+import { formatElapsed, nextElapsedAnchor, subscribeSecondTick } from './TaskCard.hooks';
 import * as stories from './TaskCard.stories';
 
 const { Backlog, Failed, Done, Blocked, Running, Verifying, WaitingApproval, MainMode, MainModeCommitted, Draggable, UsageHigh, UsageHighRetry } =
   composeStories(stories);
 
-test('shows the reviewing chip and a cancel control while verifying', async () => {
+test('shows the verifying chip and a cancel control while verifying', async () => {
   const screen = render(<Verifying />);
-  await expect.element(screen.getByText('reviewing')).toBeInTheDocument();
+  await expect.element(screen.getByText('verifying')).toBeInTheDocument();
   await expect
     .element(screen.getByRole('button', { name: /cancel run/i }))
     .toBeInTheDocument();
@@ -174,6 +174,26 @@ test('formatElapsed renders mm:ss and clamps negatives to 00:00', () => {
   expect(formatElapsed(0)).toBe('00:00');
   expect(formatElapsed(65_000)).toBe('01:05');
   expect(formatElapsed(-5_000)).toBe('00:00');
+});
+
+test('nextElapsedAnchor holds the run-start moment so the clock never rewinds mid-run', () => {
+  // Entering a live phase snapshots the current updatedAt as the anchor.
+  const start = nextElapsedAnchor(null, 'in_progress', 1_000, true);
+  expect(start).toEqual({ status: 'in_progress', since: 1_000 });
+
+  // A later stream flush bumps updatedAt forward, but the anchor is held steady —
+  // the same object is returned, so `now - since` keeps GROWING instead of shrinking
+  // back toward zero (the old time-since-last-flush rewind bug).
+  const afterFlush = nextElapsedAnchor(start, 'in_progress', 9_000, true);
+  expect(afterFlush).toBe(start);
+  expect(afterFlush?.since).toBe(1_000);
+
+  // Leaving the live phase clears the anchor…
+  expect(nextElapsedAnchor(afterFlush, 'done', 9_000, false)).toBeNull();
+
+  // …and a phase change (build → verify) re-anchors to that phase's entry moment.
+  const verify = nextElapsedAnchor(start, 'verifying', 12_000, true);
+  expect(verify).toEqual({ status: 'verifying', since: 12_000 });
 });
 
 test('subscribeSecondTick shares ONE interval across cards and stops when the last detaches', () => {

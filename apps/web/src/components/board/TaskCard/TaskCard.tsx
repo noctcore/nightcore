@@ -8,6 +8,7 @@ import {
   ClockIcon,
   CommitIcon,
   EditIcon,
+  IconButton,
   LockIcon,
   LogsIcon,
   PlayIcon,
@@ -84,7 +85,7 @@ function TaskCardImpl({
   );
   const running = task.status === 'in_progress';
   const verifying = task.status === 'verifying';
-  const elapsed = useElapsed(task.updatedAt, running || verifying);
+  const elapsed = useElapsed(task.status, task.updatedAt);
   const drag = useTaskDraggable(task.id, draggable, preview);
   const branch = task.branch;
   const mainMode = task.runMode === 'main';
@@ -98,8 +99,6 @@ function TaskCardImpl({
   const refinePending = pending('refine');
   const mergePending = pending('merge');
   const commitPending = pending('commit');
-
-  const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
 
   return (
     <div
@@ -183,13 +182,13 @@ function TaskCardImpl({
             {verifying && (
               <span className={`${STATUS_CHIP} bg-primary/[0.14] text-primary`}>
                 <SparkIcon size={11} />
-                reviewing
+                verifying
               </span>
             )}
             {needsApproval && (
               <span className={`${STATUS_CHIP} bg-warning/[0.14] text-warning`}>
                 <AlertIcon size={11} />
-                needs approval
+                needs input
               </span>
             )}
             {task.conflict && (
@@ -232,7 +231,7 @@ function TaskCardImpl({
       </button>
 
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- non-interactive wrapper; onClick only stops the real action buttons' clicks from bubbling to the card/drag container */}
-      <div className="mt-3 flex gap-1.5" onClick={stop}>
+      <div className="mt-3 flex gap-1.5" onClick={(e) => e.stopPropagation()}>
         {task.status === 'backlog' || task.status === 'ready' ? (
           <>
             <button
@@ -270,10 +269,11 @@ function TaskCardImpl({
             <button
               type="button"
               aria-label="Cancel run"
+              title="Cancel run"
               onClick={() => onCancel?.(task.id)}
               className={`${ACTION_BASE} ${ACTION_DANGER}`}
             >
-              <StopIcon size={12} />
+              <StopIcon size={13} />
             </button>
           </>
         ) : task.status === 'waiting_approval' ? (
@@ -371,7 +371,7 @@ function TaskCardImpl({
               {runPending ? <Spinner size={13} /> : <RetryIcon size={13} />}
               {runPending ? 'Starting…' : 'Retry'}
             </button>
-            <TaskCardUsageChip />
+            {gate.enabled && <TaskCardUsageChip />}
             <button
               type="button"
               onClick={() => onSelect(task.id)}
@@ -384,14 +384,13 @@ function TaskCardImpl({
         )}
         <TaskCardTerminalChip taskId={task.id} />
         <IssueClosedChip task={task} />
-        <button
-          type="button"
-          aria-label="Delete task"
+        <IconButton
+          label="Delete task"
           onClick={() => onDelete?.(task.id)}
-          className="flex items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground"
+          className="hover:bg-destructive/10 hover:text-destructive"
         >
           <TrashIcon size={13} />
-        </button>
+        </IconButton>
       </div>
     </div>
   );

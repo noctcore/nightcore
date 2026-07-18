@@ -105,7 +105,7 @@ export const Blocked: Story = {
 export const Running: Story = {
   args: { task: TASKS_BY_STATUS.in_progress, logCount: 7 },
 };
-/** A task in the post-build verification phase — the "reviewing" pulse + chip. */
+/** A task in the post-build verification phase — the "verifying" chip + ring glow. */
 export const Verifying: Story = {
   args: { task: TASKS_BY_STATUS.verifying, logCount: 3 },
 };
@@ -141,7 +141,7 @@ export const CancelRun: Story = {
   },
 };
 
-/** A running task with a parked permission prompt — pulses + "needs approval". */
+/** A running task with a parked permission prompt — pulses + "needs input". */
 export const NeedsApproval: Story = {
   args: { task: TASKS_BY_STATUS.in_progress, needsApproval: true, logCount: 2 },
 };
