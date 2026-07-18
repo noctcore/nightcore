@@ -2,6 +2,7 @@
 import {
   Button,
   CloseIcon,
+  ConfirmHint,
   FolderIcon,
   IconButton,
   IconTile,
@@ -10,6 +11,7 @@ import {
   Spinner,
 } from '@/components/ui';
 
+import { GitStateRow } from '../GitStateRow';
 import { useNewProjectDialog } from './NewProjectDialog.hooks';
 import type { NewProjectDialogProps } from './NewProjectDialog.types';
 
@@ -17,19 +19,6 @@ const FIELD_LABEL =
   'mb-1.5 block text-2xs-plus font-semibold text-muted-foreground';
 const FIELD_INPUT =
   'w-full rounded-nc border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary';
-
-/** Text colour class per git-detection state, applied to the status row. */
-const GIT_ROW: Record<'valid' | 'invalid' | 'checking', string> = {
-  valid: 'text-success',
-  invalid: 'text-warning',
-  checking: 'text-muted-foreground',
-};
-/** Status message shown for each git-detection state of the chosen folder. */
-const GIT_TEXT: Record<'valid' | 'invalid' | 'checking', string> = {
-  valid: '✓ Git repository detected.',
-  invalid: 'Not a git repository.',
-  checking: 'Checking…',
-};
 
 /**
  * Modal for creating a project from a git repository. Lets the user choose a
@@ -58,6 +47,7 @@ export function NewProjectDialog({
       open={open}
       label="New project"
       onClose={close}
+      onEnter={canCreate ? create : undefined}
       overlayClassName="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm"
       panelClassName="flex max-h-[calc(100vh-3rem)] w-[520px] max-w-full flex-col"
     >
@@ -71,7 +61,7 @@ export function NewProjectDialog({
               Point Nightcore at a git repo to begin.
             </div>
           </div>
-          <IconButton label="Close dialog" onClick={close}>
+          <IconButton label="Close dialog" onClick={close} disabled={busy}>
             <CloseIcon size={16} />
           </IconButton>
         </div>
@@ -86,7 +76,7 @@ export function NewProjectDialog({
               type="button"
               aria-label="Choose repository folder"
               onClick={() => void onChooseFolder()}
-              className={`flex w-full items-center gap-2.5 rounded-nc border border-dashed bg-white/[0.02] px-3 py-2.5 text-left ${folder !== null ? 'border-border' : 'border-primary/50'}`}
+              className={`flex w-full items-center gap-2.5 rounded-nc border border-dashed bg-white/[0.02] px-3 py-2.5 text-left transition-colors hover:bg-white/[0.04] ${folder !== null ? 'border-border' : 'border-primary/50'}`}
             >
               <FolderIcon size={16} className="text-muted-foreground" />
               <span
@@ -96,27 +86,7 @@ export function NewProjectDialog({
               </span>
               <span className="text-sm font-semibold text-primary">Choose…</span>
             </button>
-            {folder !== null && gitState !== 'unknown' && gitState !== 'valid' && (
-              <div
-                className={`mt-2.5 flex items-center gap-2 font-mono text-xs-flat ${GIT_ROW[gitState]}`}
-              >
-                <span>{GIT_TEXT[gitState]}</span>
-                {gitState === 'invalid' && onInitGit !== undefined && (
-                  <button
-                    type="button"
-                    onClick={() => void onInitGit()}
-                    className="ml-auto font-semibold text-primary"
-                  >
-                    git init
-                  </button>
-                )}
-              </div>
-            )}
-            {folder !== null && gitState === 'valid' && (
-              <div className={`mt-2.5 flex items-center gap-2 font-mono text-xs-flat ${GIT_ROW.valid}`}>
-                <span>{GIT_TEXT.valid}</span>
-              </div>
-            )}
+            {folder !== null && <GitStateRow gitState={gitState} onInitGit={onInitGit} />}
           </div>
 
           <div>
@@ -127,6 +97,14 @@ export function NewProjectDialog({
               id="np-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                // Plain Enter in the name field submits (Cmd/Ctrl+Enter is handled
+                // by the Modal's `onEnter`); the modifier guard avoids a double-fire.
+                if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && canCreate) {
+                  e.preventDefault();
+                  create();
+                }
+              }}
               placeholder="my-project"
               className={FIELD_INPUT}
             />
@@ -149,7 +127,8 @@ export function NewProjectDialog({
           />
         </div>
 
-        <div className="flex justify-end gap-2.5 border-t border-border bg-black/15 px-5 py-3.5">
+        <div className="flex items-center justify-end gap-2.5 border-t border-border bg-black/15 px-5 py-3.5">
+          <ConfirmHint>to create</ConfirmHint>
           <Button variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
