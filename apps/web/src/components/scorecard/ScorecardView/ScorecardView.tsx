@@ -9,6 +9,7 @@ import {
   PerfIcon,
   RetryIcon,
   RunLifecycleShell,
+  RunOutcomeNotice,
   RunProgress,
   RunUsageLine,
   StopIcon,
@@ -79,7 +80,7 @@ export function ScorecardView(props: ScorecardViewProps) {
           className="min-w-0 truncate text-left transition-colors hover:text-foreground"
         >
           {view.summary}
-          <span className="sr-only"> — reconfigure run</span>
+          <span className="sr-only">, reconfigure run</span>
         </button>
       )}
       {/* The persisted run receipt (cost/tokens/duration/model), surfaced on RESULTS
@@ -147,18 +148,17 @@ export function ScorecardView(props: ScorecardViewProps) {
           <div className="flex min-h-0 flex-1 flex-col">
             {view.stream.status === 'failed' &&
               (view.stream.failureReason === 'aborted' ? (
-                <div className="px-6 pt-5">
-                  <div className="rounded-nc border border-border bg-white/[0.02] px-4 py-3 text-xs-plus text-muted-foreground">
-                    Grading cancelled. Any dimensions graded before you stopped are
-                    shown below.
-                  </div>
-                </div>
+                <RunOutcomeNotice
+                  kind="aborted"
+                  message="Grading cancelled. Any dimensions graded before you stopped are shown below."
+                  className="mx-6 mt-5"
+                />
               ) : (
-                <div className="px-6 pt-5">
-                  <div className="rounded-nc border border-destructive/40 bg-destructive/[0.08] px-4 py-3 text-xs-plus text-destructive">
-                    {view.stream.error ?? 'Grading failed.'}
-                  </div>
-                </div>
+                <RunOutcomeNotice
+                  kind="failed"
+                  message={view.stream.error ?? 'Grading failed.'}
+                  className="mx-6 mt-5"
+                />
               ))}
 
             {/* A completed grading that spent nothing is a usage-limit tell, not a
