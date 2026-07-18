@@ -16,7 +16,7 @@ const TRANSPORTS: [value: McpTransport, label: string][] = [
 /** Shared Tailwind classes for the editor's labels and inputs/textareas. */
 const FIELD_LABEL = 'mb-1.5 block text-2xs-plus font-semibold text-muted-foreground';
 const FIELD_INPUT =
-  'w-full rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary';
+  'w-full rounded-nc border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary';
 const FIELD_AREA = `${FIELD_INPUT} font-mono text-xs-plus leading-relaxed`;
 
 /** The transport-aware editor body. stdio shows command/args/env; http+sse show

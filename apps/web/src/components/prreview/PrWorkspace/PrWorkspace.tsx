@@ -98,7 +98,7 @@ export function PrWorkspace({
       {lifecycle != null && tone != null && (
         <div
           role="status"
-          className={`flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-[10px] border px-3.5 py-2 ${tone.border} ${tone.bg}`}
+          className={`flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-nc border px-3.5 py-2 ${tone.border} ${tone.bg}`}
         >
           <StatusDot colorClass={tone.dot} pulse={lifecycle.pulse} glow />
           <span className={`text-xs-plus font-semibold ${tone.text}`}>
@@ -176,7 +176,7 @@ export function PrWorkspace({
         </div>
         {changed.expanded && (
           <div
-            className="overflow-hidden rounded-[10px] border border-border"
+            className="overflow-hidden rounded-nc border border-border"
             style={{ animation: 'nc-rise .16s cubic-bezier(.22,1,.36,1)' }}
           >
             {changed.loading ? (

@@ -14,7 +14,7 @@ import { type NavSection,useNavSidebarSections } from './NavSidebar.hooks';
 import type { NavSidebarProps } from './NavSidebar.types';
 
 const NAV_BASE =
-  'flex items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left transition-colors cursor-pointer';
+  'flex items-center gap-2.5 rounded-nc px-2.5 py-2 text-left transition-colors cursor-pointer';
 
 function SidebarCollapseToggle({
   collapsed,

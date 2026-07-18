@@ -89,7 +89,7 @@ export function BoardHeader({
           <Toolbar label="Board actions" className="ml-auto">
             <div
               title="Max parallel runs"
-              className="flex shrink-0 items-center gap-2.5 rounded-[9px] border border-border bg-white/[0.02] px-3 py-1.5"
+              className="flex shrink-0 items-center gap-2.5 rounded-nc border border-border bg-white/[0.02] px-3 py-1.5"
             >
               <AgentsIcon size={15} className="text-muted-foreground" />
               <input
@@ -137,7 +137,7 @@ export function BoardHeader({
               onClick={bgPanel.show}
               title="Customize the board background"
               aria-label="Board background settings"
-              className="flex items-center justify-center rounded-[9px] border border-border bg-white/[0.02] p-2 text-foreground transition-colors hover:border-white/20"
+              className="flex items-center justify-center rounded-nc border border-border bg-white/[0.02] p-2 text-foreground transition-colors hover:border-white/20"
             >
               <ImageIcon size={15} className="text-muted-foreground" />
             </button>
@@ -158,7 +158,7 @@ export function BoardHeader({
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <div className="nc-focus-ring-host flex min-w-[220px] max-w-[420px] flex-1 items-center gap-2.5 rounded-[9px] border border-border bg-white/[0.02] px-3 py-2">
+          <div className="nc-focus-ring-host flex min-w-[220px] max-w-[420px] flex-1 items-center gap-2.5 rounded-nc border border-border bg-white/[0.02] px-3 py-2">
             <SearchIcon size={15} className="text-muted-foreground" />
             <input
               id={BOARD_SEARCH_INPUT_ID}

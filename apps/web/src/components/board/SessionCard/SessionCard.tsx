@@ -258,13 +258,13 @@ export function SessionCard({ task, kindEditable }: SessionCardProps) {
     onChangeMaxBudget !== undefined;
 
   return (
-    <section className="rounded-[10px] border border-border bg-white/[0.02]">
+    <section className="rounded-nc border border-border bg-white/[0.02]">
       <button
         type="button"
         aria-expanded={open}
         aria-controls="session-card-body"
         onClick={toggle}
-        className="flex w-full items-center gap-2 rounded-[10px] px-3 py-2.5 text-left transition-colors hover:bg-white/[0.03] focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex w-full items-center gap-2 rounded-nc px-3 py-2.5 text-left transition-colors hover:bg-white/[0.03] focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
         <BoltIcon size={13} className="shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate font-mono text-2xs text-muted-foreground">
@@ -321,13 +321,13 @@ export function HistoryCard({ task, canResume }: HistoryCardProps) {
   const onRename = actions.onRenameSession!;
   const onTag = actions.onTagSession!;
   return (
-    <section className="rounded-[10px] border border-border bg-white/[0.02]">
+    <section className="rounded-nc border border-border bg-white/[0.02]">
       <button
         type="button"
         aria-expanded={open}
         aria-controls="history-card-body"
         onClick={toggle}
-        className="flex w-full items-center gap-2 rounded-[10px] px-3 py-2.5 text-left transition-colors hover:bg-white/[0.03] focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex w-full items-center gap-2 rounded-nc px-3 py-2.5 text-left transition-colors hover:bg-white/[0.03] focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
         <HistoryIcon size={13} className="shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate font-mono text-2xs text-muted-foreground">

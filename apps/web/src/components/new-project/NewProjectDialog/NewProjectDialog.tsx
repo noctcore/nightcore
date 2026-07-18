@@ -16,7 +16,7 @@ import type { NewProjectDialogProps } from './NewProjectDialog.types';
 const FIELD_LABEL =
   'mb-1.5 block text-2xs-plus font-semibold text-muted-foreground';
 const FIELD_INPUT =
-  'w-full rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary';
+  'w-full rounded-nc border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary';
 
 /** Text colour class per git-detection state, applied to the status row. */
 const GIT_ROW: Record<'valid' | 'invalid' | 'checking', string> = {
@@ -86,7 +86,7 @@ export function NewProjectDialog({
               type="button"
               aria-label="Choose repository folder"
               onClick={() => void onChooseFolder()}
-              className={`flex w-full items-center gap-2.5 rounded-[10px] border border-dashed bg-white/[0.02] px-3 py-2.5 text-left ${folder !== null ? 'border-border' : 'border-primary/50'}`}
+              className={`flex w-full items-center gap-2.5 rounded-nc border border-dashed bg-white/[0.02] px-3 py-2.5 text-left ${folder !== null ? 'border-border' : 'border-primary/50'}`}
             >
               <FolderIcon size={16} className="text-muted-foreground" />
               <span

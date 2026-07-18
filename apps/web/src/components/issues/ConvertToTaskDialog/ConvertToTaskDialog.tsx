@@ -69,7 +69,7 @@ export function ConvertToTaskDialog({
         </p>
       </div>
 
-      <div className="mx-5 mb-3 flex flex-col gap-2 rounded-[10px] border border-border bg-white/[0.02] px-3.5 py-3">
+      <div className="mx-5 mb-3 flex flex-col gap-2 rounded-nc border border-border bg-white/[0.02] px-3.5 py-3">
         <Row
           label="Title"
           value={
@@ -96,7 +96,7 @@ export function ConvertToTaskDialog({
       </div>
 
       {error !== null && (
-        <div className="mx-5 mb-3 flex items-center gap-2 rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-xs-plus text-destructive">
+        <div className="mx-5 mb-3 flex items-center gap-2 rounded-nc border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-xs-plus text-destructive">
           <AlertIcon size={14} />
           {error}
         </div>

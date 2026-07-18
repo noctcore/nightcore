@@ -31,7 +31,7 @@ export function KindPicker({ value, onChange, compact = false, disabled = false 
             title={option.enabled ? option.hint : 'Coming soon'}
             onKeyDown={rovingKeydown}
             onClick={() => onChange(option.kind)}
-            className={`flex flex-col gap-1 rounded-[10px] border px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed ${
+            className={`flex flex-col gap-1 rounded-nc border px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed ${
               selected
                 ? 'border-primary/60 bg-primary/[0.1]'
                 : option.enabled

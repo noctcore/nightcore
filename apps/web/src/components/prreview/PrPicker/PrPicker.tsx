@@ -74,7 +74,7 @@ export function PrPicker({
 
       {/* Filter box — also the manual PR-number entry (BranchPicker pattern). */}
       <div
-        className={`nc-focus-ring-host flex items-center gap-2 rounded-[10px] border bg-black/20 px-3 transition-colors focus-within:border-primary ${
+        className={`nc-focus-ring-host flex items-center gap-2 rounded-nc border bg-black/20 px-3 transition-colors focus-within:border-primary ${
           disabled ? 'border-border opacity-60' : 'border-border'
         }`}
       >
@@ -114,7 +114,7 @@ export function PrPicker({
       {error !== null && (
         <div
           role="alert"
-          className="rounded-[10px] border border-destructive/50 bg-destructive/[0.06] px-3 py-2 text-xs-plus text-destructive"
+          className="rounded-nc border border-destructive/50 bg-destructive/[0.06] px-3 py-2 text-xs-plus text-destructive"
         >
           {error}
           <span className="block text-2xs-plus text-muted-foreground">

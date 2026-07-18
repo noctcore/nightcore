@@ -79,7 +79,7 @@ export function CouncilStartPanel({ onStart, disabled = false }: CouncilStartPan
           }}
           rows={3}
           placeholder="What should the council debate? e.g. “Compare two migration strategies for the worktree store.”"
-          className="w-full resize-none rounded-[10px] border border-border bg-black/20 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary disabled:opacity-50"
+          className="w-full resize-none rounded-nc border border-border bg-black/20 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary disabled:opacity-50"
         />
         <div className="flex items-center gap-3">
           <Button type="submit" disabled={!ready}>

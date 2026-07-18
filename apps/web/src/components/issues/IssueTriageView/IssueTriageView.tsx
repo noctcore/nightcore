@@ -68,8 +68,8 @@ export function IssueTriageView(props: IssueTriageViewProps) {
                   <div
                     className={
                       view.failedIsCancel
-                        ? 'rounded-[10px] border border-border bg-white/[0.02] px-4 py-3 text-xs-plus text-muted-foreground'
-                        : 'rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-4 py-3 text-xs-plus text-destructive'
+                        ? 'rounded-nc border border-border bg-white/[0.02] px-4 py-3 text-xs-plus text-muted-foreground'
+                        : 'rounded-nc border border-destructive/40 bg-destructive/[0.08] px-4 py-3 text-xs-plus text-destructive'
                     }
                   >
                     {view.failedIsCancel

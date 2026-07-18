@@ -38,7 +38,7 @@ export function FixRunCard({
     return (
       <div
         role="status"
-        className="flex items-center gap-3 rounded-[10px] border border-border bg-white/[0.02] px-4 py-3"
+        className="flex items-center gap-3 rounded-nc border border-border bg-white/[0.02] px-4 py-3"
       >
         <Spinner size={14} />
         <span className="text-xs-plus text-muted-foreground">
@@ -60,7 +60,7 @@ export function FixRunCard({
     return (
       <div
         role="status"
-        className="flex items-center gap-3 rounded-[10px] border border-border bg-white/[0.02] px-4 py-3"
+        className="flex items-center gap-3 rounded-nc border border-border bg-white/[0.02] px-4 py-3"
       >
         <Spinner size={14} />
         <span className="text-xs-plus text-muted-foreground">
@@ -75,7 +75,7 @@ export function FixRunCard({
     return (
       <div
         role="status"
-        className="flex flex-col gap-3 rounded-[10px] border border-primary/40 bg-primary/[0.06] px-4 py-3"
+        className="flex flex-col gap-3 rounded-nc border border-primary/40 bg-primary/[0.06] px-4 py-3"
       >
         <span className="sr-only">{`PR #${fix.prNumber} fix awaiting push.`}</span>
         <div className="flex items-center gap-2">
@@ -117,7 +117,7 @@ export function FixRunCard({
     return (
       <div
         role="status"
-        className="flex items-center gap-3 rounded-[10px] border border-success/40 bg-success/[0.06] px-4 py-3"
+        className="flex items-center gap-3 rounded-nc border border-success/40 bg-success/[0.06] px-4 py-3"
       >
         <CheckIcon size={14} className="shrink-0 text-success" />
         <span className="text-xs-plus text-muted-foreground">
@@ -137,7 +137,7 @@ export function FixRunCard({
     return (
       <div
         role="alert"
-        className="flex items-start gap-3 rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-4 py-3"
+        className="flex items-start gap-3 rounded-nc border border-destructive/40 bg-destructive/[0.08] px-4 py-3"
       >
         <span className="sr-only">{`PR #${fix.prNumber}: `}</span>
         <AlertIcon size={14} className="mt-0.5 shrink-0 text-destructive" />

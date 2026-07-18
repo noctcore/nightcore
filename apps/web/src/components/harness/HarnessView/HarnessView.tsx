@@ -122,7 +122,7 @@ function RunningScreen({ view }: { view: HarnessViewModel }) {
       </div>
 
       {view.peekCategory !== null && (
-        <div className="flex max-h-[60vh] min-h-0 flex-col overflow-hidden rounded-[10px] border border-border bg-white/[0.015]">
+        <div className="flex max-h-[60vh] min-h-0 flex-col overflow-hidden rounded-nc border border-border bg-white/[0.015]">
           <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
             <span className="font-mono text-2xs uppercase tracking-[0.1em] text-muted-foreground">
               {view.peekLabel}

@@ -65,7 +65,7 @@ export function SessionComposer({ taskId, liveSessionIds }: SessionComposerProps
         }}
         rows={2}
         placeholder="Send a message into the running session…"
-        className="w-full resize-none rounded-[10px] border border-border bg-black/20 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary"
+        className="w-full resize-none rounded-nc border border-border bg-black/20 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary"
       />
 
       <div className="mt-2 flex items-center gap-2">

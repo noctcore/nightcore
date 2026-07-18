@@ -183,7 +183,7 @@ export function SettingsView({
                 key={item.page}
                 type="button"
                 onClick={() => setPage(item.page)}
-                className={`flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left transition-colors ${
+                className={`flex w-full items-center gap-2.5 rounded-nc px-2.5 py-2 text-left transition-colors ${
                   page === item.page
                     ? 'bg-primary/[0.12] font-semibold text-primary'
                     : 'text-muted-foreground hover:bg-white/[0.03] hover:text-foreground'

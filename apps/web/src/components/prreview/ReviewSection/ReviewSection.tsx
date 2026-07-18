@@ -103,7 +103,7 @@ export function ReviewSection({
 
       {/* Past-run affordance: the displayed stream is a history selection. */}
       {history.viewingPastRun && (
-        <div className="flex items-center gap-3 rounded-[10px] border border-primary/40 bg-primary/[0.06] px-4 py-2 text-xs-plus text-muted-foreground">
+        <div className="flex items-center gap-3 rounded-nc border border-primary/40 bg-primary/[0.06] px-4 py-2 text-xs-plus text-muted-foreground">
           <HistoryIcon size={14} className="shrink-0 text-primary" />
           Viewing a past review run.
           <button
@@ -121,7 +121,7 @@ export function ReviewSection({
           {configure.startError !== null && (
             <p
               role="alert"
-              className="rounded-[10px] border border-destructive/40 bg-destructive/[0.1] px-4 py-2 text-xs-plus text-destructive"
+              className="rounded-nc border border-destructive/40 bg-destructive/[0.1] px-4 py-2 text-xs-plus text-destructive"
             >
               {configure.startError}
             </p>
@@ -240,12 +240,12 @@ export function ReviewSection({
         <div className="flex flex-col gap-3">
           {stream.status === 'failed' &&
             (stream.failureReason === 'aborted' ? (
-              <div className="rounded-[10px] border border-border bg-white/[0.02] px-4 py-3 text-xs-plus text-muted-foreground">
+              <div className="rounded-nc border border-border bg-white/[0.02] px-4 py-3 text-xs-plus text-muted-foreground">
                 Review cancelled. Any findings gathered before you stopped are
                 shown below.
               </div>
             ) : (
-              <div className="rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-4 py-3 text-xs-plus text-destructive">
+              <div className="rounded-nc border border-destructive/40 bg-destructive/[0.08] px-4 py-3 text-xs-plus text-destructive">
                 {stream.error ?? 'Review failed.'}
               </div>
             ))}

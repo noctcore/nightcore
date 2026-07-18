@@ -176,7 +176,7 @@ export function PolicyEditor(props: PolicyEditorProps) {
   return (
     <section
       aria-label="Runtime policy"
-      className="flex flex-col gap-4 rounded-[10px] border border-border bg-white/[0.015] p-5"
+      className="flex flex-col gap-4 rounded-nc border border-border bg-white/[0.015] p-5"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-1">

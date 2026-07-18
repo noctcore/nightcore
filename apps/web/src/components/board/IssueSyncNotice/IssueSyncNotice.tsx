@@ -13,7 +13,7 @@ export function IssueSyncNotice({ task }: IssueSyncNoticeProps) {
   const { visible, dismiss } = useIssueSyncNotice(task.issueSyncError);
   if (!visible) return null;
   return (
-    <div className="flex items-start gap-2 rounded-[10px] border border-amber-500/40 bg-amber-500/[0.1] px-3 py-2.5">
+    <div className="flex items-start gap-2 rounded-nc border border-amber-500/40 bg-amber-500/[0.1] px-3 py-2.5">
       <AlertIcon size={15} className="mt-0.5 shrink-0 text-amber-300" />
       <p className="flex-1 text-xs-plus leading-snug text-amber-100/90">{task.issueSyncError}</p>
       <IconButton

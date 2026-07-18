@@ -125,7 +125,7 @@ function CleanEmptyState({ message }: { message: string }) {
 function AllTriagedBanner() {
   return (
     <div
-      className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-[10px] border border-success/25 bg-success/[0.06] px-4 py-3"
+      className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-nc border border-success/25 bg-success/[0.06] px-4 py-3"
       style={{ animation: 'nc-rise .2s cubic-bezier(.22,1,.36,1)' }}
     >
       <CheckIcon size={15} className="shrink-0 text-success" />

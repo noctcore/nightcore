@@ -58,7 +58,7 @@ export function ProjectStep({ props, view }: ProjectStepProps) {
             <input
               value={view.projectName}
               onChange={(event) => view.setProjectName(event.target.value)}
-              className="w-full rounded-[9px] border border-border bg-black/25 px-3 py-2.5 text-xs-plus2 text-foreground outline-none focus:border-primary"
+              className="w-full rounded-nc border border-border bg-black/25 px-3 py-2.5 text-xs-plus2 text-foreground outline-none focus:border-primary"
               placeholder="my-project"
             />
           </label>

@@ -90,7 +90,7 @@ export function ProviderConfigPanel({
             <ProviderConfigSkeleton />
           </div>
         ) : error !== null || snapshot === null ? (
-          <div className="flex flex-col items-start gap-2.5 rounded-[10px] border border-destructive/40 bg-destructive/[0.1] p-3.5">
+          <div className="flex flex-col items-start gap-2.5 rounded-nc border border-destructive/40 bg-destructive/[0.1] p-3.5">
             <p className="text-xs-plus2 text-foreground">
               {error ?? "Couldn't read the provider configuration."}
             </p>
@@ -163,7 +163,7 @@ export function ProviderConfigPanel({
               </ul>
             </Section>
 
-            <section className="rounded-[10px] border border-border bg-white/[0.02]">
+            <section className="rounded-nc border border-border bg-white/[0.02]">
               <div className="flex items-center gap-2 border-b border-border px-3.5 py-2.5">
                 <span className="text-muted-foreground">
                   <TerminalIcon size={14} />

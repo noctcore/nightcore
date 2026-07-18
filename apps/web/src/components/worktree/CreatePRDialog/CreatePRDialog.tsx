@@ -14,7 +14,7 @@ import { useCreatePrDialog } from './CreatePRDialog.hooks';
 import type { CreatePRDialogProps } from './CreatePRDialog.types';
 
 const INPUT_CLASS =
-  'w-full rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary';
+  'w-full rounded-nc border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary';
 const LABEL_CLASS = 'font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground';
 
 /** The Create PR dialog — the human gate before anything leaves the machine:

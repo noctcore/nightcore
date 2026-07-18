@@ -32,7 +32,7 @@ function RailProjectButton({
         aria-label={project.name}
         aria-current={active ? 'true' : undefined}
         onClick={onPick}
-        className={`flex h-10 w-10 items-center justify-center rounded-[10px] transition-colors ${
+        className={`flex h-10 w-10 items-center justify-center rounded-nc transition-colors ${
           active
             ? 'bg-primary/15 ring-2 ring-primary/50'
             : 'hover:bg-white/[0.06]'

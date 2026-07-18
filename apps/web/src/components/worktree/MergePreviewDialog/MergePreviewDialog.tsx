@@ -91,7 +91,7 @@ export function MergePreviewDialog({
         ) : (
           <>
             <div
-              className={`flex items-center gap-2 rounded-[10px] border px-3 py-2 text-xs-plus2 font-semibold ${banner.className}`}
+              className={`flex items-center gap-2 rounded-nc border px-3 py-2 text-xs-plus2 font-semibold ${banner.className}`}
             >
               <banner.Icon size={14} />
               <span>{banner.label}</span>
@@ -105,7 +105,7 @@ export function MergePreviewDialog({
             </p>
 
             {hazard !== null && (
-              <div className="flex items-start gap-2 rounded-[10px] border border-warning/40 bg-warning/[0.12] px-3 py-2 text-xs-flat leading-snug text-warning">
+              <div className="flex items-start gap-2 rounded-nc border border-warning/40 bg-warning/[0.12] px-3 py-2 text-xs-flat leading-snug text-warning">
                 <AlertIcon size={14} className="mt-0.5 shrink-0" />
                 <span>{hazard}</span>
               </div>
@@ -120,7 +120,7 @@ export function MergePreviewDialog({
 
             {shownPreview.status === 'conflicts' && (
               <div className="flex flex-col gap-1.5">
-                <ul className="flex flex-col gap-0.5 rounded-[10px] border border-destructive/30 bg-destructive/[0.08] px-3 py-2">
+                <ul className="flex flex-col gap-0.5 rounded-nc border border-destructive/30 bg-destructive/[0.08] px-3 py-2">
                   {shownPreview.conflictFiles.map((path) => (
                     <li key={path} className="truncate font-mono text-xs-flat text-destructive">
                       {path}

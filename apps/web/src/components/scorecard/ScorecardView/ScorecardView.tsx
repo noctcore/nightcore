@@ -148,14 +148,14 @@ export function ScorecardView(props: ScorecardViewProps) {
             {view.stream.status === 'failed' &&
               (view.stream.failureReason === 'aborted' ? (
                 <div className="px-6 pt-5">
-                  <div className="rounded-[10px] border border-border bg-white/[0.02] px-4 py-3 text-xs-plus text-muted-foreground">
+                  <div className="rounded-nc border border-border bg-white/[0.02] px-4 py-3 text-xs-plus text-muted-foreground">
                     Grading cancelled. Any dimensions graded before you stopped are
                     shown below.
                   </div>
                 </div>
               ) : (
                 <div className="px-6 pt-5">
-                  <div className="rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-4 py-3 text-xs-plus text-destructive">
+                  <div className="rounded-nc border border-destructive/40 bg-destructive/[0.08] px-4 py-3 text-xs-plus text-destructive">
                     {view.stream.error ?? 'Grading failed.'}
                   </div>
                 </div>

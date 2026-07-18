@@ -38,7 +38,7 @@ export function ProjectCard({ project, onOpen, onEdit, onDelete }: ProjectCardPr
           onClick={() => onOpen(project.id)}
           className="group/path-trigger flex min-w-0 flex-1 items-start gap-3 text-left"
         >
-          <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px] border border-border bg-white/[0.03]">
+          <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-nc border border-border bg-white/[0.03]">
             <ProjectIcon {...iconProps} size={18} />
           </span>
           <span className="min-w-0 flex-1">
@@ -88,7 +88,7 @@ export function ProjectCard({ project, onOpen, onEdit, onDelete }: ProjectCardPr
         {project.stats.map((s) => (
           <div
             key={s.label}
-            className="flex-1 rounded-[9px] bg-white/[0.025] px-1 py-2 text-center"
+            className="flex-1 rounded-nc bg-white/[0.025] px-1 py-2 text-center"
           >
             <div
               className={`font-mono text-base font-semibold tabular-nums ${STAT_TONE[s.tone]}`}

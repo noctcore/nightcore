@@ -23,7 +23,7 @@ import { useNewTaskForm } from './NewTaskForm.hooks';
 import type { NewTaskFormProps } from './NewTaskForm.types';
 
 const INPUT_CLASS =
-  'w-full rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary';
+  'w-full rounded-nc border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary';
 const LABEL_CLASS =
   'font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground';
 
@@ -219,7 +219,7 @@ export function NewTaskForm({ open, planGateDefault, onCreate, onClose }: NewTas
           {governanceWarning !== null && (
             <div
               role="alert"
-              className="flex items-start gap-2 rounded-[10px] border border-warning/40 bg-warning/[0.08] px-3 py-2.5"
+              className="flex items-start gap-2 rounded-nc border border-warning/40 bg-warning/[0.08] px-3 py-2.5"
             >
               <AlertIcon size={15} className="mt-0.5 shrink-0 text-warning" />
               <p className="flex-1 text-xs-plus leading-snug text-warning">

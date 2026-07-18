@@ -42,7 +42,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 function PrAnalysisCard({ pr }: { pr: NonNullable<IssueVerdictView['prAnalysis']> }) {
   const rec = PR_RECOMMENDATION_META[pr.recommendation];
   return (
-    <div className="flex flex-col gap-2 rounded-[10px] border border-primary/30 bg-primary/[0.05] px-3.5 py-3">
+    <div className="flex flex-col gap-2 rounded-nc border border-primary/30 bg-primary/[0.05] px-3.5 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <GithubIcon size={13} className="text-primary/90" />
         <span className="text-xs-plus font-semibold text-foreground">{rec.label}</span>
@@ -140,7 +140,7 @@ export function ResultsPanel({
 
       {result.proposedPlan !== null && result.proposedPlan.trim().length > 0 && (
         <Section title="Proposed plan">
-          <div className="rounded-[10px] border border-border bg-white/[0.02] px-3.5 py-2.5">
+          <div className="rounded-nc border border-border bg-white/[0.02] px-3.5 py-2.5">
             <Markdown>{result.proposedPlan}</Markdown>
           </div>
         </Section>
@@ -175,7 +175,7 @@ export function ResultsPanel({
             href={stream.postedCommentUrl ?? '#'}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-[9px] border border-success/40 bg-success/[0.08] px-3 py-1.5 text-xs-plus text-success"
+            className="inline-flex items-center gap-1.5 rounded-nc border border-success/40 bg-success/[0.08] px-3 py-1.5 text-xs-plus text-success"
           >
             <CheckIcon size={14} /> Comment posted
             <ExternalLinkIcon size={12} />

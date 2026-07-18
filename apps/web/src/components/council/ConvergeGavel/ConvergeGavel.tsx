@@ -87,7 +87,7 @@ export function ConvergeGavel({
                 return (
                   <label
                     key={position.seatId}
-                    className={`flex cursor-pointer flex-col gap-1 rounded-lg border px-3 py-2 transition-colors ${
+                    className={`flex cursor-pointer flex-col gap-1 rounded-nc border px-3 py-2 transition-colors ${
                       selected
                         ? 'border-primary bg-primary/[0.06]'
                         : 'border-border hover:border-primary/50'
@@ -139,7 +139,7 @@ export function ConvergeGavel({
               }}
               rows={2}
               placeholder="Required to enter your own ruling; optional context when you accept or reject."
-              className="w-full resize-none rounded-[10px] border border-border bg-black/20 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary disabled:opacity-50"
+              className="w-full resize-none rounded-nc border border-border bg-black/20 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary disabled:opacity-50"
             />
           </div>
 

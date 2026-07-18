@@ -142,7 +142,7 @@ export function IssueList({
             onChange={(e) => onFilterChange(e.target.value)}
             aria-label="Filter issues by label or text"
             placeholder="Filter issues…"
-            className="w-full rounded-[9px] border border-border bg-white/[0.02] py-1.5 pl-8 pr-2.5 text-xs-plus text-foreground placeholder:text-muted-foreground/70 focus:border-primary/60 focus:outline-none"
+            className="w-full rounded-nc border border-border bg-white/[0.02] py-1.5 pl-8 pr-2.5 text-xs-plus text-foreground placeholder:text-muted-foreground/70 focus:border-primary/60 focus:outline-none"
           />
         </div>
         <button
@@ -150,7 +150,7 @@ export function IssueList({
           onClick={onRetry}
           aria-label="Refresh issues"
           title="Refresh issues"
-          className="rounded-[9px] border border-border bg-white/[0.02] p-1.5 text-muted-foreground transition-colors hover:text-foreground"
+          className="rounded-nc border border-border bg-white/[0.02] p-1.5 text-muted-foreground transition-colors hover:text-foreground"
         >
           <RefreshIcon size={14} />
         </button>
@@ -160,7 +160,7 @@ export function IssueList({
         {loading ? (
           <div className="flex flex-col gap-2 p-4">
             {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="h-14 w-full rounded-[10px]" />
+              <Skeleton key={i} className="h-14 w-full rounded-nc" />
             ))}
           </div>
         ) : error !== null ? (
@@ -172,7 +172,7 @@ export function IssueList({
               <button
                 type="button"
                 onClick={onRetry}
-                className="inline-flex items-center gap-1.5 rounded-[9px] border border-border bg-white/[0.03] px-3 py-1.5 text-xs-plus text-foreground transition-colors hover:bg-white/[0.06]"
+                className="inline-flex items-center gap-1.5 rounded-nc border border-border bg-white/[0.03] px-3 py-1.5 text-xs-plus text-foreground transition-colors hover:bg-white/[0.06]"
               >
                 <RefreshIcon size={13} />
                 Retry

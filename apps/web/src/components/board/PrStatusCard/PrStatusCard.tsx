@@ -64,7 +64,7 @@ export function PrStatusCard({
   const prUrl = status?.url ?? task.prUrl ?? null;
 
   return (
-    <section className="rounded-md border border-border bg-white/[0.02] px-3 py-2.5">
+    <section className="rounded-nc border border-border bg-white/[0.02] px-3 py-2.5">
       <div className="flex items-center gap-2">
         {status !== null && state !== null ? (
           <>

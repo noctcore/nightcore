@@ -8,7 +8,7 @@ import {
 import type { PermissionModePickerProps } from './PermissionModePicker.types';
 
 const CHIP =
-  'rounded-[10px] border px-3 py-2.5 text-left text-xs-plus2 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50';
+  'rounded-nc border px-3 py-2.5 text-left text-xs-plus2 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50';
 
 /** A per-task permission-mode picker: Inherit (default) plus the four
  *  UI modes (bypass / auto-accept / ask / plan). A sibling of KindPicker —
