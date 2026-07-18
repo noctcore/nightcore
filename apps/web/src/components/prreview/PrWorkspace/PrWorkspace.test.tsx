@@ -29,9 +29,10 @@ test('the open-on-GitHub button reports the PR url', async () => {
 
 test('frames the description as untrusted, sanitized content', async () => {
   const screen = render(<Selected />);
+  // The threat-model detail moved to the pill's title; only "sanitized" shows.
   await expect
-    .element(screen.getByText(/untrusted contributor content · sanitized/i))
-    .toBeInTheDocument();
+    .element(screen.getByText(/^sanitized$/i))
+    .toHaveAttribute('title', 'Untrusted contributor content · sanitized');
   await expect.element(screen.getByText(/^background$/i)).toBeInTheDocument();
 });
 

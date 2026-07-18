@@ -246,8 +246,13 @@ export function PrWorkspace({
             <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
               Description
             </span>
-            <span className="text-3xs-plus text-muted-foreground/70">
-              untrusted contributor content · sanitized
+            {/* The threat-model detail rides in the title; the visible chrome is
+                a single quiet "sanitized" pill instead of a jargon annotation. */}
+            <span
+              title="Untrusted contributor content · sanitized"
+              className="rounded-full border border-border px-1.5 py-px text-3xs uppercase tracking-wide text-muted-foreground/70"
+            >
+              sanitized
             </span>
           </div>
           {body.trim().length > 0 ? (
