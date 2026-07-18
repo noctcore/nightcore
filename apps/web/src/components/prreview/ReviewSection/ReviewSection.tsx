@@ -10,9 +10,9 @@ import { useId } from 'react';
 import {
   Button,
   CheckIcon,
-  chipClass,
   GithubIcon,
   HistoryIcon,
+  LensChipGrid,
   Menu,
   ModelSelectField,
   MoveIcon,
@@ -43,6 +43,14 @@ import type { ReviewSectionProps } from './ReviewSection.types';
 
 /** The three post-review verdict buttons, in display order. */
 const VERDICTS: ReviewVerdict[] = ['approve', 'request-changes', 'comment'];
+
+/** The lens chip vocabulary for the config grid — stable module identity, fed to
+ *  the shared {@link LensChipGrid} (the row this primitive was hoisted for). */
+const LENS_CHIPS = ALL_LENSES.map((lens) => ({
+  key: lens,
+  label: LENS_META[lens].label,
+  icon: LENS_META[lens].icon,
+}));
 
 export function ReviewSection({
   prNumber,
@@ -127,48 +135,14 @@ export function ReviewSection({
             </p>
           )}
 
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
-                Lenses ({lensCount}/{ALL_LENSES.length})
-              </span>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={config.selectAll}
-                  className="text-2xs font-medium text-muted-foreground hover:text-foreground"
-                >
-                  All
-                </button>
-                <button
-                  type="button"
-                  onClick={config.selectNone}
-                  className="text-2xs font-medium text-muted-foreground hover:text-foreground"
-                >
-                  None
-                </button>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {ALL_LENSES.map((lens) => {
-                const Meta = LENS_META[lens];
-                const Icon = Meta.icon;
-                const on = config.selected.has(lens);
-                return (
-                  <button
-                    key={lens}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => config.toggle(lens)}
-                    className={`inline-flex items-center gap-1.5 ${chipClass(on)}`}
-                  >
-                    <Icon size={13} />
-                    {Meta.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <LensChipGrid
+            heading={`Lenses (${lensCount}/${ALL_LENSES.length})`}
+            chips={LENS_CHIPS}
+            selected={config.selected}
+            onToggle={config.toggle}
+            onSelectAll={config.selectAll}
+            onSelectNone={config.selectNone}
+          />
 
           <ModelSelectField
             value={{
@@ -207,8 +181,8 @@ export function ReviewSection({
             </div>
             <p className="text-xs-flat text-muted-foreground">
               Reviews the PR diff across {lensCount}{' '}
-              {lensCount === 1 ? 'lens' : 'lenses'} — no checkout, read-only ·
-              ~{PROVIDER_LABEL} {config.model ?? 'default'}.
+              {lensCount === 1 ? 'lens' : 'lenses'}. Read-only, no checkout ·{' '}
+              {PROVIDER_LABEL} {config.model ?? 'default'}.
             </p>
           </div>
         </div>
@@ -274,7 +248,11 @@ export function ReviewSection({
               <Button
                 aria-busy={toolbar.bulkConverting}
                 aria-disabled={toolbar.openCount === 0 || toolbar.bulkConverting}
-                onClick={toolbar.onConvertAll}
+                onClick={() => {
+                  if (toolbar.openCount > 0 && !toolbar.bulkConverting) {
+                    toolbar.onConvertAll();
+                  }
+                }}
                 variant="secondary"
                 className={
                   toolbar.openCount === 0 || toolbar.bulkConverting
