@@ -33,6 +33,8 @@ export interface FixDiffState {
   patchLoading: boolean;
   /** Open `path`, or collapse it when it is already open. */
   toggle: (path: string) => void;
+  /** Re-run the changed-file-list fetch (the error-state Retry affordance). */
+  retry: () => void;
 }
 
 /** Own the fix-diff fetch + the per-file expand. The fetchers are injected (the
@@ -49,6 +51,8 @@ export function useFixDiff(
   const [expandedPath, setExpandedPath] = useState<string | null>(null);
   const [patch, setPatch] = useState<string | null>(null);
   const [patchLoading, setPatchLoading] = useState(false);
+  // Bumping the epoch re-runs the list fetch (the error-state Retry).
+  const [epoch, setEpoch] = useState(0);
 
   useEffect(() => {
     let stale = false;
@@ -70,11 +74,13 @@ export function useFixDiff(
     return () => {
       stale = true;
     };
-  }, [fixId, fetchDiff]);
+  }, [fixId, fetchDiff, epoch]);
 
   const toggle = useCallback((path: string) => {
     setExpandedPath((current) => (current === path ? null : path));
   }, []);
+
+  const retry = useCallback(() => setEpoch((n) => n + 1), []);
 
   useEffect(() => {
     if (expandedPath === null) {
@@ -112,5 +118,6 @@ export function useFixDiff(
     patch,
     patchLoading,
     toggle,
+    retry,
   };
 }

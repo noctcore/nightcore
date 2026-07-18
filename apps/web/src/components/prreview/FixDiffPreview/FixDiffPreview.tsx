@@ -4,7 +4,7 @@
  *  prose summary (T10 governed-autonomy gap). Self-fetches from the pr-fix diff
  *  bridge (fetchers injectable for stories/tests); renders a quiet note while
  *  loading, on error, or when there is nothing to show (also the non-Tauri case). */
-import { ChevronRightIcon, CodeBlock, Spinner } from '@/components/ui';
+import { ChevronRightIcon, CodeBlock, RetryIcon, Spinner } from '@/components/ui';
 import { prFixDiff, prFixFileDiff } from '@/lib/bridge';
 
 import { STATUS_LETTER, useFixDiff } from './FixDiffPreview.hooks';
@@ -15,7 +15,7 @@ export function FixDiffPreview({
   fetchDiff = prFixDiff,
   fetchPatch = prFixFileDiff,
 }: FixDiffPreviewProps) {
-  const { loading, error, summary, files, expandedPath, patch, patchLoading, toggle } =
+  const { loading, error, summary, files, expandedPath, patch, patchLoading, toggle, retry } =
     useFixDiff(fixId, fetchDiff, fetchPatch);
 
   if (loading) {
@@ -29,8 +29,15 @@ export function FixDiffPreview({
 
   if (error !== null) {
     return (
-      <div className="rounded-[8px] border border-border bg-black/20 px-3 py-2 text-xs-flat text-muted-foreground">
-        Could not load the fix diff: {error}
+      <div className="flex items-center justify-between gap-3 rounded-[8px] border border-border bg-black/20 px-3 py-2 text-xs-flat text-muted-foreground">
+        <span className="min-w-0 break-words">Could not load the fix diff: {error}</span>
+        <button
+          type="button"
+          onClick={retry}
+          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-0.5 text-2xs-plus font-medium text-muted-foreground transition-colors hover:border-white/20 hover:text-foreground"
+        >
+          <RetryIcon size={12} /> Retry
+        </button>
       </div>
     );
   }
