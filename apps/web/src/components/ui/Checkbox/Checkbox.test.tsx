@@ -25,3 +25,20 @@ test('Space toggles onChange', async () => {
   await userEvent.keyboard(' ');
   expect(onChange).toHaveBeenCalledWith(true);
 });
+
+test('srSuffix widens the accessible name without changing the visible label', async () => {
+  const screen = render(
+    <Checkbox
+      checked={false}
+      onChange={vi.fn()}
+      label="Include in review"
+      srSuffix="Unchecked unwrap in auth.ts"
+    />,
+  );
+  // The accessible name carries the suffix so same-labelled rows are distinct…
+  await expect
+    .element(screen.getByRole('checkbox', { name: 'Include in review Unchecked unwrap in auth.ts' }))
+    .toBeInTheDocument();
+  // …but the visible label text is unchanged (the suffix is sr-only).
+  await expect.element(screen.getByText('Include in review')).toBeVisible();
+});
