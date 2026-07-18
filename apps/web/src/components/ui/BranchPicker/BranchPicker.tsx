@@ -28,7 +28,7 @@ export function BranchPicker({
   return (
     <div className="relative" onBlur={v.onContainerBlur}>
       <div
-        className={`nc-focus-ring-host flex items-center gap-2 rounded-[10px] border bg-black/20 px-3 transition-colors focus-within:border-primary ${
+        className={`nc-focus-ring-host flex items-center gap-2 rounded-nc border bg-black/20 px-3 transition-colors focus-within:border-primary ${
           disabled ? 'border-border opacity-60' : 'border-border'
         }`}
       >
@@ -58,7 +58,7 @@ export function BranchPicker({
           role="listbox"
           id={v.listboxId}
           aria-label={label}
-          className="absolute top-full z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-[10px] border border-border bg-popover p-1 shadow-2xl"
+          className="absolute top-full z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-nc border border-border bg-popover p-1 shadow-2xl"
           style={{ animation: 'nc-rise .14s cubic-bezier(.22,1,.36,1)' }}
         >
           {v.localRows.length > 0 && (

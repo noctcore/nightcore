@@ -6,7 +6,7 @@ import { useEditProjectDialog } from './EditProjectDialog.hooks';
 import type { EditProjectDialogProps } from './EditProjectDialog.types';
 
 const INPUT_CLASS =
-  'w-full rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary';
+  'w-full rounded-nc border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary';
 
 /** Edit a project's display name, Lucide preset, or custom uploaded icon. */
 export function EditProjectDialog(props: EditProjectDialogProps) {

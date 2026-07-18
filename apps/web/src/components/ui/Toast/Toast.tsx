@@ -57,7 +57,7 @@ function ToastStack({ controls }: { controls: ToastControls }) {
             exit="exit"
             onPointerEnter={() => pause(toast.id)}
             onPointerLeave={() => resume(toast.id)}
-            className={`pointer-events-auto flex items-start gap-2 rounded-[10px] border px-3 py-2.5 shadow-2xl backdrop-blur-sm ${TONE_STYLE[toast.tone]}`}
+            className={`pointer-events-auto flex items-start gap-2 rounded-nc border px-3 py-2.5 shadow-2xl backdrop-blur-sm ${TONE_STYLE[toast.tone]}`}
           >
             <ToneIcon tone={toast.tone} />
             <div className="min-w-0 flex-1">

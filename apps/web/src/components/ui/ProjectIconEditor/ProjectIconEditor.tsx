@@ -23,7 +23,7 @@ export function ProjectIconEditor({
     <div className="flex flex-col gap-2">
       <span className="text-xs-plus font-medium text-muted-foreground">{label}</span>
       <div className="flex items-center gap-3">
-        <div className="flex h-12 w-12 items-center justify-center rounded-[10px] border border-border bg-white/[0.03]">
+        <div className="flex h-12 w-12 items-center justify-center rounded-nc border border-border bg-white/[0.03]">
           <ProjectIcon
             icon={hasCustomImage ? null : icon}
             imageUrl={hasCustomImage ? imageUrl : null}

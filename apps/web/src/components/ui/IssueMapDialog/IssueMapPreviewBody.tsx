@@ -68,7 +68,7 @@ export function IssueMapPreviewBody({
       {/* The full parent body — rendered exactly as it will post. */}
       <div className="flex flex-col gap-1.5">
         <span className={LABEL_CLASS}>Parent issue</span>
-        <div className="max-h-[34vh] overflow-y-auto rounded-[10px] border border-border bg-black/20 px-3.5 py-3">
+        <div className="max-h-[34vh] overflow-y-auto rounded-nc border border-border bg-black/20 px-3.5 py-3">
           <Markdown>{preview.parentBody}</Markdown>
         </div>
       </div>
@@ -78,7 +78,7 @@ export function IssueMapPreviewBody({
         <span className={LABEL_CLASS}>
           Sub-issues ({preview.subIssues.length})
         </span>
-        <ul className="max-h-[28vh] divide-y divide-border overflow-y-auto rounded-[10px] border border-border bg-black/10">
+        <ul className="max-h-[28vh] divide-y divide-border overflow-y-auto rounded-nc border border-border bg-black/10">
           {preview.subIssues.map((sub, i) => (
             <li
               key={`${sub.title}-${i}`}
@@ -96,7 +96,7 @@ export function IssueMapPreviewBody({
       </div>
 
       {supersedes !== null && (
-        <div className="flex flex-col gap-1.5 rounded-[10px] border border-border bg-white/[0.02] px-3 py-2.5">
+        <div className="flex flex-col gap-1.5 rounded-nc border border-border bg-white/[0.02] px-3 py-2.5">
           <div className="flex items-center gap-1.5 text-xs-plus text-muted-foreground">
             <span>Supersedes</span>
             <a

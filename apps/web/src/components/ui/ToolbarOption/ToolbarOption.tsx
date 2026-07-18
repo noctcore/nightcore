@@ -24,7 +24,7 @@ export function ToolbarOption({
   return (
     <div ref={rootRef} className={`relative inline-flex ${className ?? ''}`}>
       <div
-        className={`inline-flex items-stretch overflow-hidden rounded-[9px] border text-xs-plus font-semibold text-foreground transition-colors ${
+        className={`inline-flex items-stretch overflow-hidden rounded-nc border text-xs-plus font-semibold text-foreground transition-colors ${
           on
             ? 'border-primary/55 bg-primary/[0.12]'
             : 'border-border bg-white/[0.02] hover:border-white/20'
@@ -56,7 +56,7 @@ export function ToolbarOption({
         <div
           role="group"
           aria-label={resolvedSettingsLabel}
-          className="absolute right-0 top-full z-20 mt-1.5 w-72 rounded-[10px] border border-border bg-popover p-3 shadow-2xl"
+          className="absolute right-0 top-full z-20 mt-1.5 w-72 rounded-nc border border-border bg-popover p-3 shadow-2xl"
           style={{ animation: 'nc-rise .14s cubic-bezier(.22,1,.36,1)' }}
         >
           {settings}

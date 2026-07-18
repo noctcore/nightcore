@@ -5,7 +5,7 @@ import type { CodeBlockProps } from './CodeBlock.types';
 // `[&_pre]:!bg-transparent` overrides Shiki's inline background so our container
 // surface shows through; the margin reset drops the UA `<pre>` margin.
 const CONTAINER =
-  'rounded-[10px] border border-border bg-white/[0.02] overflow-x-auto text-xs-plus leading-relaxed font-mono p-3 [&_pre]:!m-0 [&_pre]:!bg-transparent [&_code]:!bg-transparent';
+  'rounded-nc border border-border bg-white/[0.02] overflow-x-auto text-xs-plus leading-relaxed font-mono p-3 [&_pre]:!m-0 [&_pre]:!bg-transparent [&_code]:!bg-transparent';
 
 /**
  * Shiki-highlighted code in the app's dark theme. The lazy singleton highlighter

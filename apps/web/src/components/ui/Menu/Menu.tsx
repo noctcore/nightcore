@@ -36,7 +36,7 @@ export function Menu({ trigger, label, items, align = 'right' }: MenuProps) {
             animate="animate"
             exit="exit"
             style={{ transformOrigin: align === 'right' ? 'top right' : 'top left' }}
-            className={`absolute top-full z-20 mt-1 min-w-[160px] overflow-hidden rounded-[10px] border border-border bg-popover py-1 shadow-2xl ${
+            className={`absolute top-full z-20 mt-1 min-w-[160px] overflow-hidden rounded-nc border border-border bg-popover py-1 shadow-2xl ${
               align === 'right' ? 'right-0' : 'left-0'
             }`}
           >

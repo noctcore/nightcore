@@ -26,7 +26,7 @@ function tierBadgeClass(tier: string): string {
 
 /** Class string for an effort chip in its selected/idle state. */
 function effortChipClass(selected: boolean): string {
-  return `rounded-[9px] border px-2.5 py-1.5 text-xs-flat font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+  return `rounded-nc border px-2.5 py-1.5 text-xs-flat font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
     selected
       ? 'border-primary/60 bg-primary/[0.1] text-foreground'
       : 'border-border bg-white/[0.02] text-muted-foreground hover:border-white/20'
@@ -196,7 +196,7 @@ export function CatalogStatus() {
     <div
       role="status"
       aria-label="Loading models"
-      className="flex items-center gap-2 rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-xs-plus text-muted-foreground"
+      className="flex items-center gap-2 rounded-nc border border-border bg-black/20 px-3 py-2.5 text-xs-plus text-muted-foreground"
     >
       <RefreshIcon size={13} className="animate-spin text-muted-foreground" aria-hidden />
       Loading models…
@@ -207,7 +207,7 @@ export function CatalogStatus() {
 /** The soft error + retry shown when the whole catalog read failed. */
 export function CatalogError({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div className="flex items-center gap-2 rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-3 py-2.5 text-xs-plus text-foreground">
+    <div className="flex items-center gap-2 rounded-nc border border-destructive/40 bg-destructive/[0.08] px-3 py-2.5 text-xs-plus text-foreground">
       <span className="truncate text-muted-foreground">{message}</span>
       {onRetry !== undefined && (
         <button

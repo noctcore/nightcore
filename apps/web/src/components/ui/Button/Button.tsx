@@ -53,7 +53,7 @@ export function Button({
       // off while inert so a disabled/busy button never lifts or scales.
       whileHover={inert ? undefined : { y: -1 }}
       whileTap={inert ? undefined : { scale: 0.97 }}
-      className={`inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] px-4 py-1.5 text-sm font-semibold transition-[filter,background,border-color] disabled:cursor-not-allowed disabled:opacity-40 ${VARIANTS[variant]} ${className ?? ''}`}
+      className={`inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-nc px-4 py-1.5 text-sm font-semibold transition-[filter,background,border-color] disabled:cursor-not-allowed disabled:opacity-40 ${VARIANTS[variant]} ${className ?? ''}`}
       {...rest}
     >
       {busy && <Spinner size={14} />}

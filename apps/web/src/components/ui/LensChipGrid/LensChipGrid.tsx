@@ -14,7 +14,7 @@ import type {
 } from './LensChipGrid.types';
 
 const CHIP =
-  'rounded-[10px] border px-3 py-1.5 text-xs-plus font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50';
+  'rounded-nc border px-3 py-1.5 text-xs-plus font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50';
 
 /** Lens chip classes for the selected/unselected states. */
 export function chipClass(selected: boolean): string {

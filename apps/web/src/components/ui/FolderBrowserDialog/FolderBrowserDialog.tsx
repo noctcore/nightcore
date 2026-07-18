@@ -212,7 +212,7 @@ export function FolderBrowserDialog({
         />
 
         <div className="flex items-center gap-2">
-          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-[9px] border border-border bg-black/20 px-3 focus-within:border-primary">
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-nc border border-border bg-black/20 px-3 focus-within:border-primary">
             <SearchIcon size={14} className="shrink-0 text-muted-foreground" aria-hidden />
             <input
               data-folder-search
@@ -238,7 +238,7 @@ export function FolderBrowserDialog({
           />
         )}
 
-        <div className="scrollbar-styled min-h-[240px] flex-1 overflow-y-auto rounded-[10px] border border-border">
+        <div className="scrollbar-styled min-h-[240px] flex-1 overflow-y-auto rounded-nc border border-border">
           {v.loading ? (
             <div className="flex h-full items-center justify-center gap-2 py-8 text-xs-flat text-muted-foreground">
               <Spinner size={14} />

@@ -75,7 +75,7 @@ export function RunProgress({
         </span>
       </div>
 
-      <div className="overflow-hidden rounded-[10px] border border-border bg-white/[0.015]">
+      <div className="overflow-hidden rounded-nc border border-border bg-white/[0.015]">
         {/* Header: overall bar + live readout. */}
         <div className="flex items-center gap-4 border-b border-border px-4 py-3 font-mono text-2xs text-muted-foreground">
           <div

@@ -19,10 +19,10 @@ export function IconPicker({ selectedIcon, onSelectIcon }: IconPickerProps) {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search icons…"
           aria-label="Search icons"
-          className="w-full rounded-[9px] border border-border bg-black/20 py-2 pl-8 pr-2.5 text-xs-plus2 text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary"
+          className="w-full rounded-nc border border-border bg-black/20 py-2 pl-8 pr-2.5 text-xs-plus2 text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary"
         />
       </div>
-      <div className="grid max-h-40 grid-cols-6 gap-1 overflow-y-auto rounded-[9px] border border-border bg-black/10 p-1.5">
+      <div className="grid max-h-40 grid-cols-6 gap-1 overflow-y-auto rounded-nc border border-border bg-black/10 p-1.5">
         {filtered.map((name) => {
           const Lucide = projectIconComponent(name);
           if (Lucide === null) return null;

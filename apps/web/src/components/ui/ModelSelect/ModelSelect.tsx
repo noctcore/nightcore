@@ -55,7 +55,7 @@ export function ModelSelect({
               disabled={disabled}
               onClick={v.onTriggerClick}
               onKeyDown={v.onTriggerKeyDown}
-              className="flex w-full items-center gap-2 rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-left transition-colors focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex w-full items-center gap-2 rounded-nc border border-border bg-black/20 px-3 py-2.5 text-left transition-colors focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-60"
             >
               {v.selected.provider !== null ? (
                 <ProviderIcon
@@ -78,7 +78,7 @@ export function ModelSelect({
                 role="listbox"
                 id={v.listboxId}
                 aria-label={label}
-                className="absolute top-full z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-[10px] border border-border bg-popover p-1 shadow-2xl"
+                className="absolute top-full z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-nc border border-border bg-popover p-1 shadow-2xl"
                 style={{ animation: 'nc-rise .14s cubic-bezier(.22,1,.36,1)' }}
               >
                 <ModelOptionRow

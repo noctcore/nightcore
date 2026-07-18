@@ -14,7 +14,7 @@ interface IconTileProps {
 }
 
 const SIZES: Record<IconTileSize, string> = {
-  sm: 'h-[34px] w-[34px] rounded-[9px]',
+  sm: 'h-[34px] w-[34px] rounded-nc',
   md: 'h-[42px] w-[42px] rounded-xl',
   lg: 'h-[54px] w-[54px] rounded-[15px]',
   xl: 'h-[68px] w-[68px] rounded-[18px]',
