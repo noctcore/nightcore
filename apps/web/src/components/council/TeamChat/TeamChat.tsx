@@ -57,8 +57,8 @@ export function TeamChat({ chat }: TeamChatProps) {
                   <span
                     className={`ml-auto flex items-center gap-1 text-2xs ${
                       entry.injectionFlags.length === 0
-                        ? 'text-emerald-400/80'
-                        : 'text-amber-400'
+                        ? 'text-success/80'
+                        : 'text-warning'
                     }`}
                     title={
                       entry.injectionFlags.length === 0

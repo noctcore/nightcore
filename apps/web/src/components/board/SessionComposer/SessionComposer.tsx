@@ -81,14 +81,14 @@ export function SessionComposer({ taskId, liveSessionIds }: SessionComposerProps
             onClick={() => setBroadcast((on) => !on)}
             className={`flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-2xs font-medium transition-colors ${
               armed
-                ? 'bg-amber-400/20 text-amber-300 ring-1 ring-amber-400/70'
+                ? 'bg-warning/20 text-warning ring-1 ring-warning/70'
                 : 'text-muted-foreground hover:bg-white/[0.08] hover:text-foreground'
             }`}
           >
             <BroadcastIcon size={13} aria-hidden />
             <span>{armed ? 'Broadcasting' : 'Broadcast'}</span>
             {armed && (
-              <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
+              <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />
             )}
           </button>
         )}

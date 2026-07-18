@@ -44,7 +44,7 @@ export function ReplyDiff({ rounds }: ReplyDiffProps) {
             {round.isFinal && <Badge tone="primary">Final positions</Badge>}
             <span
               className={`flex items-center gap-1 text-2xs ${
-                round.diverged ? 'text-amber-400' : 'text-emerald-400/80'
+                round.diverged ? 'text-warning' : 'text-success/80'
               }`}
             >
               {round.diverged

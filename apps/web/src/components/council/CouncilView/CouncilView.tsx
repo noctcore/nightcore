@@ -17,6 +17,7 @@ import {
   EmptyState,
   FolderIcon,
   HistoryIcon,
+  StatusDot,
 } from '@/components/ui';
 
 import { ConvergeGavel } from '../ConvergeGavel';
@@ -32,9 +33,9 @@ import type { CouncilViewProps } from './CouncilView.types';
 /** The status pill copy + tone per phase. */
 const PHASE_STATUS: Record<CouncilPhase, { label: string; className: string }> = {
   idle: { label: 'Idle', className: 'text-muted-foreground' },
-  running: { label: 'Live', className: 'text-emerald-400' },
+  running: { label: 'Live', className: 'text-success' },
   converged: { label: 'Converged — awaiting your judgment', className: 'text-primary' },
-  resolved: { label: 'Resolved — you ruled', className: 'text-emerald-400' },
+  resolved: { label: 'Resolved — you ruled', className: 'text-success' },
   stopped: { label: 'Stopped', className: 'text-muted-foreground' },
 };
 
@@ -55,9 +56,7 @@ export function CouncilView(props: CouncilViewProps) {
         )}
         {view.phase !== 'idle' && (
           <span className={`flex items-center gap-1.5 text-xs-plus ${status.className}`}>
-            {view.isLive && (
-              <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-current" />
-            )}
+            {view.isLive && <StatusDot colorClass="bg-success" pulse />}
             {status.label}
           </span>
         )}

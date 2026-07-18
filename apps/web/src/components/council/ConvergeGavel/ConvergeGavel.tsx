@@ -43,7 +43,7 @@ export function ConvergeGavel({
         className="shrink-0 border-t border-border bg-card/60 px-5 py-3"
       >
         <div className="flex items-center gap-2">
-          <VerifiedIcon size={15} className="text-emerald-400" aria-hidden />
+          <VerifiedIcon size={15} className="text-success" aria-hidden />
           <span className="text-sm-flat font-semibold text-foreground">
             Verdict recorded — council closed
           </span>
