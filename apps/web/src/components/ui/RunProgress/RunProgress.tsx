@@ -1,5 +1,5 @@
 /** Live per-category progress panel for the running screen. */
-import { formatCostUsd, formatElapsed } from '@/lib/formatters';
+import { formatCostUsd, formatElapsed, formatTokensCompact } from '@/lib/formatters';
 
 import { CheckIcon, ChevronRightIcon } from '../icons';
 import { fadeRise, m, stagger } from '../motion';
@@ -23,13 +23,6 @@ const STATUS_META: Record<RunProgressStatus, { dot: string; label: string }> = {
  *  longer pending/running — whether it succeeded or errored. */
 function isFinished(state: CategoryRunState): boolean {
   return state === 'done' || state === 'error';
-}
-
-/** Format a token count compactly (e.g. `1.2k`, `34k`). */
-function formatTokens(n: number): string {
-  if (n >= 10000) return `${Math.round(n / 1000)}k`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return String(n);
 }
 
 /**
@@ -110,7 +103,8 @@ export function RunProgress({
             {synthesizing && <span className="sr-only"> · Synthesizing…</span>}
           </span>
           <span className="shrink-0 tabular-nums">
-            {formatCostUsd(costUsd)} · {formatTokens(totalTokens)} tok · {formatElapsed(elapsedMs)}
+            ≈ {formatCostUsd(costUsd)} · {formatTokensCompact(totalTokens)} tok ·{' '}
+            {formatElapsed(elapsedMs)}
           </span>
         </div>
 

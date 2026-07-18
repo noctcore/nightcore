@@ -3,6 +3,7 @@ import {
   BuildIcon,
   Button,
   DetailSection,
+  EvidenceList,
   GroundedFindingBody,
   type GroundedFindingView,
   MoveIcon,
@@ -62,8 +63,8 @@ export function ReadingDetailPanel({
             Go to task
           </Button>
         ) : (
-          <Button disabled={pending} onClick={() => onHarden(shown.id)}>
-            <BuildIcon size={15} />
+          <Button busy={pending} onClick={() => onHarden(shown.id)}>
+            {!pending && <BuildIcon size={15} />}
             Harden this
           </Button>
         ),
@@ -77,24 +78,12 @@ export function ReadingDetailPanel({
         suggestionTitle: 'Suggested action',
         extra: shown.findings.length > 0 && (
           <DetailSection title="Evidence">
-            <ul className="flex flex-col gap-1.5">
-              {shown.findings.map((ev, i) => (
-                <li
-                  key={`${ev.detail}-${i}`}
-                  className="text-xs-plus leading-relaxed text-muted-foreground"
-                >
-                  {ev.detail}
-                  {ev.location !== null && (
-                    <code className="ml-1.5 font-mono text-2xs text-muted-foreground">
-                      {ev.location.file}
-                      {ev.location.startLine !== null
-                        ? `:${ev.location.startLine}`
-                        : ''}
-                    </code>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <EvidenceList
+              items={shown.findings.map((ev) => ({
+                detail: ev.detail,
+                location: ev.location,
+              }))}
+            />
           </DetailSection>
         ),
         affectedFiles: shown.affectedFiles,

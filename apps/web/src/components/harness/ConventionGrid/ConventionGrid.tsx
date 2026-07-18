@@ -1,6 +1,8 @@
 /** The Harness convention grid: maps convention findings to the shared
  *  {@link DetailCard} and lays them out (with streaming skeletons + empty state)
  *  via {@link DetailCardGrid}. */
+import { memo } from 'react';
+
 import { DetailCard, DetailCardGrid } from '@/components/ui';
 import type { CoverageStatus } from '@/lib/bridge';
 import { formatLocation } from '@/lib/formatters';
@@ -12,6 +14,7 @@ import {
   SEVERITY_META,
 } from '../harness.constants';
 import type { ConventionFindingVM } from '../harness.types';
+import { useStableOnOpen } from './ConventionGrid.hooks';
 import type { ConventionGridProps } from './ConventionGrid.types';
 
 /** Headline the first grounded evidence anchor, with a `+N` overflow when the
@@ -40,8 +43,13 @@ function CoverageBadge({ status }: { status: CoverageStatus }) {
 }
 
 /** One convention card: severity + kind badges, lens glyph, title, grounded
- *  evidence, and a truncated description. Clickable → the detail panel. */
-function ConventionCard({
+ *  evidence, and a truncated description. Clickable → the detail panel.
+ *
+ *  `memo`ized so a single convention's status change (dismiss/convert) re-renders
+ *  only that one card — every other card keeps a stable `finding` object ref (the
+ *  upstream `.map` preserves refs for unchanged findings) and a stable `onOpen`
+ *  (see {@link useStableOnOpen}), matching Insight's `FindingCard`. */
+const ConventionCard = memo(function ConventionCard({
   finding,
   coverage,
   onOpen,
@@ -101,7 +109,7 @@ function ConventionCard({
       }
     />
   );
-}
+});
 
 /** The convention grid. Renders real cards, then any streaming skeletons; falls
  *  back to an empty message when there is nothing to show and nothing in flight. */
@@ -112,6 +120,7 @@ export function ConventionGrid({
   onOpen,
   coverageByFingerprint,
 }: ConventionGridProps) {
+  const stableOpen = useStableOnOpen(onOpen);
   return (
     <DetailCardGrid
       isEmpty={findings.length === 0 && skeletonCount === 0}
@@ -123,7 +132,7 @@ export function ConventionGrid({
           key={finding.id}
           finding={finding}
           coverage={coverageByFingerprint?.[finding.fingerprint]}
-          onOpen={onOpen}
+          onOpen={stableOpen}
         />
       ))}
     </DetailCardGrid>

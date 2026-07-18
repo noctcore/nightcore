@@ -213,6 +213,17 @@ export function isAdaptiveModel(model: string | null): boolean {
   return modelOptionFor(model)?.adaptive ?? false;
 }
 
+/** Resolve a stored model value to a short display label for the scan-config
+ *  hints. Inherit (`null`) reads "the inherited model"; a known id (canonical,
+ *  legacy, or Codex) resolves to its friendly label; an unrecognized id passes
+ *  through verbatim. Single source of truth for the Insight / Harness / Scorecard
+ *  config hints (previously only Harness resolved a label; the others printed the
+ *  raw id). Pure. */
+export function modelLabel(model: string | null): string {
+  if (model === null) return 'the inherited model';
+  return modelOptionFor(model)?.label ?? model;
+}
+
 /** Whether `effort` is valid for `model`. Inherit (`null`) and the `none` sentinel
  *  are always valid (they aren't model effort levels). Used to reconcile a pinned
  *  effort when the model changes — e.g. `max` is invalid once you leave Opus.

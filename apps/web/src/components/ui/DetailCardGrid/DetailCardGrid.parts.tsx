@@ -4,6 +4,17 @@ import type { ReactNode } from 'react';
 
 import { Skeleton } from '../Skeleton';
 
+/** The centered empty-state message shared by every card/row grid (the finding,
+ *  convention, dimension, and proposal lists all render the identical block when
+ *  they have nothing to show and nothing in flight). */
+export function GridEmptyMessage({ message }: { message: string }) {
+  return (
+    <div className="flex flex-1 items-center justify-center px-6 py-16">
+      <p className="max-w-md text-center text-sm text-muted-foreground">{message}</p>
+    </div>
+  );
+}
+
 /** A skeleton card that preserves the card layout while a pass is still running
  *  (streaming UX). */
 export function SkeletonCard() {

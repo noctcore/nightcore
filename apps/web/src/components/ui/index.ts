@@ -24,7 +24,13 @@ export { ConfirmDialog } from './ConfirmDialog';
 export type { ConfirmDialogProps } from './ConfirmDialog/ConfirmDialog.types';
 export { ConfirmHint } from './ConfirmHint';
 export type { DetailCardGridProps, DetailCardProps } from './DetailCardGrid';
-export { DetailCard, DetailCardGrid, GridFullRow } from './DetailCardGrid';
+export {
+  DetailCard,
+  DetailCardGrid,
+  GridEmptyMessage,
+  GridFullRow,
+  SkeletonCard,
+} from './DetailCardGrid';
 export type { DetailPanelShellProps } from './DetailPanelShell';
 export { DetailLocation, DetailPanelShell, DetailSection } from './DetailPanelShell';
 export { EditProjectDialog } from './EditProjectDialog';
@@ -33,6 +39,8 @@ export type {
   EditProjectSaveArgs,
 } from './EditProjectDialog/EditProjectDialog.types';
 export { EmptyState } from './EmptyState';
+export type { EvidenceItem, EvidenceListProps } from './EvidenceList';
+export { EvidenceList } from './EvidenceList';
 export { FieldValue } from './FieldValue';
 export { FolderBrowserDialog } from './FolderBrowserDialog';
 export type { FolderBrowserDialogProps } from './FolderBrowserDialog/FolderBrowserDialog.types';
@@ -130,6 +138,8 @@ export {
 export { RepoLink } from './RepoLink';
 export type { RunLifecycleShellProps, RunPhase } from './RunLifecycleShell';
 export { RunLifecycleShell } from './RunLifecycleShell';
+export type { RunOutcomeNoticeProps } from './RunOutcomeNotice';
+export { RunOutcomeNotice } from './RunOutcomeNotice';
 export type {
   CategoryRunState,
   RunProgressCategory,

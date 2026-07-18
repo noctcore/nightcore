@@ -1,4 +1,4 @@
-import { Card } from '@/components/ui';
+import { Card, GridEmptyMessage } from '@/components/ui';
 
 import {
   DIMENSION_META,
@@ -145,13 +145,7 @@ function DimensionRowCard({
  *  upstream so the weakest dimensions surface first. */
 export function DimensionGrid({ rows, emptyMessage, onOpen }: DimensionGridProps) {
   if (rows.length === 0) {
-    return (
-      <div className="flex flex-1 items-center justify-center px-6 py-16">
-        <p className="max-w-md text-center text-sm text-muted-foreground">
-          {emptyMessage}
-        </p>
-      </div>
-    );
+    return <GridEmptyMessage message={emptyMessage} />;
   }
 
   return (

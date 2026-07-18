@@ -12,11 +12,14 @@ import {
   PortableLockExportButton,
   RetryIcon,
   RunLifecycleShell,
+  RunOutcomeNotice,
   RunProgress,
   RunUsageLine,
   StopIcon,
+  UsageLimitBanner,
   VerifiedIcon,
 } from '@/components/ui';
+import { rovingKeydown } from '@/lib/roving-keydown';
 
 import { CategoryTabs } from '../CategoryTabs';
 import { ChecksManager } from '../ChecksManager';
@@ -57,8 +60,10 @@ function SectionTab({
       role="tab"
       type="button"
       aria-selected={active}
+      tabIndex={active ? 0 : -1}
+      onKeyDown={rovingKeydown}
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs-plus font-semibold transition-colors ${
+      className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs-plus font-medium transition-colors ${
         active
           ? 'bg-primary/[0.12] text-primary'
           : 'text-muted-foreground hover:bg-white/[0.03] hover:text-foreground'
@@ -166,25 +171,33 @@ function ResultsScreen({
     <div className="flex h-full min-h-0 flex-col">
       {view.stream.status === 'failed' &&
         (view.stream.failureReason === 'aborted' ? (
-          <div className="border-b border-border bg-white/[0.02] px-6 py-3">
-            <p className="text-xs-plus text-muted-foreground">
-              Scan cancelled. Any findings that streamed before you stopped the scan
-              are shown below.
-            </p>
-          </div>
+          <RunOutcomeNotice
+            kind="aborted"
+            message="Scan cancelled. Any findings that streamed before you stopped the scan are shown below."
+            className="mx-6 mt-5"
+          />
         ) : (
-          <div className="border-b border-destructive/40 bg-destructive/[0.08] px-6 py-3">
-            <p className="text-xs-plus text-destructive">
-              Scan failed
-              {view.stream.error !== null ? `: ${view.stream.error}` : '.'} Any findings
-              that streamed before the failure are shown below.
-            </p>
-          </div>
+          <RunOutcomeNotice
+            kind="failed"
+            message={`Scan failed${view.stream.error !== null ? `: ${view.stream.error}` : '.'}`}
+            className="mx-6 mt-5"
+          />
         ))}
 
       {view.showProfileBanner && (
         <ProfileBanner profile={view.stream.profile} loading={view.profileLoading} />
       )}
+
+      {/* A completed scan that spent nothing is a usage-limit tell, not a clean
+          repo — surface it so empty conventions aren't misread as a pass (T10).
+          Self-hides unless the $0 signature holds. */}
+      <UsageLimitBanner
+        status={view.stream.status}
+        costUsd={view.stream.costUsd}
+        usage={view.stream.usage}
+        runNoun="scan"
+        className="mx-6 mt-5"
+      />
 
       {/* Section toggle — the mode filter decides which tabs render (harden shows
           Proposals + Artifacts, enforce shows Conventions + Policy). */}
@@ -310,7 +323,7 @@ export function HarnessView(props: HarnessViewProps) {
           className="min-w-0 truncate text-left transition-colors hover:text-foreground"
         >
           {view.summary}
-          <span className="sr-only"> Reconfigure run</span>
+          <span className="sr-only">, reconfigure run</span>
         </button>
       )}
       {/* The persisted run receipt (cost/tokens/duration/model) on RESULTS (T8). */}

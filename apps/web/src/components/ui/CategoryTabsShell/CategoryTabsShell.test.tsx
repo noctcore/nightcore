@@ -27,7 +27,10 @@ test('fires onSelect with the tab key when clicked', async () => {
 
 test('shows the error indicator with its accessible label for an errored tab', async () => {
   const screen = render(<Default />);
-  expect(
-    screen.container.querySelector('[aria-label="analysis failed"]'),
-  ).not.toBeNull();
+  // The glyph stays visible; the label is sr-only text + a button title (no
+  // aria-label, which would otherwise clobber the tab's own name).
+  await expect.element(screen.getByText('analysis failed')).toBeInTheDocument();
+  await expect
+    .element(screen.getByRole('tab', { name: /performance/i }))
+    .toHaveAttribute('title', 'analysis failed');
 });
