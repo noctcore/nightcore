@@ -158,7 +158,7 @@ function Tab({
       <IconButton
         label={active ? `Close ${label} (${formatShortcut('W')})` : `Close ${label}`}
         onClick={() => onClose(session.id)}
-        className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+        className="shrink-0 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
       >
         <CloseIcon size={12} />
       </IconButton>
@@ -206,7 +206,7 @@ function RestoredTab({
       <IconButton
         label={`Dismiss ${label}`}
         onClick={() => onDismiss(info.id)}
-        className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+        className="shrink-0 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
       >
         <CloseIcon size={12} />
       </IconButton>

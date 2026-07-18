@@ -3,6 +3,7 @@ import {
   BranchIcon,
   Button,
   CloseIcon,
+  ConfirmHint,
   IconButton,
   Modal,
   RefreshIcon,
@@ -158,15 +159,20 @@ export function MergePreviewDialog({
       </div>
 
       <div className="mt-2 flex items-center justify-end gap-2 border-t border-border bg-black/15 px-5 py-3.5">
-        {onViewDiff !== undefined && (
-          <button
-            type="button"
-            onClick={onViewDiff}
-            className="mr-auto text-xs-flat text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
-          >
-            View full diff
-          </button>
-        )}
+        <div className="mr-auto flex items-center gap-3">
+          {onViewDiff !== undefined && (
+            <button
+              type="button"
+              onClick={onViewDiff}
+              className="text-xs-flat text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
+            >
+              View full diff
+            </button>
+          )}
+          {/* The confirm accelerator hint — shown only while the merge is actually
+              wired (Cmd/Ctrl+Enter fires `onMerge` when it's mergeable). */}
+          {!mergeDisabled && <ConfirmHint>to merge</ConfirmHint>}
+        </div>
         {behind && (
           <Button variant="ghost" disabled={updatingFromBase} onClick={onUpdateFromBase}>
             {updatingFromBase ? (

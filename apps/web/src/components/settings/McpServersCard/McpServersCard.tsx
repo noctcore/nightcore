@@ -3,6 +3,8 @@ import {
   Button,
   CloseIcon,
   ConfirmDialog,
+  ConfirmHint,
+  IconButton,
   Kbd,
   LayersIcon,
   Modal,
@@ -83,6 +85,7 @@ export function McpServersCard({ servers, onChange }: McpServersCardProps) {
         open={draft !== null}
         label={shownDraft?.id === null ? 'Add MCP server' : 'Edit MCP server'}
         onClose={closeEditor}
+        onEnter={validation.ok ? saveDraft : undefined}
         overlayClassName="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm"
         panelClassName="w-[480px] max-w-full"
       >
@@ -100,28 +103,23 @@ export function McpServersCard({ servers, onChange }: McpServersCardProps) {
                   Configure an external Model Context Protocol server.
                 </div>
               </div>
-              <button
-                type="button"
-                aria-label="Close dialog"
-                title="Close"
-                onClick={closeEditor}
-                className="flex items-center justify-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground"
-              >
+              <IconButton label="Close dialog" onClick={closeEditor} className="-mr-1">
                 <CloseIcon size={16} />
-              </button>
+              </IconButton>
             </div>
 
             <McpServerEditor draft={shownDraft} errors={validation} onPatch={setDraft} />
 
             <div className="flex items-center justify-end gap-2.5 border-t border-border bg-black/15 px-5 py-3.5">
-              <span className="mr-auto flex items-center gap-1 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Kbd>Esc</Kbd> to cancel
               </span>
+              <ConfirmHint>{shownDraft.id === null ? 'to add' : 'to save'}</ConfirmHint>
               <Button variant="secondary" onClick={closeEditor}>
                 Cancel
               </Button>
               <Button onClick={saveDraft} disabled={!validation.ok}>
-                {shownDraft.id === null ? 'Add' : 'Save changes'}
+                {shownDraft.id === null ? 'Add server' : 'Save changes'}
               </Button>
             </div>
           </>

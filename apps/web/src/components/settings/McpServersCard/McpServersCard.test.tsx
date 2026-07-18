@@ -61,8 +61,13 @@ test('a duplicate name disables the save button (name uniqueness)', async () => 
   await screen.getByLabelText('Server name').fill('filesystem');
   await screen.getByLabelText('Command').fill('node');
   // The modal's save action stays disabled because the name collides with the
-  // existing entry (the header trigger is "Add server"; the save action is "Add").
-  await expect.element(screen.getByRole('button', { name: 'Add', exact: true })).toBeDisabled();
+  // existing entry. The header trigger and the footer save both read "Add server",
+  // so the assertion is scoped to the dialog to target the footer confirm.
+  await expect
+    .element(
+      screen.getByRole('dialog').getByRole('button', { name: 'Add server', exact: true }),
+    )
+    .toBeDisabled();
   expect(onChange).not.toHaveBeenCalled();
 });
 
@@ -83,7 +88,9 @@ test('adding a server under StrictMode fires onChange once and mints one id', as
   await screen.getByLabelText('Server name').fill('notion');
   await screen.getByLabelText('Command').fill('npx');
   uuid.mockClear();
-  await screen.getByRole('button', { name: 'Add', exact: true }).click();
+  // The footer confirm and the header trigger both read "Add server"; scope to the
+  // dialog to click the footer confirm.
+  await screen.getByRole('dialog').getByRole('button', { name: 'Add server', exact: true }).click();
   // A single persistence write and a single minted id — not one-per-invocation.
   expect(onChange).toHaveBeenCalledTimes(1);
   expect(uuid).toHaveBeenCalledTimes(1);

@@ -5,6 +5,10 @@ export interface TerminalSearchBarProps {
   query: string;
   /** True when a non-empty query matched nothing (drives the no-results style). */
   noMatch: boolean;
+  /** The active match index (`-1` when none is selected), for the "n/m" counter. */
+  resultIndex: number;
+  /** The total match count in the scrollback, for the "n/m" counter. */
+  resultCount: number;
   /** Update the query (re-runs an incremental search). */
   onQueryChange: (value: string) => void;
   /** Jump to the next match (Enter / › button). */

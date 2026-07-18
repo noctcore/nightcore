@@ -1,32 +1,6 @@
 /** One configured MCP server: name, transport tag, target, enable toggle, edit/remove. */
-import { EditIcon, TrashIcon } from '@/components/ui';
+import { EditIcon, IconButton, Toggle, TrashIcon } from '@/components/ui';
 import type { McpServerEntry } from '@/lib/bridge';
-
-/** A small toggle switch (shared visual with the settings Toggle). */
-export function RowToggle({
-  on,
-  onChange,
-  label,
-}: {
-  on: boolean;
-  onChange: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      aria-label={label}
-      onClick={onChange}
-      className={`inline-flex h-[18px] w-[32px] shrink-0 items-center rounded-full px-0.5 transition-colors ${on ? 'bg-primary' : 'bg-white/[0.12]'}`}
-    >
-      <span
-        className={`h-3.5 w-3.5 rounded-full bg-white transition-transform ${on ? 'translate-x-3.5' : ''}`}
-      />
-    </button>
-  );
-}
 
 /** A one-line summary of an entry's transport target (command or url). */
 function describe(entry: McpServerEntry): string {
@@ -65,29 +39,21 @@ export function McpServerRow({
           {describe(entry)}
         </div>
       </div>
-      <RowToggle
+      <Toggle
         on={entry.enabled}
         onChange={() => onToggle(entry)}
         label={`${entry.enabled ? 'Disable' : 'Enable'} ${entry.name}`}
       />
-      <button
-        type="button"
-        aria-label={`Edit ${entry.name}`}
-        title="Edit"
-        onClick={() => onEdit(entry)}
-        className="flex items-center justify-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground"
-      >
+      <IconButton label={`Edit ${entry.name}`} onClick={() => onEdit(entry)}>
         <EditIcon size={15} />
-      </button>
-      <button
-        type="button"
-        aria-label={`Remove ${entry.name}`}
-        title="Remove"
+      </IconButton>
+      <IconButton
+        label={`Remove ${entry.name}`}
         onClick={() => onRemove(entry)}
-        className="flex items-center justify-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
+        className="enabled:hover:bg-destructive/15 enabled:hover:text-destructive"
       >
         <TrashIcon size={15} />
-      </button>
+      </IconButton>
     </div>
   );
 }

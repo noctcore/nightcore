@@ -9,6 +9,8 @@ const meta = {
   args: {
     query: 'error',
     noMatch: false,
+    resultIndex: 0,
+    resultCount: 4,
     onQueryChange: fn(),
     onNext: fn(),
     onPrev: fn(),
@@ -24,10 +26,10 @@ export const Default: Story = {};
 
 /** A query that matched nothing — the no-results style. */
 export const NoMatch: Story = {
-  args: { query: 'zzzznotfound', noMatch: true },
+  args: { query: 'zzzznotfound', noMatch: true, resultIndex: -1, resultCount: 0 },
 };
 
-/** An empty query (just opened). */
+/** An empty query (just opened) — no counter shown. */
 export const Empty: Story = {
-  args: { query: '' },
+  args: { query: '', resultIndex: -1, resultCount: 0 },
 };

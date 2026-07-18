@@ -31,7 +31,7 @@ test('commits a Max-turns ceiling as a global guardrail patch', async () => {
 test('routes a Max-budget ceiling to a project override under the project scope', async () => {
   const onUpdate = vi.fn();
   const screen = render(<Global onUpdate={onUpdate} />);
-  await screen.getByRole('button', { name: 'nightcore' }).click();
+  await screen.getByRole('radio', { name: 'nightcore' }).click();
   const input = screen.getByRole('spinbutton', { name: 'Max budget in USD' });
   await input.fill('2.5');
   await screen.getByRole('spinbutton', { name: 'Max turns' }).click();
@@ -41,8 +41,8 @@ test('routes a Max-budget ceiling to a project override under the project scope'
 test('routes the patch to a project override under the project scope', async () => {
   const onUpdate = vi.fn();
   const screen = render(<Global onUpdate={onUpdate} />);
-  // Switch to the per-project scope (tab labelled with the project name).
-  await screen.getByRole('button', { name: 'nightcore' }).click();
+  // Switch to the per-project scope (the radio labelled with the project name).
+  await screen.getByRole('radio', { name: 'nightcore' }).click();
   await screen.getByRole('combobox', { name: 'Default model' }).click();
   await screen.getByRole('option', { name: /Opus/ }).click();
   expect(onUpdate).toHaveBeenCalledWith({
@@ -69,9 +69,14 @@ test('surfaces the default run mode selector and routes it scoped', async () => 
   expect(onUpdate).toHaveBeenCalledWith({ defaultRunMode: 'worktree' });
 });
 
-test('disables the project scope tab when no project is active', async () => {
+test('shows a static Global indicator (no scope toggle) when no project is active', async () => {
   const screen = render(<NoActiveProject />);
-  await expect.element(screen.getByText('This project')).toBeDisabled();
+  // There is no per-project override to choose, so the header states the settings
+  // are global rather than offering a toggle that would silently do nothing.
+  await expect.element(screen.getByText('Global')).toBeVisible();
+  expect(
+    screen.container.querySelector('[role="radiogroup"][aria-label="Settings scope"]'),
+  ).toBeNull();
 });
 
 test('navigates between settings pages via the left nav', async () => {

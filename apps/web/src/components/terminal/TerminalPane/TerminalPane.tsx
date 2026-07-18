@@ -2,6 +2,7 @@ import '@xterm/xterm/css/xterm.css';
 
 import {
   BoltIcon,
+  ChevronDownIcon,
   CloseIcon,
   IconButton,
   LockIcon,
@@ -152,18 +153,32 @@ function IdentityHeader({
  *  surface the session's (remount-surviving) xterm instance is attached into. A
  *  thin shell — the ref + attach effect live in `useTerminalPane`. */
 export function TerminalPane({ session, isDropTarget, onRename, link }: TerminalPaneProps) {
-  const { containerRef, search } = useTerminalPane(session);
+  const { containerRef, search, jump } = useTerminalPane(session);
   return (
     <div data-session-id={session.id} className="flex min-h-0 flex-1 flex-col bg-background">
       <IdentityHeader session={session} onRename={onRename} link={link} />
       <div ref={search.rootRef} className="relative min-h-0 flex-1">
         <div ref={containerRef} className="h-full overflow-hidden p-1.5" />
         {isDropTarget && <TerminalDropHint />}
+        {jump.show && (
+          <button
+            type="button"
+            aria-label="Scroll to bottom"
+            title="Scroll to bottom"
+            onClick={jump.toBottom}
+            className="absolute bottom-3 right-3 z-10 flex items-center gap-1 rounded-md border border-border bg-black/70 px-2 py-1 text-2xs font-medium text-muted-foreground shadow-lg backdrop-blur-sm transition-colors hover:text-foreground"
+          >
+            <ChevronDownIcon size={13} aria-hidden />
+            Bottom
+          </button>
+        )}
         {search.open && (
           <div className="absolute right-3 top-2 z-10">
             <TerminalSearchBar
               query={search.query}
               noMatch={search.noMatch}
+              resultIndex={search.resultIndex}
+              resultCount={search.resultCount}
               onQueryChange={search.onQueryChange}
               onNext={search.next}
               onPrev={search.prev}

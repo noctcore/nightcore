@@ -1,7 +1,7 @@
 /** Orchestration for the worktree manager surface: dialog state, on-demand
  *  merge-preview / diff fetches, and the merge / discard bridge actions with
  *  friendly error toasts. The view component stays a thin shell over this. */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { useToast } from '@/components/ui';
 import type { MergePreview, Task, WorktreeDiff, WorktreeInfo } from '@/lib/bridge';
@@ -80,6 +80,26 @@ export interface WorktreeViewModel {
   discard: DiscardState | null;
   confirmDiscard: () => void;
   closeDiscard: () => void;
+}
+
+/** In-flight state for the header Refresh. The underlying reconcile+refetch is
+ *  fire-and-forget (the reconciled list arrives asynchronously via `nc:task`), so
+ *  the button spins for a brief feedback window and is disabled to block re-entry. */
+export function useWorktreeRefresh(refresh: () => void): {
+  refreshing: boolean;
+  onRefresh: () => void;
+} {
+  const [refreshing, setRefreshing] = useState(false);
+  useEffect(() => {
+    if (!refreshing) return;
+    const id = window.setTimeout(() => setRefreshing(false), 800);
+    return () => window.clearTimeout(id);
+  }, [refreshing]);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    refresh();
+  }, [refresh]);
+  return { refreshing, onRefresh };
 }
 
 export function useWorktreeView(tasks: Task[], worktrees: WorktreeInfo[]): WorktreeViewModel {
