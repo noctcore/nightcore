@@ -1,4 +1,4 @@
-import { Kbd } from '@/components/ui';
+import { ConfirmHint } from '@/components/ui';
 
 import { useTaskOverviewEditor } from './TaskOverviewEditor.hooks';
 import type { TaskOverviewEditorProps } from './TaskOverviewEditor.types';
@@ -57,9 +57,7 @@ export function TaskOverviewEditor(props: TaskOverviewEditorProps) {
             }
           }}
         />
-        <span className="flex items-center gap-1 text-2xs text-muted-foreground">
-          <Kbd>⌘↵</Kbd> or blur to save
-        </span>
+        <ConfirmHint>or blur to save</ConfirmHint>
       </div>
     </section>
   );

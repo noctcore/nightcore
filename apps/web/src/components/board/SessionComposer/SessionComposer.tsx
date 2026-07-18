@@ -6,10 +6,11 @@
  *  session-id analog of the terminal's PTY broadcast.
  *
  *  Submit mirrors the board's composer convention (QuestionPromptCard / NewTaskForm):
- *  Cmd/Ctrl+Enter from the field sends, with a `⌘↵` Kbd hint; Send is disabled while
+ *  Cmd/Ctrl+Enter from the field sends, with a platform-aware ⌘/Ctrl+↵ Kbd hint; Send is disabled while
  *  the draft is blank. The relay comes from `TaskActionsContext` (`onSendInput`); an
  *  unwired handler degrades the composer to nothing (parity with the dock's guard). */
 import { BroadcastIcon, Button, Kbd } from '@/components/ui';
+import { CONFIRM_CHORD } from '@/lib/platform';
 
 import { useTaskActions } from '../actions';
 import { broadcastInput } from '../session-broadcast';
@@ -70,7 +71,7 @@ export function SessionComposer({ taskId, liveSessionIds }: SessionComposerProps
 
       <div className="mt-2 flex items-center gap-2">
         <Button type="submit" disabled={trimmed.length === 0}>
-          {armed ? `Send to ${liveSessionIds.length}` : 'Send'} <Kbd>⌘↵</Kbd>
+          {armed ? `Send to ${liveSessionIds.length}` : 'Send'} <Kbd>{CONFIRM_CHORD}</Kbd>
         </Button>
         {canBroadcast && (
           <button
