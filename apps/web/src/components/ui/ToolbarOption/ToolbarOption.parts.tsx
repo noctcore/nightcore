@@ -8,18 +8,20 @@ interface InlineSwitchProps {
   on: boolean;
 }
 
-/** Decorative switch track used inside the toolbar toggle button. */
+/** Decorative switch track used inside the toolbar toggle button. Mirrors the
+ *  {@link Toggle} primitive's geometry and slides the thumb via `translate-x`
+ *  (transform) so it glides instead of snapping between two `left` positions. */
 export function InlineSwitch({ on }: InlineSwitchProps) {
   return (
     <span
       aria-hidden
-      className={`relative h-[17px] w-[30px] rounded-full transition-colors ${
+      className={`inline-flex h-[18px] w-[32px] items-center rounded-full px-0.5 transition-colors ${
         on ? 'bg-primary' : 'bg-white/[0.12]'
       }`}
     >
       <span
-        className={`absolute top-0.5 h-[13px] w-[13px] rounded-full bg-white transition-transform ${
-          on ? 'left-[14px]' : 'left-0.5'
+        className={`h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+          on ? 'translate-x-3.5' : ''
         }`}
       />
     </span>
