@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { IconButton } from '../IconButton';
 import { AlertIcon, CheckIcon, CloseIcon } from '../icons';
 import { AnimatePresence, m, slideIn } from '../motion';
-import { ToastContext, useToast, useToastState } from './Toast.hooks';
+import { ToastContext, type ToastControls, useToastState } from './Toast.hooks';
 import type { ToastTone } from './Toast.types';
 
 /** Provider + render surface for the app's transient error/notification channel.
@@ -15,7 +15,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={api}>
       {children}
-      <ToastStack />
+      <ToastStack controls={api} />
     </ToastContext.Provider>
   );
 }
@@ -35,10 +35,11 @@ function ToneIcon({ tone }: { tone: ToastTone }) {
 /** The stacked toast list, pinned bottom-right above every overlay. Each toast
  *  slides in from the right and reverses on dismiss via `AnimatePresence` (the
  *  `slideIn` variant — transform + opacity only, no `layout`, so the stack reflows
- *  instantly). The region stays mounted even when empty so `AnimatePresence` can
- *  still run the LAST toast's exit animation. */
-function ToastStack() {
-  const { toasts, dismiss } = useToast();
+ *  instantly). Resting the pointer on a toast pauses its dismiss countdown so it
+ *  can be read/dismissed without racing the timer. The region stays mounted even
+ *  when empty so `AnimatePresence` can still run the LAST toast's exit animation. */
+function ToastStack({ controls }: { controls: ToastControls }) {
+  const { toasts, dismiss, pause, resume } = controls;
   return (
     <div
       role="region"
@@ -54,6 +55,8 @@ function ToastStack() {
             initial="initial"
             animate="animate"
             exit="exit"
+            onPointerEnter={() => pause(toast.id)}
+            onPointerLeave={() => resume(toast.id)}
             className={`pointer-events-auto flex items-start gap-2 rounded-[10px] border px-3 py-2.5 shadow-2xl backdrop-blur-sm ${TONE_STYLE[toast.tone]}`}
           >
             <ToneIcon tone={toast.tone} />
