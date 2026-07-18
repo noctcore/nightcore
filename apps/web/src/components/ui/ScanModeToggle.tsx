@@ -5,6 +5,7 @@ import { rovingKeydown } from '@/lib/roving-keydown';
 import { deepModeMeta } from '@/lib/scan-run';
 
 import { chipClass } from './LensChipGrid';
+import { SectionLabel } from './SectionLabel';
 
 export interface ScanModeToggleProps {
   /** Whether DEEP mode is selected. */
@@ -20,9 +21,7 @@ export function ScanModeToggle({ deep, onToggle, unitNoun }: ScanModeToggleProps
   const meta = deepModeMeta(unitNoun);
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
-        Mode
-      </span>
+      <SectionLabel>Mode</SectionLabel>
       <div role="radiogroup" aria-label="Mode" className="flex gap-2">
         {(['standard', 'deep'] as const).map((m) => (
           <button

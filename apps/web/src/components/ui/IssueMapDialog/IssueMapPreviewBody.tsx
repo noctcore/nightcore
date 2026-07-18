@@ -8,8 +8,7 @@ import type { IssueMapPreview } from '@/lib/bridge';
 import { Checkbox } from '../Checkbox';
 import { AlertIcon, ExternalLinkIcon } from '../icons';
 import { Markdown } from '../Markdown';
-
-const LABEL_CLASS = 'font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground';
+import { SectionLabel } from '../SectionLabel';
 
 interface IssueMapPreviewBodyProps {
   preview: IssueMapPreview;
@@ -46,10 +45,10 @@ export function IssueMapPreviewBody({
 
       {/* Deterministic grouping chips. */}
       <div className="flex flex-col gap-1.5">
-        <span className={LABEL_CLASS}>
+        <SectionLabel>
           {preview.total} {preview.total === 1 ? 'finding' : 'findings'} ·{' '}
           {preview.groups.length} {preview.groups.length === 1 ? 'group' : 'groups'}
-        </span>
+        </SectionLabel>
         <div className="flex flex-wrap gap-1.5">
           {preview.groups.map((g) => (
             <span
@@ -67,7 +66,7 @@ export function IssueMapPreviewBody({
 
       {/* The full parent body — rendered exactly as it will post. */}
       <div className="flex flex-col gap-1.5">
-        <span className={LABEL_CLASS}>Parent issue</span>
+        <SectionLabel>Parent issue</SectionLabel>
         <div className="max-h-[34vh] overflow-y-auto rounded-nc border border-border bg-black/20 px-3.5 py-3">
           <Markdown>{preview.parentBody}</Markdown>
         </div>
@@ -75,9 +74,7 @@ export function IssueMapPreviewBody({
 
       {/* Every sub-issue title, in the deterministic order. */}
       <div className="flex flex-col gap-1.5">
-        <span className={LABEL_CLASS}>
-          Sub-issues ({preview.subIssues.length})
-        </span>
+        <SectionLabel>Sub-issues ({preview.subIssues.length})</SectionLabel>
         <ul className="max-h-[28vh] divide-y divide-border overflow-y-auto rounded-nc border border-border bg-black/10">
           {preview.subIssues.map((sub, i) => (
             <li
@@ -87,9 +84,7 @@ export function IssueMapPreviewBody({
               <span className="min-w-0 flex-1 truncate text-xs-plus text-foreground">
                 {sub.title}
               </span>
-              <span className="shrink-0 font-mono text-3xs uppercase tracking-[0.08em] text-muted-foreground">
-                {sub.groupLabel}
-              </span>
+              <SectionLabel className="shrink-0">{sub.groupLabel}</SectionLabel>
             </li>
           ))}
         </ul>

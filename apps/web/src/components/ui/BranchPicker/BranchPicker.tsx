@@ -1,8 +1,9 @@
 /** A presentational branch combobox: type to filter, arrow/Enter to pick, with an
  *  optional "create" affordance for branches that don't exist yet. */
 import { BranchIcon, PlusIcon } from '../icons';
+import { SectionLabel } from '../SectionLabel';
 import { useBranchPicker } from './BranchPicker.hooks';
-import { BranchOptionRow, SectionLabel } from './BranchPicker.parts';
+import { BranchOptionRow } from './BranchPicker.parts';
 import type { BranchPickerProps } from './BranchPicker.types';
 
 /** Choose or name a git branch. The current branch name is fully controlled and
@@ -62,7 +63,7 @@ export function BranchPicker({
         >
           {v.localRows.length > 0 && (
             <div role="group" aria-label="Local branches">
-              <SectionLabel>Local</SectionLabel>
+              <SectionLabel className="block px-2 pb-0.5 pt-1.5">Local</SectionLabel>
               {v.localRows.map((row) => (
                 <BranchOptionRow
                   key={row.branch.name}
@@ -77,7 +78,7 @@ export function BranchPicker({
 
           {v.remoteRows.length > 0 && (
             <div role="group" aria-label="Remote branches">
-              <SectionLabel>Remote</SectionLabel>
+              <SectionLabel className="block px-2 pb-0.5 pt-1.5">Remote</SectionLabel>
               {v.remoteRows.map((row) => (
                 <BranchOptionRow
                   key={row.branch.name}

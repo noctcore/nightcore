@@ -3,12 +3,12 @@
  *  listbox, arrow/enter/esc keys, aria-expanded/controls/activedescendant). */
 import { ChevronDownIcon, SparkIcon } from '../icons';
 import { ProviderIcon } from '../ProviderIcon';
+import { SectionLabel } from '../SectionLabel';
 import { useModelSelect } from './ModelSelect.hooks';
 import {
   CatalogError,
   CatalogStatus,
   EffortRow,
-  LABEL,
   ModelOptionRow,
   ProviderGroupLabel,
 } from './ModelSelect.parts';
@@ -36,7 +36,7 @@ export function ModelSelect({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-1.5">
-        <span className={LABEL}>{label}</span>
+        <SectionLabel>{label}</SectionLabel>
 
         {catalog.status === 'loading' && <CatalogStatus />}
         {catalog.status === 'error' && (

@@ -140,6 +140,7 @@ export type {
 export { RunProgress } from './RunProgress';
 export { RunUsageLine } from './RunUsageLine';
 export { ScanModeToggle, type ScanModeToggleProps } from './ScanModeToggle';
+export { SECTION_LABEL_CLASS, SectionLabel } from './SectionLabel';
 export { Segmented } from './Segmented';
 export type { SegmentedProps } from './Segmented/Segmented.types';
 export { Skeleton } from './Skeleton';

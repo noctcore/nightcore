@@ -3,6 +3,7 @@ import { formatCostUsd, formatElapsed } from '@/lib/formatters';
 
 import { CheckIcon, ChevronRightIcon } from '../icons';
 import { fadeRise, m, stagger } from '../motion';
+import { SectionLabel } from '../SectionLabel';
 import { StatusDot } from '../StatusDot';
 import { useElapsedMs } from './RunProgress.hooks';
 import type {
@@ -66,9 +67,7 @@ export function RunProgress({
   return (
     <section aria-label="Run progress" className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
-          Run progress
-        </span>
+        <SectionLabel>Run progress</SectionLabel>
         <span className="flex items-center gap-1.5 font-mono text-2xs text-muted-foreground">
           <StatusDot colorClass={statusMeta.dot} pulse={status === 'running'} />
           {statusMeta.label}

@@ -6,11 +6,8 @@ import { rovingKeydown } from '@/lib/roving-keydown';
 import { BrainIcon, CheckIcon, RefreshIcon } from '../icons';
 import type { KnownProviderId } from '../ProviderIcon';
 import { ProviderIcon } from '../ProviderIcon';
+import { SECTION_LABEL_CLASS, SectionLabel } from '../SectionLabel';
 import type { EffortRowView, ModelRow } from './ModelSelect.types';
-
-/** The uppercase field label shared by the model + effort sections. */
-export const LABEL =
-  'font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground';
 
 /** Class string for a listbox option row in its highlighted/idle state. */
 function optionRowClass(highlighted: boolean): string {
@@ -105,7 +102,7 @@ export function ProviderGroupLabel({
   return (
     <div
       role="presentation"
-      className="flex items-center gap-1.5 px-2 pb-0.5 pt-1.5 text-3xs font-medium uppercase tracking-[0.08em] text-muted-foreground"
+      className={`flex items-center gap-1.5 px-2 pb-0.5 pt-1.5 ${SECTION_LABEL_CLASS}`}
     >
       {provider !== null && (
         <ProviderIcon provider={provider} size={12} className="text-muted-foreground" />
@@ -164,7 +161,7 @@ export function EffortRow({
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-1.5">
         <BrainIcon size={12} className="text-muted-foreground" />
-        <span className={LABEL}>Reasoning effort</span>
+        <SectionLabel>Reasoning effort</SectionLabel>
         {effort.adaptive && effort.activeLabel !== null && (
           <span className="text-3xs font-medium text-primary/80">
             · {effort.activeLabel} decides adaptively
