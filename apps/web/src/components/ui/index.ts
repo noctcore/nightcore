@@ -146,6 +146,8 @@ export type { SegmentedProps } from './Segmented/Segmented.types';
 export { Skeleton } from './Skeleton';
 export { Spinner } from './Spinner';
 export { StatusDot } from './StatusDot';
+export type { FieldLabelProps, TextFieldProps } from './TextField';
+export { FIELD_INPUT_CLASS, FieldLabel, TextField } from './TextField';
 export type { Toast, ToastApi, ToastTone } from './Toast';
 export { ToastProvider, useToast } from './Toast';
 export { Toggle } from './Toggle';
