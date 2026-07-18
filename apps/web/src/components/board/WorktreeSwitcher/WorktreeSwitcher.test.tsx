@@ -49,13 +49,22 @@ test('selecting a worktree tab reports its branch', async () => {
   expect(onSelect).toHaveBeenCalledWith('nc/auth-guard');
 });
 
-test('the per-tab actions menu fires onRemoveWorktree with the tab', async () => {
+test('the per-tab actions menu routes removal through a destructive confirm', async () => {
   const onRemoveWorktree = vi.fn();
   const screen = render(<MainSelected onRemoveWorktree={onRemoveWorktree} />);
   await screen
     .getByRole('button', { name: /worktree actions for nc\/api-client/i })
     .click();
   await screen.getByRole('menuitem', { name: /remove worktree/i }).click();
+  // The kebab no longer discards on a single click — it opens the shared destructive
+  // confirm (the same guard the card trash + column Clear use), so a dirty worktree
+  // can't be thrown away by accident.
+  await expect
+    .element(screen.getByRole('alertdialog', { name: /remove this worktree/i }))
+    .toBeInTheDocument();
+  expect(onRemoveWorktree).not.toHaveBeenCalled();
+  // Confirming runs the real discard with the tab.
+  await screen.getByRole('button', { name: /^remove$/i }).click();
   expect(onRemoveWorktree).toHaveBeenCalledWith(
     expect.objectContaining({ branch: 'nc/api-client' }),
   );
