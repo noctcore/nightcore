@@ -6,7 +6,7 @@ import { CouncilStartPanel } from './CouncilStartPanel';
 const meta = {
   title: 'Council/CouncilStartPanel',
   component: CouncilStartPanel,
-  args: { onStart: fn() },
+  args: { onStart: fn(async () => {}) },
 } satisfies Meta<typeof CouncilStartPanel>;
 
 export default meta;

@@ -56,6 +56,7 @@ export {
   PanelLeftClose as PanelLeftCloseIcon,
   PanelLeft as PanelLeftIcon,
   Paperclip as PaperclipIcon,
+  Pause as PauseIcon,
   Gauge as PerfIcon,
   Play as PlayIcon,
   Plus as PlusIcon,

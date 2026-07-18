@@ -12,6 +12,7 @@
  */
 import { AgentsIcon, Badge, EmptyState, LayersIcon, Markdown } from '@/components/ui';
 
+import { SEAT_ROLE_TONE } from '../council-roles';
 import type { ReplyDiffProps } from './ReplyDiff.types';
 
 export function ReplyDiff({ rounds }: ReplyDiffProps) {
@@ -27,9 +28,11 @@ export function ReplyDiff({ rounds }: ReplyDiffProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-      <p className="text-2xs text-muted-foreground">
-        Each broadcast's replies, side-by-side. Disagreement is the product — the columns
-        are never merged into one answer.
+      <p
+        className="text-2xs text-muted-foreground"
+        title="Disagreement is the product — the columns are never merged into one answer."
+      >
+        Each broadcast's replies, side-by-side.
       </p>
       {rounds.map((round) => (
         <section
@@ -49,7 +52,7 @@ export function ReplyDiff({ rounds }: ReplyDiffProps) {
             >
               {round.diverged
                 ? `${round.columns.length} distinct position${round.columns.length === 1 ? '' : 's'}`
-                : 'Aligned — no disagreement'}
+                : 'Aligned'}
             </span>
           </header>
           <div className="overflow-x-auto">
@@ -67,7 +70,7 @@ export function ReplyDiff({ rounds }: ReplyDiffProps) {
                     <span className="truncate text-xs-plus font-medium text-foreground">
                       {column.seatId}
                     </span>
-                    <Badge tone="primary" className="ml-auto capitalize">
+                    <Badge tone={SEAT_ROLE_TONE[column.role]} className="ml-auto capitalize">
                       {column.role}
                     </Badge>
                   </header>

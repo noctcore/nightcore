@@ -7,7 +7,6 @@
 import type { ReactNode } from 'react';
 
 import {
-  AlertIcon,
   Button,
   CheckIcon,
   ExternalLinkIcon,
@@ -24,6 +23,7 @@ import {
   VERDICT_META,
 } from '../issue-triage.constants';
 import type { IssueVerdictView } from '../issue-triage.types';
+import { StaleChip } from '../StaleChip';
 import type { ResultsPanelProps } from './ResultsPanel.types';
 
 const SECTION_LABEL =
@@ -97,13 +97,10 @@ export function ResultsPanel({
             {CONFIDENCE_META[result.confidence].label}
           </span>
           {stale && (
-            <span
-              className="ml-auto inline-flex items-center gap-1 rounded-md border border-warning/40 bg-warning/[0.12] px-1.5 py-0.5 font-mono text-3xs font-semibold uppercase tracking-wide text-warning"
+            <StaleChip
+              className="ml-auto"
               title="The issue changed on GitHub after this validation — re-validate for a current verdict."
-            >
-              <AlertIcon size={11} />
-              Stale
-            </span>
+            />
           )}
         </div>
 
@@ -171,15 +168,22 @@ export function ResultsPanel({
       {/* Human-gated actions. Posting is always behind the confirmed preview dialog. */}
       <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3.5">
         {posted ? (
-          <a
-            href={stream.postedCommentUrl ?? '#'}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-nc border border-success/40 bg-success/[0.08] px-3 py-1.5 text-xs-plus text-success"
-          >
-            <CheckIcon size={14} /> Comment posted
-            <ExternalLinkIcon size={12} />
-          </a>
+          stream.postedCommentUrl !== null ? (
+            <a
+              href={stream.postedCommentUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-nc border border-success/40 bg-success/[0.08] px-3 py-1.5 text-xs-plus text-success"
+            >
+              <CheckIcon size={14} /> Comment posted
+              <ExternalLinkIcon size={12} />
+            </a>
+          ) : (
+            // Posted, but the API returned no URL — a plain chip, no dead `#` link (GOV-19).
+            <span className="inline-flex items-center gap-1.5 rounded-nc border border-success/40 bg-success/[0.08] px-3 py-1.5 text-xs-plus text-success">
+              <CheckIcon size={14} /> Comment posted
+            </span>
+          )
         ) : (
           <Button onClick={onPostComment}>
             <GithubIcon size={15} />
@@ -193,7 +197,7 @@ export function ResultsPanel({
             Go to task
           </Button>
         ) : (
-          <Button variant="ghost" onClick={onConvertToTask}>
+          <Button variant="secondary" onClick={onConvertToTask}>
             <MoveIcon size={15} />
             Convert to task
           </Button>

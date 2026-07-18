@@ -15,8 +15,10 @@ import {
   BroadcastIcon,
   Button,
   EmptyState,
+  fadeRise,
   FolderIcon,
   HistoryIcon,
+  m,
   StatusDot,
 } from '@/components/ui';
 
@@ -34,14 +36,19 @@ import type { CouncilViewProps } from './CouncilView.types';
 const PHASE_STATUS: Record<CouncilPhase, { label: string; className: string }> = {
   idle: { label: 'Idle', className: 'text-muted-foreground' },
   running: { label: 'Live', className: 'text-success' },
-  converged: { label: 'Converged — awaiting your judgment', className: 'text-primary' },
-  resolved: { label: 'Resolved — you ruled', className: 'text-success' },
+  converged: { label: 'Awaiting your ruling', className: 'text-primary' },
+  resolved: { label: 'Resolved', className: 'text-success' },
   stopped: { label: 'Stopped', className: 'text-muted-foreground' },
 };
 
 export function CouncilView(props: CouncilViewProps) {
   const view = useCouncilView(props);
   const status = PHASE_STATUS[view.phase];
+  // While live, name the current stage in the pill: "Live · Debate · round 2" (GOV-6).
+  const statusLabel =
+    view.phase === 'running' && view.liveStage !== null
+      ? `Live · ${view.liveStage}`
+      : status.label;
   // At Converge the board becomes the judging surface: the seats' replies aligned
   // side-by-side (disagreement is the product) beneath the human's gavel (#353).
   const atConverge = view.phase === 'converged' || view.phase === 'resolved';
@@ -57,7 +64,7 @@ export function CouncilView(props: CouncilViewProps) {
         {view.phase !== 'idle' && (
           <span className={`flex items-center gap-1.5 text-xs-plus ${status.className}`}>
             {view.isLive && <StatusDot colorClass="bg-success" pulse />}
-            {status.label}
+            {statusLabel}
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
@@ -110,12 +117,15 @@ export function CouncilView(props: CouncilViewProps) {
               // The human Converge gavel (#353) — P1's terminal authority (safety #7).
               // It only DISPATCHES the human's verdict through the Conductor; it never
               // feeds text into a seat prompt (the moderated bus stays the sole path).
-              <ConvergeGavel
-                positions={view.positions}
-                onResolve={view.resolve}
-                resolved={view.resolved}
-                verdict={view.verdict}
-              />
+              // Fade+rises in as the board hands over to judging (GOV-17).
+              <m.div variants={fadeRise} initial="initial" animate="animate">
+                <ConvergeGavel
+                  positions={view.positions}
+                  onResolve={view.resolve}
+                  resolved={view.resolved}
+                  verdict={view.verdict}
+                />
+              </m.div>
             ) : (
               // Broadcast/DM/steer bar — DEFERRED: a conductor-mediated human-input
               // command is a follow-up slice (#361); feeding text straight into a seat
@@ -127,8 +137,8 @@ export function CouncilView(props: CouncilViewProps) {
               >
                 <BroadcastIcon size={14} className="text-muted-foreground" aria-hidden />
                 <span className="text-2xs text-muted-foreground">
-                  Broadcast · DM · steer-stage arrive with the conductor's mediated
-                  human-input seam — the canvas stays read-only until then.
+                  Broadcast and direct messages are coming soon. The council is read-only
+                  for now.
                 </span>
                 <Button variant="secondary" disabled className="ml-auto">
                   Broadcast to all
