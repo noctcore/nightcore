@@ -3,9 +3,9 @@ import {
   BranchPicker,
   Button,
   CloseIcon,
+  ConfirmHint,
   IconButton,
   ImageDropzone,
-  Kbd,
   Modal,
   ModelSelectField,
   slideIn,
@@ -24,6 +24,9 @@ import type { NewTaskFormProps } from './NewTaskForm.types';
 
 const INPUT_CLASS =
   'w-full rounded-nc border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary';
+// The run-ceiling number inputs strip the native spinner arrows (matching SessionCard's
+// LimitField), so the max-turns / max-budget fields read as clean numeric entry.
+const NUMBER_INPUT_CLASS = `${INPUT_CLASS} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`;
 const LABEL_CLASS =
   'font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground';
 
@@ -159,7 +162,7 @@ export function NewTaskForm({ open, planGateDefault, onCreate, onClose }: NewTas
                 label="Plan first — review a plan before the agent writes code"
               />
             ) : (
-              <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground/60">
+              <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
                 Unavailable
               </span>
             )}
@@ -241,7 +244,7 @@ export function NewTaskForm({ open, planGateDefault, onCreate, onClose }: NewTas
                 value={maxTurns}
                 onChange={(e) => setMaxTurns(e.target.value)}
                 placeholder="Inherit"
-                className={INPUT_CLASS}
+                className={NUMBER_INPUT_CLASS}
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -257,7 +260,7 @@ export function NewTaskForm({ open, planGateDefault, onCreate, onClose }: NewTas
                 value={maxBudget}
                 onChange={(e) => setMaxBudget(e.target.value)}
                 placeholder="Inherit"
-                className={INPUT_CLASS}
+                className={NUMBER_INPUT_CLASS}
               />
             </div>
           </div>
@@ -279,14 +282,17 @@ export function NewTaskForm({ open, planGateDefault, onCreate, onClose }: NewTas
               {error}
             </span>
           ) : (
-            <span className="mr-auto flex items-center gap-1 text-xs text-muted-foreground">
-              <Kbd>⌘↵</Kbd> to create
-            </span>
+            <ConfirmHint>to create</ConfirmHint>
           )}
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={() => void submit()} disabled={!canSubmit} aria-busy={busy}>
+          <Button
+            onClick={() => void submit()}
+            disabled={!canSubmit}
+            title={canSubmit ? undefined : 'Enter a title first'}
+            aria-busy={busy}
+          >
             {busy ? <Spinner /> : null}
             {busy ? 'Creating…' : 'Create task'}
           </Button>
