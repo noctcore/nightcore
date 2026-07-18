@@ -50,10 +50,10 @@ export function Menu({ trigger, label, items, align = 'right' }: MenuProps) {
                 role="menuitem"
                 onClick={() => select(item)}
                 onKeyDown={(e) => onItemKeyDown(e, index)}
-                className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm transition-colors hover:bg-white/[0.06] focus-visible:bg-white/[0.12] ${
+                className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm transition-colors ${
                   item.destructive
-                    ? 'text-destructive hover:text-destructive'
-                    : 'text-foreground'
+                    ? 'text-destructive hover:bg-destructive/10 hover:text-destructive focus-visible:bg-destructive/10'
+                    : 'text-foreground hover:bg-white/[0.06] focus-visible:bg-white/[0.12]'
                 }`}
               >
                 {item.icon !== undefined && (
