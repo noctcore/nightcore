@@ -16,7 +16,7 @@
     "@nightcore/contracts": "workspace:*",
     "@nightcore/shared": "workspace:*",
     "@nightcore/storage": "workspace:*",
-    "@openai/codex-sdk": "0.142.5",
+    "@openai/codex-sdk": "0.144.6",
     "zod": "4.4.3"
   }
 }
