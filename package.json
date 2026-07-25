@@ -42,7 +42,7 @@
     "lint:meta": "bun run tools/lint-meta/cli.ts",
     "check:rust": "bun run scripts/check-rust.ts",
     "prepare": "husky",
-    "audit": "bun audit --audit-level=moderate",
+    "audit": "bun run scripts/audit.ts",
     "audit:rust": "cd apps/desktop/src-tauri && cargo audit",
     "audit:all": "bun run audit && bun run audit:rust",
     "release:bump": "bun run scripts/bump-version.ts"
