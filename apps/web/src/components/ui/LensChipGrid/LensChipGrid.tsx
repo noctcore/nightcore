@@ -9,6 +9,7 @@
 import { Button } from '../Button';
 import { SectionLabel } from '../SectionLabel';
 import { Spinner } from '../Spinner';
+import { useScanLimits } from './LensChipGrid.hooks';
 import type {
   LensChipGridProps,
   ScanConfigFormProps,
@@ -83,6 +84,54 @@ export function LensChipGrid<K extends string>({
  *  extra section (Insight's scope radio), the lens chip grid, and the primary
  *  CTA with its cost hint. A controlled, purely-presentational view of the
  *  lifted run-config state. */
+/** Format a dollar amount for the ceiling note: cents precision, since a divided
+ *  per-pass budget is routinely sub-dollar ($5 over 8 categories = $0.63). */
+function usd(amount: number): string {
+  return `$${amount.toFixed(2)}`;
+}
+
+/**
+ * The spend/turn ceiling this run will actually dispatch under (#401), shown BEFORE
+ * the user clicks the most expensive button in the app.
+ *
+ * Renders nothing when Settings carries no ceiling — the pre-#401 state, and still
+ * the default — so it only ever appears to explain a real cap.
+ *
+ * The budget line names both numbers: what EACH pass gets, and the total it was
+ * divided from. A lone "$0.63" would look alarmingly unlike the $5 the user typed.
+ */
+function ScanCeilingNote({
+  passCount,
+  unitLabel,
+}: {
+  passCount: number;
+  unitLabel: string;
+}) {
+  const limits = useScanLimits(passCount);
+  const { maxBudgetUsdPerPass, maxBudgetUsdTotal, maxTurnsPerPass } = limits;
+
+  const parts: string[] = [];
+  if (maxBudgetUsdPerPass !== undefined && maxBudgetUsdTotal !== undefined) {
+    parts.push(
+      `${usd(maxBudgetUsdPerPass)} per ${unitLabel} · ${usd(maxBudgetUsdTotal)} max`,
+    );
+  }
+  if (maxTurnsPerPass !== undefined) {
+    parts.push(`${maxTurnsPerPass} turns per ${unitLabel}`);
+  }
+  if (parts.length === 0) return null;
+
+  return (
+    <p className="text-xs-flat text-muted-foreground">
+      <span className="font-semibold text-foreground">Ceiling</span>{' '}
+      {parts.join(' · ')}
+      <span className="sr-only">
+        , from your Settings run limits; the scan stops at this ceiling
+      </span>
+    </p>
+  );
+}
+
 export function ScanConfigForm<K extends string>({
   picker,
   beforeChips,
@@ -94,6 +143,7 @@ export function ScanConfigForm<K extends string>({
   ctaLabel,
   ctaClassName = 'w-full sm:w-auto',
   hint,
+  unitLabel,
   scrollable = true,
   ...chipGrid
 }: ScanConfigFormProps<K>) {
@@ -120,6 +170,10 @@ export function ScanConfigForm<K extends string>({
           {isStarting ? 'Starting…' : ctaLabel}
         </Button>
         <p className="text-xs-flat text-muted-foreground">{hint}</p>
+        <ScanCeilingNote
+          passCount={chipGrid.selected.size}
+          unitLabel={unitLabel}
+        />
       </div>
     </div>
   );

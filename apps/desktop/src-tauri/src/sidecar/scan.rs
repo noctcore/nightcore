@@ -374,13 +374,28 @@ pub(crate) struct ScanRunInit {
 ///
 /// "Pass" is the scan family's unit of parallel work: a category for Insight/Harness,
 /// a dimension for the Scorecard. Each pass is its own agent session.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Also crosses to the web (ts-rs) so the CONFIGURE screen can show the ceiling a
+/// scan will actually run under BEFORE the user pays for it. The web formats these
+/// numbers; it never re-derives them, so the divide-vs-pass-through rule below has
+/// exactly one implementation.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "ScanLimits.ts"))]
 pub(crate) struct ScanLimits {
     /// Turn ceiling for EACH pass, in the wire's `u64` (Settings stores `u32`).
     /// `None` ⇒ the engine's own default applies.
+    #[cfg_attr(test, ts(optional))]
     pub max_turns_per_pass: Option<u64>,
     /// Dollar ceiling for EACH pass. `None` ⇒ uncapped.
+    #[cfg_attr(test, ts(optional))]
     pub max_budget_usd_per_pass: Option<f64>,
+    /// The undivided Settings ceiling the per-pass budget was derived from — the
+    /// number the user actually typed. Carried so the UI can show BOTH ("$0.63 per
+    /// category · $5.00 max") instead of a per-pass figure that looks alarmingly
+    /// small next to what they set.
+    #[cfg_attr(test, ts(optional))]
+    pub max_budget_usd_total: Option<f64>,
 }
 
 /// Resolve a scan's per-pass ceilings from the Settings limits (project override →
@@ -414,15 +429,42 @@ pub(crate) fn resolve_scan_limits(
     // `begin_scan_run` rejects an empty selection before this runs, so 0 is
     // unreachable — guard anyway rather than divide by zero.
     let passes = pass_count.max(1) as f64;
-    let per_pass_budget = settings
-        .default_max_budget_usd(Some(project_id))
+    let total_budget = settings.default_max_budget_usd(Some(project_id));
+    let per_pass_budget = total_budget
         .map(|total| total / passes)
         .filter(|per_pass| *per_pass > 0.0);
 
     ScanLimits {
         max_turns_per_pass: settings.default_max_turns(Some(project_id)).map(u64::from),
         max_budget_usd_per_pass: per_pass_budget,
+        // Only meaningful alongside a resolved per-pass budget; when the fail-safe
+        // above drops the per-pass value there is no ceiling to advertise either.
+        max_budget_usd_total: per_pass_budget.and(total_budget),
     }
+}
+
+/// Preview the ceilings a scan would run under, for the CONFIGURE screen (#401).
+///
+/// The UI calls this as the user toggles categories/dimensions, so the ceiling it
+/// shows is the one [`resolve_scan_limits`] will actually dispatch — same function,
+/// same project-override resolution, no re-derived arithmetic on the web side.
+#[tauri::command]
+pub fn preview_scan_limits(
+    projects: tauri::State<'_, crate::project::ProjectStore>,
+    settings: tauri::State<'_, crate::store::settings::SettingsStore>,
+    pass_count: usize,
+) -> Result<ScanLimits, String> {
+    // No active project ⇒ nothing to resolve overrides against. Report "uncapped"
+    // rather than erroring: this only drives an advisory chip, and a failed preview
+    // must never block the CONFIGURE screen from rendering.
+    let Some(project) = projects.active() else {
+        return Ok(ScanLimits {
+            max_turns_per_pass: None,
+            max_budget_usd_per_pass: None,
+            max_budget_usd_total: None,
+        });
+    };
+    Ok(resolve_scan_limits(&settings, &project.id, pass_count))
 }
 
 /// Validate a scan `start_*` request and resolve its shared run header. Rejects an empty

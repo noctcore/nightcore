@@ -179,6 +179,7 @@ export type {
   ProviderCapabilities,
 } from '@nightcore/contracts';
 // Readiness Scorecard (Profile) persisted shapes (ts-rs from `store/scorecard.rs`).
+export type { ScanLimits } from '../generated/ScanLimits';
 export type { ScorecardEvidence } from '../generated/ScorecardEvidence';
 export type { ScorecardRun } from '../generated/ScorecardRun';
 export type { StoredReading } from '../generated/StoredReading';

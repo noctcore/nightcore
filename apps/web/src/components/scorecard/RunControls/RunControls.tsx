@@ -43,6 +43,7 @@ export function RunControls({ config, isStarting, onGrade }: RunControlsProps) {
       onRun={onGrade}
       ctaIcon={<PerfIcon size={16} />}
       ctaLabel="Grade readiness"
+      unitLabel="dimension"
       ctaClassName="w-full justify-center py-2.5 text-xs-plus3"
       hint={
         <>

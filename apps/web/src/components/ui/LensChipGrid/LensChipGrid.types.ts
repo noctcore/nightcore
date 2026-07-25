@@ -43,6 +43,10 @@ export interface ScanConfigFormProps<K extends string = string>
   ctaClassName?: string;
   /** The cost/scope hint line under the CTA. */
   hint: ReactNode;
+  /** Singular noun for one lens in this family — `category` (Insight/Harness) or
+   *  `dimension` (Scorecard). Used by the spend-ceiling note, which reports what
+   *  EACH pass gets, so it has to name the unit the user is toggling. */
+  unitLabel: string;
   /** Wrap the form in its own scroll container (default true; a family whose
    *  parent already scrolls passes false). */
   scrollable?: boolean;
