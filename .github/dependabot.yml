@@ -23,8 +23,14 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     groups:
+      # Minor/patch only. Majors are deliberately EXCLUDED from the group so each
+      # arrives as its own PR: the grouped major PR (#396) bundled ESLint 9→10,
+      # TypeScript 5→7, Vitest 3→4, Vite 8 and Storybook 9→10 into one branch and
+      # red-lined every gate at once, with no way to tell which ecosystem jump
+      # broke what. Ungrouped majors are reviewable one migration at a time.
       js-dependencies:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
     ignore:
       # The Claude Agent SDK is deliberately exact-pinned (0.3.190) because its
       # pre-1.0 API drifts. Below 1.0 semver gives NO stability guarantee for
@@ -45,8 +51,11 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     groups:
+      # Same split as js-dependencies: majors ship as individual PRs so a
+      # breaking crate bump is reviewed on its own, not inside a 10-crate batch.
       cargo-dependencies:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # The actions used by the Dependency Audit workflow itself.
   - package-ecosystem: "github-actions"
