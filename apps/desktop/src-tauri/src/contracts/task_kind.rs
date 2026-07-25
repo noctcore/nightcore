@@ -34,8 +34,8 @@ use ts_rs::TS;
 // is correct for any casing; this copy cannot detect anything. The two agree today
 // only because every kind is a single word (`lowercase == snake_case`). Adding a
 // camelCase kind would split this enum's PERSISTED serde form from the WIRE form
-// `as_wire()` sends — `task_kind_serde_form_matches_its_own_wire_form` in
-// `super::tests` reds if that ever happens.
+// `as_wire()` sends — `task_kind_round_trips_and_is_snake_case` in
+// `crate::store::task::model` reds if that ever happens.
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(test, ts(export, export_to = "TaskKind.ts"))]
 pub enum TaskKind {
