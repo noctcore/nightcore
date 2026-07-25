@@ -466,6 +466,62 @@ mod tests {
         );
     }
 
+    /// Parity guard for the hand-written `TaskKind`'s OWN two representations.
+    ///
+    /// [`task_kind::TaskKind`](super::task_kind) is serialized two different ways
+    /// by two different callers, and until now only one of them was pinned:
+    ///
+    /// * **serde** (`rename_all = "snake_case"`) — the PERSISTED form. This is what
+    ///   lands in the task store as `Task.kind`.
+    /// * **[`as_wire()`](super::task_kind::TaskKind::as_wire)** — the WIRE form. This
+    ///   is what the provider sends in `start-session` for the engine to resolve to
+    ///   an agent preset.
+    ///
+    /// [`task_kind_variants_match_between_generated_and_store`] pins `as_wire()`
+    /// against the codegen'd enum's serde form, which forces the wire form to stay
+    /// honest. Nothing pinned this enum's own serde form, so the PERSISTED form could
+    /// silently drift away from the wire form.
+    ///
+    /// Why that is reachable: the codegen picks its `rename_all` rule by DETECTING
+    /// which rule reproduces the zod values exactly (`detectRenameAll` in
+    /// `tools/codegen/gen-rust-contracts.ts`), so `generated::TaskKind` is correct by
+    /// construction for any casing. This copy's rule is HARD-PINNED to `snake_case`.
+    /// Today every kind is a single word, so `lowercase == snake_case` and all three
+    /// representations coincide. Add a camelCase kind (`uiBug`) and they split: the
+    /// codegen detects `camelCase` → `"uiBug"`, the guard above forces `as_wire()` to
+    /// return `"uiBug"` to match, and this enum's un-pinned serde keeps emitting
+    /// `"ui_bug"` — a task that PERSISTS under one string and is SENT under another.
+    ///
+    /// This test closes that pair. A future multi-word kind whose casing doesn't fit
+    /// `snake_case` now reds here, pointing at the `rename_all` on this enum, instead
+    /// of splitting store form from wire form in production.
+    #[test]
+    fn task_kind_serde_form_matches_its_own_wire_form() {
+        use super::task_kind::TaskKind as K;
+
+        for k in [K::Build, K::Research, K::Review, K::Decompose, K::Tdd] {
+            // Exhaustiveness tripwire: a new variant breaks this match (and the
+            // array above it) until it is added.
+            match k {
+                K::Build | K::Research | K::Review | K::Decompose | K::Tdd => {}
+            }
+            let serde_form = serde_json::to_value(k)
+                .expect("TaskKind serializes")
+                .as_str()
+                .expect("TaskKind is a string enum")
+                .to_owned();
+            assert_eq!(
+                serde_form,
+                k.as_wire(),
+                "contracts::task_kind::TaskKind serializes as {serde_form:?} but sends \
+                 {:?} on the wire — the PERSISTED form and the WIRE form have split. \
+                 Fix the `rename_all` rule on the enum (or the `as_wire()` arm) so a \
+                 task cannot be stored under one string and sent under another.",
+                k.as_wire()
+            );
+        }
+    }
+
     /// Single-source guard for the `nc:*` Tauri event channel names (issue #44).
     ///
     /// Channel names are authored ONCE — the `@nightcore/contracts` `CHANNELS`

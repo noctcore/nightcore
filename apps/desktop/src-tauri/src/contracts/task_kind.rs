@@ -29,6 +29,13 @@ use ts_rs::TS;
 /// verification reviewer's identity (not user-selectable in the picker).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[cfg_attr(test, derive(TS))]
+// HARD-PINNED, unlike the codegen'd peer. `generated::TaskKind` picks its rule by
+// detecting which one reproduces the zod values exactly (`detectRenameAll`), so it
+// is correct for any casing; this copy cannot detect anything. The two agree today
+// only because every kind is a single word (`lowercase == snake_case`). Adding a
+// camelCase kind would split this enum's PERSISTED serde form from the WIRE form
+// `as_wire()` sends — `task_kind_serde_form_matches_its_own_wire_form` in
+// `super::tests` reds if that ever happens.
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(test, ts(export, export_to = "TaskKind.ts"))]
 pub enum TaskKind {
