@@ -20,12 +20,14 @@ use crate::contracts::{
 };
 use crate::project::ProjectStore;
 use crate::store::insight::{InsightRun, InsightStore, InsightUsage, StoredFinding};
+use crate::store::settings::SettingsStore;
 use crate::store::TaskStore;
 use crate::task::{sanitize_minted_title, Task, TaskKind, TASK_EVENT};
 
 use super::scan::{
     begin_scan_run, dispatch_scan_command, failure_reason, finalize_scan_items,
-    reconcile_scan_history, scan_lifecycle_commands, wire_str, ScanRunInit, ScanTelemetry,
+    reconcile_scan_history, resolve_scan_limits, scan_lifecycle_commands, wire_str, ScanRunInit,
+    ScanTelemetry,
 };
 use super::INSIGHT_EVENT;
 use crate::infra::untrusted::untrusted_block;
@@ -58,6 +60,7 @@ pub async fn start_analysis(
     app: AppHandle,
     projects: State<'_, ProjectStore>,
     insight_store: State<'_, InsightStore>,
+    settings: State<'_, SettingsStore>,
     scope: AnalysisScope,
     categories: Vec<FindingCategory>,
     model: Option<String>,
@@ -67,6 +70,7 @@ pub async fn start_analysis(
 ) -> Result<String, String> {
     let ScanRunInit {
         project_path,
+        project_id,
         run_id,
         model: model_str,
         now,
@@ -117,6 +121,8 @@ pub async fn start_analysis(
 
     // Ensure the sidecar is up, then dispatch the analysis command; on failure the
     // shared helper persists the run's failed-state (so it doesn't look stuck).
+    let limits = resolve_scan_limits(&settings, &project_id, categories.len());
+
     let command = SurfaceCommand::StartAnalysis {
         run_id: run_id.clone(),
         project_path,
@@ -127,8 +133,11 @@ pub async fn start_analysis(
         model,
         effort,
         max_concurrency: None,
-        max_turns_per_category: None,
-        max_budget_usd_per_category: None,
+        // Settings ceilings, resolved per category pass (#401). Turns pass through
+        // (each pass is its own session); budget divides so the worst-case TOTAL
+        // honors the "per run" ceiling the Settings card promises.
+        max_turns_per_category: limits.max_turns_per_pass,
+        max_budget_usd_per_category: limits.max_budget_usd_per_pass,
         // Deep mode (issue #294, slice 2): passed straight through from the web
         // toggle. `None` ⇒ the classic single-pass path, byte-identical to pre-deep.
         deep,

@@ -359,12 +359,70 @@ where
 pub(crate) struct ScanRunInit {
     /// Absolute path of the active project the scan runs against.
     pub project_path: String,
+    /// Id of that project — the key Settings project-overrides resolve against
+    /// (see [`resolve_scan_limits`]).
+    pub project_id: String,
     /// Fresh run id the terminal + intermediate events correlate by.
     pub run_id: String,
     /// The requested model as a plain string (empty when the caller passed `None`).
     pub model: String,
     /// Creation timestamp, reused for both `created_at` and `updated_at`.
     pub now: u64,
+}
+
+/// The per-pass autonomy ceilings a scan dispatches with, resolved from Settings.
+///
+/// "Pass" is the scan family's unit of parallel work: a category for Insight/Harness,
+/// a dimension for the Scorecard. Each pass is its own agent session.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ScanLimits {
+    /// Turn ceiling for EACH pass, in the wire's `u64` (Settings stores `u32`).
+    /// `None` ⇒ the engine's own default applies.
+    pub max_turns_per_pass: Option<u64>,
+    /// Dollar ceiling for EACH pass. `None` ⇒ uncapped.
+    pub max_budget_usd_per_pass: Option<f64>,
+}
+
+/// Resolve a scan's per-pass ceilings from the Settings limits (project override →
+/// global, via the same resolvers `create_task` uses).
+///
+/// Until this existed, all three scan `start_*` commands hardcoded `None` for both,
+/// so scans — the priciest click in the app — ran with no ceiling at all while the
+/// Settings card promised "Hard cost ceiling per run in USD". This makes that promise
+/// true for scans.
+///
+/// **Turns pass through; budget divides.** They are deliberately asymmetric:
+///
+/// * `max_turns` is "conversation turns before a run stops" — a per-SESSION limit,
+///   and each pass is its own session, so every pass gets the full ceiling. Dividing
+///   it would starve passes (200 turns over 8 categories = 25 each) and break scans
+///   rather than bound them.
+/// * `max_budget_usd` is spend, which ACCUMULATES across passes. Passing it through
+///   unchanged would let an 8-category scan spend 8× the stated ceiling, making the
+///   "per run" copy actively misleading about the app's most expensive operation. So
+///   it is divided by the pass count and the worst-case total matches what the user
+///   set.
+///
+/// Fail-safe: a non-positive per-pass budget resolves to `None` rather than going on
+/// the wire, because the contract declares the field `.positive()` — a zero or
+/// negative value would fail validation and kill the scan instead of bounding it.
+pub(crate) fn resolve_scan_limits(
+    settings: &crate::store::settings::SettingsStore,
+    project_id: &str,
+    pass_count: usize,
+) -> ScanLimits {
+    // `begin_scan_run` rejects an empty selection before this runs, so 0 is
+    // unreachable — guard anyway rather than divide by zero.
+    let passes = pass_count.max(1) as f64;
+    let per_pass_budget = settings
+        .default_max_budget_usd(Some(project_id))
+        .map(|total| total / passes)
+        .filter(|per_pass| *per_pass > 0.0);
+
+    ScanLimits {
+        max_turns_per_pass: settings.default_max_turns(Some(project_id)).map(u64::from),
+        max_budget_usd_per_pass: per_pass_budget,
+    }
 }
 
 /// Validate a scan `start_*` request and resolve its shared run header. Rejects an empty
@@ -387,6 +445,7 @@ pub(crate) fn begin_scan_run(
     let project = active_project.ok_or(no_project_msg)?;
     Ok(ScanRunInit {
         project_path: project.path,
+        project_id: project.id,
         run_id: uuid::Uuid::new_v4().to_string(),
         model: model.unwrap_or_default().to_string(),
         now: now_ms(),
@@ -396,6 +455,102 @@ pub(crate) fn begin_scan_run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::store::settings::{SettingsPatch, SettingsStore};
+
+    /// A `SettingsStore` on a temp dir, optionally carrying global limits.
+    fn settings_with(
+        max_turns: Option<u32>,
+        max_budget_usd: Option<f64>,
+    ) -> (tempfile::TempDir, SettingsStore) {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let store = SettingsStore::load_from(tmp.path().to_path_buf());
+        if max_turns.is_some() || max_budget_usd.is_some() {
+            store
+                .update(SettingsPatch {
+                    max_turns,
+                    max_budget_usd,
+                    ..Default::default()
+                })
+                .expect("patch applies");
+        }
+        (tmp, store)
+    }
+
+    /// No Settings ceiling ⇒ both `None`, i.e. byte-identical to the pre-#401
+    /// hardcoded-`None` dispatch. Wiring the resolver must not cap anyone who never
+    /// set a limit.
+    #[test]
+    fn resolve_scan_limits_is_uncapped_when_settings_are_unset() {
+        let (_tmp, settings) = settings_with(None, None);
+        let limits = resolve_scan_limits(&settings, "proj", 8);
+        assert_eq!(limits.max_turns_per_pass, None);
+        assert_eq!(limits.max_budget_usd_per_pass, None);
+    }
+
+    /// Budget DIVIDES across passes so the worst-case total matches the "per run"
+    /// ceiling the Settings card promises: $5 over 8 categories ⇒ $0.625 each,
+    /// $5.00 total. Passing it through unchanged would spend 8x the stated ceiling.
+    #[test]
+    fn resolve_scan_limits_divides_budget_across_passes() {
+        let (_tmp, settings) = settings_with(None, Some(5.0));
+        let limits = resolve_scan_limits(&settings, "proj", 8);
+        let per_pass = limits.max_budget_usd_per_pass.expect("budget resolves");
+        assert!(
+            (per_pass - 0.625).abs() < f64::EPSILON,
+            "expected 5.0/8 = 0.625 per pass, got {per_pass}"
+        );
+        assert!(
+            (per_pass * 8.0 - 5.0).abs() < 1e-9,
+            "worst-case total must equal the ceiling the user set"
+        );
+    }
+
+    /// Turns do NOT divide. `max_turns` is per-SESSION and each pass is its own
+    /// session, so dividing (200/8 = 25) would starve passes and break scans rather
+    /// than bound them.
+    #[test]
+    fn resolve_scan_limits_passes_turns_through_undivided() {
+        let (_tmp, settings) = settings_with(Some(200), None);
+        let limits = resolve_scan_limits(&settings, "proj", 8);
+        assert_eq!(limits.max_turns_per_pass, Some(200));
+    }
+
+    /// A project override beats the global, matching `create_task`'s resolution.
+    #[test]
+    fn resolve_scan_limits_prefers_the_project_override() {
+        let (_tmp, settings) = settings_with(Some(200), Some(8.0));
+        settings
+            .update(SettingsPatch {
+                project_id: Some("proj".to_string()),
+                max_turns: Some(50),
+                max_budget_usd: Some(2.0),
+                ..Default::default()
+            })
+            .expect("override applies");
+
+        let limits = resolve_scan_limits(&settings, "proj", 4);
+        assert_eq!(limits.max_turns_per_pass, Some(50));
+        let per_pass = limits.max_budget_usd_per_pass.expect("budget resolves");
+        assert!(
+            (per_pass - 0.5).abs() < f64::EPSILON,
+            "2.0/4 = 0.5, got {per_pass}"
+        );
+    }
+
+    /// `begin_scan_run` rejects an empty selection before this runs, but a 0 pass
+    /// count must not divide by zero and emit `inf` onto the wire.
+    #[test]
+    fn resolve_scan_limits_survives_a_zero_pass_count() {
+        let (_tmp, settings) = settings_with(None, Some(5.0));
+        let limits = resolve_scan_limits(&settings, "proj", 0);
+        assert_eq!(
+            limits.max_budget_usd_per_pass,
+            Some(5.0),
+            "0 passes must be treated as 1, never a division by zero"
+        );
+    }
+
     use crate::store::insight::{InsightRun, InsightUsage, StoredFinding};
     use serde_json::json;
 

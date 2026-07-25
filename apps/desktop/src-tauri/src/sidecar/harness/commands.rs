@@ -19,12 +19,14 @@ use crate::contracts::{ConventionCategory, DeepScanConfig, EffortLevel, SurfaceC
 use crate::infra::safe_join::safe_join;
 use crate::project::ProjectStore;
 use crate::sidecar::scan::{
-    begin_scan_run, dispatch_scan_command, scan_lifecycle_commands, wire_str, ScanRunInit,
+    begin_scan_run, dispatch_scan_command, resolve_scan_limits, scan_lifecycle_commands, wire_str,
+    ScanRunInit,
 };
 use crate::sidecar::HARNESS_EVENT;
 use crate::store::harness::{
     ApplyOutcome, HarnessRun, HarnessStore, HarnessUsage, StoredProposedArtifact, StoredRepoProfile,
 };
+use crate::store::settings::SettingsStore;
 
 use super::apply::{write_create, write_merge_manifest, write_merge_section};
 use super::export::{write_portable_lock, PortableLockExport};
@@ -81,6 +83,7 @@ pub async fn start_harness_scan(
     app: AppHandle,
     projects: State<'_, ProjectStore>,
     harness_store: State<'_, HarnessStore>,
+    settings: State<'_, SettingsStore>,
     categories: Vec<ConventionCategory>,
     model: Option<String>,
     effort: Option<EffortLevel>,
@@ -89,6 +92,7 @@ pub async fn start_harness_scan(
 ) -> Result<String, String> {
     let ScanRunInit {
         project_path,
+        project_id,
         run_id,
         model: model_str,
         now,
@@ -130,6 +134,8 @@ pub async fn start_harness_scan(
 
     // Ensure the sidecar is up, then dispatch the scan command; on failure the
     // shared helper persists the run's failed-state (so it doesn't look stuck).
+    let limits = resolve_scan_limits(&settings, &project_id, categories.len());
+
     let command = SurfaceCommand::StartHarnessScan {
         run_id: run_id.clone(),
         project_path,
@@ -138,8 +144,11 @@ pub async fn start_harness_scan(
         model,
         effort,
         max_concurrency: None,
-        max_turns_per_category: None,
-        max_budget_usd_per_category: None,
+        // Settings ceilings, resolved per category pass (#401). Turns pass through
+        // (each pass is its own session); budget divides so the worst-case TOTAL
+        // honors the "per run" ceiling the Settings card promises.
+        max_turns_per_category: limits.max_turns_per_pass,
+        max_budget_usd_per_category: limits.max_budget_usd_per_pass,
         // Deep mode (issue #294): passed straight through from the web toggle.
         // `None` ⇒ the classic single-pass path, byte-identical to pre-deep.
         deep,

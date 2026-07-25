@@ -131,6 +131,9 @@ pub async fn start_pr_review(
     }
     let ScanRunInit {
         project_path,
+        // Settings scan ceilings (#401) apply to the category/dimension fan-out
+        // families (Insight, Harness, Scorecard); this one has no per-pass shape.
+        project_id: _,
         run_id,
         model: model_str,
         now,
