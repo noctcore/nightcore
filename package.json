@@ -2,7 +2,7 @@
   "name": "nightcore",
   "version": "0.3.0",
   "private": true,
-  "description": "Nightcore — an autonomous Claude dev studio: Rust + Tauri core over a Bun provider sidecar.",
+  "description": "Nightcore \u2014 an autonomous Claude dev studio: Rust + Tauri core over a Bun provider sidecar.",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -29,7 +29,7 @@
     "dogfood:ui": "node scripts/dogfood-ui.mjs",
     "dogfood:engine": "bun run scripts/headless-harness.ts",
     "dogfood:gh": "cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib e2e_gh -- --ignored --nocapture",
-    "test": "bun run test:node && bun run test:web && bun run test:plugin && echo '⚠️  Rust suite skipped — run: bun run test:all (includes test:rust) for the full gate'",
+    "test": "bun run test:node && bun run test:web && bun run test:plugin && echo '\u26a0\ufe0f  Rust suite skipped \u2014 run: bun run test:all (includes test:rust) for the full gate'",
     "test:node": "bun test apps/sidecar packages/config packages/contracts packages/engine packages/harness packages/session-fold packages/shared packages/storage tools/codegen tools/lint-meta",
     "test:node:coverage": "bun run tools/coverage/check-node-coverage.ts",
     "test:web": "bun run --filter @nightcore/web test",
@@ -42,7 +42,7 @@
     "lint:meta": "bun run tools/lint-meta/cli.ts",
     "check:rust": "bun run scripts/check-rust.ts",
     "prepare": "husky",
-    "audit": "bun audit --audit-level=moderate",
+    "audit": "bun run scripts/audit.ts",
     "audit:rust": "cd apps/desktop/src-tauri && cargo audit",
     "audit:all": "bun run audit && bun run audit:rust",
     "release:bump": "bun run scripts/bump-version.ts"
@@ -63,5 +63,10 @@
     "typescript": "^5.6.0",
     "typescript-eslint": "^8.0.0",
     "zod": "4.4.3"
+  },
+  "overrides": {
+    "postcss": ">=8.5.18",
+    "fast-uri": ">=3.1.4",
+    "js-yaml": ">=4.3.0"
   }
 }

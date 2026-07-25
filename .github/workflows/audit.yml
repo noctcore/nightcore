@@ -33,8 +33,11 @@ jobs:
       # advisory in the sanitizer/markdown stack is exactly the class this gate
       # must catch. If a specific moderate advisory ever needs tolerating, ignore
       # it by id explicitly rather than raising the global threshold.
-      # Runs the root `audit` script so the --audit-level threshold is defined
-      # once (package.json) and local `bun run audit` matches this gate exactly.
+      # Runs the root `audit` script (scripts/audit.ts) so the threshold AND the
+      # by-id ignore list live in one reviewed place and local `bun run audit`
+      # matches this gate exactly. Each ignored id carries its reachability
+      # rationale there, and an id that stops matching any advisory FAILS the
+      # script — so a suppression cannot outlive the upstream fix that retires it.
       - run: bun run audit
 
   cargo-audit:
