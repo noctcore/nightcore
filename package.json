@@ -56,7 +56,7 @@
     "@noctcore/eslint-plugin-react": "^0.2.0",
     "@types/bun": "^1.1.0",
     "@types/node": "^22.0.0",
-    "eslint": "^9.0.0",
+    "eslint": "^10.8.0",
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-simple-import-sort": "^13.0.0",
     "husky": "^9.1.7",
