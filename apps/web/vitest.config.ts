@@ -7,25 +7,6 @@ import { defineConfig } from 'vitest/config';
 
 const alias = { '@': fileURLToPath(new URL('./src', import.meta.url)) };
 
-/**
- * Per-test budget for the two browser projects.
- *
- * Raised from the 15s browser-mode default when `@vitest/browser` moved to 3.2.7 —
- * the patch for GHSA-p63j-vcc4-9vmv (browser-mode provider commands bypassing the
- * file-access permission gate) puts a permission check in front of every provider
- * command, so each `.click()` / locator query in a browser test now costs measurably
- * more. Under `--coverage` (istanbul instrumentation on top) a handful of the
- * heaviest tests landed just past 15s and timed out — 3 of 2539, a DIFFERENT three
- * each run, which is the signature of tests sitting on the limit rather than hanging.
- *
- * Bisected: vitest 3.2.6 + the same lockfile is fully green, 3.2.7 is not; the
- * dependency overrides in the same change are NOT implicated.
- *
- * This buys headroom for the added per-command cost. It does NOT mask a hang — a
- * genuinely stuck test still fails, just 30s later.
- */
-const TEST_TIMEOUT_MS = 30_000;
-
 // A FRESH browser config per project. Sharing one object collides: vitest
 // mutates each `instances` entry with the owning project's name, so a shared
 // reference gets registered twice. Each project derives a unique sub-project
@@ -123,7 +104,6 @@ export default defineConfig({
         },
         test: {
           name: 'storybook',
-          testTimeout: TEST_TIMEOUT_MS,
           setupFiles: ['./.storybook/vitest.setup.ts'],
           browser: chromium(),
           // Retry transient browser load flakes (e.g. "Failed to fetch dynamically imported module"
@@ -170,7 +150,6 @@ export default defineConfig({
         },
         test: {
           name: 'unit',
-          testTimeout: TEST_TIMEOUT_MS,
           include: ['src/**/*.test.tsx'],
           setupFiles: ['./.storybook/vitest.setup.ts'],
           // Retry transient browser load flakes (e.g. "Failed to fetch dynamically imported module"
