@@ -52,7 +52,9 @@ test('blocks merge and lists conflict files when conflicting', async () => {
   await expect
     .element(screen.getByText(/2 conflicts — resolve before merging/i))
     .toBeInTheDocument();
-  await expect.element(screen.getByText('apps/web/src/store/types.ts')).toBeInTheDocument();
+  // Conflict paths are split into a truncatable dir prefix + always-visible leaf,
+  // so the full path lives on the row's title rather than in one text node.
+  await expect.element(screen.getByTitle('apps/web/src/store/types.ts')).toBeInTheDocument();
 });
 
 test('shows the conflict-check copy while loading', async () => {
@@ -76,14 +78,14 @@ test('fires onClose from the close affordance', async () => {
 test('warns when live terminal sessions are open in the worktree', async () => {
   const screen = render(<WithTerminalSessions />);
   await expect
-    .element(screen.getByText(/3 terminal session\(s\) open in this worktree will be closed\./i))
+    .element(screen.getByText(/3 terminal sessions open in this worktree will be closed\./i))
     .toBeInTheDocument();
 });
 
 test('shows no terminal-session notice when none are open', async () => {
   const screen = render(<Ready />);
   await expect
-    .element(screen.getByText(/terminal session\(s\) open/i))
+    .element(screen.getByText(/terminal sessions? open/i))
     .not.toBeInTheDocument();
 });
 

@@ -22,7 +22,7 @@ function pendingRow(
     icon,
     optional,
     ready: false,
-    detail: 'checking...',
+    detail: 'Checking…',
     fixHint: '',
     fixCommand: '',
   };

@@ -72,6 +72,28 @@ export function mergeStateLine(status: PrStatus): string | null {
   return `${status.mergeable} · ${status.mergeStateStatus}`;
 }
 
+/** The four-branch fallback line shown when there's no status snapshot to
+ *  render — a shared ladder (fetching → unavailable → failed → not-loaded) so
+ *  the board card and the PR Review status block can never drift from each
+ *  other. Pure over the view's three flags. */
+export function prStatusFallbackMessage(view: {
+  fetching: boolean;
+  unavailable: boolean;
+  error: string | null;
+}): string {
+  if (view.fetching) return 'Fetching PR status…';
+  if (view.unavailable) return 'PR status is unavailable in the browser preview.';
+  if (view.error !== null) return 'PR status failed to load.';
+  return 'PR status not loaded yet.';
+}
+
+/** Format the web-side receive timestamp for the "Refreshed …" footer line.
+ *  Shared by the board card and the PR Review status block (both stamp the
+ *  receive time locally — the contract carries no timestamps). */
+export function formatRefreshedAt(ts: number): string {
+  return new Date(ts).toLocaleTimeString();
+}
+
 /** The check-run counts, or `null` when all are zero (the line hides — a repo
  *  without CI shouldn't render a dead `0 passed` row). */
 export function checksSummary(

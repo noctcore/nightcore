@@ -1,4 +1,4 @@
-import { Button, RefreshIcon } from '@/components/ui';
+import { Button, RefreshIcon, Spinner } from '@/components/ui';
 import { useWorktreesContext } from '@/lib/worktrees-context';
 
 import { DiffViewDialog } from '../DiffViewDialog';
@@ -7,7 +7,7 @@ import { MergePreviewDialog } from '../MergePreviewDialog';
 import { TerminalWorktreeList } from '../TerminalWorktreeList';
 import { useTerminalWorktrees } from '../worktree-terminal';
 import { WorktreeManager } from '../WorktreeManager';
-import { useWorktreeView } from './WorktreeView.hooks';
+import { useWorktreeRefresh, useWorktreeView } from './WorktreeView.hooks';
 import type { WorktreeViewProps } from './WorktreeView.types';
 
 /** The standalone worktree manager surface: the worktree list with per-row
@@ -21,19 +21,25 @@ export function WorktreeView({ tasks, onOpenTerminal }: WorktreeViewProps) {
   // Terminal worktrees (spec PR 5): their own list + discard interlock, separate from the
   // task-worktree flow above.
   const term = useTerminalWorktrees();
+  const refresh = useWorktreeRefresh(() => {
+    refreshWorktrees();
+    term.reload();
+  });
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto p-5">
       <div className="mb-4 flex items-center justify-end">
         <Button
           variant="secondary"
-          onClick={() => {
-            refreshWorktrees();
-            term.reload();
-          }}
+          disabled={refresh.refreshing}
+          onClick={refresh.onRefresh}
           title="Reconcile + re-read worktree state"
         >
-          <RefreshIcon size={14} className="text-muted-foreground" />
+          {refresh.refreshing ? (
+            <Spinner size={14} />
+          ) : (
+            <RefreshIcon size={14} className="text-muted-foreground" />
+          )}
           Refresh
         </Button>
       </div>

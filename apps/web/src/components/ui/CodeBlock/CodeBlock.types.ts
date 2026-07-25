@@ -12,4 +12,6 @@ export interface CodeBlockProps {
   language?: string;
   /** Extra classes merged onto the container. */
   className?: string;
+  /** Show the hover-revealed copy-to-clipboard button (top-right). Default `true`. */
+  copyable?: boolean;
 }

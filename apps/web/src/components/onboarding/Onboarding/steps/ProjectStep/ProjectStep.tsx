@@ -1,5 +1,6 @@
 import {
   AlertIcon,
+  Button,
   CheckIcon,
   FolderIcon,
   Spinner,
@@ -10,7 +11,7 @@ import { useProjectStep } from './ProjectStep.hooks';
 import type { ProjectStepProps } from './ProjectStep.types';
 
 export function ProjectStep({ props, view }: ProjectStepProps) {
-  const { folderPicked } = useProjectStep(props);
+  const { folderPicked, gitInitBusy, runGitInit } = useProjectStep(props);
   return (
     <div className="flex flex-col gap-3.5">
       <div>
@@ -25,7 +26,7 @@ export function ProjectStep({ props, view }: ProjectStepProps) {
         onClick={() => void props.onChooseFolder()}
         className={`flex w-full items-center gap-3 rounded-[12px] border border-dashed px-3.5 py-3 text-left transition-colors ${
           folderPicked
-            ? 'border-border bg-white/[0.025]'
+            ? 'border-border bg-white/[0.025] hover:bg-white/[0.04]'
             : 'border-primary/50 bg-primary/[0.05] hover:bg-primary/[0.08]'
         }`}
       >
@@ -50,7 +51,12 @@ export function ProjectStep({ props, view }: ProjectStepProps) {
       </button>
       {folderPicked && (
         <>
-          <GitStatus gitState={props.gitState} onInitGit={props.onInitGit} />
+          <GitStatus
+            gitState={props.gitState}
+            onInitGit={props.onInitGit}
+            busy={gitInitBusy}
+            onRunInit={runGitInit}
+          />
           <label className="block">
             <span className="mb-1.5 block text-2xs font-semibold text-muted-foreground">
               Project name
@@ -58,7 +64,7 @@ export function ProjectStep({ props, view }: ProjectStepProps) {
             <input
               value={view.projectName}
               onChange={(event) => view.setProjectName(event.target.value)}
-              className="w-full rounded-[9px] border border-border bg-black/25 px-3 py-2.5 text-xs-plus2 text-foreground outline-none focus:border-primary"
+              className="w-full rounded-nc border border-border bg-black/25 px-3 py-2.5 text-xs-plus2 text-foreground outline-none focus:border-primary"
               placeholder="my-project"
             />
           </label>
@@ -71,9 +77,14 @@ export function ProjectStep({ props, view }: ProjectStepProps) {
 function GitStatus({
   gitState,
   onInitGit,
-}: Pick<OnboardingProps, 'gitState' | 'onInitGit'>) {
+  busy,
+  onRunInit,
+}: Pick<OnboardingProps, 'gitState' | 'onInitGit'> & {
+  busy: boolean;
+  onRunInit: () => void;
+}) {
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5">
       {gitState === 'valid' && (
         <span className="flex items-center gap-1.5 rounded-[6px] border border-success/30 bg-success/[0.06] px-2 py-1 font-mono text-3xs text-success">
           <CheckIcon size={11} />
@@ -93,13 +104,14 @@ function GitStatus({
         </span>
       )}
       {gitState === 'invalid' && onInitGit !== undefined && (
-        <button
-          type="button"
-          onClick={() => void onInitGit()}
-          className="rounded-[6px] border border-border px-2 py-1 text-3xs font-semibold text-primary"
+        <Button
+          variant="ghost"
+          busy={busy}
+          onClick={onRunInit}
+          className="rounded-[6px] px-2 py-1 text-3xs"
         >
           git init
-        </button>
+        </Button>
       )}
     </div>
   );

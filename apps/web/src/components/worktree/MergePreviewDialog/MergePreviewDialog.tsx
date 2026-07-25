@@ -3,12 +3,15 @@ import {
   BranchIcon,
   Button,
   CloseIcon,
+  ConfirmHint,
   IconButton,
   Modal,
   RefreshIcon,
   Spinner,
   useLastPresent,
 } from '@/components/ui';
+import { pluralize } from '@/lib/formatters';
+import { splitPathLeaf } from '@/lib/path-display';
 
 import {
   isBehindBase,
@@ -91,21 +94,21 @@ export function MergePreviewDialog({
         ) : (
           <>
             <div
-              className={`flex items-center gap-2 rounded-[10px] border px-3 py-2 text-xs-plus2 font-semibold ${banner.className}`}
+              className={`flex items-center gap-2 rounded-nc border px-3 py-2 text-xs-plus2 font-semibold ${banner.className}`}
             >
               <banner.Icon size={14} />
               <span>{banner.label}</span>
             </div>
 
             <p className="text-xs-flat text-muted-foreground">
-              {shownPreview.files.length} files,{' '}
+              {pluralize(shownPreview.files.length, 'file')},{' '}
               <span className="text-success">+{shownPreview.additions}</span>{' '}
               <span className="text-destructive">−{shownPreview.deletions}</span>,{' '}
               {shownPreview.ahead} ahead / {shownPreview.behind} behind
             </p>
 
             {hazard !== null && (
-              <div className="flex items-start gap-2 rounded-[10px] border border-warning/40 bg-warning/[0.12] px-3 py-2 text-xs-flat leading-snug text-warning">
+              <div className="flex items-start gap-2 rounded-nc border border-warning/40 bg-warning/[0.12] px-3 py-2 text-xs-flat leading-snug text-warning">
                 <AlertIcon size={14} className="mt-0.5 shrink-0" />
                 <span>{hazard}</span>
               </div>
@@ -114,18 +117,27 @@ export function MergePreviewDialog({
             {terminalSessions > 0 && (
               <p className="flex items-center gap-1.5 text-xs-flat font-medium text-warning">
                 <AlertIcon size={13} className="shrink-0" />
-                {terminalSessions} terminal session(s) open in this worktree will be closed.
+                {pluralize(terminalSessions, 'terminal session')} open in this worktree will be
+                closed.
               </p>
             )}
 
             {shownPreview.status === 'conflicts' && (
               <div className="flex flex-col gap-1.5">
-                <ul className="flex flex-col gap-0.5 rounded-[10px] border border-destructive/30 bg-destructive/[0.08] px-3 py-2">
-                  {shownPreview.conflictFiles.map((path) => (
-                    <li key={path} className="truncate font-mono text-xs-flat text-destructive">
-                      {path}
-                    </li>
-                  ))}
+                <ul className="flex flex-col gap-0.5 rounded-nc border border-destructive/30 bg-destructive/[0.08] px-3 py-2">
+                  {shownPreview.conflictFiles.map((path) => {
+                    const { dir, leaf } = splitPathLeaf(path);
+                    return (
+                      <li
+                        key={path}
+                        title={path}
+                        className="flex font-mono text-xs-flat text-destructive"
+                      >
+                        {dir.length > 0 && <span className="truncate opacity-70">{dir}</span>}
+                        <span className="shrink-0">{leaf}</span>
+                      </li>
+                    );
+                  })}
                 </ul>
                 <p className="text-xs-flat leading-snug text-muted-foreground">
                   Resolve these files in the worktree, commit, then merge again.
@@ -147,15 +159,20 @@ export function MergePreviewDialog({
       </div>
 
       <div className="mt-2 flex items-center justify-end gap-2 border-t border-border bg-black/15 px-5 py-3.5">
-        {onViewDiff !== undefined && (
-          <button
-            type="button"
-            onClick={onViewDiff}
-            className="mr-auto text-xs-flat text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
-          >
-            View full diff
-          </button>
-        )}
+        <div className="mr-auto flex items-center gap-3">
+          {onViewDiff !== undefined && (
+            <button
+              type="button"
+              onClick={onViewDiff}
+              className="text-xs-flat text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
+            >
+              View full diff
+            </button>
+          )}
+          {/* The confirm accelerator hint — shown only while the merge is actually
+              wired (Cmd/Ctrl+Enter fires `onMerge` when it's mergeable). */}
+          {!mergeDisabled && <ConfirmHint>to merge</ConfirmHint>}
+        </div>
         {behind && (
           <Button variant="ghost" disabled={updatingFromBase} onClick={onUpdateFromBase}>
             {updatingFromBase ? (

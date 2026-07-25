@@ -33,12 +33,13 @@ export function FixRunCard({
   onRequestPush,
   onReReview,
   onDismiss,
+  onTryAgain,
 }: FixRunCardProps) {
   if (fix.status === 'running') {
     return (
       <div
         role="status"
-        className="flex items-center gap-3 rounded-[10px] border border-border bg-white/[0.02] px-4 py-3"
+        className="flex items-center gap-3 rounded-nc border border-border bg-white/[0.02] px-4 py-3"
       >
         <Spinner size={14} />
         <span className="text-xs-plus text-muted-foreground">
@@ -60,7 +61,7 @@ export function FixRunCard({
     return (
       <div
         role="status"
-        className="flex items-center gap-3 rounded-[10px] border border-border bg-white/[0.02] px-4 py-3"
+        className="flex items-center gap-3 rounded-nc border border-border bg-white/[0.02] px-4 py-3"
       >
         <Spinner size={14} />
         <span className="text-xs-plus text-muted-foreground">
@@ -75,7 +76,7 @@ export function FixRunCard({
     return (
       <div
         role="status"
-        className="flex flex-col gap-3 rounded-[10px] border border-primary/40 bg-primary/[0.06] px-4 py-3"
+        className="flex flex-col gap-3 rounded-nc border border-primary/40 bg-primary/[0.06] px-4 py-3"
       >
         <span className="sr-only">{`PR #${fix.prNumber} fix awaiting push.`}</span>
         <div className="flex items-center gap-2">
@@ -117,7 +118,7 @@ export function FixRunCard({
     return (
       <div
         role="status"
-        className="flex items-center gap-3 rounded-[10px] border border-success/40 bg-success/[0.06] px-4 py-3"
+        className="flex items-center gap-3 rounded-nc border border-success/40 bg-success/[0.06] px-4 py-3"
       >
         <CheckIcon size={14} className="shrink-0 text-success" />
         <span className="text-xs-plus text-muted-foreground">
@@ -137,7 +138,7 @@ export function FixRunCard({
     return (
       <div
         role="alert"
-        className="flex items-start gap-3 rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-4 py-3"
+        className="flex items-start gap-3 rounded-nc border border-destructive/40 bg-destructive/[0.08] px-4 py-3"
       >
         <span className="sr-only">{`PR #${fix.prNumber}: `}</span>
         <AlertIcon size={14} className="mt-0.5 shrink-0 text-destructive" />
@@ -146,14 +147,24 @@ export function FixRunCard({
             ? `Fix failed: ${fix.error}`
             : 'Fix failed.'}
         </span>
-        <button
-          type="button"
-          onClick={onDismiss}
-          aria-label="Dismiss fix status"
-          className="ml-auto shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-white/[0.06] hover:text-foreground"
-        >
-          <CloseIcon size={14} />
-        </button>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {/* Retry re-arms the address gate (the ConfirmDialog reopens) so a
+              failed fix can be re-run on the current selection. */}
+          {onTryAgain !== undefined && (
+            <Button variant="secondary" onClick={onTryAgain}>
+              <RetryIcon size={13} />
+              Try again
+            </Button>
+          )}
+          <button
+            type="button"
+            onClick={onDismiss}
+            aria-label="Dismiss fix status"
+            className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-white/[0.06] hover:text-foreground"
+          >
+            <CloseIcon size={14} />
+          </button>
+        </div>
       </div>
     );
   }

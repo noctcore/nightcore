@@ -2,7 +2,7 @@
  *  the empty state, and the non-blocking warning row. Split out so stories/tests
  *  can drive the rendered list directly with fixtures (no bridge). Pure: no state,
  *  no data fetching — the routed {@link HistoryView} feeds it the merged summary. */
-import { Badge, EmptyState, HistoryIcon, StatusDot } from '@/components/ui';
+import { Badge, EmptyState, HistoryIcon, Skeleton, StatusDot } from '@/components/ui';
 import { formatRelativeTime, formatRunReceipt } from '@/lib/formatters';
 
 import { useHistoryVirtualizer } from './HistoryView.hooks';
@@ -46,7 +46,9 @@ function HistoryRow({
       className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[0.03]"
     >
       <Badge>{FAMILY_LABEL[run.family]}</Badge>
-      <span className="min-w-0 flex-1 truncate text-xs-plus2 text-foreground">{run.title}</span>
+      <span className="min-w-0 flex-1 truncate text-xs-plus2 text-foreground" title={run.title}>
+        {run.title}
+      </span>
       <span
         className="shrink-0 tabular-nums font-mono text-2xs text-muted-foreground/80"
         title={run.model.length > 0 ? `Model: ${run.model}` : undefined}
@@ -63,6 +65,33 @@ function HistoryRow({
         </span>
       )}
     </button>
+  );
+}
+
+/** First-load placeholder: skeleton rows shaped like {@link HistoryRow} (badge
+ *  block + title line + two trailing meta blocks) so the list doesn't jump when
+ *  the real rows resolve. The container owns the loading announcement; the
+ *  Skeletons themselves are `aria-hidden`. */
+function HistoryLoadingRows() {
+  return (
+    <div
+      role="status"
+      aria-busy="true"
+      aria-label="Loading history"
+      className="flex min-h-0 flex-1 flex-col"
+    >
+      {Array.from({ length: 6 }, (_, i) => (
+        <div
+          key={i}
+          className="flex w-full items-center gap-3 border-b border-border px-4 py-3"
+        >
+          <Skeleton className="h-5 w-14 rounded-full" />
+          <Skeleton className="h-3.5 w-1/3" />
+          <Skeleton className="ml-auto h-3 w-16" />
+          <Skeleton className="h-3 w-12" />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -88,16 +117,10 @@ export function HistoryList({ runs, loading, error, onOpenRun }: HistoryListProp
         <EmptyState
           icon={<HistoryIcon size={32} />}
           title="No scan runs yet"
-          description="Start one from Understand, Harden, or Enforce — every run shows up here."
+          description="Start one from Find & Grade, Propose, or Conventions — every run shows up here."
         />
       ) : runs.length === 0 && loading ? (
-        <div
-          role="status"
-          aria-busy="true"
-          className="flex flex-1 items-center justify-center text-sm text-muted-foreground"
-        >
-          Loading history…
-        </div>
+        <HistoryLoadingRows />
       ) : (
         // Virtualized scroll container: only the visible rows mount. The inner
         // <ul> is sized to the full list height and each row is absolutely

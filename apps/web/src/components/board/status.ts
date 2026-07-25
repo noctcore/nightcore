@@ -191,7 +191,7 @@ export interface KindOption {
  *  gate dispatches it automatically), not a kind a user creates a task as. */
 export const KIND_OPTIONS: KindOption[] = [
   { kind: 'build', label: 'Build', hint: 'Write code in an isolated worktree, then verify', enabled: true },
-  { kind: 'research', label: 'Research', hint: 'Investigate and report — no code changes', enabled: true },
+  { kind: 'research', label: 'Research', hint: 'Investigate and report, no code changes', enabled: true },
   { kind: 'tdd', label: 'TDD', hint: 'Test-first: write the failing test, then implement', enabled: true },
   { kind: 'decompose', label: 'Decompose', hint: 'Split a goal into sub-tasks', enabled: true },
 ];

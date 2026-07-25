@@ -29,6 +29,7 @@ export function CategoryTabsShell<K extends string>({
             type="button"
             aria-selected={isActive}
             aria-busy={tab.running}
+            title={tab.errored ? errorLabel : undefined}
             tabIndex={isActive ? 0 : -1}
             onKeyDown={rovingKeydown}
             onClick={() => onSelect(tab.key)}
@@ -56,11 +57,9 @@ export function CategoryTabsShell<K extends string>({
                 {tab.count}
               </span>
             ) : tab.errored ? (
-              <span
-                aria-label={errorLabel}
-                className="ml-0.5 text-3xs font-semibold text-destructive"
-              >
-                !
+              <span className="ml-0.5 text-3xs font-semibold text-destructive">
+                <span aria-hidden>!</span>
+                <span className="sr-only">{errorLabel}</span>
               </span>
             ) : null}
           </button>

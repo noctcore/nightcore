@@ -61,22 +61,31 @@ export function ApplyConfirmDialog({
               <code className="break-all rounded border border-border bg-white/[0.04] px-1 py-0.5 font-mono text-xs-flat text-foreground">
                 {artifactVM.targetPath}
               </code>{' '}
-              (
-              <span className="font-mono text-foreground">
-                {mode?.label ?? artifactVM.writeMode}
-              </span>
-              {mode !== undefined ? ` — ${mode.hint}` : ''}) into the project.
+              into the project.
             </p>
             <p className="text-xs-flat text-muted-foreground">
-              {ARTIFACT_KIND_META[artifactVM.kind].label} · {artifactVM.title}
+              {ARTIFACT_KIND_META[artifactVM.kind].label} ·{' '}
+              <span className="font-mono text-foreground">
+                {mode?.label ?? artifactVM.writeMode}
+              </span>{' '}
+              · {artifactVM.title}
             </p>
           </>
         )}
-        {isCreate && (
+        {/* The write-mode semantics, stated once (no longer doubled by the primary
+            sentence's parenthetical): create explains the never-overwrite refusal;
+            merge-section carries its managed-block hint. */}
+        {mode !== undefined && (
           <p className="rounded-md border border-border bg-white/[0.02] px-3 py-2 text-xs-flat text-muted-foreground">
-            Creates a <span className="font-medium text-foreground">new file</span>. If a
-            file already exists at this path, the apply is refused (never overwritten) —
-            replace it manually instead.
+            {isCreate ? (
+              <>
+                Creates a <span className="font-medium text-foreground">new file</span>. If
+                a file already exists at this path, the apply is refused (never
+                overwritten) — replace it manually instead.
+              </>
+            ) : (
+              mode.hint
+            )}
           </p>
         )}
         {shownError !== null && (

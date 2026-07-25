@@ -1,4 +1,5 @@
 import type { Task, WorktreeInfo } from '@/lib/bridge';
+import { pluralize } from '@/lib/formatters';
 
 import type {
   ActiveWorktree,
@@ -94,6 +95,22 @@ export function summarizeCollapsed(tabs: WorktreeTab[]): CollapsedSummary {
     if (isDiverged(tab)) divergedCount += 1;
   }
   return { count: tabs.length, anyRunning: runningWorktrees > 0, runningCount, divergedCount };
+}
+
+/** The destructive-confirm body for removing a worktree from its switcher tab. Names
+ *  the branch and, when the checkout is dirty, the uncommitted-file count the discard
+ *  would throw away — so the confirm spells out exactly what is lost before the tab +
+ *  branch vanish. Routes the tab's "Remove worktree" action through the same guard the
+ *  card trash + column Clear use. Pure. */
+export function worktreeRemovalMessage(tab: WorktreeTab): string {
+  const branch = tab.branch ?? 'this worktree';
+  const lead = `Discard the ${branch} worktree and its branch?`;
+  if (!tab.dirty) return `${lead} This can't be undone.`;
+  const changes =
+    tab.changedFiles > 0
+      ? `${pluralize(tab.changedFiles, 'uncommitted file')} will be lost`
+      : 'Uncommitted changes will be lost';
+  return `${lead} ${changes}. This can't be undone.`;
 }
 
 /** Filter the collapsed tabs by the query (case-insensitive over branch name AND

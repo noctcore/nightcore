@@ -74,6 +74,6 @@ export const WarnsOnUncommitted: Story = {
   args: { changedFiles: 2 },
   play: async () => {
     const canvas = portaledSurface();
-    await expect(canvas.getByText(/2 uncommitted file\(s\) will be lost\./i)).toBeInTheDocument();
+    await expect(canvas.getByText(/2 uncommitted files will be lost\./i)).toBeInTheDocument();
   },
 };

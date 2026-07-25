@@ -14,7 +14,7 @@ import {
   VerifiedIcon,
 } from '@/components/ui';
 import { PROVIDER_LABEL } from '@/lib/bridge';
-import { MODEL_OPTIONS } from '@/lib/models';
+import { modelLabel } from '@/lib/models';
 
 import { ALL_CATEGORIES, CATEGORY_META } from '../harness.constants';
 import type { RunControlsProps } from './RunControls.types';
@@ -24,11 +24,6 @@ const CHIPS = ALL_CATEGORIES.map((c) => ({
   label: CATEGORY_META[c].label,
   icon: CATEGORY_META[c].icon,
 }));
-
-function modelLabel(model: string | null): string {
-  if (model === null) return 'the inherited model';
-  return MODEL_OPTIONS.find((m) => m.id === model)?.label ?? model;
-}
 
 export function RunControls({ config, isStarting, onScan }: RunControlsProps) {
   const lensCount = config.orderedSelected.length;

@@ -6,6 +6,7 @@ import {
   isAdaptiveModel,
   isEffortSupported,
   MODEL_OPTIONS,
+  modelLabel,
   modelOptionFor,
 } from './models';
 
@@ -78,4 +79,11 @@ test('isEffortSupported rejects a premium-only effort once the model changes', (
   // 'max' is not offered by Haiku — switching models must reconcile it.
   expect(isEffortSupported('claude-haiku-4-5', 'max')).toBe(false);
   expect(isEffortSupported('claude-haiku-4-5', 'high')).toBe(true);
+});
+
+test('modelLabel resolves Inherit, known, Codex, and unknown ids', () => {
+  expect(modelLabel(null)).toBe('the inherited model');
+  expect(modelLabel('claude-opus-4-8')).toBe('Opus 4.8');
+  expect(modelLabel('gpt-5-codex')).toBe('GPT-5 Codex');
+  expect(modelLabel('some-unknown-model')).toBe('some-unknown-model');
 });

@@ -1,4 +1,5 @@
 import { AlertIcon, Button, Modal, Spinner, useLastPresent } from '@/components/ui';
+import { pluralize } from '@/lib/formatters';
 
 import {
   discardConfirmLabel,
@@ -49,13 +50,14 @@ export function DiscardDialog({
         {hasUncommittedChanges(shown.changedFiles) && (
           <p className="flex items-center gap-1.5 text-xs-flat font-medium text-warning">
             <AlertIcon size={13} className="shrink-0" />
-            {shown.changedFiles} uncommitted file(s) will be lost.
+            {pluralize(shown.changedFiles ?? 0, 'uncommitted file')} will be lost.
           </p>
         )}
         {shown.terminalSessions > 0 && (
           <p className="flex items-center gap-1.5 text-xs-flat font-medium text-warning">
             <AlertIcon size={13} className="shrink-0" />
-            {shown.terminalSessions} terminal session(s) open in this worktree will be closed.
+            {pluralize(shown.terminalSessions ?? 0, 'terminal session')} open in this worktree will
+            be closed.
           </p>
         )}
         {hasDiscardError(shown.error) && (

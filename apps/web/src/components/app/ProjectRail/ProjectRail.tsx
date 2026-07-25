@@ -4,7 +4,6 @@ import {
   PlusIcon,
   ProjectContextMenu,
   ProjectIcon,
-  StatusDot,
 } from '@/components/ui';
 import { useProjectIconProps } from '@/components/ui/ProjectIcon/ProjectIcon.hooks';
 
@@ -32,7 +31,7 @@ function RailProjectButton({
         aria-label={project.name}
         aria-current={active ? 'true' : undefined}
         onClick={onPick}
-        className={`flex h-10 w-10 items-center justify-center rounded-[10px] transition-colors ${
+        className={`flex h-10 w-10 items-center justify-center rounded-nc transition-colors ${
           active
             ? 'bg-primary/15 ring-2 ring-primary/50'
             : 'hover:bg-white/[0.06]'
@@ -45,11 +44,7 @@ function RailProjectButton({
 }
 
 /** Classic layout: fixed 64px project rail with brand, squares, and footer. */
-export function ProjectRail({
-  switcher,
-  runningCount,
-  onGotoProjects,
-}: ProjectRailProps) {
+export function ProjectRail({ switcher, onGotoProjects }: ProjectRailProps) {
   const { projects, active, onPickProject, onNewProject, onEditProject, onRemoveProject } =
     switcher;
 
@@ -83,18 +78,6 @@ export function ProjectRail({
           <PlusIcon size={18} />
         </IconButton>
       </div>
-
-      {runningCount > 0 && (
-        <div className="mt-3 flex flex-col items-center gap-2 border-t border-border pt-3">
-          <span
-            className="flex items-center gap-1 font-mono text-4xs text-warning"
-            title={`${runningCount} running`}
-          >
-            <StatusDot colorClass="bg-warning" pulse />
-            {runningCount}
-          </span>
-        </div>
-      )}
     </aside>
   );
 }

@@ -42,6 +42,16 @@ export function formatCostUsd(usd: number): string {
 }
 
 /**
+ * Format a count with its noun, pluralized (`1 file`, `3 files`, `0 files`).
+ * Regular `+s` plurals by default; pass an explicit `plural` for irregular nouns.
+ * Shared by the board/worktree/harness count labels so `1 files` or `task(s)`
+ * placeholders never ship.
+ */
+export function pluralize(count: number, noun: string, plural?: string): string {
+  return `${count} ${count === 1 ? noun : (plural ?? `${noun}s`)}`;
+}
+
+/**
  * Format a timestamp as a compact "time ago" label (`just now`, `5m`, `3h`, `2d`,
  * `4w`, `6mo`, `2y`), for issue/comment age chips. Accepts an ISO-8601 string
  * (GitHub's wire format) or epoch ms; an unparseable value returns `''` so the
@@ -67,6 +77,18 @@ export function formatRelativeTime(
   const months = Math.floor(days / 30);
   if (months < 12) return `${months}mo`;
   return `${Math.floor(days / 365)}y`;
+}
+
+/**
+ * A relative timestamp with an `ago` suffix, EXCEPT the present-tense `just now`
+ * (which reads wrong as "just now ago"). An empty string passes through so callers
+ * can still omit the label. Wraps {@link formatRelativeTime}; that helper's
+ * bare-token contract is unchanged for its other callers.
+ */
+export function formatRelativeTimeAgo(value: string | number, now: number = Date.now()): string {
+  const rel = formatRelativeTime(value, now);
+  if (rel === '' || rel === 'just now') return rel;
+  return `${rel} ago`;
 }
 
 /**

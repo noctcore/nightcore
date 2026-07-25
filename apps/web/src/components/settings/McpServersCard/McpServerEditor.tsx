@@ -1,5 +1,13 @@
 /** The transport-aware editor body for the MCP server modal. */
-import { RowToggle } from './McpServerRow';
+import {
+  FIELD_INPUT_CLASS,
+  FieldLabel,
+  SectionLabel,
+  Segmented,
+  TextField,
+  Toggle,
+} from '@/components/ui';
+
 import type {
   McpDraftValidation,
   McpServerDraft,
@@ -13,14 +21,18 @@ const TRANSPORTS: [value: McpTransport, label: string][] = [
   ['sse', 'SSE'],
 ];
 
-/** Shared Tailwind classes for the editor's labels and inputs/textareas. */
-const FIELD_LABEL = 'mb-1.5 block text-2xs-plus font-semibold text-muted-foreground';
-const FIELD_INPUT =
-  'w-full rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary';
-const FIELD_AREA = `${FIELD_INPUT} font-mono text-xs-plus leading-relaxed`;
+/** Layout applied to each field's label — the shared mono-uppercase micro style
+ *  (via `FieldLabel`/`SectionLabel`) plus the block + bottom-gap that stacks it over
+ *  its input. */
+const LABEL_LAYOUT = 'mb-1.5 block';
+/** The shared field chrome composed with the mono/relaxed treatment the multi-line
+ *  args/env/headers areas use. */
+const FIELD_AREA_CLASS = `${FIELD_INPUT_CLASS} font-mono text-xs-plus leading-relaxed`;
 
 /** The transport-aware editor body. stdio shows command/args/env; http+sse show
- *  url/headers. Secret-bearing fields (env/header values) are masked on edit. */
+ *  url/headers. Secret-bearing fields (env/header values) are masked on edit. A
+ *  blocking field error uses the destructive treatment (red) — amber is reserved for
+ *  non-blocking cautions. */
 export function McpServerEditor({
   draft,
   errors,
@@ -33,15 +45,14 @@ export function McpServerEditor({
   return (
     <div className="flex flex-col gap-4 p-5">
       <div>
-        <label className={FIELD_LABEL} htmlFor="mcp-name">
+        <FieldLabel htmlFor="mcp-name" className={LABEL_LAYOUT}>
           Server name
-        </label>
-        <input
+        </FieldLabel>
+        <TextField
           id="mcp-name"
           value={draft.name}
           onChange={(e) => onPatch({ name: e.target.value })}
           placeholder="filesystem"
-          className={FIELD_INPUT}
           aria-invalid={errors.name !== undefined}
           aria-describedby={
             errors.name !== undefined ? 'mcp-name-help mcp-name-error' : 'mcp-name-help'
@@ -51,66 +62,56 @@ export function McpServerEditor({
           The tool prefix becomes <span className="font-mono">mcp__{draft.name || 'name'}__*</span>.
         </p>
         {errors.name !== undefined && (
-          <p id="mcp-name-error" className="mt-1 text-2xs text-warning">
+          <p id="mcp-name-error" className="mt-1 text-2xs text-destructive">
             {errors.name}
           </p>
         )}
       </div>
 
       <div>
-        <span className={FIELD_LABEL}>Transport</span>
-        <div className="inline-flex rounded-lg border border-border bg-black/20 p-0.5">
-          {TRANSPORTS.map(([v, label]) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => onPatch({ transport: v })}
-              className={`rounded-md px-3 py-1 text-xs-flat font-medium transition-colors ${
-                v === draft.transport
-                  ? 'bg-primary/[0.18] text-primary'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <SectionLabel className={LABEL_LAYOUT}>Transport</SectionLabel>
+        <Segmented
+          ariaLabel="Transport"
+          options={TRANSPORTS}
+          value={draft.transport}
+          onChange={(v) => onPatch({ transport: v as McpTransport })}
+        />
       </div>
 
       {draft.transport === 'stdio' ? (
         <>
           <div>
-            <label className={FIELD_LABEL} htmlFor="mcp-command">
+            <FieldLabel htmlFor="mcp-command" className={LABEL_LAYOUT}>
               Command
-            </label>
-            <input
+            </FieldLabel>
+            <TextField
               id="mcp-command"
               value={draft.command}
               onChange={(e) => onPatch({ command: e.target.value })}
               placeholder="npx"
-              className={`${FIELD_INPUT} font-mono`}
+              className="font-mono"
               aria-invalid={errors.command !== undefined}
               aria-describedby={
                 errors.command !== undefined ? 'mcp-command-error' : undefined
               }
             />
             {errors.command !== undefined && (
-              <p id="mcp-command-error" className="mt-1 text-2xs text-warning">
+              <p id="mcp-command-error" className="mt-1 text-2xs text-destructive">
                 {errors.command}
               </p>
             )}
           </div>
           <div>
-            <label className={FIELD_LABEL} htmlFor="mcp-args">
+            <FieldLabel htmlFor="mcp-args" className={LABEL_LAYOUT}>
               Arguments
-            </label>
+            </FieldLabel>
             <textarea
               id="mcp-args"
               rows={3}
               value={draft.argsText}
               onChange={(e) => onPatch({ argsText: e.target.value })}
               placeholder={'-y\n@modelcontextprotocol/server-filesystem\n.'}
-              className={FIELD_AREA}
+              className={FIELD_AREA_CLASS}
               aria-describedby="mcp-args-help"
             />
             <p id="mcp-args-help" className="mt-1 text-2xs text-muted-foreground">
@@ -118,61 +119,61 @@ export function McpServerEditor({
             </p>
           </div>
           <div>
-            <label className={FIELD_LABEL} htmlFor="mcp-env">
+            <FieldLabel htmlFor="mcp-env" className={LABEL_LAYOUT}>
               Environment
-            </label>
+            </FieldLabel>
             <textarea
               id="mcp-env"
               rows={2}
               value={draft.envText}
               onChange={(e) => onPatch({ envText: e.target.value })}
               placeholder="API_TOKEN=secret"
-              className={FIELD_AREA}
+              className={FIELD_AREA_CLASS}
               aria-describedby="mcp-env-help"
             />
             <p id="mcp-env-help" className="mt-1 text-2xs text-muted-foreground">
               <span className="font-mono">KEY=value</span> per line. Existing values are
-              masked — retype to change.
+              masked. Retype to change one.
             </p>
           </div>
         </>
       ) : (
         <>
           <div>
-            <label className={FIELD_LABEL} htmlFor="mcp-url">
+            <FieldLabel htmlFor="mcp-url" className={LABEL_LAYOUT}>
               URL
-            </label>
-            <input
+            </FieldLabel>
+            <TextField
               id="mcp-url"
               value={draft.url}
               onChange={(e) => onPatch({ url: e.target.value })}
               placeholder="https://example.com/mcp"
-              className={`${FIELD_INPUT} font-mono`}
+              className="font-mono"
               aria-invalid={errors.url !== undefined}
               aria-describedby={errors.url !== undefined ? 'mcp-url-error' : undefined}
             />
             {errors.url !== undefined && (
-              <p id="mcp-url-error" className="mt-1 text-2xs text-warning">
+              <p id="mcp-url-error" className="mt-1 text-2xs text-destructive">
                 {errors.url}
               </p>
             )}
           </div>
           <div>
-            <label className={FIELD_LABEL} htmlFor="mcp-headers">
+            <FieldLabel htmlFor="mcp-headers" className={LABEL_LAYOUT}>
               Headers
-            </label>
+            </FieldLabel>
             <textarea
               id="mcp-headers"
               rows={2}
               value={draft.headersText}
               onChange={(e) => onPatch({ headersText: e.target.value })}
               placeholder="Authorization: Bearer token"
-              className={FIELD_AREA}
+              className={FIELD_AREA_CLASS}
               aria-describedby="mcp-headers-help"
             />
             <p id="mcp-headers-help" className="mt-1 text-2xs text-muted-foreground">
               <span className="font-mono">Header: value</span> per line. Existing values
-              are masked — retype to change.
+              are masked. Retype to change one.
             </p>
           </div>
         </>
@@ -180,9 +181,9 @@ export function McpServerEditor({
 
       {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- wraps a custom role=switch button (a labelable element that forwards label clicks); the switch carries its own accessible name */}
       <label className="flex items-center gap-2.5 text-xs-plus2 text-foreground">
-        <RowToggle
+        <Toggle
           on={draft.enabled}
-          onChange={() => onPatch({ enabled: !draft.enabled })}
+          onChange={(next) => onPatch({ enabled: next })}
           label="Enable this server"
         />
         Inject into new sessions

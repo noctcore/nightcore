@@ -2,6 +2,7 @@ import { composeStories } from '@storybook/react-vite';
 import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
+import { CodeBlock } from './CodeBlock';
 import { isHighlightable, MAX_HIGHLIGHT_LENGTH, resolveLang } from './CodeBlock.hooks';
 import * as stories from './CodeBlock.stories';
 
@@ -27,6 +28,20 @@ test('upgrades to Shiki-highlighted output once the highlighter resolves', async
 test('renders unknown languages as plain text without throwing', async () => {
   const screen = render(<UnknownLanguage />);
   await expect.element(screen.getByText(/plain text, no grammar/)).toBeInTheDocument();
+});
+
+test('shows a copy button by default that flips to a copied state on click', async () => {
+  const screen = render(<TypeScript />);
+  const button = screen.getByRole('button', { name: 'Copy code' });
+  await expect.element(button).toBeInTheDocument();
+  await button.click();
+  // The label swaps to the copied affordance (the clipboard write is best-effort).
+  await expect.element(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument();
+});
+
+test('copyable={false} renders no copy button', async () => {
+  const screen = render(<CodeBlock code="const x = 1;" language="ts" copyable={false} />);
+  expect(screen.container.querySelector('button')).toBeNull();
 });
 
 test('isHighlightable caps at MAX_HIGHLIGHT_LENGTH so huge payloads stay plain <pre>', () => {

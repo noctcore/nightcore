@@ -1,14 +1,14 @@
-import { LayersIcon } from '@/components/ui';
+import { ConfirmDialog, LayersIcon } from '@/components/ui';
 import { useWorktreesContext } from '@/lib/worktrees-context';
 
-import { useWorktreeTabs } from './WorktreeSwitcher.hooks';
+import { useWorktreeRemovalConfirm, useWorktreeTabs } from './WorktreeSwitcher.hooks';
 import {
   WorktreeCollapsedSelect,
   WorktreeTabButton,
   WorktreeTabWithActions,
 } from './WorktreeSwitcher.parts';
 import type { WorktreeSwitcherProps } from './WorktreeSwitcher.types';
-import { partitionWorktreeTabs } from './WorktreeSwitcher.utils';
+import { partitionWorktreeTabs, worktreeRemovalMessage } from './WorktreeSwitcher.utils';
 
 /** The worktree switcher: a segment bar above the board with a Main
  *  tab plus one tab per live worktree. Selecting a tab sets the active worktree
@@ -31,10 +31,12 @@ export function WorktreeSwitcher({ tasks }: WorktreeSwitcherProps) {
     removeWorktree: onRemoveWorktree,
   } = useWorktreesContext();
   const tabs = useWorktreeTabs(tasks, worktrees);
+  const removal = useWorktreeRemovalConfirm(onRemoveWorktree);
 
   if (tabs.length <= 1) return null;
 
   const { inline, collapsed } = partitionWorktreeTabs(tabs);
+  const pendingTab = removal.pending;
   // Roving-tabindex entry: a tablist must always keep exactly one `tabIndex=0` tab.
   // Normally that's the active tab, but when the active worktree has collapsed into
   // the overflow select no inline tab is selected — fall back to the first inline tab
@@ -42,39 +44,50 @@ export function WorktreeSwitcher({ tasks }: WorktreeSwitcherProps) {
   const activeIsInline = inline.some((tab) => tab.branch === active);
 
   return (
-    <div
-      role="tablist"
-      aria-label="Worktree"
-      className="flex flex-wrap items-center gap-2 border-b border-border px-[22px] py-2.5"
-    >
-      <span className="mr-1 flex items-center gap-1.5 font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
-        <LayersIcon size={12} />
-        Worktree
-      </span>
-      {inline.map((tab, index) => {
-        const rovingEntry = activeIsInline ? tab.branch === active : index === 0;
-        return tab.branch === null ? (
-          <WorktreeTabButton
-            key="__main__"
-            tab={tab}
-            selected={active === null}
-            rovingEntry={rovingEntry}
-            onSelect={() => onSelect(null)}
-          />
-        ) : (
-          <WorktreeTabWithActions
-            key={tab.branch}
-            tab={tab}
-            selected={active === tab.branch}
-            rovingEntry={rovingEntry}
-            onSelect={() => onSelect(tab.branch)}
-            onRemove={onRemoveWorktree}
-          />
-        );
-      })}
-      {collapsed.length > 0 && (
-        <WorktreeCollapsedSelect tabs={collapsed} active={active} onSelect={onSelect} />
-      )}
-    </div>
+    <>
+      <div
+        role="tablist"
+        aria-label="Worktree"
+        className="flex flex-wrap items-center gap-2 border-b border-border px-[22px] py-2.5"
+      >
+        <span className="mr-1 flex items-center gap-1.5 font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
+          <LayersIcon size={12} />
+          Worktree
+        </span>
+        {inline.map((tab, index) => {
+          const rovingEntry = activeIsInline ? tab.branch === active : index === 0;
+          return tab.branch === null ? (
+            <WorktreeTabButton
+              key="__main__"
+              tab={tab}
+              selected={active === null}
+              rovingEntry={rovingEntry}
+              onSelect={() => onSelect(null)}
+            />
+          ) : (
+            <WorktreeTabWithActions
+              key={tab.branch}
+              tab={tab}
+              selected={active === tab.branch}
+              rovingEntry={rovingEntry}
+              onSelect={() => onSelect(tab.branch)}
+              onRemove={removal.request}
+            />
+          );
+        })}
+        {collapsed.length > 0 && (
+          <WorktreeCollapsedSelect tabs={collapsed} active={active} onSelect={onSelect} />
+        )}
+      </div>
+      <ConfirmDialog
+        open={pendingTab !== null}
+        title="Remove this worktree?"
+        message={pendingTab !== null ? worktreeRemovalMessage(pendingTab) : ''}
+        confirmLabel="Remove"
+        destructive
+        onConfirm={removal.confirm}
+        onCancel={removal.cancel}
+      />
+    </>
   );
 }

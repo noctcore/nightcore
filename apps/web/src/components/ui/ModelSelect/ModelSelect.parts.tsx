@@ -1,14 +1,13 @@
 /** Presentational sub-parts for ModelSelect: the grouped option rows, the
  *  provider group headings, the inline effort radiogroup, and the loading/error
  *  catalog states. No state — every value arrives via props. */
+import { rovingKeydown } from '@/lib/roving-keydown';
+
 import { BrainIcon, CheckIcon, RefreshIcon } from '../icons';
 import type { KnownProviderId } from '../ProviderIcon';
 import { ProviderIcon } from '../ProviderIcon';
+import { SECTION_LABEL_CLASS, SectionLabel } from '../SectionLabel';
 import type { EffortRowView, ModelRow } from './ModelSelect.types';
-
-/** The uppercase field label shared by the model + effort sections. */
-export const LABEL =
-  'font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground';
 
 /** Class string for a listbox option row in its highlighted/idle state. */
 function optionRowClass(highlighted: boolean): string {
@@ -26,7 +25,7 @@ function tierBadgeClass(tier: string): string {
 
 /** Class string for an effort chip in its selected/idle state. */
 function effortChipClass(selected: boolean): string {
-  return `rounded-[9px] border px-2.5 py-1.5 text-xs-flat font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+  return `rounded-nc border px-2.5 py-1.5 text-xs-flat font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
     selected
       ? 'border-primary/60 bg-primary/[0.1] text-foreground'
       : 'border-border bg-white/[0.02] text-muted-foreground hover:border-white/20'
@@ -103,7 +102,7 @@ export function ProviderGroupLabel({
   return (
     <div
       role="presentation"
-      className="flex items-center gap-1.5 px-2 pb-0.5 pt-1.5 text-3xs font-medium uppercase tracking-[0.08em] text-muted-foreground"
+      className={`flex items-center gap-1.5 px-2 pb-0.5 pt-1.5 ${SECTION_LABEL_CLASS}`}
     >
       {provider !== null && (
         <ProviderIcon provider={provider} size={12} className="text-muted-foreground" />
@@ -135,7 +134,9 @@ function EffortChip({
       aria-label={label}
       title={title}
       disabled={disabled}
+      tabIndex={selected ? 0 : -1}
       onClick={onClick}
+      onKeyDown={rovingKeydown}
       className={effortChipClass(selected)}
     >
       {label}
@@ -160,7 +161,7 @@ export function EffortRow({
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-1.5">
         <BrainIcon size={12} className="text-muted-foreground" />
-        <span className={LABEL}>Reasoning effort</span>
+        <SectionLabel>Reasoning effort</SectionLabel>
         {effort.adaptive && effort.activeLabel !== null && (
           <span className="text-3xs font-medium text-primary/80">
             · {effort.activeLabel} decides adaptively
@@ -196,7 +197,7 @@ export function CatalogStatus() {
     <div
       role="status"
       aria-label="Loading models"
-      className="flex items-center gap-2 rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-xs-plus text-muted-foreground"
+      className="flex items-center gap-2 rounded-nc border border-border bg-black/20 px-3 py-2.5 text-xs-plus text-muted-foreground"
     >
       <RefreshIcon size={13} className="animate-spin text-muted-foreground" aria-hidden />
       Loading models…
@@ -207,7 +208,7 @@ export function CatalogStatus() {
 /** The soft error + retry shown when the whole catalog read failed. */
 export function CatalogError({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div className="flex items-center gap-2 rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-3 py-2.5 text-xs-plus text-foreground">
+    <div className="flex items-center gap-2 rounded-nc border border-destructive/40 bg-destructive/[0.08] px-3 py-2.5 text-xs-plus text-foreground">
       <span className="truncate text-muted-foreground">{message}</span>
       {onRetry !== undefined && (
         <button

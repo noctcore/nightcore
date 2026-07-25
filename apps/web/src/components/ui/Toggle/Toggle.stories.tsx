@@ -23,6 +23,8 @@ export const Off: Story = {};
 
 export const On: Story = { args: { on: true } };
 
+export const Disabled: Story = { args: { on: true, disabled: true } };
+
 /** Play test: clicking toggles the switch. */
 export const TogglesOnClick: Story = {
   render: () => <ControlledToggle label="Auto mode" initial={false} />,

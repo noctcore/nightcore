@@ -27,9 +27,14 @@ export function TaskDetailHeader({ task, cost, onClose, onOpenSourceRef }: TaskD
             {task.status === 'done' && task.verified ? 'Verified' : STATUS_LABEL[task.status]}
           </span>
           {cost !== null && (
-            <span className="font-mono text-2xs tabular-nums text-muted-foreground">
-              · {formatCostUsd(cost)}
-            </span>
+            <>
+              <span aria-hidden className="text-muted-foreground opacity-40">
+                ·
+              </span>
+              <span className="font-mono text-2xs tabular-nums text-muted-foreground">
+                {formatCostUsd(cost)}
+              </span>
+            </>
           )}
         </div>
         <h2 className="mt-2 truncate text-base font-semibold text-foreground">

@@ -23,6 +23,7 @@ const meta = {
       active: project,
       switcherOpen: false,
       onToggleSwitcher: fn(),
+      onCloseSwitcher: fn(),
       onPickProject: fn(),
       onNewProject: fn(),
       onEditProject: fn(),

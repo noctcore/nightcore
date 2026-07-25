@@ -4,7 +4,7 @@
 import { expect, test } from 'vitest';
 
 import type { PrStatus } from '@/lib/bridge';
-import { mergeReadiness } from '@/lib/pr-status';
+import { mergeReadiness, prStatusFallbackMessage } from '@/lib/pr-status';
 
 /** A clean, open, mergeable PR — every test overrides from "ready". */
 function status(over: Partial<PrStatus> = {}): PrStatus {
@@ -66,5 +66,24 @@ test('draft, running checks, and review-required read as their own states', () =
 test('an approved PR with green checks is Ready to merge', () => {
   expect(mergeReadiness(status({ reviewDecision: 'APPROVED' }))?.label).toBe(
     'Ready to merge',
+  );
+});
+
+test('the fallback line follows the fetching → unavailable → failed → idle ladder', () => {
+  expect(prStatusFallbackMessage({ fetching: true, unavailable: false, error: null })).toBe(
+    'Fetching PR status…',
+  );
+  expect(prStatusFallbackMessage({ fetching: false, unavailable: true, error: null })).toBe(
+    'PR status is unavailable in the browser preview.',
+  );
+  expect(prStatusFallbackMessage({ fetching: false, unavailable: false, error: 'boom' })).toBe(
+    'PR status failed to load.',
+  );
+  expect(prStatusFallbackMessage({ fetching: false, unavailable: false, error: null })).toBe(
+    'PR status not loaded yet.',
+  );
+  // Fetching wins even when a prior error is still held.
+  expect(prStatusFallbackMessage({ fetching: true, unavailable: false, error: 'boom' })).toBe(
+    'Fetching PR status…',
   );
 });

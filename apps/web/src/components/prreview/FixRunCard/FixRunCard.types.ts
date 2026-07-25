@@ -19,4 +19,8 @@ export interface FixRunCardProps {
   onReReview: () => void;
   /** Hide a failed fix's card (local-only; the registry entry survives). */
   onDismiss: () => void;
+  /** Re-arm the address human gate to retry a FAILED fix on the current
+   *  selection (the ConfirmDialog reopens — never fires directly). Omitted where
+   *  the retry path isn't wired (stories/tests) — the button then doesn't render. */
+  onTryAgain?: () => void;
 }

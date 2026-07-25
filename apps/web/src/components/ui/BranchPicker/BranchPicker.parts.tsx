@@ -11,19 +11,6 @@ function aheadBehindLabel(ahead: number, behind: number): string | null {
   return parts.length > 0 ? parts.join(' ') : null;
 }
 
-/** A small uppercase section heading inside the listbox (Local / Remote). The
- *  enclosing group carries the accessible name, so this is decorative. */
-export function SectionLabel({ children }: { children: string }) {
-  return (
-    <div
-      role="presentation"
-      className="px-2 pb-0.5 pt-1.5 text-3xs font-medium uppercase tracking-[0.08em] text-muted-foreground"
-    >
-      {children}
-    </div>
-  );
-}
-
 /** Props for a single branch option row. */
 interface BranchOptionRowProps {
   row: BranchRow;

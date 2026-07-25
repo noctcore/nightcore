@@ -66,8 +66,9 @@ export const Closed: Story = {
 export const ListsFiles: Story = {
   play: async () => {
     const canvas = portaledSurface();
-    await expect(canvas.getByText('apps/web/src/lib/diff.ts')).toBeInTheDocument();
-    await expect(canvas.getByText('scratch/notes.md')).toBeInTheDocument();
+    // Paths render leaf-preserving (dir + filename spans); the full path lives on title.
+    await expect(canvas.getByTitle('apps/web/src/lib/diff.ts')).toBeInTheDocument();
+    await expect(canvas.getByTitle('scratch/notes.md')).toBeInTheDocument();
   },
 };
 

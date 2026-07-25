@@ -8,6 +8,7 @@ import {
   GithubIcon,
   RetryIcon,
   SearchIcon,
+  Skeleton,
   Spinner,
   StatusDot,
   TagIcon,
@@ -48,7 +49,14 @@ export function PrPicker({
     hasActiveFilters,
     resetAll,
   } = usePrPicker(prs, value, statuses);
-  const showEmpty = !loading && rows.length === 0 && manualNumber === null;
+  // With an unfiltered fetch error the inline error banner already speaks, so the
+  // empty line would render a blank padded <p> (its only branch is null there) —
+  // fold `error === null` in so nothing renders instead.
+  const showEmpty =
+    !loading &&
+    rows.length === 0 &&
+    manualNumber === null &&
+    (hasQuery || error === null);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2.5 p-3">
@@ -74,7 +82,7 @@ export function PrPicker({
 
       {/* Filter box — also the manual PR-number entry (BranchPicker pattern). */}
       <div
-        className={`nc-focus-ring-host flex items-center gap-2 rounded-[10px] border bg-black/20 px-3 transition-colors focus-within:border-primary ${
+        className={`nc-focus-ring-host flex items-center gap-2 rounded-nc border bg-black/20 px-3 transition-colors focus-within:border-primary ${
           disabled ? 'border-border opacity-60' : 'border-border'
         }`}
       >
@@ -114,7 +122,7 @@ export function PrPicker({
       {error !== null && (
         <div
           role="alert"
-          className="rounded-[10px] border border-destructive/50 bg-destructive/[0.06] px-3 py-2 text-xs-plus text-destructive"
+          className="rounded-nc border border-destructive/50 bg-destructive/[0.06] px-3 py-2 text-xs-plus text-destructive"
         >
           {error}
           <span className="block text-2xs-plus text-muted-foreground">
@@ -124,8 +132,20 @@ export function PrPicker({
       )}
 
       {loading && rows.length === 0 && (
-        <div className="flex items-center gap-2 px-1 py-3 text-xs-plus text-muted-foreground">
-          <Spinner size={13} /> Loading pull requests…
+        <div role="status" className="flex flex-col gap-2">
+          <span className="sr-only">Loading pull requests…</span>
+          {/* Three placeholder rows shaped like a PR card (badge line / title /
+              meta) — a settled skeleton instead of a lone spinner line. */}
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="flex flex-col gap-2 rounded-[12px] border border-border bg-white/[0.02] px-3.5 py-3"
+            >
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-3.5 w-3/4" />
+              <Skeleton className="h-3 w-1/2" />
+            </div>
+          ))}
         </div>
       )}
 
@@ -133,9 +153,7 @@ export function PrPicker({
         <p className="px-1 py-2 text-xs-plus text-muted-foreground">
           {hasQuery
             ? 'No open PR matches — type a full number above to review any PR.'
-            : error === null
-              ? 'No open pull requests. Type a number above to review any PR.'
-              : null}
+            : 'No open pull requests. Type a number above to review any PR.'}
         </p>
       )}
 
@@ -165,9 +183,8 @@ export function PrPicker({
                   }`}
                 >
                   <span className="flex items-center gap-2">
-                    <span className="rounded-full border border-success/40 bg-success/10 px-1.5 py-px text-3xs font-semibold uppercase tracking-wide text-success">
-                      Open
-                    </span>
+                    {/* The list is open-only by contract, so an OPEN badge on
+                        every row is noise — only the Draft distinction earns a pill. */}
                     <span className="font-mono text-2xs-plus text-muted-foreground">
                       #{pr.number}
                     </span>

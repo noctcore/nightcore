@@ -48,7 +48,7 @@ export function GauntletResults({
         </p>
       ) : result.steps.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No tooling detected — the gauntlet passes trivially.
+          No tooling detected. The gauntlet passes trivially.
         </p>
       ) : (
         <ul className="space-y-1">
@@ -88,7 +88,7 @@ export function GauntletResults({
           </div>
           {lockChecks.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No harness checks configured — the lock passes trivially.
+              No harness checks configured. The lock passes trivially.
             </p>
           ) : (
             <ul className="space-y-1">

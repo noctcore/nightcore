@@ -38,7 +38,7 @@ export function ReviewPosition(props: ReviewPositionProps) {
       {reconciliation.length > 0 && (
         <div
           role="status"
-          className="flex items-start gap-3 rounded-[10px] border border-warning/50 bg-warning/[0.08] px-4 py-3"
+          className="flex items-start gap-3 rounded-nc border border-warning/50 bg-warning/[0.08] px-4 py-3"
         >
           <AlertIcon size={16} className="mt-0.5 shrink-0 text-warning" />
           <div className="flex flex-1 flex-col gap-1.5">

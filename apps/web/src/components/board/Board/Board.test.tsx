@@ -58,7 +58,7 @@ test('surfaces the usage-pause banner with the hottest window + reset clock', as
   // The copy names the provider + window + percent, and there is NO Resume button
   // (the loop auto-resumes when usage cools) — only a Dismiss.
   await expect
-    .element(screen.getByText(/auto mode paused — claude session \(5h\) at 94%, resumes ~/i))
+    .element(screen.getByText(/auto mode paused: claude session \(5h\) at 94%, resumes ~/i))
     .toBeInTheDocument();
   expect(screen.container.querySelector('button[aria-label="Dismiss"]')).not.toBeNull();
   await expect
@@ -68,7 +68,7 @@ test('surfaces the usage-pause banner with the hottest window + reset clock', as
 
 test('dismissing the usage-pause banner hides it', async () => {
   const screen = render(<UsagePaused />);
-  const banner = screen.getByText(/auto mode paused — claude session \(5h\)/i);
+  const banner = screen.getByText(/auto mode paused: claude session \(5h\)/i);
   await expect.element(banner).toBeInTheDocument();
   // The usage banner's Dismiss is the second one on the board (breaker is absent), so
   // target it via the banner text's ancestor.
@@ -81,7 +81,7 @@ test('dismissing the usage-pause banner hides it', async () => {
 test('the usage-pause banner drops the resumes clause when there is no reset', async () => {
   const screen = render(<UsagePausedNoReset />);
   await expect
-    .element(screen.getByText(/auto mode paused — claude weekly at 97%/i))
+    .element(screen.getByText(/auto mode paused: claude weekly at 97%/i))
     .toBeInTheDocument();
   await expect
     .element(screen.getByText(/resumes ~/i))

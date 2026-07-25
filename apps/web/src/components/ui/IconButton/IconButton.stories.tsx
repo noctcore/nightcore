@@ -22,6 +22,8 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
 
+export const Disabled: Story = { args: { disabled: true } };
+
 /** Play test: clicking invokes onClick. */
 export const FiresOnClick: Story = {
   play: async ({ args, canvasElement }) => {

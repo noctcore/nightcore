@@ -39,7 +39,8 @@ export interface ReplyRound {
   columns: ReplyColumn[];
 }
 
-const STAGE_LABEL: Record<DebateStage, string> = {
+/** Human title per state-machine stage — shared with the live-stage pill (GOV-6). */
+export const STAGE_LABEL: Record<DebateStage, string> = {
   frame: 'Frame',
   propose: 'Propose',
   debate: 'Debate',

@@ -114,7 +114,7 @@ export function AppShell() {
   // with `active` still null, flashing Projects before the board. (useProjectRegistry
   // caps the load with a timeout so a wedged backend can't hang the splash forever.)
   if (showSplash || !registry.loaded) {
-    return <Splash bootLine="loading workspace…" />;
+    return <Splash bootLine="loading workspace…" version={appVersion} />;
   }
 
   if (onboarding.show) {
@@ -168,7 +168,6 @@ export function AppShell() {
           const p = projects.find((x) => x.id === id);
           if (p !== undefined) editProject.openEdit(p);
         }}
-        onRename={registry.rename}
         onDelete={projectRemoval.request}
         onNewProject={routing.openNewProject}
       />
@@ -199,6 +198,7 @@ export function AppShell() {
               active,
               switcherOpen,
               onToggleSwitcher: routing.toggleSwitcher,
+              onCloseSwitcher: routing.closeSwitcher,
               onPickProject: registry.activate,
               onNewProject: routing.openNewProject,
               onEditProject: editProject.openEdit,

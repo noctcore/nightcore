@@ -78,9 +78,15 @@ test('renders the severity group headers and a grounded location', async () => {
 
 test('collapses medium and low by default; expanding a group reveals its cards', async () => {
   const screen = renderFindings();
-  // Critical/High are expanded → their cards render.
-  await expect.element(screen.getByText('Secret in log line')).toBeInTheDocument();
-  await expect.element(screen.getByText('Unawaited promise')).toBeInTheDocument();
+  // Critical/High are expanded → their cards render. Query the card HEADING
+  // (the finding title also rides as the checkbox's sr-only accessible-name
+  // suffix, so a bare getByText would be ambiguous).
+  await expect
+    .element(screen.getByRole('heading', { name: 'Secret in log line' }))
+    .toBeInTheDocument();
+  await expect
+    .element(screen.getByRole('heading', { name: 'Unawaited promise' }))
+    .toBeInTheDocument();
   // Medium/Low are collapsed → their cards are absent from the DOM.
   await expect.element(screen.getByText('Med A')).not.toBeInTheDocument();
   await expect
@@ -93,7 +99,9 @@ test('collapses medium and low by default; expanding a group reveals its cards',
   const medium = screen.getByRole('button', { name: 'Medium 2' });
   await expect.element(medium).toHaveAttribute('aria-expanded', 'false');
   await medium.click();
-  await expect.element(screen.getByText('Med A')).toBeInTheDocument();
+  await expect
+    .element(screen.getByRole('heading', { name: 'Med A' }))
+    .toBeInTheDocument();
   await expect.element(medium).toHaveAttribute('aria-expanded', 'true');
 });
 
@@ -174,7 +182,7 @@ test('a completed clean run shows the celebratory positive empty state', async (
   const screen = renderFindings({
     findings: [],
     emptyVariant: 'clean',
-    emptyMessage: 'No findings — the diff looks clean across the selected lenses.',
+    emptyMessage: 'The diff looks clean across the selected lenses.',
   });
   // The success-toned "No findings" heading, distinct from the neutral message.
   await expect

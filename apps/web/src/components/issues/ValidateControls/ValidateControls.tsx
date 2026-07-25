@@ -85,7 +85,7 @@ export function ValidateControls({
       </div>
 
       {startError !== null && (
-        <p className="rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-xs-plus text-destructive">
+        <p className="rounded-nc border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-xs-plus text-destructive">
           {startError}
         </p>
       )}

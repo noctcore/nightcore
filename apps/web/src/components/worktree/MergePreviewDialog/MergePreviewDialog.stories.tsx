@@ -115,7 +115,8 @@ export const ConflictsBlockMerge: Story = {
     const canvas = portaledSurface();
     await expect(canvas.getByRole('button', { name: 'Merge' })).toBeDisabled();
     await expect(canvas.getByText(/2 conflicts — resolve before merging/i)).toBeInTheDocument();
-    await expect(canvas.getByText('apps/web/src/store/types.ts')).toBeInTheDocument();
+    // Conflict paths render leaf-preserving; the full path lives on title.
+    await expect(canvas.getByTitle('apps/web/src/store/types.ts')).toBeInTheDocument();
     await expect(
       canvas.getByText(/Resolve these files in the worktree, commit, then merge again\./i),
     ).toBeInTheDocument();

@@ -12,7 +12,15 @@ export function Menu({ trigger, label, items, align = 'right' }: MenuProps) {
   const { open, rootRef, itemRefs, select, onItemKeyDown, toggleOpen } = useMenu(items);
 
   const triggerNode = isValidElement(trigger)
-    ? cloneElement(trigger, { onClick: toggleOpen })
+    ? cloneElement(trigger, {
+        'aria-haspopup': 'menu',
+        'aria-expanded': open,
+        // Compose, don't clobber: fire the trigger's own onClick before toggling.
+        onClick: () => {
+          trigger.props.onClick?.();
+          toggleOpen();
+        },
+      })
     : trigger;
 
   return (
@@ -28,7 +36,7 @@ export function Menu({ trigger, label, items, align = 'right' }: MenuProps) {
             animate="animate"
             exit="exit"
             style={{ transformOrigin: align === 'right' ? 'top right' : 'top left' }}
-            className={`absolute top-full z-20 mt-1 min-w-[160px] overflow-hidden rounded-[10px] border border-border bg-popover py-1 shadow-2xl ${
+            className={`absolute top-full z-20 mt-1 min-w-[160px] overflow-hidden rounded-nc border border-border bg-popover py-1 shadow-2xl ${
               align === 'right' ? 'right-0' : 'left-0'
             }`}
           >
@@ -42,10 +50,10 @@ export function Menu({ trigger, label, items, align = 'right' }: MenuProps) {
                 role="menuitem"
                 onClick={() => select(item)}
                 onKeyDown={(e) => onItemKeyDown(e, index)}
-                className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm transition-colors hover:bg-white/[0.06] focus-visible:bg-white/[0.12] focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring ${
+                className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm transition-colors ${
                   item.destructive
-                    ? 'text-destructive hover:text-destructive'
-                    : 'text-foreground'
+                    ? 'text-destructive hover:bg-destructive/10 hover:text-destructive focus-visible:bg-destructive/10'
+                    : 'text-foreground hover:bg-white/[0.06] focus-visible:bg-white/[0.12]'
                 }`}
               >
                 {item.icon !== undefined && (

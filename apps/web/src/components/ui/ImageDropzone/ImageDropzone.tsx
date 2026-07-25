@@ -11,7 +11,7 @@ import type { ImageDropzoneProps } from './ImageDropzone.types';
 
 /** Build the dashed drop-target class string for the current drag/enabled state. */
 function dropzoneClass(isDragOver: boolean, enabled: boolean): string {
-  return `flex flex-col items-center gap-1 rounded-[10px] border border-dashed px-3 py-4 text-center transition-colors disabled:cursor-not-allowed ${
+  return `flex flex-col items-center gap-1 rounded-nc border border-dashed px-3 py-4 text-center transition-colors disabled:cursor-not-allowed ${
     isDragOver ? 'border-primary bg-primary/[0.07]' : 'border-border bg-white/[0.02]'
   } ${enabled ? 'cursor-pointer hover:border-white/25' : 'opacity-60'}`;
 }
@@ -85,7 +85,7 @@ export function ImageDropzone({
             <li
               key={item.id}
               title={item.filename}
-              className="group relative aspect-square overflow-hidden rounded-[10px] border border-border bg-black/20"
+              className="group relative aspect-square overflow-hidden rounded-nc border border-border bg-black/20"
             >
               {item.previewUrl !== null ? (
                 <img

@@ -16,3 +16,10 @@ test('click toggles onChange', async () => {
   await screen.getByRole('switch', { name: 'Auto mode' }).click();
   expect(onChange).toHaveBeenCalledWith(true);
 });
+
+test('disabled switch renders inert (native disabled blocks activation)', async () => {
+  const screen = render(
+    <Toggle on={false} onChange={vi.fn()} label="Auto mode" disabled />,
+  );
+  await expect.element(screen.getByRole('switch', { name: 'Auto mode' })).toBeDisabled();
+});

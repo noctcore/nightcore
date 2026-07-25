@@ -28,7 +28,7 @@ function TargetRow({
       type="button"
       disabled={disabled}
       onClick={() => onPick(target.path)}
-      className="flex w-full items-center gap-2.5 rounded-[9px] border border-border/70 bg-black/10 px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-accent/40 disabled:cursor-not-allowed disabled:opacity-60"
+      className="flex w-full items-center gap-2.5 rounded-nc border border-border/70 bg-black/10 px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-accent/40 disabled:cursor-not-allowed disabled:opacity-60"
     >
       <Icon size={15} className="shrink-0 text-muted-foreground" />
       <span className="flex min-w-0 flex-col">
@@ -102,7 +102,7 @@ export function NewTabPicker({
           type="button"
           disabled={busy}
           onClick={onBrowse}
-          className="flex w-full items-center gap-2.5 rounded-[9px] border border-dashed border-border/70 bg-transparent px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-accent/40 disabled:cursor-not-allowed disabled:opacity-60"
+          className="flex w-full items-center gap-2.5 rounded-nc border border-dashed border-border/70 bg-transparent px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-accent/40 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <SearchIcon size={15} className="shrink-0 text-muted-foreground" />
           <span className="flex min-w-0 flex-col">
@@ -120,7 +120,7 @@ export function NewTabPicker({
             type="button"
             disabled={busy}
             onClick={onCreateWorktree}
-            className="flex w-full items-center gap-2.5 rounded-[9px] border border-dashed border-border/70 bg-transparent px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-accent/40 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex w-full items-center gap-2.5 rounded-nc border border-dashed border-border/70 bg-transparent px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-accent/40 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <BranchIcon size={15} className="shrink-0 text-muted-foreground" />
             <span className="flex min-w-0 flex-col">
@@ -136,7 +136,7 @@ export function NewTabPicker({
       </div>
 
       {confinedAvailable && (
-        <div className="mx-5 mt-1 flex items-start gap-2 rounded-[9px] border border-border/60 bg-black/10 px-3 py-2.5">
+        <div className="mx-5 mt-1 flex items-start gap-2 rounded-nc border border-border/60 bg-black/10 px-3 py-2.5">
           <LockIcon size={14} className="mt-[3px] shrink-0 text-warning/80" aria-hidden />
           <div className="flex min-w-0 flex-col gap-0.5">
             <Checkbox

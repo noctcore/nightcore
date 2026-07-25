@@ -28,7 +28,7 @@ export function IssueMapResultBanner({ result }: { result: IssueMapResult }) {
   // exactly what landed and that nothing was destroyed.
   if (result.partial) {
     return (
-      <div className="flex flex-col gap-2 rounded-[10px] border border-amber-500/40 bg-amber-500/[0.1] px-4 py-3">
+      <div className="flex flex-col gap-2 rounded-nc border border-amber-500/40 bg-amber-500/[0.1] px-4 py-3">
         <div className="flex items-center gap-2 text-xs-plus2 font-semibold text-amber-200">
           <AlertIcon size={15} />
           Partial export — created {result.created} of {result.attempted} sub-issues
@@ -54,7 +54,7 @@ export function IssueMapResultBanner({ result }: { result: IssueMapResult }) {
   // checklist rather than the native sub-issue relationship.
   if (result.degradedLinkage) {
     return (
-      <div className="flex flex-col gap-2 rounded-[10px] border border-primary/40 bg-primary/[0.08] px-4 py-3">
+      <div className="flex flex-col gap-2 rounded-nc border border-primary/40 bg-primary/[0.08] px-4 py-3">
         <div className="flex items-center gap-2 text-xs-plus2 font-semibold text-foreground">
           <CheckIcon size={15} className="text-primary" />
           Exported {result.created} sub-issues (task-list linkage)
@@ -76,7 +76,7 @@ export function IssueMapResultBanner({ result }: { result: IssueMapResult }) {
 
   // Full success.
   return (
-    <div className="flex flex-col gap-2 rounded-[10px] border border-emerald-500/40 bg-emerald-500/[0.1] px-4 py-3">
+    <div className="flex flex-col gap-2 rounded-nc border border-emerald-500/40 bg-emerald-500/[0.1] px-4 py-3">
       <div className="flex items-center gap-2 text-xs-plus2 font-semibold text-emerald-200">
         <CheckIcon size={15} />
         Exported map with {result.created} sub-issues

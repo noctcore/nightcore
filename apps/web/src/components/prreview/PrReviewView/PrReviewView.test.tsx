@@ -179,7 +179,7 @@ test('renders the two-panel workspace: PR list + empty prompt, then selection op
     .element(screen.getByText('Pull requests', { exact: true }))
     .toBeInTheDocument();
   await expect
-    .element(screen.getByText(/select a pull request to review/i))
+    .element(screen.getByText('Select a pull request', { exact: true }))
     .toBeInTheDocument();
 
   // Selecting a PR opens its workspace on the right (title + review config).

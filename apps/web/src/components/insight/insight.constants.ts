@@ -70,16 +70,6 @@ export const SCOPE_META: Record<AnalysisScope, { label: string; hint: string }> 
   diff: { label: 'Changes', hint: 'Only files changed since the last commit' },
 };
 
-/** Label + hint for the Standard/Deep 2-chip radio (issue #294), keyed by the
- *  `deep` boolean as a string so it fits the same shape `SCOPE_META` uses. */
-export const DEEP_MODE_META: Record<'standard' | 'deep', { label: string; hint: string }> = {
-  standard: { label: 'Standard', hint: 'One pass per category' },
-  deep: {
-    label: 'Deep',
-    hint: 'Multiple rounds per category until convergence — can run long',
-  },
-};
-
 /** Deep mode's explicit per-run parameters (issue #294). MUST be sent with every
  *  field present — the generated Rust `DeepScanConfig` fields default to `0` on
  *  deserialize (not these zod schema defaults), so an empty `{}` would silently

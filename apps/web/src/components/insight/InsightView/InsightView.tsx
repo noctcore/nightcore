@@ -12,6 +12,7 @@ import {
   Menu,
   RetryIcon,
   RunLifecycleShell,
+  RunOutcomeNotice,
   RunProgress,
   RunUsageLine,
   StopIcon,
@@ -87,7 +88,7 @@ export function InsightView(props: InsightViewProps) {
           {view.summary}
           {/* Append to the accessible name without an aria-label, which would
               clobber the visible config text screen-reader users still want read. */}
-          <span className="sr-only"> — reconfigure run</span>
+          <span className="sr-only">, reconfigure run</span>
         </button>
       )}
       {view.phase === 'results' && (
@@ -127,51 +128,53 @@ export function InsightView(props: InsightViewProps) {
         )}
 
         {view.phase === 'running' && (
-          <div className="flex min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto w-full max-w-[820px] px-6 py-7">
-              {view.peekCategory === null ? (
-                <>
-                  <RunProgress
-                    status={view.stream.status}
-                    categories={view.progressCategories}
-                    categoryState={view.stream.categoryState}
-                    findingCounts={view.findingCounts}
-                    categoryRounds={view.stream.categoryRounds}
-                    unitLabel="categories"
-                    costUsd={view.stream.costUsd}
-                    usage={view.stream.usage}
-                    durationMs={view.stream.durationMs}
-                    onOpenCategory={view.onOpenCategory}
-                  />
-                  <div className="mt-5 flex justify-end">
-                    <Button variant="danger" onClick={view.onCancel}>
-                      <StopIcon size={15} />
-                      Cancel scan
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <div className="flex flex-col gap-3">
+          <div className="mx-auto flex h-full min-h-0 w-full max-w-[820px] flex-col gap-4 overflow-y-auto px-6 py-8">
+            <RunProgress
+              status={view.stream.status}
+              categories={view.progressCategories}
+              categoryState={view.stream.categoryState}
+              findingCounts={view.findingCounts}
+              categoryRounds={view.stream.categoryRounds}
+              unitLabel="categories"
+              costUsd={view.stream.costUsd}
+              usage={view.stream.usage}
+              durationMs={view.stream.durationMs}
+              onOpenCategory={view.onOpenCategory}
+            />
+
+            {/* Cancel stays visible even while peeking a finished category — the
+                partial-reveal grid renders BELOW it (matching Harness), rather than
+                replacing the whole running screen. */}
+            <div className="flex justify-end">
+              <Button variant="danger" onClick={view.onCancel}>
+                <StopIcon size={15} />
+                Cancel scan
+              </Button>
+            </div>
+
+            {view.peekCategory !== null && (
+              <div className="flex max-h-[60vh] min-h-0 flex-col overflow-hidden rounded-nc border border-border bg-white/[0.015]">
+                <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+                  <span className="font-mono text-2xs uppercase tracking-[0.1em] text-muted-foreground">
+                    {view.peekLabel}
+                  </span>
                   <button
                     type="button"
                     onClick={view.clearPeek}
-                    className="inline-flex w-fit items-center gap-1 font-mono text-2xs uppercase tracking-[0.1em] text-muted-foreground transition-colors hover:text-foreground"
+                    className="inline-flex items-center gap-1 text-xs-flat text-muted-foreground transition-colors hover:text-foreground"
                   >
                     <ChevronLeftIcon size={13} />
                     Back to progress
                   </button>
-                  <span className="text-xs-plus2 font-semibold text-foreground">
-                    {view.peekLabel}
-                  </span>
-                  <FindingGrid
-                    findings={view.peekFindings}
-                    skeletonCount={0}
-                    emptyMessage="No findings in this category yet."
-                    onOpen={view.openFinding}
-                  />
                 </div>
-              )}
-            </div>
+                <FindingGrid
+                  findings={view.peekFindings}
+                  skeletonCount={0}
+                  emptyMessage="No findings in this category yet."
+                  onOpen={view.openFinding}
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -179,20 +182,18 @@ export function InsightView(props: InsightViewProps) {
           <div className="flex min-h-0 flex-1 flex-col">
             {view.stream.status === 'failed' &&
               (view.stream.failureReason === 'aborted' ? (
-                // A user cancel isn't a failure — show a neutral notice, not the
-                // destructive banner.
-                <div className="px-6 pt-5">
-                  <div className="rounded-[10px] border border-border bg-white/[0.02] px-4 py-3 text-xs-plus text-muted-foreground">
-                    Analysis cancelled. Any findings gathered before you stopped are
-                    shown below.
-                  </div>
-                </div>
+                // A user cancel isn't a failure — a neutral notice, not destructive.
+                <RunOutcomeNotice
+                  kind="aborted"
+                  message="Analysis cancelled. Any findings gathered before you stopped are shown below."
+                  className="mx-6 mt-5"
+                />
               ) : (
-                <div className="px-6 pt-5">
-                  <div className="rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-4 py-3 text-xs-plus text-destructive">
-                    {view.stream.error ?? 'Analysis failed.'}
-                  </div>
-                </div>
+                <RunOutcomeNotice
+                  kind="failed"
+                  message={view.stream.error ?? 'Analysis failed.'}
+                  className="mx-6 mt-5"
+                />
               ))}
 
             {/* A completed analysis that spent nothing is a usage-limit tell, not

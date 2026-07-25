@@ -4,7 +4,9 @@ import {
   formatCountdown,
   formatDurationMs,
   formatLocation,
+  formatRelativeTimeAgo,
   formatTokensCompact,
+  pluralize,
 } from './formatters';
 
 test('returns null for a missing location', () => {
@@ -104,4 +106,22 @@ test('formatDurationMs renders compact two-unit spans', () => {
 test('formatDurationMs clamps a negative or NaN duration to 0s', () => {
   expect(formatDurationMs(-1)).toBe('0s');
   expect(formatDurationMs(Number.NaN)).toBe('0s');
+});
+
+test('pluralize keeps the singular for one and adds -s otherwise', () => {
+  expect(pluralize(1, 'task')).toBe('1 task');
+  expect(pluralize(0, 'task')).toBe('0 tasks');
+  expect(pluralize(3, 'file')).toBe('3 files');
+});
+
+test('pluralize honors an explicit irregular plural', () => {
+  expect(pluralize(1, 'entry', 'entries')).toBe('1 entry');
+  expect(pluralize(2, 'entry', 'entries')).toBe('2 entries');
+});
+
+test('formatRelativeTimeAgo suffixes "ago" but leaves "just now" alone', () => {
+  const now = 1_700_000_000_000;
+  expect(formatRelativeTimeAgo(now, now)).toBe('just now');
+  expect(formatRelativeTimeAgo(now - 5 * 60_000, now)).toBe('5m ago');
+  expect(formatRelativeTimeAgo('not-a-date', now)).toBe('');
 });

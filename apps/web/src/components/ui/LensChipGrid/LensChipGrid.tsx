@@ -7,6 +7,7 @@
  * extra-section slot, the chip grid, and the primary CTA + cost hint.
  */
 import { Button } from '../Button';
+import { SectionLabel } from '../SectionLabel';
 import { Spinner } from '../Spinner';
 import type {
   LensChipGridProps,
@@ -14,7 +15,7 @@ import type {
 } from './LensChipGrid.types';
 
 const CHIP =
-  'rounded-[10px] border px-3 py-1.5 text-xs-plus font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50';
+  'rounded-nc border px-3 py-1.5 text-xs-plus font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50';
 
 /** Lens chip classes for the selected/unselected states. */
 export function chipClass(selected: boolean): string {
@@ -24,9 +25,6 @@ export function chipClass(selected: boolean): string {
       : 'border-border bg-white/[0.02] text-muted-foreground hover:border-white/20'
   }`;
 }
-
-const SECTION_LABEL =
-  'font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground';
 
 /** The lens chip grid: a header row (heading + All/None) over toggleable,
  *  `aria-pressed` icon chips. */
@@ -41,7 +39,7 @@ export function LensChipGrid<K extends string>({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
-        <span className={SECTION_LABEL}>{heading}</span>
+        <SectionLabel>{heading}</SectionLabel>
         <div className="flex gap-2">
           <button
             type="button"
@@ -101,7 +99,7 @@ export function ScanConfigForm<K extends string>({
 }: ScanConfigFormProps<K>) {
   const form = (
     <div className="mx-auto flex w-full max-w-[720px] flex-col gap-7 px-6 py-10">
-      <span className={SECTION_LABEL}>Run config</span>
+      <SectionLabel>Run config</SectionLabel>
 
       {/* Model + effort — the family composes the shared picker into this slot */}
       {picker}

@@ -1,11 +1,11 @@
-import { Kbd } from '@/components/ui';
+import { ConfirmHint } from '@/components/ui';
 
 import { useTaskOverviewEditor } from './TaskOverviewEditor.hooks';
 import type { TaskOverviewEditorProps } from './TaskOverviewEditor.types';
 
 const LABEL_CLASS = 'font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground';
 const FIELD_CLASS =
-  'w-full rounded-[10px] border border-border bg-black/20 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary';
+  'w-full rounded-nc border border-border bg-black/20 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary';
 
 /** The pre-run editable title + description block (T13). Shown in the drawer's Overview
  *  while a task is still editable (backlog/ready); the inputs are uncontrolled (seeded
@@ -57,9 +57,7 @@ export function TaskOverviewEditor(props: TaskOverviewEditorProps) {
             }
           }}
         />
-        <span className="flex items-center gap-1 text-2xs text-muted-foreground">
-          <Kbd>⌘↵</Kbd> or blur to save
-        </span>
+        <ConfirmHint>or blur to save</ConfirmHint>
       </div>
     </section>
   );

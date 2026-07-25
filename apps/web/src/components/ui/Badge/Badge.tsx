@@ -6,6 +6,10 @@ const TONES: Record<BadgeTone, string> = {
   neutral:
     'bg-white/[0.04] border border-border text-muted-foreground',
   primary: 'bg-primary/[0.18] text-primary',
+  success: 'bg-success/[0.12] text-success',
+  warning: 'bg-warning/[0.12] text-warning',
+  destructive: 'bg-destructive/[0.12] text-destructive',
+  info: 'bg-info/[0.12] text-info',
 };
 
 /** A small monospace meta chip. */

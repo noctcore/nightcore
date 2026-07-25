@@ -98,7 +98,7 @@ export function PrWorkspace({
       {lifecycle != null && tone != null && (
         <div
           role="status"
-          className={`flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-[10px] border px-3.5 py-2 ${tone.border} ${tone.bg}`}
+          className={`flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-nc border px-3.5 py-2 ${tone.border} ${tone.bg}`}
         >
           <StatusDot colorClass={tone.dot} pulse={lifecycle.pulse} glow />
           <span className={`text-xs-plus font-semibold ${tone.text}`}>
@@ -176,8 +176,8 @@ export function PrWorkspace({
         </div>
         {changed.expanded && (
           <div
-            className="overflow-hidden rounded-[10px] border border-border"
-            style={{ animation: 'nc-rise .16s cubic-bezier(.22,1,.36,1)' }}
+            className="overflow-hidden rounded-nc border border-border"
+            style={{ animation: 'nc-rise var(--nc-motion-fast) var(--nc-ease-out-quint)' }}
           >
             {changed.loading ? (
               <div
@@ -246,8 +246,13 @@ export function PrWorkspace({
             <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
               Description
             </span>
-            <span className="text-3xs-plus text-muted-foreground/70">
-              untrusted contributor content · sanitized
+            {/* The threat-model detail rides in the title; the visible chrome is
+                a single quiet "sanitized" pill instead of a jargon annotation. */}
+            <span
+              title="Untrusted contributor content · sanitized"
+              className="rounded-full border border-border px-1.5 py-px text-3xs uppercase tracking-wide text-muted-foreground/70"
+            >
+              sanitized
             </span>
           </div>
           {body.trim().length > 0 ? (

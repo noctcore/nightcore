@@ -181,8 +181,13 @@ test('shows the reviewer verdict and Accept / Rerun / Reject for a review-parked
 
 test('a review-parked task does not show the plan-approval controls', async () => {
   const screen = render(<ReviewParked />);
-  // The plan Refine action belongs to plan-parked tasks only.
-  expect(screen.container.querySelector('button[title]')).not.toBeNull();
+  // The plan Approve / Refine actions belong to plan-parked tasks only (the
+  // review card's own Accept / Rerun / Reject are asserted above).
+  const labels = Array.from(
+    screen.container.querySelectorAll('button'),
+    (button) => button.textContent ?? '',
+  );
+  expect(labels.some((label) => /refine|approve/i.test(label))).toBe(false);
   await expect.element(screen.getByText(/Resolve the reviewer verdict/)).toBeInTheDocument();
 });
 

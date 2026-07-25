@@ -1,4 +1,4 @@
-import { Card } from '@/components/ui';
+import { Card, GridEmptyMessage } from '@/components/ui';
 
 import {
   DIMENSION_META,
@@ -41,7 +41,7 @@ function GradeChip({ row }: { row: DimensionRow }) {
     const meta = GRADE_META[row.reading.grade];
     return (
       <span
-        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border font-mono text-[22px] font-bold leading-none ${meta.chip} ${meta.tone}`}
+        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-nc border font-mono text-[22px] font-bold leading-none ${meta.chip} ${meta.tone}`}
       >
         {meta.label}
       </span>
@@ -51,7 +51,7 @@ function GradeChip({ row }: { row: DimensionRow }) {
     return (
       <span
         aria-label="grading"
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-primary/40 bg-primary/[0.06]"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-nc border border-primary/40 bg-primary/[0.06]"
       >
         <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-primary" />
       </span>
@@ -61,7 +61,7 @@ function GradeChip({ row }: { row: DimensionRow }) {
   return (
     <span
       aria-label={row.state === 'error' ? 'grading failed' : 'pending'}
-      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-border bg-white/[0.02] font-mono text-[20px] font-bold leading-none ${
+      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-nc border border-border bg-white/[0.02] font-mono text-[20px] font-bold leading-none ${
         row.state === 'error' ? 'text-destructive' : 'text-muted-foreground/50'
       }`}
     >
@@ -122,7 +122,7 @@ function DimensionRowCard({
 
   if (!clickable) {
     return (
-      <div className="flex items-center gap-3.5 rounded-[10px] border border-border bg-white/[0.02] p-3.5">
+      <div className="flex items-center gap-3.5 rounded-nc border border-border bg-white/[0.02] p-3.5">
         <GradeChip row={row} />
         {body}
       </div>
@@ -145,13 +145,7 @@ function DimensionRowCard({
  *  upstream so the weakest dimensions surface first. */
 export function DimensionGrid({ rows, emptyMessage, onOpen }: DimensionGridProps) {
   if (rows.length === 0) {
-    return (
-      <div className="flex flex-1 items-center justify-center px-6 py-16">
-        <p className="max-w-md text-center text-sm text-muted-foreground">
-          {emptyMessage}
-        </p>
-      </div>
-    );
+    return <GridEmptyMessage message={emptyMessage} />;
   }
 
   return (

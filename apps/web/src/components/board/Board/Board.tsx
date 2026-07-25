@@ -1,6 +1,6 @@
 import { memo } from 'react';
 
-import { AlertIcon, BoltIcon, CloseIcon } from '@/components/ui';
+import { AlertIcon, BoltIcon, Button, CloseIcon } from '@/components/ui';
 
 import { BoardDnd } from '../BoardDnd';
 import { BoardHeader } from '../BoardHeader';
@@ -95,14 +95,10 @@ function BoardImpl({
           <span className="min-w-0 text-xs-plus text-foreground">
             Auto Mode paused after {breaker.failureThreshold} consecutive failures.
           </span>
-          <button
-            type="button"
-            onClick={onResume}
-            className="ml-auto flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-1 text-xs-flat font-semibold text-primary-foreground transition-[filter] hover:brightness-110"
-          >
+          <Button onClick={onResume} className="ml-auto">
             <BoltIcon size={13} />
             Resume
-          </button>
+          </Button>
           <button
             type="button"
             aria-label="Dismiss"
@@ -118,7 +114,7 @@ function BoardImpl({
         <div className="flex items-center gap-3 border-b border-warning/40 bg-warning/[0.12] px-[22px] py-2.5">
           <BoltIcon size={15} className="shrink-0 text-warning" />
           <span className="min-w-0 text-xs-plus text-foreground">
-            Auto Mode paused — {providerDisplay(usagePause.provider)} {usagePause.windowLabel} at{' '}
+            Auto Mode paused: {providerDisplay(usagePause.provider)} {usagePause.windowLabel} at{' '}
             {Math.round(usagePause.usedPercent)}%
             {usageResetClock !== null && `, resumes ~${usageResetClock}`}
           </span>
@@ -148,7 +144,21 @@ function BoardImpl({
               promptIds={promptIds}
               logCounts={logCounts}
               dropStatus={def.statuses[0]}
-              emptyText={search.trim() !== '' ? 'No matches' : EMPTY_TEXT[def.key]}
+              emptyText={
+                search.trim() !== '' ? (
+                  'No matches'
+                ) : def.key === 'backlog' ? (
+                  <button
+                    type="button"
+                    onClick={onNewTask}
+                    className="w-full rounded-[11px] border border-dashed border-border px-3.5 py-6 text-center text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:bg-primary/[0.04] hover:text-foreground"
+                  >
+                    {EMPTY_TEXT.backlog}
+                  </button>
+                ) : (
+                  EMPTY_TEXT[def.key]
+                )
+              }
               onClear={clearHandlers[def.key]}
             />
           ))}

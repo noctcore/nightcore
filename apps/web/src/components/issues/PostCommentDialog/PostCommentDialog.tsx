@@ -54,12 +54,12 @@ export function PostCommentDialog({
             <Spinner size={14} /> Building the comment…
           </div>
         ) : error !== null ? (
-          <div className="flex items-center gap-2 rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-xs-plus text-destructive">
+          <div className="flex items-center gap-2 rounded-nc border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-xs-plus text-destructive">
             <AlertIcon size={14} />
             {error}
           </div>
         ) : (
-          <div className="rounded-[10px] border border-border bg-white/[0.02] px-3.5 py-2.5">
+          <div className="rounded-nc border border-border bg-white/[0.02] px-3.5 py-2.5">
             <Markdown>{shownBody}</Markdown>
           </div>
         )}

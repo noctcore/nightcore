@@ -8,6 +8,7 @@ import {
   WorktreesProvider,
 } from '@/lib/worktrees-context';
 
+import { portaledSurface } from '../../../../.storybook/test-utils';
 import {
   MAIN_MODE_TASK,
   MANY_WORKTREE_TASKS,
@@ -112,6 +113,8 @@ export const RemovesWorktree: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole('button', { name: /worktree actions for nc\/api-client/i }));
     await userEvent.click(canvas.getByRole('menuitem', { name: /remove worktree/i }));
+    // The kebab action now opens a destructive ConfirmDialog before discarding.
+    await userEvent.click(portaledSurface().getByRole('button', { name: 'Remove' }));
     await expect(args.onRemoveWorktree).toHaveBeenCalledWith(
       expect.objectContaining({ branch: 'nc/api-client', taskIds: expect.arrayContaining(['t-running']) }),
     );

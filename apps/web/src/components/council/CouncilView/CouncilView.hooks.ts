@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '@/components/ui';
 import type {
   CouncilConvergeDecision,
+  CouncilPresetId,
   CouncilRoutingEdge,
   DebateTranscriptEntry,
 } from '@/lib/bridge';
@@ -39,11 +40,8 @@ import {
   hasConvergeDecision,
   hasConvergeVerdict,
 } from '../council-transcript';
-import { groupReplyRounds, type ReplyRound } from '../reply-diff';
+import { groupReplyRounds, type ReplyRound, STAGE_LABEL } from '../reply-diff';
 import type { CouncilViewProps } from './CouncilView.types';
-
-/** The only P1 preset (a `research` council of ≥2 distinct models). */
-const COUNCIL_PRESET = 'research' as const;
 
 /** Every directed peer pair (`a → b`, a ≠ b) — the materialized OPEN routing graph.
  *  The first routing edit expands the implicit "everyone informs everyone" default into
@@ -90,6 +88,9 @@ export interface CouncilViewModel {
   positions: ConvergePosition[];
   /** True while a run is live (drives the Kill affordance + the "live" badge). */
   isLive: boolean;
+  /** The current stage of a LIVE run, for the "Live · …" pill (e.g. "Propose",
+   *  "Debate · round 2"), or `null` when not running / no activity yet (GOV-6). */
+  liveStage: string | null;
   /** True once the human judge has ruled and the run is closed (#353, safety #7). */
   resolved: boolean;
   /** The recorded human verdict text, shown read-only once `resolved`. */
@@ -99,8 +100,11 @@ export interface CouncilViewModel {
   /** Read-only transcript REPLAY of a finished run (safety #7). Bundled so the view can
    *  offer + drive replay without growing the model surface. */
   replay: CouncilReplayControls;
-  /** Start a council over `objective` (a fresh run id is minted). */
-  start: (objective: string) => void;
+  /** Start a council over `objective` with the chosen `presetId` (a fresh run id is
+   *  minted). The phase advances to `running` only once the dispatch RESOLVES, so a
+   *  failed start leaves the panel mounted with its draft intact; it rejects so the
+   *  panel can surface the error inline (GOV-5). */
+  start: (objective: string, presetId: CouncilPresetId) => Promise<void>;
   /** Throw the running council's kill switch (safety #4). */
   kill: () => void;
   /** Resolve the parked Converge decision with the human judge's verdict (#353). The
@@ -165,7 +169,7 @@ export function useCouncilView(props: CouncilViewProps): CouncilViewModel {
   }, [entries, phase]);
 
   const start = useCallback(
-    (objective: string) => {
+    async (objective: string, presetId: CouncilPresetId) => {
       const trimmed = objective.trim();
       if (trimmed.length === 0) return;
       const id = crypto.randomUUID();
@@ -173,13 +177,19 @@ export function useCouncilView(props: CouncilViewProps): CouncilViewModel {
       setEntries([]);
       setReplayActive(false);
       setRoutingEdges(null);
-      setPhase('running');
-      void startCouncil(id, COUNCIL_PRESET, trimmed, props.projectPath).catch(
-        (error: unknown) => {
-          setPhase('idle');
-          toast.error('Could not start the council', error);
-        },
-      );
+      try {
+        // DEFER the running transition until the dispatch resolves (GOV-5): the start
+        // panel stays mounted (with its typed draft) until we know the run took.
+        await startCouncil(id, presetId, trimmed, props.projectPath);
+        setPhase('running');
+      } catch (error) {
+        // The run never started — drop the minted id so the panel returns to a clean
+        // idle with its draft preserved, and rethrow so the panel shows the inline
+        // error (a toast is kept too — cheap belt-and-braces).
+        setRunId(null);
+        toast.error('Could not start the council', error);
+        throw error;
+      }
     },
     [props.projectPath, toast],
   );
@@ -265,6 +275,18 @@ export function useCouncilView(props: CouncilViewProps): CouncilViewModel {
   // matters). Assigned after the fold, read synchronously by `toggleInformer`.
   seatIdsRef.current = transcript.seats.map((seat) => seat.seatId);
   const replyRounds = useMemo(() => groupReplyRounds(entries), [entries]);
+  // The live stage label for the "Live · …" pill (GOV-6): the stage of the most recent
+  // bus activity, upgraded to the Debate round label when the seats are mid-debate.
+  const liveStage = useMemo<string | null>(() => {
+    if (phase !== 'running') return null;
+    const last = transcript.chat.at(-1);
+    if (last === undefined) return null;
+    if (last.stage === 'debate') {
+      const debateRound = replyRounds.filter((round) => round.stage === 'debate').at(-1);
+      if (debateRound !== undefined) return debateRound.label;
+    }
+    return STAGE_LABEL[last.stage];
+  }, [phase, transcript.chat, replyRounds]);
   const verdict = useMemo(() => convergeVerdictText(entries), [entries]);
   const positions = useMemo<ConvergePosition[]>(
     () =>
@@ -285,6 +307,7 @@ export function useCouncilView(props: CouncilViewProps): CouncilViewModel {
     replyRounds,
     positions,
     isLive: phase === 'running',
+    liveStage,
     resolved: phase === 'resolved',
     verdict,
     routing: {

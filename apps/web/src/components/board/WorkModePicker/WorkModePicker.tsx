@@ -26,7 +26,7 @@ export function WorkModePicker({ value, onChange, disabled = false }: WorkModePi
               disabled={disabled}
               onKeyDown={rovingKeydown}
               onClick={() => onChange(option.mode)}
-              className={`flex items-center gap-1.5 rounded-[10px] border px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+              className={`flex items-center gap-1.5 rounded-nc border px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                 selected
                   ? 'border-primary/60 bg-primary/[0.1]'
                   : 'border-border bg-white/[0.02] hover:border-white/20'

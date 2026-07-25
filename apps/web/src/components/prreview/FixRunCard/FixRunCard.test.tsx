@@ -146,6 +146,13 @@ test('failed renders the registry error and a dismiss affordance', async () => {
     .toBeInTheDocument();
 });
 
+test('failed offers a Try again that re-arms the address gate', async () => {
+  const onTryAgain = vi.fn();
+  const screen = render(<Failed onTryAgain={onTryAgain} />);
+  await screen.getByRole('button', { name: /try again/i }).click();
+  expect(onTryAgain).toHaveBeenCalledTimes(1);
+});
+
 test('the card actions call their callbacks', async () => {
   const onCancel = vi.fn();
   const running = render(<Running onCancel={onCancel} />);

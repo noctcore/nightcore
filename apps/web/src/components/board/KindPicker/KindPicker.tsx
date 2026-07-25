@@ -31,7 +31,7 @@ export function KindPicker({ value, onChange, compact = false, disabled = false 
             title={option.enabled ? option.hint : 'Coming soon'}
             onKeyDown={rovingKeydown}
             onClick={() => onChange(option.kind)}
-            className={`flex flex-col gap-1 rounded-[10px] border px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed ${
+            className={`flex flex-col gap-1 rounded-nc border px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed ${
               selected
                 ? 'border-primary/60 bg-primary/[0.1]'
                 : option.enabled
@@ -45,7 +45,7 @@ export function KindPicker({ value, onChange, compact = false, disabled = false 
               </span>
               <span className="text-xs-plus2 font-semibold text-foreground">{option.label}</span>
               {!option.enabled && (
-                <span className="ml-auto rounded bg-white/[0.06] px-1 py-px font-mono text-[8px] uppercase tracking-[0.04em] text-muted-foreground">
+                <span className="ml-auto rounded bg-white/[0.06] px-1 py-px font-mono text-4xs uppercase tracking-[0.04em] text-muted-foreground">
                   soon
                 </span>
               )}

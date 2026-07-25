@@ -6,6 +6,10 @@ export interface CheckboxProps {
   onChange: (checked: boolean) => void;
   /** The visible label to the right of the box (also the accessible name). */
   label: string;
+  /** Extra sr-only text appended to the accessible name (never shown) — lets a
+   *  row of same-labelled checkboxes announce uniquely (e.g. the finding title)
+   *  while the visible label stays constant. */
+  srSuffix?: string;
   /** Disable interaction (dimmed). */
   disabled?: boolean;
 }

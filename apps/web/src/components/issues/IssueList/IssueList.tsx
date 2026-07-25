@@ -6,9 +6,11 @@
  *  sanitized `<Markdown>` in the detail panel. */
 import {
   AlertIcon,
+  Button,
   CheckIcon,
   EmptyState,
   GithubIcon,
+  IconButton,
   RefreshIcon,
   SearchIcon,
   Skeleton,
@@ -16,19 +18,14 @@ import {
 import type { IssueSummary } from '@/lib/bridge';
 import { formatRelativeTime } from '@/lib/formatters';
 
+import { StaleChip } from '../StaleChip';
 import type { IssueListProps, IssueValidationBadge } from './IssueList.types';
 
-/** A validation badge for a row: green check when validated, amber dot when stale. */
+/** A validation badge for a row: green check when validated, amber Stale chip otherwise. */
 function ValidationChip({ badge }: { badge: IssueValidationBadge }) {
   if (badge === 'stale') {
     return (
-      <span
-        className="inline-flex items-center gap-1 rounded-md border border-warning/40 bg-warning/[0.12] px-1.5 py-0.5 font-mono text-4xs font-semibold uppercase tracking-wide text-warning"
-        title="The issue changed on GitHub since it was last validated"
-      >
-        <AlertIcon size={10} />
-        Stale
-      </span>
+      <StaleChip title="The issue changed on GitHub since it was last validated" />
     );
   }
   return (
@@ -68,7 +65,10 @@ function IssueRow({
     >
       <div className="flex items-baseline gap-2">
         <span className="font-mono text-2xs text-muted-foreground">#{issue.number}</span>
-        <span className="min-w-0 flex-1 truncate text-xs-plus2 font-medium text-foreground">
+        <span
+          className="min-w-0 flex-1 truncate text-xs-plus2 font-medium text-foreground"
+          title={issue.title}
+        >
           {issue.title}
         </span>
         {badge !== undefined && <ValidationChip badge={badge} />}
@@ -142,25 +142,19 @@ export function IssueList({
             onChange={(e) => onFilterChange(e.target.value)}
             aria-label="Filter issues by label or text"
             placeholder="Filter issues…"
-            className="w-full rounded-[9px] border border-border bg-white/[0.02] py-1.5 pl-8 pr-2.5 text-xs-plus text-foreground placeholder:text-muted-foreground/70 focus:border-primary/60 focus:outline-none"
+            className="w-full rounded-nc border border-border bg-white/[0.02] py-1.5 pl-8 pr-2.5 text-xs-plus text-foreground placeholder:text-muted-foreground/70 focus:border-primary/60 focus:outline-none"
           />
         </div>
-        <button
-          type="button"
-          onClick={onRetry}
-          aria-label="Refresh issues"
-          title="Refresh issues"
-          className="rounded-[9px] border border-border bg-white/[0.02] p-1.5 text-muted-foreground transition-colors hover:text-foreground"
-        >
+        <IconButton label="Refresh issues" onClick={onRetry}>
           <RefreshIcon size={14} />
-        </button>
+        </IconButton>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex flex-col gap-2 p-4">
             {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="h-14 w-full rounded-[10px]" />
+              <Skeleton key={i} className="h-14 w-full rounded-nc" />
             ))}
           </div>
         ) : error !== null ? (
@@ -169,14 +163,10 @@ export function IssueList({
             title="Couldn't load issues"
             description={error}
             action={
-              <button
-                type="button"
-                onClick={onRetry}
-                className="inline-flex items-center gap-1.5 rounded-[9px] border border-border bg-white/[0.03] px-3 py-1.5 text-xs-plus text-foreground transition-colors hover:bg-white/[0.06]"
-              >
+              <Button variant="secondary" onClick={onRetry}>
                 <RefreshIcon size={13} />
                 Retry
-              </button>
+              </Button>
             }
           />
         ) : issues.length === 0 ? (

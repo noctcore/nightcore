@@ -8,6 +8,7 @@ import { IconButton } from '../IconButton';
 import { CloseIcon } from '../icons';
 import { Modal } from '../Modal';
 import { slideIn } from '../motion';
+import { SECTION_LABEL_CLASS } from '../SectionLabel';
 import type { DetailPanelShellProps } from './DetailPanelShell.types';
 
 export function DetailPanelShell({
@@ -68,9 +69,7 @@ export function DetailSection({
 }) {
   return (
     <section className="flex flex-col gap-1.5">
-      <h4 className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
-        {title}
-      </h4>
+      <h4 className={SECTION_LABEL_CLASS}>{title}</h4>
       {children}
     </section>
   );

@@ -4,18 +4,19 @@ import {
   Button,
   Checkbox,
   CloseIcon,
+  FIELD_INPUT_CLASS,
+  FieldLabel,
   IconButton,
+  Kbd,
   Modal,
+  SectionLabel,
   Spinner,
+  TextField,
   useLastPresent,
 } from '@/components/ui';
 
 import { useCreatePrDialog } from './CreatePRDialog.hooks';
 import type { CreatePRDialogProps } from './CreatePRDialog.types';
-
-const INPUT_CLASS =
-  'w-full rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary';
-const LABEL_CLASS = 'font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground';
 
 /** The Create PR dialog — the human gate before anything leaves the machine:
  *  an editable title/body pre-filled by `draftPrMessage` (never posted without
@@ -69,24 +70,19 @@ export function CreatePRDialog({ open, task, onCreate, onClose }: CreatePRDialog
         )}
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="pr-title" className={LABEL_CLASS}>
-            Title
-          </label>
-          <input
+          <FieldLabel htmlFor="pr-title">Title</FieldLabel>
+          <TextField
             id="pr-title"
             type="text"
             value={v.title}
             onChange={(e) => v.setTitle(e.target.value)}
             placeholder="feat: what this change ships"
             disabled={v.submitting}
-            className={INPUT_CLASS}
           />
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="pr-body" className={LABEL_CLASS}>
-            Body
-          </label>
+          <FieldLabel htmlFor="pr-body">Body</FieldLabel>
           <textarea
             id="pr-body"
             value={v.body}
@@ -94,12 +90,12 @@ export function CreatePRDialog({ open, task, onCreate, onClose }: CreatePRDialog
             rows={6}
             placeholder="Summary and test plan…"
             disabled={v.submitting}
-            className={`resize-none ${INPUT_CLASS}`}
+            className={`resize-none ${FIELD_INPUT_CLASS}`}
           />
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <span className={LABEL_CLASS}>Base branch</span>
+          <SectionLabel>Base branch</SectionLabel>
           <BranchPicker
             value={v.base}
             onChange={v.setBase}
@@ -147,6 +143,12 @@ export function CreatePRDialog({ open, task, onCreate, onClose }: CreatePRDialog
           pull request against <span className="font-mono text-foreground">{baseLabel}</span>
         </p>
         <div className="flex items-center justify-end gap-2">
+          {/* Esc-to-cancel only: publishing is irreversible, so confirm stays an
+              explicit click (no Enter accelerator) — the hint never promises a key
+              that isn't wired. */}
+          <span className="mr-auto flex items-center gap-1 text-xs text-muted-foreground">
+            <Kbd>Esc</Kbd> to cancel
+          </span>
           <Button variant="ghost" onClick={v.requestClose} disabled={v.submitting}>
             Cancel
           </Button>

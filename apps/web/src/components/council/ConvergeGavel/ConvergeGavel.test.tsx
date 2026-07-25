@@ -27,11 +27,18 @@ test('accept is disabled until a seat is selected, then resolves with that seat'
   expect(onResolve).toHaveBeenCalledWith('accept', { seatId: 'critic-opus' });
 });
 
-test('reject resolves with a reject verdict without needing a selection', async () => {
+test('reject is confirmed through a dialog before it resolves', async () => {
   const onResolve = vi.fn(async () => {});
   const screen = render(<ConvergeGavel positions={POSITIONS} onResolve={onResolve} />);
 
+  // The toolbar button opens the guard dialog; nothing dispatches yet.
   await screen.getByRole('button', { name: /Reject all/ }).click();
+  const dialog = screen.getByRole('alertdialog');
+  await expect.element(dialog).toBeInTheDocument();
+  expect(onResolve).not.toHaveBeenCalled();
+
+  // Confirming rejects every position and closes the run.
+  await dialog.getByRole('button', { name: 'Reject and close' }).click();
   expect(onResolve).toHaveBeenCalledWith('reject', undefined);
 });
 
@@ -58,6 +65,7 @@ test('a dispatch failure surfaces an inline error and re-enables the controls', 
   const screen = render(<ConvergeGavel positions={POSITIONS} onResolve={onResolve} />);
 
   await screen.getByRole('button', { name: /Reject all/ }).click();
+  await screen.getByRole('alertdialog').getByRole('button', { name: 'Reject and close' }).click();
   await expect.element(screen.getByRole('alert')).toHaveTextContent('no live session for this run');
   await expect.element(screen.getByRole('button', { name: /Reject all/ })).toBeEnabled();
 });
@@ -71,7 +79,7 @@ test('shows a waiting state before the seats have final positions', async () => 
 
 test('once resolved, shows the recorded verdict read-only with no actions', async () => {
   const screen = render(<Resolved />);
-  await expect.element(screen.getByText('Verdict recorded — council closed')).toBeInTheDocument();
+  await expect.element(screen.getByText('Verdict recorded')).toBeInTheDocument();
   await expect.element(screen.getByText(/adopted seat "proposer-opus"/)).toBeInTheDocument();
   await expect
     .element(screen.getByRole('button', { name: /Accept selected/ }))

@@ -9,10 +9,10 @@
  *  `columns`-per-row (matching the responsive `sm:`/`xl:` breakpoints below);
  *  an item wrapped in {@link GridFullRow} gets its own full-width row. */
 import { useDetailCardGrid } from './DetailCardGrid.hooks';
-import { SkeletonCard } from './DetailCardGrid.parts';
+import { GridEmptyMessage, SkeletonCard } from './DetailCardGrid.parts';
 import type { DetailCardGridProps } from './DetailCardGrid.types';
 
-export { GridFullRow } from './DetailCardGrid.parts';
+export { GridEmptyMessage, GridFullRow, SkeletonCard } from './DetailCardGrid.parts';
 
 /** Renders the card children as virtualized rows, then any streaming
  *  skeletons; falls back to a centered empty message when there is nothing
@@ -30,13 +30,7 @@ export function DetailCardGrid({
   );
 
   if (isEmpty) {
-    return (
-      <div className="flex flex-1 items-center justify-center px-6 py-16">
-        <p className="max-w-md text-center text-sm text-muted-foreground">
-          {emptyMessage}
-        </p>
-      </div>
-    );
+    return <GridEmptyMessage message={emptyMessage} />;
   }
 
   return (

@@ -2,14 +2,14 @@
  *  wiring (with button-safe drag ARIA). */
 import type { DraggableSyntheticListeners } from '@dnd-kit/core';
 import { useDraggable } from '@dnd-kit/core';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-import type { Task } from '@/lib/bridge';
+import type { Task, TaskStatus } from '@/lib/bridge';
 import { formatElapsed as formatElapsedShared } from '@/lib/formatters';
 
 import type { DependencyChip } from '../Board/Board.utils';
 import { canRunTask, type RunGate, useRunGate } from '../run-gating';
-import { modelBadge } from '../status';
+import { isActive, modelBadge } from '../status';
 
 /** The human-readable blocked chip (T13): a short label + full tooltip naming the
  *  UNFINISHED dependencies by title (id → title resolved upstream). Replaces the raw
@@ -65,7 +65,7 @@ export function useTaskCardView(
     pulse: needsApproval
       ? 'animate-pulse ring-1 ring-warning/60'
       : verifying
-        ? 'animate-pulse ring-1 ring-primary/50'
+        ? 'ring-1 ring-primary/50'
         : '',
   };
 }
@@ -100,17 +100,45 @@ export function subscribeSecondTick(onTick: () => void): () => void {
   };
 }
 
-/** A live mm:ss elapsed timer counting up from `since`, ticking once a second
- *  while `active`. Used by the running card and the detail drawer header.
+/** The run-start anchor a live card counts up from: the active status it was
+ *  captured for, and the epoch-ms the timer counts from. */
+export interface ElapsedAnchor {
+  status: TaskStatus;
+  since: number;
+}
+
+/** Compute the next elapsed anchor from the prior one. Anchors the timer to the
+ *  moment the task ENTERED its current active phase — re-snapshotting only when the
+ *  active status changes (a fresh run, or `in_progress` → `verifying`), and holding
+ *  the anchor steady across the stream-flush `updatedAt` bumps in between. Returns
+ *  `null` when the task isn't in a live phase. Pure; the hook wraps it in a ref.
  *
- *  `since` is deliberately NOT in the effect deps: it is the task's `updatedAt`,
- *  bumped repeatedly as the stream flushes, so keying the effect on it would tear
- *  down and rebuild the ticker on every delta (and fire an extra immediate tick).
- *  The effect only needs to (re)subscribe when `active` flips; `since` is read on
- *  each render in the returned `formatElapsed(now - since)`, so the displayed value
- *  still tracks the latest `since` without churning the interval. */
-export function useElapsed(since: number, active: boolean): string {
+ *  This is the no-rewind guarantee: the task model carries no `startedAt`, so the
+ *  old `useElapsed(task.updatedAt)` counted from `updatedAt` — bumped on every
+ *  stream flush, which made `now - since` shrink and the clock run backwards
+ *  mid-run. Holding the entry-moment anchor makes the displayed time monotonic. */
+export function nextElapsedAnchor(
+  prev: ElapsedAnchor | null,
+  status: TaskStatus,
+  updatedAt: number,
+  active: boolean,
+): ElapsedAnchor | null {
+  if (!active) return null;
+  if (prev !== null && prev.status === status) return prev;
+  return { status, since: updatedAt };
+}
+
+/** A live mm:ss elapsed timer for a task card, ticking once a second while the task
+ *  is in a live phase (`in_progress` / `verifying`). Anchored to the moment the task
+ *  ENTERED that phase (see {@link nextElapsedAnchor}) rather than to `task.updatedAt`,
+ *  which the stream flush bumps forward — so the clock counts up monotonically and
+ *  never rewinds. The effect re-subscribes only when the live/idle state flips. */
+export function useElapsed(status: TaskStatus, updatedAt: number): string {
+  const active = isActive(status);
   const [now, setNow] = useState(() => Date.now());
+  const anchor = useRef<ElapsedAnchor | null>(null);
+  anchor.current = nextElapsedAnchor(anchor.current, status, updatedAt, active);
+  const since = anchor.current?.since ?? updatedAt;
   useEffect(() => {
     if (!active) return;
     setNow(Date.now());

@@ -20,8 +20,16 @@ function activityLabel(lastActiveAt: string | null): string {
 }
 
 /** Stat tiles for a project. Counts are only known for the active project (its
- *  tasks are loaded); other projects show zeroes until activated. */
-function statsFor(tasks: Task[]): ProjectSummary['stats'] {
+ *  tasks are loaded); `null` tasks mean "not the active project" — the tiles then
+ *  render a muted "–" instead of a fake 0. */
+function statsFor(tasks: Task[] | null): ProjectSummary['stats'] {
+  if (tasks === null) {
+    return [
+      { label: 'tasks', value: null, tone: 'neutral' },
+      { label: 'done', value: null, tone: 'success' },
+      { label: 'failed', value: null, tone: 'warning' },
+    ];
+  }
   const done = tasks.filter((t) => t.status === 'done').length;
   const failed = tasks.filter((t) => t.status === 'failed').length;
   return [
@@ -50,7 +58,7 @@ export function useProjectSummaries({
         icon: p.icon,
         customIconPath: p.customIconPath,
         running: runningProjectIds.includes(p.id),
-        stats: statsFor(p.id === activeId ? activeTasks : []),
+        stats: statsFor(p.id === activeId ? activeTasks : null),
         activity: activityLabel(p.lastActiveAt),
       })),
     [projects, activeId, activeTasks, runningProjectIds],

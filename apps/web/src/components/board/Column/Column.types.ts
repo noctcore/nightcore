@@ -1,6 +1,8 @@
 /** Props for the Column component. The card action handlers come from
  *  `TaskActionsContext` (consumed by `TaskCard` itself), so the column carries
  *  only its header chrome, the tasks it renders, and the drop-target status. */
+import type { ReactNode } from 'react';
+
 import type { Task } from '@/lib/bridge';
 
 import type { DependencyChip } from '../Board/Board.utils';
@@ -31,6 +33,10 @@ export interface ColumnProps {
    *  draggable exactly when a drop could resolve; presentational stories omit it
    *  and cards render non-draggable. */
   dropStatus?: Task['status'];
-  emptyText?: string;
+  /** The empty-state placeholder. A plain string renders as static dashed text;
+   *  a node (e.g. the Backlog column's "Add a task to begin" ghost button, supplied
+   *  by the board) renders as-is, so an empty column can offer an action without the
+   *  column growing a dedicated handler prop. */
+  emptyText?: ReactNode;
   onClear?: () => void;
 }

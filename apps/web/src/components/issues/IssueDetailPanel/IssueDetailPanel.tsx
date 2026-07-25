@@ -9,7 +9,7 @@ import {
   Markdown,
   Skeleton,
 } from '@/components/ui';
-import { formatRelativeTime } from '@/lib/formatters';
+import { formatRelativeTimeAgo } from '@/lib/formatters';
 
 import type { IssueDetailPanelProps } from './IssueDetailPanel.types';
 
@@ -30,7 +30,7 @@ export function IssueDetailPanel({ issue, detail, loading, error }: IssueDetailP
     );
   }
 
-  const age = formatRelativeTime(issue.updatedAt);
+  const age = formatRelativeTimeAgo(issue.updatedAt);
 
   return (
     <div className="flex flex-col gap-4 px-5 py-4">
@@ -50,7 +50,7 @@ export function IssueDetailPanel({ issue, detail, loading, error }: IssueDetailP
           {age !== '' && (
             <>
               <span aria-hidden>·</span>
-              <span>updated {age} ago</span>
+              <span>updated {age}</span>
             </>
           )}
           <span aria-hidden>·</span>
@@ -99,12 +99,12 @@ export function IssueDetailPanel({ issue, detail, loading, error }: IssueDetailP
             <Skeleton className="h-4 w-4/6" />
           </div>
         ) : error !== null ? (
-          <div className="flex items-center gap-2 rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-xs-plus text-destructive">
+          <div className="flex items-center gap-2 rounded-nc border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-xs-plus text-destructive">
             <AlertIcon size={14} />
             {error}
           </div>
         ) : detail !== null && detail.body.trim().length > 0 ? (
-          <div className="rounded-[10px] border border-border bg-white/[0.02] px-3.5 py-2.5">
+          <div className="rounded-nc border border-border bg-white/[0.02] px-3.5 py-2.5">
             <Markdown>{detail.body}</Markdown>
           </div>
         ) : (
@@ -124,14 +124,14 @@ export function IssueDetailPanel({ issue, detail, loading, error }: IssueDetailP
             {detail.comments.map((comment) => (
               <li
                 key={comment.id}
-                className="rounded-[10px] border border-border bg-white/[0.02] px-3.5 py-2.5"
+                className="rounded-nc border border-border bg-white/[0.02] px-3.5 py-2.5"
               >
                 <div className="mb-1.5 flex items-center gap-2 font-mono text-3xs-plus text-muted-foreground">
                   <span className="text-foreground/80">{comment.author}</span>
-                  {formatRelativeTime(comment.createdAt) !== '' && (
+                  {formatRelativeTimeAgo(comment.createdAt) !== '' && (
                     <>
                       <span aria-hidden>·</span>
-                      <span>{formatRelativeTime(comment.createdAt)} ago</span>
+                      <span>{formatRelativeTimeAgo(comment.createdAt)}</span>
                     </>
                   )}
                 </div>

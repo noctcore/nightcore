@@ -20,7 +20,7 @@ export function WelcomeStep() {
         {rows.map((row) => (
           <div
             key={row.title}
-            className="flex items-center gap-3 rounded-[10px] border border-white/[0.06] bg-white/[0.02] px-3 py-2.5"
+            className="flex items-center gap-3 rounded-nc border border-white/[0.06] bg-white/[0.02] px-3 py-2.5"
           >
             <div className="flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-primary/15 text-primary">
               <BoltIcon size={14} />

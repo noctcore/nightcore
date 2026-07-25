@@ -119,7 +119,7 @@ export function WorktreeTabButton({ tab, selected, rovingEntry, onSelect }: Work
       onKeyDown={rovingKeydown}
       onClick={onSelect}
       title={worktreeTitle(tab)}
-      className={`flex items-center gap-1.5 rounded-[9px] border px-3 py-1.5 font-mono text-xs-flat transition-colors ${
+      className={`flex items-center gap-1.5 rounded-nc border px-3 py-1.5 font-mono text-xs-flat transition-colors ${
         selected
           ? 'border-primary/60 bg-primary/[0.12] text-foreground'
           : 'border-border bg-white/[0.02] text-muted-foreground hover:border-white/20 hover:text-foreground'
@@ -275,7 +275,7 @@ export function WorktreeCollapsedSelect({ tabs, active, onSelect }: WorktreeColl
             ? worktreeTitle(activeTab)
             : `${summary.count} worktrees${summary.anyRunning ? ' · running' : ''}`
         }
-        className={`flex items-center gap-1.5 rounded-[9px] border px-3 py-1.5 font-mono text-xs-flat transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
+        className={`flex items-center gap-1.5 rounded-nc border px-3 py-1.5 font-mono text-xs-flat transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
           isActive
             ? 'border-primary/60 bg-primary/[0.12] text-foreground'
             : 'border-border bg-white/[0.02] text-muted-foreground hover:border-white/20 hover:text-foreground'
@@ -314,7 +314,7 @@ export function WorktreeCollapsedSelect({ tabs, active, onSelect }: WorktreeColl
 
       {v.open && (
         <div
-          className="absolute left-0 top-full z-20 mt-1 w-[300px] rounded-[10px] border border-border bg-popover p-1 shadow-2xl"
+          className="absolute left-0 top-full z-20 mt-1 w-[300px] rounded-nc border border-border bg-popover p-1 shadow-2xl"
           style={{ animation: 'nc-rise .14s cubic-bezier(.22,1,.36,1)' }}
         >
           <div className="flex items-center gap-2 border-b border-border/60 px-2 pb-1.5 pt-1 transition-colors focus-within:border-primary/60">

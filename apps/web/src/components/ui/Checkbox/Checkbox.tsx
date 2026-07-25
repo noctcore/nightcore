@@ -4,7 +4,13 @@
 import { CheckIcon } from '../icons';
 import type { CheckboxProps } from './Checkbox.types';
 
-export function Checkbox({ checked, onChange, label, disabled = false }: CheckboxProps) {
+export function Checkbox({
+  checked,
+  onChange,
+  label,
+  srSuffix,
+  disabled = false,
+}: CheckboxProps) {
   return (
     <label
       className={`flex select-none items-center gap-2.5 text-xs-plus2 text-foreground ${
@@ -27,9 +33,18 @@ export function Checkbox({ checked, onChange, label, disabled = false }: Checkbo
             : 'border-border bg-white/[0.02]'
         }`}
       >
-        {checked && <CheckIcon size={12} />}
+        {/* Kept mounted and scaled in/out so the check springs on toggle (CSS-only). */}
+        <CheckIcon
+          size={12}
+          className={`transition-[transform,opacity] duration-[var(--nc-motion-instant)] ${
+            checked ? 'scale-100 opacity-100' : 'scale-0 opacity-0'
+          }`}
+        />
       </span>
-      <span>{label}</span>
+      <span>
+        {label}
+        {srSuffix !== undefined && <span className="sr-only"> {srSuffix}</span>}
+      </span>
     </label>
   );
 }

@@ -315,6 +315,13 @@ body {
   animation: nc-slide var(--nc-motion-base) var(--nc-ease-out-quint);
 }
 
+/* Popover/menu entrance — the motion-token twin of the JS `popover` variant, for
+   the CSS-only dropdowns (BranchPicker/ModelSelect listboxes, ToolbarOption's
+   settings pop). Reduced-motion is handled by the global rule below. */
+.nc-popover-rise {
+  animation: nc-rise var(--nc-motion-fast) var(--nc-ease-out-quint);
+}
+
 /* Skeleton placeholder shimmer — gentle opacity pulse (no scale, so bars hold
    their layout while loading). Used by the <Skeleton> ui primitive. */
 .nc-skeleton {

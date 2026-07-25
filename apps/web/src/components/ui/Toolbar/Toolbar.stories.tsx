@@ -46,7 +46,7 @@ export const WithFlexibleChild: Story = {
     label: 'Search and filter',
     children: (
       <>
-        <div className="flex min-w-0 grow basis-0 items-center gap-2 rounded-[9px] border border-border bg-white/[0.02] px-3 py-2">
+        <div className="flex min-w-0 grow basis-0 items-center gap-2 rounded-nc border border-border bg-white/[0.02] px-3 py-2">
           <SearchIcon size={15} className="text-muted-foreground" />
           <input
             aria-label="Search"

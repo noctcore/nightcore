@@ -6,7 +6,7 @@ import { Skeleton } from '@/components/ui';
  *  structurally identical to the loaded layout so data arrival causes no shift. */
 function SkeletonSection({ rows = 3 }: { rows?: number }) {
   return (
-    <section className="rounded-[10px] border border-border bg-white/[0.02]">
+    <section className="rounded-nc border border-border bg-white/[0.02]">
       <div className="flex items-center gap-2 border-b border-border px-3.5 py-2.5">
         <Skeleton className="h-3.5 w-3.5 rounded" />
         <Skeleton className="h-3 w-24" />

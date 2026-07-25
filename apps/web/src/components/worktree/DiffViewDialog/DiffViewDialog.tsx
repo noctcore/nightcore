@@ -9,6 +9,7 @@ import {
   Spinner,
   useLastPresent,
 } from '@/components/ui';
+import { splitPathLeaf } from '@/lib/path-display';
 
 import { DiffPatchView } from '../DiffPatchView';
 import { diffStatusMeta, useFilePatch } from './DiffViewDialog.hooks';
@@ -79,6 +80,7 @@ export function DiffViewDialog({
             {files.map((file) => {
               const meta = diffStatusMeta(file.status);
               const isOpen = expandedPath === file.path;
+              const { dir, leaf } = splitPathLeaf(file.path);
               return (
                 <li key={file.path} className="flex flex-col">
                   <button
@@ -97,9 +99,12 @@ export function DiffViewDialog({
                     </span>
                     <span
                       title={file.path}
-                      className="min-w-0 flex-1 truncate font-mono text-xs-plus2 text-foreground"
+                      className="flex min-w-0 flex-1 font-mono text-xs-plus2 text-foreground"
                     >
-                      {file.path}
+                      {dir.length > 0 && (
+                        <span className="truncate text-muted-foreground/70">{dir}</span>
+                      )}
+                      <span className="shrink-0">{leaf}</span>
                     </span>
                     <span className="shrink-0 font-mono text-2xs tabular-nums">
                       <span className="text-success">+{file.additions}</span>{' '}

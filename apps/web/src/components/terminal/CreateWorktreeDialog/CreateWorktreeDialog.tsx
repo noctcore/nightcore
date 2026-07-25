@@ -2,18 +2,18 @@ import {
   BranchPicker,
   Button,
   Checkbox,
+  ConfirmHint,
+  FieldLabel,
   Kbd,
   Modal,
+  SectionLabel,
   Spinner,
+  TextField,
   useLastPresent,
 } from '@/components/ui';
 
 import { useCreateWorktreeDialog } from './CreateWorktreeDialog.hooks';
 import type { CreateWorktreeDialogProps } from './CreateWorktreeDialog.types';
-
-const INPUT_CLASS =
-  'w-full rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary';
-const LABEL_CLASS = 'font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground';
 
 /** The "Create new worktree" dialog reached from the terminal new-tab picker (spec PR 5a):
  *  a name (slugged server-side), a "create branch" toggle, and a base-branch picker
@@ -39,6 +39,7 @@ export function CreateWorktreeDialog({
       initialFocus="#cw-name"
       panelClassName="w-full max-w-md"
       onClose={onClose}
+      onEnter={form.canSubmit && !busy ? form.submit : undefined}
     >
       <div className="flex flex-col gap-1 px-5 pb-3 pt-5">
         <h2 className="text-base font-semibold text-foreground">Create new worktree</h2>
@@ -51,10 +52,8 @@ export function CreateWorktreeDialog({
 
       <div className="flex flex-col gap-3.5 px-5 pb-3">
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="cw-name" className={LABEL_CLASS}>
-            Name
-          </label>
-          <input
+          <FieldLabel htmlFor="cw-name">Name</FieldLabel>
+          <TextField
             id="cw-name"
             value={form.name}
             onChange={(e) => form.setName(e.target.value)}
@@ -65,7 +64,6 @@ export function CreateWorktreeDialog({
               }
             }}
             placeholder="e.g. spike auth refactor"
-            className={INPUT_CLASS}
             disabled={busy}
           />
           {form.slug !== '' ? (
@@ -87,7 +85,7 @@ export function CreateWorktreeDialog({
         />
 
         <div className="flex flex-col gap-1.5">
-          <span className={LABEL_CLASS}>Base branch</span>
+          <SectionLabel>Base branch</SectionLabel>
           <BranchPicker
             value={form.base}
             onChange={form.setBase}
@@ -113,9 +111,12 @@ export function CreateWorktreeDialog({
             Creating…
           </span>
         ) : (
-          <span className="mr-auto flex items-center gap-1 text-xs text-muted-foreground">
-            <Kbd>↵</Kbd> to create
-          </span>
+          <>
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Kbd>Esc</Kbd> to cancel
+            </span>
+            <ConfirmHint>to create</ConfirmHint>
+          </>
         )}
         <Button variant="ghost" onClick={onClose}>
           Cancel

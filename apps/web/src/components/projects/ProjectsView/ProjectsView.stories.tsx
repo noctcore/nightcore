@@ -114,7 +114,6 @@ const meta = {
     runningProjectIds: ['nightcore'],
     onOpen: fn(),
     onEdit: fn(),
-    onRename: fn(),
     onDelete: fn(),
     onNewProject: fn(),
   },

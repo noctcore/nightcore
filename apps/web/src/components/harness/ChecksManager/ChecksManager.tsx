@@ -157,7 +157,7 @@ function EditForm({ edit }: { edit: ChecksEditVM }) {
   const draft = edit.draft;
   if (draft === null) return null;
   return (
-    <div className="flex flex-col gap-2 rounded-[9px] border border-primary/40 bg-primary/[0.04] p-3">
+    <div className="flex flex-col gap-2 rounded-nc border border-primary/40 bg-primary/[0.04] p-3">
       <div className="grid grid-cols-2 gap-2">
         <label className="flex flex-col gap-1 text-2xs text-muted-foreground">
           Name
@@ -229,7 +229,7 @@ function CheckRow({ check, vm }: { check: ArmedCheck; vm: ChecksManagerVM }) {
 
   return (
     <div
-      className={`flex flex-col gap-1 rounded-[9px] border border-border bg-card/40 p-3 ${
+      className={`flex flex-col gap-1 rounded-nc border border-border bg-card/40 p-3 ${
         check.enabled ? '' : 'opacity-60'
       }`}
     >
@@ -343,7 +343,7 @@ export function ChecksManager({ vm: injected }: ChecksManagerProps = {}) {
         {vm.loading ? (
           <p className="text-xs-plus text-muted-foreground">Loading armed checks…</p>
         ) : vm.checks.length === 0 ? (
-          <p className="rounded-[9px] border border-dashed border-border px-4 py-6 text-center text-xs-plus text-muted-foreground">
+          <p className="rounded-nc border border-dashed border-border px-4 py-6 text-center text-xs-plus text-muted-foreground">
             No checks armed yet. Arm a generated ESLint plugin or convention check from the
             Harden stage to enforce it here.
           </p>

@@ -14,7 +14,17 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 
 import { isMacPlatform } from './terminal-platform';
-import { clearSearch, focusSession, searchNext, searchPrevious } from './terminal-session-manager';
+import {
+  clearSearch,
+  focusSession,
+  onSearchResults,
+  searchNext,
+  searchPrevious,
+  type SearchResults,
+} from './terminal-session-manager';
+
+/** No matches / nothing searched yet. */
+const NO_RESULTS: SearchResults = { resultIndex: -1, resultCount: 0 };
 
 /** The find-bar state + actions a pane binds to. */
 export interface TerminalSearch {
@@ -24,6 +34,10 @@ export interface TerminalSearch {
   readonly query: string;
   /** True when a non-empty query matched nothing (drives the "no results" style). */
   readonly noMatch: boolean;
+  /** The active match index (`-1` when none is selected), for the "n/m" counter. */
+  readonly resultIndex: number;
+  /** The total match count in the scrollback, for the "n/m" counter. */
+  readonly resultCount: number;
   /** Ref for the pane's terminal region — a native ⌘F / Ctrl+F listener is bound to
    *  it, opening the bar when the focused terminal's textarea bubbles the chord. */
   readonly rootRef: RefObject<HTMLDivElement | null>;
@@ -42,7 +56,12 @@ export function useTerminalSearch(sessionId: string): TerminalSearch {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [noMatch, setNoMatch] = useState(false);
+  const [results, setResults] = useState<SearchResults>(NO_RESULTS);
   const rootRef = useRef<HTMLDivElement | null>(null);
+
+  // The search addon emits match count + active index on every search (decorations
+  // are enabled), so the find bar can show a live "n/m" counter.
+  useEffect(() => onSearchResults(sessionId, setResults), [sessionId]);
 
   // Native ⌘F / Ctrl+F listener on the pane's terminal region: keydowns bubble here
   // from xterm's hidden textarea, so the bar opens for the focused pane only. Bound
@@ -67,6 +86,7 @@ export function useTerminalSearch(sessionId: string): TerminalSearch {
       if (value === '') {
         clearSearch(sessionId);
         setNoMatch(false);
+        setResults(NO_RESULTS);
         return;
       }
       // Incremental: search from the current viewport as the user types.
@@ -89,8 +109,20 @@ export function useTerminalSearch(sessionId: string): TerminalSearch {
     clearSearch(sessionId);
     setOpen(false);
     setNoMatch(false);
+    setResults(NO_RESULTS);
     focusSession(sessionId);
   }, [sessionId]);
 
-  return { open, query, noMatch, rootRef, onQueryChange, next, prev, close };
+  return {
+    open,
+    query,
+    noMatch,
+    resultIndex: results.resultIndex,
+    resultCount: results.resultCount,
+    rootRef,
+    onQueryChange,
+    next,
+    prev,
+    close,
+  };
 }

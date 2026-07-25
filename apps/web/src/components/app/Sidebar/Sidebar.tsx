@@ -77,11 +77,7 @@ export function Sidebar({
   if (sidebarStyle === 'classic') {
     return (
       <>
-        <ProjectRail
-          switcher={switcher}
-          runningCount={runningCount}
-          onGotoProjects={onGotoProjects}
-        />
+        <ProjectRail switcher={switcher} onGotoProjects={onGotoProjects} />
         <NavSidebar
           {...navProps}
           showHeader={false}

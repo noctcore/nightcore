@@ -108,21 +108,48 @@ export function refitSession(id: string): void {
 
 // --- Search-in-scrollback (spec PR 3c) -------------------------------------
 
-/** Find the next `query` match in a session's scrollback and reveal it. `incremental`
- *  keeps the search anchored near the viewport as the user types. Returns whether a
- *  match was found (drives the find bar's no-match style). No-op `false` for an
- *  unknown id. */
+// Passing `decorations` makes @xterm/addon-search highlight EVERY match AND emit
+// `onDidChangeResults` — the event the find bar's "n/m" counter binds to. `#RRGGBB`
+// is required for the fills; the palette tracks the cosmic purple theme.
+const SEARCH_DECORATIONS = {
+  matchBackground: '#5b3aa6',
+  matchOverviewRuler: '#7c5cd6',
+  activeMatchBackground: '#a78bfa',
+  activeMatchColorOverviewRuler: '#c4b5fd',
+} as const;
+
+/** Active match index (`-1` when none selected / threshold exceeded) + total count. */
+export interface SearchResults {
+  readonly resultIndex: number;
+  readonly resultCount: number;
+}
+
+/** Subscribe to a session's search-results changes (count + active index). Returns an
+ *  unsubscribe fn, or `undefined` for an unknown id. */
+export function onSearchResults(
+  id: string,
+  listener: (results: SearchResults) => void,
+): (() => void) | undefined {
+  const entry = cache.get(id);
+  if (entry === undefined) return undefined;
+  const disposable = entry.search.onDidChangeResults(listener);
+  return () => disposable.dispose();
+}
+
+/** Find + reveal the next `query` match. `incremental` keeps the search anchored near
+ *  the viewport as the user types. Returns whether a match was found (`false` for an
+ *  unknown id, driving the no-match style). */
 export function searchNext(id: string, query: string, incremental: boolean): boolean {
   const entry = cache.get(id);
   if (entry === undefined) return false;
-  return entry.search.findNext(query, { incremental });
+  return entry.search.findNext(query, { incremental, decorations: SEARCH_DECORATIONS });
 }
 
 /** Find the previous `query` match in a session's scrollback. */
 export function searchPrevious(id: string, query: string): boolean {
   const entry = cache.get(id);
   if (entry === undefined) return false;
-  return entry.search.findPrevious(query);
+  return entry.search.findPrevious(query, { decorations: SEARCH_DECORATIONS });
 }
 
 /** Clear a session's search highlight decorations (find bar closed / query emptied). */
@@ -135,6 +162,28 @@ export function focusSession(id: string): void {
   const entry = cache.get(id);
   if (entry === undefined || !entry.opened) return;
   entry.term.focus();
+}
+
+// --- Scroll position (jump-to-bottom chip) ---------------------------------
+
+/** Subscribe to whether a session's viewport is pinned to the buffer bottom. Emits the
+ *  current state immediately, then on each scroll (xterm auto-scrolls on new output
+ *  while pinned). Returns an unsubscribe fn, or `undefined` for an unknown id. */
+export function onSessionScroll(
+  id: string,
+  listener: (atBottom: boolean) => void,
+): (() => void) | undefined {
+  const entry = cache.get(id);
+  if (entry === undefined) return undefined;
+  const atBottom = () => entry.term.buffer.active.viewportY >= entry.term.buffer.active.baseY;
+  listener(atBottom());
+  const disposable = entry.term.onScroll(() => listener(atBottom()));
+  return () => disposable.dispose();
+}
+
+/** Scroll a session's terminal to the bottom of its buffer (the jump-to-bottom chip). */
+export function scrollSessionToBottom(id: string): void {
+  cache.get(id)?.term.scrollToBottom();
 }
 
 // --- Render preferences (spec PR 3d) ---------------------------------------

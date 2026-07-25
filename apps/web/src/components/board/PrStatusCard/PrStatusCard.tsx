@@ -7,6 +7,8 @@ import {
   Button,
   ConfirmDialog,
   GithubIcon,
+  PrChecksLine,
+  RefreshedAtLine,
   RetryIcon,
   Spinner,
   UploadIcon,
@@ -19,9 +21,9 @@ import {
   canPushUpdates,
   checksSummary,
   confirmCopy,
-  formatRefreshedAt,
   mergeStateLine,
   prStateBadge,
+  prStatusFallbackMessage,
   reviewDecisionBadge,
   usePrConfirm,
   usePrStatus,
@@ -64,7 +66,7 @@ export function PrStatusCard({
   const prUrl = status?.url ?? task.prUrl ?? null;
 
   return (
-    <section className="rounded-md border border-border bg-white/[0.02] px-3 py-2.5">
+    <section className="rounded-nc border border-border bg-white/[0.02] px-3 py-2.5">
       <div className="flex items-center gap-2">
         {status !== null && state !== null ? (
           <>
@@ -75,13 +77,7 @@ export function PrStatusCard({
           </>
         ) : (
           <span className="text-xs text-muted-foreground">
-            {view.fetching
-              ? 'Fetching PR status…'
-              : view.unavailable
-                ? 'PR status is unavailable in the browser preview.'
-                : view.error !== null
-                  ? 'PR status failed to load.'
-                  : 'PR status not loaded yet.'}
+            {prStatusFallbackMessage(view)}
           </span>
         )}
         <span className="flex-1" />
@@ -109,19 +105,7 @@ export function PrStatusCard({
       {status !== null && (mergeLine !== null || checks !== null || canPushUpdates(status)) && (
         <div className="mt-2 space-y-1 text-xs">
           {mergeLine !== null && <p className="text-foreground/90">{mergeLine}</p>}
-          {checks !== null && (
-            <p className="font-mono tabular-nums">
-              <span className="text-success">{checks.passed} passed</span>
-              <span className="text-muted-foreground"> · </span>
-              <span className={checks.failed > 0 ? 'text-destructive' : 'text-muted-foreground'}>
-                {checks.failed} failed
-              </span>
-              <span className="text-muted-foreground"> · </span>
-              <span className={checks.pending > 0 ? 'text-warning' : 'text-muted-foreground'}>
-                {checks.pending} pending
-              </span>
-            </p>
-          )}
+          {checks !== null && <PrChecksLine checks={checks} />}
           {canPushUpdates(status) && (
             <p className="text-muted-foreground">
               {status.unpushedCommits !== null
@@ -177,9 +161,7 @@ export function PrStatusCard({
         )}
 
       {view.refreshedAt !== null && (
-        <p className="mt-2 font-mono text-3xs text-muted-foreground">
-          Refreshed {formatRefreshedAt(view.refreshedAt)}
-        </p>
+        <RefreshedAtLine refreshedAt={view.refreshedAt} className="mt-2" />
       )}
 
       <ConfirmDialog

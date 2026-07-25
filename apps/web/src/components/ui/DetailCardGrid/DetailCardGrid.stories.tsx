@@ -78,7 +78,7 @@ export const WithFullWidthRow: Story = {
     children: (
       <>
         <GridFullRow key="banner">
-          <div className="rounded-[10px] border border-border bg-white/[0.03] px-4 py-2 text-xs-plus text-muted-foreground">
+          <div className="rounded-nc border border-border bg-white/[0.03] px-4 py-2 text-xs-plus text-muted-foreground">
             Section banner — spans every column
           </div>
         </GridFullRow>

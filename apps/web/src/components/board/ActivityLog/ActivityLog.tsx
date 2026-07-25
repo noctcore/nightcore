@@ -57,7 +57,7 @@ export function ActivityLog({ sessions, isRunning }: ActivityLogProps) {
         <p className="text-sm text-muted-foreground">
           {isRunning
             ? 'Waiting for first token…'
-            : 'No activity yet — run this task to stream its transcript.'}
+            : 'No activity yet. Run this task to stream its transcript.'}
         </p>
       ) : sessions.length === 1 ? (
         // A single session needs no collapsible chrome — render it inline.
@@ -118,12 +118,12 @@ const SessionLog = memo(function SessionLog({
   ].filter((x): x is string => x !== null);
 
   return (
-    <section className="rounded-[10px] border border-border bg-white/[0.02]">
+    <section className="rounded-nc border border-border bg-white/[0.02]">
       <button
         type="button"
         aria-expanded={open}
         onClick={toggle}
-        className="flex w-full items-center gap-2 rounded-[10px] px-3 py-2.5 text-left transition-colors hover:bg-white/[0.03] focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex w-full items-center gap-2 rounded-nc px-3 py-2.5 text-left transition-colors hover:bg-white/[0.03] focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
         <TerminalIcon size={13} className="shrink-0 text-muted-foreground" />
         <span className="shrink-0 font-mono text-2xs font-semibold uppercase tracking-[0.06em] text-foreground/90">

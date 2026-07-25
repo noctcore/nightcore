@@ -25,12 +25,12 @@ const meta = {
       active: project,
       switcherOpen: false,
       onToggleSwitcher: fn(),
+      onCloseSwitcher: fn(),
       onPickProject: fn(),
       onNewProject: fn(),
       onEditProject: fn(),
       onRemoveProject: fn(),
     },
-    runningCount: 0,
     onGotoProjects: fn(),
   },
 } satisfies Meta<typeof ProjectRail>;

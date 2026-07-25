@@ -172,8 +172,8 @@ export function GroundedLifecycleFooter({
           Go to task
         </Button>
       ) : (
-        <Button disabled={pending || status === 'dismissed'} onClick={onConvert}>
-          <MoveIcon size={15} />
+        <Button busy={pending} disabled={status === 'dismissed'} onClick={onConvert}>
+          {!pending && <MoveIcon size={15} />}
           Convert to task
         </Button>
       )}

@@ -198,7 +198,7 @@ function ConfiguredSection({
       }}
       results={{
         gridFindings: stream?.findings ?? [],
-        emptyMessage: 'No findings — the diff looks clean across the selected lenses.',
+        emptyMessage: 'The diff looks clean across the selected lenses.',
         emptyVariant,
         selection: new Set(['f1']),
         onToggleSelect: fn(),

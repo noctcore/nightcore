@@ -7,7 +7,6 @@
 import type { ReactNode } from 'react';
 
 import {
-  AlertIcon,
   Button,
   CheckIcon,
   ExternalLinkIcon,
@@ -24,6 +23,7 @@ import {
   VERDICT_META,
 } from '../issue-triage.constants';
 import type { IssueVerdictView } from '../issue-triage.types';
+import { StaleChip } from '../StaleChip';
 import type { ResultsPanelProps } from './ResultsPanel.types';
 
 const SECTION_LABEL =
@@ -42,7 +42,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 function PrAnalysisCard({ pr }: { pr: NonNullable<IssueVerdictView['prAnalysis']> }) {
   const rec = PR_RECOMMENDATION_META[pr.recommendation];
   return (
-    <div className="flex flex-col gap-2 rounded-[10px] border border-primary/30 bg-primary/[0.05] px-3.5 py-3">
+    <div className="flex flex-col gap-2 rounded-nc border border-primary/30 bg-primary/[0.05] px-3.5 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <GithubIcon size={13} className="text-primary/90" />
         <span className="text-xs-plus font-semibold text-foreground">{rec.label}</span>
@@ -97,13 +97,10 @@ export function ResultsPanel({
             {CONFIDENCE_META[result.confidence].label}
           </span>
           {stale && (
-            <span
-              className="ml-auto inline-flex items-center gap-1 rounded-md border border-warning/40 bg-warning/[0.12] px-1.5 py-0.5 font-mono text-3xs font-semibold uppercase tracking-wide text-warning"
+            <StaleChip
+              className="ml-auto"
               title="The issue changed on GitHub after this validation — re-validate for a current verdict."
-            >
-              <AlertIcon size={11} />
-              Stale
-            </span>
+            />
           )}
         </div>
 
@@ -140,7 +137,7 @@ export function ResultsPanel({
 
       {result.proposedPlan !== null && result.proposedPlan.trim().length > 0 && (
         <Section title="Proposed plan">
-          <div className="rounded-[10px] border border-border bg-white/[0.02] px-3.5 py-2.5">
+          <div className="rounded-nc border border-border bg-white/[0.02] px-3.5 py-2.5">
             <Markdown>{result.proposedPlan}</Markdown>
           </div>
         </Section>
@@ -171,15 +168,22 @@ export function ResultsPanel({
       {/* Human-gated actions. Posting is always behind the confirmed preview dialog. */}
       <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3.5">
         {posted ? (
-          <a
-            href={stream.postedCommentUrl ?? '#'}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-[9px] border border-success/40 bg-success/[0.08] px-3 py-1.5 text-xs-plus text-success"
-          >
-            <CheckIcon size={14} /> Comment posted
-            <ExternalLinkIcon size={12} />
-          </a>
+          stream.postedCommentUrl !== null ? (
+            <a
+              href={stream.postedCommentUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-nc border border-success/40 bg-success/[0.08] px-3 py-1.5 text-xs-plus text-success"
+            >
+              <CheckIcon size={14} /> Comment posted
+              <ExternalLinkIcon size={12} />
+            </a>
+          ) : (
+            // Posted, but the API returned no URL — a plain chip, no dead `#` link (GOV-19).
+            <span className="inline-flex items-center gap-1.5 rounded-nc border border-success/40 bg-success/[0.08] px-3 py-1.5 text-xs-plus text-success">
+              <CheckIcon size={14} /> Comment posted
+            </span>
+          )
         ) : (
           <Button onClick={onPostComment}>
             <GithubIcon size={15} />
@@ -193,7 +197,7 @@ export function ResultsPanel({
             Go to task
           </Button>
         ) : (
-          <Button variant="ghost" onClick={onConvertToTask}>
+          <Button variant="secondary" onClick={onConvertToTask}>
             <MoveIcon size={15} />
             Convert to task
           </Button>

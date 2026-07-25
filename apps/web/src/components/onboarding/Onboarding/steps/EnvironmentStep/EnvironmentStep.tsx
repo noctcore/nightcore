@@ -92,7 +92,7 @@ function EnvironmentRow({
         }`}>
           {checking ? <Spinner size={15} /> : row.ready ? <CheckIcon size={15} /> : <AlertIcon size={15} />}
         </div>
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-white/[0.05] text-muted-foreground">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-nc bg-white/[0.05] text-muted-foreground">
           <EnvironmentIcon icon={row.icon} />
         </div>
         <div className="min-w-0 flex-1">
@@ -105,12 +105,15 @@ function EnvironmentRow({
             )}
           </div>
         </div>
-        <span className={`max-w-[460px] truncate font-mono text-xs-plus2 ${detailClass}`}>
-          {checking ? 'checking...' : row.detail}
+        <span
+          title={row.detail}
+          className={`max-w-[460px] truncate font-mono text-xs-plus2 ${detailClass}`}
+        >
+          {checking ? 'Checking…' : row.detail}
         </span>
       </div>
       {failed && (
-        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-[10px] border border-warning/30 bg-black/25 px-4 py-3">
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-nc border border-warning/30 bg-black/25 px-4 py-3">
           <span className="min-w-[220px] flex-1 text-sm-flat leading-6 text-muted-foreground">
             {row.fixHint}
           </span>
@@ -119,7 +122,7 @@ function EnvironmentRow({
           </code>
           <Button onClick={onRecheck}>
             <RefreshIcon size={14} />
-            I have done it - re-check
+            Re-check
           </Button>
         </div>
       )}

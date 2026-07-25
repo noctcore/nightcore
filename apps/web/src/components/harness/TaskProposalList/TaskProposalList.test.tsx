@@ -17,10 +17,10 @@ test('renders each proposal with its kind and convert signals', async () => {
     .toBeInTheDocument();
   // The agent-task proposal surfaces its verify command as a convert signal.
   await expect.element(screen.getByText(/verify: npx eslint \./i)).toBeInTheDocument();
-  // A converted proposal shows its lifecycle badge (exact, so it doesn't also match
-  // a title containing the word "converted").
+  // A converted proposal shows its lifecycle badge — standardized to "task" (exact,
+  // so it doesn't also match the "Agent task" kind label).
   await expect
-    .element(screen.getByText('converted', { exact: true }))
+    .element(screen.getByText('task', { exact: true }))
     .toBeInTheDocument();
 });
 

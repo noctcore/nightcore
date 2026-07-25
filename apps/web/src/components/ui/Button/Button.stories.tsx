@@ -25,6 +25,12 @@ export const Danger: Story = { args: { variant: 'danger', children: 'Delete' } }
 
 export const Disabled: Story = { args: { disabled: true } };
 
+/** Aria-disabled: semantically inert but still focusable (the guarded-toolbar
+ *  pattern) — no native `disabled`, no hover affordance, no press gesture. */
+export const AriaDisabled: Story = { args: { variant: 'secondary', 'aria-disabled': true } };
+
+export const Busy: Story = { args: { busy: true, children: 'Saving…' } };
+
 /** Play test: clicking the button invokes onClick. */
 export const FiresOnClick: Story = {
   play: async ({ args, canvasElement }) => {

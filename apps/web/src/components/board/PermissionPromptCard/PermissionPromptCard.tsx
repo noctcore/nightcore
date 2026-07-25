@@ -1,4 +1,5 @@
 import { AlertIcon, Button, Kbd, Spinner, TerminalIcon } from '@/components/ui';
+import { CONFIRM_CHORD } from '@/lib/platform';
 
 import { summarizeInput, usePermissionDecision } from './PermissionPromptCard.hooks';
 import type { PermissionPromptCardProps } from './PermissionPromptCard.types';
@@ -49,7 +50,7 @@ export function PermissionPromptCard({ prompt, onRespond }: PermissionPromptCard
       <div className="mt-2.5 flex items-center gap-2">
         <Button type="submit" disabled={pending} aria-busy={pending}>
           {deciding === 'allow' ? <Spinner /> : null}
-          Allow <Kbd>⌘↵</Kbd>
+          Allow <Kbd>{CONFIRM_CHORD}</Kbd>
         </Button>
         <Button
           type="button"

@@ -3,9 +3,9 @@ import {
   BranchPicker,
   Button,
   CloseIcon,
+  ConfirmHint,
   IconButton,
   ImageDropzone,
-  Kbd,
   Modal,
   ModelSelectField,
   slideIn,
@@ -23,7 +23,10 @@ import { useNewTaskForm } from './NewTaskForm.hooks';
 import type { NewTaskFormProps } from './NewTaskForm.types';
 
 const INPUT_CLASS =
-  'w-full rounded-[10px] border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary';
+  'w-full rounded-nc border border-border bg-black/20 px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary';
+// The run-ceiling number inputs strip the native spinner arrows (matching SessionCard's
+// LimitField), so the max-turns / max-budget fields read as clean numeric entry.
+const NUMBER_INPUT_CLASS = `${INPUT_CLASS} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`;
 const LABEL_CLASS =
   'font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground';
 
@@ -159,7 +162,7 @@ export function NewTaskForm({ open, planGateDefault, onCreate, onClose }: NewTas
                 label="Plan first — review a plan before the agent writes code"
               />
             ) : (
-              <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground/60">
+              <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
                 Unavailable
               </span>
             )}
@@ -219,7 +222,7 @@ export function NewTaskForm({ open, planGateDefault, onCreate, onClose }: NewTas
           {governanceWarning !== null && (
             <div
               role="alert"
-              className="flex items-start gap-2 rounded-[10px] border border-warning/40 bg-warning/[0.08] px-3 py-2.5"
+              className="flex items-start gap-2 rounded-nc border border-warning/40 bg-warning/[0.08] px-3 py-2.5"
             >
               <AlertIcon size={15} className="mt-0.5 shrink-0 text-warning" />
               <p className="flex-1 text-xs-plus leading-snug text-warning">
@@ -241,7 +244,7 @@ export function NewTaskForm({ open, planGateDefault, onCreate, onClose }: NewTas
                 value={maxTurns}
                 onChange={(e) => setMaxTurns(e.target.value)}
                 placeholder="Inherit"
-                className={INPUT_CLASS}
+                className={NUMBER_INPUT_CLASS}
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -257,7 +260,7 @@ export function NewTaskForm({ open, planGateDefault, onCreate, onClose }: NewTas
                 value={maxBudget}
                 onChange={(e) => setMaxBudget(e.target.value)}
                 placeholder="Inherit"
-                className={INPUT_CLASS}
+                className={NUMBER_INPUT_CLASS}
               />
             </div>
           </div>
@@ -271,18 +274,25 @@ export function NewTaskForm({ open, planGateDefault, onCreate, onClose }: NewTas
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-border bg-black/15 px-5 py-3.5">
           {error !== null ? (
-            <span role="alert" className="mr-auto min-w-0 truncate text-xs text-destructive">
+            <span
+              role="alert"
+              title={error}
+              className="mr-auto min-w-0 truncate text-xs text-destructive"
+            >
               {error}
             </span>
           ) : (
-            <span className="mr-auto flex items-center gap-1 text-xs text-muted-foreground">
-              <Kbd>⌘↵</Kbd> to create
-            </span>
+            <ConfirmHint>to create</ConfirmHint>
           )}
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={() => void submit()} disabled={!canSubmit} aria-busy={busy}>
+          <Button
+            onClick={() => void submit()}
+            disabled={!canSubmit}
+            title={canSubmit ? undefined : 'Enter a title first'}
+            aria-busy={busy}
+          >
             {busy ? <Spinner /> : null}
             {busy ? 'Creating…' : 'Create task'}
           </Button>

@@ -2,6 +2,8 @@ import { composeStories } from '@storybook/react-vite';
 import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
+import { CONFIRM_CHORD } from '@/lib/platform';
+
 import { summarizeInput, truncate } from './PermissionPromptCard.hooks';
 import * as stories from './PermissionPromptCard.stories';
 
@@ -31,10 +33,10 @@ test('Deny relays the decision with the request id', async () => {
   expect(onRespond).toHaveBeenCalledWith('req-1', 'deny');
 });
 
-test('the Allow button carries the ⌘↵ keyboard hint', async () => {
+test('the Allow button carries the platform-aware confirm-chord keyboard hint', async () => {
   const screen = render(<ShellCommand />);
   const kbd = screen.container.querySelector('kbd');
-  expect(kbd?.textContent).toBe('⌘↵');
+  expect(kbd?.textContent).toBe(CONFIRM_CHORD);
 });
 
 test('deciding latches both buttons disabled + aria-busy so it cannot double-fire', async () => {

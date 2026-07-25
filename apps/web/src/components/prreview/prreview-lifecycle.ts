@@ -300,7 +300,7 @@ export function deriveReviewLifecycle(input: LifecycleInputs): ReviewLifecycle {
     shortLabel: 'Reviewed',
     description:
       open === 0
-        ? 'No findings — the diff looks clean across the selected lenses.'
+        ? 'The diff looks clean across the selected lenses.'
         : `${open} ${open === 1 ? 'finding' : 'findings'} — select and post to GitHub.`,
     tone: 'primary',
     pulse: false,

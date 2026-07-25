@@ -1,6 +1,7 @@
 /** Interactive AskUserQuestion prompt shown in the interaction dock. */
 import { Button, CheckIcon, Kbd, QuestionIcon } from '@/components/ui';
 import { PROVIDER_LABEL } from '@/lib/bridge';
+import { CONFIRM_CHORD } from '@/lib/platform';
 
 import { useQuestionAnswers } from './QuestionPromptCard.hooks';
 import type { QuestionPromptCardProps } from './QuestionPromptCard.types';
@@ -128,7 +129,7 @@ export function QuestionPromptCard({ prompt, onAnswer }: QuestionPromptCardProps
           disabled={!answers.allAnswered}
           title={answers.allAnswered ? undefined : 'Answer every question to send'}
         >
-          Send answer <Kbd>⌘↵</Kbd>
+          Send answer <Kbd>{CONFIRM_CHORD}</Kbd>
         </Button>
         <Button
           type="button"

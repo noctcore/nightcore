@@ -100,7 +100,7 @@ const ArtifactCard = memo(function ArtifactCard({
 
 function SkeletonCard() {
   return (
-    <div className="flex flex-col gap-2 rounded-[10px] border border-border bg-white/[0.02] p-3.5">
+    <div className="flex flex-col gap-2 rounded-nc border border-border bg-white/[0.02] p-3.5">
       <div className="flex items-center gap-2">
         <Skeleton className="h-4 w-20" />
         <Skeleton className="h-4 w-14" />

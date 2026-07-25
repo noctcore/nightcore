@@ -127,7 +127,7 @@ export function ConstitutionCard({
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center gap-2 rounded-[10px] border border-border bg-white/[0.02] px-3 py-6 text-xs-plus text-muted-foreground">
+            <div className="flex items-center justify-center gap-2 rounded-nc border border-border bg-white/[0.02] px-3 py-6 text-xs-plus text-muted-foreground">
               <Spinner />
               Loading…
             </div>
@@ -137,11 +137,11 @@ export function ConstitutionCard({
               onChange={(e) => onContentChange(e.target.value)}
               spellCheck={false}
               placeholder={EMPTY_PACK_PLACEHOLDER}
-              className="h-[280px] w-full resize-y rounded-[10px] border border-border bg-white/[0.02] p-3 font-mono text-xs-plus leading-relaxed text-foreground outline-none focus:border-primary"
+              className="h-[280px] w-full resize-y rounded-nc border border-border bg-white/[0.02] p-3 font-mono text-xs-plus leading-relaxed text-foreground outline-none focus:border-primary"
               aria-label="Context pack markdown"
             />
           ) : content.trim().length === 0 ? (
-            <div className="rounded-[10px] border border-dashed border-border px-4 py-8 text-center text-xs-plus text-muted-foreground">
+            <div className="rounded-nc border border-dashed border-border px-4 py-8 text-center text-xs-plus text-muted-foreground">
               {EMPTY_PACK_PLACEHOLDER}
             </div>
           ) : (

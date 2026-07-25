@@ -1,7 +1,7 @@
 /** WorktreeSwitcher derivation: per-worktree task filtering, tab building, and the
  *  overflow-collapse partition + searchable-select state machine. */
 import type { ChangeEvent, FocusEvent, KeyboardEvent } from 'react';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import type { Task, WorktreeInfo } from '@/lib/bridge';
 
@@ -71,6 +71,38 @@ export function useWorktreeTabs(tasks: Task[], worktrees: WorktreeInfo[]): Workt
 
     return [mainTab, ...worktreeTabs];
   }, [tasks, worktrees]);
+}
+
+/** The remove-worktree confirmation state + triggers. The kebab "Remove worktree"
+ *  item no longer discards instantly — it opens a shared destructive `ConfirmDialog`
+ *  (the same guard the card trash + column Clear route through), so a dirty `●N`
+ *  worktree can't be thrown away on a single misclick. `request` parks the pending
+ *  tab; `confirm` runs the real discard; `cancel` dismisses. State lives here, never
+ *  in the switcher component body. */
+export interface WorktreeRemovalConfirm {
+  /** The worktree tab awaiting removal confirmation, or `null`. */
+  pending: WorktreeTab | null;
+  /** Open the confirmation for a tab (the kebab "Remove worktree" item). */
+  request: (tab: WorktreeTab) => void;
+  /** Discard the pending worktree and close the dialog. */
+  confirm: () => void;
+  /** Dismiss the dialog without discarding. */
+  cancel: () => void;
+}
+
+export function useWorktreeRemovalConfirm(
+  onRemove: (tab: WorktreeTab) => void,
+): WorktreeRemovalConfirm {
+  const [pending, setPending] = useState<WorktreeTab | null>(null);
+  const request = useCallback((tab: WorktreeTab) => setPending(tab), []);
+  const cancel = useCallback(() => setPending(null), []);
+  const confirm = useCallback(() => {
+    setPending((tab) => {
+      if (tab !== null) onRemove(tab);
+      return null;
+    });
+  }, [onRemove]);
+  return { pending, request, confirm, cancel };
 }
 
 /** Inputs the collapsed-select hook needs from its shell. */

@@ -17,6 +17,16 @@ export const Neutral: Story = {};
 
 export const Primary: Story = { args: { tone: 'primary', children: 'live' } };
 
+export const Success: Story = { args: { tone: 'success', children: 'passed' } };
+
+export const Warning: Story = { args: { tone: 'warning', children: 'flaky' } };
+
+export const Destructive: Story = {
+  args: { tone: 'destructive', children: 'failed' },
+};
+
+export const Info: Story = { args: { tone: 'info', children: 'queued' } };
+
 export const RendersLabel: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

@@ -12,8 +12,13 @@ export interface MenuItem {
 /** Props for {@link Menu}. */
 export interface MenuProps {
   /** The trigger — a single interactive element (typically an IconButton). The
-   *  Menu injects the open/close `onClick` onto it. */
-  trigger: ReactElement<{ onClick?: () => void }>;
+   *  Menu composes the open/close `onClick` onto it (preserving any existing
+   *  handler) and injects `aria-haspopup`/`aria-expanded` for screen readers. */
+  trigger: ReactElement<{
+    onClick?: () => void;
+    'aria-haspopup'?: 'menu';
+    'aria-expanded'?: boolean;
+  }>;
   /** Accessible name for the menu's listbox region. */
   label: string;
   items: MenuItem[];

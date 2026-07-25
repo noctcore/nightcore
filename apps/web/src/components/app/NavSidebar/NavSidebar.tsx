@@ -14,7 +14,7 @@ import { type NavSection,useNavSidebarSections } from './NavSidebar.hooks';
 import type { NavSidebarProps } from './NavSidebar.types';
 
 const NAV_BASE =
-  'flex items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left transition-colors cursor-pointer';
+  'flex items-center gap-2.5 rounded-nc px-2.5 py-2 text-left transition-colors cursor-pointer';
 
 function SidebarCollapseToggle({
   collapsed,
@@ -30,18 +30,17 @@ function SidebarCollapseToggle({
       type="button"
       onClick={onToggle}
       aria-label={label}
-      title={label}
-      className="group/toggle absolute -right-3.5 top-10 z-50 flex h-7 w-7 items-center justify-center rounded-full border border-border/80 bg-card/95 text-muted-foreground shadow-lg shadow-black/5 backdrop-blur-sm transition-all duration-200 ease-out hover:scale-110 hover:border-primary/30 hover:bg-accent/80 hover:text-primary hover:shadow-xl hover:shadow-primary/10 active:scale-90"
+      className="group/toggle absolute -right-3.5 top-10 z-50 flex h-7 w-7 items-center justify-center rounded-full border border-border/80 bg-card/95 text-muted-foreground shadow-lg shadow-black/5 backdrop-blur-sm transition-all duration-[var(--nc-motion-fast)] ease-[var(--nc-ease-out-quint)] hover:scale-110 hover:border-primary/30 hover:bg-accent/80 hover:text-primary hover:shadow-xl hover:shadow-primary/10 active:scale-90"
     >
       {collapsed ? (
-        <PanelLeftIcon size={14} className="pointer-events-none transition-transform duration-200" />
+        <PanelLeftIcon size={14} className="pointer-events-none transition-transform duration-[var(--nc-motion-fast)]" />
       ) : (
         <PanelLeftCloseIcon
           size={14}
-          className="pointer-events-none transition-transform duration-200"
+          className="pointer-events-none transition-transform duration-[var(--nc-motion-fast)]"
         />
       )}
-      <span className="pointer-events-none absolute left-full ml-3 translate-x-1 whitespace-nowrap rounded-lg border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground opacity-0 shadow-lg transition-all duration-200 group-hover/toggle:translate-x-0 group-hover/toggle:opacity-100">
+      <span className="pointer-events-none absolute left-full ml-3 translate-x-1 whitespace-nowrap rounded-lg border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground opacity-0 shadow-lg transition-all duration-[var(--nc-motion-fast)] group-hover/toggle:translate-x-0 group-hover/toggle:opacity-100">
         {label}
       </span>
     </button>
@@ -64,7 +63,7 @@ function NavItemButton({
       key={item.view}
       type="button"
       onClick={() => onNavigate(item.view)}
-      title={item.label}
+      title={collapsed ? `${item.label} (${item.hint})` : undefined}
       aria-current={active ? 'page' : undefined}
       className={`${NAV_BASE} ${collapsed ? 'justify-center' : ''} ${
         active
@@ -122,7 +121,7 @@ function NavGroupSection({
           {section.collapsible && (
             <ChevronDownIcon
               size={12}
-              className={`ml-auto text-muted-foreground transition-transform duration-200 ${
+              className={`ml-auto text-muted-foreground transition-transform duration-[var(--nc-motion-fast)] ${
                 isCollapsed ? '-rotate-90' : ''
               }`}
             />
@@ -179,7 +178,7 @@ export function NavSidebar({
 
   return (
     <aside
-      className="relative mt-1.5 flex flex-col border-r border-t border-border bg-sidebar transition-[width] duration-150"
+      className="relative mt-1.5 flex flex-col border-r border-t border-border bg-sidebar transition-[width] duration-[var(--nc-motion-fast)]"
       style={{ width: collapsed ? 66 : 244, flex: 'none' }}
     >
       <SidebarCollapseToggle collapsed={collapsed} onToggle={onToggleCollapsed} />

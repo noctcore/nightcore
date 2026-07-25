@@ -276,7 +276,7 @@ export function usePrReviewSection({
           running: 'Reviewing…',
           aborted: 'Review cancelled.',
           failed: 'Review failed',
-          empty: 'No findings — the diff looks clean across the selected lenses.',
+          empty: 'The diff looks clean across the selected lenses.',
         },
       }),
     [displayStream],

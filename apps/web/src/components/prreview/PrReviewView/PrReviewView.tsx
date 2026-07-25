@@ -5,14 +5,11 @@
  *  ConfirmDialog from the `usePrReviewView` model. Selecting a PR never cancels
  *  anything: every run keeps streaming in the run registry. */
 import {
-  Button,
   Checkbox,
   ConfirmDialog,
   EmptyState,
   FolderIcon,
   GithubIcon,
-  RetryIcon,
-  Spinner,
 } from '@/components/ui';
 
 import { FindingDetailPanel } from '../FindingDetailPanel';
@@ -41,7 +38,8 @@ export function PrReviewView(props: PrReviewViewProps) {
   return (
     <>
       <div className="flex h-full min-h-0 flex-col">
-        {/* Header bar: title + project + the Refresh-PRs action. */}
+        {/* Header bar: title + project. Refreshing PRs lives on the list rail's
+            own Refresh control (the header button was a duplicate). */}
         <header className="flex items-center justify-between gap-4 border-b border-border px-6 py-3">
           <div className="flex min-w-0 flex-col gap-0.5">
             <h2 className="flex items-center gap-2 truncate text-sm font-semibold text-foreground">
@@ -52,15 +50,6 @@ export function PrReviewView(props: PrReviewViewProps) {
               {view.projectName ?? 'Pull-request review'}
             </span>
           </div>
-          <Button
-            variant="ghost"
-            onClick={view.list.refreshPrs}
-            disabled={view.list.prsLoading}
-            aria-busy={view.list.prsLoading}
-          >
-            {view.list.prsLoading ? <Spinner size={14} /> : <RetryIcon size={14} />}
-            Refresh PRs
-          </Button>
         </header>
 
         {/* The permanent two-panel body, split by a draggable persisted divider.
@@ -89,21 +78,30 @@ export function PrReviewView(props: PrReviewViewProps) {
               loadingMore={view.list.prsLoadingMore}
             />
           </aside>
-          {/* Draggable / keyboard-accessible divider (double-click resets). */}
+          {/* Draggable / keyboard-accessible divider (double-click resets). A
+              fixed-width hit area (negative margins keep the layout width stable)
+              wraps a 1px line — only the line tints on hover / drag / focus, so
+              the handle never changes width and never shoves the panels. */}
           <div
             {...panel.separatorProps}
-            className={`shrink-0 cursor-col-resize self-stretch transition-colors focus:outline-none focus-visible:bg-primary/60 ${
-              panel.dragging ? 'w-1 bg-primary/50' : 'w-px bg-border hover:w-1 hover:bg-primary/40'
-            }`}
-          />
+            className="group/resizer -mx-[2px] flex w-1.5 shrink-0 cursor-col-resize items-stretch justify-center self-stretch focus:outline-none"
+          >
+            <span
+              aria-hidden
+              className={`w-px self-stretch transition-colors ${
+                panel.dragging
+                  ? 'bg-primary/50'
+                  : 'bg-border group-hover/resizer:bg-primary/40 group-focus-visible/resizer:bg-primary/60'
+              }`}
+            />
+          </div>
           <main className="min-h-0 flex-1 overflow-y-auto">
             {view.list.selectedPr === null || view.workspace.review === null ? (
-              <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-                <GithubIcon size={44} className="text-muted-foreground/40" />
-                <p className="text-sm text-muted-foreground">
-                  Select a pull request to review
-                </p>
-              </div>
+              <EmptyState
+                icon={<GithubIcon size={32} />}
+                title="Select a pull request"
+                description="Pick a PR on the left to review it."
+              />
             ) : (
               <PrWorkspace
                 prNumber={view.list.selectedPr}

@@ -10,12 +10,45 @@ import {
   WORKTREES,
 } from '../_fixtures';
 import { useWorktreeTabs } from './WorktreeSwitcher.hooks';
+import type { WorktreeTab } from './WorktreeSwitcher.types';
 import {
   COLLAPSE_THRESHOLD,
   filterTasksByWorktree,
   partitionWorktreeTabs,
   summarizeCollapsed,
+  worktreeRemovalMessage,
 } from './WorktreeSwitcher.utils';
+
+const REMOVABLE_TAB: WorktreeTab = {
+  branch: 'nc/api-client',
+  label: 'nc/api-client',
+  taskIds: ['t1'],
+  taskTitles: ['Generate API client'],
+  taskCount: 1,
+  runningCount: 0,
+  dirty: false,
+  aheadOfBase: 0,
+  behindOfBase: 0,
+  changedFiles: 0,
+};
+
+test('worktreeRemovalMessage: a clean worktree names the branch without a data-loss clause', () => {
+  const msg = worktreeRemovalMessage(REMOVABLE_TAB);
+  expect(msg).toContain('nc/api-client');
+  expect(msg).not.toMatch(/uncommitted|lost/i);
+});
+
+test('worktreeRemovalMessage: a dirty worktree names the uncommitted-file count that is lost', () => {
+  const msg = worktreeRemovalMessage({ ...REMOVABLE_TAB, dirty: true, changedFiles: 3 });
+  expect(msg).toContain('nc/api-client');
+  expect(msg).toContain('3 uncommitted files');
+  expect(msg).toMatch(/lost/i);
+});
+
+test('worktreeRemovalMessage: a dirty worktree with no file count still warns about lost changes', () => {
+  const msg = worktreeRemovalMessage({ ...REMOVABLE_TAB, dirty: true, changedFiles: 0 });
+  expect(msg).toMatch(/uncommitted changes will be lost/i);
+});
 
 test('filterTasksByWorktree: Main keeps run-mode-main tasks', () => {
   const tasks = [MAIN_MODE_TASK, TASKS_BY_STATUS.in_progress];

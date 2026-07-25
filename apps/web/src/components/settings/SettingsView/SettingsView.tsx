@@ -5,6 +5,7 @@ import {
   BellIcon,
   BoltIcon,
   BookIcon,
+  BrainIcon,
   BranchIcon,
   BrandMark,
   DesignIcon,
@@ -14,6 +15,7 @@ import {
   LayersIcon,
   LockIcon,
   PerfIcon,
+  Segmented,
   SlidersIcon,
   SparkIcon,
   TerminalIcon,
@@ -31,11 +33,17 @@ import type {
   SettingsViewProps,
 } from './SettingsView.types';
 
-/** The scope toggle tabs as `[value, label]` pairs. */
-const SCOPE_TABS: [value: SettingsScope, label: string][] = [
-  ['global', 'Global'],
-  ['project', 'This project'],
-];
+/** The pages whose controls can actually write a per-project override (they call
+ *  `patchScoped` for at least one row). The scope toggle is only meaningful here; on
+ *  every other page every control writes the global block, so the header shows a
+ *  static "Global" pill instead of a toggle that would silently do nothing. */
+const SCOPED_PAGES: ReadonlySet<SettingsPage> = new Set<SettingsPage>([
+  'models',
+  'permissions',
+  'constitution',
+  'worktrees',
+  'mcp',
+]);
 
 /** A single entry in the left nav. */
 interface NavItem {
@@ -75,7 +83,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'INTEGRATIONS',
     items: [
-      { page: 'providers', label: 'Providers', icon: <BoltIcon size={16} /> },
+      { page: 'providers', label: 'Providers', icon: <BrainIcon size={16} /> },
       { page: 'mcp', label: 'MCP Servers', icon: <LayersIcon size={16} /> },
       { page: 'notifications', label: 'Notifications', icon: <BellIcon size={16} /> },
       { page: 'github', label: 'GitHub', icon: <GithubIcon size={16} /> },
@@ -87,7 +95,7 @@ const NAV_GROUPS: NavGroup[] = [
       { page: 'interface', label: 'Interface', icon: <DesignIcon size={16} /> },
       { page: 'terminal', label: 'Terminal', icon: <TerminalIcon size={16} /> },
       { page: 'paths', label: 'Paths', icon: <FolderIcon size={16} /> },
-      { page: 'about', label: 'About', icon: <BookIcon size={16} /> },
+      { page: 'about', label: 'About', icon: <BrandMark size={16} /> },
     ],
   },
 ];
@@ -107,7 +115,7 @@ const PAGE_HEADERS: Record<SettingsPage, PageHeader> = {
   automode: { title: 'Auto Mode', subtitle: 'AUTONOMOUS LOOP', icon: <BoltIcon size={24} /> },
   usage: { title: 'Usage', subtitle: 'PROVIDER METERING', icon: <PerfIcon size={24} /> },
   worktrees: { title: 'Git worktrees', subtitle: 'ISOLATION', icon: <BranchIcon size={24} /> },
-  providers: { title: 'Providers', subtitle: 'MODEL BACKENDS', icon: <BoltIcon size={24} /> },
+  providers: { title: 'Providers', subtitle: 'MODEL BACKENDS', icon: <BrainIcon size={24} /> },
   mcp: { title: 'MCP Servers', subtitle: 'EXTERNAL TOOLS', icon: <LayersIcon size={24} /> },
   notifications: { title: 'Notifications', subtitle: 'EVENTS', icon: <BellIcon size={24} /> },
   github: { title: 'GitHub', subtitle: 'ISSUE SYNC', icon: <GithubIcon size={24} /> },
@@ -168,6 +176,14 @@ export function SettingsView({
     defaultProviderCapabilities,
   });
   const note = PAGE_NOTES[page];
+  // The scope toggle is shown only where a per-project override is both possible
+  // (a scoped page) AND available (a project is active). Otherwise every control
+  // writes the global block, so the header shows a static "Global" pill.
+  const showScopeToggle = SCOPED_PAGES.has(page) && projectScopeEnabled;
+  const scopeOptions: [value: SettingsScope, label: string][] = [
+    ['global', 'Global'],
+    ['project', activeProjectName ?? 'This project'],
+  ];
 
   return (
     <div className="flex h-full min-h-0">
@@ -183,13 +199,16 @@ export function SettingsView({
                 key={item.page}
                 type="button"
                 onClick={() => setPage(item.page)}
-                className={`flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left transition-colors ${
+                aria-current={page === item.page ? 'page' : undefined}
+                className={`flex w-full items-center gap-2.5 rounded-nc px-2.5 py-2 text-left transition-colors ${
                   page === item.page
                     ? 'bg-primary/[0.12] font-semibold text-primary'
                     : 'text-muted-foreground hover:bg-white/[0.03] hover:text-foreground'
                 }`}
               >
-                <span className="shrink-0">{item.icon}</span>
+                <span className="shrink-0" aria-hidden>
+                  {item.icon}
+                </span>
                 <span className="flex-1 text-xs-plus2">{item.label}</span>
               </button>
             ))}
@@ -209,27 +228,27 @@ export function SettingsView({
                 {header.subtitle}
               </div>
             </div>
-            <div className="inline-flex shrink-0 rounded-lg border border-border bg-black/25 p-0.5">
-              {SCOPE_TABS.map(([v, label]) => {
-                const disabled = v === 'project' && !projectScopeEnabled;
-                return (
-                  <button
-                    key={v}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => setScope(v)}
-                    title={disabled ? 'Activate a project to set per-project overrides' : undefined}
-                    className={`rounded-md px-3 py-1 text-xs-flat font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                      v === scope
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground enabled:hover:text-foreground'
-                    }`}
-                  >
-                    {v === 'project' && activeProjectName !== null ? activeProjectName : label}
-                  </button>
-                );
-              })}
-            </div>
+            {showScopeToggle ? (
+              <Segmented
+                ariaLabel="Settings scope"
+                options={scopeOptions}
+                value={scope}
+                onChange={(v) => setScope(v as SettingsScope)}
+              />
+            ) : (
+              // Honesty pill: this page's controls all write the global block (or no
+              // project is active), so there is no per-project scope to choose.
+              <span
+                className="inline-flex shrink-0 items-center rounded-lg border border-border bg-black/25 px-3 py-1 text-xs-flat font-medium text-muted-foreground"
+                title={
+                  SCOPED_PAGES.has(page)
+                    ? 'Open a project to set per-project overrides'
+                    : 'These settings are global — they apply to every project'
+                }
+              >
+                Global
+              </span>
+            )}
           </div>
 
           {cards.map((card, i) => (

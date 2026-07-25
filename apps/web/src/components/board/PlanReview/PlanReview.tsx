@@ -12,7 +12,7 @@ import { usePlanReview } from './PlanReview.hooks';
 import type { PlanReviewProps } from './PlanReview.types';
 
 const FEEDBACK_CLASS =
-  'w-full resize-none rounded-[10px] border border-border bg-black/20 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary';
+  'w-full resize-none rounded-nc border border-border bg-black/20 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary';
 
 export function PlanReview({ task, pending }: PlanReviewProps) {
   const { onApprove, onRefine, onReject } = useTaskActions();

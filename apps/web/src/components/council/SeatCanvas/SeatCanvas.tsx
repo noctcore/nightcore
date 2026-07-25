@@ -17,8 +17,9 @@
  * the shared `<Markdown>` primitive and stays a pure READER of the stream (never a PTY,
  * never a text sink back into a prompt).
  */
-import { AgentsIcon, Badge, EmptyState, Markdown } from '@/components/ui';
+import { AgentsIcon, Badge, EmptyState, fadeRise, m, Markdown, stagger } from '@/components/ui';
 
+import { SEAT_ROLE_TONE } from '../council-roles';
 import type { SeatCanvasProps } from './SeatCanvas.types';
 
 export function SeatCanvas({ seats, phase, routing }: SeatCanvasProps) {
@@ -38,28 +39,35 @@ export function SeatCanvas({ seats, phase, routing }: SeatCanvasProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-      <p className="text-2xs text-muted-foreground">
-        Each node is a seat's live stream.
-        {routing !== undefined && (
-          <>
-            {' '}Its <span className="font-medium">Informed by</span> row is the routing
-            policy —{' '}
-            {routing.editable
-              ? 'toggle who informs each seat; edits apply to the next debate round and flow through the conductor (a seat only ever receives quoted, scanned peer content).'
-              : 'who informed whom in this run. Routing is editable only while the council is live.'}
-            {routing.open && ' Routing is open — every seat informs every other.'}
-          </>
-        )}
+      <p
+        className="text-2xs text-muted-foreground"
+        title={
+          routing === undefined
+            ? undefined
+            : routing.editable
+              ? 'Toggle who informs each seat; edits apply next debate round and flow through the conductor — a seat only ever receives quoted, scanned peer content.'
+              : 'Who informed whom in this run. Routing is editable only while the council is live.'
+        }
+      >
+        Each node is a seat's live stream
+        {routing !== undefined && ' — its “Informed by” row is the routing policy'}
+        {routing?.open === true && ' (open — every seat informs every other)'}.
       </p>
-      <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]">
+      <m.div
+        variants={stagger}
+        initial="initial"
+        animate="animate"
+        className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]"
+      >
         {seats.map((seat) => {
           const peers =
             routing === undefined
               ? []
               : seats.filter((other) => other.seatId !== seat.seatId);
           return (
-            <section
+            <m.section
               key={seat.seatId}
+              variants={fadeRise}
               aria-label={`Seat ${seat.seatId} (${seat.role})`}
               className="flex min-h-[180px] flex-col rounded-xl border border-border bg-card"
             >
@@ -68,7 +76,7 @@ export function SeatCanvas({ seats, phase, routing }: SeatCanvasProps) {
                 <span className="truncate text-sm-flat font-medium text-foreground">
                   {seat.seatId}
                 </span>
-                <Badge tone="primary" className="ml-auto capitalize">
+                <Badge tone={SEAT_ROLE_TONE[seat.role]} className="ml-auto capitalize">
                   {seat.role}
                 </Badge>
               </header>
@@ -113,14 +121,14 @@ export function SeatCanvas({ seats, phase, routing }: SeatCanvasProps) {
               <footer className="flex items-center gap-2 border-t border-border px-3 py-1.5 text-2xs text-muted-foreground">
                 <span className="capitalize">{seat.latestStage}</span>
                 <span aria-hidden>·</span>
-                <span>
+                <span className="tabular-nums">
                   {seat.messages.length} turn{seat.messages.length === 1 ? '' : 's'}
                 </span>
               </footer>
-            </section>
+            </m.section>
           );
         })}
-      </div>
+      </m.div>
     </div>
   );
 }

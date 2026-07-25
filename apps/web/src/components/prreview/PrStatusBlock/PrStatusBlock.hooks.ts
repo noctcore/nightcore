@@ -108,8 +108,3 @@ export function usePrStatusByNumber(
     return { status, fetching, error, unavailable, refreshedAt, refresh };
   }, [override, enabled, status, fetching, error, unavailable, refreshedAt, refresh]);
 }
-
-/** Format the web-side receive timestamp for the "Refreshed …" footer line. */
-export function formatRefreshedAt(ts: number): string {
-  return new Date(ts).toLocaleTimeString();
-}

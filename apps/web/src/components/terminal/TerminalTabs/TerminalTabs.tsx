@@ -158,7 +158,7 @@ function Tab({
       <IconButton
         label={active ? `Close ${label} (${formatShortcut('W')})` : `Close ${label}`}
         onClick={() => onClose(session.id)}
-        className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+        className="shrink-0 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
       >
         <CloseIcon size={12} />
       </IconButton>
@@ -206,7 +206,7 @@ function RestoredTab({
       <IconButton
         label={`Dismiss ${label}`}
         onClick={() => onDismiss(info.id)}
-        className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+        className="shrink-0 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
       >
         <CloseIcon size={12} />
       </IconButton>
@@ -244,7 +244,7 @@ function ViewModeToggle({
 
 /** The broadcast-input toggle (round-2 PR B, § B.3): a grid-only control that arms
  *  "type once, run everywhere" — every keystroke fans out to every visible pane. LOUD
- *  when armed (amber fill + ring + a pulsing dot) since broadcasting to N shells is a
+ *  when armed (warning fill + ring + a pulsing dot) since broadcasting to N shells is a
  *  footgun; disabled (with an explanatory title) until there are 2+ visible panes. */
 function BroadcastToggle({
   armed,
@@ -265,14 +265,14 @@ function BroadcastToggle({
       onClick={onToggle}
       className={`my-0.5 flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-2xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
         armed
-          ? 'bg-amber-400/20 text-amber-300 ring-1 ring-amber-400/70'
+          ? 'bg-warning/20 text-warning ring-1 ring-warning/70'
           : 'text-muted-foreground hover:bg-white/[0.08] hover:text-foreground'
       }`}
     >
       <BroadcastIcon size={13} aria-hidden />
       <span>{armed ? 'Broadcasting' : 'Broadcast'}</span>
       {armed && (
-        <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
+        <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />
       )}
     </button>
   );

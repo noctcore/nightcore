@@ -13,6 +13,7 @@ import {
   NumberField,
   Segmented,
   SparkIcon,
+  StatusDot,
   Toggle,
 } from '@/components/ui';
 import {
@@ -248,6 +249,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
             {
               label: 'Delete on merge',
               hint: 'Remove the worktree (and its branch) after the task is merged',
+              globalScoped: true,
               control: (
                 <Toggle
                   on={settings.cleanupWorktrees}
@@ -262,6 +264,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
                 editors.length > 0
                   ? 'Editor the worktree row "Open in editor" button launches'
                   : 'No supported editor detected on PATH — install one (Cursor, VS Code, …)',
+              globalScoped: true,
               control: (
                 <Segmented
                   ariaLabel="Open in editor"
@@ -319,7 +322,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
                   : `Authenticated via the local ${PROVIDER_LABEL} CLI`,
               control: (
                 <span className="flex items-center gap-2 text-xs-plus font-semibold text-success">
-                  <span className="h-[7px] w-[7px] rounded-full bg-success" />
+                  <StatusDot colorClass="bg-success" glow />
                   {settings.provider === 'codex' ? 'Codex default' : 'Claude default'}
                 </span>
               ),

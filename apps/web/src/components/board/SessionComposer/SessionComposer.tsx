@@ -6,10 +6,11 @@
  *  session-id analog of the terminal's PTY broadcast.
  *
  *  Submit mirrors the board's composer convention (QuestionPromptCard / NewTaskForm):
- *  Cmd/Ctrl+Enter from the field sends, with a `⌘↵` Kbd hint; Send is disabled while
+ *  Cmd/Ctrl+Enter from the field sends, with a platform-aware ⌘/Ctrl+↵ Kbd hint; Send is disabled while
  *  the draft is blank. The relay comes from `TaskActionsContext` (`onSendInput`); an
  *  unwired handler degrades the composer to nothing (parity with the dock's guard). */
 import { BroadcastIcon, Button, Kbd } from '@/components/ui';
+import { CONFIRM_CHORD } from '@/lib/platform';
 
 import { useTaskActions } from '../actions';
 import { broadcastInput } from '../session-broadcast';
@@ -65,12 +66,12 @@ export function SessionComposer({ taskId, liveSessionIds }: SessionComposerProps
         }}
         rows={2}
         placeholder="Send a message into the running session…"
-        className="w-full resize-none rounded-[10px] border border-border bg-black/20 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary"
+        className="w-full resize-none rounded-nc border border-border bg-black/20 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary"
       />
 
       <div className="mt-2 flex items-center gap-2">
         <Button type="submit" disabled={trimmed.length === 0}>
-          {armed ? `Send to ${liveSessionIds.length}` : 'Send'} <Kbd>⌘↵</Kbd>
+          {armed ? `Send to ${liveSessionIds.length}` : 'Send'} <Kbd>{CONFIRM_CHORD}</Kbd>
         </Button>
         {canBroadcast && (
           <button
@@ -81,14 +82,14 @@ export function SessionComposer({ taskId, liveSessionIds }: SessionComposerProps
             onClick={() => setBroadcast((on) => !on)}
             className={`flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-2xs font-medium transition-colors ${
               armed
-                ? 'bg-amber-400/20 text-amber-300 ring-1 ring-amber-400/70'
+                ? 'bg-warning/20 text-warning ring-1 ring-warning/70'
                 : 'text-muted-foreground hover:bg-white/[0.08] hover:text-foreground'
             }`}
           >
             <BroadcastIcon size={13} aria-hidden />
             <span>{armed ? 'Broadcasting' : 'Broadcast'}</span>
             {armed && (
-              <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
+              <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />
             )}
           </button>
         )}

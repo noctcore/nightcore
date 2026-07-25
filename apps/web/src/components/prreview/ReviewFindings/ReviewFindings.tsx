@@ -109,7 +109,7 @@ function CleanEmptyState({ message }: { message: string }) {
   return (
     <div
       className="flex flex-col items-center gap-2.5 rounded-[14px] border border-success/25 bg-success/[0.05] px-6 py-12 text-center"
-      style={{ animation: 'nc-rise .22s cubic-bezier(.22,1,.36,1)' }}
+      style={{ animation: 'nc-rise var(--nc-motion-base) var(--nc-ease-out-quint)' }}
     >
       <span className="flex h-11 w-11 items-center justify-center rounded-full bg-success/[0.12] text-success">
         <VerifiedIcon size={24} />
@@ -125,8 +125,8 @@ function CleanEmptyState({ message }: { message: string }) {
 function AllTriagedBanner() {
   return (
     <div
-      className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-[10px] border border-success/25 bg-success/[0.06] px-4 py-3"
-      style={{ animation: 'nc-rise .2s cubic-bezier(.22,1,.36,1)' }}
+      className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-nc border border-success/25 bg-success/[0.06] px-4 py-3"
+      style={{ animation: 'nc-rise var(--nc-motion-base) var(--nc-ease-out-quint)' }}
     >
       <CheckIcon size={15} className="shrink-0 text-success" />
       <span className="text-xs-plus font-semibold text-success">All findings triaged</span>

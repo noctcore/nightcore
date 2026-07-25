@@ -40,7 +40,7 @@ test('surfaces divergence — a round where replies differ is marked with its po
 
 test('marks an aligned round (identical replies) as no disagreement', async () => {
   const screen = render(<Aligned />);
-  await expect.element(screen.getByText('Aligned — no disagreement')).toBeInTheDocument();
+  await expect.element(screen.getByText('Aligned')).toBeInTheDocument();
 });
 
 test('shows an empty state when no broadcast has resolved yet', async () => {

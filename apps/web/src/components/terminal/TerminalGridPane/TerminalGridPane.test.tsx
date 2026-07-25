@@ -40,7 +40,7 @@ test('a zoomed pane shows Restore and drops the reorder grip', async () => {
   expect(screen.container.querySelector('[aria-label^="Reorder"]')).toBeNull();
 });
 
-test('a broadcasting pane shows the LOUD BCAST indicator + amber ring (round-2 PR B)', async () => {
+test('a broadcasting pane shows the LOUD BCAST indicator + warning ring (round-2 PR B)', async () => {
   const screen = render(<Broadcasting />);
   await expect.element(screen.getByText('BCAST')).toBeInTheDocument();
   await expect
@@ -48,7 +48,7 @@ test('a broadcasting pane shows the LOUD BCAST indicator + amber ring (round-2 P
     .toBeInTheDocument();
   // The receiving ring lands on the `data-session-id` pane root (an unmissable footgun cue).
   const root = screen.container.querySelector('[data-session-id]');
-  expect(root?.className).toContain('ring-amber-400/80');
+  expect(root?.className).toContain('ring-warning/80');
 });
 
 test('a non-broadcasting pane shows no BCAST indicator', async () => {

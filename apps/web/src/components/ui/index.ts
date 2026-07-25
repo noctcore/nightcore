@@ -24,7 +24,13 @@ export { ConfirmDialog } from './ConfirmDialog';
 export type { ConfirmDialogProps } from './ConfirmDialog/ConfirmDialog.types';
 export { ConfirmHint } from './ConfirmHint';
 export type { DetailCardGridProps, DetailCardProps } from './DetailCardGrid';
-export { DetailCard, DetailCardGrid, GridFullRow } from './DetailCardGrid';
+export {
+  DetailCard,
+  DetailCardGrid,
+  GridEmptyMessage,
+  GridFullRow,
+  SkeletonCard,
+} from './DetailCardGrid';
 export type { DetailPanelShellProps } from './DetailPanelShell';
 export { DetailLocation, DetailPanelShell, DetailSection } from './DetailPanelShell';
 export { EditProjectDialog } from './EditProjectDialog';
@@ -33,6 +39,8 @@ export type {
   EditProjectSaveArgs,
 } from './EditProjectDialog/EditProjectDialog.types';
 export { EmptyState } from './EmptyState';
+export type { EvidenceItem, EvidenceListProps } from './EvidenceList';
+export { EvidenceList } from './EvidenceList';
 export { FieldValue } from './FieldValue';
 export { FolderBrowserDialog } from './FolderBrowserDialog';
 export type { FolderBrowserDialogProps } from './FolderBrowserDialog/FolderBrowserDialog.types';
@@ -96,6 +104,7 @@ export type { NumberFieldProps } from './NumberField/NumberField.types';
 export { Pill } from './Pill';
 export type { PortableLockExportButtonProps } from './PortableLockExportButton';
 export { PortableLockExportButton } from './PortableLockExportButton';
+export { PrChecksLine, RefreshedAtLine } from './PrChecksLine';
 export { ProjectContextMenu } from './ProjectContextMenu';
 export type { ProjectContextMenuProps } from './ProjectContextMenu/ProjectContextMenu.types';
 export { ProjectIcon } from './ProjectIcon';
@@ -129,6 +138,8 @@ export {
 export { RepoLink } from './RepoLink';
 export type { RunLifecycleShellProps, RunPhase } from './RunLifecycleShell';
 export { RunLifecycleShell } from './RunLifecycleShell';
+export type { RunOutcomeNoticeProps } from './RunOutcomeNotice';
+export { RunOutcomeNotice } from './RunOutcomeNotice';
 export type {
   CategoryRunState,
   RunProgressCategory,
@@ -140,11 +151,14 @@ export type {
 export { RunProgress } from './RunProgress';
 export { RunUsageLine } from './RunUsageLine';
 export { ScanModeToggle, type ScanModeToggleProps } from './ScanModeToggle';
+export { SECTION_LABEL_CLASS, SectionLabel } from './SectionLabel';
 export { Segmented } from './Segmented';
 export type { SegmentedProps } from './Segmented/Segmented.types';
 export { Skeleton } from './Skeleton';
 export { Spinner } from './Spinner';
 export { StatusDot } from './StatusDot';
+export type { FieldLabelProps, TextFieldProps } from './TextField';
+export { FIELD_INPUT_CLASS, FieldLabel, TextField } from './TextField';
 export type { Toast, ToastApi, ToastTone } from './Toast';
 export { ToastProvider, useToast } from './Toast';
 export { Toggle } from './Toggle';
@@ -153,4 +167,6 @@ export { Toolbar } from './Toolbar';
 export type { ToolbarProps } from './Toolbar/Toolbar.types';
 export type { ToolbarOptionProps } from './ToolbarOption';
 export { ToolbarOption } from './ToolbarOption';
+export type { TooltipProps } from './Tooltip';
+export { Tooltip } from './Tooltip';
 export { UsageLimitBanner } from './UsageLimitBanner';

@@ -1,8 +1,9 @@
 /** Live per-category progress panel for the running screen. */
-import { formatCostUsd, formatElapsed } from '@/lib/formatters';
+import { formatCostUsd, formatElapsed, formatTokensCompact } from '@/lib/formatters';
 
 import { CheckIcon, ChevronRightIcon } from '../icons';
 import { fadeRise, m, stagger } from '../motion';
+import { SectionLabel } from '../SectionLabel';
 import { StatusDot } from '../StatusDot';
 import { useElapsedMs } from './RunProgress.hooks';
 import type {
@@ -22,13 +23,6 @@ const STATUS_META: Record<RunProgressStatus, { dot: string; label: string }> = {
  *  longer pending/running — whether it succeeded or errored. */
 function isFinished(state: CategoryRunState): boolean {
   return state === 'done' || state === 'error';
-}
-
-/** Format a token count compactly (e.g. `1.2k`, `34k`). */
-function formatTokens(n: number): string {
-  if (n >= 10000) return `${Math.round(n / 1000)}k`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return String(n);
 }
 
 /**
@@ -66,16 +60,14 @@ export function RunProgress({
   return (
     <section aria-label="Run progress" className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
-          Run progress
-        </span>
+        <SectionLabel>Run progress</SectionLabel>
         <span className="flex items-center gap-1.5 font-mono text-2xs text-muted-foreground">
           <StatusDot colorClass={statusMeta.dot} pulse={status === 'running'} />
           {statusMeta.label}
         </span>
       </div>
 
-      <div className="overflow-hidden rounded-[10px] border border-border bg-white/[0.015]">
+      <div className="overflow-hidden rounded-nc border border-border bg-white/[0.015]">
         {/* Header: overall bar + live readout. */}
         <div className="flex items-center gap-4 border-b border-border px-4 py-3 font-mono text-2xs text-muted-foreground">
           <div
@@ -91,7 +83,7 @@ export function RunProgress({
                 and clipped by the rounded container; the fill scales from the left.
                 The global reduced-motion guard still zeroes this CSS transition. */}
             <div
-              className="h-full w-full origin-left rounded-full bg-primary transition-transform duration-500 ease-out"
+              className="h-full w-full origin-left rounded-full bg-primary transition-transform duration-[var(--nc-motion-slower)] ease-[var(--nc-ease-out-quint)]"
               style={{ transform: `scaleX(${synthesizing ? 1 : pct / 100})` }}
             />
             {synthesizing && (
@@ -111,7 +103,8 @@ export function RunProgress({
             {synthesizing && <span className="sr-only"> · Synthesizing…</span>}
           </span>
           <span className="shrink-0 tabular-nums">
-            {formatCostUsd(costUsd)} · {formatTokens(totalTokens)} tok · {formatElapsed(elapsedMs)}
+            ≈ {formatCostUsd(costUsd)} · {formatTokensCompact(totalTokens)} tok ·{' '}
+            {formatElapsed(elapsedMs)}
           </span>
         </div>
 

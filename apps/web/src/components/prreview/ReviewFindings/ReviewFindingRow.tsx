@@ -42,6 +42,9 @@ export function ReviewCard({
         checked={selected}
         onChange={() => onToggleSelect(finding.id)}
         label="Include in review"
+        // The visible label is identical on every card, so the finding title
+        // rides as sr-only suffix — each checkbox announces uniquely.
+        srSuffix={finding.title}
         disabled={finding.status === 'dismissed'}
       />
       <DetailCard

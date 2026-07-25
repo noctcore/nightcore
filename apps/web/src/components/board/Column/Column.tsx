@@ -80,9 +80,15 @@ function ColumnImpl({
       </div>
       <div ref={setScrollRef} className="flex-1 overflow-auto px-3 pb-3">
         {tasks.length === 0 ? (
-          <p className="rounded-[11px] border border-dashed border-border px-3.5 py-6 text-center text-xs text-muted-foreground">
-            {emptyText}
-          </p>
+          // A string placeholder gets the dashed-text chrome; a node (the Backlog
+          // "Add a task" ghost button the board supplies) renders as-is.
+          typeof emptyText === 'string' ? (
+            <p className="rounded-[11px] border border-dashed border-border px-3.5 py-6 text-center text-xs text-muted-foreground">
+              {emptyText}
+            </p>
+          ) : (
+            emptyText
+          )
         ) : (
           <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
             {virtualizer.getVirtualItems().map((row) => {

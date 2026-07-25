@@ -33,6 +33,11 @@ vi.mock('../terminal-session-manager', () => ({
   searchPrevious: () => false,
   clearSearch: () => {},
   focusSession: () => {},
+  // Search-results + scroll seams: the find bar's match counter subscribes to the
+  // former; the jump-to-bottom chip subscribes to the latter (both no-ops here).
+  onSearchResults: () => undefined,
+  onSessionScroll: () => undefined,
+  scrollSessionToBottom: () => {},
   // Render-prefs seam (PR 3d): the view pushes font/scrollback to live terminals.
   applyRenderPrefs: () => {},
 }));

@@ -40,6 +40,7 @@ const meta = {
     onRequestPush: fn(),
     onReReview: fn(),
     onDismiss: fn(),
+    onTryAgain: fn(),
   },
 } satisfies Meta<typeof FixRunCard>;
 

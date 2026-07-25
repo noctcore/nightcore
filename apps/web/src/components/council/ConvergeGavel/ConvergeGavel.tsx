@@ -13,15 +13,18 @@
  * sibling loading/empty/error affordances.
  */
 import {
+  Badge,
   Button,
   CheckIcon,
   CloseIcon,
+  ConfirmDialog,
   ConfirmHint,
   Markdown,
   RefineIcon,
   VerifiedIcon,
 } from '@/components/ui';
 
+import { SEAT_ROLE_TONE } from '../council-roles';
 import { useConvergeGavel } from './ConvergeGavel.hooks';
 import type { ConvergeGavelProps } from './ConvergeGavel.types';
 
@@ -43,9 +46,9 @@ export function ConvergeGavel({
         className="shrink-0 border-t border-border bg-card/60 px-5 py-3"
       >
         <div className="flex items-center gap-2">
-          <VerifiedIcon size={15} className="text-emerald-400" aria-hidden />
+          <VerifiedIcon size={15} className="text-success" aria-hidden />
           <span className="text-sm-flat font-semibold text-foreground">
-            Verdict recorded — council closed
+            Verdict recorded
           </span>
         </div>
         <p className="mt-1 text-xs-plus text-muted-foreground">
@@ -87,7 +90,7 @@ export function ConvergeGavel({
                 return (
                   <label
                     key={position.seatId}
-                    className={`flex cursor-pointer flex-col gap-1 rounded-lg border px-3 py-2 transition-colors ${
+                    className={`flex cursor-pointer flex-col gap-1 rounded-nc border px-3 py-2 transition-colors ${
                       selected
                         ? 'border-primary bg-primary/[0.06]'
                         : 'border-border hover:border-primary/50'
@@ -106,9 +109,9 @@ export function ConvergeGavel({
                       <span className="truncate text-xs-plus font-medium text-foreground">
                         {position.seatId}
                       </span>
-                      <span className="ml-auto font-mono text-3xs uppercase text-muted-foreground">
+                      <Badge tone={SEAT_ROLE_TONE[position.role]} className="ml-auto capitalize">
                         {position.role}
-                      </span>
+                      </Badge>
                     </span>
                     <Markdown className="line-clamp-3 text-2xs text-muted-foreground">
                       {position.content}
@@ -139,7 +142,7 @@ export function ConvergeGavel({
               }}
               rows={2}
               placeholder="Required to enter your own ruling; optional context when you accept or reject."
-              className="w-full resize-none rounded-[10px] border border-border bg-black/20 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary disabled:opacity-50"
+              className="w-full resize-none rounded-nc border border-border bg-black/20 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-primary disabled:opacity-50"
             />
           </div>
 
@@ -150,24 +153,41 @@ export function ConvergeGavel({
           )}
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={gavel.accept} disabled={!gavel.canAccept || gavel.busy}>
-              <CheckIcon size={14} aria-hidden />
-              {gavel.busy ? 'Recording…' : 'Accept selected'}
+            <Button
+              busy={gavel.pending === 'accept'}
+              onClick={gavel.accept}
+              disabled={!gavel.canAccept || gavel.busy}
+            >
+              {gavel.pending !== 'accept' && <CheckIcon size={14} aria-hidden />}
+              {gavel.pending === 'accept' ? 'Recording…' : 'Accept selected'}
             </Button>
             <Button
               variant="secondary"
+              busy={gavel.pending === 'judge'}
               onClick={gavel.judge}
               disabled={!gavel.canJudge || gavel.busy}
             >
-              <RefineIcon size={14} aria-hidden />
+              {gavel.pending !== 'judge' && <RefineIcon size={14} aria-hidden />}
               Enter my ruling
             </Button>
-            <Button variant="danger" onClick={gavel.reject} disabled={gavel.busy}>
+            <Button variant="danger" onClick={gavel.requestReject} disabled={gavel.busy}>
               <CloseIcon size={14} aria-hidden />
               Reject all
             </Button>
             <ConfirmHint>to submit</ConfirmHint>
           </div>
+
+          {/* Rejecting closes the run for good, so it is guarded (GOV-9). */}
+          <ConfirmDialog
+            open={gavel.rejectConfirmOpen}
+            title="Reject every position?"
+            message="This permanently closes the council, rejecting every seat's position with no adopted outcome."
+            confirmLabel="Reject and close"
+            destructive
+            busy={gavel.pending === 'reject'}
+            onConfirm={gavel.confirmReject}
+            onCancel={gavel.closeRejectConfirm}
+          />
         </>
       )}
     </section>

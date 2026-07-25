@@ -1,5 +1,5 @@
 /** Lazy Shiki highlighter singleton and the hook that drives CodeBlock. */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createHighlighterCore, type HighlighterCore } from 'shiki/core';
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
 import bash from 'shiki/langs/bash.mjs';
@@ -97,6 +97,37 @@ export function isHighlightable(code: string): boolean {
  * flash. Re-runs only when `code`/`language` change; `code` is a primitive string,
  * so an unchanged value never re-highlights even if the parent re-renders.
  */
+/** How long the copy button shows its "copied" check before reverting, in ms. */
+const COPIED_FEEDBACK_MS = 1500;
+
+/**
+ * Copy `text` to the clipboard and flip a transient `copied` flag for ~1.5s so the
+ * button can swap its copy glyph for a check. The clipboard write is best-effort —
+ * a denied permission / insecure context rejects silently and the feedback still
+ * fires. Any pending revert timer is cleared on unmount.
+ */
+export function useCopyFeedback(text: string): { copied: boolean; copy: () => void } {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timer.current !== null) clearTimeout(timer.current);
+    };
+  }, []);
+
+  const copy = () => {
+    navigator.clipboard?.writeText(text).catch(() => {
+      // Nothing actionable — keep the check feedback so the affordance isn't dead.
+    });
+    setCopied(true);
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
+  };
+
+  return { copied, copy };
+}
+
 export function useHighlightedHtml(code: string, language: string | undefined): string | null {
   const [html, setHtml] = useState<string | null>(null);
 

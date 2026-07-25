@@ -44,14 +44,14 @@ test('Cancel invokes onClose', async () => {
 test('shows the amber data-loss warning when files are uncommitted', async () => {
   const screen = render(<WithUncommittedChanges />);
   await expect
-    .element(screen.getByText(/3 uncommitted file\(s\) will be lost\./i))
+    .element(screen.getByText(/3 uncommitted files will be lost\./i))
     .toBeInTheDocument();
 });
 
 test('warns when live terminal sessions are open in the worktree', async () => {
   const screen = render(<WithTerminalSessions />);
   await expect
-    .element(screen.getByText(/2 terminal session\(s\) open in this worktree will be closed\./i))
+    .element(screen.getByText(/2 terminal sessions open in this worktree will be closed\./i))
     .toBeInTheDocument();
 });
 

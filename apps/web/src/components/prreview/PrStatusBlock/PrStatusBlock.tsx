@@ -8,16 +8,25 @@
  *  `@/lib/pr-status`. */
 import { useId } from 'react';
 
-import { BranchIcon, MergeIcon, RefactorIcon, RetryIcon, Spinner } from '@/components/ui';
+import {
+  BranchIcon,
+  MergeIcon,
+  PrChecksLine,
+  RefactorIcon,
+  RefreshedAtLine,
+  RetryIcon,
+  Spinner,
+} from '@/components/ui';
 import {
   checksSummary,
   mergeReadiness,
   mergeStateLine,
   prStateBadge,
+  prStatusFallbackMessage,
   reviewDecisionBadge,
 } from '@/lib/pr-status';
 
-import { formatRefreshedAt, usePrStatusByNumber } from './PrStatusBlock.hooks';
+import { usePrStatusByNumber } from './PrStatusBlock.hooks';
 import type { PrStatusBlockProps } from './PrStatusBlock.types';
 
 /** Shared chip classes for the state/review badges (tone comes from the mapper). */
@@ -129,18 +138,7 @@ export function PrStatusBlock({
           )}
           {checks !== null && (
             <div className="flex flex-wrap items-center gap-2">
-              <p className="font-mono text-2xs-plus text-muted-foreground">
-                Checks:{' '}
-                <span className="text-success">{checks.passed} passed</span>
-                {' · '}
-                <span className={checks.failed > 0 ? 'text-destructive' : undefined}>
-                  {checks.failed} failed
-                </span>
-                {' · '}
-                <span className={checks.pending > 0 ? 'text-warning' : undefined}>
-                  {checks.pending} pending
-                </span>
-              </p>
+              <PrChecksLine checks={checks} label="Checks:" className="text-2xs-plus" />
               {showFixCi && (
                 <button
                   type="button"
@@ -161,13 +159,7 @@ export function PrStatusBlock({
         </div>
       ) : (
         <p className="text-xs-plus text-muted-foreground">
-          {view.fetching
-            ? 'Fetching PR status…'
-            : view.unavailable
-              ? 'PR status is unavailable in the browser preview.'
-              : view.error !== null
-                ? 'PR status failed to load.'
-                : 'PR status not loaded yet.'}
+          {prStatusFallbackMessage(view)}
         </p>
       )}
 
@@ -177,9 +169,7 @@ export function PrStatusBlock({
         </p>
       )}
       {view.refreshedAt !== null && (
-        <p className="text-3xs-plus text-muted-foreground/70">
-          Refreshed {formatRefreshedAt(view.refreshedAt)}
-        </p>
+        <RefreshedAtLine refreshedAt={view.refreshedAt} />
       )}
     </section>
   );

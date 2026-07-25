@@ -1,8 +1,9 @@
 /** A presentational branch combobox: type to filter, arrow/Enter to pick, with an
  *  optional "create" affordance for branches that don't exist yet. */
 import { BranchIcon, PlusIcon } from '../icons';
+import { SectionLabel } from '../SectionLabel';
 import { useBranchPicker } from './BranchPicker.hooks';
-import { BranchOptionRow, SectionLabel } from './BranchPicker.parts';
+import { BranchOptionRow } from './BranchPicker.parts';
 import type { BranchPickerProps } from './BranchPicker.types';
 
 /** Choose or name a git branch. The current branch name is fully controlled and
@@ -28,7 +29,7 @@ export function BranchPicker({
   return (
     <div className="relative" onBlur={v.onContainerBlur}>
       <div
-        className={`nc-focus-ring-host flex items-center gap-2 rounded-[10px] border bg-black/20 px-3 transition-colors focus-within:border-primary ${
+        className={`nc-focus-ring-host flex items-center gap-2 rounded-nc border bg-black/20 px-3 transition-colors focus-within:border-primary ${
           disabled ? 'border-border opacity-60' : 'border-border'
         }`}
       >
@@ -58,12 +59,11 @@ export function BranchPicker({
           role="listbox"
           id={v.listboxId}
           aria-label={label}
-          className="absolute top-full z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-[10px] border border-border bg-popover p-1 shadow-2xl"
-          style={{ animation: 'nc-rise .14s cubic-bezier(.22,1,.36,1)' }}
+          className="nc-popover-rise absolute top-full z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-nc border border-border bg-popover p-1 shadow-2xl"
         >
           {v.localRows.length > 0 && (
             <div role="group" aria-label="Local branches">
-              <SectionLabel>Local</SectionLabel>
+              <SectionLabel className="block px-2 pb-0.5 pt-1.5">Local</SectionLabel>
               {v.localRows.map((row) => (
                 <BranchOptionRow
                   key={row.branch.name}
@@ -78,7 +78,7 @@ export function BranchPicker({
 
           {v.remoteRows.length > 0 && (
             <div role="group" aria-label="Remote branches">
-              <SectionLabel>Remote</SectionLabel>
+              <SectionLabel className="block px-2 pb-0.5 pt-1.5">Remote</SectionLabel>
               {v.remoteRows.map((row) => (
                 <BranchOptionRow
                   key={row.branch.name}

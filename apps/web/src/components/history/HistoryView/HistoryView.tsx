@@ -2,7 +2,7 @@
  *  Harness run for the active project, newest first. A row click opens that run
  *  on its owning stage (Understand / Enforce). Renders purely from the
  *  {@link useAllScanRuns} merge hook — a thin shell over {@link HistoryList}. */
-import { Button, HistoryIcon, RetryIcon } from '@/components/ui';
+import { Button, HistoryIcon, RetryIcon, Spinner } from '@/components/ui';
 
 import { useAllScanRuns } from './HistoryView.hooks';
 import { HistoryList } from './HistoryView.parts';
@@ -22,7 +22,7 @@ export function HistoryView({ projectPath, onOpenRun }: HistoryViewProps) {
           Every scan run for this project — click one to reopen it.
         </span>
         <Button variant="ghost" onClick={refresh} disabled={loading}>
-          <RetryIcon size={14} />
+          {loading ? <Spinner size={14} /> : <RetryIcon size={14} />}
           Refresh
         </Button>
       </div>

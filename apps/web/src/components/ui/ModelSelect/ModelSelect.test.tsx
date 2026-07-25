@@ -230,6 +230,26 @@ test('picking an effort keeps the current model in the value object', async () =
   );
 });
 
+test('the effort radiogroup is a single tab stop that roves + selects with arrows', async () => {
+  const onChange = vi.fn();
+  const screen = render(
+    <ModelSelect
+      value={{ model: 'claude-sonnet-4-6', effort: null, providerId: 'claude' }}
+      onChange={onChange}
+      catalog={READY}
+    />,
+  );
+  const efforts = screen.getByRole('radiogroup', { name: /reasoning effort/i });
+  const inherit = efforts.getByRole('radio', { name: 'Inherit' });
+  // effort=null ⇒ Inherit is the selected chip and the sole roving tab stop.
+  await expect.element(inherit).toHaveAttribute('tabindex', '0');
+  (inherit.element() as HTMLElement).focus();
+  await userEvent.keyboard('{ArrowRight}');
+  // Arrow moves focus off Inherit onto the next chip AND activates it (pins a real effort).
+  const picked = onChange.mock.lastCall?.[0] as { effort: string | null };
+  expect(picked.effort).not.toBeNull();
+});
+
 test('a disabled control is disabled and stays collapsed', async () => {
   const screen = render(
     <ModelSelect

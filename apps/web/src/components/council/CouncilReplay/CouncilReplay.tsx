@@ -6,7 +6,7 @@
  * cursor only walks recorded entries). The interactive judging surface (the gavel) and
  * the kill switch are deliberately absent — a replay observes, it does not act.
  */
-import { Button, CloseIcon, HistoryIcon, PlayIcon, RefreshIcon, StopIcon } from '@/components/ui';
+import { Button, CloseIcon, HistoryIcon, PauseIcon, PlayIcon, RefreshIcon } from '@/components/ui';
 
 import { SeatCanvas } from '../SeatCanvas';
 import { TeamChat } from '../TeamChat';
@@ -35,7 +35,7 @@ export function CouncilReplay({ transcript, onExit }: CouncilReplayProps) {
             aria-label={replay.playing ? 'Pause replay' : 'Play replay'}
           >
             {replay.playing ? (
-              <StopIcon size={13} aria-hidden />
+              <PauseIcon size={13} aria-hidden />
             ) : (
               <PlayIcon size={13} aria-hidden />
             )}

@@ -1,6 +1,8 @@
 /** Centered placeholder for empty or failed data states. */
 import type { ReactNode } from 'react';
 
+import { IconTile } from '../IconTile';
+
 /** Props for {@link EmptyState}. */
 interface EmptyStateProps {
   icon?: ReactNode;
@@ -24,9 +26,9 @@ export function EmptyState({
       className={`flex h-full flex-col items-center justify-center gap-1.5 px-6 text-center ${className ?? ''}`}
     >
       {icon !== undefined && (
-        <div className="mb-2 flex h-[68px] w-[68px] items-center justify-center rounded-[18px] bg-primary/10 text-primary">
+        <IconTile size="xl" className="mb-2">
           {icon}
-        </div>
+        </IconTile>
       )}
       <p className="text-lg font-semibold tracking-tight">{title}</p>
       {description !== undefined && (

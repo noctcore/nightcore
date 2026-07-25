@@ -1,4 +1,4 @@
-import { Card, Skeleton } from '@/components/ui';
+import { Card, GridEmptyMessage, SkeletonCard } from '@/components/ui';
 
 import { PROPOSAL_KIND_META } from '../harness.constants';
 import type { HarnessProposalVM } from '../harness.types';
@@ -29,7 +29,7 @@ function ProposalCard({
         </span>
         {proposal.status === 'converted' && (
           <span className="ml-auto rounded-md bg-success/[0.12] px-1.5 py-0.5 font-mono text-3xs font-semibold text-success">
-            converted
+            task
           </span>
         )}
         {proposal.status === 'applied' && (
@@ -64,30 +64,23 @@ function ProposalCard({
           </span>
         )}
         {proposal.verifyCommand !== null && (
-          <span className="rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono">
+          <span
+            className="max-w-full truncate rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono"
+            title={proposal.verifyCommand}
+          >
             verify: {proposal.verifyCommand}
           </span>
         )}
         {proposal.harnessCheck !== null && (
-          <span className="rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono">
-            arms: {proposal.harnessCheck.command}
+          <span
+            className="max-w-full truncate rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono"
+            title={proposal.harnessCheck.command}
+          >
+            check: {proposal.harnessCheck.command}
           </span>
         )}
       </div>
     </Card>
-  );
-}
-
-function SkeletonCard() {
-  return (
-    <div className="flex flex-col gap-2 rounded-[10px] border border-border bg-white/[0.02] p-3.5">
-      <div className="flex items-center gap-2">
-        <Skeleton className="h-4 w-24" />
-      </div>
-      <Skeleton className="h-4 w-2/3" />
-      <Skeleton className="h-3 w-full" />
-      <Skeleton className="h-3 w-1/2" />
-    </div>
   );
 }
 
@@ -113,13 +106,7 @@ export function TaskProposalList({
         </div>
       );
     }
-    return (
-      <div className="flex flex-1 items-center justify-center px-6 py-16">
-        <p className="max-w-md text-center text-sm text-muted-foreground">
-          {emptyMessage}
-        </p>
-      </div>
-    );
+    return <GridEmptyMessage message={emptyMessage} />;
   }
 
   return (

@@ -48,6 +48,7 @@ export function DetailCard({
 
       {location != null && (
         <code
+          title={location ?? undefined}
           className={`truncate font-mono text-2xs ${dimmed ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}
         >
           {location}

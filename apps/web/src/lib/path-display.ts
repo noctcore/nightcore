@@ -32,3 +32,15 @@ export function pathLeaf(path: string): string {
   const parts = pretty.split(/[/\\]+/).filter((seg) => seg.length > 0);
   return parts[parts.length - 1] ?? pretty;
 }
+
+/** Split a (display) path into a truncatable directory prefix and its
+ *  always-visible leaf (filename). For leaf-preserving display: render `dir` in a
+ *  `truncate` span and `leaf` in a `shrink-0` span, so a long path clips its middle
+ *  directories instead of the filename. Windows verbatim prefixes are stripped
+ *  first (via {@link displayPath}). `dir` includes the trailing separator; it is
+ *  empty when the path has no separators. */
+export function splitPathLeaf(path: string): { dir: string; leaf: string } {
+  const pretty = displayPath(path);
+  const leaf = pathLeaf(path);
+  return { dir: pretty.slice(0, pretty.length - leaf.length), leaf };
+}

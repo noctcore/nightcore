@@ -10,9 +10,9 @@ import { useId } from 'react';
 import {
   Button,
   CheckIcon,
-  chipClass,
   GithubIcon,
   HistoryIcon,
+  LensChipGrid,
   Menu,
   ModelSelectField,
   MoveIcon,
@@ -43,6 +43,14 @@ import type { ReviewSectionProps } from './ReviewSection.types';
 
 /** The three post-review verdict buttons, in display order. */
 const VERDICTS: ReviewVerdict[] = ['approve', 'request-changes', 'comment'];
+
+/** The lens chip vocabulary for the config grid — stable module identity, fed to
+ *  the shared {@link LensChipGrid} (the row this primitive was hoisted for). */
+const LENS_CHIPS = ALL_LENSES.map((lens) => ({
+  key: lens,
+  label: LENS_META[lens].label,
+  icon: LENS_META[lens].icon,
+}));
 
 export function ReviewSection({
   prNumber,
@@ -103,7 +111,7 @@ export function ReviewSection({
 
       {/* Past-run affordance: the displayed stream is a history selection. */}
       {history.viewingPastRun && (
-        <div className="flex items-center gap-3 rounded-[10px] border border-primary/40 bg-primary/[0.06] px-4 py-2 text-xs-plus text-muted-foreground">
+        <div className="flex items-center gap-3 rounded-nc border border-primary/40 bg-primary/[0.06] px-4 py-2 text-xs-plus text-muted-foreground">
           <HistoryIcon size={14} className="shrink-0 text-primary" />
           Viewing a past review run.
           <button
@@ -121,54 +129,20 @@ export function ReviewSection({
           {configure.startError !== null && (
             <p
               role="alert"
-              className="rounded-[10px] border border-destructive/40 bg-destructive/[0.1] px-4 py-2 text-xs-plus text-destructive"
+              className="rounded-nc border border-destructive/40 bg-destructive/[0.1] px-4 py-2 text-xs-plus text-destructive"
             >
               {configure.startError}
             </p>
           )}
 
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
-                Lenses ({lensCount}/{ALL_LENSES.length})
-              </span>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={config.selectAll}
-                  className="text-2xs font-medium text-muted-foreground hover:text-foreground"
-                >
-                  All
-                </button>
-                <button
-                  type="button"
-                  onClick={config.selectNone}
-                  className="text-2xs font-medium text-muted-foreground hover:text-foreground"
-                >
-                  None
-                </button>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {ALL_LENSES.map((lens) => {
-                const Meta = LENS_META[lens];
-                const Icon = Meta.icon;
-                const on = config.selected.has(lens);
-                return (
-                  <button
-                    key={lens}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => config.toggle(lens)}
-                    className={`inline-flex items-center gap-1.5 ${chipClass(on)}`}
-                  >
-                    <Icon size={13} />
-                    {Meta.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <LensChipGrid
+            heading={`Lenses (${lensCount}/${ALL_LENSES.length})`}
+            chips={LENS_CHIPS}
+            selected={config.selected}
+            onToggle={config.toggle}
+            onSelectAll={config.selectAll}
+            onSelectNone={config.selectNone}
+          />
 
           <ModelSelectField
             value={{
@@ -207,8 +181,8 @@ export function ReviewSection({
             </div>
             <p className="text-xs-flat text-muted-foreground">
               Reviews the PR diff across {lensCount}{' '}
-              {lensCount === 1 ? 'lens' : 'lenses'} — no checkout, read-only ·
-              ~{PROVIDER_LABEL} {config.model ?? 'default'}.
+              {lensCount === 1 ? 'lens' : 'lenses'}. Read-only, no checkout ·{' '}
+              {PROVIDER_LABEL} {config.model ?? 'default'}.
             </p>
           </div>
         </div>
@@ -240,12 +214,12 @@ export function ReviewSection({
         <div className="flex flex-col gap-3">
           {stream.status === 'failed' &&
             (stream.failureReason === 'aborted' ? (
-              <div className="rounded-[10px] border border-border bg-white/[0.02] px-4 py-3 text-xs-plus text-muted-foreground">
+              <div className="rounded-nc border border-border bg-white/[0.02] px-4 py-3 text-xs-plus text-muted-foreground">
                 Review cancelled. Any findings gathered before you stopped are
                 shown below.
               </div>
             ) : (
-              <div className="rounded-[10px] border border-destructive/40 bg-destructive/[0.08] px-4 py-3 text-xs-plus text-destructive">
+              <div className="rounded-nc border border-destructive/40 bg-destructive/[0.08] px-4 py-3 text-xs-plus text-destructive">
                 {stream.error ?? 'Review failed.'}
               </div>
             ))}
@@ -274,7 +248,11 @@ export function ReviewSection({
               <Button
                 aria-busy={toolbar.bulkConverting}
                 aria-disabled={toolbar.openCount === 0 || toolbar.bulkConverting}
-                onClick={toolbar.onConvertAll}
+                onClick={() => {
+                  if (toolbar.openCount > 0 && !toolbar.bulkConverting) {
+                    toolbar.onConvertAll();
+                  }
+                }}
                 variant="secondary"
                 className={
                   toolbar.openCount === 0 || toolbar.bulkConverting
@@ -339,7 +317,7 @@ export function ReviewSection({
                   <span
                     role="status"
                     className="inline-flex items-center gap-1.5 rounded-full border border-success/40 bg-success/[0.1] px-2.5 py-1 text-2xs-plus font-medium text-success"
-                    style={{ animation: 'nc-rise .18s cubic-bezier(.22,1,.36,1)' }}
+                    style={{ animation: 'nc-rise var(--nc-motion-fast) var(--nc-ease-out-quint)' }}
                   >
                     <CheckIcon size={13} />
                     Posted {toolbar.postedFeedback}{' '}

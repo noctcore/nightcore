@@ -1,5 +1,6 @@
 import {
   AnimatePresence,
+  CheckIcon,
   ChevronDownIcon,
   IconTile,
   m,
@@ -11,16 +12,18 @@ import {
 } from '@/components/ui';
 import { useProjectIconProps } from '@/components/ui/ProjectIcon/ProjectIcon.hooks';
 
+import { useSwitcherDismiss } from './SidebarUnified.hooks';
 import type { ProjectSwitcherRowProps, SidebarUnifiedProps } from './SidebarUnified.types';
 
-function ProjectSwitcherRow({ project, onPick, onEdit, onRemove }: ProjectSwitcherRowProps) {
+function ProjectSwitcherRow({ project, active, onPick, onEdit, onRemove }: ProjectSwitcherRowProps) {
   const iconProps = useProjectIconProps(project);
   return (
     <ProjectContextMenu onEdit={onEdit} onRemove={onRemove}>
       <button
         type="button"
         onClick={onPick}
-        className="group/path-trigger flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-white/[0.04]"
+        aria-current={active ? 'true' : undefined}
+        className={`group/path-trigger flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-white/[0.04] ${active ? 'bg-primary/[0.08]' : ''}`}
       >
         <IconTile size="sm" className="h-[22px] w-[22px] rounded-md">
           <ProjectIcon {...iconProps} size={14} />
@@ -33,6 +36,7 @@ function ProjectSwitcherRow({ project, onPick, onEdit, onRemove }: ProjectSwitch
             className="font-mono text-4xs-plus text-muted-foreground"
           />
         </span>
+        {active && <CheckIcon size={14} className="shrink-0 text-primary" />}
       </button>
     </ProjectContextMenu>
   );
@@ -45,15 +49,17 @@ export function SidebarUnified({ switcher, collapsed }: SidebarUnifiedProps) {
     active,
     switcherOpen,
     onToggleSwitcher,
+    onCloseSwitcher,
     onPickProject,
     onNewProject,
     onEditProject,
     onRemoveProject,
   } = switcher;
   const activeIcon = useProjectIconProps(active ?? { id: '', icon: null, customIconPath: null });
+  const rootRef = useSwitcherDismiss(switcherOpen, onCloseSwitcher);
 
   return (
-    <div className="relative px-3 pb-0 pt-2">
+    <div ref={rootRef} className="relative px-3 pb-0 pt-2">
       <ProjectContextMenu
         onEdit={() => active && onEditProject(active)}
         onRemove={active === null ? undefined : () => onRemoveProject(active.id)}
@@ -108,6 +114,7 @@ export function SidebarUnified({ switcher, collapsed }: SidebarUnifiedProps) {
               <ProjectSwitcherRow
                 key={p.id}
                 project={p}
+                active={p.id === active?.id}
                 onPick={() => onPickProject(p.id)}
                 onEdit={() => onEditProject(p)}
                 onRemove={() => onRemoveProject(p.id)}

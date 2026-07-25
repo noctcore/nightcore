@@ -14,6 +14,7 @@ import {
   Toolbar,
   ToolbarOption,
 } from '@/components/ui';
+import { pluralize } from '@/lib/formatters';
 import { useWorktreesContext } from '@/lib/worktrees-context';
 
 import { AutoModeOptions } from '../AutoModeOptions';
@@ -71,7 +72,7 @@ export function BoardHeader({
             <div className="flex items-center gap-2.5">
               <h1 className="text-[21px] font-semibold tracking-tight">Kanban Board</h1>
               <span className="rounded-md border border-border bg-white/[0.04] px-2 py-0.5 font-mono text-2xs text-muted-foreground">
-                {taskCount} tasks
+                {pluralize(taskCount, 'task')}
               </span>
             </div>
             <div className="mt-1.5 flex items-center gap-2 font-mono text-2xs-plus text-muted-foreground">
@@ -89,7 +90,7 @@ export function BoardHeader({
           <Toolbar label="Board actions" className="ml-auto">
             <div
               title="Max parallel runs"
-              className="flex shrink-0 items-center gap-2.5 rounded-[9px] border border-border bg-white/[0.02] px-3 py-1.5"
+              className="flex shrink-0 items-center gap-2.5 rounded-nc border border-border bg-white/[0.02] px-3 py-1.5"
             >
               <AgentsIcon size={15} className="text-muted-foreground" />
               <input
@@ -132,15 +133,13 @@ export function BoardHeader({
             >
               <RefreshIcon size={15} className="text-muted-foreground" />
             </IconButton>
-            <button
-              type="button"
+            <IconButton
+              label="Board background settings"
               onClick={bgPanel.show}
-              title="Customize the board background"
-              aria-label="Board background settings"
-              className="flex items-center justify-center rounded-[9px] border border-border bg-white/[0.02] p-2 text-foreground transition-colors hover:border-white/20"
+              className="border border-border bg-white/[0.02] p-2 hover:border-white/20"
             >
               <ImageIcon size={15} className="text-muted-foreground" />
-            </button>
+            </IconButton>
             <Button
               variant="secondary"
               onClick={inspector.show}
@@ -158,7 +157,7 @@ export function BoardHeader({
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <div className="nc-focus-ring-host flex min-w-[220px] max-w-[420px] flex-1 items-center gap-2.5 rounded-[9px] border border-border bg-white/[0.02] px-3 py-2">
+          <div className="nc-focus-ring-host flex min-w-[220px] max-w-[420px] flex-1 items-center gap-2.5 rounded-nc border border-border bg-white/[0.02] px-3 py-2">
             <SearchIcon size={15} className="text-muted-foreground" />
             <input
               id={BOARD_SEARCH_INPUT_ID}

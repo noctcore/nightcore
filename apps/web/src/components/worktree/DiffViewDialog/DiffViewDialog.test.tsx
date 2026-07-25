@@ -29,8 +29,10 @@ const BOARD_PATH = 'apps/web/src/components/board/Board/Board.tsx';
 
 test('lists the changed file paths', async () => {
   const screen = render(<Default />);
-  await expect.element(screen.getByText(BOARD_PATH)).toBeInTheDocument();
-  await expect.element(screen.getByText('scratch/notes.md')).toBeInTheDocument();
+  // The path is split into a truncatable dir prefix and an always-visible leaf, so
+  // the full path lives on the row's title rather than in one text node.
+  await expect.element(screen.getByTitle(BOARD_PATH)).toBeInTheDocument();
+  await expect.element(screen.getByTitle('scratch/notes.md')).toBeInTheDocument();
 });
 
 test('shows the diff summary line', async () => {

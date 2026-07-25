@@ -133,6 +133,9 @@ export function buildReviewSectionProps({
               // RunConfig survives runs and PR switches).
               onReReview: navigation.onReview,
               onDismiss: () => fixes.dismiss(prFix.id),
+              // A failed fix's "Try again" re-arms the address human gate (the
+              // ConfirmDialog reopens) — same path as the toolbar's Address button.
+              onTryAgain: gates.requestAddress,
             },
       timeline: position.timeline,
       // The review-position layer for the displayed run (ReviewPosition

@@ -17,6 +17,8 @@ import type { TerminalSearchBarProps } from './TerminalSearchBar.types';
 export function TerminalSearchBar({
   query,
   noMatch,
+  resultIndex,
+  resultCount,
   onQueryChange,
   onNext,
   onPrev,
@@ -42,6 +44,16 @@ export function TerminalSearchBar({
           noMatch ? 'text-destructive' : 'text-foreground'
         }`}
       />
+      {query !== '' && (
+        <span
+          aria-live="polite"
+          className={`shrink-0 px-0.5 text-3xs tabular-nums ${
+            noMatch ? 'text-destructive' : 'text-muted-foreground'
+          }`}
+        >
+          {resultCount === 0 ? 0 : resultIndex + 1}/{resultCount}
+        </span>
+      )}
       <IconButton label="Previous match (Shift+Enter)" onClick={onPrev} className="shrink-0">
         <ChevronLeftIcon size={13} />
       </IconButton>

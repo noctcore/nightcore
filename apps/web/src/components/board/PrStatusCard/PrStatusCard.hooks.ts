@@ -15,8 +15,10 @@ import { prStatus } from '@/lib/bridge';
 export type { PrBadge } from '@/lib/pr-status';
 export {
   checksSummary,
+  formatRefreshedAt,
   mergeStateLine,
   prStateBadge,
+  prStatusFallbackMessage,
   reviewDecisionBadge,
 } from '@/lib/pr-status';
 
@@ -258,9 +260,4 @@ export function pullBaseLine(status: PrStatus, task: Task): string {
     return `Fast-forward-only pull of ${taskBase} (the task's recorded base) on the project root — note: GitHub reports the PR's base as ${serverBase}.`;
   }
   return `Fast-forward-only pull of ${taskBase} on the project root.`;
-}
-
-/** Format the web-side receive timestamp for the "Refreshed …" footer line. */
-export function formatRefreshedAt(ts: number): string {
-  return new Date(ts).toLocaleTimeString();
 }

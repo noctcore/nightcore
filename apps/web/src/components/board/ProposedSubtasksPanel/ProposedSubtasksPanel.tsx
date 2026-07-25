@@ -30,7 +30,7 @@ export function ProposedSubtasksPanel({
   if (total === 0) {
     const reason = error !== null && error.trim().length > 0 ? error : null;
     return (
-      <div className="rounded-md border border-border bg-white/[0.02] px-3 py-2.5">
+      <div className="rounded-nc border border-border bg-white/[0.02] px-3 py-2.5">
         <p className="text-xs-plus2 text-foreground/90">
           Decompose produced no convertible sub-tasks.
         </p>
@@ -70,7 +70,7 @@ export function ProposedSubtasksPanel({
           return (
             <li
               key={sub.id}
-              className="rounded-md border border-border bg-white/[0.02] px-3 py-2"
+              className="rounded-nc border border-border bg-white/[0.02] px-3 py-2"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
