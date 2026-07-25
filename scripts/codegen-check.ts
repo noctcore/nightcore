@@ -10,10 +10,13 @@
  * The legs, in order:
  *   1. zod → Rust contracts — `gen-rust-contracts.ts --check` regenerates `generated.rs` +
  *      `fixtures.json` in memory and diffs (the same gate lint-meta's `codegen-drift` runs).
- *   2. TS codegen canaries + cross-boundary conformance — the `tools/codegen` unit tests
+ *   2. engine → web capabilities — `gen-web-capabilities.ts --check` diffs the web's
+ *      synchronous Claude default against the engine descriptor it is generated from
+ *      (issue #158). Cheap and TS-side, so it sits beside leg 1.
+ *   3. TS codegen canaries + cross-boundary conformance — the `tools/codegen` unit tests
  *      (ENUM_NAMES injectivity, number-type drift, channel determinism) and
  *      `codegen-conformance.test.ts` (ts-rs ⇄ zod field-set + round-trip).
- *   3. Rust → web ts-rs bindings + contract parity — `cargo test` regenerates the ts-rs
+ *   4. Rust → web ts-rs bindings + contract parity — `cargo test` regenerates the ts-rs
  *      bindings under `apps/web/src/lib/generated` as a side effect and runs the contract
  *      round-trip / variant-parity tests; a `git diff --exit-code` then fails on any
  *      un-committed binding drift. Scoped to the `bindings` + `contracts` tests (NOT full
@@ -37,7 +40,13 @@ function step(label: string, cmd: string): void {
 // 1. zod → Rust: generated.rs + fixtures.json.
 step('zod → Rust contracts drift', 'bun run codegen:contracts --check');
 
-// 2. TS codegen canaries + cross-boundary conformance.
+// 2. engine → web Claude capability default.
+step(
+  'engine → web capabilities drift',
+  'bun run codegen:capabilities --check',
+);
+
+// 3. TS codegen canaries + cross-boundary conformance.
 step(
   'TS codegen canaries + conformance',
   'bun test tools/codegen packages/contracts/src/codegen-conformance.test.ts',

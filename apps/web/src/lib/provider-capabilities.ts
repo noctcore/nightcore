@@ -1,36 +1,27 @@
 import type { ProviderCapabilities, ProviderId } from '@nightcore/contracts';
 
+import { CLAUDE_CAPABILITIES } from './provider-capabilities.generated';
+
 /**
- * The static Claude capability descriptor — the ONLY hand-written provider matrix
- * left in the web tree, kept deliberately: Claude is the safe fail-open default (the
- * web degrades to it outside Tauri and when a live capability read fails), and it
- * seeds the cache below so `capabilitiesForProvider('claude', …)` always resolves
- * synchronously. Every OTHER provider's descriptor is fetched over the wire
- * (`get_capabilities({ providerId })`) and cached — the engine descriptor
+ * The static Claude capability descriptor — the web's safe fail-open default. Claude
+ * is what the web degrades to outside Tauri and when a live capability read fails,
+ * and it must resolve SYNCHRONOUSLY so `capabilitiesForProvider('claude', …)` never
+ * returns the transient `null` every wire-fetched provider can. Every OTHER
+ * provider's descriptor is fetched over the wire (`get_capabilities({ providerId })`)
+ * and cached — the engine descriptor
  * (`packages/engine/src/providers/<id>/capabilities.ts`) is the single source of
  * truth, so there is no hand-mirrored Codex constant to drift (issue #296 item 6).
+ *
+ * This one used to be hand-written — the last hand-maintained provider matrix in the
+ * web tree, and a standing drift hazard against the engine descriptor it copies.
+ * It is now GENERATED from that descriptor by `bun run codegen:capabilities`
+ * (`tools/codegen/gen-web-capabilities.ts`), with `codegen:check` failing on drift.
+ * A parity *test* can't reach the engine from here — `apps/web` importing
+ * `packages/engine` is lint-forbidden — but codegen runs in `tools/`, where that
+ * import is legal, and emits plain data. So the synchronous default is kept AND
+ * drift becomes structurally impossible (issue #158, T17 contract debt).
  */
-export const CLAUDE_CAPABILITIES: ProviderCapabilities = {
-  id: 'claude',
-  label: 'Claude',
-  autonomyLevels: ['bypass', 'auto-accept', 'ask', 'plan'],
-  supportsHooks: true,
-  providesOwnWriteContainment: false,
-  supportsHarnessPolicy: true,
-  supportsLedger: true,
-  supportsMcp: true,
-  supportsPlanMode: true,
-  supportsStructuredOutput: true,
-  supportsSessionResume: true,
-  supportsFileCheckpointing: true,
-  supportsAskUserQuestion: true,
-  supportsSettingSources: true,
-  supportsSessionStore: true,
-  supportsEffort: true,
-  supportsMaxTurns: true,
-  supportsMaxBudget: true,
-  costTelemetry: 'full',
-};
+export { CLAUDE_CAPABILITIES };
 
 /** The providers the web primes at startup (see `useProviderCapabilities`). A small
  *  literal set — Claude is the static default; Codex (and any future provider) is
