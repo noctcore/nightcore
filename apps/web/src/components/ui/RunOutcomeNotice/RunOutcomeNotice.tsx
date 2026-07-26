@@ -6,10 +6,16 @@
  *  that whatever streamed before the failure is still shown below. */
 
 export interface RunOutcomeNoticeProps {
-  /** `aborted` = a user cancel (neutral); `failed` = the run errored (destructive). */
-  kind: 'aborted' | 'failed';
-  /** The lead sentence. For `aborted`, the full neutral message; for `failed`, the
-   *  error / summary line — the reassurance line is appended automatically. */
+  /** `aborted` = a user cancel (neutral); `failed` = the run errored (destructive);
+   *  `partial` = the run COMPLETED but a stage inside it failed, so the results are
+   *  real yet incomplete (warning). The third case exists because a paid scan that
+   *  finishes green with a dead synthesis pass (#401) is neither a clean pass nor a
+   *  failure, and rendering it as either one misinforms. */
+  kind: 'aborted' | 'failed' | 'partial';
+  /** The lead sentence. For `aborted` and `partial`, the full message; for `failed`,
+   *  the error / summary line — the reassurance line is appended automatically
+   *  (`partial` callers state their own remainder, since what survived differs by
+   *  which stage died). */
   message: string;
   /** Extra classes for call-site spacing (e.g. `mx-6 mt-5`). */
   className?: string;
@@ -18,14 +24,14 @@ export interface RunOutcomeNoticeProps {
 /** Render the inset outcome card. Pure presentational. */
 export function RunOutcomeNotice({ kind, message, className }: RunOutcomeNoticeProps) {
   const failed = kind === 'failed';
+  const tone =
+    kind === 'failed'
+      ? 'border-destructive/40 bg-destructive/[0.08] text-destructive'
+      : kind === 'partial'
+        ? 'border-warning/40 bg-warning/[0.08] text-warning'
+        : 'border-border bg-white/[0.02] text-muted-foreground';
   return (
-    <div
-      className={`rounded-nc border px-4 py-3 text-xs-plus ${
-        failed
-          ? 'border-destructive/40 bg-destructive/[0.08] text-destructive'
-          : 'border-border bg-white/[0.02] text-muted-foreground'
-      } ${className ?? ''}`}
-    >
+    <div className={`rounded-nc border px-4 py-3 text-xs-plus ${tone} ${className ?? ''}`}>
       {message}
       {failed && (
         <span className="mt-1 block text-destructive/80">

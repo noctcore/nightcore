@@ -188,6 +188,18 @@ function ResultsScreen({
         <ProfileBanner profile={view.stream.profile} loading={view.profileLoading} />
       )}
 
+      {/* Synthesis died while the lens passes succeeded (#401): the conventions
+          below are real, but this run produced no artifacts or proposals. Without
+          this the scan reads as a clean zero-artifact pass — the engine has emitted
+          `synthesisError` all along and nothing rendered it. */}
+      {view.stream.synthesisError !== null && (
+        <RunOutcomeNotice
+          kind="partial"
+          message={`Synthesis failed: ${view.stream.synthesisError}. The conventions below were detected normally, but no artifacts or proposals could be generated — re-run the scan to retry synthesis.`}
+          className="mx-6 mt-5"
+        />
+      )}
+
       {/* A completed scan that spent nothing is a usage-limit tell, not a clean
           repo — surface it so empty conventions aren't misread as a pass (T10).
           Self-hides unless the $0 signature holds. */}

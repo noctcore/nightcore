@@ -62,6 +62,7 @@ export function RunControls({ config, isStarting, onScan }: RunControlsProps) {
       ctaIcon={<VerifiedIcon size={16} />}
       ctaBusyIcon={<Spinner size={16} />}
       ctaLabel="Scan"
+      unitLabel="category"
       ctaClassName="w-full justify-center py-2.5 text-xs-plus3"
       hint={
         <>

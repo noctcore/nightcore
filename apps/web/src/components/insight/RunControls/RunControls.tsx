@@ -77,6 +77,7 @@ export function RunControls({ config, isStarting, onAnalyze }: RunControlsProps)
       onRun={onAnalyze}
       ctaIcon={<InsightIcon size={16} />}
       ctaLabel="Analyze"
+      unitLabel="category"
       ctaClassName="w-full justify-center py-2.5 text-xs-plus3"
       hint={
         <>

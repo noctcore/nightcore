@@ -144,6 +144,12 @@ pub(crate) async fn handle_harness_event(app: &AppHandle, event_type: &str, even
 
             let tel = ScanTelemetry::from_event(event);
             let (finding_count, artifact_count) = (findings.len(), artifacts.len());
+            // Present only when the synthesis pass failed while the lens passes
+            // succeeded (#401). The engine omits it on a clean run and on cancel.
+            let synthesis_error = event
+                .get("synthesisError")
+                .and_then(Value::as_str)
+                .map(str::to_string);
 
             // The shared finalizer owns the idempotency guard + status/telemetry stamp; we
             // inject the harness-specific merge: in-run finding/artifact lifecycle
@@ -225,6 +231,10 @@ pub(crate) async fn handle_harness_event(app: &AppHandle, event_type: &str, even
                     run.proposals = merged_proposals;
                     run.coverage = coverage;
                     run.synthesizing = false;
+                    // A synthesis failure does NOT fail the scan (the lens findings
+                    // are real and worth keeping) — but it must not stay invisible
+                    // either, or the run reads as a clean zero-artifact result.
+                    run.synthesis_error = synthesis_error.clone();
                 });
             if finalized {
                 tracing::info!(target: "nightcore", run_id, findings = finding_count, artifacts = artifact_count, cost_usd = tel.cost_usd, "harness scan completed");

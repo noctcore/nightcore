@@ -82,6 +82,9 @@ export interface HarnessStream {
   /** True between `harness-synthesis-started` and the terminal event — the dead-zone
    *  after every lens reads "done" but synthesis still runs (drives the shimmer). */
   synthesizing: boolean;
+  /** Why synthesis failed on an otherwise-successful scan (#401), else `null`. The
+   *  lens findings are real; the artifacts/proposals are missing. */
+  synthesisError: string | null;
   costUsd: number;
   usage: { inputTokens: number; outputTokens: number };
   durationMs: number;
@@ -104,6 +107,7 @@ export const EMPTY_HARNESS_STREAM: HarnessStream = {
   coverage: [],
   categoryRounds: {},
   synthesizing: false,
+  synthesisError: null,
   costUsd: 0,
   usage: { inputTokens: 0, outputTokens: 0 },
   durationMs: 0,
@@ -231,6 +235,7 @@ export function streamFromRun(run: HarnessRun): HarnessStream {
     // synthesis tail still shows the "Synthesizing…" state instead of a frozen
     // all-lenses-done dead zone.
     synthesizing: run.synthesizing,
+    synthesisError: run.synthesisError ?? null,
     costUsd: run.costUsd,
     usage: run.usage,
     durationMs: run.durationMs,

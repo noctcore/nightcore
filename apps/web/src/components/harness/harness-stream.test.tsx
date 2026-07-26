@@ -464,6 +464,51 @@ describe('normalizers', () => {
     // A completed run carries no synthesis tail nor failure reason.
     expect(s.synthesizing).toBe(false);
     expect(s.failureReason).toBeNull();
+    // A clean run reports no synthesis failure (#401) — absent on the wire ⇒ null,
+    // so the results screen renders no partial-outcome notice.
+    expect(s.synthesisError).toBeNull();
+  });
+
+  it('streamFromRun surfaces a synthesis failure on an otherwise-completed run', () => {
+    // The #401 case: lens passes succeeded, synthesis died, so the run is `completed`
+    // with real findings and ZERO artifacts. Before this the field had no reader and
+    // the run read as a clean zero-artifact pass.
+    const run: HarnessRun = {
+      id: 'run-1',
+      roundsByCategory: {},
+      projectPath: '/proj',
+      status: 'completed',
+      categories: ['folder-structure'],
+      model: 'm',
+      createdAt: 1,
+      updatedAt: 2,
+      costUsd: 0.5,
+      durationMs: 1000,
+      usage: { inputTokens: 10, outputTokens: 5 },
+      profile: {
+        isMonorepo: true,
+        workspaceTool: 'bun',
+        packages: [],
+        languages: ['typescript'],
+        frameworks: ['react'],
+        hasEslintFlatConfig: true,
+        hasLintMeta: true,
+        hasAgentDocs: true,
+        existingPlugins: [],
+      },
+      findings: [],
+      artifacts: [],
+      proposals: [],
+      coverage: [],
+      synthesizing: false,
+      synthesisError: 'model returned no parseable plan',
+      error: null,
+    };
+    const s = streamFromRun(run);
+    expect(s.synthesisError).toBe('model returned no parseable plan');
+    // The SCAN did not fail — only its synthesis stage did.
+    expect(s.status).toBe('completed');
+    expect(s.error).toBeNull();
   });
 
   it('streamFromRun projects a running mid-synthesis run as synthesizing + all lenses done', () => {

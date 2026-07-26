@@ -23,3 +23,13 @@ export const Aborted: Story = {
       'Analysis cancelled. Any findings gathered before you stopped are shown below.',
   },
 };
+
+/** A run that COMPLETED with a failed stage inside it — warning card, caller-owned
+ *  message. The scan's findings are real; its synthesis produced nothing (#401). */
+export const Partial: Story = {
+  args: {
+    kind: 'partial',
+    message:
+      'Synthesis failed: model returned no parseable plan. The conventions below were detected normally, but no artifacts or proposals could be generated — re-run the scan to retry synthesis.',
+  },
+};

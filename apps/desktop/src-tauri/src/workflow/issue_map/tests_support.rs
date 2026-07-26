@@ -226,6 +226,7 @@ pub(crate) fn harness_run() -> HarnessRun {
             coverage("fp-orphan", "documented-only", vec![]),
         ],
         synthesizing: false,
+        synthesis_error: None,
         error: None,
     }
 }

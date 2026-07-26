@@ -19,12 +19,13 @@ use crate::contracts::{EffortLevel, ScorecardDimension, SurfaceCommand};
 use crate::project::ProjectStore;
 use crate::store::insight::InsightUsage;
 use crate::store::scorecard::{ScorecardRun, ScorecardStore, StoredReading};
+use crate::store::settings::SettingsStore;
 use crate::store::TaskStore;
 use crate::task::{Task, TaskKind, TASK_EVENT};
 
 use super::scan::{
     begin_scan_run, dispatch_scan_command, failure_reason, finalize_scan_items,
-    scan_lifecycle_commands, wire_str, ScanRunInit, ScanTelemetry,
+    resolve_scan_limits, scan_lifecycle_commands, wire_str, ScanRunInit, ScanTelemetry,
 };
 use super::SCORECARD_EVENT;
 use crate::infra::untrusted::untrusted_block;
@@ -46,10 +47,15 @@ scan_lifecycle_commands! {
 /// run (status `running`), dispatches the `start-scorecard` command, and returns the
 /// `runId` the `scorecard-*` events correlate by.
 #[tauri::command]
+// One arg over the lint's threshold: the Tauri State handles (app + 3 stores) are
+// injected by type, not passed by callers, so they don't cost a caller anything.
+// Matches the same allow on `start_analysis` / `start_harness_scan`.
+#[allow(clippy::too_many_arguments)]
 pub async fn start_scorecard(
     app: AppHandle,
     projects: State<'_, ProjectStore>,
     scorecard_store: State<'_, ScorecardStore>,
+    settings: State<'_, SettingsStore>,
     dimensions: Vec<ScorecardDimension>,
     model: Option<String>,
     effort: Option<EffortLevel>,
@@ -57,6 +63,7 @@ pub async fn start_scorecard(
 ) -> Result<String, String> {
     let ScanRunInit {
         project_path,
+        project_id,
         run_id,
         model: model_str,
         now,
@@ -92,6 +99,8 @@ pub async fn start_scorecard(
 
     // Ensure the sidecar is up, then dispatch the scorecard command; on failure the
     // shared helper persists the run's failed-state (so it doesn't look stuck).
+    let limits = resolve_scan_limits(&settings, &project_id, dimensions.len());
+
     let command = SurfaceCommand::StartScorecard {
         run_id: run_id.clone(),
         project_path,
@@ -100,8 +109,11 @@ pub async fn start_scorecard(
         model,
         effort,
         max_concurrency: None,
-        max_turns_per_dimension: None,
-        max_budget_usd_per_dimension: None,
+        // Settings ceilings, resolved per dimension pass (#401). Turns pass through
+        // (each pass is its own session); budget divides so the worst-case TOTAL
+        // honors the "per run" ceiling the Settings card promises.
+        max_turns_per_dimension: limits.max_turns_per_pass,
+        max_budget_usd_per_dimension: limits.max_budget_usd_per_pass,
     };
     dispatch_scan_command(&app, "scorecard", &run_id, command, |msg| {
         scorecard_store

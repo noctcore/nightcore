@@ -36,6 +36,7 @@ const meta = {
     onRun: fn(),
     ctaIcon: <BugIcon size={15} />,
     ctaLabel: 'Analyze',
+    unitLabel: 'category',
     hint: 'Scans the whole repo across 2 lenses · cost depends on repo size.',
   },
 } satisfies Meta<typeof StoryScanConfigForm>;

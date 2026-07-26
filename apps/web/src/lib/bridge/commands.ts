@@ -18,6 +18,7 @@ export * from './commands/pr';
 export * from './commands/pr-review';
 export * from './commands/projects';
 export * from './commands/run-interaction';
+export * from './commands/scans';
 export * from './commands/scorecard';
 export * from './commands/settings';
 export * from './commands/tasks';

@@ -338,6 +338,7 @@ pub fn run() {
             // `generate_handler!` is a proc-macro that won't expand a nested macro in
             // its input. The lifecycle four per feature (list/get/delete/cancel) are
             // stamped by `scan_lifecycle_commands!`; the rest are hand-written.
+            sidecar::scan::preview_scan_limits,
             sidecar::start_analysis,
             sidecar::cancel_analysis,
             sidecar::list_insight_runs,
