@@ -248,6 +248,11 @@ mod tests {
         "move_task",
         "open_external",
         "preview_issue_comment",
+        // #401 CONFIGURE ceiling chip. Two in-memory mutex reads (the active project
+        // + the Settings limit resolvers) and a division — no I/O, no git, no
+        // sidecar. Same shape as `active_project` above, and it fires on every lens
+        // toggle, so an async hop would cost more than the work itself.
+        "preview_scan_limits",
         "reject_review",
         "remove_task_attachment",
         "rename_project",

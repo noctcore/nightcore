@@ -99,6 +99,7 @@ mod tests {
             proposals: vec![proposal("p1", "pfp1")],
             coverage: vec![coverage("fp1")],
             synthesizing: false,
+            synthesis_error: None,
             error: None,
         }
     }

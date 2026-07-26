@@ -421,5 +421,14 @@ pub struct HarnessRun {
     /// "Synthesizing…" state instead of the all-lenses-done dead zone.
     #[serde(default)]
     pub synthesizing: bool,
+    /// Why the SYNTHESIS pass failed, when the lens passes themselves succeeded
+    /// (#401). Distinct from `error`, which means the whole scan failed: a scan can
+    /// complete `done` with real findings and still have produced no artifacts or
+    /// proposals because synthesis died. The engine has emitted `synthesisError` on
+    /// the terminal event all along with a comment saying the UI should mark
+    /// synthesis errored — until now nothing read it, so a paid scan finished green
+    /// and simply showed zero artifacts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub synthesis_error: Option<String>,
     pub error: Option<String>,
 }

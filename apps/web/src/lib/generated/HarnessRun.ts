@@ -42,4 +42,14 @@ coverage: Array<StoredRuleCoverageGap>,
  * terminal event) so a run reloaded mid-synthesis still projects the
  * "Synthesizing…" state instead of the all-lenses-done dead zone.
  */
-synthesizing: boolean, error: string | null, };
+synthesizing: boolean, 
+/**
+ * Why the SYNTHESIS pass failed, when the lens passes themselves succeeded
+ * (#401). Distinct from `error`, which means the whole scan failed: a scan can
+ * complete `done` with real findings and still have produced no artifacts or
+ * proposals because synthesis died. The engine has emitted `synthesisError` on
+ * the terminal event all along with a comment saying the UI should mark
+ * synthesis errored — until now nothing read it, so a paid scan finished green
+ * and simply showed zero artifacts.
+ */
+synthesisError?: string | null, error: string | null, };

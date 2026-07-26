@@ -124,6 +124,7 @@ pub async fn start_harness_scan(
         proposals: Vec::new(),
         coverage: Vec::new(),
         synthesizing: false,
+        synthesis_error: None,
         error: None,
     };
     // Single-flight: reject a second concurrent scan for this project.
