@@ -326,6 +326,7 @@ describe('normalizers', () => {
       usage: { inputTokens: 10, outputTokens: 5 },
       findings: [],
       roundsByCategory: {},
+      deep: false,
       error: null,
     };
     const s = streamFromRun(run);
@@ -351,6 +352,7 @@ describe('normalizers', () => {
       usage: { inputTokens: 100, outputTokens: 50 },
       findings: [],
       roundsByCategory: { bugs: 4, security: 2 },
+      deep: true,
       error: null,
     };
     const s = streamFromRun(run);
@@ -404,6 +406,7 @@ describe('normalizers', () => {
       usage: { inputTokens: 0, outputTokens: 0 },
       findings: [],
       roundsByCategory: {},
+      deep: false,
       error: null,
     };
     const s = streamFromRun(run);

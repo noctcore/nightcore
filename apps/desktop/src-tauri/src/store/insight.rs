@@ -206,6 +206,17 @@ pub struct InsightRun {
     /// for a classic single-pass run (which never emits round events).
     #[serde(default)]
     pub rounds_by_category: HashMap<String, u32>,
+    /// Whether this run used DEEP mode (issue #294) — the multi-round convergence
+    /// loop — rather than the classic single pass. Recorded at START (not inferred
+    /// from `rounds_by_category`, which a deep run whose every category died leaves
+    /// empty) because the run-over-run delta (issue #403) may only diff two runs of
+    /// the same DEPTH: a deep run finds strictly more, so diffing it against a
+    /// shallow one manufactures phantom "new"/"resolved" findings.
+    ///
+    /// Additive: `None` on runs persisted before #403 — depth unknown, which the
+    /// delta treats as NOT comparable (fail closed) rather than assuming shallow.
+    #[serde(default)]
+    pub deep: Option<bool>,
     pub error: Option<String>,
 }
 
@@ -423,6 +434,7 @@ mod tests {
             usage: InsightUsage::default(),
             findings,
             rounds_by_category: HashMap::new(),
+            deep: Some(false),
             error: None,
         }
     }
@@ -438,6 +450,47 @@ mod tests {
         // Reload from disk reconstructs the run.
         let reloaded = InsightStore::load_from(tmp.path().join("insights"));
         assert_eq!(reloaded.get("r1").unwrap().findings[0].fingerprint, "fp1");
+    }
+
+    #[test]
+    fn run_serializes_camel_case_keys_including_deep() {
+        // The web reads these keys off the ts-rs projection; a snake_case leak would
+        // silently read `undefined` there. `deep` is the #403 addition.
+        let json = serde_json::to_value(run("r1", vec![])).expect("serialize run");
+        let obj = json.as_object().expect("run is an object");
+        for key in [
+            "projectPath",
+            "createdAt",
+            "updatedAt",
+            "costUsd",
+            "durationMs",
+            "roundsByCategory",
+            "deep",
+        ] {
+            assert!(obj.contains_key(key), "missing camelCase key {key}");
+        }
+    }
+
+    #[test]
+    fn legacy_run_without_deep_loads_as_none() {
+        // Runs persisted before #403 carry no `deep` key: it must load as `None`
+        // (depth UNKNOWN → the run-over-run delta refuses to compare) rather than
+        // failing the whole run's deserialize or defaulting to a claimed shallow run.
+        let legacy = r#"{
+            "id": "r-legacy",
+            "projectPath": "/proj",
+            "scope": "repo",
+            "status": "completed",
+            "categories": ["bugs"],
+            "model": "claude-opus-4-8",
+            "createdAt": 1,
+            "updatedAt": 1,
+            "error": null
+        }"#;
+        let run: InsightRun = serde_json::from_str(legacy).expect("parse legacy run");
+        assert_eq!(run.deep, None, "absent deep is unknown, not false");
+        assert!(run.rounds_by_category.is_empty());
+        assert!(run.findings.is_empty());
     }
 
     #[test]

@@ -23,4 +23,16 @@ categories: Array<string>, model: string, createdAt: number, updatedAt: number, 
  * category wire string. Persisted so "round N" survives reconcile/resume; empty
  * for a classic single-pass run (which never emits round events).
  */
-roundsByCategory: { [key in string]: number }, error: string | null, };
+roundsByCategory: { [key in string]: number }, 
+/**
+ * Whether this run used DEEP mode (issue #294) — the multi-round convergence
+ * loop — rather than the classic single pass. Recorded at START (not inferred
+ * from `rounds_by_category`, which a deep run whose every category died leaves
+ * empty) because the run-over-run delta (issue #403) may only diff two runs of
+ * the same DEPTH: a deep run finds strictly more, so diffing it against a
+ * shallow one manufactures phantom "new"/"resolved" findings.
+ *
+ * Additive: `None` on runs persisted before #403 — depth unknown, which the
+ * delta treats as NOT comparable (fail closed) rather than assuming shallow.
+ */
+deep: boolean | null, error: string | null, };
