@@ -20,6 +20,7 @@ export function PolicySection() {
         )}
         <PolicyEditor
           policy={view.policy}
+          profile={view.profile}
           saving={view.saving}
           saveError={view.saveError}
           onSave={view.save}

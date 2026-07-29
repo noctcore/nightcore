@@ -5,6 +5,7 @@
 import { Button, Spinner } from '@/components/ui';
 
 import { PatternTester } from '../PatternTester';
+import { PolicyStarterPacks } from '../PolicyStarterPacks';
 import { usePolicyEditor } from './PolicyEditor.hooks';
 import {
   EditorSkeleton,
@@ -55,6 +56,12 @@ export function PolicyEditor(props: PolicyEditorProps) {
               <code className="font-mono">.nightcore/harness.json</code> with this policy.
             </p>
           )}
+
+          <PolicyStarterPacks
+            profile={props.profile}
+            current={view.probeLists}
+            onApply={view.applyPack}
+          />
 
           <PolicyListEditors fields={POLICY_LIST_FIELDS} view={view} />
 

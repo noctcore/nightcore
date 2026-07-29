@@ -6,8 +6,12 @@ import {
   getHarnessPolicyFile,
   type HarnessPolicyFile,
   type HarnessPolicyPatch,
+  listHarnessRuns,
+  type StoredRepoProfile,
   updateHarnessPolicyFile,
 } from '@/lib/bridge';
+
+import type { PolicyProfileHints } from '../PolicyStarterPacks';
 
 /** denyReadPaths with `path` appended, or `null` when it is already present
  *  (the dedupe rule: quarantining twice must not grow the list). */
@@ -16,11 +20,25 @@ export function appendQuarantinePath(existing: string[], path: string): string[]
   return [...existing, path];
 }
 
+/** Narrow a persisted Harness profile to the fields the starter packs key on.
+ *  Deliberately lossy: a pack predicate reads three fields, so nothing else from
+ *  a scan artifact can influence which rails are offered. */
+export function profileHints(profile: StoredRepoProfile): PolicyProfileHints {
+  return {
+    isMonorepo: profile.isMonorepo,
+    languages: profile.languages,
+    frameworks: profile.frameworks,
+  };
+}
+
 /** Everything the PolicySection shell renders. */
 export interface PolicySectionVM {
   /** The authoritative policy (re-read from disk after every write), or `null`
    *  while the initial load is in flight. */
   policy: HarnessPolicyFile | null;
+  /** Repo shape from the newest Harness run, keying the starter packs; `null`
+   *  until it loads, or when the project has never been scanned. */
+  profile: PolicyProfileHints | null;
   loadError: string | null;
   saving: boolean;
   saveError: string | null;
@@ -37,6 +55,7 @@ export interface PolicySectionVM {
  *  what's on disk. */
 export function usePolicySection(): PolicySectionVM {
   const [policy, setPolicy] = useState<HarnessPolicyFile | null>(null);
+  const [profile, setProfile] = useState<PolicyProfileHints | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -52,6 +71,16 @@ export function usePolicySection(): PolicySectionVM {
         if (!cancelled) {
           setLoadError(err instanceof Error ? err.message : String(err));
         }
+      }
+      // The repo profile only keys which starter packs are OFFERED, so its
+      // failure is never surfaced: a project with no scan (or an unreadable run)
+      // simply gets the universal packs.
+      try {
+        const runs = await listHarnessRuns();
+        const newest = runs[0];
+        if (!cancelled && newest !== undefined) setProfile(profileHints(newest.profile));
+      } catch {
+        // Intentionally ignored — see above.
       }
     })();
     return () => {
@@ -113,5 +142,5 @@ export function usePolicySection(): PolicySectionVM {
     [policy, toast],
   );
 
-  return { policy, loadError, saving, saveError, save, quarantine };
+  return { policy, profile, loadError, saving, saveError, save, quarantine };
 }

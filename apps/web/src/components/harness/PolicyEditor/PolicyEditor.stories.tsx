@@ -22,6 +22,11 @@ const meta = {
   component: PolicyEditor,
   args: {
     policy: POLICY,
+    profile: {
+      isMonorepo: true,
+      languages: ['typescript', 'rust'],
+      frameworks: ['react', 'tauri'],
+    },
     saving: false,
     saveError: null,
     onSave: () => {},

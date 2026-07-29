@@ -1,11 +1,16 @@
 /** Prop + draft types for the harness policy editor. */
 import type { HarnessPolicyFile, HarnessPolicyPatch } from '@/lib/bridge';
 
+import type { PolicyProfileHints } from '../PolicyStarterPacks';
+
 /** Props for the policy editor card: the loaded policy (null while loading) and
  *  the save action owned by the PolicySection parent. */
 export interface PolicyEditorProps {
   /** The active project's policy block, or `null` while it loads. */
   policy: HarnessPolicyFile | null;
+  /** Repo shape from the latest Harness scan, keying the starter packs. `null`
+   *  when the project has never been scanned (universal packs only). */
+  profile: PolicyProfileHints | null;
   /** True while a save write is in flight. */
   saving: boolean;
   /** The error returned by the last save, or `null`. */
