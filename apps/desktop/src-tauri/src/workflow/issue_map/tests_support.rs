@@ -90,6 +90,7 @@ pub(crate) fn insight_run() -> InsightRun {
             ),
         ],
         rounds_by_category: std::collections::HashMap::new(),
+        deep: Some(false),
         error: None,
     }
 }

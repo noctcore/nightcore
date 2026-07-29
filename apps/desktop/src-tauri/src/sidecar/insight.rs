@@ -99,6 +99,10 @@ pub async fn start_analysis(
         usage: InsightUsage::default(),
         findings: Vec::new(),
         rounds_by_category: std::collections::HashMap::new(),
+        // Record the DEPTH at start (issue #403): the run-over-run delta may only
+        // diff two runs of the same depth, and a deep run whose categories all die
+        // never emits a round event to infer it from.
+        deep: Some(deep.is_some()),
         error: None,
     };
     // Single-flight: reject a second concurrent analysis for this project (a stray

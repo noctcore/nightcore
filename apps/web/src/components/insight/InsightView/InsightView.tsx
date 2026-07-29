@@ -23,6 +23,7 @@ import { CategoryTabs } from '../CategoryTabs';
 import { FindingDetailPanel } from '../FindingDetailPanel';
 import { FindingGrid } from '../FindingGrid';
 import { RunControls } from '../RunControls';
+import { RunDeltaBar } from '../RunDeltaBar';
 import { useInsightView } from './InsightView.hooks';
 import type { InsightViewProps } from './InsightView.types';
 
@@ -206,6 +207,18 @@ export function InsightView(props: InsightViewProps) {
               runNoun="analysis"
               className="mx-6 mt-5"
             />
+
+            {/* Run-over-run delta (#403): APPARENT new/resolved/persisting against
+                the previous comparable run — or the reason there isn't one. Only on
+                a cleanly completed run; a failed/cancelled run's partial findings
+                would read as "resolved". */}
+            {view.stream.status === 'completed' && (
+              <RunDeltaBar
+                result={view.delta}
+                previousRunLabel={view.previousRunLabel}
+                className="mx-6 mt-4"
+              />
+            )}
 
             {view.stream.status === 'completed' && (
               <BulkConvertBar

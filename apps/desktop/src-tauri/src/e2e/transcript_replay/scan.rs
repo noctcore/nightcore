@@ -149,6 +149,7 @@ fn running_run(id: &str) -> InsightRun {
         usage: InsightUsage::default(),
         findings: Vec::new(),
         rounds_by_category: std::collections::HashMap::new(),
+        deep: Some(false),
         error: None,
     }
 }
