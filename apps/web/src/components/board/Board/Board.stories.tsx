@@ -345,3 +345,43 @@ export const SelectsWorktreeTab: Story = {
     await expect(args.onSelectWorktree).toHaveBeenCalledWith('nc/api-client');
   },
 };
+
+/** Play test (#402): checking a card's box arms the bulk verb bar, and Clear selection
+ *  disarms it. This is the end-to-end proof that multi-select, @dnd-kit dragging, and the
+ *  virtualized columns coexist — one board renders all three. */
+export const BulkSelectionArmsTheVerbBar: Story = {
+  args: { tasks: ALL_TASKS },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole('toolbar', { name: /bulk task actions/i })).toBeNull();
+
+    await userEvent.click(
+      canvas.getByRole('checkbox', { name: /select task add dark-mode toggle/i }),
+    );
+    await expect(
+      canvas.getByRole('toolbar', { name: /bulk task actions/i }),
+    ).toBeInTheDocument();
+    await expect(canvas.getByText('1 task selected')).toBeInTheDocument();
+
+    // A droppable card stays draggable while selected — the two affordances are
+    // independent (the checkbox lives in the click-stopping action row).
+    await expect(canvasElement.querySelector('.cursor-grab')).not.toBeNull();
+
+    await userEvent.click(canvas.getByRole('button', { name: /clear selection/i }));
+    await expect(canvas.queryByRole('toolbar', { name: /bulk task actions/i })).toBeNull();
+  },
+};
+
+/** Play test (#402): the header's Run order button opens the execution-order sheet. */
+export const OpensTheRunOrderSheet: Story = {
+  args: { tasks: ALL_TASKS },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: /run order/i }));
+    // The sheet is a portal (`Modal` → document.body), so query the body.
+    const body = within(document.body);
+    await expect(body.getByRole('heading', { name: /^run order$/i })).toBeInTheDocument();
+    await expect(body.getByText(/nothing is queued to run/i)).toBeInTheDocument();
+    await userEvent.click(body.getByRole('button', { name: /close run order/i }));
+  },
+};

@@ -1,8 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, within } from 'storybook/test';
 
+import type { RunOrderProjection } from '@/lib/bridge';
+
 import { BLOCKED_TASK, MAIN_MODE_TASK, makeTaskActions, TASKS_BY_STATUS } from '../_fixtures';
 import { TaskActionsProvider, type TaskDetailActions } from '../actions';
+import { EMPTY_RUN_ORDER, RunOrderProvider } from '../run-order';
+import { TaskSelectionProvider } from '../selection';
 import { UsageHotProvider, type UsageHotWindow } from '../usage-hot';
 import { TaskCard } from './TaskCard';
 import type { TaskCardProps } from './TaskCard.types';
@@ -21,6 +25,9 @@ function TaskCardFixture({
   onMerge,
   isActionPending,
   usageHot = null,
+  runOrder = EMPTY_RUN_ORDER,
+  bulkSelectedIds = [],
+  onToggleBulk,
   ...props
 }: TaskCardProps &
   Partial<
@@ -36,7 +43,15 @@ function TaskCardFixture({
       | 'onMerge'
       | 'isActionPending'
     >
-  > & { usageHot?: UsageHotWindow | null }) {
+  > & {
+    usageHot?: UsageHotWindow | null;
+    /** The projected run order the card reads its position chip from. */
+    runOrder?: RunOrderProjection;
+    /** Ids in the board's multi-select — drives the card's checkbox state. */
+    bulkSelectedIds?: string[];
+    /** Spy for the multi-select toggle. */
+    onToggleBulk?: (id: string) => void;
+  }) {
   return (
     <TaskActionsProvider
       actions={makeTaskActions({
@@ -52,7 +67,18 @@ function TaskCardFixture({
       })}
     >
       <UsageHotProvider value={usageHot}>
-        <TaskCard {...props} />
+        <RunOrderProvider value={runOrder}>
+          <TaskSelectionProvider
+            value={{
+              selectedIds: new Set(bulkSelectedIds),
+              toggle: (id) => onToggleBulk?.(id),
+              clear: () => {},
+              select: () => {},
+            }}
+          >
+            <TaskCard {...props} />
+          </TaskSelectionProvider>
+        </RunOrderProvider>
       </UsageHotProvider>
     </TaskActionsProvider>
   );
@@ -216,5 +242,64 @@ export const UsageHighRetry: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.getByText(/usage high/i)).toBeInTheDocument();
     await expect(canvas.getByRole('button', { name: /^retry$/i })).toBeEnabled();
+  },
+};
+
+/** Run-order transparency (#402): the card names its projected position. Position 1 reads
+ *  as `next` and carries the primary tone — the next auto-loop pass starts it. */
+export const RunOrderNext: Story = {
+  args: {
+    task: TASKS_BY_STATUS.backlog,
+    runOrder: {
+      ...EMPTY_RUN_ORDER,
+      entries: [
+        { taskId: 't-backlog', position: 1, wave: 0, startsNow: true, blockedBy: [] },
+      ],
+      freeSlots: 1,
+      maxConcurrency: 1,
+      startsNowCount: 1,
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText('next')).toBeInTheDocument();
+  },
+};
+
+/** A chained task three passes out — muted `#4` rather than the primary "next" tone. */
+export const RunOrderQueued: Story = {
+  args: {
+    task: TASKS_BY_STATUS.backlog,
+    runOrder: {
+      ...EMPTY_RUN_ORDER,
+      entries: [
+        { taskId: 't-backlog', position: 4, wave: 3, startsNow: false, blockedBy: ['x'] },
+      ],
+      freeSlots: 2,
+      maxConcurrency: 2,
+      startsNowCount: 0,
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText('#4')).toBeInTheDocument();
+  },
+};
+
+/** Multi-select (#402): the card's checkbox, checked. */
+export const BulkSelected: Story = {
+  args: { task: TASKS_BY_STATUS.backlog, bulkSelectedIds: ['t-backlog'] },
+};
+
+/** Play test: the checkbox toggles this card's multi-select membership WITHOUT opening the
+ *  task (the action row stops propagation) — the contract that keeps selection, drag, and
+ *  card-open from fighting. */
+export const BulkToggleDoesNotOpenTheTask: Story = {
+  args: { task: TASKS_BY_STATUS.backlog, onToggleBulk: fn() },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('checkbox', { name: /select task/i }));
+    await expect(args.onToggleBulk).toHaveBeenCalledWith('t-backlog');
+    await expect(args.onSelect).not.toHaveBeenCalled();
   },
 };

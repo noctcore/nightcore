@@ -1,9 +1,11 @@
 import { memo } from 'react';
 
 import { m, Markdown, slideIn } from '@/components/ui';
+import type { Task } from '@/lib/bridge';
 
 import { useTaskActions } from '../actions';
 import { ActivityLog } from '../ActivityLog';
+import { DependencyEditor } from '../DependencyEditor';
 import { EvidenceBundle } from '../EvidenceBundle';
 import { GauntletResults } from '../GauntletResults';
 import { InteractionDock } from '../InteractionDock';
@@ -11,8 +13,8 @@ import { IssueClosedChip } from '../IssueClosedChip';
 import { IssueSyncNotice } from '../IssueSyncNotice';
 import { PlanReview } from '../PlanReview';
 import { ProposedSubtasksPanel } from '../ProposedSubtasksPanel';
-import { PrReviewComments, usePrReviewComments } from '../PrReviewComments';
-import { PrStatusCard, usePrStatus } from '../PrStatusCard';
+import { usePrReviewComments } from '../PrReviewComments';
+import { usePrStatus } from '../PrStatusCard';
 import { ReviewPanel } from '../ReviewPanel';
 import { GroupLabel, HistoryCard, SessionCard } from '../SessionCard';
 import { SessionComposer } from '../SessionComposer';
@@ -25,6 +27,7 @@ import {
   usePrSupport,
   useTaskStreamSessions,
 } from './TaskDetail.hooks';
+import { TaskDetailPrBands } from './TaskDetail.parts';
 import type { TaskDetailChromeProps, TaskDetailProps } from './TaskDetail.types';
 import { TaskDetailFooter } from './TaskDetailFooter';
 import { TaskDetailHeader } from './TaskDetailHeader';
@@ -34,6 +37,11 @@ import { TaskDetailHeader } from './TaskDetailHeader';
  *  `TaskDetailChrome` memo (the same discipline the shell uses for the prompt
  *  fallbacks). The app always passes its own memoized array. */
 const NO_LIVE_SESSIONS: readonly string[] = [];
+
+/** Stable empty fallback for `tasks` (the DependencyEditor's candidate pool) — same
+ *  discipline as `NO_LIVE_SESSIONS`: a fresh `[]` per render would defeat the chrome memo
+ *  on every stream flush. The app always passes its own live list. */
+const NO_TASKS: Task[] = [];
 
 /** The logs / detail drawer. A thin coordinator over two halves: the static
  *  `TaskDetailChrome` (title, verdict, gauntlet, description, session config, and
@@ -46,6 +54,7 @@ const NO_LIVE_SESSIONS: readonly string[] = [];
  *  instead, so a flush reconciles only the log — not the whole drawer subtree. */
 export function TaskDetail({
   task,
+  tasks = NO_TASKS,
   stream,
   anyRunning,
   liveSessionIds = NO_LIVE_SESSIONS,
@@ -84,6 +93,7 @@ export function TaskDetail({
     <TaskStreamContext.Provider value={sessions}>
       <TaskDetailChrome
         task={task}
+        tasks={tasks}
         cost={cost}
         isRunning={isRunning}
         reviewParked={reviewParked}
@@ -128,6 +138,7 @@ function TaskActivity({ isRunning }: { isRunning: boolean }) {
  *  on a real guard/prompt/toast change). */
 const TaskDetailChrome = memo(function TaskDetailChrome({
   task,
+  tasks,
   cost,
   isRunning,
   reviewParked,
@@ -247,44 +258,14 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
           </div>
         )}
 
-        {/* Pull request — live GitHub status for the task's PR (phase 2): state /
-            review / checks badges plus the human-gated push-updates, remote-merged
-            finalize, and base fast-forward actions. Fetches on mount + manual
-            refresh only; sits directly below the Result band's gauntlet. */}
-        {task.prUrl !== undefined && (
-          <div className="space-y-3">
-            <GroupLabel>Pull request</GroupLabel>
-            {/* Keyed per task (suspenders — the hook's own task-switch reset is
-                the belt) so a switch remounts the card: no stale status/error
-                snapshot or armed confirm dialog can carry from task A to B. */}
-            <PrStatusCard
-              key={task.id}
-              task={task}
-              view={prStatusView}
-              isActionPending={isActionPending}
-            />
-          </div>
-        )}
-
-        {/* Review comments — the UNRESOLVED inline threads + top-level review
-            summaries for the task's PR (phase 3), read-only, plus the single
-            human-gated Address-comments action (dispatches a fix run over the
-            worktree). Fetches on mount + manual refresh; sits directly below the
-            PR status band. Comment bodies are untrusted external text. */}
-        {task.prUrl !== undefined && (
-          <div className="space-y-3">
-            <GroupLabel>Review comments</GroupLabel>
-            {/* Keyed per task (suspenders — the hook's own task-switch reset is
-                the belt) so a switch remounts the card: no stale payload or armed
-                confirm dialog can carry from task A to B. */}
-            <PrReviewComments
-              key={task.id}
-              task={task}
-              view={prReviewCommentsView}
-              isActionPending={isActionPending}
-            />
-          </div>
-        )}
+        {/* The two PR bands (status + review comments), both gated on `task.prUrl`.
+            Lifted into `TaskDetail.parts.tsx`; the fetched views stay owned here. */}
+        <TaskDetailPrBands
+          task={task}
+          prStatusView={prStatusView}
+          prReviewCommentsView={prReviewCommentsView}
+          isActionPending={isActionPending}
+        />
 
         {/* Proposed sub-tasks — a `decompose` run's output, each convertible into a
             board task. Shown once the run has FINISHED (done/failed): a run that
@@ -333,6 +314,17 @@ const TaskDetailChrome = memo(function TaskDetailChrome({
             <TaskAttachments task={task} editable={kindEditable} />
           )}
           <SessionCard task={task} kindEditable={kindEditable} />
+        </div>
+
+        {/* Dependencies (#402) — which other tasks this one waits on. The core has
+            stored + ENFORCED `Task.dependencies` since M1 (`orchestration::deps` gates
+            eligibility, `run_order` orders the board from it), but there was no UI to
+            author them, so chains had to be hand-minted in the task JSON. Editable while
+            the task hasn't started; read-only once a run owns it (the list only means
+            anything before launch). */}
+        <div className="space-y-3">
+          <GroupLabel>Dependencies</GroupLabel>
+          <DependencyEditor task={task} tasks={tasks} editable={kindEditable} />
         </div>
 
         {/* Activity — every session's logs, grouped (build, verification, …).

@@ -5,8 +5,23 @@ import { render } from 'vitest-browser-react';
 import { formatElapsed, nextElapsedAnchor, subscribeSecondTick } from './TaskCard.hooks';
 import * as stories from './TaskCard.stories';
 
-const { Backlog, Failed, Done, Blocked, Running, Verifying, WaitingApproval, MainMode, MainModeCommitted, Draggable, UsageHigh, UsageHighRetry } =
-  composeStories(stories);
+const {
+  Backlog,
+  Failed,
+  Done,
+  Blocked,
+  Running,
+  Verifying,
+  WaitingApproval,
+  MainMode,
+  MainModeCommitted,
+  Draggable,
+  UsageHigh,
+  UsageHighRetry,
+  BulkSelected,
+  RunOrderNext,
+  RunOrderQueued,
+} = composeStories(stories);
 
 test('shows the verifying chip and a cancel control while verifying', async () => {
   const screen = render(<Verifying />);
@@ -226,4 +241,63 @@ test('subscribeSecondTick shares ONE interval across cards and stops when the la
   } finally {
     vi.useRealTimers();
   }
+});
+
+// --- Run order + multi-select (#402) ---------------------------------------
+
+test('the run-order chip reads "next" for position 1 and #N beyond it', async () => {
+  const first = render(<RunOrderNext />);
+  await expect.element(first.getByText('next')).toBeInTheDocument();
+  first.unmount();
+
+  const later = render(<RunOrderQueued />);
+  await expect.element(later.getByText('#4')).toBeInTheDocument();
+});
+
+test('the run-order chip explains the wait in its tooltip', async () => {
+  const screen = render(<RunOrderQueued />);
+  await expect
+    .element(screen.getByText('#4'))
+    .toHaveAttribute('title', expect.stringContaining('waits 3 more passes'));
+});
+
+test('a card with no projected position renders no run-order chip', async () => {
+  // The default (empty) projection: nothing is queued, so the chip is absent rather than
+  // guessing a position.
+  const screen = render(<Backlog />);
+  await expect.element(screen.getByRole('button', { name: /^run$/i })).toBeInTheDocument();
+  expect(screen.container.textContent).not.toMatch(/next/);
+});
+
+test('the multi-select checkbox reflects context membership by task id', async () => {
+  const selected = render(<BulkSelected />);
+  await expect
+    .element(selected.getByRole('checkbox', { name: /select task/i }))
+    .toHaveAttribute('aria-checked', 'true');
+  selected.unmount();
+
+  // The SAME card, unselected — membership is read from the shared set by id, which is
+  // what keeps selection correct under column virtualization (rows mount/unmount freely).
+  const plain = render(<Backlog />);
+  await expect
+    .element(plain.getByRole('checkbox', { name: /select task/i }))
+    .toHaveAttribute('aria-checked', 'false');
+});
+
+test('the multi-select toggle activates without opening the task', async () => {
+  const onToggleBulk = vi.fn();
+  const onSelect = vi.fn();
+  const screen = render(<Backlog onToggleBulk={onToggleBulk} onSelect={onSelect} />);
+  const box = screen.getByRole('checkbox', { name: /select task/i });
+  await expect.element(box).toBeInTheDocument();
+  await box.click();
+  expect(onToggleBulk).toHaveBeenCalledWith('t-backlog');
+  expect(onSelect).not.toHaveBeenCalled();
+});
+
+test('the drag-overlay preview omits the multi-select toggle', () => {
+  // The overlay clone is a visual echo of the dragged card, not a second interactive
+  // control — a checkbox there would be a duplicate target mid-drag.
+  const screen = render(<Backlog preview />);
+  expect(screen.container.querySelector('[role="checkbox"]')).toBeNull();
 });

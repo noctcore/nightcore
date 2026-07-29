@@ -63,6 +63,8 @@ const BOARD_CONTEXT_REGISTRY = {
         'onChangeEffort',
         'onChangeMaxTurns',
         'onChangeMaxBudget',
+        'onChangeDependencies',
+        'onBulkDelete',
         'onAcceptReview',
         'onRejectReview',
         'onRerunVerification',

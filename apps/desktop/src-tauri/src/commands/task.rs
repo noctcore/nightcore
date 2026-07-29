@@ -465,6 +465,50 @@ pub fn blocked_task_ids(store: State<'_, TaskStore>) -> Result<Vec<String>, Stri
         .collect())
 }
 
+/// The coordinator's projected execution order for the board (#402).
+///
+/// Read-only. Delegates to [`crate::orchestration::run_order::project_run_order`],
+/// feeding it the LIVE slot state (`free_slots` / `max`) and the real lease predicate,
+/// so wave 0 is exactly what the next auto-loop tick would launch. The board uses this
+/// for the "next up" ordering, the per-card position chip, and the Auto-Mode arm
+/// preview ("this will start N tasks") — the visual column order is
+/// newest-updated-first and diverges from execution order on any dependency chain.
+///
+/// `async` + `spawn_blocking` (audit #32/#38 recipe) rather than a sync command: unlike
+/// `blocked_task_ids` (one pass over the registry) the projection walks the queue once
+/// PER WAVE, so a deeply chained 1000-task board — the board's stated scale target — is
+/// super-linear work that must never land on the WKWebView main thread.
+#[tauri::command]
+pub async fn run_order(
+    app: AppHandle,
+) -> Result<crate::orchestration::run_order::RunOrderProjection, String> {
+    tauri::async_runtime::spawn_blocking(move || run_order_blocking(&app))
+        .await
+        .map_err(|e| format!("run order failed to run: {e}"))?
+}
+
+/// The blocking body of `run_order`. Managed state is re-acquired from the owned
+/// `AppHandle` (a `State<'_, _>` guard can't cross the thread boundary); `try_state` so an
+/// unmanaged store/orchestrator fails gracefully instead of panicking.
+fn run_order_blocking(
+    app: &AppHandle,
+) -> Result<crate::orchestration::run_order::RunOrderProjection, String> {
+    use tauri::Manager;
+    let store = app
+        .try_state::<TaskStore>()
+        .ok_or_else(|| "task store unavailable".to_string())?;
+    let orch = app
+        .try_state::<crate::orchestration::coordinator::Orchestrator>()
+        .ok_or_else(|| "orchestrator unavailable".to_string())?;
+    let tasks = store.list();
+    Ok(crate::orchestration::run_order::project_run_order(
+        &tasks,
+        |id| orch.slots.is_leased(id),
+        orch.slots.free_slots(),
+        orch.slots.max(),
+    ))
+}
+
 /// Manually set a task's status (drag between board columns), persist, and emit
 /// `nc:task`. Pure board bookkeeping — worktrees and slots are untouched.
 ///

@@ -17,12 +17,19 @@ import {
 import { pluralize } from '@/lib/formatters';
 import { useWorktreesContext } from '@/lib/worktrees-context';
 
+import { useTaskActions } from '../actions';
 import { AutoModeOptions } from '../AutoModeOptions';
 import { BoardBackgroundPanel } from '../BoardBackgroundPanel';
 import { useBoardChrome } from '../chrome';
 import { ProviderConfigPanel } from '../ProviderConfigPanel';
+import { RunOrderPanel } from '../RunOrderPanel';
 import { BOARD_SEARCH_INPUT_ID } from '../status';
-import { useBoardBackgroundPanel, useInspector } from './BoardHeader.hooks';
+import {
+  useAutoModeToggleTitle,
+  useBoardBackgroundPanel,
+  useInspector,
+  useRunOrderSheet,
+} from './BoardHeader.hooks';
 import type { BoardHeaderProps } from './BoardHeader.types';
 
 /** The board's header band: title + count chip, project path/branch subtitle,
@@ -37,6 +44,7 @@ import type { BoardHeaderProps } from './BoardHeader.types';
  *  board-owned view state (search, the appearance view) travels as props. */
 export function BoardHeader({
   taskCount,
+  tasks,
   projectName,
   projectPath,
   projectBranch,
@@ -61,8 +69,13 @@ export function BoardHeader({
     onClearBackground,
   } = useBoardChrome();
   const { refreshWorktrees } = useWorktreesContext();
+  const { onSelect } = useTaskActions();
   const inspector = useInspector();
+  const runOrderSheet = useRunOrderSheet();
   const bgPanel = useBoardBackgroundPanel();
+  // Arm preview (#402) on the toggle's tooltip: "how many runs will this start?" answered
+  // on hover, before the click.
+  const autoModeTitle = useAutoModeToggleTitle(autoMode);
 
   return (
     <>
@@ -114,7 +127,7 @@ export function BoardHeader({
               }
               on={autoMode}
               onToggle={onToggleAutoMode}
-              title={autoMode ? 'Stop Auto Mode' : 'Start Auto Mode'}
+              title={autoModeTitle}
               settingsLabel="Auto Mode options"
               settings={
                 <AutoModeOptions
@@ -140,6 +153,14 @@ export function BoardHeader({
             >
               <ImageIcon size={15} className="text-muted-foreground" />
             </IconButton>
+            <Button
+              variant="secondary"
+              onClick={runOrderSheet.show}
+              title="See the order Auto Mode will actually run these tasks in"
+            >
+              <AgentsIcon size={14} className="text-muted-foreground" />
+              Run order
+            </Button>
             <Button
               variant="secondary"
               onClick={inspector.show}
@@ -171,6 +192,19 @@ export function BoardHeader({
           </div>
         </div>
       </div>
+
+      {/* Run-order transparency (#402): the sheet that spells out execution order, since
+          the columns sort by recent activity and diverge from it on any dependency chain.
+          Clicking a row opens that task's drawer. */}
+      <RunOrderPanel
+        open={runOrderSheet.open}
+        tasks={tasks}
+        onClose={runOrderSheet.hide}
+        onSelectTask={(id) => {
+          runOrderSheet.hide();
+          onSelect(id);
+        }}
+      />
 
       <ProviderConfigPanel
         open={inspector.open}

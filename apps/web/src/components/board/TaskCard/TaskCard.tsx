@@ -1,8 +1,6 @@
 import { memo } from 'react';
 
 import {
-  AlertIcon,
-  BoardIcon,
   BranchIcon,
   CheckIcon,
   ClockIcon,
@@ -14,7 +12,6 @@ import {
   PlayIcon,
   RefineIcon,
   RetryIcon,
-  SparkIcon,
   Spinner,
   StopIcon,
   TrashIcon,
@@ -22,6 +19,7 @@ import {
 } from '@/components/ui';
 
 import { useTaskActions } from '../actions';
+import { IssueChip } from '../IssueChip';
 import { IssueClosedChip } from '../IssueClosedChip';
 import { formatCostUsd } from '../status';
 import { TaskCardTerminalChip } from '../TaskCardTerminalChip';
@@ -35,11 +33,10 @@ import {
   CARD_BASE,
   containerClass,
   LOGS_COUNT,
-  META_CHIP,
-  STATUS_CHIP,
   TIMER_CHIP,
 } from './TaskCard.appearance';
 import { useElapsed, useTaskCardView, useTaskDraggable } from './TaskCard.hooks';
+import { TaskCardChips, TaskSelectToggle } from './TaskCard.parts';
 import type { TaskCardProps } from './TaskCard.types';
 
 /** A task card showing its full anatomy: model badge + dot, elapsed timer
@@ -75,19 +72,14 @@ function TaskCardImpl({
     onMerge,
     isActionPending,
   } = useTaskActions();
-  // Model badge, run gate, blocked chip, chip visibility + pulse — derived together in
-  // the card hook to keep this body lean (T13).
-  const { badge, gate, depChip, showBranch, showMainChip, pulse } = useTaskCardView(
-    task,
-    blocked,
-    blockedBy,
-    needsApproval,
-  );
+  // Model badge, run gate, blocked chip, run-order chip, multi-select membership, chip
+  // visibility + pulse — derived together in the card hook to keep this body lean (T13).
+  const view = useTaskCardView(task, blocked, blockedBy, needsApproval);
+  const { badge, gate, pulse } = view;
   const running = task.status === 'in_progress';
   const verifying = task.status === 'verifying';
   const elapsed = useElapsed(task.status, task.updatedAt);
   const drag = useTaskDraggable(task.id, draggable, preview);
-  const branch = task.branch;
   const mainMode = task.runMode === 'main';
 
   // True while a named bridge command is in flight for this task — disables the
@@ -159,64 +151,12 @@ function TaskCardImpl({
           </div>
         )}
 
-        {(showBranch ||
-          showMainChip ||
-          blocked ||
-          needsApproval ||
-          verifying ||
-          task.conflict ||
-          task.status === 'failed') && (
-          <div className="mt-2.5 flex flex-wrap gap-1.5">
-            {showBranch && (
-              <span className={META_CHIP} title={branch ?? undefined}>
-                <BranchIcon size={11} />
-                <span className="min-w-0 truncate">{branch}</span>
-              </span>
-            )}
-            {showMainChip && (
-              <span className={META_CHIP} title="Runs on the project directory — no worktree">
-                <BoardIcon size={11} />
-                <span className="min-w-0 truncate">main</span>
-              </span>
-            )}
-            {verifying && (
-              <span className={`${STATUS_CHIP} bg-primary/[0.14] text-primary`}>
-                <SparkIcon size={11} />
-                verifying
-              </span>
-            )}
-            {needsApproval && (
-              <span className={`${STATUS_CHIP} bg-warning/[0.14] text-warning`}>
-                <AlertIcon size={11} />
-                needs input
-              </span>
-            )}
-            {task.conflict && (
-              <span className={`${STATUS_CHIP} bg-destructive/[0.12] text-destructive`}>
-                <AlertIcon size={11} />
-                merge conflict
-              </span>
-            )}
-            {blocked && (
-              <span
-                className={`${STATUS_CHIP} max-w-full bg-warning/[0.12] text-warning`}
-                title={depChip.tooltip}
-              >
-                <LockIcon size={11} />
-                <span className="min-w-0 truncate">{depChip.label}</span>
-              </span>
-            )}
-            {task.status === 'failed' && task.error !== null && (
-              <span
-                className={`${STATUS_CHIP} max-w-full bg-destructive/[0.12] text-destructive`}
-                title={task.error}
-              >
-                <AlertIcon size={11} />
-                <span className="min-w-0 truncate">{task.error}</span>
-              </span>
-            )}
-          </div>
-        )}
+        <TaskCardChips
+          task={task}
+          view={view}
+          blocked={blocked}
+          needsApproval={needsApproval}
+        />
 
         {(running || verifying) && (
           <div className="relative mt-2.5 h-[2.5px] overflow-hidden rounded-full bg-white/[0.06]">
@@ -232,6 +172,16 @@ function TaskCardImpl({
 
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- non-interactive wrapper; onClick only stops the real action buttons' clicks from bubbling to the card/drag container */}
       <div className="mt-3 flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+        {/* Multi-select (#402): checking N cards arms the board's bulk verb bar. Lives
+            here (outside the card-body button, inside the stop-propagation row) so
+            toggling never also opens the task or starts a drag. */}
+        {!preview && (
+          <TaskSelectToggle
+            title={task.title || 'Untitled task'}
+            selected={view.bulkSelected}
+            onToggle={view.onToggleBulk}
+          />
+        )}
         {task.status === 'backlog' || task.status === 'ready' ? (
           <>
             <button
@@ -383,6 +333,7 @@ function TaskCardImpl({
           </>
         )}
         <TaskCardTerminalChip taskId={task.id} />
+        <IssueChip task={task} />
         <IssueClosedChip task={task} />
         <IconButton
           label="Delete task"

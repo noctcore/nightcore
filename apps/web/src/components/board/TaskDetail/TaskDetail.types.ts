@@ -21,6 +21,11 @@ import type { TaskTranscript } from '../session-stream';
 export interface TaskDetailProps {
   task: Task;
   stream: TaskTranscript | undefined;
+  /** Every task on the board — the DependencyEditor's candidate pool and the index that
+   *  resolves declared dependency ids to titles (and powers its cycle guard). Turns over
+   *  only on `nc:task`, never on a stream flush, so it can't defeat the chrome memo.
+   *  Defaults to empty in stories/tests (the editor then shows no candidates). */
+  tasks?: Task[];
   /** True when ANY task is in_progress/verifying — gates history resume. */
   anyRunning: boolean;
   /** Every LIVE session id (task id) on the board — the send-input broadcast set the
@@ -81,6 +86,9 @@ export interface TaskDetailProps {
  *  reaches `<ActivityLog>` via `TaskStreamContext`. */
 export interface TaskDetailChromeProps {
   task: Task;
+  /** Every task on the board — the DependencyEditor's candidate pool (see
+   *  {@link TaskDetailProps.tasks}). */
+  tasks: Task[];
   /** Aggregate run cost — live stream total, falling back to the persisted total. */
   cost: number | null;
   /** True while the task's build session is streaming (`in_progress`). */
@@ -124,6 +132,15 @@ export interface TaskDetailChromeProps {
   onClose: () => void;
   isActionPending?: (action: string, id: string) => boolean;
   onOpenSourceRef?: (sourceRef: string) => void;
+}
+
+/** Props for {@link TaskDetailPrBands} — the two PR bands, which take the drawer's LIFTED
+ *  (already-fetched, memoized) views rather than fetching for themselves. */
+export interface TaskDetailPrBandsProps {
+  task: Task;
+  prStatusView: PrStatusView;
+  prReviewCommentsView: PrReviewCommentsView;
+  isActionPending?: (action: string, id: string) => boolean;
 }
 
 /** Props for {@link TaskDetailHeader} — the derived scalars the drawer header

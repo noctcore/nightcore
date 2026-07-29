@@ -2,14 +2,17 @@
  *  wiring (with button-safe drag ARIA). */
 import type { DraggableSyntheticListeners } from '@dnd-kit/core';
 import { useDraggable } from '@dnd-kit/core';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { Task, TaskStatus } from '@/lib/bridge';
 import { formatElapsed as formatElapsedShared } from '@/lib/formatters';
 
 import type { DependencyChip } from '../Board/Board.utils';
-import { canRunTask, type RunGate, useRunGate } from '../run-gating';
+import { canRunTask, useRunGate } from '../run-gating';
+import { runOrderIndex, useRunOrder } from '../run-order';
+import { useTaskSelection } from '../selection';
 import { isActive, modelBadge } from '../status';
+import type { TaskCardOrder, TaskCardView } from './TaskCard.types';
 
 /** The human-readable blocked chip (T13): a short label + full tooltip naming the
  *  UNFINISHED dependencies by title (id → title resolved upstream). Replaces the raw
@@ -28,27 +31,43 @@ export function blockedDepChip(blockedBy: DependencyChip[] | undefined): {
   return { label, tooltip: `Waiting on: ${names.join(', ')}` };
 }
 
+/** The card's run-order chip (#402) from the projection entry for this task, or `null`
+ *  when the task has no projected position (it isn't launchable, or the projection hasn't
+ *  loaded yet). `position === 1` reads as `next` — the head of the queue — and every
+ *  other position as `#N`; the tooltip names the wave so a chain reads honestly.
+ *  Pure. */
+export function runOrderChip(
+  entry: { position: number; wave: number; startsNow: boolean } | undefined,
+): TaskCardOrder | null {
+  if (entry === undefined) return null;
+  const label = entry.position === 1 ? 'next' : `#${entry.position}`;
+  const tooltip = entry.startsNow
+    ? `Run order ${entry.position} — Auto Mode starts this on the next pass`
+    : `Run order ${entry.position} — waits ${entry.wave} more pass${
+        entry.wave === 1 ? '' : 'es'
+      } for earlier tasks to finish`;
+  return { label, tooltip, startsNow: entry.startsNow };
+}
+
 /** The card's derived presentational view (T13): the honest model badge, the shared
  *  slot-aware run gate (reads the board-wide `RunGate` context), the human-readable
- *  blocked chip, and the settled-state chip visibility + attention pulse. Groups the
- *  pure derivations so the card body stays lean. */
+ *  blocked chip, the projected run-order chip (#402), the multi-select membership, and
+ *  the settled-state chip visibility + attention pulse. Groups the derivations so the
+ *  card body stays lean — and reads run order + selection from CONTEXT (by task id), so
+ *  neither has to be threaded through the virtualized Board → Column → card chain. */
 export function useTaskCardView(
   task: Task,
   blocked: boolean,
   blockedBy: DependencyChip[] | undefined,
   needsApproval: boolean,
-): {
-  badge: { label: string; dotColor: string };
-  gate: RunGate;
-  depChip: { label: string; tooltip: string };
-  /** Show the branch chip: a worktree task's branch, once the run has settled. */
-  showBranch: boolean;
-  /** Show the "main" chip: a main-mode task edits the tree in place (no branch). */
-  showMainChip: boolean;
-  /** The attention ring: a needs-approval pulse, else a verifying pulse, else none. */
-  pulse: string;
-} {
+): TaskCardView {
   const { slotsFree } = useRunGate();
+  const projection = useRunOrder();
+  const { selectedIds, toggle } = useTaskSelection();
+  // Indexing is O(entries) per card, so memoize on the projection — it turns over only
+  // on a `nc:task`/`nc:loop` refetch, never a per-frame stream flush.
+  const order = useMemo(() => runOrderIndex(projection), [projection]).get(task.id);
+  const onToggleBulk = useCallback(() => toggle(task.id), [toggle, task.id]);
   const verifying = task.status === 'verifying';
   const settled =
     task.status === 'in_progress' ||
@@ -60,6 +79,7 @@ export function useTaskCardView(
     badge: modelBadge(task),
     gate: canRunTask({ blocked, slotsFree }),
     depChip: blockedDepChip(blockedBy),
+    order: runOrderChip(order),
     showBranch: task.branch !== null && settled,
     showMainChip: task.runMode === 'main' && settled,
     pulse: needsApproval
@@ -67,6 +87,8 @@ export function useTaskCardView(
       : verifying
         ? 'ring-1 ring-primary/50'
         : '',
+    bulkSelected: selectedIds.has(task.id),
+    onToggleBulk,
   };
 }
 

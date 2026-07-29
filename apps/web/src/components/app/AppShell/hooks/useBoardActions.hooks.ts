@@ -2,7 +2,14 @@ import { useCallback, useMemo } from 'react';
 
 import { type TaskDetailActions } from '@/components/board';
 import type { ToastApi } from '@/components/ui';
-import { type CreateTaskOptions, type RunMode, sendInput, type TaskKind, type TaskStatus } from '@/lib/bridge';
+import {
+  type CreateTaskOptions,
+  type RunMode,
+  sendInput,
+  type TaskKind,
+  type TaskStatus,
+  updateTask,
+} from '@/lib/bridge';
 
 import type { ActionGuard } from './useActionGuard.hooks';
 import type { useBoard } from './useBoard.hooks';
@@ -107,6 +114,23 @@ export function useBoardActions({
     [toast],
   );
 
+  // Dependency authoring (#402): replace a task's `dependencies` list. The backend has
+  // stored + enforced these since M1 (`orchestration::deps`); only the authoring path was
+  // missing. Non-optimistic on purpose — dependency satisfaction is recomputed backend-
+  // side (`blocked_task_ids` / `run_order`), so a locally-patched list would show a
+  // blocked/order state the coordinator disagrees with until the echo lands. Defined here
+  // in the composition seam (like `handleSendInput`) because `useTaskLifecycleActions`
+  // already returns exactly 20 members — its god-controller cap.
+  const handleChangeDependencies = useCallback(
+    (id: string, dependencies: string[]) => {
+      void updateTask(id, { dependencies }).catch((err) => {
+        console.error('update_task (dependencies) failed', err);
+        toast.error('Could not update the dependencies', err);
+      });
+    },
+    [toast],
+  );
+
   const detailActions = useMemo<TaskDetailActions>(
     () => ({
       onSelect: setSelectedId,
@@ -130,6 +154,8 @@ export function useBoardActions({
       onChangeEffort: lifecycle.handleChangeEffort,
       onChangeMaxTurns: lifecycle.handleChangeMaxTurns,
       onChangeMaxBudget: lifecycle.handleChangeMaxBudget,
+      onChangeDependencies: handleChangeDependencies,
+      onBulkDelete: confirm.requestBulkDelete,
       onAcceptReview: workflow.handleAcceptReview,
       onRejectReview: workflow.handleRejectReview,
       onRerunVerification: workflow.handleRerunVerification,
@@ -175,6 +201,8 @@ export function useBoardActions({
       lifecycle.handleChangeEffort,
       lifecycle.handleChangeMaxTurns,
       lifecycle.handleChangeMaxBudget,
+      handleChangeDependencies,
+      confirm.requestBulkDelete,
       workflow.handleAcceptReview,
       workflow.handleRejectReview,
       workflow.handleRerunVerification,

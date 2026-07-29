@@ -17,6 +17,7 @@
 pub mod breaker;
 pub mod coordinator;
 pub mod deps;
+pub mod run_order;
 pub mod slots;
 
 mod engine_handle;

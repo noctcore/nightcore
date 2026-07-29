@@ -177,6 +177,7 @@ export function AppShellViews({
                 <Suspense fallback={null}>
                   <TaskDetail
                     task={selected}
+                    tasks={tasks}
                     stream={drawer.streams[selected.id] ?? EMPTY_TRANSCRIPT}
                     anyRunning={anyRunning}
                     liveSessionIds={liveSessionIds}

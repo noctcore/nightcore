@@ -70,6 +70,14 @@ export interface TaskDetailActions {
   onChangeMaxTurns?: (id: string, maxTurns: number | null) => void;
   /** Edit the task's max-budget-USD ceiling (SDK guardrail) — `null` = inherit. Pre-run. */
   onChangeMaxBudget?: (id: string, maxBudgetUsd: number | null) => void;
+  /** Board flow (#402): replace the task's dependency list (other task ids it waits on).
+   *  The backend has always stored + enforced `dependencies` (`orchestration::deps`) —
+   *  this is the authoring path the UI never had. Enables the DependencyEditor and the
+   *  bulk Chain / Unchain verbs; settles via the `nc:task` echo. */
+  onChangeDependencies?: (id: string, dependencies: string[]) => void;
+  /** Board flow (#402): delete every selected task behind ONE confirmation, instead of
+   *  N sequential dialogs. Enables the bulk bar's Delete verb. */
+  onBulkDelete?: (ids: string[]) => void;
   /** Verification-approval actions for a review-parked `waiting_approval`. */
   onAcceptReview?: (id: string) => void;
   onRejectReview?: (id: string) => void;
