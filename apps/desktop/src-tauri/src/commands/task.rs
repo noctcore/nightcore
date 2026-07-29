@@ -465,6 +465,28 @@ pub fn blocked_task_ids(store: State<'_, TaskStore>) -> Result<Vec<String>, Stri
         .collect())
 }
 
+/// The coordinator's projected execution order for the board (#402).
+///
+/// Read-only. Delegates to [`crate::orchestration::run_order::project_run_order`],
+/// feeding it the LIVE slot state (`free_slots` / `max`) and the real lease predicate,
+/// so wave 0 is exactly what the next auto-loop tick would launch. The board uses this
+/// for the "next up" ordering, the per-card position chip, and the Auto-Mode arm
+/// preview ("this will start N tasks") — the visual column order is
+/// newest-updated-first and diverges from execution order on any dependency chain.
+#[tauri::command]
+pub fn run_order(
+    store: State<'_, TaskStore>,
+    orch: State<'_, crate::orchestration::coordinator::Orchestrator>,
+) -> Result<crate::orchestration::run_order::RunOrderProjection, String> {
+    let tasks = store.list();
+    Ok(crate::orchestration::run_order::project_run_order(
+        &tasks,
+        |id| orch.slots.is_leased(id),
+        orch.slots.free_slots(),
+        orch.slots.max(),
+    ))
+}
+
 /// Manually set a task's status (drag between board columns), persist, and emit
 /// `nc:task`. Pure board bookkeeping — worktrees and slots are untouched.
 ///

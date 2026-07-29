@@ -31,6 +31,7 @@ fn export_all_bindings() {
     use crate::infra::editor::DetectedEditor;
     use crate::infra::logging::LogLevel;
     use crate::orchestration::coordinator::LoopSnapshot;
+    use crate::orchestration::run_order::{RunOrderEntry, RunOrderProjection};
     use crate::project::Project;
     use crate::settings::{
         AppInfo, BoardAppearance, BoardBackgroundRef, McpServerEntry, McpServerTransport, Settings,
@@ -138,6 +139,11 @@ fn export_all_bindings() {
         StructureLockResult,
         StructureLockCheck,
         LoopSnapshot,
+        // Board flow (#402): the coordinator's projected execution order — the board's
+        // "next up" ordering, per-card position chip, and Auto-Mode arm preview.
+        // `export_all` on the projection also writes the nested entry row.
+        RunOrderProjection,
+        RunOrderEntry,
         SessionInfoView,
         SessionMessageView,
         // `export_all` writes the snapshot AND its nested section/summary views.
@@ -301,6 +307,8 @@ mod tests {
             "StructureLockResult.ts",
             "StructureLockCheck.ts",
             "LoopEnvelope.ts",
+            "RunOrderProjection.ts",
+            "RunOrderEntry.ts",
             "SessionInfo.ts",
             "SessionMessage.ts",
             "ProviderConfigSnapshot.ts",

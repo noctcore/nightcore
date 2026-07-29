@@ -304,6 +304,7 @@ pub fn run() {
             commands::task::read_task_attachment,
             commands::task::move_task,
             commands::task::blocked_task_ids,
+            commands::task::run_order,
             sidecar::run_task,
             sidecar::cancel_task,
             sidecar::send_input,
