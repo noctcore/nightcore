@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { HarnessPolicyFile, HarnessPolicyPatch } from '@/lib/bridge';
 
+import type { PolicyProbeLists } from '../PatternTester';
 import type { PolicyDraft, PolicyEditorProps, PolicyListKey } from './PolicyEditor.types';
 import {
   blockingIssueCount,
@@ -90,6 +91,9 @@ export interface PolicyEditorVM {
   limitErrors: { maxChangedLines: string | null; maxChangedFiles: string | null };
   /** Per-field, per-row pattern diagnostics (index-aligned with the draft rows). */
   entryIssues: PolicyEntryIssues;
+  /** The tiers the pattern tester probes — the DRAFT lists, so the tester answers
+   *  for the rule being typed rather than the one last saved. */
+  probeLists: PolicyProbeLists;
   /** How many rows are provably dead — non-zero blocks save (issue #400). */
   deadRuleCount: number;
   canSave: boolean;
@@ -115,6 +119,17 @@ const NO_ISSUES: PolicyEntryIssues = {
   disallowedTools: [],
   askTools: [],
   allowTools: [],
+};
+
+/** The pre-load probe lists (nothing to test yet). `allowTools` is absent by
+ *  design: it is SDK-side auto-approval the PreToolUse gate never consults, so it
+ *  can produce no verdict. */
+const NO_PROBE_LISTS: PolicyProbeLists = {
+  protectedPaths: [],
+  denyReadPaths: [],
+  denyBashPatterns: [],
+  disallowedTools: [],
+  askTools: [],
 };
 
 /** Own the editor draft: seeded from the loaded policy, reset whenever the
@@ -204,6 +219,22 @@ export function usePolicyEditor({
   );
   const deadRuleCount = blockingIssueCount(entryIssues);
 
+  // Memoized so the tester's verdict memos only recompute when a probed tier
+  // actually changed (not on every diff-budget keystroke).
+  const probeLists = useMemo<PolicyProbeLists>(
+    () =>
+      draft === null
+        ? NO_PROBE_LISTS
+        : {
+            protectedPaths: draft.protectedPaths,
+            denyReadPaths: draft.denyReadPaths,
+            denyBashPatterns: draft.denyBashPatterns,
+            disallowedTools: draft.disallowedTools,
+            askTools: draft.askTools,
+          },
+    [draft],
+  );
+
   const canSave =
     draft !== null &&
     dirty &&
@@ -224,6 +255,7 @@ export function usePolicyEditor({
     dirty,
     limitErrors,
     entryIssues,
+    probeLists,
     deadRuleCount,
     canSave,
     saving,

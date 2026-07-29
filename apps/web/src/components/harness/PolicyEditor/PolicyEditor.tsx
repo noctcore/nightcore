@@ -4,6 +4,7 @@
  *  `usePolicyEditor` view model. */
 import { Button, Spinner } from '@/components/ui';
 
+import { PatternTester } from '../PatternTester';
 import { usePolicyEditor } from './PolicyEditor.hooks';
 import {
   EditorSkeleton,
@@ -83,6 +84,8 @@ export function PolicyEditor(props: PolicyEditorProps) {
               />
             </div>
           </div>
+
+          <PatternTester lists={view.probeLists} />
 
           {view.saveError !== null && (
             <p className="rounded-md border border-destructive/40 bg-destructive/[0.08] px-3 py-2 text-2xs-plus text-destructive">
