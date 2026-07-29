@@ -9,6 +9,7 @@ import type {
 } from '@/components/ui';
 import { useToast } from '@/components/ui';
 import type { FindingCategory } from '@/lib/bridge';
+import { formatRelativeTimeAgo } from '@/lib/formatters';
 import {
   buildLensTabs,
   buildRunHistory,
@@ -28,6 +29,7 @@ import { buildProgressCategories } from '../buildProgressCategories';
 import type { CategoryTab } from '../CategoryTabs';
 import { ALL_CATEGORIES, CATEGORY_META } from '../insight.constants';
 import type { InsightFinding } from '../insight.types';
+import { computeInsightRunDelta, type InsightDeltaResult } from '../insight-delta';
 import type { InsightStream } from '../insight-stream';
 import { useRunConfig } from '../RunControls/RunControls.hooks';
 import type { InsightRunConfig } from '../RunControls/RunControls.types';
@@ -52,6 +54,11 @@ export interface InsightViewModel {
   runHistory: MenuItem[];
   /** Whether to surface the history affordance (≥1 persisted run). */
   hasHistory: boolean;
+  /** Run-over-run delta (issue #403): the APPARENT fingerprint set-diff against the
+   *  previous comparable run, or why there is no comparison. */
+  delta: InsightDeltaResult;
+  /** Relative age of the compared-against run (`"2h ago"`), or `null`. */
+  previousRunLabel: string | null;
   /** RunProgress: the requested lenses as ordered category descriptors. */
   progressCategories: RunProgressCategory[];
   /** RunProgress: total findings produced per category so far. */
@@ -214,6 +221,21 @@ export function useInsightView({
     [insight, resetTransient, resetBulk],
   );
 
+  // Run-over-run delta (issue #403). Derived from the PERSISTED run list — the
+  // displayed run included (reconcile refreshes the list on the terminal event), so
+  // the diff always compares two finalized runs rather than a mid-flight fold.
+  const delta = useMemo(
+    () => computeInsightRunDelta(insight.runs, stream.runId),
+    [insight.runs, stream.runId],
+  );
+  const previousRunLabel = useMemo(
+    () =>
+      delta.kind === 'delta'
+        ? formatRelativeTimeAgo(delta.delta.previousRunCreatedAt)
+        : null,
+    [delta],
+  );
+
   const emptyMessage = useMemo(
     () =>
       scanEmptyMessage({
@@ -242,6 +264,8 @@ export function useInsightView({
     startError: insight.startError,
     runHistory,
     hasHistory: insight.runs.length > 0,
+    delta,
+    previousRunLabel,
     progressCategories,
     findingCounts,
     tabs,
