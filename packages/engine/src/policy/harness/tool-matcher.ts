@@ -7,34 +7,21 @@
  * later adds a tool doesn't silently escape the tier (#223). Every other
  * entry, MCP or native, matches EXACTLY, so a literal tool name can never
  * widen into a wildcard.
+ *
+ * The matcher shape + the pure compile/match core moved to
+ * `@nightcore/contracts` (`policy-patterns.ts`, issue #400) so the web policy
+ * editor's tester gates a tool name through the EXACT code the session gate
+ * uses; this module keeps the operator-facing WARN diagnostics (empty entry,
+ * ask-entry-shadowed-by-deny), which a contract-rank module has no logger for.
  */
+import {
+  type CompiledToolMatcher,
+  compileToolEntries,
+  toolMatches,
+} from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
 
-/** A compiled tool-tier matcher: exact SDK tool names plus `mcp__server__*` prefix
- *  globs. Match with {@link toolMatches}. */
-export interface CompiledToolMatcher {
-  /** Entries matched by identity (`WebSearch`, `mcp__acme__push`). */
-  exact: ReadonlySet<string>;
-  /** Prefixes from `mcp__…__*` entries — a call matches when its name STARTS WITH
-   *  the prefix (`mcp__acme__*` ⇒ prefix `mcp__acme__`). */
-  prefixes: readonly string[];
-}
-
-/** True for an `mcp__…__*` tier entry — the only entries that glob. A trailing
- *  `*` on an MCP entry becomes a server/prefix match (`mcp__acme__*` gates every
- *  `mcp__acme__…` tool); every other entry, including native tool names, is exact,
- *  so a literal name can never accidentally become a wildcard. */
-function isMcpGlob(entry: string): boolean {
-  return entry.startsWith('mcp__') && entry.endsWith('*');
-}
-
-/** True when `toolName` is gated by the matcher — an exact-name hit, or an
- *  `mcp__server__*` prefix the name starts with. Exported so the ask and deny
- *  tiers share one matching rule. */
-export function toolMatches(matcher: CompiledToolMatcher, toolName: string): boolean {
-  if (matcher.exact.has(toolName)) return true;
-  return matcher.prefixes.some((prefix) => toolName.startsWith(prefix));
-}
+export { type CompiledToolMatcher, toolMatches };
 
 /**
  * Compile a tool-tier list into a {@link CompiledToolMatcher}. Empty/whitespace
@@ -50,8 +37,6 @@ export function compileToolMatcher(
   logger?: Logger,
   denyMatcher?: CompiledToolMatcher,
 ): CompiledToolMatcher {
-  const exact = new Set<string>();
-  const prefixes: string[] = [];
   for (const tool of tools) {
     const trimmed = tool.trim();
     if (trimmed.length === 0) {
@@ -63,11 +48,6 @@ export function compileToolMatcher(
         tool: trimmed,
       });
     }
-    if (isMcpGlob(trimmed)) {
-      prefixes.push(trimmed.slice(0, -1));
-    } else {
-      exact.add(trimmed);
-    }
   }
-  return { exact, prefixes };
+  return compileToolEntries(tools);
 }

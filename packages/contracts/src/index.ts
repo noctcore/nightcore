@@ -11,6 +11,8 @@ export * from './harness-enforce.js';
 export * from './insight.js';
 export * from './issue-triage.js';
 export * from './models.js';
+export * from './policy-lint.js';
+export * from './policy-patterns.js';
 export * from './pr-review.js';
 export * from './provider.js';
 export * from './provider-config.js';

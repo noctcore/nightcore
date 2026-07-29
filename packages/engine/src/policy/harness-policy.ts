@@ -76,7 +76,7 @@
  */
 import * as path from 'node:path';
 
-import type { HarnessPolicy } from '@nightcore/contracts';
+import { type HarnessPolicy, MANIFEST_PROTECTED_PATTERN } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
 
 import {
@@ -87,6 +87,7 @@ import {
 import {
   type CompiledPathRule,
   compilePathRule,
+  pathSegments,
   ruleProtects,
 } from './harness/path-rules.js';
 import {
@@ -116,7 +117,12 @@ export {
   BASH_COMMAND_SCAN_LIMIT,
   MAX_BASH_PATTERN_LENGTH,
 } from './harness/bash-rules.js';
-export { type CompiledPathRule, compilePathRule, ruleProtects } from './harness/path-rules.js';
+export {
+  type CompiledPathRule,
+  compilePathRule,
+  pathSegments,
+  ruleProtects,
+} from './harness/path-rules.js';
 export { type CompiledToolMatcher,toolMatches } from './harness/tool-matcher.js';
 
 /** Stable id surfaced in logs/telemetry when a protected-path rule denies. */
@@ -155,8 +161,11 @@ const FILE_READ_TARGET_KEY: Record<string, string> = {
 
 /** The implicit self-protection pattern — see the module header. `.nightcore/`
  *  holds the harness manifest, the task store, and future enforcement state
- *  (ratchet baselines); none of it is ever an agent's legitimate write target. */
-export const MANIFEST_PROTECTED_PATTERN = '.nightcore/**';
+ *  (ratchet baselines); none of it is ever an agent's legitimate write target.
+ *  Declared in `@nightcore/contracts` alongside the policy schema so the
+ *  authoring surfaces can show the rule the author never typed; re-exported here
+ *  so every engine consumer keeps its historical import site. */
+export { MANIFEST_PROTECTED_PATTERN };
 
 /** The compiled form {@link HookBus} holds for the session's lifetime — compile
  *  once at construction, evaluate per tool call. */
@@ -362,7 +371,7 @@ function matchPathRules(
   if (!isWithin(resolved, resolvedCwd)) return undefined;
   const rel = path.relative(resolvedCwd, resolved);
   if (rel.length === 0) return undefined;
-  const segments = rel.split(/[\\/]/).filter((s) => s.length > 0);
+  const segments = pathSegments(rel);
   for (const rule of rules) {
     if (ruleProtects(rule, segments)) {
       return { target: resolved, pattern: rule.pattern };
