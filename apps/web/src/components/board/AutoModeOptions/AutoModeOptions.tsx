@@ -1,5 +1,7 @@
-/** Settings content for the Auto Mode toolbar option — the auto-commit row plus the
- *  usage-throttle threshold slider, shown inside the ToolbarOption settings popover. */
+/** Settings content for the Auto Mode toolbar option — the arm preview, the auto-commit
+ *  row, and the usage-throttle threshold slider, shown inside the ToolbarOption settings
+ *  popover. */
+import { useAutoModeArmPreview } from './AutoModeOptions.hooks';
 import type { AutoModeOptionsProps } from './AutoModeOptions.types';
 
 /** Clamp a raw range value to the throttle's 50..=100 window (mirrors the Rust
@@ -13,9 +15,24 @@ export function AutoModeOptions({
   onThresholdChange,
   usageMeterEnabled,
 }: AutoModeOptionsProps) {
+  const preview = useAutoModeArmPreview();
   return (
     // The ToolbarOption popover already wraps this in a labelled `role="group"`.
     <div className="flex flex-col gap-2.5">
+      {/* Arm preview (#402): what arming the loop would do, BEFORE the click. Reads the
+          coordinator's projected run order, so `startsNow` is literally what the next tick
+          launches — not an estimate. */}
+      <div className="rounded-lg border border-border bg-white/[0.02] p-2.5">
+        <span className="block text-xs-plus font-semibold text-foreground">
+          {preview.idle ? 'Nothing queued' : `Arming starts ${preview.startsNow} now`}
+        </span>
+        <p className="mt-0.5 text-2xs-plus leading-snug text-muted-foreground">
+          {preview.idle
+            ? 'No backlog or ready task is eligible, so arming Auto Mode would pick up nothing.'
+            : preview.summary}
+        </p>
+      </div>
+
       <button
         type="button"
         role="switch"

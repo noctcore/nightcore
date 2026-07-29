@@ -1,4 +1,5 @@
 import { ConfirmDialog, EditProjectDialog } from '@/components/ui';
+import { pluralize } from '@/lib/formatters';
 
 import type { AppShellState } from './AppShell.hooks';
 
@@ -33,6 +34,21 @@ export function AppShellOverlays({
             : ''
         }
         confirmLabel="Delete all"
+        destructive
+        onConfirm={confirm.confirm}
+        onCancel={confirm.cancel}
+      />
+
+      {/* Multi-select delete (#402): one confirmation for the whole selection. */}
+      <ConfirmDialog
+        open={confirm.pendingBulkDelete !== null}
+        title={
+          confirm.pendingBulkDelete !== null
+            ? `Delete ${pluralize(confirm.pendingBulkDelete.length, 'selected task')}?`
+            : ''
+        }
+        message="Every selected task and its run history will be removed. This can't be undone."
+        confirmLabel="Delete"
         destructive
         onConfirm={confirm.confirm}
         onCancel={confirm.cancel}

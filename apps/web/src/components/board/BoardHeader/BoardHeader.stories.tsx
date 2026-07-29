@@ -4,6 +4,8 @@ import { expect, fireEvent, fn, userEvent, within } from 'storybook/test';
 import type { BoardAppearance } from '@/lib/bridge';
 import { WorktreesProvider } from '@/lib/worktrees-context';
 
+import { makeTaskActions } from '../_fixtures';
+import { TaskActionsProvider } from '../actions';
 import { DEFAULT_APPEARANCE } from '../appearance';
 import { BoardChromeProvider, type BoardChromeValue } from '../chrome';
 import { BoardHeader } from './BoardHeader';
@@ -30,8 +32,10 @@ type ChromeArgs = Partial<
 > & { onRefreshWorktrees?: () => void };
 
 /** The story fixture: the header wrapped in the `BoardChromeProvider` (the
- *  appearance + auto-loop cluster) and `WorktreesProvider` (Refresh) it now
- *  reads from. */
+ *  appearance + auto-loop cluster), `WorktreesProvider` (Refresh), and
+ *  `TaskActionsProvider` (the Run order sheet's row click → `onSelect`) it reads from.
+ *  The run-order projection is left to its context default (empty), so the arm-preview
+ *  tooltip reads "nothing queued" here. */
 function BoardHeaderFixture({
   concurrency = 3,
   autoMode = false,
@@ -79,7 +83,9 @@ function BoardHeaderFixture({
           refreshWorktrees: onRefreshWorktrees ?? (() => {}),
         }}
       >
-        <BoardHeader {...props} />
+        <TaskActionsProvider actions={makeTaskActions()}>
+          <BoardHeader {...props} />
+        </TaskActionsProvider>
       </WorktreesProvider>
     </BoardChromeProvider>
   );
@@ -93,6 +99,7 @@ const meta = {
   parameters: { layout: 'fullscreen' },
   args: {
     taskCount: 7,
+    tasks: [],
     projectName: 'nightcore',
     projectPath: '~/dev/nightcore',
     projectBranch: 'main',

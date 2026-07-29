@@ -1,7 +1,7 @@
 /** Prop types for the BoardHeader. The appearance + auto-loop chrome cluster
  *  comes from `BoardChromeContext` (`useBoardChrome()`) and the Refresh handler
  *  from `WorktreesContext` — only board-owned view state travels as props. */
-import type { BoardAppearance } from '@/lib/bridge';
+import type { BoardAppearance, Task } from '@/lib/bridge';
 
 /** Props for the board header: the title chip inputs, the controlled search
  *  (state owned by the Board's view hook, so the columns derive from the same
@@ -10,6 +10,9 @@ import type { BoardAppearance } from '@/lib/bridge';
 export interface BoardHeaderProps {
   /** Total task count for the header's count chip. */
   taskCount: number;
+  /** Every task on the board — the Run order sheet resolves the projection's task ids to
+   *  titles from this (the projection itself rides `RunOrderContext`). */
+  tasks: Task[];
   /** Active project name + path + branch for the subtitle (and the inspector). */
   projectName: string;
   projectPath: string;

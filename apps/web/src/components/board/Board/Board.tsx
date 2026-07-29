@@ -4,8 +4,10 @@ import { AlertIcon, BoltIcon, Button, CloseIcon } from '@/components/ui';
 
 import { BoardDnd } from '../BoardDnd';
 import { BoardHeader } from '../BoardHeader';
+import { BulkActionBar } from '../BulkActionBar';
 import { useBoardChrome } from '../chrome';
 import { Column } from '../Column';
+import { TaskSelectionProvider, useTaskSelectionState } from '../selection';
 import { formatResetClock, providerDisplay } from '../usage-hot';
 import { WorktreeSwitcher } from '../WorktreeSwitcher';
 import { useBoardAppearance } from './Board.appearance.hooks';
@@ -57,12 +59,17 @@ function BoardImpl({
     tasks,
     onClearColumn,
   );
+  // Multi-select (#402): the id-keyed set the cards read and the bulk verbs act on. Owned
+  // here (the board is the surface the bar lives on) and memoized by the hook, so the
+  // provider value is a stable reference per selection change — never per stream flush.
+  const selection = useTaskSelectionState(tasks);
   const banner = useBreakerBanner(breaker);
   const usageBanner = useUsagePauseBanner(usagePause);
   const appearance = useBoardAppearance(projectId, appearanceOverride, backgroundVersion);
   const usageResetClock = usagePause !== null ? formatResetClock(usagePause.resetsAt) : null;
 
   return (
+    <TaskSelectionProvider value={selection}>
     <div
       className="nc-board-appearance flex h-full min-h-0 flex-col"
       style={appearance.view.style}
@@ -77,6 +84,7 @@ function BoardImpl({
       )}
       <BoardHeader
         taskCount={tasks.length}
+        tasks={tasks}
         projectName={projectName}
         projectPath={projectPath}
         projectBranch={projectBranch}
@@ -129,6 +137,10 @@ function BoardImpl({
         </div>
       )}
 
+      {/* Bulk verbs (#402) — renders only while something is selected, so an untouched
+          board is unchanged. Sits above the DnD context: it is chrome, not a drop target. */}
+      <BulkActionBar tasks={tasks} onMoveTask={onMoveTask} />
+
       <BoardDnd tasks={tasks} onMoveTask={onMoveTask}>
         <div className="nc-board-columns flex flex-1 gap-3.5 overflow-x-auto overflow-y-hidden px-[22px] py-4">
           {columns.map(({ def, tasks: colTasks }) => (
@@ -165,6 +177,7 @@ function BoardImpl({
         </div>
       </BoardDnd>
     </div>
+    </TaskSelectionProvider>
   );
 }
 
