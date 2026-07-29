@@ -4,6 +4,7 @@ import {
   BoardChromeProvider,
   NewTaskForm,
   RunGateProvider,
+  RunOrderProvider,
   TaskActionsProvider,
   UsageHotProvider,
 } from '@/components/board';
@@ -52,6 +53,7 @@ export function AppShell() {
     chrome,
     usageHot,
     runSlots,
+    runOrder,
     board,
     drawer,
     prDialog,
@@ -184,6 +186,7 @@ export function AppShell() {
     <WorktreesProvider value={worktrees}>
     <UsageHotProvider value={usageHot}>
     <RunGateProvider value={runSlots}>
+    <RunOrderProvider value={runOrder}>
     <BoardChromeProvider value={chrome}>
       {showProjects ? (
         <div className="flex h-full w-full flex-col overflow-hidden bg-background text-foreground">
@@ -278,6 +281,7 @@ export function AppShell() {
 
       <AppShellOverlays confirm={confirm} editProject={editProject} projectRemoval={projectRemoval} />
     </BoardChromeProvider>
+    </RunOrderProvider>
     </RunGateProvider>
     </UsageHotProvider>
     </WorktreesProvider>

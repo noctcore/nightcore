@@ -14,6 +14,7 @@ import {
   isTauri,
   type PermissionPrompt,
   type QuestionPrompt,
+  type RunOrderProjection,
   type Task,
 } from '@/lib/bridge';
 import { requestActivateSession } from '@/lib/terminal-links';
@@ -41,6 +42,7 @@ import { usePrLifecycle } from './hooks/usePrLifecycle.hooks';
 import { useProjectRegistry } from './hooks/useProjectRegistry.hooks';
 import { useProjectRemoval } from './hooks/useProjectRemoval.hooks';
 import { useRouting } from './hooks/useRouting.hooks';
+import { useRunOrder } from './hooks/useRunOrder.hooks';
 import { useSettingsData } from './hooks/useSettingsData.hooks';
 import { useSplash } from './hooks/useSplash.hooks';
 import { useStableLogCounts } from './hooks/useStableLogCounts.hooks';
@@ -134,6 +136,11 @@ export interface AppShellState {
    *  Run/Retry, provided via `RunGateProvider`. Memoized on the boolean so it flips only
    *  when availability crosses the concurrency line. */
   runSlots: { slotsFree: boolean };
+  /** Board flow (#402): the coordinator's PROJECTED execution order, provided via
+   *  `RunOrderProvider`. Refetched on `nc:task` / `nc:loop` only (never a stream
+   *  flush), so the cards + header + Auto-Mode preview all read one authoritative
+   *  ordering instead of re-deriving it web-side. */
+  runOrder: RunOrderProjection;
   board: BoardData;
   drawer: DrawerState;
   prDialog: PrDialogState;
@@ -196,6 +203,9 @@ export function useAppShell(): AppShellState {
   const newProject = useNewProjectFlow(routing.closeNewProject, toast);
   const board = useBoard(toast);
   const blockedIds = useBlockedIds();
+  // Board flow (#402): the coordinator's projected execution order (next-up ordering,
+  // per-card position chip, Auto-Mode arm preview). Same cadence as `blockedIds`.
+  const runOrderProjection = useRunOrder();
   // GitHub two-way sync (#97): the writeback observer projects each issue-linked
   // task's lifecycle onto its GitHub issue on `nc:task` transitions. Inert unless
   // `issueSyncEnabled` (default false ⇒ no subscription) — writeback mutates a
@@ -300,6 +310,7 @@ export function useAppShell(): AppShellState {
     chrome,
     usageHot,
     runSlots,
+    runOrder: runOrderProjection,
     board: {
       tasks,
       selected,

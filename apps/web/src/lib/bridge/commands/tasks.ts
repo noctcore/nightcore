@@ -9,6 +9,7 @@ import type {
   NcEvent,
   PermissionMode,
   RunMode,
+  RunOrderProjection,
   SessionInfo,
   SessionMessage,
   Task,
@@ -120,6 +121,26 @@ export async function readTaskAttachment(id: string, attachmentId: string): Prom
  *  board's blocked badge + locked Run. Returns `[]` outside Tauri (preview). */
 export async function blockedTaskIds(): Promise<string[]> {
   return tauriInvoke<string[]>('blocked_task_ids', {}, []);
+}
+
+/** An empty run-order projection — the browser-preview fallback and the shape a
+ *  failed fetch degrades to (the board then simply shows no ordering hints rather
+ *  than a wrong one). */
+const EMPTY_RUN_ORDER: RunOrderProjection = {
+  entries: [],
+  unreachable: [],
+  freeSlots: 0,
+  maxConcurrency: 0,
+  startsNowCount: 0,
+};
+
+/** The coordinator's PROJECTED execution order (#402): launchable tasks in the order
+ *  the auto-loop will pick them up, wave by wave, plus the live slot context. Wave 0
+ *  is exactly what the next tick launches, so `startsNowCount` answers "arming Auto
+ *  Mode now starts N tasks" before arming. Read-only. Returns an empty projection
+ *  outside Tauri (browser preview). */
+export async function runOrder(): Promise<RunOrderProjection> {
+  return tauriInvoke<RunOrderProjection>('run_order', {}, EMPTY_RUN_ORDER);
 }
 
 /** Manually move a task to `status` (drag between columns). The backend rejects a

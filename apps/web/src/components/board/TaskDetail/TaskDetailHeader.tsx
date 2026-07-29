@@ -4,6 +4,7 @@
 import { CloseIcon, IconButton } from '@/components/ui';
 import { sourceRefLabel } from '@/lib/source-ref';
 
+import { IssueChip } from '../IssueChip';
 import { formatCostUsd, STATUS_LABEL, STATUS_TEXT } from '../status';
 import { TaskStatusDot } from '../TaskStatusDot';
 import type { TaskDetailHeaderProps } from './TaskDetail.types';
@@ -40,22 +41,29 @@ export function TaskDetailHeader({ task, cost, onClose, onOpenSourceRef }: TaskD
         <h2 className="mt-2 truncate text-base font-semibold text-foreground">
           {task.title || 'Untitled task'}
         </h2>
-        {provenance !== null && task.sourceRef !== null && (
-          onOpenSourceRef !== undefined ? (
-            <button
-              type="button"
-              onClick={() => onOpenSourceRef(task.sourceRef!)}
-              title="Open the originating scan item"
-              className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
-            >
-              From {provenance} ↗
-            </button>
-          ) : (
-            <span className="mt-1.5 inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
-              From {provenance}
-            </span>
-          )
-        )}
+        {/* Provenance row: the originating GitHub issue (#402 — parity with the footer's
+            `PR #<n>` chip) beside the originating scan item. Each chip owns its own
+            visibility, so the row collapses (`empty:hidden`) rather than leaving a gap
+            under the title when a task carries neither. */}
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 empty:hidden">
+          <IssueChip task={task} />
+          {provenance !== null &&
+            task.sourceRef !== null &&
+            (onOpenSourceRef !== undefined ? (
+              <button
+                type="button"
+                onClick={() => onOpenSourceRef(task.sourceRef!)}
+                title="Open the originating scan item"
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+              >
+                From {provenance} ↗
+              </button>
+            ) : (
+              <span className="inline-flex items-center rounded-md border border-border bg-white/[0.03] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
+                From {provenance}
+              </span>
+            ))}
+        </div>
       </div>
       <IconButton label="Close detail panel" onClick={onClose}>
         <CloseIcon size={16} />

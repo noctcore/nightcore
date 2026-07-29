@@ -76,6 +76,10 @@ export type { PrStatus } from '../generated/PrStatus';
 export type { PrSupport } from '../generated/PrSupport';
 export type { PrThread } from '../generated/PrThread';
 export type { RunMode } from '../generated/RunMode';
+// Board flow (#402): the coordinator's projected execution order — the board's
+// "next up" ordering, per-card position chip, and Auto-Mode arm preview.
+export type { RunOrderEntry } from '../generated/RunOrderEntry';
+export type { RunOrderProjection } from '../generated/RunOrderProjection';
 export type { SessionInfo } from '../generated/SessionInfo';
 export type { SessionMessage } from '../generated/SessionMessage';
 export type { Settings } from '../generated/Settings';

@@ -2,6 +2,8 @@ import { useCallback } from 'react';
 
 import { openIssueInBrowser, type Task } from '@/lib/bridge';
 
+import { issueClosedUpstream } from './IssueClosedChip.utils';
+
 /** The chip's view: whether it renders, the issue number it names, and the open action. */
 export interface IssueClosedChipView {
   /** Render only when the linked issue is CLOSED upstream and the task itself is not
@@ -21,11 +23,9 @@ export interface IssueClosedChipView {
  *  component body, per the no-state-in-body convention). */
 export function useIssueClosedChip(task: Task): IssueClosedChipView {
   const issueNumber = task.issueNumber ?? null;
-  const visible =
-    issueNumber !== null &&
-    task.issueState === 'closed' &&
-    task.status !== 'done' &&
-    !task.merged;
+  // The divergence predicate lives in the colocated `.utils` so the plain `Issue #N`
+  // chip can defer to it (exactly one of the two ever renders).
+  const visible = issueClosedUpstream(task);
 
   const open = useCallback(() => {
     if (issueNumber !== null) {
