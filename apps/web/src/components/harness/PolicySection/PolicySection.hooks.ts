@@ -1,5 +1,6 @@
-/** Policy-file load/save/quarantine state for the Policy section. */
-import { useCallback, useEffect, useState } from 'react';
+/** Policy-file load/save/quarantine state + the activity feed for the Policy
+ *  section. */
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useToast } from '@/components/ui';
 import {
@@ -7,6 +8,8 @@ import {
   type HarnessPolicyFile,
   type HarnessPolicyPatch,
   listHarnessRuns,
+  listPolicyActivity,
+  type PolicyActivityEntry,
   type StoredRepoProfile,
   updateHarnessPolicyFile,
 } from '@/lib/bridge';
@@ -143,4 +146,58 @@ export function usePolicySection(): PolicySectionVM {
   );
 
   return { policy, profile, loadError, saving, saveError, save, quarantine };
+}
+
+/** How often the activity feed re-reads while the Policy tab is open. There is no
+ *  wire event for a gate decision (the recorder writes NDJSON from the sidecar,
+ *  the core reads it), so "live" is a poll — cheap (one read per task ledger,
+ *  server-capped) and bounded by the tab being mounted. A push channel would need
+ *  a new contract event on the whole hook path; deliberately not paid for here. */
+const POLICY_ACTIVITY_POLL_MS = 20_000;
+
+/** The activity feed's own state. */
+export interface PolicyActivityFeedVM {
+  /** `null` until the first read returns, then the rows (possibly empty). */
+  entries: PolicyActivityEntry[] | null;
+  loading: boolean;
+  refresh: () => void;
+}
+
+/**
+ * Own the Policy activity feed: read on mount, poll while the tab is open, and
+ * expose a manual refresh.
+ *
+ * FAIL-QUIET. A read failure never surfaces as an error banner: the feed is
+ * evidence ABOUT the gates, not a gate, and the authoring surface must stay
+ * usable when the ledger is missing or unreadable — the same posture the recorder
+ * itself takes. Reads are single-flighted so a slow disk cannot stack up polls.
+ */
+export function usePolicyActivityFeed(): PolicyActivityFeedVM {
+  const [entries, setEntries] = useState<PolicyActivityEntry[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const inFlight = useRef(false);
+
+  const read = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setLoading(true);
+    try {
+      setEntries(await listPolicyActivity());
+    } catch {
+      // Keep whatever we already showed; a first-read failure settles as empty so
+      // the card leaves its skeleton instead of spinning forever.
+      setEntries((prev) => prev ?? []);
+    } finally {
+      inFlight.current = false;
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void read();
+    const timer = setInterval(() => void read(), POLICY_ACTIVITY_POLL_MS);
+    return () => clearInterval(timer);
+  }, [read]);
+
+  return { entries, loading, refresh: useCallback(() => void read(), [read]) };
 }
