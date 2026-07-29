@@ -2,8 +2,9 @@ import { composeStories } from '@storybook/react-vite';
 import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
-import { makeTaskActions, TASKS_BY_STATUS } from '../_fixtures';
+import { makeTask, makeTaskActions, TASKS_BY_STATUS } from '../_fixtures';
 import { TaskActionsProvider } from '../actions';
+import { TaskSelectionProvider } from '../selection';
 import { Column } from './Column';
 import * as stories from './Column.stories';
 
@@ -112,4 +113,44 @@ test('a running card in the In Progress column is not draggable (pinned)', async
   await expect.element(screen.getByText('Generate API client')).toBeInTheDocument();
   // A live run owns its card — no grab affordance, no @dnd-kit drag handle.
   expect(screen.container.querySelector('.cursor-grab')).toBeNull();
+});
+
+test('multi-select survives virtualization: only mounted rows render, membership is by id', async () => {
+  // The virtualization contract (#402). A 60-card column mounts only the visible rows, so
+  // an index-based (or "all rows mounted") selection model would lose or mis-assign the
+  // selection as rows scroll. The card reads its OWN membership out of the shared id set,
+  // so: (a) far fewer checkboxes exist than tasks, and (b) the one selected id that IS
+  // mounted renders checked — while a selected id that is NOT mounted simply has no
+  // checkbox, and no other card is wrongly checked in its place.
+  const tasks = Array.from({ length: 60 }, (_, i) =>
+    makeTask({ id: `t-${i}`, title: `Task ${i}`, status: 'backlog', createdAt: 1000 + i }),
+  );
+  const selectedIds = new Set(['t-0', 't-59']); // one near the top, one far off-screen
+  const screen = render(
+    <TaskActionsProvider actions={makeTaskActions()}>
+      <TaskSelectionProvider
+        value={{ selectedIds, toggle: () => {}, clear: () => {}, select: () => {} }}
+      >
+        <Column
+          title="Backlog"
+          tasks={tasks}
+          dotColor="oklch(62% .02 290)"
+          selectedId={null}
+          blockedIds={new Set()}
+          logCounts={{}}
+          dropStatus="backlog"
+        />
+      </TaskSelectionProvider>
+    </TaskActionsProvider>,
+  );
+
+  await expect.element(screen.getByText('Task 0')).toBeInTheDocument();
+  const boxes = [...screen.container.querySelectorAll('[role="checkbox"]')];
+  expect(boxes.length).toBeGreaterThan(0);
+  expect(boxes.length).toBeLessThan(tasks.length); // virtualized, not all 60 mounted
+
+  const checked = boxes.filter((b) => b.getAttribute('aria-checked') === 'true');
+  // Exactly the mounted member is checked — never a positional stand-in for `t-59`.
+  expect(checked).toHaveLength(1);
+  expect(checked[0]?.getAttribute('aria-label')).toBe('Select task Task 0');
 });
