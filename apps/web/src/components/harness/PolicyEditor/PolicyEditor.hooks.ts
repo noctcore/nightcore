@@ -4,6 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { HarnessPolicyFile, HarnessPolicyPatch } from '@/lib/bridge';
 
 import type { PolicyDraft, PolicyEditorProps, PolicyListKey } from './PolicyEditor.types';
+import {
+  blockingIssueCount,
+  mergeEntries,
+  type PolicyEntryIssues,
+  policyEntryIssues,
+} from './PolicyEditor.utils';
 
 /** The editor's working copy of a loaded policy: lists copied as rows, the
  *  diff-budget limits stringified for the clearable numeric inputs. */
@@ -82,6 +88,10 @@ export interface PolicyEditorVM {
   dirty: boolean;
   /** Per-limit inline validation errors (block save while present). */
   limitErrors: { maxChangedLines: string | null; maxChangedFiles: string | null };
+  /** Per-field, per-row pattern diagnostics (index-aligned with the draft rows). */
+  entryIssues: PolicyEntryIssues;
+  /** How many rows are provably dead — non-zero blocks save (issue #400). */
+  deadRuleCount: number;
   canSave: boolean;
   saving: boolean;
   saveError: string | null;
@@ -90,8 +100,22 @@ export interface PolicyEditorVM {
   addListItem: (key: PolicyListKey) => void;
   removeListItem: (key: PolicyListKey, index: number) => void;
   setLimit: (key: 'maxChangedLines' | 'maxChangedFiles', value: string) => void;
+  /** Merge a starter pack's entries into the draft (deduped, dirty-marking) —
+   *  authoring assistance only; nothing is persisted until the author saves. */
+  applyPack: (entries: Partial<Record<PolicyListKey, readonly string[]>>) => void;
   save: () => void;
 }
+
+/** An empty draft's issue map — the shape the VM exposes while the policy loads,
+ *  so consumers never branch on `null`. */
+const NO_ISSUES: PolicyEntryIssues = {
+  protectedPaths: [],
+  denyBashPatterns: [],
+  denyReadPaths: [],
+  disallowedTools: [],
+  askTools: [],
+  allowTools: [],
+};
 
 /** Own the editor draft: seeded from the loaded policy, reset whenever the
  *  policy reloads (a save or a quarantine returns the authoritative file — the
@@ -157,10 +181,34 @@ export function usePolicyEditor({
     [],
   );
 
+  const applyPack = useCallback(
+    (entries: Partial<Record<PolicyListKey, readonly string[]>>) => {
+      setDraft((prev) => {
+        if (prev === null) return prev;
+        const next = { ...prev };
+        for (const [key, added] of Object.entries(entries)) {
+          if (added === undefined) continue;
+          next[key as PolicyListKey] = mergeEntries(prev[key as PolicyListKey], added);
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
+  // Recomputed per keystroke: string checks plus at most one `new RegExp` per
+  // row, so an inline verdict is cheap enough to be immediate.
+  const entryIssues = useMemo(
+    () => (draft === null ? NO_ISSUES : policyEntryIssues(draft)),
+    [draft],
+  );
+  const deadRuleCount = blockingIssueCount(entryIssues);
+
   const canSave =
     draft !== null &&
     dirty &&
     !saving &&
+    deadRuleCount === 0 &&
     limitErrors.maxChangedLines === null &&
     limitErrors.maxChangedFiles === null;
 
@@ -175,6 +223,8 @@ export function usePolicyEditor({
     draft,
     dirty,
     limitErrors,
+    entryIssues,
+    deadRuleCount,
     canSave,
     saving,
     saveError,
@@ -183,6 +233,7 @@ export function usePolicyEditor({
     addListItem,
     removeListItem,
     setLimit,
+    applyPack,
     save,
   };
 }

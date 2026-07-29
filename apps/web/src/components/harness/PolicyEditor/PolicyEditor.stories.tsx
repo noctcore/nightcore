@@ -54,6 +54,22 @@ export const Loading: Story = {
   args: { policy: null },
 };
 
+/** A policy whose every tier holds a silently-dead rule — the #400 failure mode.
+ *  Each row is diagnosed inline and save is blocked until they are fixed. */
+export const DeadRules: Story = {
+  args: {
+    policy: {
+      ...POLICY,
+      protectedPaths: ['migrations/{2026,2027}', 'src\\**'],
+      denyBashPatterns: ['**/*.lock'],
+      denyReadPaths: ['.env*'],
+      disallowedTools: ['Bash(git push:*)'],
+      askTools: ['websearch'],
+      allowTools: ['Bash(git status:*'],
+    },
+  },
+};
+
 export const SaveFailed: Story = {
   args: { saveError: 'harness.json is not valid JSON; fix it by hand before editing the policy' },
 };
