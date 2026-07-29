@@ -212,7 +212,10 @@ export type { StoredRuleCoverageGap } from '../generated/StoredRuleCoverageGap';
 // flag rows (ts-rs from `store/injection_scan.rs`).
 export type { HarnessPolicyFile } from '../generated/HarnessPolicyFile';
 export type { HarnessPolicyPatch } from '../generated/HarnessPolicyPatch';
+// Policy activity feed (ts-rs from `store/policy_activity.rs`, issue #400): the
+// flight recorder's deny/ask decisions read back with their rule attribution.
 export type { InjectionFlag } from '../generated/InjectionFlag';
+export type { PolicyActivityEntry } from '../generated/PolicyActivityEntry';
 export type { PolicyDiffBudget } from '../generated/PolicyDiffBudget';
 // The harness convention taxonomy + proposed-artifact shapes come from the zod
 // contract (the engine's wire shape); the generated `Stored*` types keep the

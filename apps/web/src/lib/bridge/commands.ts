@@ -13,6 +13,7 @@ export * from './commands/issue-map';
 export * from './commands/issues';
 export * from './commands/models';
 export * from './commands/onboarding';
+export * from './commands/policy';
 export * from './commands/portable-lock';
 export * from './commands/pr';
 export * from './commands/pr-review';

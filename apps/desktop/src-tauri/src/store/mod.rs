@@ -18,6 +18,7 @@ pub(crate) mod insight;
 pub(crate) mod issue_triage;
 pub(crate) mod ledger;
 pub(crate) mod model_cache;
+pub(crate) mod policy_activity;
 pub(crate) mod pr_review;
 pub(crate) mod project;
 pub(crate) mod project_icon;
