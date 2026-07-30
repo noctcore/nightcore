@@ -66,6 +66,32 @@ impl PersistedRun for HarnessRun {
 }
 
 impl HarnessStore {
+    /// The CONVENTION findings of the newest completed scan of `project_path`, as
+    /// `(fingerprint, category, title, description)` tuples — the deep conformance
+    /// audit's candidate pool (#279).
+    ///
+    /// `gap` findings are excluded: a gap is a practice the repo does NOT yet follow,
+    /// so auditing its conformance is meaningless (the same exclusion the drift-check
+    /// compiler applies via `conventionFingerprintSet`). Returns an empty vec when the
+    /// project has no completed scan — the caller then reports that the audit has
+    /// nothing grounded to look at.
+    pub fn latest_conventions_for(
+        &self,
+        project_path: &str,
+    ) -> Vec<(String, String, String, String)> {
+        self.list()
+            .into_iter()
+            .find(|r| r.project_path == project_path && r.status == "completed")
+            .map(|run| {
+                run.findings
+                    .into_iter()
+                    .filter(|f| f.kind == "convention")
+                    .map(|f| (f.fingerprint, f.category, f.title, f.description))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// One artifact within a scan (cloned), if present.
     pub fn get_artifact(&self, run_id: &str, artifact_id: &str) -> Option<StoredProposedArtifact> {
         self.read(|runs| {

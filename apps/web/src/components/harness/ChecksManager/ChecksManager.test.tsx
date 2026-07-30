@@ -4,7 +4,7 @@ import { render } from 'vitest-browser-react';
 
 import * as stories from './ChecksManager.stories';
 
-const { Populated, WithFailure, Empty, Editing, Validated, ValidationFailed } =
+const { Populated, WithFailure, Empty, Editing, Validated, ValidationFailed, DeepRun } =
   composeStories(stories);
 
 test('lists each armed check with its command and kind', async () => {
@@ -60,4 +60,22 @@ test('a failed validation shows the runner diagnostic message', async () => {
   const screen = render(<ValidationFailed />);
   await expect.element(screen.getByText(/could not validate/i)).toBeInTheDocument();
   await expect.element(screen.getByText(/module not found/i)).toBeInTheDocument();
+});
+
+/** The deep conformance audit (#279) is a PAID pass, so the panel must state its
+ *  price before the user commits — not after the bill arrives. */
+test('the deep-audit opt-in is off by default and shows its cost ceiling up front', async () => {
+  const screen = render(<Populated />);
+  const box = screen.getByRole('checkbox', { name: /deep conformance audit/i });
+  await expect.element(box).toBeInTheDocument();
+  await expect.element(box).not.toBeChecked();
+  await expect.element(screen.getByText(/\$2\.00 ceiling/)).toBeInTheDocument();
+  await expect.element(screen.getByText(/this pass is paid/i)).toBeInTheDocument();
+});
+
+/** A deep run stays distinguishable after the fact — the banner labels it, which is
+ *  the same recoverable depth the carry-forward comparison keys on. */
+test('the last-run banner marks a run that included the deep audit', async () => {
+  const screen = render(<DeepRun />);
+  await expect.element(screen.getByText(/deep audit/i)).toBeInTheDocument();
 });

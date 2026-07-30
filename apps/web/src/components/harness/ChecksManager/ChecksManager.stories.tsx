@@ -15,7 +15,14 @@ function makeVm(over: Partial<ChecksManagerVM> = {}): ChecksManagerVM {
     lastRun: null,
     actionError: null,
     pendingName: null,
-    run: { running: false, error: null, start: noop },
+    run: {
+      running: false,
+      error: null,
+      start: noop,
+      deep: false,
+      setDeep: noop,
+      deepBudgetUsd: 2,
+    },
     toggle: noop,
     edit: {
       draft: null,
@@ -78,7 +85,7 @@ const meta = {
   args: {
     vm: makeVm({
       checks: [LINT, ARCH],
-      lastRun: { passed: true, ranAt: Date.now() - 5 * 60 * 1000 },
+      lastRun: { passed: true, ranAt: Date.now() - 5 * 60 * 1000, deep: false },
     }),
   },
 } satisfies Meta<typeof ChecksManager>;
@@ -94,7 +101,12 @@ export const WithFailure: Story = {
   args: {
     vm: makeVm({
       checks: [LINT, COVERAGE],
-      lastRun: { passed: false, failedCheck: 'coverage-threshold', ranAt: Date.now() - 30 * 1000 },
+      lastRun: {
+        passed: false,
+        failedCheck: 'coverage-threshold',
+        ranAt: Date.now() - 30 * 1000,
+        deep: false,
+      },
     }),
   },
 };
@@ -179,6 +191,17 @@ export const Editing: Story = {
         cancel: noop,
         save: noop,
       },
+    }),
+  },
+};
+
+/** A run that included the opt-in DEEP conformance audit (#279) — the banner labels
+ *  it so the depth stays visible after the fact, matching what persistence records. */
+export const DeepRun: Story = {
+  args: {
+    vm: makeVm({
+      checks: [LINT],
+      lastRun: { passed: true, ranAt: Date.now() - 90 * 1000, deep: true },
     }),
   },
 };

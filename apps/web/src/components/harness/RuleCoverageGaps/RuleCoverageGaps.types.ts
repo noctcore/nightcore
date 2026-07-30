@@ -2,17 +2,20 @@
 import type { ConventionDriftStatus, CoverageStatus } from '@/lib/bridge';
 
 import type { ConventionDriftVM, RuleCoverageGapVM } from '../harness.types';
+import type { ArmedDriftView } from '../harness-drift.hooks';
+import type { DriftDeltaResult } from '../harness-drift-delta';
 
 /** Props for {@link RuleCoverageGaps}: the ENFORCE-lite coverage records for the
- *  displayed run (one per convention) plus the MEASURED drift records from the last
- *  EnforceRun. Both key on `conventionFingerprint`; the panel joins them so each
- *  convention shows coverage ("is there a rule?") AND drift ("is it followed?").
- *  Rendered only in the Enforce destination. */
+ *  displayed run (one per convention) plus the MEASURED drift from the last EnforceRun
+ *  (with the run carried forward beside it). Coverage and drift both key on
+ *  `conventionFingerprint`; the panel joins them so each convention shows coverage
+ *  ("is there a rule?") AND drift ("is it followed?"), and compares the two runs for a
+ *  trend. Rendered only in the Enforce destination. */
 export interface RuleCoverageGapsProps {
   gaps: RuleCoverageGapVM[];
-  /** Measured drift from the last EnforceRun (armed checks only). Empty ⇒ drift not
+  /** Measured drift + the carried-forward previous run. An empty `drift` ⇒ not
    *  measured yet — the panel renders the honest "not measured" state, never "clean". */
-  drift: ConventionDriftVM[];
+  drift: ArmedDriftView;
 }
 
 /** The per-status tallies + the distinct enforcing-rule count the panel header shows. */
@@ -53,11 +56,25 @@ export interface CoverageDriftRow {
   cell: DriftCell;
 }
 
+/** The one-line trend sentence per {@link DriftDeltaResult} blocker — why no
+ *  comparison is shown. Never a number the user could read as a measured trend. */
+export const DRIFT_DELTA_BLOCKER_COPY = {
+  'no-earlier-run':
+    'No earlier measured run to compare against — run the armed checks again to start a trend.',
+  'run-not-diffable':
+    'This run measured no conventions, so there is nothing to compare it against.',
+  'ground-changed':
+    'The armed drift checks changed since the last measured run, so the two runs measured different ground — no trend is shown rather than a misleading one.',
+} as const satisfies Record<string, string>;
+
 /** The resolved view model {@link RuleCoverageGaps} renders from. */
 export interface RuleCoverageGapsViewModel {
   summary: CoverageSummary;
   /** The drift tallies (only meaningful when `driftMeasured`). */
   driftSummary: DriftSummary;
+  /** The run-over-run comparison against the carried-forward run, OR the reason there
+   *  isn't one (#279). Rendered only once `driftMeasured`. */
+  delta: DriftDeltaResult;
   /** The joined rows ordered actionable-first (by coverage status). */
   ordered: CoverageDriftRow[];
   /** Whether an EnforceRun has measured drift (≥1 drift record). Drives the header

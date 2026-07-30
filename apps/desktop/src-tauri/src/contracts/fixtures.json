@@ -342,6 +342,22 @@
       "invalidCases": [
         "{\"code\":\"let s = useState();\",\"errors\":1}"
       ]
+    },
+    "audit-conformance": {
+      "requestId": "q-10",
+      "type": "audit-conformance",
+      "projectPath": "/proj",
+      "conventions": [
+        {
+          "fingerprint": "a1b2c3d4e5f60718",
+          "category": "folder-structure",
+          "title": "Components live in a folder-per-component",
+          "description": "Each component has its own folder with an index barrel."
+        }
+      ],
+      "maxTurns": 12,
+      "maxBudgetUsd": 2,
+      "model": "claude-opus-4-8"
     }
   },
   "events": {

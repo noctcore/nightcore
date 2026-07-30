@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { PermissionModeSchema } from './config.js';
+import { ConformanceAuditResultSchema } from './conformance-audit.js';
 import { DebateEntryEvent, WorktreeOpRequiredEvent } from './debate.js';
 import { TokenUsageSchema } from './event-fragments.js';
 import {
@@ -482,6 +483,7 @@ export const QueryResultEvent = z.object({
     'capabilities',
     'models',
     'rule-validation',
+    'conformance-audit',
   ]),
   /** Populated for `kind: 'sessions'`. */
   sessions: z.array(SessionInfoSchema).optional(),
@@ -500,6 +502,10 @@ export const QueryResultEvent = z.object({
    *  armed lint-plugin rule (issue #185). Carries its own `outcome`/`error`, so the
    *  reply stays `ok: true` even when the rule failed to load (a soft failure). */
   ruleValidation: RuleValidationResultSchema.optional(),
+  /** Populated for `kind: 'conformance-audit'`: the opt-in DEEP conformance audit's
+   *  per-convention drift (issue #279). Carries its own `error`, so the reply stays
+   *  `ok: true` even when the pass degraded — a soft failure, never a fake `clean`. */
+  conformanceAudit: ConformanceAuditResultSchema.optional(),
   /** Set when `ok` is false: a short failure reason. */
   error: z.string().optional(),
 });

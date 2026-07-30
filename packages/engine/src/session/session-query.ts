@@ -7,12 +7,14 @@
  * threaded in as {@link SessionQueryDeps} instead of `this`.
  */
 import type {
+  Config,
   ModelDescriptor,
   NightcoreEventOf,
   SurfaceQuery,
 } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
 
+import { runConformanceAudit } from '../conformance-audit/audit.js';
 import type { AgentSession } from '../providers/agent-provider.js';
 import {
   toWireSessionInfo,
@@ -21,6 +23,7 @@ import {
 import type { SessionApi } from '../providers/claude/session-api.js';
 import type { ProviderRegistry } from '../providers/provider-factory.js';
 import { validateRule } from '../rule-tester/validate-rule.js';
+import type { ScanRunnerFactory } from '../scans/shared/runner-factory.js';
 
 /** The collaborators a query answer needs — exactly what `SessionManager` already
  *  owns, so the supervisor's delegation is a straight field/method pass-through. */
@@ -33,6 +36,12 @@ export interface SessionQueryDeps {
   firstLiveRunner: () => AgentSession | undefined;
   /** A transient probe session (model list / provider-config inspection). */
   makeProbeSession: (providerId?: string) => AgentSession;
+  /** The resolved engine config — the deep conformance audit (#279) needs it to spin
+   *  a real read-only model pass (every other query is a pure store read/probe). */
+  config: Config;
+  apiKeyFallback: boolean;
+  /** Constructs the audit pass's runner; tests inject a fake (mirrors the scans). */
+  runnerFactory: ScanRunnerFactory;
   logger?: Logger;
 }
 
@@ -188,6 +197,27 @@ export async function handleSessionQuery(
         ok: true,
         kind: 'rule-validation',
         ruleValidation: await validateRule(query, deps.logger?.child('rule-tester')),
+      };
+    }
+    case 'audit-conformance': {
+      // The opt-in DEEP conformance audit (#279): a bounded, read-only model pass that
+      // re-reads the sites of conventions no mechanical drift check can express.
+      // Fail-SOFT — a degraded pass carries `error` + `errored` records inside the
+      // result, so the reply stays `ok: true`.
+      return {
+        type: 'query-result',
+        requestId,
+        ok: true,
+        kind: 'conformance-audit',
+        conformanceAudit: await runConformanceAudit({
+          query,
+          config: deps.config,
+          apiKeyFallback: deps.apiKeyFallback,
+          runnerFactory: deps.runnerFactory,
+          ...(deps.logger !== undefined
+            ? { logger: deps.logger.child('deep-audit') }
+            : {}),
+        }),
       };
     }
   }

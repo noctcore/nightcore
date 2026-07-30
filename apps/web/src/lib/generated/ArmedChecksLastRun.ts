@@ -7,4 +7,10 @@ export type ArmedChecksLastRun = { passed: boolean, failedCheck?: string,
 /**
  * When the run finished (ms since epoch).
  */
-ranAt: number, };
+ranAt: number, 
+/**
+ * Whether this EnforceRun included the opt-in DEEP conformance audit. Part of the
+ * carry-forward comparability basis: a deep run sweeps ground a shallow one does
+ * not, so diffing across depth would manufacture "new"/"resolved" drift.
+ */
+deep: boolean, };

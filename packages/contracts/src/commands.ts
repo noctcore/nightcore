@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { EffortLevelSchema, McpServerEntrySchema, TaskKindSchema } from './config.js';
+import { ConformanceAuditTargetSchema } from './conformance-audit.js';
 import { CouncilPresetIdSchema, CouncilRoutingEdgeSchema } from './council-preset.js';
 import { ConventionCategorySchema, HarnessPolicySchema } from './harness.js';
 import { AnalysisScopeSchema, FindingCategorySchema } from './insight.js';
@@ -719,6 +720,29 @@ export const ValidateRuleQuery = z.object({
   invalidCases: z.array(z.string()).default([]),
 });
 
+/** Run the opt-in DEEP CONFORMANCE AUDIT (issue #279) — the expensive half of drift:
+ *  an LLM pass that RE-READS the sites of conventions no mechanical check can express
+ *  and reports each one's conformance as a `ConventionDrift` record on the reply's
+ *  `conformanceAudit` slot. Bounded by construction: the caller names the conventions
+ *  (the Rust core caps the list) and the pass runs read-only under `maxTurns` /
+ *  `maxBudgetUsd`. Fails SOFT — a pass that could not run reports `error` with empty
+ *  `drift`, never a thrown crash, and never a `clean` it did not establish. */
+export const AuditConformanceQuery = z.object({
+  ...requestTarget,
+  type: z.literal('audit-conformance'),
+  /** The repo the audit reads. Server-resolved by the Rust core (the ACTIVE project),
+   *  never caller-supplied — the pass reads files. */
+  projectPath: z.string(),
+  /** The conventions to audit. An empty list is a no-op (the engine returns nothing). */
+  conventions: z.array(ConformanceAuditTargetSchema).default([]),
+  /** Per-pass turn ceiling (the read budget). Omit ⇒ the engine default. */
+  maxTurns: z.number().int().positive().optional(),
+  /** Per-pass USD ceiling — the opt-in's hard cost bound. */
+  maxBudgetUsd: z.number().positive().optional(),
+  /** Model override for the pass; omit ⇒ the engine default. */
+  model: z.string().optional(),
+});
+
 /** The discriminated union of every request/reply surface → engine query, keyed by `type`. */
 export const SurfaceQuerySchema = z.discriminatedUnion('type', [
   ListSessionsQuery,
@@ -730,5 +754,6 @@ export const SurfaceQuerySchema = z.discriminatedUnion('type', [
   GetCapabilitiesQuery,
   GetModelsQuery,
   ValidateRuleQuery,
+  AuditConformanceQuery,
 ]);
 export type SurfaceQuery = z.infer<typeof SurfaceQuerySchema>;

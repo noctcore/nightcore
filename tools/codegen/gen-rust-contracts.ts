@@ -360,6 +360,15 @@ const STRUCT_NAMES: Record<string, string> = {
   // harness-enforce.ts — avoids a contract cycle).
   'category|conventionFingerprint|documentedIn|enforcedBy|fingerprint|id|status|suggestedArtifactKind|title':
     'RuleCoverageGap',
+  // Deep conformance audit (#279): the convention handed to the audit, the reply
+  // envelope, and the measured-drift record it returns. `ConventionDrift` mirrors the
+  // zod `ConventionDriftSchema`; the Rust STORE keeps its own hand-written
+  // `store::types::ConventionDrift` (the ts-rs boundary type), exactly as
+  // `StoredRuleCoverageGap` mirrors `RuleCoverageGap` above.
+  'category|description|fingerprint|title': 'ConformanceAuditTarget',
+  'costUsd|drift|error|model': 'ConformanceAuditResult',
+  'category|checkName|conventionFingerprint|errorReason|fingerprint|id|method|sitesChecked|sitesMatched|status|title':
+    'ConventionDrift',
   // The manifest-declared runtime policy the engine's PreToolUse gate enforces
   // (hardening modules #3/#4/#9/#12 + the exec-sink ask gate's `allowExecSinks`
   // downgrade list), carried on `start-session`.
@@ -478,6 +487,9 @@ const ENUM_NAMES: Record<string, string> = {
   // `valid|invalid|needs_clarification` (a different value-set → no collapse).
   'valid|invalid': 'RuleTesterCaseKind',
   'passed|failed|probed|error': 'RuleValidationOutcome',
+  // The measured-conformance status a drift record carries (`harness-enforce.ts`),
+  // wire-reachable through the deep conformance audit's reply (issue #279).
+  'clean|drifted|uncheckable|errored': 'ConventionDriftStatus',
   'bug_report|feature_request|question|unknown': 'IssueKind',
   'valid|invalid|needs_clarification': 'IssueVerdict',
   'high|medium|low': 'IssueConfidence',
@@ -1216,6 +1228,22 @@ const QUERY_INPUTS: Record<string, unknown> = {
     projectPath: '/proj',
     validCases: ['const x = 1;'],
     invalidCases: ['{"code":"let s = useState();","errors":1}'],
+  },
+  'audit-conformance': {
+    type: 'audit-conformance',
+    requestId: 'q-10',
+    projectPath: '/proj',
+    conventions: [
+      {
+        fingerprint: 'a1b2c3d4e5f60718',
+        category: 'folder-structure',
+        title: 'Components live in a folder-per-component',
+        description: 'Each component has its own folder with an index barrel.',
+      },
+    ],
+    maxTurns: 12,
+    maxBudgetUsd: 2,
+    model: 'claude-opus-4-8',
   },
 };
 

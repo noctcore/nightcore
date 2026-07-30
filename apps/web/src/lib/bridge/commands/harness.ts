@@ -36,7 +36,7 @@ const MOCK_ARMED_CHECKS_STATE: ArmedChecksState = {
       enabled: false,
     },
   ],
-  lastRun: { passed: true, ranAt: Date.now() - 5 * 60 * 1000 },
+  lastRun: { passed: true, ranAt: Date.now() - 5 * 60 * 1000, deep: false },
   // Drift-v1 (T15): one measured convention so the drift panel renders deterministically
   // outside Tauri. `method` + site counts are always present (the fail-visible rule).
   drift: [
@@ -53,6 +53,26 @@ const MOCK_ARMED_CHECKS_STATE: ArmedChecksState = {
       fingerprint: 'a1b2c3d4e5f60718',
     },
   ],
+  // Carry-forward (#279): the same convention measured by the same method one run
+  // earlier, so the browser mock exercises the comparable path (5 → 3 sites).
+  previousRun: {
+    ranAt: Date.now() - 26 * 60 * 60 * 1000,
+    deep: false,
+    drift: [
+      {
+        id: 'drift-a1b2c3d4e5f60718',
+        conventionFingerprint: 'a1b2c3d4e5f60718',
+        category: 'folder-structure',
+        title: 'folder-per-component',
+        status: 'drifted',
+        method: 'lint-meta: folder-per-component',
+        sitesMatched: 5,
+        sitesChecked: 5,
+        checkName: 'folder-per-component',
+        fingerprint: 'a1b2c3d4e5f60718',
+      },
+    ],
+  },
 };
 
 // --- Harness (codebase convention auditor) --------------------------------
@@ -231,7 +251,7 @@ export async function armHarnessGauntletCheck(
    *  preflight refuses to arm it if no ESLint config actually references it (the
    *  placebo-gate fix). `null` for a hand-authored command (no plugin to check). */
   requireWired: string | null = null,
-  /** Drift-v1 (T15): for a COMPILED drift check (`lint-meta` / `shell`), the
+  /** Drift: for a COMPILED drift check (`lint-meta` / `eslint-rule` / `shell`), the
    *  convention's `conventionFingerprint` — the join key a later EnforceRun uses to
    *  attribute site counts back to a `ConventionDrift`. `null` for a plain gate check.
    *  Persisted verbatim (an opaque id, never executed); the `command` is what the arm
@@ -280,9 +300,20 @@ export async function updateArmedCheck(
 }
 
 /** Run the whole armed gauntlet against the active project root now, persist the
- *  result as the last run, and return the refreshed view. Rejects outside Tauri. */
-export async function runArmedChecksNow(): Promise<ArmedChecksState> {
-  return invoke<ArmedChecksState>('run_armed_checks_now', {});
+ *  result as the last run, and return the refreshed view. Rejects outside Tauri.
+ *
+ *  `deep` opts into the DEEP CONFORMANCE AUDIT (#279) — a bounded, read-only MODEL
+ *  pass over the conventions no armed check measures. It costs real money, so it is
+ *  never implied: the caller passes it explicitly, with `maxBudgetUsd` as the hard
+ *  ceiling. The backend caps how many conventions the pass may look at, so the quoted
+ *  price is the price. */
+export async function runArmedChecksNow(
+  options: { deep?: boolean; maxBudgetUsd?: number } = {},
+): Promise<ArmedChecksState> {
+  return invoke<ArmedChecksState>('run_armed_checks_now', {
+    deep: options.deep ?? false,
+    maxBudgetUsd: options.maxBudgetUsd ?? null,
+  });
 }
 
 /** The arguments to {@link validatePluginRule} — the `validate_plugin_rule` invoke

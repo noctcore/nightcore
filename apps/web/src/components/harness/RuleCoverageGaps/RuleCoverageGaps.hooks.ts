@@ -6,6 +6,8 @@
 import { useMemo } from 'react';
 
 import type { ConventionDriftVM, RuleCoverageGapVM } from '../harness.types';
+import type { ArmedDriftView } from '../harness-drift.hooks';
+import { computeDriftDelta } from '../harness-drift-delta';
 import {
   COVERAGE_STATUS_ORDER,
   type DriftCell,
@@ -44,9 +46,10 @@ function summarizeDrift(cells: DriftCell[]): DriftSummary {
  *  actionable-first rows. */
 export function useRuleCoverageGaps(
   gaps: RuleCoverageGapVM[],
-  drift: ConventionDriftVM[],
+  measured: ArmedDriftView,
 ): RuleCoverageGapsViewModel {
   return useMemo(() => {
+    const drift = measured.drift;
     const enforcingRules = new Set<string>();
     let enforced = 0;
     let documentedOnly = 0;
@@ -91,9 +94,10 @@ export function useRuleCoverageGaps(
         enforcingRuleCount: enforcingRules.size,
       },
       driftSummary: summarizeDrift(ordered.map((row) => row.cell)),
+      delta: computeDriftDelta(measured, measured.previous),
       ordered,
       driftMeasured,
       hasCoverage: gaps.length > 0,
     };
-  }, [gaps, drift]);
+  }, [gaps, measured]);
 }

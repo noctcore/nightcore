@@ -8,15 +8,21 @@
  *  NON-NEGOTIABLE product rule: a `clean`/`drifted` chip ALWAYS renders `method` +
  *  `X/Y sites`. A convention with no armed check is `uncheckable` (honest — never a
  *  fake "clean"); before any EnforceRun the panel reads "not measured yet". */
+import { formatRelativeTimeAgo } from '@/lib/formatters';
+
 import { COVERAGE_STATUS_META, DRIFT_STATUS_META } from '../harness.constants';
 import type { RuleCoverageGapVM } from '../harness.types';
+import type { DriftDeltaResult } from '../harness-drift-delta';
 import { useRuleCoverageGaps } from './RuleCoverageGaps.hooks';
 import type {
   CoverageDriftRow,
   DriftCell,
   RuleCoverageGapsProps,
 } from './RuleCoverageGaps.types';
-import { DRIFT_STATUS_WITH_COUNTS } from './RuleCoverageGaps.types';
+import {
+  DRIFT_DELTA_BLOCKER_COPY,
+  DRIFT_STATUS_WITH_COUNTS,
+} from './RuleCoverageGaps.types';
 
 /** One summary tally chip (e.g. "3 enforced"). */
 function Tally({ label, count, tone }: { label: string; count: number; tone: string }) {
@@ -88,6 +94,45 @@ function DriftLine({ cell }: { cell: DriftCell }) {
   );
 }
 
+/** The run-over-run trend against the carried-forward run (#279) — or the reason
+ *  there isn't one. A comparison is NEVER rendered as a number when the two runs did
+ *  not measure the same ground; the blocker sentence is shown instead. */
+function DriftTrend({ delta }: { delta: DriftDeltaResult }) {
+  if (delta.kind === 'unavailable') {
+    return (
+      <p className="text-2xs text-muted-foreground">{DRIFT_DELTA_BLOCKER_COPY[delta.blocker]}</p>
+    );
+  }
+  const d = delta.delta;
+  const sites =
+    d.siteDelta === 0
+      ? 'no net change in violating sites'
+      : `${d.siteDelta > 0 ? '+' : '−'}${Math.abs(d.siteDelta)} violating ${
+          Math.abs(d.siteDelta) === 1 ? 'site' : 'sites'
+        }`;
+  const unmeasured =
+    d.notMeasured > 0 ? ` · ${d.notMeasured} not measured in both runs` : '';
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      <span className="font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
+        Since {formatRelativeTimeAgo(d.previousRanAt)}
+      </span>
+      <Tally
+        label="newly drifted"
+        count={d.newlyDrifted}
+        tone={DRIFT_STATUS_META.drifted.tone}
+      />
+      <Tally label="resolved" count={d.resolved} tone={DRIFT_STATUS_META.clean.tone} />
+      <Tally label="worsened" count={d.worsened} tone={DRIFT_STATUS_META.drifted.tone} />
+      <Tally label="improved" count={d.improved} tone={DRIFT_STATUS_META.clean.tone} />
+      <span className="font-mono text-2xs text-muted-foreground">
+        {sites}
+        {unmeasured}
+      </span>
+    </div>
+  );
+}
+
 /** The coverage-status badge + detail line + the joined drift line for one convention. */
 function CoverageRow({ row }: { row: CoverageDriftRow }) {
   const { gap, cell } = row;
@@ -113,10 +158,8 @@ function CoverageRow({ row }: { row: CoverageDriftRow }) {
 /** The coverage + drift panel. Renders nothing when the run carries no coverage (a
  *  pre-coverage run, or a scan with no conventions). */
 export function RuleCoverageGaps({ gaps, drift }: RuleCoverageGapsProps) {
-  const { summary, driftSummary, ordered, driftMeasured, hasCoverage } = useRuleCoverageGaps(
-    gaps,
-    drift,
-  );
+  const { summary, driftSummary, delta, ordered, driftMeasured, hasCoverage } =
+    useRuleCoverageGaps(gaps, drift);
   if (!hasCoverage) return null;
 
   // The inventory line, kept a single string so it renders as one text node.
@@ -169,6 +212,7 @@ export function RuleCoverageGaps({ gaps, drift }: RuleCoverageGapsProps) {
             />
           </div>
         ) : null}
+        {driftMeasured ? <DriftTrend delta={delta} /> : null}
         <p className="text-2xs text-muted-foreground">
           Coverage answers whether a rule <em>exists</em> for each convention ({inventoryLine});
           drift answers whether it is <em>followed</em> at every site.{' '}

@@ -15,19 +15,28 @@ import {
   TrashIcon,
   VerifiedIcon,
 } from '@/components/ui';
-import type {
-  ArmedCheck,
-  ArmedCheckOutcome,
-  ArmedChecksLastRun,
-  RuleValidationResult,
-} from '@/lib/bridge';
-import { formatRelativeTime } from '@/lib/formatters';
+import type { ArmedCheck } from '@/lib/bridge';
 
 import { useChecksManager } from './ChecksManager.hooks';
-import type { ChecksEditVM, ChecksManagerProps,ChecksManagerVM } from './ChecksManager.types';
+import {
+  CheckResult,
+  DeepAuditOptIn,
+  formatDurationMs,
+  LastRunBanner,
+  ValidationResult,
+} from './ChecksManager.parts';
+import type {
+  ChecksEditVM,
+  ChecksManagerProps,
+  ChecksManagerVM,
+} from './ChecksManager.types';
 
-/** The kinds a check may be armed/edited as — the armable allowlist (kept in
- *  lockstep with the Rust `ARMABLE_CHECK_KINDS`; the wire strings are stable). */
+/** The kinds a check may be HAND-EDITED as in this panel. A subset of the Rust
+ *  `ARMABLE_CHECK_KINDS`: the drift substrates (`lint-meta`, `eslint-rule`, `shell`)
+ *  are deliberately absent because their command is COMPILED by synthesis and armed
+ *  through the reviewed proposal path — retyping one here is not a workflow the panel
+ *  offers. Editing an already-armed drift check still works (the row keeps its kind),
+ *  and the arm/edit gate shape-validates it either way. */
 const ARMABLE_KINDS = [
   'lint-plugin',
   'dependency-cruiser',
@@ -40,117 +49,8 @@ const ARMABLE_KINDS = [
   'api-extractor',
 ] as const;
 
-type OutcomeStatus = ArmedCheckOutcome['status'];
-
-const STATUS_GLYPH: Record<OutcomeStatus, string> = {
-  passed: '✓',
-  failed: '✕',
-  skipped: '–',
-  flaky: '~',
-};
-
-const STATUS_TEXT: Record<OutcomeStatus, string> = {
-  passed: 'text-success',
-  failed: 'text-destructive',
-  skipped: 'text-muted-foreground',
-  flaky: 'text-warning',
-};
-
 const FIELD_INPUT =
   'w-full rounded-[8px] border border-border bg-black/20 px-2.5 py-1.5 font-mono text-xs-plus text-foreground outline-none focus:border-primary';
-
-function formatDurationMs(ms: number): string {
-  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
-}
-
-/** The run-level banner: pass/fail of the last on-demand run + when it ran. */
-function LastRunBanner({ lastRun }: { lastRun: ArmedChecksLastRun }) {
-  return (
-    <div className="flex items-center gap-2 text-2xs-plus">
-      <span
-        className={`font-mono font-semibold uppercase tracking-[0.06em] ${
-          lastRun.passed ? 'text-success' : 'text-destructive'
-        }`}
-      >
-        {lastRun.passed ? 'All passed' : `Failed at ${lastRun.failedCheck ?? 'unknown'}`}
-      </span>
-      <span className="text-muted-foreground">· ran {formatRelativeTime(lastRun.ranAt)} ago</span>
-    </div>
-  );
-}
-
-/** One check's last on-demand outcome: glyph + label + exit/duration + failure tail. */
-function CheckResult({ result }: { result: ArmedCheckOutcome }) {
-  return (
-    <div className="mt-1 flex flex-col gap-1">
-      <div className="flex items-center gap-2 font-mono text-2xs">
-        <span className={STATUS_TEXT[result.status]}>
-          {STATUS_GLYPH[result.status]} {result.status}
-        </span>
-        {result.exitCode !== undefined && result.status === 'failed' && (
-          <span className="text-destructive">exit {result.exitCode}</span>
-        )}
-        {result.durationMs !== undefined && (
-          <span className="text-muted-foreground">{formatDurationMs(result.durationMs)}</span>
-        )}
-      </div>
-      {result.output !== undefined && result.status !== 'passed' && (
-        <pre className="max-h-32 overflow-auto rounded-[6px] border border-border bg-black/30 px-2 py-1.5 font-mono text-3xs-plus text-muted-foreground">
-          {result.output}
-        </pre>
-      )}
-    </div>
-  );
-}
-
-type ValidationOutcome = RuleValidationResult['outcome'];
-
-/** The tint per RuleTester verdict: a probe/pass is good, a failed rule is a hard
- *  fail, a load/setup error is a warning (the check may still be fine — the runner
- *  just couldn't reach the rule). */
-const VALIDATION_TONE: Record<ValidationOutcome, string> = {
-  passed: 'text-success',
-  probed: 'text-success',
-  failed: 'text-destructive',
-  error: 'text-warning',
-};
-
-const VALIDATION_LABEL: Record<ValidationOutcome, string> = {
-  passed: 'Rule validated',
-  probed: 'Real rule (structural probe passed)',
-  failed: 'Rule failed validation',
-  error: 'Could not validate',
-};
-
-/** One check's last "Validate rule" verdict: the RuleTester outcome + case tally +
- *  any soft error the runner reported (a rule that wouldn't load, etc.). */
-function ValidationResult({ result }: { result: RuleValidationResult }) {
-  const total = result.validTotal + result.invalidTotal;
-  const passed = result.validPassed + result.invalidPassed;
-  return (
-    <div className="mt-1 flex flex-col gap-1">
-      <div className="flex items-center gap-2 font-mono text-2xs">
-        <span className={VALIDATION_TONE[result.outcome]}>
-          {result.outcome === 'failed' || result.outcome === 'error' ? '✕' : '✓'}{' '}
-          {VALIDATION_LABEL[result.outcome]}
-        </span>
-        {total > 0 && (
-          <span className="text-muted-foreground">
-            {passed}/{total} cases
-          </span>
-        )}
-        {result.eslintVersion !== undefined && (
-          <span className="text-muted-foreground">eslint {result.eslintVersion}</span>
-        )}
-      </div>
-      {result.error !== undefined && (
-        <pre className="max-h-32 overflow-auto rounded-[6px] border border-border bg-black/30 px-2 py-1.5 font-mono text-3xs-plus text-muted-foreground">
-          {result.error}
-        </pre>
-      )}
-    </div>
-  );
-}
 
 /** The inline edit form for a check (name / kind / command / timeout). */
 function EditForm({ edit }: { edit: ChecksEditVM }) {
@@ -321,6 +221,7 @@ export function ChecksManager({ vm: injected }: ChecksManagerProps = {}) {
               {vm.run.running ? 'Running…' : 'Run armed checks now'}
             </Button>
           </div>
+          <DeepAuditOptIn run={vm.run} />
           {vm.lastRun !== null && <LastRunBanner lastRun={vm.lastRun} />}
         </header>
 
