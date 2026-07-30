@@ -150,14 +150,22 @@ pub struct Settings {
     /// a settings file written before this field loads as `None`.
     #[serde(default)]
     pub preferred_editor: Option<String>,
-    /// USER terminal (build spec PR C, decision 7): opt into the xterm WebGL/GPU
-    /// renderer. Default `false` (DOM) while the upstream WebGL corruption bug
-    /// (xtermjs#5816, repro'd from Tauri) is open; when `true`, a new session loads
-    /// the WebGL addon with an `onContextLoss` auto-fallback to DOM. Global-only (a
-    /// machine/GPU preference, like `sidebar_style`/`sandbox_sessions`). Serde-
-    /// additive: a settings file written before this field loads as `false`.
+    /// USER terminal (build spec PR C, decision 7; amended by #407): the xterm
+    /// WebGL/GPU renderer. `Some(true)`/`Some(false)` is the user's explicit choice;
+    /// `None` ⇒ **resolve the platform default in the surface** — GPU everywhere
+    /// EXCEPT macOS, where xtermjs#5816 (WebGL corruption, reported from a Tauri app,
+    /// still open and reproduced on shipping macOS 15.7 as of 2026-05) would ship a
+    /// corrupted terminal. xterm 6 removed the canvas renderer, so the only fallback
+    /// left is DOM; a loaded addon still auto-falls-back on `onContextLoss`.
+    ///
+    /// The default deliberately lives web-side, not here: the affected renderer is a
+    /// WebKit/platform property of the surface, and the Rust core cannot know which
+    /// webview is drawing. Global-only (a machine/GPU preference, like
+    /// `sidebar_style`/`sandbox_sessions`). Serde-additive: a settings file written
+    /// before this field — and one written while it was a bare `bool` — loads as
+    /// `None`/`Some(false)` respectively, so nobody's explicit opt-out is flipped.
     #[serde(default)]
-    pub terminal_webgl_enabled: bool,
+    pub terminal_webgl_enabled: Option<bool>,
     /// USER terminal (build spec PR C, decision 1): the sticky default for the
     /// new-tab picker's "Confined" checkbox (macOS-only opt-in Seatbelt write
     /// containment, scoped to the session cwd). The picker seeds the checkbox from
@@ -550,9 +558,10 @@ impl Default for Settings {
             // No editor pinned by default — the worktree "Open in editor" action
             // auto-detects the first installed known editor until the user picks one.
             preferred_editor: None,
-            // PR C decision 7: DOM renderer by default (WebGL is opt-in while the
-            // upstream corruption bug is open).
-            terminal_webgl_enabled: false,
+            // PR C decision 7 as amended by #407: no stored choice ⇒ the SURFACE
+            // resolves the renderer (GPU everywhere but macOS, where xtermjs#5816 is
+            // still open). Never a stored `false` — that would read as an opt-out.
+            terminal_webgl_enabled: None,
             // PR C decision 1: the human terminal is unconfined by default; the
             // confined checkbox starts off and remembers the user's last choice.
             terminal_confined_default: false,

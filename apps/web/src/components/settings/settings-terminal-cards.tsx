@@ -6,9 +6,17 @@
  *  finds it instead of concluding the toggle was removed. */
 import { Button, NumberField, TerminalIcon, Toggle } from '@/components/ui';
 import type { Settings, SettingsPatch } from '@/lib/bridge';
+import { DEFAULT_TERMINAL_WEBGL, resolveTerminalWebgl } from '@/lib/platform';
 
 import type { SettingsCardProps } from './SettingsCard';
 import type { SettingsPage } from './SettingsView/SettingsView.types';
+
+// The renderer default is platform-resolved (#407): GPU everywhere except macOS,
+// where xtermjs#5816 (WebGL corruption, reported from a Tauri app) is still open. Say
+// which default THIS machine gets rather than a sentence that's wrong half the time.
+const WEBGL_HINT = DEFAULT_TERMINAL_WEBGL
+  ? 'Use the GPU to draw the terminal. On by default on this platform; a lost GPU context falls back to standard DOM rendering automatically.'
+  : 'Use the GPU to draw the terminal. Off by default on macOS while an upstream xterm WebGL rendering bug is open; a lost GPU context falls back to standard DOM rendering automatically.';
 
 // Clamp bounds for the two terminal render prefs (spec PR 3d). Mirrors the terminal
 // feature's own resolver (which re-clamps on apply) — kept inline here so a settings
@@ -36,11 +44,11 @@ export function buildTerminalCards(
       rows: [
         {
           label: 'GPU rendering (WebGL)',
-          hint: 'Use the GPU to draw the terminal. Off by default (standard DOM rendering); a lost GPU context falls back automatically.',
+          hint: WEBGL_HINT,
           field: 'terminalWebglEnabled',
           control: (
             <Toggle
-              on={settings.terminalWebglEnabled}
+              on={resolveTerminalWebgl(settings.terminalWebglEnabled)}
               onChange={(next) => patchGlobal({ terminalWebglEnabled: next })}
               label="GPU rendering (WebGL)"
             />

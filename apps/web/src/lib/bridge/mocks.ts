@@ -167,7 +167,9 @@ export const MOCK_SETTINGS: Settings = {
   issueSyncEnabled: false,
   sidebarStyle: null,
   preferredEditor: null,
-  terminalWebglEnabled: false,
+  // Unset (#407) so the browser preview resolves the same platform default the
+  // desktop app does, rather than pinning DOM behind the user's back.
+  terminalWebglEnabled: null,
   terminalConfinedDefault: false,
   terminalFontSize: null,
   terminalScrollback: null,
