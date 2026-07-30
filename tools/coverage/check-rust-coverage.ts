@@ -35,19 +35,20 @@ const CRATE = path.join(ROOT, 'apps', 'desktop', 'src-tauri');
 /**
  * Aggregate floor over the whole crate.
  *
- * Measured when this floor was introduced: **72.91% lines / 65.71% functions**
- * (macOS aarch64, 1478 tests). The floor sits a couple of points under that because
- * the gate runs on ubuntu, and `#[cfg(target_os = ...)]` code instruments only on
- * the platform that compiles it — the macOS Seatbelt profile in `terminal/confine.rs`
- * (567 lines, 96% covered locally) is the big one, so the Linux total reads slightly
- * lower than the macOS total. The job log prints the exact number every run.
+ * Measured when this floor was introduced (1479 tests, 251 files):
+ *   - ubuntu (where the gate runs):  **72.73% lines / 65.58% functions**
+ *   - macOS aarch64:                   72.91% lines / 65.71% functions
+ * They differ only slightly, but they DO differ: `#[cfg(target_os = ...)]` code
+ * instruments only on the platform that compiles it. The floor is pinned just under
+ * the LINUX numbers with a fraction of a point of slack; every run prints the exact
+ * figure, so tighten it straight from a job log.
  *
  * The percentages include the crate's inline `#[cfg(test)]` bodies — llvm-cov
  * instruments test code too, and this crate's convention is inline tests (~37% of
  * its lines). So treat these as a RELATIVE ratchet against untested code landing,
  * not as an absolute "production lines covered" figure.
  */
-const FLOOR = { lines: 70, functions: 63 };
+const FLOOR = { lines: 72, functions: 65 };
 
 /** How many of the worst-covered substantial files to print as debt visibility. */
 const DEBT_ROWS = 12;
