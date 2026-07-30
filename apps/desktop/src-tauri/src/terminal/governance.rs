@@ -261,7 +261,10 @@ mod tests {
             after_restart.is_ungoverned("sess-1"),
             "the ungoverned marker must outlive the process that wrote it"
         );
-        assert!(!after_restart.is_ungoverned("sess-2"), "unmarked stays clean");
+        assert!(
+            !after_restart.is_ungoverned("sess-2"),
+            "unmarked stays clean"
+        );
     }
 
     #[test]

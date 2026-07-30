@@ -243,7 +243,11 @@ impl TerminalBackend {
     /// Record a governance marker against a session, persisted to disk so it survives
     /// a reload / app restart / daemon restart. Idempotent; errors on an unsafe id or
     /// an unwritable terminals dir.
-    pub fn mark_ungoverned(&self, id: &str, reason: TerminalGovernanceReason) -> Result<(), String> {
+    pub fn mark_ungoverned(
+        &self,
+        id: &str,
+        reason: TerminalGovernanceReason,
+    ) -> Result<(), String> {
         governance::mark(&self.persist_dir(), id, reason)
     }
 
@@ -459,7 +463,9 @@ mod tests {
         let dir = tmp.path().join("terminals");
 
         let backend_a = TerminalBackend::new(dir.clone(), false);
-        let info = backend_a.spawn(opts(tmp.path()), noop_sink()).expect("spawn");
+        let info = backend_a
+            .spawn(opts(tmp.path()), noop_sink())
+            .expect("spawn");
         assert!(
             !backend_a.list()[0].ungoverned,
             "a fresh shell starts governed"
