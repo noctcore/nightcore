@@ -276,6 +276,10 @@ impl PtySession {
             created_at: self.created_at,
             title,
             title_source,
+            // The registry has no view of the governance marker file — the backend is
+            // the single stamping chokepoint (`TerminalBackend::governed`), so every
+            // descriptor (local OR daemon-owned) gets the same authoritative value.
+            ungoverned: false,
         }
     }
 }

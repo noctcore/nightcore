@@ -17,10 +17,23 @@
 //!  - write/resize/kill/set-title route by ownership: `local.has(id)` ⇒ in-process,
 //!    else the daemon. `list` / `sessions_in_dir` UNION both so the cleanup interlock
 //!    (PR 5) and the tab list see daemon sessions too.
+//!
+//! ## Governance stamping (#405)
+//! This type is also the ONE place a session descriptor learns whether it is
+//! **ungoverned** (task-linked / `claude`-launched). Neither the in-process registry
+//! nor the daemon knows about the marker file; every descriptor that leaves here —
+//! `spawn`, `attach`, `list`, `sessions_in_dir`, and the persisted-restore list/read —
+//! passes through [`TerminalBackend::stamp`], which re-reads the on-disk marks. That is
+//! why the marker survives a reload, an app restart, and a daemon restart.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use super::{OutputSink, SpawnOpts, TerminalRegistry, TerminalSessionInfo, TitleSource};
+use super::governance::{self, TerminalGovernanceReason};
+use super::{
+    OutputSink, PersistedTerminalInfo, PersistedTerminalScrollback, SpawnOpts, TerminalRegistry,
+    TerminalSessionInfo, TitleSource,
+};
 use crate::terminal::types::TerminalDaemonStatus;
 
 // The path-containment match is only applied to daemon sessions (Unix); the local
@@ -86,10 +99,12 @@ impl TerminalBackend {
         if !opts.confined {
             if let Some(client) = self.ensure_daemon() {
                 let cwd = opts.cwd.to_string_lossy().into_owned();
-                return client.create(cwd, opts.cols, opts.rows, sink);
+                return client
+                    .create(cwd, opts.cols, opts.rows, sink)
+                    .map(|s| self.stamp(s));
             }
         }
-        self.local.spawn(opts, sink)
+        self.local.spawn(opts, sink).map(|s| self.stamp(s))
     }
 
     /// Reattach to an existing daemon session on relaunch (§5.3): subscribe from the
@@ -105,6 +120,9 @@ impl TerminalBackend {
                 .list()
                 .into_iter()
                 .find(|s| s.id == id)
+                // THE #405 case: a session that outlived the app reattaches here, and
+                // the stamp is what re-lights its ungoverned bolt from disk.
+                .map(|s| self.stamp(s))
                 .ok_or_else(|| format!("no daemon session {id} to reattach"));
         }
         Err(format!("no live terminal session {id} to reattach"))
@@ -191,15 +209,14 @@ impl TerminalBackend {
         let mut out = self.local.list();
         #[cfg(unix)]
         if let Some(client) = self.ensure_daemon() {
-            let known: std::collections::HashSet<String> =
-                out.iter().map(|s| s.id.clone()).collect();
+            let known: HashSet<String> = out.iter().map(|s| s.id.clone()).collect();
             for s in client.list() {
                 if !known.contains(&s.id) {
                     out.push(s);
                 }
             }
         }
-        out
+        self.stamp_all(out)
     }
 
     /// Live sessions whose cwd is `dir` or under it — the cleanup-interlock seam (PR
@@ -211,15 +228,87 @@ impl TerminalBackend {
         let mut out = self.local.sessions_in_dir(dir);
         #[cfg(unix)]
         if let Some(client) = self.ensure_daemon() {
-            let known: std::collections::HashSet<String> =
-                out.iter().map(|s| s.id.clone()).collect();
+            let known: HashSet<String> = out.iter().map(|s| s.id.clone()).collect();
             for s in client.list() {
                 if !known.contains(&s.id) && path_within(Path::new(&s.cwd), dir) {
                     out.push(s);
                 }
             }
         }
-        out
+        self.stamp_all(out)
+    }
+
+    // --- Governance markers (#405) -----------------------------------------
+
+    /// Record a governance marker against a session, persisted to disk so it survives
+    /// a reload / app restart / daemon restart. Idempotent; errors on an unsafe id or
+    /// an unwritable terminals dir.
+    pub fn mark_ungoverned(&self, id: &str, reason: TerminalGovernanceReason) -> Result<(), String> {
+        governance::mark(&self.persist_dir(), id, reason)
+    }
+
+    /// Clear a REVOCABLE governance marker (a task unlink). Refuses a sticky marker —
+    /// a shell where `claude` ran can never be re-labelled governed.
+    pub fn clear_governance_mark(
+        &self,
+        id: &str,
+        reason: TerminalGovernanceReason,
+    ) -> Result<(), String> {
+        governance::unmark(&self.persist_dir(), id, reason)
+    }
+
+    /// Whether a session id currently carries any governance marker (read straight
+    /// from disk).
+    pub fn is_ungoverned(&self, id: &str) -> bool {
+        governance::load(&self.persist_dir()).is_ungoverned(id)
+    }
+
+    /// Persisted (dead) sessions for the read-only restore UI, governance-stamped, with
+    /// the marker file GC'd against the live ∪ persisted id set as a side effect. That
+    /// GC point is deliberate: it is the only moment we know BOTH sets, and it never
+    /// expires a marker by age (an old live shell must not quietly become "governed").
+    pub fn list_persisted(&self) -> Vec<PersistedTerminalInfo> {
+        let dir = self.persist_dir();
+        let mut infos = super::persist::list(&dir);
+        let mut keep: HashSet<String> = infos.iter().map(|i| i.id.clone()).collect();
+        keep.extend(self.local.list().into_iter().map(|s| s.id));
+        #[cfg(unix)]
+        if let Some(client) = self.current_daemon() {
+            keep.extend(client.list().into_iter().map(|s| s.id));
+        }
+        governance::retain(&dir, &keep);
+        let marks = governance::load(&dir);
+        for info in &mut infos {
+            info.ungoverned = marks.is_ungoverned(&info.id);
+        }
+        infos
+    }
+
+    /// One persisted session's metadata + replay bytes, governance-stamped. `None`
+    /// when absent / unparsable / an unsafe id.
+    pub fn read_persisted(&self, id: &str) -> Option<PersistedTerminalScrollback> {
+        let dir = self.persist_dir();
+        let mut record = super::persist::read(&dir, id)?;
+        record.info.ungoverned = governance::load(&dir).is_ungoverned(&record.info.id);
+        Some(record)
+    }
+
+    /// Stamp one descriptor's `ungoverned` from disk.
+    fn stamp(&self, mut session: TerminalSessionInfo) -> TerminalSessionInfo {
+        session.ungoverned = self.is_ungoverned(&session.id);
+        session
+    }
+
+    /// Stamp a whole list from ONE marker-file read (the list paths are the hot ones).
+    fn stamp_all(&self, mut sessions: Vec<TerminalSessionInfo>) -> Vec<TerminalSessionInfo> {
+        if sessions.is_empty() {
+            return sessions;
+        }
+        let marks = governance::load(&self.persist_dir());
+        for session in &mut sessions {
+            session.ungoverned = marks.is_ungoverned(&session.id);
+        }
+        sessions
     }
 
     /// The daemon's informational status (for the Settings toggle + dogfood).
@@ -356,6 +445,143 @@ mod tests {
 
         backend.kill(&info.id).expect("kill");
         assert!(backend.list().is_empty(), "a killed session drops");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn an_ungoverned_marker_survives_a_backend_restart() {
+        // THE #405 regression guard. `backend_a` is the running app: it spawns a shell
+        // and the user launches `claude` in it. Then the whole backend is DROPPED —
+        // every in-memory map (registry, daemon client slot, marker cache) goes with
+        // it, exactly as on an app relaunch or a daemon restart. `backend_b` is the new
+        // process: it shares nothing but the terminals dir on disk.
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("terminals");
+
+        let backend_a = TerminalBackend::new(dir.clone(), false);
+        let info = backend_a.spawn(opts(tmp.path()), noop_sink()).expect("spawn");
+        assert!(
+            !backend_a.list()[0].ungoverned,
+            "a fresh shell starts governed"
+        );
+
+        backend_a
+            .mark_ungoverned(&info.id, TerminalGovernanceReason::ClaudeLaunched)
+            .expect("mark");
+        assert!(
+            backend_a.list()[0].ungoverned,
+            "the marker lights up immediately"
+        );
+
+        backend_a.kill(&info.id).expect("kill");
+        drop(backend_a); // ← the restart
+
+        // The restart is only convincing if the marker really left the process. Assert
+        // the BYTES first: an in-memory cache (the pre-#405 shape, and the shape a
+        // future "optimization" might reintroduce) fails right here, because a dropped
+        // struct proves nothing about a static.
+        let on_disk = std::fs::read(dir.join("governance.json"))
+            .expect("the marker was written to disk, not just remembered");
+        let on_disk = String::from_utf8(on_disk).expect("utf-8 json");
+        assert!(
+            on_disk.contains(&info.id) && on_disk.contains("claudeLaunched"),
+            "the file names the session and why it is ungoverned, got: {on_disk}"
+        );
+
+        // Now the cold read: a directory whose ONLY content is those bytes — nothing a
+        // still-running process could have handed over — still yields the marker.
+        let cold = tmp.path().join("cold-boot");
+        std::fs::create_dir_all(&cold).unwrap();
+        std::fs::write(cold.join("governance.json"), &on_disk).unwrap();
+        assert!(
+            TerminalBackend::new(cold, false).is_ungoverned(&info.id),
+            "a backend built from nothing but the persisted bytes reports ungoverned"
+        );
+
+        let backend_b = TerminalBackend::new(dir.clone(), false);
+        assert!(
+            backend_b.is_ungoverned(&info.id),
+            "the marker must be readable by a process that never saw the mark"
+        );
+
+        // …and the read-only restore tab carries it too. The killed shell's scrollback
+        // lands via the coalescer's EOF flush on another thread, so poll for the file
+        // before asserting on the restore list (the same wait `session.rs`'s
+        // persist-on-exit test uses).
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while std::time::Instant::now() < deadline
+            && crate::terminal::persist::read(&dir, &info.id).is_none()
+        {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let restored = backend_b
+            .list_persisted()
+            .into_iter()
+            .find(|p| p.id == info.id)
+            .expect("the dead session read-only-restores");
+        assert!(
+            restored.ungoverned,
+            "and the restored tab still says an agent ran in that shell"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_task_unlink_clears_its_marker_but_a_claude_launch_is_permanent() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("terminals");
+        let backend = TerminalBackend::new(dir, false);
+        let info = backend.spawn(opts(tmp.path()), noop_sink()).expect("spawn");
+
+        backend
+            .mark_ungoverned(&info.id, TerminalGovernanceReason::TaskLinked)
+            .expect("link");
+        backend
+            .clear_governance_mark(&info.id, TerminalGovernanceReason::TaskLinked)
+            .expect("unlink");
+        assert!(!backend.list()[0].ungoverned, "an unlink clears the marker");
+
+        backend
+            .mark_ungoverned(&info.id, TerminalGovernanceReason::ClaudeLaunched)
+            .expect("launch");
+        assert!(
+            backend
+                .clear_governance_mark(&info.id, TerminalGovernanceReason::ClaudeLaunched)
+                .is_err(),
+            "a claude-launch marker refuses to clear"
+        );
+        assert!(backend.list()[0].ungoverned, "so it is still marked");
+        backend.kill(&info.id).expect("kill");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn the_marker_file_is_gcd_for_sessions_that_are_neither_live_nor_persisted() {
+        // `list_persisted` is the GC point. A marker for an id that is neither a live
+        // session nor a persisted scrollback is forgotten; a LIVE session's marker is
+        // kept even though it has no persisted file yet.
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("terminals");
+        let backend = TerminalBackend::new(dir, false);
+        let live = backend.spawn(opts(tmp.path()), noop_sink()).expect("spawn");
+        backend
+            .mark_ungoverned(&live.id, TerminalGovernanceReason::ClaudeLaunched)
+            .expect("mark live");
+        backend
+            .mark_ungoverned("long-forgotten", TerminalGovernanceReason::TaskLinked)
+            .expect("mark stale");
+
+        backend.list_persisted();
+
+        assert!(
+            backend.is_ungoverned(&live.id),
+            "a live session's marker is never GC'd out from under it"
+        );
+        assert!(
+            !backend.is_ungoverned("long-forgotten"),
+            "a marker for a session nothing remembers is collected"
+        );
+        backend.kill(&live.id).expect("kill");
     }
 
     #[test]

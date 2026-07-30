@@ -27,6 +27,9 @@
 //!  - [`scrollback`] — the ~10k-line ring buffer + the output coalescer (both pure).
 //!  - [`persist`] — the on-disk `.nightcore/terminals/<id>.json` shape (v:1) + its
 //!    atomic write / read / list / age+stale-cwd prune.
+//!  - [`governance`] — the on-disk `governance.json` ungoverned-marker file (#405):
+//!    the marker a task-link / `claude`-launch sets, persisted so it survives an app
+//!    or daemon restart instead of quietly disappearing.
 //!  - [`confine`] — the opt-in macOS Seatbelt write-containment for a confined tab
 //!    (fail-closed).
 //!  - [`types`] — the ts-rs-exported command-return descriptors.
@@ -34,6 +37,7 @@
 mod backend;
 pub(crate) mod confine;
 pub(crate) mod daemon;
+pub(crate) mod governance;
 pub(crate) mod persist;
 mod registry;
 mod scrollback;
@@ -43,6 +47,7 @@ mod title;
 mod types;
 
 pub use backend::TerminalBackend;
+pub(crate) use governance::TerminalGovernanceReason;
 pub use registry::TerminalRegistry;
 pub(crate) use session::{OutputSink, SpawnOpts};
 pub(crate) use title::{auto_eligible, TitleSource};

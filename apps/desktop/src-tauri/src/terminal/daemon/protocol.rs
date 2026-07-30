@@ -259,6 +259,9 @@ mod tests {
             created_at: 42,
             title: Some("deploy".to_string()),
             title_source: Some(TitleSource::Manual),
+            // The daemon never stamps the governance marker (#405) — the app-side
+            // backend re-stamps it from disk on every descriptor it hands out.
+            ungoverned: false,
         }
     }
 

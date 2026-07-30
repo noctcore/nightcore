@@ -55,6 +55,7 @@ fn export_all_bindings() {
         PermissionMode, ProposedSubtask, RunMode, SubtaskStatus, Task, TaskKind, TaskPatch,
         TaskStatus,
     };
+    use crate::terminal::governance::TerminalGovernanceReason;
     use crate::terminal::{
         PersistedTerminalInfo, PersistedTerminalScrollback, TerminalDaemonStatus,
         TerminalSessionInfo, TitleSource,
@@ -230,6 +231,9 @@ fn export_all_bindings() {
         PersistedTerminalInfo,
         PersistedTerminalScrollback,
         TitleSource,
+        // The persisted ungoverned-marker reason (#405) — why a terminal is marked as
+        // running outside the gates, and whether that marker is revocable.
+        TerminalGovernanceReason,
         // Detached PTY daemon (cockpit spec PR 6): the informational status shape.
         TerminalDaemonStatus,
         // Terminal folder browser: the one-level directory listing + its entries
@@ -420,6 +424,7 @@ VACUOUSLY, because nothing was written to the directory it guards — issue #422
             "PersistedTerminalInfo.ts",
             "PersistedTerminalScrollback.ts",
             "TitleSource.ts",
+            "TerminalGovernanceReason.ts",
             "TerminalDaemonStatus.ts",
             "DirectoryListing.ts",
             "DirectoryEntry.ts",

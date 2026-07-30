@@ -52,6 +52,14 @@ pub struct TerminalSessionInfo {
     /// is treated as Manual-equivalent, so the AI never clobbers it). Serde-additive.
     #[serde(default)]
     pub title_source: Option<TitleSource>,
+    /// Whether this session carries a persisted governance marker (#405): it is
+    /// task-linked or was used to launch `claude`, so it runs as the human OUTSIDE the
+    /// gates. Stamped by [`crate::terminal::TerminalBackend`] from the on-disk marker
+    /// file on EVERY descriptor it hands out, so the marker survives a reload, an app
+    /// restart, and a daemon restart. Serde-additive (`false` on a legacy / daemon-side
+    /// record — the backend re-stamps the authoritative value over it).
+    #[serde(default)]
+    pub ungoverned: bool,
 }
 
 /// Metadata for a persisted (dead) session's scrollback, without the bytes —
@@ -78,6 +86,11 @@ pub struct PersistedTerminalInfo {
     /// its Manual/Task/AI provenance. Serde-additive.
     #[serde(default)]
     pub title_source: Option<TitleSource>,
+    /// Whether this dead session carried a governance marker (#405) — stamped from the
+    /// same on-disk marker file the live descriptors read, so a restored (read-only)
+    /// tab still shows that an agent ran in that shell. Serde-additive.
+    #[serde(default)]
+    pub ungoverned: bool,
 }
 
 /// Detached-PTY-daemon status (cockpit spec PR 6) — returned by
