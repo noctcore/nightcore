@@ -167,8 +167,11 @@ pub struct SettingsPatch {
     /// target). See [`super::model::Settings::auto_commit_on_verified`].
     #[cfg_attr(test, ts(optional))]
     pub auto_commit_on_verified: Option<bool>,
-    /// Module #15: toggle OS write containment for agent sessions (macOS Seatbelt,
-    /// experimental). Global-only (ignored for a per-project override target). See
+    /// Module #15 / T16: toggle OS write containment for agent sessions. Applying
+    /// it stores an EXPLICIT choice (`Some(v)`), replacing the staged default —
+    /// which is the point: touching this toggle is how a user opts OUT of the
+    /// macOS+worktree default-on and stays opted out. Global-only (ignored for a
+    /// per-project override target). See
     /// [`super::model::Settings::sandbox_sessions`].
     #[cfg_attr(test, ts(optional))]
     pub sandbox_sessions: Option<bool>,
@@ -340,10 +343,12 @@ impl Settings {
         if let Some(v) = patch.auto_commit_on_verified {
             self.auto_commit_on_verified = v;
         }
-        // Module #15: global-only toggle (no per-project override), like the Auto
-        // Mode option above.
+        // Module #15 / T16: global-only toggle (no per-project override), like the
+        // Auto Mode option above. Stores `Some(v)` — a patch IS the user's explicit
+        // choice, so once it is touched the staged default no longer applies (same
+        // rule as `terminal_webgl_enabled`).
         if let Some(v) = patch.sandbox_sessions {
-            self.sandbox_sessions = v;
+            self.sandbox_sessions = Some(v);
         }
         // T6 (#147): global-only plan-approval-gate default toggle (no per-project
         // override), like `auto_commit_on_verified` / `sandbox_sessions`.

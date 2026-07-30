@@ -678,6 +678,89 @@ mod tests {
     }
 
     #[test]
+    fn sandbox_sessions_is_tristate_and_a_legacy_bool_is_never_flipped() {
+        // T16 / #157 (D3 staging): the OS-containment default moved from "always
+        // off" to "on for a macOS worktree run", so the stored field is tri-state.
+        // Unset must never be persisted as `false` — that would read as an explicit
+        // opt-out and pin every future install to no containment.
+        assert_eq!(Settings::default().sandbox_sessions, None);
+
+        let tmp = TempDir::new().expect("temp dir");
+        let dir = tmp.path().join("config");
+        std::fs::create_dir_all(&dir).unwrap();
+        // A settings.json from BEFORE the field parses as unset ⇒ staged default.
+        let legacy = r#"{"defaultModel":"claude-opus-4-8","defaultEffort":"medium",
+            "maxConcurrency":3,"permissionMode":"bypass","cleanupWorktrees":true,
+            "notifyOnComplete":false,"defaultRunMode":"main","projectOverrides":{}}"#;
+        std::fs::write(dir.join("settings.json"), legacy).unwrap();
+        assert_eq!(
+            SettingsStore::load_from(dir.clone()).get().sandbox_sessions,
+            None,
+            "a file predating the field resolves to the staged default"
+        );
+
+        // …and one written while the field was a bare `bool` keeps that exact choice.
+        // THIS is the ca55ddec lesson: the default-on flip must not silently re-enable
+        // containment for someone who deliberately turned it off.
+        let with_bool = r#"{"defaultModel":"claude-opus-4-8","defaultEffort":"medium",
+            "maxConcurrency":3,"permissionMode":"bypass","cleanupWorktrees":true,
+            "notifyOnComplete":false,"defaultRunMode":"main","projectOverrides":{},
+            "sandboxSessions":false}"#;
+        std::fs::write(dir.join("settings.json"), with_bool).unwrap();
+        let store = SettingsStore::load_from(dir);
+        assert_eq!(
+            store.get().sandbox_sessions,
+            Some(false),
+            "a legacy explicit false stays an explicit false"
+        );
+        assert!(
+            !store.get().sandbox_writes_for(true, None),
+            "an explicit opt-out survives the macOS+worktree staged default"
+        );
+
+        // A patch stores an EXPLICIT choice and round-trips through persistence, so
+        // the Settings toggle IS the durable opt-out.
+        store
+            .update(serde_json::from_str(r#"{"sandboxSessions":true}"#).unwrap())
+            .expect("update");
+        assert_eq!(store.get().sandbox_sessions, Some(true));
+        let reloaded = SettingsStore::load_from(tmp.path().join("config"));
+        assert_eq!(reloaded.get().sandbox_sessions, Some(true));
+    }
+
+    #[test]
+    fn sandbox_writes_for_stages_the_default_and_honors_every_opt_out() {
+        // The recorded D3 answer, as executable precedence rules.
+        let mut settings = Settings::default();
+
+        // 1. No preference anywhere ⇒ the STAGED default: worktree-mode only, and
+        //    only where the containment is verified (macOS). Phase 3 (main-mode) is
+        //    deliberately not implemented, so main mode stays off.
+        assert_eq!(
+            settings.sandbox_writes_for(true, None),
+            cfg!(target_os = "macos"),
+            "worktree run gets containment by default on macOS, and only there"
+        );
+        assert!(
+            !settings.sandbox_writes_for(false, None),
+            "main-mode is D3 phase 3 — it must NOT be armed by the staged default"
+        );
+
+        // 2. An explicit global choice beats the staged default, in both directions.
+        settings.sandbox_sessions = Some(false);
+        assert!(!settings.sandbox_writes_for(true, None));
+        settings.sandbox_sessions = Some(true);
+        assert!(settings.sandbox_writes_for(false, None));
+
+        // 3. The per-RUN override beats everything — this is the "opt-out per run"
+        //    half of the decision, and it can also opt a single run IN.
+        settings.sandbox_sessions = Some(true);
+        assert!(!settings.sandbox_writes_for(true, Some(false)));
+        settings.sandbox_sessions = Some(false);
+        assert!(settings.sandbox_writes_for(false, Some(true)));
+    }
+
+    #[test]
     fn issue_sync_settings_default_off_and_are_serde_additive() {
         // #97: issue writeback is opt-in (default off) and the label prefix defaults
         // to `nc:` via `label_prefix()`.

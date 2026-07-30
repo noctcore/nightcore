@@ -110,17 +110,33 @@ autoCommitOnVerified: boolean,
 /**
  * OS write containment (hardening module #15, tier "OS containment"): when
  * enabled, every agent session launches with `sandboxWrites` on the
- * `start-session` command, and the engine wraps the `claude` executable in a
- * macOS Seatbelt deny-write-except profile — file writes outside the
- * session's writable roots (cwd, worktree git common dir, temp trees, Claude
- * CLI state) are blocked at the OS layer, closing the lexical PreToolUse
- * gate's documented gaps (Bash redirects, symlinks). darwin-only: on other
- * hosts (or if Seatbelt breaks) the engine logs a loud warning and runs
- * unwrapped (fail-open). Global-only (like `auto_commit_on_verified`).
- * Default `false` (opt-in, experimental). Serde-additive: a settings file
- * written before this field loads as `false`.
+ * `start-session` command and the engine emits the SDK's native
+ * `Options.sandbox` — Bash writes outside the session's workspace are blocked
+ * at the OS layer, closing the lexical PreToolUse gate's documented gaps
+ * (redirects, symlinks, dynamic targets), and credential env vars are unset
+ * for sandboxed commands.
+ *
+ * TRI-STATE (T16 / #157, the D3 sandbox-by-default staging), mirroring
+ * `terminal_webgl_enabled` and decision D-010's rationale:
+ *  - `Some(true)` / `Some(false)` — the user's EXPLICIT choice, honored
+ *    forever. A later default change can never flip an explicit opt-out.
+ *  - `None` — no preference recorded ⇒ resolve the STAGED default in
+ *    [`Settings::sandbox_writes_for`]: ON for a macOS + worktree-mode run
+ *    (disjoint cwd, the lowest false-positive surface), OFF otherwise.
+ *
+ * The staged default is phase 1 of the recorded D3 answer of 2026-07-12
+ * (macOS + worktree-mode first, per-run opt-out, `failIfUnavailable: false`
+ * plus a loud containment-unavailable surface, widen to main-mode once
+ * telemetry is clean; Linux is out of project scope). Phase 3, main-mode plus
+ * fail-closed, is deliberately NOT implemented here.
+ *
+ * Global-only (like `auto_commit_on_verified`); the per-RUN opt-out is
+ * `Task::sandbox_writes`. Serde-additive: a settings file written before
+ * this field loads as `None` (and so gets the staged default), while one
+ * written while it was a bare `bool` loads as `Some(false)`/`Some(true)` —
+ * i.e. an existing install keeps exactly the containment it had.
  */
-sandboxSessions: boolean, 
+sandboxSessions: boolean | null, 
 /**
  * GitHub two-way sync (#97): master switch for issue writeback — status labels,
  * terminal comments, and the PR `Closes` keyword. OFF by default: writeback

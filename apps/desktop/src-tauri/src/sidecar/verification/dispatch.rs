@@ -16,7 +16,7 @@ use crate::worktree;
 
 use crate::sidecar::commands::{
     resolve_autonomy, resolve_context_pack, resolve_harness_policy, resolve_ledger_path,
-    resolve_mcp_servers, resolve_sandbox_writes,
+    resolve_mcp_servers, resolve_sandbox_writes, resolve_sandbox_writes_for,
 };
 
 /// The bounded auto-fix budget for the verification gate (M4 §B). On a
@@ -93,7 +93,7 @@ pub(crate) async fn dispatch_reviewer(
                 // (its own session-start/end markers segment it from the build).
                 ledger_path: resolve_ledger_path(app, task_id),
                 // Module #15: the reviewer is OS-write-contained like the build.
-                sandbox_writes: resolve_sandbox_writes(app),
+                sandbox_writes: resolve_sandbox_writes(app, &task),
             },
         )
         .await
@@ -179,7 +179,9 @@ fn fix_guardrails(app: &AppHandle, fix_id: &str) -> crate::provider::Guardrails 
         append_context_pack: resolve_context_pack(app),
         harness_policy: resolve_harness_policy(app),
         ledger_path: resolve_ledger_path(app, fix_id),
-        sandbox_writes: resolve_sandbox_writes(app),
+        // Module #15: a pr-fix always runs in a dedicated PR worktree and carries no
+        // board task, so it resolves the worktree-mode staged default with no override.
+        sandbox_writes: resolve_sandbox_writes_for(app, true, None),
     }
 }
 
@@ -229,7 +231,7 @@ async fn dispatch_build_fix(
                 // policy denials during the fix loop reach the same park gate.
                 ledger_path: resolve_ledger_path(app, task_id),
                 // Module #15: a fix-build is OS-write-contained like the build.
-                sandbox_writes: resolve_sandbox_writes(app),
+                sandbox_writes: resolve_sandbox_writes(app, &task),
             },
         )
         .await

@@ -271,6 +271,19 @@ pub struct Task {
     /// tasks load as `main`. Settable at create + editable pre-run.
     #[serde(default)]
     pub run_mode: RunMode,
+    /// OS write containment for THIS run (T16 / #157) — the per-run opt-out the D3
+    /// staging decision requires. `None` (the default, and every legacy task) ⇒
+    /// inherit [`crate::store::settings::Settings::sandbox_writes_for`], i.e. the
+    /// explicit global setting or the staged macOS+worktree default. `Some(false)`
+    /// ⇒ run this task WITHOUT OS containment even though the default would arm it
+    /// (the escape hatch for a task whose hooks/tools write outside the workspace);
+    /// `Some(true)` ⇒ arm it even in main mode. Settable pre-run.
+    ///
+    /// Deliberately per-TASK rather than per-attempt: a re-run of the same card is
+    /// the same piece of work, and a containment choice that silently reset between
+    /// attempts would be a governance surprise. Serde-additive.
+    #[serde(default)]
+    pub sandbox_writes: Option<bool>,
     /// M4: true only after an independent reviewer returned `VERDICT: PASS`.
     /// `merge_task` is gated on it. Cleared on a fresh run.
     #[serde(default)]
@@ -449,6 +462,9 @@ impl Task {
             conflict: false,
             kind: TaskKind::default(),
             run_mode: RunMode::default(),
+            // T16: no per-run containment override — inherit the settings/staged
+            // default (`Settings::sandbox_writes_for`).
+            sandbox_writes: None,
             verified: false,
             review: None,
             fix_attempts: 0,
@@ -760,6 +776,35 @@ mod tests {
             RunMode::Main,
             "a task with no run_mode loads as Main"
         );
+    }
+
+    #[test]
+    fn sandbox_writes_override_is_unset_by_default_and_serde_additive() {
+        // T16 / #157: the per-RUN containment opt-out. Unset by default so a task
+        // inherits `Settings::sandbox_writes_for` — recording `Some(false)` here
+        // would be a per-task opt-out nobody chose.
+        let task = Task::new("t".into(), String::new());
+        assert_eq!(task.sandbox_writes, None);
+
+        // Wire key is camelCase, and an explicit choice round-trips.
+        let mut opted_out = task.clone();
+        opted_out.sandbox_writes = Some(false);
+        let value: serde_json::Value = serde_json::to_value(&opted_out).unwrap();
+        assert_eq!(
+            value.as_object().unwrap()["sandboxWrites"],
+            serde_json::json!(false)
+        );
+        let back: Task = serde_json::from_value(value).unwrap();
+        assert_eq!(back.sandbox_writes, Some(false));
+
+        // A legacy task file (no `sandboxWrites`) loads as None — inherit, not off.
+        let legacy = r#"{"id":"x","title":"t","description":"","status":"backlog",
+            "dependencies":[],"model":null,"branch":null,"createdAt":1,"updatedAt":1,
+            "sessionId":null,"summary":null,"error":null,"costUsd":null,
+            "plan":null,"committed":false,"merged":false,"conflict":false,
+            "kind":"build","verified":false,"review":null,"fixAttempts":0}"#;
+        let legacy_task: Task = serde_json::from_str(legacy).expect("legacy task");
+        assert_eq!(legacy_task.sandbox_writes, None);
     }
 
     #[test]

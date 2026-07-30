@@ -27,8 +27,11 @@ notifyOnAwaitingInput?: boolean,
  */
 autoCommitOnVerified?: boolean, 
 /**
- * Module #15: toggle OS write containment for agent sessions (macOS Seatbelt,
- * experimental). Global-only (ignored for a per-project override target). See
+ * Module #15 / T16: toggle OS write containment for agent sessions. Applying
+ * it stores an EXPLICIT choice (`Some(v)`), replacing the staged default —
+ * which is the point: touching this toggle is how a user opts OUT of the
+ * macOS+worktree default-on and stays opted out. Global-only (ignored for a
+ * per-project override target). See
  * [`super::model::Settings::sandbox_sessions`].
  */
 sandboxSessions?: boolean, 

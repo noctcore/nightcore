@@ -93,21 +93,40 @@ pub fn build_guardrails(
                 .to_string_lossy()
                 .to_string()
         }),
-        sandbox_writes: resolve_sandbox_writes(app),
+        sandbox_writes: resolve_sandbox_writes(app, task),
     }
 }
 
-/// OS write containment (hardening module #15): whether sessions launch with the
-/// engine's Seatbelt write-containment wrapper, from the GLOBAL `sandbox_sessions`
-/// setting (no per-project override — like `auto_commit_on_verified`). The engine
-/// applies it only where the host supports it (darwin with `sandbox-exec`);
-/// elsewhere it logs a loud warning and runs unwrapped (fail-open). Shared by the
-/// manual/auto build path and the reviewer/fix sub-runs so every session in a run
-/// is contained the same way.
-pub fn resolve_sandbox_writes(app: &AppHandle) -> bool {
+/// OS write containment (hardening module #15 / T16 #157): whether this run's
+/// sessions launch with the engine's native `Options.sandbox`, resolved by
+/// [`crate::store::settings::Settings::sandbox_writes_for`] from — most specific
+/// first — the task's per-run override, the user's explicit global setting, then
+/// the STAGED default (macOS + worktree-mode only, D3 phase 1).
+///
+/// Shared by the manual/auto build path and the reviewer/fix sub-runs so every
+/// session in a run is contained the same way — a reviewer that ran uncontained
+/// while its build was contained would be a hole in the same run.
+///
+/// This answers "was containment REQUESTED". The engine's preflight answers
+/// whether the host can provide it, and reports a requested-but-unavailable run
+/// loudly (log + flight-recorder marker + a `session-started` badge) instead of
+/// silently continuing unconfined.
+pub fn resolve_sandbox_writes(app: &AppHandle, task: &Task) -> bool {
+    resolve_sandbox_writes_for(app, task.run_mode.is_worktree(), task.sandbox_writes)
+}
+
+/// [`resolve_sandbox_writes`] for a run that has no board task to read the mode and
+/// the per-run override from — today only the pr-fix runner, which ALWAYS works in
+/// a dedicated PR worktree (`workflow::pr_fix::checkout`), so it passes
+/// `run_worktree: true` and no override.
+pub fn resolve_sandbox_writes_for(
+    app: &AppHandle,
+    run_worktree: bool,
+    task_override: Option<bool>,
+) -> bool {
     use crate::settings::SettingsStore;
     app.state::<SettingsStore>()
-        .with_settings(|s| s.sandbox_sessions)
+        .with_settings(|s| s.sandbox_writes_for(run_worktree, task_override))
 }
 
 /// The harness runtime policy (hardening module #3) to arm for a run in the active

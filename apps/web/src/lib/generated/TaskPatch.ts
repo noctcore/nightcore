@@ -32,6 +32,15 @@ kind?: TaskKind,
  */
 runMode?: RunMode, 
 /**
+ * T16 / #157: the per-RUN OS-containment override, editable pre-run. DOUBLE
+ * option so the picker can express all three states the decision needs: absent
+ * ⇒ leave the task's choice alone, `null` ⇒ CLEAR back to "inherit the
+ * settings/staged default", `true`/`false` ⇒ pin this run. (The other
+ * nullable patch fields are set-only because clearing them is meaningless;
+ * clearing this one is the "put it back on Auto" affordance.)
+ */
+sandboxWrites?: boolean | null, 
+/**
  * SDK-guardrails: per-task max-turns override, editable pre-run.
  */
 maxTurns?: number | null, 
