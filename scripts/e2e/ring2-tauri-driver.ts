@@ -33,12 +33,13 @@
  * ## SELF-TEST — why this job cannot pass with the app broken
  *
  * The self-test (on by default) perturbs the LIVE app and requires the battery to
- * trip — one perturbation per check kind, and a check kind with no perturbation is
- * itself a failure: it empties `#root` and re-runs the DOM checks (all must fail),
- * makes `invoke` reject and re-runs the IPC checks (all must fail), and plants a
- * quarantine file to prove the disk tripwire is looking where it claims. A check that
- * survives its own perturbation is not reading the app, and the run exits non-zero
- * naming it. Same contract as `scripts/verify-drift-guard.ts`.
+ * trip. One perturbation per check kind — empty `#root`, make `invoke` reject, remove
+ * `__TAURI_INTERNALS__`, plant a quarantine file — and THREE ways to fail: a check
+ * that survives its own perturbation, a check kind with no perturbation at all, or a
+ * perturbation that cannot verify it landed. (That last one is not hypothetical: the
+ * first CI run of this ring found that assigning to `__TAURI_INTERNALS__.invoke` is a
+ * silent no-op, which made the self-test accuse two perfectly good checks.) Same
+ * contract as `scripts/verify-drift-guard.ts`.
  *
  * ## Usage
  *
@@ -74,10 +75,12 @@ const BOOT_SETTLE_MS = 6_000;
 
 interface Check {
   name: string;
-  /** `dom` checks read the rendered page; `ipc` checks make a Tauri round-trip. The
-   *  tag drives the self-test: each perturbation targets one class and demands that
-   *  EVERY check in it fails. */
-  kind: 'dom' | 'ipc' | 'disk';
+  /** What the check actually reads: `dom` = rendered content, `ipc` = a Tauri
+   *  round-trip, `env` = the webview runtime shim, `disk` = the app's on-disk state.
+   *  The tag drives the self-test — each perturbation targets ONE kind and demands
+   *  that every check in it fails, so a check must be tagged by what destroying it
+   *  would break, not by what it feels related to. */
+  kind: 'dom' | 'ipc' | 'env' | 'disk';
   run: (session: WebDriverSession) => Promise<{ ok: boolean; detail: string }>;
 }
 
@@ -224,7 +227,10 @@ function buildChecks(workspace: Workspace): Check[] {
     },
     {
       name: 'we are in the REAL webview, not a browser-preview dev server',
-      kind: 'dom',
+      // `env`, not `dom`: this reads the Tauri runtime shim, not rendered content, so
+      // emptying #root must NOT be expected to trip it. Its own perturbation removes
+      // `__TAURI_INTERNALS__`.
+      kind: 'env',
       run: async (session) => {
         // Two independent signals: the Tauri IPC shim exists, AND the app's own
         // "you are not in Tauri" banner is absent. Either alone could be fooled.
@@ -359,10 +365,18 @@ async function selfTest(
 
   // One perturbation per check KIND, so every check in the battery is covered: a kind
   // with no perturbation would be a check nobody ever saw fail.
+  //
+  // Every perturbation VERIFIES that it landed and reports `applied`. This is not
+  // paranoia — the first CI run of this ring found that assigning
+  // `window.__TAURI_INTERNALS__.invoke = stub` is a SILENT no-op (Tauri defines that
+  // property non-writable, and WebDriver scripts run sloppy-mode, so the assignment is
+  // discarded without an error). The self-test then "found" two vacuous checks that
+  // were fine; the perturbation was the broken part. A perturbation that cannot prove
+  // it perturbed is itself a self-test failure.
   const perturbations: Array<{
     label: string;
     kind: Check['kind'];
-    apply: () => Promise<unknown>;
+    apply: () => Promise<{ applied: boolean; detail: string }>;
   }> = [
     {
       label: 'empty #root (the webview rendered nothing)',
@@ -370,17 +384,61 @@ async function selfTest(
       // Also blanks the title, so the window-title check is covered by the same
       // perturbation rather than being exempted from the proof.
       apply: () =>
-        session.execute(
-          "document.querySelector('#root').innerHTML = ''; document.title = ''; return true;",
-        ),
+        session.execute<{ applied: boolean; detail: string }>(`
+          const root = document.querySelector('#root');
+          if (root) root.innerHTML = '';
+          document.title = '';
+          const left = document.querySelectorAll('#root *').length;
+          return { applied: left === 0 && document.title === '', detail: left + ' nodes left' };
+        `),
     },
     {
       label: 'make invoke() reject (the Rust core stopped answering)',
       kind: 'ipc',
+      // Replace the WHOLE internals object rather than its `invoke` property: the
+      // property is non-writable, the object reference is not.
       apply: () =>
-        session.execute(
-          "window.__TAURI_INTERNALS__.invoke = () => Promise.reject(new Error('self-test')); return true;",
-        ),
+        session.execute<{ applied: boolean; detail: string }>(`
+          const original = window.__TAURI_INTERNALS__;
+          const originalInvoke = original && original.invoke;
+          const stub = function () { return Promise.reject(new Error('ring2 self-test')); };
+          try {
+            window.__TAURI_INTERNALS__ = Object.assign({}, original, { invoke: stub });
+          } catch (error) {
+            return { applied: false, detail: 'assignment threw: ' + String(error) };
+          }
+          const now = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
+          return {
+            applied: now === stub && now !== originalInvoke,
+            detail: now === stub ? 'invoke replaced' : 'invoke unchanged (non-writable?)',
+          };
+        `),
+    },
+    {
+      label: 'remove __TAURI_INTERNALS__ (not the real webview at all)',
+      kind: 'env',
+      // The "are we really in Tauri" check does not read `#root`, so the DOM
+      // perturbation left it standing — correctly. Its own perturbation is removing
+      // the thing it looks for.
+      apply: () =>
+        session.execute<{ applied: boolean; detail: string }>(`
+          try {
+            delete window.__TAURI_INTERNALS__;
+          } catch (error) { /* fall through to defineProperty */ }
+          if (window.__TAURI_INTERNALS__ !== undefined) {
+            try {
+              Object.defineProperty(window, '__TAURI_INTERNALS__', {
+                value: undefined, configurable: true, writable: true,
+              });
+            } catch (error) {
+              return { applied: false, detail: 'could not remove: ' + String(error) };
+            }
+          }
+          return {
+            applied: window.__TAURI_INTERNALS__ === undefined,
+            detail: 'internals now ' + String(window.__TAURI_INTERNALS__),
+          };
+        `),
     },
     {
       label: 'plant a quarantine file (a store was found corrupt)',
@@ -388,13 +446,14 @@ async function selfTest(
       // The quarantine tripwire is the check most likely to sit green forever — it
       // asserts an ABSENCE, and an absence is exactly what a check looking in the
       // wrong directory also reports. Planting the file it looks for proves it looks.
-      apply: () =>
-        Promise.resolve(
-          fs.writeFileSync(
-            path.join(workspace.configDir, 'projects.json.corrupt-0'),
-            '{}',
-          ),
-        ),
+      apply: () => {
+        const planted = path.join(workspace.configDir, 'projects.json.corrupt-0');
+        fs.writeFileSync(planted, '{}');
+        return Promise.resolve({
+          applied: fs.existsSync(planted),
+          detail: `planted ${path.basename(planted)}`,
+        });
+      },
     },
   ];
 
@@ -409,7 +468,15 @@ async function selfTest(
   }
 
   for (const perturbation of perturbations) {
-    await perturbation.apply();
+    const applied = await perturbation.apply();
+    if (!applied.applied) {
+      console.error(
+        `✖ PERTURBATION FAILED TO APPLY: ${perturbation.label} — ${applied.detail}.\n` +
+          '    Nothing was proven about the checks it targets; fix the perturbation.',
+      );
+      allTripped = false;
+      continue;
+    }
     const targeted = checks.filter((c) => c.kind === perturbation.kind);
     const outcomes = await runChecks(session, targeted);
     const survivors = outcomes.filter((o) => o.ok);
