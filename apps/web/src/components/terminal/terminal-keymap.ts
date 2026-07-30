@@ -12,9 +12,13 @@
  *    execute line-by-line.
  *  - **Shift+Enter** → `ESC` + `\n` (`\x1b\n`): a newline into a TUI without submit.
  *  - **⌘/Ctrl+Backspace** → `Ctrl+U` (`\x15`): kill line.
- *  - **App chords** (⌘T/W/F, ⌘⇧E): swallowed here so xterm never forwards them to
- *    the PTY (on non-mac, Ctrl+T/W/F would otherwise send control bytes); the React
- *    layer (view shortcuts / pane search / grid zoom) performs the actual action.
+ *  - **App chords** (⌘T/W/F, ⌘⇧E, ⌘1..9): swallowed here so xterm never forwards them
+ *    to the PTY (on non-mac, Ctrl+T/W/F would otherwise send control bytes); the React
+ *    layer (view shortcuts / pane search / grid zoom / tab select) performs the action.
+ *  - **OSC 133 navigation** (⌘↑ / ⌘↓ / ⌘⇧O, #405): jump to the previous/next shell
+ *    prompt and copy the last command's output. These are only meaningful once the
+ *    shell emits OSC 133 marks; with a bare shell the injected actions are no-ops, and
+ *    the chord is still swallowed rather than sent as a control byte.
  *
  * The two byte-emitting intents (Shift+Enter, kill-line) bypass xterm's `onData`, so
  * they write through the injected {@link EmitBroadcast} rather than the bridge directly
@@ -45,12 +49,27 @@ const KILL_LINE = new Uint8Array([0x15]);
  *  owning session, exactly as before. */
 export interface EmitBroadcast {
   readonly write: (data: Uint8Array) => void;
+  /** Jump the viewport to the previous/next OSC 133 prompt (#405). Injected by the
+   *  session manager (which owns the per-session block list); a no-op for a shell that
+   *  emits no marks. */
+  readonly prompt?: (direction: -1 | 1) => void;
+  /** Copy the last command's output to the clipboard (#405). Injected likewise. */
+  readonly copyLastOutput?: () => void;
 }
 
 /** What the cockpit does with a keydown, decided purely (testable without xterm).
  *  `copy` = copy-if-selection-else-passthrough-SIGINT; the impure handler resolves
  *  the selection. */
-export type KeyIntent = 'passthrough' | 'swallow' | 'copy' | 'paste' | 'multiline' | 'killline';
+export type KeyIntent =
+  | 'passthrough'
+  | 'swallow'
+  | 'copy'
+  | 'paste'
+  | 'multiline'
+  | 'killline'
+  | 'prev-prompt'
+  | 'next-prompt'
+  | 'copy-last-output';
 
 /** The subset of a keyboard event the classifier reads — so it can be exercised
  *  with plain objects in tests. */
@@ -74,11 +93,19 @@ export function classifyKeyEvent(e: KeyEventLike, isMac: boolean): KeyIntent {
   if (e.type !== 'keydown') return 'passthrough';
   const primary = isMac ? e.metaKey : e.ctrlKey;
 
+  // OSC 133 shell integration (#405). Checked BEFORE the generic app chords so the
+  // copy-last-output chord isn't shadowed by smart-copy.
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey && isLetter(e.key, 'o')) return 'copy-last-output';
+  if (primary && !e.shiftKey && e.key === 'ArrowUp') return 'prev-prompt';
+  if (primary && !e.shiftKey && e.key === 'ArrowDown') return 'next-prompt';
+
   // App chords handled by React (view/pane/grid) — never forwarded to the PTY.
   // Zoom is ⌘/Ctrl + Shift + E (matches the layout hook's platform-agnostic gate).
   if ((e.metaKey || e.ctrlKey) && e.shiftKey && isLetter(e.key, 'e')) return 'swallow';
   if (primary && !e.shiftKey && (isLetter(e.key, 't') || isLetter(e.key, 'w'))) return 'swallow';
   if (primary && !e.shiftKey && isLetter(e.key, 'f')) return 'swallow';
+  // ⌘1..9 selects the Nth tab/pane (#405) — handled by the view's shortcut hook.
+  if (primary && !e.shiftKey && /^[1-9]$/.test(e.key)) return 'swallow';
 
   // Smart copy: primary + C. Selection → copy (swallow); else passthrough so a
   // non-mac Ctrl+C still reaches the shell as SIGINT.
@@ -176,6 +203,15 @@ export function installKeymap(term: Terminal, emit: EmitBroadcast): void {
         return false;
       case 'killline':
         emit.write(KILL_LINE);
+        return false;
+      case 'prev-prompt':
+        emit.prompt?.(-1);
+        return false;
+      case 'next-prompt':
+        emit.prompt?.(1);
+        return false;
+      case 'copy-last-output':
+        emit.copyLastOutput?.();
         return false;
     }
   });

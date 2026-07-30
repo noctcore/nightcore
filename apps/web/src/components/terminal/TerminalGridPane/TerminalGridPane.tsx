@@ -141,6 +141,12 @@ export function TerminalGridPane({
     <div
       ref={v.setRootRef}
       data-session-id={session.id}
+      // Focus-follows-pane (#405). Clicking INTO a pane's terminal focuses xterm's
+      // textarea, and `onFocus` is delegated from `focusin`, so it bubbles up here —
+      // which is the only way the app learns which pane the user is actually typing
+      // in. Without it, ⌘W in grid view closed whatever tab was last CLICKED IN THE
+      // HEADER, i.e. reliably the wrong pane.
+      onFocus={() => onActivate(session.id)}
       className={`group flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-background transition-colors ${
         v.isOver ? 'border-primary/70' : 'border-border'
       } ${v.isDragging ? 'opacity-40' : ''} ${

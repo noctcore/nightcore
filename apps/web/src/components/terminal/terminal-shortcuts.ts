@@ -1,8 +1,14 @@
 /**
  * View-scoped keyboard shortcuts for the Terminal cockpit (spec PR 3a): ⌘T / Ctrl+T
  * opens the new-terminal picker, ⌘W / Ctrl+W closes the active terminal (through the
- * confirm dialog). Zoom (⌘⇧E) lives in `useTerminalLayout` (grid-only) and is left
- * there.
+ * confirm dialog), and ⌘1..9 selects the Nth tab/pane (#405). Zoom (⌘⇧E) lives in
+ * `useTerminalLayout` (grid-only) and is left there.
+ *
+ * ⌘1..9 selects by DISPLAY order, not by session age, so the number matches what the
+ * user sees; ⌘9 is the LAST pane (the field's convention), not the ninth — with the
+ * 12-session cap that is the only reachable way to jump to a tail tab. Selecting also
+ * moves keyboard focus into that terminal, so the very next keystroke (and ⌘W) act on
+ * the pane the user just jumped to rather than the one they left.
  *
  * The listener is bound on `window` but only exists WHILE the Terminal view is
  * mounted (this hook is called from `useTerminalView`), so it is naturally
@@ -24,6 +30,10 @@ import { isMacPlatform } from './terminal-platform';
 export interface TerminalShortcutsInput {
   /** The active tab/session id, or `null` (empty state) — the ⌘W close target. */
   readonly activeId: string | null;
+  /** Live session ids in DISPLAY order — the ⌘1..9 targets (#405). */
+  readonly orderedIds: readonly string[];
+  /** Select a session (⌘1..9). The view also moves terminal focus to it. */
+  readonly onSelect: (id: string) => void;
   /** Whether a new terminal can still be opened (under the session cap) — ⌘T no-ops
    *  at the cap, matching the disabled "+" button. */
   readonly canAddTab: boolean;
@@ -33,7 +43,17 @@ export interface TerminalShortcutsInput {
   readonly onCloseActive: (id: string) => void;
 }
 
-/** Bind the ⌘T / ⌘W cockpit shortcuts for the lifetime of the Terminal view. The
+/** The ⌘`n` target in DISPLAY order: 1-based, with `9` meaning THE LAST session (the
+ *  field's convention — VS Code, iTerm2, Chrome all do this) rather than literally the
+ *  ninth, so a tail tab past nine is still reachable. `null` when the slot is empty.
+ *  Pure so the mapping is unit-testable without a keyboard. */
+export function nthSessionId(orderedIds: readonly string[], n: number): string | null {
+  if (orderedIds.length === 0 || n < 1 || n > 9) return null;
+  if (n === 9) return orderedIds.at(-1) ?? null;
+  return orderedIds[n - 1] ?? null;
+}
+
+/** Bind the ⌘T / ⌘W / ⌘1..9 cockpit shortcuts for the lifetime of the Terminal view. The
  *  latest inputs are read through a ref so the window listener binds exactly once
  *  (no rebind churn as the active tab / cap changes). */
 export function useTerminalShortcuts(input: TerminalShortcutsInput): void {
@@ -57,6 +77,12 @@ export function useTerminalShortcuts(input: TerminalShortcutsInput): void {
         e.preventDefault();
         const id = latest.current.activeId;
         if (id !== null) latest.current.onCloseActive(id);
+      } else if (/^[1-9]$/.test(key)) {
+        // ⌘1..9 (#405). Always prevented, even when the slot is empty — otherwise the
+        // webview's own tab-switch default fires and navigates out of the app.
+        e.preventDefault();
+        const target = nthSessionId(latest.current.orderedIds, Number(key));
+        if (target !== null) latest.current.onSelect(target);
       }
     };
     window.addEventListener('keydown', onKeyDown);

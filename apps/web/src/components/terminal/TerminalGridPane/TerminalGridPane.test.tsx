@@ -113,6 +113,39 @@ test('clicking the title activates the pane (the zoom target)', async () => {
   expect(onActivate).toHaveBeenCalledWith('grid-session');
 });
 
+test('focus landing ANYWHERE inside the pane activates it (#405 focus-follows-pane)', async () => {
+  // The live bug this fixes: in grid view, `activeId` only moved when the user clicked
+  // a pane's TITLE, but you type in a pane by clicking its terminal body. ⌘W then closed
+  // whichever pane's header was last clicked — reliably the wrong one. Focus is
+  // delegated (`focusin`), so focus landing on any descendant must reach the root.
+  const onActivate = vi.fn();
+  const screen = render(
+    <ToastProvider>
+      <DndContext>
+        <TerminalGridPane
+          session={fakeSession({ title: 'shell two' })}
+          attention={{ unread: 0, needsAttention: false }}
+          ungoverned={false}
+          canLaunch={false}
+          zoomed={false}
+          draggable
+          broadcasting={false}
+          isDropTarget={false}
+          onRename={() => {}}
+          onLaunchClaude={() => {}}
+          onToggleZoom={() => {}}
+          onActivate={onActivate}
+        />
+      </DndContext>
+    </ToastProvider>,
+  );
+  // A descendant that is NOT the title — standing in for the xterm textarea, which
+  // isn't mounted here (the pane's session is uncached, so `attachSession` no-ops).
+  const zoom = screen.getByRole('button', { name: /Maximize pane/ }).element() as HTMLElement;
+  zoom.focus();
+  await expect.poll(() => onActivate.mock.calls).toContainEqual(['grid-session']);
+});
+
 test('shows the Launch Claude button when canLaunch and fires onLaunchClaude', async () => {
   const onLaunchClaude = vi.fn();
   const screen = render(
