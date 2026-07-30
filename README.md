@@ -30,7 +30,10 @@ rules, and an independent reviewer agent — before it can reach your branch. Th
 gates are machine-enforced state transitions, not suggestions in a prompt.
 
 > Local-first, single-user, Claude-first. No server, no database, no accounts.
-> State lives under `~/.nightcore/` and per-project `.nightcore/`.
+> Global state lives in the OS per-user app directory for `dev.shirone.nightcore`
+> (`~/Library/Application Support/` on macOS, `%LOCALAPPDATA%` on Windows,
+> `$XDG_DATA_HOME` on Linux); per-project state lives in the project's
+> `.nightcore/`.
 
 <picture>
   <source srcset="docs/assets/kanban-board.webp" type="image/webp" />
