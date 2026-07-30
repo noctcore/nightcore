@@ -147,6 +147,11 @@ export default tseslint.config(
       '**/.nightcore/**',
       '**/*.tsbuildinfo',
       '**/storybook-static/**',
+      // Astro's generated type surface for apps/docs (`.astro/types.d.ts` +
+      // `content.d.ts`). Regenerated on every `astro build`/`astro dev`, never
+      // committed (git-ignored), and written with `any`/triple-slash by the
+      // framework — linting a generated file we cannot edit is pure noise.
+      '**/.astro/**',
       '**/*.woff2',
       'design/**',
       // The eslint-plugin's own RuleTester fixtures intentionally omit sibling
@@ -208,6 +213,15 @@ export default tseslint.config(
         TextDecoder: 'readonly',
         TextEncoder: 'readonly',
       },
+    },
+  },
+  {
+    // The docs site's Astro config is a plain-JS Node module (same situation as
+    // the `scripts/**` probes above): declare the runtime globals it reads so
+    // `no-undef` doesn't flag the `DOCS_SITE` / `DOCS_BASE` env overrides.
+    files: ['apps/docs/**/*.{js,mjs,cjs}'],
+    languageOptions: {
+      globals: { process: 'readonly', console: 'readonly' },
     },
   },
   {

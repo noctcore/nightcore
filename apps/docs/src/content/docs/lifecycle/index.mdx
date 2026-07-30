@@ -1,0 +1,67 @@
+---
+title: The governed lifecycle
+description: Intake, Understand, Harden, Enforce, Verify — the five stages Nightcore's workspace is organised around, rendered from the app's own source of truth.
+sidebar:
+  label: Overview
+  order: 1
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import StageTable from '../../../components/StageTable.astro';
+
+Nightcore's workspace is not a pile of features. It is a lifecycle, and the
+sidebar is grouped by it: five stages that take a piece of work from "someone
+filed an issue" to "this diff earned its merge."
+
+<StageTable />
+
+<Aside type="tip" title="This table is generated">
+The stage names, explainers, and artifacts above are read at build time from
+`apps/web/src/lib/stages.ts` — the same module the app's sidebar and onboarding
+wizard read. Nothing on this page is a second copy of that vocabulary, so the
+docs cannot drift from the product by hand. See
+`apps/docs/scripts/gen-stages.ts`.
+</Aside>
+
+## Why a lifecycle and not a chat box
+
+Each stage exists because the one before it produces something the next one can
+act on mechanically:
+
+- **Intake** turns an issue into a task that has been checked against the code,
+  so a run does not start from a stale premise.
+- **Understand** turns a repo into grounded findings — each pinned to a file and
+  line — plus a scorecard, so you know where it is weakest before you spend
+  agent time.
+- **Harden** turns findings into *proposals*: conventions, lint rules, agent
+  contracts. Nothing is written to your repo until you review a proposal and
+  apply it.
+- **Enforce** is the step most tooling skips. A convention that lives only in a
+  document is not a convention — this stage reports which of yours a machine
+  actually checks, and where coverage is missing.
+- **Verify** is where the loop pays off. Because the conventions are mechanical,
+  a task's output can be checked against *your project's own rules* before a
+  human looks at it, and the result is a receipt you can read.
+
+The loop closes on itself: **scans propose the guardrails, Apply writes them, the
+Structure-Lock enforces them, the gauntlet verifies against them.**
+
+## The stages are not a wizard
+
+You are not forced through them in order and there is no "stage 3 of 5"
+progress bar. The stages are how the nav is organised and how the product
+reasons about your project's maturity. A brand-new project realistically starts
+at Understand; a repo you have already hardened lives mostly in Verify.
+
+The parts of the workspace that are *not* stages — the Kanban Board (`K`),
+Worktrees (`W`), Terminal (`L`), History (`R`), Council (`C`) and Settings
+(`S`) — sit alongside them as project surfaces. The board in particular is where
+tasks from every stage end up.
+
+## Read next
+
+- [Intake](intake/) — validated tasks on the board
+- [Understand](understand/) — findings and a scorecard
+- [Harden](harden/) — reviewable proposals
+- [Enforce](enforce/) — conventions a machine checks
+- [Verify](verify/) — a trust report per task

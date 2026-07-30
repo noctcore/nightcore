@@ -50,3 +50,8 @@ design
 .cursor
 .agents
 .codex
+# Astro / docs site build artifacts (apps/docs)
+apps/docs/.astro/
+# Mirrored from apps/web/src/lib/stages.ts at build time — never committed, so it
+# cannot go stale (apps/docs/scripts/gen-stages.ts).
+apps/docs/src/generated/

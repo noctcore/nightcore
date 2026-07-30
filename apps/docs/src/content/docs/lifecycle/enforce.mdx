@@ -1,0 +1,83 @@
+---
+title: Enforce
+description: A convention is only real once a machine checks it. Arm checks into the project manifest and see where coverage is missing.
+sidebar:
+  order: 5
+---
+
+import StageCallout from '../../../components/StageCallout.astro';
+
+<StageCallout id="enforce" />
+
+## The claim this stage makes
+
+Most codebases have two rule sets: the one in the style guide, and the one CI
+actually fails on. The gap between them is where architecture erodes, because
+only the second one has teeth.
+
+Enforce is the stage that reports the gap. It shows which of your conventions
+are **enforced**, which are **documented only**, and where there is no coverage
+at all.
+
+## Arming a check
+
+Arming writes an entry into your project's `.nightcore/harness.json`:
+
+```jsonc
+{
+  "schemaVersion": 1,
+  "checks": [
+    {
+      "name": "lint",
+      "kind": "lint-plugin",
+      "command": "npx eslint .",
+      "enabled": true,
+      "timeoutMs": 60000
+    }
+  ]
+}
+```
+
+From then on, every Build and TDD task runs those checks as part of its
+**Structure-Lock Gauntlet** — before the reviewer agent, and again at merge. A
+task cannot merge code that breaks its own project's harness.
+
+Two properties worth internalising:
+
+- **Absent file, no checks.** A project with no `.nightcore/harness.json` is
+  completely unaffected. Nothing is armed by default.
+- **Zero agent cost.** These are deterministic commands. Running them is
+  spending CPU, not tokens, which is why they run *before* the reviewer.
+
+Disarming (disabling or removing a check) is equally explicit — and both arming
+and disarming are written to the [governance
+journal](../../governance/receipts/), so "when did this stop being enforced?"
+has an answer.
+
+## The Policy layer lives here too
+
+The same destination hosts the runtime **[policy editor](../../governance/policy/)**
+— protected paths, denied Bash patterns, read denials, ask-first tools — plus the
+[per-project trust summary](../../governance/receipts/) that sits above it, and
+the injection-scan surface.
+
+The distinction is worth keeping straight:
+
+| | Structure-Lock checks | Runtime policy |
+|---|---|---|
+| **When** | After a task's work is done | While the agent is working, per tool call |
+| **What** | Your project's own commands (lint, typecheck, tests) | Which tools, paths, and commands the agent may touch |
+| **Failure mode** | The task does not pass verification | The tool call is denied or escalated to an ask |
+
+Both are stored in the same `.nightcore/harness.json`, under `checks` and
+`policy` respectively.
+
+## Where the honesty is
+
+- Enforce reports coverage; it does not guarantee correctness. A rule can be
+  armed, run, pass, and still be the wrong rule.
+- The armed command is **your** command. Nightcore runs what the manifest says;
+  it does not audit whether `npx eslint .` is actually configured to catch
+  anything.
+
+Next: [Verify](../verify/) — where the armed checks actually get used.

@@ -1,0 +1,98 @@
+# Documentation site (apps/docs, Astro Starlight) — build always, publish never
+# until the owner says so.
+#
+# ## The guard, and why it exists
+#
+# GitHub Pages is DISABLED on this repository and no homepage is set. Turning
+# Pages on is an outward-facing decision (it publishes a public URL under the org
+# and makes the project's only web presence), so this workflow deliberately
+# cannot do it. `actions/deploy-pages` hard-fails on a Pages-off repo — a
+# workflow that just called it would sit permanently red — so the deploy job is
+# gated on an explicit repository variable and is SKIPPED, not failed, while
+# Pages is off.
+#
+# To publish (owner, once):
+#   1. Settings → Pages → "Build and deployment" → Source: **GitHub Actions**.
+#   2. Settings → Secrets and variables → Actions → Variables → New repository
+#      variable: `DOCS_PAGES_ENABLED` = `true`.
+#   3. Re-run this workflow (or push to main). The site lands at
+#      https://noctcore.github.io/nightcore/
+#   4. Optional, separate decision: set that URL as the repo homepage.
+#
+# For a custom domain later, override the two env vars below (`DOCS_SITE` /
+# `DOCS_BASE`, read by apps/docs/astro.config.mjs) instead of editing the config.
+name: docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/docs/**'
+      # The site mirrors the five-stage model from this module at build time
+      # (apps/docs/scripts/gen-stages.ts). A rename here changes the published
+      # site, so it has to rebuild the site too.
+      - 'apps/web/src/lib/stages.ts'
+      - '.github/workflows/docs.yml'
+      - 'bun.lock'
+  pull_request:
+    paths:
+      - 'apps/docs/**'
+      - 'apps/web/src/lib/stages.ts'
+      - '.github/workflows/docs.yml'
+      - 'bun.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deployment at a time; never cancel an in-flight publish mid-upload.
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Always runs — on PRs too. This is the real gate: a broken link target, a
+  # missing sidebar slug, or a stage renamed out from under the generated table
+  # all fail `astro build`.
+  build:
+    name: build (astro)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      # --frozen-lockfile doubles as a lockfile-drift guard, same as every other
+      # workflow here.
+      - run: bun install --frozen-lockfile
+      # Runs apps/docs/scripts/gen-stages.ts first, which imports
+      # apps/web/src/lib/stages.ts — so this step also proves the docs↔app seam
+      # still resolves.
+      - run: bun run --filter @nightcore/docs build
+      # Uploading the artifact needs no Pages configuration, so this stays
+      # unconditional: the built site is downloadable from the run even while
+      # publishing is off, which is how the owner can eyeball it before deciding.
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: apps/docs/dist
+
+  deploy:
+    name: deploy (github pages)
+    needs: build
+    # SKIPPED, not failed, until the owner enables Pages and sets the variable.
+    # `vars.*` is empty on a repo that never defined it, so this is false by
+    # default — including on forks. Never runs for a pull_request event: a fork
+    # PR must not be able to publish.
+    if: github.event_name != 'pull_request' && vars.DOCS_PAGES_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
