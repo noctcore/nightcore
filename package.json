@@ -70,9 +70,10 @@
     "typescript-eslint": "^8.0.0",
     "zod": "4.4.3"
   },
+  "//overrides": "An override forces a PATCHED version, it never crosses a major — every entry needs an upper bound. Enforced by scripts/audit.ts (bun run audit), which explains why.",
   "overrides": {
-    "postcss": ">=8.5.18",
-    "fast-uri": ">=3.1.4",
+    "postcss": ">=8.5.18 <9",
+    "fast-uri": ">=3.1.4 <4",
     "js-yaml": ">=4.3.0 <5"
   }
 }
