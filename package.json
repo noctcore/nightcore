@@ -37,6 +37,7 @@
     "test:web:coverage": "bun run --filter @nightcore/web test:coverage",
     "test:plugin": "bun run --filter @nightcore/eslint-plugin test",
     "test:rust": "bun run --filter @nightcore/sidecar compile && bun run --filter @nightcore/desktop test",
+    "test:rust:coverage": "bun run tools/coverage/check-rust-coverage.ts",
     "test:all": "bun run build && bun run test:node && bun run test:web && bun run test:plugin && bun run test:rust",
     "lint": "bun run lint:plugin && eslint . && bun run lint:meta",
     "lint:plugin": "bun run --filter @nightcore/eslint-plugin build",

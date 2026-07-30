@@ -10,6 +10,9 @@ name: CI
 #     `git diff` — this is the "CI asserts no git diff" guard. Its last step
 #     (`verify:drift-guard`) proves that assertion still TRIPS on a real
 #     `#[derive(TS)]` change, because it silently became a no-op once (#422).
+#   - every tier carries a coverage floor that FAILS the build below threshold:
+#     node (`test:node:coverage`), web (vitest istanbul thresholds), and the Rust
+#     core (`rust-coverage` job → `cargo llvm-cov`, issue #407).
 # Dependency CVE scanning lives separately in audit.yml; this is the build/test
 # correctness gate.
 on:
@@ -325,3 +328,69 @@ jobs:
       # warm cargo cache and the compiled sidecar externalBin from the steps above.
       - name: Prove the ts-rs drift guard trips on a real change
         run: bun run verify:drift-guard
+
+  rust-coverage:
+    name: cargo llvm-cov coverage floor (Rust core)
+    runs-on: ubuntu-latest
+    # Its own job rather than a step in rust-checks: `-C instrument-coverage`
+    # rebuilds the entire Tauri dependency tree, so it shares no artifacts with
+    # that job and would otherwise double its critical path instead of running in
+    # parallel (the same reason web-coverage is split out). Sized for a cold
+    # instrumented build of the whole tree, not the warm path.
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      # Pinned to match apps/desktop/src-tauri/rust-toolchain.toml (same as
+      # rust-checks); llvm-tools-preview ships the llvm-profdata/llvm-cov binaries
+      # cargo-llvm-cov drives.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.94.1"
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+          # Own cache slot: instrumented artifacts are incompatible with
+          # rust-checks', so a shared key would make the two jobs evict each
+          # other's tree on every run.
+          key: llvm-cov
+      # Prebuilt cargo-llvm-cov binary (same mechanism audit.yml uses for
+      # cargo-audit) — `cargo install` would spend minutes compiling it.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      # Same Tauri system libraries + apt-archive cache as rust-checks; the crate
+      # links WebKitGTK/GTK on Linux whether or not it is instrumented.
+      - name: Cache Tauri apt archives
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/nightcore-apt/tauri
+          key: apt-tauri-${{ runner.os }}-v1
+          restore-keys: apt-tauri-${{ runner.os }}-
+      - name: Install Tauri system dependencies
+        run: |
+          store="$HOME/.cache/nightcore-apt/tauri"
+          mkdir -p "$store"
+          if compgen -G "$store/*.deb" >/dev/null; then
+            sudo cp -n "$store"/*.deb /var/cache/apt/archives/ || true
+          fi
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+          cp -u /var/cache/apt/archives/*.deb "$store"/ 2>/dev/null || true
+      - run: bun install --frozen-lockfile
+      # The tauri build script requires the sidecar externalBin to exist before the
+      # crate compiles — same prerequisite macos-confine.yml has.
+      - run: bun run --filter @nightcore/sidecar compile
+      # Runs the same suite `cargo test` runs, under source-based instrumentation,
+      # and fails below the floor in tools/coverage/check-rust-coverage.ts (the
+      # Rust sibling of the node tier's check-node-coverage.ts). The floor is a
+      # ratchet: raise it as coverage grows, never lower it.
+      - run: bun run test:rust:coverage

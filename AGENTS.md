@@ -29,6 +29,7 @@ Read this before editing. These are hard guardrails, enforced by `bun run lint`,
 ## Testing
 - node/TS packages use `bun:test` (with `/// <reference types="bun" />`); `apps/web` and `packages/eslint-plugin` use Vitest. Never mix runners.
 - The real gate is `bun run test:all` (it includes `test:rust`); plain `test` omits the Rust suite.
+- EVERY tier carries a coverage floor that FAILS the build below threshold, and each is a ratchet — raise it as coverage grows, never lower it: node = `bun run test:node:coverage` (`tools/coverage/check-node-coverage.ts`), web = `bun run test:web:coverage` (Vitest istanbul thresholds in `apps/web/vitest.config.ts`), Rust = `bun run test:rust:coverage` (`tools/coverage/check-rust-coverage.ts`, `cargo llvm-cov`; its own `rust-coverage` CI job because instrumented artifacts share nothing with `rust-checks`').
 - The SDK/model boundary MUST be stubbed in engine tests — no live `query()` ever runs.
 
 ## Lint discipline
