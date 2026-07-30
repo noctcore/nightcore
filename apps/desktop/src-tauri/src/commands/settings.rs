@@ -23,6 +23,9 @@ pub fn app_info() -> AppInfo {
         version: env!("CARGO_PKG_VERSION").to_string(),
         repository: REPOSITORY_URL.to_string(),
         os: std::env::consts::OS.to_string(),
+        // Read from the enforcing constant, never a literal: History states this
+        // number to the user, so a cap change must move both at once (#407).
+        scan_run_retention: crate::store::run_store::MAX_RUNS as u32,
     }
 }
 

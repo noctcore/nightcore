@@ -58,6 +58,8 @@ const meta = {
     loading: false,
     error: null,
     onOpenRun: fn(),
+    onDeleteRun: fn(),
+    retention: 50,
   },
 } satisfies Meta<typeof HistoryList>;
 
@@ -81,12 +83,40 @@ export const OneFamilyFailed: Story = {
   },
 };
 
-/** Play test: clicking a row opens the run on its family. */
+/** Every loaded run filtered out — the narrowed empty state, distinct from
+ *  "no runs yet" (the history isn't empty, the filter is just too narrow). */
+export const FilteredToNothing: Story = { args: { runs: [], totalRuns: 4 } };
+
+/** A narrowed list: the footer counts what's hidden alongside the retention rule. */
+export const Narrowed: Story = {
+  args: { runs: MIXED.filter((r) => r.family === 'insight'), totalRuns: MIXED.length },
+};
+
+/** The retention cap not yet probed — the footer states the rule with no number. */
+export const RetentionUnknown: Story = { args: { retention: null } };
+
+/** Read-only list: no delete handler, so rows carry no delete affordance. */
+export const WithoutDelete: Story = { args: { onDeleteRun: undefined } };
+
+/** Play test: clicking a row opens the run on its family. Targets the row by its
+ *  title — `/Harness/` alone would also match the row's delete button. */
 export const OpensRun: Story = {
   args: { runs: [run({ id: 'h1', family: 'harness', title: '4 conventions' })] },
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole('button', { name: /Harness/ }));
+    await userEvent.click(canvas.getByText('4 conventions'));
     await expect(args.onOpenRun).toHaveBeenCalledWith('harness', 'h1');
+  },
+};
+
+/** Play test: the per-row delete reports the family + id it targets, and does NOT
+ *  open the run (the two controls are siblings, never nested). */
+export const DeletesRun: Story = {
+  args: { runs: [run({ id: 'i9', family: 'insight', title: '2 findings' })] },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: 'Delete this Insight run' }));
+    await expect(args.onDeleteRun).toHaveBeenCalledWith('insight', 'i9');
+    await expect(args.onOpenRun).not.toHaveBeenCalled();
   },
 };

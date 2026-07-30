@@ -20,9 +20,23 @@ vi.mock('@/lib/bridge', async (importOriginal) => {
   };
 });
 
-import { useAllScanRuns } from './HistoryView.hooks';
-import { HistoryList } from './HistoryView.parts';
-import type { AllScanRuns, ScanRunSummary } from './HistoryView.types';
+import { useAllScanRuns, useHistoryFilters } from './HistoryView.hooks';
+import { HistoryFilterBar, HistoryList } from './HistoryView.parts';
+import type { AllScanRuns, HistoryFilters, ScanRunSummary } from './HistoryView.types';
+
+/** A summary fixture — only the fields a given assertion cares about vary. */
+function summary(over: Partial<ScanRunSummary> & Pick<ScanRunSummary, 'id' | 'family'>): ScanRunSummary {
+  return {
+    title: '3 conventions',
+    status: 'completed',
+    createdAt: Date.now(),
+    projectPath: '/p',
+    model: 'claude-opus-4-8',
+    costUsd: 0.42,
+    durationMs: 74_000,
+    ...over,
+  };
+}
 
 /** Render `useAllScanRuns` and report its latest state to the test. */
 function Harness({
@@ -179,6 +193,160 @@ test('virtualizes a large run list — only a subset of rows mount', async () =>
   // A comfortably-tighter bound than "< 400": ~6 visible rows + overscan, never
   // hundreds — proves the whole list isn't in the DOM.
   expect(screen.container.querySelectorAll('button').length).toBeLessThan(60);
+});
+
+test('the footer states the retention rule with the core-supplied cap', async () => {
+  // #407 prune transparency: the core drops the oldest settled runs past its cap. The
+  // number comes from `AppInfo.scanRunRetention` (the enforcing Rust constant), so the
+  // copy must interpolate it rather than hardcode one.
+  const screen = render(
+    <HistoryList
+      runs={[summary({ id: 'i1', family: 'insight' })]}
+      loading={false}
+      error={null}
+      onOpenRun={() => {}}
+      retention={50}
+    />,
+  );
+  await expect.element(screen.getByText(/50 most recent runs per kind/)).toBeInTheDocument();
+});
+
+test('a narrowed list counts what a filter is hiding instead of reading as empty', async () => {
+  const screen = render(
+    <HistoryList
+      runs={[summary({ id: 'i1', family: 'insight' })]}
+      loading={false}
+      error={null}
+      onOpenRun={() => {}}
+      totalRuns={7}
+    />,
+  );
+  await expect.element(screen.getByText('Showing 1 of 7')).toBeInTheDocument();
+});
+
+test('filtering everything out shows the too-narrow state, not "no runs yet"', async () => {
+  const screen = render(
+    <HistoryList runs={[]} loading={false} error={null} onOpenRun={() => {}} totalRuns={4} />,
+  );
+  await expect.element(screen.getByText('No runs match these filters')).toBeInTheDocument();
+});
+
+test('a row delete reports its family and id without opening the run', async () => {
+  const onOpenRun = vi.fn();
+  const onDeleteRun = vi.fn();
+  const screen = render(
+    <HistoryList
+      runs={[summary({ id: 'h1', family: 'harness' })]}
+      loading={false}
+      error={null}
+      onOpenRun={onOpenRun}
+      onDeleteRun={onDeleteRun}
+    />,
+  );
+  // An explicit accessible name — `/Harness/` alone would also match the row button.
+  await screen.getByRole('button', { name: 'Delete this Harness run' }).click();
+  expect(onDeleteRun).toHaveBeenCalledWith('harness', 'h1');
+  expect(onOpenRun).not.toHaveBeenCalled();
+});
+
+test('rows carry no delete affordance when no delete handler is given', async () => {
+  const screen = render(
+    <HistoryList
+      runs={[summary({ id: 'h1', family: 'harness' })]}
+      loading={false}
+      error={null}
+      onOpenRun={() => {}}
+    />,
+  );
+  await expect.element(screen.getByRole('button', { name: /Harness/ })).toBeInTheDocument();
+  expect(screen.container.querySelectorAll('button')).toHaveLength(1);
+});
+
+test('the filter bar reports each kind’s loaded count and the picked filters', async () => {
+  const onFamilyChange = vi.fn();
+  const screen = render(
+    <HistoryFilterBar
+      family="insight"
+      status="all"
+      onFamilyChange={onFamilyChange}
+      onStatusChange={() => {}}
+      counts={{ insight: 2, scorecard: 0, harness: 5 }}
+    />,
+  );
+  // The picked kind is the checked radio; the others are not.
+  await expect
+    .element(screen.getByRole('radio', { name: 'Insight', exact: true }))
+    .toHaveAttribute('aria-checked', 'true');
+  await expect
+    .element(screen.getByRole('radio', { name: 'Harness', exact: true }))
+    .toHaveAttribute('aria-checked', 'false');
+  // The count rides along as decorative text beside the chip's accessible name.
+  await expect.element(screen.getByText('5', { exact: true })).toBeInTheDocument();
+  await screen.getByRole('radio', { name: 'All kinds', exact: true }).click();
+  expect(onFamilyChange).toHaveBeenCalledWith('all');
+});
+
+/** Render `useHistoryFilters` over a fixed list and report its state. */
+function FiltersHarness({
+  runs,
+  sink,
+}: {
+  runs: ScanRunSummary[];
+  sink: (f: HistoryFilters) => void;
+}) {
+  const filters = useHistoryFilters(runs);
+  useEffect(() => {
+    sink(filters);
+  });
+  return null;
+}
+
+test('the filters narrow by kind and status without re-fetching', async () => {
+  const runs = [
+    summary({ id: 'i1', family: 'insight', status: 'completed' }),
+    summary({ id: 'i2', family: 'insight', status: 'failed' }),
+    summary({ id: 'h1', family: 'harness', status: 'running' }),
+  ];
+  let latest: HistoryFilters | undefined;
+  render(<FiltersHarness runs={runs} sink={(f) => (latest = f)} />);
+  await vi.waitFor(() => expect(latest).toBeDefined());
+
+  // Unfiltered by default — nothing hidden.
+  expect(latest!.visible.map((r) => r.id)).toEqual(['i1', 'i2', 'h1']);
+  expect(latest!.narrowed).toBe(false);
+
+  latest!.setFamily('insight');
+  await vi.waitFor(() => expect(latest!.visible).toHaveLength(2));
+  expect(latest!.visible.map((r) => r.id)).toEqual(['i1', 'i2']);
+  expect(latest!.narrowed).toBe(true);
+
+  // The two filters compose (insight AND failed), preserving newest-first order.
+  latest!.setStatus('failed');
+  await vi.waitFor(() => expect(latest!.visible).toHaveLength(1));
+  expect(latest!.visible[0]?.id).toBe('i2');
+
+  // A status no loaded run has yields an empty — but still narrowed — list.
+  latest!.setStatus('running');
+  await vi.waitFor(() => expect(latest!.visible).toHaveLength(0));
+  expect(latest!.narrowed).toBe(true);
+});
+
+test('deleting a run drops its row and exposes the retention cap', async () => {
+  insightMock.mockResolvedValue([
+    { id: 'i1', findings: [], status: 'completed', createdAt: 20, projectPath: '/p' },
+    { id: 'i2', findings: [], status: 'completed', createdAt: 10, projectPath: '/p' },
+  ]);
+  scorecardMock.mockResolvedValue([]);
+  harnessMock.mockResolvedValue([]);
+
+  let latest: AllScanRuns | undefined;
+  render(<Harness projectPath="/p" sink={(s) => (latest = s)} />);
+  await vi.waitFor(() => expect(latest?.loading).toBe(false));
+  // The cap is probed from AppInfo (mocked bridge metadata outside Tauri).
+  await vi.waitFor(() => expect(latest!.retention).toBe(50));
+
+  await latest!.deleteRun('insight', 'i1');
+  await vi.waitFor(() => expect(latest!.runs.map((r) => r.id)).toEqual(['i2']));
 });
 
 test('a warning row renders above the list without blanking it', async () => {
