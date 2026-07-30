@@ -1,0 +1,74 @@
+---
+title: Understand
+description: Grounded findings pinned to a file and line, plus an A–F scorecard, so you know where a repo is weakest before you spend agent time on it.
+sidebar:
+  order: 3
+---
+
+import StageCallout from '../../../components/StageCallout.astro';
+
+<StageCallout id="understand" />
+
+## Two scans, two different questions
+
+This stage runs two of Nightcore's five [scan families](../../reference/scans/),
+and they answer different questions.
+
+### Find — where are the problems?
+
+The Insight scan sweeps the repo across **nine categories**:
+
+`architecture` · `bugs` · `refactor` · `performance` · `security` · `tests` ·
+`docs` · `ui-ux` · `dependencies`
+
+Each finding is ranked by severity and effort, and — this is the part that
+matters — **pinned to a file and a line you can open**. A finding you cannot
+navigate to is an opinion; a finding with a location is evidence.
+
+Findings convert into board tasks directly, so "the scan noticed it" and "the
+board is working on it" are one action apart.
+
+Insight can also run scoped to a diff rather than the whole repo, which is the
+cheaper mode when you only care about what a change touched.
+
+### Grade — how bad is it, overall?
+
+The Scorecard scan grades the same repo **A–F across ten dimensions**:
+
+`architecture` · `tests` · `security` · `error-handling` · `observability` ·
+`dependencies` · `performance` · `types` · `a11y` · `docs-ci`
+
+Each grade carries evidence, and each reading converts into a task the same way
+a finding does. Where Find gives you a list, Grade gives you a shape — which
+dimension is dragging, and whether the thing you were about to spend a week on
+is actually the weakest part of the repo.
+
+:::note
+Scorecard has **no scope option and no deep mode**: it is a single pass over the
+repository. Insight supports both.
+:::
+
+## Deep mode
+
+Insight supports **deep scanning**: instead of one pass per category, each
+category runs a multi-round loop, is shown the findings already collected, and
+is asked for new distinct ones — accumulating and de-duplicating until it
+converges (two consecutive rounds adding nothing new, by default) or hits a
+round backstop.
+
+Read the backstop correctly: the per-category round cap (default 15) exists
+**only to guarantee termination**. It is not a cost cap. Deep mode is
+meaningfully more expensive than a classic scan.
+
+## Where the honesty is
+
+- Scans are model output. They are *grounded* — every finding points at real
+  code — but grounding is not proof. A finding can still be wrong about the
+  consequence.
+- Grades are comparative judgements, not measurements. Treat a D in
+  `observability` as "look here first", not as a metric to report upward.
+- Findings are **read-only**. Nothing in this stage writes to your repository.
+  Writing is what [Harden](../harden/) proposes and you approve.
+
+Next: [Harden](../harden/) — turn what the scan found into proposals you can
+apply.

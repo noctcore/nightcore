@@ -1,0 +1,62 @@
+---
+title: Intake
+description: Turn GitHub issues into board tasks that have been checked against the code, instead of starting a run from a stale premise.
+sidebar:
+  order: 2
+---
+
+import StageCallout from '../../../components/StageCallout.astro';
+
+<StageCallout id="intake" />
+
+## The problem Intake solves
+
+An issue tracker is a graveyard of true-at-the-time statements. "The parser
+drops trailing commas" was accurate in March. Handing that text to an agent in
+July buys you a confident, well-tested fix to a bug that no longer exists — and
+you pay for the run, the review, and the rollback.
+
+Intake puts a **validation pass in front of the run**. Nightcore pulls your
+GitHub issues, maps them into themes, and validates a chosen issue against the
+actual code before it becomes a task.
+
+## What validation produces
+
+Issue validation is one of Nightcore's five [scan families](../../reference/scans/).
+It is a single-pass, read-only scan over one issue, and it returns a verdict:
+
+| Verdict | Meaning |
+|---|---|
+| `valid` | The issue was checked against the code and stands up. |
+| `invalid` | It does not reproduce against the current tree. |
+| `needs_clarification` | Not enough in the issue to decide either way. |
+
+Alongside the verdict it classifies the issue kind — `bug_report`,
+`feature_request`, `question`, or `unknown`.
+
+A validated issue converts into a board task in one action, carrying its
+grounding with it.
+
+:::note
+Unlike Insight, Harden and PR Review, issue validation has **no deep mode**. It
+is one pass over one issue, not a convergence loop.
+:::
+
+## Where the honesty is
+
+- Validation is a model reading your repository. A `valid` verdict is a
+  *grounded opinion*, not a reproduction — nothing here runs your test suite
+  against the issue.
+- An issue body is **untrusted text**. It arrives from the internet and can
+  contain prompt injection. Nightcore fences external text as untrusted before
+  an agent sees it, but fencing is mitigation, not immunity — see
+  [Limits](../../reference/limits/).
+
+## In the app
+
+Intake has one destination in the sidebar (named in the box at the top of this
+page, keyboard hint `T`). The graded triage list lives there, and so does
+conversion to a board task.
+
+Next: [Understand](../understand/) — before you fix what an issue claims, it is
+usually worth knowing what the repo actually looks like.

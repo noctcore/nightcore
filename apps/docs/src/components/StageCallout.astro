@@ -1,0 +1,74 @@
+---
+/**
+ * One stage's canonical blurb, rendered from the app's own source of truth.
+ *
+ * Same contract as `StageTable.astro`: the label, verb, summary and artifact all
+ * come from `src/generated/stages.json` (written from `apps/web/src/lib/stages.ts`
+ * at build time), so a stage page can lead with the product's own words without
+ * keeping a second copy of them in prose.
+ *
+ * The id is validated at build time — a typo, or a stage removed from the app,
+ * fails the build instead of rendering an empty box.
+ */
+import stages from '../generated/stages.json';
+
+interface Props {
+  id: string;
+}
+
+const { id } = Astro.props;
+const stage = stages.stages.find((candidate) => candidate.id === id);
+if (!stage) {
+  throw new Error(
+    `StageCallout: no stage with id '${id}' in the generated stage table. ` +
+      `Known ids: ${stages.stages.map((s) => s.id).join(', ')}. ` +
+      `The source of truth is apps/web/src/lib/stages.ts.`,
+  );
+}
+---
+
+<aside class="stage-callout" aria-label={`Stage ${stage.number}: ${stage.label}`}>
+  <p class="stage-callout__eyebrow">
+    Stage {stage.number} of {stages.stages.length} · {stage.label} · <span>{stage.verb}</span>
+  </p>
+  <p class="stage-callout__summary">{stage.summary}</p>
+  <p class="stage-callout__produces">
+    <strong>Produces:</strong> {stage.produces}
+  </p>
+  <p class="stage-callout__nav">
+    In the app: <code>{stage.destination}</code>
+  </p>
+</aside>
+
+<style>
+  .stage-callout {
+    margin-block: 1.5rem;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-inline-start: 3px solid var(--sl-color-accent);
+    border-radius: 0.25rem;
+    background: var(--sl-color-gray-7, var(--sl-color-gray-6));
+  }
+  .stage-callout p {
+    margin-block: 0.4rem;
+  }
+  .stage-callout__eyebrow {
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .stage-callout__eyebrow span {
+    text-transform: none;
+    letter-spacing: normal;
+  }
+  .stage-callout__summary {
+    font-size: var(--sl-text-lg);
+    line-height: 1.5;
+  }
+  .stage-callout__produces,
+  .stage-callout__nav {
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-2);
+  }
+</style>

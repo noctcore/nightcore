@@ -1,0 +1,87 @@
+---
+title: Harden
+description: The convention auditor that writes the guardrails — proposed lint rules, plugin files, tool config, and agent contracts, applied one at a time under your review.
+sidebar:
+  order: 4
+---
+
+import StageCallout from '../../../components/StageCallout.astro';
+
+<StageCallout id="harden" />
+
+## What the auditor looks for
+
+The Harness scan reads your repo as a set of **conventions and gaps** across
+eight categories:
+
+`architecture` · `folder-structure` · `naming` · `imports-boundaries` ·
+`design-decisions` · `tooling-lint` · `testing` · `agent-context`
+
+Each result is classified as either a **convention** (something your codebase
+already does consistently, whether or not anything checks it) or a **gap**
+(something it does inconsistently, or not at all).
+
+It also builds a **repo profile** — what kind of project this is — which is what
+lets the proposals be specific instead of generic.
+
+One scan run feeds both this stage and the next: Harden shows the *proposals and
+artifacts* half of its output, [Enforce](../enforce/) shows the *conventions and
+armed checks* half. There is one run and one store behind them, not two scans.
+
+## Proposals, not writes
+
+This is the stage's whole design: the scan does not modify your repository.
+It produces **proposed artifacts** that you review and apply individually.
+
+The artifact kinds it can propose:
+
+| Kind | What it is |
+|---|---|
+| `lint-meta-rule` | A rule for the meta-lint engine |
+| `eslint-rule` | A single custom ESLint rule |
+| `eslint-plugin-file` | A file within a generated ESLint plugin |
+| `eslint-config` | ESLint configuration |
+| `agent-contract` | An `AGENTS.md` block — the contract an agent reads before editing |
+| `custom-lint-plugin` | A whole generated lint plugin |
+| `tool-config` | Configuration for a tool the repo already uses |
+
+Each write is either a `create` (a new file) or a `merge-section` (a block
+inserted into an existing file), so applying a proposal to a file you already
+maintain does not clobber it.
+
+Proposals come in two kinds: `apply-artifacts` — write these files — and
+`agent-task`, which becomes a board task instead, for the work that is too big
+to be a file write.
+
+## Why "the agent writes the rules" is not circular
+
+The obvious objection: if an agent proposes the conventions and an agent is then
+checked against them, what has been gained?
+
+Three things:
+
+1. **You are in the loop at the cheap moment.** Reviewing a proposed lint rule
+   takes a minute. Reviewing forty diffs that violate an unwritten convention
+   takes a week.
+2. **The rule outlives the proposal.** Once applied, the check is deterministic
+   and costs no agent time — it runs on every task from then on, including tasks
+   run by a different model on a different day.
+3. **The check is mechanical, so it cannot be talked out of.** A convention in a
+   prompt is a suggestion; a convention in a lint rule is an exit code.
+
+## Deep mode
+
+The Harness scan supports deep mode, on the same convergence loop as Insight:
+each category runs multiple rounds, seeing what has already been found, until it
+stops producing new results. Same warning applies — the round cap is a
+termination guarantee, not a budget.
+
+## Where the honesty is
+
+- A proposed rule is a draft. Applying every proposal unread is exactly the
+  failure mode this stage exists to prevent.
+- Applying an artifact **writes to your repository**. It is the one place in
+  Understand → Harden where a scan's output touches disk, and it happens only on
+  your explicit apply.
+
+Next: [Enforce](../enforce/) — a rule you applied is not yet a rule that runs.

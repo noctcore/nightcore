@@ -39,6 +39,10 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'Nightcore',
+      // Copied from docs/assets/readme-logo.svg so the site, the README, and the
+      // browser tab are one mark. `public/favicon.svg` is the same file (Starlight
+      // links `/favicon.svg` by default).
+      logo: { src: './src/assets/logo.svg', alt: 'Nightcore' },
       description:
         'Full-loop autonomy inside an enforced harness — a local-first desktop studio that runs coding agents behind machine-enforced gates.',
       tagline: 'Governed autonomy for coding agents.',

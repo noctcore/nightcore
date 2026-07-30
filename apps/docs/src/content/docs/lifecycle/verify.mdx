@@ -1,0 +1,70 @@
+---
+title: Verify
+description: Every change earns its merge — the per-task gauntlet and trust report on the board, plus a diff-grounded second opinion on the pull request.
+sidebar:
+  order: 6
+---
+
+import StageCallout from '../../../components/StageCallout.astro';
+
+<StageCallout id="verify" />
+
+## Two different verifications
+
+The word "verify" covers two mechanisms in Nightcore, and confusing them makes
+the product hard to reason about.
+
+### 1. Per-task verification, on the board
+
+Every Build/TDD task passes through a `Verifying` state before it can be `Done`.
+This is where the deterministic gate battery and the independent reviewer agent
+run, and it produces the **Trust Report** — the receipt for that one task.
+
+This happens automatically, on every task, whether or not you ever open a pull
+request.
+
+→ [How a change earns its merge](../../governance/gates/) for the full ordered
+battery.
+
+### 2. PR review, on the pull request
+
+The **PR Review** destination is a separate scan family that reads *the diff of
+a pull request* through five lenses (`security`, `logic`, `structure`, `tests`,
+`contracts`), corroborates findings across them, and synthesises a merge
+verdict.
+
+Crucially, its verdict is **clamped**: the model proposes a verdict, and a
+mechanical rubric bounds that proposal to a band derived from the worst finding
+severity present. A `critical` finding cannot come back as `ready`, no matter
+how confidently the model writes.
+
+Nothing is posted to GitHub until you confirm — there is no auto-post path.
+
+→ [PR review and the verdict clamp](../../reference/pr-review/)
+
+## Why both exist
+
+They see different things.
+
+Per-task verification sees **your project's own rules** — the checks you armed
+in [Enforce](../enforce/), your diff budget, your strictness ratchet, your
+anti-gaming sweep. It runs before anything leaves the worktree, and it is
+cheap because most of it is deterministic.
+
+PR review sees **the diff as a reviewer would**, without the task's context
+talking it into anything. It is the second opinion, and it is the one that
+produces comments other humans read.
+
+A change that passes both has: satisfied the rules your repo declares, survived
+an independent reviewer with no stake in the task, and been read once more as a
+standalone diff.
+
+## Where the honesty is
+
+- The reviewer agent is a model. It fails safe — an unparseable verdict is
+  treated as a failure, never as a pass — but "PASS" is still a judgement.
+- The clamp bounds the verdict by the severities the scan *found*. It cannot
+  bound it by severities the scan missed.
+- Merging still runs the separate pre-merge readiness gauntlet over your
+  project's own scripts, and that gauntlet **stops at the first failure** —
+  later steps report as skipped, not as passed.
