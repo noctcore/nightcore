@@ -33,13 +33,22 @@
  * ## SELF-TEST — why this job cannot pass with the app broken
  *
  * The self-test (on by default) perturbs the LIVE app and requires the battery to
- * trip. One perturbation per check kind — empty `#root`, make `invoke` reject, remove
- * `__TAURI_INTERNALS__`, plant a quarantine file — and THREE ways to fail: a check
- * that survives its own perturbation, a check kind with no perturbation at all, or a
- * perturbation that cannot verify it landed. (That last one is not hypothetical: the
- * first CI run of this ring found that assigning to `__TAURI_INTERNALS__.invoke` is a
- * silent no-op, which made the self-test accuse two perfectly good checks.) Same
- * contract as `scripts/verify-drift-guard.ts`.
+ * trip. One perturbation per check kind, each verified BY EFFECT:
+ *
+ *   - `dom`     — empty `#root` and blank the title;
+ *   - `ipc`     — create a task through the app's own `create_task` command, mutating
+ *                 the real Rust store, so `list_tasks` stops matching the seeded ids;
+ *   - `disk`    — plant a quarantine file where the tripwire looks;
+ *   - `session` — end the app (the backstop for the two checks nothing narrower can
+ *                 falsify: a compiled-in version, and the presence of the webview shim).
+ *
+ * THREE ways to fail: a check that survives its own perturbation, a check kind with no
+ * perturbation at all, or a perturbation that cannot verify it landed. That last rule
+ * is what killed the obvious-but-wrong first attempt — monkey-patching the page.
+ * Tauri's `__TAURI_INTERNALS__` is non-configurable and its `invoke` non-writable, so
+ * the stub was silently discarded and the self-test accused two perfectly good checks
+ * of being vacuous. Breaking real state beats faking a break. Same contract as
+ * `scripts/verify-drift-guard.ts`.
  *
  * ## Usage
  *
@@ -75,12 +84,16 @@ const BOOT_SETTLE_MS = 6_000;
 
 interface Check {
   name: string;
-  /** What the check actually reads: `dom` = rendered content, `ipc` = a Tauri
-   *  round-trip, `env` = the webview runtime shim, `disk` = the app's on-disk state.
+  /** What the check actually reads, which is the same thing as: what would have to be
+   *  destroyed for it to fail. `dom` = rendered content, `ipc` = live backend state
+   *  over a Tauri round-trip, `disk` = the app's on-disk state, `session` = something
+   *  only a running app can answer at all (a compiled constant, the webview shim).
    *  The tag drives the self-test — each perturbation targets ONE kind and demands
-   *  that every check in it fails, so a check must be tagged by what destroying it
-   *  would break, not by what it feels related to. */
-  kind: 'dom' | 'ipc' | 'env' | 'disk';
+   *  that every check in it fails — so a check must be tagged by what destroying it
+   *  would break, not by what it feels related to. Mis-tagging is caught: the ring's
+   *  first CI run had the webview-shim check tagged `dom`, and emptying `#root`
+   *  (correctly) left it standing. */
+  kind: 'dom' | 'ipc' | 'disk' | 'session';
   run: (session: WebDriverSession) => Promise<{ ok: boolean; detail: string }>;
 }
 
@@ -227,10 +240,11 @@ function buildChecks(workspace: Workspace): Check[] {
     },
     {
       name: 'we are in the REAL webview, not a browser-preview dev server',
-      // `env`, not `dom`: this reads the Tauri runtime shim, not rendered content, so
-      // emptying #root must NOT be expected to trip it. Its own perturbation removes
-      // `__TAURI_INTERNALS__`.
-      kind: 'env',
+      // `session`, not `dom`: this reads the Tauri runtime shim, not rendered content,
+      // so emptying #root must NOT be expected to trip it. And the shim cannot be
+      // revoked from inside the page (non-configurable), so its only honest
+      // perturbation is ending the app.
+      kind: 'session',
       run: async (session) => {
         // Two independent signals: the Tauri IPC shim exists, AND the app's own
         // "you are not in Tauri" banner is absent. Either alone could be fooled.
@@ -260,7 +274,9 @@ function buildChecks(workspace: Workspace): Check[] {
     },
     {
       name: 'app_info round-tripped through the Rust core',
-      kind: 'ipc',
+      // `session`, not `ipc`: the version it returns is compiled into the binary, so no
+      // runtime change can move it. Only ending the app falsifies this one.
+      kind: 'session',
       run: async (session) => {
         const result = await invoke<{ version: string }>(session, 'app_info');
         const ok = result.ok && result.value.version === version;
@@ -366,13 +382,20 @@ async function selfTest(
   // One perturbation per check KIND, so every check in the battery is covered: a kind
   // with no perturbation would be a check nobody ever saw fail.
   //
-  // Every perturbation VERIFIES that it landed and reports `applied`. This is not
-  // paranoia — the first CI run of this ring found that assigning
-  // `window.__TAURI_INTERNALS__.invoke = stub` is a SILENT no-op (Tauri defines that
-  // property non-writable, and WebDriver scripts run sloppy-mode, so the assignment is
-  // discarded without an error). The self-test then "found" two vacuous checks that
-  // were fine; the perturbation was the broken part. A perturbation that cannot prove
-  // it perturbed is itself a self-test failure.
+  // Every perturbation VERIFIES BY EFFECT that it landed, and a perturbation that
+  // cannot prove it perturbed is itself a self-test failure — it proved nothing about
+  // the checks it targets. That rule paid for itself on the first two CI runs of this
+  // ring, which killed the obvious-but-wrong strategy of monkey-patching the page:
+  //
+  //   - `window.__TAURI_INTERNALS__.invoke = stub` is a SILENT no-op — Tauri defines
+  //     that property non-writable and WebDriver scripts run sloppy-mode, so the
+  //     assignment is discarded with no error;
+  //   - `delete window.__TAURI_INTERNALS__` / `Object.defineProperty` on it throws
+  //     `Attempting to change configurable attribute of unconfigurable property`.
+  //
+  // Tauri's IPC surface is frozen from inside the page, by design. So the perturbations
+  // below break the REAL thing instead: real backend state through the app's own
+  // command surface, a real file on disk, and a real teardown of the app.
   const perturbations: Array<{
     label: string;
     kind: Check['kind'];
@@ -382,7 +405,8 @@ async function selfTest(
       label: 'empty #root (the webview rendered nothing)',
       kind: 'dom',
       // Also blanks the title, so the window-title check is covered by the same
-      // perturbation rather than being exempted from the proof.
+      // perturbation rather than being exempted from the proof. The DOM is ours to
+      // mutate — unlike Tauri's internals — so this one applies cleanly.
       apply: () =>
         session.execute<{ applied: boolean; detail: string }>(`
           const root = document.querySelector('#root');
@@ -393,52 +417,27 @@ async function selfTest(
         `),
     },
     {
-      label: 'make invoke() reject (the Rust core stopped answering)',
+      label: 'change the board through the REAL backend (create_task over live IPC)',
       kind: 'ipc',
-      // Replace the WHOLE internals object rather than its `invoke` property: the
-      // property is non-writable, the object reference is not.
-      apply: () =>
-        session.execute<{ applied: boolean; detail: string }>(`
-          const original = window.__TAURI_INTERNALS__;
-          const originalInvoke = original && original.invoke;
-          const stub = function () { return Promise.reject(new Error('ring2 self-test')); };
-          try {
-            window.__TAURI_INTERNALS__ = Object.assign({}, original, { invoke: stub });
-          } catch (error) {
-            return { applied: false, detail: 'assignment threw: ' + String(error) };
-          }
-          const now = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
-          return {
-            applied: now === stub && now !== originalInvoke,
-            detail: now === stub ? 'invoke replaced' : 'invoke unchanged (non-writable?)',
-          };
-        `),
-    },
-    {
-      label: 'remove __TAURI_INTERNALS__ (not the real webview at all)',
-      kind: 'env',
-      // The "are we really in Tauri" check does not read `#root`, so the DOM
-      // perturbation left it standing — correctly. Its own perturbation is removing
-      // the thing it looks for.
-      apply: () =>
-        session.execute<{ applied: boolean; detail: string }>(`
-          try {
-            delete window.__TAURI_INTERNALS__;
-          } catch (error) { /* fall through to defineProperty */ }
-          if (window.__TAURI_INTERNALS__ !== undefined) {
-            try {
-              Object.defineProperty(window, '__TAURI_INTERNALS__', {
-                value: undefined, configurable: true, writable: true,
-              });
-            } catch (error) {
-              return { applied: false, detail: 'could not remove: ' + String(error) };
-            }
-          }
-          return {
-            applied: window.__TAURI_INTERNALS__ === undefined,
-            detail: 'internals now ' + String(window.__TAURI_INTERNALS__),
-          };
-        `),
+      // Not a stub: this drives the app's own `create_task` command, which mutates the
+      // Rust TaskStore for real. `list_tasks` must then stop matching the seeded ids.
+      // That proves the check reads LIVE backend state rather than a boot-time
+      // snapshot or a canned answer — a stronger claim than "invoke can be broken".
+      apply: async () => {
+        const created = await invoke(session, 'create_task', {
+          title: 'ring2 self-test injected task',
+          description: '',
+        });
+        if (!created.ok) {
+          return { applied: false, detail: `create_task failed: ${created.error}` };
+        }
+        const after = await invoke<Array<{ id: string }>>(session, 'list_tasks');
+        const count = after.ok ? after.value.length : -1;
+        return {
+          applied: count > SEED_TASKS.length,
+          detail: `list_tasks now returns ${count} task(s), seeded ${SEED_TASKS.length}`,
+        };
+      },
     },
     {
       label: 'plant a quarantine file (a store was found corrupt)',
@@ -455,6 +454,29 @@ async function selfTest(
         });
       },
     },
+    {
+      label: 'END THE APP (nothing can be answered without it)',
+      kind: 'session',
+      // The backstop, and it MUST run last — it tears the app down.
+      //
+      // Two checks have no narrower perturbation available, honestly: the version
+      // `app_info` returns is compiled into the binary and cannot change at runtime,
+      // and `__TAURI_INTERNALS__`'s presence cannot be revoked from inside the page
+      // (see the note above). Rather than drop them or fake a perturbation, they are
+      // proven against the strongest change that IS available — the app ceasing to
+      // exist. That is a weaker claim than the targeted perturbations make (it shows
+      // the checks cannot be answered without a live app, not that they read the right
+      // field), and it is stated as such rather than dressed up.
+      apply: async () => {
+        await session.close();
+        try {
+          await session.title();
+          return { applied: false, detail: 'the session still answers after DELETE' };
+        } catch {
+          return { applied: true, detail: 'the WebDriver session is gone' };
+        }
+      },
+    },
   ];
 
   const kinds = new Set(checks.map((c) => c.kind));
@@ -465,6 +487,16 @@ async function selfTest(
       );
       allTripped = false;
     }
+  }
+  // The teardown perturbation destroys the app, so anything after it would run against
+  // a corpse and "trip" for the wrong reason. Pinned rather than commented: a reorder
+  // during a future edit would otherwise silently turn the remaining perturbations
+  // into free passes.
+  if (perturbations.at(-1)?.kind !== 'session') {
+    console.error(
+      '✖ SELF-TEST: the app-teardown perturbation must run LAST — everything after it would trip vacuously',
+    );
+    allTripped = false;
   }
 
   for (const perturbation of perturbations) {
