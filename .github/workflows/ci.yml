@@ -90,6 +90,24 @@ jobs:
       # Plugin runs on vitest.
       - run: bun run test:node:coverage
       - run: bun run test:plugin
+      # E2E ladder RING 3 (issue #406): spawn the REAL sidecar child, speak its REAL
+      # NDJSON stdio protocol, and replay a checked-in transcript through the provider
+      # seam instead of a live model. This is the offline half of `dogfood:engine` —
+      # no credential, no network, no spend — and the only tier that exercises the
+      # sidecar process boundary (ring 1 is in-process; the Rust tier has no child).
+      #
+      # It lives INSIDE this already-required job rather than in a job of its own
+      # because it costs ~2 seconds: a separate job would spend a minute on checkout +
+      # install to run a two-second check, and would need branch protection updated to
+      # become required. Riding here makes it blocking from day one at ~0 cost. It
+      # needs the workspace dists, which `bun run typecheck` (a root `tsc -b`) built
+      # above.
+      #
+      # `--prove` is the anti-vacuity guard: it perturbs the fixture two ways and
+      # REQUIRES the battery to trip on both, so this step cannot silently become a
+      # check that passes with the pipeline broken (cf. `verify:drift-guard` in the
+      # Rust job, and #422).
+      - run: bun run e2e:ring3 --prove
 
   web-coverage:
     name: vitest browser coverage (apps/web)
