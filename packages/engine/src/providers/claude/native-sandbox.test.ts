@@ -6,6 +6,10 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import {
+  evaluateWorkspaceConfinement,
+  WORKSPACE_CONFINEMENT_RULE_ID,
+} from '../../policy/workspace-confinement.js';
+import {
   buildSandboxSettings,
   CREDENTIAL_DENY_ENV_VARS,
   CREDENTIAL_MASK_PREREQUISITES,
@@ -397,4 +401,55 @@ describe('OS enforcement (integration, real Seatbelt)', () => {
       expect(fs.existsSync(path.join(repo, 'src.txt'))).toBe(false);
     },
   );
+});
+
+// ---------------------------------------------------------------------------
+// The two-layer invariant: the native sandbox does NOT replace the PreToolUse gate
+// ---------------------------------------------------------------------------
+
+describe('native sandbox + PreToolUse gate are disjoint layers', () => {
+  // "The sandbox isolates Bash subprocesses. Other tools operate under different
+  // boundaries: Built-in file tools: Read, Edit, and Write use the permission
+  // system directly rather than running through the sandbox" (SDK docs, Scope).
+  // Nightcore's real 2026-07-01 escape was a `Write` to the parent repo — a native
+  // tool call the OS sandbox never sees. T12 §6's invariant: KEEP the gate.
+  const WORKTREE = '/repo/.nightcore/worktrees/task-1';
+  const MAIN = '/repo';
+
+  test('the sandbox settings claim nothing about the native file tools', () => {
+    const settings = buildSandboxSettings({ cwd: WORKTREE });
+    // The only tool-scoping knob this schema has is `excludedCommands`, which is
+    // about Bash commands. Nothing here can confine Write/Edit/NotebookEdit —
+    // which is exactly why the gate stays.
+    expect(Object.keys(settings)).not.toContain('tools');
+    expect(settings.excludedCommands).toBeUndefined();
+  });
+
+  test.each(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])(
+    'the gate still DENIES %s escaping the workspace with the sandbox armed',
+    (tool) => {
+      // Runs the REAL gate, not a stub: a forbidden operation is attempted and
+      // must come back denied. The rule-id assertion keeps it from passing for the
+      // wrong reason (e.g. an empty cwd disabling the gate returns no rule id).
+      const key = tool === 'NotebookEdit' ? 'notebook_path' : 'file_path';
+      const verdict = evaluateWorkspaceConfinement(
+        tool,
+        { [key]: `${MAIN}/apps/web/src/escaped.ts` },
+        WORKTREE,
+      );
+      expect(verdict.denied).toBe(true);
+      expect(verdict.ruleId).toBe(WORKSPACE_CONFINEMENT_RULE_ID);
+    },
+  );
+
+  test('the gate DENIES an ApplyPatch into the parent checkout the sandbox never inspects', () => {
+    const verdict = evaluateWorkspaceConfinement(
+      'ApplyPatch',
+      {
+        patch: `*** Begin Patch\n*** Update File: ${MAIN}/apps/web/src/escaped.ts\n*** End Patch`,
+      },
+      WORKTREE,
+    );
+    expect(verdict.denied).toBe(true);
+  });
 });

@@ -100,7 +100,7 @@ defended at the *gate* layer:
 | Setting | Default | Why safe |
 |---|---|---|
 | `permission_mode` | `bypass` | The four PreToolUse gates fire under bypass (they short-circuit the mode pipeline), so autonomy does not disable containment. |
-| `sandbox_sessions` (OS write sandbox) | `false` | Opt-in; the lexical PreToolUse gates provide the baseline, the OS sandbox is defence-in-depth. |
+| `sandbox_sessions` (OS write sandbox) | unset ⇒ **on for a macOS worktree run**, off elsewhere | Staged default-on (T16 / #157, decision D-012). The lexical PreToolUse gates are still the baseline and are always on; the OS sandbox is defence-in-depth on top. An explicit Never in Settings, or a per-run override, always wins. |
 | `default_run_mode` | `main` / worktree | Worktree mode adds filesystem isolation on top of the confinement gate. |
 | Harness policy | empty (no manifest) | The built-in gates (destructive deny, confinement, exec-sink) are always on; the per-project policy only *adds* rules. |
 
@@ -141,15 +141,33 @@ The harness policy's `askTools` is the **ask** tier; `protectedPaths`/`denyBash`
 are **deny** tiers; everything unmatched is **allow**. The ask tier holds even
 under bypass. See `docs/` policy guides for authoring.
 
-### 5.3 OS write sandbox (opt-in, defence-in-depth)
+### 5.3 OS write sandbox (staged default-on, defence-in-depth)
 
-`sandbox_sessions: true` wraps the session's `claude`/`codex` in a macOS Seatbelt
-deny-write-except profile (see `providers/claude/sandbox.ts`). It is **fail-open**
-and **experimental** — the engine applies it only where the host supports it
-(darwin today) and runs unwrapped with a warning otherwise. It is *not* the primary
-control; the lexical gates are. Native OS sandboxing (Seatbelt + Linux bubblewrap +
-credential masking) is on the roadmap to replace the custom writer and close the
-lexical residuals below with kernel enforcement.
+An armed session emits the Claude Agent SDK's **native** `Options.sandbox` (see
+`providers/claude/native-sandbox.ts`); the custom Seatbelt profile writer it
+replaced is gone (T16 / #157, decisions D-012). The policy Nightcore hands over:
+
+- `filesystem.allowWrite` = the session cwd, the project root when it differs, and
+  a linked worktree's `.git` common dir — **not** the parent working tree;
+- `credentials` = `deny` for `ANTHROPIC_*` / `AWS_*` / `GITHUB_TOKEN` / `GH_TOKEN`
+  env vars and for `~/.aws`, `~/.ssh`, `~/.gnupg` reads, **for sandboxed commands
+  only** (the CLI process keeps its own auth). `mask` mode is version-gated and
+  deliberately not shipped — see `CREDENTIAL_MASK_PREREQUISITES`;
+- `allowUnsandboxedCommands: false`, so the model's `dangerouslyDisableSandbox`
+  escape hatch cannot be auto-approved under `bypassPermissions`;
+- no `network` config (this is write containment) and no `excludedCommands` (which
+  would run named commands OUTSIDE the sandbox).
+
+**Scope: Bash subprocesses only.** `Read`/`Write`/`Edit`/`NotebookEdit`/
+`ApplyPatch`/`mcp__*` never pass through it — those are the PreToolUse gates' job,
+which is why §5.1 is not replaced by this and never will be.
+
+**Failure posture: degrade loudly.** `failIfUnavailable` is `false` during the
+staging (so an unsupported host cannot strand every task), but Nightcore runs its
+own preflight: a run that requested containment and cannot get it emits a WARN, a
+`containment` marker in the flight-recorder ledger, and a "Containment unavailable"
+badge with its reason on the run's activity log. It is never silently unconfined.
+Fail-closed is the recorded phase 3, together with main-mode.
 
 ### 5.4 The flight-recorder ledger + secret redaction
 
@@ -213,8 +231,8 @@ session id, so they need their own reap — otherwise a running scan would sit
 
 | Platform | Worktree isolation | Lexical PreToolUse gates | OS write sandbox | PTY daemon peer-cred |
 |---|---|---|---|---|
-| macOS | ✅ | ✅ (always on) | ✅ Seatbelt (opt-in) | ✅ `getpeereid` |
-| Linux | ✅ | ✅ (always on) | ⏳ native bubblewrap (roadmap) | ✅ `SO_PEERCRED` |
+| macOS | ✅ | ✅ (always on) | ✅ native sandbox — **default-on for worktree runs** | ✅ `getpeereid` |
+| Linux | ✅ | ✅ (always on) | ⏳ the SDK supports bubblewrap, but Linux is out of project scope for now, so Nightcore reports it unavailable rather than claiming an unverified guarantee | ✅ `SO_PEERCRED` |
 | Windows | ✅ | ✅ (always on) | ❌ none yet (roadmap: restricted tokens / WSL) | n/a (Unix-only daemon) |
 
 The lexical gates are cross-platform; OS-level containment is where the platform
