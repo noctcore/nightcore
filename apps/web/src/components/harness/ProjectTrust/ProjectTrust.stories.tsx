@@ -83,7 +83,9 @@ const SUMMARY: ProjectTrustSummary = {
 const UNMEASURED: ProjectTrustSummary = {
   ...SUMMARY,
   merges: { tasks: 0, merged: 0, verified: 0, verifiedMerges: 0 },
-  gauntlet: { runs: 0, passed: 0, passRate: null },
+  // `passRate` / `lastEventAt` are OMITTED, not null: Rust skips a `None` on the
+  // wire (`skip_serializing_if`), so the generated types are `?:`-optional.
+  gauntlet: { runs: 0, passed: 0 },
   guardrails: {
     toolsEvaluated: 0,
     allowed: 0,
@@ -103,7 +105,6 @@ const UNMEASURED: ProjectTrustSummary = {
     ratchets: 0,
     other: 0,
     corruptLines: 0,
-    lastEventAt: null,
     recent: [],
   },
   badge: {
