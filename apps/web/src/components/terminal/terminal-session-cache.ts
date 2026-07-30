@@ -25,6 +25,7 @@ import type { IDisposable, Terminal } from '@xterm/xterm';
 import type { TerminalHandle, TerminalSessionInfo } from '@/lib/bridge';
 import { resizeTerminal } from '@/lib/bridge';
 
+import { TERMINAL_SEARCH_DECORATIONS } from './terminal-shared';
 import type { WebglController } from './terminal-webgl';
 
 /** One live session's instance state. Mutable fields are driven by the manager's
@@ -81,16 +82,6 @@ export function refitSession(id: string): void {
 
 // --- Search-in-scrollback (spec PR 3c) -------------------------------------
 
-// Passing `decorations` makes @xterm/addon-search highlight EVERY match AND emit
-// `onDidChangeResults` — the event the find bar's "n/m" counter binds to. `#RRGGBB`
-// is required for the fills; the palette tracks the cosmic purple theme.
-const SEARCH_DECORATIONS = {
-  matchBackground: '#5b3aa6',
-  matchOverviewRuler: '#7c5cd6',
-  activeMatchBackground: '#a78bfa',
-  activeMatchColorOverviewRuler: '#c4b5fd',
-} as const;
-
 /** Active match index (`-1` when none selected / threshold exceeded) + total count. */
 export interface SearchResults {
   readonly resultIndex: number;
@@ -115,14 +106,14 @@ export function onSearchResults(
 export function searchNext(id: string, query: string, incremental: boolean): boolean {
   const entry = cache.get(id);
   if (entry === undefined) return false;
-  return entry.search.findNext(query, { incremental, decorations: SEARCH_DECORATIONS });
+  return entry.search.findNext(query, { incremental, decorations: TERMINAL_SEARCH_DECORATIONS });
 }
 
 /** Find the previous `query` match in a session's scrollback. */
 export function searchPrevious(id: string, query: string): boolean {
   const entry = cache.get(id);
   if (entry === undefined) return false;
-  return entry.search.findPrevious(query, { decorations: SEARCH_DECORATIONS });
+  return entry.search.findPrevious(query, { decorations: TERMINAL_SEARCH_DECORATIONS });
 }
 
 /** Clear a session's search highlight decorations (find bar closed / query emptied). */

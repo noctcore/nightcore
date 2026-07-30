@@ -1,6 +1,6 @@
 import '@xterm/xterm/css/xterm.css';
 
-import { BoltIcon, Button, HistoryIcon, PlayIcon, ProviderIcon } from '@/components/ui';
+import { BoltIcon, Button, HistoryIcon, PlayIcon, ProviderIcon, SearchIcon } from '@/components/ui';
 
 import {
   displayPath,
@@ -9,6 +9,7 @@ import {
   ungovernedLabel,
   ungovernedTitle,
 } from '../terminal-shared';
+import { TerminalSearchBar } from '../TerminalSearchBar';
 import { useTerminalReadonlyPane } from './TerminalReadonlyPane.hooks';
 import type { TerminalReadonlyPaneProps } from './TerminalReadonlyPane.types';
 
@@ -63,7 +64,7 @@ export function TerminalReadonlyPane({
   onRestore,
   onResumeClaude,
 }: TerminalReadonlyPaneProps) {
-  const { containerRef } = useTerminalReadonlyPane(info.id);
+  const v = useTerminalReadonlyPane(info.id);
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
       <RestoredHeader shell={info.shell} cwd={info.cwd} ungoverned={info.ungoverned} />
@@ -73,6 +74,18 @@ export function TerminalReadonlyPane({
             ? 'This session ended. Start a fresh shell to continue in the same folder.'
             : 'This session ended, and its original folder is no longer available.'}
         </span>
+        {/* #405: a restored tab is usually opened to FIND something in it. The live
+            pane's ⌘F is discoverable once you have clicked into the terminal; a
+            read-only replay is not focusable the same way, so it gets a real button. */}
+        <Button
+          variant="secondary"
+          onClick={v.search.openBar}
+          className="!py-1 text-xs-flat"
+          title="Search this session's scrollback (⌘F)"
+        >
+          <SearchIcon size={13} />
+          Search
+        </Button>
         <Button
           variant="secondary"
           onClick={onResumeClaude}
@@ -102,7 +115,23 @@ export function TerminalReadonlyPane({
           Start a fresh shell here
         </Button>
       </div>
-      <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden p-1.5" />
+      <div ref={v.rootRef} className="relative min-h-0 flex-1">
+        <div ref={v.containerRef} className="h-full overflow-hidden p-1.5" />
+        {v.search.open && (
+          <div className="absolute right-2 top-2 z-10">
+            <TerminalSearchBar
+              query={v.search.query}
+              noMatch={v.search.noMatch}
+              resultIndex={v.search.resultIndex}
+              resultCount={v.search.resultCount}
+              onQueryChange={v.search.onQueryChange}
+              onNext={v.search.next}
+              onPrev={v.search.prev}
+              onClose={v.search.close}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
