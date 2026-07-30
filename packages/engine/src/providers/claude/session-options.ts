@@ -31,7 +31,7 @@ import type { Logger } from '@nightcore/shared';
 
 import { toSdkMcpServers } from './mcp-server-options.js';
 import { resolveClaudeBinary } from './resolve-claude-binary.js';
-import type { Options, OutputFormat } from './sdk-adapter.js';
+import type { Options, OutputFormat, SandboxSettings } from './sdk-adapter.js';
 import { buildSubprocessEnv } from './subprocess-env.js';
 import { composeAppendSystemPrompt, workingRootDirective } from './system-prompt.js';
 
@@ -128,13 +128,20 @@ export interface SessionRunnerConfig {
    *  evaluation plus session start/end markers — append-only, fail-open,
    *  size-capped (see `SessionLedger`). Absent ⇒ no recording. */
   ledgerPath?: string;
-  /** OPT-IN macOS OS-level WRITE containment (hardening module #15): the runner
-   *  wraps the resolved `claude` executable in a Seatbelt deny-write-except
-   *  profile (see `sandbox.ts`) so writes outside the session's workspace are
-   *  blocked at the OS layer — closing the lexical PreToolUse gate's documented
-   *  gaps (Bash redirects, symlinks). Requested by the Rust core from the
-   *  `sandbox_sessions` setting; when requested but unavailable the runner logs
-   *  a loud warning and runs UNwrapped (fail-open). Absent ⇒ off. */
+  /** OS-level WRITE containment for this session's Bash subprocesses (T16 /
+   *  #157): the runner emits the SDK's native `Options.sandbox` (see
+   *  `native-sandbox.ts`) so writes outside the session's workspace are blocked
+   *  at the OS layer — closing the lexical PreToolUse gate's documented gaps
+   *  (Bash redirects, symlinks, dynamic targets) and unsetting credential env
+   *  vars for sandboxed commands. Resolved by the Rust core from the
+   *  `sandbox_sessions` setting + the per-task override + the run mode (D3
+   *  staging: macOS + worktree first). When requested but unavailable the runner
+   *  logs loudly, records a flight-recorder marker, and reports it on
+   *  `session-started` — it never silently proceeds. Absent ⇒ off.
+   *
+   *  NOTE: the sandbox covers Bash ONLY. `Write`/`Edit`/`NotebookEdit`/
+   *  `ApplyPatch`/`mcp__*` are confined by the PreToolUse gate, which this does
+   *  NOT replace. */
   sandboxWrites?: boolean;
   /** Idle watchdog deadline (ms): if the SDK subprocess yields NO message for this
    *  long mid-run, the runner treats the stream as wedged, aborts the subprocess,
@@ -164,6 +171,12 @@ export interface SessionRunOptionsRuntime {
   hooks: Options['hooks'];
   /** The runner's abort controller, shared so `interrupt()` tears the query down. */
   abortController: AbortController;
+  /** OS write containment (T16 / #157): the `Options.sandbox` block resolved by
+   *  `native-sandbox.ts`, present ONLY when containment was requested AND this
+   *  host can provide it. Absent ⇒ the option is omitted entirely (the SDK's
+   *  no-sandbox shape) — a requested-but-unavailable session is surfaced by the
+   *  runner's loud-unavailability path, never by a half-built sandbox block. */
+  sandbox?: SandboxSettings;
 }
 
 /**
@@ -273,6 +286,12 @@ export class SessionOptionsBuilder {
       // already classified `dangerous`, so it always prompts (in non-bypass mode).
       hooks: runtime.hooks,
       abortController: runtime.abortController,
+      // OS write containment (T16 / #157, replacing the custom Seatbelt writer):
+      // the SDK sandboxes this session's Bash subprocesses itself. The block is
+      // built + platform-gated in `native-sandbox.ts`; omitted here means "no OS
+      // containment for this run", which the runner has already logged/recorded
+      // loudly when it was requested but unavailable.
+      ...(runtime.sandbox !== undefined ? { sandbox: runtime.sandbox } : {}),
       ...(this.cfg.effort !== undefined ? { effort: this.cfg.effort } : {}),
       // The SDK ignores `permissionMode: 'bypassPermissions'` unless this safety
       // flag is explicitly set. This is config (not a secret) — fine to log

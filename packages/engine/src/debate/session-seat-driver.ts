@@ -19,7 +19,8 @@
  * session is spawned under {@link SEAT_SESSION_HARDENING} — the OS write sandbox
  * (`sandboxWrites`) + the read-only `plan` governance tier — reusing the existing
  * per-session confinement machinery (`resolveStartSessionParams` →
- * `providers/claude/sandbox.ts` Seatbelt + the SDK permission mode). The posture is
+ * `providers/claude/native-sandbox.ts` → the SDK's native `Options.sandbox`, plus
+ * the SDK permission mode). The posture is
  * stamped HERE, unconditionally, so a seat can never be spawned ungoverned; the
  * injection firewall (mediated, quoted, scanned peer delivery) is enforced by the
  * Conductor.
