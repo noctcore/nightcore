@@ -1,14 +1,28 @@
 import '@xterm/xterm/css/xterm.css';
 
-import { Button, HistoryIcon, PlayIcon, ProviderIcon } from '@/components/ui';
+import { BoltIcon, Button, HistoryIcon, PlayIcon, ProviderIcon } from '@/components/ui';
 
-import { displayPath, restoredIdentityLabel, restoredIdentityTitle } from '../terminal-shared';
+import {
+  displayPath,
+  restoredIdentityLabel,
+  restoredIdentityTitle,
+  ungovernedLabel,
+  ungovernedTitle,
+} from '../terminal-shared';
 import { useTerminalReadonlyPane } from './TerminalReadonlyPane.hooks';
 import type { TerminalReadonlyPaneProps } from './TerminalReadonlyPane.types';
 
 /** The restored-session chrome: a dimmed "session ended — read-only" marker plus
  *  the shell + cwd, matching the live pane's identity header layout. */
-function RestoredHeader({ shell, cwd }: { shell: string; cwd: string }) {
+function RestoredHeader({
+  shell,
+  cwd,
+  ungoverned,
+}: {
+  shell: string;
+  cwd: string;
+  ungoverned: boolean;
+}) {
   return (
     <div
       title={restoredIdentityTitle()}
@@ -23,6 +37,18 @@ function RestoredHeader({ shell, cwd }: { shell: string; cwd: string }) {
       </span>
       <span className="truncate font-mono text-muted-foreground/70">{shell}</span>
       <span className="truncate font-mono text-muted-foreground/50">{displayPath(cwd)}</span>
+      {/* #405: the persisted marker outlives the shell, so a restored tab still says an
+          agent ran here — the record does not soften just because the process ended. */}
+      {ungoverned && (
+        <span
+          title={ungovernedTitle()}
+          aria-label={ungovernedLabel()}
+          className="flex shrink-0 items-center gap-1 text-warning"
+        >
+          <BoltIcon size={11} aria-hidden />
+          {ungovernedLabel()}
+        </span>
+      )}
     </div>
   );
 }
@@ -40,7 +66,7 @@ export function TerminalReadonlyPane({
   const { containerRef } = useTerminalReadonlyPane(info.id);
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
-      <RestoredHeader shell={info.shell} cwd={info.cwd} />
+      <RestoredHeader shell={info.shell} cwd={info.cwd} ungoverned={info.ungoverned} />
       <div className="flex items-center gap-3 border-b border-border/60 bg-warning/[0.06] px-3 py-2">
         <span className="min-w-0 flex-1 text-xs-flat text-muted-foreground">
           {canRestore

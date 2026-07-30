@@ -51,6 +51,26 @@ export function pickableTasksForTerminal(tasks: readonly Task[]): Task[] {
     .slice(0, MAX_PICKABLE_TASKS);
 }
 
+/**
+ * The ungoverned set for a session list: the union of the SERVER's persisted marker
+ * (#405 — `session.ungoverned`, stamped from `<terminals>/governance.json`, so it
+ * survives a reload / app restart / daemon restart) and this process's optimistic
+ * mirror (which lights the bolt on the same tick as the gesture, before the mark
+ * round-trips through Rust).
+ *
+ * Server-first is the load-bearing half: a session marked in a PREVIOUS run has no
+ * local mirror entry at all, and that is exactly where the old, web-only marker lied.
+ * Pure + injectable so both halves are testable without a live PTY.
+ */
+export function ungovernedSessionIds(
+  sessions: readonly TerminalSessionInfo[],
+  isLocallyMarked: (id: string) => boolean = isUngovernedSession,
+): ReadonlySet<string> {
+  return new Set(
+    sessions.filter((s) => s.ungoverned || isLocallyMarked(s.id)).map((s) => s.id),
+  );
+}
+
 export interface UseTerminalTasksInput {
   /** The live sessions — the "ungoverned" / linked-title maps are keyed off these. */
   readonly sessions: readonly TerminalSessionInfo[];
@@ -92,7 +112,7 @@ export function useTerminalTasks({
 
   const ungovernedIds = useMemo<ReadonlySet<string>>(() => {
     void linkVersion;
-    return new Set(sessions.filter((s) => isUngovernedSession(s.id)).map((s) => s.id));
+    return ungovernedSessionIds(sessions);
   }, [sessions, linkVersion]);
 
   const linkedTitleBySession = useMemo<ReadonlyMap<string, string>>(() => {

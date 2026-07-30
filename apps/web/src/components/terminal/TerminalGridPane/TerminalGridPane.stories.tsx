@@ -22,6 +22,7 @@ function session(over: Partial<TerminalSessionInfo>): TerminalSessionInfo {
     createdAt: Date.now(),
     title: null,
     titleSource: null,
+    ungoverned: false,
     ...over,
   };
 }

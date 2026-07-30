@@ -18,6 +18,7 @@ function session(id: string, over: Partial<TerminalSessionInfo> = {}): TerminalS
     createdAt: 0,
     title: null,
     titleSource: null,
+    ungoverned: false,
     ...over,
   };
 }

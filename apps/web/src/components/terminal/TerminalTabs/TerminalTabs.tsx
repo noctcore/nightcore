@@ -203,6 +203,9 @@ function RestoredTab({
         <HistoryIcon size={12} className="shrink-0 opacity-70" aria-hidden />
         <span className="max-w-[12rem] truncate text-xs-plus font-medium italic">{label}</span>
       </button>
+      {/* #405: the marker is persisted server-side, so it rides the restore too — the
+          shell ending is not a reason to stop saying an agent ran in it. */}
+      {info.ungoverned && <UngovernedMarker />}
       <IconButton
         label={`Dismiss ${label}`}
         onClick={() => onDismiss(info.id)}

@@ -15,8 +15,20 @@
  * Invariants: a task links to at most one live terminal and a terminal to at most one
  * task (both maps stay in sync). A session is "ungoverned" when it is task-linked OR
  * was used to launch `claude` — both run as the user, outside the agent guardrails.
+ *
+ * ## The marker is SERVER-authoritative (#405)
+ * The maps here are an OPTIMISTIC MIRROR: they light the bolt on the same tick as the
+ * gesture. The durable record lives in Rust (`<terminals>/governance.json`) and rides
+ * back on every session descriptor as `TerminalSessionInfo.ungoverned`. That split
+ * matters because this module is process-local — before #405 the bolt evaporated on a
+ * reload, and in daemon mode on every app restart, i.e. on exactly the long-lived
+ * sessions where it mattered. {@link isUngovernedSession} therefore answers only for
+ * the optimistic half; callers OR it with the server flag (see `ungovernedIds` in
+ * `terminal-tasks`), and the server flag is the one that survives.
  */
 import { useSyncExternalStore } from 'react';
+
+import { clearTerminalGovernanceMark, markTerminalUngoverned } from './bridge';
 
 /** sessionId → linked taskId. */
 const sessionToTask = new Map<string, string>();
@@ -55,6 +67,9 @@ export function subscribeTerminalLinks(fn: Listener): () => void {
  *  and a terminal each hold at most one link). A no-op that skips the notify when the
  *  exact pair is already linked. */
 export function linkTaskToSession(taskId: string, sessionId: string): void {
+  // Durable half first (fire-and-forget): a task-linked shell is ungoverned, and that
+  // must outlive this process. Revocable — `clearSessionTaskLink` takes it back.
+  void markTerminalUngoverned(sessionId, 'taskLinked');
   if (sessionToTask.get(sessionId) === taskId) return;
   // Drop whatever the session and the task were each previously linked to.
   const priorTaskForSession = sessionToTask.get(sessionId);
@@ -70,6 +85,10 @@ export function linkTaskToSession(taskId: string, sessionId: string): void {
  *  the session's claude-launched marker — clearing the task link doesn't make a
  *  claude-launched terminal governed. Notifies only when something changed. */
 export function clearSessionTaskLink(sessionId: string): void {
+  // Drop the durable `taskLinked` reason too. A `claudeLaunched` marker on the same
+  // session is refused server-side and stays — unlinking a task never un-says that an
+  // agent ran here.
+  void clearTerminalGovernanceMark(sessionId, 'taskLinked');
   const taskId = sessionToTask.get(sessionId);
   if (taskId === undefined) return;
   sessionToTask.delete(sessionId);
@@ -104,12 +123,17 @@ export function getSessionForTask(taskId: string): string | null {
 /** Mark a session as one where `claude` was launched (decision 3) — ungoverned even
  *  with no task link. Notifies only on a first mark. */
 export function markClaudeLaunched(sessionId: string): void {
+  // The PERMANENT half (#405): server-side this reason can never be cleared.
+  void markTerminalUngoverned(sessionId, 'claudeLaunched');
   if (claudeLaunched.has(sessionId)) return;
   claudeLaunched.add(sessionId);
   notify();
 }
 
-/** Whether a session is "ungoverned": task-linked or claude-launched (decision 3). */
+/** Whether THIS PROCESS has marked a session ungoverned (task-linked or
+ *  claude-launched, decision 3). The optimistic half only — a session marked in an
+ *  earlier run reads `false` here and `true` on its descriptor's `ungoverned` flag, so
+ *  callers must OR the two (#405). */
 export function isUngovernedSession(sessionId: string): boolean {
   return sessionToTask.has(sessionId) || claudeLaunched.has(sessionId);
 }

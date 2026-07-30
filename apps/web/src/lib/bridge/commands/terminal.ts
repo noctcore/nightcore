@@ -29,6 +29,7 @@ import type {
   PersistedTerminalInfo,
   PersistedTerminalScrollback,
   TerminalDaemonStatus,
+  TerminalGovernanceReason,
   TerminalSessionInfo,
   TitleSource,
   WorktreeInfo,
@@ -152,6 +153,37 @@ export async function setTerminalTitle(
   if (!isTauri()) return;
   const { invoke } = await import('@tauri-apps/api/core');
   await invoke('terminal_set_title', { id, title, source });
+}
+
+/** Record a PERSISTED "ungoverned" governance marker on a session (#405): this shell is
+ *  task-linked or was used to launch `claude`, so it runs as the human outside the gates.
+ *  The Rust side writes it to `<terminals>/governance.json`, so the warning bolt survives a
+ *  reload, an app restart, and a daemon restart — before this, the marker lived only in web
+ *  module state and vanished on exactly the long-lived sessions where it matters.
+ *  Idempotent + additive. Best-effort from the caller's view (the optimistic web mirror
+ *  already lit the bolt); no-op outside Tauri. Dynamic import per the bridge's Tauri-core
+ *  isolation rule (§9 trap f). */
+export async function markTerminalUngoverned(
+  id: string,
+  reason: TerminalGovernanceReason,
+): Promise<void> {
+  if (!isTauri()) return;
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('terminal_mark_ungoverned', { id, reason });
+}
+
+/** Clear a REVOCABLE governance marker (#405) — the task-link "clear" affordance passes
+ *  `'taskLinked'`. The server REFUSES `'claudeLaunched'` (an agent having run as the human
+ *  in a shell is history, not a label), so this rejects for that reason; callers only ever
+ *  pass the revocable one. Clearing a marker that was never set is a no-op success. No-op
+ *  outside Tauri. */
+export async function clearTerminalGovernanceMark(
+  id: string,
+  reason: TerminalGovernanceReason,
+): Promise<void> {
+  if (!isTauri()) return;
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('terminal_clear_governance_mark', { id, reason });
 }
 
 /** Fire a desktop notification that a command finished in a terminal tab (T11). The
@@ -301,6 +333,7 @@ export async function readTerminalPersisted(
       updatedAt: 0,
       title: null,
       titleSource: null,
+    ungoverned: false,
     },
     dataBase64: '',
   });

@@ -141,6 +141,9 @@ export type { TerminalSessionInfo } from '../generated/TerminalSessionInfo';
 // Tab-title precedence source (round-2 PR A): `"manual" | "task" | "auto"` — Manual
 // and Task always out-rank an AI (`auto`) name.
 export type { TitleSource } from '../generated/TitleSource';
+// Why a terminal is marked ungoverned (#405): `"claudeLaunched" | "taskLinked"`.
+// `claudeLaunched` is permanent server-side; `taskLinked` clears with the link.
+export type { TerminalGovernanceReason } from '../generated/TerminalGovernanceReason';
 // Detached PTY daemon (cockpit spec PR 6) status — whether the experimental
 // live-PTY-survival daemon is enabled, supported on this platform, and live.
 export type { TerminalDaemonStatus } from '../generated/TerminalDaemonStatus';
