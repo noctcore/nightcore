@@ -530,6 +530,15 @@ pub fn arm_harness_gauntlet_check(
         e
     })?;
 
+    // The armed set is a governance decision, and the manifest keeps only its latest
+    // state — journal the arm so the project's ledger holds the history (#399).
+    crate::store::governance::append(
+        Path::new(&run.project_path),
+        crate::store::governance::KIND_ARM,
+        &format!("armed check `{name}` ({kind})"),
+        &[name.to_string()],
+    );
+
     let _ = app.emit(
         HARNESS_EVENT,
         json!({

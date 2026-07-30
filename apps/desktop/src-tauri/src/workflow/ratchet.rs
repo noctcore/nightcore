@@ -72,6 +72,18 @@ pub fn snapshot(project_root: &Path) -> Result<RatchetCounts, String> {
     crate::store::write_atomic(&path, &json)
         .map_err(|e| format!("failed to write {}: {e}", path.display()))?;
     tracing::info!(target: "nightcore::ratchet", any = counts.any, ts_ignore = counts.ts_ignore, eslint_disable = counts.eslint_disable, "ratchet baseline snapshotted");
+    // A snapshot is a one-way tightening of the project's rails and it OVERWRITES the
+    // previous baseline — the governance journal is what preserves the fact that the
+    // bar moved, and from where (#399).
+    crate::store::governance::append(
+        project_root,
+        crate::store::governance::KIND_RATCHET,
+        &format!(
+            "ratchet baseline snapshotted — {} any, {} @ts-ignore, {} eslint-disable",
+            counts.any, counts.ts_ignore, counts.eslint_disable
+        ),
+        &[],
+    );
     Ok(counts)
 }
 
@@ -377,6 +389,21 @@ mod tests {
         assert!(
             repo.join(BASELINE_REL_PATH).exists(),
             "the baseline was persisted"
+        );
+
+        // #399: a snapshot OVERWRITES the previous baseline, so the governance
+        // journal is what preserves the fact that the bar moved — and from where.
+        let journal = crate::store::governance::read_journal(&repo);
+        assert_eq!(journal.events.len(), 1, "one ratchet record per snapshot");
+        assert_eq!(
+            journal.events[0].kind,
+            crate::store::governance::KIND_RATCHET
+        );
+        assert!(
+            journal.events[0].summary.contains("1 any")
+                && journal.events[0].summary.contains("1 @ts-ignore"),
+            "the record carries the counters that were locked in: {}",
+            journal.events[0].summary
         );
 
         // Unchanged tree ⇒ the ratchet holds with a VISIBLE Passed check.

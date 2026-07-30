@@ -25,6 +25,7 @@
 
 pub mod checks;
 pub mod fs;
+pub mod governance;
 pub mod onboarding;
 pub mod policy;
 pub mod project;

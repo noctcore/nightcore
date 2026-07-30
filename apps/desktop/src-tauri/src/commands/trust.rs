@@ -12,12 +12,12 @@
 //! `State<'_>` guard can't cross into it), so an unmanaged store fails gracefully.
 //! The report is COMPUTED ON DEMAND and never persisted (locked decision 4).
 
-use std::ffi::OsStr;
-use std::path::{Component, PathBuf};
+use std::path::PathBuf;
 
 use tauri::{AppHandle, Manager};
 
 use crate::git::gh::GH_BINARY;
+use crate::infra::path_confine::validate_export_dest;
 use crate::store::TaskStore;
 use crate::task::Task;
 use crate::workflow::merge::require_project;
@@ -146,52 +146,4 @@ fn attach_blocking(app: &AppHandle, task_id: &str) -> Result<(), String> {
     let report = build_report(&task, &ledger, &tasks_dir);
     let body = render_for_github(&report);
     post_trust_comment_with(&dir, GH_BINARY, pr_number, &body, GH_COMMENT_TIMEOUT)
-}
-
-/// Validate a user-chosen export path (§3.7): it must be ABSOLUTE (the native
-/// save dialog returns one) and must not descend through any `.nightcore/`
-/// directory — the receipt is a user artifact and is NEVER allowed to land inside
-/// the on-disk store (constraint §4.2). Returns the normalized `PathBuf` to write.
-fn validate_export_dest(dest_path: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(dest_path);
-    if !path.is_absolute() {
-        return Err(format!("export path must be absolute: {dest_path}"));
-    }
-    if path
-        .components()
-        .any(|c| matches!(c, Component::Normal(name) if name == OsStr::new(".nightcore")))
-    {
-        return Err("refusing to write a Trust Report inside a .nightcore directory".to_string());
-    }
-    Ok(path)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::validate_export_dest;
-
-    #[test]
-    fn rejects_a_relative_export_path() {
-        assert!(validate_export_dest("reports/trust.md").is_err());
-        assert!(validate_export_dest("./trust.md").is_err());
-        assert!(validate_export_dest("").is_err());
-    }
-
-    #[test]
-    fn rejects_a_path_inside_a_nightcore_directory() {
-        assert!(validate_export_dest("/home/dev/proj/.nightcore/trust.md").is_err());
-        assert!(validate_export_dest("/home/dev/proj/.nightcore/ledger/x.md").is_err());
-    }
-
-    #[test]
-    fn accepts_an_absolute_path_outside_nightcore() {
-        let dest = validate_export_dest("/home/dev/Desktop/trust-report.md")
-            .expect("an absolute non-.nightcore path is a valid export destination");
-        assert_eq!(
-            dest,
-            std::path::PathBuf::from("/home/dev/Desktop/trust-report.md")
-        );
-        // A `.nightcore`-lookalike segment (not the exact dir name) is NOT rejected.
-        assert!(validate_export_dest("/home/dev/my.nightcore-notes/trust.md").is_ok());
-    }
 }

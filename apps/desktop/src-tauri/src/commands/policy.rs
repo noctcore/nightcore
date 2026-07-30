@@ -18,6 +18,7 @@
 
 use tauri::AppHandle;
 
+use crate::store::governance;
 use crate::store::harness_manifest::{
     read_policy_file, write_policy_patch, HarnessPolicyFile, HarnessPolicyPatch,
 };
@@ -86,6 +87,12 @@ pub async fn list_policy_activity(app: AppHandle) -> Result<Vec<PolicyActivityEn
 /// Merge a policy patch into the ACTIVE project's `.nightcore/harness.json`
 /// (creating it when absent) and return the updated policy. The target path is
 /// resolved server-side — never caller-supplied.
+///
+/// A successful save is journaled to the project's governance ledger (#399): the
+/// manifest is a silent overwrite, so without this nothing durable records that the
+/// rails changed. Journaling happens HERE rather than in the manifest writer both
+/// because this is where the before/after pair exists and because the writer is a
+/// leaf the gauntlet's lenient readers share.
 #[tauri::command]
 pub async fn update_harness_policy_file(
     app: AppHandle,
@@ -93,8 +100,150 @@ pub async fn update_harness_policy_file(
 ) -> Result<HarnessPolicyFile, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let path = active_project_path(&app)?;
-        write_policy_patch(&path, &patch)
+        let before = read_policy_file(&path);
+        let after = write_policy_patch(&path, &patch)?;
+        journal_policy_save(&path, &before, &after);
+        Ok(after)
     })
     .await
     .map_err(|e| format!("policy write failed to run: {e}"))?
+}
+
+/// Record what a policy save changed: always a `policy-save`, plus a `quarantine`
+/// when the save ADDED denied-read paths — that is exactly the injection-scan
+/// card's quarantine action, and the event the `TrustReport.quarantine` seam was
+/// left open for. Best-effort (see `store::governance::append`).
+fn journal_policy_save(project_path: &str, before: &HarnessPolicyFile, after: &HarnessPolicyFile) {
+    let root = std::path::Path::new(project_path);
+    governance::append(
+        root,
+        governance::KIND_POLICY_SAVE,
+        &policy_save_summary(after),
+        &[],
+    );
+
+    let quarantined = governance::added_entries(&before.deny_read_paths, &after.deny_read_paths);
+    if !quarantined.is_empty() {
+        governance::append(
+            root,
+            governance::KIND_QUARANTINE,
+            &format!("quarantined {} path(s) from agent reads", quarantined.len()),
+            &quarantined,
+        );
+    }
+}
+
+/// The one-line shape of a saved policy: whether the layer is armed and how many
+/// rules each tier holds. COUNTS, never the patterns themselves — a journal entry
+/// is a receipt, not a copy of the config (which is one `git`-less file away
+/// anyway), and counts cannot smuggle anything.
+fn policy_save_summary(policy: &HarnessPolicyFile) -> String {
+    format!(
+        "policy saved — {}, {} protected path(s), {} bash denial(s), {} denied read(s), \
+         tools {}/{}/{} (deny/ask/allow){}",
+        if policy.enabled { "armed" } else { "DISARMED" },
+        policy.protected_paths.len(),
+        policy.deny_bash_patterns.len(),
+        policy.deny_read_paths.len(),
+        policy.disallowed_tools.len(),
+        policy.ask_tools.len(),
+        policy.allow_tools.len(),
+        if policy.diff_budget.is_some() {
+            ", diff budget set"
+        } else {
+            ""
+        },
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::store::governance::{read_journal, KIND_POLICY_SAVE, KIND_QUARANTINE};
+
+    fn policy(deny_read: &[&str]) -> HarnessPolicyFile {
+        HarnessPolicyFile {
+            enabled: true,
+            protected_paths: Vec::new(),
+            deny_bash_patterns: Vec::new(),
+            deny_read_paths: deny_read.iter().map(|s| s.to_string()).collect(),
+            disallowed_tools: Vec::new(),
+            allow_tools: Vec::new(),
+            ask_tools: Vec::new(),
+            allow_exec_sinks: Vec::new(),
+            diff_budget: None,
+            manifest_exists: true,
+        }
+    }
+
+    #[test]
+    fn a_save_records_counts_and_the_armed_state_but_never_the_patterns() {
+        let mut armed = policy(&["secrets/**"]);
+        armed.protected_paths = vec!["migrations/**".into(), "bun.lock".into()];
+        armed.deny_bash_patterns = vec!["git push --force".into()];
+        armed.ask_tools = vec!["WebFetch".into()];
+        let summary = policy_save_summary(&armed);
+        assert!(summary.contains("armed"), "{summary}");
+        assert!(summary.contains("2 protected path(s)"), "{summary}");
+        assert!(summary.contains("1 bash denial(s)"), "{summary}");
+        assert!(summary.contains("1 denied read(s)"), "{summary}");
+        assert!(summary.contains("tools 0/1/0"), "{summary}");
+        // The receipt carries COUNTS, never the rule text itself.
+        assert!(!summary.contains("migrations"), "{summary}");
+        assert!(!summary.contains("git push"), "{summary}");
+
+        let mut disarmed = policy(&[]);
+        disarmed.enabled = false;
+        assert!(policy_save_summary(&disarmed).contains("DISARMED"));
+    }
+
+    /// A save that ADDS denied-read paths is the quarantine action — it must land a
+    /// `quarantine` record naming the paths, on top of the `policy-save` receipt.
+    #[test]
+    fn a_save_that_adds_denied_reads_journals_a_quarantine() {
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let root = tmp.path();
+
+        journal_policy_save(
+            &root.to_string_lossy(),
+            &policy(&["secrets/**"]),
+            &policy(&["secrets/**", "docs/injected.md", "vendor/evil.js"]),
+        );
+
+        let read = read_journal(root);
+        assert_eq!(read.corrupt_lines, 0);
+        assert_eq!(
+            read.events
+                .iter()
+                .map(|e| e.kind.as_str())
+                .collect::<Vec<_>>(),
+            vec![KIND_POLICY_SAVE, KIND_QUARANTINE],
+            "the save receipt leads, the quarantine it produced follows"
+        );
+        let quarantine = &read.events[1];
+        assert!(quarantine.summary.contains("2 path(s)"), "{quarantine:?}");
+        assert_eq!(
+            quarantine.detail,
+            vec!["docs/injected.md", "vendor/evil.js"],
+            "only the ADDED paths are named"
+        );
+    }
+
+    /// A save that changes nothing about denied reads still records the save, but
+    /// must NOT claim a quarantine happened.
+    #[test]
+    fn a_save_without_new_denied_reads_records_no_quarantine() {
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let root = tmp.path();
+
+        journal_policy_save(
+            &root.to_string_lossy(),
+            &policy(&["secrets/**"]),
+            &policy(&["secrets/**"]),
+        );
+
+        let read = read_journal(root);
+        assert_eq!(read.events.len(), 1);
+        assert_eq!(read.events[0].kind, KIND_POLICY_SAVE);
+    }
 }

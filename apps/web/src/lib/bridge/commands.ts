@@ -7,6 +7,7 @@
  */
 export * from './commands/council';
 export * from './commands/fs';
+export * from './commands/governance';
 export * from './commands/harness';
 export * from './commands/insight';
 export * from './commands/issue-map';

@@ -101,6 +101,14 @@ pub fn read_policy_activity(
         if path.extension().and_then(|e| e.to_str()) != Some("ndjson") {
             continue;
         }
+        // The per-project governance journal shares this dir but is NOT a task
+        // ledger (issue #399): its records carry no `decision`, so every line would
+        // be filtered out below anyway — the explicit skip states the reservation
+        // rather than leaning on that coincidence.
+        if path.file_name().and_then(|n| n.to_str()) == Some(crate::store::governance::JOURNAL_FILE)
+        {
+            continue;
+        }
         let Some(task_id) = path.file_stem().and_then(|s| s.to_str()) else {
             continue;
         };

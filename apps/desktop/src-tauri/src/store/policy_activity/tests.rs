@@ -155,3 +155,27 @@ fn the_feed_is_capped_so_a_long_lived_project_cannot_flood_the_webview() {
         POLICY_ACTIVITY_LIMIT
     );
 }
+
+/// The per-project governance journal (#399) shares the ledger dir but is NOT a
+/// task ledger — its `project.ndjson` records must never surface as a "project"
+/// task's gate decisions, even if a future record grows a `decision`-shaped field.
+#[test]
+fn the_reserved_project_journal_is_not_read_as_a_task_ledger() {
+    let (_tmp, dir) = ledger_dir(&[
+        (
+            "task-1",
+            &[
+                r#"{"ts":"2026-07-29T10:00:00Z","tool":"Write","inputDigest":"a","decision":"deny","ruleId":"harness-protected-path"}"#,
+            ],
+        ),
+        (
+            "project",
+            &[
+                r#"{"ts":"2026-07-29T11:00:00Z","kind":"quarantine","summary":"quarantined 1 path","decision":"deny","ruleId":"harness-read-deny"}"#,
+            ],
+        ),
+    ]);
+    let entries = read_policy_activity(&dir, &titles);
+    assert_eq!(entries.len(), 1, "only the real task ledger contributes");
+    assert_eq!(entries[0].task_id, "task-1");
+}

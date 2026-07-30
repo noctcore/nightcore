@@ -40,6 +40,7 @@ fn export_all_bindings() {
     use crate::sidecar::{
         PortableLockExport, ProviderConfigSnapshotView, SessionInfoView, SessionMessageView,
     };
+    use crate::store::governance::GovernanceEvent;
     use crate::store::harness_manifest::{
         ArmedCheckFile, HarnessPolicyFile, HarnessPolicyPatch, PolicyDiffBudget,
     };
@@ -71,6 +72,10 @@ fn export_all_bindings() {
     use crate::workflow::pr_fix::PrFixState;
     use crate::workflow::pr_list::{PrLabel, PrSummary};
     use crate::workflow::pr_status::PrStatus;
+    use crate::workflow::project_trust::{
+        GauntletTotals, GuardrailTotals, JournalSummary, MergeTotals, ProjectTrustSummary,
+        RuleTally, SpendTotals, TrustBadge,
+    };
     use crate::workflow::trust::{
         FlightSummary, GauntletTrust, GuardrailEvent, GuardrailTrust, QuarantineEvent, TokenTotals,
         TrustReport,
@@ -174,6 +179,22 @@ fn export_all_bindings() {
         // Policy activity feed (issue #400): one attributed deny/ask decision read
         // back out of the flight recorder.
         PolicyActivityEntry,
+        // Per-project governance journal (issue #399): one append-only record of a
+        // human governance decision (quarantine / policy-save / arm / disarm /
+        // ratchet) read back off `.nightcore/ledger/project.ndjson`.
+        GovernanceEvent,
+        // Project trust dashboard (issue #399): the repo-scoped, COMPUTED-ON-DEMAND
+        // governance summary + its shields-compatible badge. `export_all` on
+        // `ProjectTrustSummary` also writes its nested section shapes (and reaches
+        // `GovernanceEvent`, listed above, through the journal roll-up).
+        ProjectTrustSummary,
+        MergeTotals,
+        GauntletTotals,
+        GuardrailTotals,
+        RuleTally,
+        SpendTotals,
+        JournalSummary,
+        TrustBadge,
         // Checks Manager (Enforce, T7): the armed-check manifest descriptor + the
         // list view (checks with folded last results + the run-level summary).
         ArmedCheckFile,
