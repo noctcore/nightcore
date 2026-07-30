@@ -40,8 +40,30 @@ replaying nothing.
 | File | Run kind | Represents |
 | --- | --- | --- |
 | `build.jsonl` | build (session-correlated) | `session-ready` → assistant deltas + `Edit`/`Bash` tool calls → `session-completed` |
+| `build-failed.jsonl` | build (session-correlated) | `session-ready` → one `Read` → `session-failed` (`max-turns`). Rings 2–3 only — see below |
 | `insight-scan.jsonl` | Insight scan (runId-correlated) | `analysis-started` → three category passes (one bug + one security finding) → `analysis-completed` |
 | `pr-review.jsonl` | PR review (runId-correlated) | `pr-review-started` → five lens passes (one security finding) → `pr-review-completed` with a `request-changes` verdict |
+
+## These fixtures are the WHOLE ladder's input (issue #406)
+
+Ring 1(c)'s Rust drivers are no longer the only consumer. The engine-side **replay
+provider** (`packages/engine/src/providers/replay/`) loads these same `.jsonl` files at
+runtime and emits them through the real `AgentProvider` seam, so the higher rings drive
+the REAL process boundaries with the SAME recorded input:
+
+- **ring 3** (`bun run e2e:ring3`) — the real Bun sidecar child, over its real NDJSON
+  stdio protocol, asserting the emitted event stream matches the fixture line-for-line.
+- **ring 2** (`bun run e2e:ring2`, Linux CI only) — the real built Tauri app driven by
+  `tauri-driver`/WebDriver, with the same provider behind it so the app needs no API
+  credential, no network, and no spend.
+
+There is exactly ONE copy of each transcript, deliberately: a second copy in the engine
+tree would drift from this one silently. The Rust side reaches them via `include_str!`;
+the engine side via the directory path in `NIGHTCORE_E2E_REPLAY`. `build-failed.jsonl`
+has no Rust driver (ring 1 already covers the failure branch with a scripted terminal in
+`e2e::failure_breaker`) but is still held to the `fixtures_are_wire_shaped` grounding
+guard in `../replay.rs`, so a malformed line reds `cargo test` rather than only reding
+the ring that replays it.
 
 ## Regenerating / extending
 

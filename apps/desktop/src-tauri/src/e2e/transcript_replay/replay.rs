@@ -37,6 +37,12 @@ pub(super) fn parse_transcript(raw: &str) -> Vec<Value> {
 const BUILD: &str = include_str!("fixtures/build.jsonl");
 const INSIGHT_SCAN: &str = include_str!("fixtures/insight-scan.jsonl");
 const PR_REVIEW: &str = include_str!("fixtures/pr-review.jsonl");
+/// Ring 2/3's failure-path transcript (issue #406). No Rust driver replays it — the
+/// FAILURE branch of the session lifecycle is already covered by `e2e::failure_breaker`
+/// with a scripted terminal — but it IS replayed by the engine-side replay provider
+/// (`packages/engine/src/providers/replay/`), so it must satisfy the same wire-shape
+/// grounding guard as its siblings or the higher rings would replay a malformed stream.
+const BUILD_FAILED: &str = include_str!("fixtures/build-failed.jsonl");
 
 #[test]
 fn fixtures_are_wire_shaped() {
@@ -45,6 +51,7 @@ fn fixtures_are_wire_shaped() {
     // instead of replaying an empty transcript that trivially "passes".
     for (name, raw) in [
         ("build", BUILD),
+        ("build-failed", BUILD_FAILED),
         ("insight-scan", INSIGHT_SCAN),
         ("pr-review", PR_REVIEW),
     ] {
