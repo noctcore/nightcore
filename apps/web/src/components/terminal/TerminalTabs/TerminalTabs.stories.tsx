@@ -1,7 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent } from 'storybook/test';
 
-import type { PersistedTerminalInfo, TerminalSessionInfo } from '@/lib/bridge';
+import type {
+  PersistedTerminalInfo,
+  TerminalSessionInfo,
+  WorktreeInfo,
+} from '@/lib/bridge';
 
 import { TerminalTabs } from './TerminalTabs';
 
@@ -35,6 +39,29 @@ function persisted(id: string): PersistedTerminalInfo {
   };
 }
 
+/** Two worktrees so the branch chip (#405) renders — `task-42` and `task-12` sit in
+ *  one each; `task-91`'s cwd matches none, so it deliberately shows no branch. */
+const WORKTREES: WorktreeInfo[] = [
+  {
+    branch: 'feat/dark-mode',
+    path: '/Users/dev/nightcore/.nightcore/worktrees/task-42',
+    taskIds: ['task-42'],
+    dirty: false,
+    aheadOfBase: 0,
+    behindOfBase: 0,
+    changedFiles: 0,
+  },
+  {
+    branch: 'fix/login-race',
+    path: '/Users/dev/nightcore/.nightcore/worktrees/task-12',
+    taskIds: ['task-12'],
+    dirty: false,
+    aheadOfBase: 0,
+    behindOfBase: 0,
+    changedFiles: 0,
+  },
+];
+
 const SESSIONS: TerminalSessionInfo[] = [
   session({ id: 'task-42' }),
   session({ id: 'task-91' }),
@@ -56,6 +83,7 @@ const meta = {
     broadcastEligible: true,
     attentionWaiting: 0,
     ungovernedIds: new Set<string>(),
+    worktrees: WORKTREES,
     onSelect: fn(),
     onClose: fn(),
     onDismiss: fn(),
@@ -149,6 +177,32 @@ export const WithAttentionBadges: Story = {
     await expect(canvas.getByLabelText('Waiting for you — a command finished')).toBeInTheDocument();
     await userEvent.click(canvas.getByRole('button', { name: /Jump to the next of 1 waiting/ }));
     await expect(args.onJumpAttention).toHaveBeenCalled();
+  },
+};
+
+/** cmux-style tab metadata (#405): a tab whose cwd sits in a worktree shows its branch;
+ *  a tab that does not (`task-91`) shows none rather than an empty chip. */
+export const WithBranchChips: Story = {
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText('feat/dark-mode')).toBeInTheDocument();
+    await expect(canvas.getByText('fix/login-race')).toBeInTheDocument();
+    // The branch is metadata BESIDE the title, never folded into the tab's accessible
+    // name — so existing `getByRole('tab', { name: /task-42/ })` queries still resolve.
+    await expect(canvas.getByRole('tab', { name: /task-42/ })).toBeInTheDocument();
+  },
+};
+
+/** Tab overflow (#405): at the 12-session cap the strip scrolls instead of squeezing
+ *  the right-hand toolbar off the bar. */
+export const ManyTabs: Story = {
+  args: {
+    sessions: Array.from({ length: 12 }, (_, i) => session({ id: `worktree-session-${i}` })),
+    activeId: 'worktree-session-11',
+  },
+  play: async ({ canvas }) => {
+    // The view-mode toggle is the last thing in the toolbar, so it is the first thing a
+    // non-scrolling strip pushed off the bar — the regression this story pins.
+    await expect(canvas.getByRole('button', { name: 'Grid view' })).toBeInTheDocument();
   },
 };
 

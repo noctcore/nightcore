@@ -1,15 +1,11 @@
 import {
-  BellIcon,
   BoltIcon,
-  BroadcastIcon,
   CloseIcon,
-  GridIcon,
   HistoryIcon,
   IconButton,
   Kbd,
   LockIcon,
   PlusIcon,
-  TabsIcon,
   TerminalIcon,
 } from '@/components/ui';
 import type { PersistedTerminalInfo, TerminalSessionInfo } from '@/lib/bridge';
@@ -20,13 +16,10 @@ import {
   IDLE_ATTENTION,
   type TerminalAttention,
 } from '../terminal-attention';
-import type { TerminalViewMode } from '../terminal-layout';
 import { formatShortcut } from '../terminal-platform';
 import { useInlineRename } from '../terminal-rename';
 import {
   attentionBadgeLabel,
-  broadcastToggleLabel,
-  broadcastToggleTitle,
   displayTitle,
   identityTitle,
   restoredIdentityTitle,
@@ -35,7 +28,12 @@ import {
   unreadBadge,
   unreadBadgeLabel,
 } from '../terminal-shared';
-import { newTabTitle } from './TerminalTabs.hooks';
+import { branchForCwd, newTabTitle, useActiveTabVisible } from './TerminalTabs.hooks';
+import {
+  BroadcastToggle,
+  JumpAttentionButton,
+  ViewModeToggle,
+} from './TerminalTabs.parts';
 import type { TerminalTabsProps } from './TerminalTabs.types';
 
 /** The per-tab identity marker (decision 1): unconfined tabs carry a terminal
@@ -96,11 +94,28 @@ function UngovernedMarker({ size = 11 }: { size?: number }) {
   );
 }
 
+/** The cmux-style branch chip (#405): the git branch a tab's shell is sitting on, when
+ *  its cwd is a known worktree. Rendered as a separate, dimmer token AFTER the title so
+ *  it reads as metadata rather than part of the name — and so it never lands inside the
+ *  title's own accessible text. Absent (not blank) for the repo root or a browsed
+ *  folder, where there is no branch to claim. */
+function BranchChip({ branch }: { branch: string }) {
+  return (
+    <span
+      title={`On branch ${branch}`}
+      className="max-w-[7rem] shrink-0 truncate rounded bg-white/[0.06] px-1 font-mono text-3xs text-muted-foreground/80"
+    >
+      {branch}
+    </span>
+  );
+}
+
 function Tab({
   session,
   active,
   attention,
   ungoverned,
+  branch,
   onSelect,
   onClose,
   onRename,
@@ -109,6 +124,7 @@ function Tab({
   active: boolean;
   attention: TerminalAttention;
   ungoverned: boolean;
+  branch: string | null;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
   onRename: (id: string, title: string) => void;
@@ -117,7 +133,8 @@ function Tab({
   const rename = useInlineRename(label, (next) => onRename(session.id, next));
   return (
     <div
-      className={`group flex items-center gap-1.5 rounded-t-[8px] border-b-2 px-2.5 py-1.5 transition-colors ${
+      data-tab-id={session.id}
+      className={`group flex shrink-0 items-center gap-1.5 rounded-t-[8px] border-b-2 px-2.5 py-1.5 transition-colors ${
         active
           ? 'border-primary bg-white/[0.05] text-foreground'
           : 'border-transparent text-muted-foreground hover:bg-white/[0.03] hover:text-foreground'
@@ -153,6 +170,7 @@ function Tab({
           <span className="max-w-[12rem] truncate text-xs-plus font-medium">{label}</span>
         </button>
       )}
+      {branch !== null && <BranchChip branch={branch} />}
       {ungoverned && <UngovernedMarker />}
       {!active && <AttentionBadge attention={attention} />}
       <IconButton
@@ -184,7 +202,8 @@ function RestoredTab({
   const label = displayTitle(info);
   return (
     <div
-      className={`group flex items-center gap-1.5 rounded-t-[8px] border-b-2 px-2.5 py-1.5 transition-colors ${
+      data-tab-id={info.id}
+      className={`group flex shrink-0 items-center gap-1.5 rounded-t-[8px] border-b-2 px-2.5 py-1.5 transition-colors ${
         active
           ? 'border-muted-foreground/60 bg-white/[0.04] text-muted-foreground'
           : 'border-transparent text-muted-foreground/60 hover:bg-white/[0.02] hover:text-muted-foreground'
@@ -217,95 +236,6 @@ function RestoredTab({
   );
 }
 
-/** The tabs⇄grid view-mode toggle (decision 1, PR 2): a single button that flips to
- *  the OTHER mode, showing the target mode's glyph + a ⌘⇧E hint (the zoom shortcut
- *  lives in grid mode). Pinned to the right of the tab strip. */
-function ViewModeToggle({
-  viewMode,
-  onToggleViewMode,
-}: {
-  viewMode: TerminalViewMode;
-  onToggleViewMode: () => void;
-}) {
-  const toGrid = viewMode === 'tabs';
-  const label = toGrid ? 'Grid view' : 'Tabs view';
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-pressed={!toGrid}
-      title={`${label}${toGrid ? ' — arrange every terminal at once' : ''}`}
-      onClick={onToggleViewMode}
-      className="my-0.5 flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-2xs font-medium text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground"
-    >
-      {toGrid ? <GridIcon size={13} aria-hidden /> : <TabsIcon size={13} aria-hidden />}
-      <span>{label}</span>
-      {!toGrid && <Kbd>{formatShortcut('E', { shift: true })}</Kbd>}
-    </button>
-  );
-}
-
-/** The broadcast-input toggle (round-2 PR B, § B.3): a grid-only control that arms
- *  "type once, run everywhere" — every keystroke fans out to every visible pane. LOUD
- *  when armed (warning fill + ring + a pulsing dot) since broadcasting to N shells is a
- *  footgun; disabled (with an explanatory title) until there are 2+ visible panes. */
-function BroadcastToggle({
-  armed,
-  eligible,
-  onToggle,
-}: {
-  armed: boolean;
-  eligible: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={broadcastToggleLabel(armed)}
-      aria-pressed={armed}
-      title={broadcastToggleTitle(armed, eligible)}
-      disabled={!eligible && !armed}
-      onClick={onToggle}
-      className={`my-0.5 flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-2xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-        armed
-          ? 'bg-warning/20 text-warning ring-1 ring-warning/70'
-          : 'text-muted-foreground hover:bg-white/[0.08] hover:text-foreground'
-      }`}
-    >
-      <BroadcastIcon size={13} aria-hidden />
-      <span>{armed ? 'Broadcasting' : 'Broadcast'}</span>
-      {armed && (
-        <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />
-      )}
-    </button>
-  );
-}
-
-/** The "jump to next waiting terminal" affordance (T11): shown in the toolbar only
- *  when one or more sessions are in the needs-attention state. LOUD (warning fill +
- *  a pulsing bell) so a backgrounded terminal that finished/asked is never missed;
- *  clicking cycles to the next waiting session and selects it. */
-function JumpAttentionButton({ count, onJump }: { count: number; onJump: () => void }) {
-  const label = `Jump to the next of ${count} waiting terminal${count === 1 ? '' : 's'}`;
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={onJump}
-      className="my-0.5 flex shrink-0 items-center gap-1.5 rounded-md bg-warning/15 px-2 py-1 text-2xs font-semibold text-warning ring-1 ring-warning/40 transition-colors hover:bg-warning/25"
-    >
-      <span
-        aria-hidden
-        className="flex animate-[nc-pulse_1.4s_ease-in-out_infinite] items-center"
-      >
-        <BellIcon size={13} />
-      </span>
-      <span>{count}</span>
-    </button>
-  );
-}
-
 /** The terminal tabs bar: one tab per live session with a per-tab identity marker,
  *  an unread-output badge, an inline-rename (double-click) title, and a close
  *  affordance, then any restored (read-only) tabs from a prior run, a "+" that opens
@@ -330,48 +260,61 @@ export function TerminalTabs({
   attentionWaiting,
   onJumpAttention,
   ungovernedIds,
+  worktrees,
   headerSlot,
 }: TerminalTabsProps) {
+  const stripRef = useActiveTabVisible(activeId);
   return (
     <div
       role="tablist"
       aria-label="Terminal sessions"
       className="flex items-center gap-1 border-b border-border bg-black/20 px-2 pt-1"
     >
-      {sessions.map((session) => (
-        <Tab
-          key={session.id}
-          session={session}
-          active={session.id === activeId}
-          attention={attention[session.id] ?? IDLE_ATTENTION}
-          ungoverned={ungovernedIds.has(session.id)}
-          onSelect={onSelect}
-          onClose={onClose}
-          onRename={onRename}
-        />
-      ))}
-      {restored.map((info) => (
-        <RestoredTab
-          key={info.id}
-          info={info}
-          active={info.id === activeId}
-          onSelect={onSelect}
-          onDismiss={onDismiss}
-        />
-      ))}
-      <button
-        type="button"
-        aria-label={newTabTitle(canAddTab)}
-        title={newTabTitle(canAddTab)}
-        disabled={!canAddTab}
-        onClick={onNewTab}
-        className="my-0.5 flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+      {/* Overflow (#405): the strip scrolls instead of squeezing. At the 12-session cap
+          the tabs used to compress the right-hand toolbar off the bar entirely, and
+          `shrink-0` on each tab means they now keep their size and the strip pans.
+          The scrollbar is hidden — a visible one on a 30px-tall tab bar is chrome, and
+          `useActiveTabVisible` + ⌘1..9 cover reaching an off-screen tab. */}
+      <div
+        ref={stripRef}
+        className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        <PlusIcon size={14} />
-        {canAddTab && <Kbd>{formatShortcut('T')}</Kbd>}
-      </button>
-      {headerSlot}
-      <div className="ml-auto flex shrink-0 items-center gap-1">
+        {sessions.map((session) => (
+          <Tab
+            key={session.id}
+            session={session}
+            active={session.id === activeId}
+            attention={attention[session.id] ?? IDLE_ATTENTION}
+            ungoverned={ungovernedIds.has(session.id)}
+            branch={branchForCwd(worktrees, session.cwd)}
+            onSelect={onSelect}
+            onClose={onClose}
+            onRename={onRename}
+          />
+        ))}
+        {restored.map((info) => (
+          <RestoredTab
+            key={info.id}
+            info={info}
+            active={info.id === activeId}
+            onSelect={onSelect}
+            onDismiss={onDismiss}
+          />
+        ))}
+        <button
+          type="button"
+          aria-label={newTabTitle(canAddTab)}
+          title={newTabTitle(canAddTab)}
+          disabled={!canAddTab}
+          onClick={onNewTab}
+          className="my-0.5 flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+        >
+          <PlusIcon size={14} />
+          {canAddTab && <Kbd>{formatShortcut('T')}</Kbd>}
+        </button>
+        {headerSlot}
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
         {attentionWaiting > 0 && (
           <JumpAttentionButton count={attentionWaiting} onJump={onJumpAttention} />
         )}

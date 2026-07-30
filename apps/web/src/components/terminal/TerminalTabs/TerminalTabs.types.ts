@@ -1,7 +1,7 @@
 /** Props for the {@link TerminalTabs} bar. */
 import type { ReactNode } from 'react';
 
-import type { PersistedTerminalInfo, TerminalSessionInfo } from '@/lib/bridge';
+import type { PersistedTerminalInfo, TerminalSessionInfo, WorktreeInfo } from '@/lib/bridge';
 
 import type { TerminalAttention } from '../terminal-attention';
 import type { TerminalViewMode } from '../terminal-layout';
@@ -15,6 +15,10 @@ export interface TerminalTabsTaskbar {
   ungovernedIds: ReadonlySet<string>;
   /** A slot rendered in the tab bar (the task-inject dropdown, decision 2). */
   headerSlot?: ReactNode;
+  /** The project's worktrees — the source for each tab's branch chip (#405). A tab
+   *  whose cwd is not under any of them (the repo root, a browsed folder) simply shows
+   *  no branch. */
+  worktrees: readonly WorktreeInfo[];
 }
 
 /** The tab bar's right-pinned toolbar controls: the tabs⇄grid view toggle (PR 2) and
