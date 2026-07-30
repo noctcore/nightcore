@@ -3,6 +3,28 @@ import { z } from 'zod';
 /** Tool-risk classification and permission/question reply shapes. */
 
 /**
+ * The native tool names that MUTATE the workspace — the set a read-only agent must
+ * be denied. Canonical for the TS tiers: the engine's Claude presets deny exactly
+ * this list (`providers/claude/kind-presets.ts` re-exports it as `WRITE_TOOLS`),
+ * and `diagnoseSkillDescriptor` (`skill.ts`) checks a skill that declares
+ * `writesCode: false` against it, so "read-only" means the same thing to the
+ * enforcement path and to the descriptor that claims it.
+ *
+ * Homed here rather than in the engine because a claim about which tools write is
+ * shared vocabulary (the same reasoning that puts `NATIVE_SDK_TOOLS` and the policy
+ * matchers in this package): a surface can never import `@nightcore/engine`, so a
+ * second copy would be free to disagree with enforcement. ENFORCEMENT still lives
+ * in the engine — this is the name list, not the gate.
+ */
+export const WRITE_TOOL_NAMES: readonly string[] = [
+  'Edit',
+  'Write',
+  'NotebookEdit',
+  'MultiEdit',
+  'ApplyPatch',
+] as const;
+
+/**
  * How risky a tool is, which drives how tightly the PermissionLayer gates it:
  *  - `safe`      — read-only; may be auto-allowed.
  *  - `mutating`  — writes/edits state; gated by mode + allow/deny.
