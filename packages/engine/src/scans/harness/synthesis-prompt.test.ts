@@ -124,10 +124,35 @@ describe('buildSynthesisPrompt — drift-compile contract (T15)', () => {
     const prompt = buildSynthesisPrompt(PROFILE, FINDINGS, 'top-level: x', COMMAND);
     expect(prompt).toContain('COMPILE DRIFT CHECKS');
     expect(prompt).toContain('conventionFingerprint');
-    // The v0.3 substrate boundary is stated (lint-meta + shell, not eslint/ast-grep).
+    // The substrate boundary is stated: lint-meta + shell always, eslint-rule only
+    // where an ESLint host exists (#279), ast-grep never.
     expect(prompt).toContain('kind:"lint-meta"');
     expect(prompt).toContain('kind:"shell"');
+    expect(prompt).toContain('kind:"eslint-rule"');
+    expect(prompt).toContain('Do NOT use ast-grep');
     // The convention fingerprints are printed so the model can cite them.
     expect(prompt).toContain(STRUCTURAL_FP);
+  });
+
+  /** Drift-v2 (#279): the eslint-rule substrate is host-gated — a repo with no ESLint
+   *  flat config (and not a monorepo) must be told NOT to compile one, so the model
+   *  can't emit a check that could only ever report `errored`. */
+  test('the eslint-rule substrate is withheld from a repo with no eslint host', () => {
+    const NO_ESLINT = {
+      isMonorepo: false,
+      workspaceTool: 'none',
+      packages: [],
+      languages: ['python'],
+      frameworks: [],
+      hasEslintFlatConfig: false,
+      hasLintMeta: false,
+      hasAgentDocs: false,
+      existingPlugins: [],
+    } as unknown as RepoProfile;
+
+    const prompt = buildSynthesisPrompt(NO_ESLINT, FINDINGS, 'top-level: x', COMMAND);
+    expect(prompt).toContain('COMPILE DRIFT CHECKS');
+    expect(prompt).not.toContain('kind:"eslint-rule"');
+    expect(prompt).toContain('no ESLint host');
   });
 });

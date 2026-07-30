@@ -158,9 +158,9 @@ function proposalOutputContract(eslintAllowed: boolean): string {
     '  "artifactIds": ["ids of the artifacts this bundles"]  // apply-artifacts ONLY,',
     '  "prompt": "the instruction for the agent to perform"   // agent-task ONLY,',
     '  "verifyCommand": "a command that MUST pass when done, e.g. npx eslint ."  // agent-task, optional,',
-    '  "harnessCheck": { "name": "…", "kind": "lint-meta | shell | lint-plugin", "command": "…", "conventionFingerprint": "…" }  // optional',
+    '  "harnessCheck": { "name": "…", "kind": "lint-meta | eslint-rule | shell | lint-plugin", "command": "…", "conventionFingerprint": "…" }  // optional',
     '}',
-    driftCompileContract(),
+    driftCompileContract(eslintAllowed),
     'Use `apply-artifacts` for changes that are safe to write straight to disk (new docs,',
     'a new lint config file, a generated plugin BUNDLE): set `artifactIds` to the ids of',
     'the artifacts that ship together (group members share one proposal).',
@@ -171,12 +171,13 @@ function proposalOutputContract(eslintAllowed: boolean): string {
   ].join('\n');
 }
 
-/** The Drift-v1 (T15) compiled-check contract: for a convention the codebase ALREADY
- *  follows and that can be verified DETERMINISTICALLY, compile a check so a later run
- *  can measure whether the convention still holds at every site. Deliberately narrow:
- *  the v0.3 substrate is lint-meta rules + shell/ripgrep counts ONLY, and a check is
- *  only ever a SUGGESTION a human reviews and arms — synthesis never arms anything. */
-function driftCompileContract(): string {
+/** The compiled-check contract: for a convention the codebase ALREADY follows and that
+ *  can be verified DETERMINISTICALLY, compile a check so a later run can measure whether
+ *  the convention still holds at every site. Deliberately narrow: lint-meta rules,
+ *  shell/ripgrep counts, and — only where an ESLint host exists (Drift-v2, #279) —
+ *  a generated ESLint rule. A check is only ever a SUGGESTION a human reviews and arms;
+ *  synthesis never arms anything. */
+function driftCompileContract(eslintAllowed: boolean): string {
   return [
     '',
     'COMPILE DRIFT CHECKS (only for conventions the repo ALREADY follows):',
@@ -184,8 +185,8 @@ function driftCompileContract(): string {
     'CONFIDENT can be verified by a DETERMINISTIC, mechanical check, compile ONE check',
     'and attach it to the proposal as its `harnessCheck`. Set `conventionFingerprint` to',
     "that convention's EXACT fingerprint — the `(<fingerprint>)` prefix in the findings",
-    'list above. Two substrates ONLY (v0.3). The arm gate SHAPE-VALIDATES these commands,',
-    'so emit EXACTLY the allowed form or the check will be refused arming:',
+    'list above. The arm gate SHAPE-VALIDATES these commands, so emit EXACTLY the allowed',
+    'form or the check will be refused arming:',
     '  - STRUCTURAL / PATH / NAMING / FOLDER conventions → a lint-meta rule. Emit a',
     '    `lint-meta-rule` artifact holding the rule body, reference it from an',
     '    `apply-artifacts` proposal, and give that proposal a `harnessCheck` with',
@@ -200,10 +201,29 @@ function driftCompileContract(): string {
     '    metacharacters (semicolon, pipe, ampersand, dollar, backtick, redirects,',
     '    parens, braces) and no subprocess/file flags (`--pre`, `--hostname-bin`,',
     '    `--search-zip`, `-f`/`--file`) — a plain count only.',
+    ...(eslintAllowed
+      ? [
+          '  - AST-SHAPED conventions this repo can enforce with ESLint (a forbidden call,',
+          '    an import form, a required JSX/hook shape) → an ESLint rule. Emit the rule as',
+          '    an `eslint-plugin-file` (or `eslint-rule`) artifact, reference it from an',
+          '    `agent-task` proposal that WIRES the rule into `eslint.config.*`, and give',
+          '    that proposal a `harnessCheck` with `kind:"eslint-rule"`, its `name` set to',
+          "    the rule's FULLY-QUALIFIED id exactly as the config enables it (e.g.",
+          '    `local/no-raw-fetch` — the id ESLint reports under, NOT the file name), and a',
+          '    `command` that is a package-script invocation ONLY: `<pm> run <script>` naming',
+          "    the repo's plain ESLint script (e.g. `bun run lint`). The run appends",
+          '    `--format json --stats` itself, so do NOT add reporter flags. If the rule id',
+          '    is wrong or the rule is not enabled in the config, the check reports',
+          '    `errored` (never a false `clean`), so get the id exactly right.',
+        ]
+      : []),
     'ONLY compile a check you can express as a deterministic rule/command. If a convention',
     'needs human judgement or a semantic read to verify, SKIP it — do NOT invent a check;',
-    'it simply stays unmeasured (honest). Do NOT use ESLint rules or ast-grep for drift',
-    'checks in v0.3. Every compiled check is a SUGGESTION reviewed and armed by a human —',
+    'it simply stays unmeasured (honest). Do NOT use ast-grep for drift checks.',
+    ...(eslintAllowed
+      ? []
+      : ['This repo has no ESLint host, so do NOT compile `eslint-rule` drift checks.']),
+    'Every compiled check is a SUGGESTION reviewed and armed by a human —',
     'never assume it runs, and never propose auto-arming it.',
   ].join('\n');
 }

