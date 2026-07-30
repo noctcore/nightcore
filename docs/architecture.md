@@ -88,10 +88,20 @@ The boundary types are **generated both ways**, never hand-mirrored:
 - **Rust serde → web TS** (the Tauri struct boundary): `ts-rs` exports the Rust
   structs (`Task` / `Settings` / `Project` / …) into `apps/web/src/lib/generated/`.
   Guard: `cargo test` regenerates them; CI asserts no `git diff`
-  (`.github/workflows/ci.yml`, the `rust-checks` job).
+  (`.github/workflows/ci.yml`, the `rust-checks` job), and
+  `bun run verify:drift-guard` proves that assertion still trips by perturbing a
+  `#[derive(TS)]` type and requiring the diff to fail.
 
 Do **not** hand-edit the generated files — regenerate them (`cargo test` for the
 ts-rs side, `bun run codegen:contracts` for the Rust side).
+
+**Run cargo from `apps/desktop/src-tauri`, never `--manifest-path` from the repo
+root.** Cargo discovers `.cargo/config.toml` by walking up from the working
+directory, and that file is what sets `TS_RS_EXPORT_DIR` (→ `apps/web/src/lib/generated`)
+and `TS_RS_LARGE_INT=number`. A root-cwd run exports `bigint` bindings into the
+gitignored crate-default `src-tauri/bindings/`, which left the drift guard passing
+vacuously from both local entry points until #422. `bindings::export`'s tests now
+fail loudly if that env is missing.
 
 The two symmetric discriminated unions at the sidecar boundary:
 

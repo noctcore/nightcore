@@ -259,12 +259,61 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    /// The message every wrong-cwd failure in this module points at.
+    const WRONG_CWD: &str = "\
+cargo did not read apps/desktop/src-tauri/.cargo/config.toml, so ts-rs has no \
+TS_RS_EXPORT_DIR / TS_RS_LARGE_INT. Cargo discovers .cargo/config.toml by walking up \
+from the CURRENT WORKING DIRECTORY, not from --manifest-path: run cargo with \
+cwd = apps/desktop/src-tauri (`bun run test:rust` / `bun run check:rust` both do). \
+Otherwise the bindings land in the gitignored crate-default bindings/ as bigint and \
+the CI drift guard (`git diff --exit-code -- apps/web/src/lib/generated`) passes \
+VACUOUSLY, because nothing was written to the directory it guards — issue #422.";
+
     /// The bindings dir, resolved the same way ts-rs resolves `TS_RS_EXPORT_DIR`
     /// from `.cargo/config.toml` (relative to the crate root, which is the cwd
     /// during `cargo test`).
+    ///
+    /// Deliberately NOT falling back to ts-rs's crate-default `bindings/`: that
+    /// fallback is exactly what let the drift guard pass vacuously for the whole
+    /// life of the two local entry points (#422). Panic instead, so a wrong-cwd
+    /// invocation is a LOUD red naming its own fix.
     fn bindings_dir() -> PathBuf {
-        let base = std::env::var("TS_RS_EXPORT_DIR").unwrap_or_else(|_| "bindings".to_string());
+        let base = std::env::var("TS_RS_EXPORT_DIR").expect(WRONG_CWD);
         PathBuf::from(base)
+    }
+
+    /// The ts-rs codegen env is a precondition of the drift guard, not a nicety:
+    /// with `TS_RS_EXPORT_DIR` unset the export writes somewhere gitignored (guard
+    /// vacuous), and with `TS_RS_LARGE_INT` unset every `u64`/`i64` emits `bigint`
+    /// where the bridge expects `number` (wrong bindings). Assert BOTH here so the
+    /// failure is a named test rather than a mysterious diff.
+    #[test]
+    fn ts_rs_export_env_targets_the_web_tree() {
+        assert_eq!(
+            std::env::var("TS_RS_LARGE_INT").as_deref(),
+            Ok("number"),
+            "{WRONG_CWD}"
+        );
+
+        let dir = bindings_dir();
+        assert!(
+            dir.is_absolute(),
+            "TS_RS_EXPORT_DIR should be the absolute path cargo resolves from \
+             `relative = true`, got {}. {WRONG_CWD}",
+            dir.display(),
+        );
+        // `apps/desktop/src-tauri/../../web/src/lib/generated` — the ONE directory
+        // the CI drift guard diffs. Compared canonically so a `..`-laden or
+        // symlinked spelling still matches.
+        let expected = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../web/src/lib/generated")
+            .canonicalize()
+            .expect("apps/web/src/lib/generated must exist");
+        assert_eq!(
+            dir.canonicalize().expect("TS_RS_EXPORT_DIR must exist"),
+            expected,
+            "ts-rs is exporting outside the directory the drift guard diffs. {WRONG_CWD}",
+        );
     }
 
     /// Running the export writes every boundary binding into the web's source tree.

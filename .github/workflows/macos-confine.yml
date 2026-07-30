@@ -74,5 +74,13 @@ jobs:
       # Scoped to the confine module only — NOT the full `cargo test` suite
       # (that stays ci.yml's rust-checks job, on ubuntu). This is the macOS
       # Seatbelt half that job can't run.
+      #
+      # `working-directory` instead of `--manifest-path` from the root: cargo
+      # discovers `.cargo/config.toml` by walking up from the CWD, so a root-cwd
+      # run reads none of the crate's config (#422). This filter never reaches the
+      # ts-rs export tests, so the old invocation only produced stray gitignored
+      # output — but the uniform cwd keeps the next person from copying the
+      # broken shape, and it fails loudly if the filter ever widens.
       - name: "cargo test terminal::confine::"
-        run: cargo test -p nightcore --manifest-path apps/desktop/src-tauri/Cargo.toml "terminal::confine::"
+        run: cargo test -p nightcore "terminal::confine::"
+        working-directory: apps/desktop/src-tauri

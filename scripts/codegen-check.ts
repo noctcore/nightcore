@@ -29,12 +29,24 @@ import { execSync } from 'node:child_process';
 import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dir, '..');
-const MANIFEST = 'apps/desktop/src-tauri/Cargo.toml';
+const CRATE = path.join(ROOT, 'apps', 'desktop', 'src-tauri');
 const GENERATED_WEB = 'apps/web/src/lib/generated';
 
-function step(label: string, cmd: string): void {
+function step(label: string, cmd: string, cwd = ROOT): void {
   process.stdout.write(`\n▶ codegen:check — ${label}\n`);
-  execSync(cmd, { cwd: ROOT, stdio: 'inherit' });
+  execSync(cmd, { cwd, stdio: 'inherit' });
+}
+
+/**
+ * Cargo legs run from the CRATE dir, never `--manifest-path` from the root: cargo
+ * discovers `.cargo/config.toml` by walking up from the working directory, and that
+ * file is what points ts-rs at `apps/web/src/lib/generated` (`TS_RS_EXPORT_DIR`) with
+ * `TS_RS_LARGE_INT=number`. Run from the root, the regen leg wrote `bigint` bindings
+ * into the gitignored crate-default `bindings/` and the diff leg below then passed
+ * VACUOUSLY — nothing had been written to the directory it diffs (#422).
+ */
+function cargoStep(label: string, cmd: string): void {
+  step(label, cmd, CRATE);
 }
 
 // 1. zod → Rust: generated.rs + fixtures.json.
@@ -58,14 +70,8 @@ step(
 //    `contracts` pass runs the round-trip / variant-parity guards; the git diff then fails on
 //    any binding that was not re-committed. Scoped (NOT full `check:rust`) so this stays a
 //    codegen gate, not a clippy/fmt pass.
-step(
-  'Rust ts-rs binding regen',
-  `cargo test --manifest-path ${MANIFEST} --lib bindings`,
-);
-step(
-  'Rust contract parity + round-trip',
-  `cargo test --manifest-path ${MANIFEST} --lib contracts`,
-);
+cargoStep('Rust ts-rs binding regen', 'cargo test --lib bindings');
+cargoStep('Rust contract parity + round-trip', 'cargo test --lib contracts');
 step(
   'Rust → web ts-rs bindings drift',
   `git diff --exit-code -- ${GENERATED_WEB}`,
