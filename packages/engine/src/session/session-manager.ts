@@ -37,12 +37,16 @@ import {
 } from '../providers/provider-factory.js';
 import { ScanRouter } from '../scans/scan-router.js';
 import { defaultRunnerFactory } from '../scans/shared/runner-factory.js';
+import { applySessionEvent } from './session-events.js';
 import { probeModels } from './session-models.js';
 import { refusalEvent } from './session-preflight-refusal.js';
 import { handleSessionQuery } from './session-query.js';
 import { resolveStartSessionParams } from './session-start-params.js';
 
-interface ManagedSession {
+/** One live session's bookkeeping. Exported for {@link
+ *  import('./session-events.js').SessionEventDeps} — a type-only import, so the
+ *  reference back to this module is erased at compile time and creates no cycle. */
+export interface ManagedSession {
   id: number;
   runner: AgentSession;
   record: SessionRecord;
@@ -342,49 +346,20 @@ export class SessionManager {
     return id;
   }
 
-  /** Intercept a runner event to update bookkeeping, then forward it. A late
-   *  event whose session id is no longer live is dropped (monotonic-id guard). */
+  /** Intercept a runner event to update bookkeeping, then forward it. Delegates to
+   *  {@link applySessionEvent} (extracted for the file-size ratchet; behavior
+   *  verbatim), threading in exactly the collaborators this supervisor already owns. */
   private handleEvent(id: number, event: NightcoreEvent): void {
-    const session = this.sessions.get(id);
-    if (!session) {
-      this.logger?.debug('dropping event from retired session', { id });
-      return;
-    }
-
-    switch (event.type) {
-      case 'session-ready':
-        session.record.sdkSessionId = event.sdkSessionId;
-        break;
-      case 'permission-required':
-        session.record.status = 'awaiting-permission';
-        break;
-      case 'session-completed':
-        session.record.endedAt = Date.now();
-        if (event.costUsd !== undefined) {
-          session.record.costUsd = event.costUsd;
-        }
-        session.record.status = 'completed';
-        this.store.save(session.record);
-        this.logger?.info('session completed', {
-          id,
-          model: session.record.model,
-          costUsd: event.costUsd ?? null,
-          numTurns: event.numTurns,
-        });
-        break;
-      case 'session-failed':
-        session.record.endedAt = Date.now();
-        session.record.status = 'failed';
-        this.store.save(session.record);
-        this.logger?.warn('session failed', {
-          id,
-          model: session.record.model,
-          reason: event.reason,
-        });
-        break;
-    }
-
-    this.emit(event);
+    applySessionEvent(
+      {
+        sessions: this.sessions,
+        store: this.store,
+        emit: (e) => this.emit(e),
+        ...(this.logger !== undefined ? { logger: this.logger } : {}),
+      },
+      id,
+      event,
+    );
   }
 
   private setStatus(session: ManagedSession, status: SessionStatus): void {
