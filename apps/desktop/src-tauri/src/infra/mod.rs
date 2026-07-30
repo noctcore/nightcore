@@ -1,9 +1,11 @@
-//! Cross-cutting infrastructure: process-wide logging setup, the platform
-//! command resolver, and the deadline-bounded child wait. Grouped here so the
+//! Cross-cutting infrastructure: process-wide logging setup, boot phase
+//! instrumentation, the platform command resolver, and the deadline-bounded child
+//! wait. Grouped here so the
 //! crate root holds only the module tree; the historical
 //! `crate::{logging, platform, proc}` paths are preserved by the facade
 //! re-exports in `lib.rs`.
 
+pub(crate) mod boot;
 pub(crate) mod browse;
 pub(crate) mod editor;
 pub(crate) mod logging;

@@ -107,6 +107,12 @@ pub fn run() {
         .setup(|app| {
             use tauri::Manager;
 
+            // Boot instrumentation (#407): stamp each phase of the setup hook so a slow
+            // startup is attributable from an ordinary INFO log line instead of a
+            // profiler. `finish()` at the end of the hook logs the total + the slowest
+            // phase; the per-phase breakdown is DEBUG.
+            let mut boot = infra::boot::BootTimer::start();
+
             // Stand up logging before anything else so every subsequent line (store
             // load, reconciliation, the auto-loop) lands in the colored console and
             // the rolling file sink. The returned guard must outlive the app, so it
@@ -114,6 +120,7 @@ pub fn run() {
             // `logLevel` settings patch change verbosity live and is applied to the
             // persisted level once the settings store loads (just below).
             let (log_guard, log_reload) = logging::init(&app.handle().clone());
+            boot.phase("logging");
 
             // The project registry + settings live in the app config dir (not in
             // any single repo). Resolve it once and load both stores from it.
@@ -150,6 +157,7 @@ pub fn run() {
                 }};
             }
             store::run_store::scan_kinds!(boot_scan_store);
+            boot.phase("stores");
 
             // The USER terminal backend (PTY sessions) — global (AutoMaker-style
             // tabs), with scrollback persisted under the active project's
@@ -164,6 +172,7 @@ pub fn run() {
                 .map(|p| std::path::Path::new(&p.path).join(".nightcore/terminals"))
                 .unwrap_or_else(|| config_dir.join("no-active-project/terminals"));
             terminal::persist::prune(&terminals_dir);
+            boot.phase("terminal_prune");
 
             // The provider usage-meter registry (issue #121): the last-good snapshot +
             // 429 cooldowns + popover cost cache + poll-loop primitives. In-memory only
@@ -195,6 +204,7 @@ pub fn run() {
                 terminals_dir,
                 terminal_daemon_enabled,
             ));
+            boot.phase("settings");
             // Resolve the sidecar's default working directory + TS entry. This is the
             // v0.2.0 regression fix: `workspace_root()` is `CARGO_MANIFEST_DIR`-based,
             // a COMPILE-TIME constant = the BUILD machine's path. In a CI-built release
@@ -228,6 +238,7 @@ pub fn run() {
             };
             let orchestrator =
                 Orchestrator::new(sidecar_entry, sidecar_cwd, max_concurrency, &provider_id);
+            boot.phase("orchestrator");
 
             // The scan stores were already handed to managed state by `boot_scan_store`
             // above; task/project/settings are managed here.
@@ -282,6 +293,7 @@ pub fn run() {
             // whose run died with the process is re-queued (or re-reviewed) so the
             // auto-loop can pick it up again instead of stranding it forever.
             orchestration::coordinator::reconcile_tasks(&app.handle().clone());
+            boot.phase("reconcile");
 
             // Arm the usage poll loop iff the meter is already opted-in (issue #121).
             // The loop reads OAuth credentials + polls each provider on a 10-min
@@ -289,6 +301,8 @@ pub fn run() {
             if usage_meter_enabled {
                 usage::arm(&app.handle().clone());
             }
+            boot.phase("managed_state");
+            boot.finish();
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
