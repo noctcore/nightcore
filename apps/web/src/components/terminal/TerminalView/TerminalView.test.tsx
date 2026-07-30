@@ -68,6 +68,7 @@ vi.mock('@/lib/bridge', async (importOriginal) => {
           updatedAt: 0,
           title: null,
           titleSource: null,
+    ungoverned: false,
         },
         dataBase64: '',
       }),
@@ -90,6 +91,7 @@ function fakeSession(id: string, cwd: string): TerminalSessionInfo {
     createdAt: 0,
     title: null,
     titleSource: null,
+    ungoverned: false,
   };
 }
 
@@ -103,6 +105,7 @@ function persisted(id: string, cwd: string): PersistedTerminalInfo {
     updatedAt: 1,
     title: null,
     titleSource: null,
+    ungoverned: false,
   };
 }
 

@@ -87,6 +87,7 @@ export function TerminalView({
         attentionWaiting={v.attention.waiting}
         onJumpAttention={v.attention.jumpNext}
         ungovernedIds={v.tasks.ungovernedIds}
+        worktrees={worktrees}
         headerSlot={
           <TerminalTaskMenu
             tasks={v.tasks.pickableTasks}

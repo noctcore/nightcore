@@ -62,3 +62,34 @@ test('⌘/Ctrl + Backspace is the kill-line intent', () => {
   // A bare Backspace passes through (normal delete).
   expect(classifyKeyEvent(key({ key: 'Backspace' }), true)).toBe('passthrough');
 });
+
+test('OSC 133 prompt navigation: ⌘/Ctrl + Arrow Up/Down (#405)', () => {
+  expect(classifyKeyEvent(key({ metaKey: true, key: 'ArrowUp' }), true)).toBe('prev-prompt');
+  expect(classifyKeyEvent(key({ metaKey: true, key: 'ArrowDown' }), true)).toBe('next-prompt');
+  expect(classifyKeyEvent(key({ ctrlKey: true, key: 'ArrowUp' }), false)).toBe('prev-prompt');
+  // A BARE arrow must still reach the shell — it is history / readline navigation.
+  expect(classifyKeyEvent(key({ key: 'ArrowUp' }), true)).toBe('passthrough');
+});
+
+test('copy-last-output is ⌘/Ctrl+Shift+O and does not shadow smart copy (#405)', () => {
+  expect(classifyKeyEvent(key({ metaKey: true, shiftKey: true, key: 'o' }), true)).toBe(
+    'copy-last-output',
+  );
+  expect(classifyKeyEvent(key({ ctrlKey: true, shiftKey: true, key: 'O' }), false)).toBe(
+    'copy-last-output',
+  );
+  // ⌘C is still smart copy — the new chord sits beside it, not over it.
+  expect(classifyKeyEvent(key({ metaKey: true, key: 'c' }), true)).toBe('copy');
+});
+
+test('⌘1..9 is swallowed so the digits never reach the PTY (#405)', () => {
+  // The view's shortcut hook performs the tab select; the keymap only has to stop
+  // xterm from ALSO typing the digit into the shell.
+  for (const digit of ['1', '5', '9']) {
+    expect(classifyKeyEvent(key({ metaKey: true, key: digit }), true)).toBe('swallow');
+    expect(classifyKeyEvent(key({ ctrlKey: true, key: digit }), false)).toBe('swallow');
+  }
+  // A bare digit is ordinary typing, and ⌘0 is not a tab chord.
+  expect(classifyKeyEvent(key({ key: '3' }), true)).toBe('passthrough');
+  expect(classifyKeyEvent(key({ metaKey: true, key: '0' }), true)).toBe('passthrough');
+});

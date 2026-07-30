@@ -106,6 +106,10 @@ impl PersistedScrollback {
             // labels the restored tab by its cwd leaf exactly like an old file.
             title: (!self.title.is_empty()).then(|| self.title.clone()),
             title_source: self.title_source,
+            // Stamped by the backend from the governance marker file (#405) — the
+            // scrollback record deliberately does NOT carry the marker, so there is
+            // exactly one source of truth for it.
+            ungoverned: false,
         }
     }
 

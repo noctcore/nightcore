@@ -527,6 +527,8 @@ pub fn run() {
             commands::terminal::terminal_list_persisted,
             commands::terminal::terminal_read_persisted,
             commands::terminal::terminal_delete_persisted,
+            commands::terminal::terminal_mark_ungoverned,
+            commands::terminal::terminal_clear_governance_mark,
             // Read-only filesystem browsing for the terminal folder picker (open a
             // shell in ANY directory). Async; never reads file contents or writes.
             commands::fs::list_directory,

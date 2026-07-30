@@ -270,6 +270,18 @@ export function gridColumns(n: number): number {
   return 4;
 }
 
+/** The `@xterm/addon-search` decoration palette. Passing `decorations` makes the addon
+ *  highlight EVERY match and emit `onDidChangeResults` — the event the find bar's "n/m"
+ *  counter binds to. `#RRGGBB` is required for the fills; the palette tracks the cosmic
+ *  purple theme. Shared by the live-session search and the restored read-only replay's
+ *  search (#405) so the two highlight identically. */
+export const TERMINAL_SEARCH_DECORATIONS = {
+  matchBackground: '#5b3aa6',
+  matchOverviewRuler: '#7c5cd6',
+  activeMatchBackground: '#a78bfa',
+  activeMatchColorOverviewRuler: '#c4b5fd',
+} as const;
+
 /** Decode a base64 scrollback stream (the wire shape of a persisted session's
  *  bytes) into the raw `Uint8Array` fed verbatim to `term.write()`. Escape
  *  sequences survive because base64 is byte-exact. Returns an empty array for an

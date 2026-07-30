@@ -24,12 +24,12 @@ import {
 import { useRenameSession, useTerminalAiNaming } from '../terminal-ai-naming';
 import { nextAttentionId, useTerminalAttention } from '../terminal-attention';
 import { useTerminalDragDrop } from '../terminal-drag-drop';
-import { subscribePasteRejected } from '../terminal-keymap';
 import { useTerminalLayout } from '../terminal-layout';
 import { setTerminalPlatform } from '../terminal-platform';
 import {
   applyRenderPrefs,
   closeSession,
+  focusSession,
   hasSession,
   openSession,
   reattachSession,
@@ -45,6 +45,7 @@ import {
 } from '../terminal-shared';
 import { useTerminalShortcuts } from '../terminal-shortcuts';
 import { useTerminalTasks } from '../terminal-tasks';
+import { useTerminalToasts } from '../terminal-toasts';
 import { buildTargets, spawnErrorText } from '../terminal-view-helpers';
 import { useCreateWorktree, useTerminalOpenRequest } from '../terminal-worktree-open';
 import type { UseTerminalViewInput } from './TerminalView.types';
@@ -150,19 +151,8 @@ export function useTerminalView(input: UseTerminalViewInput) {
     applyRenderPrefs({ fontSize, scrollback });
   }, [fontSize, scrollback]);
 
-  // Surface a dropped over-cap paste (spec PR 3b) as a toast — the session manager's
-  // keymap is module-level, so it notifies through this subscription.
-  useEffect(
-    () =>
-      subscribePasteRejected(() => {
-        toast.push({
-          tone: 'info',
-          title: 'Paste too large',
-          description: 'Clipboard content over 1 MB was not pasted into the terminal.',
-        });
-      }),
-    [toast],
-  );
+  // Module-level notifications (over-cap paste, ⌘⇧O copy result) → toasts.
+  useTerminalToasts();
 
   // The visible-set + focus-clear are owned by `useTerminalLayout` (tabs vs grid vs
   // zoom), so no per-active-tab effect lives here.
@@ -245,6 +235,14 @@ export function useTerminalView(input: UseTerminalViewInput) {
   );
 
   const selectTab = useCallback((id: string) => setActiveId(id), []);
+  /** Select a tab AND move keyboard focus into its terminal (#405). The ⌘1..9 path
+   *  uses this rather than bare `selectTab`: jumping to a pane you then can't type in
+   *  is worse than not jumping. A restored (read-only) tab has no live xterm, so
+   *  `focusSession` is a no-op there and the tab still selects. */
+  const selectAndFocus = useCallback((id: string) => {
+    setActiveId(id);
+    focusSession(id);
+  }, []);
   // Jump to the next terminal waiting on the user (T11): cycle to the next
   // needs-attention session after the active one and select it. No-op when nothing
   // is waiting. Uses the ordered session list so the cycle follows tab/pane order.
@@ -336,6 +334,8 @@ export function useTerminalView(input: UseTerminalViewInput) {
   // xterm never forwards them to the PTY.
   useTerminalShortcuts({
     activeId,
+    orderedIds: layout.orderedSessions.map((s) => s.id),
+    onSelect: selectAndFocus,
     canAddTab,
     onNewTab: openPicker,
     onCloseActive: requestClose,

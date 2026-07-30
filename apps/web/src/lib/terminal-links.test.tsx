@@ -1,5 +1,24 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
+// #405: the durable half of the marker lives in Rust. Spy on the bridge so the tests
+// can prove the gesture actually reaches it — a marker that only updates this module
+// is precisely the bug the issue calls a lie.
+const markTerminalUngoverned = vi.fn<(id: string, reason: string) => Promise<void>>(
+  () => Promise.resolve(),
+);
+const clearTerminalGovernanceMark = vi.fn<(id: string, reason: string) => Promise<void>>(
+  () => Promise.resolve(),
+);
+vi.mock('./bridge', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./bridge')>();
+  return {
+    ...actual,
+    markTerminalUngoverned: (id: string, reason: string) => markTerminalUngoverned(id, reason),
+    clearTerminalGovernanceMark: (id: string, reason: string) =>
+      clearTerminalGovernanceMark(id, reason),
+  };
+});
+
 import {
   clearSessionTaskLink,
   consumePendingActivateSession,
@@ -17,6 +36,35 @@ import {
 
 beforeEach(() => {
   resetTerminalLinksForTest();
+  markTerminalUngoverned.mockClear();
+  clearTerminalGovernanceMark.mockClear();
+});
+
+describe('persisted governance markers (#405)', () => {
+  test('launching claude records the PERMANENT marker server-side', () => {
+    markClaudeLaunched('sess-1');
+    expect(markTerminalUngoverned).toHaveBeenCalledWith('sess-1', 'claudeLaunched');
+  });
+
+  test('linking a task records the REVOCABLE marker server-side', () => {
+    linkTaskToSession('task-1', 'sess-1');
+    expect(markTerminalUngoverned).toHaveBeenCalledWith('sess-1', 'taskLinked');
+  });
+
+  test('clearing a link only ever asks to revoke the task reason', () => {
+    linkTaskToSession('task-1', 'sess-1');
+    clearSessionTaskLink('sess-1');
+    expect(clearTerminalGovernanceMark).toHaveBeenCalledWith('sess-1', 'taskLinked');
+    expect(clearTerminalGovernanceMark).not.toHaveBeenCalledWith('sess-1', 'claudeLaunched');
+  });
+
+  test('a re-link still re-asserts the marker (the write is idempotent server-side)', () => {
+    // The early-return for an already-identical pair must not skip the durable write:
+    // the local map can be in sync while the file is not (a failed write, a new run).
+    linkTaskToSession('task-1', 'sess-1');
+    linkTaskToSession('task-1', 'sess-1');
+    expect(markTerminalUngoverned).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('linking', () => {

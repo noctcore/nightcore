@@ -22,4 +22,10 @@ title: string | null,
  * never-titled / legacy record. Carried through restore so a restored tab keeps
  * its Manual/Task/AI provenance. Serde-additive.
  */
-titleSource: TitleSource | null, };
+titleSource: TitleSource | null, 
+/**
+ * Whether this dead session carried a governance marker (#405) — stamped from the
+ * same on-disk marker file the live descriptors read, so a restored (read-only)
+ * tab still shows that an agent ran in that shell. Serde-additive.
+ */
+ungoverned: boolean, };

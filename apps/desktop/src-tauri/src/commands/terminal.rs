@@ -20,7 +20,8 @@ use tauri::{AppHandle, Manager};
 
 use crate::terminal::{
     auto_eligible, OutputSink, PersistedTerminalInfo, PersistedTerminalScrollback, SpawnOpts,
-    TerminalBackend, TerminalDaemonStatus, TerminalSessionInfo, TitleSource,
+    TerminalBackend, TerminalDaemonStatus, TerminalGovernanceReason, TerminalSessionInfo,
+    TitleSource,
 };
 
 /// Resolve the requested spawn cwd SERVER-SIDE: canonicalize it (so a `..`/symlink
@@ -380,15 +381,12 @@ pub async fn terminal_sessions_in_dir(
 }
 
 /// Persisted (dead) sessions' metadata for the restore UI (PR C). Prunes stale
-/// files as a side effect.
+/// files + GCs forgotten governance markers as a side effect.
 #[tauri::command]
 pub async fn terminal_list_persisted(app: AppHandle) -> Result<Vec<PersistedTerminalInfo>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let dir = backend(&app)?.persist_dir();
-        Ok(crate::terminal::persist::list(&dir))
-    })
-    .await
-    .map_err(|e| format!("terminal list_persisted failed to run: {e}"))?
+    tauri::async_runtime::spawn_blocking(move || Ok(backend(&app)?.list_persisted()))
+        .await
+        .map_err(|e| format!("terminal list_persisted failed to run: {e}"))?
 }
 
 /// A persisted session's scrollback bytes (base64) for read-only replay (PR C).
@@ -398,12 +396,44 @@ pub async fn terminal_read_persisted(
     id: String,
 ) -> Result<PersistedTerminalScrollback, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let dir = backend(&app)?.persist_dir();
-        crate::terminal::persist::read(&dir, &id)
+        backend(&app)?
+            .read_persisted(&id)
             .ok_or_else(|| format!("no persisted terminal session {id}"))
     })
     .await
     .map_err(|e| format!("terminal read_persisted failed to run: {e}"))?
+}
+
+/// Record a PERSISTED governance marker on a session (#405): this shell is task-linked
+/// or was used to launch `claude`, so it runs as the human outside the gates. Written
+/// to `<terminals>/governance.json`, so the warning bolt survives a reload, an app
+/// restart, and a daemon restart — the long-lived sessions are exactly the ones where a
+/// vanishing marker lies. Idempotent + additive. USER-only + async + `spawn_blocking`
+/// like every terminal command.
+#[tauri::command]
+pub async fn terminal_mark_ungoverned(
+    app: AppHandle,
+    id: String,
+    reason: TerminalGovernanceReason,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || backend(&app)?.mark_ungoverned(&id, reason))
+        .await
+        .map_err(|e| format!("terminal mark_ungoverned failed to run: {e}"))?
+}
+
+/// Clear a REVOCABLE governance marker (#405) — the task-link "clear" affordance.
+/// Errors for a permanent marker (`claudeLaunched`): once an agent has run as the human
+/// in a shell, no UI action may re-label it governed. Clearing a marker that was never
+/// set is a no-op success.
+#[tauri::command]
+pub async fn terminal_clear_governance_mark(
+    app: AppHandle,
+    id: String,
+    reason: TerminalGovernanceReason,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || backend(&app)?.clear_governance_mark(&id, reason))
+        .await
+        .map_err(|e| format!("terminal clear_governance_mark failed to run: {e}"))?
 }
 
 /// Delete a persisted (dead) session's scrollback file — the restore UI's "dismiss"

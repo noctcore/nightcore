@@ -15,6 +15,7 @@ const INFO: PersistedTerminalInfo = {
   updatedAt: 1,
   title: null,
   titleSource: null,
+  ungoverned: false,
 };
 
 /** Sized host so the read-only xterm has geometry (outside Tauri the replay bytes
@@ -53,5 +54,24 @@ export const StartsFreshShell: Story = {
   play: async ({ args, canvas }) => {
     await userEvent.click(canvas.getByRole('button', { name: /Start a fresh shell here/i }));
     await expect(args.onRestore).toHaveBeenCalled();
+  },
+};
+
+/** An ungoverned restored tab (#405): the persisted marker outlives the shell, so the
+ *  read-only chrome still says an agent ran in that folder. */
+export const Ungoverned: Story = {
+  args: { info: { ...INFO, ungoverned: true } },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByLabelText('Ungoverned')).toBeInTheDocument();
+  },
+};
+
+/** Play test (#405): a restored session's scrollback is searchable. The read-only
+ *  replay has no focusable textarea to bubble ⌘F out of, so the pane carries a real
+ *  Search button that opens the same find bar the live pane uses. */
+export const SearchesRestoredScrollback: Story = {
+  play: async ({ canvas }) => {
+    await userEvent.click(canvas.getByRole('button', { name: /^Search$/ }));
+    await expect(canvas.getByLabelText('Search terminal scrollback')).toBeInTheDocument();
   },
 };

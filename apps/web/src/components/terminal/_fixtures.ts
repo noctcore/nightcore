@@ -18,6 +18,9 @@ export function makeTerminalSession(
     createdAt: 1_718_900_000_000,
     title: null,
     titleSource: null,
+    // #405: the server-stamped governance marker. Off by default — a fixture shell is
+    // an ordinary governed tab unless a case says otherwise.
+    ungoverned: false,
     ...over,
   };
 }

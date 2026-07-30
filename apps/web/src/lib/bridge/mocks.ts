@@ -281,6 +281,7 @@ export function echoSpawnTerminal(
     createdAt: Date.now(),
     title: null,
     titleSource: null,
+    ungoverned: false,
   };
   queueMicrotask(() => {
     echoHandlers

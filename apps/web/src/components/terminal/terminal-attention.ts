@@ -91,6 +91,17 @@ function emitCompletion(id: string): void {
   for (const fn of completionListeners) fn(id);
 }
 
+/** Raise a completion/awaiting signal for `id` on BOTH consumers: the visibility-gated
+ *  attention badge and the focus-gated desktop notification. The single entry point
+ *  shared by {@link installCompletionSignals}'s OSC 9/99/777 + BEL parser and the
+ *  OSC 133 "this command ran longer than 5s" case (#405), so a slow-command notice
+ *  obeys exactly the same off-screen / unfocused / setting gating as a BEL — it can
+ *  never nag about something the user is already watching. */
+export function signalCompletion(id: string): void {
+  recordAttention(id);
+  emitCompletion(id);
+}
+
 function getOrCreate(id: string): MutableAttention {
   let entry = state.get(id);
   if (entry === undefined) {
@@ -226,12 +237,9 @@ export function useTerminalAttention(sessions: readonly TerminalSessionInfo[]): 
  *  never touches the PTY, so the USER-ONLY seam holds. Disposed with the terminal.
  *  Returns the disposables (the caller may drop them; `term.dispose()` also releases). */
 export function installCompletionSignals(term: Terminal, id: string): IDisposable[] {
-  const signal = (): void => {
-    // Two independent consumers: the badge (gated on visibility) and the desktop
-    // notification (gated on focus/visibility + setting, off the completion stream).
-    recordAttention(id);
-    emitCompletion(id);
-  };
+  // Two independent consumers: the badge (gated on visibility) and the desktop
+  // notification (gated on focus/visibility + setting, off the completion stream).
+  const signal = (): void => signalCompletion(id);
   const onOsc = (): boolean => {
     signal();
     // `true` = handled, so xterm doesn't log an unknown-OSC warning. These codes have

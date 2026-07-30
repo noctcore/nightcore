@@ -29,6 +29,7 @@ function session(id: string): TerminalSessionInfo {
     createdAt: 0,
     title: null,
     titleSource: null,
+    ungoverned: false,
   };
 }
 

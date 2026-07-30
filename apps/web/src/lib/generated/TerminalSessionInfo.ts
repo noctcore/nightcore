@@ -51,4 +51,13 @@ title: string | null,
  * OR a legacy record written before this field existed (a non-empty legacy title
  * is treated as Manual-equivalent, so the AI never clobbers it). Serde-additive.
  */
-titleSource: TitleSource | null, };
+titleSource: TitleSource | null, 
+/**
+ * Whether this session carries a persisted governance marker (#405): it is
+ * task-linked or was used to launch `claude`, so it runs as the human OUTSIDE the
+ * gates. Stamped by [`crate::terminal::TerminalBackend`] from the on-disk marker
+ * file on EVERY descriptor it hands out, so the marker survives a reload, an app
+ * restart, and a daemon restart. Serde-additive (`false` on a legacy / daemon-side
+ * record — the backend re-stamps the authoritative value over it).
+ */
+ungoverned: boolean, };
