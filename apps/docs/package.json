@@ -1,0 +1,17 @@
+{
+  "name": "@nightcore/docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Nightcore documentation site (Astro Starlight, published to GitHub Pages).",
+  "scripts": {
+    "codegen": "bun run scripts/gen-stages.ts",
+    "dev": "bun run codegen && astro dev",
+    "build": "bun run codegen && astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.41.5",
+    "astro": "^7.1.6"
+  }
+}

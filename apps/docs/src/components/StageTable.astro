@@ -1,0 +1,75 @@
+---
+/**
+ * The five-stage lifecycle, rendered from the app's own source of truth.
+ *
+ * The data comes from `src/generated/stages.json`, which `scripts/gen-stages.ts`
+ * writes at build time by importing `apps/web/src/lib/stages.ts`. Nothing here
+ * restates a stage name, an explainer, or an artifact in prose — rename a stage
+ * in the app and this table changes on the next build.
+ */
+import stages from '../generated/stages.json';
+---
+
+<div class="stage-table-wrap">
+  <table class="stage-table">
+    <thead>
+      <tr>
+        <th scope="col">Stage</th>
+        <th scope="col">What it does</th>
+        <th scope="col">What it leaves behind</th>
+      </tr>
+    </thead>
+    <tbody>
+      {
+        stages.stages.map((stage) => (
+          <tr>
+            <th scope="row">
+              <span class="stage-num">{stage.number}</span>
+              <strong>{stage.label}</strong>
+              <span class="stage-dest">{stage.destination}</span>
+            </th>
+            <td>
+              <em>{stage.verb}.</em> {stage.summary}
+            </td>
+            <td>{stage.produces}</td>
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+</div>
+
+<style>
+  /* Wide content scrolls inside its own container so the page body never does. */
+  .stage-table-wrap {
+    overflow-x: auto;
+  }
+  .stage-table {
+    margin-block: 1rem;
+  }
+  .stage-table th[scope='row'] {
+    white-space: nowrap;
+    vertical-align: top;
+  }
+  .stage-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+    margin-inline-end: 0.4rem;
+    border-radius: 999px;
+    background: var(--sl-color-accent-low);
+    color: var(--sl-color-white);
+    font-size: var(--sl-text-xs);
+    font-variant-numeric: tabular-nums;
+  }
+  .stage-dest {
+    display: block;
+    margin-block-start: 0.15rem;
+    margin-inline-start: 1.9rem;
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-xs);
+    font-weight: 400;
+  }
+</style>

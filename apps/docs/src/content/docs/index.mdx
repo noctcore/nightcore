@@ -1,0 +1,76 @@
+---
+title: Nightcore
+description: Full-loop autonomy inside an enforced harness — a local-first desktop studio that runs coding agents behind machine-enforced gates.
+template: splash
+hero:
+  tagline: |
+    Coding agents that run the whole loop — and can't wreck your architecture.
+    Every run is bounded, inspectable, and reversible.
+  actions:
+    - text: What is Nightcore?
+      link: start/what-is-nightcore/
+      icon: right-arrow
+    - text: Install
+      link: start/install/
+      variant: minimal
+    - text: GitHub
+      link: https://github.com/noctcore/nightcore
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Alpha software">
+Nightcore runs AI agents with access to your filesystem and shell. APIs, UI, and
+on-disk formats can break between releases. Read [Limits and honest
+gaps](reference/limits/) before you point it at anything you care about.
+</Aside>
+
+## The problem this documentation is about
+
+An agent that writes code is easy. An agent whose output you can *merge without
+reading every line* is not. Nightcore's whole design is the second problem:
+autonomy at full speed, with the boundaries **enforced by the product** instead
+of requested in a prompt.
+
+<CardGrid>
+  <Card title="Bounded" icon="approve-check">
+    Every Build task runs in its own git worktree, under policy tiers evaluated
+    in a `PreToolUse` hook, optionally inside a macOS Seatbelt sandbox. The
+    limits are checked by code, not promised by the model.
+  </Card>
+  <Card title="Inspectable" icon="document">
+    Every gate decision lands in an append-only ledger on disk. The Trust Report
+    on a task is the receipt: what ran, what passed, what it cost.
+  </Card>
+  <Card title="Reversible">
+    Work lands on a task branch in a worktree. Nothing reaches your branch until
+    a verdict says it may, and discarding a run is deleting a worktree.
+  </Card>
+</CardGrid>
+
+## Where to go next
+
+<CardGrid>
+  <LinkCard
+    title="What is Nightcore?"
+    href="start/what-is-nightcore/"
+    description="The thesis, the vocabulary, and what the product is not."
+  />
+  <LinkCard
+    title="Install and connect a provider"
+    href="start/install/"
+    description="Platform support, prerequisites, and what a provider account actually has to be."
+  />
+  <LinkCard
+    title="The governed lifecycle"
+    href="lifecycle/"
+    description="Intake → Understand → Harden → Enforce → Verify, straight from the app's own source of truth."
+  />
+  <LinkCard
+    title="How a change earns its merge"
+    href="governance/gates/"
+    description="The verification gauntlet and the guardrail battery, gate by gate."
+  />
+</CardGrid>
