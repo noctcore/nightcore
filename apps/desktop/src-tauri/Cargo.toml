@@ -32,7 +32,7 @@ serde = { version = "1.0", features = ["derive"] }
 # verbatim) and the transcript writer — see `sidecar::reader::handle_event`.
 serde_json = { version = "1.0", features = ["raw_value"] }
 uuid = { version = "1.23", features = ["v4"] }
-base64 = "0.22"
+base64 = "0.23"
 async-trait = "0.1"
 tokio = { version = "1.52", features = [
     "macros",
