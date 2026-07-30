@@ -26,6 +26,10 @@ import {
 } from '../shared/scan-manager.js';
 import { clampVerdict } from './clamp.js';
 import {
+  corroboratePrReviewFindings,
+  rankPrReviewFindings,
+} from './corroborate.js';
+import {
   dedupePrReviewFindings,
   groundPrReviewFindings,
 } from './findings.js';
@@ -57,9 +61,14 @@ export async function finalizePrReview({
   const { command, run, findings, itemsRun, totalUsage, startedAt, context } = args;
   let totalCost = args.totalCost;
 
-  // Diff-relative grounding across every lens pass, then cross-lens dedup.
+  // Diff-relative grounding across every lens pass, then cross-lens dedup (EXACT
+  // title collapse) followed by FUZZY cross-lens corroboration (slice 2): near-dupe
+  // findings from different lenses on one file collapse onto their highest-severity
+  // instance and union the other lenses into `corroboratedBy`. Corroboration is a
+  // ranking/display signal only — it never rewrites a severity, so the clamp below
+  // reads exactly the severities it would have read without it.
   const grounded = groundPrReviewFindings(findings, context.changedFiles);
-  const deduped = dedupePrReviewFindings(grounded);
+  const deduped = corroboratePrReviewFindings(dedupePrReviewFindings(grounded));
 
   deps.logger?.info(`[pr-review] validator: started — vetting ${deduped.length} findings`);
   const validatorStartedAt = Date.now();
@@ -92,7 +101,11 @@ export async function finalizePrReview({
     return;
   }
 
-  const survivors = validation.findings;
+  // RANK the survivors: severity desc → corroboration count desc → lens order. Every
+  // finding is KEPT (no cap, no suppression, no demotion — transparency over brevity);
+  // this only re-orders, so the loudest and most-corroborated read first in the verdict
+  // prompt, the completed event, and the UI grid.
+  const survivors = rankPrReviewFindings(validation.findings);
 
   // ONE additional read-only synthesis pass over the FINAL findings — the same
   // containment/machinery as the validator — that adjudicates an overall merge verdict.

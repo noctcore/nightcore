@@ -105,9 +105,12 @@ test('collapses medium and low by default; expanding a group reveals its cards',
   await expect.element(medium).toHaveAttribute('aria-expanded', 'true');
 });
 
-test('a corroborated finding shows a compact "also:" chip', async () => {
+test('a corroborated finding shows an "N lenses agree" chip counting itself', async () => {
   const screen = renderFindings();
-  await expect.element(screen.getByText('also: logic, tests')).toBeInTheDocument();
+  // The fixture finding is reported by one lens and corroborated by two more.
+  await expect
+    .element(screen.getByText('3 lenses agree', { exact: true }))
+    .toBeInTheDocument();
 });
 
 test('quick-select All selects every OPEN finding', async () => {

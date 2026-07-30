@@ -15,10 +15,10 @@ import {
   restoreReviewFinding,
   type Task,
 } from '@/lib/bridge';
-import { sortBySeverityThenStatus } from '@/lib/severity';
 import { type BulkConvertProgress, useBulkConvert } from '@/lib/useBulkConvert';
 
 import type { ReviewFindingView } from './prreview.types';
+import { rankReviewFindings } from './prreview-rank';
 import type { ReviewStream } from './prreview-stream';
 
 /** The workspace slices the selection layer acts against. */
@@ -97,8 +97,10 @@ export function usePrFindingSelection({
     setSelection(new Set());
   }
 
+  // Open-first → severity → CORROBORATION → lens (see `prreview-rank`). Every
+  // finding is kept; corroborated ones simply rank above their severity peers.
   const gridFindings = useMemo(
-    () => sortBySeverityThenStatus(displayStream?.findings ?? []),
+    () => rankReviewFindings(displayStream?.findings ?? []),
     [displayStream?.findings],
   );
 
