@@ -20,6 +20,15 @@ status: string,
  */
 lenses: Array<string>, model: string, createdAt: number, updatedAt: number, costUsd: number, durationMs: number, usage: InsightUsage, findings: Array<StoredReviewFinding>, 
 /**
+ * The candidate findings the ADVERSARIAL VALIDATOR dropped as unsupported by the
+ * diff — kept so a silently-swallowed real finding stays visible after a reload,
+ * not just in the live stream. DISPLAY-ONLY: they never enter `findings`, carry no
+ * lifecycle (their `status` is a placeholder, never mutated), take no part in the
+ * verdict/clamp, and are never postable. Additive + `#[serde(default)]`: an older
+ * run file loads with an empty list.
+ */
+droppedFindings: Array<StoredReviewFinding>, 
+/**
  * Deep mode (issue #294): per-lens round count (1-based), keyed by the review lens
  * wire string. Persisted so "round N" survives reconcile/resume; empty for a classic
  * single-pass review (which never emits round events). Because the review is

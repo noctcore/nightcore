@@ -18,6 +18,7 @@ import {
 import { type BulkConvertProgress, useBulkConvert } from '@/lib/useBulkConvert';
 
 import type { ReviewFindingView } from './prreview.types';
+import { type PostingSplit, splitForPosting } from './prreview-prefill';
 import { rankReviewFindings } from './prreview-rank';
 import type { ReviewStream } from './prreview-stream';
 
@@ -59,8 +60,17 @@ export interface PrFindingSelectionApi {
   /** Selected, non-dismissed findings (the post payload). */
   selectedFindings: ReviewFindingView[];
   selectedCount: number;
-  /** How many selected findings carry a line anchor (become inline comments). */
+  /** The PRE-SELECTED posting split: which selected findings ride as inline diff
+   *  comments and which stay in the review body note. Both halves are posted. */
+  postingSplit: PostingSplit;
+  /** How many selected findings are pre-selected as inline comments. */
   selectedInlineCount: number;
+  /** How many selected findings ride in the review body note instead. */
+  selectedBodyCount: number;
+  /** The human's edit of the split: promote EVERY anchorable selection to an
+   *  inline comment (lows/info included). */
+  postAllInline: boolean;
+  setPostAllInline: (next: boolean) => void;
   /** Only OPEN selected findings (the fix prompt's payload). */
   selectedOpenFindings: ReviewFindingView[];
   /** Drop the per-run finding UI (detail panel, post selection, bulk counters)
@@ -87,6 +97,10 @@ export function usePrFindingSelection({
   const [pending, setPending] = useState(false);
   // The findings checked for inclusion in the posted review.
   const [selection, setSelection] = useState<ReadonlySet<string>>(() => new Set());
+  // The human's edit of the pre-selected inline/body split: promote every
+  // anchorable selection to an inline comment. Off by default — the pre-fill
+  // keeps lows/info in the body note (see `prreview-prefill`).
+  const [postAllInline, setPostAllInline] = useState(false);
 
   // Project-switch reset, synchronously before paint (the render-adjust
   // pattern): the selection belongs to the previous project's PR numbers.
@@ -95,6 +109,7 @@ export function usePrFindingSelection({
     setLastProject(projectPath);
     setSelectedId(null);
     setSelection(new Set());
+    setPostAllInline(false);
   }
 
   // Open-first → severity → CORROBORATION → lens (see `prreview-rank`). Every
@@ -255,9 +270,12 @@ export function usePrFindingSelection({
     [displayStream?.findings, selection],
   );
   const selectedCount = selectedFindings.length;
-  const selectedInlineCount = useMemo(
-    () => selectedFindings.filter((f) => f.line !== null).length,
-    [selectedFindings],
+  // The PRE-SELECTED posting split (slice 3): high-signal + corroborated
+  // anchorable findings become inline comments, the rest ride in the body note.
+  // Both halves are posted — the split only decides WHERE each finding appears.
+  const postingSplit = useMemo(
+    () => splitForPosting(selectedFindings, postAllInline),
+    [selectedFindings, postAllInline],
   );
   /** Only OPEN selected findings feed the fix prompt (converted stay postable
    *  but are already tracked as tasks; dismissed never make the selection). */
@@ -283,7 +301,11 @@ export function usePrFindingSelection({
     clearSelection,
     selectedFindings,
     selectedCount,
-    selectedInlineCount,
+    postingSplit,
+    selectedInlineCount: postingSplit.inline.length,
+    selectedBodyCount: postingSplit.body.length,
+    postAllInline,
+    setPostAllInline,
     selectedOpenFindings,
     resetFindingUi,
     convertAll,

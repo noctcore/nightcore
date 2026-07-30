@@ -92,6 +92,7 @@ function persistedRun(over: Partial<PrReviewRun> = {}): PrReviewRun {
     durationMs: 0,
     usage: { inputTokens: 0, outputTokens: 0 },
     findings: [],
+    droppedFindings: [],
     roundsByLens: {},
     error: null,
     verdict: null,

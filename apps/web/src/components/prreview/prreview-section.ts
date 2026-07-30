@@ -8,6 +8,7 @@ import type { ToastApi } from '@/components/ui';
 import type { ReviewLens } from '@/lib/bridge';
 import type { RunConfig } from '@/lib/useRunConfig';
 
+import type { ReviewVerdict } from './prreview.types';
 import type { UsePrFixesResult } from './prreview-fixes.hooks';
 import type { PrReviewGatesApi } from './prreview-gates.hooks';
 import type { PrReviewNavigationApi } from './prreview-navigation.hooks';
@@ -36,6 +37,9 @@ export interface BuildReviewSectionArgs {
   canAddress: boolean;
   /** Selected OPEN findings count — the K in "Address findings (K)". */
   addressCount: number;
+  /** The verdict the post gate PRE-FILLS (from the run's clamped merge verdict) —
+   *  highlighted in the toolbar so posting is one informed click, not a blank pick. */
+  recommendedVerdict: ReviewVerdict;
 }
 
 /** Assemble the review-section props, or null when nothing is selected. */
@@ -54,6 +58,7 @@ export function buildReviewSectionProps({
   canPost,
   canAddress,
   addressCount,
+  recommendedVerdict,
 }: BuildReviewSectionArgs): ReviewSectionProps | null {
   if (selectedPr === null) return null;
   // Capture the narrowable locals so the fix-strip closures keep prFix non-null.
@@ -87,6 +92,7 @@ export function buildReviewSectionProps({
     },
     results: {
       gridFindings: selection.gridFindings,
+      droppedFindings: displayStream?.droppedFindings ?? [],
       emptyMessage: section.ui.emptyMessage,
       // A completed run with nothing to show earns the celebratory clean
       // state; idle / failed / cancelled keep the neutral message.
@@ -105,6 +111,7 @@ export function buildReviewSectionProps({
         bulkError: selection.bulkError,
         selectedCount: selection.selectedCount,
         canPost,
+        recommendedVerdict,
         requestPost: gates.requestPost,
         ownPr: section.ownPr,
         postedFeedback: gates.postedFeedback,

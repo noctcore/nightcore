@@ -103,6 +103,7 @@ function ConfiguredWorkspace({
         },
         results: {
           gridFindings: [],
+          droppedFindings: [],
           emptyMessage: '',
           emptyVariant: 'neutral',
           selection: new Set<string>(),
@@ -119,6 +120,7 @@ function ConfiguredWorkspace({
             bulkError: null,
             selectedCount: 0,
             canPost: false,
+            recommendedVerdict: 'comment',
             requestPost: fn(),
             ownPr: false,
             postedFeedback: null,

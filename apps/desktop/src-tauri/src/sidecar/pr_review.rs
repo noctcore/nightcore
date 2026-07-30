@@ -160,6 +160,7 @@ pub async fn start_pr_review(
         duration_ms: 0,
         usage: InsightUsage::default(),
         findings: Vec::new(),
+        dropped_findings: Vec::new(),
         rounds_by_lens: std::collections::HashMap::new(),
         error: None,
         verdict: None,
@@ -377,15 +378,7 @@ pub(crate) async fn handle_pr_review_event(app: &AppHandle, event_type: &str, ev
     match event_type {
         "pr-review-completed" => {
             // Parse the final, cross-lens-deduped findings the engine produced.
-            let mut findings: Vec<StoredReviewFinding> = event
-                .get("findings")
-                .and_then(Value::as_array)
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(StoredReviewFinding::from_wire)
-                        .collect()
-                })
-                .unwrap_or_default();
+            let mut findings = StoredReviewFinding::vec_from_wire(event, "findings");
 
             // Cross-run lifecycle reconciliation, shared with Insight: a re-discovered
             // finding that was previously dismissed stays dismissed; one already converted
@@ -419,6 +412,10 @@ pub(crate) async fn handle_pr_review_event(app: &AppHandle, event_type: &str, ev
                 .get("clampReason")
                 .and_then(Value::as_str)
                 .map(str::to_string);
+            // What the ADVERSARIAL VALIDATOR dropped, kept alongside (never inside) the
+            // findings so a swallowed true positive stays visible after a reload. Display
+            // only: no lifecycle reconciliation, never postable, no effect on the verdict.
+            let dropped = StoredReviewFinding::vec_from_wire(event, "droppedFindings");
 
             // The shared finalizer owns the idempotency guard, the status/telemetry stamp,
             // and the by-fingerprint in-run lifecycle carry-forward; we inject only the
@@ -436,6 +433,7 @@ pub(crate) async fn handle_pr_review_event(app: &AppHandle, event_type: &str, ev
                     run.verdict_reasoning = verdict_reasoning;
                     run.verdict_clamped = verdict_clamped;
                     run.clamp_reason = clamp_reason;
+                    run.dropped_findings = dropped;
                     &mut run.findings
                 },
             );
@@ -470,15 +468,7 @@ pub(crate) async fn handle_pr_review_event(app: &AppHandle, event_type: &str, ev
             };
             // Persist this pass's findings into the running run so a cancel/crash keeps
             // them and mid-run dismiss/convert on a peeked lens has something to act on.
-            let parsed: Vec<StoredReviewFinding> = event
-                .get("findings")
-                .and_then(Value::as_array)
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(StoredReviewFinding::from_wire)
-                        .collect()
-                })
-                .unwrap_or_default();
+            let parsed = StoredReviewFinding::vec_from_wire(event, "findings");
             let count = parsed.len();
             let dismissed = pr_review_store.dismissed_fingerprints(Some(run_id));
             let _ = pr_review_store.accumulate_findings(
@@ -512,15 +502,7 @@ pub(crate) async fn handle_pr_review_event(app: &AppHandle, event_type: &str, ev
                     .and_then(Value::as_u64)
                     .unwrap_or(0)
             };
-            let parsed: Vec<StoredReviewFinding> = event
-                .get("findings")
-                .and_then(Value::as_array)
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(StoredReviewFinding::from_wire)
-                        .collect()
-                })
-                .unwrap_or_default();
+            let parsed = StoredReviewFinding::vec_from_wire(event, "findings");
             let count = parsed.len();
             let dismissed = pr_review_store.dismissed_fingerprints(Some(run_id));
             let _ = pr_review_store.accumulate_findings(
@@ -557,6 +539,7 @@ mod tests {
             duration_ms: 0,
             usage: InsightUsage::default(),
             findings: Vec::new(),
+            dropped_findings: Vec::new(),
             rounds_by_lens: std::collections::HashMap::new(),
             error: None,
             verdict: None,

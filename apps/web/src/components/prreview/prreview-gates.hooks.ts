@@ -29,8 +29,12 @@ export interface PrReviewGatesConfig {
   addressPrNumber: number | null;
   selectedPr: number | null;
   displayRunId: string | null;
-  /** Selected, non-dismissed findings (the post payload). */
+  /** Selected, non-dismissed findings (the post payload — the review BODY lists
+   *  all of them, so nothing selected is ever dropped from the posted review). */
   selectedFindings: ReviewFindingView[];
+  /** The pre-selected INLINE half of the split (`prreview-prefill`): only these
+   *  ride as inline diff comments. The rest stay in the body note. */
+  inlineFindings: ReviewFindingView[];
   /** Only OPEN selected findings (the fix prompt's payload). */
   selectedOpenFindings: ReviewFindingView[];
   selectRun: (runId: string) => Promise<ReviewStream | null>;
@@ -87,6 +91,7 @@ export function usePrReviewGates({
   selectedPr,
   displayRunId,
   selectedFindings,
+  inlineFindings,
   selectedOpenFindings,
   selectRun,
   refreshRuns,
@@ -179,8 +184,11 @@ export function usePrReviewGates({
     const verdict = postVerdict;
     const prNumber = postPrNumber;
     const count = selectedFindings.length;
+    // The BODY lists every selected finding (nothing selected is dropped); only the
+    // pre-selected INLINE half becomes diff comments. Rust re-anchors those against
+    // the PR's current diff at post time and demotes any that no longer anchor.
     const body = composeReviewBody(verdict, selectedFindings);
-    const comments = composeReviewComments(selectedFindings);
+    const comments = composeReviewComments(inlineFindings);
     // Stamp the DISPLAYED run so a successful post records `postedVerdict` /
     // `postedAt` on the right run (Rust accepts an optional run id).
     const runId = displayRunId;
@@ -225,6 +233,7 @@ export function usePrReviewGates({
     postVerdict,
     postPrNumber,
     selectedFindings,
+    inlineFindings,
     displayRunId,
     selectRun,
     refreshRuns,

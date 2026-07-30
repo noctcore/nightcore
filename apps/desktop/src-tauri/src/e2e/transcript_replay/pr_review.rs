@@ -166,6 +166,7 @@ fn running_run(id: &str) -> PrReviewRun {
         duration_ms: 0,
         usage: InsightUsage::default(),
         findings: Vec::new(),
+        dropped_findings: Vec::new(),
         rounds_by_lens: std::collections::HashMap::new(),
         error: None,
         verdict: None,

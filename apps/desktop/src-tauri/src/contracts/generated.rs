@@ -675,6 +675,8 @@ pub enum NightcoreEvent {
         verdict_clamped: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         clamp_reason: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dropped_findings: Option<Vec<ReviewFinding>>,
     },
     #[serde(rename_all = "camelCase")]
     PrReviewFailed {

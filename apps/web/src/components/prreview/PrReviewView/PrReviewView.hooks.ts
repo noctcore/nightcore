@@ -20,6 +20,7 @@ import { usePrFixes } from '../prreview-fixes.hooks';
 import { usePrReviewGates } from '../prreview-gates.hooks';
 import { usePrReviewNavigation } from '../prreview-navigation.hooks';
 import { useOpenPrs } from '../prreview-open-prs.hooks';
+import { recommendedReviewVerdict } from '../prreview-prefill';
 import { useResizablePanelWidth } from '../prreview-resize.hooks';
 import { usePrReviewRuns } from '../prreview-runs.hooks';
 import { buildReviewSectionProps } from '../prreview-section';
@@ -102,6 +103,7 @@ export function usePrReviewView({
     selectedPr,
     displayRunId: section.streams.displayRunId,
     selectedFindings: selection.selectedFindings,
+    inlineFindings: selection.postingSplit.inline,
     selectedOpenFindings: selection.selectedOpenFindings,
     selectRun: runs.selectRun,
     refreshRuns: runs.refreshRuns,
@@ -164,6 +166,13 @@ export function usePrReviewView({
         };
   const pushArmedFix =
     gates.pushFixId !== null ? (fixes.fixes.get(gates.pushFixId) ?? null) : null;
+  // TRUSTED POSTING (slice 3): the verdict the post gate pre-fills, derived from the
+  // displayed run's CLAMPED merge verdict (own-PR safe). A recommendation only — the
+  // human picks any verdict and still confirms in the dialog; nothing auto-posts.
+  const recommendedVerdict = recommendedReviewVerdict(
+    section.streams.displayRun?.verdict ?? null,
+    section.ownPr,
+  );
 
   const review = buildReviewSectionProps({
     selectedPr,
@@ -180,6 +189,7 @@ export function usePrReviewView({
     canPost,
     canAddress,
     addressCount,
+    recommendedVerdict,
   });
 
   return {
@@ -226,6 +236,13 @@ export function usePrReviewView({
       postPrNumber: section.targets.postPrNumber,
       selectedCount: selection.selectedCount,
       selectedInlineCount: selection.selectedInlineCount,
+      selectedBodyCount: selection.selectedBodyCount,
+      postAllInline: selection.postAllInline,
+      setPostAllInline: selection.setPostAllInline,
+      recommendedVerdict,
+      /** Why the clamp overrode the model — shown beside the recommendation. */
+      clampReason: section.streams.displayRun?.clampReason ?? null,
+      requestPost: gates.requestPost,
       confirmPost: gates.confirmPost,
       cancelPost: gates.cancelPost,
     },

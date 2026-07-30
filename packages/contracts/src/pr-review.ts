@@ -177,6 +177,14 @@ export const PrReviewCompletedEvent = z.object({
    *  at `needs_revision`). Surfaces WHY the mechanical band overrode the model so the
    *  clamp is transparent rather than silent. */
   clampReason: z.string().optional(),
+  /** The candidate findings the ADVERSARIAL VALIDATOR judged unsupported by the diff
+   *  and DROPPED — the ones that never reach {@link findings}. Surfaced so a
+   *  silently-swallowed real finding is visible (the validator is fail-open by design,
+   *  but a clean-looking drop-list is exactly where a true positive disappears without
+   *  a trace). Additive + optional: absent when the validator dropped nothing, when it
+   *  degraded (fail-open keeps everything), or from an older engine. Display-only —
+   *  dropped findings take no part in the verdict, the clamp, or the posted review. */
+  droppedFindings: z.array(ReviewFindingSchema).optional(),
 });
 
 /** The run failed before completing (could not start, or aborted). `reason` is a free

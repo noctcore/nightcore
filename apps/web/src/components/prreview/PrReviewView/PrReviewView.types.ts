@@ -1,7 +1,7 @@
 import type { PrFixState, PrSummary } from '@/lib/bridge';
 import type { ScanTarget } from '@/lib/source-ref';
 
-import type { ReviewFindingView, ReviewVerdict } from '../prreview.types';
+import type { PostReviewGate, ReviewFindingView } from '../prreview.types';
 import type { ReviewLifecycle } from '../prreview-lifecycle';
 import type { ResizablePanel } from '../prreview-resize.hooks';
 import type { PrNumberStatusView, PrStatusActions } from '../PrStatusBlock';
@@ -81,22 +81,9 @@ export interface PrReviewViewModel {
     onRestore: (findingId: string) => void;
     onGotoBoard?: () => void;
   };
-  /** Post-review human gate. */
-  post: {
-    /** The verdict whose ConfirmDialog is open, or `null`. */
-    postVerdict: ReviewVerdict | null;
-    posting: boolean;
-    postError: string | null;
-    /** The PR the armed post targets (the displayed run's PR). */
-    postPrNumber: number | null;
-    selectedCount: number;
-    /** How many selected findings carry a line anchor (become inline comments). */
-    selectedInlineCount: number;
-    /** Confirm + await the post (composes body + comments from the selection). */
-    confirmPost: () => void;
-    /** Cancel the gate. A no-op while a post is in flight. */
-    cancelPost: () => void;
-  };
+  /** Post-review human gate (pre-filled verdict + inline/body split; the human
+   *  always confirms — see {@link PostReviewGate}). */
+  post: PostReviewGate;
   /** Address-findings human gate (start a fix agent on the PR branch). */
   address: {
     /** True when the address ConfirmDialog is open. */

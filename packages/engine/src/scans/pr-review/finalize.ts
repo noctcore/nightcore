@@ -101,6 +101,15 @@ export async function finalizePrReview({
     return;
   }
 
+  // VALIDATOR-DROP VISIBILITY (slice 3): the findings the adversarial validator
+  // judged unsupported never reach the results grid, so they ride the terminal event
+  // as their own list. The validator is fail-open by design — but a clean-looking
+  // drop-list is exactly where a TRUE positive disappears without a trace, so what it
+  // dropped must be visible. Display-only: these take no part in the verdict, the
+  // clamp, or anything postable.
+  const droppedIds = new Set(validation.droppedIds);
+  const dropped = deduped.filter((finding) => droppedIds.has(finding.id));
+
   // RANK the survivors: severity desc → corroboration count desc → lens order. Every
   // finding is KEPT (no cap, no suppression, no demotion — transparency over brevity);
   // this only re-orders, so the loudest and most-corroborated read first in the verdict
@@ -159,6 +168,7 @@ export async function finalizePrReview({
     ...(clamp?.clamped === true
       ? { verdictClamped: true, clampReason: clamp.reason }
       : {}),
+    ...(dropped.length > 0 ? { droppedFindings: dropped } : {}),
   });
   deps.logger?.info(
     `[pr-review] review completed — ${survivors.length} findings across ${itemsRun.length} lenses${clamp !== undefined ? ` · verdict ${clamp.verdict}${clamp.clamped ? ' (clamped)' : ''}` : ''}, ${fmtCost(totalCost)}, ${fmtElapsed(durationMs)}`,
