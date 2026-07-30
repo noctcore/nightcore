@@ -310,6 +310,26 @@ fn the_ledger_dir_gets_a_self_ignoring_gitignore() {
     );
 }
 
+/// The quarantine-detection input: what a policy save ADDED to `denyReadPaths`.
+#[test]
+fn added_entries_returns_only_the_new_values_in_order() {
+    let before = vec!["secrets/**".to_string(), "vendor/**".to_string()];
+    let after = vec![
+        "secrets/**".to_string(),
+        "docs/injected.md".to_string(),
+        "vendor/**".to_string(),
+        "docs/injected.md".to_string(), // a duplicate in the new list
+    ];
+    assert_eq!(
+        added_entries(&before, &after),
+        vec!["docs/injected.md"],
+        "only genuinely new entries, deduped, in `after`'s order"
+    );
+    // A save that only REMOVES entries adds nothing (a removal is not a quarantine).
+    assert!(added_entries(&after, &before).is_empty());
+    assert!(added_entries(&before, &before).is_empty());
+}
+
 /// The journal records governance decisions; like `settings.json` it is owner-only.
 #[cfg(unix)]
 #[test]

@@ -210,6 +210,18 @@ pub async fn list_armed_checks(app: AppHandle) -> Result<ArmedChecksState, Strin
     .map_err(|e| format!("list armed checks failed to run: {e}"))?
 }
 
+/// Journal an arm/disarm decision against the project's governance ledger (#399).
+/// Toggling a gate on or off is a governance decision the manifest records only as
+/// its latest state; the journal is what makes the HISTORY durable.
+fn journal_check(project_path: &str, kind: &str, summary: String, name: &str) {
+    crate::store::governance::append(
+        std::path::Path::new(project_path),
+        kind,
+        &summary,
+        std::slice::from_ref(&name.to_string()),
+    );
+}
+
 /// Enable / disable one armed check by name (merge-by-key over the manifest).
 #[tauri::command]
 pub async fn set_armed_check_enabled(
@@ -220,6 +232,19 @@ pub async fn set_armed_check_enabled(
     tauri::async_runtime::spawn_blocking(move || {
         let path = active_project_path(&app)?;
         set_check_enabled(&path, &name, enabled)?;
+        journal_check(
+            &path,
+            if enabled {
+                crate::store::governance::KIND_ARM
+            } else {
+                crate::store::governance::KIND_DISARM
+            },
+            format!(
+                "{} check `{name}`",
+                if enabled { "re-armed" } else { "disabled" }
+            ),
+            &name,
+        );
         Ok(state_for(&path))
     })
     .await
@@ -232,6 +257,12 @@ pub async fn remove_armed_check(app: AppHandle, name: String) -> Result<ArmedChe
     tauri::async_runtime::spawn_blocking(move || {
         let path = active_project_path(&app)?;
         remove_check(&path, &name)?;
+        journal_check(
+            &path,
+            crate::store::governance::KIND_DISARM,
+            format!("removed check `{name}`"),
+            &name,
+        );
         Ok(state_for(&path))
     })
     .await
@@ -373,5 +404,32 @@ mod tests {
         assert!(state.last_run.is_none());
         assert!(state.checks[0].last_result.is_none());
         assert!(state.drift.is_empty());
+    }
+
+    /// Arming and disarming are governance decisions the manifest keeps only as its
+    /// latest state — the journal is what makes the history durable (#399).
+    #[test]
+    fn arm_and_disarm_land_distinct_journal_records_naming_the_check() {
+        use crate::store::governance::{read_journal, KIND_ARM, KIND_DISARM};
+
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let path = tmp.path().to_string_lossy().to_string();
+
+        journal_check(&path, KIND_ARM, "re-armed check `lint`".into(), "lint");
+        journal_check(&path, KIND_DISARM, "disabled check `lint`".into(), "lint");
+        journal_check(&path, KIND_DISARM, "removed check `arch`".into(), "arch");
+
+        let read = read_journal(tmp.path());
+        assert_eq!(read.corrupt_lines, 0);
+        assert_eq!(
+            read.events
+                .iter()
+                .map(|e| e.kind.as_str())
+                .collect::<Vec<_>>(),
+            vec![KIND_ARM, KIND_DISARM, KIND_DISARM]
+        );
+        assert_eq!(read.events[0].detail, vec!["lint"]);
+        assert_eq!(read.events[2].summary, "removed check `arch`");
+        assert_eq!(read.events[2].detail, vec!["arch"]);
     }
 }

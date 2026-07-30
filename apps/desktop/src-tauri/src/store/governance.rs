@@ -170,6 +170,23 @@ fn sanitize(value: &str, max_chars: usize) -> String {
     format!("{kept}…")
 }
 
+/// The entries `after` gained relative to `before`, in `after`'s order and deduped.
+///
+/// The one non-trivial phrasing input a caller needs: a policy save that ADDS
+/// entries to `denyReadPaths` IS the quarantine action (the engine's PreToolUse
+/// read-denial then keeps the path away from every future session — see
+/// `analysis::injection_scan`), so the journal records what the save quarantined,
+/// not just that a save happened. Pure, so it unit-tests without a filesystem.
+pub fn added_entries(before: &[String], after: &[String]) -> Vec<String> {
+    let mut added: Vec<String> = Vec::new();
+    for entry in after {
+        if !before.contains(entry) && !added.contains(entry) {
+            added.push(entry.clone());
+        }
+    }
+    added
+}
+
 /// Append one governance event. BEST-EFFORT: a failure is logged at WARN and
 /// swallowed, so journaling can never fail the action it records.
 ///
