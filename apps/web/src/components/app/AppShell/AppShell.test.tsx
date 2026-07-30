@@ -103,7 +103,9 @@ test('a History row opens its run on the owning stage', async () => {
   const screen = render(<Default />);
   await screen.getByRole('button', { name: /^History R$/ }).click();
   // The seeded run renders as a clickable row (its family badge names Insight).
-  const row = screen.getByRole('button', { name: /Insight/ });
+  // Anchored on the badge so it can't also match the row's "Delete this Insight
+  // run" action (#407 added a per-row delete).
+  const row = screen.getByRole('button', { name: /^Insight\b/ });
   await expect.element(row).toBeInTheDocument();
   (row.element() as HTMLElement).click();
   await expect
