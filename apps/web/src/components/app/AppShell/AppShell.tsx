@@ -14,6 +14,7 @@ import { useAppInfo } from '@/components/settings/SettingsView';
 import { useUpdateChecker } from '@/components/settings/UpdateChecker';
 import { WorktreesProvider } from '@/lib/worktrees-context';
 
+import { ShortcutHintButton, ShortcutSheet } from '../ShortcutSheet';
 import { Sidebar } from '../Sidebar';
 import { Splash } from '../Splash';
 import { UsageMeter } from '../UsageMeter';
@@ -22,6 +23,7 @@ import { AppShellOverlays } from './AppShellOverlays';
 import { AppShellViews, RouteFallback } from './AppShellViews';
 import { useBoardShortcuts } from './hooks/useBoardShortcuts.hooks';
 import { useNavShortcuts } from './hooks/useNavShortcuts.hooks';
+import { useShortcutSheet } from './hooks/useShortcutSheet.hooks';
 import { APP_SHELL_NAV } from './nav.constants';
 
 // Projects keeps its full-screen surface in the entry bundle boundary here; the
@@ -109,6 +111,11 @@ export function AppShell() {
     onNewTask: routing.openNewTask,
     onCloseDrawer: drawer.closeDetail,
   });
+
+  // The `?` cheatsheet (issue #404): available from EVERY shell surface — including
+  // full-screen Projects, where the nav keys are inert and the sheet says so — but not
+  // during the splash or the onboarding wizard, which own the whole window.
+  const shortcutSheet = useShortcutSheet(!showSplash && !onboarding.show);
 
   // Hold the splash until the registry has loaded — in EVERY environment, not just
   // Tauri — so the first real paint already knows whether to land on full-screen
@@ -219,6 +226,7 @@ export function AppShell() {
             version={appVersion}
             update={sidebarUpdate}
             footerSlot={<UsageMeter collapsed={collapsed} />}
+            helpSlot={<ShortcutHintButton onOpen={shortcutSheet.show} />}
             onToggleCollapsed={routing.toggleCollapsed}
             onNavigate={routing.goto}
             onGotoProjects={() => routing.goto('projects')}
@@ -281,6 +289,12 @@ export function AppShell() {
           />
         </Suspense>
       )}
+
+      <ShortcutSheet
+        open={shortcutSheet.open}
+        nav={APP_SHELL_NAV}
+        onClose={shortcutSheet.close}
+      />
 
       <AppShellOverlays confirm={confirm} editProject={editProject} projectRemoval={projectRemoval} />
     </BoardChromeProvider>

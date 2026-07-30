@@ -351,13 +351,18 @@ export function NavSidebar({
             <span className="font-mono text-2xs text-muted-foreground">{version}</span>
           )
         )}
+        {/* The `?` cheatsheet chip (issue #404) — a hotkey nobody is told about is a
+            hotkey nobody uses, so it is advertised right here in the chrome. */}
+        {slots?.help !== undefined && (
+          <span className={collapsed ? '' : 'ml-auto'}>{slots.help}</span>
+        )}
         <a
           href="https://github.com/noctcore/nightcore"
           target="_blank"
           rel="noreferrer"
           aria-label="View on GitHub"
           title="View on GitHub"
-          className={`flex items-center justify-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground ${collapsed ? '' : 'ml-auto'}`}
+          className={`flex items-center justify-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground ${collapsed || slots?.help !== undefined ? '' : 'ml-auto'}`}
         >
           <GithubIcon size={16} />
         </a>

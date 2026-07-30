@@ -17,8 +17,14 @@ export interface NavSidebarProps {
   onGotoAwaitingInput: () => void;
   /** Optional layout slots: the unified project-switcher `header` (hidden when
    *  `showHeader` is false), a `footer` rendered above the version/GitHub row (the
-   *  provider usage meter widget), and an `updatePill` (T11 "update available")
+   *  provider usage meter widget), a `help` affordance rendered IN that row (the `?`
+   *  cheatsheet chip, issue #404), and an `updatePill` (T11 "update available")
    *  rendered as the bottom-most strip. Grouped into one object so the nav's prop
    *  contract stays within the max-props budget. */
-  slots?: { header?: ReactNode; footer?: ReactNode; updatePill?: ReactNode };
+  slots?: {
+    header?: ReactNode;
+    footer?: ReactNode;
+    help?: ReactNode;
+    updatePill?: ReactNode;
+  };
 }

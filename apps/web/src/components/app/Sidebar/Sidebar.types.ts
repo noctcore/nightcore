@@ -45,6 +45,9 @@ export interface SidebarProps {
   onGotoAwaitingInput: () => void;
   /** The provider usage meter widget, rendered in the nav footer (both layouts). */
   footerSlot?: ReactNode;
+  /** The `?` keyboard-cheatsheet affordance (issue #404), rendered in the nav's
+   *  version/GitHub row so the shortcut sheet is discoverable without knowing the key. */
+  helpSlot?: ReactNode;
   /** T11: a ready app update surfaced from the (already-running) startup probe —
    *  `version` is the available version, `onGoto` jumps to Settings → About where
    *  the idle-gated install lives. `null`/absent ⇒ up to date, no pill. */
