@@ -12,6 +12,8 @@
  * factory uses (never a silent wrong backend; the id is already shape-validated by
  * `ProviderIdSchema` and defaulted to `claude` in `ConfigSchema`).
  */
+import fs from 'node:fs';
+
 import type { Config } from '@nightcore/contracts';
 import type { Logger } from '@nightcore/shared';
 
@@ -20,6 +22,50 @@ import { CLAUDE_PROVIDER_ID } from './claude/capabilities.js';
 import { ClaudeAgentProvider } from './claude/claude-agent-provider.js';
 import { CODEX_PROVIDER_ID } from './codex/capabilities.js';
 import { CodexAgentProvider } from './codex/codex-agent-provider.js';
+import { REPLAY_PROVIDER_ID } from './replay/capabilities.js';
+import { ReplayAgentProvider } from './replay/replay-agent-provider.js';
+
+/**
+ * Opt-in switch for the E2E ladder's replay provider (issue #406): the path of a
+ * directory of NDJSON transcripts. When set, EVERY session in this process is served
+ * by {@link ReplayAgentProvider} instead of a real agent — no credential, no network,
+ * no spend, a bit-for-bit reproducible event stream.
+ *
+ * It overrides `config.provider` and the per-session `providerId` on purpose. The
+ * Rust core threads the user's configured provider down on every spawn
+ * (`NIGHTCORE_PROVIDER`), so honoring that under a replay run would put the REAL
+ * Claude provider back in the loop for exactly the runs the ladder is trying to keep
+ * offline. One process is either replaying or it is not.
+ */
+export const REPLAY_TRANSCRIPT_DIR_ENV = 'NIGHTCORE_E2E_REPLAY';
+
+/**
+ * Build the replay provider when the ladder asked for it, else `undefined`.
+ *
+ * Fail-LOUD, never fail-open: a set-but-unusable path THROWS. The alternative —
+ * degrading to the real provider — is the worst outcome available, because it would
+ * turn a CI job that believes it is offline into one that quietly reaches for a live
+ * account, and a ring that believes it replayed a fixture into one that replayed
+ * nothing. An unset variable is the only silent path, and it is the production path.
+ */
+function replayProviderFromEnv(logger?: Logger): AgentProvider | undefined {
+  const dir = process.env[REPLAY_TRANSCRIPT_DIR_ENV]?.trim();
+  if (dir === undefined || dir.length === 0) return undefined;
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+    throw new Error(
+      `${REPLAY_TRANSCRIPT_DIR_ENV} is set to '${dir}', which is not a readable ` +
+        'directory. Point it at the transcript fixtures ' +
+        '(apps/desktop/src-tauri/src/e2e/transcript_replay/fixtures) or unset it.',
+    );
+  }
+  // WARN, not info: a process running fake agents must say so loudly in the log a
+  // human reads when a run "completed" without doing anything.
+  logger?.warn(
+    'E2E REPLAY MODE: every session in this process replays a checked-in transcript — no real agent will run',
+    { transcripts: dir },
+  );
+  return new ReplayAgentProvider(dir, logger);
+}
 
 export interface ProviderRegistry {
   forSession(providerId?: string): AgentProvider;
@@ -56,6 +102,11 @@ export function buildProvider(
   opts: { apiKeyFallback: boolean },
   logger?: Logger,
 ): AgentProvider {
+  // The ladder's replay provider preempts config selection entirely — see
+  // REPLAY_TRANSCRIPT_DIR_ENV for why honoring `config.provider` under a replay run
+  // would defeat the point.
+  const replay = replayProviderFromEnv(logger);
+  if (replay !== undefined) return replay;
   switch (config.provider) {
     case CODEX_PROVIDER_ID:
       return new CodexAgentProvider(logger);
@@ -73,6 +124,16 @@ export function buildProviderRegistry(
   logger?: Logger,
   overrides: Record<string, AgentProvider> = {},
 ): ProviderRegistry {
+  // Replay mode replaces the WHOLE registry, not one entry: the Rust core threads the
+  // user's configured provider id down on every spawn, so a registry that still held a
+  // real provider would serve it to any session that named one — the one thing a
+  // zero-credential, zero-spend CI ring must never do. Every lookup lands on replay.
+  const replay = replayProviderFromEnv(logger);
+  if (replay !== undefined) {
+    return new StaticProviderRegistry(REPLAY_PROVIDER_ID, {
+      [REPLAY_PROVIDER_ID]: replay,
+    });
+  }
   const providers: Record<string, AgentProvider> = {
     [CLAUDE_PROVIDER_ID]: new ClaudeAgentProvider(config, opts, logger),
     [CODEX_PROVIDER_ID]: new CodexAgentProvider(logger),

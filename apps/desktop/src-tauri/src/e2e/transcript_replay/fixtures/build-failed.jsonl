@@ -2,4 +2,4 @@
 {"type":"assistant-delta","sessionId":11,"text":"Let me explore the repository before making the change.","partial":true}
 {"type":"tool-use-requested","sessionId":11,"toolUseId":"tu-1","toolName":"Read","input":{"file_path":"package.json"}}
 {"type":"tool-result","sessionId":11,"toolUseId":"tu-1","isError":false,"content":"{\n  \"name\": \"scratch\"\n}"}
-{"type":"session-failed","sessionId":11,"reason":"max-turns","message":"session stopped: reached the configured turn ceiling (1)","detail":{"category":"resource-exhausted","retriable":false}}
+{"type":"session-failed","sessionId":11,"reason":"max-turns","message":"session stopped: reached the configured turn ceiling (1)","detail":{"category":"resource-exhausted","message":"session stopped: reached the configured turn ceiling (1)","retriable":false}}
