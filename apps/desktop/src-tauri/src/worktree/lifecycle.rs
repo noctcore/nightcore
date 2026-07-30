@@ -340,13 +340,19 @@ pub fn list_terminal_worktree_slugs(project_path: &Path) -> Vec<String> {
 }
 
 /// Startup reconciliation: remove worktrees whose task id is no longer live, then
-/// `git worktree prune` to clear stale admin files. `live_task_ids` is the current
-/// `TaskStore` id set. Returns the ids it pruned. Errors on individual removes are
-/// logged and skipped so one bad worktree can't block startup.
-pub fn reconcile(project_path: &Path, live_task_ids: &[String]) -> Vec<String> {
+/// `git worktree prune` to clear stale admin files. Returns the ids it pruned. Errors
+/// on individual removes are logged and skipped so one bad worktree can't block
+/// startup.
+///
+/// `is_live` is a PREDICATE, not a snapshot (#407): it is evaluated immediately before
+/// each removal, so a task created (and given a worktree) while the sweep is running
+/// can never be pruned by a stale id list. That matters now the boot sweep runs
+/// asynchronously beside a live UI, and it also closes the same window on the explicit
+/// `refresh_worktrees` path, which always ran concurrently with the user.
+pub fn reconcile(project_path: &Path, is_live: &dyn Fn(&str) -> bool) -> Vec<String> {
     let mut pruned = Vec::new();
     for id in list_worktree_task_ids(project_path) {
-        if !live_task_ids.iter().any(|live| live == &id) {
+        if !is_live(&id) {
             match remove(project_path, &id) {
                 Ok(()) => pruned.push(id),
                 Err(e) => {

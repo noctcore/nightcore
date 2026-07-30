@@ -277,23 +277,14 @@ pub fn run() {
             // verbosity live on a `logLevel` patch (see `commands::settings`).
             app.manage(log_reload);
 
-            // Startup reconciliation: prune orphaned worktrees from the active
-            // project whose tasks no longer exist (best-effort, never blocks).
-            orchestration::coordinator::reconcile_worktrees(&app.handle().clone());
-            // …then clear ghost worktree POINTERS (a task with a stale `branch`
-            // chip but no worktree dir left on disk) so a merged/discarded/removed
-            // worktree can't strand a dead tab on the board across a restart.
-            // Pointer-clear only (no merged-worktree pruning at boot — that stays
-            // an explicit user action via `refresh_worktrees`).
-            orchestration::coordinator::reconcile_stale_worktree_state(
-                &app.handle().clone(),
-                false,
-            );
-            // Then recover crash-stranded tasks: an `InProgress`/`Verifying` task
-            // whose run died with the process is re-queued (or re-reviewed) so the
-            // auto-loop can pick it up again instead of stranding it forever.
-            orchestration::coordinator::reconcile_tasks(&app.handle().clone());
-            boot.phase("reconcile");
+            // Startup reconciliation — prune orphaned worktrees, clear ghost worktree
+            // pointers, requeue crash-stranded tasks. Moved OFF this hook (#407): all
+            // three shell out to git and walk/re-persist the task store, hundreds of ms
+            // of blocking work on the path to the first window, with no first-paint
+            // dependency. They now run in ORDER inside one blocking-pool sweep while the
+            // window comes up; the board's own `list_tasks` reseed converges the view.
+            orchestration::coordinator::spawn_boot_reconcile(&app.handle().clone());
+            boot.phase("reconcile_spawn");
 
             // Arm the usage poll loop iff the meter is already opted-in (issue #121).
             // The loop reads OAuth credentials + polls each provider on a 10-min

@@ -1,9 +1,11 @@
 //! Task-state marking, startup worktree pruning, and boot/crash reconciliation.
 //!
 //! The marking helpers ([`mark_task_in_progress`], [`fail_task`]) are shared by the
-//! launch sequence. The reconcilers ([`reconcile_worktrees`], [`reconcile_tasks`]) run
-//! synchronously in the Tauri setup hook to prune orphaned worktrees and recover
-//! tasks a crash stranded mid-run. A finished task's worktree is NOT torn down here —
+//! launch sequence. The reconcilers ([`reconcile_worktrees`],
+//! [`reconcile_stale_worktree_state`], [`reconcile_tasks`]) prune orphaned worktrees,
+//! clear ghost worktree pointers, and recover tasks a crash stranded mid-run; at boot
+//! they run together as ONE background sweep ([`spawn_boot_reconcile`]) rather than
+//! inline in the Tauri setup hook. A finished task's worktree is NOT torn down here —
 //! it is kept for review and removed only on merge (`workflow::merge`) or discard.
 
 use std::path::PathBuf;
@@ -56,16 +58,65 @@ pub(crate) fn fail_task(app: &AppHandle, task_id: &str, message: &str) {
     }
 }
 
+/// Run the whole boot reconciliation sweep OFF the Tauri setup hook (#407).
+///
+/// The three sweeps used to run synchronously inside `setup`, which is on the path to
+/// the first window: they shell out to `git worktree list/prune`, `git status` and
+/// `git merge-base`, then walk and re-persist the task store — hundreds of
+/// milliseconds of blocking work on a big repo before ANY pixel is drawn. They are
+/// pure catch-up work with no first-paint dependency, so they now run on the blocking
+/// pool while the window comes up.
+///
+/// Two properties make that safe rather than merely faster:
+///  * every reconciler resolves its state with `try_state` (never `state`), so a
+///    sweep racing app teardown logs and returns instead of panicking on the pool;
+///  * `worktree::reconcile` takes a liveness PREDICATE, so a task created while the
+///    sweep is in flight can never be pruned by a stale snapshot.
+///
+/// Ordering inside the sweep is preserved (worktree prune → stale pointers → stranded
+/// tasks) by running all three in ONE spawned task. Each sweep emits `nc:task` per
+/// reconciled task, exactly as before — and the board's own `list_tasks` reseed on
+/// mount still converges the view whether or not the web was listening yet.
+pub fn spawn_boot_reconcile(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let started = std::time::Instant::now();
+        reconcile_worktrees(&app);
+        // …then clear ghost worktree POINTERS (a task with a stale `branch` chip but
+        // no worktree dir left on disk) so a merged/discarded/removed worktree can't
+        // strand a dead tab on the board across a restart. Pointer-clear only (no
+        // merged-worktree pruning at boot — that stays an explicit user action via
+        // `refresh_worktrees`).
+        reconcile_stale_worktree_state(&app, false);
+        // Then recover crash-stranded tasks: an `InProgress`/`Verifying` task whose
+        // run died with the process is re-queued (or re-reviewed) so the auto-loop can
+        // pick it up again instead of stranding it forever.
+        reconcile_tasks(&app);
+        tracing::info!(
+            target: "nightcore::boot",
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            "boot reconciliation swept off the setup hook"
+        );
+    });
+}
+
 /// Startup reconciliation: prune orphaned worktrees (no live task) for the active
 /// project. Safe no-op when there's no active project.
 pub fn reconcile_worktrees(app: &AppHandle) {
-    let projects = app.state::<ProjectStore>();
+    let Some(projects) = app.try_state::<ProjectStore>() else {
+        return;
+    };
     let Some(project) = projects.active() else {
         return;
     };
-    let store = app.state::<TaskStore>();
-    let live: Vec<String> = store.list().into_iter().map(|t| t.id.clone()).collect();
-    let pruned = worktree::reconcile(&PathBuf::from(&project.path), &live);
+    let Some(store) = app.try_state::<TaskStore>() else {
+        return;
+    };
+    // A PREDICATE, re-read per candidate, not a snapshot: the sweep runs beside a live
+    // UI (both at boot and on an explicit refresh), so a task that appears mid-sweep
+    // must count as live the moment it exists — otherwise its fresh worktree is pruned
+    // out from under it.
+    let pruned = worktree::reconcile(&PathBuf::from(&project.path), &|id| store.get(id).is_some());
     if !pruned.is_empty() {
         tracing::info!(target: "nightcore", pruned = pruned.len(), "worktree reconcile pruned orphans");
     }
@@ -92,11 +143,18 @@ pub fn reconcile_worktrees(app: &AppHandle) {
 ///
 /// Emits `nc:task` per reconciled task. Returns how many task pointers it cleared.
 pub fn reconcile_stale_worktree_state(app: &AppHandle, prune_merged: bool) -> usize {
-    let Some(project) = app.state::<ProjectStore>().active() else {
+    // `try_state` (not `state`): the boot sweep runs on the blocking pool, where a
+    // teardown race must log-and-return rather than panic.
+    let Some(projects) = app.try_state::<ProjectStore>() else {
+        return 0;
+    };
+    let Some(project) = projects.active() else {
         return 0;
     };
     let project_path = PathBuf::from(&project.path);
-    let store = app.state::<TaskStore>();
+    let Some(store) = app.try_state::<TaskStore>() else {
+        return 0;
+    };
     let orch = app.try_state::<super::Orchestrator>();
     let base = worktree::base_branch(&project_path);
     let mut cleared = 0usize;
@@ -203,12 +261,17 @@ pub enum Recovery {
 ///
 /// **`Verifying` path — reset, not re-dispatch.** The contract prefers
 /// re-dispatching the reviewer over the retained worktree, but boot reconciliation
-/// runs synchronously in the Tauri setup hook and the sidecar is spawned lazily
-/// (first `run_task`/tick), so there is no live session to dispatch into here.
-/// Per the contract's fallback, `Verifying` is reset to `Ready` exactly like
-/// `InProgress`; the next run re-builds and re-reviews from scratch (RESUME is P1).
+/// runs as a background sweep (see [`spawn_boot_reconcile`]) and the sidecar is
+/// spawned lazily (first `run_task`/tick), so there is no live session to dispatch
+/// into here. Per the contract's fallback, `Verifying` is reset to `Ready` exactly
+/// like `InProgress`; the next run re-builds and re-reviews from scratch (RESUME is P1).
+///
+/// Resolves the store with `try_state` (#407) because the sweep runs on the blocking
+/// pool, where a teardown race must return rather than panic.
 pub fn reconcile_tasks(app: &AppHandle) {
-    let store = app.state::<TaskStore>();
+    let Some(store) = app.try_state::<TaskStore>() else {
+        return;
+    };
     let mut requeued = 0usize;
     for task in store.list() {
         let Some((status, _)) = reconcile_task_inner(&task.status) else {

@@ -57,8 +57,9 @@ fn allocate_remove_and_reconcile_round_trip() {
     ids.sort();
     assert_eq!(ids, vec!["task-1".to_string(), "task-2".to_string()]);
 
-    // Reconcile prunes the worktree whose task is no longer live (task-2 gone).
-    let pruned = reconcile(&repo, &["task-1".to_string()]);
+    // Reconcile prunes the worktree whose task is no longer live (task-2 gone). The
+    // liveness argument is a predicate, evaluated per candidate (#407).
+    let pruned = reconcile(&repo, &|id| id == "task-1");
     assert_eq!(pruned, vec!["task-2".to_string()]);
     assert_eq!(list_worktree_task_ids(&repo), vec!["task-1".to_string()]);
 
@@ -66,6 +67,41 @@ fn allocate_remove_and_reconcile_round_trip() {
     remove(&repo, "task-1").expect("remove");
     assert!(list_worktree_task_ids(&repo).is_empty());
     remove(&repo, "task-1").expect("remove is idempotent");
+}
+
+#[test]
+fn reconcile_consults_liveness_per_candidate_not_a_snapshot() {
+    // #407: the boot sweep now runs on the blocking pool BESIDE a live UI, so a task
+    // created (and given a worktree) mid-sweep must not be pruned by a stale id list.
+    // The liveness argument is therefore a predicate evaluated per candidate — proven
+    // here by a task that only becomes live AFTER the sweep starts: it survives.
+    let Some((_tmp, repo)) = temp_repo() else {
+        return; // git unavailable
+    };
+    allocate(&repo, "task-old").expect("allocate old");
+    allocate(&repo, "task-new").expect("allocate new");
+
+    let asked = std::cell::RefCell::new(Vec::<String>::new());
+    let pruned = reconcile(&repo, &|id| {
+        asked.borrow_mut().push(id.to_string());
+        // "task-new" was created after the sweep began: a snapshot taken before it
+        // existed would have pruned it. The predicate sees the CURRENT truth.
+        id == "task-new"
+    });
+
+    assert_eq!(pruned, vec!["task-old".to_string()], "only the orphan goes");
+    assert_eq!(
+        list_worktree_task_ids(&repo),
+        vec!["task-new".to_string()],
+        "the mid-sweep arrival survives"
+    );
+    let mut asked = asked.into_inner();
+    asked.sort();
+    assert_eq!(
+        asked,
+        vec!["task-new".to_string(), "task-old".to_string()],
+        "liveness is asked once per candidate worktree"
+    );
 }
 
 #[test]
@@ -105,7 +141,7 @@ fn allocate_terminal_creates_under_a_separate_base_and_survives_reconcile() {
 
     // THE RECONCILE TRAP: a startup reconcile with NO live tasks must not touch the
     // terminal worktree (it is outside the swept task base).
-    let pruned = reconcile(&repo, &[]);
+    let pruned = reconcile(&repo, &|_| false);
     assert!(
         pruned.is_empty(),
         "reconcile prunes only task worktrees, got {pruned:?}"
