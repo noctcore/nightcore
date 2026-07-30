@@ -47,8 +47,14 @@
 //! verification verdict handlers, command emission) is covered by:
 //!   - the manual UI dogfood checklist (`docs/testing/2026-07-11-manual-ui-dogfood-checklist.md`),
 //!   - the `#[ignore]`-gated real-`gh` harness (`bun run dogfood:gh`, `crate::e2e_gh`),
-//!   - and E2E ladder rings 2–3 (Linux `tauri-driver` golden path + fake-provider
-//!     `dogfood:engine` in CI), per the v0.4 roadmap.
+//!   - and **rings 2–3 of the ladder, which now exist** (issue #406, shipped): ring 3
+//!     (`bun run e2e:ring3`) drives the REAL Bun sidecar child over its REAL NDJSON
+//!     protocol with a checked-in transcript standing in for the model — the process
+//!     boundary this ring deliberately does not cross — and ring 2 (`bun run e2e:ring2`,
+//!     Linux CI only) drives the REAL built app through `tauri-driver`/WebDriver,
+//!     covering the window + webview + IPC layer no Rust test can reach. Both are
+//!     documented in `docs/testing/2026-07-30-e2e-ladder.md`; both replay the same
+//!     `transcript_replay/fixtures/` this module owns.
 #![cfg(test)]
 
 mod boot_state;

@@ -1,0 +1,175 @@
+# E2E ladder RING 2 (issue #406) — a real WebDriver driving the real desktop app.
+#
+# WHY ITS OWN WORKFLOW, AND WHY IT IS NOT (YET) A PER-PR REQUIRED CHECK
+# ---------------------------------------------------------------------
+# Ring 3 rides `ci.yml`'s already-required bun job because it costs ~2 seconds. This one
+# needs its own: it BUILDS the app (the whole Tauri dependency tree, plus the web bundle
+# and the sidecar) before it can drive anything.
+#
+# MEASURED cost, not estimated (run 30561980006, reported "No cache found" — a genuinely
+# cold cargo cache): whole job 4m54s, of which the app build is 3m16s, tauri-driver
+# 18s, apt 23s, and THE RING ITSELF 11 SECONDS. That is comparable to the required
+# `vitest browser coverage` (~3 min) and `cargo test · clippy · fmt` (~4 min) jobs, so —
+# contrary to the first draft of this comment — COST IS NOT THE REASON IT ISN'T
+# REQUIRED. Say the real reason instead:
+#
+#   its stability is unproven. This is a browser/window-driving job on a headless
+#   runner — historically the flakiest class there is — with real environmental
+#   dependencies (Xvfb, WebKitGTK, no GPU, a tauri-driver version). It took four CI
+#   iterations to get its own self-test honest. A brand-new job of that shape blocking
+#   every merge on day one is a bad trade; the evidence to promote it doesn't exist yet.
+#
+# The other failure mode is worse though: a job nobody must pass rots. So this is NOT
+# `continue-on-error` and it is NOT advisory. It runs:
+#
+#   * on every push to main    — a break lands as a RED RUN ON MAIN within the hour,
+#                                which is a thing someone has to fix, not a badge
+#                                nobody reads;
+#   * nightly                  — catches rot from toolchain/runner-image drift on a
+#                                repo that does not merge every day;
+#   * on demand                — `workflow_dispatch`, for someone touching the shell;
+#   * on a labelled PR         — add the `e2e: ring2` label and it runs pre-merge, so a
+#                                risky change to the app shell, the Tauri config, or
+#                                the web boot path can be gated deliberately.
+#
+# PROMOTION CRITERION (write it down or it never happens): 20 consecutive green runs
+# with no re-run ⇒ move it to `pull_request` unconditionally and mark it required. The
+# wall-clock bar is already met, so stability is the only remaining question — which is
+# exactly what push-to-main + nightly is here to measure.
+#
+# WHY LINUX ONLY: macOS's WKWebView exposes no CDP and no WebDriver endpoint — that
+# constraint is why every other tier of this ladder is what it is. Linux's WebKitGTK
+# ships WebKitWebDriver, which tauri-driver fronts, so this is the one platform where
+# CI can drive the actual Tauri window. There is no Windows equivalent wired here.
+name: e2e ring 2
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  schedule:
+    # 03:30 UTC daily — off the peak-hours runner queue.
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ring2:
+    name: tauri-driver golden path (Linux)
+    # On a PR this only runs when the author asked for it with the label; on
+    # push/schedule/dispatch it always runs. Expressed as a job-level `if` rather than
+    # a separate workflow so there is ONE definition of the ring to keep working.
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'e2e: ring2')
+    runs-on: ubuntu-latest
+    # A cold-cache run measures ~5 min end to end. The ceiling is sized well above that
+    # for the real worst case — a toolchain bump forcing a full recompile of every
+    # dependency — not for the observed path. If a legitimate cold build ever trips it,
+    # bump it once rather than removing it.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      # Pinned to match apps/desktop/src-tauri/rust-toolchain.toml, exactly as
+      # ci.yml's rust jobs are — a floating stable would make this ring's failures
+      # ambiguous between "the app broke" and "the toolchain moved".
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.94.1"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+          # Its own slot: this job builds a `tauri build` profile and additionally
+          # caches the `tauri-driver` binary in ~/.cargo/bin, so sharing a key with
+          # rust-checks would make the two evict each other every run.
+          key: ring2
+          # rust-cache skips the save when the job fails. That default is wrong HERE:
+          # this job's failure mode is the LAST step (the ring), long after a perfectly
+          # good build — so discarding the cache makes every red iteration and every
+          # re-run pay a full cold build again. Observed: two consecutive cold builds
+          # while fixing the ring's self-test.
+          cache-on-failure: true
+      # Same Tauri system libraries + apt-archive cache as ci.yml's rust jobs, PLUS the
+      # two this ring adds: `webkit2gtk-driver` ships the WebKitWebDriver binary
+      # tauri-driver drives, and `xvfb` gives the app a display on a headless runner.
+      - name: Cache Tauri apt archives
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/nightcore-apt/tauri
+          key: apt-tauri-${{ runner.os }}-v1
+          restore-keys: apt-tauri-${{ runner.os }}-
+      - name: Install Tauri + WebDriver system dependencies
+        run: |
+          store="$HOME/.cache/nightcore-apt/tauri"
+          mkdir -p "$store"
+          if compgen -G "$store/*.deb" >/dev/null; then
+            sudo cp -n "$store"/*.deb /var/cache/apt/archives/ || true
+          fi
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            webkit2gtk-driver \
+            xvfb
+          cp -u /var/cache/apt/archives/*.deb "$store"/ 2>/dev/null || true
+      - run: bun install --frozen-lockfile
+      # A fresh checkout must BUILD the workspace dep chain before the web bundle can
+      # compile: apps/web resolves @nightcore/contracts + session-fold through their
+      # package.json `exports` (`./dist/index.js`), so without this `tauri build`'s
+      # `beforeBuildCommand` dies on `Cannot find module '@nightcore/contracts'`. Same
+      # step, same reason, as ci.yml's web-coverage job. (It failed exactly this way
+      # the first time this workflow ran — kept as a step rather than a comment.)
+      - run: bunx tsc -b apps/web
+      # tauri-driver is not in taiki-e/install-action's registry, so it compiles here —
+      # ~1 min cold, then restored from the rust-cache bin slot above. Pinned to the v2
+      # line (`^2`) rather than floating latest: a v3 with a changed capability shape
+      # would break this ring for a reason unrelated to the app. `--locked` uses the
+      # crate's own lockfile so the build is reproducible.
+      - name: Install tauri-driver
+        run: cargo install tauri-driver --version "^2" --locked
+      # Builds the web bundle + the sidecar externalBin (via `beforeBuildCommand`) and
+      # then the Rust binary. `--debug` because this ring needs a WORKING binary, not a
+      # fast one, and a debug build compiles far quicker. `--no-bundle` skips deb/rpm/
+      # AppImage packaging entirely: it is minutes of work this ring does not use, and
+      # AppImage tooling fetches from the network mid-build — a flake source with no
+      # upside here. The Tauri CLI runs cargo with the crate dir as its cwd, so the
+      # `.cargo/config.toml` the ts-rs export tests depend on is honored (#422).
+      - name: Build the desktop app (debug, unbundled)
+        run: bunx tauri build --debug --no-bundle
+        working-directory: apps/desktop
+      # The ring itself. `xvfb-run -a` gives WebKitGTK a display; everything else
+      # (throwaway XDG dirs, the seeded board, the replay provider) is set up by the
+      # script so it behaves identically for a human running it on a Linux box.
+      #
+      # The script's SELF-TEST runs by default: after the battery passes it destroys the
+      # live app's DOM and then its IPC bridge and REQUIRES every corresponding check to
+      # fail. A check that survives its own perturbation reds the job. That is what
+      # keeps this from becoming the fifth vacuous check in this repo (#422).
+      - name: Run ring 2
+        run: xvfb-run -a bun run e2e:ring2
+        env:
+          # PRECAUTIONARY, not a fix for anything observed. WebKitGTK 2.4x renders
+          # through DMA-BUF by default, which wants a GPU/DRM device a GitHub runner
+          # does not have; on some images that yields a black window. In practice the
+          # ring rendered 436 DOM nodes here WITHOUT these set, alongside a benign
+          # `libEGL: DRI3 error: Could not get DRI3 device` warning — WebKit simply
+          # falls back to software rendering, which is all this ring needs. Both are
+          # rendering-path switches, so nothing asserted is weakened by pinning the
+          # fallback explicitly rather than relying on the default to keep degrading
+          # gracefully. If the ring ever fails with an empty #root and a clean app log,
+          # check these are still honored before suspecting the app.
+          WEBKIT_DISABLE_DMABUF_RENDERER: '1'
+          WEBKIT_DISABLE_COMPOSITING_MODE: '1'

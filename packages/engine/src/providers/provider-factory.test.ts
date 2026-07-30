@@ -5,7 +5,11 @@ import { describe, expect, test } from 'bun:test';
 
 import { type Config, ConfigSchema } from '@nightcore/contracts';
 
-import { buildProvider, buildProviderRegistry } from './provider-factory.js';
+import {
+  buildProvider,
+  buildProviderRegistry,
+  REPLAY_TRANSCRIPT_DIR_ENV,
+} from './provider-factory.js';
 
 /** A resolved config with a chosen provider (everything else defaulted). */
 function configFor(provider: string): Config {
@@ -97,5 +101,83 @@ describe('orchestration never branches on the provider id', () => {
     // AgentProvider; reading `config.provider` itself would reopen a branch point.
     expect(codeLines).not.toContain('config.provider');
     expect(codeLines).not.toContain('.provider ===');
+  });
+});
+
+/**
+ * The E2E ladder's replay switch (issue #406). These tests are the gate that keeps a
+ * test-only provider from ever becoming reachable in a shipped build: the variable
+ * must be BOTH set AND point at a usable directory, and when it is not set nothing
+ * about provider selection may change.
+ */
+describe(`${REPLAY_TRANSCRIPT_DIR_ENV} (E2E ladder replay mode)`, () => {
+  const FIXTURES = join(
+    import.meta.dir,
+    '../../../../apps/desktop/src-tauri/src/e2e/transcript_replay/fixtures',
+  );
+
+  /** Run `fn` with the env var set to `value` (absent when undefined), always
+   *  restoring the prior value — a leaked var would silently fake every later test. */
+  function withEnv<T>(value: string | undefined, fn: () => T): T {
+    const prior = process.env[REPLAY_TRANSCRIPT_DIR_ENV];
+    if (value === undefined) delete process.env[REPLAY_TRANSCRIPT_DIR_ENV];
+    else process.env[REPLAY_TRANSCRIPT_DIR_ENV] = value;
+    try {
+      return fn();
+    } finally {
+      if (prior === undefined) delete process.env[REPLAY_TRANSCRIPT_DIR_ENV];
+      else process.env[REPLAY_TRANSCRIPT_DIR_ENV] = prior;
+    }
+  }
+
+  test('unset ⇒ selection is untouched (the production path)', () => {
+    withEnv(undefined, () => {
+      expect(buildProvider(configFor('claude'), OPTS).capabilities().id).toBe('claude');
+      expect(
+        buildProviderRegistry(configFor('claude'), OPTS)
+          .all()
+          .map((p) => p.capabilities().id)
+          .sort(),
+      ).toEqual(['claude', 'codex']);
+    });
+  });
+
+  test('empty/whitespace ⇒ also the production path (never a half-armed switch)', () => {
+    withEnv('   ', () => {
+      expect(buildProvider(configFor('claude'), OPTS).capabilities().id).toBe('claude');
+    });
+  });
+
+  test('set to a real transcript dir ⇒ buildProvider returns the replay provider', () => {
+    withEnv(FIXTURES, () => {
+      expect(buildProvider(configFor('claude'), OPTS).capabilities().id).toBe('replay');
+      expect(buildProvider(configFor('codex'), OPTS).capabilities().id).toBe('replay');
+    });
+  });
+
+  test('set ⇒ the registry serves replay for EVERY provider id, including a named one', () => {
+    // The Rust core threads the user's configured id down on every spawn. If a named
+    // `providerId` could still reach Claude, a CI ring that believes it is offline
+    // would quietly hit a live account.
+    withEnv(FIXTURES, () => {
+      const registry = buildProviderRegistry(configFor('claude'), OPTS);
+      for (const id of [undefined, 'claude', 'codex', 'gemini']) {
+        expect(registry.forSession(id).capabilities().id).toBe('replay');
+      }
+      expect(registry.all().map((p) => p.capabilities().id)).toEqual(['replay']);
+    });
+  });
+
+  test('set to a non-directory ⇒ THROWS rather than degrading to a real provider', () => {
+    // Fail-loud is the whole point: degrading here would turn "my ring replayed a
+    // fixture" into "my ring called a live model" without a word in the log.
+    withEnv('/nonexistent/nightcore-replay-fixtures', () => {
+      expect(() => buildProvider(configFor('claude'), OPTS)).toThrow(
+        /not a readable directory/,
+      );
+      expect(() => buildProviderRegistry(configFor('claude'), OPTS)).toThrow(
+        /not a readable directory/,
+      );
+    });
   });
 });
