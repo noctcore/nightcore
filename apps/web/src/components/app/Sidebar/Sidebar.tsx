@@ -53,6 +53,7 @@ export function Sidebar({
   onGotoProjects,
   onGotoAwaitingInput,
   footerSlot,
+  helpSlot,
   update,
 }: SidebarProps) {
   const navProps = {
@@ -81,7 +82,7 @@ export function Sidebar({
         <NavSidebar
           {...navProps}
           showHeader={false}
-          slots={{ footer: footerSlot, updatePill }}
+          slots={{ footer: footerSlot, help: helpSlot, updatePill }}
         />
       </>
     );
@@ -94,6 +95,7 @@ export function Sidebar({
       slots={{
         header: <SidebarUnified switcher={switcher} collapsed={collapsed} />,
         footer: footerSlot,
+        help: helpSlot,
         updatePill,
       }}
     />

@@ -1,8 +1,15 @@
 import type { OnboardingPrerequisites } from '@/lib/bridge';
 
-export type OnboardingStep = 'welcome' | 'environment' | 'project' | 'ready';
+export type OnboardingStep = 'welcome' | 'stages' | 'environment' | 'project' | 'ready';
 
 export type GitState = 'unknown' | 'checking' | 'valid' | 'invalid';
+
+/** Where the wizard hands the user off when it finishes. `board` is the default
+ *  (the project's Kanban board); `scan` lands on the Understand stage so the
+ *  optional first-scan CTA actually starts them in the lifecycle instead of just
+ *  describing it. Deliberately NOT the shell's `AppView` union — onboarding names
+ *  an INTENT and the shell maps it to a route. */
+export type OnboardingLanding = 'board' | 'scan';
 
 export interface OnboardingProps {
   folder: string | null;
@@ -15,7 +22,9 @@ export interface OnboardingProps {
   onInitGit?: () => void | Promise<void>;
   onCreateProject: (name: string) => Promise<void>;
   onSkip: () => void;
-  onComplete: () => void;
+  /** Leave the wizard for the app. The landing tells the shell WHERE to hand off —
+   *  the board, or the Understand stage when the user took the first-scan CTA. */
+  onComplete: (landing: OnboardingLanding) => void;
 }
 
 export interface OnboardingViewState {

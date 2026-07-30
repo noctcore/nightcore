@@ -4,6 +4,7 @@ import type { OnboardingStep } from './Onboarding.types';
 
 const STEP_META: Array<{ id: OnboardingStep; label: string; sub: string }> = [
   { id: 'welcome', label: 'Welcome', sub: 'studio primer' },
+  { id: 'stages', label: 'Stages', sub: 'how work moves' },
   { id: 'environment', label: 'Environment', sub: 'local CLIs' },
   { id: 'project', label: 'Project', sub: 'first repo' },
   { id: 'ready', label: 'Ready', sub: 'launch' },

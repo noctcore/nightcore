@@ -79,6 +79,63 @@ test('shows a static Global indicator (no scope toggle) when no project is activ
   ).toBeNull();
 });
 
+test('offers a scope choice only on pages that really have one', async () => {
+  const screen = render(<Global />);
+  const scopeToggle = '[role="radiogroup"][aria-label="Settings scope"]';
+
+  // Models writes `defaultModel` etc., all fields of the Rust override shape.
+  expect(screen.container.querySelector(scopeToggle)).not.toBeNull();
+
+  // Notifications writes only global fields, so there is nothing to scope — derived
+  // from the shape, not from a hand-kept page list (issue #404).
+  await screen.getByRole('button', { name: /notifications/i }).click();
+  expect(screen.container.querySelector(scopeToggle)).toBeNull();
+
+  // Permissions writes `permissionMode` (overridable) beside global-only governance
+  // toggles, so the choice comes back.
+  await screen.getByRole('button', { name: /permissions/i }).click();
+  expect(screen.container.querySelector(scopeToggle)).not.toBeNull();
+});
+
+test('a scope badge jumps to where the setting actually applies', async () => {
+  const screen = render(<Global />);
+  await screen.getByRole('button', { name: /permissions/i }).click();
+  // `permissionMode` is overridable, so its badge IS the deep-link: it switches the
+  // tab to the project whose value it would edit.
+  await screen
+    .getByRole('button', { name: 'Global default — set this for nightcore only' })
+    .click();
+  await expect
+    .element(screen.getByRole('radio', { name: 'nightcore' }))
+    .toHaveAttribute('aria-checked', 'true');
+
+  // …and once there, the badge names the project and links back to the global default.
+  await expect
+    .element(
+      screen.getByRole('button', {
+        name: 'Applies to nightcore only — edit the global default instead',
+      }),
+    )
+    .toBeInTheDocument();
+  // The global-only governance toggles on the same page still admit they are global.
+  await expect.element(screen.getByText('Global', { exact: true }).first()).toBeVisible();
+});
+
+test('points at the relocated YOLO toggle from both of its old homes', async () => {
+  const screen = render(<Global />);
+  for (const page of [/^interface$/i, /^terminal$/i]) {
+    await screen.getByRole('button', { name: page }).click();
+    await expect
+      .element(screen.getByText('Skip Claude permissions (YOLO)'))
+      .toBeInTheDocument();
+    await screen.getByRole('button', { name: 'Open Permissions' }).click();
+    // The signpost lands on the page that owns the toggle now.
+    await expect
+      .element(screen.getByRole('switch', { name: /skip claude permissions/i }))
+      .toBeInTheDocument();
+  }
+});
+
 test('navigates between settings pages via the left nav', async () => {
   const screen = render(<Global />);
   await screen.getByRole('button', { name: /permissions/i }).click();

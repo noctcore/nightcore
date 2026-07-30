@@ -1,5 +1,5 @@
 import { composeStories } from '@storybook/react-vite';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
 import type { ToolCheck } from '@/lib/bridge';
@@ -34,16 +34,23 @@ test('requires auth when a tool reports an auth state', () => {
   expect(toolReady({ ...base, installed: false })).toBe(false);
 });
 
-test('walks from welcome to environment and blocks until checks are ready', async () => {
+test('teaches the five-stage model between welcome and the environment gate', async () => {
   const screen = render(<FirstRun />);
   await expect.element(screen.getByText('Welcome to nightcore.')).toBeInTheDocument();
+  await screen.getByRole('button', { name: 'Continue' }).click();
+  // The stage diagram is a step of its own — the model is transmitted before the
+  // user is ever handed a board (issue #404).
+  await expect.element(screen.getByText('How Nightcore works')).toBeInTheDocument();
+  await expect.element(screen.getByRole('heading', { name: 'Intake' })).toBeInTheDocument();
   await screen.getByRole('button', { name: 'Continue' }).click();
   await expect.element(screen.getByText('Environment check')).toBeInTheDocument();
   await expect.element(screen.getByText('Local environment is ready.')).toBeInTheDocument();
 });
 
-test('creates the first project from a selected repo', async () => {
-  const screen = render(<FolderSelected />);
+test('creates the first project from a selected repo and offers two exits', async () => {
+  const onComplete = vi.fn();
+  const screen = render(<FolderSelected onComplete={onComplete} />);
+  await screen.getByRole('button', { name: 'Continue' }).click();
   await screen.getByRole('button', { name: 'Continue' }).click();
   await expect.element(screen.getByText('Local environment is ready.')).toBeInTheDocument();
   await screen.getByRole('button', { name: 'Continue' }).click();
@@ -51,4 +58,9 @@ test('creates the first project from a selected repo', async () => {
   await expect.element(screen.getByLabelText('Project name')).toHaveValue('nightcore');
   await screen.getByRole('button', { name: 'Create project' }).click();
   await expect.element(screen.getByText('You are set.')).toBeInTheDocument();
+
+  // Ready no longer auto-advances, so both exits are reachable: the first-scan CTA
+  // hands off to the Understand stage, the primary button to the board.
+  await screen.getByRole('button', { name: 'Run a first scan' }).click();
+  expect(onComplete).toHaveBeenCalledWith('scan');
 });

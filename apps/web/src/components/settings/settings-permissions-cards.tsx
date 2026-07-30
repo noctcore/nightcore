@@ -31,6 +31,7 @@ export function buildPermissionsCards(
         {
           label: 'Permission mode',
           hint: 'How the agent handles a tool that needs permission: Auto runs it, Plan proposes a plan for your approval first, and Ask pauses for you (the runtime still auto-denies anything unsafe).',
+          field: 'permissionMode',
           control: (
             <Segmented
               ariaLabel="Permission mode"
@@ -43,7 +44,7 @@ export function buildPermissionsCards(
         {
           label: 'Sandbox agent writes (macOS, experimental)',
           hint: 'Block file writes outside the task workspace at the OS layer',
-          globalScoped: true,
+          field: 'sandboxSessions',
           control: (
             // Global-only (like Delete-on-merge): OS containment is a
             // machine-level guarantee, not a per-project preference.
@@ -57,7 +58,7 @@ export function buildPermissionsCards(
         {
           label: 'Skip Claude permissions (YOLO)',
           hint: 'WARNING: adds --dangerously-skip-permissions to the terminal "Launch Claude" command — the agent then runs with NO permission prompts, as you, outside the gates. Off by default; enable only in a throwaway or fully trusted repo.',
-          globalScoped: true,
+          field: 'terminalYoloLaunch',
           hazard: true,
           hazardActive: settings.terminalYoloLaunch,
           control: (
@@ -79,7 +80,7 @@ export function buildPermissionsCards(
         {
           label: 'Plan before code (Build tasks)',
           hint: 'New Build tasks default to planning first — approve, refine, or reject. A per-task "Plan first" toggle overrides it.',
-          globalScoped: true,
+          field: 'planGateDefault',
           control: (
             // Global-only (like the OS-sandbox toggle): a studio-wide governance
             // stance, not a per-project preference.

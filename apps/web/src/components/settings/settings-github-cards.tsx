@@ -64,6 +64,7 @@ export function buildGithubCards(
         {
           label: 'Two-way issue sync',
           hint: 'Off by default. When on, Nightcore keeps nc:* status labels and posts terminal comments on the linked issue, and adds Closes #N to the task’s PR so a merge closes the issue. Needs a token with issue write access; if it can’t write, sync degrades and the task shows a notice.',
+          field: 'issueSyncEnabled',
           control: (
             <Toggle
               on={settings.issueSyncEnabled}
@@ -75,6 +76,7 @@ export function buildGithubCards(
         {
           label: 'Status label prefix',
           hint: 'Prefix for the status labels Nightcore manages on issues (e.g. nc: → nc:queued). Empty resets to nc:.',
+          field: 'issueLabelPrefix',
           control: (
             <LabelPrefixField
               value={settings.issueLabelPrefix ?? ''}

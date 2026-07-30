@@ -1,4 +1,4 @@
-import { BoltIcon, Button, Spinner } from '@/components/ui';
+import { BoltIcon, Button, InsightIcon, Spinner } from '@/components/ui';
 
 import { useOnboarding } from './Onboarding.hooks';
 import { StepRail } from './Onboarding.rail';
@@ -6,6 +6,7 @@ import type { OnboardingProps } from './Onboarding.types';
 import { EnvironmentStep } from './steps/EnvironmentStep';
 import { ProjectStep } from './steps/ProjectStep';
 import { ReadyStep } from './steps/ReadyStep';
+import { StagesStep } from './steps/StagesStep';
 import { WelcomeStep } from './steps/WelcomeStep';
 
 export function Onboarding(props: OnboardingProps) {
@@ -24,6 +25,7 @@ export function Onboarding(props: OnboardingProps) {
           <main className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-12 py-10 max-sm:px-6">
             <div className="w-full max-w-[940px]">
               {view.step === 'welcome' && <WelcomeStep />}
+              {view.step === 'stages' && <StagesStep />}
               {view.step === 'environment' && <EnvironmentStep view={view} />}
               {view.step === 'project' && <ProjectStep props={props} view={view} />}
               {view.step === 'ready' && <ReadyStep checks={view.checks} />}
@@ -76,11 +78,20 @@ function PrimaryAction({
   }
 
   if (last) {
+    // Two REAL exits (issue #404): launch the board, or start in the lifecycle with
+    // a first Understand scan. Both are explicit — the step no longer auto-advances
+    // out from under them.
     return (
-      <Button className="ml-auto" onClick={props.onComplete}>
-        <BoltIcon size={14} />
-        Launch Nightcore
-      </Button>
+      <div className="ml-auto flex flex-wrap items-center gap-2.5">
+        <Button variant="secondary" onClick={() => props.onComplete('scan')}>
+          <InsightIcon size={14} />
+          Run a first scan
+        </Button>
+        <Button onClick={() => props.onComplete('board')}>
+          <BoltIcon size={14} />
+          Launch Nightcore
+        </Button>
+      </div>
     );
   }
 

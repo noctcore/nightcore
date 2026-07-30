@@ -57,6 +57,7 @@ export function buildUsageCards(
         {
           label: 'Usage meter',
           hint: 'Reads OAuth credentials to show Claude/Codex rate-limit windows (read-only; may prompt for Keychain access). Off by default.',
+          field: 'usageMeterEnabled',
           control: (
             <Toggle
               on={usageMeter.enabled}
@@ -70,6 +71,7 @@ export function buildUsageCards(
           hint: usageMeter.enabled
             ? 'When any rate-limit window reaches this level, Auto Mode stops picking up new runs until usage cools. Range 50–100, default 90.'
             : 'Enable the usage meter above to use this.',
+          field: 'autoPauseUsageThreshold',
           control: (
             <NumberField
               value={settings.autoPauseUsageThreshold}

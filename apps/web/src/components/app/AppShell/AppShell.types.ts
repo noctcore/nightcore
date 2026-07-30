@@ -33,17 +33,14 @@ export type AppView =
 
 import type { ReactNode } from 'react';
 
+import type { StageId } from '@/lib/stages';
+
 /** Sidebar nav section ids — the five workflow stages (Intake → Understand →
  *  Harden → Enforce → Verify) framed by the non-stage Project group and the
- *  footer-placed Settings group. */
-export type NavGroupId =
-  | 'project'
-  | 'intake'
-  | 'understand'
-  | 'harden'
-  | 'enforce'
-  | 'verify'
-  | 'settings';
+ *  footer-placed Settings group. The stage members come FROM the shared lifecycle
+ *  table (`@/lib/stages`), so a stage can never exist in the nav without the
+ *  explainer copy that says what it means (issue #404). */
+export type NavGroupId = 'project' | StageId | 'settings';
 
 /** A nav entry in the sidebar workspace section. */
 export interface NavItem {

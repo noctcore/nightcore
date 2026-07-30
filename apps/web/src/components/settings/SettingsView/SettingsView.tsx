@@ -21,10 +21,12 @@ import {
   TerminalIcon,
   useProviderCapabilities,
 } from '@/components/ui';
+import { hasProjectScope, type SettingsField } from '@/lib/settings-scope';
 
 import { ConstitutionCard } from '../ConstitutionCard';
 import { McpServersCard } from '../McpServersCard';
 import { buildCards } from '../settings-cards';
+import type { SettingsCardProps, SettingsScopeSurface } from '../SettingsCard';
 import { SettingsCard } from '../SettingsCard';
 import { useAppInfo, useEditors, useSettingsView } from './SettingsView.hooks';
 import type {
@@ -33,17 +35,28 @@ import type {
   SettingsViewProps,
 } from './SettingsView.types';
 
-/** The pages whose controls can actually write a per-project override (they call
- *  `patchScoped` for at least one row). The scope toggle is only meaningful here; on
- *  every other page every control writes the global block, so the header shows a
- *  static "Global" pill instead of a toggle that would silently do nothing. */
-const SCOPED_PAGES: ReadonlySet<SettingsPage> = new Set<SettingsPage>([
-  'models',
-  'permissions',
-  'constitution',
-  'worktrees',
-  'mcp',
-]);
+/** The two pages whose editor is a full component rather than presentational
+ *  `SettingsRow`s (the MCP server list and the Constitution card render outside the
+ *  card set), so they have no row to declare a field. Naming the field they write here
+ *  keeps them inside the SAME derivation as every other page: the scope verdict still
+ *  comes from the generated override shape, never from a page list.
+ *
+ *  Everything else derives from `row.field` — see `pageFields` below. */
+const INTERACTIVE_PAGE_FIELD: Partial<Record<SettingsPage, SettingsField>> = {
+  mcp: 'mcpServers',
+  constitution: 'contextPackEnabled',
+};
+
+/** Every settings field the current page can write: the fields its rows declare, plus
+ *  the interactive-editor field above. `hasProjectScope` then answers "does this page
+ *  have a per-project choice at all?" from the real shape. */
+function pageFields(page: SettingsPage, cards: SettingsCardProps[]): SettingsField[] {
+  const fromRows = cards.flatMap((card) =>
+    card.rows.flatMap((row) => (row.field === undefined ? [] : [row.field])),
+  );
+  const interactive = INTERACTIVE_PAGE_FIELD[page];
+  return interactive === undefined ? fromRows : [...fromRows, interactive];
+}
 
 /** A single entry in the left nav. */
 interface NavItem {
@@ -176,10 +189,18 @@ export function SettingsView({
     defaultProviderCapabilities,
   });
   const note = PAGE_NOTES[page];
-  // The scope toggle is shown only where a per-project override is both possible
-  // (a scoped page) AND available (a project is active). Otherwise every control
-  // writes the global block, so the header shows a static "Global" pill.
-  const showScopeToggle = SCOPED_PAGES.has(page) && projectScopeEnabled;
+  // Whether this page has a per-project choice is DERIVED from the fields its controls
+  // write, checked against the generated `SettingsOverride` shape — not asserted by a
+  // hand-kept page list that the Rust struct can silently outgrow (issue #404).
+  const pageIsScoped = hasProjectScope(pageFields(page, cards));
+  // The toggle needs the choice to be both possible (a scoped page) AND available (a
+  // project is open). Otherwise the header shows a static "Global" pill.
+  const showScopeToggle = pageIsScoped && projectScopeEnabled;
+  // Row badges (and their scope deep-links) only appear where a choice exists; a page
+  // that is global end to end states that once, in its header.
+  const scopeSurface: SettingsScopeSurface | undefined = pageIsScoped
+    ? { scope, projectName: activeProjectName, onScopeChange: setScope }
+    : undefined;
   const scopeOptions: [value: SettingsScope, label: string][] = [
     ['global', 'Global'],
     ['project', activeProjectName ?? 'This project'],
@@ -241,7 +262,7 @@ export function SettingsView({
               <span
                 className="inline-flex shrink-0 items-center rounded-lg border border-border bg-black/25 px-3 py-1 text-xs-flat font-medium text-muted-foreground"
                 title={
-                  SCOPED_PAGES.has(page)
+                  pageIsScoped
                     ? 'Open a project to set per-project overrides'
                     : 'These settings are global — they apply to every project'
                 }
@@ -252,7 +273,7 @@ export function SettingsView({
           </div>
 
           {cards.map((card, i) => (
-            <SettingsCard key={`${card.title}-${i}`} {...card} />
+            <SettingsCard key={`${card.title}-${i}`} {...card} scopeSurface={scopeSurface} />
           ))}
 
           {/* The MCP servers card lives on its own page. It is fully interactive

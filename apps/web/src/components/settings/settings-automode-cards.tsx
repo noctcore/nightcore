@@ -25,6 +25,7 @@ export function buildAutoModeCards(
         {
           label: 'Auto-commit on verified',
           hint: 'While Auto Mode runs, each task is committed automatically the moment it’s verified — before the next one starts. In a shared (main) checkout, run one task at a time so per-task commits stay clean.',
+          field: 'autoCommitOnVerified',
           control: (
             <Toggle
               on={settings.autoCommitOnVerified}
