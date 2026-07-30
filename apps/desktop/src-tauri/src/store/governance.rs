@@ -77,18 +77,6 @@ pub const KIND_DISARM: &str = "disarm";
 /// The strictness-ratchet baseline was snapshotted.
 pub const KIND_RATCHET: &str = "ratchet";
 
-/// Every kind this build writes, in the order the dashboard tallies them. A READ
-/// never validates against this list (an unknown future kind must still load —
-/// serde-additive at the vocabulary level too); it only drives the summary's
-/// per-kind counters.
-pub const KINDS: [&str; 5] = [
-    KIND_QUARANTINE,
-    KIND_POLICY_SAVE,
-    KIND_ARM,
-    KIND_DISARM,
-    KIND_RATCHET,
-];
-
 /// Cap on a record's one-line summary.
 const MAX_SUMMARY_CHARS: usize = 200;
 /// Cap on how many detail items one record carries (e.g. quarantined paths).

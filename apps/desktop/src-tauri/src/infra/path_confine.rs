@@ -91,10 +91,59 @@ pub(crate) fn confine(
     })
 }
 
+/// Validate a user-chosen EXPORT destination — the third path rule in this module,
+/// and the mirror image of [`confine`]: instead of keeping an untrusted relative
+/// path inside a trusted root, it keeps a trusted-dialog absolute path OUT of the
+/// on-disk store.
+///
+/// A destination must be ABSOLUTE (the native save dialog returns one) and must not
+/// descend through any `.nightcore/` directory: an exported artifact is a USER
+/// artifact and may never land inside the store it is a receipt for — a Trust Report
+/// or a governance badge written over `.nightcore/ledger/project.ndjson` would
+/// silently destroy the evidence it reports on. Returns the `PathBuf` to write.
+///
+/// Shared by every export writer (`commands::trust::write_trust_report`,
+/// `commands::governance::write_governance_badge`) so the rule has one home;
+/// `commands/` is a flat tier where modules cannot import each other.
+pub(crate) fn validate_export_dest(dest_path: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(dest_path);
+    if !path.is_absolute() {
+        return Err(format!("export path must be absolute: {dest_path}"));
+    }
+    if path.components().any(
+        |c| matches!(c, std::path::Component::Normal(name) if name == std::ffi::OsStr::new(".nightcore")),
+    ) {
+        return Err("refusing to write an export inside a .nightcore directory".to_string());
+    }
+    Ok(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn export_dest_must_be_absolute() {
+        assert!(validate_export_dest("reports/trust.md").is_err());
+        assert!(validate_export_dest("./trust.md").is_err());
+        assert!(validate_export_dest("").is_err());
+    }
+
+    #[test]
+    fn export_dest_may_not_land_inside_the_store() {
+        assert!(validate_export_dest("/home/dev/proj/.nightcore/trust.md").is_err());
+        assert!(validate_export_dest("/home/dev/proj/.nightcore/ledger/project.ndjson").is_err());
+    }
+
+    #[test]
+    fn export_dest_accepts_an_absolute_path_outside_the_store() {
+        let dest = validate_export_dest("/home/dev/Desktop/trust-report.md")
+            .expect("an absolute non-.nightcore path is a valid export destination");
+        assert_eq!(dest, PathBuf::from("/home/dev/Desktop/trust-report.md"));
+        // A `.nightcore`-lookalike segment (not the exact dir name) is NOT rejected.
+        assert!(validate_export_dest("/home/dev/my.nightcore-notes/trust.md").is_ok());
+    }
 
     // The read-path labels are used throughout so the messages read like the diff site;
     // the labels are message-only, so any pair proves the same containment logic.

@@ -454,6 +454,12 @@ pub fn run() {
             commands::policy::get_harness_policy_file,
             commands::policy::update_harness_policy_file,
             commands::policy::list_policy_activity,
+            // Project trust dashboard (issue #399): the repo-scoped, computed-on-demand
+            // governance summary over the task store + flight recorder + governance
+            // journal, and the shields-compatible badge export.
+            commands::governance::project_trust_summary,
+            commands::governance::governance_badge_json,
+            commands::governance::write_governance_badge,
             // Checks Manager (Enforce, T7): list/edit/disable/remove armed checks +
             // run them on demand.
             commands::checks::list_armed_checks,
