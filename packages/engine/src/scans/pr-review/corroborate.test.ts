@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { ReviewFinding, ReviewLens, ReviewSeverity } from '@nightcore/contracts';
 
+import { clampVerdict, verdictBandForFindings } from './clamp.js';
 import {
   corroboratePrReviewFindings,
   CORROBORATION_TUNING,
@@ -165,6 +166,35 @@ describe('corroboratePrReviewFindings', () => {
       finding('logic', 'src/a.ts', 'Parsed config is missing a null check'),
     ]);
     expect(out.map((f) => f.file)).toEqual(['src/z.ts', 'src/a.ts']);
+  });
+});
+
+describe('corroboration never influences the verdict CLAMP', () => {
+  test('the allowed band is identical before and after corroboration + ranking', () => {
+    // Two lenses agree on a HIGH finding, and a solo low rides along. Corroboration
+    // collapses the pair and ranking reorders — neither may move the band, which is a
+    // pure function of the severities present.
+    const raw = [
+      finding('security', 'src/a.ts', 'Missing null check on the parsed config', 'high'),
+      finding('logic', 'src/a.ts', 'Parsed config is missing a null check', 'low'),
+      finding('tests', 'src/b.ts', 'Untested error branch on the new guard', 'low'),
+    ];
+    const processed = rankPrReviewFindings(corroboratePrReviewFindings(raw));
+
+    expect(verdictBandForFindings(processed)).toEqual(verdictBandForFindings(raw));
+    // …and an out-of-band model verdict clamps to the same boundary either way.
+    expect(clampVerdict('ready', processed)).toEqual(clampVerdict('ready', raw));
+    expect(clampVerdict('ready', processed).verdict).toBe('needs_revision');
+  });
+
+  test('corroborating two LOWS can never push the verdict past merge_with_changes', () => {
+    const lows = corroboratePrReviewFindings([
+      finding('security', 'src/a.ts', 'Missing null check on the parsed config', 'low'),
+      finding('logic', 'src/a.ts', 'Parsed config is missing a null check', 'low'),
+    ]);
+    expect(lows[0]?.corroboratedBy).toEqual(['logic']);
+    // Two lenses agreeing raises the RANK, never the severity or the band.
+    expect(clampVerdict('needs_revision', lows).verdict).toBe('merge_with_changes');
   });
 });
 
