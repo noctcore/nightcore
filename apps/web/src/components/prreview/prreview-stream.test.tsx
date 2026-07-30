@@ -159,6 +159,24 @@ describe('foldReview', () => {
     // An errored lens stays errored; others become done.
     expect(next.lensState.security).toBe('error');
     expect(next.lensState.logic).toBe('done');
+    // No drops on the event ⇒ an empty list, never stale data.
+    expect(next.droppedFindings).toEqual([]);
+  });
+
+  it('pr-review-completed surfaces what the validator DROPPED, apart from the findings', () => {
+    const next = foldReview(EMPTY_REVIEW_STREAM, {
+      type: 'pr-review-completed',
+      runId: 'run-1',
+      findings: [wireFinding()],
+      droppedFindings: [wireFinding({ id: 'd1', fingerprint: 'd1', title: 'Dropped' })],
+      lensesRun: 1,
+      costUsd: 0,
+      durationMs: 1,
+      usage: USAGE,
+    } as PrReviewLensEvent);
+    // Drops never join the findings — they are a read-only audit list.
+    expect(next.findings.map((f) => f.id)).toEqual(['f1']);
+    expect(next.droppedFindings.map((f) => f.id)).toEqual(['d1']);
   });
 
   it('pr-review-failed records the error and carries the abort reason', () => {
@@ -258,6 +276,7 @@ describe('normalizers', () => {
       durationMs: 1000,
       usage: { inputTokens: 10, outputTokens: 5 },
       findings: [],
+      droppedFindings: [],
       roundsByLens: {},
       error: null,
       verdict: null,
@@ -273,6 +292,8 @@ describe('normalizers', () => {
     expect(s.prNumber).toBe(7);
     expect(s.lensState.logic).toBe('done');
     expect(s.costUsd).toBe(0.5);
+    // The persisted validator drops survive a reload (empty when there were none).
+    expect(s.droppedFindings).toEqual([]);
   });
 
   it('storedToFinding degrades corrupt enum fields + drops unknown corroborators', () => {
@@ -312,6 +333,7 @@ describe('normalizers', () => {
       durationMs: 0,
       usage: { inputTokens: 0, outputTokens: 0 },
       findings: [],
+      droppedFindings: [],
       roundsByLens: {},
       error: null,
       verdict: null,

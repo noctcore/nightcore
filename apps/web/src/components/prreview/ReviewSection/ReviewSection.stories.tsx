@@ -96,6 +96,7 @@ const TOOLBAR: ReviewSectionToolbarSlice = {
   bulkError: null,
   selectedCount: 1,
   canPost: true,
+  recommendedVerdict: 'request-changes',
   requestPost: fn(),
   ownPr: false,
   postedFeedback: null,
@@ -198,6 +199,7 @@ function ConfiguredSection({
       }}
       results={{
         gridFindings: stream?.findings ?? [],
+        droppedFindings: stream?.droppedFindings ?? [],
         emptyMessage: 'The diff looks clean across the selected lenses.',
         emptyVariant,
         selection: new Set(['f1']),

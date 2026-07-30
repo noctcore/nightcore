@@ -101,6 +101,18 @@ impl StoredReviewFinding {
             linked_task_id: None,
         })
     }
+
+    /// Parse a `pr-review-*` event's array field named `key` (`findings` /
+    /// `droppedFindings`) into stored findings, skipping any element that can't satisfy
+    /// [`Self::from_wire`]. Missing/non-array ⇒ empty. One helper so every reader arm
+    /// parses wire findings identically.
+    pub fn vec_from_wire(event: &Value, key: &str) -> Vec<Self> {
+        event
+            .get(key)
+            .and_then(Value::as_array)
+            .map(|arr| arr.iter().filter_map(Self::from_wire).collect())
+            .unwrap_or_default()
+    }
 }
 
 impl LifecycleItem for StoredReviewFinding {
@@ -150,6 +162,14 @@ pub struct PrReviewRun {
     pub usage: InsightUsage,
     #[serde(default)]
     pub findings: Vec<StoredReviewFinding>,
+    /// The candidate findings the ADVERSARIAL VALIDATOR dropped as unsupported by the
+    /// diff — kept so a silently-swallowed real finding stays visible after a reload,
+    /// not just in the live stream. DISPLAY-ONLY: they never enter `findings`, carry no
+    /// lifecycle (their `status` is a placeholder, never mutated), take no part in the
+    /// verdict/clamp, and are never postable. Additive + `#[serde(default)]`: an older
+    /// run file loads with an empty list.
+    #[serde(default)]
+    pub dropped_findings: Vec<StoredReviewFinding>,
     /// Deep mode (issue #294): per-lens round count (1-based), keyed by the review lens
     /// wire string. Persisted so "round N" survives reconcile/resume; empty for a classic
     /// single-pass review (which never emits round events). Because the review is
@@ -389,6 +409,7 @@ mod tests {
             duration_ms: 0,
             usage: InsightUsage::default(),
             findings,
+            dropped_findings: Vec::new(),
             rounds_by_lens: HashMap::new(),
             error: None,
             verdict: None,
@@ -502,6 +523,40 @@ mod tests {
             f.corroborated_by.as_deref(),
             Some(["logic".to_string(), "performance".to_string()].as_slice())
         );
+    }
+
+    #[test]
+    fn vec_from_wire_parses_a_named_array_and_skips_bad_elements() {
+        let event = serde_json::json!({
+            "type": "pr-review-completed",
+            "droppedFindings": [
+                { "id": "d1", "lens": "logic", "severity": "low", "file": "a.ts",
+                  "title": "t", "body": "b", "fingerprint": "fp1" },
+                // Missing `body` — skipped, never fatal for the rest.
+                { "id": "d2", "lens": "logic", "severity": "low", "file": "a.ts",
+                  "title": "t", "fingerprint": "fp2" },
+            ]
+        });
+        let dropped = StoredReviewFinding::vec_from_wire(&event, "droppedFindings");
+        assert_eq!(dropped.len(), 1);
+        assert_eq!(dropped[0].id, "d1");
+        // An absent key (an older engine, or nothing dropped) reads as empty, never a panic.
+        assert!(StoredReviewFinding::vec_from_wire(&event, "findings").is_empty());
+    }
+
+    #[test]
+    fn a_run_file_without_dropped_findings_loads_with_an_empty_list() {
+        // Serde-additive: an on-disk run written before validator-drop visibility
+        // (#197) must still deserialize.
+        let json = serde_json::json!({
+            "id": "run-old", "projectPath": "/p", "prNumber": 1, "status": "completed",
+            "lenses": ["logic"], "model": "m", "createdAt": 1, "updatedAt": 2,
+            "error": null, "verdict": null, "verdictReasoning": null,
+            "verdictClamped": null, "clampReason": null, "headSha": null,
+            "postedVerdict": null, "postedAt": null
+        });
+        let run: PrReviewRun = serde_json::from_value(json).expect("older run loads");
+        assert!(run.dropped_findings.is_empty());
     }
 
     #[test]

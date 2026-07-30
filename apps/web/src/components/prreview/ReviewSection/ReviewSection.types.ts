@@ -60,6 +60,12 @@ export interface ReviewSectionToolbarSlice {
   selectedCount: number;
   /** Whether the post-review toolbar is actionable (completed + ≥1 selected). */
   canPost: boolean;
+  /** The verdict the post gate PRE-FILLS, derived from the run's CLAMPED merge
+   *  verdict (own-PR safe — never a verdict GitHub would reject). Rendered as the
+   *  highlighted "Recommended" button so posting is one informed click instead of a
+   *  blank decision; the human may still pick any verdict, and every one of them
+   *  opens the ConfirmDialog rather than posting. */
+  recommendedVerdict: ReviewVerdict;
   /** Open the ConfirmDialog for a verdict (human gate — never auto-fires). */
   requestPost: (verdict: ReviewVerdict) => void;
   /** Own-PR guard: GitHub rejects approve/request-changes on the viewer's own
@@ -87,6 +93,10 @@ export interface ReviewSectionToolbarSlice {
 /** The RESULTS state: banners, toolbar, and the findings grid. */
 export interface ReviewSectionResultsSlice {
   gridFindings: ReviewFindingView[];
+  /** What the ADVERSARIAL VALIDATOR dropped as unsupported by the diff — rendered
+   *  as a collapsed, read-only audit list so a swallowed real finding is visible.
+   *  Empty when it dropped nothing (the disclosure then self-hides). */
+  droppedFindings: ReviewFindingView[];
   emptyMessage: string;
   /** How to render the no-findings state: `clean` (completed run, nothing found)
    *  gets the celebratory positive empty state; `neutral` (idle / failed /

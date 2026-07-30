@@ -378,6 +378,29 @@ describe('PrReviewScanManager — validator', () => {
     expect(
       lens?.type === 'pr-review-lens-completed' && lens.findings,
     ).toHaveLength(1);
+    // …and the drop is VISIBLE (#197): what the validator removed rides the terminal
+    // event, so a swallowed true positive can't vanish without a trace.
+    const dropped =
+      completed?.type === 'pr-review-completed' ? completed.droppedFindings : undefined;
+    expect(dropped?.map((f) => f.id)).toEqual([droppedId]);
+  });
+
+  test('carries NO droppedFindings when the validator dropped nothing', async () => {
+    const { emit, done } = collect();
+    const manager = new PrReviewScanManager({
+      config: BASE_CONFIG,
+      apiKeyFallback: false,
+      emit,
+      // The default factory: the validator returns `[]` (drop nothing).
+      runnerFactory: cannedFactory(),
+    });
+
+    manager.start(startCommand(['security']));
+    const events = await done;
+    const completed = events.find((e) => e.type === 'pr-review-completed');
+    expect(
+      completed?.type === 'pr-review-completed' && completed.droppedFindings,
+    ).toBeUndefined();
   });
 
   test('FAIL-OPEN: a validator that throws still completes with all findings', async () => {

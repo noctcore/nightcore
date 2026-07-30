@@ -23,6 +23,12 @@ import type { ReviewVerdict } from './prreview.types';
 export const OWN_PR_TITLE =
   "GitHub doesn't allow approve/request-changes on your own pull request — post as comment instead";
 
+/** Why one verdict is highlighted in the post toolbar: it is pre-filled from the
+ *  run's mechanically-clamped merge verdict (#197). A recommendation only — every
+ *  verdict stays clickable and every one still opens the confirm gate. */
+export const RECOMMENDED_VERDICT_TITLE =
+  "Recommended from this review's merge verdict — you can pick any verdict, and every one still asks you to confirm";
+
 /** The disabled-Address explanation while this PR already has a fix in flight
  *  (one running fix per PR — the Rust registry refuses a second anyway). */
 export const FIX_RUNNING_TITLE =

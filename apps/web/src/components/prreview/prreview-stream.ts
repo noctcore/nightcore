@@ -69,6 +69,11 @@ export interface ReviewStream {
   requestedLenses: ReviewLens[];
   lensState: Record<string, LensProgress>;
   findings: ReviewFindingView[];
+  /** What the ADVERSARIAL VALIDATOR dropped as unsupported by the diff — surfaced
+   *  read-only so a silently-swallowed real finding stays visible. Never part of
+   *  `findings`: these carry no lifecycle, never enter the post selection, and take
+   *  no part in the verdict. Empty when it dropped nothing (or from an older run). */
+  droppedFindings: ReviewFindingView[];
   /** Deep mode (issue #294): per-lens round progress, keyed by lens. Empty for a classic
    *  single-pass review (which never emits round events). */
   lensRounds: Record<string, LensRoundInfo>;
@@ -89,6 +94,7 @@ export const EMPTY_REVIEW_STREAM: ReviewStream = {
   requestedLenses: [],
   lensState: {},
   findings: [],
+  droppedFindings: [],
   lensRounds: {},
   costUsd: 0,
   usage: { inputTokens: 0, outputTokens: 0 },
@@ -169,6 +175,9 @@ export function streamFromRun(run: PrReviewRun): ReviewStream {
     requestedLenses: lenses,
     lensState: seedStepStateFromRun(lenses, status === 'running'),
     findings: run.findings.map(storedToFinding),
+    // Additive on the persisted run: an older run file (or one whose validator
+    // dropped nothing) reloads with an empty list.
+    droppedFindings: (run.droppedFindings ?? []).map(storedToFinding),
     // Deep mode (issue #294): the persisted per-lens round count survives
     // reconcile/resume; `newFindingsThisRound` isn't persisted (a point-in-time delta),
     // so a reloaded run reports 0 for it.
@@ -270,6 +279,11 @@ export const foldReview = makeScanFold<
           costUsd: event.costUsd,
           usage: event.usage,
           durationMs: event.durationMs,
+          // Validator-drop visibility (#197): absent ⇒ nothing was dropped (or an
+          // older engine), which reads as an empty list, never as stale data.
+          extra: {
+            droppedFindings: (event.droppedFindings ?? []).map(wireToFinding),
+          },
         };
       case 'pr-review-failed':
         return { kind: 'failed', message: event.message, reason: event.reason };

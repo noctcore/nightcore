@@ -37,3 +37,44 @@ export type RunStatus = 'idle' | 'running' | 'completed' | 'failed';
 /** The three GitHub review verdicts, in the web's kebab wire form (the Rust core
  *  maps them to gh's `APPROVE` / `REQUEST_CHANGES` / `COMMENT`). */
 export type ReviewVerdict = 'approve' | 'request-changes' | 'comment';
+
+/**
+ * The POST-REVIEW human gate: everything the confirm dialog pre-fills, everything
+ * the human can edit there, and the two terminal actions. Declared at the feature
+ * root (not inside `PrReviewView`) so the dialog component can type its props
+ * without importing back into the view that renders it.
+ *
+ * Posting to GitHub is an OUTWARD-FACING action: {@link PostReviewGate.confirmPost}
+ * is the only member that reaches the network, and the only caller is the dialog's
+ * confirm button. Nothing in this bundle auto-posts.
+ */
+export interface PostReviewGate {
+  /** The verdict whose ConfirmDialog is open, or `null` (gate closed). */
+  postVerdict: ReviewVerdict | null;
+  posting: boolean;
+  postError: string | null;
+  /** The PR the armed post targets (the displayed run's PR). */
+  postPrNumber: number | null;
+  selectedCount: number;
+  /** How many selected findings are PRE-SELECTED as inline diff comments. */
+  selectedInlineCount: number;
+  /** How many ride in the review body note instead (lows/info + un-anchorable). */
+  selectedBodyCount: number;
+  /** The human's edit of the split: every anchorable selection goes inline. */
+  postAllInline: boolean;
+  setPostAllInline: (next: boolean) => void;
+  /** The verdict the gate PRE-FILLS, derived from the run's clamped merge verdict
+   *  (own-PR safe). A recommendation — the human may pick any verdict. */
+  recommendedVerdict: ReviewVerdict;
+  /** Why the merge verdict was mechanically clamped, when it was — shown beside
+   *  the recommendation so the pre-fill explains itself. */
+  clampReason: string | null;
+  /** Re-arm the gate on a DIFFERENT verdict (the dialog's verdict selector — the
+   *  human's edit of the pre-fill). Never posts; it only re-opens. */
+  requestPost: (verdict: ReviewVerdict) => void;
+  /** Confirm + await the post. The ONLY path that reaches GitHub, and only from an
+   *  explicit human confirmation. */
+  confirmPost: () => void;
+  /** Cancel the gate. A no-op while a post is in flight. */
+  cancelPost: () => void;
+}

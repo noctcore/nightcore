@@ -13,8 +13,8 @@ import {
 } from '@/components/ui';
 
 import { FindingDetailPanel } from '../FindingDetailPanel';
+import { PostReviewDialog } from '../PostReviewDialog';
 import { PrPicker } from '../PrPicker';
-import { VERDICT_META } from '../prreview.constants';
 import { PrWorkspace } from '../PrWorkspace';
 import { usePrReviewView } from './PrReviewView.hooks';
 import type { PrReviewViewProps } from './PrReviewView.types';
@@ -32,8 +32,6 @@ export function PrReviewView(props: PrReviewViewProps) {
       />
     );
   }
-
-  const verdictMeta = view.post.postVerdict !== null ? VERDICT_META[view.post.postVerdict] : null;
 
   return (
     <>
@@ -128,50 +126,10 @@ export function PrReviewView(props: PrReviewViewProps) {
         onGotoBoard={view.finding.onGotoBoard}
       />
 
-      <ConfirmDialog
-        open={view.post.postVerdict !== null && verdictMeta !== null}
-        title={verdictMeta?.confirmTitle ?? ''}
-        confirmLabel={verdictMeta?.confirmLabel ?? 'Confirm'}
-        destructive={verdictMeta?.destructive ?? false}
-        busy={view.post.posting}
-        onConfirm={view.post.confirmPost}
-        onCancel={view.post.cancelPost}
-        message={
-          verdictMeta !== null ? (
-            <div className="flex flex-col gap-2">
-              <span>
-                Post{' '}
-                <span className="font-semibold text-foreground">
-                  {verdictMeta.label.toLowerCase()}
-                </span>{' '}
-                on{' '}
-                <span className="font-mono text-foreground">
-                  PR #{view.post.postPrNumber}
-                </span>{' '}
-                with{' '}
-                <span className="font-semibold text-foreground">
-                  {view.post.selectedCount}
-                </span>{' '}
-                selected {view.post.selectedCount === 1 ? 'finding' : 'findings'}
-                {view.post.selectedInlineCount > 0
-                  ? ` (${view.post.selectedInlineCount} inline ${
-                      view.post.selectedInlineCount === 1 ? 'comment' : 'comments'
-                    })`
-                  : ''}
-                ?
-              </span>
-              {view.post.postError !== null && (
-                <span
-                  role="alert"
-                  className="rounded-md border border-destructive/40 bg-destructive/[0.1] px-3 py-2 text-xs-plus text-destructive"
-                >
-                  {view.post.postError}
-                </span>
-              )}
-            </div>
-          ) : null
-        }
-      />
+      {/* Post-review human gate: opens PRE-FILLED (clamped verdict + inline/body
+          split), stays fully editable, and posts to GitHub only on an explicit
+          confirm. There is no auto-post path. */}
+      <PostReviewDialog post={view.post} />
 
       {/* Address-findings human gate: starting a PAID agent session that will
           COMMIT to the PR branch never auto-fires. Pushing stays a separate,

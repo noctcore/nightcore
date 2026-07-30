@@ -2,7 +2,11 @@ import { composeStories } from '@storybook/react-vite';
 import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 
-import { FIX_RUNNING_TITLE, OWN_PR_TITLE } from '../prreview.constants';
+import {
+  FIX_RUNNING_TITLE,
+  OWN_PR_TITLE,
+  RECOMMENDED_VERDICT_TITLE,
+} from '../prreview.constants';
 import * as stories from './ReviewSection.stories';
 import type { ReviewSectionToolbarSlice } from './ReviewSection.types';
 
@@ -19,6 +23,7 @@ function toolbarSlice(
     bulkError: null,
     selectedCount: 1,
     canPost: true,
+    recommendedVerdict: 'comment',
     requestPost: vi.fn(),
     ownPr: false,
     postedFeedback: null,
@@ -111,6 +116,28 @@ test('results mode renders the toolbar with all three verdicts enabled', async (
   await expect
     .element(screen.getByRole('button', { name: /convert all to tasks \(2\)/i }))
     .toBeInTheDocument();
+});
+
+test('the PRE-FILLED verdict is announced as recommended without changing the button name', async () => {
+  const requestPost = vi.fn();
+  const screen = render(
+    <Completed
+      toolbar={toolbarSlice({ requestPost, recommendedVerdict: 'comment' })}
+    />,
+  );
+  // The recommendation rides as a DESCRIPTION — the accessible name stays
+  // "Comment", so name-based queries and screen-reader output don't drift.
+  const comment = screen.getByRole('button', { name: /^comment$/i });
+  await expect.element(comment).toHaveAccessibleDescription(
+    RECOMMENDED_VERDICT_TITLE,
+  );
+  // Only the recommended verdict carries it.
+  await expect
+    .element(screen.getByRole('button', { name: /^approve$/i }))
+    .not.toHaveAccessibleDescription(RECOMMENDED_VERDICT_TITLE);
+  // A recommendation is NOT an auto-post: clicking still only arms the gate.
+  await comment.click();
+  expect(requestPost).toHaveBeenCalledWith('comment');
 });
 
 test('the own-PR guard makes exactly approve and request-changes inert, with the reason reachable by keyboard/SR', async () => {

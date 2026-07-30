@@ -71,8 +71,11 @@ export function ReviewCard({
               <Icon size={11} />
               {Meta.label}
             </span>
-            {/* Corroboration: other lenses independently surfaced this issue —
-                a compact "also: security, tests" chip (fuller labels on hover). */}
+            {/* Corroboration: independent lenses agreeing is the strongest
+                signal a finding is real, so the chip leads with the COUNT ("3
+                lenses agree" = this one + 2 corroborators) and names them on
+                hover. Corroborated findings also rank above their peers — a
+                ranking + display signal only; it never changes the severity. */}
             {corroborated && (
               <span
                 className="inline-flex items-center rounded-md border border-primary/25 bg-primary/[0.06] px-1.5 py-0.5 font-mono text-3xs text-muted-foreground"
@@ -80,7 +83,7 @@ export function ReviewCard({
                   .map((l) => LENS_META[l].label)
                   .join(', ')}`}
               >
-                also: {finding.corroboratedBy.join(', ')}
+                {finding.corroboratedBy.length + 1} lenses agree
               </span>
             )}
             {/* Carried over from the previous review (follow-up comparison) —

@@ -5,18 +5,13 @@
  *  menu and the "viewing past run" affordance. Purely presentational; every
  *  piece of state lives in the PrReviewView model, so switching PRs re-renders
  *  this section while every run keeps streaming in the registry. */
-import { useId } from 'react';
-
 import {
   Button,
-  CheckIcon,
   GithubIcon,
   HistoryIcon,
   LensChipGrid,
   Menu,
   ModelSelectField,
-  MoveIcon,
-  RefactorIcon,
   RetryIcon,
   RunProgress,
   ScanModeToggle,
@@ -28,21 +23,15 @@ import { PROVIDER_LABEL } from '@/lib/bridge';
 
 import { DegradedReviewChip } from '../DegradedReviewChip';
 import { FixRunCard } from '../FixRunCard';
-import { ALL_LENSES, LENS_META, VERDICT_META } from '../prreview.constants';
-import {
-  FIX_RUNNING_TITLE,
-  OWN_PR_TITLE,
-} from '../prreview.constants';
-import type { ReviewVerdict } from '../prreview.types';
+import { ALL_LENSES, LENS_META } from '../prreview.constants';
 import { degradedLenses } from '../prreview-stream';
 import { ReviewFindings } from '../ReviewFindings';
 import { ReviewPosition } from '../ReviewPosition';
 import { ReviewTimeline } from '../ReviewTimeline';
+import { ValidatorDrops } from '../ValidatorDrops';
 import { sectionStatusMessage } from './ReviewSection.hooks';
 import type { ReviewSectionProps } from './ReviewSection.types';
-
-/** The three post-review verdict buttons, in display order. */
-const VERDICTS: ReviewVerdict[] = ['approve', 'request-changes', 'comment'];
+import { ReviewToolbar } from './ReviewToolbar';
 
 /** The lens chip vocabulary for the config grid — stable module identity, fed to
  *  the shared {@link LensChipGrid} (the row this primitive was hoisted for). */
@@ -67,12 +56,6 @@ export function ReviewSection({
   // Pure derivation over the stream's per-lens state (empty when there's no run).
   const degradedReview = stream !== null ? degradedLenses(stream) : [];
   const { toolbar } = results;
-  // Ids for the sr-only disabled-reason spans the guarded toolbar buttons point
-  // at via aria-describedby (`useId` is render-safe — allowlisted by the
-  // no-state-in-component-body rule).
-  const reasonsId = useId();
-  const ownPrReasonId = `${reasonsId}-own-pr`;
-  const fixRunningReasonId = `${reasonsId}-fix-running`;
 
   return (
     <section aria-label={`PR #${prNumber} review`} className="flex flex-col gap-3">
@@ -243,123 +226,15 @@ export function ReviewSection({
           {/* The review-arc timeline (History + FixRunCard unified; self-hides empty). */}
           <ReviewTimeline steps={results.timeline} />
 
-          {stream.status === 'completed' && (
-            <div className="flex flex-wrap items-center gap-3 border-b border-border pb-3">
-              <Button
-                aria-busy={toolbar.bulkConverting}
-                aria-disabled={toolbar.openCount === 0 || toolbar.bulkConverting}
-                onClick={() => {
-                  if (toolbar.openCount > 0 && !toolbar.bulkConverting) {
-                    toolbar.onConvertAll();
-                  }
-                }}
-                variant="secondary"
-                className={
-                  toolbar.openCount === 0 || toolbar.bulkConverting
-                    ? 'cursor-not-allowed opacity-40'
-                    : undefined
-                }
-              >
-                <MoveIcon size={15} />
-                {toolbar.bulkConverting
-                  ? `Converting… ${toolbar.bulkProgress.done}/${toolbar.bulkProgress.total}`
-                  : `Convert all to tasks (${toolbar.openCount})`}
-              </Button>
-              {/* Sr-only disabled reasons: the guarded buttons stay focusable and
-                  point here via aria-describedby so keyboard/SR users hear WHY (the
-                  `title` twins cover mouse hover). */}
-              <span id={ownPrReasonId} className="sr-only">
-                {OWN_PR_TITLE}
-              </span>
-              <span id={fixRunningReasonId} className="sr-only">
-                {FIX_RUNNING_TITLE}
-              </span>
-
-              {/* Address findings: opens the ConfirmDialog (the human gate for a paid
-                  agent session that commits to the PR branch — never auto-fires). Inert
-                  but focusable while this PR already has a fix in flight. */}
-              <Button
-                variant="secondary"
-                aria-disabled={!toolbar.canAddress}
-                aria-describedby={
-                  toolbar.fixRunning ? fixRunningReasonId : undefined
-                }
-                title={toolbar.fixRunning ? FIX_RUNNING_TITLE : undefined}
-                onClick={() => {
-                  if (toolbar.canAddress) toolbar.requestAddress();
-                }}
-                className={
-                  !toolbar.canAddress ? 'cursor-not-allowed opacity-40' : undefined
-                }
-              >
-                <RefactorIcon size={15} />
-                Address findings ({toolbar.addressCount})
-              </Button>
-              {toolbar.bulkError !== null && (
-                <span className="text-xs-flat text-destructive">
-                  {toolbar.bulkError}
-                </span>
-              )}
-              {toolbar.addressError !== null && (
-                <span className="text-xs-flat text-destructive">
-                  {toolbar.addressError}
-                </span>
-              )}
-
-              {/* Post-review toolbar: the three human-gated verdicts (each opens the
-                  ConfirmDialog — none auto-fires). Approve/request-changes guard inert
-                  on the viewer's OWN PR but stay focusable for the aria reason. */}
-              <div className="ml-auto flex items-center gap-2">
-                {/* Post-success micro-feedback: an auto-clearing confirmation the view
-                    model shows for a few seconds. role=status announces it; the rise
-                    is neutralized under prefers-reduced-motion by the global CSS. */}
-                {toolbar.postedFeedback !== null && (
-                  <span
-                    role="status"
-                    className="inline-flex items-center gap-1.5 rounded-full border border-success/40 bg-success/[0.1] px-2.5 py-1 text-2xs-plus font-medium text-success"
-                    style={{ animation: 'nc-rise var(--nc-motion-fast) var(--nc-ease-out-quint)' }}
-                  >
-                    <CheckIcon size={13} />
-                    Posted {toolbar.postedFeedback}{' '}
-                    {toolbar.postedFeedback === 1 ? 'finding' : 'findings'}
-                  </span>
-                )}
-                <span className="font-mono text-2xs text-muted-foreground">
-                  {toolbar.selectedCount} selected
-                </span>
-                {VERDICTS.map((verdict) => {
-                  const meta = VERDICT_META[verdict];
-                  const Icon = meta.icon;
-                  const guarded = toolbar.ownPr && verdict !== 'comment';
-                  const inert = !toolbar.canPost || guarded;
-                  return (
-                    <Button
-                      key={verdict}
-                      variant={meta.destructive ? 'danger' : 'secondary'}
-                      aria-disabled={inert}
-                      aria-describedby={guarded ? ownPrReasonId : undefined}
-                      title={guarded ? OWN_PR_TITLE : undefined}
-                      onClick={() => {
-                        if (!inert) toolbar.requestPost(verdict);
-                      }}
-                      className={inert ? 'cursor-not-allowed opacity-40' : undefined}
-                    >
-                      <Icon size={15} />
-                      {meta.label}
-                    </Button>
-                  );
-                })}
-              </div>
-
-              <span role="status" aria-live="polite" className="sr-only">
-                {toolbar.bulkStatusMessage}
-              </span>
-            </div>
-          )}
+          {stream.status === 'completed' && <ReviewToolbar toolbar={toolbar} />}
 
           {/* The PR's fix lifecycle strip — per-PR (registry), so it survives
               PR switches and renders regardless of the displayed run's status. */}
           {results.fix !== null && <FixRunCard {...results.fix} />}
+
+          {/* Fail-visible: what the adversarial validator removed, so a silently
+              swallowed real finding stays auditable. Self-hides when empty. */}
+          <ValidatorDrops dropped={results.droppedFindings} />
 
           <ReviewFindings
             findings={results.gridFindings}
