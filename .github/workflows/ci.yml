@@ -7,7 +7,9 @@ name: CI
 #     `gen-rust-contracts.ts --check` (the zod→Rust drift guard) plus
 #     agent-contract-parity — this is the "tools/lint-meta fails CI" gate.
 #   - the Rust job re-runs the ts-rs codegen via `cargo test` and asserts no
-#     `git diff` — this is the "CI asserts no git diff" guard.
+#     `git diff` — this is the "CI asserts no git diff" guard. Its last step
+#     (`verify:drift-guard`) proves that assertion still TRIPS on a real
+#     `#[derive(TS)]` change, because it silently became a no-op once (#422).
 # Dependency CVE scanning lives separately in audit.yml; this is the build/test
 # correctness gate.
 on:
@@ -313,3 +315,13 @@ jobs:
       # claim in docs/architecture.md real.
       - name: Assert ts-rs bindings are in sync
         run: git diff --exit-code -- apps/web/src/lib/generated
+      # …and prove that guard is not a no-op. It passed VACUOUSLY from both local
+      # entry points for its whole life (#422): cargo reads .cargo/config.toml by
+      # walking up from the CWD, not from --manifest-path, so a root-cwd run left
+      # TS_RS_EXPORT_DIR unset and ts-rs wrote to the gitignored crate-default
+      # bindings/ — the diff above was clean because NOTHING was written to the
+      # directory it guards. This step perturbs a `#[derive(TS)]` type, re-runs the
+      # export, asserts the diff FAILS, and restores both. Runs last: it needs the
+      # warm cargo cache and the compiled sidecar externalBin from the steps above.
+      - name: Prove the ts-rs drift guard trips on a real change
+        run: bun run verify:drift-guard
