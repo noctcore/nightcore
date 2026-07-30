@@ -40,6 +40,7 @@ fn export_all_bindings() {
     use crate::sidecar::{
         PortableLockExport, ProviderConfigSnapshotView, SessionInfoView, SessionMessageView,
     };
+    use crate::store::governance::GovernanceEvent;
     use crate::store::harness_manifest::{
         ArmedCheckFile, HarnessPolicyFile, HarnessPolicyPatch, PolicyDiffBudget,
     };
@@ -174,6 +175,10 @@ fn export_all_bindings() {
         // Policy activity feed (issue #400): one attributed deny/ask decision read
         // back out of the flight recorder.
         PolicyActivityEntry,
+        // Per-project governance journal (issue #399): one append-only record of a
+        // human governance decision (quarantine / policy-save / arm / disarm /
+        // ratchet) read back off `.nightcore/ledger/project.ndjson`.
+        GovernanceEvent,
         // Checks Manager (Enforce, T7): the armed-check manifest descriptor + the
         // list view (checks with folded last results + the run-level summary).
         ArmedCheckFile,
