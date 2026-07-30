@@ -26,10 +26,13 @@
 //!     same order. Only the `app.emit` forward (a pure `AppHandle<Wry>`-bound
 //!     passthrough) is modelled as a recorded log entry rather than a real Tauri emit.
 //!
-//! What stays out of scope (the heavier #253 variant): booting the real Bun sidecar +
-//! a live model against a scratch repo and asserting the event/command contract over a
-//! real process boundary. That is the `dogfood:engine` / `dogfood:gh` harnesses' job;
-//! this ring exercises real provider OUTPUT SHAPES against the reader deterministically.
+//! What stays out of scope HERE: booting the real Bun sidecar and asserting the
+//! event/command contract over a real process boundary. That is now **ring 3**'s job
+//! (`bun run e2e:ring3`, issue #406) — it replays these SAME fixtures through a real
+//! sidecar child via the engine-side replay provider, so the shapes this module checks
+//! against the reader are the shapes that ring checks across the pipe. The live-model
+//! variant remains the `dogfood:engine` / `dogfood:gh` harnesses' job; this ring
+//! exercises real provider OUTPUT SHAPES against the reader deterministically.
 
 mod build;
 mod pr_review;
