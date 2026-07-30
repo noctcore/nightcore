@@ -28,6 +28,7 @@
     "codegen:capabilities": "bun run tools/codegen/gen-web-capabilities.ts",
     "codegen:settings-scope": "bun run tools/codegen/gen-settings-scope.ts",
     "codegen:check": "bun run scripts/codegen-check.ts",
+    "e2e:ring3": "bun run scripts/e2e/ring3-sidecar-replay.ts",
     "dogfood:ui": "node scripts/dogfood-ui.mjs",
     "dogfood:engine": "bun run scripts/headless-harness.ts",
     "dogfood:gh": "cd apps/desktop/src-tauri && cargo test --lib e2e_gh -- --ignored --nocapture",
