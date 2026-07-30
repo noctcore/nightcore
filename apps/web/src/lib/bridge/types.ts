@@ -217,6 +217,19 @@ export type { InjectionFlag } from '../generated/InjectionFlag';
 // flight recorder's deny/ask decisions read back with their rule attribution.
 export type { PolicyActivityEntry } from '../generated/PolicyActivityEntry';
 export type { PolicyDiffBudget } from '../generated/PolicyDiffBudget';
+// Project trust dashboard (ts-rs from `workflow/project_trust/contract.rs`, issue
+// #399): the repo-scoped, computed-on-demand governance summary + its nested
+// section shapes, the append-only journal records it rolls up, and the
+// shields-compatible badge a repo publishes.
+export type { GauntletTotals } from '../generated/GauntletTotals';
+export type { GovernanceEvent } from '../generated/GovernanceEvent';
+export type { GuardrailTotals } from '../generated/GuardrailTotals';
+export type { JournalSummary } from '../generated/JournalSummary';
+export type { MergeTotals } from '../generated/MergeTotals';
+export type { ProjectTrustSummary } from '../generated/ProjectTrustSummary';
+export type { RuleTally } from '../generated/RuleTally';
+export type { SpendTotals } from '../generated/SpendTotals';
+export type { TrustBadge } from '../generated/TrustBadge';
 // The harness convention taxonomy + proposed-artifact shapes come from the zod
 // contract (the engine's wire shape); the generated `Stored*` types keep the
 // enum-ish fields as `string`, so the Harness view casts to these unions.
