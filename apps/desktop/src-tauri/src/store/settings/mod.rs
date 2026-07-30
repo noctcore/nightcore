@@ -719,13 +719,24 @@ mod tests {
         );
 
         // A patch stores an EXPLICIT choice and round-trips through persistence, so
-        // the Settings toggle IS the durable opt-out.
+        // the Settings control IS the durable opt-out.
         store
             .update(serde_json::from_str(r#"{"sandboxSessions":true}"#).unwrap())
             .expect("update");
         assert_eq!(store.get().sandbox_sessions, Some(true));
         let reloaded = SettingsStore::load_from(tmp.path().join("config"));
         assert_eq!(reloaded.get().sandbox_sessions, Some(true));
+
+        // An unrelated patch must not disturb the explicit choice...
+        store
+            .update(serde_json::from_str(r#"{"maxConcurrency":4}"#).unwrap())
+            .expect("update");
+        assert_eq!(store.get().sandbox_sessions, Some(true));
+        // ...and a present `null` returns the setting to Auto (the staged default).
+        store
+            .update(serde_json::from_str(r#"{"sandboxSessions":null}"#).unwrap())
+            .expect("update");
+        assert_eq!(store.get().sandbox_sessions, None);
     }
 
     #[test]

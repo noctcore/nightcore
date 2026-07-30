@@ -55,6 +55,7 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     prNumber: overrides.prNumber,
     kind: overrides.kind ?? 'build',
     runMode: overrides.runMode ?? 'main',
+    sandboxWrites: overrides.sandboxWrites ?? null,
     verified: overrides.verified ?? false,
     review: overrides.review ?? null,
     fixAttempts: overrides.fixAttempts ?? 0,

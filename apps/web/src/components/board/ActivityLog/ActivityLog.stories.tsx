@@ -10,7 +10,12 @@ import { ActivityLog } from './ActivityLog';
 
 /** Assemble session groups from per-session (phase, stream) pairs. */
 function sessions(
-  parts: Array<{ phase: SessionPhase; model?: string; stream: Partial<SessionStream> }>,
+  parts: Array<{
+    phase: SessionPhase;
+    model?: string;
+    containment?: SessionGroup['containment'];
+    stream: Partial<SessionStream>;
+  }>,
 ): SessionGroup[] {
   return parts.map((p, i) => ({
     index: i + 1,
@@ -18,6 +23,7 @@ function sessions(
     model: p.model ?? null,
     prompt: null,
     phase: p.phase,
+    containment: p.containment ?? null,
     stream: { ...EMPTY_STREAM, ...p.stream },
   }));
 }

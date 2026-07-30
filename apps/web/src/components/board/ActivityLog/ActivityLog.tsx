@@ -13,6 +13,7 @@ import { summarizeInput } from '@/lib/summarize';
 
 import type { SessionGroup, SessionPhase, TimelineEntry } from '../session-stream';
 import { formatCostUsd, modelDisplayName } from '../status';
+import { ContainmentBadge } from './ActivityLog.containment';
 import { useCappedEntries, useCollapse, useStickToBottom } from './ActivityLog.hooks';
 import type { ActivityLogProps } from './ActivityLog.types';
 
@@ -51,6 +52,11 @@ export function ActivityLog({ sessions, isRunning }: ActivityLogProps) {
       <h3 className="mb-2 flex items-center gap-1.5 font-mono text-3xs uppercase tracking-[0.1em] text-muted-foreground">
         <LogsIcon size={11} />
         {isRunning ? 'Live activity' : 'Activity'}
+        {/* A SINGLE session renders inline below, with no per-session header to
+            carry its containment posture — so the badge rides the log heading
+            instead. Multi-session transcripts badge each session block, where the
+            posture can differ between the build and its reviewer sub-run. */}
+        {sessions.length === 1 && <ContainmentBadge containment={sessions[0]!.containment} />}
       </h3>
 
       {sessions.length === 0 ? (
@@ -134,6 +140,7 @@ const SessionLog = memo(function SessionLog({
             Live
           </span>
         )}
+        <ContainmentBadge containment={session.containment} />
         <span className="min-w-0 flex-1 truncate text-right font-mono text-2xs text-muted-foreground">
           {meta.join(' · ')}
         </span>

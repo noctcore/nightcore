@@ -15,6 +15,19 @@ use super::model::{
     resolve_sidebar_style, BoardAppearance, BoardBackgroundRef, McpServerEntry, Settings,
 };
 
+/// Deserialize a PRESENT key into `Some(inner)` — including a present `null`, which
+/// becomes `Some(None)`. Serde only invokes a `deserialize_with` when the key
+/// exists, so an ABSENT key falls through to `#[serde(default)]` ⇒ `None`. This is
+/// what lets an `Option<Option<T>>` patch field tell "untouched" from "explicitly
+/// reset to Auto" (T16 / #157's tri-state containment setting).
+fn present_option<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
 /// A per-project override: any subset of the run-shaping fields. Absent fields
 /// fall back to the global value.
 // A per-project override carries only the keys the project set, so every field is
@@ -167,14 +180,15 @@ pub struct SettingsPatch {
     /// target). See [`super::model::Settings::auto_commit_on_verified`].
     #[cfg_attr(test, ts(optional))]
     pub auto_commit_on_verified: Option<bool>,
-    /// Module #15 / T16: toggle OS write containment for agent sessions. Applying
-    /// it stores an EXPLICIT choice (`Some(v)`), replacing the staged default —
-    /// which is the point: touching this toggle is how a user opts OUT of the
-    /// macOS+worktree default-on and stays opted out. Global-only (ignored for a
-    /// per-project override target). See
-    /// [`super::model::Settings::sandbox_sessions`].
-    #[cfg_attr(test, ts(optional))]
-    pub sandbox_sessions: Option<bool>,
+    /// Module #15 / T16: set OS write containment for agent sessions. `true`/`false`
+    /// store an EXPLICIT choice that replaces the staged default — which is the
+    /// point: this is how a user opts OUT of the macOS+worktree default-on and STAYS
+    /// opted out. A present `null` returns the setting to Auto (resolve the staged
+    /// default per run). Global-only (ignored for a per-project override target).
+    /// See [`super::model::Settings::sandbox_sessions`].
+    #[serde(default, deserialize_with = "present_option")]
+    #[cfg_attr(test, ts(optional = nullable, as = "Option<bool>"))]
+    pub sandbox_sessions: Option<Option<bool>>,
     /// T6 (#147): toggle the default-on plan-approval gate for Build tasks.
     /// Global-only (ignored for a per-project override target), like
     /// `auto_commit_on_verified`. See [`super::model::Settings::plan_gate_default`].
@@ -344,11 +358,12 @@ impl Settings {
             self.auto_commit_on_verified = v;
         }
         // Module #15 / T16: global-only toggle (no per-project override), like the
-        // Auto Mode option above. Stores `Some(v)` — a patch IS the user's explicit
-        // choice, so once it is touched the staged default no longer applies (same
-        // rule as `terminal_webgl_enabled`).
+        // Auto Mode option above. DOUBLE option, so the Settings control can express
+        // all three states: absent ⇒ untouched, `true`/`false` ⇒ the user's explicit
+        // choice (which no future default change may flip), `null` ⇒ back to Auto
+        // (resolve the staged default per run).
         if let Some(v) = patch.sandbox_sessions {
-            self.sandbox_sessions = Some(v);
+            self.sandbox_sessions = v;
         }
         // T6 (#147): global-only plan-approval-gate default toggle (no per-project
         // override), like `auto_commit_on_verified` / `sandbox_sessions`.

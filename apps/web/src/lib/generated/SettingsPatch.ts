@@ -27,14 +27,14 @@ notifyOnAwaitingInput?: boolean,
  */
 autoCommitOnVerified?: boolean, 
 /**
- * Module #15 / T16: toggle OS write containment for agent sessions. Applying
- * it stores an EXPLICIT choice (`Some(v)`), replacing the staged default —
- * which is the point: touching this toggle is how a user opts OUT of the
- * macOS+worktree default-on and stays opted out. Global-only (ignored for a
- * per-project override target). See
- * [`super::model::Settings::sandbox_sessions`].
+ * Module #15 / T16: set OS write containment for agent sessions. `true`/`false`
+ * store an EXPLICIT choice that replaces the staged default — which is the
+ * point: this is how a user opts OUT of the macOS+worktree default-on and STAYS
+ * opted out. A present `null` returns the setting to Auto (resolve the staged
+ * default per run). Global-only (ignored for a per-project override target).
+ * See [`super::model::Settings::sandbox_sessions`].
  */
-sandboxSessions?: boolean, 
+sandboxSessions?: boolean | null, 
 /**
  * T6 (#147): toggle the default-on plan-approval gate for Build tasks.
  * Global-only (ignored for a per-project override target), like
