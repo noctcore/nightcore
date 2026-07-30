@@ -112,31 +112,61 @@ test('onDebateEvent forwards a valid debate-entry and drops a malformed payload'
 // --- Transcript entries are validated against the contracts schema -------------
 
 test('readTranscript drops entries that fail the event contract, keeping valid ones', async () => {
-  invoke.mockResolvedValue([
-    // Valid assistant-delta.
-    { type: 'assistant-delta', sessionId: 1, text: 'hi', partial: true },
-    // Garbage — must be dropped, not cast through.
-    { type: 'assistant-delta', sessionId: 'not-a-number' },
-    { nope: true },
-    'string-line',
-    // Valid tool-use-requested.
-    {
-      type: 'tool-use-requested',
-      sessionId: 1,
-      toolUseId: 'tu-1',
-      toolName: 'Grep',
-      input: { pattern: 'x' },
-    },
-  ]);
+  invoke.mockResolvedValue({
+    events: [
+      // Valid assistant-delta.
+      { type: 'assistant-delta', sessionId: 1, text: 'hi', partial: true },
+      // Garbage — must be dropped, not cast through.
+      { type: 'assistant-delta', sessionId: 'not-a-number' },
+      { nope: true },
+      'string-line',
+      // Valid tool-use-requested.
+      {
+        type: 'tool-use-requested',
+        sessionId: 1,
+        toolUseId: 'tu-1',
+        toolName: 'Grep',
+        input: { pattern: 'x' },
+      },
+    ],
+    nextCursor: 4096,
+    hasMore: true,
+  });
 
-  const events = await bridge.readTranscript('task-1');
-  expect(events).toHaveLength(2);
-  expect(events.map((e) => e.type)).toEqual(['assistant-delta', 'tool-use-requested']);
+  const page = await bridge.readTranscript('task-1');
+  expect(page.events).toHaveLength(2);
+  expect(page.events.map((e) => e.type)).toEqual(['assistant-delta', 'tool-use-requested']);
+  expect(page.nextCursor).toBe(4096);
+  expect(page.hasMore).toBe(true);
 });
 
-test('readTranscript tolerates a non-array result (returns empty)', async () => {
+test('readTranscript forwards the page bounds to the core', async () => {
+  // #407: the reseed asks for a bounded page and continues from a held cursor. Both
+  // must reach the command by name — a dropped `before` would silently re-read the
+  // newest page forever and the walk would never terminate.
+  invoke.mockResolvedValue({ events: [], nextCursor: null, hasMore: false });
+  await bridge.readTranscript('task-1', { limit: 600, before: 8192 });
+  expect(invoke).toHaveBeenCalledWith('read_transcript', {
+    taskId: 'task-1',
+    limit: 600,
+    before: 8192,
+  });
+});
+
+test('readTranscript tolerates a malformed page (returns the empty page)', async () => {
   invoke.mockResolvedValue(null);
-  expect(await bridge.readTranscript('task-1')).toEqual([]);
+  expect(await bridge.readTranscript('task-1')).toEqual({
+    events: [],
+    nextCursor: null,
+    hasMore: false,
+  });
+  // A page whose `events` isn't an array is equally refused rather than cast through.
+  invoke.mockResolvedValue({ events: 'nope', hasMore: true });
+  expect(await bridge.readTranscript('task-1')).toEqual({
+    events: [],
+    nextCursor: null,
+    hasMore: false,
+  });
 });
 
 // --- The nc:session listener validates the inner event before dispatching ------

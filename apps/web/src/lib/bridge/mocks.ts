@@ -167,7 +167,7 @@ export const MOCK_SETTINGS: Settings = {
   issueSyncEnabled: false,
   sidebarStyle: null,
   preferredEditor: null,
-  terminalWebglEnabled: false,
+  terminalWebglEnabled: null, // #407: unset ⇒ preview resolves the platform default
   terminalConfinedDefault: false,
   terminalFontSize: null,
   terminalScrollback: null,
@@ -188,6 +188,7 @@ export const MOCK_APP_INFO: AppInfo = {
   version: '0.0.0',
   repository: DEFAULT_REPO_URL,
   os: 'macos',
+  scanRunRetention: 50, // mirrors `store::run_store::MAX_RUNS`
 };
 
 /** In-memory background images for browser preview / Storybook (no Tauri fs). Keyed

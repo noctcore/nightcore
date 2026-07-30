@@ -21,4 +21,13 @@ repository: string,
  * is `"macos"`. Cheaper than a dedicated command and rides the metadata the
  * About page already fetches.
  */
-os: string, };
+os: string, 
+/**
+ * How many scan runs the core keeps per kind before pruning the oldest SETTLED
+ * ones (`store::run_store::MAX_RUNS`). Surfaced (#407) so History can state the
+ * retention rule instead of silently losing rows — and so the number is read
+ * from the enforcing constant rather than duplicated in a UI string that would
+ * drift the first time the cap changes. Rides `AppInfo` for the same reason `os`
+ * does: a whole command for one integer is not worth it.
+ */
+scanRunRetention: number, };

@@ -11,6 +11,7 @@ import {
   m,
 } from '@/components/ui';
 import type { PermissionPrompt, QuestionPrompt } from '@/lib/bridge';
+import { resolveTerminalWebgl } from '@/lib/platform';
 import type { ScanTarget } from '@/lib/source-ref';
 import { requestOpenTerminalInCwd } from '@/lib/terminal-links';
 
@@ -223,7 +224,7 @@ export function AppShellViews({
             <TerminalView
               projectPath={active?.path ?? null}
               projectName={active?.name ?? null}
-              webglEnabled={settings.settings?.terminalWebglEnabled ?? false}
+              webglEnabled={resolveTerminalWebgl(settings.settings?.terminalWebglEnabled)}
               confinedDefault={settings.settings?.terminalConfinedDefault ?? false}
               fontSize={settings.settings?.terminalFontSize ?? null}
               scrollback={settings.settings?.terminalScrollback ?? null}

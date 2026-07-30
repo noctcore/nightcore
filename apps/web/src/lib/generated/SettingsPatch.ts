@@ -54,7 +54,8 @@ issueSyncEnabled?: boolean,
 issueLabelPrefix?: string, 
 /**
  * PR C decision 7: toggle the terminal WebGL/GPU renderer. Global-only
- * (ignored for a per-project override target), like `sandbox_sessions`. See
+ * (ignored for a per-project override target), like `sandbox_sessions`. Applying
+ * it stores an EXPLICIT choice, replacing the platform-resolved default. See
  * [`super::model::Settings::terminal_webgl_enabled`].
  */
 terminalWebglEnabled?: boolean, 

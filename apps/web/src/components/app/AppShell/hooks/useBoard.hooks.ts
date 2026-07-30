@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type Dispatch, type SetStateAction, useCallback, useEffect, useRef, useState } from 'react';
 
 import { EMPTY_TRANSCRIPT, foldTranscript, isActive, type TaskTranscript } from '@/components/board';
 import type { ToastApi } from '@/components/ui';
@@ -36,6 +36,59 @@ function evictStaleStreams(
     else changed = true;
   }
   return changed ? next : streams;
+}
+
+/** Events per reseed hop. Small enough that the first page paints in about a
+ *  millisecond of parse + validate work, large enough that a typical run's whole
+ *  transcript is one or two hops. */
+const RESEED_PAGE = 600;
+
+/** Ceiling on how many persisted events one reseed walks back through — the same
+ *  window the core's tail read caps at, so the paged walk reproduces exactly what the
+ *  single unbounded hop used to return, never more. */
+const RESEED_BUDGET = 5_000;
+
+/** Reseed one task's transcript from its persisted JSONL, newest page first.
+ *
+ *  Publishes the first page immediately (fast paint), then follows `nextCursor`
+ *  backwards accumulating the rest and republishes ONE fold over the whole ordered
+ *  array. Both `setStreams` updaters are pure and idempotent:
+ *
+ *   - the first only seeds when the task has no resident transcript, so a live run's
+ *     accumulating stream is never clobbered;
+ *   - the second replaces only when the first page is STILL the resident object
+ *     (identity compare). If a live session event folded on top mid-walk, or the task
+ *     was evicted, the walk's result is dropped rather than overwriting newer state.
+ *
+ *  `cancelled` is flipped by the effect's teardown (selection changed / unmount) and
+ *  is checked after every await so a closed drawer stops paging. */
+async function seedTranscript(
+  id: string,
+  cancelled: { current: boolean },
+  setStreams: Dispatch<SetStateAction<Record<string, TaskTranscript>>>,
+): Promise<void> {
+  const first = await readTranscript(id, { limit: RESEED_PAGE });
+  if (cancelled.current || first.events.length === 0) return;
+
+  const firstFold = first.events.reduce(foldTranscript, { ...EMPTY_TRANSCRIPT });
+  setStreams((prev) => (prev[id] === undefined ? { ...prev, [id]: firstFold } : prev));
+  if (!first.hasMore || first.nextCursor === null) return;
+
+  // Walk older pages. Newest-first on the wire, so each page is UNSHIFTED to keep the
+  // accumulated array in fold (chronological) order.
+  const events = first.events.slice();
+  let cursor: number | null = first.nextCursor;
+  while (cursor !== null && events.length < RESEED_BUDGET) {
+    const older = await readTranscript(id, { limit: RESEED_PAGE, before: cursor });
+    if (cancelled.current) return;
+    if (older.events.length === 0) break;
+    events.unshift(...older.events);
+    cursor = older.hasMore ? older.nextCursor : null;
+  }
+  if (events.length === first.events.length) return; // nothing older actually arrived
+
+  const fullFold = events.reduce(foldTranscript, { ...EMPTY_TRANSCRIPT });
+  setStreams((prev) => (prev[id] === firstFold ? { ...prev, [id]: fullFold } : prev));
 }
 
 /** The board's task + stream state, reseeded whenever a project is activated.
@@ -185,27 +238,27 @@ export function useBoard(toast: ToastApi) {
   // Reseed the opened task's transcript from its persisted JSONL so a
   // reload/HMR no longer blanks it. Skips a task that already has a live stream
   // (an in-flight run's accumulating events must not be clobbered).
+  //
+  // Paged walk (#407): the reseed used to be ONE `read_transcript` hop carrying the
+  // core's whole tail window — measured at 1.8 MB of JSON per task open on a
+  // 200k-line transcript, paid in full whether or not the drawer needed it. It now
+  // takes a bounded first page (fast paint), then follows `nextCursor` backwards for
+  // the rest, so the largest single hop is ~8x smaller and the JSON.parse + per-event
+  // contract validation is spread across event-loop turns instead of one long block.
+  // Content is unchanged: the same events, folded once, in the same order.
   useEffect(() => {
     if (selectedId === null) return;
-    let alive = true;
     const id = selectedId;
-    void readTranscript(id)
-      .then((events) => {
-        if (!alive || events.length === 0) return;
-        setStreams((prev) => {
-          if (prev[id] !== undefined) return prev;
-          const seeded = events.reduce(foldTranscript, { ...EMPTY_TRANSCRIPT });
-          return { ...prev, [id]: seeded };
-        });
-      })
-      .catch((err) => {
-        // A missing/unreadable transcript is non-fatal — the panel just shows the
-        // empty timeline — but surface it so the open task isn't silently blank.
-        console.error('read_transcript failed', err);
-        toast.error('Could not load this task’s transcript', err);
-      });
+    const cancelled = { current: false };
+    void seedTranscript(id, cancelled, setStreams).catch((err: unknown) => {
+      if (cancelled.current) return;
+      // A missing/unreadable transcript is non-fatal — the panel just shows the
+      // empty timeline — but surface it so the open task isn't silently blank.
+      console.error('read_transcript failed', err);
+      toast.error('Could not load this task’s transcript', err);
+    });
     return () => {
-      alive = false;
+      cancelled.current = true;
     };
   }, [selectedId, toast]);
 

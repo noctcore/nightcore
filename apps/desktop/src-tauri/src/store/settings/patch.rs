@@ -190,7 +190,8 @@ pub struct SettingsPatch {
     #[cfg_attr(test, ts(optional))]
     pub issue_label_prefix: Option<String>,
     /// PR C decision 7: toggle the terminal WebGL/GPU renderer. Global-only
-    /// (ignored for a per-project override target), like `sandbox_sessions`. See
+    /// (ignored for a per-project override target), like `sandbox_sessions`. Applying
+    /// it stores an EXPLICIT choice, replacing the platform-resolved default. See
     /// [`super::model::Settings::terminal_webgl_enabled`].
     #[cfg_attr(test, ts(optional))]
     pub terminal_webgl_enabled: Option<bool>,
@@ -363,8 +364,10 @@ impl Settings {
         }
         // PR C: the two terminal toggles are global-only machine/GPU preferences,
         // so they merge into the global block alongside `sandbox_sessions`.
+        // A patch carries the user's EXPLICIT choice, so it always stores `Some(v)`:
+        // once the toggle is touched the platform default (`None`) no longer applies.
         if let Some(v) = patch.terminal_webgl_enabled {
-            self.terminal_webgl_enabled = v;
+            self.terminal_webgl_enabled = Some(v);
         }
         if let Some(v) = patch.terminal_confined_default {
             self.terminal_confined_default = v;

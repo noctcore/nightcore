@@ -632,6 +632,52 @@ mod tests {
     }
 
     #[test]
+    fn terminal_webgl_is_unset_by_default_and_a_legacy_bool_survives() {
+        // #407: the renderer default moved to the surface (platform-resolved), so the
+        // stored field is now tri-state. Unset must never be persisted as `false` —
+        // that would read as an explicit opt-out and pin macOS-safe DOM everywhere.
+        assert_eq!(Settings::default().terminal_webgl_enabled, None);
+
+        let tmp = TempDir::new().expect("temp dir");
+        let dir = tmp.path().join("config");
+        std::fs::create_dir_all(&dir).unwrap();
+        // A settings.json from BEFORE the field parses as unset…
+        let legacy = r#"{"defaultModel":"claude-opus-4-8","defaultEffort":"medium",
+            "maxConcurrency":3,"permissionMode":"bypass","cleanupWorktrees":true,
+            "notifyOnComplete":false,"defaultRunMode":"main","projectOverrides":{}}"#;
+        std::fs::write(dir.join("settings.json"), legacy).unwrap();
+        assert_eq!(
+            SettingsStore::load_from(dir.clone())
+                .get()
+                .terminal_webgl_enabled,
+            None,
+            "a file predating the field resolves to the platform default"
+        );
+
+        // …and one written while the field was a bare `bool` keeps that exact choice,
+        // so a user who deliberately turned GPU rendering OFF is not flipped on.
+        let with_bool = r#"{"defaultModel":"claude-opus-4-8","defaultEffort":"medium",
+            "maxConcurrency":3,"permissionMode":"bypass","cleanupWorktrees":true,
+            "notifyOnComplete":false,"defaultRunMode":"main","projectOverrides":{},
+            "terminalWebglEnabled":false}"#;
+        std::fs::write(dir.join("settings.json"), with_bool).unwrap();
+        let store = SettingsStore::load_from(dir);
+        assert_eq!(
+            store.get().terminal_webgl_enabled,
+            Some(false),
+            "a legacy explicit false stays an explicit false"
+        );
+
+        // A patch stores an EXPLICIT choice and round-trips through persistence.
+        store
+            .update(serde_json::from_str(r#"{"terminalWebglEnabled":true}"#).unwrap())
+            .expect("update");
+        assert_eq!(store.get().terminal_webgl_enabled, Some(true));
+        let reloaded = SettingsStore::load_from(tmp.path().join("config"));
+        assert_eq!(reloaded.get().terminal_webgl_enabled, Some(true));
+    }
+
+    #[test]
     fn issue_sync_settings_default_off_and_are_serde_additive() {
         // #97: issue writeback is opt-in (default off) and the label prefix defaults
         // to `nc:` via `label_prefix()`.

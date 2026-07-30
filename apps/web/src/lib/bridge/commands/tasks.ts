@@ -162,23 +162,61 @@ export async function cancelTask(id: string): Promise<void> {
 
 // --- Transcript persistence -----------------------------------------------
 
-/** Read a task's persisted session transcript — the same `NcEvent`s
- *  that streamed over `nc:session`, appended to a per-task JSONL by the core.
- *  The web reseeds the stream view from this on task open/mount so a reload/HMR
- *  no longer blanks the transcript. Returns `[]` outside Tauri (browser preview)
- *  and tolerates a missing/empty transcript. */
-export async function readTranscript(taskId: string): Promise<NcEvent[]> {
-  const raw = await tauriInvoke<unknown>('read_transcript', { taskId }, []);
-  if (!Array.isArray(raw)) return [];
+/** One page of a task's persisted transcript, newest page first. `nextCursor` is an
+ *  opaque byte offset into the JSONL: pass it back as `before` to read the page
+ *  immediately OLDER than this one. It is stable under append (the transcript is
+ *  append-only), so a live run writing more lines never shifts a held cursor. */
+export interface TranscriptPage {
+  events: NcEvent[];
+  nextCursor: number | null;
+  hasMore: boolean;
+}
+
+/** The empty page — outside Tauri (browser preview) and for a task with no
+ *  transcript yet. Frozen so a caller can't mutate the shared literal. */
+const EMPTY_TRANSCRIPT_PAGE: TranscriptPage = Object.freeze({
+  events: [],
+  nextCursor: null,
+  hasMore: false,
+});
+
+/** Read ONE page of a task's persisted session transcript — the same `NcEvent`s that
+ *  streamed over `nc:session`, appended to a per-task JSONL by the core. The web
+ *  reseeds the stream view from this on task open/mount so a reload/HMR no longer
+ *  blanks the transcript.
+ *
+ *  `limit` bounds the page (the core clamps it to its own tail ceiling; omitted ⇒ the
+ *  whole window) and `before` continues from a previous page's `nextCursor`. Paging
+ *  exists so the reseed never hands the webview one multi-MB hop: the surface takes a
+ *  small first page and walks older pages on its own schedule (#407).
+ *
+ *  Returns the empty page outside Tauri (browser preview) and tolerates a
+ *  missing/empty transcript. */
+export async function readTranscript(
+  taskId: string,
+  opts: { limit?: number; before?: number | null } = {},
+): Promise<TranscriptPage> {
+  const raw = await tauriInvoke<unknown>(
+    'read_transcript',
+    { taskId, limit: opts.limit, before: opts.before ?? null },
+    EMPTY_TRANSCRIPT_PAGE,
+  );
+  if (raw === null || typeof raw !== 'object') return EMPTY_TRANSCRIPT_PAGE;
+  const page = raw as { events?: unknown; nextCursor?: unknown; hasMore?: unknown };
+  if (!Array.isArray(page.events)) return EMPTY_TRANSCRIPT_PAGE;
   // Validate each persisted line against the authoritative event contract,
   // dropping any entry that fails (a partial write / legacy variant) rather than
   // feeding a malformed event into `foldSession`.
   const events: NcEvent[] = [];
-  for (const entry of raw) {
+  for (const entry of page.events) {
     const parsed = NightcoreEventSchema.safeParse(entry);
     if (parsed.success) events.push(parsed.data);
   }
-  return events;
+  return {
+    events,
+    nextCursor: typeof page.nextCursor === 'number' ? page.nextCursor : null,
+    hasMore: page.hasMore === true,
+  };
 }
 
 // --- Session history / resume (SDK session store) -------------------------
