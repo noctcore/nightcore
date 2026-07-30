@@ -12,8 +12,9 @@ export function ReadyStep({ checks }: ReadyStepProps) {
       </div>
       <div>
         <h1 className="text-[20px] font-semibold tracking-tight">You are set.</h1>
-        <p className="mt-1 max-w-[390px] text-xs-plus leading-6 text-muted-foreground">
-          Your first project is active. The board is ready for your first task.
+        <p className="mt-1 max-w-[430px] text-xs-plus leading-6 text-muted-foreground">
+          Your first project is active. Open the board for your first task — or start
+          at stage two and let a scan tell you what this repo actually needs.
         </p>
       </div>
       <div className="w-full overflow-hidden rounded-[11px] border border-white/[0.07]">

@@ -135,9 +135,12 @@ export function AppShell() {
           onboarding.dismiss();
           routing.goto('projects');
         }}
-        onComplete={() => {
+        // The wizard names an intent; the shell maps it to a route. `scan` is the
+        // Ready step's first-scan CTA (issue #404) — it lands on the Understand
+        // stage so a new user starts INSIDE the lifecycle the wizard just taught.
+        onComplete={(landing) => {
           onboarding.dismiss();
-          routing.goto('board');
+          routing.goto(landing === 'scan' ? 'understand' : 'board');
         }}
       />
     );

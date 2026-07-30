@@ -9,7 +9,7 @@ import {
 
 import type { OnboardingProps, OnboardingStep, OnboardingViewState } from './Onboarding.types';
 
-const STEPS: OnboardingStep[] = ['welcome', 'environment', 'project', 'ready'];
+const STEPS: OnboardingStep[] = ['welcome', 'stages', 'environment', 'project', 'ready'];
 
 export function folderBasename(folder: string | null): string {
   if (folder === null) return '';
@@ -46,7 +46,6 @@ export function useOnboarding({
   gitState,
   activeProvider = 'claude',
   onCreateProject,
-  onComplete,
 }: OnboardingProps): OnboardingViewState {
   const [step, setStep] = useState<OnboardingStep>('welcome');
   const [checks, setChecks] = useState<OnboardingPrerequisites | null>(null);
@@ -123,11 +122,10 @@ export function useOnboarding({
       .finally(() => setCreating(false));
   }, [canCreateProject, onCreateProject, projectName]);
 
-  useEffect(() => {
-    if (step !== 'ready') return;
-    const timeout = window.setTimeout(onComplete, 900);
-    return () => window.clearTimeout(timeout);
-  }, [onComplete, step]);
+  // NOTE: the Ready step used to auto-complete after 900ms. That made its own
+  // "Launch Nightcore" button — and any other exit — unreachable: the wizard left
+  // before a hand could move. Issue #404 gives Ready two REAL exits (launch the
+  // board, or run a first scan), so the hand-off is now an explicit choice.
 
   return {
     step,
