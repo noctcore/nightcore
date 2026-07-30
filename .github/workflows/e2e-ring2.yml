@@ -109,6 +109,13 @@ jobs:
             xvfb
           cp -u /var/cache/apt/archives/*.deb "$store"/ 2>/dev/null || true
       - run: bun install --frozen-lockfile
+      # A fresh checkout must BUILD the workspace dep chain before the web bundle can
+      # compile: apps/web resolves @nightcore/contracts + session-fold through their
+      # package.json `exports` (`./dist/index.js`), so without this `tauri build`'s
+      # `beforeBuildCommand` dies on `Cannot find module '@nightcore/contracts'`. Same
+      # step, same reason, as ci.yml's web-coverage job. (It failed exactly this way
+      # the first time this workflow ran — kept as a step rather than a comment.)
+      - run: bunx tsc -b apps/web
       # tauri-driver is not in taiki-e/install-action's registry, so it compiles here —
       # ~1 min cold, then restored from the rust-cache bin slot above. Pinned to the v2
       # line (`^2`) rather than floating latest: a v3 with a changed capability shape

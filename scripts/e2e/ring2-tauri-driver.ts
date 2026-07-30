@@ -32,11 +32,13 @@
  *
  * ## SELF-TEST — why this job cannot pass with the app broken
  *
- * `--self-test` (on by default in CI) perturbs the LIVE app and requires the battery
- * to trip: it empties `#root` and re-runs the DOM checks (all must fail), then makes
- * `invoke` reject and re-runs the IPC checks (all must fail). A check that survives
- * its own perturbation is not reading the app, and the run exits non-zero saying so.
- * Same contract as `scripts/verify-drift-guard.ts`.
+ * The self-test (on by default) perturbs the LIVE app and requires the battery to
+ * trip — one perturbation per check kind, and a check kind with no perturbation is
+ * itself a failure: it empties `#root` and re-runs the DOM checks (all must fail),
+ * makes `invoke` reject and re-runs the IPC checks (all must fail), and plants a
+ * quarantine file to prove the disk tripwire is looking where it claims. A check that
+ * survives its own perturbation is not reading the app, and the run exits non-zero
+ * naming it. Same contract as `scripts/verify-drift-guard.ts`.
  *
  * ## Usage
  *
@@ -350,33 +352,64 @@ async function runChecks(
 async function selfTest(
   session: WebDriverSession,
   checks: Check[],
+  workspace: Workspace,
 ): Promise<boolean> {
   console.log('\n══ SELF-TEST: perturb the live app, require the checks to trip ══');
   let allTripped = true;
 
+  // One perturbation per check KIND, so every check in the battery is covered: a kind
+  // with no perturbation would be a check nobody ever saw fail.
   const perturbations: Array<{
     label: string;
     kind: Check['kind'];
-    script: string;
+    apply: () => Promise<unknown>;
   }> = [
     {
       label: 'empty #root (the webview rendered nothing)',
       kind: 'dom',
       // Also blanks the title, so the window-title check is covered by the same
       // perturbation rather than being exempted from the proof.
-      script:
-        "document.querySelector('#root').innerHTML = ''; document.title = ''; return true;",
+      apply: () =>
+        session.execute(
+          "document.querySelector('#root').innerHTML = ''; document.title = ''; return true;",
+        ),
     },
     {
       label: 'make invoke() reject (the Rust core stopped answering)',
       kind: 'ipc',
-      script:
-        "window.__TAURI_INTERNALS__.invoke = () => Promise.reject(new Error('self-test')); return true;",
+      apply: () =>
+        session.execute(
+          "window.__TAURI_INTERNALS__.invoke = () => Promise.reject(new Error('self-test')); return true;",
+        ),
+    },
+    {
+      label: 'plant a quarantine file (a store was found corrupt)',
+      kind: 'disk',
+      // The quarantine tripwire is the check most likely to sit green forever — it
+      // asserts an ABSENCE, and an absence is exactly what a check looking in the
+      // wrong directory also reports. Planting the file it looks for proves it looks.
+      apply: () =>
+        Promise.resolve(
+          fs.writeFileSync(
+            path.join(workspace.configDir, 'projects.json.corrupt-0'),
+            '{}',
+          ),
+        ),
     },
   ];
 
+  const kinds = new Set(checks.map((c) => c.kind));
+  for (const kind of kinds) {
+    if (!perturbations.some((p) => p.kind === kind)) {
+      console.error(
+        `✖ SELF-TEST: check kind '${kind}' has no perturbation — those checks are unproven`,
+      );
+      allTripped = false;
+    }
+  }
+
   for (const perturbation of perturbations) {
-    await session.execute(perturbation.script);
+    await perturbation.apply();
     const targeted = checks.filter((c) => c.kind === perturbation.kind);
     const outcomes = await runChecks(session, targeted);
     const survivors = outcomes.filter((o) => o.ok);
@@ -462,7 +495,7 @@ async function main(): Promise<void> {
 
     // Only meaningful once the battery is green: proving that a FAILING check trips is
     // no proof at all. Perturbation also leaves the app unusable, so it runs last.
-    if (ok && wantSelfTest) ok = await selfTest(session, checks);
+    if (ok && wantSelfTest) ok = await selfTest(session, checks, workspace);
     else if (!ok && wantSelfTest) {
       console.log('\n(self-test skipped: the battery is already red — fix that first)');
     }
