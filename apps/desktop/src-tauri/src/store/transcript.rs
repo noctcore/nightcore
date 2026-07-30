@@ -53,10 +53,33 @@ fn writers() -> &'static Mutex<HashMap<String, Writer>> {
     WRITERS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// Max events returned by [`read_transcript`]. A long run streams thousands of
-/// partial-message deltas; the web only needs the recent window to repaint, so we
-/// return the TAIL. The full history stays on disk for inspection.
+/// Max events one [`read_events_page`] call may return — the ceiling a caller's
+/// `limit` is clamped to, and the default when it asks for none. A long run streams
+/// thousands of partial-message deltas; the web only needs the recent window to
+/// repaint, so we return the TAIL. The full history stays on disk for inspection.
 const TRANSCRIPT_TAIL: usize = 5_000;
+
+/// One page of a task's persisted transcript, read backwards from the end (or from
+/// a caller-supplied cursor). The reseed path used to be a single unbounded-ish
+/// [`TRANSCRIPT_TAIL`] read: ~1.8 MB of JSON crossing the IPC bridge in ONE hop on
+/// every task open, regardless of how much of it the surface actually needed. Paging
+/// lets the surface ask for a small first page (fast paint) and walk older pages on
+/// its own schedule, so no single hop is large.
+///
+/// `next_cursor` is the byte offset of the FIRST line in this page — pass it back as
+/// `before` to read the page immediately older than this one. It is stable under
+/// append (the transcript is append-only), so a cursor never shifts when the live
+/// run writes more lines.
+#[derive(Debug, Clone, serde::Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TranscriptPage {
+    /// The page's events, oldest-first (fold order).
+    pub events: Vec<Value>,
+    /// Byte offset to pass as the next `before`, or `None` at the start of the file.
+    pub next_cursor: Option<u64>,
+    /// Whether older events remain before this page.
+    pub has_more: bool,
+}
 
 /// The transcript file for a task: `<tasks_dir>/<id>/transcript.jsonl`. The
 /// per-task subdirectory keeps the transcript out of the task-file glob the store
@@ -274,67 +297,124 @@ fn restrict_dir_to_owner(dir: &Path) {
 fn restrict_dir_to_owner(_dir: &Path) {}
 
 /// Read the persisted events for a task (M4.7 §C), tail-bounded to
-/// [`TRANSCRIPT_TAIL`]. Each line is one `NightcoreEvent`; unparsable lines are
-/// skipped. Returns an empty vec when the task has no transcript yet (never an
-/// error — a task that hasn't run simply has nothing to reseed).
+/// [`TRANSCRIPT_TAIL`] — the whole-window convenience over [`read_events_page`], kept
+/// for the in-core readers that summarize a transcript rather than render it
+/// (`digest`). Each line is one `NightcoreEvent`; unparsable lines are skipped.
+/// Returns an empty vec when the task has no transcript yet (never an error — a task
+/// that hasn't run simply has nothing to reseed).
+pub(crate) fn read_events(tasks_dir: &Path, task_id: &str) -> Vec<Value> {
+    read_events_page(tasks_dir, task_id, None, None).events
+}
+
+/// Read ONE page of a task's persisted events, newest-page-first (M4.7 §C, #407).
+///
+/// `limit` is clamped to `1..=`[`TRANSCRIPT_TAIL`] (`None` ⇒ the full tail window, the
+/// pre-paging behaviour). `before` is a byte offset from an earlier page's
+/// [`TranscriptPage::next_cursor`]: the page returned ends there, so walking the
+/// cursor backwards yields the whole transcript in bounded hops. Each line is one
+/// `NightcoreEvent`; unparsable lines are skipped. A task with no transcript yields
+/// an empty page (never an error — a task that hasn't run has nothing to reseed).
 ///
 /// `pub(crate)` so the thin `commands::transcript::read_transcript` wrapper can
 /// reseed the web from it while the command handler lives in the command tier —
 /// keeping `store/` a pure persistence leaf with no `#[tauri::command]` of its own.
-pub(crate) fn read_events(tasks_dir: &Path, task_id: &str) -> Vec<Value> {
+pub(crate) fn read_events_page(
+    tasks_dir: &Path,
+    task_id: &str,
+    limit: Option<usize>,
+    before: Option<u64>,
+) -> TranscriptPage {
+    let empty = TranscriptPage {
+        events: Vec::new(),
+        next_cursor: None,
+        has_more: false,
+    };
     // Defence in depth: reject a task id that isn't a flat filename component before
     // joining it into the transcript path (path-traversal at the command boundary).
     if !crate::store::is_safe_task_id(task_id) {
-        return Vec::new();
+        return empty;
     }
+    let max_lines = limit.unwrap_or(TRANSCRIPT_TAIL).clamp(1, TRANSCRIPT_TAIL);
     let path = transcript_path(tasks_dir, task_id);
-    let Some(tail) = read_tail_lines(&path, TRANSCRIPT_TAIL) else {
-        return Vec::new();
+    let Some(window) = read_lines_before(&path, max_lines, before) else {
+        return empty;
     };
-    tail.iter()
+    let events: Vec<Value> = window
+        .lines
+        .iter()
         .filter(|l| !l.trim().is_empty())
         .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-        .collect()
+        .collect();
+    TranscriptPage {
+        events,
+        next_cursor: (window.start > 0).then_some(window.start),
+        has_more: window.start > 0,
+    }
 }
 
-/// Read at most the last `max_lines` lines of a file from the END (perf #9), instead
-/// of loading the whole transcript and dropping all but the tail. Reads fixed-size
-/// chunks backwards until enough newlines are seen (or the file starts), so a
-/// thousands-of-lines transcript only touches its recent window. Returns `None` when
-/// the file is missing/unreadable (a task that hasn't run has no transcript yet).
-fn read_tail_lines(path: &Path, max_lines: usize) -> Option<Vec<String>> {
+/// The byte window [`read_lines_before`] resolved: the decoded lines plus the offset
+/// the first of them starts at (`0` ⇒ the window reaches the start of the file, so
+/// there is nothing older to page to).
+struct LineWindow {
+    lines: Vec<String>,
+    start: u64,
+}
+
+/// Read at most the last `max_lines` lines ENDING at `before` (default: end of file),
+/// walking backwards from that offset (perf #9) instead of loading the whole
+/// transcript and dropping all but the tail. Two passes over the window and no
+/// accumulation: the first pass counts newlines backwards in a reused scratch buffer
+/// to locate the window start (the old version prepended each chunk onto a growing
+/// `Vec`, an O(n²) memcpy over the tail), the second reads `[start, end)` in one go.
+/// Returns `None` when the file is missing/unreadable (a task that hasn't run has no
+/// transcript yet).
+fn read_lines_before(path: &Path, max_lines: usize, before: Option<u64>) -> Option<LineWindow> {
     use std::io::{Read, Seek, SeekFrom};
     let mut file = std::fs::File::open(path).ok()?;
     let len = file.metadata().ok()?.len();
-    if len == 0 {
-        return Some(Vec::new());
+    let end = before.unwrap_or(len).min(len);
+    if end == 0 {
+        return Some(LineWindow {
+            lines: Vec::new(),
+            start: 0,
+        });
     }
 
     const CHUNK: u64 = 64 * 1024;
-    let mut buf: Vec<u8> = Vec::new();
-    let mut pos = len;
-    // Count newlines as we walk backwards; stop once we've seen one more than we need
-    // (so the partial line before the first kept newline is excluded), or hit BOF.
+    // Pass 1 — find the window start: the byte AFTER the (max_lines + 1)-th newline
+    // counted backwards from `end`. That newline terminates the line just BEFORE the
+    // ones we keep, so skipping past it yields exactly `max_lines` complete lines.
+    let mut scratch = vec![0u8; CHUNK as usize];
+    let mut pos = end;
     let mut newlines = 0usize;
-    while pos > 0 && newlines <= max_lines {
+    let mut start = 0u64;
+    'scan: while pos > 0 {
         let read_size = CHUNK.min(pos);
         pos -= read_size;
         file.seek(SeekFrom::Start(pos)).ok()?;
-        let mut chunk = vec![0u8; read_size as usize];
-        file.read_exact(&mut chunk).ok()?;
-        newlines += chunk.iter().filter(|&&b| b == b'\n').count();
-        // Prepend this earlier chunk in front of what we've accumulated.
-        chunk.extend_from_slice(&buf);
-        buf = chunk;
+        let chunk = &mut scratch[..read_size as usize];
+        file.read_exact(chunk).ok()?;
+        for (i, &b) in chunk.iter().enumerate().rev() {
+            if b != b'\n' {
+                continue;
+            }
+            newlines += 1;
+            if newlines > max_lines {
+                start = pos + i as u64 + 1;
+                break 'scan;
+            }
+        }
     }
 
+    // Pass 2 — read the resolved window in ONE contiguous read.
+    let mut buf = vec![0u8; (end - start) as usize];
+    file.seek(SeekFrom::Start(start)).ok()?;
+    file.read_exact(&mut buf).ok()?;
     let text = String::from_utf8_lossy(&buf);
-    let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).collect();
-    if lines.len() > max_lines {
-        let drop = lines.len() - max_lines;
-        lines.drain(0..drop);
-    }
-    Some(lines)
+    Some(LineWindow {
+        lines: text.lines().map(|s| s.to_string()).collect(),
+        start,
+    })
 }
 
 /// Aggregate cost + token totals summed across ALL of a task's sessions, derived
@@ -396,20 +476,29 @@ struct CompletedUsage {
 /// Sum cost + token usage across a task's `session-completed` transcript records
 /// (Trust Report §3.5). Scans the FULL transcript (not the tail-bounded read) —
 /// `session-completed` events are one-per-session and rare, so a whole-file pass
-/// is cheap and must not miss an early session. Returns `None` when the task has
-/// no transcript or no completed session yet (nothing to total — the
-/// missing-transcript-is-empty posture), so the caller can omit the aggregate
-/// rather than render a misleading `$0`.
+/// must not miss an early session. Returns `None` when the task has no transcript or
+/// no completed session yet (nothing to total — the missing-transcript-is-empty
+/// posture), so the caller can omit the aggregate rather than render a misleading
+/// `$0`.
+///
+/// Memory (#407): the pass STREAMS the file a line at a time through a `BufReader`.
+/// It used to `read_to_string` the whole transcript, so a long-running task's Trust
+/// Report allocated the entire file — measured at 71 MB resident for a 200k-line
+/// transcript, growing without bound for the life of the task. Peak is now one line.
 pub(crate) fn cost_summary(tasks_dir: &Path, task_id: &str) -> Option<CostSummary> {
+    use std::io::BufRead;
     // Defence in depth: never join an unsafe id into the transcript path.
     if !crate::store::is_safe_task_id(task_id) {
         return None;
     }
     let path = transcript_path(tasks_dir, task_id);
-    let raw = std::fs::read_to_string(&path).ok()?;
+    let reader = std::io::BufReader::new(std::fs::File::open(&path).ok()?);
     let mut summary = CostSummary::default();
     let mut seen = false;
-    for line in raw.lines() {
+    for line in reader.lines() {
+        // A read error mid-file (or an invalid-UTF-8 line) ends the scan with what was
+        // totalled so far, matching the previous lossy read's best-effort posture.
+        let Ok(line) = line else { break };
         let line = line.trim();
         if line.is_empty() {
             continue;
@@ -837,10 +926,11 @@ mod tests {
         std::fs::write(&path, &content).unwrap();
 
         // Ask for the last 500 lines: must be exactly the final 500, in order.
-        let tail = read_tail_lines(&path, 500).expect("tail");
-        assert_eq!(tail.len(), 500, "exactly the requested tail count");
-        let first: serde_json::Value = serde_json::from_str(&tail[0]).unwrap();
-        let last: serde_json::Value = serde_json::from_str(tail.last().unwrap()).unwrap();
+        let tail = read_lines_before(&path, 500, None).expect("tail");
+        assert_eq!(tail.lines.len(), 500, "exactly the requested tail count");
+        assert!(tail.start > 0, "a bounded tail leaves older bytes behind");
+        let first: serde_json::Value = serde_json::from_str(&tail.lines[0]).unwrap();
+        let last: serde_json::Value = serde_json::from_str(tail.lines.last().unwrap()).unwrap();
         assert_eq!(
             first["seq"],
             serde_json::json!(1500),
@@ -852,10 +942,118 @@ mod tests {
             "tail ends at the last line"
         );
 
-        // A tail larger than the file returns every line, none dropped.
+        // A tail larger than the file returns every line, none dropped, and reports
+        // that it reached the start of the file.
         std::fs::write(&path, "a\nb\nc\n").unwrap();
-        let all = read_tail_lines(&path, 100).expect("tail");
-        assert_eq!(all, vec!["a", "b", "c"]);
+        let all = read_lines_before(&path, 100, None).expect("tail");
+        assert_eq!(all.lines, vec!["a", "b", "c"]);
+        assert_eq!(all.start, 0, "the whole file leaves nothing older");
+    }
+
+    #[test]
+    fn paged_read_walks_the_cursor_back_over_the_whole_transcript() {
+        // #407: the surface takes a bounded first page and follows `nextCursor`
+        // backwards. Concatenating the pages in reverse order must reproduce the
+        // whole transcript exactly once, with no gap and no duplicate at a boundary.
+        let (store, _tmp) = temp_store();
+        let task = Task::new("t".into(), String::new());
+        store.upsert(&task).expect("upsert");
+        for i in 0..250 {
+            append_event(&store, &task.id, &serde_json::json!({"seq": i}));
+        }
+
+        let mut pages: Vec<Vec<Value>> = Vec::new();
+        let mut cursor: Option<u64> = None;
+        loop {
+            let page = read_events_page(&store.tasks_dir(), &task.id, Some(40), cursor);
+            assert!(page.events.len() <= 40, "a page never exceeds its limit");
+            pages.push(page.events);
+            if !page.has_more {
+                assert!(
+                    page.next_cursor.is_none(),
+                    "no cursor once nothing is older"
+                );
+                break;
+            }
+            cursor = page.next_cursor;
+            assert!(
+                cursor.is_some(),
+                "has_more implies a cursor to continue from"
+            );
+            assert!(pages.len() < 20, "the walk must terminate");
+        }
+
+        let flat: Vec<Value> = pages.into_iter().rev().flatten().collect();
+        assert_eq!(flat.len(), 250, "every event is seen exactly once");
+        for (i, ev) in flat.iter().enumerate() {
+            assert_eq!(ev["seq"], serde_json::json!(i), "in original append order");
+        }
+    }
+
+    #[test]
+    fn paged_read_defaults_to_the_whole_tail_window() {
+        // Omitting `limit`/`before` must behave exactly like the pre-paging read: the
+        // tail window, and no cursor once the file start is reached.
+        let (store, _tmp) = temp_store();
+        let task = Task::new("t".into(), String::new());
+        store.upsert(&task).expect("upsert");
+        for i in 0..30 {
+            append_event(&store, &task.id, &serde_json::json!({"seq": i}));
+        }
+        let page = read_events_page(&store.tasks_dir(), &task.id, None, None);
+        assert_eq!(page.events.len(), 30);
+        assert!(!page.has_more, "the whole file fits in the default window");
+        assert!(page.next_cursor.is_none());
+        assert_eq!(
+            page.events,
+            read_events(&store.tasks_dir(), &task.id),
+            "the convenience whole-window read is the default page"
+        );
+    }
+
+    #[test]
+    fn paged_read_clamps_an_absurd_or_zero_limit() {
+        // A surface (or a future caller) asking for 0 or a million events must not be
+        // able to defeat the page ceiling: the limit is clamped to 1..=TRANSCRIPT_TAIL.
+        let (store, _tmp) = temp_store();
+        let task = Task::new("t".into(), String::new());
+        store.upsert(&task).expect("upsert");
+        for i in 0..5 {
+            append_event(&store, &task.id, &serde_json::json!({"seq": i}));
+        }
+        let zero = read_events_page(&store.tasks_dir(), &task.id, Some(0), None);
+        assert_eq!(zero.events.len(), 1, "0 clamps up to a single event");
+        assert!(zero.has_more, "…and the rest is still reachable");
+        let huge = read_events_page(&store.tasks_dir(), &task.id, Some(usize::MAX), None);
+        assert_eq!(huge.events.len(), 5, "an absurd limit clamps to the window");
+    }
+
+    #[test]
+    fn paged_read_of_a_missing_transcript_is_an_empty_page() {
+        let (store, _tmp) = temp_store();
+        let page = read_events_page(&store.tasks_dir(), "ghost", Some(10), None);
+        assert!(page.events.is_empty());
+        assert!(!page.has_more, "nothing to page through");
+        assert!(page.next_cursor.is_none());
+    }
+
+    #[test]
+    fn transcript_page_serializes_camel_case() {
+        // Wire pinning: the page crosses the IPC boundary, so its field names are
+        // part of the contract the web bridge parses (`nextCursor` / `hasMore`).
+        let json = serde_json::to_value(TranscriptPage {
+            events: vec![serde_json::json!({"type": "assistant-text"})],
+            next_cursor: Some(42),
+            has_more: true,
+        })
+        .expect("serialize");
+        assert_eq!(json["nextCursor"], serde_json::json!(42));
+        assert_eq!(json["hasMore"], serde_json::json!(true));
+        assert!(json["events"].is_array());
+        assert!(
+            json.get("next_cursor").is_none(),
+            "snake_case must never reach the wire"
+        );
     }
 
     #[test]
