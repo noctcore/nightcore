@@ -36,6 +36,7 @@ import {
   type ProviderRegistry,
 } from '../providers/provider-factory.js';
 import { ScanRouter } from '../scans/scan-router.js';
+import { defaultRunnerFactory } from '../scans/shared/runner-factory.js';
 import { probeModels } from './session-models.js';
 import { refusalEvent } from './session-preflight-refusal.js';
 import { handleSessionQuery } from './session-query.js';
@@ -213,6 +214,11 @@ export class SessionManager {
         listModels: () => this.listModels(),
         firstLiveRunner: () => this.firstLiveRunner(),
         makeProbeSession: (providerId) => this.makeProbeSession(providerId),
+        // The deep conformance audit (#279) is the one query that spins a real
+        // read-only model pass, so it needs the config + runner seam the scans use.
+        config: this.config,
+        apiKeyFallback: this.apiKeyFallback,
+        runnerFactory: defaultRunnerFactory,
         ...(this.logger !== undefined ? { logger: this.logger } : {}),
       },
       query,

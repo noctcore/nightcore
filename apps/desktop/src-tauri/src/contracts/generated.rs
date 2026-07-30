@@ -314,6 +314,19 @@ pub enum SurfaceQuery {
         #[serde(default)]
         invalid_cases: Vec<String>,
     },
+    #[serde(rename_all = "camelCase")]
+    AuditConformance {
+        request_id: String,
+        project_path: String,
+        #[serde(default)]
+        conventions: Vec<ConformanceAuditTarget>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_turns: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_budget_usd: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
+    },
 }
 
 // === Engine → surface events (Rust DESERIALIZES / forwards these) ===
@@ -451,6 +464,8 @@ pub enum NightcoreEvent {
         models: Option<Vec<QueryResultModelsItem>>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         rule_validation: Option<RuleValidationResult>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        conformance_audit: Option<ConformanceAuditResult>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
@@ -786,6 +801,29 @@ pub enum ConfigSectionStatus {
     Unavailable,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConformanceAuditResult {
+    #[serde(default)]
+    pub drift: Vec<ConventionDrift>,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub cost_usd: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConformanceAuditTarget {
+    pub fingerprint: String,
+    pub category: String,
+    pub title: String,
+    #[serde(default)]
+    pub description: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ConventionCategory {
@@ -797,6 +835,35 @@ pub enum ConventionCategory {
     ToolingLint,
     Testing,
     AgentContext,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConventionDrift {
+    pub id: String,
+    pub convention_fingerprint: String,
+    pub category: String,
+    pub title: String,
+    pub status: ConventionDriftStatus,
+    pub method: String,
+    #[serde(default)]
+    pub sites_matched: f64,
+    #[serde(default)]
+    pub sites_checked: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_reason: Option<String>,
+    pub fingerprint: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ConventionDriftStatus {
+    Clean,
+    Drifted,
+    Uncheckable,
+    Errored,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1398,6 +1465,7 @@ pub enum QueryResultKindEnum {
     Capabilities,
     Models,
     RuleValidation,
+    ConformanceAudit,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

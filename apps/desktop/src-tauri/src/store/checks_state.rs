@@ -78,6 +78,7 @@ pub(crate) fn write_last_run(
     project_path: &str,
     result: &StructureLockResult,
     drift: &[ConventionDrift],
+    deep: bool,
     ran_at: u64,
 ) -> Result<(), String> {
     let path = last_run_file(project_path);
@@ -86,7 +87,7 @@ pub(crate) fn write_last_run(
         ran_at,
         result: result.clone(),
         drift: drift.to_vec(),
-        deep: false,
+        deep,
         previous,
     };
     let json = serde_json::to_string_pretty(&stored)
@@ -184,6 +185,7 @@ mod tests {
             &root_of(&tmp),
             &sample_result(),
             &[sample_drift()],
+            false,
             1_700_000_000_000,
         )
         .expect("write");
@@ -227,11 +229,18 @@ mod tests {
             &root,
             &sample_result(),
             &[drift_with("fp", "drifted", 3)],
+            false,
             1,
         )
         .expect("write 1");
-        write_last_run(&root, &sample_result(), &[drift_with("fp", "clean", 0)], 2)
-            .expect("write 2");
+        write_last_run(
+            &root,
+            &sample_result(),
+            &[drift_with("fp", "clean", 0)],
+            false,
+            2,
+        )
+        .expect("write 2");
 
         let run = read_last_run(&root).expect("present");
         assert_eq!(run.ran_at, 2);
@@ -242,8 +251,14 @@ mod tests {
         assert!(!prev.deep);
 
         // A THIRD run keeps exactly two generations — the first is gone, not nested.
-        write_last_run(&root, &sample_result(), &[drift_with("fp", "clean", 1)], 3)
-            .expect("write 3");
+        write_last_run(
+            &root,
+            &sample_result(),
+            &[drift_with("fp", "clean", 1)],
+            false,
+            3,
+        )
+        .expect("write 3");
         let run = read_last_run(&root).expect("present");
         assert_eq!(run.previous.as_ref().expect("prev").ran_at, 2);
         let raw = std::fs::read_to_string(tmp.path().join(".nightcore/checks-last-run.json"))
@@ -266,13 +281,20 @@ mod tests {
             &root,
             &sample_result(),
             &[drift_with("fp", "drifted", 5)],
+            false,
             1,
         )
         .expect("write 1");
-        write_last_run(&root, &sample_result(), &[drift_with("fp", "clean", 0)], 2)
-            .expect("write 2");
+        write_last_run(
+            &root,
+            &sample_result(),
+            &[drift_with("fp", "clean", 0)],
+            false,
+            2,
+        )
+        .expect("write 2");
         // Run 3 measures nothing (e.g. every drift check was disarmed).
-        write_last_run(&root, &sample_result(), &[], 3).expect("write 3");
+        write_last_run(&root, &sample_result(), &[], false, 3).expect("write 3");
 
         let run = read_last_run(&root).expect("present");
         assert!(run.drift.is_empty());
@@ -284,7 +306,14 @@ mod tests {
     #[test]
     fn the_first_run_carries_nothing_forward() {
         let tmp = tempfile::TempDir::new().expect("temp dir");
-        write_last_run(&root_of(&tmp), &sample_result(), &[sample_drift()], 1).expect("write");
+        write_last_run(
+            &root_of(&tmp),
+            &sample_result(),
+            &[sample_drift()],
+            false,
+            1,
+        )
+        .expect("write");
         assert!(read_last_run(&root_of(&tmp))
             .expect("present")
             .previous

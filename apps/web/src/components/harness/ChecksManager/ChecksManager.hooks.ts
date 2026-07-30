@@ -17,6 +17,12 @@ import {
 
 import type { ChecksEditDraft, ChecksManagerVM } from './ChecksManager.types';
 
+/** The hard USD ceiling a DEEP conformance audit runs under (#279). The pass is the
+ *  expensive half of drift — the pure-LLM variant was priced at $30–95/run before it
+ *  was bounded — so the run is launched with an explicit budget the UI shows first,
+ *  and the backend independently caps how many conventions it may examine. */
+export const DEEP_AUDIT_BUDGET_USD = 2;
+
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -59,19 +65,27 @@ export function useChecksManager(): ChecksManagerVM {
     };
   }, []);
 
+  // The opt-in DEEP conformance audit (#279). Off by default and never remembered
+  // across mounts: a paid pass must be chosen deliberately each time, not inherited.
+  const [deep, setDeep] = useState(false);
+
   const start = useCallback(() => {
     setRunning(true);
     setRunError(null);
     void (async () => {
       try {
-        setState(await runArmedChecksNow());
+        setState(
+          await runArmedChecksNow(
+            deep ? { deep: true, maxBudgetUsd: DEEP_AUDIT_BUDGET_USD } : {},
+          ),
+        );
       } catch (err) {
         setRunError(errMessage(err));
       } finally {
         setRunning(false);
       }
     })();
-  }, []);
+  }, [deep]);
 
   // The per-check "Validate rule" trigger (issue #185): confirm an armed `lint-plugin`
   // check is a REAL rule that fires via the Bun-sidecar RuleTester runner, not a
@@ -203,7 +217,14 @@ export function useChecksManager(): ChecksManagerVM {
     lastRun: state?.lastRun ?? null,
     actionError,
     pendingName,
-    run: { running, error: runError, start },
+    run: {
+      running,
+      error: runError,
+      start,
+      deep,
+      setDeep,
+      deepBudgetUsd: DEEP_AUDIT_BUDGET_USD,
+    },
     toggle,
     edit: {
       draft,

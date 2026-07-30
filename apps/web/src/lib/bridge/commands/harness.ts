@@ -300,9 +300,20 @@ export async function updateArmedCheck(
 }
 
 /** Run the whole armed gauntlet against the active project root now, persist the
- *  result as the last run, and return the refreshed view. Rejects outside Tauri. */
-export async function runArmedChecksNow(): Promise<ArmedChecksState> {
-  return invoke<ArmedChecksState>('run_armed_checks_now', {});
+ *  result as the last run, and return the refreshed view. Rejects outside Tauri.
+ *
+ *  `deep` opts into the DEEP CONFORMANCE AUDIT (#279) — a bounded, read-only MODEL
+ *  pass over the conventions no armed check measures. It costs real money, so it is
+ *  never implied: the caller passes it explicitly, with `maxBudgetUsd` as the hard
+ *  ceiling. The backend caps how many conventions the pass may look at, so the quoted
+ *  price is the price. */
+export async function runArmedChecksNow(
+  options: { deep?: boolean; maxBudgetUsd?: number } = {},
+): Promise<ArmedChecksState> {
+  return invoke<ArmedChecksState>('run_armed_checks_now', {
+    deep: options.deep ?? false,
+    maxBudgetUsd: options.maxBudgetUsd ?? null,
+  });
 }
 
 /** The arguments to {@link validatePluginRule} — the `validate_plugin_rule` invoke

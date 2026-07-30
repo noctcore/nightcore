@@ -24,6 +24,7 @@ mod convert;
 // The Council write-capable worktree seam (issue #383): the host handler + run registry for
 // the path-less `worktree-op-required` → `resolve-worktree-op` RPC. `pub(crate)` so `lib.rs`
 // can `manage` the registry and `commands.rs` can register/forget runs.
+mod conformance_audit;
 pub(crate) mod council_worktree;
 mod harness;
 mod insight;
@@ -68,6 +69,7 @@ pub(crate) use models::*;
 pub(crate) use capabilities::*;
 // The one-shot RuleTester validation command `validate_plugin_rule` (issue #185; glob
 // so the `#[tauri::command]` macro siblings resolve through `sidecar::*` for `generate_handler!`).
+pub(crate) use conformance_audit::{audit_targets, run_audit, to_store_drift};
 pub(crate) use rule_tester::*;
 // The Insight (codebase analysis) commands + the reader-side `analysis-*` handler
 // (glob so the `#[tauri::command]` macro siblings resolve through `sidecar::*`).

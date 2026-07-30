@@ -373,25 +373,95 @@ pub async fn update_armed_check(
 /// the result as the last on-demand run, and return the refreshed view. Main-mode
 /// shape (the project root is both the manifest root and the run dir); the runner
 /// is full-run + per-check timeout + retry-once, so this can never hang the UI
-/// unbounded. Runs on the blocking pool (it spawns subprocesses).
+/// unbounded. The subprocess work runs on the blocking pool.
+///
+/// `deep` opts into the DEEP CONFORMANCE AUDIT (#279): after the mechanical run, a
+/// bounded read-only model pass re-reads the sites of conventions no armed check
+/// measures, and its records join the same drift plane (`method: "deep-audit: …"`).
+/// It is opt-in because it costs real money — `max_budget_usd` is the caller's hard
+/// ceiling, and the run persists `deep: true` so the depth stays recoverable and the
+/// carry-forward comparison never diffs it against a shallow run.
 #[tauri::command]
-pub async fn run_armed_checks_now(app: AppHandle) -> Result<ArmedChecksState, String> {
+pub async fn run_armed_checks_now(
+    app: AppHandle,
+    deep: Option<bool>,
+    max_budget_usd: Option<f64>,
+) -> Result<ArmedChecksState, String> {
+    let deep = deep.unwrap_or(false);
+    // The mechanical leg: spawns subprocesses, so it stays on the blocking pool.
+    let mechanical = {
+        let app = app.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let path = active_project_path(&app)?;
+            let root = std::path::Path::new(&path);
+            let (result, drift) = crate::workflow::gauntlet_project::run_with_drift(root, root);
+            Ok::<_, String>((path, result, drift))
+        })
+        .await
+        .map_err(|e| format!("run armed checks failed to run: {e}"))??
+    };
+    let (path, result, mut drift) = mechanical;
+
+    // The DEEP leg (opt-in): a model pass over the conventions the mechanical leg did
+    // not measure. Fail-soft — a failed audit must never lose the mechanical result, so
+    // it is logged and the run persists as a SHALLOW one (never claiming a depth it did
+    // not achieve, which would poison the carry-forward basis).
+    let mut deep_ran = false;
+    if deep {
+        match deep_audit_drift(&app, &path, &drift, max_budget_usd).await {
+            Ok(extra) => {
+                deep_ran = true;
+                drift.extend(extra);
+            }
+            Err(e) => {
+                tracing::warn!(target: "nightcore::checks_manager", error = %e, "deep conformance audit failed; keeping the mechanical drift only");
+            }
+        }
+    }
+
+    let path_for_state = path.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let path = active_project_path(&app)?;
-        // Drift-v1 (T15): run the ARMED checks AND measure per-convention drift. The
-        // gauntlet result is unchanged (main-mode: the project root is both manifest
-        // root and run dir); `drift` is the new EnforceRun output.
-        let root = std::path::Path::new(&path);
-        let (result, drift) = crate::workflow::gauntlet_project::run_with_drift(root, root);
         // Best-effort persist — a failed write must not lose the just-computed result,
         // so we still return it (the panel just won't have it on the next cold mount).
-        if let Err(e) = write_last_run(&path, &result, &drift, now_ms()) {
+        if let Err(e) = write_last_run(&path, &result, &drift, deep_ran, now_ms()) {
             tracing::warn!(target: "nightcore::checks_manager", error = %e, "could not persist last armed-checks run");
         }
-        Ok(state_for(&path))
+        Ok(state_for(&path_for_state))
     })
     .await
-    .map_err(|e| format!("run armed checks failed to run: {e}"))?
+    .map_err(|e| format!("persisting the armed-checks run failed: {e}"))?
+}
+
+/// The deep leg: pick the UNMEASURED conventions from the project's latest harness run
+/// and hand them to the engine's audit pass. Returns the extra drift records.
+async fn deep_audit_drift(
+    app: &AppHandle,
+    project_path: &str,
+    measured: &[ConventionDrift],
+    max_budget_usd: Option<f64>,
+) -> Result<Vec<ConventionDrift>, String> {
+    use tauri::Manager;
+    let store = app
+        .try_state::<crate::store::harness::HarnessStore>()
+        .ok_or_else(|| "harness store unavailable".to_string())?;
+    let conventions = store.latest_conventions_for(project_path);
+    if conventions.is_empty() {
+        return Err("no harness scan has found conventions for this project yet".to_string());
+    }
+    let measured_fingerprints: Vec<String> = measured
+        .iter()
+        .map(|d| d.convention_fingerprint.clone())
+        .collect();
+    let targets = crate::sidecar::audit_targets(&conventions, &measured_fingerprints);
+    if targets.is_empty() {
+        return Ok(Vec::new());
+    }
+    let result =
+        crate::sidecar::run_audit(app, project_path.to_string(), targets, max_budget_usd).await?;
+    if let Some(err) = result.error.as_deref() {
+        tracing::warn!(target: "nightcore::checks_manager", error = %err, "deep conformance audit degraded");
+    }
+    Ok(crate::sidecar::to_store_drift(&result))
 }
 
 #[cfg(test)]
@@ -504,20 +574,24 @@ mod tests {
             failed_check: None,
             checks: vec![],
         };
-        write_last_run(&root, &result, &[drift(4)], 100).expect("run 1");
+        write_last_run(&root, &result, &[drift(4)], false, 100).expect("run 1");
         assert!(
             state_for(&root).previous_run.is_none(),
             "one run ⇒ nothing to compare against"
         );
 
-        write_last_run(&root, &result, &[drift(1)], 200).expect("run 2");
+        write_last_run(&root, &result, &[drift(1)], true, 200).expect("run 2");
         let state = state_for(&root);
         assert_eq!(state.drift[0].sites_matched, 1);
         let prev = state.previous_run.expect("carried forward");
         assert_eq!(prev.ran_at, 100);
         assert_eq!(prev.drift[0].sites_matched, 4);
-        assert!(!prev.deep);
-        assert!(!state.last_run.expect("last run").deep);
+        assert!(!prev.deep, "the shallow predecessor's depth round-trips");
+        assert!(
+            state.last_run.expect("last run").deep,
+            "the deep run's depth is recoverable after the fact — it is what stops a \
+             deep run being diffed against a shallow one"
+        );
     }
 
     /// Arming and disarming are governance decisions the manifest keeps only as its

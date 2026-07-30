@@ -18,6 +18,13 @@ export interface ChecksRunVM {
   running: boolean;
   error: string | null;
   start: () => void;
+  /** Whether the next run includes the opt-in DEEP conformance audit (#279) — a
+   *  read-only MODEL pass over the conventions no armed check can measure. */
+  deep: boolean;
+  setDeep: (deep: boolean) => void;
+  /** The hard USD ceiling a deep run is launched with. Rendered BEFORE the user
+   *  commits, so the price of the opt-in is never invisible. */
+  deepBudgetUsd: number;
 }
 
 /** The edit slice of the view model. `draft` is non-null only while a row is open. */
