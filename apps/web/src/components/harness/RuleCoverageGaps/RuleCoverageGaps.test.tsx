@@ -4,8 +4,15 @@ import { render } from 'vitest-browser-react';
 
 import * as stories from './RuleCoverageGaps.stories';
 
-const { MixedCoverage, AllEnforced, DriftNotMeasured, DriftErrored, Empty } =
-  composeStories(stories);
+const {
+  MixedCoverage,
+  AllEnforced,
+  DriftNotMeasured,
+  DriftErrored,
+  DriftTrend,
+  DriftTrendGroundChanged,
+  Empty,
+} = composeStories(stories);
 
 test('renders a row per convention with its coverage status badge', async () => {
   const screen = render(<MixedCoverage />);
@@ -111,6 +118,33 @@ test('reads "not measured yet" before any EnforceRun, with no drift chips', asyn
   expect(text).not.toContain('Uncheckable');
   expect(text).not.toContain('Drifted');
   expect(text).not.toContain('Clean');
+});
+
+test('shows the run-over-run trend when the carried-forward run measured the same ground', async () => {
+  const screen = render(<DriftTrend />);
+  // fp1 improved 7 → 3, fp3 resolved 2 → 0 ⇒ 6 fewer violating sites overall.
+  await expect.element(screen.getByText(/^Since /)).toBeInTheDocument();
+  await expect.element(screen.getByText('improved', { exact: true })).toBeInTheDocument();
+  await expect.element(screen.getByText('resolved', { exact: true })).toBeInTheDocument();
+  await expect.element(screen.getByText(/−6 violating sites/)).toBeInTheDocument();
+});
+
+test('refuses a trend — with the reason — when the two runs measured different ground', async () => {
+  const screen = render(<DriftTrendGroundChanged />);
+  await expect
+    .element(screen.getByText(/measured different ground/i))
+    .toBeInTheDocument();
+  // No trend numbers are rendered at all.
+  const text = screen.container.textContent ?? '';
+  expect(text).not.toContain('newly drifted');
+  expect(text).not.toContain('violating sites');
+});
+
+test('says so when there is no earlier measured run to compare against', async () => {
+  const screen = render(<MixedCoverage />);
+  await expect
+    .element(screen.getByText(/No earlier measured run to compare against/i))
+    .toBeInTheDocument();
 });
 
 test('renders nothing when the run carries no coverage', async () => {

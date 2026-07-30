@@ -78,7 +78,7 @@ const meta = {
   args: {
     vm: makeVm({
       checks: [LINT, ARCH],
-      lastRun: { passed: true, ranAt: Date.now() - 5 * 60 * 1000 },
+      lastRun: { passed: true, ranAt: Date.now() - 5 * 60 * 1000, deep: false },
     }),
   },
 } satisfies Meta<typeof ChecksManager>;
@@ -94,7 +94,12 @@ export const WithFailure: Story = {
   args: {
     vm: makeVm({
       checks: [LINT, COVERAGE],
-      lastRun: { passed: false, failedCheck: 'coverage-threshold', ranAt: Date.now() - 30 * 1000 },
+      lastRun: {
+        passed: false,
+        failedCheck: 'coverage-threshold',
+        ranAt: Date.now() - 30 * 1000,
+        deep: false,
+      },
     }),
   },
 };

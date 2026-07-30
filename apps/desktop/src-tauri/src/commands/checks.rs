@@ -90,6 +90,28 @@ pub struct ArmedChecksLastRun {
     pub failed_check: Option<String>,
     /// When the run finished (ms since epoch).
     pub ran_at: u64,
+    /// Whether this EnforceRun included the opt-in DEEP conformance audit. Part of the
+    /// carry-forward comparability basis: a deep run sweeps ground a shallow one does
+    /// not, so diffing across depth would manufacture "new"/"resolved" drift.
+    pub deep: bool,
+}
+
+/// The carried-forward PREDECESSOR of the last EnforceRun (#279) — the run the panel
+/// diffs against for a drift trend. Carries only what a delta needs: when it ran, at
+/// what depth, and the drift it measured.
+///
+/// It is not necessarily the run immediately before the current one: a run that
+/// measured nothing never becomes a predecessor (see
+/// [`crate::store::checks_state::write_last_run`]), so the panel always renders
+/// `ran_at` rather than implying "the previous run".
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "ArmedChecksPreviousRun.ts"))]
+pub struct ArmedChecksPreviousRun {
+    pub ran_at: u64,
+    pub deep: bool,
+    pub drift: Vec<ConventionDrift>,
 }
 
 /// The whole Checks Manager view: the armed checks (with folded last results) and
@@ -110,6 +132,12 @@ pub struct ArmedChecksState {
     /// the coverage panel by `conventionFingerprint` and derives `uncheckable` for
     /// conventions with no armed check.
     pub drift: Vec<ConventionDrift>,
+    /// Carry-forward (#279): the earlier run this one can be diffed against, when one
+    /// exists. `None` before a second measuring run has happened — the panel then says
+    /// so rather than showing a trend it cannot compute.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub previous_run: Option<ArmedChecksPreviousRun>,
 }
 
 impl ArmedCheckOutcome {
@@ -127,13 +155,20 @@ impl ArmedCheckOutcome {
 /// Pure (filesystem reads happen in the callers), so it is unit-testable.
 fn build_state(
     files: Vec<ArmedCheckFile>,
-    last: Option<(u64, StructureLockResult)>,
+    last: Option<LastRunView>,
     drift: Vec<ConventionDrift>,
+    previous_run: Option<ArmedChecksPreviousRun>,
 ) -> ArmedChecksState {
     // Index last-run outcomes by check name for the fold.
     let outcomes: HashMap<&str, &StructureLockCheck> = last
         .as_ref()
-        .map(|(_, r)| r.checks.iter().map(|c| (c.name.as_str(), c)).collect())
+        .map(|l| {
+            l.result
+                .checks
+                .iter()
+                .map(|c| (c.name.as_str(), c))
+                .collect()
+        })
         .unwrap_or_default();
 
     let checks = files
@@ -154,27 +189,47 @@ fn build_state(
         })
         .collect();
 
-    let last_run = last.map(|(ran_at, r)| ArmedChecksLastRun {
-        passed: r.passed,
-        failed_check: r.failed_check,
-        ran_at,
+    let last_run = last.map(|l| ArmedChecksLastRun {
+        passed: l.result.passed,
+        failed_check: l.result.failed_check,
+        ran_at: l.ran_at,
+        deep: l.deep,
     });
 
     ArmedChecksState {
         checks,
         last_run,
         drift,
+        previous_run,
     }
+}
+
+/// The last-run slice `build_state` folds in: when it ran, at what depth, and its
+/// gauntlet result. A named struct (not a tuple) so adding a dimension to the run —
+/// depth was the first — can never silently reorder a caller's arguments.
+struct LastRunView {
+    ran_at: u64,
+    deep: bool,
+    result: StructureLockResult,
 }
 
 /// Read the manifest + last-run record for `project_path` and project them.
 fn state_for(project_path: &str) -> ArmedChecksState {
     let files = read_armed_checks(project_path);
-    let (last, drift) = match read_last_run(project_path) {
-        Some(r) => (Some((r.ran_at, r.result)), r.drift),
-        None => (None, Vec::new()),
+    let Some(stored) = read_last_run(project_path) else {
+        return build_state(files, None, Vec::new(), None);
     };
-    build_state(files, last, drift)
+    let previous_run = stored.previous.map(|p| ArmedChecksPreviousRun {
+        ran_at: p.ran_at,
+        deep: p.deep,
+        drift: p.drift,
+    });
+    let last = LastRunView {
+        ran_at: stored.ran_at,
+        deep: stored.deep,
+        result: stored.result,
+    };
+    build_state(files, Some(last), stored.drift, previous_run)
 }
 
 /// The active project's path via `try_state` (blocking-pool safe).
@@ -378,7 +433,16 @@ mod tests {
                 check("arch", StepStatus::Passed),
             ],
         };
-        let state = build_state(files, Some((1234, last)), Vec::new());
+        let state = build_state(
+            files,
+            Some(LastRunView {
+                ran_at: 1234,
+                deep: false,
+                result: last,
+            }),
+            Vec::new(),
+            None,
+        );
         assert_eq!(state.checks.len(), 3);
         let by = |n: &str| state.checks.iter().find(|c| c.name == n).unwrap();
         assert_eq!(
@@ -400,10 +464,60 @@ mod tests {
 
     #[test]
     fn build_state_without_a_last_run_has_no_outcomes() {
-        let state = build_state(vec![file("lint", true)], None, Vec::new());
+        let state = build_state(vec![file("lint", true)], None, Vec::new(), None);
         assert!(state.last_run.is_none());
         assert!(state.checks[0].last_result.is_none());
         assert!(state.drift.is_empty());
+        assert!(
+            state.previous_run.is_none(),
+            "nothing to carry forward before the first run"
+        );
+    }
+
+    /// Carry-forward (#279): a second measuring run surfaces the predecessor's drift +
+    /// depth on the state the panel reads, so the delta has both sides to compare.
+    #[test]
+    fn state_for_surfaces_the_carried_forward_previous_run() {
+        use crate::store::checks_state::write_last_run;
+        use crate::store::types::ConventionDrift;
+
+        fn drift(matched: u64) -> ConventionDrift {
+            ConventionDrift {
+                id: "drift-fp".into(),
+                convention_fingerprint: "fp".into(),
+                category: String::new(),
+                title: "r".into(),
+                status: if matched == 0 { "clean" } else { "drifted" }.into(),
+                method: "lint-meta: r".into(),
+                sites_matched: matched,
+                sites_checked: matched.max(1),
+                check_name: Some("r".into()),
+                error_reason: None,
+                fingerprint: "fp".into(),
+            }
+        }
+
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let root = tmp.path().to_string_lossy().to_string();
+        let result = StructureLockResult {
+            passed: true,
+            failed_check: None,
+            checks: vec![],
+        };
+        write_last_run(&root, &result, &[drift(4)], 100).expect("run 1");
+        assert!(
+            state_for(&root).previous_run.is_none(),
+            "one run ⇒ nothing to compare against"
+        );
+
+        write_last_run(&root, &result, &[drift(1)], 200).expect("run 2");
+        let state = state_for(&root);
+        assert_eq!(state.drift[0].sites_matched, 1);
+        let prev = state.previous_run.expect("carried forward");
+        assert_eq!(prev.ran_at, 100);
+        assert_eq!(prev.drift[0].sites_matched, 4);
+        assert!(!prev.deep);
+        assert!(!state.last_run.expect("last run").deep);
     }
 
     /// Arming and disarming are governance decisions the manifest keeps only as its

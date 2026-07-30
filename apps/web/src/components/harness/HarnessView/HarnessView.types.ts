@@ -11,12 +11,12 @@ import type { ScanTarget } from '@/lib/source-ref';
 
 import type { CategoryTab } from '../CategoryTabs';
 import type {
-  ConventionDriftVM,
   ConventionFindingVM,
   HarnessProposalVM,
   ProposedArtifactVM,
   RuleCoverageGapVM,
 } from '../harness.types';
+import type { ArmedDriftView } from '../harness-drift.hooks';
 import type {
   HarnessMode,
   HarnessSection,
@@ -103,9 +103,10 @@ export interface HarnessViewModel {
   coverage: RuleCoverageGapVM[];
   /** Per-convention coverage status keyed by `fingerprint` — the ConventionGrid badge. */
   coverageByFingerprint: Record<string, CoverageStatus>;
-  /** Drift-v1 (T15): the measured per-convention conformance from the last EnforceRun,
-   *  joined to `coverage` by `conventionFingerprint` in the Rule-Coverage-Gaps panel. */
-  drift: ConventionDriftVM[];
+  /** The measured per-convention conformance from the last EnforceRun (plus the run
+   *  carried forward beside it, #279), joined to `coverage` by `conventionFingerprint`
+   *  in the Rule-Coverage-Gaps panel. */
+  drift: ArmedDriftView;
   /** Whether the Enforce destination surfaces coverage (badge + panel); false elsewhere. */
   showCoverage: boolean;
   /** Task-shaped proposals panel inputs (the convert-to-task units). */

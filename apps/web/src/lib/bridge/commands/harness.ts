@@ -36,7 +36,7 @@ const MOCK_ARMED_CHECKS_STATE: ArmedChecksState = {
       enabled: false,
     },
   ],
-  lastRun: { passed: true, ranAt: Date.now() - 5 * 60 * 1000 },
+  lastRun: { passed: true, ranAt: Date.now() - 5 * 60 * 1000, deep: false },
   // Drift-v1 (T15): one measured convention so the drift panel renders deterministically
   // outside Tauri. `method` + site counts are always present (the fail-visible rule).
   drift: [
@@ -53,6 +53,26 @@ const MOCK_ARMED_CHECKS_STATE: ArmedChecksState = {
       fingerprint: 'a1b2c3d4e5f60718',
     },
   ],
+  // Carry-forward (#279): the same convention measured by the same method one run
+  // earlier, so the browser mock exercises the comparable path (5 → 3 sites).
+  previousRun: {
+    ranAt: Date.now() - 26 * 60 * 60 * 1000,
+    deep: false,
+    drift: [
+      {
+        id: 'drift-a1b2c3d4e5f60718',
+        conventionFingerprint: 'a1b2c3d4e5f60718',
+        category: 'folder-structure',
+        title: 'folder-per-component',
+        status: 'drifted',
+        method: 'lint-meta: folder-per-component',
+        sitesMatched: 5,
+        sitesChecked: 5,
+        checkName: 'folder-per-component',
+        fingerprint: 'a1b2c3d4e5f60718',
+      },
+    ],
+  },
 };
 
 // --- Harness (codebase convention auditor) --------------------------------
