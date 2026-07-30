@@ -59,6 +59,7 @@ export function buildAboutCards(
         {
           label: 'Log level',
           hint: 'How much the Rust core logs. Applies immediately; RUST_LOG, when set, overrides it.',
+          field: 'logLevel',
           stacked: true,
           control: (
             <Segmented

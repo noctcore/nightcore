@@ -122,6 +122,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
             {
               label: 'Default model',
               hint: 'Used for new tasks',
+              field: 'defaultModel',
               control: (
                 <DefaultModelControl
                   provider={settings.provider}
@@ -141,6 +142,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
             {
               label: 'Reasoning effort',
               hint: 'Thinking budget per turn',
+              field: 'defaultEffort',
               control: (
                 <Segmented
                   ariaLabel="Reasoning effort"
@@ -160,6 +162,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
             {
               label: 'Max concurrency',
               hint: 'Parallel agent runs',
+              field: 'maxConcurrency',
               control: (
                 <Segmented
                   ariaLabel="Max concurrency"
@@ -179,6 +182,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
             {
               label: 'Max turns',
               hint: 'Conversation turns before a run stops (empty = default 200)',
+              field: 'maxTurns',
               control: (
                 <NumberField
                   value={effective.maxTurns}
@@ -193,6 +197,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
             {
               label: 'Max budget',
               hint: 'Hard cost ceiling per run in USD (empty = uncapped)',
+              field: 'maxBudgetUsd',
               control: (
                 <NumberField
                   value={effective.maxBudgetUsd}
@@ -235,6 +240,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
             {
               label: 'Default run mode',
               hint: 'Main runs in the project root; Worktree isolates on a branch',
+              field: 'defaultRunMode',
               control: (
                 <Segmented
                   ariaLabel="Default run mode"
@@ -249,7 +255,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
             {
               label: 'Delete on merge',
               hint: 'Remove the worktree (and its branch) after the task is merged',
-              globalScoped: true,
+              field: 'cleanupWorktrees',
               control: (
                 <Toggle
                   on={settings.cleanupWorktrees}
@@ -264,7 +270,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
                 editors.length > 0
                   ? 'Editor the worktree row "Open in editor" button launches'
                   : 'No supported editor detected on PATH — install one (Cursor, VS Code, …)',
-              globalScoped: true,
+              field: 'preferredEditor',
               control: (
                 <Segmented
                   ariaLabel="Open in editor"
@@ -281,9 +287,9 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
         },
       ];
     case 'interface':
-      return buildInterfaceCards(settings, patchGlobal);
+      return buildInterfaceCards(settings, patchGlobal, onNavigate);
     case 'terminal':
-      return buildTerminalCards(settings, patchGlobal);
+      return buildTerminalCards(settings, patchGlobal, onNavigate);
     case 'providers':
       return [
         {
@@ -294,6 +300,7 @@ export function buildCards(page: SettingsPage, ctx: CardContext): SettingsCardPr
             {
               label: 'Provider',
               hint: 'Task-level model picks can use either provider',
+              field: 'provider',
               control: (
                 <Segmented
                   ariaLabel="Provider"

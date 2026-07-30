@@ -23,6 +23,7 @@ export function buildNotificationCards(
         {
           label: 'Native notifications',
           hint: 'Notify on Done and Failed',
+          field: 'notifyOnComplete',
           control: (
             <Toggle
               on={settings.notifyOnComplete}
@@ -34,6 +35,7 @@ export function buildNotificationCards(
         {
           label: 'Waiting for input',
           hint: 'Notify when a run parks on a question (on by default)',
+          field: 'notifyOnAwaitingInput',
           control: (
             <Toggle
               on={settings.notifyOnAwaitingInput}
@@ -45,6 +47,7 @@ export function buildNotificationCards(
         {
           label: 'Terminal command completion',
           hint: 'Notify when a shell command finishes in an unfocused terminal',
+          field: 'terminalBellNotify',
           control: (
             <Toggle
               on={settings.terminalBellNotify}

@@ -13,10 +13,15 @@
  *   2. engine → web capabilities — `gen-web-capabilities.ts --check` diffs the web's
  *      synchronous Claude default against the engine descriptor it is generated from
  *      (issue #158). Cheap and TS-side, so it sits beside leg 1.
- *   3. TS codegen canaries + cross-boundary conformance — the `tools/codegen` unit tests
+ *   3. Rust override shape → web settings-scope map — `gen-settings-scope.ts --check`
+ *      diffs the per-project-overridable field set the Settings surface derives its scope
+ *      badges from against the `SettingsOverride` ts-rs binding (issue #404). Also cheap
+ *      and TS-side. It reads the binding the LAST leg regenerates, which is fine: a stale
+ *      binding fails that leg's diff regardless.
+ *   4. TS codegen canaries + cross-boundary conformance — the `tools/codegen` unit tests
  *      (ENUM_NAMES injectivity, number-type drift, channel determinism) and
  *      `codegen-conformance.test.ts` (ts-rs ⇄ zod field-set + round-trip).
- *   4. Rust → web ts-rs bindings + contract parity — `cargo test` regenerates the ts-rs
+ *   5. Rust → web ts-rs bindings + contract parity — `cargo test` regenerates the ts-rs
  *      bindings under `apps/web/src/lib/generated` as a side effect and runs the contract
  *      round-trip / variant-parity tests; a `git diff --exit-code` then fails on any
  *      un-committed binding drift. Scoped to the `bindings` + `contracts` tests (NOT full
@@ -46,13 +51,21 @@ step(
   'bun run codegen:capabilities --check',
 );
 
-// 3. TS codegen canaries + cross-boundary conformance.
+// 3. Rust override shape → web settings-scope map. Reads the ts-rs binding the last leg
+//    regenerates, so a stale binding is caught by that leg's diff either way; running it
+//    here keeps the cheap TS-side legs together.
+step(
+  'settings-scope map drift',
+  'bun run codegen:settings-scope --check',
+);
+
+// 4. TS codegen canaries + cross-boundary conformance.
 step(
   'TS codegen canaries + conformance',
   'bun test tools/codegen packages/contracts/src/codegen-conformance.test.ts',
 );
 
-// 3. Rust → web ts-rs bindings + contract parity. `cargo test` takes a single test-name
+// 5. Rust → web ts-rs bindings + contract parity. `cargo test` takes a single test-name
 //    filter, so the two codegen-relevant groups run as separate scoped passes (the crate is
 //    compiled once and cached). The `bindings` pass regenerates the web bindings on disk; the
 //    `contracts` pass runs the round-trip / variant-parity guards; the git diff then fails on

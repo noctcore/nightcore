@@ -1,9 +1,15 @@
 /** Interface settings cards — split from settings-cards to stay under file-size ratchet.
- *  Sidebar layout only; terminal rendering lives on its own page (`settings-terminal-cards`). */
-import { Columns2Icon, DesignIcon, PanelLeftIcon } from '@/components/ui';
+ *  Sidebar layout only; terminal rendering lives on its own page (`settings-terminal-cards`).
+ *
+ *  This page was also the original home of the "Skip Claude permissions (YOLO)" toggle —
+ *  an autonomy ceiling filed under cosmetics. It now lives on Permissions, and a signpost
+ *  row here points at it (issue #404) so the move is discoverable rather than a
+ *  disappearance. */
+import { Button, Columns2Icon, DesignIcon, PanelLeftIcon } from '@/components/ui';
 import type { Settings, SettingsPatch } from '@/lib/bridge';
 
 import type { SettingsCardProps } from './SettingsCard';
+import type { SettingsPage } from './SettingsView/SettingsView.types';
 
 type SidebarStyle = 'unified' | 'classic';
 
@@ -64,10 +70,11 @@ function SidebarLayoutPicker({
   );
 }
 
-/** Build the Interface page cards (sidebar layout only). */
+/** Build the Interface page cards (sidebar layout, plus the YOLO signpost). */
 export function buildInterfaceCards(
   settings: Settings,
   patchGlobal: (patch: SettingsPatch) => void,
+  onNavigate: (page: SettingsPage) => void,
 ): SettingsCardProps[] {
   const value: SidebarStyle = settings.sidebarStyle === 'classic' ? 'classic' : 'unified';
 
@@ -80,12 +87,24 @@ export function buildInterfaceCards(
         {
           label: 'Sidebar layout',
           hint: 'Choose between a modern unified sidebar or classic layout with a separate project switcher.',
+          field: 'sidebarStyle',
           stacked: true,
           control: (
             <SidebarLayoutPicker
               value={value}
               onChange={(next) => patchGlobal({ sidebarStyle: next })}
             />
+          ),
+        },
+        {
+          // A signpost, not a control: the toggle lives on Permissions. No `field`, so
+          // it writes nothing and takes no part in the page's scope derivation.
+          label: 'Skip Claude permissions (YOLO)',
+          hint: 'No longer here. Removing every permission prompt is an autonomy decision, not an appearance one, so it moved to Permissions with the other governance controls.',
+          control: (
+            <Button variant="ghost" onClick={() => onNavigate('permissions')}>
+              Open Permissions
+            </Button>
           ),
         },
       ],
