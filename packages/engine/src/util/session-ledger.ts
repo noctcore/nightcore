@@ -165,6 +165,25 @@ export class SessionLedger {
     this.append({ event: 'session-end', sessionId });
   }
 
+  /** Marker line: the OS write-containment posture of a session that ASKED for
+   *  containment (T16 / #157). This is the local telemetry the D3 staging
+   *  decision requires before the default is widened — `active: false` lines are
+   *  the population that says "the sandbox could not be applied here", and they
+   *  carry the same human `reason` the UI shows. Never called for a session that
+   *  did not request containment, so the file stays byte-identical for the
+   *  unchanged case. Carries no credential names or paths. */
+  recordContainment(
+    sessionId: number,
+    posture: { active: boolean; reason?: string },
+  ): void {
+    this.append({
+      event: 'containment',
+      sessionId,
+      active: posture.active,
+      ...(posture.reason !== undefined ? { reason: posture.reason } : {}),
+    });
+  }
+
   private append(fields: Record<string, unknown>): void {
     // Stamp the timestamp NOW (enqueue time) so `ts` and line order both track
     // evaluation order even though the write happens later off the queue. The

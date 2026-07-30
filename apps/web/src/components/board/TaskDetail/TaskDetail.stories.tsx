@@ -74,6 +74,7 @@ function oneSession(
         model: meta.model ?? null,
         prompt: meta.prompt ?? null,
         phase: meta.phase ?? 'build',
+        containment: meta.containment ?? null,
         stream: full,
       },
     ],
@@ -83,7 +84,12 @@ function oneSession(
 
 /** Assemble a multi-session transcript from per-session (phase, stream) pairs. */
 function transcript(
-  parts: Array<{ phase: SessionPhase; model?: string; stream: Partial<SessionStream> }>,
+  parts: Array<{
+    phase: SessionPhase;
+    model?: string;
+    containment?: SessionGroup['containment'];
+    stream: Partial<SessionStream>;
+  }>,
 ): TaskTranscript {
   const sessions: SessionGroup[] = parts.map((p, i) => ({
     index: i + 1,
@@ -91,6 +97,7 @@ function transcript(
     model: p.model ?? null,
     prompt: null,
     phase: p.phase,
+    containment: p.containment ?? null,
     stream: { ...EMPTY_STREAM, ...p.stream },
   }));
   return { sessions, toolCount: sessions.reduce((n, s) => n + s.stream.toolCount, 0) };

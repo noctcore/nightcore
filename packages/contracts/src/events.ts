@@ -86,6 +86,26 @@ export const SessionStartedEvent = z.object({
    *  stream is intentionally dropped by the reader. Absent ⇒ a normal board/scan
    *  session (the pre-feature shape). */
   council: z.boolean().optional(),
+  /** OS write-containment posture of this session (T16 / #157) — the LOUD
+   *  half of the sandbox-by-default staging. Present only when the run REQUESTED
+   *  OS containment; `active: false` means the host could not provide it and the
+   *  session is running under the PreToolUse gate alone, with `reason` carrying
+   *  the human explanation the surface renders. Absent ⇒ containment was never
+   *  requested (the pre-feature shape and every scan/probe session).
+   *
+   *  It is deliberately on `session-started` rather than a separate event: a
+   *  degrade the surface can miss is a silent degrade, and every consumer of a
+   *  session already handles this event. */
+  containment: z
+    .object({
+      /** OS containment is actually applied to this session's Bash subprocesses. */
+      active: z.boolean(),
+      /** Why containment is NOT active although it was requested. Present iff
+       *  `active` is false. Never carries a path from the user's machine beyond
+       *  the Seatbelt interpreter's fixed absolute path. */
+      reason: z.string().optional(),
+    })
+    .optional(),
 });
 
 /** The SDK emitted its `init` system message; carries the real SDK session id

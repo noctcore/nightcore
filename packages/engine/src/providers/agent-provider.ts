@@ -111,6 +111,17 @@ export interface AgentSession {
   /** The effective autonomy ceiling this session runs under (resolved by the
    *  provider from the override / kind preset / provider default). */
   readonly permissionMode: PermissionMode;
+  /** OS write-containment posture for this session (T16 / #157), read back by the
+   *  supervisor for the `session-started` event so a requested-but-unavailable
+   *  sandbox is visible to the user. Provider-neutral on purpose: Codex has its
+   *  own native sandbox and answers the same three questions. `undefined` (or a
+   *  `requested: false` value) ⇒ this session never asked for OS containment, and
+   *  the event field is omitted. */
+  readonly containment?: {
+    readonly requested: boolean;
+    readonly active: boolean;
+    readonly reason?: string;
+  };
   /** Drive the run to a terminal state. Never rejects — failures surface as
    *  `session-failed` events (degrade, don't throw). */
   run(): Promise<void>;

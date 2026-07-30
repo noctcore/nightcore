@@ -71,6 +71,7 @@ export function deriveTaskDetailView(
               model: task.model,
               prompt: null,
               phase: 'build',
+              containment: null,
               stream: {
                 ...EMPTY_STREAM,
                 entries: hasSummary

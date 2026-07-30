@@ -50,6 +50,7 @@ export function makeTerminalTask(over: Partial<Task> = {}): Task {
     conflict: false,
     kind: 'build',
     runMode: 'main',
+    sandboxWrites: null,
     verified: false,
     review: null,
     fixAttempts: 0,

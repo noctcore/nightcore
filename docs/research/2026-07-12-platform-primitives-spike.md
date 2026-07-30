@@ -56,6 +56,35 @@ matched the fetched docs verbatim — **D3/D4 stand unchanged.** Two corrections
 
 ---
 
+## Update — the user's ANSWERS to D3 and D4 (recorded here 2026-07-30, executed as T16 / #157)
+
+§7 below states the memo's **recommendations**. Both questions were answered the
+same day this memo was written, but the answers only ever lived in the session
+transcript / issue comments, never in this doc — so a later reader could not tell
+"recommended" from "decided". They are recorded here, and in
+`docs/decisions/INDEX.md` as **D-012**.
+
+- **D4 — ADOPT (hybrid).** Recorded by the user on issue #153: *"Native sandbox vs
+  sandbox.ts — ADOPT (hybrid): replace `sandbox.ts` with the SDK's
+  `Options.sandbox`, keep the PreToolUse gate (disjoint coverage). This is a GO for
+  T16 (#157), scoped to sandbox.ts only."* `confine.rs` KEEP stands (§1b).
+- **D3 — staged default-on.** Answered 2026-07-12: *macOS + worktree-mode first,
+  per-run opt-out, `failIfUnavailable: false` + a loud "containment unavailable"
+  surface, widen once telemetry is clean.* **AMENDED in the same session** by the
+  user's *"also im not gonna support linux distro in nightcore for now"*, which
+  **deletes the memo's phase 2 (widen to Linux)**. The effective staging is
+  therefore phase 1 → phase 3 (main-mode + fail-closed), with no Linux phase — the
+  reason `native-sandbox.ts` reports every non-darwin host as UNAVAILABLE rather
+  than emitting a bubblewrap config nobody has verified for this app.
+
+One correction to §3/§6 found while executing: `credentials.envVars` deny is a
+NEW capability mostly for `ANTHROPIC_*`, not for `AWS_*`/`GITHUB_TOKEN`. The
+engine's `subprocess-env.ts` allowlist already drops the latter before the CLI
+starts, whereas `ANTHROPIC_*` is deliberately passed through — so the deny list is
+what keeps the key out of an agent's shell while the CLI keeps its auth.
+
+---
+
 ## §1 Executive recommendation — **HYBRID (adopt native sandbox for the OS layer; KEEP the PreToolUse gate)**
 
 Adopt the SDK's native `Options.sandbox` to **replace the custom Seatbelt writer**

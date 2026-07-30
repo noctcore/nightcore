@@ -163,7 +163,7 @@ export const MOCK_SETTINGS: Settings = {
   contextPackEnabled: true,
   planGateDefault: true,
   autoCommitOnVerified: false,
-  sandboxSessions: false,
+  sandboxSessions: null,
   issueSyncEnabled: false,
   sidebarStyle: null,
   preferredEditor: null,

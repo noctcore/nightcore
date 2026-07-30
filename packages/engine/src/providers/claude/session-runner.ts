@@ -33,11 +33,15 @@ import {
 } from './idle-watchdog.js';
 import { InputStreamQueue } from './input-stream-queue.js';
 import { toModelDescriptor } from './mappers.js';
+import {
+  announceNativeContainment,
+  type NativeContainment,
+  resolveNativeContainment,
+} from './native-sandbox.js';
 import type { ApprovalDecision, PermissionLayer } from './permission-layer.js';
 import { ProviderConfigReader } from './provider-config.js';
 import { ASK_USER_QUESTION_DIALOG, type QuestionLayer } from './question-layer.js';
 import { checkClaudeCliVersion, resolveClaudeBinary } from './resolve-claude-binary.js';
-import { prepareWriteSandbox } from './sandbox.js';
 import {
   type AgentInfo,
   type McpServerStatus,
@@ -86,6 +90,8 @@ export class SessionRunner implements AgentSession {
   /** The read-only control-probe surface (model list / MCP / skills / subagents /
    *  init). */
   private readonly probe: ControlProbe;
+  /** OS write containment posture (T16 / #157), resolved once at construction. */
+  private readonly nativeContainment: NativeContainment;
 
   constructor(
     private readonly cfg: SessionRunnerConfig,
@@ -107,6 +113,11 @@ export class SessionRunner implements AgentSession {
       () => this.optionsBuilder.base(),
       logger,
     );
+    this.nativeContainment = resolveNativeContainment({
+      requested: cfg.sandboxWrites === true,
+      cwd: cfg.cwd,
+      ...(logger !== undefined ? { logger } : {}),
+    });
   }
 
   /** The effective autonomy ceiling this session runs under ({@link AgentSession}).
@@ -114,6 +125,11 @@ export class SessionRunner implements AgentSession {
    *  reads it back for the session record + `session-started` event. */
   get permissionMode(): PermissionMode {
     return this.cfg.permissionMode;
+  }
+
+  /** Posture the supervisor echoes onto `session-started` (T16 / #157). */
+  get containment(): NativeContainment {
+    return this.nativeContainment;
   }
 
   /** Drive the query loop to completion. Resolves when the session reaches a
@@ -151,6 +167,12 @@ export class SessionRunner implements AgentSession {
 
     this.input.push(this.cfg.prompt, this.cfg.images);
 
+    // OS write containment (T16 / #157) — the SDK's NATIVE sandbox, not a wrapper.
+    // Announce it (log + the local D3 telemetry marker); an unavailable posture
+    // already WARNed at resolve time, so it is never a silent degrade.
+    const containment = this.nativeContainment;
+    announceNativeContainment(containment, this.cfg.sessionId, this.logger, this.ledger);
+
     const options = this.optionsBuilder.run({
       canUseTool: this.permissions.canUseTool,
       // AskUserQuestion is delivered as a `request_user_dialog` of this kind, NOT
@@ -159,27 +181,8 @@ export class SessionRunner implements AgentSession {
       supportedDialogKinds: [ASK_USER_QUESTION_DIALOG],
       hooks: this.hooks.hooks(),
       abortController: this.abort,
+      ...(containment.settings !== undefined ? { sandbox: containment.settings } : {}),
     });
-
-    // OPT-IN macOS OS-level WRITE containment (hardening module #15): swap the
-    // SDK's executable for a Seatbelt wrapper that denies file-writes outside the
-    // session's writable roots (closing the lexical PreToolUse gate's redirect /
-    // symlink gaps). When the host can't provide it, `prepareWriteSandbox` warns
-    // and returns undefined — the session runs unwrapped (fail-open: default-off).
-    if (this.cfg.sandboxWrites === true) {
-      const sandbox = prepareWriteSandbox({
-        claudePath,
-        cwd: this.cfg.cwd,
-        logger: this.logger,
-      });
-      if (sandbox !== undefined) {
-        options.pathToClaudeCodeExecutable = sandbox.wrapperPath;
-        this.logger?.info('OS write containment active', {
-          wrapper: sandbox.wrapperPath,
-          writableRoots: sandbox.writableRoots,
-        });
-      }
-    }
 
     if (this.cfg.resumeSessionId !== undefined) {
       this.logger?.debug('resuming SDK session', {

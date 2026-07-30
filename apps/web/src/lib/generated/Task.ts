@@ -102,6 +102,20 @@ kind: TaskKind,
  */
 runMode: RunMode, 
 /**
+ * OS write containment for THIS run (T16 / #157) — the per-run opt-out the D3
+ * staging decision requires. `None` (the default, and every legacy task) ⇒
+ * inherit [`crate::store::settings::Settings::sandbox_writes_for`], i.e. the
+ * explicit global setting or the staged macOS+worktree default. `Some(false)`
+ * ⇒ run this task WITHOUT OS containment even though the default would arm it
+ * (the escape hatch for a task whose hooks/tools write outside the workspace);
+ * `Some(true)` ⇒ arm it even in main mode. Settable pre-run.
+ *
+ * Deliberately per-TASK rather than per-attempt: a re-run of the same card is
+ * the same piece of work, and a containment choice that silently reset between
+ * attempts would be a governance surprise. Serde-additive.
+ */
+sandboxWrites: boolean | null, 
+/**
  * M4: true only after an independent reviewer returned `VERDICT: PASS`.
  * `merge_task` is gated on it. Cleared on a fresh run.
  */

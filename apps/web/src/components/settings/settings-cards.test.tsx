@@ -36,7 +36,7 @@ const SETTINGS: Settings = {
   contextPackEnabled: true,
   planGateDefault: true,
   autoCommitOnVerified: false,
-  sandboxSessions: false,
+  sandboxSessions: null,
   issueSyncEnabled: false,
   sidebarStyle: 'unified',
   preferredEditor: null,
@@ -111,4 +111,54 @@ test('the Limits card renders no caveat while capabilities are unresolved (null,
   const screen = render(<SettingsCard {...limitsCard(null)} />);
   await expect.element(screen.getByText('Max turns', { exact: true })).toBeInTheDocument();
   await expect.element(screen.getByText(/does not enforce/i)).not.toBeInTheDocument();
+});
+
+/** The `Tool permissions` card is the first card built for the `permissions` page. */
+function toolPermissionsCard(settings: Settings) {
+  const context = { ...contextWith(CLAUDE_CAPABILITIES), settings };
+  const cards = buildCards('permissions', context);
+  const card = cards.find((c) => c.title === 'Tool permissions');
+  if (card === undefined) throw new Error('Tool permissions card not built');
+  return { card, patchGlobal: context.patchGlobal };
+}
+
+/** The OS-containment segmented control, scoped by its own group label so the
+ *  sibling "Permission mode" control (which also has an `Auto` option) can never
+ *  satisfy these assertions by accident. */
+function containmentGroup(screen: ReturnType<typeof render>) {
+  return screen.getByRole('radiogroup', { name: 'Sandbox agent writes' });
+}
+
+test('the OS-containment control shows Auto when the user has no explicit preference', async () => {
+  const { card } = toolPermissionsCard({ ...SETTINGS, sandboxSessions: null });
+  const screen = render(<SettingsCard {...card} />);
+  await expect
+    .element(containmentGroup(screen).getByRole('radio', { name: 'Auto' }))
+    .toHaveAttribute('aria-checked', 'true');
+});
+
+test('Never is the durable OS-containment opt-out and is what the UI shows', async () => {
+  // The staged default (T16 / #157) must never present itself as ON for a user who
+  // explicitly opted out — the failure mode the tri-state exists to prevent.
+  const { card } = toolPermissionsCard({ ...SETTINGS, sandboxSessions: false });
+  const screen = render(<SettingsCard {...card} />);
+  await expect
+    .element(containmentGroup(screen).getByRole('radio', { name: 'Never' }))
+    .toHaveAttribute('aria-checked', 'true');
+});
+
+test('choosing Never patches an EXPLICIT false (the durable opt-out)', async () => {
+  const { card, patchGlobal } = toolPermissionsCard({ ...SETTINGS, sandboxSessions: null });
+  const screen = render(<SettingsCard {...card} />);
+  await containmentGroup(screen).getByRole('radio', { name: 'Never' }).click();
+  expect(patchGlobal).toHaveBeenCalledWith({ sandboxSessions: false });
+});
+
+test('choosing Auto patches a present null so the explicit choice is CLEARED', async () => {
+  // An omitted key would leave the stored opt-out in place — the patch field is a
+  // double option precisely so this reset is expressible.
+  const { card, patchGlobal } = toolPermissionsCard({ ...SETTINGS, sandboxSessions: false });
+  const screen = render(<SettingsCard {...card} />);
+  await containmentGroup(screen).getByRole('radio', { name: 'Auto' }).click();
+  expect(patchGlobal).toHaveBeenCalledWith({ sandboxSessions: null });
 });

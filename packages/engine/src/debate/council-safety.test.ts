@@ -25,7 +25,7 @@ import type {
 import { evaluateWorkspaceConfinement } from '../policy/workspace-confinement.js';
 // The REAL confinement functions the writer's session runs under — exercised DIRECTLY (not
 // mocked) so a regression that widened the writer's blast radius fails here (issue #383).
-import { deriveWritableRoots } from '../providers/claude/sandbox.js';
+import { sandboxWritableRoots } from '../providers/claude/native-sandbox.js';
 import {
   BUILD_WRITER_HARDENING,
   type BuildContext,
@@ -1780,18 +1780,16 @@ describe('Issue #383 — write-capable single-writer Build stays confined (live 
     ).toBe(false);
   });
 
-  // #2 — the OS write sandbox's writable roots are the worktree (+ git common / temp), NOT
-  //      the project root at large (REAL sandbox root derivation).
-  test('deriveWritableRoots for the writer cwd yields the worktree + scratch, never the project root at large', () => {
-    const roots = deriveWritableRoots({ cwd: WORKTREE });
+  // #2 — the OS write sandbox's `allowWrite` roots are the worktree (+ its git common
+  //      dir), NOT the project root at large (REAL sandbox root derivation).
+  test('sandboxWritableRoots for the writer cwd yields the worktree, never the project root at large', () => {
+    const roots = sandboxWritableRoots({ cwd: WORKTREE });
     // The writer's own worktree is writable (it must edit there).
     expect(roots).toContain(WORKTREE);
     // The project root at large is NOT a writable root — the writer is contained to its
-    // worktree, so it cannot Seatbelt-write into the main checkout.
+    // worktree, so it cannot write into the main checkout even from Bash.
     expect(roots).not.toContain(PROJECT);
     expect(roots).not.toContain(`${PROJECT}/apps`);
-    // Scratch stays writable (so a tool's temp files still work) — `/dev` is always a root.
-    expect(roots).toContain('/dev');
   });
 
   /** Build the REAL production write stack — the `SessionBuildDriver` + the Converge gauntlet

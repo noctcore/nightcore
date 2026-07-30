@@ -329,6 +329,8 @@ pub enum NightcoreEvent {
         permission_mode: PermissionMode,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         council: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        containment: Option<SessionStartedContainment>,
     },
     #[serde(rename_all = "camelCase")]
     SessionReady {
@@ -1700,6 +1702,14 @@ pub enum SessionMessageTypeEnum {
     User,
     Assistant,
     System,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionStartedContainment {
+    pub active: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

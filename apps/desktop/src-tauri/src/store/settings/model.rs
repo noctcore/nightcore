@@ -111,17 +111,33 @@ pub struct Settings {
     pub auto_commit_on_verified: bool,
     /// OS write containment (hardening module #15, tier "OS containment"): when
     /// enabled, every agent session launches with `sandboxWrites` on the
-    /// `start-session` command, and the engine wraps the `claude` executable in a
-    /// macOS Seatbelt deny-write-except profile — file writes outside the
-    /// session's writable roots (cwd, worktree git common dir, temp trees, Claude
-    /// CLI state) are blocked at the OS layer, closing the lexical PreToolUse
-    /// gate's documented gaps (Bash redirects, symlinks). darwin-only: on other
-    /// hosts (or if Seatbelt breaks) the engine logs a loud warning and runs
-    /// unwrapped (fail-open). Global-only (like `auto_commit_on_verified`).
-    /// Default `false` (opt-in, experimental). Serde-additive: a settings file
-    /// written before this field loads as `false`.
+    /// `start-session` command and the engine emits the SDK's native
+    /// `Options.sandbox` — Bash writes outside the session's workspace are blocked
+    /// at the OS layer, closing the lexical PreToolUse gate's documented gaps
+    /// (redirects, symlinks, dynamic targets), and credential env vars are unset
+    /// for sandboxed commands.
+    ///
+    /// TRI-STATE (T16 / #157, the D3 sandbox-by-default staging), mirroring
+    /// `terminal_webgl_enabled` and decision D-010's rationale:
+    ///  - `Some(true)` / `Some(false)` — the user's EXPLICIT choice, honored
+    ///    forever. A later default change can never flip an explicit opt-out.
+    ///  - `None` — no preference recorded ⇒ resolve the STAGED default in
+    ///    [`Settings::sandbox_writes_for`]: ON for a macOS + worktree-mode run
+    ///    (disjoint cwd, the lowest false-positive surface), OFF otherwise.
+    ///
+    /// The staged default is phase 1 of the recorded D3 answer of 2026-07-12
+    /// (macOS + worktree-mode first, per-run opt-out, `failIfUnavailable: false`
+    /// plus a loud containment-unavailable surface, widen to main-mode once
+    /// telemetry is clean; Linux is out of project scope). Phase 3, main-mode plus
+    /// fail-closed, is deliberately NOT implemented here.
+    ///
+    /// Global-only (like `auto_commit_on_verified`); the per-RUN opt-out is
+    /// `Task::sandbox_writes`. Serde-additive: a settings file written before
+    /// this field loads as `None` (and so gets the staged default), while one
+    /// written while it was a bare `bool` loads as `Some(false)`/`Some(true)` —
+    /// i.e. an existing install keeps exactly the containment it had.
     #[serde(default)]
-    pub sandbox_sessions: bool,
+    pub sandbox_sessions: Option<bool>,
     /// GitHub two-way sync (#97): master switch for issue writeback — status labels,
     /// terminal comments, and the PR `Closes` keyword. OFF by default: writeback
     /// MUTATES a (often public) GitHub repo, so it is opt-in exactly like
@@ -498,6 +514,32 @@ impl Settings {
     pub fn label_prefix(&self) -> &str {
         self.issue_label_prefix.as_deref().unwrap_or("nc:")
     }
+
+    /// OS write containment (T16 / #157): does THIS run get the sandbox?
+    ///
+    /// Precedence, most specific first:
+    ///  1. `task_override` — the per-RUN opt-out/opt-in the D3 answer requires
+    ///     ("per-run opt-out"), set on the task card. Always wins.
+    ///  2. `self.sandbox_sessions` — the user's explicit global choice. An
+    ///     explicit `false` is a real opt-out and is never overridden by a
+    ///     default change (decision D-010's rule, applied here).
+    ///  3. The STAGED default (no preference anywhere): ON only for a macOS
+    ///     worktree-mode run. Phase 1 of D3. `run_worktree` is the run's mode,
+    ///     not the project's — a main-mode run shares the user's checkout, which
+    ///     is the higher-false-positive surface phase 3 will take on.
+    ///
+    /// Note this answers "was containment REQUESTED", not "is it available":
+    /// availability is the engine's preflight, and a requested-but-unavailable
+    /// run is surfaced loudly rather than silently downgraded.
+    pub fn sandbox_writes_for(&self, run_worktree: bool, task_override: Option<bool>) -> bool {
+        if let Some(explicit) = task_override {
+            return explicit;
+        }
+        if let Some(explicit) = self.sandbox_sessions {
+            return explicit;
+        }
+        cfg!(target_os = "macos") && run_worktree
+    }
 }
 
 impl Default for Settings {
@@ -546,9 +588,11 @@ impl Default for Settings {
             // Auto Mode option: opt-in — the loop commits verified tasks only once
             // the user enables it in the Auto Mode options popover.
             auto_commit_on_verified: false,
-            // Module #15: OS write containment is opt-in (experimental,
-            // darwin-only) — sessions run unwrapped until the user enables it.
-            sandbox_sessions: false,
+            // Module #15 / T16: no explicit preference on a fresh install — the
+            // STAGED default resolves per run (`sandbox_writes_for`): ON for a
+            // macOS worktree run, OFF elsewhere. `None`, never `Some(false)`:
+            // writing a value here would record a user opt-out nobody made.
+            sandbox_sessions: None,
             // #97: issue writeback is opt-in (it mutates a often-public GitHub repo),
             // exactly like `auto_commit_on_verified` / `sandbox_sessions`. `None` prefix
             // resolves to the default `nc:` via `label_prefix()`.

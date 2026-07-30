@@ -13,7 +13,15 @@ const { Empty, WaitingForToken, SingleSession, MultiSession, WithError, WithErro
 /** Wrap a timeline in a single build session (rendered inline, no chrome). */
 function oneSession(entries: TimelineEntry[]): SessionGroup[] {
   return [
-    { index: 1, sdkSessionId: null, model: null, prompt: null, phase: 'build', stream: { ...EMPTY_STREAM, entries } },
+    {
+      index: 1,
+      sdkSessionId: null,
+      model: null,
+      prompt: null,
+      phase: 'build',
+      containment: null,
+      stream: { ...EMPTY_STREAM, entries },
+    },
   ];
 }
 
@@ -198,4 +206,36 @@ test('caps a long transcript to its trailing window and reveals earlier on deman
     .element(screen.getByText('Transcript line number 1', { exact: true }))
     .toBeInTheDocument();
   expect(screen.container.querySelector('ol')?.querySelectorAll('li').length).toBe(75);
+});
+
+/** One session carrying an explicit OS write-containment posture (T16 / #157). */
+function containedSession(containment: SessionGroup['containment']): SessionGroup[] {
+  const [session] = oneSession([{ kind: 'text', id: 1, markdown: 'work', closed: true }]);
+  return [{ ...session!, containment }];
+}
+
+test('a session that never requested OS containment shows no containment badge', async () => {
+  const screen = render(<ActivityLog sessions={containedSession(null)} isRunning={false} />);
+  await expect.element(screen.getByText('work')).toBeInTheDocument();
+  expect(screen.container.textContent).not.toContain('Contain');
+});
+
+test('an applied sandbox is confirmed on the session header', async () => {
+  const screen = render(
+    <ActivityLog sessions={containedSession({ active: true })} isRunning={false} />,
+  );
+  await expect.element(screen.getByText('Contained')).toBeInTheDocument();
+});
+
+test('a requested-but-unavailable sandbox is LOUD on the session header', async () => {
+  // The non-negotiable: `failIfUnavailable: false` means the run proceeds under the
+  // PreToolUse gate alone, so the UI must SAY so. A silent degrade here would be a
+  // governance product claiming containment it never applied.
+  const reason = 'native OS containment is verified for macOS only in this staging phase';
+  const screen = render(
+    <ActivityLog sessions={containedSession({ active: false, reason })} isRunning={false} />,
+  );
+  await expect.element(screen.getByText('Containment unavailable')).toBeInTheDocument();
+  // The reason travels with the badge so the user can act on it.
+  expect(screen.container.innerHTML).toContain('macOS only in this staging phase');
 });

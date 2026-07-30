@@ -15,6 +15,30 @@ const PERMISSION_MODES: [value: string, label: string][] = [
   ['ask', 'Ask'],
 ];
 
+/** OS write-containment modes (T16 / #157). `auto` is the STAGED default — Rust
+ *  (`Settings::sandbox_writes_for`) is the authority for what Auto resolves to per
+ *  run, so this control never re-derives it; it only distinguishes "no preference"
+ *  from the two explicit, durable choices. */
+const SANDBOX_MODES: [value: string, label: string][] = [
+  ['auto', 'Auto'],
+  ['always', 'Always'],
+  ['never', 'Never'],
+];
+
+/** The stored tri-state → the selected segment. `null` (no preference) ⇒ Auto. */
+function sandboxModeOf(stored: boolean | null): string {
+  if (stored === null) return 'auto';
+  return stored ? 'always' : 'never';
+}
+
+/** The selected segment → the patch value. A present `null` RESETS to Auto (the
+ *  Rust patch field is a double option, so `null` clears rather than being ignored). */
+const SANDBOX_PATCH: Record<string, boolean | null> = {
+  auto: null,
+  always: true,
+  never: false,
+};
+
 /** Build the Permissions page cards: tool access (incl. YOLO) + the plan-approval gate. */
 export function buildPermissionsCards(
   settings: Settings,
@@ -42,16 +66,19 @@ export function buildPermissionsCards(
           ),
         },
         {
-          label: 'Sandbox agent writes (macOS, experimental)',
-          hint: 'Block file writes outside the task workspace at the OS layer',
+          label: 'Sandbox agent writes (OS containment)',
+          hint: 'Blocks the agent\'s shell commands from writing outside the task workspace, and hides cloud/SSH credentials from them, at the OS layer. Auto turns it on for macOS worktree runs — the isolated ones — and off elsewhere. Always/Never is a durable choice no future default change will flip. Where the OS cannot provide containment the run says so instead of quietly continuing.',
           field: 'sandboxSessions',
           control: (
-            // Global-only (like Delete-on-merge): OS containment is a
-            // machine-level guarantee, not a per-project preference.
-            <Toggle
-              on={settings.sandboxSessions}
-              onChange={(next) => patchGlobal({ sandboxSessions: next })}
-              label="Sandbox agent writes (macOS, experimental)"
+            // Global-only (like Delete-on-merge): OS containment is a machine-level
+            // guarantee, not a per-project preference. Tri-state so the staged
+            // default (T16 / #157) and an explicit user choice stay distinguishable —
+            // picking Never is the durable opt-out, and it survives a later widening.
+            <Segmented
+              ariaLabel="Sandbox agent writes"
+              options={SANDBOX_MODES}
+              value={sandboxModeOf(settings.sandboxSessions)}
+              onChange={(v) => patchGlobal({ sandboxSessions: SANDBOX_PATCH[v] })}
             />
           ),
         },

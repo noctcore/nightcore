@@ -21,6 +21,19 @@ use ts_rs::TS;
 use super::model::PermissionMode;
 use super::model::{RunMode, Task, TaskKind, TaskStatus};
 
+/// Deserialize a PRESENT key into `Some(inner)` — including a present `null`,
+/// which becomes `Some(None)`. Serde only invokes a `deserialize_with` when the key
+/// exists, so an ABSENT key falls through to `#[serde(default)]` ⇒ `None`. This is
+/// what makes a `Option<Option<T>>` patch field able to distinguish
+/// "untouched" from "explicitly cleared" (T16 / #157's per-run containment reset).
+fn present_option<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
 /// A partial update to a task — every field optional so the webview can patch
 /// just what changed. Absent fields are left untouched.
 // The web CONSTRUCTS this patch and only ever sends the keys it changed, so every
@@ -61,6 +74,15 @@ pub struct TaskPatch {
     /// M4.6: the run mode, editable pre-run from the create/edit picker.
     #[cfg_attr(test, ts(optional))]
     pub run_mode: Option<RunMode>,
+    /// T16 / #157: the per-RUN OS-containment override, editable pre-run. DOUBLE
+    /// option so the picker can express all three states the decision needs: absent
+    /// ⇒ leave the task's choice alone, `null` ⇒ CLEAR back to "inherit the
+    /// settings/staged default", `true`/`false` ⇒ pin this run. (The other
+    /// nullable patch fields are set-only because clearing them is meaningless;
+    /// clearing this one is the "put it back on Auto" affordance.)
+    #[serde(default, deserialize_with = "present_option")]
+    #[cfg_attr(test, ts(optional = nullable, as = "Option<bool>"))]
+    pub sandbox_writes: Option<Option<bool>>,
     /// SDK-guardrails: per-task max-turns override, editable pre-run.
     #[cfg_attr(test, ts(optional = nullable))]
     pub max_turns: Option<u32>,
@@ -95,6 +117,11 @@ impl TaskPatch {
         }
         if let Some(run_mode) = self.run_mode {
             task.run_mode = run_mode;
+        }
+        // T16: a PRESENT key wins, including an explicit `null` that resets the task
+        // to inheriting `Settings::sandbox_writes_for`.
+        if let Some(sandbox_writes) = self.sandbox_writes {
+            task.sandbox_writes = sandbox_writes;
         }
         // `model`/`effort`/`permission_mode` are themselves `Option`, so serde
         // flattens an absent field and an explicit `null` to the same `None`. A
@@ -138,6 +165,35 @@ mod tests {
         let patch: TaskPatch = serde_json::from_str(r#"{"runMode":"worktree"}"#).unwrap();
         patch.apply(&mut task);
         assert_eq!(task.run_mode, RunMode::Worktree);
+    }
+
+    #[test]
+    fn patch_distinguishes_absent_set_and_cleared_sandbox_writes() {
+        // T16 / #157: the per-run containment override needs all three states, and
+        // the ABSENT case is the one a naive `Option<bool>` would silently break —
+        // every unrelated patch (a rename, a status change) would clear the user's
+        // containment choice.
+        let mut task = Task::new("t".into(), String::new());
+        task.sandbox_writes = Some(false);
+
+        let unrelated: TaskPatch = serde_json::from_str(r#"{"title":"renamed"}"#).unwrap();
+        unrelated.apply(&mut task);
+        assert_eq!(
+            task.sandbox_writes,
+            Some(false),
+            "an unrelated patch must NOT clear a per-run containment opt-out"
+        );
+
+        let opt_in: TaskPatch = serde_json::from_str(r#"{"sandboxWrites":true}"#).unwrap();
+        opt_in.apply(&mut task);
+        assert_eq!(task.sandbox_writes, Some(true));
+
+        let cleared: TaskPatch = serde_json::from_str(r#"{"sandboxWrites":null}"#).unwrap();
+        cleared.apply(&mut task);
+        assert_eq!(
+            task.sandbox_writes, None,
+            "an explicit null resets the task to inheriting the staged/global default"
+        );
     }
 
     #[test]

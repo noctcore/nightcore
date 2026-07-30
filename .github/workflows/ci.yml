@@ -33,15 +33,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # macOS-only lane for the Seatbelt (OS write-containment) proof. The
-  # containment-enforcement tests in packages/engine/src/session/sandbox.test.ts
-  # are `test.skipIf(!canSandbox)` — they need darwin + /usr/bin/sandbox-exec, so
-  # on the ubuntu lanes above/below they always skip and the semantic guarantee of
+  # macOS-only lane for the OS write-containment proof. The enforcement tests in
+  # packages/engine/src/providers/claude/native-sandbox.test.ts are
+  # `test.skipIf(!canSandbox)` — they need darwin + /usr/bin/sandbox-exec, so on
+  # the ubuntu lanes above/below they always skip and the semantic guarantee of
   # this security feature is verified NOWHERE. This job runs the engine suite on a
-  # real macOS runner so those tests (and `sandboxAvailable() === true`) actually
-  # execute on every push, catching a containment regression that still emits a
-  # well-formed profile string. Scoped to `packages/engine` to keep macOS minutes
-  # (billed at a premium) small.
+  # real macOS runner so those tests (and `nativeSandboxAvailability().available`)
+  # actually execute on every push.
+  #
+  # What they assert (T16 / #157): the `filesystem.allowWrite` set Nightcore hands
+  # the SDK's native sandbox is compiled into the equivalent Seatbelt profile and a
+  # real Bash redirect OUTSIDE it must be refused — so a regression that widens the
+  # roots (e.g. lets $HOME back in) fails here rather than shipping a containment
+  # claim nothing enforces. Deliberately NOT path-filtered: the policy this proves
+  # is derived from code across the engine, and a skipped containment proof is
+  # indistinguishable from a passing one. Scoped to `packages/engine` to keep macOS
+  # minutes (billed at a premium) small.
+  #
+  # Its sibling `.github/workflows/macos-confine.yml` covers the OTHER, separate
+  # Seatbelt writer — `apps/desktop/src-tauri/src/terminal/confine.rs`, the
+  # confined-TERMINAL profile — which T12 §1b deliberately KEEPS. T16 did not move
+  # or delete any file under `src/terminal/`, so that workflow's path filter still
+  # covers exactly what it did before.
   macos-sandbox:
     name: seatbelt containment (macOS engine tests)
     runs-on: macos-latest

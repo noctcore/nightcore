@@ -312,6 +312,20 @@ export class SessionManager {
       // Council seat marker (issue #364): echo the command flag so the Rust reader
       // skips board-FIFO correlation for a debate seat. Absent for a board session.
       ...(command.council ? { council: true } : {}),
+      // OS write containment (T16 / #157): echo the runner's resolved posture so a
+      // requested-but-unavailable session is VISIBLE at launch instead of quietly
+      // running unconfined. Omitted entirely when containment was never requested,
+      // keeping the event byte-identical for every pre-feature/scan session.
+      ...(runner.containment?.requested === true
+        ? {
+            containment: {
+              active: runner.containment.active,
+              ...(runner.containment.reason !== undefined
+                ? { reason: runner.containment.reason }
+                : {}),
+            },
+          }
+        : {}),
     });
     this.setStatus(session, 'running');
 

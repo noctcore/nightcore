@@ -263,6 +263,12 @@ export interface SessionGroup {
   prompt: string | null;
   /** Best-effort lifecycle role (build / verify / plan / generic). */
   phase: SessionPhase;
+  /** OS write-containment posture reported on `session-started` (T16 / #157).
+   *  `null` ⇒ the run never asked for containment. `{ active: false }` is the LOUD
+   *  case: containment was requested and the host could not provide it, so the run
+   *  proceeded under the PreToolUse gate alone — the session header says so rather
+   *  than letting the degrade pass unseen. */
+  containment: { active: boolean; reason?: string } | null;
   /** The folded activity for this session alone. */
   stream: SessionStream;
 }
@@ -305,6 +311,7 @@ function newGroup(
     model: fields.model ?? null,
     prompt: fields.prompt ?? null,
     phase: fields.phase ?? classifyPhase(fields.prompt ?? null, priorCount),
+    containment: fields.containment ?? null,
     stream: { ...EMPTY_STREAM },
   };
 }
@@ -321,6 +328,7 @@ export function foldTranscript(prev: TaskTranscript, event: NcEvent): TaskTransc
       const group = newGroup(prev.sessions.length, {
         model: event.model,
         prompt: event.prompt,
+        containment: event.containment ?? null,
       });
       return { ...prev, sessions: [...prev.sessions, group] };
     }
