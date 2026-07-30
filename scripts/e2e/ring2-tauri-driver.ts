@@ -396,26 +396,16 @@ async function selfTest(
   // Tauri's IPC surface is frozen from inside the page, by design. So the perturbations
   // below break the REAL thing instead: real backend state through the app's own
   // command surface, a real file on disk, and a real teardown of the app.
+  //
+  // ORDER MATTERS, least-destructive first: the `ipc` perturbation drives the app for
+  // real, so it must run while the page is still healthy — wiping `#root` first would
+  // pull the DOM out from under React and leave the app re-rendering into rubble while
+  // the backend call was in flight. Then the DOM, then the teardown.
   const perturbations: Array<{
     label: string;
     kind: Check['kind'];
     apply: () => Promise<{ applied: boolean; detail: string }>;
   }> = [
-    {
-      label: 'empty #root (the webview rendered nothing)',
-      kind: 'dom',
-      // Also blanks the title, so the window-title check is covered by the same
-      // perturbation rather than being exempted from the proof. The DOM is ours to
-      // mutate — unlike Tauri's internals — so this one applies cleanly.
-      apply: () =>
-        session.execute<{ applied: boolean; detail: string }>(`
-          const root = document.querySelector('#root');
-          if (root) root.innerHTML = '';
-          document.title = '';
-          const left = document.querySelectorAll('#root *').length;
-          return { applied: left === 0 && document.title === '', detail: left + ' nodes left' };
-        `),
-    },
     {
       label: 'change the board through the REAL backend (create_task over live IPC)',
       kind: 'ipc',
@@ -424,9 +414,14 @@ async function selfTest(
       // That proves the check reads LIVE backend state rather than a boot-time
       // snapshot or a canned answer — a stronger claim than "invoke can be broken".
       apply: async () => {
+        // `attachments` is a plain `Vec<NewAttachment>` on the Rust side, not an
+        // `Option`, so Tauri requires the key even when empty ("missing required key
+        // attachments"). Every other knob IS optional and is left to the defaults the
+        // command resolves from settings.
         const created = await invoke(session, 'create_task', {
           title: 'ring2 self-test injected task',
           description: '',
+          attachments: [],
         });
         if (!created.ok) {
           return { applied: false, detail: `create_task failed: ${created.error}` };
@@ -453,6 +448,21 @@ async function selfTest(
           detail: `planted ${path.basename(planted)}`,
         });
       },
+    },
+    {
+      label: 'empty #root (the webview rendered nothing)',
+      kind: 'dom',
+      // Also blanks the title, so the window-title check is covered by the same
+      // perturbation rather than being exempted from the proof. The DOM is ours to
+      // mutate — unlike Tauri's internals — so this one applies cleanly.
+      apply: () =>
+        session.execute<{ applied: boolean; detail: string }>(`
+          const root = document.querySelector('#root');
+          if (root) root.innerHTML = '';
+          document.title = '';
+          const left = document.querySelectorAll('#root *').length;
+          return { applied: left === 0 && document.title === '', detail: left + ' nodes left' };
+        `),
     },
     {
       label: 'END THE APP (nothing can be answered without it)',
