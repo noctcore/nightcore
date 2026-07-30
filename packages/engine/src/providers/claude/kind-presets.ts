@@ -8,22 +8,29 @@
  * `SessionRunner` threads into the SDK `Options`.
  *
  * Agent identity is kept engine-side: the core never reaches into a preset and
- * the engine never decides orchestration.
+ * the engine never decides orchestration. {@link describeSkillAgent} is how this
+ * half is published to the skill registry (issue #158) WITHOUT breaking that rule:
+ * it derives the contract's `SkillAgentDefinition` from the live table, so the
+ * engine states its own half and still has no opinion about the core's.
  */
-import type { PermissionMode, TaskKind } from '@nightcore/contracts';
+import {
+  type PermissionMode,
+  type SkillAgentDefinition,
+  type TaskKind,
+  WRITE_TOOL_NAMES,
+} from '@nightcore/contracts';
 
+import { permissionModeToAutonomy } from './capabilities.js';
 import { DECOMPOSE_OUTPUT_FORMAT } from './decompose.js';
 import type { OutputFormat } from './sdk-adapter.js';
 
 /** The write tools a read-only reviewer must never be able to call. Denied for
- *  the `review` kind so a reviewer can inspect but not mutate the worktree. */
-export const WRITE_TOOLS: readonly string[] = [
-  'Edit',
-  'Write',
-  'NotebookEdit',
-  'MultiEdit',
-  'ApplyPatch',
-] as const;
+ *  the `review` kind so a reviewer can inspect but not mutate the worktree.
+ *
+ *  The list itself is `WRITE_TOOL_NAMES` in `@nightcore/contracts` — the same one
+ *  `diagnoseSkillDescriptor` holds a `writesCode: false` skill to, so the claim
+ *  "read-only" and the denial that makes it true can never name different tools. */
+export const WRITE_TOOLS: readonly string[] = WRITE_TOOL_NAMES;
 
 /**
  * The native web tools that reach the network — an EGRESS channel. `WebFetch`
@@ -218,4 +225,41 @@ export function resolveKindPreset(kind: TaskKind | undefined): KindPreset {
  *  data rather than re-listing them (issue #158). */
 export function builtinKindKeys(): readonly TaskKind[] {
   return Object.keys(KIND_PRESETS) as TaskKind[];
+}
+
+/**
+ * Express a builtin kind's preset as the AGENT half of a `SkillDescriptor` — the
+ * engine's contribution to the skill registry (issue #158, stage 1).
+ *
+ * This is a DERIVATION, never a second copy: it reads {@link KIND_PRESETS} and
+ * restates it in the contract's provider-neutral vocabulary, so a preset edit moves
+ * the descriptor with it. Two translations happen here, both at the correct
+ * boundary (inside `providers/claude/`, which is the only place allowed to know SDK
+ * shapes):
+ *
+ *  - the SDK `permissionMode` collapses onto the neutral `AutonomyLevel` via
+ *    {@link permissionModeToAutonomy} — `review`'s Claude-only `dontAsk` becomes
+ *    `auto-accept`, the fail-closed ceiling that lands it inside the hooks
+ *    invariant's guarded set rather than pretending it is unattended-and-safe;
+ *  - the concrete `outputFormat` json_schema collapses to a boolean, because what a
+ *    skill DECLARES is that it needs schema-constrained output at all — the schema
+ *    itself is the provider's business.
+ *
+ * An absent preset field becomes an explicit empty value, never a silent omission:
+ * the descriptor's whole point is that a governance fact is stated.
+ */
+export function describeSkillAgent(kind: TaskKind): SkillAgentDefinition {
+  const preset = resolveKindPreset(kind);
+  return {
+    systemPromptAppend: preset.appendSystemPrompt ?? '',
+    toolPolicy: {
+      allow: [...(preset.allowedTools ?? [])],
+      deny: [...(preset.disallowedTools ?? [])],
+    },
+    defaultAutonomy:
+      preset.permissionMode === undefined
+        ? null
+        : permissionModeToAutonomy(preset.permissionMode),
+    structuredOutput: preset.outputFormat !== undefined,
+  };
 }

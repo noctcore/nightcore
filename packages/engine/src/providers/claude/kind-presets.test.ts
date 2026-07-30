@@ -1,10 +1,15 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test';
 
-import { TaskKindSchema } from '@nightcore/contracts';
+import {
+  SkillAgentDefinitionSchema,
+  TaskKindSchema,
+  WRITE_TOOL_NAMES,
+} from '@nightcore/contracts';
 
 import {
   builtinKindKeys,
+  describeSkillAgent,
   NETWORK_EGRESS_TOOLS,
   resolveKindPreset,
   WRITE_TOOLS,
@@ -96,5 +101,63 @@ describe('resolveKindPreset', () => {
     }
     // …and research does NOT (the deliberate opt-in).
     expect(resolveKindPreset('research').disallowedTools ?? []).not.toContain('WebFetch');
+  });
+});
+
+describe('describeSkillAgent (SkillDescriptor agent half — issue #158)', () => {
+  test('every builtin kind is expressible as a SkillAgentDefinition', () => {
+    // The adequacy proof for the contract shape: if a builtin preset carried a fact
+    // the descriptor cannot state, the registry keystone would be built on a shape
+    // that already fails for the five kinds that exist.
+    for (const kind of TaskKindSchema.options) {
+      expect(
+        SkillAgentDefinitionSchema.safeParse(describeSkillAgent(kind)).success,
+      ).toBe(true);
+    }
+  });
+
+  test('derives from the live preset rather than restating it', () => {
+    // A derivation, not a copy — the deny list and persona come back verbatim.
+    const decompose = describeSkillAgent('decompose');
+    expect(decompose.toolPolicy.deny).toEqual([...WRITE_TOOLS, ...NETWORK_EGRESS_TOOLS]);
+    expect(decompose.systemPromptAppend).toBe(
+      resolveKindPreset('decompose').appendSystemPrompt,
+    );
+    // The concrete json_schema collapses to the fact a skill DECLARES: that it needs
+    // schema-constrained output at all.
+    expect(decompose.structuredOutput).toBe(true);
+    expect(describeSkillAgent('build').structuredOutput).toBe(false);
+  });
+
+  test('states absent preset fields explicitly instead of omitting them', () => {
+    // `research` is the empty preset; the descriptor must still SAY so — an unstated
+    // governance fact is exactly what the descriptor exists to prevent.
+    expect(describeSkillAgent('research')).toEqual({
+      systemPromptAppend: '',
+      toolPolicy: { allow: [], deny: [] },
+      defaultAutonomy: null,
+      structuredOutput: false,
+    });
+  });
+
+  test('lowers the Claude-only permission mode to a neutral autonomy ceiling', () => {
+    // `review` runs `dontAsk`, which has no neutral equivalent; it collapses to
+    // `auto-accept` — the fail-closed ceiling inside the hooks invariant's guarded
+    // set, not a claim that the unattended reviewer needs no containment.
+    expect(describeSkillAgent('review').defaultAutonomy).toBe('auto-accept');
+    // Every other builtin inherits, and says so with an explicit null.
+    for (const kind of ['build', 'research', 'tdd', 'decompose'] as const) {
+      expect(describeSkillAgent(kind).defaultAutonomy).toBeNull();
+    }
+  });
+
+  test('a read-only builtin denies exactly the contract write-tool list', () => {
+    // The engine's denial and `diagnoseSkillDescriptor`'s check read one list, so a
+    // read-only skill cannot be judged against a different set than it was built from.
+    for (const kind of ['review', 'decompose'] as const) {
+      for (const tool of WRITE_TOOL_NAMES) {
+        expect(describeSkillAgent(kind).toolPolicy.deny).toContain(tool);
+      }
+    }
   });
 });
