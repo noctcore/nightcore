@@ -55,6 +55,7 @@ import {
   type CompiledPathRule,
   compilePathRule,
   type HarnessPolicyVerdict,
+  pathSegments,
   ruleProtects,
 } from './harness-policy.js';
 import { BASH_TOOL } from './tool-deny-policy.js';
@@ -220,7 +221,7 @@ export function evaluateExecSinkGate(
     if (!isWithin(resolved, resolvedCwd)) continue;
     const rel = path.relative(resolvedCwd, resolved);
     if (rel.length === 0) continue;
-    const segments = rel.split(/[\\/]/).filter((s) => s.length > 0);
+    const segments = pathSegments(rel);
     const sink = matchedSink(gate.sinkRules, segments);
     if (sink === undefined) continue;
     // Per-project downgrade: this repo declared this sink agent-writable.

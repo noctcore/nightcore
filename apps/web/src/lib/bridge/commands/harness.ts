@@ -1,19 +1,17 @@
 /** Bridge commands — the Harness (codebase convention auditor): run + item
- *  lifecycle, artifact apply / arm, policy authoring, and the injection scan. */
+ *  lifecycle, artifact apply / arm, and the Checks Manager. Runtime-policy
+ *  authoring (the manifest `policy` block, the activity feed, the injection scan)
+ *  lives in the sibling `./policy` module. */
 import { invoke } from '@tauri-apps/api/core';
 
 import { tauriInvoke } from '../internal';
-import { MOCK_INJECTION_FLAGS, MOCK_POLICY_FILE } from '../mocks';
 import type {
   ArmedCheckFile,
   ArmedChecksState,
   ConventionCategory,
   DeepScanConfig,
   EffortLevel,
-  HarnessPolicyFile,
-  HarnessPolicyPatch,
   HarnessRun,
-  InjectionFlag,
   RuleValidationResult,
   Task,
 } from '../types';
@@ -327,33 +325,3 @@ export async function validatePluginRule(
     invalidCases: args.invalidCases ?? null,
   });
 }
-
-// --- Harness policy authoring + injection scan ------------------------------
-
-/** Read the ACTIVE project's harness policy block (`.nightcore/harness.json`),
- *  with defaults when the manifest/key is absent; `manifestExists` tells the
- *  editor whether saving edits or creates the file. Returns a mock outside Tauri. */
-export async function getHarnessPolicyFile(): Promise<HarnessPolicyFile> {
-  return tauriInvoke<HarnessPolicyFile>('get_harness_policy_file', {}, MOCK_POLICY_FILE);
-}
-
-/** Merge a policy patch into the active project's `.nightcore/harness.json` —
- *  WRITES to disk (creating the manifest when absent) and returns the updated
- *  policy. Only the keys present in the patch change; unknown manifest keys
- *  survive. Uses raw `invoke` (throws outside Tauri) so a failed write surfaces
- *  to the caller instead of silently "saving". */
-export async function updateHarnessPolicyFile(
-  patch: HarnessPolicyPatch,
-): Promise<HarnessPolicyFile> {
-  return invoke<HarnessPolicyFile>('update_harness_policy_file', { patch });
-}
-
-/** Sweep the active project's git-tracked text files for prompt-injection-shaped
- *  content (invisible Unicode tags, zero-width runs, bidi overrides, instruction
- *  phrases), returning the flagged paths + reasons for human review. Detection
- *  only — quarantining is the user's explicit denyReadPaths update. Returns mock
- *  flags outside Tauri. */
-export async function scanInjectionSurface(): Promise<InjectionFlag[]> {
-  return tauriInvoke<InjectionFlag[]>('scan_injection_surface', {}, MOCK_INJECTION_FLAGS);
-}
-

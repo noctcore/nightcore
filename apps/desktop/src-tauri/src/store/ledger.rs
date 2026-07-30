@@ -35,9 +35,14 @@ const HARNESS_RULE_PREFIX: &str = "harness-";
 /// The per-task ledger path. Must stay in lockstep with what the core sends on
 /// `start-session` — both call THIS function (single owner of the formula).
 pub fn ledger_path(project_root: &Path, task_id: &str) -> PathBuf {
-    project_root
-        .join(LEDGER_DIR_REL)
-        .join(format!("{task_id}.ndjson"))
+    ledger_dir(project_root).join(format!("{task_id}.ndjson"))
+}
+
+/// The project's ledger DIRECTORY. Exposed for the readers that aggregate across
+/// tasks rather than opening one task's file (the Policy activity feed,
+/// `crate::store::policy_activity`), so the path formula keeps a single owner.
+pub fn ledger_dir(project_root: &Path) -> PathBuf {
+    project_root.join(LEDGER_DIR_REL)
 }
 
 /// One ledger line, parsed leniently: tool records carry `tool`/`inputDigest`/

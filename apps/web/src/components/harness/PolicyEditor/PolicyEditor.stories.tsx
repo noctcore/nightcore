@@ -22,6 +22,11 @@ const meta = {
   component: PolicyEditor,
   args: {
     policy: POLICY,
+    profile: {
+      isMonorepo: true,
+      languages: ['typescript', 'rust'],
+      frameworks: ['react', 'tauri'],
+    },
     saving: false,
     saveError: null,
     onSave: () => {},
@@ -52,6 +57,22 @@ export const NoManifest: Story = {
 
 export const Loading: Story = {
   args: { policy: null },
+};
+
+/** A policy whose every tier holds a silently-dead rule — the #400 failure mode.
+ *  Each row is diagnosed inline and save is blocked until they are fixed. */
+export const DeadRules: Story = {
+  args: {
+    policy: {
+      ...POLICY,
+      protectedPaths: ['migrations/{2026,2027}', 'src\\**'],
+      denyBashPatterns: ['**/*.lock'],
+      denyReadPaths: ['.env*'],
+      disallowedTools: ['Bash(git push:*)'],
+      askTools: ['websearch'],
+      allowTools: ['Bash(git status:*'],
+    },
+  },
 };
 
 export const SaveFailed: Story = {

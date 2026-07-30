@@ -44,6 +44,7 @@ fn export_all_bindings() {
         ArmedCheckFile, HarnessPolicyFile, HarnessPolicyPatch, PolicyDiffBudget,
     };
     use crate::store::insight::{FindingLocation, InsightRun, InsightUsage, StoredFinding};
+    use crate::store::policy_activity::PolicyActivityEntry;
     use crate::store::pr_review::{PrReviewRun, StoredReviewFinding};
     use crate::store::scorecard::{ScorecardEvidence, ScorecardRun, StoredReading};
     use crate::store::types::{
@@ -170,6 +171,9 @@ fn export_all_bindings() {
         HarnessPolicyFile,
         HarnessPolicyPatch,
         PolicyDiffBudget,
+        // Policy activity feed (issue #400): one attributed deny/ask decision read
+        // back out of the flight recorder.
+        PolicyActivityEntry,
         // Checks Manager (Enforce, T7): the armed-check manifest descriptor + the
         // list view (checks with folded last results + the run-level summary).
         ArmedCheckFile,
@@ -325,6 +329,7 @@ mod tests {
             "HarnessPolicyFile.ts",
             "HarnessPolicyPatch.ts",
             "PolicyDiffBudget.ts",
+            "PolicyActivityEntry.ts",
             "ArmedCheckFile.ts",
             "ArmedCheck.ts",
             "ArmedCheckOutcome.ts",

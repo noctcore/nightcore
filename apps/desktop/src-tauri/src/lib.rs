@@ -448,6 +448,7 @@ pub fn run() {
             analysis::injection_scan::scan_injection_surface,
             commands::policy::get_harness_policy_file,
             commands::policy::update_harness_policy_file,
+            commands::policy::list_policy_activity,
             // Checks Manager (Enforce, T7): list/edit/disable/remove armed checks +
             // run them on demand.
             commands::checks::list_armed_checks,

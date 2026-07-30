@@ -1,13 +1,20 @@
-/** Policy-file load/save/quarantine state for the Policy section. */
-import { useCallback, useEffect, useState } from 'react';
+/** Policy-file load/save/quarantine state + the activity feed for the Policy
+ *  section. */
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useToast } from '@/components/ui';
 import {
   getHarnessPolicyFile,
   type HarnessPolicyFile,
   type HarnessPolicyPatch,
+  listHarnessRuns,
+  listPolicyActivity,
+  type PolicyActivityEntry,
+  type StoredRepoProfile,
   updateHarnessPolicyFile,
 } from '@/lib/bridge';
+
+import type { PolicyProfileHints } from '../PolicyStarterPacks';
 
 /** denyReadPaths with `path` appended, or `null` when it is already present
  *  (the dedupe rule: quarantining twice must not grow the list). */
@@ -16,11 +23,25 @@ export function appendQuarantinePath(existing: string[], path: string): string[]
   return [...existing, path];
 }
 
+/** Narrow a persisted Harness profile to the fields the starter packs key on.
+ *  Deliberately lossy: a pack predicate reads three fields, so nothing else from
+ *  a scan artifact can influence which rails are offered. */
+export function profileHints(profile: StoredRepoProfile): PolicyProfileHints {
+  return {
+    isMonorepo: profile.isMonorepo,
+    languages: profile.languages,
+    frameworks: profile.frameworks,
+  };
+}
+
 /** Everything the PolicySection shell renders. */
 export interface PolicySectionVM {
   /** The authoritative policy (re-read from disk after every write), or `null`
    *  while the initial load is in flight. */
   policy: HarnessPolicyFile | null;
+  /** Repo shape from the newest Harness run, keying the starter packs; `null`
+   *  until it loads, or when the project has never been scanned. */
+  profile: PolicyProfileHints | null;
   loadError: string | null;
   saving: boolean;
   saveError: string | null;
@@ -37,6 +58,7 @@ export interface PolicySectionVM {
  *  what's on disk. */
 export function usePolicySection(): PolicySectionVM {
   const [policy, setPolicy] = useState<HarnessPolicyFile | null>(null);
+  const [profile, setProfile] = useState<PolicyProfileHints | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -52,6 +74,16 @@ export function usePolicySection(): PolicySectionVM {
         if (!cancelled) {
           setLoadError(err instanceof Error ? err.message : String(err));
         }
+      }
+      // The repo profile only keys which starter packs are OFFERED, so its
+      // failure is never surfaced: a project with no scan (or an unreadable run)
+      // simply gets the universal packs.
+      try {
+        const runs = await listHarnessRuns();
+        const newest = runs[0];
+        if (!cancelled && newest !== undefined) setProfile(profileHints(newest.profile));
+      } catch {
+        // Intentionally ignored — see above.
       }
     })();
     return () => {
@@ -113,5 +145,59 @@ export function usePolicySection(): PolicySectionVM {
     [policy, toast],
   );
 
-  return { policy, loadError, saving, saveError, save, quarantine };
+  return { policy, profile, loadError, saving, saveError, save, quarantine };
+}
+
+/** How often the activity feed re-reads while the Policy tab is open. There is no
+ *  wire event for a gate decision (the recorder writes NDJSON from the sidecar,
+ *  the core reads it), so "live" is a poll — cheap (one read per task ledger,
+ *  server-capped) and bounded by the tab being mounted. A push channel would need
+ *  a new contract event on the whole hook path; deliberately not paid for here. */
+const POLICY_ACTIVITY_POLL_MS = 20_000;
+
+/** The activity feed's own state. */
+export interface PolicyActivityFeedVM {
+  /** `null` until the first read returns, then the rows (possibly empty). */
+  entries: PolicyActivityEntry[] | null;
+  loading: boolean;
+  refresh: () => void;
+}
+
+/**
+ * Own the Policy activity feed: read on mount, poll while the tab is open, and
+ * expose a manual refresh.
+ *
+ * FAIL-QUIET. A read failure never surfaces as an error banner: the feed is
+ * evidence ABOUT the gates, not a gate, and the authoring surface must stay
+ * usable when the ledger is missing or unreadable — the same posture the recorder
+ * itself takes. Reads are single-flighted so a slow disk cannot stack up polls.
+ */
+export function usePolicyActivityFeed(): PolicyActivityFeedVM {
+  const [entries, setEntries] = useState<PolicyActivityEntry[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const inFlight = useRef(false);
+
+  const read = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setLoading(true);
+    try {
+      setEntries(await listPolicyActivity());
+    } catch {
+      // Keep whatever we already showed; a first-read failure settles as empty so
+      // the card leaves its skeleton instead of spinning forever.
+      setEntries((prev) => prev ?? []);
+    } finally {
+      inFlight.current = false;
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void read();
+    const timer = setInterval(() => void read(), POLICY_ACTIVITY_POLL_MS);
+    return () => clearInterval(timer);
+  }, [read]);
+
+  return { entries, loading, refresh: useCallback(() => void read(), [read]) };
 }

@@ -37,3 +37,14 @@ test('renders the policy editor seeded from the loaded policy and the scan card'
     .element(screen.getByRole('button', { name: /run scan/i }))
     .toBeInTheDocument();
 });
+
+test('renders the activity feed from the bridge mock alongside the editor', async () => {
+  const screen = render(<Default />);
+  await expect
+    .element(screen.getByText('Write to a protected path', { exact: true }))
+    .toBeInTheDocument();
+  // Attribution keeps the project's own rules apart from the built-in rails.
+  await expect
+    .element(screen.getByText('built-in rail', { exact: true }))
+    .toBeInTheDocument();
+});

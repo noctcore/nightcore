@@ -5,7 +5,7 @@ import { render } from 'vitest-browser-react';
 import { buildPolicyPatch, cleanList, draftFromPolicy, limitError } from './PolicyEditor.hooks';
 import * as stories from './PolicyEditor.stories';
 
-const { Default, NoManifest, Loading } = composeStories(stories);
+const { Default, NoManifest, Loading, DeadRules } = composeStories(stories);
 
 // --- pure draft/patch logic --------------------------------------------------
 
@@ -125,6 +125,51 @@ test('a missing manifest surfaces the create-on-save affordance', async () => {
   await expect
     .element(screen.getByRole('button', { name: /create manifest/i }))
     .toBeInTheDocument();
+});
+
+// --- edit-time pattern validation (#400) --------------------------------------
+
+test('a typo that makes a rule unmatchable is flagged inline and blocks save', async () => {
+  const onSave = vi.fn();
+  const screen = render(<Default onSave={onSave} />);
+  const input = screen.getByRole('textbox', { name: 'Protected paths entry 1' });
+  // `{a,b}` is matched literally by the policy glob engine — a dead rule.
+  await input.fill('migrations/{2026,2027}');
+  await expect.element(input).toHaveAttribute('aria-invalid', 'true');
+  await expect.element(screen.getByText(/matched literally/i)).toBeInTheDocument();
+  await expect
+    .element(screen.getByRole('button', { name: /save policy/i }))
+    .toBeDisabled();
+  expect(onSave).not.toHaveBeenCalled();
+});
+
+test('a case-typo in a tool tier names the tool the author meant', async () => {
+  const screen = render(<Default />);
+  await screen.getByRole('textbox', { name: 'Disallowed tools entry 1' }).fill('websearch');
+  await expect.element(screen.getByText(/did you mean `WebSearch`/i)).toBeInTheDocument();
+});
+
+test('a suspicious-but-live pattern warns without blocking save', async () => {
+  const screen = render(<Default />);
+  // `.env*` compiles as a regex, but `*` repeats the previous char — a foot-gun,
+  // not a dead rule, so authoring must not be blocked.
+  const input = screen.getByRole('textbox', { name: 'Denied bash patterns entry 1' });
+  await input.fill('.env*');
+  await expect
+    .element(screen.getByText(/repeats the PREVIOUS character/i))
+    .toBeInTheDocument();
+  await expect.element(input).toHaveAttribute('aria-invalid', 'false');
+  await expect
+    .element(screen.getByRole('button', { name: /save policy/i }))
+    .toBeEnabled();
+});
+
+test('a policy loaded with dead rules reports the count and refuses to save', async () => {
+  const screen = render(<DeadRules />);
+  await expect.element(screen.getByText(/can never match/i)).toBeInTheDocument();
+  await expect
+    .element(screen.getByRole('button', { name: /save policy/i }))
+    .toBeDisabled();
 });
 
 test('shows a skeleton while the policy loads', async () => {
