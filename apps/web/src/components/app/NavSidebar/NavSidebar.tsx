@@ -6,8 +6,10 @@ import {
   Kbd,
   PanelLeftCloseIcon,
   PanelLeftIcon,
+  QuestionIcon,
   StatusDot,
 } from '@/components/ui';
+import type { StageMeta } from '@/lib/stages';
 
 import type { NavItem } from '../AppShell/AppShell.types';
 import { type NavSection,useNavSidebarSections } from './NavSidebar.hooks';
@@ -82,12 +84,56 @@ function NavItemButton({
   );
 }
 
+/** The stage explainer: what this stage of the lifecycle actually does, and what it
+ *  leaves behind. Revealed from the group header's `?` toggle — the stage NAMES were
+ *  already in the chrome and said nothing (issue #404). Copy comes from the shared
+ *  lifecycle table, the same source the onboarding stage diagram renders. */
+function StageExplainer({ stage }: { stage: StageMeta }) {
+  return (
+    <div className="mb-1 mt-1 rounded-nc border border-border/60 bg-white/[0.02] px-2.5 py-2">
+      <p className="text-2xs leading-snug text-muted-foreground">{stage.summary}</p>
+      <p className="mt-1.5 font-mono text-4xs-plus uppercase leading-snug tracking-[0.08em] text-muted-foreground/70">
+        leaves behind: {stage.produces}
+      </p>
+    </div>
+  );
+}
+
+/** The `?` disclosure beside a stage group's header. A real button with an
+ *  `aria-expanded` state and a spelled-out accessible name, so the explainer is
+ *  reachable by keyboard and announced, not a hover-only tooltip (which the nav's
+ *  `overflow-y-auto` would clip anyway). */
+function StageExplainerToggle({
+  label,
+  open,
+  onToggle,
+}: {
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-label={`${open ? 'Hide' : 'Show'} what the ${label} stage means`}
+      className={`ml-auto flex shrink-0 cursor-pointer items-center rounded p-0.5 transition-colors hover:text-foreground ${
+        open ? 'text-primary' : 'text-muted-foreground/45'
+      }`}
+    >
+      <QuestionIcon size={12} />
+    </button>
+  );
+}
+
 function NavGroupSection({
   section,
   sectionIndex,
   view,
   collapsed,
   isCollapsed,
+  explainer,
   onToggle,
   onNavigate,
 }: {
@@ -96,38 +142,52 @@ function NavGroupSection({
   view: NavSidebarProps['view'];
   collapsed: boolean;
   isCollapsed: boolean;
+  /** Stage-explainer disclosure state for this section (absent on non-stage groups). */
+  explainer: { open: boolean; onToggle: () => void };
   onToggle: () => void;
   onNavigate: NavSidebarProps['onNavigate'];
 }) {
   const showItems = collapsed || !isCollapsed;
   const showHeader = !collapsed && !section.footer;
+  const stage = section.explainer;
 
   return (
     <div className={sectionIndex > 0 && !collapsed ? 'mt-3' : ''}>
       {showHeader && (
-        <button
-          type="button"
-          onClick={() => section.collapsible && onToggle()}
-          disabled={!section.collapsible}
-          className={`group mb-1 flex w-full items-center rounded-md px-2.5 py-1.5 ${
-            section.collapsible
-              ? 'cursor-pointer hover:bg-white/[0.03]'
-              : 'cursor-default'
-          }`}
-        >
-          <span className="font-mono text-4xs-plus uppercase tracking-[0.18em] text-muted-foreground">
-            {section.label}
-          </span>
-          {section.collapsible && (
-            <ChevronDownIcon
-              size={12}
-              className={`ml-auto text-muted-foreground transition-transform duration-[var(--nc-motion-fast)] ${
-                isCollapsed ? '-rotate-90' : ''
-              }`}
+        <div className="mb-1 flex items-center gap-1 px-2.5 py-1.5">
+          <button
+            type="button"
+            onClick={() => section.collapsible && onToggle()}
+            disabled={!section.collapsible}
+            className={`group flex min-w-0 flex-1 items-center rounded-md ${
+              section.collapsible
+                ? 'cursor-pointer hover:bg-white/[0.03]'
+                : 'cursor-default'
+            }`}
+          >
+            <span className="font-mono text-4xs-plus uppercase tracking-[0.18em] text-muted-foreground">
+              {section.label}
+            </span>
+            {section.collapsible && (
+              <ChevronDownIcon
+                size={12}
+                className={`ml-auto text-muted-foreground transition-transform duration-[var(--nc-motion-fast)] ${
+                  isCollapsed ? '-rotate-90' : ''
+                }`}
+              />
+            )}
+          </button>
+          {stage !== undefined && (
+            <StageExplainerToggle
+              label={section.label}
+              open={explainer.open}
+              onToggle={explainer.onToggle}
             />
           )}
-        </button>
+        </div>
       )}
+
+      {!collapsed && stage !== undefined && explainer.open && <StageExplainer stage={stage} />}
 
       {collapsed && sectionIndex > 0 && <div className="mx-2 my-1.5 h-px bg-border/30" />}
 
@@ -172,7 +232,8 @@ export function NavSidebar({
   onGotoAwaitingInput,
   slots,
 }: NavSidebarProps) {
-  const { sections, toggleSection, isSectionCollapsed } = useNavSidebarSections(nav);
+  const { sections, toggleSection, isSectionCollapsed, explainedStage, toggleExplainer } =
+    useNavSidebarSections(nav);
   const mainSections = sections.filter((section) => !section.footer);
   const footerSections = sections.filter((section) => section.footer);
 
@@ -213,6 +274,10 @@ export function NavSidebar({
             view={view}
             collapsed={collapsed}
             isCollapsed={isSectionCollapsed(section.id, section.collapsible)}
+            explainer={{
+              open: explainedStage === section.id,
+              onToggle: () => toggleExplainer(section.id),
+            }}
             onToggle={() => toggleSection(section.id)}
             onNavigate={onNavigate}
           />
@@ -254,6 +319,10 @@ export function NavSidebar({
               view={view}
               collapsed={collapsed}
               isCollapsed={isSectionCollapsed(section.id, section.collapsible)}
+              explainer={{
+                open: explainedStage === section.id,
+                onToggle: () => toggleExplainer(section.id),
+              }}
               onToggle={() => toggleSection(section.id)}
               onNavigate={onNavigate}
             />
