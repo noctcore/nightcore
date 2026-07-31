@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
-  DEFAULT_REGISTRY_RELATIVE_PATH,
+  DEFAULT_REGISTRY_RELATIVE_PATHS,
   loadRegistry,
   type ModuleImporter,
 } from './registry.js';
@@ -86,7 +86,56 @@ describe('loadRegistry — bounded eval (§5)', () => {
     expect(calls).toEqual([registryPath]);
   });
 
-  test('the default registry path is the fixed, committed location', () => {
-    expect(DEFAULT_REGISTRY_RELATIVE_PATH).toBe('.nightcore/lint-meta/registry.js');
+  test('the default registry paths are the fixed, committed locations (.ts first)', () => {
+    // A fixed, enumerated two-entry list — still bounded eval. `.ts` (what the
+    // portable-lock exporter emits) wins over a legacy `.js` registry.
+    expect(DEFAULT_REGISTRY_RELATIVE_PATHS).toEqual([
+      '.nightcore/lint-meta/registry.ts',
+      '.nightcore/lint-meta/registry.js',
+    ]);
+  });
+});
+
+describe('loadRegistry — a failed TypeScript import names the fix (#325)', () => {
+  /** An importer that rejects with an Error carrying `code`. */
+  function throwing(message: string, code?: string): ModuleImporter {
+    return () => {
+      const err = new Error(message) as Error & { code?: string };
+      if (code !== undefined) err.code = code;
+      return Promise.reject(err);
+    };
+  }
+
+  test('an old Node that cannot strip types is reported as a Node version problem', async () => {
+    const loaded = await loadRegistry(
+      '/repo/.nightcore/lint-meta/registry.ts',
+      throwing('Unknown file extension ".ts" for /repo/.nightcore/lint-meta/registry.ts', 'ERR_UNKNOWN_FILE_EXTENSION'),
+    );
+    expect(loaded.rules).toEqual([]);
+    expect(loaded.error).toContain('22.18');
+  });
+
+  test('an ESM registry in a CommonJS scope points at the package.json fix', async () => {
+    const loaded = await loadRegistry(
+      '/repo/.nightcore/lint-meta/registry.ts',
+      throwing('Cannot use import statement outside a module'),
+    );
+    expect(loaded.error).toContain('"type":"module"');
+  });
+
+  test('a registry under node_modules names the type-stripping refusal', async () => {
+    const loaded = await loadRegistry(
+      '/repo/node_modules/x/registry.ts',
+      throwing('boom', 'ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING'),
+    );
+    expect(loaded.error).toContain('node_modules');
+  });
+
+  test('a JavaScript registry error is passed through verbatim (no TS advice)', async () => {
+    const loaded = await loadRegistry(
+      '/repo/.nightcore/lint-meta/registry.js',
+      throwing('Cannot use import statement outside a module'),
+    );
+    expect(loaded.error).toBe('Cannot use import statement outside a module');
   });
 });

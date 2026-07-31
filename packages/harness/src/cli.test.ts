@@ -86,6 +86,76 @@ describe('runCli check — opt-in-by-presence', () => {
   });
 });
 
+describe('runCli check — --manifest points CI at a bundle copy (#325)', () => {
+  /** Records every path read while still returning a valid (empty) manifest. */
+  function recordingHarness(): Harness {
+    const h = harness();
+    const read = h.io.read;
+    h.io.read = (p) => {
+      read(p);
+      return manifest([]);
+    };
+    return h;
+  }
+
+  test('--manifest resolves against --dir and is the file read', () => {
+    const h = recordingHarness();
+    runCli(['check', '--dir', '/repo', '--manifest', '.nightcore/export/portable-lock/harness.json'], h.io);
+    expect(h.readPaths[0]).toBe('/repo/.nightcore/export/portable-lock/harness.json');
+  });
+
+  test('--manifest=<path> (equals form) works too', () => {
+    const h = recordingHarness();
+    runCli(['check', '--dir', '/repo', '--manifest=bundle/harness.json'], h.io);
+    expect(h.readPaths[0]).toBe('/repo/bundle/harness.json');
+  });
+
+  test('an ABSENT explicit manifest reds the build (fail-closed, never a silent pass)', () => {
+    const h = harness();
+    expect(runCli(['check', '--manifest', 'bundle/harness.json'], h.io)).toBe(1);
+    expect(h.err.join('\n')).toContain('Cannot read the manifest at');
+  });
+
+  test('an UNPARSEABLE explicit manifest reds the build', () => {
+    const h = harness({ read: () => '{ not json' });
+    expect(runCli(['check', '--manifest', 'bundle/harness.json'], h.io)).toBe(1);
+    expect(h.err.join('\n')).toContain('Cannot read the manifest at');
+  });
+
+  test('an absent DEFAULT manifest still exits 0 (opt-in-by-presence is unchanged)', () => {
+    const h = harness();
+    expect(runCli(['check'], h.io)).toBe(0);
+  });
+
+  test('a parseable explicit manifest with no checks is nothing to enforce (exit 0)', () => {
+    const h = harness({ read: () => '{ "schemaVersion": 1 }' });
+    expect(runCli(['check', '--manifest', 'bundle/harness.json'], h.io)).toBe(0);
+  });
+
+  test('the explicit manifest’s checks run — including a translated npx lint-meta command', () => {
+    const commands: string[] = [];
+    const h = harness({
+      read: () =>
+        manifest([
+          {
+            name: 'folder-per-component',
+            kind: 'lint-meta',
+            command:
+              'npx --yes @noctcore/harness@0.2.0 lint-meta --registry .nightcore/export/portable-lock/lint-meta/registry.ts',
+          },
+        ]),
+      spawn: (program, args) => {
+        commands.push([program, ...args].join(' '));
+        return { status: 1, signal: null, stdout: '[ERROR] folder-per-component', stderr: '' };
+      },
+    });
+    expect(runCli(['check', '--manifest', 'bundle/harness.json'], h.io)).toBe(1);
+    expect(commands).toEqual([
+      'npx --yes @noctcore/harness@0.2.0 lint-meta --registry .nightcore/export/portable-lock/lint-meta/registry.ts',
+    ]);
+  });
+});
+
 describe('runCli check — schemaVersion gate', () => {
   test('a newer MAJOR reds the build with an upgrade message', () => {
     const h = harness({ read: () => manifest([], { schemaVersion: 2 }) });

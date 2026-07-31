@@ -17,13 +17,13 @@ import { fileURLToPath } from 'node:url';
 
 import { createNodeCtx } from './lint-meta/ctx.js';
 import {
-  DEFAULT_REGISTRY_RELATIVE_PATH,
+  DEFAULT_REGISTRY_RELATIVE_PATHS,
   defaultImporter,
   loadRegistry,
   type ModuleImporter,
 } from './lint-meta/registry.js';
 import { exitCodeFor, reportMetaOutcomes, runMetaRules } from './lint-meta/run.js';
-import { type FileReader,loadChecks } from './manifest.js';
+import { type FileReader,loadChecks, MANIFEST_RELATIVE_PATH } from './manifest.js';
 import { emptyPass, fixInstruction, runChecks, type SpawnFn } from './run.js';
 
 /** The side-effecting surface `runCli` depends on — real or faked in tests. */
@@ -49,21 +49,28 @@ Usage:
 
 Options:
   --dir <path>        Target directory to operate in (default: current directory)
-  --registry <path>   lint-meta only: the rule registry to load
-                      (default: ${DEFAULT_REGISTRY_RELATIVE_PATH}, relative to --dir)
+  --manifest <path>   check only: the manifest to read, relative to --dir
+                      (default: ${MANIFEST_RELATIVE_PATH}). An explicitly named
+                      manifest that is missing or unparseable reds the build.
+  --registry <path>   lint-meta only: the rule registry to load, relative to --dir
+                      (default: the first of ${DEFAULT_REGISTRY_RELATIVE_PATHS.join(', ')}
+                      that exists). An explicitly named registry that is missing reds the build.
+                      A TypeScript registry needs Node >= 22.18 (native type stripping).
   --json              check only: emit the machine-readable result to stdout instead of a summary
   --version           Print the runner version and exit
   --help              Print this help and exit
 
 Exit codes:
   0  every check/rule passed (or nothing is configured to enforce)
-  1  a check failed, a rule reported a critical violation or threw, or the manifest requires a newer runner
+  1  a check failed, a rule reported a critical violation or threw, an explicitly named manifest/registry was unusable, or the manifest requires a newer runner
   2  a usage error`;
 
 interface ParsedArgs {
   command: string;
   dir: string;
-  /** lint-meta: an explicit registry path (`--registry`), else the fixed default. */
+  /** check: an explicit manifest path (`--manifest`), else the fixed default. */
+  manifest: string | undefined;
+  /** lint-meta: an explicit registry path (`--registry`), else the fixed defaults. */
   registry: string | undefined;
   json: boolean;
   help: boolean;
@@ -75,6 +82,7 @@ function parseArgs(argv: string[], cwd: string): ParsedArgs {
   let command = 'check';
   let sawCommand = false;
   let dir = cwd;
+  let manifest: string | undefined;
   let registry: string | undefined;
   let json = false;
   let help = false;
@@ -105,13 +113,21 @@ function parseArgs(argv: string[], cwd: string): ParsedArgs {
       }
     } else if (arg.startsWith('--registry=')) {
       registry = arg.slice('--registry='.length);
+    } else if (arg === '--manifest') {
+      const next = argv[i + 1];
+      if (next !== undefined) {
+        manifest = next;
+        i += 1;
+      }
+    } else if (arg.startsWith('--manifest=')) {
+      manifest = arg.slice('--manifest='.length);
     } else if (!arg.startsWith('-') && !sawCommand) {
       command = arg;
       sawCommand = true;
     }
   }
 
-  return { command, dir: path.resolve(cwd, dir), registry, json, help, version };
+  return { command, dir: path.resolve(cwd, dir), manifest, registry, json, help, version };
 }
 
 /** Read this package's version from its committed `package.json`. */
@@ -162,7 +178,15 @@ export function nodeIO(): CliIO {
 
 /** Run the `check` subcommand. Returns the process exit code. */
 function runCheck(parsed: ParsedArgs, io: CliIO): number {
-  const outcome = loadChecks(parsed.dir, io.read);
+  const outcome = loadChecks(parsed.dir, io.read, parsed.manifest);
+
+  if (outcome.kind === 'unreadable-manifest') {
+    // Fail-closed: `--manifest` named a specific file (a portable-lock bundle's
+    // committed copy), so a missing/broken one must never look like "nothing to
+    // enforce".
+    io.stderr(`Cannot read the manifest at ${outcome.path}: ${outcome.reason}.`);
+    return 1;
+  }
 
   if (outcome.kind === 'no-config') {
     if (parsed.json) {
@@ -215,26 +239,50 @@ function runCheck(parsed: ParsedArgs, io: CliIO): number {
 }
 
 /**
+ * Resolve the registry to load: the explicit `--registry` (verbatim, even when
+ * absent — the caller named it), else the first DEFAULT candidate that exists.
+ * When no default exists, the LAST candidate is returned so the "nothing to
+ * enforce" message names the canonical location.
+ */
+function resolveRegistryPath(parsed: ParsedArgs, io: CliIO): { path: string; explicit: boolean } {
+  if (parsed.registry !== undefined && parsed.registry !== '') {
+    return { path: path.resolve(parsed.dir, parsed.registry), explicit: true };
+  }
+  const candidates = DEFAULT_REGISTRY_RELATIVE_PATHS.map((rel) => path.join(parsed.dir, rel));
+  const found = candidates.find((candidate) => io.read(candidate) !== null);
+  return { path: found ?? candidates[candidates.length - 1] ?? '', explicit: false };
+}
+
+/**
  * Run the `lint-meta` subcommand: BOUNDED-EVAL the enumerated rule registry
  * (§3.5/§5) and run its rules against a real Node ctx rooted at the target dir.
  *
- * Opt-in-by-presence, mirroring `check`: an ABSENT registry ⇒ exit 0 ("nothing to
- * enforce"). A PRESENT-but-broken registry (import throws, or no `META_RULES`
- * array) reds the build — a bundle that meant to enforce rules must not silently
- * pass because its registry is malformed. Only the ONE declared registry file is
- * imported; a stray `.js` beside it is never loaded.
+ * Presence posture mirrors `check`'s manifest, and splits the same way (#325):
+ * an absent DEFAULT registry ⇒ exit 0 ("nothing to enforce", opt-in-by-presence),
+ * but an absent EXPLICIT `--registry` reds the build — a bundle whose check
+ * declares a registry path must never pass by virtue of that file missing. A
+ * PRESENT-but-broken registry (import throws, or no `META_RULES` array) always
+ * reds the build. Only the ONE resolved registry file is imported; a stray `.js`
+ * beside it is never loaded.
  */
 async function runLintMeta(parsed: ParsedArgs, io: CliIO): Promise<number> {
-  const registryPath = parsed.registry
-    ? path.resolve(parsed.dir, parsed.registry)
-    : path.join(parsed.dir, DEFAULT_REGISTRY_RELATIVE_PATH);
+  const { path: registryPath, explicit } = resolveRegistryPath(parsed, io);
 
-  // Presence check via a plain read (no import): an absent registry opts out.
+  // Presence check via a plain read (no import): an absent registry opts out —
+  // unless it was named explicitly, which is fail-closed.
   if (io.read(registryPath) === null) {
+    if (explicit) {
+      io.stderr(
+        `No lint-meta registry at ${registryPath} — this run was pointed at it with ` +
+          '--registry, so there is nothing to enforce and that is an error, not a pass. ' +
+          '(Re-export the portable lock, or fix the --registry path.)',
+      );
+      return 1;
+    }
     io.stdout(
       `No lint-meta registry at ${registryPath} — nothing to enforce. ` +
         '(Point --registry at your rule registry, or commit one at ' +
-        `${DEFAULT_REGISTRY_RELATIVE_PATH}.)`,
+        `${DEFAULT_REGISTRY_RELATIVE_PATHS[0]}.)`,
     );
     return 0;
   }
