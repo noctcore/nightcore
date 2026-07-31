@@ -284,6 +284,13 @@ interface EmitCtx {
    *  so an identical object referenced from several fields (e.g. `SessionInfo` in
    *  `sessions[]`, `info`) collapses to ONE struct instead of one per field path. */
   structByFields: Map<string, string>;
+  /** Every {@link ENUM_EXTRAS} key that was actually applied to an emitted enum.
+   *  A key that never lands is a typo'd/stale registry entry silently dropping the
+   *  surface it promises, so {@link assertEnumExtrasEmitted} fails on the leftovers. */
+  extrasApplied: Set<string>;
+  /** Set when an emitted enum requested a ts-rs export, so the module preamble
+   *  pulls in the `cfg(test)`-gated `ts_rs::TS` import exactly when it is used. */
+  needsTsRs: boolean;
 }
 
 /** Canonical Rust names for nested discriminated unions, keyed by
@@ -537,6 +544,155 @@ export function assertEnumNamesInjective(
   }
 }
 
+/** The Rust surface a generated enum carries BEYOND its serde derives.
+ *
+ *  Emitting these is what lets a contract enum be authored exactly ONCE (issue
+ *  #158): before this, an enum that the Rust core also needed as a `Default`, a
+ *  ts-rs boundary type, or a wire-string source had to be hand-written a second
+ *  time next to the codegen'd copy, with only a test guarding the two in sync. */
+interface EnumExtras {
+  /** Rust doc-comment lines (`///`, text only) emitted above the enum. ts-rs
+   *  forwards these to the exported TS binding's docblock. */
+  doc: string[];
+  /** The wire value whose variant gets `#[default]` (and adds `Default` to the
+   *  derive list). Must be one of the enum's own values. */
+  default?: string;
+  /** Export this enum to the web via ts-rs, into `<TS_RS_EXPORT_DIR>/<file>`. The
+   *  derive and attribute are `cfg(test)`-gated because `ts-rs` is a DEV-dependency
+   *  — the shipped binary never links it. */
+  tsExport?: string;
+  /** Emit `pub fn as_wire(&self) -> &'static str` returning each variant's exact
+   *  wire string. Emitted from the SAME zod values serde renames from, so the two
+   *  cannot diverge — the divergence hazard a hand-written peer carried. */
+  asWire?: { doc: string[] };
+  /** Per-variant doc comments, keyed by wire value. (ts-rs drops these for unit
+   *  variants, so they document the Rust side only.) */
+  variantDoc?: Record<string, string[]>;
+}
+
+/** Extra Rust surface per generated enum name. Keyed by the canonical Rust name
+ *  from {@link ENUM_NAMES}; {@link assertEnumExtrasEmitted} fails the codegen if a
+ *  key here never matches an emitted enum. */
+const ENUM_EXTRAS: Record<string, EnumExtras> = {
+  // `TaskKind` was authored THREE times until issue #158: the zod
+  // `TaskKindSchema`, this codegen'd mirror, and a hand-written
+  // `contracts/task_kind.rs` that existed solely to add `Default`, the ts-rs
+  // export, and `as_wire()`. Emitting those three things here collapses the
+  // hand-written copy away, so the zod schema is the only authoring left and the
+  // wire rule is picked ONCE (by `detectRenameAll`, from the zod values) instead
+  // of being hard-pinned a second time in Rust.
+  TaskKind: {
+    doc: [
+      'The kind of work a task represents (M4 §A). The shared contract between the',
+      "Rust core (which owns each kind's ORCHESTRATION policy in `kind.rs`) and the",
+      'engine (which owns its AGENT DEFINITION). `build` is the default and reproduces',
+      'pre-M4 behavior; `tdd` is a build-like test-first variant; `decompose` proposes',
+      'sub-tasks; `research` investigates read-only; `review` is the internal',
+      "verification reviewer's identity (not user-selectable in the picker).",
+    ],
+    default: 'build',
+    // The Rust→TS binding the web board's kind picker types against.
+    tsExport: 'TaskKind.ts',
+    asWire: {
+      doc: [
+        'The wire string the provider sends in `start-session` and the engine',
+        'resolves to an agent preset. Emitted from the same zod values the serde',
+        '`rename_all` above reproduces, so `as_wire()` and the serde form are one',
+        'fact — `task_kind_wire_form_is_pinned` in `contracts/mod.rs` pins the bytes.',
+      ],
+    },
+    variantDoc: {
+      tdd: [
+        'Test-first build: the agent writes a failing test, then implements until',
+        'green. Orchestrated identically to `Build` (own worktree + verification);',
+        "only the engine's AGENT DEFINITION (the test-first persona) differs.",
+      ],
+    },
+  },
+};
+
+/** Guard the {@link ENUM_EXTRAS} registry: every key must name an enum the run
+ *  actually emitted. A stale or misspelled key would silently drop the extra Rust
+ *  surface it promises (a missing `Default`/`as_wire`/ts-rs export shows up as a
+ *  confusing downstream compile error, not as "your registry entry is dead"), so
+ *  this throws instead. Exported for the `gen-rust-contracts.test.ts` canary. */
+export function assertEnumExtrasEmitted(
+  applied: Set<string>,
+  extras: Record<string, EnumExtras> = ENUM_EXTRAS,
+): void {
+  const orphans = Object.keys(extras).filter((name) => !applied.has(name));
+  if (orphans.length > 0) {
+    throw new Error(
+      `ENUM_EXTRAS has entries for enums this run never emitted: ${orphans.join(', ')}. ` +
+        `Either the enum was renamed/removed in the zod source (drop the entry) or the ` +
+        `key is misspelled (the extra Rust surface would be silently missing).`,
+    );
+  }
+}
+
+/** Render one enum's {@link EnumExtras} into the attribute/doc/impl fragments the
+ *  enum declaration is assembled from. Kept beside the registry so the shape of an
+ *  "extra" and its emission read together. */
+function renderEnumExtras(
+  name: string,
+  values: string[],
+  extras: EnumExtras,
+): {
+  doc: string[];
+  derives: string[];
+  attrs: string[];
+  variantPrefix: (value: string) => string[];
+  impls: string[];
+} {
+  const doc = extras.doc.map((line) => (line ? `/// ${line}` : '///'));
+  const derives: string[] = [];
+  const attrs: string[] = [];
+  const impls: string[] = [];
+
+  if (extras.default !== undefined) {
+    if (!values.includes(extras.default)) {
+      throw new Error(
+        `ENUM_EXTRAS["${name}"].default is "${extras.default}", which is not one of ` +
+          `its zod values (${values.join(', ')}) — the default must be a real variant.`,
+      );
+    }
+    derives.push('Default');
+  }
+  if (extras.tsExport !== undefined) {
+    attrs.push('#[cfg_attr(test, derive(TS))]');
+    attrs.push(
+      `#[cfg_attr(test, ts(export, export_to = ${JSON.stringify(extras.tsExport)}))]`,
+    );
+  }
+  if (extras.asWire) {
+    const arms = values
+      .map((v) => `            ${name}::${pascal(v)} => ${JSON.stringify(v)},`)
+      .join('\n');
+    impls.push(
+      [
+        `impl ${name} {`,
+        ...extras.asWire.doc.map((line) => `    /// ${line}`),
+        `    pub fn as_wire(&self) -> &'static str {`,
+        '        match self {',
+        arms,
+        '        }',
+        '    }',
+        '}',
+      ].join('\n'),
+    );
+  }
+
+  const variantPrefix = (value: string): string[] => {
+    const lines = (extras.variantDoc?.[value] ?? []).map((line) => `    /// ${line}`);
+    if (extras.default === value) {
+      lines.push('    #[default]');
+    }
+    return lines;
+  };
+
+  return { doc, derives, attrs, variantPrefix, impls };
+}
+
 function registerInlineEnum(
   schema: AnyZod,
   fieldPath: string,
@@ -576,20 +732,58 @@ function registerInlineEnum(
   // per-variant renames when a single container rule can't reproduce them — but
   // for these contracts a `rename_all` rule always fits, so detect it.
   const rename = detectRenameAll(values);
+
+  // Extra Rust surface (doc, `Default`, ts-rs export, `as_wire()`) this enum is
+  // registered for — what a hand-written peer used to provide (issue #158).
+  const extras = ENUM_EXTRAS[name];
+  const rendered = extras
+    ? renderEnumExtras(name, values, extras)
+    : {
+        doc: [] as string[],
+        derives: [] as string[],
+        attrs: [] as string[],
+        variantPrefix: () => [] as string[],
+        impls: [] as string[],
+      };
+  if (extras) {
+    ctx.extrasApplied.add(name);
+    if (extras.tsExport !== undefined) {
+      ctx.needsTsRs = true;
+    }
+  }
+
   const variants = values
     .map((v) => {
       const ident = pascal(v);
-      if (rename) {
-        return `    ${ident},`;
-      }
-      return `    #[serde(rename = ${JSON.stringify(v)})]\n    ${ident},`;
+      const prefix = rendered.variantPrefix(v);
+      const body = rename
+        ? `    ${ident},`
+        : `    #[serde(rename = ${JSON.stringify(v)})]\n    ${ident},`;
+      return [...prefix, body].join('\n');
     })
     .join('\n');
-  const attrs = ['#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]'];
+  const derives = [
+    'Debug',
+    'Clone',
+    'Copy',
+    'PartialEq',
+    'Eq',
+    'Serialize',
+    'Deserialize',
+    ...rendered.derives,
+  ];
+  const attrs = [`#[derive(${derives.join(', ')})]`, ...rendered.attrs];
   if (rename) {
     attrs.push(`#[serde(rename_all = ${JSON.stringify(rename)})]`);
   }
-  const decl = `${attrs.join('\n')}\npub enum ${name} {\n${variants}\n}`;
+  const decl = [
+    ...rendered.doc,
+    ...attrs,
+    `pub enum ${name} {`,
+    variants,
+    '}',
+    ...rendered.impls.flatMap((block) => ['', block]),
+  ].join('\n');
   ctx.decls.set(name, decl);
   return name;
 }
@@ -875,13 +1069,17 @@ function renderChannels(entries: Array<[string, string]>): string {
 // Top-level emit
 // ---------------------------------------------------------------------------
 
-function emitRust(): string {
+/** Emit the whole `generated.rs` body. Exported for the `gen-rust-contracts.test.ts`
+ *  canary, which asserts the registry-driven extras actually land in the output. */
+export function emitRust(): string {
   const ctx: EmitCtx = {
     decls: new Map(),
     enumByValues: new Map(),
     enumNameToValues: new Map(),
     unionByTags: new Map(),
     structByFields: new Map(),
+    extrasApplied: new Set(),
+    needsTsRs: false,
   };
   // Static guard on the ENUM_NAMES registry itself: it must be an injection (each
   // canonical Rust name backed by exactly one value-set), so a duplicate name can't
@@ -908,6 +1106,11 @@ function emitRust(): string {
   // Mirrors the `KnownModel` force-emit and the `TaskKind` three-site house rule.
   registerInlineEnum(CouncilPresetIdSchema, 'CouncilPresetId', ctx);
 
+  // Every ENUM_EXTRAS entry must have landed on an emitted enum by now — a stale
+  // or misspelled key would silently drop the `Default`/ts-rs export/`as_wire()`
+  // surface the Rust core depends on, so fail here instead.
+  assertEnumExtrasEmitted(ctx.extrasApplied);
+
   // Supporting types (enums + nested structs) declared in a stable order so the
   // output is deterministic regardless of discovery order.
   const supporting = [...ctx.decls.entries()]
@@ -929,6 +1132,15 @@ function emitRust(): string {
     '#![allow(clippy::large_enum_variant)]',
     '',
     'use serde::{Deserialize, Serialize};',
+    ...(ctx.needsTsRs
+      ? [
+          '// `ts-rs` is a DEV-dependency (the Rust→TS codegen runs only under `cargo',
+          '// test`), so the derive + attributes on the exported enums below are gated',
+          '// behind `cfg(test)` via `cfg_attr`. The shipped binary never links it.',
+          '#[cfg(test)]',
+          'use ts_rs::TS;',
+        ]
+      : []),
     '',
     '// === Surface → engine commands (Rust SERIALIZES these) ===',
     '',

@@ -11,6 +11,11 @@
 #![allow(clippy::large_enum_variant)]
 
 use serde::{Deserialize, Serialize};
+// `ts-rs` is a DEV-dependency (the Rust→TS codegen runs only under `cargo
+// test`), so the derive + attributes on the exported enums below are gated
+// behind `cfg(test)` via `cfg_attr`. The shipped binary never links it.
+#[cfg(test)]
+use ts_rs::TS;
 
 // === Surface → engine commands (Rust SERIALIZES these) ===
 
@@ -1820,14 +1825,42 @@ pub struct SubagentSummary {
     pub model: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// The kind of work a task represents (M4 §A). The shared contract between the
+/// Rust core (which owns each kind's ORCHESTRATION policy in `kind.rs`) and the
+/// engine (which owns its AGENT DEFINITION). `build` is the default and reproduces
+/// pre-M4 behavior; `tdd` is a build-like test-first variant; `decompose` proposes
+/// sub-tasks; `research` investigates read-only; `review` is the internal
+/// verification reviewer's identity (not user-selectable in the picker).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(test, derive(TS))]
+#[cfg_attr(test, ts(export, export_to = "TaskKind.ts"))]
 #[serde(rename_all = "lowercase")]
 pub enum TaskKind {
+    #[default]
     Build,
     Research,
     Review,
     Decompose,
+    /// Test-first build: the agent writes a failing test, then implements until
+    /// green. Orchestrated identically to `Build` (own worktree + verification);
+    /// only the engine's AGENT DEFINITION (the test-first persona) differs.
     Tdd,
+}
+
+impl TaskKind {
+    /// The wire string the provider sends in `start-session` and the engine
+    /// resolves to an agent preset. Emitted from the same zod values the serde
+    /// `rename_all` above reproduces, so `as_wire()` and the serde form are one
+    /// fact — `task_kind_wire_form_is_pinned` in `contracts/mod.rs` pins the bytes.
+    pub fn as_wire(&self) -> &'static str {
+        match self {
+            TaskKind::Build => "build",
+            TaskKind::Research => "research",
+            TaskKind::Review => "review",
+            TaskKind::Decompose => "decompose",
+            TaskKind::Tdd => "tdd",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

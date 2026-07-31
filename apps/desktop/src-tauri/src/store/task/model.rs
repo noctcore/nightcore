@@ -49,10 +49,12 @@ pub enum TaskStatus {
 }
 
 // `TaskKind` (the ts-rs source for `TaskKind.ts` + the type on `Task.kind`) is a
-// wire/contract enum, so it is homed in `contracts` (issue #17 phase A.3b). It is
-// re-exported here so `crate::task::TaskKind` and `super::model::TaskKind` resolve
-// unchanged for the `Task` struct and every referrer.
-pub use crate::contracts::task_kind::TaskKind;
+// wire/contract enum, so it is homed in `contracts` (issue #17 phase A.3b). Since
+// issue #158 that home is the CODEGEN'D enum itself — the hand-written
+// `contracts::task_kind` copy is gone and the emitter supplies its `Default`, ts-rs
+// export, and `as_wire()`. Re-exported here so `crate::task::TaskKind` and
+// `super::model::TaskKind` resolve unchanged for `Task` and every referrer.
+pub use crate::contracts::TaskKind;
 
 /// Lifecycle of one [`ProposedSubtask`] (Decompose §B). `open` until the user
 /// converts it into a board task, then `converted` (with `linked_task_id` set).
@@ -827,8 +829,14 @@ mod tests {
         assert_eq!(task.run_mode, RunMode::Worktree);
     }
 
+    /// The PERSISTENCE side of the `TaskKind` contract: what `tasks.json` holds for
+    /// `Task.kind` must be the same byte string `as_wire()` sends, and must survive a
+    /// round-trip. The wire strings themselves are pinned as literals by
+    /// `task_kind_wire_form_is_pinned` in `contracts::mod` (their single home since
+    /// issue #158 collapsed the hand-written enum away); this test asserts the store
+    /// tier agrees with that one enum rather than restating the bytes.
     #[test]
-    fn task_kind_round_trips_and_is_snake_case() {
+    fn task_kind_round_trips_and_matches_as_wire() {
         for kind in [
             TaskKind::Build,
             TaskKind::Research,
@@ -838,8 +846,7 @@ mod tests {
         ] {
             // Exhaustiveness tripwire: a new TaskKind variant breaks this match until
             // it is also added to the array above, so the persistence-side
-            // serialize↔as_wire consistency check can never silently skip a kind
-            // (mirrors the generated↔hand parity guard in `contracts::mod`).
+            // serialize↔as_wire consistency check can never silently skip a kind.
             match kind {
                 TaskKind::Build
                 | TaskKind::Research

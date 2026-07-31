@@ -24,12 +24,14 @@ pub use generated::*;
 
 pub type ModelDescriptor = QueryResultModelsItem;
 
-// The hand-written ts-rs `TaskKind` (the Rust→TS source for `TaskKind.ts` + the
-// type on `Task.kind`). Homed here — a wire/contract enum — but NOT glob-exported
-// at the module root: `pub use generated::*` already binds `contracts::TaskKind`
-// to the zod→Rust wire enum. Reached via `crate::contracts::task_kind::TaskKind`
-// and back-compat re-exported at `crate::task::TaskKind` (issue #17 phase A.3b).
-pub(crate) mod task_kind;
+// `TaskKind` used to be authored a THIRD time here as a hand-written
+// `task_kind.rs` — the ts-rs source for the web's `TaskKind.ts` plus the `Default`
+// and `as_wire()` the core needs — kept in step with the codegen'd peer only by a
+// parity test. Issue #158 collapsed it: the emitter now emits those three things
+// (see `ENUM_EXTRAS` in `tools/codegen/gen-rust-contracts.ts`), so `generated::
+// TaskKind` — bound at `contracts::TaskKind` by the glob above and re-exported at
+// `crate::task::TaskKind` — is the ONLY Rust authoring, and the zod schema is the
+// only source. `task_kind_wire_form_is_pinned` below pins its wire bytes.
 
 // The circuit-breaker immediate-trip classifier lives in a sibling so this module
 // stays a manifest (issue #17 phase D); re-exported so `crate::contracts::
@@ -407,63 +409,89 @@ mod tests {
         assert_eq!(result.get("missingInfo"), Some(&serde_json::json!([])));
     }
 
-    /// Parity guard for the DOUBLE-DEFINED `TaskKind`.
+    /// Wire pin for `TaskKind` — the replacement for the old
+    /// `task_kind_variants_match_between_generated_and_store` parity guard.
     ///
-    /// `TaskKind` is authored three times with no mechanical cross-check between
-    /// the two Rust copies: the zod schema, the codegen'd
-    /// [`generated::TaskKind`](super::generated) (zod→Rust, its stable name matched
-    /// by value-set in `tools/codegen/gen-rust-contracts.ts`'s `ENUM_NAMES`), and
-    /// the hand-written [`task_kind::TaskKind`](super::task_kind) (Rust→ts-rs→web).
-    /// The `codegen:contracts --check` guard covers zod↔generated; this test covers
-    /// generated↔hand-written, so the whole chain is guarded and a kind added on
-    /// only one side reds the gate. Each enum's wire vocabulary is built from an EXHAUSTIVE
-    /// match, so a newly-added variant also fails to COMPILE here until its arm is
-    /// added — the array beside it must gain the same variant in the same edit.
+    /// That guard compared the codegen'd [`TaskKind`](super::generated::TaskKind)
+    /// against a hand-written second Rust copy. Issue #158 deleted the hand-written
+    /// copy (the emitter now emits its `Default`, ts-rs export, and `as_wire()`), so
+    /// the old comparison would compare a type to ITSELF — vacuous. It is replaced,
+    /// not dropped, by a strictly stronger assertion: the wire bytes are PINNED as
+    /// literals here rather than merely cross-checked between two copies.
+    ///
+    /// Three facts, none of which the old guard held:
+    ///
+    ///  1. **Each variant's serde form is exactly the pinned byte string.** This is
+    ///     the persisted form on `Task.kind` AND the `start-session` wire value, so a
+    ///     zod value edit, an `ENUM_NAMES` retarget, or a `detectRenameAll` rule
+    ///     change reds `cargo test` here — not only `codegen:contracts --check`.
+    ///  2. **`as_wire()` agrees with serde, variant by variant.** Both are emitted
+    ///     from the same zod values now, so this pins the emitter's own correctness
+    ///     (the property the deleted hand-written copy could only hope for, since its
+    ///     `rename_all` was hard-pinned independently of the codegen'd one).
+    ///  3. **`Default` is `Build`/`"build"`** — the value every pre-M4 task row
+    ///     deserializes to when `kind` is absent.
+    ///
+    /// The exhaustive `match` keeps its tripwire role: a new variant fails to COMPILE
+    /// until the pinned table below gains its row.
     #[test]
-    fn task_kind_variants_match_between_generated_and_store() {
-        use std::collections::BTreeSet;
+    fn task_kind_wire_form_is_pinned() {
+        // (variant, its EXACT wire/persisted bytes). Byte-for-byte what the sidecar's
+        // zod validates and what `tasks.json` holds — change a row only for a
+        // deliberate, migrated wire change.
+        let pinned = [
+            (TaskKind::Build, "build"),
+            (TaskKind::Research, "research"),
+            (TaskKind::Review, "review"),
+            (TaskKind::Decompose, "decompose"),
+            (TaskKind::Tdd, "tdd"),
+        ];
+        assert_eq!(
+            pinned.len(),
+            5,
+            "all 5 TaskKind variants must be pinned here"
+        );
 
-        // zod→Rust side: wire string via serde (what the sidecar validates against).
-        fn generated_wire() -> BTreeSet<String> {
-            use super::generated::TaskKind as K;
-            [K::Build, K::Research, K::Review, K::Decompose, K::Tdd]
-                .into_iter()
-                .map(|k| {
-                    // Exhaustiveness tripwire: a new codegen'd variant breaks this
-                    // match (and the array above it) until it is added.
-                    match k {
-                        K::Build | K::Research | K::Review | K::Decompose | K::Tdd => {}
-                    }
-                    serde_json::to_value(k)
-                        .expect("TaskKind serializes")
-                        .as_str()
-                        .expect("TaskKind is a string enum")
-                        .to_owned()
-                })
-                .collect()
-        }
-
-        // Rust→ts-rs side: wire string via the hand-written enum's own `as_wire()`.
-        fn store_wire() -> BTreeSet<String> {
-            use super::task_kind::TaskKind as K;
-            [K::Build, K::Research, K::Review, K::Decompose, K::Tdd]
-                .into_iter()
-                .map(|k| {
-                    match k {
-                        K::Build | K::Research | K::Review | K::Decompose | K::Tdd => {}
-                    }
-                    k.as_wire().to_owned()
-                })
-                .collect()
+        for (kind, wire) in pinned {
+            // Exhaustiveness tripwire: a newly-codegen'd variant breaks this match
+            // until it is added to the pinned table above, so the pin can never go
+            // silently partial.
+            match kind {
+                TaskKind::Build
+                | TaskKind::Research
+                | TaskKind::Review
+                | TaskKind::Decompose
+                | TaskKind::Tdd => {}
+            }
+            assert_eq!(
+                serde_json::to_value(kind).expect("TaskKind serializes"),
+                Value::String(wire.to_owned()),
+                "TaskKind::{kind:?} must serialize to the pinned wire string {wire:?} — \
+                 changing it is a WIRE BREAK (persisted task rows + the sidecar's zod \
+                 validation both read this byte string)."
+            );
+            assert_eq!(
+                kind.as_wire(),
+                wire,
+                "TaskKind::{kind:?}'s as_wire() drifted from its serde form; both are \
+                 emitted from the zod values by tools/codegen/gen-rust-contracts.ts, so \
+                 this is an emitter bug, not a hand-edit."
+            );
+            assert_eq!(
+                serde_json::from_value::<TaskKind>(Value::String(wire.to_owned()))
+                    .expect("the pinned wire string deserializes"),
+                kind,
+                "TaskKind::{kind:?} must round-trip from its pinned wire string"
+            );
         }
 
         assert_eq!(
-            generated_wire(),
-            store_wire(),
-            "generated::TaskKind and contracts::task_kind::TaskKind carry different \
-             variant/wire sets — adding a task kind touches zod + ENUM_NAMES + the \
-             contracts task_kind enum + as_wire(); one site was missed."
+            TaskKind::default(),
+            TaskKind::Build,
+            "the codegen'd #[default] must stay Build — it is what a task row with no \
+             `kind` deserializes to"
         );
+        assert_eq!(TaskKind::default().as_wire(), "build");
     }
 
     /// Single-source guard for the `nc:*` Tauri event channel names (issue #44).

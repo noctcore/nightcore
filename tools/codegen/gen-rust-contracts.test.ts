@@ -3,11 +3,13 @@ import { describe, expect, test } from 'bun:test';
 
 import { z } from 'zod';
 
-import { CHANNELS } from '../../packages/contracts/src/index.ts';
+import { CHANNELS, TaskKindSchema } from '../../packages/contracts/src/index.ts';
 import {
+  assertEnumExtrasEmitted,
   assertEnumNamesInjective,
   buildChannels,
   def,
+  emitRust,
   numberRustType,
 } from './gen-rust-contracts.ts';
 
@@ -107,6 +109,52 @@ describe('assertEnumNamesInjective guards the enum registry', () => {
       assertEnumNamesInjective({
         'a|b': 'AlphaBeta',
         'high|medium|low': 'IssueConfidence',
+      }),
+    ).not.toThrow();
+  });
+});
+
+/**
+ * Canary for the `ENUM_EXTRAS` registry (issue #158). An entry there is what lets a
+ * contract enum be authored ONCE — it supplies the `Default`, the ts-rs export, and
+ * the `as_wire()` that used to force a hand-written second Rust copy. A stale or
+ * misspelled key applies to nothing and silently drops that surface, so
+ * `assertEnumExtrasEmitted` fails the codegen on any entry that never landed.
+ */
+describe('assertEnumExtrasEmitted guards the enum-extras registry', () => {
+  test('the live registry has no orphaned entries after a real emit', () => {
+    // `emitRust()` runs the guard internally against the live ENUM_EXTRAS, so a
+    // successful emit is the assertion. It also proves the emitted enum carries
+    // every promised surface.
+    const rust = emitRust();
+    expect(rust).toContain('pub enum TaskKind {');
+    expect(rust).toContain('#[default]\n    Build,');
+    expect(rust).toContain('#[cfg_attr(test, ts(export, export_to = "TaskKind.ts"))]');
+    expect(rust).toContain("pub fn as_wire(&self) -> &'static str {");
+    // The `as_wire()` arms and the serde `rename_all` rule both derive from the SAME
+    // zod values, so every variant's literal is the zod value verbatim.
+    for (const value of TaskKindSchema.options) {
+      expect(rust).toContain(`=> ${JSON.stringify(value)},`);
+    }
+    // The ts-rs import is pulled in exactly because an enum asked to be exported.
+    expect(rust).toContain('#[cfg(test)]\nuse ts_rs::TS;');
+  });
+
+  test('throws when an entry names an enum the run never emitted', () => {
+    expect(() =>
+      assertEnumExtrasEmitted(new Set(['TaskKind']), {
+        TaskKind: { doc: [] },
+        // Renamed away in the zod source (or misspelled) — its extras would vanish.
+        TaskKnid: { doc: [], default: 'build' },
+      }),
+    ).toThrow(/never emitted: TaskKnid/);
+  });
+
+  test('does NOT throw when every entry was applied', () => {
+    expect(() =>
+      assertEnumExtrasEmitted(new Set(['TaskKind', 'KnownModel']), {
+        TaskKind: { doc: [] },
+        KnownModel: { doc: [] },
       }),
     ).not.toThrow();
   });
