@@ -16,10 +16,13 @@ use tokio::process::ChildStdin;
 use tokio::sync::oneshot;
 use tokio::sync::Mutex as AsyncMutex;
 
+// `TaskKind` is unaliased since issue #158: the hand-written second Rust copy is
+// gone, so `contracts::TaskKind` (codegen'd) is the only one — a `WireTaskKind`
+// alias would now imply a distinction that no longer exists.
 use crate::contracts::{
     AnswerQuestionAnswerUnion, AutonomyLevel, EffortLevel,
-    PermissionDecision as WirePermissionDecision, SurfaceCommand, SurfaceQuery,
-    TaskKind as WireTaskKind, WireImage,
+    PermissionDecision as WirePermissionDecision, SurfaceCommand, SurfaceQuery, TaskKind,
+    WireImage,
 };
 
 /// How long a session query waits for its correlated `query-result` reply before
@@ -140,7 +143,7 @@ impl Provider for SidecarProvider {
             // to an SDK permission mode inside the Claude provider.
             autonomy,
             cwd: cwd.map(|p| p.to_string_lossy().to_string()),
-            kind: Some(parse_wire_enum::<WireTaskKind>("kind", kind)?),
+            kind: Some(parse_wire_enum::<TaskKind>("kind", kind)?),
             max_turns: guardrails.max_turns.map(u64::from),
             max_budget_usd: guardrails.max_budget_usd,
             resume_session_id: guardrails.resume_session_id,
