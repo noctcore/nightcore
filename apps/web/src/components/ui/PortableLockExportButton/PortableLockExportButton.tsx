@@ -102,10 +102,12 @@ export function PortableLockExportButton({ projectPath }: PortableLockExportButt
 
               <p className="text-xs-plus2 text-muted-foreground">
                 Copy <code className="text-foreground">nightcore-lock.yml</code> into{' '}
-                <code className="text-foreground">.github/workflows/</code> and commit it. CI then
-                runs{' '}
+                <code className="text-foreground">.github/workflows/</code> and commit it together
+                with the staged bundle — CI reads the bundle&apos;s own{' '}
+                <code className="text-foreground">harness.json</code>, so it has to be committed
+                too. It then runs{' '}
                 <code className="text-foreground">
-                  npx @noctcore/harness@{v.result?.runnerVersion} check
+                  npx @noctcore/harness@{v.result?.runnerVersion} check --manifest …
                 </code>{' '}
                 on every push and pull request.
               </p>

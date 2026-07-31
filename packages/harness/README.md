@@ -21,8 +21,37 @@ instruction that lists each failed check with its command and captured output). 
 machine-readable result to stdout instead.
 
 ```
-harness [check] [--dir <path>] [--json] [--version] [--help]
+harness [check] [--dir <path>] [--manifest <path>] [--json] [--version] [--help]
+harness lint-meta [--dir <path>] [--registry <path>]
 ```
+
+## Pointing it at a bundle (`--manifest` / `--registry`)
+
+A Nightcore **portable-lock bundle** commits its own command-translated manifest, so CI reads that
+one file instead of the live `.nightcore/harness.json`:
+
+```bash
+npx @noctcore/harness check --manifest .nightcore/export/portable-lock/harness.json
+```
+
+The default paths are **opt-in-by-presence** (absent ⇒ exit `0`), but an **explicitly named**
+manifest or registry is **fail-closed**: if the file you pointed at is missing (or the manifest is
+unparseable), the runner exits `1`. A portable lock must never pass because the thing it was told to
+enforce went missing.
+
+## TypeScript rule registries
+
+`lint-meta` loads a TypeScript registry as happily as a `.js` one — Nightcore's exporter emits
+`registry.mts` and copies your generated rule files **verbatim** (it is deterministic Rust and never
+shells out to a transpiler). The type stripping happens here, in the runner, using **Node's own**
+(unflagged since Node 22.18) — which is why this package still has zero runtime dependencies. The
+default registry lookup tries `.nightcore/lint-meta/registry.mts`, then `…/registry.ts`, then
+`…/registry.js`.
+
+Two requirements for a TypeScript registry: **Node ≥ 22.18**, and an ES-module scope. `.mts` (what
+the exporter writes) is always an ES module; a plain `.ts` one is only ESM if the nearest
+`package.json` says `"type": "module"`. Rules may only `import type` from `@noctcore/harness` — a
+value import would have to resolve at run time, and nothing is installed in the target repo.
 
 ## What it is NOT
 
@@ -41,4 +70,4 @@ executed.
 
 ## Requirements
 
-Node ≥ 22.
+Node ≥ 22 (≥ 22.18 to load a TypeScript rule registry, which needs native type stripping).

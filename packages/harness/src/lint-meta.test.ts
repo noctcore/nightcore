@@ -55,6 +55,8 @@ function harness(opts: { present?: string[]; mod?: unknown; importThrows?: unkno
 }
 
 const DEFAULT_REGISTRY = path.join('/repo', '.nightcore', 'lint-meta', 'registry.js');
+/** The registry the portable-lock exporter emits — probed BEFORE the `.js` one. */
+const DEFAULT_TS_REGISTRY = path.join('/repo', '.nightcore', 'lint-meta', 'registry.mts');
 
 describe('runCli lint-meta — opt-in-by-presence', () => {
   test('an absent registry exits 0 with a friendly note (nothing imported)', async () => {
@@ -64,10 +66,44 @@ describe('runCli lint-meta — opt-in-by-presence', () => {
     expect(h.imported).toEqual([]);
   });
 
-  test('the default registry path is <dir>/.nightcore/lint-meta/registry.js', async () => {
+  test('the default registry candidates are <dir>/.nightcore/lint-meta/registry.{mts,ts,js}', async () => {
     const h = harness();
     await runCli(['lint-meta'], h.io);
-    expect(h.readPaths[0]).toBe(DEFAULT_REGISTRY);
+    // TypeScript (the exported form) is probed first, `.js` (legacy) last — and all
+    // are PROBED, never imported, when none exists.
+    expect(h.readPaths.slice(0, 3)).toEqual([
+      DEFAULT_TS_REGISTRY,
+      path.join('/repo', '.nightcore', 'lint-meta', 'registry.ts'),
+      DEFAULT_REGISTRY,
+    ]);
+    expect(h.imported).toEqual([]);
+  });
+
+  test('a committed TypeScript registry wins over a legacy .js one (#325)', async () => {
+    const h = harness({
+      present: [DEFAULT_TS_REGISTRY, DEFAULT_REGISTRY],
+      mod: { META_RULES: [passRule] },
+    });
+    expect(await runCli(['lint-meta'], h.io)).toBe(0);
+    expect(h.imported).toEqual([DEFAULT_TS_REGISTRY]);
+  });
+
+  test('a .js registry still loads when no .ts one is committed (back-compat)', async () => {
+    const h = harness({ present: [DEFAULT_REGISTRY], mod: { META_RULES: [passRule] } });
+    expect(await runCli(['lint-meta'], h.io)).toBe(0);
+    expect(h.imported).toEqual([DEFAULT_REGISTRY]);
+  });
+});
+
+describe('runCli lint-meta — an EXPLICIT --registry is fail-closed (#325)', () => {
+  test('an absent explicit registry reds the build instead of passing vacuously', async () => {
+    // The exported bundle's lint-meta check names its registry with --registry. If
+    // that file is missing, "nothing to enforce" would be a SILENT no-op CI — the
+    // one failure mode a portable lock must never have.
+    const h = harness();
+    expect(await runCli(['lint-meta', '--registry', 'bundle/registry.ts'], h.io)).toBe(1);
+    expect(h.err.join('\n')).toContain('that is an error, not a pass');
+    expect(h.imported).toEqual([]);
   });
 });
 
@@ -105,7 +141,8 @@ describe('runCli lint-meta — path resolution + bounded eval', () => {
   test('--dir relocates the default registry lookup', async () => {
     const h = harness();
     await runCli(['lint-meta', '--dir', '/some/where'], h.io);
-    expect(h.readPaths[0]).toBe(path.join('/some/where', '.nightcore', 'lint-meta', 'registry.js'));
+    expect(h.readPaths[0]).toBe(path.join('/some/where', '.nightcore', 'lint-meta', 'registry.mts'));
+    expect(h.readPaths[2]).toBe(path.join('/some/where', '.nightcore', 'lint-meta', 'registry.js'));
   });
 
   test('--registry (relative to --dir) overrides the default path', async () => {

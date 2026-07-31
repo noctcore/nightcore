@@ -45,12 +45,15 @@ export interface PlannedCheck {
 
 /**
  * The result of loading a manifest. `no-config` (exit 0, opt-in-by-presence),
- * `schema-too-new` (exit non-zero, upgrade the runner), or `ready` with the
- * planned checks (possibly empty ⇒ trivially passing).
+ * `schema-too-new` (exit non-zero, upgrade the runner), `unreadable-manifest`
+ * (exit non-zero — only reachable for an EXPLICIT `--manifest`, see
+ * {@link loadChecks}), or `ready` with the planned checks (possibly empty ⇒
+ * trivially passing).
  */
 export type ManifestOutcome =
   | { kind: 'no-config' }
   | { kind: 'schema-too-new'; found: number }
+  | { kind: 'unreadable-manifest'; path: string; reason: string }
   | { kind: 'ready'; checks: PlannedCheck[] };
 
 /** Reads an absolute path, returning its contents or `null` if unreadable. */
@@ -116,24 +119,48 @@ export function planCheck(entry: unknown): PlannedCheck | null {
 }
 
 /**
- * Load + plan the enabled checks from `.nightcore/harness.json` in `dir`,
- * reading through the injected {@link FileReader}. See {@link ManifestOutcome}
- * for the non-`ready` paths.
+ * Load + plan the enabled checks from a manifest, reading through the injected
+ * {@link FileReader}. See {@link ManifestOutcome} for the non-`ready` paths.
+ *
+ * `explicitPath` (the CLI's `--manifest`, resolved against `dir`) selects a manifest
+ * OTHER than `<dir>/.nightcore/harness.json` — how a portable-lock bundle points CI at
+ * its own committed, command-translated copy without disturbing the live manifest
+ * Nightcore keeps writing (#325). The two paths differ in POSTURE, deliberately:
+ *  - the DEFAULT path is opt-in-by-presence — absent / unreadable / malformed ⇒
+ *    `no-config` ⇒ exit 0 (byte-parity with the Rust loader's read-error arm);
+ *  - an EXPLICIT path is FAIL-CLOSED — the caller named a file, so an absent or
+ *    unparseable one is an error, never a silent pass. (Its CONTENTS stay data: a
+ *    parseable manifest with no `checks` array is simply nothing to enforce.)
  */
-export function loadChecks(dir: string, read: FileReader): ManifestOutcome {
-  const raw = read(manifestPath(dir));
-  // ABSENT / unreadable ⇒ opt out of the whole project (byte-parity with the
-  // Rust loader's read-error arm).
-  if (raw === null) return { kind: 'no-config' };
+export function loadChecks(dir: string, read: FileReader, explicitPath?: string): ManifestOutcome {
+  const explicit = explicitPath !== undefined && explicitPath !== '';
+  const resolved = explicit ? path.resolve(dir, explicitPath) : manifestPath(dir);
+  const raw = read(resolved);
+  if (raw === null) {
+    return explicit
+      ? { kind: 'unreadable-manifest', path: resolved, reason: 'the file does not exist or is unreadable' }
+      : { kind: 'no-config' };
+  }
 
   let value: unknown;
   try {
     value = JSON.parse(raw);
-  } catch {
-    // Malformed JSON ⇒ warn-and-skip everything (exit 0), never a hard failure.
-    return { kind: 'no-config' };
+  } catch (err) {
+    // Malformed JSON ⇒ warn-and-skip everything (exit 0), never a hard failure —
+    // unless the caller explicitly named this file (fail-closed).
+    return explicit
+      ? {
+          kind: 'unreadable-manifest',
+          path: resolved,
+          reason: err instanceof Error ? err.message : 'the file is not valid JSON',
+        }
+      : { kind: 'no-config' };
   }
-  if (typeof value !== 'object' || value === null) return { kind: 'no-config' };
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return explicit
+      ? { kind: 'unreadable-manifest', path: resolved, reason: 'its root is not a JSON object' }
+      : { kind: 'no-config' };
+  }
   const root = value as Record<string, unknown>;
 
   // The schemaVersion gate is evaluated BEFORE the checks array: a bundle the

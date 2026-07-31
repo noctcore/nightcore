@@ -23,10 +23,17 @@ port of the in-process Rust runner in `apps/desktop/src-tauri/src/workflow/gaunt
 - **Published to npm as `@noctcore/harness` (public).** This is the ONE workspace that ships to
   npmjs.com — under the separate `@noctcore` org, so `package-shape` has a targeted exception (its
   name is `@noctcore/harness`, not `@nightcore/harness`). `version` MUST stay in lockstep with
-  `PORTABLE_LOCK_RUNNER_VERSION` (`sidecar/harness/export.rs`, currently `0.1.0`) — the exported CI
-  template pins `npx --yes @noctcore/harness@<that version> check`. Publishing is human-triggered by
-  pushing a `harness-v<version>` tag (`.github/workflows/publish-harness.yml`); merging never
-  publishes. Requires the `NPM_TOKEN` repo secret + the `noctcore` npm org.
+  `PORTABLE_LOCK_RUNNER_VERSION` (`sidecar/harness/export/writer.rs`, currently `0.2.0`) — the
+  exported CI template pins `npx --yes @noctcore/harness@<that version> check`. Publishing is
+  human-triggered by pushing a `harness-v<version>` tag (`.github/workflows/publish-harness.yml`);
+  merging never publishes. Requires the `NPM_TOKEN` repo secret + the `noctcore` npm org.
+  **An exported bundle is only as good as the published runner it pins**: `0.2.0` adds `--manifest`
+  and TypeScript-registry support, so a bundle exported by this build reds CI (`npx` 404) until
+  `harness-v0.2.0` is tagged and published.
+- **Node ≥ 22.18 for TypeScript registries.** `lint-meta` loads a `.ts` registry through Node's own
+  (unflagged since 22.18) type stripping — the transpile seam for #325 deliberately lives HERE, in
+  the published runner, because the Rust exporter must stay deterministic and transpiler-free. Do
+  not add a bundled stripper: that would end the zero-runtime-dependency posture above.
 
 ## Behavior (parity target: the LIVE Rust runner)
 
@@ -43,7 +50,11 @@ port of the in-process Rust runner in `apps/desktop/src-tauri/src/workflow/gaunt
   non-blank string. `kind: "shell"` is skipped (its execution is a deferred fast-follow). Any other
   kind (including an unknown/future one) with a command runs — the runner treats everything except
   `schemaVersion` as data.
-- **opt-in-by-presence:** absent / unreadable / malformed-JSON / no-`checks`-array ⇒ exit 0.
+- **opt-in-by-presence:** absent / unreadable / malformed-JSON / no-`checks`-array ⇒ exit 0. The one
+  exception is an **explicitly named** path (`--manifest` / `--registry`, how an exported bundle
+  points CI at its committed copy): that is **fail-closed** — a missing registry, or a missing /
+  unparseable manifest, exits 1. Its *contents* stay data (a parseable manifest with no `checks` is
+  still exit 0).
 - **`schemaVersion` gate:** absent ⇒ 1; equal-or-lower MAJOR proceeds; a higher/unknown MAJOR reds
   the build (upgrade the runner) — the only field the runner interprets structurally.
 - **Legibility:** every command is printed before it runs (stdout in the human path, stderr under
@@ -63,8 +74,9 @@ port of the in-process Rust runner in `apps/desktop/src-tauri/src/workflow/gaunt
   (`ctx.ts`, `fs.globSync` replacing Bun's `Glob`), the run loop + `[ERROR] <rule> (<file>):
   <message>` reporter (`run.ts`), the ratchet/baseline mechanism (`baseline.ts`), and the
   BOUNDED-EVAL registry loader (`registry.ts` — imports ONLY the enumerated
-  `.nightcore/lint-meta/registry.js`, never scan-and-imports arbitrary `.js`). A throwing rule is a
-  critical failure (fail-safe). `create-fake-ctx.ts` is a test-only in-memory ctx (never bundled).
+  `.nightcore/lint-meta/registry.{mts,ts,js}`, TypeScript first, never scan-and-imports any `.js`). A
+  throwing rule is a critical failure (fail-safe). `create-fake-ctx.ts` is a test-only in-memory ctx
+  (never bundled).
 - `src/index.ts` — the public type barrel (manifest + result shapes) PLUS the portable lint-meta
   contract (`IMetaRule` / `IMetaCtx` / `IViolation`) + the ratchet helpers a generated rule imports.
 

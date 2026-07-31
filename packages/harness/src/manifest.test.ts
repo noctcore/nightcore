@@ -136,3 +136,48 @@ describe('loadChecks (opt-in-by-presence, mirrors load_checks)', () => {
     }
   });
 });
+
+describe('loadChecks — an EXPLICIT manifest path is fail-closed (#325)', () => {
+  /** A reader that only knows one path (everything else is unreadable). */
+  function only(known: string, body: string): FileReader {
+    return (p) => (p === known ? body : null);
+  }
+
+  const BUNDLE = '.nightcore/export/portable-lock/harness.json';
+  const ABS_BUNDLE = `${DIR}/${BUNDLE}`;
+
+  test('the explicit path is resolved against dir and read instead of the default', () => {
+    const out = loadChecks(
+      DIR,
+      only(ABS_BUNDLE, JSON.stringify({ checks: [{ name: 'a', kind: 'lint-meta', command: 'x' }] })),
+      BUNDLE,
+    );
+    expect(out.kind).toBe('ready');
+    if (out.kind === 'ready') expect(out.checks.map((c) => c.name)).toEqual(['a']);
+  });
+
+  test('an absent explicit manifest is unreadable-manifest, NOT no-config', () => {
+    const out = loadChecks(DIR, reader(null), BUNDLE);
+    expect(out.kind).toBe('unreadable-manifest');
+    if (out.kind === 'unreadable-manifest') expect(out.path).toBe(ABS_BUNDLE);
+  });
+
+  test('malformed JSON in an explicit manifest is unreadable-manifest (the default path stays exit-0)', () => {
+    expect(loadChecks(DIR, reader('{ not json'), BUNDLE).kind).toBe('unreadable-manifest');
+    expect(loadChecks(DIR, reader('{ not json')).kind).toBe('no-config');
+  });
+
+  test('a non-object root in an explicit manifest is unreadable-manifest', () => {
+    expect(loadChecks(DIR, reader('[]'), BUNDLE).kind).toBe('unreadable-manifest');
+  });
+
+  test('a parseable explicit manifest with no checks array is simply nothing to enforce', () => {
+    // Contents stay DATA: only the file itself must exist and parse.
+    expect(loadChecks(DIR, reader('{ "schemaVersion": 1 }'), BUNDLE).kind).toBe('no-config');
+  });
+
+  test('an empty explicit path falls back to the default manifest', () => {
+    const out = loadChecks(DIR, only(manifestPath(DIR), JSON.stringify({ checks: [] })), '');
+    expect(out.kind).toBe('ready');
+  });
+});

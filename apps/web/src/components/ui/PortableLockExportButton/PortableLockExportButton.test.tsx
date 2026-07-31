@@ -9,10 +9,12 @@ const EXPORT = {
     '.nightcore/export/portable-lock/harness.json',
     '.nightcore/export/portable-lock/nightcore-lock.yml',
     '.nightcore/export/portable-lock/README.md',
+    '.nightcore/export/portable-lock/lint-meta/registry.mts',
+    '.nightcore/export/portable-lock/lint-meta/rules/no-todo-comments.mts',
   ],
   workflowYaml:
-    'name: structure-lock\non: [push, pull_request]\n      - run: npx --yes @noctcore/harness@0.1.0 check\n',
-  runnerVersion: '0.1.0',
+    'name: structure-lock\non: [push, pull_request]\n      - run: npx --yes @noctcore/harness@0.2.0 check --manifest .nightcore/export/portable-lock/harness.json\n',
+  runnerVersion: '0.2.0',
 };
 
 const invoke = vi.fn();
