@@ -86,10 +86,11 @@ describe('loadRegistry — bounded eval (§5)', () => {
     expect(calls).toEqual([registryPath]);
   });
 
-  test('the default registry paths are the fixed, committed locations (.ts first)', () => {
-    // A fixed, enumerated two-entry list — still bounded eval. `.ts` (what the
-    // portable-lock exporter emits) wins over a legacy `.js` registry.
+  test('the default registry paths are the fixed, committed locations (TypeScript first)', () => {
+    // A fixed, enumerated list — still bounded eval. `.mts` (what the portable-lock
+    // exporter emits) wins over `.ts`, which wins over a legacy `.js` registry.
     expect(DEFAULT_REGISTRY_RELATIVE_PATHS).toEqual([
+      '.nightcore/lint-meta/registry.mts',
       '.nightcore/lint-meta/registry.ts',
       '.nightcore/lint-meta/registry.js',
     ]);
@@ -115,12 +116,12 @@ describe('loadRegistry — a failed TypeScript import names the fix (#325)', () 
     expect(loaded.error).toContain('22.18');
   });
 
-  test('an ESM registry in a CommonJS scope points at the package.json fix', async () => {
+  test('an ESM registry in a CommonJS scope points at the .mts fix', async () => {
     const loaded = await loadRegistry(
       '/repo/.nightcore/lint-meta/registry.ts',
       throwing('Cannot use import statement outside a module'),
     );
-    expect(loaded.error).toContain('"type":"module"');
+    expect(loaded.error).toContain('.mts');
   });
 
   test('a registry under node_modules names the type-stripping refusal', async () => {

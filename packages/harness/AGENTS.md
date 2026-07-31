@@ -74,7 +74,7 @@ port of the in-process Rust runner in `apps/desktop/src-tauri/src/workflow/gaunt
   (`ctx.ts`, `fs.globSync` replacing Bun's `Glob`), the run loop + `[ERROR] <rule> (<file>):
   <message>` reporter (`run.ts`), the ratchet/baseline mechanism (`baseline.ts`), and the
   BOUNDED-EVAL registry loader (`registry.ts` — imports ONLY the enumerated
-  `.nightcore/lint-meta/registry.{ts,js}`, `.ts` first, never scan-and-imports arbitrary `.js`). A
+  `.nightcore/lint-meta/registry.{mts,ts,js}`, TypeScript first, never scan-and-imports any `.js`). A
   throwing rule is a critical failure (fail-safe). `create-fake-ctx.ts` is a test-only in-memory ctx
   (never bundled).
 - `src/index.ts` — the public type barrel (manifest + result shapes) PLUS the portable lint-meta

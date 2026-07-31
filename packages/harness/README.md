@@ -41,17 +41,17 @@ enforce went missing.
 
 ## TypeScript rule registries
 
-`lint-meta` loads a `.ts` registry as happily as a `.js` one — Nightcore's exporter emits
-`registry.ts` and copies your generated rule files **verbatim** (it is deterministic Rust and never
+`lint-meta` loads a TypeScript registry as happily as a `.js` one — Nightcore's exporter emits
+`registry.mts` and copies your generated rule files **verbatim** (it is deterministic Rust and never
 shells out to a transpiler). The type stripping happens here, in the runner, using **Node's own**
 (unflagged since Node 22.18) — which is why this package still has zero runtime dependencies. The
-default registry lookup tries `.nightcore/lint-meta/registry.ts` first, then
-`.nightcore/lint-meta/registry.js`.
+default registry lookup tries `.nightcore/lint-meta/registry.mts`, then `…/registry.ts`, then
+`…/registry.js`.
 
-Two requirements for a TypeScript registry: **Node ≥ 22.18**, and an ES-module scope (an exported
-bundle ships a `package.json` containing `{"type":"module"}` beside the registry). Rules may only
-`import type` from `@noctcore/harness` — a value import would have to resolve at run time, and
-nothing is installed in the target repo.
+Two requirements for a TypeScript registry: **Node ≥ 22.18**, and an ES-module scope. `.mts` (what
+the exporter writes) is always an ES module; a plain `.ts` one is only ESM if the nearest
+`package.json` says `"type": "module"`. Rules may only `import type` from `@noctcore/harness` — a
+value import would have to resolve at run time, and nothing is installed in the target repo.
 
 ## What it is NOT
 
