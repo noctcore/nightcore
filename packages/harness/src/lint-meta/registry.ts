@@ -28,12 +28,15 @@ import type { IMetaRule } from './types.js';
 
 /**
  * The fixed, repo-relative registry paths the runner tries, in order, when no
- * `--registry` is given. The `.ts` form (what the portable-lock exporter emits) wins
- * over a legacy `.js` one so an exported bundle is authoritative in a repo that still
- * carries a hand-rolled JavaScript registry. Still BOUNDED eval: a fixed, enumerated
- * two-entry list, of which exactly one file is ever imported.
+ * `--registry` is given. TypeScript first (what Nightcore's portable-lock exporter
+ * emits) so an exported registry is authoritative in a repo that still carries a
+ * hand-rolled JavaScript one, and `.mts` ahead of `.ts` because that is the form the
+ * exporter writes — `.mts` is an ES module whatever the repo's `package.json` says,
+ * while a `.ts` in a `"type": "commonjs"` repo cannot load ESM rules at all. Still
+ * BOUNDED eval: a fixed, enumerated list, of which exactly one file is ever imported.
  */
 export const DEFAULT_REGISTRY_RELATIVE_PATHS = [
+  '.nightcore/lint-meta/registry.mts',
   '.nightcore/lint-meta/registry.ts',
   '.nightcore/lint-meta/registry.js',
 ] as const;
@@ -102,7 +105,7 @@ function describeImportError(absRegistryPath: string, err: unknown): string {
     return `${message} — Node refuses to strip types under node_modules/; commit the registry in the repo itself.`;
   }
   if (message.includes('Cannot use import statement outside a module')) {
-    return `${message} — the registry is an ES module but the nearest package.json is CommonJS. Commit a package.json containing {"type":"module"} beside the registry (an exported Nightcore bundle ships one).`;
+    return `${message} — the registry is an ES module but the nearest package.json is CommonJS. Rename it (and the rule files it imports) to .mts, which is always an ES module — that is the form Nightcore exports.`;
   }
   return message;
 }

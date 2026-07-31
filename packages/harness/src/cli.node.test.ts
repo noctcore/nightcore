@@ -141,6 +141,102 @@ describe('the lint-meta subcommand runs under plain node (trap b, bounded eval)'
   });
 });
 
+/**
+ * The #325 proof: a bundle the Rust exporter WROTE actually reds a foreign CI.
+ *
+ * Everything under `fixtures/portable-lock/` is emitted by
+ * `sidecar/harness/export/writer.rs` and byte-pinned by its tests, so these are the
+ * exporter's real bytes, not a hand-written imitation. The target repo declares
+ * `"type": "commonjs"` on purpose — the hostile case for ES-module rules, which is why
+ * the exporter pins `.mts`.
+ */
+describe('an exported portable-lock bundle enforces in a foreign repo (#325)', () => {
+  const FIXTURES = path.join(PKG_ROOT, 'fixtures', 'portable-lock');
+  const BUNDLE_REL = path.join('.nightcore', 'export', 'portable-lock');
+  const REGISTRY_REL = path.join(BUNDLE_REL, 'lint-meta', 'registry.mts');
+  const MANIFEST_REL = path.join(BUNDLE_REL, 'harness.json');
+
+  /** Stage the exporter's bundle into a fake target repo holding `source` at src/app.ts. */
+  function exportedRepo(source: string, opts: { registry?: boolean } = {}): string {
+    const dir = mkdtempSync(path.join(tmpdir(), 'nc-harness-export-'));
+    fixtures.push(dir);
+    // A CommonJS repo: nothing here is ESM by default.
+    writeFileSync(path.join(dir, 'package.json'), '{ "name": "target", "type": "commonjs" }', 'utf8');
+    mkdirSync(path.join(dir, 'src'), { recursive: true });
+    writeFileSync(path.join(dir, 'src', 'app.ts'), source, 'utf8');
+
+    mkdirSync(path.join(dir, BUNDLE_REL, 'lint-meta', 'rules'), { recursive: true });
+    writeFileSync(
+      path.join(dir, MANIFEST_REL),
+      readFileSync(path.join(FIXTURES, 'harness.json.txt'), 'utf8'),
+      'utf8',
+    );
+    if (opts.registry !== false) {
+      writeFileSync(
+        path.join(dir, REGISTRY_REL),
+        readFileSync(path.join(FIXTURES, 'registry.mts.txt'), 'utf8'),
+        'utf8',
+      );
+    }
+    writeFileSync(
+      path.join(dir, BUNDLE_REL, 'lint-meta', 'rules', 'no-todo-comments.mts'),
+      readFileSync(path.join(FIXTURES, 'no-todo-comments.rule.ts.txt'), 'utf8'),
+      'utf8',
+    );
+    return dir;
+  }
+
+  const VIOLATING = 'export const x = 1;\n// TODO: finish this\n';
+  const CLEAN = 'export const x = 1;\n// finished\n';
+
+  test('a violating repo is CAUGHT: exit 1, naming the rule and the file', () => {
+    const dir = exportedRepo(VIOLATING);
+    const res = runNode(['lint-meta', '--dir', dir, '--registry', REGISTRY_REL]);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain('[ERROR] no-todo-comments (src/app.ts)');
+    // The TypeScript rule really ran (type-stripped) against the real Node ctx.
+    expect(res.stdout).toContain('running 1 rule');
+  });
+
+  test('the same bundle exits 0 on a clean repo (it is not just always failing)', () => {
+    const res = runNode(['lint-meta', '--dir', exportedRepo(CLEAN), '--registry', REGISTRY_REL]);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain('no violations');
+  });
+
+  test('the WHOLE chain reds: check --manifest → spawned lint-meta → violation', () => {
+    // The bundle manifest's command is the exporter's, verbatim, except that the npx
+    // resolver is swapped for this dist build — `npx @noctcore/harness@<v>` resolves to
+    // exactly this artifact, and CI has no registry access here. Every ARGUMENT is the
+    // exporter's own.
+    const dir = exportedRepo(VIOLATING);
+    const manifestPath = path.join(dir, MANIFEST_REL);
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      checks: Array<{ command: string }>;
+    };
+    const exported = manifest.checks[0]?.command ?? '';
+    expect(exported).toStartWith('npx --yes @noctcore/harness@');
+    expect(exported).toContain(`lint-meta --registry ${REGISTRY_REL}`);
+    manifest.checks[0]!.command = exported.replace(
+      /^npx --yes @noctcore\/harness@[^ ]+/,
+      `node ${CLI}`,
+    );
+    writeFileSync(manifestPath, JSON.stringify(manifest), 'utf8');
+
+    const res = runNode(['check', '--dir', dir, '--manifest', MANIFEST_REL]);
+    expect(res.status).toBe(1);
+    expect(res.stdout).toContain('✗ no-todo-comments');
+    expect(res.stderr).toContain('[ERROR] no-todo-comments (src/app.ts)');
+  });
+
+  test('a bundle whose registry went missing reds the build, never passes vacuously', () => {
+    const dir = exportedRepo(CLEAN, { registry: false });
+    const res = runNode(['lint-meta', '--dir', dir, '--registry', REGISTRY_REL]);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain('No lint-meta registry at');
+  });
+});
+
 describe('the built dist has no network or Bun imports (supply-chain posture)', () => {
   // Module specifiers that would betray a network dependency or a Bun coupling.
   const FORBIDDEN = [

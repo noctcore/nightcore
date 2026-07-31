@@ -1,0 +1,44 @@
+// A stand-in for a Nightcore-generated `lint-meta-rule` artifact, used by BOTH sides of
+// the portable-lock export contract (#325):
+//
+//  - the Rust exporter's tests (`sidecar/harness/export/writer.rs`) seed it as an APPLIED
+//    artifact and assert it is copied into the bundle byte-for-byte;
+//  - the runner's e2e (`packages/harness/src/cli.node.test.ts`) writes it into a fake repo
+//    alongside `registry.ts.txt` and proves the real CLI CATCHES a violation with it.
+//
+// It is a `.txt` so no repo tooling (tsc, eslint, vitest, bun test) treats it as source —
+// it is data for two test suites, and its exact bytes are the contract.
+//
+// It deliberately uses only ERASABLE TypeScript (type-only import, type alias, annotated
+// signature) and imports `@noctcore/harness` for TYPES ONLY: nothing is installed in a
+// target repo, so a value import would fail to resolve at run time.
+import type { IMetaCtx, IMetaRule, IViolation } from '@noctcore/harness';
+
+type Offender = { readonly file: string; readonly line: number };
+
+function offenders(ctx: IMetaCtx): Offender[] {
+  const found: Offender[] = [];
+  for (const file of ctx.glob('src/**/*.ts')) {
+    const body = ctx.read(file);
+    if (body === null) continue;
+    body.split('\n').forEach((text: string, index: number) => {
+      if (text.includes('TODO')) found.push({ file, line: index + 1 });
+    });
+  }
+  return found;
+}
+
+export const noTodoCommentsRule: IMetaRule = {
+  id: 'no-todo-comments',
+  category: 'source-text',
+  description: 'Source files must not ship TODO comments.',
+  ciCritical: true,
+  run(ctx: IMetaCtx): IViolation[] {
+    return offenders(ctx).map(({ file, line }) => ({
+      file,
+      rule: 'no-todo-comments',
+      message: 'TODO comments must not be committed.',
+      line,
+    }));
+  },
+};

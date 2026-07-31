@@ -1,0 +1,10 @@
+{
+  "checks": [
+    {
+      "command": "npx --yes @noctcore/harness@0.2.0 lint-meta --registry .nightcore/export/portable-lock/lint-meta/registry.mts",
+      "kind": "lint-meta",
+      "name": "no-todo-comments"
+    }
+  ],
+  "schemaVersion": 1
+}
