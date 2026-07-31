@@ -1,8 +1,8 @@
 {
   "name": "nightcore",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
-  "description": "Nightcore \u2014 an autonomous Claude dev studio: Rust + Tauri core over a Bun provider sidecar.",
+  "description": "Nightcore — an autonomous Claude dev studio: Rust + Tauri core over a Bun provider sidecar.",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -33,7 +33,7 @@
     "dogfood:ui": "node scripts/dogfood-ui.mjs",
     "dogfood:engine": "bun run scripts/headless-harness.ts",
     "dogfood:gh": "cd apps/desktop/src-tauri && cargo test --lib e2e_gh -- --ignored --nocapture",
-    "test": "bun run test:node && bun run test:web && bun run test:plugin && echo '\u26a0\ufe0f  Rust suite skipped \u2014 run: bun run test:all (includes test:rust) for the full gate'",
+    "test": "bun run test:node && bun run test:web && bun run test:plugin && echo '⚠️  Rust suite skipped — run: bun run test:all (includes test:rust) for the full gate'",
     "test:node": "bun test apps/sidecar packages/config packages/contracts packages/engine packages/harness packages/session-fold packages/shared packages/storage tools/codegen tools/lint-meta",
     "test:node:coverage": "bun run tools/coverage/check-node-coverage.ts",
     "test:web": "bun run --filter @nightcore/web test",
