@@ -1,11 +1,14 @@
 /** Bridge commands — Council (governed multi-agent debate, issue #352). Start / kill
  *  a run; the append-only transcript streams over `nc:debate` (see `onDebateEvent`).
- *  The canvas only READS that stream — there is no command that feeds text back into a
- *  seat prompt (the conductor-mediated, quoted, injection-scanned bus stays the sole
- *  cross-seat path — safety #1/#2). */
+ *  The canvas only READS that stream, and the ONE command that puts human text in front
+ *  of a seat ({@link sendCouncilHumanInput}, issue #361) routes it through the Conductor's
+ *  quoted, injection-scanned bus — `sendInput`/`streamInput` (the non-Council user↔agent
+ *  chat path) is never used here, because it would hand the surface direct-to-seat write
+ *  authority and deliver human prose as a raw instruction (safety #1/#2). */
 import { tauriInvoke } from '../internal';
 import type {
   CouncilConvergeDecision,
+  CouncilHumanInputMode,
   CouncilPresetId,
   CouncilRoutingEdge,
 } from '../types';
@@ -76,4 +79,31 @@ export async function setCouncilRouting(
   edges: CouncilRoutingEdge[],
 ): Promise<void> {
   await tauriInvoke<void>('set_council_routing', { runId, edges }, undefined);
+}
+
+/** Relay the human's mid-debate message into a live council run (issue #361) — the
+ *  broadcast-all / DM-one / steer-stage controls. A CONDUCTOR DIRECTIVE, never the
+ *  `sendInput` path: the engine's Conductor — the sole bus writer — runs `message` through
+ *  the SAME quoted + injection-scanned relay every cross-seat text takes, records the
+ *  scanned delivery onto the append-only transcript, and stages the QUOTED rendering for
+ *  the target seat(s)' next mediated turn. The seat receives the human's words as
+ *  attributed, fenced DATA to weigh — never as an instruction (safety #1/#2).
+ *
+ *  `mode` picks the audience: `broadcast` = every live seat, `direct` = the seat `seatId`
+ *  names, `steer` = every live seat plus a directive to end the Debate stage at its next
+ *  checkpoint (a strict shortener — it can only reach Converge sooner, safety #4).
+ *  Fire-and-forget + idempotent-ish: a no-op for an unknown/finished run, an empty message,
+ *  or a `direct` message naming an unknown seat — the recorded quoted delivery arriving
+ *  over `nc:debate` is the confirmation. No-ops outside Tauri (browser preview). */
+export async function sendCouncilHumanInput(
+  runId: string,
+  mode: CouncilHumanInputMode,
+  message: string,
+  seatId?: string | null,
+): Promise<void> {
+  await tauriInvoke<void>(
+    'send_council_human_input',
+    { runId, mode, message, seatId: seatId ?? null },
+    undefined,
+  );
 }
