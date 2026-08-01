@@ -26,13 +26,28 @@ use std::sync::{Arc, Mutex};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use crate::store::insight::LinkOutcome;
 use crate::store::{is_safe_task_id, write_atomic};
 
 /// Keep at most this many runs per project on disk + in memory; [`RunStore::upsert_if_idle`]
 /// prunes the oldest beyond it so run history (and its resident item `Vec`s) can't
 /// grow unbounded across re-runs.
 pub(crate) const MAX_RUNS: usize = 50;
+
+/// The result of an atomic convert-to-task link ([`RunStore::link_item_task`] and the
+/// run-granular hand-rolled twin in [`crate::store::issue_triage`]).
+///
+/// Homed HERE, beside the generic check-and-set that produces it, rather than in the
+/// Insight feature module it happened to be written for first (issue #178): every scan
+/// feature — Insight, Scorecard, Harness, PR-review, Issue-triage — returns this, so the
+/// generic run store must not depend on one of the features it abstracts over. The
+/// feature modules re-export it (`pub use`) so their public call sites are unchanged.
+pub enum LinkOutcome {
+    /// The item was unlinked and is now `converted` + linked to the new task.
+    Linked,
+    /// The item was ALREADY linked to this task id (idempotent re-convert) — the
+    /// caller should discard the task it just minted and return the existing one.
+    AlreadyLinked(String),
+}
 
 /// A run persisted by [`RunStore`]: the minimal shape the generic CRUD needs — a stable
 /// id, a creation timestamp for age-ordering, and mutable status/error/updated_at for the
