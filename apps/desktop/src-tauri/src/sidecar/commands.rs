@@ -447,6 +447,49 @@ pub async fn set_council_routing(
     provider.dispatch_command(command).await
 }
 
+/// Relay a HUMAN's mid-debate message into a live Council run (issue #361) — the
+/// broadcast-all / DM-one / steer-stage surface the #352 canvas shipped disabled.
+///
+/// Deliberately NOT `send_input`. That command hands text to a running session's provider
+/// runner as a raw user turn (`streamInput`) — correct for non-Council user↔agent chat
+/// (#335/#347), and a violation of BOTH Council safety non-negotiables here: it would give
+/// the surface direct-to-seat write authority (#1) and deliver human prose to a coding
+/// agent as a bare instruction (#2). Instead this dispatches a `send-council-human-input`
+/// SurfaceCommand, and the engine's Conductor — the SOLE bus writer — runs the message
+/// through the SAME mediated relay every cross-seat text takes (injection scan + quoted
+/// untrusted fence), records the scanned delivery onto the append-only transcript (#7), and
+/// stages the QUOTED rendering for the target seat(s)' next mediated turn.
+///
+/// `mode` selects the audience (`broadcast` = every live seat, `direct` = the seat `seat_id`
+/// names, `steer` = every live seat plus a conductor directive to end the Debate stage at
+/// its next checkpoint — a strict shortener, safety #4). `message` is user content and is
+/// NEVER logged. Fire-and-forget like its `set_council_routing` sibling: the recorded,
+/// quoted delivery streaming back over `nc:debate` is the confirmation. When the sidecar
+/// isn't running there is no live run to address, so this is a no-op. Async — fully async
+/// tokio I/O, never blocks the WKWebView.
+#[tauri::command]
+pub async fn send_council_human_input(
+    provider: State<'_, Arc<SidecarProvider>>,
+    run_id: String,
+    mode: crate::contracts::CouncilHumanInputMode,
+    seat_id: Option<String>,
+    message: String,
+) -> Result<(), String> {
+    if !provider.is_running().await {
+        return Ok(());
+    }
+    // The directive SHAPE is debug-only; the human's `message` is user content and is never
+    // logged (mirroring `resolve_council_converge`'s handling of the ruling `note`).
+    tracing::debug!(target: "nightcore", run_id, ?mode, "send-council-human-input dispatched to engine");
+    let command = crate::contracts::SurfaceCommand::SendCouncilHumanInput {
+        run_id,
+        mode,
+        seat_id,
+        message,
+    };
+    provider.dispatch_command(command).await
+}
+
 /// Best-effort interrupt of a task's run. Aborts the slot's driver (if the loop
 /// spawned one) and sends an `interrupt` for the task's session; the terminal
 /// transition still arrives via the sidecar's `session-failed (aborted)` event,

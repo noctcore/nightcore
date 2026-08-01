@@ -4,18 +4,21 @@
  * (start / kill), accumulates the live `nc:debate` stream for the ACTIVE run, and
  * folds it into the seat nodes + team-chat the canvas renders.
  *
- * The canvas is a pure READER: `start` mints the run id + dispatches `start_council`,
- * `kill` throws the kill switch (safety #4), and the stream subscription only READS
- * entries — nothing here feeds text back into a seat prompt (the conductor-mediated,
- * quoted, injection-scanned bus stays the sole cross-seat path — safety #1/#2). The
- * broadcast/DM/steer controls the design calls for need a conductor human-input command
- * that is a follow-up slice; #353 adds the human Converge (judge/accept/reject).
+ * The canvas reads the bus and DISPATCHES conductor directives — it never writes a seat.
+ * `start` mints the run id + dispatches `start_council`, `kill` throws the kill switch
+ * (safety #4), and the stream subscription only READS entries. The broadcast-all /
+ * DM-one / steer-stage controls (#361) dispatch `send_council_human_input`, a CONDUCTOR
+ * directive: the engine quotes + injection-scans the human's message and stages it for
+ * the target seat(s)' next mediated turn. Nothing here calls `sendInput`/`streamInput` —
+ * that would push text straight into a running seat, bypassing the moderated bus (safety
+ * #1/#2). #353 adds the human Converge (judge/accept/reject).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useToast } from '@/components/ui';
 import type {
   CouncilConvergeDecision,
+  CouncilHumanInputMode,
   CouncilPresetId,
   CouncilRoutingEdge,
   DebateTranscriptEntry,
@@ -24,6 +27,7 @@ import {
   killCouncil,
   onDebateEvent,
   resolveCouncilConverge,
+  sendCouncilHumanInput,
   setCouncilRouting,
   startCouncil,
 } from '@/lib/bridge';
@@ -113,6 +117,15 @@ export interface CouncilViewModel {
   resolve: (
     decision: CouncilConvergeDecision,
     options?: { seatId?: string; note?: string },
+  ) => Promise<void>;
+  /** Relay the human's mid-debate message through the CONDUCTOR (#361) — broadcast-all,
+   *  DM-one, or steer-stage. The engine quotes + injection-scans it and stages it for the
+   *  target seat(s)' next mediated turn; this never writes into a seat (safety #1/#2).
+   *  Rejects so the bar can surface the error inline and the human can retry. */
+  sendHumanInput: (
+    mode: CouncilHumanInputMode,
+    message: string,
+    seatId?: string,
   ) => Promise<void>;
   /** Return to the idle start panel to convene another council. */
   reset: () => void;
@@ -226,6 +239,26 @@ export function useCouncilView(props: CouncilViewProps): CouncilViewModel {
     [toast],
   );
 
+  // Relay the human's message through the Conductor (#361). A CONDUCTOR DIRECTIVE, not a
+  // seat write: the engine runs it through `deliverBetweenSeats` (injection scan + quoted
+  // fence) and stages the QUOTED rendering for the target seat(s)' next mediated turn. The
+  // recorded delivery arriving over `nc:debate` is the confirmation.
+  const sendHumanInput = useCallback(
+    async (mode: CouncilHumanInputMode, message: string, seatId?: string) => {
+      const id = runIdRef.current;
+      if (id === null) return;
+      try {
+        await sendCouncilHumanInput(id, mode, message, seatId ?? null);
+      } catch (error) {
+        // Both channels, like `resolve`: a toast plus — by rethrowing — the bar's inline
+        // error, so the draft survives and the human can retry.
+        toast.error('Could not relay your message', error);
+        throw error;
+      }
+    },
+    [toast],
+  );
+
   const reset = useCallback(() => {
     setRunId(null);
     setEntries([]);
@@ -333,6 +366,7 @@ export function useCouncilView(props: CouncilViewProps): CouncilViewModel {
     start,
     kill,
     resolve,
+    sendHumanInput,
     reset,
   };
 }

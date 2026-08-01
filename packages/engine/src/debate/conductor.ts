@@ -56,6 +56,13 @@ import {
   resolveParkedConverge,
 } from './conductor-converge.js';
 import { buildResult, driveCouncil } from './conductor-drive.js';
+import {
+  applyHumanInputDirective,
+  type HumanInputDirective,
+  type HumanInputRuntime,
+  type HumanInputUpdate,
+  seedHumanInputRuntime,
+} from './conductor-human-input.js';
 import { observeBus } from './conductor-observer.js';
 import type { ReviewDriver } from './conductor-review.js';
 import {
@@ -151,6 +158,11 @@ export class Conductor {
    *  Debate graph of a run in flight (issue #371). Set + cleared alongside {@link active}. */
   private readonly runtimes = new Map<string, RunRoutingRuntime>();
 
+  /** Live human-input handles per running council (issue #361), so {@link sendHumanInput}
+   *  can relay a message into a run in flight. Set + cleared alongside {@link active}, so
+   *  a directive for an unknown / finished run is a refused no-op. */
+  private readonly humanInputs = new Map<string, HumanInputRuntime>();
+
   /** Runs parked at Converge, awaiting the human judge's verdict ({@link
    *  resolveConverge}) — the P1 terminal authority is the human (safety #7). */
   private readonly parked = new Map<string, ParkedConverge>();
@@ -229,6 +241,11 @@ export class Conductor {
     // rewires it live through {@link setRouting}; the Debate loop reads it fresh each round.
     const runtime = seedRoutingRuntime(bus, preset.routing, seats);
     this.runtimes.set(councilRunId, runtime);
+    // The run's live human-input handle (issue #361). The human addresses it through
+    // {@link sendHumanInput}; the Debate loop drains its staged QUOTED deliveries each
+    // round and reads its steer latch between rounds.
+    const humanInput = seedHumanInputRuntime(bus, seats);
+    this.humanInputs.set(councilRunId, humanInput);
 
     try {
       return await driveCouncil(
@@ -239,6 +256,7 @@ export class Conductor {
         seats,
         runtime.routing,
         this.parked,
+        humanInput,
       );
     } catch (error) {
       this.deps.logger?.warn('council run crashed', { councilRunId, error });
@@ -246,7 +264,34 @@ export class Conductor {
     } finally {
       this.active.delete(councilRunId);
       this.runtimes.delete(councilRunId);
+      this.humanInputs.delete(councilRunId);
     }
+  }
+
+  /**
+   * Relay a HUMAN's mid-debate message into a LIVE run (issue #361) — broadcast-all /
+   * DM-one / steer-stage.
+   *
+   * A CONDUCTOR DIRECTIVE, never a direct seat write, and emphatically NOT the
+   * `send-input` / `streamInput` path (that hands text to a session runner as a raw user
+   * turn — safety #1/#2 forbid it here). Delegates to {@link applyHumanInputDirective},
+   * which runs the message through the SAME quoted + injection-scanned relay every
+   * cross-seat text uses, records the scanned delivery on the append-only transcript
+   * (#7), and stages the QUOTED rendering for the target seat's next mediated turn. A
+   * `steer` additionally latches an early end to the Debate stage (a strict shortener,
+   * safety #4). Refused — recording nothing — for an unknown/finished run, an empty
+   * message, or a `direct` message naming a seat the run does not define.
+   */
+  sendHumanInput(
+    councilRunId: string,
+    directive: HumanInputDirective,
+  ): HumanInputUpdate {
+    return applyHumanInputDirective(
+      this.humanInputs.get(councilRunId),
+      councilRunId,
+      directive,
+      this.deps.logger,
+    );
   }
 
   /** Whether a run is parked at Converge, awaiting the human judge's verdict. */

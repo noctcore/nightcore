@@ -528,6 +528,50 @@ export const SetCouncilRoutingCommand = z.object({
 });
 
 /**
+ * How a human's mid-debate message is addressed to a LIVE council run (issue #361):
+ *  - `broadcast` — one message to EVERY live seat.
+ *  - `direct`    — one message to a SINGLE named seat (`seatId`).
+ *  - `steer`     — a stage directive: the message reaches every live seat AND the
+ *    Conductor ends the current Debate stage at its next checkpoint (a STRICT
+ *    shortener — it can only route to Converge sooner, never extend a run, safety #4).
+ */
+export const CouncilHumanInputModeSchema = z.enum(['broadcast', 'direct', 'steer']);
+export type CouncilHumanInputMode = z.infer<typeof CouncilHumanInputModeSchema>;
+
+/**
+ * Deliver a HUMAN's mid-debate message into a live council run's seats (issue #361) —
+ * the broadcast-all / DM-one / steer-stage surface the #352 canvas shipped disabled.
+ *
+ * This is a CONDUCTOR DIRECTIVE, emphatically NOT the `send-input` path. `send-input`
+ * hands text straight to a running session's provider runner (`streamInput`) as a raw
+ * user turn — correct for non-Council user↔agent chat (#335/#347), and a violation of
+ * BOTH Council safety non-negotiables here: it would give a surface direct-to-seat write
+ * authority (#1) and deliver human text as a bare instruction (#2). Instead the message
+ * enters via the engine's Conductor — the sole bus writer — which runs it through the
+ * SAME mediated relay every cross-seat text uses (`deliverBetweenSeats` → injection scan
+ * + quoted untrusted fence), records the scanned `delivery` onto the append-only
+ * transcript (safety #7), and stages the QUOTED rendering for the target seat's next
+ * mediated turn. A seat therefore receives the human's words as attributed, fenced DATA
+ * to weigh — never as a directive it must follow.
+ *
+ * The human's real authority over a run is exercised through the Conductor's own
+ * directives (`steer` here, `kill-council`, the Converge gavel), never by writing into a
+ * seat. A no-op for an unknown/finished run, an empty message, or a `direct` message
+ * naming a seat the run does not define.
+ */
+export const SendCouncilHumanInputCommand = z.object({
+  type: z.literal('send-council-human-input'),
+  /** The live council run the human is addressing. */
+  runId: z.string(),
+  /** Who the message is addressed to, and whether it also steers the stage. */
+  mode: CouncilHumanInputModeSchema,
+  /** The single recipient — REQUIRED for `direct`, ignored for `broadcast`/`steer`. */
+  seatId: z.string().optional(),
+  /** The human's message. Relayed QUOTED + injection-scanned, never as a raw instruction. */
+  message: z.string(),
+});
+
+/**
  * The host → engine RESOLUTION of a `worktree-op-required` event (issue #383) — the
  * resolving half of the path-less, `councilRunId`-keyed worktree seam, modeled on the
  * parked-permission seam (`permission-required` → `approve-permission`). The Rust host
@@ -585,6 +629,7 @@ export const SurfaceCommandSchema = z.discriminatedUnion('type', [
   KillCouncilCommand,
   ResolveCouncilConvergeCommand,
   SetCouncilRoutingCommand,
+  SendCouncilHumanInputCommand,
   ResolveWorktreeOpCommand,
 ]);
 export type SurfaceCommand = z.infer<typeof SurfaceCommandSchema>;

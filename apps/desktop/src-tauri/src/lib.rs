@@ -329,6 +329,11 @@ pub fn run() {
             // A CONDUCTOR DIRECTIVE, not a direct seat write — the Conductor filters which
             // mediated, quoted peers inform a seat next Debate round (safety #1 intact).
             sidecar::set_council_routing,
+            // Conductor-mediated human input (issue #361): broadcast-all / DM-one /
+            // steer-stage. NOT `send_input` — the message enters via the Conductor, which
+            // quotes + injection-scans it into the target seats' next mediated turn, so a
+            // surface never gains direct-to-seat write authority (safety #1/#2).
+            sidecar::send_council_human_input,
             sidecar::list_task_sessions,
             sidecar::get_task_session_messages,
             sidecar::resume_session,

@@ -270,6 +270,13 @@
         }
       ]
     },
+    "send-council-human-input": {
+      "type": "send-council-human-input",
+      "runId": "run-council1",
+      "mode": "direct",
+      "seatId": "critic-opus",
+      "message": "Weigh the dual-write rollback path before you settle."
+    },
     "resolve-worktree-op": {
       "type": "resolve-worktree-op",
       "requestId": "wt-1",

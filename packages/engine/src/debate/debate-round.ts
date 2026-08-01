@@ -62,6 +62,10 @@ export interface DebateOutcome {
    *  kept changing but added no new distinct position (the #372 no-progress stop). Distinct
    *  from stability: the seats DID move, they just restated prior positions. */
   readonly noProgressEarlyStop: boolean;
+  /** True when the loop early-stopped because the HUMAN steered the stage (the #361
+   *  `steer` directive). Distinct from both automatic stops: the debate was ended by the
+   *  human's conductor-mediated directive, not by the seats' behaviour. */
+  readonly steerEarlyStop: boolean;
 }
 
 /** The broadcast-collector knobs the debate loop dispatches each round through. */
@@ -98,9 +102,27 @@ export interface DebateRoundHooks {
    *  shortener — it can only end the debate sooner, never extend it). Absent ⇒ {@link
    *  DEFAULT_NO_PROGRESS_ROUNDS}. */
   readonly noProgressRounds?: number;
-  /** Build a seat's debate prompt for `round`, embedding the mediated `peerText`
-   *  (which contains ONLY quoted+scanned peer content). */
-  buildPrompt(seat: SeatContext, round: number, peerText: string): string;
+  /** Take the QUOTED, injection-scanned human input the Conductor staged for `toSeatId`
+   *  (issue #361), or `''` when none is staged. Drained (cleared) here, so one human
+   *  message reaches a seat at most once. It is ALREADY mediated —
+   *  `applyHumanInputDirective` ran it through `deliverBetweenSeats` before staging it —
+   *  so this loop only embeds it; it never quotes or scans on its own, and the raw human
+   *  text is unreachable from here. Absent ⇒ no human input (unit tests that don't
+   *  exercise it omit it). */
+  humanInput?(toSeatId: string): string;
+  /** Whether the human asked the Conductor to advance the stage (the #361 `steer`
+   *  directive). Read BETWEEN rounds; a true reading ends the Debate stage and routes to
+   *  Converge. A STRICT SHORTENER — like the stability (#350) and no-progress (#372)
+   *  stops it can only end the debate sooner, never extend it (safety #4). */
+  steerRequested?(): boolean;
+  /** Build a seat's debate prompt for `round`, embedding the mediated `peerText` and
+   *  `humanText` (both contain ONLY quoted+scanned content). */
+  buildPrompt(
+    seat: SeatContext,
+    round: number,
+    peerText: string,
+    humanText: string,
+  ): string;
   /** Drive one seat turn through the {@link SeatDriver} seam, threading the collector's
    *  per-seat abort `signal` (kill/budget/timeout/quorum). */
   runTurn(
@@ -133,6 +155,7 @@ export async function runDebateRounds(
   let current = new Map(hooks.priorOutputs);
   let stableEarlyStop = false;
   let noProgressEarlyStop = false;
+  let steerEarlyStop = false;
   // Seeded with the positions ALREADY on the table (the Propose outputs): a Debate round
   // makes progress only by adding a position not already among them (issue #372). Reuses
   // the #353 reply-diff distinct-position rule — it can only SHORTEN the loop (safety #4).
@@ -144,7 +167,13 @@ export async function runDebateRounds(
   for (let round = 1; round <= roundBudget; round++) {
     const preRoundHalt = governorHalt(governor);
     if (preRoundHalt !== null) {
-      return { finalOutputs: current, halt: preRoundHalt, stableEarlyStop, noProgressEarlyStop };
+      return {
+        finalOutputs: current,
+        halt: preRoundHalt,
+        stableEarlyStop,
+        noProgressEarlyStop,
+        steerEarlyStop,
+      };
     }
 
     // Every seat this round reacts to the SAME snapshot of last round's outputs.
@@ -170,7 +199,13 @@ export async function runDebateRounds(
           ? snapshot
           : snapshot.filter((peer) => allowed.has(peer.seatId));
       const peers = assemblePeerContext(bus, 'debate', seat.seatId, visible);
-      prompts.set(seat.seatId, hooks.buildPrompt(seat, round, peers.text));
+      // The human's staged input (issue #361), drained here so it rides this round's
+      // EXISTING broadcast fan-out below rather than a second dispatch path. It arrives
+      // already quoted + injection-scanned (the conductor relayed it through
+      // `deliverBetweenSeats` when the directive landed) — this loop cannot reach the raw
+      // text, so the same firewall covers human and peer content alike (safety #1/#2).
+      const humanText = hooks.humanInput?.(seat.seatId) ?? '';
+      prompts.set(seat.seatId, hooks.buildPrompt(seat, round, peers.text, humanText));
     }
 
     // Dispatch the round as ONE broadcast: bounded concurrency + per-seat timeout +
@@ -208,11 +243,32 @@ export async function runDebateRounds(
     // partial responders are still folded into `next` for the transcript/converge).
     const roundHalt = governorHalt(governor);
     if (roundHalt !== null) {
-      return { finalOutputs: next, halt: roundHalt, stableEarlyStop, noProgressEarlyStop };
+      return {
+        finalOutputs: next,
+        halt: roundHalt,
+        stableEarlyStop,
+        noProgressEarlyStop,
+        steerEarlyStop,
+      };
     }
 
     governor.countRound();
     current = next;
+
+    // HUMAN STEER (issue #361): the human asked the Conductor to advance the stage.
+    // Checked AFTER the round (not before) so the steer's own message — staged for this
+    // round's prompts above — is actually heard once before the debate ends: "nudge, then
+    // advance". A strict shortener; the round cap above remains the outer bound.
+    if (hooks.steerRequested?.() === true) {
+      steerEarlyStop = true;
+      bus.note(
+        'debate',
+        `Human steer: the conductor is ending the Debate stage after round ${round} and ` +
+          `routing to Converge (issue #361). The human's message was relayed to the seats ` +
+          `as quoted, injection-scanned data — never as an instruction.`,
+      );
+      break;
+    }
 
     // AGREEMENT (issue #350): a round that changed nothing — the debate stopped moving.
     if (!changed) {
@@ -236,5 +292,11 @@ export async function runDebateRounds(
     }
   }
 
-  return { finalOutputs: current, halt: null, stableEarlyStop, noProgressEarlyStop };
+  return {
+    finalOutputs: current,
+    halt: null,
+    stableEarlyStop,
+    noProgressEarlyStop,
+    steerEarlyStop,
+  };
 }
