@@ -13,7 +13,7 @@
 //! Keeping the concurrency-critical dance in one place means the invariants below are
 //! audited once, not five times.
 
-use crate::store::insight::LinkOutcome;
+use crate::store::run_store::LinkOutcome;
 use crate::store::TaskStore;
 use crate::task::Task;
 

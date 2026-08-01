@@ -17,11 +17,10 @@ use std::path::Path;
 pub(super) use crate::infra::time::iso8601_utc;
 use crate::store::ledger::{blocked_by_policy_message_from, read_records, LedgerRecord};
 use crate::store::transcript::{cost_summary, CostSummary};
+use crate::store::types::TokenTotals;
 use crate::task::{Task, TaskStatus};
 
-use super::contract::{
-    FlightSummary, GauntletTrust, GuardrailEvent, GuardrailTrust, TokenTotals, TrustReport,
-};
+use super::contract::{FlightSummary, GauntletTrust, GuardrailEvent, GuardrailTrust, TrustReport};
 
 /// Cap on the enumerated files/commands surfaced on the receipt — the counts stay
 /// exact (`*_count`), only the printed list is bounded so a runaway run can't blow

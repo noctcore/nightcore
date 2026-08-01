@@ -24,11 +24,11 @@ use ts_rs::TS;
 use crate::store::insight::InsightUsage;
 use crate::store::run_store::{LifecycleItem, PersistedRun, RunStore};
 
-// The convert-to-task link outcome is one shared enum across every scan feature (Insight
-// defines the canonical one). PR Review's `link_finding_task` returns the same shape, so
-// it re-exports rather than defining a twin — the shared
-// `sidecar::convert::convert_to_task` helper takes exactly one type.
-pub use crate::store::insight::LinkOutcome;
+// The convert-to-task link outcome is one shared enum across every scan feature, homed in
+// `run_store` beside the generic check-and-set that produces it. PR Review's
+// `link_finding_task` returns the same shape, so it re-exports rather than defining a
+// twin — the shared `sidecar::convert::convert_to_task` helper takes exactly one type.
+pub use crate::store::run_store::LinkOutcome;
 
 /// A persisted PR-review finding: the engine's review output plus the Rust-owned
 /// lifecycle fields (`status`, `linkedTaskId`). `lens`/`severity`/`status` are stored as

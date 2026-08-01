@@ -1,15 +1,16 @@
-//! Leaf data types persisted on the `Task` model.
+//! Leaf wire/data types shared across tiers.
 //!
 //! Home of the structure-lock result cluster (`StepStatus` →
 //! [`StructureLockCheck`] → [`StructureLockResult`]) that travels inside the
-//! persisted `Task` JSON. This module imports nothing from the rest of the crate
-//! — it is a dependency leaf — so the stored `Task` model can name the shapes it
-//! persists without reaching up into the lifecycle modules that produce them.
-//! Those gauntlet runners import these shapes back down from here, so there is no
-//! cycle.
+//! persisted `Task` JSON, and of [`TokenTotals`] — the token-counter struct two
+//! unrelated features name (the Trust Report receipt and the usage meter's cost
+//! estimate). This module imports nothing from the rest of the crate — it is a
+//! dependency leaf — so a feature can name the shapes it persists or reports
+//! without reaching up (or sideways) into the modules that produce them. Those
+//! producers import these shapes back down from here, so there is no cycle.
 //!
-//! These three types are the canonical definitions; their `ts-rs` bindings
-//! (`StepStatus.ts`, `StructureLockCheck.ts`, `StructureLockResult.ts`) are
+//! These are the canonical definitions; their `ts-rs` bindings (`StepStatus.ts`,
+//! `StructureLockCheck.ts`, `StructureLockResult.ts`, `TokenTotals.ts`) are
 //! generated unchanged from here — relocating a type does not alter its
 //! generated TS (that depends on the name/fields/derives/`export_to`, not the
 //! Rust module path).
@@ -160,4 +161,27 @@ pub struct ConventionDrift {
     pub error_reason: Option<String>,
     /// Stable carry-forward key — `== conventionFingerprint` (v0.4 acknowledged-drift).
     pub fingerprint: String,
+}
+
+/// Token usage totalled across a task's retained sessions.
+// Homed HERE — a crate leaf — rather than inside the Trust Report feature that first
+// declared it (issue #178): it is a wire type named by TWO unrelated features (the
+// per-task Trust Report receipt `workflow::trust::TrustReport`, and the usage meter's
+// `usage::contract::UsageCost` popover estimate, issue #121), so neither should have to
+// import the other to name a struct of counters. The doc line above is verbatim from its
+// old home: it is exported into `TokenTotals.ts` by ts-rs, and a relocation must not
+// churn the generated binding.
+//
+// `PartialEq` is derived so the usage meter's `UsageCost { tokens: Option<TokenTotals> }`
+// (issue #121) can derive `PartialEq` — trivially correct for a struct of counters.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(TS))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, ts(export, export_to = "TokenTotals.ts"))]
+pub struct TokenTotals {
+    pub input: u64,
+    pub output: u64,
+    pub reasoning_output: u64,
+    pub cache_read: u64,
+    pub cache_creation: u64,
 }

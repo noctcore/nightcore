@@ -1,22 +1,23 @@
-/** The shared severity scale used by every grounded-finding surface (Insight,
- *  Harness, PR-review). The Insight `FindingSeverity` and PR-review
- *  `ReviewSeverity` contract enums are the same five members, so the ordering,
- *  ranking, and badge palette are declared once here rather than re-cloned per
- *  feature — `no-cross-feature-imports` forbids a sibling feature from reaching
- *  into another's constants, so `lib/` is the one import-legal shared home. */
+/** The web's presentation layer over the ONE contract severity scale, used by every
+ *  grounded-finding surface (Insight, Harness, PR-review). The scale's MEMBERS are not
+ *  declared here — they come from `@nightcore/contracts` (issue #178, which retired the
+ *  hand-written union this file used to carry). What IS declared here is everything the
+ *  contract has no opinion about: display order, rank, and the badge palette. They live
+ *  in `lib/` rather than in a feature because `no-cross-feature-imports` forbids a
+ *  sibling feature from reaching into another's constants, so `lib/` is the one
+ *  import-legal shared home. */
+import { type Severity, SeveritySchema } from '@nightcore/contracts';
 
-/** The five severity levels, structurally identical to the `FindingSeverity` and
- *  `ReviewSeverity` contract enums. */
-export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info';
+export type { Severity };
 
-/** Severity order, highest first (for sorting + the "All"/section headers). */
-export const SEVERITY_ORDER: Severity[] = [
-  'critical',
-  'high',
-  'medium',
-  'low',
-  'info',
-];
+/** Severity order, highest first (for sorting + the "All"/section headers) —
+ *  DERIVED by reversing the contract's low→high declaration order rather than
+ *  restated, so a new level added to the contract cannot silently miss this list.
+ *  (`SEVERITY_META` below is a `Record<Severity, …>`, so the compiler forces the
+ *  palette to grow with it too.) */
+export const SEVERITY_ORDER: readonly Severity[] = [
+  ...SeveritySchema.options,
+].reverse();
 
 /** A numeric rank for a severity (higher = more severe), for descending sorts. */
 export function severityRankValue(s: Severity): number {

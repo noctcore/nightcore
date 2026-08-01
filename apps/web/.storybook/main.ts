@@ -22,7 +22,7 @@ const config: StorybookConfig = {
         'storybook/test',
         'storybook/actions',
         'react-dom/client',
-        // @storybook/react-dom-shim (dist/react-18.mjs) is the module Storybook's
+        // @storybook/react-dom-shim (dist/react-18.js) is the module Storybook's
         // React renderer dynamically imports to mount a story. Pre-bundle it for the
         // same reason as react-dom/client: a mid-run re-optimize 404s the in-flight
         // page as `.../sb-vitest/deps/react-18-*.js` (the F3 false-red documented in
