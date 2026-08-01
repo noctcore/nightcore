@@ -116,6 +116,7 @@ Dispatch rule that matters: a **server request** has both `method` and `id`; a
 | governance battery | `untrusted` | `accept` | `cat .env`, `echo pwned > package-lock.json`, `printf … >> AGENTS.md`, `git commit --no-verify` |
 | mutation battery | `untrusted` | `decline` | `mkdir`, `chmod 777`, `sed -i`, `ln -s`, `mv` |
 | MCP deny / MCP accept | `untrusted` | `decline` / `accept` | call a purpose-built MCP tool that writes a marker file |
+| MCP sandbox escape | `untrusted` | `accept` | same MCP tool, but writing to an absolute path **outside** the thread `cwd` |
 
 Every run's verdict is checked **against the filesystem** afterwards, never against
 the agent's own narration.
@@ -366,13 +367,25 @@ Accept control (`{"action":"accept"}`), same turn:
 - MCP server log: `{"method":"tools/call","params":{…,"name":"spike_write_marker","arguments":{"path":"/…/mcp-marker.txt","text":"mcp-tool-ran"}}}` followed by the server's own `tool-executed` entry.
 - Filesystem: `mcp-marker.txt` exists, content `mcp-tool-ran`.
 
-**This is the one axis where the approval gate is the *only* containment.** The MCP
-server runs as an ordinary child process outside the Seatbelt sandbox — it wrote the
-file with no sandbox involvement. So `providesOwnWriteContainment: true` in
-`packages/engine/src/providers/codex/capabilities.ts` does **not** cover MCP tool
-calls, and this newly-discovered gate is precisely what would close that hole.
+### 6.1 The approval gate is the ONLY containment on this axis
 
-### 6.1 Adapter traps on this channel
+Third run, `sandbox: "workspace-write"`, decision `accept`, tool told to write to an
+absolute path **outside** the thread's `cwd`:
+
+```
+$ ls -la …/scratchpad/OUTSIDE-WORKSPACE-MARKER.txt
+-rw-r--r--  7 bytes      # written, outside the workspace, under workspace-write
+```
+
+The MCP server runs as an ordinary child process; Codex's Seatbelt sandbox does not
+apply to it. So `providesOwnWriteContainment: true` in
+`packages/engine/src/providers/codex/capabilities.ts` — which is accurate for the
+agent's own shell and patch tools — does **not** cover MCP tool calls. For that axis
+the approval request found in §6 is not an *additional* layer on top of the sandbox;
+it is the only layer there is. That makes this the highest-value part of the seam,
+and it is the part #304 currently records as non-existent.
+
+### 6.2 Adapter traps on this channel
 
 1. **The tool name is not a structured field.** `_meta` carries `tool_description`
    and `tool_params`, but the tool's *name* appears only inside the English
@@ -538,7 +551,7 @@ enforcement on writes, patches, and MCP tool calls; observe-only on non-mutating
 1. **The cost is unchanged.** It is still a full turn-driver rewrite —
    `thread/start`/`turn/start`/`turn/interrupt` replacing `runStreamed()` and
    `AbortController`, a new event-translation layer for the `item/*` vocabulary, plus
-   the `itemId`-join buffering that §3 and §6.1 now show is *mandatory*, not optional.
+   the `itemId`-join buffering that §3 and §6.2 now show is *mandatory*, not optional.
 2. **Protocol risk went up, not down.** §7.3 is a live breaking change on the exact
    field an Option B client must set, and — worse — a **divergence between the pinned
    npm SDK's declared types and the daemon's accepted values inside the same version**.
@@ -597,7 +610,7 @@ degrades to post-hoc audit rather than to nothing.
   absent from the list yet is accepted and is what actually blocks. Do not derive the
   client's decision set from that field.
 - **`item/fileChange/requestApproval` has no paths; MCP approvals have no tool name
-  and no `itemId`.** Both require buffering `item/started` and joining. (§3, §6.1)
+  and no `itemId`.** Both require buffering `item/started` and joining. (§3, §6.2)
 - **`thread/start` writes to `~/.codex/config.toml`.** (§2.4)
 - **The `granular` policy needs `initialize.capabilities.experimentalApi: true`**, and
   opting into `experimentalApi` also changes which methods/fields the server exposes.
