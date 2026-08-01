@@ -330,6 +330,21 @@ jobs:
       # `bun run test:rust` compiles the sidecar (Tauri externalBin) then runs
       # `cargo test`, which also re-exports the Rust structs into
       # apps/web/src/lib/generated/ via ts-rs.
+      #
+      # E2E ladder RING 3(b) (issue #253) rides this step: `src/e2e/sidecar_boundary/`
+      # boots that just-compiled sidecar against a scratch git repo in a temp dir and
+      # drives it with the REAL Rust `SidecarProvider` — the CORE half of the live
+      # sidecar↔core boundary that ring 3 (`e2e:ring3`, driven from TypeScript) cannot
+      # see. It rides here rather than in a job of its own for the same reason ring 3
+      # rides `bun-checks`: it costs ~1 second, its two prerequisites (the compiled
+      # externalBin + a warm cargo cache) are already paid for by this step, and a
+      # separate job would need branch protection updated to become required. The
+      # compile is `test:rust`'s own first half, so the binary is always present — the
+      # ring has no skip path.
+      #
+      # Its timeout is IN the test (a 30s per-wait ceiling, plus the provider's own 20s
+      # query timeout): a wedged child reds in seconds instead of burning this job's
+      # 30-minute budget.
       - run: bun run test:rust
       # Static-analysis half of the Rust lint gate — the TS side's error-or-off
       # discipline applied to Rust. Runs AFTER test:rust so the sidecar
