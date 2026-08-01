@@ -15,10 +15,10 @@ use std::time::UNIX_EPOCH;
 use serde_json::Value;
 
 use crate::infra::time::iso8601_utc;
+use crate::store::types::TokenTotals;
 use crate::task::now_ms;
 use crate::usage::contract::UsageCost;
 use crate::usage::pricing::price_for;
-use crate::workflow::trust::TokenTotals;
 
 /// Only scan transcripts modified within this window — the estimate is a recent-usage
 /// figure, and a bounded window keeps a whole-tree read cheap.

@@ -24,8 +24,8 @@ use serde_json::Value;
 #[cfg(test)]
 use ts_rs::TS;
 
-use crate::store::insight::{InsightUsage, LinkOutcome};
-use crate::store::run_store::{Edit, PersistedRun, RunStore};
+use crate::store::insight::InsightUsage;
+use crate::store::run_store::{Edit, LinkOutcome, PersistedRun, RunStore};
 
 /// The validation's analysis of a linked open PR, persisted (the stored twin of the
 /// contract `IssuePrAnalysis`). `recommendation` is kept as its wire string so this

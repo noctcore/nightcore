@@ -6,10 +6,10 @@ use std::collections::{HashMap, HashSet};
 
 use super::store::HarnessStore;
 use super::wire::{HarnessRun, StoredConventionFinding, StoredHarnessProposal};
-// Reuse Insight's convert-to-task outcome enum rather than duplicating it — the same
-// precedent as `FindingLocation`, so both features share ONE `LinkOutcome`. Re-exported
+// Reuse the shared convert-to-task outcome enum rather than duplicating it — the same
+// precedent as `FindingLocation`, so every feature shares ONE `LinkOutcome`. Re-exported
 // (`pub use`) so it flows through the `harness::*` facade for `commands.rs` + tests.
-pub use crate::store::insight::LinkOutcome;
+pub use crate::store::run_store::LinkOutcome;
 use crate::store::run_store::{Edit, LifecycleItem};
 
 impl LifecycleItem for StoredConventionFinding {

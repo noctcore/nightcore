@@ -21,11 +21,11 @@ use ts_rs::TS;
 use crate::store::insight::{string_array, FindingLocation, InsightUsage};
 use crate::store::run_store::{LifecycleItem, PersistedRun, RunStore};
 
-// The convert-to-task link outcome is one shared enum across every scan feature (Insight
-// defines the canonical one; Harness already re-exports it). Scorecard's
+// The convert-to-task link outcome is one shared enum across every scan feature, homed in
+// `run_store` beside the generic check-and-set that produces it. Scorecard's
 // `link_reading_task` returns the same shape, so it re-exports rather than defining a
 // twin — the shared `sidecar::convert::convert_to_task` helper takes exactly one type.
-pub use crate::store::insight::LinkOutcome;
+pub use crate::store::run_store::LinkOutcome;
 
 /// One grounded piece of evidence under a reading (mirrors the contract
 /// `ScorecardEvidence`). `location` reuses the Insight [`FindingLocation`].

@@ -26,10 +26,10 @@ mod tests;
 
 pub(crate) use aggregate::build_report;
 pub(crate) use contract::TrustReport;
-// `TokenTotals` is reused at RUNTIME by the usage meter's popover cost estimate
-// (`usage::contract::UsageCost`, issue #121), so it is re-exported unconditionally
-// (not `#[cfg(test)]` like the other nested section shapes below).
-pub(crate) use contract::TokenTotals;
+// `TokenTotals` used to be declared in `contract.rs` and re-exported here for the usage
+// meter's popover cost estimate (`usage::contract::UsageCost`, issue #121). It now lives
+// at `crate::store::types` (issue #178) — a leaf both features import DOWN from — so this
+// module no longer re-exports it and `usage` no longer imports the workflow tier.
 pub(crate) use post::{post_trust_comment_with, require_pr_number, GH_COMMENT_TIMEOUT};
 pub(crate) use render::{render_for_github, render_markdown};
 
