@@ -82,6 +82,24 @@ impl SidecarProvider {
         cmd.env("NIGHTCORE_PROVIDER", &self.provider_id);
     }
 
+    /// Test-only seam (issue #253, E2E ladder ring 3(b)): adopt an ALREADY-spawned
+    /// child's stdin so the crate-root `e2e::sidecar_boundary` harness can own the
+    /// child's environment — a scratch `HOME`, a scratch repo cwd, and the ladder's
+    /// `NIGHTCORE_E2E_REPLAY` transcript directory — while still driving the
+    /// PRODUCTION command writers ([`Provider::start_session`], [`Provider::query`])
+    /// over the real pipe. [`spawn`](Self::spawn) deliberately injects only
+    /// `NIGHTCORE_PROVIDER`, so there is no production path that could pass those
+    /// vars, and widening it for a test would put a test-shaped hole in the app's
+    /// process launcher.
+    ///
+    /// Gated to `#[cfg(test)]`, so it is never compiled into the app and changes no
+    /// production behavior — the same shape as
+    /// [`push_pending_for_test`](Self::push_pending_for_test).
+    #[cfg(test)]
+    pub(crate) async fn adopt_stdin_for_test(&self, stdin: tokio::process::ChildStdin) {
+        *self.stdin.lock().await = Some(stdin);
+    }
+
     /// Spawn the sidecar child, store its stdin writer, and return its stdout +
     /// stderr for the caller to install readers on. Idempotent: returns `Ok(None)`
     /// when the child is already running. Holds the stdin lock for the spawn.

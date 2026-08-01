@@ -26,6 +26,15 @@
 //! - [`crash_requeue`] — the boot crash-recovery path: `reset_after_crash` returns
 //!   the orphaned tasks + the reconcile core requeues stranded `InProgress`/`Verifying`
 //!   tasks, over a real `TaskStore`.
+//! - [`sidecar_boundary`] — ring **3(b)** (issue #253): the one module here that DOES
+//!   spawn a child. It boots the COMPILED sidecar against a scratch git repo in a temp
+//!   dir and drives it with the real [`crate::provider::SidecarProvider`], so the
+//!   CORE's own encoder/decoder meet a LIVE sidecar: the hand-written `start_session`/
+//!   `query` payload mapping is validated by the sidecar's real zod (which no Rust test
+//!   and no codegen guard can evaluate), the `SurfaceQuery` → `query-result` RPC
+//!   correlation round-trips over a real pipe, and every line the running engine emits
+//!   must decode into [`crate::contracts::NightcoreEvent`]. Ring 3 (`bun run e2e:ring3`)
+//!   crosses the same pipe from the TypeScript side and therefore never sees any of it.
 //! - [`transcript_replay`] — ring 1 **(c)** (issue #278): replay checked-in transcripts
 //!   of the shapes a REAL sidecar emits (build / Insight scan / PR review), grounded in
 //!   the codegen'd `contracts/fixtures.json`, through the reader's correlation +
@@ -62,5 +71,6 @@ mod crash_requeue;
 mod failure_breaker;
 mod harness;
 mod run_lifecycle;
+mod sidecar_boundary;
 mod slot_leak;
 mod transcript_replay;
