@@ -36,6 +36,7 @@ const COUNCIL_COMMAND_TYPES = [
   'kill-council',
   'resolve-council-converge',
   'set-council-routing',
+  'send-council-human-input',
   // The host → engine RESOLUTION of a `worktree-op-required` request (issue #383). It is
   // `requestId`-correlated, but routed through this council family because the run it
   // resolves is council-scoped (like `resolve-council-converge`), so it lands before the
@@ -191,6 +192,20 @@ export class CouncilRouter {
       // the append-only transcript, which streams it back over `nc:debate` (the canvas
       // reflects it) — the injection firewall (safety #1) is untouched.
       this.council.setRouting(command.runId, command.edges);
+      return;
+    }
+    if (command.type === 'send-council-human-input') {
+      // The human's mid-debate message (issue #361). A CONDUCTOR DIRECTIVE — the Conductor
+      // relays it through the SAME quoted + injection-scanned `deliverBetweenSeats` path
+      // every cross-seat text takes and stages the QUOTED rendering for the target seat(s)'
+      // next mediated turn. It is NOT dispatched to a session runner (`send-input` /
+      // `streamInput`), which would hand a surface direct-to-seat write authority and
+      // deliver human prose as a bare instruction (safety #1/#2).
+      this.council.sendHumanInput(command.runId, {
+        mode: command.mode,
+        message: command.message,
+        ...(command.seatId !== undefined ? { seatId: command.seatId } : {}),
+      });
       return;
     }
     if (command.type === 'resolve-worktree-op') {

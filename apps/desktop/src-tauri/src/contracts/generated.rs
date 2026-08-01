@@ -221,6 +221,14 @@ pub enum SurfaceCommand {
         edges: Vec<CouncilRoutingEdge>,
     },
     #[serde(rename_all = "camelCase")]
+    SendCouncilHumanInput {
+        run_id: String,
+        mode: CouncilHumanInputMode,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        seat_id: Option<String>,
+        message: String,
+    },
+    #[serde(rename_all = "camelCase")]
     ResolveWorktreeOp {
         request_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -916,6 +924,14 @@ pub enum CouncilConvergeDecision {
     Accept,
     Reject,
     Judge,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CouncilHumanInputMode {
+    Broadcast,
+    Direct,
+    Steer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

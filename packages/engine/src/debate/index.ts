@@ -50,6 +50,17 @@ export { RunGovernor } from './conductor-budget.js';
 export type { BuildOutcome, RunBuildInput } from './conductor-build.js';
 export { presetHasBuildStage, runBuild } from './conductor-build.js';
 export type {
+  HumanInputDirective,
+  HumanInputRuntime,
+  HumanInputUpdate,
+} from './conductor-human-input.js';
+export {
+  applyHumanInputDirective,
+  HUMAN_INPUT_SEAT_ID,
+  HumanInputQueue,
+  seedHumanInputRuntime,
+} from './conductor-human-input.js';
+export type {
   ReviewContext,
   ReviewDriver,
   ReviewResult,

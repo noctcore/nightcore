@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { runTotals, scanFailure, TokenUsageSchema } from './event-fragments.js';
+import { type Severity, SeveritySchema } from './severity.js';
 
 /**
  * `@nightcore/contracts` — Insight (codebase analysis) shapes.
@@ -33,15 +34,14 @@ export const FindingCategorySchema = z.enum([
 export type FindingCategory = z.infer<typeof FindingCategorySchema>;
 
 /** ONE severity scale for every category (fixes the per-category vocab drift in
- *  Aperant's Ideation). Ordered low→high for global ranking. */
-export const FindingSeveritySchema = z.enum([
-  'info',
-  'low',
-  'medium',
-  'high',
-  'critical',
-]);
-export type FindingSeverity = z.infer<typeof FindingSeveritySchema>;
+ *  Aperant's Ideation). Ordered low→high for global ranking.
+ *
+ *  The scale itself is declared ONCE in `severity.ts` and shared with PR-review's
+ *  `ReviewSeveritySchema` and the web's badge palette (issue #178); this is the
+ *  Insight-facing NAME for it, kept so every call site, docstring, and the
+ *  generated Rust `FindingSeverity` resolve unchanged. */
+export const FindingSeveritySchema = SeveritySchema;
+export type FindingSeverity = Severity;
 
 /** ONE effort scale for every category — the estimated work to address a finding. */
 export const FindingEffortSchema = z.enum([

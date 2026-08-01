@@ -23,6 +23,26 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     groups:
+      # THE ONE GROUP THAT INCLUDES MAJORS. Storybook refuses to run unless every
+      # one of its packages sits on the same major, so a per-package PR is
+      # structurally unmergeable: #413 moved `@storybook/react-vite` to 10 and died
+      # on `No matching export ... "Tag"` against core 9, while #414 moved core
+      # only and made bun resolve a NESTED storybook@9 under every `@storybook/*`
+      # package (two cores in one install). Neither could ever go green alone.
+      #
+      # This does NOT contradict the #398 decision below to ungroup majors — that
+      # rationale is "one migration per PR", and the Storybook family IS one
+      # migration whose packages must move in lockstep. Without this group, every
+      # future Storybook major arrives as N individually-unmergeable PRs that a
+      # human has to hand-merge into one branch (see #425).
+      #
+      # Listed FIRST on purpose: Dependabot assigns a dependency to the first
+      # group it matches, so this keeps the family together for minor/patch too
+      # (same lockstep requirement, same failure if it splits).
+      storybook:
+        patterns:
+          - "storybook"
+          - "@storybook/*"
       # Minor/patch only. Majors are deliberately EXCLUDED from the group so each
       # arrives as its own PR: the grouped major PR (#396) bundled ESLint 9→10,
       # TypeScript 5→7, Vitest 3→4, Vite 8 and Storybook 9→10 into one branch and

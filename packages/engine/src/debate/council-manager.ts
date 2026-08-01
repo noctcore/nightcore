@@ -28,6 +28,10 @@ import type { Logger } from '@nightcore/shared';
 import type { BuildDriver } from './build-writer.js';
 import { DebateBus } from './bus.js';
 import { Conductor } from './conductor.js';
+import type {
+  HumanInputDirective,
+  HumanInputUpdate,
+} from './conductor-human-input.js';
 import type { ReviewDriver } from './conductor-review.js';
 import type {
   ConvergeDecision,
@@ -156,6 +160,29 @@ export class CouncilManager {
     if (!update.ok) {
       this.logger?.debug('council routing directive for unknown/finished run ignored', {
         councilRunId,
+        reason: update.reason,
+      });
+    }
+    return update;
+  }
+
+  /** Relay a HUMAN's mid-debate message into a live run — broadcast-all / DM-one /
+   *  steer-stage (issue #361). Delegates to the {@link Conductor}, the sole bus writer,
+   *  which quotes + injection-scans the message through `deliverBetweenSeats` and stages
+   *  the QUOTED rendering for the target seat(s)' next mediated turn — never the raw
+   *  `send-input` path into a running session (safety #1/#2). A refused directive
+   *  (unknown/finished run, empty message, unknown seat) is logged, not thrown, mirroring
+   *  the fire-and-forget dispatch every council command uses. The MESSAGE is user content
+   *  and is never logged. */
+  sendHumanInput(
+    councilRunId: string,
+    directive: HumanInputDirective,
+  ): HumanInputUpdate {
+    const update = this.conductor.sendHumanInput(councilRunId, directive);
+    if (!update.ok) {
+      this.logger?.debug('council human input refused', {
+        councilRunId,
+        mode: directive.mode,
         reason: update.reason,
       });
     }

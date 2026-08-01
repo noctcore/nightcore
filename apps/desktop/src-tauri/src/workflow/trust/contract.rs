@@ -19,7 +19,9 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use ts_rs::TS;
 
-use crate::store::types::StructureLockResult;
+// `TokenTotals` is a crate leaf (`store::types`), not a report-local shape: the usage
+// meter names it too, so it was hoisted out of this feature module (issue #178).
+use crate::store::types::{StructureLockResult, TokenTotals};
 use crate::task::{RunMode, TaskStatus};
 
 /// One per-task governance receipt: what the deterministic gauntlet + reviewer
@@ -173,21 +175,6 @@ pub struct FlightSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub tokens: Option<TokenTotals>,
-}
-
-/// Token usage totalled across a task's retained sessions.
-// `PartialEq` is derived so the usage meter's `UsageCost { tokens: Option<TokenTotals> }`
-// (issue #121) can derive `PartialEq` — trivially correct for a struct of counters.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(TS))]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, ts(export, export_to = "TokenTotals.ts"))]
-pub struct TokenTotals {
-    pub input: u64,
-    pub output: u64,
-    pub reasoning_output: u64,
-    pub cache_read: u64,
-    pub cache_creation: u64,
 }
 
 /// An injection-quarantine event. v1 PLACEHOLDER — never populated (the report's

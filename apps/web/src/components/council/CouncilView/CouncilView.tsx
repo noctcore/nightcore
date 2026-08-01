@@ -3,16 +3,15 @@
  * shell over {@link useCouncilView}: idle shows the start panel; a live/settled run
  * shows the seat-node canvas beside the team-chat projection of the `nc:debate` bus.
  *
- * Human controls shipped in P1: convene (from the `research` preset), and the kill
- * switch (safety #4). Broadcast-all / DM-one / steer-stage need a conductor-mediated
- * human-input command that a follow-up slice adds — injecting human text straight into
- * a seat would bypass the moderated, quoted, injection-scanned bus (safety #1/#2), so
- * this slice keeps the canvas a pure READER and renders those controls as a disabled
- * affordance. #353 adds the human Converge (judge/accept/reject).
+ * Human controls: convene (from the `research` preset), the kill switch (safety #4), the
+ * Converge gavel (#353), and — while a run is live — broadcast-all / DM-one / steer-stage
+ * (#361). The last three go through the {@link HumanInputBar}, which dispatches a
+ * CONDUCTOR directive; the Conductor quotes + injection-scans the message into the target
+ * seat(s)' next mediated turn. Injecting human text straight into a seat (`sendInput`)
+ * would bypass the moderated bus (safety #1/#2) and is used nowhere in this feature.
  */
 import {
   AgentsIcon,
-  BroadcastIcon,
   Button,
   EmptyState,
   fadeRise,
@@ -26,6 +25,7 @@ import { ConvergeGavel } from '../ConvergeGavel';
 import type { CouncilPhase } from '../council.types';
 import { CouncilReplay } from '../CouncilReplay';
 import { CouncilStartPanel } from '../CouncilStartPanel';
+import { HumanInputBar } from '../HumanInputBar';
 import { ReplyDiff } from '../ReplyDiff';
 import { SeatCanvas } from '../SeatCanvas';
 import { TeamChat } from '../TeamChat';
@@ -127,23 +127,15 @@ export function CouncilView(props: CouncilViewProps) {
                 />
               </m.div>
             ) : (
-              // Broadcast/DM/steer bar — DEFERRED: a conductor-mediated human-input
-              // command is a follow-up slice (#361); feeding text straight into a seat
-              // would bypass the moderated bus (safety #1/#2). Rendered disabled so the
-              // layout matches the design intent and the deferral is visible, not silent.
-              <div
-                className="flex shrink-0 items-center gap-2 border-t border-border bg-card/40 px-4 py-2.5"
-                aria-label="Broadcast to the council (coming soon)"
-              >
-                <BroadcastIcon size={14} className="text-muted-foreground" aria-hidden />
-                <span className="text-2xs text-muted-foreground">
-                  Broadcast and direct messages are coming soon. The council is read-only
-                  for now.
-                </span>
-                <Button variant="secondary" disabled className="ml-auto">
-                  Broadcast to all
-                </Button>
-              </div>
+              // Broadcast-all / DM-one / steer-stage (#361). The bar DISPATCHES the
+              // human's message to the Conductor, which quotes + injection-scans it and
+              // stages it for the target seat(s)' next mediated turn — it never feeds text
+              // into a seat via `sendInput` (safety #1/#2). Disabled while no run is live.
+              <HumanInputBar
+                seatIds={view.transcript.seats.map((seat) => seat.seatId)}
+                onSend={view.sendHumanInput}
+                live={view.isLive}
+              />
             )}
           </div>
           <TeamChat chat={view.transcript.chat} />

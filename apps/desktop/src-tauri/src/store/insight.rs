@@ -23,13 +23,10 @@ use ts_rs::TS;
 use crate::store::run_store::{LifecycleItem, PersistedRun, RunStore};
 
 /// The result of an atomic convert-to-task link (see [`InsightStore::link_finding_task`]).
-pub enum LinkOutcome {
-    /// The finding was unlinked and is now `converted` + linked to the new task.
-    Linked,
-    /// The finding was ALREADY linked to this task id (idempotent re-convert) — the
-    /// caller should discard the task it just minted and return the existing one.
-    AlreadyLinked(String),
-}
+/// Declared in [`crate::store::run_store`] beside the generic check-and-set that produces
+/// it (issue #178 — the generic run store must not import the feature it abstracts);
+/// re-exported here so `crate::store::insight::LinkOutcome` keeps resolving.
+pub use crate::store::run_store::LinkOutcome;
 
 /// A grounded file:line anchor for a finding (mirrors the contract `FindingLocation`
 /// but owned Rust-side with ts-rs export for the web). Lines are 1-based.

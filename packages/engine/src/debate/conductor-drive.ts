@@ -21,6 +21,7 @@ import type { RunGovernor } from './conductor-budget.js';
 import { runBuild } from './conductor-build.js';
 import { type ParkedConverge, runConverge } from './conductor-converge.js';
 import { debateMaxRounds, stageDispatchConfig } from './conductor-dispatch.js';
+import type { HumanInputRuntime } from './conductor-human-input.js';
 import { debatePrompt, proposePrompt } from './conductor-prompts.js';
 import { runProposeStage } from './conductor-propose.js';
 import { runReview } from './conductor-review.js';
@@ -93,6 +94,7 @@ export async function driveCouncil(
   seats: SeatContext[],
   routing: RoutingPolicy,
   parked: Map<string, ParkedConverge>,
+  humanInput: HumanInputRuntime,
 ): Promise<CouncilRunResult> {
   const { councilRunId, preset, objective } = input;
 
@@ -145,8 +147,15 @@ export async function driveCouncil(
     informers: (toSeatId) => routing.informers(toSeatId),
     // The #372 no-progress stall stop (a strict shortener; absent ⇒ default rounds).
     ...(deps.noProgressRounds !== undefined ? { noProgressRounds: deps.noProgressRounds } : {}),
-    buildPrompt: (seat, round, peerText) =>
-      debatePrompt(objective, seat, round, peerText),
+    // The #361 conductor-mediated human input, drained fresh each round so a message the
+    // human sends mid-run lands on the NEXT round's prompts. Already quoted +
+    // injection-scanned when it was staged — the loop only embeds it (safety #1/#2).
+    humanInput: (toSeatId) => humanInput.queue.drain(toSeatId),
+    // The #361 `steer` directive, read between rounds — a strict shortener that routes the
+    // run to Converge early (safety #4).
+    steerRequested: () => humanInput.steerRequested,
+    buildPrompt: (seat, round, peerText, humanText) =>
+      debatePrompt(objective, seat, round, peerText, humanText),
     runTurn: (seat, prompt, signal) =>
       runSeatTurn(deps, input, seat, 'debate', prompt, signal),
   });

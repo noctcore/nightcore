@@ -434,6 +434,10 @@ const ENUM_NAMES: Record<string, string> = {
   // The human judge's terminal Converge verdict (issue #353) carried by the
   // `resolve-council-converge` command — the human gavel (safety #7).
   'accept|reject|judge': 'CouncilConvergeDecision',
+  // How a human's mid-debate message is addressed to a live run (issue #361), carried by
+  // the `send-council-human-input` command — the conductor-mediated human-input surface
+  // (NOT `send-input`: human text reaches a seat quoted + scanned, never raw).
+  'broadcast|direct|steer': 'CouncilHumanInputMode',
   // Council debate transcript (issue #348/#352) — the three enums inside a
   // `DebateTranscriptEntry`, now wire-reachable via the `debate-entry` event. Distinct
   // value-sets (no collapse): the state-machine stage, the author's asymmetric role,
@@ -1369,6 +1373,13 @@ const COMMAND_INPUTS: Record<string, unknown> = {
       { from: 'proposer-opus', to: 'critic-opus' },
       { from: 'proposer-sonnet', to: 'critic-opus' },
     ],
+  },
+  'send-council-human-input': {
+    type: 'send-council-human-input',
+    runId: 'run-council1',
+    mode: 'direct',
+    seatId: 'critic-opus',
+    message: 'Weigh the dual-write rollback path before you settle.',
   },
   'resolve-worktree-op': {
     type: 'resolve-worktree-op',

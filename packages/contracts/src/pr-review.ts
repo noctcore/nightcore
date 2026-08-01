@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { runTotals, TokenUsageSchema } from './event-fragments.js';
+import { type Severity, SeveritySchema } from './severity.js';
 
 /**
  * `@nightcore/contracts` — PR Review (GitHub pull-request review) shapes.
@@ -31,17 +32,15 @@ export const ReviewLensSchema = z.enum([
 ]);
 export type ReviewLens = z.infer<typeof ReviewLensSchema>;
 
-/** ONE severity scale for every lens. Ordered low→high for global ranking. Shares
- *  its value-set with the Insight severity scale (they collapse to one generated Rust
- *  enum). */
-export const ReviewSeveritySchema = z.enum([
-  'info',
-  'low',
-  'medium',
-  'high',
-  'critical',
-]);
-export type ReviewSeverity = z.infer<typeof ReviewSeveritySchema>;
+/** ONE severity scale for every lens. Ordered low→high for global ranking.
+ *
+ *  It is LITERALLY the Insight severity scale, not merely a matching value-set: both
+ *  are now aliases of the single `severity.ts` declaration (issue #178), which is
+ *  what the generated Rust already assumed — the emitter keys enums by value-set, so
+ *  `ReviewSeverity` and `FindingSeverity` have always collapsed to one Rust enum.
+ *  The alias is kept so every call site and docstring resolves unchanged. */
+export const ReviewSeveritySchema = SeveritySchema;
+export type ReviewSeverity = Severity;
 
 /** The overall MERGE VERDICT the synthesis pass assigns to the whole PR after every
  *  lens + the adversarial validator have run — one coarse recommendation spanning all
