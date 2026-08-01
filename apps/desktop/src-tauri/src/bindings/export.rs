@@ -49,7 +49,7 @@ fn export_all_bindings() {
     use crate::store::pr_review::{PrReviewRun, StoredReviewFinding};
     use crate::store::scorecard::{ScorecardEvidence, ScorecardRun, StoredReading};
     use crate::store::types::{
-        ConventionDrift, StepStatus, StructureLockCheck, StructureLockResult,
+        ConventionDrift, StepStatus, StructureLockCheck, StructureLockResult, TokenTotals,
     };
     use crate::task::{
         PermissionMode, ProposedSubtask, RunMode, SubtaskStatus, Task, TaskKind, TaskPatch,
@@ -78,8 +78,7 @@ fn export_all_bindings() {
         RuleTally, SpendTotals, TrustBadge,
     };
     use crate::workflow::trust::{
-        FlightSummary, GauntletTrust, GuardrailEvent, GuardrailTrust, QuarantineEvent, TokenTotals,
-        TrustReport,
+        FlightSummary, GauntletTrust, GuardrailEvent, GuardrailTrust, QuarantineEvent, TrustReport,
     };
     use crate::worktree::{
         BranchInfo, DiffFileStat, DiffStatus, MergePreview, MergePreviewStatus,

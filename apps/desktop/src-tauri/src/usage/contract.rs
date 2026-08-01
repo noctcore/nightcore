@@ -17,9 +17,11 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use ts_rs::TS;
 
-// The popover cost scan reuses the Trust Report's token totals verbatim (spec §3.1)
-// — one ts-rs type for "tokens summed across local session logs", not two.
-use crate::workflow::trust::TokenTotals;
+// The popover cost scan reuses the same token totals verbatim (spec §3.1) — one ts-rs
+// type for "tokens summed across local session logs", not two. Imported from the crate
+// leaf `store::types` rather than from the Trust Report feature that first declared it
+// (issue #178), so `usage` doesn't reach into `workflow` for a struct of counters.
+use crate::store::types::TokenTotals;
 
 /// The whole-meter snapshot the web polls + the `nc:usage` push carries. One row
 /// per configured provider, ALWAYS present (a not-connected provider is a dormant
