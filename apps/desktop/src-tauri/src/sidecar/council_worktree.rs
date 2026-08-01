@@ -116,6 +116,22 @@ impl CouncilRunRegistry {
     pub(crate) fn is_registered(&self, run_id: &str) -> bool {
         crate::sync::lock_or_recover(&self.runs).contains_key(run_id)
     }
+
+    /// TEST-ONLY: insert a binding BYPASSING [`Self::register`]'s validation, simulating the
+    /// "future insert path that admits an unsafe id" the [`Self::build_project_path`] re-check
+    /// exists for. Without this, that re-check is unreachable from any test — `register`
+    /// already keeps unsafe ids out of the map, so a lookup returns `None` on absence rather
+    /// than on the guard, and deleting the guard would break nothing (issue #387).
+    #[cfg(test)]
+    fn insert_unchecked(&self, run_id: &str, project_path: PathBuf, build_capable: bool) {
+        crate::sync::lock_or_recover(&self.runs).insert(
+            run_id.to_string(),
+            CouncilRunInfo {
+                project_path,
+                build_capable,
+            },
+        );
+    }
 }
 
 /// The host's reply payload for one worktree op — the FLAT per-op result mirrored by the
@@ -373,26 +389,32 @@ mod tests {
         }
     }
 
+    /// A real `crypto.randomUUID()` — the shape run ids actually have today.
+    const MINTED_UUID: &str = "550e8400-e29b-41d4-a716-446655440000";
+
+    /// Every rejection case the run-id guard owes (issue #387), asserted at EACH enforcement
+    /// point rather than only against the predicate: traversal, separators, dots, absolute
+    /// paths, whitespace/control chars, and empty. Shared so a case added here is
+    /// automatically proven at the predicate, at `register`, AND at `build_project_path`.
+    const UNSAFE_RUN_IDS: &[&str] = &[
+        "",
+        "..",
+        "../../etc",
+        "run-build/../../escape",
+        "/abs/evil",
+        "a.b",
+        "run build",
+        "run_build\n",
+        "run\\build",
+    ];
+
     #[test]
     fn only_filesystem_safe_run_ids_pass_validation() {
         // A real minted id (UUID) and the test-style `run-*` ids are safe.
-        assert!(is_filesystem_safe_run_id(
-            "550e8400-e29b-41d4-a716-446655440000"
-        ));
+        assert!(is_filesystem_safe_run_id(MINTED_UUID));
         assert!(is_filesystem_safe_run_id("run-build"));
-        // Anything that could form a bad path component is refused: traversal, separators,
-        // dots, absolute paths, whitespace, empty, and absurd length.
-        for bad in [
-            "",
-            "..",
-            "../../etc",
-            "run-build/../../escape",
-            "/abs/evil",
-            "a.b",
-            "run build",
-            "run_build\n",
-            "run\\build",
-        ] {
+        // Anything that could form a bad path component is refused.
+        for bad in UNSAFE_RUN_IDS {
             assert!(
                 !is_filesystem_safe_run_id(bad),
                 "an unsafe run id {bad:?} must be refused"
@@ -402,23 +424,64 @@ mod tests {
     }
 
     #[test]
-    fn register_refuses_a_non_filesystem_safe_run_id() {
+    fn register_refuses_every_non_filesystem_safe_run_id() {
         // Defense-in-depth (issue #387): even if run-id minting ever produced a traversal id,
         // register skips it so it never enters the map and never becomes build-capable — the
         // whole seam then refuses every op for it (fail-closed), never deriving a path.
+        // Asserted over the WHOLE rejection matrix, so the guard cannot pass by covering only
+        // the two cases someone happened to write down.
         let registry = CouncilRunRegistry::default();
-        registry.register("../../etc", PathBuf::from("/proj"), true);
-        registry.register("run-build/../escape", PathBuf::from("/proj"), true);
+        for bad in UNSAFE_RUN_IDS {
+            registry.register(bad, PathBuf::from("/proj"), true);
+            assert!(
+                !registry.is_registered(bad),
+                "an unsafe run id {bad:?} must never enter the registry"
+            );
+            assert_eq!(
+                registry.build_project_path(bad),
+                None,
+                "an unsafe run id {bad:?} must never resolve to a project root"
+            );
+        }
+        registry.register(&"a".repeat(129), PathBuf::from("/proj"), true);
+        assert!(!registry.is_registered(&"a".repeat(129)));
 
-        assert!(!registry.is_registered("../../etc"));
-        assert!(!registry.is_registered("run-build/../escape"));
-        assert_eq!(registry.build_project_path("../../etc"), None);
-        assert_eq!(registry.build_project_path("run-build/../escape"), None);
-
-        // A safe id in the same registry still registers + resolves normally.
-        registry.register("run-safe", PathBuf::from("/proj"), true);
+        // A REAL minted id (the shape production actually produces) still registers and
+        // resolves normally — the guard rejects abuse, not the happy path.
+        registry.register(MINTED_UUID, PathBuf::from("/proj"), true);
+        assert!(registry.is_registered(MINTED_UUID));
         assert_eq!(
-            registry.build_project_path("run-safe"),
+            registry.build_project_path(MINTED_UUID),
+            Some(PathBuf::from("/proj"))
+        );
+    }
+
+    #[test]
+    fn build_project_path_refuses_an_unsafe_id_even_when_it_is_in_the_map() {
+        // The SECOND enforcement point — the re-check immediately before the host derives a
+        // path. `register` normally keeps unsafe ids out of the map entirely, which makes this
+        // guard invisible to every other test: deleting it changed NO test result (a surviving
+        // mutant). Inserting UNCHECKED reproduces the exact scenario its comment claims to
+        // cover — a future insert path admitting an unsafe id — so the guard is now the only
+        // thing standing between that id and `worktree_path` joining it blindly (issue #387).
+        let registry = CouncilRunRegistry::default();
+        for bad in UNSAFE_RUN_IDS {
+            registry.insert_unchecked(bad, PathBuf::from("/proj"), true);
+            // Present in the map AND build-capable — so a `None` here can only come from the
+            // charset guard, never from absence.
+            assert!(registry.is_registered(bad));
+            assert_eq!(
+                registry.build_project_path(bad),
+                None,
+                "an unsafe run id {bad:?} in the map must STILL be refused before a path is derived"
+            );
+        }
+
+        // Same unchecked path with a safe id resolves — proving the refusals above come from
+        // the guard and not from `insert_unchecked` simply failing to insert.
+        registry.insert_unchecked(MINTED_UUID, PathBuf::from("/proj"), true);
+        assert_eq!(
+            registry.build_project_path(MINTED_UUID),
             Some(PathBuf::from("/proj"))
         );
     }
