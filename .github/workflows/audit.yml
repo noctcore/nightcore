@@ -46,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # Prebuilt cargo-audit binary (cargo is preinstalled on the runner).
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@v2.85.5
         with:
           tool: cargo-audit
       # Reads ./Cargo.lock and fetches the RustSec advisory DB. Exits non-zero on
