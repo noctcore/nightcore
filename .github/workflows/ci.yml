@@ -405,7 +405,7 @@ jobs:
           key: llvm-cov
       # Prebuilt cargo-llvm-cov binary (same mechanism audit.yml uses for
       # cargo-audit) — `cargo install` would spend minutes compiling it.
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@v2.85.5
         with:
           tool: cargo-llvm-cov
       # Same Tauri system libraries + apt-archive cache as rust-checks; the crate
