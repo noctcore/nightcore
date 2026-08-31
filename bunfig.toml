@@ -1,0 +1,11 @@
+# Bun writes `configVersion: 1` lockfiles as of 1.3.x, and that format defaults
+# workspace installs to the ISOLATED linker. This repo relies on hoisted layout:
+# root-level scripts (scripts/e2e/*.ts) import workspace packages such as
+# @nightcore/contracts without declaring them in the root manifest, which isolated
+# linking correctly refuses to resolve.
+#
+# Pin the linker so a lockfile regeneration cannot silently change install layout
+# out from under CI. Removing this line requires declaring those imports as real
+# root dependencies first.
+[install]
+linker = "hoisted"
