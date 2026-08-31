@@ -1,6 +1,6 @@
 import { composeStories } from '@storybook/react-vite';
-import { userEvent } from '@vitest/browser/context';
 import { expect, test } from 'vitest';
+import { userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-react';
 
 import * as stories from './Tooltip.stories';

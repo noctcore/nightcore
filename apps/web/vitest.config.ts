@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { storybookTest } from '@storybook/addon-vitest/vitest-plugin';
 import tailwind from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import { playwright } from '@vitest/browser-playwright';
 import { defineConfig } from 'vitest/config';
 
 const alias = { '@': fileURLToPath(new URL('./src', import.meta.url)) };
@@ -13,18 +14,23 @@ const alias = { '@': fileURLToPath(new URL('./src', import.meta.url)) };
 // name ("storybook (chromium)" / "unit (chromium)") from its own object.
 const chromium = () => ({
   enabled: true,
-  provider: 'playwright' as const,
+  // Vitest 4 replaced the `provider: 'playwright'` string with a provider
+  // factory from a separate package. `contextOptions` sits on the provider call
+  // rather than per-instance: instance-level provider overrides do NOT merge
+  // with the parent, and this repo runs exactly one instance per project, so the
+  // single provider-level call is the unambiguous shape.
+  provider: playwright({
+    // Emulate `prefers-reduced-motion: reduce` in the test browser. The app's
+    // reduced-motion rule collapses every animation to ~0ms (styles.css), so the
+    // slide-in detail sheets (`nc-sheet-in`) settle instantly instead of moving
+    // ~100px through their 280ms enter — otherwise a `.click()` can race the
+    // animation and land off a button that's still sliding, a latent flake in the
+    // shared DetailPanelShell click tests (Insight/Scorecard/Harness) that only
+    // surfaces in isolated runs. This makes those tests deterministic.
+    contextOptions: { reducedMotion: 'reduce' },
+  }),
   headless: true,
-  // Emulate `prefers-reduced-motion: reduce` in the test browser. The app's
-  // reduced-motion rule collapses every animation to ~0ms (styles.css), so the
-  // slide-in detail sheets (`nc-sheet-in`) settle instantly instead of moving
-  // ~100px through their 280ms enter — otherwise a `.click()` can race the
-  // animation and land off a button that's still sliding, a latent flake in the
-  // shared DetailPanelShell click tests (Insight/Scorecard/Harness) that only
-  // surfaces in isolated runs. This makes those tests deterministic.
-  instances: [
-    { browser: 'chromium' as const, context: { reducedMotion: 'reduce' as const } },
-  ],
+  instances: [{ browser: 'chromium' as const }],
 });
 
 /**

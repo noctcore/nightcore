@@ -1,7 +1,7 @@
 import { DndContext } from '@dnd-kit/core';
 import { composeStories } from '@storybook/react-vite';
-import { userEvent } from '@vitest/browser/context';
 import { expect, test, vi } from 'vitest';
+import { userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-react';
 
 import { ToastProvider } from '@/components/ui';

@@ -78,6 +78,7 @@
     "js-yaml": ">=4.3.1 <5",
     "@hono/node-server": ">=1.19.15 <2",
     "framer-motion": "12.42.2",
-    "motion-dom": "12.42.2"
+    "motion-dom": "12.42.2",
+    "@vitest/spy": "4.1.11"
   }
 }
