@@ -37,62 +37,12 @@ interface Ignored {
 }
 
 /**
- * Advisories tolerated with cause. All are transitive and none is fixable by a
- * version bump today (verified 2026-07-25, issue #158 branch).
+ * Advisories tolerated with cause. Empty as of the 2026-08-31 dependency
+ * refresh (docs/deps/2026-08-31-dependency-upgrade-plan.md, Phase 1): the
+ * brace-expansion and hono/@hono-node-server entries that used to live here
+ * all cleared via a lockfile refresh (see git history for the prior list).
  */
-const IGNORED: readonly Ignored[] = [
-  {
-    id: 'GHSA-mh99-v99m-4gvg',
-    pkg: 'brace-expansion',
-    severity: 'high',
-    rationale:
-      'Build-time tooling only (minimatch under typescript-eslint / storybook / ' +
-      '@vitest/coverage-istanbul / vite). The DoS needs an attacker-supplied glob; ' +
-      'every pattern here is authored in this repo. No runtime/product exposure.',
-    exit:
-      'Advisory covers <=5.0.7, i.e. EVERY published version including the 1.x line ' +
-      'our consumers require — there is no version to move to. Drop this entry once ' +
-      'a fixed release exists and the consumers accept it. Note: forcing 2.x on the ' +
-      '1.x consumers breaks them outright (`brace_expansion_1.expand is not a ' +
-      'function`) — tried and reverted on this branch.',
-  },
-  {
-    id: 'GHSA-frvp-7c67-39w9',
-    pkg: '@hono/node-server',
-    severity: 'moderate',
-    rationale:
-      'Path traversal in `serve-static` on Windows. Reached only through the Claude ' +
-      'Agent SDK’s internal transport; Nightcore never mounts hono static file serving.',
-    exit: 'Drop when the pinned @anthropic-ai/claude-agent-sdk ships a bumped @hono/node-server.',
-  },
-  {
-    id: 'GHSA-xgm2-5f3f-mvvc',
-    pkg: 'hono',
-    severity: 'moderate',
-    rationale:
-      'AWS API Gateway v1 adapter drops a repeated request header. Nightcore is a ' +
-      'local-first desktop app — there is no API Gateway deployment.',
-    exit: 'Drop when the pinned @anthropic-ai/claude-agent-sdk ships hono >=4.12.27.',
-  },
-  {
-    id: 'GHSA-hvrm-45r6-mjfj',
-    pkg: 'hono',
-    severity: 'moderate',
-    rationale:
-      '`hono/jsx` does not isolate context per request. Nothing in this repo imports ' +
-      'hono/jsx; the SDK uses hono as a plain local transport.',
-    exit: 'Drop when the pinned @anthropic-ai/claude-agent-sdk ships hono >=4.12.27.',
-  },
-  {
-    id: 'GHSA-w62v-xxxg-mg59',
-    pkg: 'hono',
-    severity: 'moderate',
-    rationale:
-      'Server-side XSS via the `cx()` JSX utility. Same as above — no hono JSX ' +
-      'rendering anywhere in this codebase.',
-    exit: 'Drop when the pinned @anthropic-ai/claude-agent-sdk ships hono >=4.12.27.',
-  },
-] as const;
+const IGNORED: readonly Ignored[] = [] as const;
 
 const AUDIT_LEVEL = 'moderate';
 
