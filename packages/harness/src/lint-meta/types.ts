@@ -11,6 +11,8 @@
  *
  * Rules are pure functions of an {@link IMetaCtx} and return {@link IViolation}s;
  * the runner exits non-zero when any `ciCritical` rule reports one (or throws).
+ * A rule provides a sync `run`, an async `runAsync`, or both (0.3.0): a check
+ * that needs an async API (ESLint's `calculateConfigForFile`, say) is async-only.
  */
 
 export interface IMetaCtx {
@@ -45,10 +47,23 @@ export interface IMetaRule {
   description: string;
   /** When true, a violation fails CI (the runner exits non-zero). */
   ciCritical?: boolean;
-  run(ctx: IMetaCtx): IViolation[];
+  /**
+   * The sync pass. Optional since 0.3.0, but a rule must declare `run`,
+   * `runAsync`, or both: the registry rejects an object with neither. When both
+   * are present, both run (sync first), and their violations are reported together.
+   * Both are METHOD signatures on purpose: that keeps the parameter check
+   * bivariant, as `run` was in 0.2.0, so a rule typed against a richer ctx still
+   * type-checks (see types.test.ts).
+   */
+  run?(ctx: IMetaCtx): IViolation[];
+  /**
+   * The async pass (0.3.0). A rejection is caught and reported against this rule
+   * exactly like a sync throw: a critical failure that never stops later rules.
+   */
+  runAsync?(ctx: IMetaCtx): Promise<IViolation[]>;
   /**
    * Ratcheting rules implement this to snapshot the CURRENT offenders as a frozen
-   * baseline (a flat `metric-key → number` map). A rule's `run` then grandfathers
+   * baseline (a flat `metric-key → number` map). A rule's `run`/`runAsync` then grandfathers
    * any offender still within its recorded value (see `baseline.ts`). Omit for
    * strict rules.
    */

@@ -62,6 +62,25 @@ describe('createNodeCtx — real filesystem', () => {
     expect([...ctx.glob('**/*.ts')].sort()).toEqual(['a.ts', 'src/b.ts', 'src/nested/c.ts']);
   });
 
+  // Regression: Bun's node:fs globSync returns [] for any pattern with a
+  // dot-directory segment, even a literal one, so workflow rules saw nothing.
+  // This suite runs under Bun, so it exercises exactly that path.
+  test('glob finds files under a dot-directory, as Node does', () => {
+    mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
+    writeFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), 'on: push');
+    writeFileSync(path.join(root, '.github', 'workflows', 'release.yaml'), 'on: push');
+    mkdirSync(path.join(root, 'src', '.hidden'), { recursive: true });
+    writeFileSync(path.join(root, 'src', '.hidden', 'h.ts'), 'h');
+
+    expect(ctx.glob('.github/workflows/*.yml')).toEqual(['.github/workflows/ci.yml']);
+    expect(ctx.glob('.github/workflows/*.yaml')).toEqual(['.github/workflows/release.yaml']);
+    expect(ctx.glob('.github/workflows/ci.yml')).toEqual(['.github/workflows/ci.yml']);
+    expect(ctx.glob('src/.hidden/*.ts')).toEqual(['src/.hidden/h.ts']);
+    // Node's rule still holds: a wildcard does not enter a dot-directory.
+    expect(ctx.glob('**/*.yml')).toEqual([]);
+    expect(ctx.glob('**/*.ts')).toEqual(['a.ts', 'src/b.ts', 'src/nested/c.ts']);
+  });
+
   test('exec runs a command and captures output; it never throws', () => {
     const ok = ctx.exec('node -e "process.stdout.write(String(1+1))"');
     expect(ok.code).toBe(0);

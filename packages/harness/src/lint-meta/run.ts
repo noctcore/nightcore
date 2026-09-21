@@ -3,8 +3,8 @@
  * (lines 69-118 semantics), minus the `--json` / `--update-baseline` machinery
  * the portable runner does not need.
  *
- * Run each rule's `run(ctx)`, capturing a throw as an outcome so ONE broken rule
- * never aborts the whole run. Reporting then folds the outcomes into printable
+ * Run each rule's `run(ctx)` and/or `runAsync(ctx)`, capturing a throw or a
+ * rejection as an outcome so ONE broken rule never aborts the whole run. Reporting then folds the outcomes into printable
  * lines + counts:
  *  - a rule that THROWS is itself a CRITICAL failure (fail-safe: a broken rule in
  *    a foreign CI reds the build, it never silently passes). This HARDENS the
@@ -17,12 +17,17 @@
  */
 import type { IMetaCtx, IMetaRule, IViolation } from './types.js';
 
-/** One rule's result: its violations, or the stringified error if it threw. */
+/** Which entry point produced an outcome. */
+export type RulePass = 'sync' | 'async';
+
+/** One rule pass's result: its violations, or the stringified error if it failed. */
 export interface RuleOutcome {
   id: string;
   ciCritical: boolean;
+  /** `sync` for `run(ctx)`, `async` for `runAsync(ctx)`. */
+  pass: RulePass;
   violations: IViolation[];
-  /** The stringified throw when `run(ctx)` threw; `null` on a clean run. */
+  /** The stringified throw/rejection when the pass failed; `null` on a clean run. */
   threw: string | null;
 }
 
@@ -36,28 +41,56 @@ export interface MetaReport {
   lines: string[];
 }
 
+function describeError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 /**
- * Run every rule once, capturing a throw as an outcome (never aborting the run).
- * `onRule` fires just before each rule runs (legibility — the caller may echo it).
+ * A pass must hand back an ARRAY. A sync `run` that returns a Promise (an async
+ * rule declared under the wrong entry point) would otherwise reach the reporter
+ * as a non-iterable and crash the whole run; name the fix instead.
  */
-export function runMetaRules(
+function checkViolations(pass: RulePass, value: unknown): IViolation[] {
+  if (Array.isArray(value)) return value as IViolation[];
+  if (pass === 'sync' && typeof (value as { then?: unknown } | null)?.then === 'function') {
+    throw new Error('run() returned a Promise; declare an async rule as runAsync(ctx)');
+  }
+  const entry = pass === 'sync' ? 'run()' : 'runAsync()';
+  throw new Error(`${entry} must return an array of violations, got ${typeof value}`);
+}
+
+/**
+ * Run every rule once, in registry order, capturing a throw or a rejection as an
+ * outcome (never aborting the run). A rule with both entry points runs `run`
+ * then `runAsync`, each isolated, and yields one outcome per pass. Async rules
+ * are awaited one at a time, so the report order is deterministic.
+ * `onRule` fires just before each rule runs (legibility, the caller may echo it).
+ */
+export async function runMetaRules(
   rules: IMetaRule[],
   ctx: IMetaCtx,
   onRule?: (rule: IMetaRule) => void,
-): RuleOutcome[] {
+): Promise<RuleOutcome[]> {
   const outcomes: RuleOutcome[] = [];
   for (const rule of rules) {
     onRule?.(rule);
-    const ciCritical = rule.ciCritical === true;
-    try {
-      outcomes.push({ id: rule.id, ciCritical, violations: rule.run(ctx), threw: null });
-    } catch (err) {
-      outcomes.push({
-        id: rule.id,
-        ciCritical,
-        violations: [],
-        threw: err instanceof Error ? err.message : String(err),
-      });
+    const base = { id: rule.id, ciCritical: rule.ciCritical === true };
+    // Called as methods, not destructured, so a rule that reads `this` still works.
+    if (rule.run !== undefined) {
+      try {
+        const violations = checkViolations('sync', rule.run(ctx));
+        outcomes.push({ ...base, pass: 'sync', violations, threw: null });
+      } catch (err) {
+        outcomes.push({ ...base, pass: 'sync', violations: [], threw: describeError(err) });
+      }
+    }
+    if (rule.runAsync !== undefined) {
+      try {
+        const violations = checkViolations('async', await rule.runAsync(ctx));
+        outcomes.push({ ...base, pass: 'async', violations, threw: null });
+      } catch (err) {
+        outcomes.push({ ...base, pass: 'async', violations: [], threw: describeError(err) });
+      }
     }
   }
   return outcomes;
@@ -66,8 +99,9 @@ export function runMetaRules(
 /**
  * Fold rule outcomes into a printable {@link MetaReport}. Violation lines match
  * the internal engine's format exactly: `[ERROR] <rule> (<file>): <message>` for
- * a critical rule, `[info] …` for a non-critical one. A throw is its own critical
- * line and always counts toward `criticalCount`.
+ * a critical rule, `[info] …` for a non-critical one. A throw (or an async
+ * rejection) is its own critical line and always counts toward
+ * `criticalCount`.
  */
 export function reportMetaOutcomes(outcomes: RuleOutcome[]): MetaReport {
   let criticalCount = 0;
@@ -76,7 +110,8 @@ export function reportMetaOutcomes(outcomes: RuleOutcome[]): MetaReport {
 
   for (const outcome of outcomes) {
     if (outcome.threw !== null) {
-      lines.push(`[ERROR] ${outcome.id}: rule threw — ${outcome.threw}`);
+      const verb = outcome.pass === 'async' ? 'rejected' : 'threw';
+      lines.push(`[ERROR] ${outcome.id}: rule ${verb} — ${outcome.threw}`);
       criticalCount += 1;
       continue;
     }

@@ -275,3 +275,50 @@ describe('the built dist has no network or Bun imports (supply-chain posture)', 
     }
   });
 });
+
+describe('async rules and the catalog run under plain node (#277, #278)', () => {
+  // Settly's shape: runAsync with a destructured ctx, and no run at all.
+  const ASYNC_REGISTRY = `module.exports = { META_RULES: [
+    { id: 'async-no-todo', category: 'config', description: 'no TODO, checked later', ciCritical: true,
+      runAsync: async ({ root }) => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return require('node:fs').readFileSync(root + '/note.txt', 'utf8').includes('TODO')
+          ? [{ file: 'note.txt', rule: 'async-no-todo', message: 'found a TODO' }] : [];
+      } },
+    { id: 'rejects', category: 'config', description: 'always rejects',
+      runAsync: () => Promise.reject(new Error('nope')) },
+  ] };`;
+
+  test('an async-only rule reports and a rejecting one reds the build', () => {
+    const dir = lintMetaFixture(ASYNC_REGISTRY);
+    writeFileSync(path.join(dir, 'note.txt'), 'TODO: fix me', 'utf8');
+    const res = runNode(['lint-meta', '--dir', dir]);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain('[ERROR] async-no-todo (note.txt): found a TODO');
+    expect(res.stderr).toContain('[ERROR] rejects: rule rejected — nope');
+  });
+
+  test('catalog writes RULES.md beside the registry, and --check then passes', () => {
+    const dir = lintMetaFixture(ASYNC_REGISTRY);
+    expect(runNode(['catalog', '--dir', dir]).status).toBe(0);
+    const catalog = readFileSync(path.join(dir, '.nightcore', 'lint-meta', 'RULES.md'), 'utf8');
+    expect(catalog).toContain('from `.nightcore/lint-meta/registry.js`. 2 rules, 1 CI-critical.');
+    expect(catalog).toContain('| `async-no-todo` | config   | **yes**     |');
+    expect(runNode(['catalog', '--check', '--dir', dir]).status).toBe(0);
+  });
+
+  test('catalog --check reds a stale catalog and prints the diff', () => {
+    const dir = lintMetaFixture(ASYNC_REGISTRY);
+    expect(runNode(['catalog', '--dir', dir, '--out', 'docs/RULES.md']).status).toBe(0);
+    writeFileSync(
+      path.join(dir, '.nightcore', 'lint-meta', 'registry.js'),
+      ASYNC_REGISTRY.replace("ciCritical: true,", ''),
+      'utf8',
+    );
+    const res = runNode(['catalog', '--check', '--dir', dir, '--out', 'docs/RULES.md']);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain('is out of date');
+    expect(res.stderr).toMatch(/^-\d+: \| `async-no-todo` \| config {3}\| \*\*yes\*\* /m);
+    expect(res.stderr).toMatch(/^\+\d+: \| `async-no-todo` \| config {3}\| no /m);
+  });
+});
