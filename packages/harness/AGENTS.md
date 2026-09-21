@@ -65,17 +65,20 @@ port of the in-process Rust runner in `apps/desktop/src-tauri/src/workflow/gaunt
 - `src/manifest.ts` — the port of `config.rs` (load + plan), pure over an injected `FileReader`.
 - `src/run.ts` — the port of `runner.rs` (full-run execute + `fixInstruction`), pure over an
   injected `SpawnFn`.
-- `src/cli.ts` — arg parse + subcommand dispatch (`check` [default], `lint-meta`, `--json`, `--dir`,
-  `--registry`, `--help`, `--version`). `runCli(argv, io)` is pure over an injected `CliIO`; the
+- `src/cli.ts` — arg parse + subcommand dispatch (`check` [default], `lint-meta`, `catalog`, `--json`,
+  `--dir`, `--registry`, `--out`, `--check`, `--help`, `--version`). `runCli(argv, io)` is pure over an injected `CliIO`; the
   module self-invokes only as the `harness` bin (a symlink-safe entry check). `check` stays
-  synchronous; `lint-meta` is async (bounded dynamic import), so `runCli` returns
+  synchronous; `lint-meta` and `catalog` are async (bounded dynamic import), so `runCli` returns
   `number | Promise<number>` and the bin entry awaits it.
 - `src/lint-meta/` — the ported, portable lint-meta engine (PR 2): the plain-Node `IMetaCtx`
   (`ctx.ts`, `fs.globSync` replacing Bun's `Glob`), the run loop + `[ERROR] <rule> (<file>):
   <message>` reporter (`run.ts`), the ratchet/baseline mechanism (`baseline.ts`), and the
   BOUNDED-EVAL registry loader (`registry.ts` — imports ONLY the enumerated
   `.nightcore/lint-meta/registry.{mts,ts,js}`, TypeScript first, never scan-and-imports any `.js`). A
-  throwing rule is a critical failure (fail-safe). `create-fake-ctx.ts` is a test-only in-memory ctx
+  rule declares `run`, `runAsync`, or both (0.3.0); an object with neither is not a rule. A throwing
+  rule, or a rejecting `runAsync`, is a critical failure (fail-safe) and never stops later rules.
+  `catalog.ts` renders the registry's Markdown rule catalog (pure; the CLI owns I/O and `--check`).
+  `create-fake-ctx.ts` is a test-only in-memory ctx
   (never bundled).
 - `src/index.ts` — the public type barrel (manifest + result shapes) PLUS the portable lint-meta
   contract (`IMetaRule` / `IMetaCtx` / `IViolation`) + the ratchet helpers a generated rule imports.
