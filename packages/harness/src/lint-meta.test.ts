@@ -137,7 +137,7 @@ describe('runCli lint-meta — verdicts', () => {
   });
 });
 
-describe('runCli lint-meta — async rules (#277)', () => {
+describe('runCli lint-meta: async rules (#277)', () => {
   /**
    * The shape Settly's four async rules use: `runAsync({ root })`, destructured,
    * no `run`. It must load, run, and report through the real CLI dispatch.

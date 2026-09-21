@@ -120,7 +120,7 @@ describe('runMetaRules — capture, never abort', () => {
   });
 });
 
-describe('runMetaRules — async rules (runAsync)', () => {
+describe('runMetaRules: async rules (runAsync)', () => {
   test('an async-only rule runs and its violations are reported', async () => {
     const outcomes = await runMetaRules(
       [
