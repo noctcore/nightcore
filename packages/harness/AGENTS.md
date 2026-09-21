@@ -75,7 +75,9 @@ port of the in-process Rust runner in `apps/desktop/src-tauri/src/workflow/gaunt
   synchronous; `lint-meta` and `catalog` are async (bounded dynamic import), so `runCli` returns
   `number | Promise<number>` and the bin entry awaits it.
 - `src/lint-meta/` — the ported, portable lint-meta engine (PR 2): the plain-Node `IMetaCtx`
-  (`ctx.ts`, `fs.globSync` replacing Bun's `Glob`), the run loop + `[ERROR] <rule> (<file>):
+  (`ctx.ts`; its `glob` is `glob.ts`: Node's `fs.globSync` under Node, and a walker with the same
+  rules under Bun, whose `globSync` returns nothing for any dot-directory path such as
+  `.github/workflows/*.yml`; `glob.test.ts` pins parity against real Node), the run loop + `[ERROR] <rule> (<file>):
   <message>` reporter (`run.ts`), the ratchet/baseline mechanism (`baseline.ts`), and the
   BOUNDED-EVAL registry loader (`registry.ts` — imports ONLY the enumerated
   `.nightcore/lint-meta/registry.{mts,ts,js}`, TypeScript first, never scan-and-imports any `.js`). A
