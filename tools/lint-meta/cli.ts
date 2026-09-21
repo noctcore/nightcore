@@ -8,47 +8,19 @@
  * stays the default so `bun run lint:meta` and CI are unchanged) — see
  * `json-reporter.ts` for the stable output contract.
  */
-import { execSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { Glob } from 'bun';
 
 import { serializeBaseline } from './baseline';
+import { createCtx } from './ctx';
 import { buildJsonReport, type RuleOutcome } from './json-reporter';
-import { normalizeText, toPosixRel } from './paths';
 import { META_RULES } from './registry';
-import type { IMetaCtx, IMetaRule } from './types';
+import type { IMetaRule } from './types';
 
 // cli.ts lives at tools/lint-meta/cli.ts → repo root is two levels up.
 const ROOT = path.resolve(import.meta.dir, '..', '..');
 
-const ctx: IMetaCtx = {
-  root: ROOT,
-  read(rel) {
-    const abs = path.join(ROOT, toPosixRel(rel));
-    if (!existsSync(abs)) return null;
-    return normalizeText(readFileSync(abs, 'utf8'));
-  },
-  exists(rel) {
-    return existsSync(path.join(ROOT, toPosixRel(rel)));
-  },
-  glob(pattern) {
-    return Array.from(new Glob(pattern).scanSync({ cwd: ROOT })).map(toPosixRel);
-  },
-  exec(cmd) {
-    try {
-      const stdout = execSync(cmd, {
-        cwd: ROOT,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-      return { code: 0, stdout, stderr: '' };
-    } catch (err) {
-      const e = err as { status?: number; stdout?: string; stderr?: string };
-      return { code: e.status ?? 1, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
-    }
-  },
-};
+const ctx = createCtx(ROOT);
 
 // `--update-baseline`: regenerate every ratcheting rule's committed baseline from
 // the current tree, then exit. Run after a legitimate paydown (a god-file split)
