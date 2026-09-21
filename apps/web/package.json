@@ -47,7 +47,7 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.0",
-    "@vitest/browser": "^3.2.7",
+    "@vitest/browser": "^4.1.10",
     "@vitest/coverage-istanbul": "^3.2.7",
     "playwright": "^1.61.0",
     "storybook": "^10.5.5",
