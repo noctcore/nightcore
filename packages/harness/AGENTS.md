@@ -23,8 +23,12 @@ port of the in-process Rust runner in `apps/desktop/src-tauri/src/workflow/gaunt
 - **Published to npm as `@noctcore/harness` (public).** This is the ONE workspace that ships to
   npmjs.com — under the separate `@noctcore` org, so `package-shape` has a targeted exception (its
   name is `@noctcore/harness`, not `@nightcore/harness`). `version` MUST stay in lockstep with
-  `PORTABLE_LOCK_RUNNER_VERSION` (`sidecar/harness/export/writer.rs`, currently `0.2.0`) — the
-  exported CI template pins `npx --yes @noctcore/harness@<that version> check`. Publishing is
+  `PORTABLE_LOCK_RUNNER_VERSION` (`sidecar/harness/export/writer.rs`) — the exported CI template
+  pins `npx --yes @noctcore/harness@<that version> check`. **Currently out of step on purpose:**
+  this package is `0.3.0` (async rules + `catalog`) while the exporter still pins `0.2.0`. That is
+  safe, because `0.2.0` is published and the exporter emits nothing that needs `0.3.0`; bump
+  `PORTABLE_LOCK_RUNNER_VERSION` (and its test expectations) only after `harness-v0.3.0` is
+  published, or exported bundles red CI with an `npx` 404. Publishing is
   human-triggered by pushing a `harness-v<version>` tag (`.github/workflows/publish-harness.yml`);
   merging never publishes. Requires the `NPM_TOKEN` repo secret + the `noctcore` npm org.
   **An exported bundle is only as good as the published runner it pins**: `0.2.0` adds `--manifest`
