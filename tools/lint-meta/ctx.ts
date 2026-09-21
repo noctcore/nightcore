@@ -13,7 +13,7 @@
  * because the harness only publishes its type surface from the barrel.
  */
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 import { portableGlob } from '../../packages/harness/src/lint-meta/glob.ts';
@@ -32,8 +32,27 @@ export function createCtx(root: string): IMetaCtx {
     exists(rel) {
       return existsSync(path.join(root, toPosixRel(rel)));
     },
+    /*
+     * Files only. `portableGlob` faithfully reproduces Node's `fs.globSync`,
+     * which returns matching DIRECTORIES as well as files; Bun's `Glob`, which
+     * this replaced, returned only files. That difference is not academic here:
+     * vitest writes its image snapshots into directories literally named
+     * `<name>.test.tsx`, so `components/**\/*.tsx` matches 54 directories, and
+     * every rule that globs then reads threw `EISDIR` the moment the walker
+     * changed.
+     *
+     * A lint rule globs in order to read, so a directory in the result is never
+     * useful and always a latent crash. Filtering here keeps that guarantee for
+     * every rule rather than asking each one to remember.
+     */
     glob(pattern) {
-      return portableGlob(pattern, root);
+      return portableGlob(pattern, root).filter((rel) => {
+        try {
+          return statSync(path.join(root, rel)).isFile();
+        } catch {
+          return false;
+        }
+      });
     },
     exec(cmd) {
       try {
