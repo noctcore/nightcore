@@ -27,70 +27,51 @@ import { readFileSync } from 'node:fs';
 interface Ignored {
   /** GHSA id, as it appears in the advisory URL. */
   readonly id: string;
-  /** Package the advisory is filed against. */
+  /** Package(s) the advisory is filed against. */
   readonly pkg: string;
   readonly severity: 'moderate' | 'high';
   /** Why this is not reachable in this app — the claim being made. */
   readonly rationale: string;
   /** What would let us drop this entry. */
   readonly exit: string;
+  /**
+   * ISO date (YYYY-MM-DD) by which the claim must be re-verified. Past it, this
+   * script FAILS — a suppression is a dated judgement, not a permanent waiver.
+   * Re-check reachability and the exit condition, then bump or drop the entry.
+   */
+  readonly reviewBy: string;
 }
 
 /**
- * Advisories tolerated with cause. All are transitive and none is fixable by a
- * version bump today (verified 2026-07-25, issue #158 branch).
+ * Advisories tolerated with cause. Verified 2026-09-21: every other advisory the
+ * previous list carried (brace-expansion GHSA-mh99-v99m-4gvg, @hono/node-server
+ * GHSA-frvp-7c67-39w9, hono GHSA-xgm2/hvrm/w62v) was retired by a real upgrade.
  */
 const IGNORED: readonly Ignored[] = [
   {
-    id: 'GHSA-mh99-v99m-4gvg',
-    pkg: 'brace-expansion',
-    severity: 'high',
+    id: 'GHSA-82fw-gwwq-j7x9',
+    pkg: 'vitest + @vitest/mocker',
+    severity: 'moderate',
     rationale:
-      'Build-time tooling only (minimatch under typescript-eslint / storybook / ' +
-      '@vitest/coverage-istanbul / vite). The DoS needs an attacker-supplied glob; ' +
-      'every pattern here is authored in this repo. No runtime/product exposure.',
+      'Arbitrary file read via a redirect mock registered on the dev server socket. ' +
+      'Test tooling only (apps/web browser tests + the eslint-plugin rule tests): it ' +
+      'never ships in the desktop app, sidecar or docs site. Nothing here imports the ' +
+      'public `mockerPlugin`/`interceptorPlugin` exports (the unauthenticated path the ' +
+      'advisory scores). The only listener is the one Vitest 3 browser mode attaches to ' +
+      'Vite 7.3.5\'s HMR socket, which is bound to localhost, rejects foreign Host ' +
+      'headers (`allowedHosts`, so no DNS rebinding) and rejects any browser-origin ' +
+      'connection without the per-server `webSocketToken` ' +
+      '(`vite/dist/node/chunks/config.js` shouldHandle). What remains is a same-user ' +
+      'local process during a test run — which can already read those files directly — ' +
+      'or an ephemeral single-tenant CI runner.',
     exit:
-      'Advisory covers <=5.0.7, i.e. EVERY published version including the 1.x line ' +
-      'our consumers require — there is no version to move to. Drop this entry once ' +
-      'a fixed release exists and the consumers accept it. Note: forcing 2.x on the ' +
-      '1.x consumers breaks them outright (`brace_expansion_1.expand is not a ' +
-      'function`) — tried and reverted on this branch.',
-  },
-  {
-    id: 'GHSA-frvp-7c67-39w9',
-    pkg: '@hono/node-server',
-    severity: 'moderate',
-    rationale:
-      'Path traversal in `serve-static` on Windows. Reached only through the Claude ' +
-      'Agent SDK’s internal transport; Nightcore never mounts hono static file serving.',
-    exit: 'Drop when the pinned @anthropic-ai/claude-agent-sdk ships a bumped @hono/node-server.',
-  },
-  {
-    id: 'GHSA-xgm2-5f3f-mvvc',
-    pkg: 'hono',
-    severity: 'moderate',
-    rationale:
-      'AWS API Gateway v1 adapter drops a repeated request header. Nightcore is a ' +
-      'local-first desktop app — there is no API Gateway deployment.',
-    exit: 'Drop when the pinned @anthropic-ai/claude-agent-sdk ships hono >=4.12.27.',
-  },
-  {
-    id: 'GHSA-hvrm-45r6-mjfj',
-    pkg: 'hono',
-    severity: 'moderate',
-    rationale:
-      '`hono/jsx` does not isolate context per request. Nothing in this repo imports ' +
-      'hono/jsx; the SDK uses hono as a plain local transport.',
-    exit: 'Drop when the pinned @anthropic-ai/claude-agent-sdk ships hono >=4.12.27.',
-  },
-  {
-    id: 'GHSA-w62v-xxxg-mg59',
-    pkg: 'hono',
-    severity: 'moderate',
-    rationale:
-      'Server-side XSS via the `cx()` JSX utility. Same as above — no hono JSX ' +
-      'rendering anywhere in this codebase.',
-    exit: 'Drop when the pinned @anthropic-ai/claude-agent-sdk ships hono >=4.12.27.',
+      'Fixed only in vitest >=4.1.11 (no 3.x backport). Moving to 4.x is a real ' +
+      'migration, not a bump: Storybook 10 (incl. 10.6.0, 11.0.0-alpha.1) bundles ' +
+      '`@vitest/spy@3.2.4` for `storybook/test`\'s `fn()`, so every `vi.fn()` passed to ' +
+      'a composed story fails to type-check under vitest 4 (159 errors / 69 test files, ' +
+      'tried and reverted 2026-09-21), and the browser provider moves to ' +
+      '`@vitest/browser-playwright`. Drop this entry with that migration.',
+    reviewBy: '2026-10-21',
   },
 ] as const;
 
@@ -217,6 +198,18 @@ function reportedAdvisoryIds(): Set<string> {
   return ids;
 }
 
+const today = new Date().toISOString().slice(0, 10);
+const expired = IGNORED.filter((entry) => !/^\d{4}-\d{2}-\d{2}$/.test(entry.reviewBy) || entry.reviewBy < today);
+if (expired.length > 0) {
+  process.stderr.write(
+    '\n✗ audit: ignore-list entries are past their review date (or have no valid one).\n' +
+      'Re-verify each claim in scripts/audit.ts, then bump `reviewBy` or drop the entry:\n\n' +
+      expired.map((e) => `  - ${e.id} (${e.pkg}) reviewBy=${e.reviewBy}`).join('\n') +
+      '\n\n',
+  );
+  process.exit(1);
+}
+
 const reported = reportedAdvisoryIds();
 const stale = IGNORED.filter((entry) => !reported.has(entry.id));
 
@@ -235,7 +228,7 @@ if (IGNORED.length > 0) {
   process.stdout.write(
     `audit: tolerating ${IGNORED.length} advisor${IGNORED.length === 1 ? 'y' : 'ies'} with cause ` +
       `(see scripts/audit.ts):\n` +
-      IGNORED.map((e) => `  · ${e.id} ${e.pkg} [${e.severity}]`).join('\n') +
+      IGNORED.map((e) => `  · ${e.id} ${e.pkg} [${e.severity}] review by ${e.reviewBy}`).join('\n') +
       '\n\n',
   );
 }

@@ -74,7 +74,17 @@
   "//overrides": "An override forces a PATCHED version, it never crosses a major — every entry needs an upper bound. Enforced by scripts/audit.ts (bun run audit), which explains why.",
   "overrides": {
     "postcss": ">=8.5.18 <9",
-    "fast-uri": ">=3.1.4 <4",
-    "js-yaml": ">=4.3.0 <5"
+    "fast-uri": ">=3.1.8 <4",
+    "js-yaml": ">=4.3.2 <5",
+    "@hono/node-server": ">=1.19.17 <2",
+    "baseline-browser-mapping": ">=2.11.0 <3",
+    "browserslist": ">=4.29.0 <5",
+    "devalue": ">=5.9.4 <6",
+    "hono": ">=4.13.8 <5",
+    "ip-address": ">=10.7.2 <11",
+    "nanoid": ">=3.3.19 <4",
+    "qs": ">=6.16.0 <7",
+    "sharp": ">=0.35.4 <0.36",
+    "svgo": ">=4.1.0 <5"
   }
 }
