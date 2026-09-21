@@ -298,7 +298,7 @@ async function runLintMeta(parsed: ParsedArgs, io: CliIO): Promise<number> {
 
   const ctx = createNodeCtx(parsed.dir);
   // Legibility (§5): echo every rule before it runs.
-  const outcomes = runMetaRules(loaded.rules, ctx, (rule) => io.stdout(`→ ${rule.id}`));
+  const outcomes = await runMetaRules(loaded.rules, ctx, (rule) => io.stdout(`→ ${rule.id}`));
   const report = reportMetaOutcomes(outcomes);
 
   for (const line of report.lines) io.stderr(line);
