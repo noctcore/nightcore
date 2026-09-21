@@ -20,3 +20,17 @@ ignore = [
     "RUSTSEC-2026-0194",
     "RUSTSEC-2026-0195",
 ]
+
+# Informational advisories deliberately NOT ignored (reviewed 2026-09-21, re-check
+# by 2026-10-21). `cargo audit` reports them as warnings and does not fail on
+# them; they stay visible here instead of being silenced. All are upstream-pinned
+# by tauri 2 with no release that drops them:
+#   - unmaintained proc-macro-error (RUSTSEC-2024-0370) + unsound glib 0.18
+#     VariantStrIter (RUSTSEC-2024-0429): gtk-rs 0.18 via muda/wry/tauri —
+#     Linux (webkit2gtk) build only, absent from the macOS/Windows trees.
+#     Nightcore never iterates a GVariant string array itself.
+#   - unmaintained unic-* (RUSTSEC-2025-0075/0080/0081/0098/0100): urlpattern
+#     0.3 via tauri-utils 2.9.3 (latest 2.x). Parses capability URL patterns
+#     from our own bundled tauri config, not untrusted input.
+# RUSTSEC-2026-0285 (rustls), -0190 (anyhow) and -0221 (event-listener) were
+# fixed by lockfile bumps (rustls 0.23.45, anyhow 1.0.104, event-listener 5.4.2).
