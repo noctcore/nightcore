@@ -486,8 +486,11 @@ mod tests {
 
     #[test]
     fn unconfined_command_sets_no_shell_state_redirect() {
-        // A normal shell keeps normal history: the confined redirect vars must be
-        // absent, but the base terminal env is still applied.
+        // A normal shell keeps normal history: the confined redirect is never
+        // applied, so each var is exactly what the parent exported (absent when it
+        // exported none), but the base terminal env is still applied. Compared with
+        // the parent env rather than asserted absent, because a developer's own
+        // shell (any Orca terminal, for one) legitimately exports HISTFILE.
         let tmp = TempDir::new().unwrap();
         let opts = SpawnOpts {
             cwd: tmp.path().to_path_buf(),
@@ -496,9 +499,14 @@ mod tests {
             rows: 24,
         };
         let cmd = build_command("/bin/sh", &["-i"], &opts).expect("unconfined command");
-        assert!(cmd.get_env("HISTFILE").is_none());
-        assert!(cmd.get_env("XDG_CACHE_HOME").is_none());
-        assert!(cmd.get_env("ZSH_COMPDUMP").is_none());
+        for key in ["HISTFILE", "XDG_CACHE_HOME", "ZSH_COMPDUMP"] {
+            let inherited = std::env::var_os(key);
+            assert_eq!(
+                cmd.get_env(key),
+                inherited.as_deref(),
+                "{key} is inherited untouched, never redirected"
+            );
+        }
         assert_eq!(
             cmd.get_env("TERM").unwrap().to_string_lossy(),
             "xterm-256color"
