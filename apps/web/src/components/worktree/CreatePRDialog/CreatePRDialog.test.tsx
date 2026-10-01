@@ -1,5 +1,5 @@
-import { userEvent } from '@vitest/browser/context';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-react';
 
 // Mock the Tauri command surface underneath the bridge (the same seam

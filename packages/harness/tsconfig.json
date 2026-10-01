@@ -1,6 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // tsup 8.5.1's --dts build unconditionally injects `baseUrl: compilerOptions.baseUrl || "."`
+    // (tsup/dist/rollup.js), which TS 6 rejects with TS5101. No tsconfig here sets baseUrl.
+    // Drop this once tsup stops injecting it.
+    "ignoreDeprecations": "6.0",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "noEmit": true,

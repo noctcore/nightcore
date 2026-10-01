@@ -17,11 +17,17 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
-    "types": ["vite/client", "@vitest/browser/providers/playwright"],
-    // Deliberately no `baseUrl` — TypeScript 7 removed it (TS5102). Without it,
-    // `paths` values resolve relative to THIS file, which the self-relative
-    // "./src/*" below already assumes. Bundler resolution is separate: the "@"
-    // alias is declared in vite.config.ts and vitest.config.ts.
+    // Vitest 4 moved the Playwright provider into its own package and dropped
+    // `@vitest/browser`'s `./providers/*` export entries, so the old
+    // "@vitest/browser/providers/playwright" reference no longer resolves. The
+    // replacement is the provider package's types-only `./context` export, which
+    // types `page`/`userEvent` with the Playwright-specific surface.
+    "types": ["vite/client", "@vitest/browser-playwright/context"],
+    // Deliberately no `baseUrl` — TypeScript 6 already rejects it (TS5101) and 7
+    // removed it outright (TS5102). Without it, `paths` values resolve relative to
+    // THIS file, which the self-relative "./src/*" below already assumes. Bundler
+    // resolution is separate: the "@" alias is declared in vite.config.ts and
+    // vitest.config.ts.
     "paths": {
       "@/*": ["./src/*"]
     }

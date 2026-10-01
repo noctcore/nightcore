@@ -43,37 +43,13 @@ interface Ignored {
 }
 
 /**
- * Advisories tolerated with cause. Verified 2026-09-21: every other advisory the
- * previous list carried (brace-expansion GHSA-mh99-v99m-4gvg, @hono/node-server
- * GHSA-frvp-7c67-39w9, hono GHSA-xgm2/hvrm/w62v) was retired by a real upgrade.
+ * Advisories tolerated with cause. Empty: every advisory the list used to carry
+ * (brace-expansion GHSA-mh99-v99m-4gvg, @hono/node-server GHSA-frvp-7c67-39w9,
+ * hono GHSA-xgm2/hvrm/w62v, vitest GHSA-82fw-gwwq-j7x9) was retired by a real
+ * upgrade, the last one by the move to vitest 4.1.11 (see git history for the
+ * prior entries).
  */
-const IGNORED: readonly Ignored[] = [
-  {
-    id: 'GHSA-82fw-gwwq-j7x9',
-    pkg: 'vitest + @vitest/mocker',
-    severity: 'moderate',
-    rationale:
-      'Arbitrary file read via a redirect mock registered on the dev server socket. ' +
-      'Test tooling only (apps/web browser tests + the eslint-plugin rule tests): it ' +
-      'never ships in the desktop app, sidecar or docs site. Nothing here imports the ' +
-      'public `mockerPlugin`/`interceptorPlugin` exports (the unauthenticated path the ' +
-      'advisory scores). The only listener is the one Vitest 3 browser mode attaches to ' +
-      'Vite 7.3.5\'s HMR socket, which is bound to localhost, rejects foreign Host ' +
-      'headers (`allowedHosts`, so no DNS rebinding) and rejects any browser-origin ' +
-      'connection without the per-server `webSocketToken` ' +
-      '(`vite/dist/node/chunks/config.js` shouldHandle). What remains is a same-user ' +
-      'local process during a test run — which can already read those files directly — ' +
-      'or an ephemeral single-tenant CI runner.',
-    exit:
-      'Fixed only in vitest >=4.1.11 (no 3.x backport). Moving to 4.x is a real ' +
-      'migration, not a bump: Storybook 10 (incl. 10.6.0, 11.0.0-alpha.1) bundles ' +
-      '`@vitest/spy@3.2.4` for `storybook/test`\'s `fn()`, so every `vi.fn()` passed to ' +
-      'a composed story fails to type-check under vitest 4 (159 errors / 69 test files, ' +
-      'tried and reverted 2026-09-21), and the browser provider moves to ' +
-      '`@vitest/browser-playwright`. Drop this entry with that migration.',
-    reviewBy: '2026-10-21',
-  },
-] as const;
+const IGNORED: readonly Ignored[] = [] as const;
 
 const AUDIT_LEVEL = 'moderate';
 

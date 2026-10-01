@@ -8,6 +8,8 @@ storybook-static/
 
 # Vitest browser-mode failure screenshots
 **/__screenshots__/
+# Vitest 4 writes failure screenshots/traces here as well, keyed by content hash.
+**/.vitest-attachments/
 
 # Rust / Tauri build output + generated files
 target/

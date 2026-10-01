@@ -1,6 +1,6 @@
-import { userEvent } from '@vitest/browser/context';
 import type { ReactNode } from 'react';
 import { expect, test, vi } from 'vitest';
+import { userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-react';
 
 import { killCouncil, resolveCouncilConverge, startCouncil } from '@/lib/bridge';

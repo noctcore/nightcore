@@ -1,5 +1,5 @@
-import { userEvent } from '@vitest/browser/context';
 import { afterEach, expect, test, vi } from 'vitest';
+import { userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-react';
 
 // Spy only the chip's ONE bridge dependency (the browser open); everything else keeps its

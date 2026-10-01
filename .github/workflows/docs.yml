@@ -73,7 +73,7 @@ jobs:
       # Uploading the artifact needs no Pages configuration, so this stays
       # unconditional: the built site is downloadable from the run even while
       # publishing is off, which is how the owner can eyeball it before deciding.
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: apps/docs/dist
 
@@ -95,4 +95,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
