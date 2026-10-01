@@ -55,8 +55,6 @@ pub enum SurfaceCommand {
         sandbox_writes: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         images: Option<Vec<WireImage>>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        council: Option<bool>,
     },
     #[serde(rename_all = "camelCase")]
     SendInput { session_id: u64, text: String },
@@ -196,50 +194,6 @@ pub enum SurfaceCommand {
     },
     #[serde(rename_all = "camelCase")]
     CancelIssueValidation { run_id: String },
-    #[serde(rename_all = "camelCase")]
-    StartCouncil {
-        run_id: String,
-        preset_id: CouncilPresetId,
-        objective: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        project_path: Option<String>,
-    },
-    #[serde(rename_all = "camelCase")]
-    KillCouncil { run_id: String },
-    #[serde(rename_all = "camelCase")]
-    ResolveCouncilConverge {
-        run_id: String,
-        decision: CouncilConvergeDecision,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        seat_id: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        note: Option<String>,
-    },
-    #[serde(rename_all = "camelCase")]
-    SetCouncilRouting {
-        run_id: String,
-        edges: Vec<CouncilRoutingEdge>,
-    },
-    #[serde(rename_all = "camelCase")]
-    SendCouncilHumanInput {
-        run_id: String,
-        mode: CouncilHumanInputMode,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        seat_id: Option<String>,
-        message: String,
-    },
-    #[serde(rename_all = "camelCase")]
-    ResolveWorktreeOp {
-        request_id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        worktree_path: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        gauntlet_passed: Option<bool>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        gauntlet_summary: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-    },
 }
 
 // === Surface → engine queries (Rust SERIALIZES these; replies arrive as the
@@ -354,8 +308,6 @@ pub enum NightcoreEvent {
         model: String,
         permission_mode: PermissionMode,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        council: Option<bool>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
         containment: Option<SessionStartedContainment>,
     },
     #[serde(rename_all = "camelCase")]
@@ -446,8 +398,6 @@ pub enum NightcoreEvent {
         message: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         detail: Option<ErrorDetail>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        council: Option<bool>,
     },
     #[serde(rename_all = "camelCase")]
     SessionStatus {
@@ -751,17 +701,6 @@ pub enum NightcoreEvent {
         issue_number: u64,
         task_id: String,
     },
-    #[serde(rename_all = "camelCase")]
-    DebateEntry {
-        run_id: String,
-        entry: DebateTranscriptEntry,
-    },
-    #[serde(rename_all = "camelCase")]
-    WorktreeOpRequired {
-        request_id: String,
-        op: WorktreeOpRequiredOpEnum,
-        council_run_id: String,
-    },
 }
 
 // === Referenced enums and nested structs ===
@@ -919,88 +858,11 @@ pub enum CostTelemetry {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum CouncilConvergeDecision {
-    Accept,
-    Reject,
-    Judge,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum CouncilHumanInputMode {
-    Broadcast,
-    Direct,
-    Steer,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum CouncilPresetId {
-    Research,
-    UiBug,
-    Coding,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CouncilRoutingEdge {
-    pub from: String,
-    pub to: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CoverageStatus {
     Enforced,
     DocumentedOnly,
     Unenforced,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum DebateEntryKind {
-    Broadcast,
-    Message,
-    Delivery,
-    Note,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum DebateSeatRole {
-    Proposer,
-    Critic,
-    Judge,
-    Conductor,
-    Human,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum DebateStage {
-    Frame,
-    Propose,
-    Debate,
-    Converge,
-    Build,
-    Review,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DebateTranscriptEntry {
-    pub stage: DebateStage,
-    pub seat_id: String,
-    pub role: DebateSeatRole,
-    pub kind: DebateEntryKind,
-    pub seq: u64,
-    pub content: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub broadcast_id: Option<String>,
-    pub at: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub injection_flags: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1908,14 +1770,6 @@ pub enum WorkspaceTool {
     Unknown,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum WorktreeOpRequiredOpEnum {
-    Allocate,
-    Commit,
-    Gauntlet,
-}
-
 // === Event channel registry (nc:*) — single-sourced from `CHANNELS`; the
 //     conformance test in `contracts/mod.rs` ties every `*_EVENT` const to it ===
 
@@ -1925,7 +1779,6 @@ pub enum WorktreeOpRequiredOpEnum {
 /// entry here, so a channel renamed/added/removed on either tier fails
 /// `cargo test` (and a rename in the zod source also reds `codegen-drift`).
 pub const NIGHTCORE_CHANNELS: &[(&str, &str)] = &[
-    ("debate", "nc:debate"),
     ("harness", "nc:harness"),
     ("insight", "nc:insight"),
     ("issueTriage", "nc:issue-triage"),

@@ -237,52 +237,6 @@
     "cancel-issue-validation": {
       "type": "cancel-issue-validation",
       "runId": "run-iv1"
-    },
-    "start-council": {
-      "type": "start-council",
-      "runId": "run-council1",
-      "presetId": "research",
-      "objective": "Recommend a caching strategy for the session store.",
-      "projectPath": "/proj"
-    },
-    "kill-council": {
-      "type": "kill-council",
-      "runId": "run-council1"
-    },
-    "resolve-council-converge": {
-      "type": "resolve-council-converge",
-      "runId": "run-council1",
-      "decision": "accept",
-      "seatId": "proposer-opus",
-      "note": "Clearest migration plan with the least dual-write risk."
-    },
-    "set-council-routing": {
-      "type": "set-council-routing",
-      "runId": "run-council1",
-      "edges": [
-        {
-          "from": "proposer-opus",
-          "to": "critic-opus"
-        },
-        {
-          "from": "proposer-sonnet",
-          "to": "critic-opus"
-        }
-      ]
-    },
-    "send-council-human-input": {
-      "type": "send-council-human-input",
-      "runId": "run-council1",
-      "mode": "direct",
-      "seatId": "critic-opus",
-      "message": "Weigh the dual-write rollback path before you settle."
-    },
-    "resolve-worktree-op": {
-      "type": "resolve-worktree-op",
-      "requestId": "wt-1",
-      "worktreePath": "/proj/.nightcore/worktrees/council-run-1",
-      "gauntletPassed": true,
-      "gauntletSummary": "Structure-Lock gauntlet passed (2 check(s))."
     }
   },
   "queries": {
@@ -1180,27 +1134,6 @@
       "runId": "run-iv1",
       "issueNumber": 128,
       "taskId": "task-42"
-    },
-    "debate-entry": {
-      "type": "debate-entry",
-      "runId": "council-run-1",
-      "entry": {
-        "stage": "debate",
-        "seatId": "proposer-1",
-        "role": "critic",
-        "kind": "delivery",
-        "seq": 3,
-        "content": "Seat proposer-1 said: \"consider the isolated-worktree path\"",
-        "broadcastId": "bc-1",
-        "at": 1718900000000,
-        "injectionFlags": []
-      }
-    },
-    "worktree-op-required": {
-      "type": "worktree-op-required",
-      "requestId": "wt-1",
-      "op": "allocate",
-      "councilRunId": "council-run-1"
     },
     "query-result": {
       "type": "query-result",

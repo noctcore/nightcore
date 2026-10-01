@@ -2,7 +2,6 @@ import { z } from 'zod';
 
 import { EffortLevelSchema, McpServerEntrySchema, TaskKindSchema } from './config.js';
 import { ConformanceAuditTargetSchema } from './conformance-audit.js';
-import { CouncilPresetIdSchema, CouncilRoutingEdgeSchema } from './council-preset.js';
 import { ConventionCategorySchema, HarnessPolicySchema } from './harness.js';
 import { AnalysisScopeSchema, FindingCategorySchema } from './insight.js';
 import {
@@ -159,15 +158,6 @@ export const StartSessionCommand = z.object({
    *  Absent/empty ⇒ a text-only message.
    *  Carries user-content bytes — never logged at info/telemetry. */
   images: z.array(WireImageSchema).optional(),
-  /** Council SEAT marker (issue #364): set ONLY by the engine's `CouncilRouter` when
-   *  it spawns a debate seat session — never by the board. A seat is driven INSIDE the
-   *  engine by the Conductor, so — unlike a board task — it pushes NO pending-launch
-   *  slot in the Rust core's session↔task FIFO. The engine echoes this onto the seat's
-   *  `session-started` event (see `SessionStartedEvent.council`) so the reader SKIPS
-   *  board-FIFO correlation for it: no "correlation desync" warn, and — critically — no
-   *  mis-bind that would pop a concurrently-pending board task's slot and poison its
-   *  correlation. Absent ⇒ a normal board/scan session (the pre-feature shape). */
-  council: z.boolean().optional(),
 });
 
 const sessionTarget = {
@@ -439,173 +429,6 @@ export const CancelIssueValidationCommand = z.object({
   runId: z.string(),
 });
 
-/**
- * Start a governed Council debate run (issue #350). Like the scan `start-*` families
- * this is NOT a single session — the engine's Conductor drives the
- * `Frame → Propose(blind) → Debate(≤2) → Converge(human)` state machine over N seats,
- * keyed by `runId`. The Rust core assigns `runId`; the engine owns the run + its
- * append-only transcript. The seats, stages, routing, and hard budget/round caps all
- * come from the preset `presetId` resolves to (validated at Frame). The Conductor is
- * the sole bus writer — seats have zero agent-to-agent authority (safety #1).
- */
-export const StartCouncilCommand = z.object({
-  type: z.literal('start-council'),
-  /** The council run id the engine keys the transcript by (Rust-assigned). */
-  runId: z.string(),
-  /** The preset to seed the run from — resolved + validated by the engine. */
-  presetId: CouncilPresetIdSchema,
-  /** The task the council debates. */
-  objective: z.string(),
-  /** The working directory seat sessions run in (the active project root). Absent ⇒
-   *  the engine process cwd. */
-  projectPath: z.string().optional(),
-});
-
-/** Kill a running Council debate run immediately (safety non-negotiable #4 — the kill
- *  switch; never "run until they agree"). Halts turn-taking at the next checkpoint and
- *  aborts the in-flight seat turn. A no-op for an unknown/finished run. */
-export const KillCouncilCommand = z.object({
-  type: z.literal('kill-council'),
-  runId: z.string(),
-});
-
-/**
- * The human judge's terminal Converge verdict (issue #353). P1's Converge stage is
- * HUMAN-only — no agent-judge, no vote — so this is the sole way a run's parked seat
- * positions are resolved (safety non-negotiable #7: the human is the terminal
- * authority). Three verdicts:
- *  - `accept` — adopt ONE seat's position as the run outcome (`seatId` names it).
- *  - `reject` — reject every position; the run closes with no adopted outcome.
- *  - `judge`  — the human writes their OWN ruling (`note` carries it).
- */
-export const CouncilConvergeDecisionSchema = z.enum(['accept', 'reject', 'judge']);
-export type CouncilConvergeDecision = z.infer<typeof CouncilConvergeDecisionSchema>;
-
-/**
- * Resolve a council run's PARKED Converge decision with the human judge's verdict
- * (issue #353) — the human gavel that closes the run (safety non-negotiable #7). The
- * verdict flows through the engine's Conductor — the sole bus writer — which records
- * it onto the append-only transcript and closes the Converge stage. It is NEVER a
- * direct transcript-store write from the surface (that would bypass the mediated write
- * path, safety #1). `seatId` is REQUIRED for `accept` (the seat whose position is
- * adopted) and ignored otherwise; `note` is REQUIRED for `judge` (the ruling) and
- * optional context for `accept`/`reject`. A no-op for a run with no parked decision
- * (unknown / already resolved).
- */
-export const ResolveCouncilConvergeCommand = z.object({
-  type: z.literal('resolve-council-converge'),
-  /** The council run whose parked Converge decision is being resolved. */
-  runId: z.string(),
-  /** The human judge's verdict. */
-  decision: CouncilConvergeDecisionSchema,
-  /** The seat whose position is adopted — REQUIRED for `accept`, ignored otherwise. */
-  seatId: z.string().optional(),
-  /** The human's ruling (REQUIRED for `judge`) or a short reason for `accept`/`reject`. */
-  note: z.string().optional(),
-});
-
-/**
- * Rewire a LIVE Council run's routing policy — the editable canvas edges (issue #371).
- * A routing edge is "A informs B": which seats' outputs reach a recipient seat as its
- * MEDIATED, quoted, injection-scanned peer context in the Debate stage. `edges` REPLACES
- * the run's current edge set (an empty list restores the open default — every seat
- * informs every other).
- *
- * This is a CONDUCTOR DIRECTIVE, never a direct seat write (safety non-negotiable #1 —
- * the injection firewall). The engine's Conductor — the sole bus writer — applies the
- * new policy to the next Debate round and records the change onto the append-only
- * transcript (safety #7). An edge only FILTERS which already-mediated peer content a seat
- * receives; it can never introduce an un-mediated agent-to-agent path. Edges naming a
- * seat the run does not define are dropped. A no-op for an unknown/finished run.
- */
-export const SetCouncilRoutingCommand = z.object({
-  type: z.literal('set-council-routing'),
-  /** The live council run whose routing policy is being rewired. */
-  runId: z.string(),
-  /** The new "A informs B" edge set — REPLACES the run's current edges. Empty ⇒ the open
-   *  default (every seat informs every other). */
-  edges: z.array(CouncilRoutingEdgeSchema),
-});
-
-/**
- * How a human's mid-debate message is addressed to a LIVE council run (issue #361):
- *  - `broadcast` — one message to EVERY live seat.
- *  - `direct`    — one message to a SINGLE named seat (`seatId`).
- *  - `steer`     — a stage directive: the message reaches every live seat AND the
- *    Conductor ends the current Debate stage at its next checkpoint (a STRICT
- *    shortener — it can only route to Converge sooner, never extend a run, safety #4).
- */
-export const CouncilHumanInputModeSchema = z.enum(['broadcast', 'direct', 'steer']);
-export type CouncilHumanInputMode = z.infer<typeof CouncilHumanInputModeSchema>;
-
-/**
- * Deliver a HUMAN's mid-debate message into a live council run's seats (issue #361) —
- * the broadcast-all / DM-one / steer-stage surface the #352 canvas shipped disabled.
- *
- * This is a CONDUCTOR DIRECTIVE, emphatically NOT the `send-input` path. `send-input`
- * hands text straight to a running session's provider runner (`streamInput`) as a raw
- * user turn — correct for non-Council user↔agent chat (#335/#347), and a violation of
- * BOTH Council safety non-negotiables here: it would give a surface direct-to-seat write
- * authority (#1) and deliver human text as a bare instruction (#2). Instead the message
- * enters via the engine's Conductor — the sole bus writer — which runs it through the
- * SAME mediated relay every cross-seat text uses (`deliverBetweenSeats` → injection scan
- * + quoted untrusted fence), records the scanned `delivery` onto the append-only
- * transcript (safety #7), and stages the QUOTED rendering for the target seat's next
- * mediated turn. A seat therefore receives the human's words as attributed, fenced DATA
- * to weigh — never as a directive it must follow.
- *
- * The human's real authority over a run is exercised through the Conductor's own
- * directives (`steer` here, `kill-council`, the Converge gavel), never by writing into a
- * seat. A no-op for an unknown/finished run, an empty message, or a `direct` message
- * naming a seat the run does not define.
- */
-export const SendCouncilHumanInputCommand = z.object({
-  type: z.literal('send-council-human-input'),
-  /** The live council run the human is addressing. */
-  runId: z.string(),
-  /** Who the message is addressed to, and whether it also steers the stage. */
-  mode: CouncilHumanInputModeSchema,
-  /** The single recipient — REQUIRED for `direct`, ignored for `broadcast`/`steer`. */
-  seatId: z.string().optional(),
-  /** The human's message. Relayed QUOTED + injection-scanned, never as a raw instruction. */
-  message: z.string(),
-});
-
-/**
- * The host → engine RESOLUTION of a `worktree-op-required` event (issue #383) — the
- * resolving half of the path-less, `councilRunId`-keyed worktree seam, modeled on the
- * parked-permission seam (`permission-required` → `approve-permission`). The Rust host
- * performs the requested worktree op against the path IT derived from the run id (never
- * an engine-sent path — the escape guard), then dispatches THIS command so the engine
- * resolves the driver / gauntlet call awaiting `requestId`.
- *
- * Deliberately FLAT + carries NO worktree path back FROM the host as an instruction: the
- * only path field is `worktreePath`, the host-DERIVED allocation dir the elected writer
- * runs in (returned so the engine points the writer's cwd + the objective gate at it) —
- * it is trusted host output, not caller input. The fields are per-op: `worktreePath` for
- * `allocate`; `gauntletPassed` + `gauntletSummary` for `gauntlet`; a present `error`
- * marks any op that could not run (fail-closed at the awaiting call). `commit` success
- * carries none of them (absent `error` ⇒ committed).
- */
-export const ResolveWorktreeOpCommand = z.object({
-  type: z.literal('resolve-worktree-op'),
-  /** The `worktree-op-required` request this resolves (the correlation key). */
-  requestId: z.string(),
-  /** `allocate` only: the host-DERIVED isolated worktree dir (the writer's cwd + the
-   *  gate's run dir). Absent on `commit`/`gauntlet` and on any failure. */
-  worktreePath: z.string().optional(),
-  /** `gauntlet` only: whether the deterministic Structure-Lock gate passed. A `false`
-   *  OVERRIDES debate consensus (safety #6). Absent on `allocate`/`commit`. */
-  gauntletPassed: z.boolean().optional(),
-  /** `gauntlet` only: a one-line, human-readable gate summary (the failing check / pass
-   *  count) recorded onto the transcript beside the verdict. */
-  gauntletSummary: z.string().optional(),
-  /** Set when the op could not run (allocation failed, git error, the gauntlet could not
-   *  be launched). The awaiting engine call fails CLOSED on it. */
-  error: z.string().optional(),
-});
-export type ResolveWorktreeOpCommand = z.infer<typeof ResolveWorktreeOpCommand>;
-
 /** The discriminated union of every surface → engine command, keyed by `type`. */
 export const SurfaceCommandSchema = z.discriminatedUnion('type', [
   StartSessionCommand,
@@ -625,12 +448,6 @@ export const SurfaceCommandSchema = z.discriminatedUnion('type', [
   CancelPrReviewCommand,
   StartIssueValidationCommand,
   CancelIssueValidationCommand,
-  StartCouncilCommand,
-  KillCouncilCommand,
-  ResolveCouncilConvergeCommand,
-  SetCouncilRoutingCommand,
-  SendCouncilHumanInputCommand,
-  ResolveWorktreeOpCommand,
 ]);
 export type SurfaceCommand = z.infer<typeof SurfaceCommandSchema>;
 
