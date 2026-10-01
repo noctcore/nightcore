@@ -69,7 +69,7 @@ mod tests {
     fn defaults_are_the_contract_values() {
         let s = Settings::default();
         // P0: defaults persist SDK long ids so a new task runs with a valid model.
-        assert_eq!(s.default_model, "claude-opus-4-8");
+        assert_eq!(s.default_model, "claude-opus-5-5");
         assert_eq!(s.max_concurrency, 3);
         // M4.7 §A1: bypass is the studio default.
         assert_eq!(s.permission_mode, "bypass");
@@ -118,10 +118,12 @@ mod tests {
     #[test]
     fn canonical_model_id_maps_legacy_short_ids() {
         // P0: a pre-P0 settings file holds short ids; they resolve to SDK long ids.
-        assert_eq!(canonical_model_id("opus-4.8"), "claude-opus-4-8");
-        assert_eq!(canonical_model_id("sonnet-4.6"), "claude-sonnet-4-6");
+        assert_eq!(canonical_model_id("opus-4.8"), "claude-opus-5-5");
+        assert_eq!(canonical_model_id("sonnet-4.6"), "claude-sonnet-5");
         assert_eq!(canonical_model_id("haiku-4.5"), "claude-haiku-4-5");
-        // Already-canonical ids pass through unchanged.
+        // Already-canonical ids pass through unchanged, including one from an earlier
+        // model generation (stored canonical ids are never rewritten).
+        assert_eq!(canonical_model_id("claude-opus-5-5"), "claude-opus-5-5");
         assert_eq!(canonical_model_id("claude-opus-4-8"), "claude-opus-4-8");
         assert_eq!(
             canonical_model_id("claude-haiku-4-5-20251001"),
@@ -138,20 +140,20 @@ mod tests {
         // `KnownModelSchema`. These assertions pin the codegen'd serde renames (a
         // contract rename reds this drift guard) and prove `canonical_model_id` /
         // `Settings::default` derive their long ids from the enum, not literals.
-        assert_eq!(known_model_id(KnownModel::ClaudeOpus48), "claude-opus-4-8");
-        assert_eq!(
-            known_model_id(KnownModel::ClaudeSonnet46),
-            "claude-sonnet-4-6"
-        );
+        assert_eq!(known_model_id(KnownModel::ClaudeOpus55), "claude-opus-5-5");
+        assert_eq!(known_model_id(KnownModel::ClaudeSonnet5), "claude-sonnet-5");
         assert_eq!(
             known_model_id(KnownModel::ClaudeHaiku45),
             "claude-haiku-4-5"
         );
-        assert_eq!(known_model_id(KnownModel::ClaudeFable5), "claude-fable-5");
+        assert_eq!(
+            known_model_id(KnownModel::ClaudeFable51),
+            "claude-fable-5-1"
+        );
         // The Claude default is the first known model, single-sourced (not a
         // duplicated literal). `Settings::default` (a `claude`-provider install)
         // derives its `default_model` from the SAME provider-aware resolver.
-        assert_eq!(default_model_id("claude"), "claude-opus-4-8");
+        assert_eq!(default_model_id("claude"), "claude-opus-5-5");
         assert_eq!(
             Settings::default().default_model,
             default_model_id("claude")
@@ -163,7 +165,7 @@ mod tests {
         // B2 (issue #79/#80): a non-Claude provider must NOT fall through to a Claude
         // model. Claude (and any unrecognized id, which the factory runs on the Claude
         // backend) → the contract default; Codex → the Codex SDK default.
-        assert_eq!(default_model_id("claude"), "claude-opus-4-8");
+        assert_eq!(default_model_id("claude"), "claude-opus-5-5");
         assert_eq!(
             default_model_id("codex"),
             "gpt-5-codex",
@@ -171,7 +173,7 @@ mod tests {
         );
         // An unknown provider is treated as Claude by the factory (fallback), so a
         // Claude default is correct for it.
-        assert_eq!(default_model_id("gemini"), "claude-opus-4-8");
+        assert_eq!(default_model_id("gemini"), "claude-opus-5-5");
     }
 
     #[test]
@@ -188,7 +190,7 @@ mod tests {
     fn default_model_resolves_project_then_global_as_long_id() {
         let (store, _tmp) = temp_store();
         // Global default is already a long id.
-        assert_eq!(store.default_model(None), "claude-opus-4-8");
+        assert_eq!(store.default_model(None), "claude-opus-5-5");
         assert_eq!(store.default_effort(None), "medium");
 
         // A per-project override wins for that project; effort falls back to global.
@@ -199,7 +201,7 @@ mod tests {
             )
             .expect("update");
         assert_eq!(store.default_model(Some("p1")), "claude-sonnet-4-6");
-        assert_eq!(store.default_model(Some("other")), "claude-opus-4-8");
+        assert_eq!(store.default_model(Some("other")), "claude-opus-5-5");
         assert_eq!(store.default_effort(Some("p1")), "medium");
     }
 
@@ -216,7 +218,7 @@ mod tests {
         std::fs::write(dir.join("settings.json"), legacy).unwrap();
 
         let store = SettingsStore::load_from(dir);
-        assert_eq!(store.default_model(None), "claude-opus-4-8");
+        assert_eq!(store.default_model(None), "claude-opus-5-5");
     }
 
     #[test]
@@ -244,7 +246,7 @@ mod tests {
         let merged = store.update(patch).expect("update");
 
         // Global default is unchanged; the override carries the project-scoped value.
-        assert_eq!(merged.default_model, "claude-opus-4-8");
+        assert_eq!(merged.default_model, "claude-opus-5-5");
         let ov = merged
             .project_overrides
             .get("proj-1")

@@ -274,7 +274,7 @@ mod tests {
         let key = ModelCacheKey::new(CLAUDE_PROVIDER_ID, "n/a");
         let models = fallback(CLAUDE_PROVIDER_ID, &key, &cache).expect("claude never errors");
         assert_eq!(models.len(), 4);
-        assert_eq!(models[0].value, "claude-opus-4-8");
+        assert_eq!(models[0].value, "claude-opus-5-5");
     }
 
     #[test]

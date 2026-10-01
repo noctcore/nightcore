@@ -40,7 +40,7 @@ afterEach(() => {
 describe('resolveConfig precedence', () => {
   test('falls back to defaults when no config files exist', () => {
     const config = resolveConfig({ home, cwd: project });
-    expect(config.model).toBe('claude-opus-4-8');
+    expect(config.model).toBe('claude-opus-5-5');
     expect(config.logLevel).toBe('info');
     expect(config.permissions).toEqual({ allow: [], deny: [], mode: 'default' });
     expect(config.paths.home).toBe(home);
@@ -201,7 +201,7 @@ describe('resolveConfig degrades, does not throw', () => {
   test('ignores a malformed (non-JSON) config file', () => {
     writeProjectConfig(project, '{ this is not json');
     const config = resolveConfig({ home, cwd: project });
-    expect(config.model).toBe('claude-opus-4-8');
+    expect(config.model).toBe('claude-opus-5-5');
   });
 
   test('ignores a structurally invalid config file', () => {

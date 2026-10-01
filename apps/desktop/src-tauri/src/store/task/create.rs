@@ -331,7 +331,7 @@ mod tests {
         assert!(task.max_turns.is_none());
         assert!(task.max_budget_usd.is_none());
         // The P0 model/effort defaults are still stamped concretely.
-        assert_eq!(task.model.as_deref(), Some("claude-opus-4-8"));
+        assert_eq!(task.model.as_deref(), Some("claude-opus-5-5"));
         assert_eq!(task.effort.as_deref(), Some("medium"));
     }
 

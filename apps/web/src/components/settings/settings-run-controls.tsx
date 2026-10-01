@@ -14,7 +14,7 @@ export const PROVIDERS: [value: string, label: string][] = [
 ];
 
 export function defaultModelForProvider(provider: string): string {
-  return provider === 'codex' ? 'gpt-5-codex' : 'claude-opus-4-8';
+  return provider === 'codex' ? 'gpt-5-codex' : 'claude-opus-5-5';
 }
 
 export function effortChoices(model: string): [value: string, label: string][] {

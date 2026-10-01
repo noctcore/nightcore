@@ -15,7 +15,7 @@ test('updates a global setting with the SDK long id when scope is Global', async
   (model.element() as HTMLElement).focus();
   await userEvent.keyboard('{ArrowDown}{ArrowDown}{Enter}');
   // The persisted value is the SDK long id, not the short label.
-  expect(onUpdate).toHaveBeenCalledWith({ defaultModel: 'claude-sonnet-4-6' });
+  expect(onUpdate).toHaveBeenCalledWith({ defaultModel: 'claude-sonnet-5' });
 });
 
 test('commits a Max-turns ceiling as a global guardrail patch', async () => {
@@ -46,7 +46,7 @@ test('routes the patch to a project override under the project scope', async () 
   await screen.getByRole('combobox', { name: 'Default model' }).click();
   await screen.getByRole('option', { name: /Opus/ }).click();
   expect(onUpdate).toHaveBeenCalledWith({
-    defaultModel: 'claude-opus-4-8',
+    defaultModel: 'claude-opus-5-5',
     projectId: 'nightcore',
   });
 });

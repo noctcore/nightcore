@@ -29,7 +29,7 @@ type Story = StoryObj<typeof meta>;
 
 export const Inherit: Story = {};
 
-export const OpusHigh: Story = { args: { model: 'claude-opus-4-8', effort: 'high' } };
+export const OpusHigh: Story = { args: { model: 'claude-opus-5-5', effort: 'high' } };
 
 export const Disabled: Story = { args: { model: 'claude-haiku-4-5', disabled: true } };
 
@@ -40,14 +40,14 @@ export const PicksModel: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole('combobox', { name: /model/i }));
     await userEvent.click(canvas.getByRole('option', { name: /sonnet/i }));
-    await expect(args.onChangeModel).toHaveBeenCalledWith('claude-sonnet-4-6');
+    await expect(args.onChangeModel).toHaveBeenCalledWith('claude-sonnet-5');
   },
 };
 
 /** Play test: switching from Opus (effort=max) to Haiku — which can't honor `max` —
  *  reconciles the pinned effort back to Inherit, delegated via `onChangeEffort`. */
 export const SwitchingModelResetsUnsupportedEffort: Story = {
-  args: { model: 'claude-opus-4-8', effort: 'max' },
+  args: { model: 'claude-opus-5-5', effort: 'max' },
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole('combobox', { name: /model/i }));

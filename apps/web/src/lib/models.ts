@@ -22,7 +22,7 @@ export type ModelTier = 'Speed' | 'Balanced' | 'Premium';
 
 /** A selectable model in the per-task picker / Settings default. */
 export interface ModelOption {
-  /** The model id sent on the wire (a contract `KnownModel`, e.g. `claude-opus-4-8`). */
+  /** The model id sent on the wire (a contract `KnownModel`, e.g. `claude-opus-5-5`). */
   id: string;
   label: string;
   /** Capability/cost tier badge. */
@@ -36,7 +36,7 @@ export interface ModelOption {
    *  `EffortLevel`; mirrors `ModelDescriptor.supportedEffortLevels`). */
   supportedEfforts: EffortLevel[];
   /** Whether the model decides its reasoning budget adaptively when no effort is
-   *  pinned (Inherit). True for Opus 4.8 / Fable 5. */
+   *  pinned (Inherit). True for Opus 5.5 / Sonnet 5 / Fable 5.1. */
   adaptive: boolean;
 }
 
@@ -52,38 +52,38 @@ interface ModelMeta {
 /** Display + capability metadata for the known Claude models, keyed off the
  *  contract `KnownModelSchema` so the *value* can't drift — only the metadata.
  *  Exhaustive over `KnownModel`: adding a model to the contract enum without an
- *  entry here is a compile error. The premium tier unlocks the higher effort
- *  levels (`xhigh`/`max`); the SDK silently downgrades any level a model can't
- *  honor, so an over-generous set is safe. */
+ *  entry here is a compile error. Every model except Haiku surfaces the higher
+ *  effort levels (`xhigh`/`max`); the SDK silently downgrades any level a model
+ *  can't honor, so an over-generous set is safe. */
 const MODEL_META: Record<KnownModel, ModelMeta> = {
-  'claude-opus-4-8': {
-    label: 'Opus 4.8',
+  'claude-opus-5-5': {
+    label: 'Opus 5.5',
     tier: 'Premium',
-    description: 'Most capable — adaptive reasoning',
+    description: 'Best for everyday, complex tasks',
     supportsEffort: true,
     supportedEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     adaptive: true,
   },
-  'claude-sonnet-4-6': {
-    label: 'Sonnet 4.6',
+  'claude-sonnet-5': {
+    label: 'Sonnet 5',
     tier: 'Balanced',
-    description: 'Balanced speed and depth',
+    description: 'Efficient for routine tasks',
     supportsEffort: true,
-    supportedEfforts: ['low', 'medium', 'high'],
-    adaptive: false,
+    supportedEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+    adaptive: true,
   },
   'claude-haiku-4-5': {
     label: 'Haiku 4.5',
     tier: 'Speed',
-    description: 'Fastest, lightweight',
+    description: 'Fastest for quick answers',
     supportsEffort: true,
     supportedEfforts: ['low', 'medium', 'high'],
     adaptive: false,
   },
-  'claude-fable-5': {
-    label: 'Fable 5',
+  'claude-fable-5-1': {
+    label: 'Fable 5.1',
     tier: 'Premium',
-    description: 'Creative generalist',
+    description: 'Most capable for your hardest and longest-running tasks',
     supportsEffort: true,
     supportedEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     adaptive: true,
@@ -93,8 +93,8 @@ const MODEL_META: Record<KnownModel, ModelMeta> = {
 /** The known Claude models for browser-preview fallback, in display order. The
  *  desktop picker uses the live `listModels()` bridge instead. */
 const WEB_MODELS: readonly KnownModel[] = [
-  'claude-opus-4-8',
-  'claude-sonnet-4-6',
+  'claude-opus-5-5',
+  'claude-sonnet-5',
   'claude-haiku-4-5',
 ];
 
@@ -166,8 +166,8 @@ const EFFORT_META: Record<EffortLevel, { label: string; description: string }> =
 const NONE_EFFORT: EffortOption = { id: 'none', label: 'None', description: 'Skip extended thinking' };
 
 /** The effort levels surfaced when no specific model context is known (Inherit, or
- *  an unrecognized model). The premium higher levels (`xhigh`/`max`) only appear
- *  for models that support them. */
+ *  an unrecognized model). The higher levels (`xhigh`/`max`) only appear for
+ *  models that support them. */
 const BASE_EFFORTS: readonly EffortLevel[] = ['low', 'medium', 'high'];
 
 /** The default effort levels the picker surfaces (Inherit context), plus the
@@ -178,8 +178,9 @@ export const EFFORT_OPTIONS: EffortOption[] = [
   NONE_EFFORT,
 ];
 
-/** Resolve a stored model value to its `ModelOption`. The value may be a canonical
- *  id (`claude-opus-4-8`) or a legacy short id (`opus-4.8`); both match by family.
+/** Resolve a stored model value to its `ModelOption`. The value may be a current
+ *  canonical id (`claude-opus-5-5`), a canonical id from an earlier generation
+ *  (`claude-opus-4-8`) or a legacy short id (`opus-4.8`); all match by family.
  *  Returns `null` for Inherit (`null`) or an unrecognized id. Pure. */
 export function modelOptionFor(model: string | null): ModelOption | null {
   if (model === null) return null;
@@ -208,7 +209,7 @@ export function effortOptionsForLevels(levels: readonly EffortLevel[]): EffortOp
 }
 
 /** Whether selecting `model` leaves reasoning adaptive when effort is Inherit
- *  (true for Opus 4.8 / Fable 5). Pure. */
+ *  (true for Opus 5.5 / Sonnet 5 / Fable 5.1). Pure. */
 export function isAdaptiveModel(model: string | null): boolean {
   return modelOptionFor(model)?.adaptive ?? false;
 }

@@ -54,7 +54,7 @@ test('resolves the model id to its display name', async () => {
   const screen = render(<Running />);
   // T13 badge honesty: `sonnet-4.6` resolves to the real catalog label (was the
   // hardcoded-wrong "Sonnet 4.8" before the honest resolver landed).
-  await expect.element(screen.getByText('Sonnet 4.6')).toBeInTheDocument();
+  await expect.element(screen.getByText('Sonnet 5')).toBeInTheDocument();
 });
 
 test('disables the run action and shows a Blocked label when blocked', async () => {

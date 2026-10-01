@@ -170,10 +170,10 @@ impl ModelCache {
 /// `Record<KnownModel, ModelMeta>`.
 pub fn claude_static_catalog() -> Vec<ModelDescriptor> {
     const CATALOG: [KnownModel; 4] = [
-        KnownModel::ClaudeOpus48,
-        KnownModel::ClaudeSonnet46,
+        KnownModel::ClaudeOpus55,
+        KnownModel::ClaudeSonnet5,
         KnownModel::ClaudeHaiku45,
-        KnownModel::ClaudeFable5,
+        KnownModel::ClaudeFable51,
     ];
     CATALOG
         .into_iter()
@@ -186,8 +186,8 @@ pub fn claude_static_catalog() -> Vec<ModelDescriptor> {
                 display_name: display_name.to_string(),
                 description: description.to_string(),
                 // Every shipped Claude model honors the effort option; the SDK silently
-                // downgrades any level a model can't serve, so an over-generous premium
-                // set (xhigh/max on Opus/Fable) is safe.
+                // downgrades any level a model can't serve, so an over-generous set
+                // (xhigh/max on Opus/Sonnet/Fable, any level on Haiku) is safe.
                 supports_effort: true,
                 supported_effort_levels,
             }
@@ -201,24 +201,24 @@ pub fn claude_static_catalog() -> Vec<ModelDescriptor> {
 fn claude_model_meta(model: KnownModel) -> (&'static str, &'static str, Vec<EffortLevel>) {
     use EffortLevel::{High, Low, Max, Medium, Xhigh};
     match model {
-        KnownModel::ClaudeOpus48 => (
-            "Claude Opus 4.8",
-            "Most capable — adaptive reasoning across long-horizon work.",
+        KnownModel::ClaudeOpus55 => (
+            "Opus 5.5",
+            "Best for everyday, complex tasks.",
             vec![Low, Medium, High, Xhigh, Max],
         ),
-        KnownModel::ClaudeSonnet46 => (
-            "Claude Sonnet 4.6",
-            "Balanced speed and depth.",
-            vec![Low, Medium, High],
+        KnownModel::ClaudeSonnet5 => (
+            "Sonnet 5",
+            "Efficient for routine tasks.",
+            vec![Low, Medium, High, Xhigh, Max],
         ),
         KnownModel::ClaudeHaiku45 => (
-            "Claude Haiku 4.5",
-            "Fastest and most lightweight.",
+            "Haiku 4.5",
+            "Fastest for quick answers.",
             vec![Low, Medium, High],
         ),
-        KnownModel::ClaudeFable5 => (
-            "Claude Fable 5",
-            "Creative generalist.",
+        KnownModel::ClaudeFable51 => (
+            "Fable 5.1",
+            "Most capable for your hardest and longest-running tasks.",
             vec![Low, Medium, High, Xhigh, Max],
         ),
     }
@@ -314,21 +314,24 @@ mod tests {
         assert_eq!(
             ids,
             vec![
-                "claude-opus-4-8",
-                "claude-sonnet-4-6",
+                "claude-opus-5-5",
+                "claude-sonnet-5",
                 "claude-haiku-4-5",
-                "claude-fable-5",
+                "claude-fable-5-1",
             ]
         );
-        // Every fallback descriptor is effort-capable with a non-empty level set, and the
-        // premium models unlock the higher levels.
+        // Every fallback descriptor is effort-capable with a non-empty level set; only
+        // Haiku stays on the base levels.
         assert!(catalog.iter().all(|m| m.supports_effort));
         assert!(catalog
             .iter()
             .all(|m| !m.supported_effort_levels.is_empty()));
         let opus = &catalog[0];
         assert!(opus.supported_effort_levels.contains(&EffortLevel::Max));
-        assert!(!catalog[1]
+        assert!(catalog[1]
+            .supported_effort_levels
+            .contains(&EffortLevel::Max));
+        assert!(!catalog[2]
             .supported_effort_levels
             .contains(&EffortLevel::Max));
     }
