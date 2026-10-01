@@ -39,6 +39,10 @@ export interface MetaReport {
   totalViolations: number;
   /** The lines to print (violation + throw lines), in rule order. */
   lines: string[];
+  /** Distinct rules that ran at least one pass. */
+  ruleCount: number;
+  /** Distinct rules with a pass that threw or rejected, so checked nothing. */
+  threwCount: number;
 }
 
 function describeError(err: unknown): string {
@@ -107,9 +111,13 @@ export function reportMetaOutcomes(outcomes: RuleOutcome[]): MetaReport {
   let criticalCount = 0;
   let totalViolations = 0;
   const lines: string[] = [];
+  const ran = new Set<string>();
+  const threw = new Set<string>();
 
   for (const outcome of outcomes) {
+    ran.add(outcome.id);
     if (outcome.threw !== null) {
+      threw.add(outcome.id);
       const verb = outcome.pass === 'async' ? 'rejected' : 'threw';
       lines.push(`[ERROR] ${outcome.id}: rule ${verb} — ${outcome.threw}`);
       criticalCount += 1;
@@ -123,7 +131,21 @@ export function reportMetaOutcomes(outcomes: RuleOutcome[]): MetaReport {
     }
   }
 
-  return { criticalCount, totalViolations, lines };
+  return { criticalCount, totalViolations, lines, ruleCount: ran.size, threwCount: threw.size };
+}
+
+/**
+ * The closing line of a text run, or `null` when the violation lines already say
+ * it all. A run where any rule threw is INCOMPLETE and must never read as clean:
+ * that rule checked nothing, so "no violations" would be a claim nobody verified.
+ */
+export function summaryLineFor(report: MetaReport): string | null {
+  if (report.threwCount > 0) {
+    const rules = `${report.threwCount} of ${report.ruleCount} rule${report.ruleCount === 1 ? '' : 's'}`;
+    const rest = `${report.totalViolations} violation${report.totalViolations === 1 ? '' : 's'}`;
+    return `lint-meta: INCOMPLETE, ${rules} threw and checked nothing (see above); ${rest} from the rest`;
+  }
+  return report.totalViolations === 0 ? 'lint-meta: no violations' : null;
 }
 
 /** The process exit code a report implies: 1 on any critical failure, else 0. */

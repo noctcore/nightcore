@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { createFakeCtx } from './create-fake-ctx.js';
-import { exitCodeFor, reportMetaOutcomes, runMetaRules } from './run.js';
+import { exitCodeFor, reportMetaOutcomes, runMetaRules, summaryLineFor } from './run.js';
 import type { IMetaCtx, IMetaRule, IViolation } from './types.js';
 
 const CTX: IMetaCtx = createFakeCtx({ files: { 'src/x.ts': 'contents' } });
@@ -21,7 +21,13 @@ describe('runMetaRules — capture, never abort', () => {
   test('a passing rule yields a clean outcome and no critical failure', async () => {
     const outcomes = await runMetaRules([rule({ id: 'ok', ciCritical: true, run: () => [] })], CTX);
     const report = reportMetaOutcomes(outcomes);
-    expect(report).toEqual({ criticalCount: 0, totalViolations: 0, lines: [] });
+    expect(report).toEqual({
+      criticalCount: 0,
+      totalViolations: 0,
+      lines: [],
+      ruleCount: 1,
+      threwCount: 0,
+    });
     expect(exitCodeFor(report)).toBe(0);
   });
 
@@ -269,5 +275,50 @@ describe('runMetaRules: async rules (runAsync)', () => {
     );
     expect(report.lines).toEqual(['[info] soft (src/x.ts): bad thing']);
     expect(exitCodeFor(report)).toBe(0);
+  });
+});
+
+describe('summaryLineFor: a run where a rule threw never reads as clean (#478)', () => {
+  const boom = rule({
+    id: 'boom',
+    run: () => {
+      throw new Error('EISDIR');
+    },
+  });
+
+  test('a clean run says "no violations"', async () => {
+    const report = reportMetaOutcomes(await runMetaRules([rule({ id: 'ok', run: () => [] })], CTX));
+    expect(summaryLineFor(report)).toBe('lint-meta: no violations');
+  });
+
+  test('a throw with zero violations is INCOMPLETE, not clean', async () => {
+    const report = reportMetaOutcomes(
+      await runMetaRules([rule({ id: 'ok', run: () => [] }), boom], CTX),
+    );
+    expect(report.totalViolations).toBe(0);
+    expect(summaryLineFor(report)).toBe(
+      'lint-meta: INCOMPLETE, 1 of 2 rules threw and checked nothing (see above); 0 violations from the rest',
+    );
+  });
+
+  test('a rule whose sync and async passes both fail counts once', async () => {
+    const both = rule({
+      id: 'both',
+      run: () => {
+        throw new Error('sync');
+      },
+      runAsync: () => Promise.reject(new Error('async')),
+    });
+    const report = reportMetaOutcomes(await runMetaRules([both], CTX));
+    expect(report.criticalCount).toBe(2);
+    expect(report).toMatchObject({ ruleCount: 1, threwCount: 1 });
+    expect(summaryLineFor(report)).toContain('1 of 1 rule threw');
+  });
+
+  test('violations without a throw need no summary: the lines say it', async () => {
+    const report = reportMetaOutcomes(
+      await runMetaRules([rule({ id: 'soft', run: () => [violation({ rule: 'soft' })] })], CTX),
+    );
+    expect(summaryLineFor(report)).toBeNull();
   });
 });

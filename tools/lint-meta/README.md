@@ -21,7 +21,9 @@ Run it directly:
 bun run lint:meta   # == bun run tools/lint-meta/cli.ts
 ```
 
-`lint-meta: no violations` on a clean tree means the gate is green.
+`lint-meta: no violations` on a clean tree means the gate is green. A rule that
+throws reds the build and ends the run with `lint-meta: INCOMPLETE, ...` instead:
+that rule checked nothing, so the run never reads as clean.
 
 ### `--json` (machine-readable)
 
