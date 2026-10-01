@@ -43,27 +43,33 @@ fn fixtures_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src/e2e/transcript_replay/fixtures")
 }
 
-/// The compiled sidecar Tauri bundles as `externalBin`, resolved by its
-/// triple-suffixed name. `tauri_build` refuses to build this crate without it, so a
-/// missing binary here means something removed that guarantee — we panic with the
-/// command that rebuilds it rather than skipping (a skipped boundary proof reads
-/// exactly like a passing one).
+/// The compiled sidecar Tauri bundles as `externalBin`, resolved by its EXACT
+/// triple-suffixed name: `tauri_build` exports the triple it resolves `externalBin`
+/// with as `TAURI_ENV_TARGET_TRIPLE`, and `apps/sidecar/scripts/compile.ts` names
+/// the binary from the same host triple. Taking the first `nightcore-sidecar-*`
+/// in the directory instead is not hermetic: a checkout that once cross-compiled
+/// keeps a stale binary for the other architecture beside the fresh one, and
+/// whichever `read_dir` lists first would run (a stale one predates the replay
+/// registry and falls through to a real provider). A missing binary means
+/// something removed `tauri_build`'s guarantee, so we panic with the command that
+/// rebuilds it rather than skipping (a skipped boundary proof reads exactly like a
+/// passing one).
 fn sidecar_binary() -> PathBuf {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("binaries");
-    let found = std::fs::read_dir(&dir).ok().and_then(|entries| {
-        entries.flatten().map(|e| e.path()).find(|p| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.starts_with("nightcore-sidecar-"))
-        })
-    });
-    found.unwrap_or_else(|| {
-        panic!(
-            "no compiled sidecar in {} — run `bun run --filter @nightcore/sidecar compile` \
-             (`bun run test:rust` does it for you)",
-            dir.display()
-        )
-    })
+    let name = format!(
+        "nightcore-sidecar-{}{}",
+        env!("TAURI_ENV_TARGET_TRIPLE"),
+        std::env::consts::EXE_SUFFIX
+    );
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("binaries")
+        .join(name);
+    assert!(
+        path.is_file(),
+        "no compiled sidecar at {} (run `bun run --filter @nightcore/sidecar compile`; \
+         `bun run test:rust` does it for you)",
+        path.display()
+    );
+    path
 }
 
 /// One decoded line off the live wire, or the diagnosis of why it could not be

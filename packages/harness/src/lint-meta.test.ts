@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { type CliIO, runCli } from './cli.js';
 import type { ModuleImporter } from './lint-meta/registry.js';
-import type { IMetaRule } from './lint-meta/types.js';
+import type { IMetaRule, IViolation } from './lint-meta/types.js';
 import type { SpawnResult } from './run.js';
 
 const passRule: IMetaRule = { id: 'pass', category: 'source-text', description: 'ok', run: () => [] };
@@ -134,6 +134,46 @@ describe('runCli lint-meta — verdicts', () => {
     const h = harness({ present: [DEFAULT_REGISTRY], mod: { nope: 1 } });
     expect(await runCli(['lint-meta'], h.io)).toBe(1);
     expect(h.err.join('\n')).toContain('META_RULES');
+  });
+});
+
+describe('runCli lint-meta: async rules (#277)', () => {
+  /**
+   * The shape Settly's four async rules use: `runAsync({ root })`, destructured,
+   * no `run`. It must load, run, and report through the real CLI dispatch.
+   */
+  const settlyShapedRule: IMetaRule = {
+    id: 'eslint-config-no-warn',
+    category: 'config',
+    ciCritical: true,
+    description: 'ESLint severities must be "error" or "off", not "warn".',
+    runAsync({ root }): Promise<IViolation[]> {
+      return Promise.resolve([
+        { file: `${root}/eslint.config.js`, rule: 'eslint-config-no-warn', message: 'resolves to warn' },
+      ]);
+    },
+  };
+
+  test('an async-only rule loads, runs, and its violation reds the build', async () => {
+    const h = harness({ present: [DEFAULT_REGISTRY], mod: { META_RULES: [settlyShapedRule] } });
+    expect(await runCli(['lint-meta'], h.io)).toBe(1);
+    expect(h.out.join('\n')).toContain('→ eslint-config-no-warn');
+    expect(h.err).toEqual(['[ERROR] eslint-config-no-warn (/repo/eslint.config.js): resolves to warn']);
+  });
+
+  test('a rejecting async rule reds the build and the next rule still reports', async () => {
+    const rejecting: IMetaRule = {
+      id: 'rejects',
+      category: 'config',
+      description: 'blows up',
+      runAsync: () => Promise.reject(new Error('config did not resolve')),
+    };
+    const h = harness({ present: [DEFAULT_REGISTRY], mod: { META_RULES: [rejecting, failRule] } });
+    expect(await runCli(['lint-meta'], h.io)).toBe(1);
+    expect(h.err).toEqual([
+      '[ERROR] rejects: rule rejected — config did not resolve',
+      '[ERROR] no-todo (src/x.ts): found a TODO',
+    ]);
   });
 });
 

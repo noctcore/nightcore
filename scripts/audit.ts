@@ -27,20 +27,27 @@ import { readFileSync } from 'node:fs';
 interface Ignored {
   /** GHSA id, as it appears in the advisory URL. */
   readonly id: string;
-  /** Package the advisory is filed against. */
+  /** Package(s) the advisory is filed against. */
   readonly pkg: string;
   readonly severity: 'moderate' | 'high';
   /** Why this is not reachable in this app — the claim being made. */
   readonly rationale: string;
   /** What would let us drop this entry. */
   readonly exit: string;
+  /**
+   * ISO date (YYYY-MM-DD) by which the claim must be re-verified. Past it, this
+   * script FAILS — a suppression is a dated judgement, not a permanent waiver.
+   * Re-check reachability and the exit condition, then bump or drop the entry.
+   */
+  readonly reviewBy: string;
 }
 
 /**
- * Advisories tolerated with cause. Empty as of the 2026-08-31 dependency
- * refresh (docs/deps/2026-08-31-dependency-upgrade-plan.md, Phase 1): the
- * brace-expansion and hono/@hono-node-server entries that used to live here
- * all cleared via a lockfile refresh (see git history for the prior list).
+ * Advisories tolerated with cause. Empty: every advisory the list used to carry
+ * (brace-expansion GHSA-mh99-v99m-4gvg, @hono/node-server GHSA-frvp-7c67-39w9,
+ * hono GHSA-xgm2/hvrm/w62v, vitest GHSA-82fw-gwwq-j7x9) was retired by a real
+ * upgrade, the last one by the move to vitest 4.1.11 (see git history for the
+ * prior entries).
  */
 const IGNORED: readonly Ignored[] = [] as const;
 
@@ -167,6 +174,18 @@ function reportedAdvisoryIds(): Set<string> {
   return ids;
 }
 
+const today = new Date().toISOString().slice(0, 10);
+const expired = IGNORED.filter((entry) => !/^\d{4}-\d{2}-\d{2}$/.test(entry.reviewBy) || entry.reviewBy < today);
+if (expired.length > 0) {
+  process.stderr.write(
+    '\n✗ audit: ignore-list entries are past their review date (or have no valid one).\n' +
+      'Re-verify each claim in scripts/audit.ts, then bump `reviewBy` or drop the entry:\n\n' +
+      expired.map((e) => `  - ${e.id} (${e.pkg}) reviewBy=${e.reviewBy}`).join('\n') +
+      '\n\n',
+  );
+  process.exit(1);
+}
+
 const reported = reportedAdvisoryIds();
 const stale = IGNORED.filter((entry) => !reported.has(entry.id));
 
@@ -185,7 +204,7 @@ if (IGNORED.length > 0) {
   process.stdout.write(
     `audit: tolerating ${IGNORED.length} advisor${IGNORED.length === 1 ? 'y' : 'ies'} with cause ` +
       `(see scripts/audit.ts):\n` +
-      IGNORED.map((e) => `  · ${e.id} ${e.pkg} [${e.severity}]`).join('\n') +
+      IGNORED.map((e) => `  · ${e.id} ${e.pkg} [${e.severity}] review by ${e.reviewBy}`).join('\n') +
       '\n\n',
   );
 }

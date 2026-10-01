@@ -23,7 +23,50 @@ machine-readable result to stdout instead.
 ```
 harness [check] [--dir <path>] [--manifest <path>] [--json] [--version] [--help]
 harness lint-meta [--dir <path>] [--registry <path>]
+harness catalog [--dir <path>] [--registry <path>] [--out <path>] [--check]
 ```
+
+## Sync and async rules
+
+A lint-meta rule declares `run(ctx)`, `runAsync(ctx)`, or both. Use `runAsync` when the check needs
+an async API, such as ESLint's `calculateConfigForFile`:
+
+```ts
+import type { IMetaCtx, IMetaRule, IViolation } from '@noctcore/harness';
+
+export const eslintConfigNoWarn: IMetaRule = {
+  id: 'eslint-config-no-warn',
+  category: 'config',
+  ciCritical: true,
+  description: 'ESLint severities must be "error" or "off", not "warn".',
+  async runAsync({ root }: IMetaCtx): Promise<IViolation[]> {
+    return checkResolvedConfigs(root);
+  },
+};
+```
+
+Rules run one at a time, in registry order. When a rule has both entry points, `run` goes first and
+both report. A rejected `runAsync` is treated exactly like a throwing `run`: it is a critical failure
+reported against that rule, and every later rule still runs. An object with neither entry point is
+not a rule, and a registry that exports one fails to load.
+
+## Rule catalog (`catalog`)
+
+`harness catalog` renders a Markdown table of every rule in the registry: id, category, whether it
+is CI-critical (a violation reds the build), and its description. It is generated from the registry,
+so it cannot drift from what `lint-meta` enforces.
+
+```bash
+npx @noctcore/harness catalog                     # write RULES.md beside the registry
+npx @noctcore/harness catalog --out docs/RULES.md # or anywhere, relative to --dir
+npx @noctcore/harness catalog --check             # the gate: exit 1 + a diff when stale
+```
+
+The generated table sits between `<!-- harness:rule-catalog:start -->` and
+`<!-- harness:rule-catalog:end -->`. If the file already has both markers, only the text between
+them is replaced, so hand-written sections around the table survive. `--check` writes nothing; it
+exits `1` when the committed file is missing or differs from what would be generated, and prints the
+changed lines. The catalog only imports the registry; it never runs a rule.
 
 ## Pointing it at a bundle (`--manifest` / `--registry`)
 

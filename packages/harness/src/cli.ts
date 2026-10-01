@@ -10,11 +10,17 @@
  * symlink-safe entry check), never on import.
  */
 import { spawnSync } from 'node:child_process';
-import { readFileSync, realpathSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
+import {
+  applyCatalog,
+  DEFAULT_CATALOG_BASENAME,
+  diffLines,
+  renderCatalogBlock,
+} from './lint-meta/catalog.js';
 import { createNodeCtx } from './lint-meta/ctx.js';
 import {
   DEFAULT_REGISTRY_RELATIVE_PATHS,
@@ -23,6 +29,7 @@ import {
   type ModuleImporter,
 } from './lint-meta/registry.js';
 import { exitCodeFor, reportMetaOutcomes, runMetaRules } from './lint-meta/run.js';
+import type { IMetaRule } from './lint-meta/types.js';
 import { type FileReader,loadChecks, MANIFEST_RELATIVE_PATH } from './manifest.js';
 import { emptyPass, fixInstruction, runChecks, type SpawnFn } from './run.js';
 
@@ -39,6 +46,17 @@ export interface CliIO {
    * `runLintMeta` falls back to {@link defaultImporter} when it is absent.
    */
   importModule?: ModuleImporter;
+  /**
+   * Write a whole file, creating its directory. Only `catalog` writes; it falls
+   * back to {@link writeFileNode} when this is absent.
+   */
+  write?: (absolutePath: string, content: string) => void;
+}
+
+/** The real writer: create the parent directory, then write UTF-8. */
+function writeFileNode(absolutePath: string, content: string): void {
+  mkdirSync(path.dirname(absolutePath), { recursive: true });
+  writeFileSync(absolutePath, content, 'utf8');
 }
 
 const HELP = `@noctcore/harness — portable Structure-Lock runner
@@ -46,23 +64,29 @@ const HELP = `@noctcore/harness — portable Structure-Lock runner
 Usage:
   harness [check] [options]      Run the checks declared in .nightcore/harness.json
   harness lint-meta [options]    Run the portable lint-meta rules from the enumerated registry
+  harness catalog [options]      Write the registry's rule catalog (Markdown), or --check it
 
 Options:
   --dir <path>        Target directory to operate in (default: current directory)
   --manifest <path>   check only: the manifest to read, relative to --dir
                       (default: ${MANIFEST_RELATIVE_PATH}). An explicitly named
                       manifest that is missing or unparseable reds the build.
-  --registry <path>   lint-meta only: the rule registry to load, relative to --dir
+  --registry <path>   lint-meta/catalog: the rule registry to load, relative to --dir
                       (default: the first of ${DEFAULT_REGISTRY_RELATIVE_PATHS.join(', ')}
                       that exists). An explicitly named registry that is missing reds the build.
                       A TypeScript registry needs Node >= 22.18 (native type stripping).
+  --out <path>        catalog only: the catalog file, relative to --dir
+                      (default: ${DEFAULT_CATALOG_BASENAME} beside the registry). Text outside the
+                      generated markers is kept.
+  --check             catalog only: write nothing; exit 1 and print a diff when the
+                      committed catalog is stale or missing (the gate mode)
   --json              check only: emit the machine-readable result to stdout instead of a summary
   --version           Print the runner version and exit
   --help              Print this help and exit
 
 Exit codes:
   0  every check/rule passed (or nothing is configured to enforce)
-  1  a check failed, a rule reported a critical violation or threw, an explicitly named manifest/registry was unusable, or the manifest requires a newer runner
+  1  a check failed, a rule reported a critical violation or threw, an explicitly named manifest/registry was unusable, the manifest requires a newer runner, or (catalog --check) the catalog is stale
   2  a usage error`;
 
 interface ParsedArgs {
@@ -70,8 +94,12 @@ interface ParsedArgs {
   dir: string;
   /** check: an explicit manifest path (`--manifest`), else the fixed default. */
   manifest: string | undefined;
-  /** lint-meta: an explicit registry path (`--registry`), else the fixed defaults. */
+  /** lint-meta/catalog: an explicit registry path (`--registry`), else the fixed defaults. */
   registry: string | undefined;
+  /** catalog: an explicit output path (`--out`), else beside the registry. */
+  out: string | undefined;
+  /** catalog: compare instead of write. */
+  checkOnly: boolean;
   json: boolean;
   help: boolean;
   version: boolean;
@@ -84,6 +112,8 @@ function parseArgs(argv: string[], cwd: string): ParsedArgs {
   let dir = cwd;
   let manifest: string | undefined;
   let registry: string | undefined;
+  let out: string | undefined;
+  let checkOnly = false;
   let json = false;
   let help = false;
   let version = false;
@@ -93,6 +123,8 @@ function parseArgs(argv: string[], cwd: string): ParsedArgs {
     if (arg === undefined) continue;
     if (arg === '--json') {
       json = true;
+    } else if (arg === '--check') {
+      checkOnly = true;
     } else if (arg === '--help' || arg === '-h') {
       help = true;
     } else if (arg === '--version' || arg === '-v') {
@@ -121,13 +153,31 @@ function parseArgs(argv: string[], cwd: string): ParsedArgs {
       }
     } else if (arg.startsWith('--manifest=')) {
       manifest = arg.slice('--manifest='.length);
+    } else if (arg === '--out') {
+      const next = argv[i + 1];
+      if (next !== undefined) {
+        out = next;
+        i += 1;
+      }
+    } else if (arg.startsWith('--out=')) {
+      out = arg.slice('--out='.length);
     } else if (!arg.startsWith('-') && !sawCommand) {
       command = arg;
       sawCommand = true;
     }
   }
 
-  return { command, dir: path.resolve(cwd, dir), manifest, registry, json, help, version };
+  return {
+    command,
+    dir: path.resolve(cwd, dir),
+    manifest,
+    registry,
+    out,
+    checkOnly,
+    json,
+    help,
+    version,
+  };
 }
 
 /** Read this package's version from its committed `package.json`. */
@@ -173,6 +223,7 @@ export function nodeIO(): CliIO {
     stdout: (line) => process.stdout.write(`${line}\n`),
     stderr: (line) => process.stderr.write(`${line}\n`),
     importModule: defaultImporter,
+    write: writeFileNode,
   };
 }
 
@@ -253,19 +304,20 @@ function resolveRegistryPath(parsed: ParsedArgs, io: CliIO): { path: string; exp
   return { path: found ?? candidates[candidates.length - 1] ?? '', explicit: false };
 }
 
+/** A registry resolved and imported, or the exit code the caller must return. */
+type RegistryLoad = { exit: number } | { path: string; rules: IMetaRule[] };
+
 /**
- * Run the `lint-meta` subcommand: BOUNDED-EVAL the enumerated rule registry
- * (§3.5/§5) and run its rules against a real Node ctx rooted at the target dir.
- *
- * Presence posture mirrors `check`'s manifest, and splits the same way (#325):
- * an absent DEFAULT registry ⇒ exit 0 ("nothing to enforce", opt-in-by-presence),
- * but an absent EXPLICIT `--registry` reds the build — a bundle whose check
- * declares a registry path must never pass by virtue of that file missing. A
- * PRESENT-but-broken registry (import throws, or no `META_RULES` array) always
- * reds the build. Only the ONE resolved registry file is imported; a stray `.js`
- * beside it is never loaded.
+ * Resolve, presence-check and BOUNDED-EVAL the registry, shared by `lint-meta`
+ * and `catalog`. Presence posture mirrors `check`'s manifest, and splits the same
+ * way (#325): an absent DEFAULT registry exits 0 ("nothing to enforce",
+ * opt-in-by-presence), but an absent EXPLICIT `--registry` reds the build: a
+ * bundle whose check declares a registry path must never pass by virtue of that
+ * file missing. A PRESENT-but-broken registry (import throws, or no `META_RULES`
+ * array) always reds the build. Only the ONE resolved registry file is imported;
+ * a stray `.js` beside it is never loaded.
  */
-async function runLintMeta(parsed: ParsedArgs, io: CliIO): Promise<number> {
+async function loadRegistryFor(parsed: ParsedArgs, io: CliIO): Promise<RegistryLoad> {
   const { path: registryPath, explicit } = resolveRegistryPath(parsed, io);
 
   // Presence check via a plain read (no import): an absent registry opts out —
@@ -277,28 +329,39 @@ async function runLintMeta(parsed: ParsedArgs, io: CliIO): Promise<number> {
           '--registry, so there is nothing to enforce and that is an error, not a pass. ' +
           '(Re-export the portable lock, or fix the --registry path.)',
       );
-      return 1;
+      return { exit: 1 };
     }
     io.stdout(
       `No lint-meta registry at ${registryPath} — nothing to enforce. ` +
         '(Point --registry at your rule registry, or commit one at ' +
         `${DEFAULT_REGISTRY_RELATIVE_PATHS[0]}.)`,
     );
-    return 0;
+    return { exit: 0 };
   }
 
   const loaded = await loadRegistry(registryPath, io.importModule ?? defaultImporter);
   if (loaded.error !== undefined) {
     io.stderr(`Failed to load the lint-meta registry at ${registryPath}: ${loaded.error}`);
-    return 1;
+    return { exit: 1 };
   }
+  return { path: registryPath, rules: loaded.rules };
+}
 
-  const n = loaded.rules.length;
-  io.stdout(`lint-meta: running ${n} rule${n === 1 ? '' : 's'} from ${registryPath}`);
+/**
+ * Run the `lint-meta` subcommand: load the enumerated rule registry (see
+ * {@link loadRegistryFor}) and run its rules against a real Node ctx rooted at
+ * the target dir.
+ */
+async function runLintMeta(parsed: ParsedArgs, io: CliIO): Promise<number> {
+  const registry = await loadRegistryFor(parsed, io);
+  if ('exit' in registry) return registry.exit;
+
+  const n = registry.rules.length;
+  io.stdout(`lint-meta: running ${n} rule${n === 1 ? '' : 's'} from ${registry.path}`);
 
   const ctx = createNodeCtx(parsed.dir);
   // Legibility (§5): echo every rule before it runs.
-  const outcomes = runMetaRules(loaded.rules, ctx, (rule) => io.stdout(`→ ${rule.id}`));
+  const outcomes = await runMetaRules(registry.rules, ctx, (rule) => io.stdout(`→ ${rule.id}`));
   const report = reportMetaOutcomes(outcomes);
 
   for (const line of report.lines) io.stderr(line);
@@ -307,10 +370,59 @@ async function runLintMeta(parsed: ParsedArgs, io: CliIO): Promise<number> {
   return exitCodeFor(report);
 }
 
+/** A repo-relative, forward-slash path: the same label on every OS and machine. */
+function repoLabel(dir: string, absolutePath: string): string {
+  return path.relative(dir, absolutePath).split(path.sep).join('/');
+}
+
+/**
+ * Run the `catalog` subcommand (#278): render the loaded registry's rule catalog
+ * into `--out` (default: `RULES.md` beside the registry). With `--check` nothing
+ * is written: a stale or missing catalog exits 1 with a line diff, which is the
+ * mode a gate runs. Rules are only imported, never run.
+ */
+async function runCatalog(parsed: ParsedArgs, io: CliIO): Promise<number> {
+  const registry = await loadRegistryFor(parsed, io);
+  if ('exit' in registry) return registry.exit;
+
+  const outPath =
+    parsed.out !== undefined && parsed.out !== ''
+      ? path.resolve(parsed.dir, parsed.out)
+      : path.join(path.dirname(registry.path), DEFAULT_CATALOG_BASENAME);
+  const block = renderCatalogBlock(registry.rules, repoLabel(parsed.dir, registry.path));
+  const committed = io.read(outPath);
+  const expected = applyCatalog(committed, block);
+
+  if (parsed.checkOnly) {
+    if (committed === expected) {
+      io.stdout(`catalog: ${outPath} is up to date.`);
+      return 0;
+    }
+    if (committed === null) {
+      io.stderr(`catalog: ${outPath} does not exist. Run \`harness catalog\` to generate it.`);
+      return 1;
+    }
+    io.stderr(`catalog: ${outPath} is out of date. Run \`harness catalog\` to regenerate it.`);
+    io.stderr('--- committed');
+    io.stderr('+++ generated');
+    for (const line of diffLines(committed, expected)) io.stderr(line);
+    return 1;
+  }
+
+  if (committed === expected) {
+    io.stdout(`catalog: ${outPath} is already up to date.`);
+    return 0;
+  }
+  (io.write ?? writeFileNode)(outPath, expected);
+  const n = registry.rules.length;
+  io.stdout(`catalog: wrote ${n} rule${n === 1 ? '' : 's'} to ${outPath}`);
+  return 0;
+}
+
 /**
  * Parse argv and dispatch. Returns the process exit code (never exits). The
- * `check` path stays synchronous (`number`); the `lint-meta` path is async
- * (bounded dynamic import), so the return type is `number | Promise<number>` and
+ * `check` path stays synchronous (`number`); the `lint-meta` and `catalog` paths
+ * are async (bounded dynamic import), so the return type is `number | Promise<number>` and
  * the bin entry awaits it.
  */
 export function runCli(argv: string[], io: CliIO = nodeIO()): number | Promise<number> {
@@ -326,6 +438,7 @@ export function runCli(argv: string[], io: CliIO = nodeIO()): number | Promise<n
   }
   if (parsed.command === 'check') return runCheck(parsed, io);
   if (parsed.command === 'lint-meta') return runLintMeta(parsed, io);
+  if (parsed.command === 'catalog') return runCatalog(parsed, io);
   io.stderr(`Unknown command: ${parsed.command}. Run \`harness --help\`.`);
   return 2;
 }

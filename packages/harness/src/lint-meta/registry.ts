@@ -54,11 +54,21 @@ export interface LoadedRegistry {
   error?: string;
 }
 
-/** A structurally rule-shaped object: an `id` string and a `run` function. */
-function isMetaRule(v: unknown): v is IMetaRule {
+/**
+ * A structurally rule-shaped object: an `id` string and at least one entry point,
+ * a `run` or a `runAsync` function. An entry point that is present must be a
+ * function; an object with neither is not a rule, so the registry that exports
+ * it reds the build rather than loading a rule that can never report.
+ */
+export function isMetaRule(v: unknown): v is IMetaRule {
   if (typeof v !== 'object' || v === null) return false;
   const r = v as Record<string, unknown>;
-  return typeof r.id === 'string' && typeof r.run === 'function';
+  if (typeof r.id !== 'string') return false;
+  const hasRun = typeof r.run === 'function';
+  const hasRunAsync = typeof r.runAsync === 'function';
+  if (r.run !== undefined && !hasRun) return false;
+  if (r.runAsync !== undefined && !hasRunAsync) return false;
+  return hasRun || hasRunAsync;
 }
 
 /** The first `META_RULES`/default export that is an array of rule-shaped objects. */
@@ -133,7 +143,7 @@ export async function loadRegistry(
       rules: [],
       error:
         'the registry must export `META_RULES` (a named export, or the default) ' +
-        'as an array of { id, run } rule objects',
+        'as an array of { id, run and/or runAsync } rule objects',
     };
   }
   return { rules };

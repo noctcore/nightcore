@@ -46,6 +46,25 @@ describe('loadRegistry — accepted export shapes', () => {
     expect(loaded.rules).toEqual([aRule]);
   });
 
+  test('an async-only rule (runAsync, no run) loads', async () => {
+    const asyncRule: IMetaRule = {
+      id: 'async-only',
+      category: 'config',
+      description: 'needs an async API',
+      runAsync: () => Promise.resolve([]),
+    };
+    const { importer } = recordingImporter({ META_RULES: [aRule, asyncRule] });
+    const loaded = await loadRegistry('/repo/registry.js', importer);
+    expect(loaded.error).toBeUndefined();
+    expect(loaded.rules).toEqual([aRule, asyncRule]);
+  });
+
+  test('a rule with both entry points loads', async () => {
+    const both: IMetaRule = { ...aRule, id: 'both', runAsync: () => Promise.resolve([]) };
+    const { importer } = recordingImporter({ META_RULES: [both] });
+    expect((await loadRegistry('/repo/registry.js', importer)).rules).toEqual([both]);
+  });
+
   test('an empty registry is valid (zero rules, no error)', async () => {
     const { importer } = recordingImporter({ META_RULES: [] });
     const loaded = await loadRegistry('/repo/registry.js', importer);
@@ -60,6 +79,27 @@ describe('loadRegistry — rejected registries red the build (fail-safe)', () =>
     const loaded = await loadRegistry('/repo/registry.js', importer);
     expect(loaded.rules).toEqual([]);
     expect(loaded.error).toContain('META_RULES');
+  });
+
+  test('an object with neither run nor runAsync is still not a rule', async () => {
+    const { importer } = recordingImporter({
+      META_RULES: [{ id: 'dud', category: 'config', description: 'no entry point' }],
+    });
+    const loaded = await loadRegistry('/repo/registry.js', importer);
+    expect(loaded.rules).toEqual([]);
+    expect(loaded.error).toContain('run and/or runAsync');
+  });
+
+  test('an entry point that is present but not a function is rejected', async () => {
+    for (const dud of [
+      { id: 'x', run: 'not a function' },
+      { id: 'x', runAsync: [] },
+      { id: 'x', run: () => [], runAsync: 'nope' },
+    ]) {
+      const { importer } = recordingImporter({ META_RULES: [dud] });
+      const loaded = await loadRegistry('/repo/registry.js', importer);
+      expect(loaded.error).toContain('META_RULES');
+    }
   });
 
   test('an array of non-rule-shaped objects is rejected', async () => {
