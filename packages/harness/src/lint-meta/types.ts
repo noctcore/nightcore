@@ -22,7 +22,10 @@ export interface IMetaCtx {
   read(rel: string): string | null;
   /** Whether a repo-relative path exists. */
   exists(rel: string): boolean;
-  /** Glob repo-relative paths (cwd = {@link root}). */
+  /**
+   * Glob repo-relative paths (cwd = {@link root}). FILES ONLY: a directory that
+   * matches the pattern is never returned, so every result is safe to `read`.
+   */
   glob(pattern: string): string[];
   /** Run a shell command at {@link root}; never throws. */
   exec(cmd: string): { code: number; stdout: string; stderr: string };

@@ -51,6 +51,24 @@ export function portableGlob(pattern: string, cwd: string): string[] {
   return [...new Set(matches)].sort();
 }
 
+/**
+ * {@link portableGlob}, files only. Node's `fs.globSync` returns matching
+ * DIRECTORIES as well as files, and a directory can carry a file-looking name
+ * (vitest writes image snapshots into directories literally named
+ * `<name>.test.tsx`). A lint rule globs in order to read, so a directory in the
+ * result is never useful and always a latent `EISDIR`. A path that vanishes
+ * between the walk and the stat is dropped too.
+ */
+export function portableFileGlob(pattern: string, cwd: string): string[] {
+  return portableGlob(pattern, cwd).filter((rel) => {
+    try {
+      return statSync(path.join(cwd, rel)).isFile();
+    } catch {
+      return false;
+    }
+  });
+}
+
 /** A compiled pattern segment. */
 type Segment =
   | { kind: 'globstar' }
