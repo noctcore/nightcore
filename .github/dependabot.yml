@@ -52,7 +52,7 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
     ignore:
-      # The Claude Agent SDK is deliberately exact-pinned (0.3.190) because its
+      # The Claude Agent SDK is deliberately exact-pinned (0.3.282) because its
       # pre-1.0 API drifts. Below 1.0 semver gives NO stability guarantee for
       # patch releases either — a 0.3.x → 0.3.y bump of this fast-moving agent
       # SDK can carry breaking changes, and the engine is the load-bearing
