@@ -226,35 +226,6 @@ describe('SessionManager happy path', () => {
     expect(fs.existsSync(indexFile)).toBe(true);
     expect(fs.readFileSync(indexFile, 'utf8')).toContain('persist me');
   });
-
-  test('echoes the council seat marker onto session-started, absent for a board session (issue #364)', async () => {
-    scripts = [
-      { kind: 'messages', messages: [initMessage(), successMessage()] },
-      { kind: 'messages', messages: [initMessage(), successMessage()] },
-    ];
-    const manager = new SessionManager(makeConfig());
-    const started: Extract<NightcoreEvent, { type: 'session-started' }>[] = [];
-    let completed = 0;
-    let resolve!: () => void;
-    const allDone = new Promise<void>((r) => (resolve = r));
-    manager.on((e) => {
-      if (e.type === 'session-started') started.push(e);
-      if (e.type === 'session-completed' && ++completed === 2) resolve();
-    });
-
-    // A council seat command carries `council: true`; a normal board command does not.
-    await manager.dispatch({ type: 'start-session', prompt: 'seat', council: true });
-    await manager.dispatch({ type: 'start-session', prompt: 'board' });
-    await allDone;
-
-    const seat = started.find((e) => e.prompt === 'seat');
-    const board = started.find((e) => e.prompt === 'board');
-    // The seat's session-started carries the marker so the Rust reader skips board-FIFO
-    // correlation for it (no desync warn, no mis-bind of a concurrently-pending board task).
-    expect(seat?.council).toBe(true);
-    // A board session's shape is byte-for-byte unchanged — the marker is absent.
-    expect(board?.council).toBeUndefined();
-  });
 });
 
 describe('SessionManager monotonic ids', () => {
@@ -931,47 +902,6 @@ describe('SessionManager fail-closed autonomy invariant', () => {
     expect(failed).toBeDefined();
     expect(failed?.message).toContain('hooks');
     expect(events.some((e) => e.type === 'session-started')).toBe(false);
-  });
-
-  test('a refused COUNCIL seat echoes the council marker onto session-failed; a board refusal does not (issue #374)', async () => {
-    // A council seat refused at preflight emits ONLY session-failed — no session-started
-    // carried the marker — so the marker must ride the terminal, or the Rust reader would
-    // board-FIFO-correlate it and pop a concurrently-pending board task's slot.
-    const council = new SessionManager(
-      makeConfig(),
-      undefined,
-      new DegradedProvider(),
-    );
-    const councilEvents: NightcoreEvent[] = [];
-    council.on((e) => councilEvents.push(e));
-    await council.dispatch({
-      type: 'start-session',
-      prompt: 'seat',
-      autonomy: 'bypass',
-      council: true,
-    });
-    const councilFailed = councilEvents.find(isFailed);
-    expect(councilFailed).toBeDefined();
-    expect(councilEvents.some((e) => e.type === 'session-started')).toBe(false);
-    if (councilFailed?.type === 'session-failed') {
-      expect(councilFailed.council).toBe(true);
-    }
-
-    // A refused BOARD session (no council flag) does NOT carry the marker — its
-    // session-failed still correlates, to fail its own task.
-    const board = new SessionManager(
-      makeConfig(),
-      undefined,
-      new DegradedProvider(),
-    );
-    const boardEvents: NightcoreEvent[] = [];
-    board.on((e) => boardEvents.push(e));
-    await board.dispatch({ type: 'start-session', prompt: 'x', autonomy: 'bypass' });
-    const boardFailed = boardEvents.find(isFailed);
-    expect(boardFailed).toBeDefined();
-    if (boardFailed?.type === 'session-failed') {
-      expect(boardFailed.council).toBeUndefined();
-    }
   });
 
   test('STARTS at a non-elevated autonomy on the same degraded provider', async () => {

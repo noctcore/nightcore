@@ -20,20 +20,12 @@ import {
 /**
  * Build the terminal `session-failed` event for a preflight refusal, or return `null` when
  * `error` is NOT a preflight refusal (the caller rethrows). Logs the refusal.
- *
- * `council` echoes the SEAT marker onto the terminal (issue #374): a refused COUNCIL seat
- * emits ONLY this `session-failed` — no `session-started` ever carried the marker — so the
- * Rust reader needs it here to SKIP board-FIFO correlation, else the refused seat could pop a
- * concurrently-pending board task's slot and mis-bind. A refused BOARD session carries no
- * marker, so its `session-failed` still correlates (to fail its own task).
  */
 export function refusalEvent(
   id: number,
   error: unknown,
-  council: boolean,
   logger: Logger | undefined,
 ): Extract<NightcoreEvent, { type: 'session-failed' }> | null {
-  const councilMark = council ? { council: true as const } : {};
   if (error instanceof AutonomyNotPermittedError) {
     logger?.warn('session refused: autonomy not permitted', {
       id,
@@ -45,7 +37,6 @@ export function refusalEvent(
       sessionId: id,
       reason: 'runner-crash',
       message: error.message,
-      ...councilMark,
     };
   }
   if (error instanceof GovernanceNotSupportedError) {
@@ -58,7 +49,6 @@ export function refusalEvent(
       sessionId: id,
       reason: 'runner-crash',
       message: error.message,
-      ...councilMark,
     };
   }
   return null;

@@ -25,7 +25,6 @@ import type {
 import { createMonotonicCounter, type Logger } from '@nightcore/shared';
 import { SessionStore } from '@nightcore/storage';
 
-import { CouncilRouter } from '../debate/council-router.js';
 import type {
   AgentProvider,
   AgentSession,
@@ -72,7 +71,6 @@ export class SessionManager {
   private readonly sessionApi: SessionApi;
   private readonly providers: ProviderRegistry;
   private readonly scans: ScanRouter;
-  private readonly council: CouncilRouter;
 
   constructor(
     private readonly config: Config,
@@ -102,23 +100,6 @@ export class SessionManager {
       emit: (event) => this.emit(event),
       providers: this.providers,
       ...(logger !== undefined ? { logger } : {}),
-    });
-    // The Council conductor drives its seats as one-shot sessions through this
-    // supervisor (issue #350), routed by a sibling collaborator like the scans.
-    this.council = new CouncilRouter({
-      startSession: (command) => this.startSession(command),
-      subscribe: (listener) => this.on(listener),
-      emit: (event) => this.emit(event),
-      // Cancel an abandoned seat's session (PR #359 LOW-B): best-effort + fire-and-forget
-      // so it stops spending provider-side; an unknown/torn-down id is a no-op.
-      interruptSession: (sessionId) =>
-        void this.sessions
-          .get(sessionId)
-          ?.runner.interrupt()
-          .catch((error: unknown) =>
-            this.logger?.debug('seat interrupt failed', { sessionId, error }),
-          ),
-      logger,
     });
     // Seed the id counter past the highest persisted id so a restart never
     // reuses an id and clobbers a prior record (the SessionStore collapses by id,
@@ -152,13 +133,6 @@ export class SessionManager {
     // a `sessionId`).
     if (this.scans.handles(command)) {
       this.scans.dispatch(command);
-      return;
-    }
-
-    // The Council command family (issue #350) is `runId`-keyed, not session-id-keyed,
-    // like the scans — route it to the Conductor before the `command.sessionId` lookup.
-    if (this.council.handles(command)) {
-      this.council.dispatch(command);
       return;
     }
 
@@ -278,11 +252,9 @@ export class SessionManager {
         this.logger?.child(`session-${id}`),
       );
     } catch (error) {
-      // A preflight refusal (autonomy/governance) becomes a terminal `session-failed`. A
-      // refused COUNCIL seat echoes the marker onto it — `command.council` is the same flag
-      // its `session-started` would have carried — so the reader carves the refused seat out
-      // of board-FIFO correlation (issue #374). A non-refusal error rethrows.
-      const refusal = refusalEvent(id, error, command.council === true, this.logger);
+      // A preflight refusal (autonomy/governance) becomes a terminal `session-failed`.
+      // A non-refusal error rethrows.
+      const refusal = refusalEvent(id, error, this.logger);
       if (refusal !== null) {
         this.emit(refusal);
         return id;
@@ -319,9 +291,6 @@ export class SessionManager {
       prompt: command.prompt,
       model: params.model,
       permissionMode,
-      // Council seat marker (issue #364): echo the command flag so the Rust reader
-      // skips board-FIFO correlation for a debate seat. Absent for a board session.
-      ...(command.council ? { council: true } : {}),
       // OS write containment (T16 / #157): echo the runner's resolved posture so a
       // requested-but-unavailable session is VISIBLE at launch instead of quietly
       // running unconfined. Omitted entirely when containment was never requested,
