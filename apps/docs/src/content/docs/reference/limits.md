@@ -1,6 +1,6 @@
 ---
 title: Limits and honest gaps
-description: What is alpha, what is macOS-only, what needs a real provider account, and what is implemented but unverified — collected in one place rather than scattered through the docs.
+description: What is alpha, what is macOS-only, and what needs a real provider account, collected in one place rather than scattered through the docs.
 sidebar:
   order: 8
 ---
@@ -65,9 +65,9 @@ Nightcore does not bundle credentials and does not proxy anything. It drives a
 provider CLI you have installed and logged into. Without one, there is nothing
 to run.
 
-Model usage is billed to **your** provider account. Deep scans, multi-lens PR
-review, and Council all do substantially more model work than a single task —
-that is a spend decision, not a setting.
+Model usage is billed to **your** provider account. Deep scans and multi-lens PR
+review do substantially more model work than a single task: that is a spend
+decision, not a setting.
 
 :::note[The all-$0 failure signature]
 A scan that "fails" with zero cost and zero input tokens is almost always a
@@ -85,22 +85,6 @@ ledger is *not* a refusal condition — a Codex run simply produces no audit
 trail.
 
 → [Providers](../providers/)
-
-## Unverified or not wired
-
-Stated plainly, because these are the claims most likely to be over-read:
-
-- **Council's build stage has never been verified end to end against a live
-  provider.** CI exercises the write-capable driver with the writer execution
-  faked. The wiring is proven; the outcome is not.
-- **Council's `review` stage is dormant** — implemented, not injected in
-  production.
-- **Council's `judge-agent` and `vote` convergence modes are unreachable** — all
-  three shipped presets converge on a human.
-- **There is no human→seat steering in Council.** The canvas reads the debate
-  stream; nothing feeds text back into a seat.
-
-→ [Council](../council/)
 
 ## Measurements that are approximate on purpose
 

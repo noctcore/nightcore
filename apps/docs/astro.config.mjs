@@ -95,7 +95,6 @@ export default defineConfig({
             { slug: 'reference/task-kinds' },
             { slug: 'reference/scans' },
             { slug: 'reference/pr-review' },
-            { slug: 'reference/council' },
             { slug: 'reference/providers' },
             { slug: 'reference/files-on-disk' },
             { slug: 'reference/architecture' },
