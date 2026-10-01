@@ -1,5 +1,4 @@
 import {
-  AgentsIcon,
   BoardIcon,
   BranchIcon,
   BugIcon,
@@ -19,10 +18,9 @@ import type { NavItem } from './AppShell.types';
  *  Understand → Harden → Enforce → Verify) plus the non-stage Project and footer
  *  Settings groups. Each stage is its own mono-uppercase group header (kept even
  *  for single-child groups); the group metadata + order live in
- *  `NavSidebar.hooks.ts` (NAV_GROUP_META / GROUP_ORDER). Hints K W L R C T U H E P S
+ *  `NavSidebar.hooks.ts` (NAV_GROUP_META / GROUP_ORDER). Hints K W L R T U H E P S
  *  are all distinct (L = the Terminal view, R = the History view — freed with I by
- *  removing the standalone Insight / Scorecard rows in the PR 3 stage flip; C = the
- *  Council canvas).
+ *  removing the standalone Insight / Scorecard rows in the PR 3 stage flip).
  *
  *  Each STAGE row takes its label from the shared lifecycle table's `destination`
  *  (`@/lib/stages`, issue #404) — the same field the onboarding stage diagram and the
@@ -55,13 +53,6 @@ export const APP_SHELL_NAV: NavItem[] = [
     label: 'History',
     hint: 'R',
     icon: <HistoryIcon size={16} />,
-    group: 'project',
-  },
-  {
-    view: 'council',
-    label: 'Council',
-    hint: 'C',
-    icon: <AgentsIcon size={16} />,
     group: 'project',
   },
   {

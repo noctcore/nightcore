@@ -329,23 +329,3 @@ export type { SubtaskStatus } from '../generated/SubtaskStatus';
 export type NcEvent = NightcoreEvent;
 export type { NightcoreEvent } from '@nightcore/contracts';
 export type { QuestionAnswer, QuestionItem, QuestionOption } from '@nightcore/contracts';
-
-// Council debate (issues #348/#352) — the preset id the `start_council` command
-// carries and the transcript-entry shape the `nc:debate` canvas folds. The concrete
-// preset VALUE (seats/stages/budget) stays engine-side; the canvas derives its seat
-// nodes from the live transcript, so only these contract types cross to the web.
-export type {
-  CouncilConvergeDecision,
-  // Conductor-mediated human input (issue #361): who the `send_council_human_input`
-  // command addresses — every live seat, one named seat, or a steer that also ends the
-  // Debate stage. The message itself is relayed quoted + injection-scanned, never raw.
-  CouncilHumanInputMode,
-  CouncilPresetId,
-  // Editable routing edges (issue #371): one "A informs B" edge the `set_council_routing`
-  // command carries. The canvas edits the run's routing graph as a set of these.
-  CouncilRoutingEdge,
-  DebateEntryKind,
-  DebateSeatRole,
-  DebateStage,
-  DebateTranscriptEntry,
-} from '@nightcore/contracts';
