@@ -68,11 +68,15 @@ if (process.argv.includes('--json')) {
 // Default: the human/CI text reporter — unchanged.
 let criticalCount = 0;
 let totalCount = 0;
+let threwCount = 0;
 
 for (const { rule, outcome } of outcomes) {
   if (outcome.error !== null) {
+    // A rule that threw checked nothing, so it reds the build whether or not it
+    // is `ciCritical`: a broken guardrail is not a passing one.
     console.error(`[ERROR] ${rule.id}: rule threw — ${outcome.error}`);
-    criticalCount += rule.ciCritical ? 1 : 0;
+    threwCount += 1;
+    criticalCount += 1;
     continue;
   }
   for (const v of outcome.violations) {
@@ -83,7 +87,13 @@ for (const { rule, outcome } of outcomes) {
   }
 }
 
-if (totalCount === 0) {
+// Never the bare "no violations" line when a rule threw: the run is incomplete.
+if (threwCount > 0) {
+  console.error(
+    `lint-meta: INCOMPLETE, ${threwCount} of ${outcomes.length} rules threw and checked nothing (see above); ` +
+      `${totalCount} violation${totalCount === 1 ? '' : 's'} from the rest`,
+  );
+} else if (totalCount === 0) {
   console.log('lint-meta: no violations');
 }
 

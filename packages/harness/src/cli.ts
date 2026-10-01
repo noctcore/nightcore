@@ -28,7 +28,7 @@ import {
   loadRegistry,
   type ModuleImporter,
 } from './lint-meta/registry.js';
-import { exitCodeFor, reportMetaOutcomes, runMetaRules } from './lint-meta/run.js';
+import { exitCodeFor, reportMetaOutcomes, runMetaRules, summaryLineFor } from './lint-meta/run.js';
 import type { IMetaRule } from './lint-meta/types.js';
 import { type FileReader,loadChecks, MANIFEST_RELATIVE_PATH } from './manifest.js';
 import { emptyPass, fixInstruction, runChecks, type SpawnFn } from './run.js';
@@ -365,7 +365,8 @@ async function runLintMeta(parsed: ParsedArgs, io: CliIO): Promise<number> {
   const report = reportMetaOutcomes(outcomes);
 
   for (const line of report.lines) io.stderr(line);
-  if (report.lines.length === 0) io.stdout('lint-meta: no violations');
+  const summary = summaryLineFor(report);
+  if (summary !== null) (report.threwCount > 0 ? io.stderr : io.stdout)(summary);
 
   return exitCodeFor(report);
 }

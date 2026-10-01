@@ -123,6 +123,22 @@ describe('runCli lint-meta — verdicts', () => {
     expect(h.err.join('\n')).toBe('[ERROR] no-todo (src/x.ts): found a TODO');
   });
 
+  test('a rule that throws reads as INCOMPLETE, never "no violations" (#478)', async () => {
+    const throwRule: IMetaRule = {
+      id: 'boom',
+      category: 'source-text',
+      description: 'always throws',
+      run: () => {
+        throw new Error('EISDIR: illegal operation on a directory, read');
+      },
+    };
+    const h = harness({ present: [DEFAULT_REGISTRY], mod: { META_RULES: [passRule, throwRule] } });
+    expect(await runCli(['lint-meta'], h.io)).toBe(1);
+    expect(h.out.join('\n')).not.toContain('no violations');
+    expect(h.err.join('\n')).toContain('[ERROR] boom: rule threw');
+    expect(h.err.join('\n')).toContain('lint-meta: INCOMPLETE, 1 of 2 rules threw');
+  });
+
   test('a registry that fails to import reds the build (exit 1)', async () => {
     const h = harness({ present: [DEFAULT_REGISTRY], importThrows: new Error('boom') });
     expect(await runCli(['lint-meta'], h.io)).toBe(1);
@@ -173,6 +189,7 @@ describe('runCli lint-meta: async rules (#277)', () => {
     expect(h.err).toEqual([
       '[ERROR] rejects: rule rejected — config did not resolve',
       '[ERROR] no-todo (src/x.ts): found a TODO',
+      'lint-meta: INCOMPLETE, 1 of 2 rules threw and checked nothing (see above); 1 violation from the rest',
     ]);
   });
 });
