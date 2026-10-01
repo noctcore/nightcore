@@ -256,11 +256,6 @@ pub fn run() {
             // forgets the entries but never the work (the auto-commit survives
             // on the PR branch in its checkout).
             app.manage(workflow::pr_fix::PrFixRegistry::default());
-            // The Council run registry (issue #383): the host-trusted `councilRunId →
-            // project root` binding the write-capable worktree seam derives every path
-            // from. In-memory, populated at `start_council` — the engine can never supply a
-            // path, only name a run the host recorded.
-            app.manage(sidecar::CouncilRunRegistry::default());
             // The per-provider model catalog cache (issue #80): DERIVED, in-memory —
             // never persisted. A restart starts cold and `list_models` re-fetches; the
             // `(provider, auth-state)` key self-invalidates across provider/auth changes.
@@ -315,25 +310,6 @@ pub fn run() {
             sidecar::send_input,
             sidecar::respond_permission,
             sidecar::answer_question,
-            // Council debate run lifecycle (issue #350): start / kill a governed
-            // multi-agent debate. Both dispatch a `runId`-keyed SurfaceCommand to the
-            // engine's Conductor (the sole bus writer). The canvas + transcript stream
-            // are #352; these are the run-control surface.
-            sidecar::start_council,
-            sidecar::kill_council,
-            // The human Converge gavel (issue #353, safety #7): the terminal human
-            // verdict that resolves a parked run. Routes through the engine's Conductor
-            // (the sole bus writer) → append-only transcript, never a direct store write.
-            sidecar::resolve_council_converge,
-            // The editable canvas edges (issue #371): rewire a live run's routing policy.
-            // A CONDUCTOR DIRECTIVE, not a direct seat write — the Conductor filters which
-            // mediated, quoted peers inform a seat next Debate round (safety #1 intact).
-            sidecar::set_council_routing,
-            // Conductor-mediated human input (issue #361): broadcast-all / DM-one /
-            // steer-stage. NOT `send_input` — the message enters via the Conductor, which
-            // quotes + injection-scans it into the target seats' next mediated turn, so a
-            // surface never gains direct-to-seat write authority (safety #1/#2).
-            sidecar::send_council_human_input,
             sidecar::list_task_sessions,
             sidecar::get_task_session_messages,
             sidecar::resume_session,
