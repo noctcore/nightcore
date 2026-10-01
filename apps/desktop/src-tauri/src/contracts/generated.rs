@@ -1153,14 +1153,14 @@ pub enum IssueVerdict {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KnownModel {
-    #[serde(rename = "claude-opus-4-8")]
-    ClaudeOpus48,
-    #[serde(rename = "claude-sonnet-4-6")]
-    ClaudeSonnet46,
+    #[serde(rename = "claude-opus-5-5")]
+    ClaudeOpus55,
+    #[serde(rename = "claude-sonnet-5")]
+    ClaudeSonnet5,
     #[serde(rename = "claude-haiku-4-5")]
     ClaudeHaiku45,
-    #[serde(rename = "claude-fable-5")]
-    ClaudeFable5,
+    #[serde(rename = "claude-fable-5-1")]
+    ClaudeFable51,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

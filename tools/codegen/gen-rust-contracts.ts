@@ -485,7 +485,7 @@ const ENUM_NAMES: Record<string, string> = {
   // reachable — it is force-emitted below so the Rust settings layer consumes the
   // codegen'd `KnownModel` (the canonical long ids + the default) instead of
   // re-listing the family strings, single-sourcing the catalog to the contract.
-  'claude-opus-4-8|claude-sonnet-4-6|claude-haiku-4-5|claude-fable-5': 'KnownModel',
+  'claude-opus-5-5|claude-sonnet-5|claude-haiku-4-5|claude-fable-5-1': 'KnownModel',
 };
 
 /** Guard the {@link ENUM_NAMES} registry: it must be an INJECTION — each canonical
@@ -1143,7 +1143,7 @@ const COMMAND_INPUTS: Record<string, unknown> = {
     type: 'start-session',
     prompt: 'do the thing',
     providerId: 'claude',
-    model: 'claude-opus-4-8',
+    model: 'claude-opus-5-5',
     effort: 'high',
     autonomy: 'auto-accept',
     cwd: '/tmp/work',
@@ -1189,7 +1189,7 @@ const COMMAND_INPUTS: Record<string, unknown> = {
   },
   'send-input': { type: 'send-input', sessionId: 1, text: 'more input' },
   interrupt: { type: 'interrupt', sessionId: 2 },
-  'set-model': { type: 'set-model', sessionId: 3, model: 'claude-sonnet-4-6' },
+  'set-model': { type: 'set-model', sessionId: 3, model: 'claude-sonnet-5' },
   'set-autonomy': {
     type: 'set-autonomy',
     sessionId: 4,
@@ -1217,7 +1217,7 @@ const COMMAND_INPUTS: Record<string, unknown> = {
     scope: 'diff',
     changedFiles: ['src/handler.ts', 'src/store.ts'],
     categories: ['architecture', 'bugs', 'security'],
-    model: 'claude-opus-4-8',
+    model: 'claude-opus-5-5',
     effort: 'high',
     maxConcurrency: 3,
     maxTurnsPerCategory: 40,
@@ -1232,7 +1232,7 @@ const COMMAND_INPUTS: Record<string, unknown> = {
     runId: 'run-h1',
     projectPath: '/proj',
     categories: ['architecture', 'folder-structure', 'imports-boundaries'],
-    model: 'claude-opus-4-8',
+    model: 'claude-opus-5-5',
     effort: 'high',
     maxConcurrency: 3,
     maxTurnsPerCategory: 40,
@@ -1247,7 +1247,7 @@ const COMMAND_INPUTS: Record<string, unknown> = {
     runId: 'run-s1',
     projectPath: '/proj',
     dimensions: ['architecture', 'tests', 'security'],
-    model: 'claude-opus-4-8',
+    model: 'claude-opus-5-5',
     effort: 'high',
     maxConcurrency: 3,
     maxTurnsPerDimension: 40,
@@ -1262,7 +1262,7 @@ const COMMAND_INPUTS: Record<string, unknown> = {
     diff: 'diff --git a/src/handler.ts b/src/handler.ts\n@@ -1,3 +1,4 @@\n-old\n+new line\n',
     changedFiles: ['src/handler.ts', 'src/store.ts'],
     lenses: ['security', 'logic', 'structure', 'tests', 'contracts'],
-    model: 'claude-opus-4-8',
+    model: 'claude-opus-5-5',
     effort: 'high',
     maxConcurrency: 3,
     // `{}` exercises the zod defaults so the emitted fixture carries all three deep
@@ -1296,7 +1296,7 @@ const COMMAND_INPUTS: Record<string, unknown> = {
         diff: 'diff --git a/apps/web/src/App.tsx b/apps/web/src/App.tsx\n@@ -1,3 +1,5 @@\n+ if (!project) return <ProjectsView />;\n',
       },
     ],
-    model: 'claude-opus-4-8',
+    model: 'claude-opus-5-5',
     effort: 'high',
     maxTurns: 40,
     maxBudgetUsd: 2,
@@ -1383,7 +1383,7 @@ const QUERY_INPUTS: Record<string, unknown> = {
     ],
     maxTurns: 12,
     maxBudgetUsd: 2,
-    model: 'claude-opus-4-8',
+    model: 'claude-opus-5-5',
   },
 };
 
@@ -1393,14 +1393,14 @@ const EVENT_INPUTS: Record<string, unknown> = {
     type: 'session-started',
     sessionId: 0,
     prompt: 'hi',
-    model: 'claude-opus-4-8',
+    model: 'claude-opus-5-5',
     permissionMode: 'default',
   },
   'session-ready': {
     type: 'session-ready',
     sessionId: 0,
     sdkSessionId: 'sdk-uuid',
-    model: 'claude-opus-4-8',
+    model: 'claude-opus-5-5',
     tools: ['Read', 'Bash'],
     slashCommands: ['/init'],
     skills: ['add-feature'],
@@ -1502,7 +1502,7 @@ const EVENT_INPUTS: Record<string, unknown> = {
     runId: 'run-1',
     scope: 'repo',
     categories: ['architecture', 'bugs', 'security'],
-    model: 'claude-opus-4-8',
+    model: 'claude-opus-5-5',
   },
   'analysis-category-started': {
     type: 'analysis-category-started',
@@ -1604,7 +1604,7 @@ const EVENT_INPUTS: Record<string, unknown> = {
     type: 'harness-scan-started',
     runId: 'run-h1',
     categories: ['architecture', 'folder-structure', 'imports-boundaries'],
-    model: 'claude-opus-4-8',
+    model: 'claude-opus-5-5',
   },
   'harness-profile-ready': {
     type: 'harness-profile-ready',
@@ -1846,7 +1846,7 @@ const EVENT_INPUTS: Record<string, unknown> = {
     type: 'scorecard-started',
     runId: 'run-s1',
     dimensions: ['architecture', 'tests', 'security'],
-    model: 'claude-opus-4-8',
+    model: 'claude-opus-5-5',
   },
   'scorecard-dimension-started': {
     type: 'scorecard-dimension-started',
@@ -1923,7 +1923,7 @@ const EVENT_INPUTS: Record<string, unknown> = {
     type: 'pr-review-started',
     runId: 'run-pr1',
     lenses: ['security', 'logic', 'structure', 'tests', 'contracts'],
-    model: 'claude-opus-4-8',
+    model: 'claude-opus-5-5',
   },
   'pr-review-lens-started': {
     type: 'pr-review-lens-started',
@@ -2022,7 +2022,7 @@ const EVENT_INPUTS: Record<string, unknown> = {
     type: 'issue-validation-started',
     runId: 'run-iv1',
     issueNumber: 128,
-    model: 'claude-opus-4-8',
+    model: 'claude-opus-5-5',
   },
   'issue-validation-progress': {
     type: 'issue-validation-progress',
@@ -2131,15 +2131,15 @@ const EVENT_INPUTS: Record<string, unknown> = {
         status: 'supported',
         subagents: [{ name: 'Explore', description: 'read-only search' }],
       },
-      model: 'claude-opus-4-8',
+      model: 'claude-opus-5-5',
       permissionMode: 'acceptEdits',
       outputStyle: 'default',
       extrasStatus: 'supported',
     },
     models: [
       {
-        value: 'claude-opus-4-8',
-        displayName: 'Claude Opus 4.8',
+        value: 'claude-opus-5-5',
+        displayName: 'Opus 5.5',
         description: 'Most capable; deep reasoning and long-horizon work.',
         supportsEffort: true,
         supportedEffortLevels: ['low', 'medium', 'high'],

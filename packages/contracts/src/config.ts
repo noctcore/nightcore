@@ -46,10 +46,10 @@ export type TaskKind = z.infer<typeof TaskKindSchema>;
  * harness offers these as the curated default set.
  */
 export const KnownModelSchema = z.enum([
-  'claude-opus-4-8',
-  'claude-sonnet-4-6',
+  'claude-opus-5-5',
+  'claude-sonnet-5',
   'claude-haiku-4-5',
-  'claude-fable-5',
+  'claude-fable-5-1',
 ]);
 export type KnownModel = z.infer<typeof KnownModelSchema>;
 
@@ -130,7 +130,7 @@ export const ConfigSchema = z.object({
    *  override, so this stays the single engine-side selection input. */
   provider: ProviderIdSchema.default('claude'),
   /** Default model for new sessions. Free string to allow any SDK-supported id. */
-  model: z.string().default('claude-opus-4-8'),
+  model: z.string().default('claude-opus-5-5'),
   /** Default reasoning effort for new sessions. Omitted = let the model decide
    *  (adaptive). The SDK downgrades silently if the model can't honor it. */
   effort: EffortLevelSchema.optional(),

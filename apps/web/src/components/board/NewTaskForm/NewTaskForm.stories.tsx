@@ -118,7 +118,7 @@ export const CreatesWithOverrides: Story = {
       expect(args.onCreate).toHaveBeenCalledWith('Apply a migration', '', 'build', 'main', {
         permissionMode: 'plan',
         planFirst: true,
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-5',
         providerId: 'claude',
         effort: 'high',
         maxTurns: null,

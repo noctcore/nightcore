@@ -74,7 +74,7 @@ test('clicking a model fires onChange with the model in the value object', async
   await screen.getByRole('combobox', { name: /model/i }).click();
   await screen.getByRole('option', { name: /sonnet/i }).click();
   expect(onChange).toHaveBeenCalledWith(
-    expect.objectContaining({ model: 'claude-sonnet-4-6', providerId: 'claude' }),
+    expect.objectContaining({ model: 'claude-sonnet-5', providerId: 'claude' }),
   );
 });
 
@@ -82,7 +82,7 @@ test('switching to a model that cannot honor the pinned effort resets it to Inhe
   const onChange = vi.fn();
   const screen = render(
     <ModelSelect
-      value={{ model: 'claude-opus-4-8', effort: 'max', providerId: 'claude' }}
+      value={{ model: 'claude-opus-5-5', effort: 'max', providerId: 'claude' }}
       onChange={onChange}
       catalog={READY}
     />,
@@ -98,7 +98,7 @@ test('switching between models that both support the effort leaves it untouched'
   const onChange = vi.fn();
   const screen = render(
     <ModelSelect
-      value={{ model: 'claude-opus-4-8', effort: 'high', providerId: 'claude' }}
+      value={{ model: 'claude-opus-5-5', effort: 'high', providerId: 'claude' }}
       onChange={onChange}
       catalog={READY}
     />,
@@ -106,7 +106,7 @@ test('switching between models that both support the effort leaves it untouched'
   await screen.getByRole('combobox', { name: /model/i }).click();
   await screen.getByRole('option', { name: /sonnet/i }).click();
   expect(onChange).toHaveBeenCalledWith(
-    expect.objectContaining({ model: 'claude-sonnet-4-6', effort: 'high' }),
+    expect.objectContaining({ model: 'claude-sonnet-5', effort: 'high' }),
   );
 });
 
@@ -117,7 +117,7 @@ test('arrow-down + Enter picks the highlighted model with the keyboard', async (
   );
   await screen.getByRole('combobox', { name: /model/i }).click();
   await userEvent.keyboard('{ArrowDown}{Enter}');
-  expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-opus-4-8' }));
+  expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-opus-5-5' }));
 });
 
 test('grouped keyboard-nav stays in sync across an interleaved provider boundary', async () => {
@@ -143,7 +143,7 @@ test('grouped keyboard-nav stays in sync across an interleaved provider boundary
   // …and Enter picks that same row, not the source-order neighbor.
   await userEvent.keyboard('{Enter}');
   expect(onChange).toHaveBeenCalledWith(
-    expect.objectContaining({ model: 'claude-sonnet-4-6', providerId: 'claude' }),
+    expect.objectContaining({ model: 'claude-sonnet-5', providerId: 'claude' }),
   );
 });
 
@@ -160,7 +160,7 @@ test('Escape closes the listbox', async () => {
 test('the effort row surfaces the premium levels for Opus + the adaptive hint', async () => {
   const screen = render(
     <ModelSelect
-      value={{ model: 'claude-opus-4-8', effort: 'max' }}
+      value={{ model: 'claude-opus-5-5', effort: 'max' }}
       onChange={vi.fn()}
       catalog={READY}
     />,
@@ -202,7 +202,7 @@ test('switching to a dynamic Codex model preserves a supported xhigh effort', as
   const onChange = vi.fn();
   const screen = render(
     <ModelSelect
-      value={{ model: 'claude-opus-4-8', effort: 'xhigh', providerId: 'claude' }}
+      value={{ model: 'claude-opus-5-5', effort: 'xhigh', providerId: 'claude' }}
       onChange={onChange}
       catalog={{ status: 'ready', models: [...STATIC_MODELS, GPT_55] }}
     />,
@@ -218,7 +218,7 @@ test('picking an effort keeps the current model in the value object', async () =
   const onChange = vi.fn();
   const screen = render(
     <ModelSelect
-      value={{ model: 'claude-sonnet-4-6', effort: null, providerId: 'claude' }}
+      value={{ model: 'claude-sonnet-5', effort: null, providerId: 'claude' }}
       onChange={onChange}
       catalog={READY}
     />,
@@ -226,7 +226,7 @@ test('picking an effort keeps the current model in the value object', async () =
   const efforts = screen.getByRole('radiogroup', { name: /reasoning effort/i });
   await efforts.getByRole('radio', { name: /^high$/i }).click();
   expect(onChange).toHaveBeenCalledWith(
-    expect.objectContaining({ model: 'claude-sonnet-4-6', effort: 'high' }),
+    expect.objectContaining({ model: 'claude-sonnet-5', effort: 'high' }),
   );
 });
 
@@ -234,7 +234,7 @@ test('the effort radiogroup is a single tab stop that roves + selects with arrow
   const onChange = vi.fn();
   const screen = render(
     <ModelSelect
-      value={{ model: 'claude-sonnet-4-6', effort: null, providerId: 'claude' }}
+      value={{ model: 'claude-sonnet-5', effort: null, providerId: 'claude' }}
       onChange={onChange}
       catalog={READY}
     />,

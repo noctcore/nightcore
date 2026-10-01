@@ -4,7 +4,7 @@
       "type": "start-session",
       "prompt": "do the thing",
       "providerId": "claude",
-      "model": "claude-opus-4-8",
+      "model": "claude-opus-5-5",
       "effort": "high",
       "autonomy": "auto-accept",
       "cwd": "/tmp/work",
@@ -73,7 +73,7 @@
     "set-model": {
       "sessionId": 3,
       "type": "set-model",
-      "model": "claude-sonnet-4-6"
+      "model": "claude-sonnet-5"
     },
     "set-autonomy": {
       "sessionId": 4,
@@ -113,7 +113,7 @@
         "bugs",
         "security"
       ],
-      "model": "claude-opus-4-8",
+      "model": "claude-opus-5-5",
       "effort": "high",
       "maxConcurrency": 3,
       "maxTurnsPerCategory": 40,
@@ -137,7 +137,7 @@
         "folder-structure",
         "imports-boundaries"
       ],
-      "model": "claude-opus-4-8",
+      "model": "claude-opus-5-5",
       "effort": "high",
       "maxConcurrency": 3,
       "maxTurnsPerCategory": 40,
@@ -161,7 +161,7 @@
         "tests",
         "security"
       ],
-      "model": "claude-opus-4-8",
+      "model": "claude-opus-5-5",
       "effort": "high",
       "maxConcurrency": 3,
       "maxTurnsPerDimension": 40,
@@ -188,7 +188,7 @@
         "tests",
         "contracts"
       ],
-      "model": "claude-opus-4-8",
+      "model": "claude-opus-5-5",
       "effort": "high",
       "maxConcurrency": 3,
       "deep": {
@@ -229,7 +229,7 @@
           "diff": "diff --git a/apps/web/src/App.tsx b/apps/web/src/App.tsx\n@@ -1,3 +1,5 @@\n+ if (!project) return <ProjectsView />;\n"
         }
       ],
-      "model": "claude-opus-4-8",
+      "model": "claude-opus-5-5",
       "effort": "high",
       "maxTurns": 40,
       "maxBudgetUsd": 2
@@ -318,7 +318,7 @@
       ],
       "maxTurns": 12,
       "maxBudgetUsd": 2,
-      "model": "claude-opus-4-8"
+      "model": "claude-opus-5-5"
     }
   },
   "events": {
@@ -326,14 +326,14 @@
       "sessionId": 0,
       "type": "session-started",
       "prompt": "hi",
-      "model": "claude-opus-4-8",
+      "model": "claude-opus-5-5",
       "permissionMode": "default"
     },
     "session-ready": {
       "sessionId": 0,
       "type": "session-ready",
       "sdkSessionId": "sdk-uuid",
-      "model": "claude-opus-4-8",
+      "model": "claude-opus-5-5",
       "tools": [
         "Read",
         "Bash"
@@ -458,7 +458,7 @@
         "bugs",
         "security"
       ],
-      "model": "claude-opus-4-8"
+      "model": "claude-opus-5-5"
     },
     "analysis-category-started": {
       "type": "analysis-category-started",
@@ -586,7 +586,7 @@
         "folder-structure",
         "imports-boundaries"
       ],
-      "model": "claude-opus-4-8"
+      "model": "claude-opus-5-5"
     },
     "harness-profile-ready": {
       "type": "harness-profile-ready",
@@ -877,7 +877,7 @@
         "tests",
         "security"
       ],
-      "model": "claude-opus-4-8"
+      "model": "claude-opus-5-5"
     },
     "scorecard-dimension-started": {
       "type": "scorecard-dimension-started",
@@ -979,7 +979,7 @@
         "tests",
         "contracts"
       ],
-      "model": "claude-opus-4-8"
+      "model": "claude-opus-5-5"
     },
     "pr-review-lens-started": {
       "type": "pr-review-lens-started",
@@ -1081,7 +1081,7 @@
       "type": "issue-validation-started",
       "runId": "run-iv1",
       "issueNumber": 128,
-      "model": "claude-opus-4-8"
+      "model": "claude-opus-5-5"
     },
     "issue-validation-progress": {
       "type": "issue-validation-progress",
@@ -1204,15 +1204,15 @@
             }
           ]
         },
-        "model": "claude-opus-4-8",
+        "model": "claude-opus-5-5",
         "permissionMode": "acceptEdits",
         "outputStyle": "default",
         "extrasStatus": "supported"
       },
       "models": [
         {
-          "value": "claude-opus-4-8",
-          "displayName": "Claude Opus 4.8",
+          "value": "claude-opus-5-5",
+          "displayName": "Opus 5.5",
           "description": "Most capable; deep reasoning and long-horizon work.",
           "supportsEffort": true,
           "supportedEffortLevels": [

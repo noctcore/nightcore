@@ -27,7 +27,7 @@ describe('ConfigSchema defaults', () => {
     const parsed = ConfigSchema.parse({
       paths: { home: '/home/.nightcore', sessions: '/home/.nightcore/sessions' },
     });
-    expect(parsed.model).toBe('claude-opus-4-8');
+    expect(parsed.model).toBe('claude-opus-5-5');
     expect(parsed.logLevel).toBe('info');
     expect(parsed.permissions).toEqual({
       allow: [],

@@ -38,9 +38,10 @@ const PROBE_BACKOFF: BackoffOptions = {
   jitter: true,
 };
 
-/** The minimum a transient probe handle must expose for teardown. */
+/** The minimum a transient probe handle must expose for teardown. The result is
+ *  never read: the SDK's `interrupt()` resolves to a control response. */
 export interface ProbeHandle {
-  interrupt(): Promise<void>;
+  interrupt(): Promise<unknown>;
 }
 
 export interface TransientProbeContext<T, Q extends ProbeHandle> {

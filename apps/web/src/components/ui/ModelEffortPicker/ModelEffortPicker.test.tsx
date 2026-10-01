@@ -31,7 +31,7 @@ test('delegates a model pick to onChangeModel with the canonical id', async () =
   );
   await screen.getByRole('combobox', { name: /model/i }).click();
   await screen.getByRole('option', { name: /sonnet/i }).click();
-  expect(onChangeModel).toHaveBeenCalledWith('claude-sonnet-4-6');
+  expect(onChangeModel).toHaveBeenCalledWith('claude-sonnet-5');
   // The effort stayed Inherit, so the adapter fires only the changed callback.
   expect(onChangeEffort).not.toHaveBeenCalled();
 });
@@ -41,7 +41,7 @@ test('switching to a model that cannot honor the pinned effort resets it to Inhe
   const onChangeEffort = vi.fn();
   const screen = render(
     <ModelEffortPicker
-      model="claude-opus-4-8"
+      model="claude-opus-5-5"
       effort="max"
       onChangeModel={onChangeModel}
       onChangeEffort={onChangeEffort}
@@ -55,8 +55,8 @@ test('switching to a model that cannot honor the pinned effort resets it to Inhe
 
 test('activeModelId resolves canonical, legacy, and unknown ids', () => {
   expect(activeModelId(null)).toBeNull();
-  expect(activeModelId('claude-opus-4-8')).toBe('claude-opus-4-8');
-  expect(activeModelId('sonnet-4.6')).toBe('claude-sonnet-4-6');
+  expect(activeModelId('claude-opus-5-5')).toBe('claude-opus-5-5');
+  expect(activeModelId('sonnet-4.6')).toBe('claude-sonnet-5');
   expect(activeModelId('haiku-4.5')).toBe('claude-haiku-4-5');
   expect(activeModelId('gpt-9')).toBeNull();
 });

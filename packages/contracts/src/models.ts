@@ -14,7 +14,7 @@ import { EffortLevelSchema } from './config.js';
 export const ModelDescriptorSchema = z.object({
   /** Provider that owns this model (`claude`, `codex`, …). */
   providerId: z.string().optional(),
-  /** Model id passed to `setModel()` / the SDK (e.g. `claude-opus-4-8`). */
+  /** Model id passed to `setModel()` / the SDK (e.g. `claude-opus-5-5`). */
   value: z.string(),
   /** Human-readable name for the picker. */
   displayName: z.string(),

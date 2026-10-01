@@ -52,7 +52,7 @@ pub fn known_model_id(model: KnownModel) -> String {
         Ok(serde_json::Value::String(s)) => s,
         // Unreachable for a string-valued enum; a defensive fallback keeps the
         // resolver total rather than panicking in the settings hot path.
-        _ => "claude-opus-4-8".to_string(),
+        _ => "claude-opus-5-5".to_string(),
     }
 }
 
@@ -60,7 +60,7 @@ pub fn known_model_id(model: KnownModel) -> String {
 /// so a non-Claude provider never silently falls through to a Claude model:
 ///
 ///  - `claude` → the first [`KnownModel`], single-sourced from the contract
-///    (`claude-opus-4-8`). This is also the arm any UNKNOWN id lands in, because the
+///    (`claude-opus-5-5`). This is also the arm any UNKNOWN id lands in, because the
 ///    provider factory treats an unrecognized id as Claude (it falls back to the
 ///    Claude backend with a loud warning — see `provider::factory`), so a Claude
 ///    model is the correct default for it.
@@ -78,7 +78,7 @@ pub fn default_model_id(provider: &str) -> String {
         "codex" => "gpt-5-codex".to_string(),
         // `claude` and any unrecognized id (the factory falls back to the Claude
         // backend) → the contract's first `KnownModel`.
-        _ => known_model_id(KnownModel::ClaudeOpus48),
+        _ => known_model_id(KnownModel::ClaudeOpus55),
     }
 }
 
@@ -88,7 +88,8 @@ pub fn default_model_id(provider: &str) -> String {
 /// by family to the matching codegen'd [`KnownModel`] so legacy config still resolves
 /// to a valid model. An already-canonical (`claude-…`) or unrecognized id passes
 /// through unchanged (the SDK accepts any model string; a custom id is the user's own
-/// choice).
+/// choice). That includes a canonical id from an earlier model generation
+/// (`claude-opus-4-8`): stored canonical ids are never rewritten.
 ///
 /// Only the FAMILY tokens are matched here; the long ids come from the contract via
 /// [`known_model_id`], so the catalog itself is single-sourced (this only fires for
@@ -105,13 +106,13 @@ pub fn canonical_model_id(raw: &str) -> String {
         return raw.to_string();
     }
     let known = if lower.contains("opus") {
-        KnownModel::ClaudeOpus48
+        KnownModel::ClaudeOpus55
     } else if lower.contains("sonnet") {
-        KnownModel::ClaudeSonnet46
+        KnownModel::ClaudeSonnet5
     } else if lower.contains("haiku") {
         KnownModel::ClaudeHaiku45
     } else if lower.contains("fable") {
-        KnownModel::ClaudeFable5
+        KnownModel::ClaudeFable51
     } else {
         return raw.to_string();
     };

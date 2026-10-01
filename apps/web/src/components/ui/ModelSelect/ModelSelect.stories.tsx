@@ -104,7 +104,7 @@ export const InterleavedProviders: Story = {
 /** Opus is the premium tier — it unlocks the higher effort levels (Extra high /
  *  Max) and shows the adaptive-reasoning hint. */
 export const OpusSelected: Story = {
-  args: { value: { model: 'claude-opus-4-8', effort: 'high', providerId: 'claude' } },
+  args: { value: { model: 'claude-opus-5-5', effort: 'high', providerId: 'claude' } },
 };
 
 /** The async seam is still resolving. */
@@ -137,7 +137,7 @@ export const PicksModel: Story = {
     await userEvent.click(canvas.getByRole('combobox', { name: /model/i }));
     await userEvent.click(canvas.getByRole('option', { name: /sonnet/i }));
     await expect(args.onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ model: 'claude-sonnet-4-6' }),
+      expect.objectContaining({ model: 'claude-sonnet-5' }),
     );
   },
 };
@@ -155,7 +155,7 @@ export const PicksEffort: Story = {
 /** Play test: switching from Opus (effort=max) to Haiku — which can't honor `max` —
  *  reconciles the pinned effort back to Inherit (max → null). */
 export const ReconcilesEffortOnModelSwitch: Story = {
-  args: { value: { model: 'claude-opus-4-8', effort: 'max', providerId: 'claude' } },
+  args: { value: { model: 'claude-opus-5-5', effort: 'max', providerId: 'claude' } },
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole('combobox', { name: /model/i }));

@@ -38,6 +38,6 @@ test('picking a model fires onChange with the model + resolved provider', async 
   await screen.getByRole('combobox', { name: /model/i }).click();
   await screen.getByRole('option', { name: /sonnet/i }).click();
   expect(onChange).toHaveBeenCalledWith(
-    expect.objectContaining({ model: 'claude-sonnet-4-6', providerId: 'claude' }),
+    expect.objectContaining({ model: 'claude-sonnet-5', providerId: 'claude' }),
   );
 });
