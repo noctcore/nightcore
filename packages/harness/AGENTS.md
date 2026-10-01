@@ -30,7 +30,8 @@ port of the in-process Rust runner in `apps/desktop/src-tauri/src/workflow/gaunt
   `PORTABLE_LOCK_RUNNER_VERSION` (and its test expectations) only after `harness-v0.3.0` is
   published, or exported bundles red CI with an `npx` 404. Publishing is
   human-triggered by pushing a `harness-v<version>` tag (`.github/workflows/publish-harness.yml`);
-  merging never publishes. Requires the `NPM_TOKEN` repo secret + the `noctcore` npm org.
+  merging never publishes. Publishing uses npm trusted publishing (OIDC, no token): the
+  `@noctcore/harness` package trusts `noctcore/nightcore` + `publish-harness.yml` on npmjs.com.
   **An exported bundle is only as good as the published runner it pins**: `0.2.0` adds `--manifest`
   and TypeScript-registry support, so a bundle exported by this build reds CI (`npx` 404) until
   `harness-v0.2.0` is tagged and published.
