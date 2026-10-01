@@ -2,7 +2,6 @@ import { z } from 'zod';
 
 import { PermissionModeSchema } from './config.js';
 import { ConformanceAuditResultSchema } from './conformance-audit.js';
-import { DebateEntryEvent, WorktreeOpRequiredEvent } from './debate.js';
 import { TokenUsageSchema } from './event-fragments.js';
 import {
   HarnessCategoryCompletedEvent,
@@ -78,15 +77,6 @@ export const SessionStartedEvent = z.object({
   prompt: z.string(),
   model: z.string(),
   permissionMode: PermissionModeSchema,
-  /** Council SEAT marker (issue #364): true when this session is a debate seat the
-   *  engine's Conductor drives, echoed from the `start-session` command's `council`
-   *  flag. The Rust core's `reader.rs` uses it to SKIP the board-task pending-launch
-   *  FIFO (a seat pushed no slot): no correlation, no "correlation desync" warn, and no
-   *  mis-bind of a concurrently-pending board task. A seat's output reaches the canvas
-   *  over the moderated `nc:debate` stream (run-id-keyed), so its raw `nc:session`
-   *  stream is intentionally dropped by the reader. Absent ⇒ a normal board/scan
-   *  session (the pre-feature shape). */
-  council: z.boolean().optional(),
   /** OS write-containment posture of this session (T16 / #157) — the LOUD
    *  half of the sandbox-by-default staging. Present only when the run REQUESTED
    *  OS containment; `active: false` means the host could not provide it and the
@@ -368,15 +358,6 @@ export const SessionFailedEvent = z.object({
    *  `detail.category` to decide fatal-stop (auth/disk-full) vs. the tolerant
    *  sliding window (rate-limit/runner-crash/unknown). */
   detail: ErrorDetailSchema.optional(),
-  /** Council SEAT marker (issue #374, mirrors {@link SessionStartedEvent.council}). A
-   *  debate seat is driven inside the engine, so it pushed no board pending-launch FIFO
-   *  slot. A PREFLIGHT-REFUSED seat (autonomy/governance) emits ONLY this `session-failed`
-   *  — no prior `session-started` to carry the marker — so the marker is echoed here too,
-   *  letting the Rust reader SKIP board-FIFO correlation for it. Without it, the refused
-   *  seat's terminal would `correlate` and could pop a concurrently-pending BOARD task's
-   *  slot, mis-binding the seat to it. Absent ⇒ a normal board/scan session (whose
-   *  `session-failed` DOES correlate, to fail its own task). */
-  council: z.boolean().optional(),
 });
 
 /** Session status transitioned (for surfaces that render a status line). */
@@ -557,8 +538,6 @@ export const NightcoreEventSchema = z.discriminatedUnion('type', [
   IssueValidationCompletedEvent,
   IssueValidationFailedEvent,
   IssueValidationConvertedEvent,
-  DebateEntryEvent,
-  WorktreeOpRequiredEvent,
 ]);
 export type NightcoreEvent = z.infer<typeof NightcoreEventSchema>;
 

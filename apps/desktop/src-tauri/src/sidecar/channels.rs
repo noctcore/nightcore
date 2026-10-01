@@ -51,15 +51,3 @@ pub(crate) const PRREVIEW_EVENT: &str = "nc:pr-review";
 /// completion. `convert_issue_validation_to_task` also emits an
 /// `issue-validation-converted` notice on this channel.
 pub(crate) const ISSUE_TRIAGE_EVENT: &str = "nc:issue-triage";
-
-/// The Tauri event carrying one append-only Council debate-transcript entry
-/// (`DebateTranscriptEntry`, scoped by its council-run id) — the moderated `nc:debate`
-/// bus (issue #348). Payload SHAPE is the `@nightcore/contracts` `DebateTranscriptEntry`.
-///
-/// Registered in the single-source channel registry, the scattered runtime consts, and
-/// the web bridge (the `channel_consts_match_generated_registry` parity guard covers it
-/// below). The Council P1 foundation — the bus + append-only transcript store — lives in
-/// the engine (`packages/engine/src/debate/`); the canvas slice (#352) wired the emit
-/// seam, so `sidecar/reader.rs` now forwards every `debate-entry` event onto this channel
-/// (the const is live — no longer dead).
-pub(crate) const DEBATE_EVENT: &str = "nc:debate";

@@ -15,7 +15,7 @@ sidebar:
 
 Nightcore is **alpha**. APIs, UI, and on-disk formats can break between
 releases. See [Limits and honest gaps](../../reference/limits/) for the full
-list of what is unfinished, unverified, or platform-specific.
+list of what is unfinished or platform-specific.
 
 ## Install a release
 

@@ -42,7 +42,6 @@ import { z } from 'zod';
 // specifiers to their `.ts` sources, so the relative source entry works as-is.
 import {
   CHANNELS,
-  CouncilPresetIdSchema,
   KnownModelSchema,
   NightcoreEventSchema,
   SurfaceCommandSchema,
@@ -400,16 +399,6 @@ const STRUCT_NAMES: Record<string, string> = {
   // Structured error taxonomy carried alongside a `session-failed`'s `message`
   // (the auto-loop + breaker branch on `category`).
   'category|message|retriable': 'ErrorDetail',
-  // Council debate (issue #348/#352): one append-only transcript entry, wrapped by
-  // the `debate-entry` event the `nc:debate` canvas emit seam rides. Its `stage` /
-  // `role` / `kind` are the three enums registered in ENUM_NAMES below.
-  'at|broadcastId|content|injectionFlags|kind|role|seatId|seq|stage':
-    'DebateTranscriptEntry',
-  // Editable routing edges (issue #371): one "A informs B" edge carried by the
-  // `set-council-routing` command — the data behind an editable canvas edge. This
-  // makes `CouncilRoutingEdge` (defined in `council-preset.ts`) wire-reachable, so the
-  // codegen emits the Rust struct the `set_council_routing` command serializes.
-  'from|to': 'CouncilRoutingEdge',
 };
 
 /** Stable Rust enum name for a referenced/inline `z.enum`. Named enums in the
@@ -420,31 +409,6 @@ const ENUM_NAMES: Record<string, string> = {
   'png|jpeg|webp|gif': 'ImageFormat',
   'default|acceptEdits|bypassPermissions|plan|dontAsk|auto': 'PermissionMode',
   'build|research|review|decompose|tdd': 'TaskKind',
-  // Council preset-as-data (issue #349). The shared preset-id vocabulary, mirroring
-  // `TaskKind`: the zod `CouncilPresetIdSchema` and this generated Rust enum are the
-  // ONE cross-tier thing; the concrete preset VALUE stays engine-side
-  // (`packages/engine/src/debate/preset-registry.ts`). Not wire-reachable yet (no
-  // command/event carries it — the Rust Conductor seam is a downstream slice), so it
-  // is FORCE-EMITTED below (like `KnownModel`) rather than walked, pre-registering the
-  // canonical name so the conductor slice consumes it without a rename. P2 adds
-  // `ui-bug` (issue #367 — the reproduce-first council) and `coding` (issue #368 — the
-  // debate-the-plan Coding council); the value-set signature grows to
-  // `research|ui-bug|coding` so this entry moves with the enum.
-  'research|ui-bug|coding': 'CouncilPresetId',
-  // The human judge's terminal Converge verdict (issue #353) carried by the
-  // `resolve-council-converge` command — the human gavel (safety #7).
-  'accept|reject|judge': 'CouncilConvergeDecision',
-  // How a human's mid-debate message is addressed to a live run (issue #361), carried by
-  // the `send-council-human-input` command — the conductor-mediated human-input surface
-  // (NOT `send-input`: human text reaches a seat quoted + scanned, never raw).
-  'broadcast|direct|steer': 'CouncilHumanInputMode',
-  // Council debate transcript (issue #348/#352) — the three enums inside a
-  // `DebateTranscriptEntry`, now wire-reachable via the `debate-entry` event. Distinct
-  // value-sets (no collapse): the state-machine stage, the author's asymmetric role,
-  // and what kind of bus write produced the entry.
-  'frame|propose|debate|converge|build|review': 'DebateStage',
-  'proposer|critic|judge|conductor|human': 'DebateSeatRole',
-  'broadcast|message|delivery|note': 'DebateEntryKind',
   'safe|mutating|dangerous': 'ToolRisk',
   'starting|running|awaiting-permission|completed|failed|interrupted':
     'SessionStatus',
@@ -1103,13 +1067,6 @@ export function emitRust(): string {
   // lands in `ctx.decls` alongside the wire-derived supporting types.
   registerInlineEnum(KnownModelSchema, 'KnownModel', ctx);
 
-  // Force-emit `CouncilPresetId` (issue #349): the council preset-id vocabulary is
-  // not yet wire-reachable (no command/event references it — the Rust Conductor is a
-  // downstream slice), but the Rust core needs the enum parity NOW so the conductor
-  // can key its orchestration policy off the same ids the engine registry serves.
-  // Mirrors the `KnownModel` force-emit and the `TaskKind` three-site house rule.
-  registerInlineEnum(CouncilPresetIdSchema, 'CouncilPresetId', ctx);
-
   // Every ENUM_EXTRAS entry must have landed on an emitted enum by now — a stale
   // or misspelled key would silently drop the `Default`/ts-rs export/`as_wire()`
   // surface the Rust core depends on, so fail here instead.
@@ -1347,46 +1304,6 @@ const COMMAND_INPUTS: Record<string, unknown> = {
   'cancel-issue-validation': {
     type: 'cancel-issue-validation',
     runId: 'run-iv1',
-  },
-  'start-council': {
-    type: 'start-council',
-    runId: 'run-council1',
-    presetId: 'research',
-    objective: 'Recommend a caching strategy for the session store.',
-    projectPath: '/proj',
-  },
-  'kill-council': {
-    type: 'kill-council',
-    runId: 'run-council1',
-  },
-  'resolve-council-converge': {
-    type: 'resolve-council-converge',
-    runId: 'run-council1',
-    decision: 'accept',
-    seatId: 'proposer-opus',
-    note: 'Clearest migration plan with the least dual-write risk.',
-  },
-  'set-council-routing': {
-    type: 'set-council-routing',
-    runId: 'run-council1',
-    edges: [
-      { from: 'proposer-opus', to: 'critic-opus' },
-      { from: 'proposer-sonnet', to: 'critic-opus' },
-    ],
-  },
-  'send-council-human-input': {
-    type: 'send-council-human-input',
-    runId: 'run-council1',
-    mode: 'direct',
-    seatId: 'critic-opus',
-    message: 'Weigh the dual-write rollback path before you settle.',
-  },
-  'resolve-worktree-op': {
-    type: 'resolve-worktree-op',
-    requestId: 'wt-1',
-    worktreePath: '/proj/.nightcore/worktrees/council-run-1',
-    gauntletPassed: true,
-    gauntletSummary: 'Structure-Lock gauntlet passed (2 check(s)).',
   },
 };
 
@@ -2159,31 +2076,6 @@ const EVENT_INPUTS: Record<string, unknown> = {
     runId: 'run-iv1',
     issueNumber: 128,
     taskId: 'task-42',
-  },
-  // Council debate (issue #348/#352): one append-only transcript entry wrapped with
-  // its council-run id. A `delivery` entry carries every optional field (the
-  // broadcast link + the injection-scan flags), so this fixture exercises the full
-  // `DebateTranscriptEntry` struct.
-  'debate-entry': {
-    type: 'debate-entry',
-    runId: 'council-run-1',
-    entry: {
-      stage: 'debate',
-      seatId: 'proposer-1',
-      role: 'critic',
-      kind: 'delivery',
-      seq: 3,
-      content: 'Seat proposer-1 said: "consider the isolated-worktree path"',
-      broadcastId: 'bc-1',
-      at: 1718900000000,
-      injectionFlags: [],
-    },
-  },
-  'worktree-op-required': {
-    type: 'worktree-op-required',
-    requestId: 'wt-1',
-    op: 'allocate',
-    councilRunId: 'council-run-1',
   },
   'query-result': {
     type: 'query-result',

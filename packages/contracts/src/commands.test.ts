@@ -25,9 +25,6 @@ describe('SurfaceCommandSchema round-trips', () => {
       maxBudgetUsd: 3.25,
       resumeSessionId: 'sdk-uuid-prior',
     },
-    // A council seat carries the `council` marker (issue #364) so the Rust reader
-    // skips board-FIFO correlation for it.
-    { type: 'start-session', prompt: 'debate seat', council: true },
     { type: 'send-input', sessionId: 1, text: 'more' },
     { type: 'interrupt', sessionId: 1 },
     { type: 'set-model', sessionId: 1, model: 'claude-haiku-4-5' },
@@ -59,33 +56,6 @@ describe('SurfaceCommandSchema round-trips', () => {
       requestId: 'q_req_2',
       answer: { behavior: 'cancel' },
     },
-    { type: 'start-council', runId: 'c-1', presetId: 'research', objective: 'o' },
-    { type: 'kill-council', runId: 'c-1' },
-    {
-      type: 'resolve-council-converge',
-      runId: 'c-1',
-      decision: 'accept',
-      seatId: 'proposer-opus',
-      note: 'clearest plan',
-    },
-    { type: 'resolve-council-converge', runId: 'c-1', decision: 'reject' },
-    {
-      type: 'resolve-council-converge',
-      runId: 'c-1',
-      decision: 'judge',
-      note: 'Adopt A but stage the cutover behind a flag.',
-    },
-    // Editable routing edges (issue #371) — a live "A informs B" rewire.
-    {
-      type: 'set-council-routing',
-      runId: 'c-1',
-      edges: [
-        { from: 'proposer-opus', to: 'critic-opus' },
-        { from: 'proposer-sonnet', to: 'critic-opus' },
-      ],
-    },
-    // An empty edge set restores the open default (every seat informs every other).
-    { type: 'set-council-routing', runId: 'c-1', edges: [] },
   ];
 
   for (const command of valid) {

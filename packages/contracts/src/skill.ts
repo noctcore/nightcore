@@ -32,9 +32,9 @@ import { WRITE_TOOL_NAMES } from './tools.js';
  * dropped into `.nightcore/skills/` that neither tier has ever heard of. That
  * fixes the shape: a descriptor must be a SELF-CONTAINED declaration — everything
  * both tiers would need to run a kind with no `match` arm and no preset entry —
- * not an id that points at code (the `CouncilPresetId` pattern, which
- * works only because the engine ships the preset VALUE). So this follows the
- * `ProviderCapabilities` pattern instead: a complete descriptor whose posture
+ * not an id that points at code (which works only when the engine ships the
+ * value the id resolves to). So this follows the `ProviderCapabilities`
+ * pattern: a complete descriptor whose posture
  * fields are all REQUIRED, because an unstated governance fact must never be an
  * implicit `false`.
  *
@@ -56,8 +56,7 @@ import { WRITE_TOOL_NAMES } from './tools.js';
  *    than an absent one — it manufactures the same false confidence a silently-dead
  *    policy rule does. They are additive when an enforcement path exists.
  *  - `model` is absent by design: a skill is provider-neutral, and model choice is
- *    a run-level decision. (Council presets pin models per seat because a council's
- *    whole point is model DIVERSITY; a skill has no such requirement.)
+ *    a run-level decision.
  *
  * {@link diagnoseSkillDescriptor} then enforces the invariants a structural parse
  * cannot — chiefly that a skill claiming not to write code is actually denied the
@@ -99,7 +98,7 @@ export type SkillId = z.infer<typeof SkillIdSchema>;
  * Where a skill came from — the trust boundary.
  *
  * `builtin` is the only value today and is deliberately declared as a one-value
- * enum (the one-value `CouncilRoutingMode` precedent) rather than assumed: a
+ * enum rather than assumed: a
  * project/user-authored skill is UNTRUSTED input and will need to be governed
  * differently from one that shipped in the binary, so the field that distinguishes
  * them should exist before the first one arrives — not be retrofitted around it.
@@ -225,7 +224,7 @@ export type SkillOrchestration = z.infer<typeof SkillOrchestrationSchema>;
  * The invariants a skill must satisfy to be COHERENT (a read-only skill is denied
  * the write tools; a verified skill actually writes something) are not baked into
  * this structural schema — they are reported by {@link diagnoseSkillDescriptor} as
- * surfaceable diagnostics, following the same split the council preset uses:
+ * surfaceable diagnostics, keeping a deliberate split:
  * `parse` owns structure, a typed validator owns meaning, and neither throws at an
  * author who is mid-edit.
  */

@@ -73,5 +73,3 @@ The Kanban Board (`K`) is the control surface, but a project also has:
   deliberately **strip provider environment variables**, so a shell you open is
   not silently carrying an agent's credentials or mode flags.
 - **History** (`R`) — every past run and scan, with cost, duration, and outcome.
-- **Council** (`C`) — the multi-agent debate board; see
-  [Council](../council/).

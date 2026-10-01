@@ -19,8 +19,7 @@ use super::permission::{
 };
 use super::verification::{handle_build_completed, handle_review_completed};
 use super::{
-    apply_and_emit, finish_run, notify_awaiting_input, park_for_approval, Outcome, DEBATE_EVENT,
-    SESSION_EVENT,
+    apply_and_emit, finish_run, notify_awaiting_input, park_for_approval, Outcome, SESSION_EVENT,
 };
 
 /// The `nc:session` wire envelope: a streamed engine event tagged with its task.
@@ -190,65 +189,7 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
         return;
     }
 
-    // The Council `debate-*` family (the `debate-entry` transcript stream, issue #352)
-    // correlates by its wrapped `runId` (no `sessionId`) and is owned by the dedicated
-    // `nc:debate` channel, so it is routed BEFORE session-id correlation. There is no
-    // Rust-side store: the append-only transcript lives in the engine (auditable +
-    // replayable — safety #7), and the canvas folds the LIVE stream, so the reader just
-    // forwards the entry verbatim (like Insight forwards `analysis-*`). The canvas only
-    // READS this stream — nothing here feeds text back into a seat prompt (the mediated,
-    // quoted, injection-scanned bus stays the sole cross-seat path — safety #1/#2).
-    if event_type.starts_with("debate-") {
-        let _ = app.emit(DEBATE_EVENT, &event);
-        return;
-    }
-
-    // The Council write-capable worktree seam (issue #383): a `worktree-op-required` event
-    // is the in-engine Council asking the host to `allocate`/`commit`/`gauntlet` on its
-    // behalf. It correlates by its `councilRunId` (no `sessionId`), so — like the scan
-    // families + `debate-*` — it is routed BEFORE the session-id correlation and consumed
-    // INTERNALLY (never forwarded to the web; it rides no `nc:*` channel). The host derives
-    // every path from the run id (never an engine-sent path — the escape guard) and replies
-    // with a `resolve-worktree-op` command. Offloaded off the reader (git/gauntlet work
-    // blocks) via the guarded async spawn, so it never head-of-line-blocks the event stream.
-    if event_type == "worktree-op-required" {
-        let app = app.clone();
-        tauri::async_runtime::spawn(async move {
-            super::council_worktree::handle_worktree_op(&app, event).await;
-        });
-        return;
-    }
-
     let session_id = event.get("sessionId").and_then(Value::as_u64);
-
-    // Council SEAT carve-out (issue #364, extended by #374). A debate seat session is driven
-    // INSIDE the engine by the Conductor — NOT launched via the board's `start_session`
-    // command — so it pushed no pending-launch slot in the board-task FIFO. It self-identifies
-    // with `council: true` on its `session-started`. For any seat event we must SKIP the FIFO
-    // correlation below: `correlate` would otherwise find an empty FIFO and warn (the
-    // "correlation desync" flood) or — under concurrent board+council use — POP a
-    // still-pending board task's slot and mis-bind the seat to it, poisoning that task's
-    // correlation. The seat's output reaches the canvas over the moderated `nc:debate`
-    // stream (run-id-keyed, forwarded above), so the raw seat `nc:session` stream is
-    // intentionally dropped here. Registered on `session-started`; every later seat event
-    // short-circuits on the id set; the terminal deregisters so the set can't grow.
-    //
-    // #374: a PREFLIGHT-REFUSED seat (autonomy/governance) emits ONLY a `session-failed` —
-    // no `session-started` to note — so we ALSO skip any event that carries the `council`
-    // marker itself, not just ids already noted. A refused BOARD session's `session-failed`
-    // has no marker, so it still correlates (to fail its own task); only a marked seat
-    // terminal is carved out.
-    if let Some(sid) = session_id {
-        if is_council_session_start(event_type, &event) {
-            provider.note_council_session(sid);
-        }
-        if provider.is_council_session(sid) || event_is_council_marked(&event) {
-            if matches!(event_type, "session-completed" | "session-failed") {
-                provider.forget(sid);
-            }
-            return;
-        }
-    }
 
     // Correlate the event to its task. The first sighting of a session id binds it
     // to the task at the front of the pending-launch FIFO; later events read back
@@ -593,25 +534,6 @@ pub(crate) async fn handle_event(app: &AppHandle, event: Value) {
     }
 }
 
-/// Whether `event` is a Council SEAT session's `session-started` (issue #364) — a
-/// `session-started` carrying `council: true`. A seat is driven inside the engine by
-/// the Conductor, not launched via the board's `start_session` command, so it pushed no
-/// pending-launch FIFO slot; the reader records the seat on this event and thereafter
-/// skips `correlate` for it (no desync warn, no mis-bind of a concurrently-pending board
-/// task). Any non-`session-started` type, or a `session-started` without the flag, is a
-/// normal board/scan session (false), so this leaves every non-council path unchanged.
-fn is_council_session_start(event_type: &str, event: &Value) -> bool {
-    event_type == "session-started" && event_is_council_marked(event)
-}
-
-/// Whether an event carries the Council SEAT marker (`council: true`). The engine stamps it on
-/// a seat's `session-started` AND on a preflight-refused seat's `session-failed` (issue #374),
-/// so a refused seat's terminal — which had no `session-started` to note — is still skipped
-/// from board-FIFO correlation. A normal board/scan session never carries it.
-fn event_is_council_marked(event: &Value) -> bool {
-    event.get("council").and_then(Value::as_bool) == Some(true)
-}
-
 /// A terminal event is STALE when the task is currently bound to a *different*
 /// session than the one the event carries — i.e. a newer run has superseded the one
 /// this terminal belongs to. Only fires when both ids are known and differ; an
@@ -656,98 +578,6 @@ mod tests {
         // No event session id → nothing to compare → fresh.
         assert!(!is_stale_terminal(None, Some(11)));
         assert!(!is_stale_terminal(None, None));
-    }
-
-    #[test]
-    fn council_session_start_only_matches_a_marked_session_started() {
-        // Only a `session-started` carrying `council: true` is a seat (issue #364).
-        let seat = json!({
-            "type": "session-started", "sessionId": 209, "prompt": "debate",
-            "model": "claude-opus-4-8", "permissionMode": "plan", "council": true
-        });
-        assert!(is_council_session_start("session-started", &seat));
-
-        // A normal board `session-started` (no marker) is NOT a seat — the field is
-        // absent, so every non-council launch is left byte-for-byte on the FIFO path.
-        let board = json!({
-            "type": "session-started", "sessionId": 1, "prompt": "build",
-            "model": "claude-opus-4-8", "permissionMode": "default"
-        });
-        assert!(!is_council_session_start("session-started", &board));
-
-        // An explicit `council: false` is also not a seat.
-        let board_false = json!({
-            "type": "session-started", "sessionId": 2, "prompt": "build",
-            "model": "claude-opus-4-8", "permissionMode": "default", "council": false
-        });
-        assert!(!is_council_session_start("session-started", &board_false));
-
-        // `is_council_session_start` only REGISTERS a seat on `session-started`; a later
-        // terminal is recognized via the tracked id set (or, for a refused seat, the marker
-        // — see `event_is_council_marked` below), never via this predicate.
-        let later = json!({ "type": "session-completed", "sessionId": 209, "council": true });
-        assert!(
-            !is_council_session_start("session-completed", &later),
-            "only session-started registers a seat; later events route via the id set / marker"
-        );
-    }
-
-    #[test]
-    fn council_marker_is_recognized_on_any_event_type() {
-        // #374: a preflight-refused seat emits ONLY a marked `session-failed` (no
-        // `session-started` was ever noted), so the marker itself — on any event type — must
-        // carve the event out of board-FIFO correlation.
-        let refused = json!({
-            "type": "session-failed", "sessionId": 77, "reason": "runner-crash",
-            "message": "autonomy not permitted", "council": true
-        });
-        assert!(event_is_council_marked(&refused));
-
-        // A refused BOARD session's `session-failed` carries NO marker, so it still
-        // correlates (to fail its own task) — the distinction that keeps board failures working.
-        let board_fail = json!({
-            "type": "session-failed", "sessionId": 3, "reason": "runner-crash",
-            "message": "boom"
-        });
-        assert!(!event_is_council_marked(&board_fail));
-
-        // Explicit `council: false` is not a seat marker.
-        let board_false = json!({ "type": "session-failed", "sessionId": 4, "council": false });
-        assert!(!event_is_council_marked(&board_false));
-    }
-
-    #[test]
-    fn council_seat_carve_out_precedes_and_bypasses_fifo_correlation() {
-        // Structure guard (issue #364): the council-seat carve-out must run BEFORE the
-        // board-FIFO `correlate` call, register the seat (`note_council_session`), skip
-        // every seat event (`is_council_session` → `return`), and deregister on the
-        // terminal (`forget`). This proves a seat never reaches `provider.correlate`
-        // (the desync-warn + mis-bind site). The arm needs a full `AppHandle` to run
-        // live, so this is a source-level guard like the sibling reader tests.
-        let src = include_str!("reader.rs");
-        let carve = src
-            .find("if is_council_session_start(event_type, &event)")
-            .expect("the council carve-out exists");
-        let correlate = src
-            .find("session_id.and_then(|sid| provider.correlate(sid))")
-            .expect("the board-FIFO correlation exists");
-        assert!(
-            carve < correlate,
-            "the council carve-out must run BEFORE the board-FIFO correlation"
-        );
-        let carve_block = &src[carve..correlate];
-        assert!(
-            carve_block.contains("provider.note_council_session(sid)"),
-            "the carve-out registers a seat on its session-started"
-        );
-        assert!(
-            carve_block.contains("provider.is_council_session(sid)"),
-            "the carve-out short-circuits every event for a registered seat"
-        );
-        assert!(
-            carve_block.contains("provider.forget(sid)"),
-            "the carve-out deregisters the seat on its terminal"
-        );
     }
 
     #[test]
@@ -968,31 +798,6 @@ mod tests {
         assert!(
             !events.contains_key("harness-failed"),
             "`harness-failed` is not a contract event — the reap must never emit it"
-        );
-    }
-
-    #[test]
-    fn debate_family_forwards_on_its_channel_before_session_correlation() {
-        // The Council `debate-*` family (`debate-entry`) correlates by its wrapped
-        // `runId` (no `sessionId`), so it MUST forward onto the `DEBATE_EVENT` channel
-        // and `return` BEFORE the session-id correlation below (which would otherwise
-        // drop it for lacking a `sessionId`) — mirroring the scan families'
-        // pre-correlation routing. The arm needs a full `AppHandle` to exercise live, so
-        // this is a source-level guard (like the pr-fix + offload guards above).
-        let src = include_str!("reader.rs");
-        let arm_at = src
-            .find("if event_type.starts_with(\"debate-\")")
-            .expect("the debate routing arm exists");
-        let emit = src[arm_at..]
-            .find("app.emit(DEBATE_EVENT")
-            .map(|rel| arm_at + rel)
-            .expect("the debate arm forwards on the DEBATE_EVENT channel");
-        let correlation = src
-            .find("let session_id = event.get(\"sessionId\")")
-            .expect("the session-id correlation exists");
-        assert!(
-            arm_at < correlation && emit < correlation,
-            "the debate family must forward + return BEFORE the session-id correlation"
         );
     }
 }

@@ -108,8 +108,8 @@ mod tests {
             .expect("fixtures.commands is an object");
         assert_eq!(
             commands.len(),
-            23,
-            "all 23 SurfaceCommand variants must have a fixture"
+            17,
+            "all 17 SurfaceCommand variants must have a fixture"
         );
         for (tag, wire) in commands {
             let cmd: SurfaceCommand = serde_json::from_value(wire.clone())
@@ -166,8 +166,8 @@ mod tests {
             .expect("fixtures.events is an object");
         assert_eq!(
             events.len(),
-            47,
-            "all 47 NightcoreEvent variants must have a fixture"
+            45,
+            "all 45 NightcoreEvent variants must have a fixture"
         );
         for (tag, wire) in events {
             let event: NightcoreEvent = serde_json::from_value(wire.clone())
@@ -205,7 +205,6 @@ mod tests {
             ledger_path: None,
             sandbox_writes: None,
             images: None,
-            council: None,
         };
         let wire = serde_json::to_value(&cmd).expect("serializes");
         let obj = wire.as_object().expect("an object");
@@ -229,7 +228,6 @@ mod tests {
             "ledgerPath",
             "sandboxWrites",
             "images",
-            "council",
         ] {
             assert!(
                 !obj.contains_key(absent),
@@ -526,7 +524,6 @@ mod tests {
             ("loop", crate::orchestration::coordinator::LOOP_EVENT),
             ("prFix", crate::workflow::pr_fix::PRFIX_EVENT),
             ("usage", crate::usage::USAGE_EVENT),
-            ("debate", crate::sidecar::DEBATE_EVENT),
         ]
         .into_iter()
         .collect();

@@ -4,8 +4,6 @@ export * from './channels.js';
 export * from './commands.js';
 export * from './config.js';
 export * from './conformance-audit.js';
-export * from './council-preset.js';
-export * from './debate.js';
 export * from './events.js';
 export * from './harness.js';
 export * from './harness-enforce.js';
