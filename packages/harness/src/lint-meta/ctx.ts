@@ -4,9 +4,10 @@
  * network), so it runs under plain `node` in a stranger's CI:
  *  - `read`  — `node:fs` + LF-normalization (line-based rules match CI),
  *  - `exists`— `node:fs`,
- *  - `glob`  — `portableGlob` (`glob.ts`): Node's `fs.globSync` under Node, and a
- *    walker with the same rules under Bun, whose `globSync` cannot see
- *    dot-directories (so `.github/workflows/*.yml` would match nothing),
+ *  - `glob`  — `portableFileGlob` (`glob.ts`): Node's `fs.globSync` under Node, and
+ *    a walker with the same rules under Bun, whose `globSync` cannot see
+ *    dot-directories (so `.github/workflows/*.yml` would match nothing). Files
+ *    only: a matching directory is dropped,
  *  - `exec`  — `node:child_process` `spawnSync`, which NEVER throws.
  *
  * The shape mirrors `createFakeCtx` (the in-memory test double), so rules are
@@ -16,7 +17,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { portableGlob } from './glob.js';
+import { portableFileGlob } from './glob.js';
 import type { IMetaCtx } from './types.js';
 
 /** Repo-relative path with forward slashes (the lint-meta internal convention). */
@@ -49,7 +50,7 @@ export function createNodeCtx(root: string): IMetaCtx {
     },
     glob(pattern) {
       // Same cwd-relative, forward-slashed, sorted match set under Node and Bun.
-      return portableGlob(pattern, root);
+      return portableFileGlob(pattern, root);
     },
     exec(cmd) {
       // spawnSync with `shell: true` mirrors the original `execSync` (a shell

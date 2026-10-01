@@ -81,6 +81,18 @@ describe('createNodeCtx — real filesystem', () => {
     expect(ctx.glob('**/*.ts')).toEqual(['a.ts', 'src/b.ts', 'src/nested/c.ts']);
   });
 
+  // #476: Node's globSync returns matching directories too, and vitest writes
+  // image snapshots into directories literally named `<name>.test.tsx`.
+  test('glob returns files only, so every result is safe to read', () => {
+    mkdirSync(path.join(root, 'src', 'Button.test.tsx'), { recursive: true });
+    writeFileSync(path.join(root, 'src', 'Button.test.tsx', 'shot.png'), '');
+    writeFileSync(path.join(root, 'src', 'Real.test.tsx'), 'real');
+
+    expect(ctx.glob('src/*.tsx')).toEqual(['src/Real.test.tsx']);
+    expect(ctx.glob('src/*')).toEqual(['src/Real.test.tsx', 'src/b.ts', 'src/d.js']);
+    for (const rel of ctx.glob('**/*')) expect(ctx.read(rel)).not.toBeNull();
+  });
+
   test('exec runs a command and captures output; it never throws', () => {
     const ok = ctx.exec('node -e "process.stdout.write(String(1+1))"');
     expect(ok.code).toBe(0);
