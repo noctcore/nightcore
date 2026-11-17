@@ -5,7 +5,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
   <a href="https://github.com/noctcore/nightcore/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/noctcore/nightcore/ci.yml?branch=main&label=CI" alt="CI" /></a>
-  <img src="https://img.shields.io/badge/status-alpha-orange.svg" alt="Alpha" />
+  <a href="#status"><img src="https://img.shields.io/badge/status-maintenance-orange.svg" alt="Status: maintenance mode" /></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/runtime-Bun-000000?logo=bun&logoColor=white" alt="Bun" /></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/core-Rust-orange?logo=rust&logoColor=white" alt="Rust" /></a>
 </p>
@@ -16,10 +16,12 @@
 
 > **[!WARNING]**
 >
-> **Alpha — early and actively changing.** APIs, UI, and on-disk formats can break
-> between commits. **[Download an installer](#install)** (macOS · Windows) to get
-> started, or [build from source](#build-from-source). Tested on **macOS and
-> Windows**; Linux is best-effort.
+> **Maintenance mode since v0.5.0.** Nightcore gets dependency and security
+> updates and fixes to what already exists, not new features. It is still
+> alpha software: UI and on-disk formats can change between releases.
+> **[Download an installer](#install)** (macOS, Windows) to get started, or
+> [build from source](#build-from-source). Tested on **macOS and Windows**;
+> Linux is best-effort.
 
 Nightcore is a **local-first desktop studio** that runs Claude as an autonomous
 development team. Describe work as cards on a Kanban board; agents plan, build,
@@ -51,7 +53,7 @@ gates are machine-enforced state transitions, not suggestions in a prompt.
 - [The loop](#the-loop)
 - [Architecture](#architecture)
 - [Getting Started](#getting-started)
-- [Status](#status) · [Roadmap](#roadmap)
+- [Status](#status)
 - [Security disclaimer](#security-disclaimer)
 - [Contributing](#contributing) · [License](#license)
 
@@ -304,40 +306,18 @@ Claude CLI login.
 
 ## Status
 
-**Alpha** — [v0.1.0](https://github.com/noctcore/nightcore/releases/latest) is
-out with macOS/Windows installers and signed auto-update. Functional and
-dogfooded daily — Nightcore's own backlog is built by Nightcore — but not
-production-ready yet. Expect breaking changes.
+**Maintenance mode.** [v0.5.0](https://github.com/noctcore/nightcore/releases/latest)
+is the current release, with macOS and Windows installers and signed in-app
+auto-update. From v0.5.0 on, Nightcore gets dependency and security updates and
+fixes to what already exists, not new features; the open roadmap and feature
+tickets were closed as not planned. The
+[release notes](https://github.com/noctcore/nightcore/releases) say what each
+version shipped and removed.
 
-## Roadmap
-
-Nightcore is developed in the open using its own governed-autonomy method —
-research → build-ready specs → gated PRs — and the roadmap is public.
-
-- **[Roadmap board](https://github.com/users/Shironex/projects/8)** — live
-  ticket status.
-- **[Planning map](https://github.com/noctcore/nightcore/issues/141)** — the
-  tracking issue linking every ticket.
-- **[Full roadmap doc](docs/research/2026-07-11-roadmap-v0.3-v0.5.md)** —
-  strategic verdicts, fast-track fixes, and the open decisions behind the
-  themes below.
-
-- **v0.2 (now):** release the governed lifecycle that's been built —
-  five-stage nav, terminal cockpit, Trust Report, usage meter, GitHub issue
-  sync.
-- **v0.3 — trust made visible + table stakes:** plan-approval gate, evidence
-  bundles on verified work, on-demand convention checks + gauntlet
-  robustness, an E2E harness, richer notifications, native-sandbox adoption
-  spike.
-- **v0.4 — conformance + platform:** real drift/conformance detection, the
-  portable lock (CI-enforceable structure lock), a per-project trust
-  dashboard, skill-registry groundwork. The portable lock's runner,
-  `@noctcore/harness`, lives in its own repo:
-  [noctcore/harness](https://github.com/noctcore/harness).
-- **v0.5+ — the keystone:** user-definable skills with per-skill gates, team
-  collaboration, receipt signing.
-
-Free for individuals; a future team/collaboration layer is planned.
+The portable structure-lock runner grew into its own project:
+[`@noctcore/harness`](https://github.com/noctcore/harness) runs a repo's checks
+in any CI, with no Nightcore install. The planning documents under
+[`docs/research`](docs/research) stay as a record of how the studio was built.
 
 ## Security disclaimer
 
