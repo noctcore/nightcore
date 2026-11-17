@@ -49,12 +49,12 @@ use crate::infra::safe_join::safe_join;
 use crate::store::harness_manifest::stamp_live_manifest;
 
 /// The pinned `@noctcore/harness` runner version the exported CI workflow invokes.
-/// Kept in lockstep with the published `@noctcore/harness` version (`packages/harness`);
+/// Kept in lockstep with the published `@noctcore/harness` version (noctcore/harness);
 /// never `@latest` — a target's CI must be reproducible (spec §5) and a compromised
 /// future publish must not silently reach already-scaffolded repos. `0.2.0` is the first
 /// runner that understands `--manifest` and a TypeScript rule registry (#325), so a
-/// bundle exported by this build REQUIRES it: publishing lags a merge (a human pushes
-/// the `harness-v<version>` tag), and until it lands an exported workflow reds with an
+/// bundle exported by this build REQUIRES it: publishing lags a merge (a human merges
+/// that repo's Version Packages PR), and until it lands an exported workflow reds with an
 /// `npx` resolution failure — loud, never a silent pass.
 pub const PORTABLE_LOCK_RUNNER_VERSION: &str = "0.2.0";
 
@@ -408,15 +408,14 @@ mod tests {
     /// The repo-relative path an applied fixture rule lives at, and the committed
     /// fixture directory both languages read (see `fixture` below).
     const FIXTURE_RULE_REL: &str = "tools/lint-meta/rules/no-todo-comments.ts";
-    const FIXTURE_DIR: &str = "packages/harness/fixtures/portable-lock";
+    const FIXTURE_DIR: &str = "src/sidecar/harness/export/fixtures/portable-lock";
 
     /// Read a committed cross-language fixture. These files are the CONTRACT between the
-    /// Rust exporter (which emits them) and the runner's Node e2e (which loads them and
-    /// proves they catch a violation) — one committed artifact instead of two copies
-    /// "kept in lockstep" by a comment.
+    /// Rust exporter (which emits them) and the runner's Node e2e in noctcore/harness,
+    /// which keeps the same bytes in `packages/harness/fixtures/portable-lock` and proves
+    /// they catch a violation.
     fn fixture(name: &str) -> String {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../..")
             .join(FIXTURE_DIR)
             .join(name);
         std::fs::read_to_string(&path)
@@ -676,15 +675,14 @@ mod tests {
 
     #[test]
     fn the_emitted_bundle_matches_the_committed_runner_fixtures() {
-        // CROSS-LANGUAGE PARITY. `packages/harness/fixtures/portable-lock/*.txt` are the
-        // exact bytes this exporter emits, and the runner's Node e2e drives the REAL CLI
-        // against those same files to prove they catch a violation. Pinning them here
-        // means the "the exported CI really enforces" proof can never drift from what the
-        // exporter actually writes.
+        // CROSS-LANGUAGE PARITY. `fixtures/portable-lock/*.txt` are the exact bytes this
+        // exporter emits, and the runner's Node e2e in noctcore/harness drives the REAL
+        // CLI against the same files to prove they catch a violation.
         //
         // Changed a template? Re-run this test with NIGHTCORE_UPDATE_GOLDEN=1 to rewrite
-        // the fixtures, then review the diff and re-run the Node e2e (`bun test
-        // packages/harness`).
+        // the fixtures, review the diff, and copy them to
+        // `packages/harness/fixtures/portable-lock` in noctcore/harness so its e2e runs
+        // against what this exporter now writes.
         let tmp = TempDir::new().unwrap();
         seed_manifest(
             &tmp,
@@ -700,7 +698,6 @@ mod tests {
             let emitted = std::fs::read_to_string(staging(&tmp).join(staged)).unwrap();
             if std::env::var_os("NIGHTCORE_UPDATE_GOLDEN").is_some() {
                 let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../../..")
                     .join(FIXTURE_DIR)
                     .join(golden);
                 std::fs::write(&path, &emitted).expect("update golden");

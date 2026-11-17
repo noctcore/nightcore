@@ -1,5 +1,7 @@
 /**
- * The glob behind `ctx.glob`, identical under Node and Bun.
+ * The glob behind `ctx.glob`, identical under Node and Bun. The same walker
+ * ships in `@noctcore/harness` (https://github.com/noctcore/harness); this copy
+ * goes once that package exports it and `ctx.ts` imports it from npm.
  *
  * Node's `fs.globSync` is the reference and is used as-is under Node. Bun ships
  * its own `node:fs` `globSync`, and it cannot see a dot-directory at all: under

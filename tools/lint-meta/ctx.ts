@@ -4,20 +4,18 @@
  * `root`. Split out of `cli.ts` so it can be exercised against a real tree in a
  * test (a fake ctx cannot show what the glob engine does on disk).
  *
- * `glob` goes through `@noctcore/harness`'s `portableFileGlob` instead of Bun's
+ * `glob` goes through `portableFileGlob` (`portable-glob.ts`) instead of Bun's
  * `Glob`: Bun's globbing skips every dot-directory segment, even a literal one,
  * so `.github/workflows/*.yml` matched nothing and a rule globbing it would pass
  * forever. `portableFileGlob` walks with Node's `fs.globSync` rules under Bun and
- * throws on syntax it does not implement rather than matching nothing. It is
- * imported by relative path, like `tools/codegen` reads `packages/contracts`,
- * because the harness only publishes its type surface from the barrel.
+ * throws on syntax it does not implement rather than matching nothing.
  */
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { portableFileGlob } from '../../packages/harness/src/lint-meta/glob.ts';
 import { normalizeText, toPosixRel } from './paths';
+import { portableFileGlob } from './portable-glob';
 import type { IMetaCtx } from './types';
 
 /** Build the live ctx: reads/globs resolve against `root`, `exec` runs there. */

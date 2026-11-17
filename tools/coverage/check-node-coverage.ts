@@ -26,7 +26,6 @@ const SUITE = [
   'packages/config',
   'packages/contracts',
   'packages/engine',
-  'packages/harness',
   'packages/session-fold',
   'packages/shared',
   'packages/storage',

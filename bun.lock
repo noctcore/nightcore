@@ -143,19 +143,6 @@
         "typescript": ">=5.0.0",
       },
     },
-    "packages/harness": {
-      "name": "@noctcore/harness",
-      "version": "0.4.0",
-      "bin": {
-        "harness": "./dist/cli.js",
-      },
-      "devDependencies": {
-        "@types/bun": "^1.1.0",
-        "@types/node": "^22.0.0",
-        "tsup": "^8.5.1",
-        "typescript": "^6.0.3",
-      },
-    },
     "packages/session-fold": {
       "name": "@nightcore/session-fold",
       "version": "0.0.0",
@@ -544,8 +531,6 @@
     "@noctcore/eslint-plugin-react": ["@noctcore/eslint-plugin-react@0.2.1", "", { "dependencies": { "@noctcore/eslint-utils": "^0.1.0", "@typescript-eslint/utils": "^8.61.1" }, "peerDependencies": { "eslint": ">=9.0.0", "typescript": ">=5.0.0" } }, "sha512-aj5cgIpiSeq9XUXGMM8Q8if10Gw9lIsiyi1VKoS2Be3YuNwrsOIz97H7SogCI35d0Z3zkoLM7E0k9tqvVqyd3Q=="],
 
     "@noctcore/eslint-utils": ["@noctcore/eslint-utils@0.1.2", "", { "dependencies": { "@typescript-eslint/utils": "^8.61.1" }, "peerDependencies": { "eslint": ">=9.0.0", "typescript": ">=5.0.0" } }, "sha512-5v9+Nds5n/bxBdieCXh7sfJF3a59s+p9RZLUSSv2hvZObgeOsV/bYGKulIIRxQOzhBZjNI6yWr16Fz5SPAnL9g=="],
-
-    "@noctcore/harness": ["@noctcore/harness@workspace:packages/harness"],
 
     "@openai/codex": ["@openai/codex@0.145.0", "", { "optionalDependencies": { "@openai/codex-darwin-arm64": "npm:@openai/codex@0.145.0-darwin-arm64", "@openai/codex-darwin-x64": "npm:@openai/codex@0.145.0-darwin-x64", "@openai/codex-linux-arm64": "npm:@openai/codex@0.145.0-linux-arm64", "@openai/codex-linux-x64": "npm:@openai/codex@0.145.0-linux-x64", "@openai/codex-win32-arm64": "npm:@openai/codex@0.145.0-win32-arm64", "@openai/codex-win32-x64": "npm:@openai/codex@0.145.0-win32-x64" }, "bin": { "codex": "bin/codex.js" } }, "sha512-/PSPSFujjjmiyVFvG2yu/grOFhsWdokTH8t2KGWhXSo/M5n/dIDsnbsnO82/7bLtIoDuzQf7ATBUMWqPWQINlQ=="],
 
