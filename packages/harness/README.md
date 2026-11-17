@@ -94,6 +94,41 @@ The rules read the repo through the `IMetaCtx` the runner hands them, plus `node
 that inspect what is installed (`node_modules/.pnpm`) or hash a patch file. Like the rest of the
 package they use `node:*` builtins only and make no network call.
 
+## Pinned tools (`@noctcore/harness/pinned-tools`)
+
+A check that shells out to a linter is only as stable as the linter's version: a newer zizmor or
+actionlint brings new rules and turns a green repo red on nobody's change. This subpath runs a tool
+at exactly its pinned version and refuses anything else:
+
+1. a native binary on `PATH` that reports exactly the pinned version (and every tool it `needs`);
+2. else the tool's image, pinned by index digest, when a Docker daemon answers;
+3. else **blocked**, exit 2. A check that could not run is never a pass.
+
+In CI, `fetchPinned` installs the pinned linux release assets first (x64 runners and arm64 `act`),
+refusing any whose sha256 or reported version is not the pin, so route 1 runs with no Docker.
+
+```ts
+import { exitCodeFor, nodeRunDeps, runLinter, WORKFLOW_LINTERS } from '@noctcore/harness/pinned-tools';
+
+const result = runLinter(WORKFLOW_LINTERS.actionlint, process.cwd(), nodeRunDeps());
+console.log(`actionlint: ${result.status} (${result.reason})`);
+process.exit(exitCodeFor(result.status)); // 0 passed, 1 failed, 2 blocked
+```
+
+| Export | What it does |
+|---|---|
+| `ZIZMOR`, `ACTIONLINT`, `SHELLCHECK`, `WORKFLOW_LINTERS`, `WORKFLOW_LINTER_TOOLS` | The default pins: version, image by digest, linux assets by sha256. |
+| `runLinter(pin, root, deps)` | Lint `.github/workflows` with a workflow linter, by the route above. |
+| `runGitleaks(version, root, deps, options)` | A full-history gitleaks scan at the version CI installs (`pinnedGitleaksVersion` reads it from a workflow), else `GITLEAKS_IMAGE` when its tag names that version. A worktree, whose `.git` the image cannot follow, needs the native binary. |
+| `fetchPinned(tools, arch, dir, deps)` | Install pinned linux assets after checking each sha256, then require the pinned version. |
+| `placeBinary(bytes, name, dir, token)` | Put a binary in place through a staged file and a rename, so an existing symlink is replaced, never written through. |
+| `nodeRunDeps()`, `nodeGitleaksDeps(root)`, `nodeFetchDeps({ download })` | The real I/O for the functions above. |
+
+Every function takes its I/O as deps, so a repo tests its own wiring without spawning anything. A
+repo that needs another version passes its own pin; moving a default pin is a minor release. Like
+the rest of the package this subpath makes no network call: `nodeFetchDeps` takes the `download`
+function from the caller, so the one fetch lives in the consuming repo.
+
 ## Rule catalog (`catalog`)
 
 `harness catalog` renders a Markdown table of every rule in the registry: id, category, whether it

@@ -25,7 +25,8 @@ port of the in-process Rust runner in `apps/desktop/src-tauri/src/workflow/gaunt
   name is `@noctcore/harness`, not `@nightcore/harness`). `version` MUST stay in lockstep with
   `PORTABLE_LOCK_RUNNER_VERSION` (`sidecar/harness/export/writer.rs`) — the exported CI template
   pins `npx --yes @noctcore/harness@<that version> check`. **Currently out of step on purpose:**
-  this package is `0.4.0` (the `rules` subpath; `0.3.0` added async rules + `catalog`) while the
+  this package is `0.5.0` (the `pinned-tools` subpath; `0.4.0` added the `rules` subpath, `0.3.0`
+  async rules + `catalog`) while the
   exporter still pins `0.2.0`. That is
   safe, because `0.2.0` is published and the exporter emits nothing that needs a later version; bump
   `PORTABLE_LOCK_RUNNER_VERSION` (and its test expectations) only after that version's tag is
@@ -95,6 +96,12 @@ port of the in-process Rust runner in `apps/desktop/src-tauri/src/workflow/gaunt
   check nothing throws at creation. Rule ids are public API (`RULE_IDS`): renaming one is a breaking
   change. Tests write a throwaway repo per case (`src/rules/test-support.ts`, test-only) and run the
   rule over a real `createNodeCtx`. `node:*` builtins only, like everything else here.
+- `src/pinned-tools.ts` + `src/pinned-tools/`: the `@noctcore/harness/pinned-tools` subpath (0.5.0).
+  Runs a linter at exactly its pinned version (native, else its image by digest, else blocked, exit
+  2) and installs pinned linux release assets after a sha256 check. Pure functions take their I/O as
+  deps; `node.ts` holds the real ones. The default pins (`pins.ts`) are public API: moving one is a
+  minor release. No network call here either: `nodeFetchDeps` takes `download` from the caller, and
+  `cli.node.test.ts` scans the built entrypoint for `fetch(`.
 - `src/index.ts` — the public type barrel (manifest + result shapes) PLUS the portable lint-meta
   contract (`IMetaRule` / `IMetaCtx` / `IViolation`) + the ratchet helpers a generated rule imports.
 
