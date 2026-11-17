@@ -25,9 +25,10 @@ port of the in-process Rust runner in `apps/desktop/src-tauri/src/workflow/gaunt
   name is `@noctcore/harness`, not `@nightcore/harness`). `version` MUST stay in lockstep with
   `PORTABLE_LOCK_RUNNER_VERSION` (`sidecar/harness/export/writer.rs`) — the exported CI template
   pins `npx --yes @noctcore/harness@<that version> check`. **Currently out of step on purpose:**
-  this package is `0.3.0` (async rules + `catalog`) while the exporter still pins `0.2.0`. That is
-  safe, because `0.2.0` is published and the exporter emits nothing that needs `0.3.0`; bump
-  `PORTABLE_LOCK_RUNNER_VERSION` (and its test expectations) only after `harness-v0.3.0` is
+  this package is `0.4.0` (the `rules` subpath; `0.3.0` added async rules + `catalog`) while the
+  exporter still pins `0.2.0`. That is
+  safe, because `0.2.0` is published and the exporter emits nothing that needs a later version; bump
+  `PORTABLE_LOCK_RUNNER_VERSION` (and its test expectations) only after that version's tag is
   published, or exported bundles red CI with an `npx` 404. Publishing is
   human-triggered by pushing a `harness-v<version>` tag (`.github/workflows/publish-harness.yml`);
   merging never publishes. Publishing uses npm trusted publishing (OIDC, no token): the
@@ -87,6 +88,13 @@ port of the in-process Rust runner in `apps/desktop/src-tauri/src/workflow/gaunt
   `catalog.ts` renders the registry's Markdown rule catalog (pure; the CLI owns I/O and `--check`).
   `create-fake-ctx.ts` is a test-only in-memory ctx
   (never bundled).
+- `src/rules.ts` + `src/rules/`: the `@noctcore/harness/rules` subpath (0.4.0), generic,
+  configurable lint-meta rule factories (`createXRule(options)`) a repo adds to its own registry.
+  Every rule is strict (`ciCritical: true`, no `baseline`); repo-specific values (paths, package
+  lists, exemptions with reasons) are options, never literals in the rule body; a config that would
+  check nothing throws at creation. Rule ids are public API (`RULE_IDS`): renaming one is a breaking
+  change. Tests write a throwaway repo per case (`src/rules/test-support.ts`, test-only) and run the
+  rule over a real `createNodeCtx`. `node:*` builtins only, like everything else here.
 - `src/index.ts` — the public type barrel (manifest + result shapes) PLUS the portable lint-meta
   contract (`IMetaRule` / `IMetaCtx` / `IViolation`) + the ratchet helpers a generated rule imports.
 
