@@ -1,9 +1,9 @@
 {
   "name": "@noctcore/harness",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "sideEffects": false,
-  "description": "Portable Structure-Lock runner — enforces a repo's .nightcore/harness.json checks in any CI, with no Nightcore install.",
+  "description": "Portable Structure-Lock runner and lint-meta engine, plus generic lint-meta rules. Enforces a repo's checks in any CI, with no Nightcore install.",
   "license": "MIT",
   "homepage": "https://github.com/noctcore/nightcore/tree/main/packages/harness#readme",
   "repository": {
