@@ -58,6 +58,7 @@ jobs:
           echo "$FILES"
           echo "$FILES" | grep -qx 'dist/cli.js'   || { echo '::error::tarball is missing dist/cli.js (the harness bin)'; exit 1; }
           echo "$FILES" | grep -qx 'dist/index.js'  || { echo '::error::tarball is missing dist/index.js'; exit 1; }
+          echo "$FILES" | grep -qx 'dist/rules.js'  || { echo '::error::tarball is missing dist/rules.js (the rules subpath)'; exit 1; }
           if echo "$FILES" | grep -qE '(^|/)src/|\.test\.'; then
             echo '::error::tarball leaked src/ or test files — files:["dist"] allowlist breached'; exit 1
           fi

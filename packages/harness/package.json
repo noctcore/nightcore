@@ -32,13 +32,18 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./rules": {
+      "types": "./dist/rules.d.ts",
+      "import": "./dist/rules.js",
+      "require": "./dist/rules.cjs"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/cli.ts src/index.ts --format esm,cjs --dts --clean",
+    "build": "tsup src/cli.ts src/index.ts src/rules.ts --format esm,cjs --dts --clean",
     "prepack": "npm run build",
     "check-types": "tsc --noEmit",
     "test": "bun test"
