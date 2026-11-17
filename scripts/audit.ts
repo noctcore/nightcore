@@ -43,13 +43,51 @@ interface Ignored {
 }
 
 /**
- * Advisories tolerated with cause. Empty: every advisory the list used to carry
- * (brace-expansion GHSA-mh99-v99m-4gvg, @hono/node-server GHSA-frvp-7c67-39w9,
- * hono GHSA-xgm2/hvrm/w62v, vitest GHSA-82fw-gwwq-j7x9) was retired by a real
- * upgrade, the last one by the move to vitest 4.1.11 (see git history for the
- * prior entries).
+ * Advisories tolerated with cause. Each one below has no fix inside the major its
+ * consumers declare (an override never crosses a major), so the entry stands until
+ * upstream ships one or the consumer moves. Earlier entries (brace-expansion
+ * GHSA-mh99-v99m-4gvg, @hono/node-server GHSA-frvp-7c67-39w9, hono
+ * GHSA-xgm2/hvrm/w62v, vitest GHSA-82fw-gwwq-j7x9) were retired by real upgrades;
+ * see git history.
  */
-const IGNORED: readonly Ignored[] = [] as const;
+const IGNORED: readonly Ignored[] = [
+  {
+    id: 'GHSA-rmxm-3fg6-px4f',
+    pkg: '@hono/node-server',
+    severity: 'moderate',
+    rationale:
+      'The advisory is in `serveStatic`. The only consumer is @modelcontextprotocol/sdk (via the agent SDK), whose streamable HTTP server imports `getRequestListener` and never `serveStatic`; the engine talks to MCP servers as a client, and no Nightcore code serves static files through hono.',
+    exit: 'The agent SDK moves its MCP SDK to a release that depends on @hono/node-server 2.1.3 or later, or a patched 1.x ships.',
+    reviewBy: '2027-01-15',
+  },
+  {
+    id: 'GHSA-3g3m-2fjr-6pw4',
+    pkg: 'glob',
+    severity: 'moderate',
+    rationale:
+      'Reached only through the Storybook react-docgen plugin (dev tooling, never shipped). The bug needs a caller that passes an AbortSignal and relies on it to stop traversal; that plugin passes none, so a timeout cannot be bypassed.',
+    exit: 'The plugin moves to glob 14.0.2 or later, or glob 13 ships a fix.',
+    reviewBy: '2027-01-15',
+  },
+  {
+    id: 'GHSA-g3hv-75wg-m249',
+    pkg: 'minimatch',
+    severity: 'moderate',
+    rationale:
+      'Reached only through ESLint, typescript-eslint and eslint-plugin-jsx-a11y (lint tooling, never shipped). The patterns it expands come from this repo\'s own committed lint config, not from untrusted input, so the amplification has no attacker.',
+    exit: 'ESLint and typescript-eslint move to minimatch 11.0.1 or later, or 10.x ships a fix.',
+    reviewBy: '2027-01-15',
+  },
+  {
+    id: 'GHSA-fc5q-39xc-vjpf',
+    pkg: 'picomatch',
+    severity: 'high',
+    rationale:
+      'No published picomatch version fixes it. Reached only through build and dev tooling (vite, vitest, tinyglobby, astro, rollup pluginutils, sucrase), which compile glob patterns written in this repo\'s own config, never patterns from users, PRs or model output, so the ReDoS has no attacker-controlled input.',
+    exit: 'A patched picomatch is published: drop the entry and let the lockfile take it.',
+    reviewBy: '2027-01-15',
+  },
+] as const;
 
 const AUDIT_LEVEL = 'moderate';
 
