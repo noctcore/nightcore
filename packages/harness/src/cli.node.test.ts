@@ -15,6 +15,7 @@ const PKG_ROOT = path.resolve(import.meta.dirname, '..');
 const DIST = path.join(PKG_ROOT, 'dist');
 const CLI = path.join(DIST, 'cli.js');
 const RULES = path.join(DIST, 'rules.js');
+const PINNED_TOOLS = path.join(DIST, 'pinned-tools.js');
 
 const fixtures: string[] = [];
 
@@ -57,7 +58,7 @@ function runNode(args: string[]): { status: number | null; stdout: string; stder
 beforeAll(() => {
   // Self-sufficient: build the package's own dist if the gate battery hasn't
   // already (CI's test:node runs before any explicit harness build).
-  if (!existsSync(CLI) || !existsSync(RULES)) {
+  if (!existsSync(CLI) || !existsSync(RULES) || !existsSync(PINNED_TOOLS)) {
     const build = spawnSync('bun', ['run', 'build'], { cwd: PKG_ROOT, encoding: 'utf8' });
     if (build.status !== 0) {
       throw new Error(`tsup build failed:\n${build.stdout}\n${build.stderr}`);
@@ -263,7 +264,16 @@ describe('the built dist has no network or Bun imports (supply-chain posture)', 
   ];
 
   test('no forbidden module specifier and no fetch() call in the shipped entrypoints', () => {
-    const entrypoints = ['cli.js', 'cli.cjs', 'index.js', 'index.cjs', 'rules.js', 'rules.cjs']
+    const entrypoints = [
+      'cli.js',
+      'cli.cjs',
+      'index.js',
+      'index.cjs',
+      'rules.js',
+      'rules.cjs',
+      'pinned-tools.js',
+      'pinned-tools.cjs',
+    ]
       .map((f) => path.join(DIST, f))
       .filter((p) => existsSync(p));
     expect(entrypoints.length).toBeGreaterThan(0);
@@ -275,6 +285,24 @@ describe('the built dist has no network or Bun imports (supply-chain posture)', 
       }
       expect(/\bfetch\s*\(/.test(body)).toBe(false);
     }
+  });
+});
+
+describe('the pinned-tools subpath runs under plain node', () => {
+  // A repo CLI imports the subpath by file URL, the way an installed
+  // `@noctcore/harness/pinned-tools` resolves, and judges a route with no I/O.
+  test('imports, chooses a route from injected deps, and maps the verdict to an exit code', () => {
+    const url = pathToFileURL(PINNED_TOOLS).href;
+    const script = `import * as t from ${JSON.stringify(url)};
+const route = t.chooseRoute(t.ACTIONLINT, '/repo', ['.github/workflows/ci.yml'], {
+  nativeVersion: () => null,
+  dockerAvailable: () => false,
+});
+const verdict = t.linterVerdict(route, 0);
+process.stdout.write(route.kind + ' ' + verdict.status + ' ' + t.exitCodeFor(verdict.status));`;
+    const res = spawnSync('node', ['--input-type=module', '-e', script], { encoding: 'utf8' });
+    expect(res.stderr).toBe('');
+    expect(res.stdout).toBe('blocked blocked 2');
   });
 });
 
