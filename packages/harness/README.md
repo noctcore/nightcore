@@ -50,6 +50,50 @@ both report. A rejected `runAsync` is treated exactly like a throwing `run`: it 
 reported against that rule, and every later rule still runs. An object with neither entry point is
 not a rule, and a registry that exports one fails to load.
 
+## Generic rules (`@noctcore/harness/rules`)
+
+The package also ships ready-made lint-meta rules for checks most repos want and ESLint cannot
+reach. Each is a factory that takes the repo-specific parts as options and returns a strict rule
+(`ciCritical: true`, no baseline). Install the package as a devDependency and add the rules to your
+registry next to your own:
+
+```ts
+import type { IMetaRule } from '@noctcore/harness';
+import {
+  createGithubActionsSecretNoInstallRule,
+  createLockfileRegistryResolutionsRule,
+  createSingleVersionDependenciesRule,
+} from '@noctcore/harness/rules';
+
+import { myRepoRule } from './rules/my-repo-rule';
+
+export const META_RULES: IMetaRule[] = [
+  createLockfileRegistryResolutionsRule(),
+  createSingleVersionDependenciesRule({ packages: ['typescript', 'react', 'react-dom'] }),
+  createGithubActionsSecretNoInstallRule({
+    exemptSecrets: [{ secret: 'CACHE_TOKEN', reason: 'the build cache credential; read-only on PRs' }],
+  }),
+  myRepoRule,
+];
+```
+
+| Rule id | Category | Options | What it holds |
+|---|---|---|---|
+| `lockfile-registry-resolutions` | supply-chain | `lockfile` | Every package in the pnpm v9 lockfile resolves from the registry with a sha512 integrity hash: no git, tarball URL or directory source. |
+| `single-version-dependencies` | supply-chain | `packages` (required), `lockfile` | Each listed package resolves to exactly one version in the lockfile. |
+| `only-built-dependencies-have-scripts` | supply-chain | none | `onlyBuiltDependencies` and `ignoredBuiltDependencies` name exactly the installed packages that have a build step. |
+| `pnpm-patch-ledger` | supply-chain | `ledger`, `lockfile`, `now` | Every `patchedDependencies` entry has a ledger entry with a reason, an upstream link, a removal condition and a `reviewBy` date that has not passed; the patch file hashes to what the lockfile records. |
+| `github-actions-secret-no-install` | ci | `exemptSecrets` | A workflow job that can read a stored secret runs no package install. |
+| `github-actions-security-no-cancel` | ci | `securityWorkflowName` | A security workflow never cancels a run or lets a new run replace a pending one. |
+
+A config that would check nothing (an empty package list, an exemption with no reason) makes the
+factory throw, so the registry fails to load instead of passing quietly. `RULE_IDS` lists every id
+the subpath ships; a repo keeping a local rule should not reuse one.
+
+The rules read the repo through the `IMetaCtx` the runner hands them, plus `node:fs` for the two
+that inspect what is installed (`node_modules/.pnpm`) or hash a patch file. Like the rest of the
+package they use `node:*` builtins only and make no network call.
+
 ## Rule catalog (`catalog`)
 
 `harness catalog` renders a Markdown table of every rule in the registry: id, category, whether it
@@ -93,8 +137,9 @@ default registry lookup tries `.nightcore/lint-meta/registry.mts`, then `…/reg
 
 Two requirements for a TypeScript registry: **Node ≥ 22.18**, and an ES-module scope. `.mts` (what
 the exporter writes) is always an ES module; a plain `.ts` one is only ESM if the nearest
-`package.json` says `"type": "module"`. Rules may only `import type` from `@noctcore/harness` — a
-value import would have to resolve at run time, and nothing is installed in the target repo.
+`package.json` says `"type": "module"`. Exported rules may only `import type` from `@noctcore/harness`: a
+value import would have to resolve at run time, and nothing is installed in the target repo. A repo
+that installs the package itself may import the `@noctcore/harness/rules` factories as values.
 
 ## What it is NOT
 

@@ -8,11 +8,13 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
 const PKG_ROOT = path.resolve(import.meta.dirname, '..');
 const DIST = path.join(PKG_ROOT, 'dist');
 const CLI = path.join(DIST, 'cli.js');
+const RULES = path.join(DIST, 'rules.js');
 
 const fixtures: string[] = [];
 
@@ -55,7 +57,7 @@ function runNode(args: string[]): { status: number | null; stdout: string; stder
 beforeAll(() => {
   // Self-sufficient: build the package's own dist if the gate battery hasn't
   // already (CI's test:node runs before any explicit harness build).
-  if (!existsSync(CLI)) {
+  if (!existsSync(CLI) || !existsSync(RULES)) {
     const build = spawnSync('bun', ['run', 'build'], { cwd: PKG_ROOT, encoding: 'utf8' });
     if (build.status !== 0) {
       throw new Error(`tsup build failed:\n${build.stdout}\n${build.stderr}`);
@@ -261,7 +263,7 @@ describe('the built dist has no network or Bun imports (supply-chain posture)', 
   ];
 
   test('no forbidden module specifier and no fetch() call in the shipped entrypoints', () => {
-    const entrypoints = ['cli.js', 'cli.cjs', 'index.js', 'index.cjs']
+    const entrypoints = ['cli.js', 'cli.cjs', 'index.js', 'index.cjs', 'rules.js', 'rules.cjs']
       .map((f) => path.join(DIST, f))
       .filter((p) => existsSync(p));
     expect(entrypoints.length).toBeGreaterThan(0);
@@ -273,6 +275,36 @@ describe('the built dist has no network or Bun imports (supply-chain posture)', 
       }
       expect(/\bfetch\s*\(/.test(body)).toBe(false);
     }
+  });
+});
+
+describe('the rules subpath runs under plain node', () => {
+  // A registry that imports the shipped rule factories by file URL, the way an
+  // installed `@noctcore/harness/rules` resolves for a repo's own registry.
+  test('a registry built from the rule factories loads, runs and reds on a violation', () => {
+    const rulesUrl = pathToFileURL(RULES).href;
+    const dir = lintMetaFixture('');
+    const lmDir = path.join(dir, '.nightcore', 'lint-meta');
+    rmSync(path.join(lmDir, 'registry.js'));
+    writeFileSync(
+      path.join(lmDir, 'registry.mjs'),
+      `import * as rules from ${JSON.stringify(rulesUrl)};
+export const META_RULES = [
+  rules.createLockfileRegistryResolutionsRule(),
+  rules.createGithubActionsSecretNoInstallRule(),
+];
+export const IDS = rules.RULE_IDS;`,
+      'utf8',
+    );
+    writeFileSync(
+      path.join(dir, 'pnpm-lock.yaml'),
+      "lockfileVersion: '9.0'\n\npackages:\n\n  left-pad@1.3.0:\n    resolution: {commit: 5f8b2e1, repo: https://example.test/left-pad.git, type: git}\n",
+      'utf8',
+    );
+    const res = runNode(['lint-meta', '--dir', dir, '--registry', '.nightcore/lint-meta/registry.mjs']);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain('[ERROR] lockfile-registry-resolutions (pnpm-lock.yaml):');
+    expect(res.stderr).toContain('resolves from a git repository');
   });
 });
 
