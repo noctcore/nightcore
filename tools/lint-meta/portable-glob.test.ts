@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
-import { isBunRuntime, portableGlob, walkGlob } from './glob.js';
+import { isBunRuntime, portableGlob, walkGlob } from './portable-glob';
 
 let root: string;
 
