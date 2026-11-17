@@ -6,12 +6,9 @@
 # job installs bun + deps (a plain downstream repo would only need the check's own
 # toolchain). Pinned runner version — never @latest (§5 supply-chain).
 #
-# NOTE: uses `bunx`, not `npx`. This repo is a Bun workspace that CONTAINS the
-# `@noctcore/harness` source (packages/harness), which shadows npm's `npx` resolution
-# (npx picks the un-built local workspace copy and fails). `bunx @noctcore/harness@<ver>`
-# fetches the PUBLISHED artifact instead. A downstream repo has no local copy, so the
-# exported workflow template uses `npx` (which works there) — this bunx swap is
-# nightcore-dogfood-specific.
+# NOTE: uses `bunx`, not `npx`, so the run always fetches the PUBLISHED artifact
+# from npm. The runner's source lives in its own repo (noctcore/harness).
+
 name: structure-lock
 on: [push, pull_request]
 permissions:

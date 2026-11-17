@@ -331,7 +331,9 @@ research → build-ready specs → gated PRs — and the roadmap is public.
   spike.
 - **v0.4 — conformance + platform:** real drift/conformance detection, the
   portable lock (CI-enforceable structure lock), a per-project trust
-  dashboard, skill-registry groundwork.
+  dashboard, skill-registry groundwork. The portable lock's runner,
+  `@noctcore/harness`, lives in its own repo:
+  [noctcore/harness](https://github.com/noctcore/harness).
 - **v0.5+ — the keystone:** user-definable skills with per-skill gates, team
   collaboration, receipt signing.
 
